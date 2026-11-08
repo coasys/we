@@ -269,7 +269,11 @@ impl DesktopVault {
     /// `scid`'s custody epoch ([`crate::pending::Epoch`]): how many times its kept master key
     /// changed in this custody folder. Read under the folder's lock, so it is never read between
     /// a write of the kept key and its bump; reads no item, so no unlock and no passphrase. A
-    /// file of epochs that cannot be read is an error, never 0.
+    /// file of epochs that cannot be read is an error, never 0; so is one this folder wrote and
+    /// has lost, and an entry missing while a key of `scid` (kept or staged) is here
+    /// ([`Exclusive::epoch`]). Counted from nothing again, an epoch would come back to a value
+    /// a removal read before the loss, and that removal would delete a key stored since. The
+    /// way back is [`recover_custody_epoch`](Self::recover_custody_epoch), taken on purpose.
     ///
     /// Every change of the kept item (a store, a promote, a forget) bumps the epoch *before* it
     /// touches the item, under the same lock. A store can make a change and still answer an
@@ -278,8 +282,30 @@ impl DesktopVault {
     /// may have, so a forget at an epoch read before never deletes what that write left. The
     /// cost is the other way round and safe: a write that fails after the bump has moved the
     /// epoch over no change, and a forget at the epoch read before it keeps the key.
+    ///
+    /// That is a deliberate reading of [`Vault::custody_epoch`]'s "never otherwise": the epoch
+    /// moves on every change of the kept key, and *may* move on a write that then failed, since
+    /// this vault cannot always tell a failed write from one that landed and lost its answer.
+    /// It never stays put over a change, which is what a forget at an epoch relies on; moving
+    /// over no change only ever keeps a key.
     pub fn custody_epoch(&self, scid: &str) -> Result<u64, VaultError> {
-        self.pending.exclusive()?.epoch(scid)
+        let folder = self.pending.exclusive()?;
+        folder.epoch(scid, self.custody_held(scid)?)
+    }
+
+    /// Makes `scid`'s custody epoch readable again after it was lost (the epochs' file gone
+    /// from the custody folder, or its entry for `scid`), when the person or the operator has
+    /// looked and means to go on: a new entry in a fresh incarnation, which no epoch read
+    /// before the loss can match, so a removal paused across it keeps the key rather than
+    /// forgetting it. An epoch that is there is left as it is. Answers the epoch.
+    pub fn recover_custody_epoch(&self, scid: &str) -> Result<u64, VaultError> {
+        log::info!("custody: recover a lost custody epoch");
+        self.pending.exclusive()?.recover_epoch(scid)
+    }
+
+    /// Whether a key of `scid` is here, kept or staged: then its custody epoch must be too.
+    fn custody_held(&self, scid: &str) -> Result<bool, VaultError> {
+        Ok(self.store.contains(&item_name(scid))? || self.store.contains(&staged_name(scid))?)
     }
 
     /// The compare-and-delete behind [`Vault::forget_master`] (`unchanged` is "still this
@@ -302,7 +328,7 @@ impl DesktopVault {
         }
         log::info!("custody: forget a master key");
         // The epoch moves before the item does ([`DesktopVault::custody_epoch`]).
-        folder.bump_epoch(scid)?;
+        folder.bump_epoch(scid, true)?;
         self.store.delete(&item_name(scid))?;
         Ok(Forgot::Forgot)
     }
@@ -353,7 +379,8 @@ impl Vault for Unlocking<'_> {
         // Every store bumps it, a same-index re-store too: a forget that read the epoch before
         // a duplicate delivery must not delete what that delivery just wrote. Before the put
         // ([`DesktopVault::custody_epoch`]).
-        folder.bump_epoch(scid)?;
+        let held = self.vault.custody_held(scid)?;
+        folder.bump_epoch(scid, held)?;
         self.vault.put(&name, &prepared)?;
         Ok(Stored::Stored)
     }
@@ -416,8 +443,8 @@ impl Vault for Unlocking<'_> {
             }
         }
         log::info!("custody: promote a staged master key");
-        // Before the move ([`DesktopVault::custody_epoch`]).
-        folder.bump_epoch(scid)?;
+        // Before the move ([`DesktopVault::custody_epoch`]). The staged key is here.
+        folder.bump_epoch(scid, true)?;
         self.vault
             .store
             .rename(&staged_name(scid), &item_name(scid))?;
@@ -473,7 +500,7 @@ impl Vault for Unlocking<'_> {
     /// moved it, so it is left and named ([`Forgot::Kept`]).
     fn forget_master_at(&self, scid: &str, epoch: u64) -> Result<Forgot, VaultError> {
         self.vault
-            .forget_kept(scid, |folder, _| Ok(folder.epoch(scid)? == epoch))
+            .forget_kept(scid, |folder, _| Ok(folder.epoch(scid, true)? == epoch))
     }
 
     fn unlock(&self, scid: &str, why: MasterUse, now: u64) -> Result<Unlocked, VaultError> {
@@ -987,17 +1014,25 @@ mod tests {
             vec![
                 "QmScid.bin".to_string(),
                 crate::pending::EPOCHS_FILE_NAME.to_string(),
+                crate::pending::METADATA_FILE_NAME.to_string(),
                 crate::pending::LOCK_NAME.to_string(),
             ]
         );
-        let epochs =
-            std::fs::read_to_string(dir.path().join(crate::pending::EPOCHS_FILE_NAME)).unwrap();
+        let epochs: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(dir.path().join(crate::pending::EPOCHS_FILE_NAME)).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(epochs["version"], 1);
+        assert_eq!(epochs["epochs"].as_array().unwrap().len(), 1);
+        assert_eq!(epochs["epochs"][0]["scid"], "QmScid");
+        assert_eq!(epochs["epochs"][0]["count"], 2);
+        let metadata: serde_json::Value = serde_json::from_slice(
+            &std::fs::read(dir.path().join(crate::pending::METADATA_FILE_NAME)).unwrap(),
+        )
+        .unwrap();
         assert_eq!(
-            serde_json::from_str::<Vec<crate::pending::Epoch>>(&epochs).unwrap(),
-            vec![crate::pending::Epoch {
-                scid: "QmScid".into(),
-                epoch: 2
-            }]
+            metadata,
+            serde_json::json!({ "version": 1, "written": [crate::pending::EPOCHS_FILE_NAME] })
         );
         assert_eq!(locked.forget_master("QmScid", 1).unwrap(), Forgot::Forgot);
         // None kept: forgotten already.
@@ -1054,8 +1089,12 @@ mod tests {
             assert_eq!(epoch(), 0);
             flow.store_master("QmScid", 1, Secret::new([5u8; 32]))
                 .unwrap();
+            // Counted from 1 in an incarnation drawn for the entry (`pending::Epoch`).
+            let first = epoch();
+            assert_ne!(first, 0);
+            let epoch = || vault.custody_epoch("QmScid").unwrap() - first + 1;
             assert_eq!(epoch(), 1);
-            let read_before = epoch();
+            let read_before = first;
             // The same key delivered twice.
             assert_eq!(
                 flow.store_master("QmScid", 1, Secret::new([5u8; 32]))
@@ -1083,7 +1122,10 @@ mod tests {
             assert_eq!(epoch(), 2);
             flow.promote_master("QmScid", 2).unwrap();
             assert_eq!(epoch(), 3);
-            assert_eq!(flow.forget_master_at("QmScid", 3).unwrap(), Forgot::Forgot);
+            assert_eq!(
+                flow.forget_master_at("QmScid", first + 2).unwrap(),
+                Forgot::Forgot
+            );
             assert_eq!(epoch(), 4);
             assert_eq!(flow.forget_master("QmScid", 2).unwrap(), Forgot::Forgot);
             assert_eq!(epoch(), 4);
@@ -1497,8 +1539,11 @@ mod tests {
             unlocked_key(&vault, Some(PASS)),
             ed25519_signing_key_multikey([4u8; 32])
         );
-        // The forget and the delivery each moved it.
-        assert_eq!(this_app.custody_epoch("QmScid").unwrap(), read + 2);
+        // The forget and the delivery each moved it: the key was kept before this folder counted
+        // an epoch (read as 0), so the forget began an entry and the delivery counted on it.
+        let now = this_app.custody_epoch("QmScid").unwrap();
+        assert_eq!(read, 0);
+        assert_eq!(now & u64::from(u32::MAX), 2);
     }
 
     /// A write answered `Ok` is there when the vault is opened again (another start of the app,
@@ -2218,6 +2263,174 @@ mod tests {
             index.is_none() || index == Some(given),
             "master_index answers {index:?} while unlock gives master #{given}"
         );
+    }
+
+    /// A vault on a sealed file in `dir`, its lists beside it, as the desktop apps keep them.
+    fn file_vault(dir: &std::path::Path) -> DesktopVault {
+        DesktopVault::with_kdf(
+            Box::new(crate::store::FileStore::new(dir)),
+            PendingIncepts::file(dir),
+            CHEAP,
+        )
+    }
+
+    /// Drops `scid`'s entry from the custody epochs' file, whatever shape the file has.
+    fn drop_epoch_entry(dir: &std::path::Path, scid: &str) {
+        let path = dir.join(crate::pending::EPOCHS_FILE_NAME);
+        let mut json: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+        let entries = match json.get_mut("epochs") {
+            Some(entries) => entries,
+            None => &mut json,
+        };
+        entries
+            .as_array_mut()
+            .unwrap()
+            .retain(|e| e["scid"] != scid);
+        std::fs::write(&path, serde_json::to_vec(&json).unwrap()).unwrap();
+    }
+
+    /// Lal's review of we#431: a removal reads the epoch, then the epochs' file disappears
+    /// while the kept key stays (a partial clean-up, an incomplete restore of the folder), and
+    /// another app stores the same key again. Counted from nothing, its epoch would come back
+    /// to the value the removal read, and the removal would delete what was stored after its
+    /// checks. Lost metadata is an error, never a fresh start.
+    #[test]
+    fn a_lost_epochs_file_is_an_error_and_a_stale_epoch_never_matches() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = file_vault(dir.path());
+        let flow = vault.unlocking(pass("a passphrase of length"));
+        flow.store_master("QmScid", 1, Secret::new([5u8; 32]))
+            .unwrap();
+        let read = vault.custody_epoch("QmScid").unwrap();
+        std::fs::remove_file(dir.path().join(crate::pending::EPOCHS_FILE_NAME)).unwrap();
+
+        assert!(vault.custody_epoch("QmScid").is_err());
+        // Another app stores the key again: it is not counted from nothing.
+        let again = flow.store_master("QmScid", 1, Secret::new([5u8; 32]));
+        assert!(again.is_err(), "stored over lost epochs: {again:?}");
+        let forgot = flow.forget_master_at("QmScid", read);
+        assert!(forgot.is_err(), "forgot at a stale epoch: {forgot:?}");
+        assert!(vault.holds("QmScid").unwrap());
+        // The whole file is lost: every identity's epoch with it.
+        assert!(vault.custody_epoch("QmOther").is_err());
+
+        // Recovered on purpose: a fresh incarnation, which the epoch read before the loss
+        // never matches, whatever is stored after.
+        let recovered = vault.recover_custody_epoch("QmScid").unwrap();
+        assert_ne!(recovered, read);
+        assert_eq!(vault.recover_custody_epoch("QmScid").unwrap(), recovered);
+        assert_eq!(vault.custody_epoch("QmScid").unwrap(), recovered);
+        assert_eq!(
+            flow.store_master("QmScid", 1, Secret::new([5u8; 32]))
+                .unwrap(),
+            Stored::Stored
+        );
+        assert_eq!(
+            flow.forget_master_at("QmScid", read).unwrap(),
+            Forgot::Kept(1)
+        );
+        assert!(vault.holds("QmScid").unwrap());
+        let now = vault.custody_epoch("QmScid").unwrap();
+        assert_eq!(
+            flow.forget_master_at("QmScid", now).unwrap(),
+            Forgot::Forgot
+        );
+        // An identity that keeps no key here reads 0 in the file written again.
+        assert_eq!(vault.custody_epoch("QmOther").unwrap(), 0);
+    }
+
+    /// The epochs' file and the note that it was written both gone: the folder looks as if it
+    /// never counted, but an entry made again is in a fresh incarnation, so the epoch read
+    /// before the loss still never matches a later store.
+    #[test]
+    fn epochs_lost_with_their_note_still_never_repeat_a_value() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = file_vault(dir.path());
+        let flow = vault.unlocking(pass("a passphrase of length"));
+        flow.store_master("QmScid", 1, Secret::new([5u8; 32]))
+            .unwrap();
+        let read = vault.custody_epoch("QmScid").unwrap();
+        for file in [
+            crate::pending::EPOCHS_FILE_NAME,
+            crate::pending::METADATA_FILE_NAME,
+        ] {
+            std::fs::remove_file(dir.path().join(file)).unwrap();
+        }
+        flow.store_master("QmScid", 1, Secret::new([5u8; 32]))
+            .unwrap();
+        assert_ne!(vault.custody_epoch("QmScid").unwrap(), read);
+        assert_eq!(
+            flow.forget_master_at("QmScid", read).unwrap(),
+            Forgot::Kept(1)
+        );
+        assert!(vault.holds("QmScid").unwrap());
+    }
+
+    /// The same with only one identity's entry gone from a file that is still there.
+    #[test]
+    fn a_lost_epoch_entry_for_a_kept_key_is_an_error_and_a_stale_epoch_never_matches() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = file_vault(dir.path());
+        let flow = vault.unlocking(pass("a passphrase of length"));
+        flow.store_master("QmScid", 1, Secret::new([5u8; 32]))
+            .unwrap();
+        flow.store_master("QmOther", 0, Secret::new([6u8; 32]))
+            .unwrap();
+        let read = vault.custody_epoch("QmScid").unwrap();
+        drop_epoch_entry(dir.path(), "QmScid");
+
+        assert!(vault.custody_epoch("QmScid").is_err());
+        assert!(flow
+            .store_master("QmScid", 1, Secret::new([5u8; 32]))
+            .is_err());
+        assert!(flow.forget_master_at("QmScid", read).is_err());
+        assert!(vault.holds("QmScid").unwrap());
+        // A staged key is kept custody as well.
+        flow.stage_master("QmOther", 1, Secret::new([7u8; 32]), &StageToken([1; 16]))
+            .unwrap();
+        flow.forget_master("QmOther", 0).unwrap();
+        drop_epoch_entry(dir.path(), "QmOther");
+        assert!(vault.custody_epoch("QmOther").is_err());
+        assert!(flow.promote_master("QmOther", 1).is_err());
+        // An identity with no key here is unaffected.
+        assert_eq!(vault.custody_epoch("QmNew").unwrap(), 0);
+
+        // Recovered on purpose, a stale epoch still never matches.
+        vault.recover_custody_epoch("QmScid").unwrap();
+        flow.store_master("QmScid", 1, Secret::new([5u8; 32]))
+            .unwrap();
+        assert_eq!(
+            flow.forget_master_at("QmScid", read).unwrap(),
+            Forgot::Kept(1)
+        );
+        vault.recover_custody_epoch("QmOther").unwrap();
+        assert_eq!(flow.promote_master("QmOther", 1).unwrap(), Stored::Stored);
+    }
+
+    /// The epoch never wraps back to a value read before.
+    #[test]
+    fn the_custody_epoch_never_wraps() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = file_vault(dir.path());
+        let flow = vault.unlocking(pass("a passphrase of length"));
+        flow.store_master("QmScid", 0, Secret::new([5u8; 32]))
+            .unwrap();
+        // A file written by the build before this one: a bare counter, here at its last value.
+        std::fs::write(
+            dir.path().join(crate::pending::EPOCHS_FILE_NAME),
+            format!(r#"[{{"scid":"QmScid","epoch":{}}}]"#, u64::MAX),
+        )
+        .unwrap();
+        assert_eq!(vault.custody_epoch("QmScid").unwrap(), u64::MAX);
+        let stored = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            flow.store_master("QmScid", 0, Secret::new([5u8; 32]))
+        }));
+        assert!(
+            matches!(stored, Ok(Err(VaultError::Unavailable(_)))),
+            "{stored:?}"
+        );
+        assert_eq!(vault.custody_epoch("QmScid").unwrap(), u64::MAX);
     }
 
     /// A keychain whose reach the test controls: `reachable` answers `up`, and its first call
