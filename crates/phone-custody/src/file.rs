@@ -183,10 +183,13 @@ fn io(e: std::io::Error) -> PhoneKeyError {
 /// Makes `dir`'s entries durable: a file renamed into it is named after a crash too, not only
 /// its bytes durable (syncing the file before the rename covers the bytes, not the directory
 /// entry — POSIX `fsync(2)` of the directory). A no-op where a directory cannot be opened to
-/// sync. Counted in tests.
+/// sync. Recorded in tests.
 fn sync_dir(dir: &Path) -> Result<(), PhoneKeyError> {
     #[cfg(test)]
-    DIR_SYNCS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    SYNCED_DIRS
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .push(dir.to_path_buf());
     #[cfg(unix)]
     fs::File::open(dir).map_err(io)?.sync_all().map_err(io)?;
     #[cfg(not(unix))]
@@ -194,13 +197,45 @@ fn sync_dir(dir: &Path) -> Result<(), PhoneKeyError> {
     Ok(())
 }
 
-/// How many directory syncs this process ran (tests).
+/// The directories this process synced, in order (tests).
 #[cfg(test)]
-static DIR_SYNCS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+static SYNCED_DIRS: std::sync::Mutex<Vec<std::path::PathBuf>> = std::sync::Mutex::new(Vec::new());
 
 #[cfg(test)]
-fn dir_syncs() -> usize {
-    DIR_SYNCS.load(std::sync::atomic::Ordering::SeqCst)
+fn synced_dirs() -> Vec<std::path::PathBuf> {
+    SYNCED_DIRS
+        .lock()
+        .unwrap_or_else(|p| p.into_inner())
+        .clone()
+}
+
+/// `path` made a directory, every missing ancestor with it, each made durable: for every
+/// directory created, the parent that gained its name is synced — the ancestor that was
+/// already there included, so `Ok` means the whole path's name survives a crash, not only
+/// its deepest part. One place makes the folders this crate writes into (`write_atomic`,
+/// the vault's lock path), so no caller can create one early and skip the sync.
+pub fn create_dir_durable(path: &Path) -> Result<(), PhoneKeyError> {
+    // The missing ancestors, deepest first: each one's parent gains an entry.
+    let mut missing = Vec::new();
+    let mut cur = path;
+    while !cur.is_dir() {
+        missing.push(cur.to_path_buf());
+        match cur.parent() {
+            Some(parent) if !parent.as_os_str().is_empty() => cur = parent,
+            _ => break,
+        }
+    }
+    if missing.is_empty() {
+        return Ok(());
+    }
+    fs::create_dir_all(path).map_err(io)?;
+    // Shallowest first: the name the pre-existing ancestor gained is durable first.
+    for made in missing.iter().rev() {
+        if let Some(parent) = made.parent().filter(|p| !p.as_os_str().is_empty()) {
+            sync_dir(parent)?;
+        }
+    }
+    Ok(())
 }
 
 /// `bytes` at `path`, whole or not at all: a temporary file beside it, synced, then renamed over
@@ -209,13 +244,9 @@ fn dir_syncs() -> usize {
 /// so. A directory made for the write is made durable with it.
 pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), PhoneKeyError> {
     if let Some(dir) = path.parent() {
-        if !dir.is_dir() {
-            fs::create_dir_all(dir).map_err(io)?;
-            // The new directory's own entry in its parent is durable with the write.
-            if let Some(up) = dir.parent() {
-                sync_dir(up)?;
-            }
-        }
+        // A directory made for the write — every missing ancestor of it — is made durable
+        // with the write, at each parent that gained an entry.
+        create_dir_durable(dir)?;
     }
     let tmp = path.with_extension("json.tmp");
     let mut options = fs::OpenOptions::new();
@@ -237,27 +268,121 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), PhoneKeyError> {
     Ok(())
 }
 
+/// `file` locked exclusively until it is closed: `flock(2)` itself, because
+/// `std::fs::File::lock` is not implemented for `target_os = "android"` — the pinned
+/// toolchain takes the `lock() not supported` fallback there — and the vault's transaction
+/// has to serialize on the platform it ships on, never skip locking. An open-file-
+/// description lock: two `File` handles on one path conflict, in one process or across
+/// two. Retried while a signal interrupts it.
+#[cfg(unix)]
+pub fn flock_exclusive(file: &fs::File) -> std::io::Result<()> {
+    use std::os::unix::io::AsRawFd;
+    loop {
+        match unsafe { libc::flock(file.as_raw_fd(), libc::LOCK_EX) } {
+            0 => return Ok(()),
+            _ => {
+                let e = std::io::Error::last_os_error();
+                if e.raw_os_error() != Some(libc::EINTR) {
+                    return Err(e);
+                }
+            }
+        }
+    }
+}
+
+/// `file` locked exclusively until it is closed. Off unix (not a phone target) std's lock is
+/// implemented, so it is the one use `clippy.toml`'s `disallowed-methods` allows.
+#[cfg(not(unix))]
+#[allow(clippy::disallowed_methods)]
+pub fn flock_exclusive(file: &fs::File) -> std::io::Result<()> {
+    file.lock()
+}
 #[cfg(test)]
 mod tests {
     use super::*;
 
     /// The `Ok` of `write_atomic` means durable (`ad4m-identity-client`'s `Vault` contract):
-    /// the file's bytes and the directory entry that names them both. The first write into a
-    /// directory made on the way syncs the directory's parent too.
+    /// the file's bytes and the directory entry that names them both. Every directory made on
+    /// the way is made durable at the parent that gained it — including the ancestor that was
+    /// already there and names the first new one.
     #[test]
     fn a_write_syncs_the_directory_it_names() {
         let dir = tempfile::tempdir().unwrap();
-        let before = dir_syncs();
+        let before = synced_dirs().len();
         write_atomic(&dir.path().join("one.json"), b"{}").unwrap();
-        assert!(dir_syncs() > before, "the rename is not durable unsynced");
+        assert!(
+            synced_dirs().len() > before,
+            "the rename is not durable unsynced"
+        );
 
-        let before = dir_syncs();
+        // `new/deep` made for the write: `new` is synced (it names `deep`), and so is the
+        // pre-existing root — it gained `new`'s name. `deep` is synced for the rename itself.
+        let before = synced_dirs().len();
         let made = dir.path().join("new").join("deep");
         write_atomic(&made.join("two.json"), b"{}").unwrap();
+        let synced = &synced_dirs()[before..];
         assert!(
-            dir_syncs() >= before + 2,
-            "a directory made for the write is itself made durable"
+            synced.contains(&dir.path().to_path_buf()),
+            "the ancestor that was there gained `new` and is not synced: {synced:?}"
+        );
+        assert!(
+            synced.contains(&dir.path().join("new")),
+            "`new` gained `deep` and is not synced: {synced:?}"
+        );
+        assert!(
+            synced.contains(&made),
+            "the directory the rename landed in is not synced: {synced:?}"
         );
         assert_eq!(std::fs::read(made.join("two.json")).unwrap(), b"{}");
+    }
+
+    /// `create_dir_durable` makes every missing ancestor and syncs each parent that gained an
+    /// entry, from the pre-existing one down; a directory already there costs no sync.
+    #[test]
+    fn a_made_directory_is_durable_at_each_parent_that_gained_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let deep = dir.path().join("a").join("b").join("c");
+        let before = synced_dirs().len();
+        create_dir_durable(&deep).unwrap();
+        assert_eq!(
+            &synced_dirs()[before..],
+            &[
+                dir.path().to_path_buf(),
+                dir.path().join("a"),
+                dir.path().join("a").join("b"),
+            ],
+            "each parent that gained an entry, from the one that was already there"
+        );
+        let before = synced_dirs().len();
+        create_dir_durable(&deep).unwrap();
+        assert_eq!(synced_dirs().len(), before, "nothing made, nothing synced");
+    }
+
+    // The vault's transaction serializes on an exclusive lock of `master-keys.lock`, taken on a
+    // fresh descriptor per operation: two independent handles on one path must conflict, in one
+    // process as across two. `std::fs::File::lock` gives that on the host but not on Android
+    // (`lock() not supported` in the pinned toolchain), so the lock is `flock(2)` itself.
+    #[test]
+    fn a_flocked_file_blocks_a_second_handle_until_released() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("master-keys.lock");
+        let first = std::fs::File::create(&path).unwrap();
+        flock_exclusive(&first).unwrap();
+
+        // A second, independent handle on the same path waits for the first to close.
+        let second = std::fs::File::open(&path).unwrap();
+        let (tx, rx) = std::sync::mpsc::channel();
+        std::thread::spawn(move || {
+            flock_exclusive(&second).expect("the second handle locks once the first closes");
+            tx.send(()).unwrap();
+        });
+        assert!(
+            rx.recv_timeout(std::time::Duration::from_millis(300))
+                .is_err(),
+            "the second handle locked while the first still held it"
+        );
+        drop(first);
+        rx.recv_timeout(std::time::Duration::from_secs(10))
+            .expect("the second handle locked once the first closed");
     }
 }

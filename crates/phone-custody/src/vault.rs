@@ -23,7 +23,8 @@
 //! **One lock, one file, every handle.** The phone runs parallel native calls, each with its own
 //! `PhoneVault` on the same folder, and the `Vault` contract wants every operation linearizable
 //! across every handle and process. So no operation decides on a snapshot the handle read
-//! earlier: each takes the folder's lock (`master-keys.lock`, `std::fs::File::lock`, exclusive),
+//! earlier: each takes the folder's lock (`master-keys.lock`, `flock(2)`, exclusive — std's
+//! `File::lock` has no Android implementation in the pinned toolchain),
 //! **reads the file again**, decides and writes under it, and releases. The biometric seal and
 //! open stay outside the lock — the prompt must not hold every other call off — and what they
 //! decide on (the kept key's generation) is checked again inside. Everything decided on is in
@@ -46,9 +47,9 @@
 //! back is explicit — [`PhoneVault::recover_custody_epoch`] for an epoch (a fresh incarnation,
 //! so no epoch read before the loss repeats) and [`Vault::record_seen_reset`] for a mark. The
 //! note is written after the file that earns it (a crash between the two leaves an entry that
-//! is there and not yet noted, which reads as it is and is noted with the next change), and a
-//! noted identity is never dropped: a forgotten key's epoch stays, a reset mark stays as a
-//! reset.
+//! is there and not yet noted, which reads as it is and is noted under the lock by the next
+//! operation that relies on it), and a noted identity is never dropped: a forgotten key's
+//! epoch stays, a reset mark stays as a reset.
 //!
 //! The file is in `no_backup/device-keys/`, as the key file is.
 //!
@@ -280,6 +281,29 @@ impl Marker {
     }
 }
 
+/// `marker` made to cover `file`: `written` (when the file is there) and every identity an
+/// epoch or a mark is kept for. Only ever adds — a noted identity is never dropped here, and
+/// a noted-but-missing entry stays for its recovery to find. Answers whether it changed.
+fn noted(marker: &mut Marker, file: &MasterFile, written: bool) -> bool {
+    let mut changed = written && !marker.written;
+    if written {
+        marker.written = true;
+    }
+    for entry in &file.epochs {
+        if !marker.epochs.contains(&entry.scid) {
+            marker.epochs.push(entry.scid.clone());
+            changed = true;
+        }
+    }
+    for entry in &file.seen {
+        if !marker.seen.contains(&entry.scid) {
+            marker.seen.push(entry.scid.clone());
+            changed = true;
+        }
+    }
+    changed
+}
+
 /// What a lost `master-keys.json` says.
 const LOST_FILE: &str = "was written in this folder and is gone; it is not started again empty";
 
@@ -388,7 +412,8 @@ struct Held<'a> {
     /// Serializes this handle's operations (the folder's lock serializes across handles).
     _in_process: MutexGuard<'a, ()>,
     /// The folder's lock, held until the operation ends: `master-keys.lock` locked
-    /// exclusively (`std::fs::File::lock`), across every handle and process on the folder.
+    /// exclusively (`flock(2)`, [`crate::file::flock_exclusive`]), across every handle and
+    /// process on the folder.
     _folder: std::fs::File,
     /// The file as the lock found it.
     file: MasterFile,
@@ -457,22 +482,30 @@ impl PhoneVault {
             .lock
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner());
-        std::fs::create_dir_all(&self.dir).map_err(unavailable)?;
+        crate::file::create_dir_durable(&self.dir).map_err(io)?;
         let folder = std::fs::OpenOptions::new()
             .create(true)
             .truncate(false)
             .write(true)
             .open(self.dir.join(LOCK_FILE_NAME))
             .map_err(unavailable)?;
-        folder.lock().map_err(unavailable)?;
+        crate::file::flock_exclusive(&folder).map_err(unavailable)?;
         let marker = self.read_marker()?;
-        let file = self.read(&marker, recovering)?;
-        Ok(Held {
+        let (file, present) = self.read(&marker, recovering)?;
+        let mut held = Held {
             _in_process: in_process,
             _folder: folder,
             file,
             marker,
-        })
+        };
+        // An entry written whose note never landed (the process ended between the file's
+        // write and the note) is noted now, under the lock, before anything in this
+        // operation relies on it — a read, an equal retry, a no-op write: a loss after a
+        // success must read as a loss, never a first use.
+        if noted(&mut held.marker, &held.file, present) {
+            self.write_marker(&held.marker)?;
+        }
+        Ok(held)
     }
 
     /// What the folder noted (`custody-metadata.json`): none when it was never written;
@@ -492,11 +525,17 @@ impl PhoneVault {
         }
     }
 
-    /// The master-key file. None written yet is `MasterFile::fresh` — or, `marker` says one was
-    /// written and it is gone, a loss: an error, not a fresh start, unless the caller is
-    /// recovering on purpose. One that does not read, or predates the history this schema
-    /// keeps, is damaged rather than opened.
-    fn read(&self, marker: &Marker, recovering: bool) -> Result<MasterFile, VaultError> {
+    /// The marker, whole and durable, as every write in this folder is.
+    fn write_marker(&self, marker: &Marker) -> Result<(), VaultError> {
+        let bytes = serde_json::to_vec_pretty(marker).expect("the custody metadata serialises");
+        crate::file::write_atomic(&self.dir.join(MARKER_FILE_NAME), &bytes).map_err(io)
+    }
+
+    /// The master-key file, and whether it is there. None written yet is `MasterFile::fresh`
+    /// — or, `marker` says one was written and it is gone, a loss: an error, not a fresh
+    /// start, unless the caller is recovering on purpose. One that does not read, or predates
+    /// the history this schema keeps, is damaged rather than opened.
+    fn read(&self, marker: &Marker, recovering: bool) -> Result<(MasterFile, bool), VaultError> {
         match std::fs::read(self.dir.join(MASTER_FILE_NAME)) {
             Ok(bytes) => {
                 let file: MasterFile = serde_json::from_slice(&bytes)
@@ -507,13 +546,13 @@ impl PhoneVault {
                 if file.incarnation == 0 {
                     return Err(unavailable(format!("{MASTER_FILE_NAME}: incarnation 0")));
                 }
-                Ok(file)
+                Ok((file, true))
             }
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 if marker.written && !recovering {
                     return Err(lost_file());
                 }
-                Ok(MasterFile::fresh())
+                Ok((MasterFile::fresh(), false))
             }
             Err(e) => Err(unavailable(e)),
         }
@@ -521,32 +560,14 @@ impl PhoneVault {
 
     /// Writes `next` whole, then notes in the marker what it holds: the file's entries first,
     /// durable, the note second — a crash between the two leaves an entry that is there and
-    /// not yet noted, which reads as it is and is noted with the next change; noting first
-    /// would read an unwritten entry as lost. What the note buys is the detection of a loss
-    /// *after* it exists.
+    /// not yet noted, which reads as it is and is noted under the lock before the next
+    /// operation relies on it ([`PhoneVault::held`]); noting first would read an unwritten
+    /// entry as lost. What the note buys is the detection of a loss *after* it exists.
     fn save(&self, held: &mut Held<'_>, next: MasterFile) -> Result<(), VaultError> {
         let bytes = serde_json::to_vec_pretty(&next).expect("the master-key file serialises");
         crate::file::write_atomic(&self.dir.join(MASTER_FILE_NAME), &bytes).map_err(io)?;
-        let mut marker = held.marker.clone();
-        let mut changed = !marker.written;
-        marker.written = true;
-        for entry in &next.epochs {
-            if !marker.epochs.contains(&entry.scid) {
-                marker.epochs.push(entry.scid.clone());
-                changed = true;
-            }
-        }
-        for entry in &next.seen {
-            if !marker.seen.contains(&entry.scid) {
-                marker.seen.push(entry.scid.clone());
-                changed = true;
-            }
-        }
-        if changed {
-            let bytes =
-                serde_json::to_vec_pretty(&marker).expect("the custody metadata serialises");
-            crate::file::write_atomic(&self.dir.join(MARKER_FILE_NAME), &bytes).map_err(io)?;
-            held.marker = marker;
+        if noted(&mut held.marker, &next, true) {
+            self.write_marker(&held.marker)?;
         }
         held.file = next;
         Ok(())
@@ -1409,6 +1430,40 @@ mod tests {
         again.record_seen_reset("scid1").unwrap();
         assert_eq!(vault(dir.path()).record_seen("scid1", 2).unwrap(), None);
         assert_eq!(vault(dir.path()).record_seen("scid2", 1).unwrap(), Some(1));
+    }
+
+    // A mark written whose note never landed — the process ended between the entry and its
+    // note — is reconciled under the lock before the equal-version retry relies on it: noted
+    // durably first, so losing the mark after that is an error, never a first read again.
+    #[test]
+    fn a_seen_retry_completes_the_note_an_interrupted_write_missed() {
+        let dir = tempfile::tempdir().unwrap();
+        let v = vault(dir.path());
+        assert_eq!(v.record_seen("scid1", 5).unwrap(), None);
+        // The interruption: the mark stands, its note is gone.
+        std::fs::remove_file(dir.path().join(MARKER_FILE_NAME)).unwrap();
+        // The same version again does not move the mark — and completes the note.
+        assert_eq!(v.record_seen("scid1", 5).unwrap(), Some(5));
+        let mut file = read(dir.path());
+        file.as_object_mut().unwrap()["seen"] = serde_json::json!([]);
+        write(dir.path(), &file);
+        assert!(v.record_seen("scid1", 9).is_err());
+    }
+
+    // The custody epoch has the same interrupted-commit window: an epoch entry written but
+    // not noted is noted by the read that relies on it, so its loss reads as a loss.
+    #[test]
+    fn an_epoch_entry_is_noted_by_the_read_that_relies_on_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let v = vault(dir.path());
+        v.store_master("scid1", 0, Secret::new([3; 32])).unwrap();
+        let epoch = v.custody_epoch("scid1").unwrap();
+        std::fs::remove_file(dir.path().join(MARKER_FILE_NAME)).unwrap();
+        assert_eq!(v.custody_epoch("scid1").unwrap(), epoch);
+        let mut file = read(dir.path());
+        file.as_object_mut().unwrap()["epochs"] = serde_json::json!([]);
+        write(dir.path(), &file);
+        assert!(v.custody_epoch("scid1").is_err());
     }
 
     #[test]

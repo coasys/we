@@ -60,6 +60,11 @@ zeroize = "1.8"
 rand_core = { version = "0.6", features = ["getrandom"] }
 thiserror = "2"
 
+[target.'cfg(unix)'.dependencies]
+# `flock(2)` for the vault's folder lock: `std::fs::File::lock` has no implementation for
+# `target_os = "android"` in the pinned toolchain.
+libc = "0.2"
+
 [dev-dependencies]
 tempfile = "3"
 # The tests run the flows against a real identity store, its router in process (as
