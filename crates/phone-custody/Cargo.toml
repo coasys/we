@@ -1,0 +1,57 @@
+# The phone's device keys: an Ed25519 signing key and an X25519 encryption key, made on the phone,
+# kept only as seeds sealed by a key the platform holds (on Android, a non-exportable Keystore
+# AES-GCM key), and used here and nowhere else. The phone app's `DeviceKey` plugin is the only
+# caller, through uniffi; what crosses into JavaScript is public keys and signatures.
+#
+# Standalone, like `crates/custody`: its own `Cargo.lock` and toolchain, nothing on the desktop links
+# it. It does not depend on `we-custody`, which keeps master keys on a computer: in phase 2a the
+# phone holds no master key, so all it needs of the identity crates is the claim and the signing
+# bytes, from `ad4m-identity-core` (see `README.md`).
+[package]
+name = "we-phone-custody"
+version = "0.1.0"
+edition = "2021"
+description = "The phone's sealed device keys, exported to the phone app through uniffi"
+publish = false
+
+[lib]
+name = "we_phone_custody"
+# cdylib: the `.so` the Android app loads through JNA. staticlib: what an iOS XCFramework would
+# wrap. lib: the tests.
+crate-type = ["lib", "cdylib", "staticlib"]
+
+[features]
+default = []
+# `uniffi-bindgen`, run on the build host to write the Kotlin bindings.
+bindgen = ["uniffi/cli"]
+
+[[bin]]
+name = "uniffi-bindgen"
+required-features = ["bindgen"]
+
+[dependencies]
+uniffi = "0.32"
+# The claim on an offer (`link::make_claim`, `OfferString`, `match_code`) and `signing_bytes`. The
+# ad4m commit WE pins (`node scripts/ad4m-pin.mjs --commit`), as `crates/custody` has it.
+ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "dc5964ba4e7b54c546dab759f95ff18ec987fed8", features = ["build"] }
+# `encode_proof_value` (a signature as `z` + base58btc) and the Ed25519 multikey.
+ad4m-hash-chain = { git = "https://github.com/coasys/ad4m", rev = "dc5964ba4e7b54c546dab759f95ff18ec987fed8" }
+ed25519-dalek = { version = "2.2", features = ["zeroize"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+base64 = "0.22"
+bs58 = "0.5"
+zeroize = "1.8"
+rand_core = { version = "0.6", features = ["getrandom"] }
+thiserror = "2"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+# The `.so` ships inside the APK twice (arm64 and x86_64): small and stripped.
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "unwind"
