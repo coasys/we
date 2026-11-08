@@ -116,6 +116,14 @@ export function custodyDevice(custody: IdentityCustodyView | null | undefined): 
   };
 }
 
+/**
+ * What this device is, for the sentences about it: "phone" where the custody service answers for a
+ * phone, "computer" on the desktop — "This phone does not keep your master key".
+ */
+export function deviceNoun(here: CustodyDevice | null): 'phone' | 'computer' {
+  return here?.label === THIS_PHONE ? 'phone' : 'computer';
+}
+
 /** "QmZkabc…xyz7rWd" → "QmZk…7rWd". */
 export function shortHash(hash: string | null | undefined): string {
   if (!hash) return '';

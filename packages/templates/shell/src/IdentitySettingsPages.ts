@@ -446,8 +446,17 @@ export const restoreButton: SchemaNode = {
   },
 };
 
+/** Words a card shows: as written, or an expression where they name this device. */
+type Words = string | { $: string };
+
+/** "this computer" on the desktop, "this phone" on a phone, inside a sentence's expression. */
+const THIS = "' + deviceStore.deviceNoun + '";
+
+/** A sentence naming this device: `this${THIS}` is "this computer" or "this phone". */
+const naming = (sentence: string): Words => ({ $: `'${sentence}'` });
+
 /** A card with an icon, a title, a sentence and its buttons. */
-const stepCard = (icon: string, title: string, text: string, buttons: SchemaNode[]): SchemaNode => ({
+const stepCard = (icon: string, title: Words, text: Words, buttons: SchemaNode[]): SchemaNode => ({
   type: 'Card',
   props: { bg: 'surface', gap: '300' },
   children: [
@@ -470,7 +479,7 @@ const when = (condition: string, then: SchemaNode): SchemaNode => ({
 });
 
 /**
- * What this computer can do about the master key and joining an identity: show its code to join
+ * What this device can do about the master key and joining an identity: show its code to join
  * one, or bring it back from the 12 words; take the master key sent here, or ask a device that keeps
  * it; replace it from the words.
  */
@@ -480,7 +489,9 @@ export const masterKeyCards: SchemaNode[] = [
     stepCard(
       'qr-code',
       'Join your identity from another device',
-      'Show this computer’s code, then add it from a device of your identity with “Scan or paste a code”. Lost every device? Use your 12 words.',
+      naming(
+        `Show this ${THIS}’s code, then add it from a device of your identity with “Scan or paste a code”. Lost every device? Use your 12 words.`,
+      ),
       [when('deviceStore.canShowCode', stepButton('Show my code', 'deviceStore.showCode')), restoreButton],
     ),
   ),
@@ -489,7 +500,7 @@ export const masterKeyCards: SchemaNode[] = [
     stepCard(
       'key',
       'Your master key was sent here',
-      'Take it, and this computer can add and remove your devices too.',
+      naming(`Take it, and this ${THIS} can add and remove your devices too.`),
       [stepButton('Take the master key', 'deviceStore.takeMaster')],
     ),
   ),
@@ -497,7 +508,7 @@ export const masterKeyCards: SchemaNode[] = [
     'deviceStore.canAskMaster',
     stepCard(
       'key',
-      'This computer does not keep your master key',
+      naming(`This ${THIS} does not keep your master key`),
       'Ask for it, then send it from a device that keeps it. Its Devices page shows your request.',
       [stepButton('Ask for the master key', 'deviceStore.askMaster', 'soft')],
     ),
@@ -507,7 +518,9 @@ export const masterKeyCards: SchemaNode[] = [
     stepCard(
       'key',
       'Lost a device that keeps your master key?',
-      'Replace your master key with your 12 words. This computer keeps the new one, and every copy kept until now stops adding and removing your devices.',
+      naming(
+        `Replace your master key with your 12 words. This ${THIS} keeps the new one, and every copy kept until now stops adding and removing your devices.`,
+      ),
       [replaceMasterButton],
     ),
   ),

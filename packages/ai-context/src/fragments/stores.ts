@@ -763,6 +763,7 @@ export const storeEntries: StoreEntry[] = [
       },
       devicesLoaded: { type: 'boolean' },
       serving: { type: 'object', properties: ['label', 'subtitle', 'icon'] },
+      deviceNoun: { type: 'string' },
       validCount: { type: 'number' },
       canManage: { type: 'boolean' },
       canShowCode: { type: 'boolean' },
@@ -2165,6 +2166,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       devicesLoaded: 'boolean — the list has been read once',
       serving:
         "{ label, subtitle, icon } — the device serving this session, for the top of Devices: 'This computer' on the desktop; on a phone, the host it signs in to, by its name in the private record or 'Your host'",
+      deviceNoun:
+        "'phone' | 'computer' — what this device is, for the sentences about it: 'This ' + deviceStore.deviceNoun + ' does not keep your master key'",
       validCount: 'number — how many device keys are valid (neither revoked nor ended); bot keys are not counted',
       canManage:
         'boolean — linking (scanDevice, addDevice), Rename, Revoke and answering requests can be offered: this computer keeps the master key of the identity',

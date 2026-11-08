@@ -14,6 +14,7 @@
  */
 import {
   custodyDevice,
+  deviceNoun,
   type DeviceRow,
   deviceRows,
   lastRotation,
@@ -46,6 +47,8 @@ export interface DeviceStore {
    * phone, the host it signs in to, by its name in the record or "Your host".
    */
   serving: Accessor<ServingDevice>;
+  /** What this device is, for the sentences about it: "phone" on a phone, "computer" on the desktop. */
+  deviceNoun: Accessor<'phone' | 'computer'>;
   /** How many device keys are valid: neither revoked nor ended. A bot's key is not a device's. */
   validCount: Accessor<number>;
   /**
@@ -174,6 +177,7 @@ export function DeviceStoreProvider(props: ParentProps) {
     devices: rows,
     devicesLoaded,
     serving: createMemo(() => servingDevice(raw(), names(), here())),
+    deviceNoun: () => deviceNoun(here()),
     validCount: () => rows().filter((d) => d.valid).length,
     canManage,
     canShowCode: () => linking() && identity.statusLoaded() && !identity.did() && !identity.custody()?.holdsMaster,

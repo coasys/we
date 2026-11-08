@@ -6551,6 +6551,9 @@
           "type": "object",
           "properties": ["label", "subtitle", "icon"]
         },
+        "deviceNoun": {
+          "type": "string"
+        },
         "validCount": {
           "type": "number"
         },

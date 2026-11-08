@@ -1471,6 +1471,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     devices: state('devices'),
     devicesLoaded: state('devices'),
     serving: state('devices'),
+    deviceNoun: state('devices'),
     validCount: state('devices'),
     canManage: state('devices'),
     canShowCode: state('devices'),
