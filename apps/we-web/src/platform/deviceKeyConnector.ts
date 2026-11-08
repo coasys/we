@@ -93,6 +93,13 @@ export function createDeviceKeyConnector(
         anonymous.close();
       }
 
+      // ad4m-connect's constructor restored whatever password session the connect screen left
+      // in localStorage (`ad4m-token`), and `connect()` below writes this executor's URL beside
+      // it. Left there, a later boot that falls back to the connect screen would restore the old
+      // token with the new URL and send one host's token to another. A key login leaves no
+      // password session behind: `disconnect()` removes the stored token (and the hosting
+      // state), and nothing else is open yet.
+      await core.disconnect();
       core.token = session.token;
       const client = await core.connect();
       if (core.authState !== 'authenticated') {

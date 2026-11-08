@@ -34,7 +34,12 @@ built for Android with uniffi bindings:
   in StrongBox where the phone has one and the TEE otherwise, which never leaves it
   (`KeystoreKey.kt`; no user authentication, so a login asks nothing). The sealed seeds are in
   `no_backup/device-keys/device-keys.json`, which no backup or transfer includes. Only public keys
-  and signatures cross into JS.
+  and signatures cross into JS. The bridge is `status`, `create`, `join`, `waitJoined` and
+  `signSession`, and `signSession` signs a login or renewal statement for whatever executor and
+  URL the page names, with no prompt: the statement's shape and domain separation are the native
+  side's, but which executor to log in to is the page's choice. So every script that runs in the
+  app's origin, the error page included, is trusted with the phone's login; a page the app loads
+  from elsewhere is not in that origin.
 - **Joining an identity.** `join({link})` claims an offer a computer holding the identity's master
   key opened (`https://id.coasys.org/o#coasys:offer:1:…`); both sides show the same match code, the
   computer signs an `add` listing the phone's keys, and `waitJoined()` sees it land.
@@ -42,8 +47,9 @@ built for Android with uniffi bindings:
   device key (`user.sessionChallenge` → a signed statement → `user.loginWithKey`) instead of showing
   the connect screen, and renews the session five minutes before each expiry
   (`apps/we-web/src/platform/deviceKeyConnector.ts`, `keySession.ts`). The token is never stored:
-  every boot logs in afresh. Anywhere else, and on a phone that has not joined, WE connects as in
-  phase 1.
+  every boot logs in afresh, and a key login removes the password session the connect screen may
+  have stored before it, so a later fall-back never sends one host's token to another. Anywhere
+  else, and on a phone that has not joined, WE connects as in phase 1.
 
 Phase 2a has no screens for any of this. The executor to log in to is the localStorage key
 `we-phone/key-host` (an http(s) URL), set by hand; joining is driven from DevTools:
