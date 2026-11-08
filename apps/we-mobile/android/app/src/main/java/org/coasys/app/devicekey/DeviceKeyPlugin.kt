@@ -1,27 +1,52 @@
 package org.coasys.app.devicekey
 
+import android.content.Intent
+import androidx.activity.result.ActivityResult
+import androidx.appcompat.app.AlertDialog
+import com.getcapacitor.JSArray
 import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
+import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
 import java.io.File
 import java.io.IOException
+import java.util.UUID
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
+import org.coasys.app.BuildConfig
 import org.json.JSONObject
+import uniffi.we_phone_custody.AnswerView
+import uniffi.we_phone_custody.AskedView
 import uniffi.we_phone_custody.ClaimProgress
 import uniffi.we_phone_custody.DeviceKeys
 import uniffi.we_phone_custody.DevicePublic
+import uniffi.we_phone_custody.DeviceView
+import uniffi.we_phone_custody.HolderLink
+import uniffi.we_phone_custody.IdentityView
 import uniffi.we_phone_custody.KeyStatus
+import uniffi.we_phone_custody.LinkStep
+import uniffi.we_phone_custody.MasterTaken
+import uniffi.we_phone_custody.PhoneIdentity
 import uniffi.we_phone_custody.PhoneKeyException
+import uniffi.we_phone_custody.RequestView
 import uniffi.we_phone_custody.SealException
 import uniffi.we_phone_custody.SessionPurpose
 import uniffi.we_phone_custody.SessionRequest
+import uniffi.we_phone_custody.StoreConfig
 
 /**
- * `DeviceKey`: the phone's device key and enc key, to WE's web build. The keys are made and kept
- * by `crates/phone-custody` (Rust, through uniffi), their seeds sealed by the Keystore key
- * ([KeystoreKey]). Only public keys, the identity's DID and signed statements come back; nothing
- * here takes or returns a secret.
+ * `DeviceKey`: the phone's device key, enc key and (when it holds one) master key, to WE's web
+ * build. The keys are made and kept by `crates/phone-custody` (Rust, through uniffi): the device
+ * seeds sealed by the Keystore key [KeystoreKey], a master seed by the biometric-gated
+ * [MasterKeystoreKey]. Only public keys, the identity's DID, signed statements, match codes and
+ * progress come back; nothing here takes or returns a secret.
+ *
+ * Phase 2a, the device key:
  *
  *   status()                        → {keys, identity, pending, protection}
  *   create()                        → {sign, enc, didKey, protection}
@@ -29,18 +54,42 @@ import uniffi.we_phone_custody.SessionRequest
  *   waitJoined({seconds?})          → {progress}
  *   signSession({purpose, executor, url, challenge, grant?}) → {statement, sig}
  *
+ * Phase 2b, the identity through the store (every call needs a joined phone):
+ *
+ *   identityStatus()                → {did, keyId, fingerprint, revoked, masterIndex, protection, store, head, biometrics}
+ *   takeMaster()                    → {taken: {did, index, note} | null}      (one prompt)
+ *   askForMaster()                  → {requestId, keyId, fingerprint, code}
+ *   requests()                      → {requests: [{id, kind, by, device, fingerprint, code, targets, rotate, expires, problem}]}
+ *   answer({id})                    → {kind, device, note}                     (one prompt)
+ *   devices()                       → {devices: [{keyId, fingerprint, name, kind, addedSeq, revokedSeq, thisDevice, holdsMaster, masterIndex, mayKeepMaster, bot}]}
+ *   rename({keyId, name})           → {}
+ *   revoke({keyIds})                → {note}                                   (one prompt)
+ *   scanDevice({code})              → {link}                                   (one prompt, for the ticket)
+ *   linkNext({link})                → {step: "ticket-sent", expires} | {step: "claimed", code, hint, canKeepMaster} | {step: "linked", keyId, seq, masterSent, note}
+ *   linkConfirm({link, name?, keepMaster}) → {}                                (one prompt, for the add)
+ *   linkCancel({link})              → {}
+ *   scanCode({prefix, title?})      → {text}                                   (the camera; rejects `Cancelled` or `CameraDenied`)
+ *
  * The TypeScript side of this surface is `apps/we-web/src/platform/deviceKey.ts`. Every call runs
- * off the main thread; a refusal rejects with the Rust error's variant as its code
- * (`NoKeys`, `KeysExist`, `AlreadyJoined`, `Invalid`, …) and its sentence as the message.
+ * off the main thread, on a pool of the plugin's own (a link's `linkNext` waits minutes for the
+ * other device, and must not hold up a key login behind it). A refusal rejects with the Rust
+ * error's variant as its code (`NoKeys`, `Unavailable`, `Cancelled`, `WeakProtection`, …) and its
+ * sentence as the message.
  */
 @CapacitorPlugin(name = "DeviceKey")
 class DeviceKeyPlugin : Plugin() {
   private var opened: DeviceKeys? = null
+  private var identity: PhoneIdentity? = null
+  private val master by lazy { BiometricMasterSealer(context.applicationContext) { activity } }
+  private val links = ConcurrentHashMap<String, HolderLink>()
+  private val pool: ExecutorService = Executors.newCachedThreadPool { r ->
+    Thread(r, "device-key").apply { isDaemon = true }
+  }
 
   /**
    * The key file lives in `noBackupFilesDir`, which Android leaves out of every backup and device
    * transfer: the sealed seeds are useless without this phone's Keystore key, and are kept off
-   * other machines anyway.
+   * other machines anyway. The master key's sealed file is beside it.
    */
   @Synchronized
   private fun keys(): DeviceKeys {
@@ -48,6 +97,14 @@ class DeviceKeyPlugin : Plugin() {
     val dir = File(context.noBackupFilesDir, "device-keys").apply { mkdirs() }
     val made = DeviceKeys.open(dir.absolutePath, AesGcmSealer { KeystoreKey.getOrCreate() })
     opened = made
+    return made
+  }
+
+  @Synchronized
+  private fun identity(): PhoneIdentity {
+    identity?.let { return it }
+    val made = PhoneIdentity(keys(), StoreHttp.Transport, master, storeConfig())
+    identity = made
     return made
   }
 
@@ -116,9 +173,181 @@ class DeviceKeyPlugin : Plugin() {
     JSObject(keys().signSession(request))
   }
 
+  @PluginMethod
+  fun identityStatus(call: PluginCall) = run(call) {
+    identityJson(identity().status()).put("biometrics", master.canAuthenticate())
+  }
+
+  /**
+   * Takes the master key waiting in the inbox. A phone with no strong biometric is refused before
+   * anything is read. A phone whose Keystore is not secure hardware (`software`, as on an
+   * emulator) keeps it only once the person has agreed in [agreeToWeakProtection]; declining
+   * leaves the key in the inbox, untaken.
+   */
+  @PluginMethod
+  fun takeMaster(call: PluginCall) = run(call) {
+    if (!master.canAuthenticate()) {
+      throw Refusal("NoBiometrics", "set up a fingerprint or face unlock on this phone to keep the master key here")
+    }
+    val identity = identity()
+    val taken = try {
+      identity.takeMaster(false)
+    } catch (e: PhoneKeyException.WeakProtection) {
+      if (!agreeToWeakProtection(master.protection())) {
+        throw Refusal("WeakProtection", e.message ?: "the master key was not kept on this phone")
+      }
+      identity.takeMaster(true)
+    }
+    JSObject().put("taken", taken?.let(::takenJson) ?: JSONObject.NULL)
+  }
+
+  @PluginMethod
+  fun askForMaster(call: PluginCall) = run(call) {
+    askedJson(identity().askForMaster())
+  }
+
+  @PluginMethod
+  fun requests(call: PluginCall) = run(call) {
+    JSObject().put("requests", JSArray(identity().requests().map(::requestJson)))
+  }
+
+  @PluginMethod
+  fun answer(call: PluginCall) = run(call) {
+    val id = call.getString("id") ?: throw Refusal("Invalid", "answer needs the request's id")
+    answerJson(identity().answer(id))
+  }
+
+  @PluginMethod
+  fun devices(call: PluginCall) = run(call) {
+    JSObject().put("devices", JSArray(identity().devices().map(::deviceJson)))
+  }
+
+  @PluginMethod
+  fun rename(call: PluginCall) = run(call) {
+    val keyId = call.getString("keyId") ?: throw Refusal("Invalid", "rename needs the device's keyId")
+    val name = call.getString("name")?.trim()?.takeIf { it.isNotEmpty() }
+      ?: throw Refusal("Invalid", "a device's name cannot be empty")
+    identity().rename(keyId, name)
+    JSObject()
+  }
+
+  @PluginMethod
+  fun revoke(call: PluginCall) = run(call) {
+    val keyIds = call.getArray("keyIds")?.toList<String>()?.takeIf { it.isNotEmpty() }
+      ?: throw Refusal("Invalid", "revoke needs the keyIds of the devices")
+    JSObject().put("note", identity().revoke(keyIds) ?: JSONObject.NULL)
+  }
+
+  @PluginMethod
+  fun scanDevice(call: PluginCall) = run(call) {
+    val code = call.getString("code") ?: throw Refusal("Invalid", "scanDevice needs the device's code")
+    val link = identity().scanDevice(code)
+    val id = UUID.randomUUID().toString()
+    links[id] = link
+    JSObject().put("link", id)
+  }
+
+  @PluginMethod
+  fun linkNext(call: PluginCall) = run(call) {
+    val (id, link) = link(call)
+    val step = try {
+      link.next()
+    } catch (e: Exception) {
+      close(id)
+      throw e
+    }
+    if (step is LinkStep.Linked) close(id)
+    stepJson(step)
+  }
+
+  @PluginMethod
+  fun linkConfirm(call: PluginCall) = run(call) {
+    val (_, link) = link(call)
+    link.confirm(call.getString("name"), call.getBoolean("keepMaster") ?: false)
+    JSObject()
+  }
+
+  @PluginMethod
+  fun linkCancel(call: PluginCall) = run(call) {
+    val id = call.getString("link") ?: throw Refusal("Invalid", "linkCancel needs the link")
+    links[id]?.cancel()
+    // Closed by the linkNext the cancel ends; a link with no linkNext waiting closes here.
+    JSObject()
+  }
+
+  /** Opens the camera on a QR code whose text starts with `prefix`; the text, uninterpreted. */
+  @PluginMethod
+  fun scanCode(call: PluginCall) {
+    val prefix = call.getString("prefix")
+    if (prefix.isNullOrEmpty() || !prefix.startsWith("coasys:")) {
+      call.reject("scanCode needs the prefix of the code it reads", "Invalid")
+      return
+    }
+    val intent = Intent(context, ScanActivity::class.java)
+      .putExtra(ScanActivity.EXTRA_PREFIX, prefix)
+      .putExtra(ScanActivity.EXTRA_TITLE, call.getString("title"))
+    startActivityForResult(call, intent, "scanned")
+  }
+
+  @ActivityCallback
+  private fun scanned(call: PluginCall?, result: ActivityResult) {
+    call ?: return
+    val text = result.data?.getStringExtra(ScanActivity.EXTRA_TEXT)
+    when {
+      text != null -> call.resolve(JSObject().put("text", text))
+      result.data?.getStringExtra(ScanActivity.EXTRA_REASON) == "denied" ->
+        call.reject("the camera was not allowed; paste the code instead", "CameraDenied")
+      result.data?.getStringExtra(ScanActivity.EXTRA_REASON) == "no-camera" ->
+        call.reject("this phone's camera did not start; paste the code instead", "NoCamera")
+      else -> call.reject("the scan was cancelled", "Cancelled")
+    }
+  }
+
+  override fun handleOnDestroy() {
+    links.keys.toList().forEach { id -> links[id]?.cancel() }
+    super.handleOnDestroy()
+  }
+
+  private fun link(call: PluginCall): Pair<String, HolderLink> {
+    val id = call.getString("link") ?: throw Refusal("Invalid", "the call needs the link")
+    val link = links[id] ?: throw Refusal("Ended", "that link is over")
+    return id to link
+  }
+
+  private fun close(id: String) {
+    links.remove(id)?.close()
+  }
+
+  /**
+   * The one question asked before a master key is kept below secure hardware. Blocks the calling
+   * (worker) thread until the person answers; closing the dialog any other way is a no.
+   */
+  private fun agreeToWeakProtection(protection: String): Boolean {
+    val host = activity ?: return false
+    val agreed = AtomicBoolean(false)
+    val answered = CountDownLatch(1)
+    host.runOnUiThread {
+      AlertDialog.Builder(host)
+        .setTitle("Keep your master key without secure hardware?")
+        .setMessage(
+          "Your master key adds and removes the devices of your identity.\n\n" +
+            "This phone keeps keys in $protection, not in a secure chip, so an app or a person " +
+            "able to read this app's files could use your master key without your fingerprint.\n\n" +
+            "Keep it only on a phone you use for testing. Otherwise, keep it on your computer " +
+            "and leave this phone without it.",
+        )
+        .setPositiveButton("Keep it here anyway") { _, _ -> agreed.set(true) }
+        .setNegativeButton("Don't keep it", null)
+        .setOnDismissListener { answered.countDown() }
+        .show()
+    }
+    answered.await()
+    return agreed.get()
+  }
+
   /** Runs [body] off the main thread and answers [call] with what it returned, or why not. */
   private fun run(call: PluginCall, body: () -> JSObject) {
-    execute {
+    pool.execute {
       try {
         call.resolve(body())
       } catch (e: Refusal) {
@@ -165,6 +394,12 @@ class DeviceKeyPlugin : Plugin() {
     /** The store holds a `state` answer at most 8 seconds. */
     private const val STATE_WAIT_SECONDS = 8L
 
+    /** The store the app is built for (`BuildConfig`, from the build's environment). */
+    fun storeConfig(): StoreConfig = StoreConfig(
+      url = BuildConfig.IDENTITY_STORE_URL,
+      keys = BuildConfig.IDENTITY_STORE_KEYS.split(',').map { it.trim() }.filter { it.isNotEmpty() },
+    )
+
     fun publicJson(keys: DevicePublic): JSObject =
       JSObject().put("sign", keys.sign).put("enc", keys.enc).put("didKey", keys.didKey)
 
@@ -177,6 +412,76 @@ class DeviceKeyPlugin : Plugin() {
           .put("scid", progress.member.scid)
           .put("seq", progress.member.seq?.toLong() ?: JSONObject.NULL)
       is ClaimProgress.Ended -> JSObject().put("state", "ended").put("reason", progress.reason)
+    }
+
+    private fun Any?.orNull(): Any = this ?: JSONObject.NULL
+
+    fun identityJson(v: IdentityView): JSObject = JSObject()
+      .put("did", v.did)
+      .put("keyId", v.keyId.orNull())
+      .put("fingerprint", v.fingerprint)
+      .put("revoked", v.revoked?.toLong().orNull())
+      .put("masterIndex", v.masterIndex?.toLong().orNull())
+      .put("protection", v.protection)
+      .put("store", v.store)
+      .put("head", v.head?.toLong().orNull())
+
+    fun takenJson(v: MasterTaken): JSObject = JSObject()
+      .put("did", v.did)
+      .put("index", v.index.toLong())
+      .put("note", v.note.orNull())
+
+    fun askedJson(v: AskedView): JSObject = JSObject()
+      .put("requestId", v.requestId)
+      .put("keyId", v.keyId)
+      .put("fingerprint", v.fingerprint)
+      .put("code", v.code)
+
+    fun requestJson(v: RequestView): JSObject = JSObject()
+      .put("id", v.id)
+      .put("kind", v.kind)
+      .put("by", v.by)
+      .put("device", v.device)
+      .put("fingerprint", v.fingerprint)
+      .put("code", v.code)
+      .put("targets", JSArray(v.targets))
+      .put("rotate", v.rotate)
+      .put("expires", v.expires.toLong())
+      .put("problem", v.problem.orNull())
+
+    fun answerJson(v: AnswerView): JSObject = JSObject()
+      .put("kind", v.kind)
+      .put("device", v.device)
+      .put("note", v.note.orNull())
+
+    fun deviceJson(v: DeviceView): JSObject = JSObject()
+      .put("keyId", v.keyId)
+      .put("fingerprint", v.fingerprint)
+      .put("name", v.name)
+      .put("kind", v.kind.orNull())
+      .put("addedSeq", v.addedSeq.toLong())
+      .put("revokedSeq", v.revokedSeq?.toLong().orNull())
+      .put("thisDevice", v.thisDevice)
+      .put("holdsMaster", v.holdsMaster)
+      .put("masterIndex", v.masterIndex?.toLong().orNull())
+      .put("mayKeepMaster", v.mayKeepMaster)
+      .put("bot", v.bot)
+
+    fun stepJson(step: LinkStep): JSObject = when (step) {
+      is LinkStep.TicketSent -> JSObject().put("step", "ticket-sent").put("expires", step.expires.toLong())
+      is LinkStep.Claimed ->
+        JSObject()
+          .put("step", "claimed")
+          .put("code", step.code)
+          .put("hint", step.hint.orNull())
+          .put("canKeepMaster", step.canKeepMaster)
+      is LinkStep.Linked ->
+        JSObject()
+          .put("step", "linked")
+          .put("keyId", step.keyId)
+          .put("seq", step.seq.toLong())
+          .put("masterSent", step.masterSent)
+          .put("note", step.note.orNull())
     }
   }
 }

@@ -28,9 +28,21 @@
 
         </activity>
 
+        <!-- The QR scanner of the DeviceKey plugin (a computer's offer, another device's code). -->
+        <activity
+            android:name=".devicekey.ScanActivity"
+            android:theme="@style/AppTheme.Scan"
+            android:screenOrientation="portrait"
+            android:exported="false" />
+
     </application>
 
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Scanning a QR code; asked for when the person first scans, and pasting works without it. -->
+    <uses-permission android:name="android.permission.CAMERA" />
+    <!-- The master key's prompt. -->
+    <uses-permission android:name="android.permission.USE_BIOMETRIC" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
 </manifest>

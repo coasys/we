@@ -18,4 +18,6 @@ ext {
     cordovaAndroidVersion = '14.0.1'
     // What the uniffi bindings of crates/phone-custody call the Rust library through.
     jnaVersion = '5.17.0'
+    cameraxVersion = '1.5.1'
+    mlkitBarcodeVersion = '17.3.0'
 }

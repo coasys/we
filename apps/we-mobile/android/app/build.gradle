@@ -16,11 +16,21 @@ android {
             // phones, and the x86_64 emulator.
             abiFilters 'arm64-v8a', 'x86_64'
         }
+        // The identity store a phone that has not joined yet speaks to, and the keys its signed
+        // heads must be signed by: the deployment's, set when the app is built (as the desktop's
+        // AD4M_IDENTITY_STORE_URL and AD4M_IDENTITY_STORE_KEYS, comma-separated). A joined phone
+        // speaks to the store it joined at, with these keys. Empty keys: every call that commits
+        // to the log refuses (`no-store-keys`).
+        buildConfigField "String", "IDENTITY_STORE_URL", "\"${System.getenv('AD4M_IDENTITY_STORE_URL') ?: ''}\""
+        buildConfigField "String", "IDENTITY_STORE_KEYS", "\"${System.getenv('AD4M_IDENTITY_STORE_KEYS') ?: ''}\""
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
+    }
+    buildFeatures {
+        buildConfig = true
     }
     testOptions {
         unitTests.all {
@@ -56,6 +66,12 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    // Scanning a QR code: CameraX for the frames, ML Kit's bundled barcode model (in the app, no
+    // Play services) for the reading.
+    implementation "androidx.camera:camera-camera2:$cameraxVersion"
+    implementation "androidx.camera:camera-lifecycle:$cameraxVersion"
+    implementation "androidx.camera:camera-view:$cameraxVersion"
+    implementation "com.google.mlkit:barcode-scanning:$mlkitBarcodeVersion"
     // The Android JNA (its native dispatch for each ABI) in the app; the desktop jar, with the
     // host's, for the JVM unit tests.
     implementation "net.java.dev.jna:jna:$jnaVersion@aar"
