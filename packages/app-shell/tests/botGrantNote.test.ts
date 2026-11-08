@@ -35,7 +35,7 @@ describe('the bot grant editor', () => {
     expect(note.type).toBe('we-text');
     expect(note.props).toMatchObject({ variant: 'footnote', color: 'text-muted' });
     expect(note.children).toEqual([
-      'Apps you let manage your identity can change this grant, or resume a paused bot, without asking you again.',
+      'WE, and any other app you connected with permission to change your identity, can change this grant or resume a paused bot without asking you again.',
     ]);
   });
 });

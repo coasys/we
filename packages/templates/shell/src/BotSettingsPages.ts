@@ -377,7 +377,7 @@ const grantEditor: SchemaNode = {
         type: 'we-text',
         props: { variant: 'footnote', color: 'text-muted' },
         children: [
-          'Apps you let manage your identity can change this grant, or resume a paused bot, without asking you again.',
+          'WE, and any other app you connected with permission to change your identity, can change this grant or resume a paused bot without asking you again.',
         ],
       },
       sectionTitle('Spaces'),
