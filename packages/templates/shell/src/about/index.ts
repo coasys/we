@@ -85,6 +85,26 @@ const FLIP_CARDS = [
   },
 ];
 
+/**
+ * The headline's size: 52px wherever there is room, and smaller with the window below that, so its
+ * longest word fits on a line.
+ *
+ * At a fixed 52px, "infrastructure" (6.2 to 6.5 of its own em wide in bold, by font) is ~330px, and a
+ * phone held upright has 284px for the line beside the 80px rail, inside the page's padding and the
+ * heading's own; so the browser broke it inside the word: "infrastruct / ure", and "cooperativ" cut
+ * at the frame's edge. The middle term is that room shared out over 7em, a margin for whichever font
+ * draws it, measured two ways with the smaller taken:
+ *
+ * - the window: `100vw - 128px` of room, so `14vw - 18px` — 40px at 412px, 32px at 360px, and 52px
+ *   from a window 500px wide, so a desktop is as it was;
+ * - the surface the page is drawn in (`cqi`, its inline size; the window's where there is none):
+ *   `100cqi - 48px` of room, so `14cqi - 7px`. A desktop window with a panel docked beside the page
+ *   leaves it less room than the window says, and this is what answers for that.
+ *
+ * 28px is the floor, where the word still fits a 320px window.
+ */
+const HEADLINE_SIZE = 'clamp(28px, min(14vw - 18px, 14cqi - 7px), 52px)';
+
 const CTA_CARDS = [
   {
     id: 'for-communities',
@@ -507,7 +527,7 @@ const weAboutPage: SchemaNode = {
                 {
                   type: 'we-text',
                   props: {
-                    fontSize: '52px',
+                    fontSize: HEADLINE_SIZE,
                     // fontFamily: 'boldonse',
                     fontWeight: 'bold',
                     color: 'text',
@@ -524,7 +544,7 @@ const weAboutPage: SchemaNode = {
                         inline: true,
                         gradient: 'accent',
                         fontWeight: 'bold',
-                        fontSize: '52px',
+                        fontSize: HEADLINE_SIZE,
                       },
                       children: ['infrastructure'],
                     },
@@ -535,7 +555,7 @@ const weAboutPage: SchemaNode = {
                   type: 'we-text',
                   props: {
                     // fontFamily: 'boldonse',
-                    fontSize: '52px',
+                    fontSize: HEADLINE_SIZE,
                     fontWeight: 'bold',
                     color: 'text',
                     textAlign: 'center',

@@ -33,6 +33,7 @@ import {
   bootScreen,
   bundlePrompt,
   createSpaceModal,
+  landingPageTemplate,
   safeModeBanner,
   settingsTemplate,
   sidebar,
@@ -2104,6 +2105,49 @@ const treeCaretEnd = (): Scenario => {
 };
 
 /**
+ * WE's landing page in the window beside the rail, as Settings is above: the mount is the window, so
+ * a 412px mount is a phone held upright and the headline's viewport units answer to it.
+ */
+const shellLanding = (): Scenario => {
+  const { meta: _meta, ...page } = landingPageTemplate as SchemaNode & { meta?: unknown };
+  // The cube's model is a file the harness's bundler does not load as a URL: a box its size stands
+  // in, so everything under it sits where it does in the app.
+  const cubeless = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(cubeless);
+    if (!node || typeof node !== 'object') return node;
+    if ((node as SchemaNode).type === 'WeCube') {
+      const { width, height } = ((node as SchemaNode).props ?? {}) as { width?: string; height?: string };
+      return { type: 'Column', props: { width, height } };
+    }
+    return Object.fromEntries(Object.entries(node).map(([k, v]) => [k, cubeless(v)]));
+  };
+  const landing = cubeless(page) as SchemaNode;
+  return {
+    node: {
+      type: 'Column',
+      props: { width: '100%', height: '100vh', position: 'relative', overflow: 'hidden' },
+      children: [
+        sidebar,
+        {
+          type: 'Column',
+          props: { id: 'landing-frame', position: 'absolute', top: '0', left: '80px', right: '0', bottom: '0' },
+          children: [{ type: '$surface', props: { height: '100%', overflow: 'auto' }, children: [landing] }],
+        },
+      ],
+    },
+    tables: {},
+    stores: {
+      sessionStore: { bootState: 'ready', devTools: false, devFeatures: false, isGuest: false },
+      shellStore: { panelMaximised: false, activeShellView: 'landing-page', narrowWindow: false },
+      routeStore: { params: {}, currentPath: '/', segments: [], templateSegments: [] },
+      templateStore: { brand: { name: 'WE' } },
+      appStore: { apps: [], appsWithWe: [], activeAppId: null },
+      spaceStore: { mutedDids: [], currentSpace: null, members: [], orderedSidebarItems: [] },
+    },
+  };
+};
+
+/**
  * The Coasys bundle's About page under Glow, as the bundle carries it: the site's first screen, with
  * the typing headline and the film's frame. The film's addresses are taken out: the harness serves
  * the default seed's policy, which does not allow coasys.org, and it is offline anyway — so the frame
@@ -2641,6 +2685,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'tree:caret-end': treeCaretEnd,
   'rail:app': appRail,
   'shell:settings': shellSettings,
+  'shell:landing': shellLanding,
   'coasys:tree-top': coasysTreeTop,
   'bundle:prompt': bundleInstallPrompt,
   'safe-mode:leaving': safeModeLeaving,
