@@ -82,6 +82,8 @@ class DeviceKeyPlugin : Plugin() {
   private var identity: PhoneIdentity? = null
   private val master by lazy { BiometricMasterSealer(context.applicationContext) { activity } }
   private val links = ConcurrentHashMap<String, HolderLink>()
+  /** Link ids a call is inside a method on: [sweepLinks] must not close one under the call. */
+  private val inUse = ConcurrentHashMap.newKeySet<String>()
   private val pool: ExecutorService = Executors.newCachedThreadPool { r ->
     Thread(r, "device-key").apply { isDaemon = true }
   }
@@ -94,7 +96,9 @@ class DeviceKeyPlugin : Plugin() {
   @Synchronized
   private fun keys(): DeviceKeys {
     opened?.let { return it }
-    val dir = File(context.noBackupFilesDir, "device-keys").apply { mkdirs() }
+    // Not `mkdirs()`: Rust makes the directory when it first writes into it, syncing every
+    // ancestor that gained an entry, so the name itself is durable.
+    val dir = File(context.noBackupFilesDir, "device-keys")
     val made = DeviceKeys.open(dir.absolutePath, AesGcmSealer { KeystoreKey.getOrCreate() })
     opened = made
     return made
@@ -254,29 +258,32 @@ class DeviceKeyPlugin : Plugin() {
 
   @PluginMethod
   fun linkNext(call: PluginCall) = run(call) {
-    val (id, link) = link(call)
-    val step = try {
-      link.next()
-    } catch (e: Exception) {
-      close(id)
-      throw e
+    withLink(call) { id, link ->
+      try {
+        val step = link.next()
+        if (step is LinkStep.Linked && links.remove(id, link)) link.close()
+        stepJson(step)
+      } catch (e: Exception) {
+        if (links.remove(id, link)) link.close()
+        throw e
+      }
     }
-    if (step is LinkStep.Linked) close(id)
-    stepJson(step)
   }
 
   @PluginMethod
   fun linkConfirm(call: PluginCall) = run(call) {
-    val (_, link) = link(call)
-    link.confirm(call.getString("name"), call.getBoolean("keepMaster") ?: false)
-    JSObject()
+    withLink(call) { _, link ->
+      link.confirm(call.getString("name"), call.getBoolean("keepMaster") ?: false)
+      JSObject()
+    }
   }
 
   @PluginMethod
   fun linkCancel(call: PluginCall) = run(call) {
     val id = call.getString("link") ?: throw Refusal("Invalid", "linkCancel needs the link")
-    links[id]?.cancel()
-    // Closed by the linkNext the cancel ends; a link with no linkNext waiting closes here.
+    // Removed and closed here: the entry does not wait for a linkNext that may never come.
+    // A `next` in flight on it keeps the native link alive through its own Arc.
+    links.remove(id)?.let { it.cancel(); it.close() }
     JSObject()
   }
 
@@ -309,18 +316,36 @@ class DeviceKeyPlugin : Plugin() {
   }
 
   override fun handleOnDestroy() {
-    links.keys.toList().forEach { id -> links[id]?.cancel() }
+    links.keys.toList().forEach { id -> links.remove(id)?.let { it.cancel(); it.close() } }
     super.handleOnDestroy()
   }
 
-  private fun link(call: PluginCall): Pair<String, HolderLink> {
+  /**
+   * Runs [block] with the call's link, the id marked in use so [sweepLinks] — which runs on
+   * every plugin call — cannot close the link under it.
+   */
+  private fun <T> withLink(call: PluginCall, block: (String, HolderLink) -> T): T {
     val id = call.getString("link") ?: throw Refusal("Invalid", "the call needs the link")
-    val link = links[id] ?: throw Refusal("Ended", "that link is over")
-    return id to link
+    inUse.add(id)
+    try {
+      val link = links[id] ?: throw Refusal("Ended", "that link is over")
+      return block(id, link)
+    } finally {
+      inUse.remove(id)
+    }
   }
 
-  private fun close(id: String) {
-    links.remove(id)?.close()
+  /**
+   * Removes and closes the links whose native side ended — expired, errored, cancelled or
+   * linked — whether or not a `linkNext` ever polled the end. One pass over the map on each
+   * plugin call keeps the map to links that are live.
+   */
+  private fun sweepLinks() {
+    for ((id, link) in links) {
+      if (link.ended() && !inUse.contains(id) && links.remove(id, link)) {
+        link.close()
+      }
+    }
   }
 
   /**
@@ -353,6 +378,7 @@ class DeviceKeyPlugin : Plugin() {
   /** Runs [body] off the main thread and answers [call] with what it returned, or why not. */
   private fun run(call: PluginCall, body: () -> JSObject) {
     pool.execute {
+      sweepLinks()
       try {
         call.resolve(body())
       } catch (e: Refusal) {

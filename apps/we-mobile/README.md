@@ -182,8 +182,15 @@ custody service as "Desktop A") and makes an identity, then steps with the phone
 ```sh
 cd crates/custody
 CUSTODY_LIVE=1 CUSTODY_PHONE_2B_DIR=<empty dir> AD4M_REPO=<ad4m> \
+  AD4M_EXECUTOR=<copy of ad4m-executor> IDENTITY_STORE_BIN=<copy of identity-store> \
   cargo test --features cheap-kdf --test live a_phone_keeps_the_master_key_and_answers_for_it -- --nocapture
 ```
+
+Build `ad4m-executor` (`--release`) and `identity-store` in the ad4m checkout at the commit WE pins,
+then copy both somewhere of their own and name the copies. Without them the test runs
+`<ad4m>/target/release/ad4m-executor`. When several ad4m checkouts share one target folder, another
+checkout's build may have replaced it, and executor A then lacks the calls the test needs: the phone's
+request is never listed, and the test waits.
 
 On the phone's side:
 

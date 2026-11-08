@@ -752,6 +752,7 @@ fn the_phone_adds_a_device_by_its_code() {
     assert!(code.starts_with("coasys:device:1:"));
 
     let link = phone.identity.scan_device(code).unwrap();
+    assert!(!link.ended());
     assert!(matches!(link.next().unwrap(), LinkStep::TicketSent { .. }));
 
     let inbox = world
@@ -785,6 +786,8 @@ fn the_phone_adds_a_device_by_its_code() {
     assert!(master_sent);
     assert_eq!(note, None);
     assert!(matches!(link.next(), Err(PhoneKeyError::Ended { .. })));
+    // The link's thread is over: the app can drop the handle without polling `next` again.
+    assert!(link.ended());
 
     let taken = world
         .on(take_master(&desktop.exec, &desktop.vault, &OsRandom))

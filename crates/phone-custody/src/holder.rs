@@ -58,6 +58,18 @@ pub struct HolderLink {
     steps: Mutex<Receiver<Result<LinkStep, PhoneKeyError>>>,
     commands: Mutex<Option<Sender<Command>>>,
     cancelled: Arc<AtomicBool>,
+    /// Set when the link's thread ends — linked, expired, errored, cancelled, or unwound —
+    /// so the app can drop the handle whether or not a `next` is ever polled again.
+    ended: Arc<AtomicBool>,
+}
+
+/// Sets the flag when the link's thread exits, whatever way it went.
+struct SetOnDrop(Arc<AtomicBool>);
+
+impl Drop for SetOnDrop {
+    fn drop(&mut self) {
+        self.0.store(true, Ordering::SeqCst);
+    }
 }
 
 impl HolderLink {
@@ -85,10 +97,14 @@ impl HolderLink {
         let (step_tx, step_rx) = channel();
         let (command_tx, command_rx) = channel();
         let cancelled = Arc::new(AtomicBool::new(false));
+        let ended = Arc::new(AtomicBool::new(false));
         let flag = cancelled.clone();
+        let terminal = ended.clone();
         std::thread::Builder::new()
             .name("phone-holder-link".into())
             .spawn(move || {
+                // `ended` on every way out — the link finished, an error, an unwind.
+                let _ended = SetOnDrop(terminal);
                 let result = run(
                     &parts,
                     &vault,
@@ -110,6 +126,7 @@ impl HolderLink {
             steps: Mutex::new(step_rx),
             commands: Mutex::new(Some(command_tx)),
             cancelled,
+            ended,
         }))
     }
 }
@@ -269,6 +286,12 @@ impl HolderLink {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .take();
+    }
+
+    /// Whether the link's thread ended — expired, errored, cancelled or linked — so the app
+    /// can drop its handle without a `next` ever being polled again.
+    pub fn ended(&self) -> bool {
+        self.ended.load(Ordering::SeqCst)
     }
 }
 
