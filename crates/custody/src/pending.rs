@@ -464,24 +464,31 @@ impl PendingIncepts {
     /// it (`None` before the first). The mark only rises. One read-modify-write under the lock, so
     /// two apps noting at once keep the higher.
     ///
-    /// Marks this folder wrote and lost (the file gone, or unreadable) are an error, never
-    /// `None`: an older record that still verifies would be taken as the first.
+    /// Marks this folder wrote and lost (the file gone, or unreadable, or the entry of an
+    /// identity the folder noted as marked gone from it) are an error, never `None`: an older
+    /// record that still verifies would be taken as the first.
     pub fn record_seen(&self, scid: &str, version: u64) -> Result<Option<u64>, VaultError> {
         self.change_noted(
             SEEN_FILE_NAME,
+            false,
             |m| &mut m.seen,
-            |seen: &mut Vec<Seen>| match seen.iter_mut().find(|s| s.scid == scid) {
+            |seen: &mut Vec<Seen>, noted: &[String]| match seen.iter_mut().find(|s| s.scid == scid)
+            {
                 Some(mark) => {
                     let before = mark.version;
                     mark.version = Some(before.map_or(version, |before| before.max(version)));
-                    before
+                    Ok(before)
                 }
+                None if noted.iter().any(|s| s == scid) => Err(unavailable(format!(
+                    "the record mark of {scid} was made in this custody folder and is gone; \
+                     only a reset starts it again"
+                ))),
                 None => {
                     seen.push(Seen {
                         scid: scid.to_string(),
                         version: Some(version),
                     });
-                    None
+                    Ok(None)
                 }
             },
         )
@@ -489,16 +496,24 @@ impl PendingIncepts {
 
     /// Forgets the record versions of `scid` opened so far. Kept as a reset ([`Seen::version`]
     /// `None`), so the next [`record_seen`](Self::record_seen) answers `None` on purpose.
+    ///
+    /// Also the way back from marks lost (the file gone, or `scid`'s entry): the file is
+    /// written again with this reset in it. Only `scid`'s: another identity's mark that went
+    /// with the file stays lost until it is reset too.
     pub fn record_seen_reset(&self, scid: &str) -> Result<(), VaultError> {
         self.change_noted(
             SEEN_FILE_NAME,
+            true,
             |m| &mut m.seen,
-            |seen: &mut Vec<Seen>| match seen.iter_mut().find(|s| s.scid == scid) {
-                Some(mark) => mark.version = None,
-                None => seen.push(Seen {
-                    scid: scid.to_string(),
-                    version: None,
-                }),
+            |seen: &mut Vec<Seen>, _: &[String]| {
+                match seen.iter_mut().find(|s| s.scid == scid) {
+                    Some(mark) => mark.version = None,
+                    None => seen.push(Seen {
+                        scid: scid.to_string(),
+                        version: None,
+                    }),
+                }
+                Ok(())
             },
         )
     }
@@ -566,31 +581,38 @@ impl PendingIncepts {
         }
     }
 
-    /// [`change`](Self::change) for a file that must not go missing ([`read_noted`]): a lost one
-    /// is an error, and the file is kept even when the list empties.
+    /// [`change`](Self::change) for the record marks, a file that must not go missing
+    /// ([`read_noted`]): a lost one is an error (or, `recovering`, started again with nothing
+    /// in it), and the file is kept even when the list empties. `edit` is given the identities
+    /// the folder noted as marked, so it can tell a lost entry from one never made.
     fn change_noted<R>(
         &self,
         file: &str,
+        recovering: bool,
         memory: impl FnOnce(&mut Lists) -> &mut Vec<Seen>,
-        edit: impl FnOnce(&mut Vec<Seen>) -> R,
+        edit: impl FnOnce(&mut Vec<Seen>, &[String]) -> Result<R, VaultError>,
     ) -> Result<R, VaultError> {
         match self {
             PendingIncepts::File { dir, lock } => {
                 let _held = lock.lock().map_err(|_| unavailable("lock poisoned"))?;
                 let _exclusive = lock_folder(dir, true)?;
-                let mut items = match read_noted(dir, file)? {
-                    Noted::Read(items, _) => items,
-                    Noted::Never => Vec::new(),
+                let (mut items, noted) = match read_noted(dir, file)? {
+                    Noted::Read(items, noted) => (items, noted),
+                    Noted::Never => (Vec::new(), Vec::new()),
+                    Noted::Lost(noted) if recovering => (Vec::new(), noted),
                     Noted::Lost(_) => return Err(lost_file(file)),
                 };
-                let answer = edit(&mut items);
+                let answer = edit(&mut items, &noted)?;
                 let scids: Vec<String> = items.iter().map(|s| s.scid.clone()).collect();
                 write_noted(dir, file, &scids, &items)?;
                 Ok(answer)
             }
-            PendingIncepts::Memory(lists) => Ok(edit(memory(
-                &mut *lists.lock().map_err(|_| unavailable("lock poisoned"))?,
-            ))),
+            PendingIncepts::Memory(lists) => {
+                let mut lists = lists.lock().map_err(|_| unavailable("lock poisoned"))?;
+                let items = memory(&mut lists);
+                let noted: Vec<String> = items.iter().map(|s| s.scid.clone()).collect();
+                edit(items, &noted)
+            }
         }
     }
 }
@@ -886,6 +908,44 @@ mod tests {
                 .unwrap(),
             None
         );
+    }
+
+    /// Lal's review of we#431 at 0d4501589: a reset is the way back from a lost marks file, so
+    /// it does not fail on the read that lost it. It writes the file again with its reset;
+    /// another identity's mark that went with the file is still lost, not a first opening.
+    #[test]
+    fn a_reset_repairs_a_lost_marks_file_for_its_identity_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let pending = PendingIncepts::file(dir.path());
+        pending.record_seen("QmA", 20).unwrap();
+        pending.record_seen("QmB", 7).unwrap();
+        std::fs::remove_file(dir.path().join(SEEN_FILE_NAME)).unwrap();
+        assert!(pending.record_seen("QmA", 10).is_err());
+
+        pending.record_seen_reset("QmA").unwrap();
+        assert!(dir.path().join(SEEN_FILE_NAME).exists());
+        assert_eq!(pending.record_seen("QmA", 10).unwrap(), None);
+        assert_eq!(pending.record_seen("QmA", 9).unwrap(), Some(10));
+        let other = pending.record_seen("QmB", 3);
+        assert!(other.is_err(), "a lost mark taken as a first: {other:?}");
+        pending.record_seen_reset("QmB").unwrap();
+        assert_eq!(pending.record_seen("QmB", 3).unwrap(), None);
+        // An identity never marked has nothing to lose.
+        assert_eq!(pending.record_seen("QmC", 1).unwrap(), None);
+
+        // One entry gone from a file that is there: the same.
+        std::fs::write(
+            dir.path().join(SEEN_FILE_NAME),
+            serde_json::to_vec(&[Seen {
+                scid: "QmA".into(),
+                version: Some(10),
+            }])
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(pending.record_seen("QmB", 3).is_err());
+        pending.record_seen_reset("QmB").unwrap();
+        assert_eq!(pending.record_seen("QmB", 3).unwrap(), None);
     }
 
     #[test]
