@@ -197,6 +197,31 @@ impl DesktopVault {
         }
     }
 
+    /// `item` ready for `name`, prepared before the folder's lock as `prepared`, for the write
+    /// that follows under that lock. The store `name` goes to is asked again: it can have changed since
+    /// `prepared` was made (the keyring locked or its service went away, so a new item now goes
+    /// to the file; another build without the keychain kept the identity in a sealed file
+    /// meanwhile). An item prepared for another kind of store is prepared again for this one —
+    /// sealed for a file, the Argon2id then run under the lock, or refused without a passphrase
+    /// ([`VaultError::Cancelled`]) — so an item prepared unsealed for the keychain never reaches a
+    /// store that keeps sealed items. Those stores refuse such an item too
+    /// ([`SecretStore::put_tagged`]), should the store change again between this check and the
+    /// write.
+    fn ready(
+        &self,
+        name: &str,
+        prepared: Prepared,
+        item: &CustodyItem,
+        owner: Option<&StageToken>,
+        passphrase: Option<&str>,
+    ) -> Result<Prepared, VaultError> {
+        if self.store.kind_of(name)?.unlocks_itself() == prepared.unsealed() {
+            return Ok(prepared);
+        }
+        log::info!("custody: the store for this item changed since it was prepared");
+        self.prepare(name, item, owner, passphrase)
+    }
+
     /// Writes `prepared` under `name`, in one store operation that carries its index with it.
     fn put(&self, name: &str, prepared: &Prepared) -> Result<(), VaultError> {
         log::info!("custody: write");
@@ -207,12 +232,22 @@ impl DesktopVault {
     }
 }
 
-/// An item ready for its slot ([`DesktopVault::prepare`]).
+/// An item ready for its slot ([`DesktopVault::prepare`]), and so for the kind of store it was
+/// prepared for: [`DesktopVault::ready`] lets it be written only to that kind.
 enum Prepared {
     /// As it is, for a store that unlocks itself, with the tag the store keeps beside it.
     Tagged(Zeroizing<Vec<u8>>, ItemTag),
     /// Sealed under the flow's passphrase; no secret without it.
     Sealed(Vec<u8>),
+}
+
+impl Prepared {
+    /// Prepared for a store that unlocks itself ([`StoreKind::unlocks_itself`]): the raw key.
+    ///
+    /// [`StoreKind::unlocks_itself`]: crate::store::StoreKind::unlocks_itself
+    fn unsealed(&self) -> bool {
+        matches!(self, Prepared::Tagged(..))
+    }
 }
 
 impl DesktopVault {
@@ -288,7 +323,9 @@ impl Unlocking<'_> {
 impl Vault for Unlocking<'_> {
     /// Under the custody folder's lock (every app on this computer takes it): the kept index is
     /// read from the item, and the item written only when that index is not higher. The item is
-    /// sealed before the lock, so the lock is held for a header read and one put.
+    /// sealed before the lock, so the lock is held for a header read and one put — unless the
+    /// store it goes to changed meanwhile, when it is prepared again under the lock
+    /// ([`DesktopVault::ready`]).
     fn store_master(
         &self,
         scid: &str,
@@ -309,6 +346,10 @@ impl Vault for Unlocking<'_> {
                 return Ok(Stored::AlreadyNewer { kept });
             }
         }
+        // For the store the item goes to now, not when it was prepared.
+        let prepared = self
+            .vault
+            .ready(&name, prepared, &item, None, self.passphrase())?;
         // Every store bumps it, a same-index re-store too: a forget that read the epoch before
         // a duplicate delivery must not delete what that delivery just wrote. Before the put
         // ([`DesktopVault::custody_epoch`]).
@@ -347,6 +388,9 @@ impl Vault for Unlocking<'_> {
         // Under the lock, so it never lands between another app's check of the staged slot and
         // its promote or discard.
         let _folder = self.vault.pending.exclusive()?;
+        let prepared = self
+            .vault
+            .ready(&name, prepared, &item, Some(owner), self.passphrase())?;
         self.vault.put(&name, &prepared)
     }
 
@@ -779,6 +823,9 @@ mod tests {
         }
         fn rename(&self, from: &str, to: &str) -> Result<(), VaultError> {
             (**self).rename(from, to)
+        }
+        fn reachable(&self) -> bool {
+            (**self).reachable()
         }
     }
 
@@ -2171,6 +2218,186 @@ mod tests {
             index.is_none() || index == Some(given),
             "master_index answers {index:?} while unlock gives master #{given}"
         );
+    }
+
+    /// A keychain whose reach the test controls: `reachable` answers `up`, and its first call
+    /// (the one `prepare` makes before the custody lock) waits twice at `gate`, so the test can
+    /// change the world between a key's preparation and its write.
+    struct Gated {
+        inner: Arc<MemoryStore>,
+        up: std::sync::atomic::AtomicBool,
+        gate: std::sync::Mutex<Option<Arc<std::sync::Barrier>>>,
+    }
+
+    impl Gated {
+        fn new(inner: Arc<MemoryStore>, gate: Arc<std::sync::Barrier>) -> Self {
+            Gated {
+                inner,
+                up: std::sync::atomic::AtomicBool::new(true),
+                gate: std::sync::Mutex::new(Some(gate)),
+            }
+        }
+    }
+
+    impl SecretStore for Gated {
+        fn kind(&self) -> StoreKind {
+            self.inner.kind()
+        }
+        fn kind_of(&self, n: &str) -> Result<StoreKind, VaultError> {
+            self.inner.kind_of(n)
+        }
+        fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
+            self.inner.put(n, b)
+        }
+        fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
+            self.inner.get(n)
+        }
+        fn contains(&self, n: &str) -> Result<bool, VaultError> {
+            self.inner.contains(n)
+        }
+        fn delete(&self, n: &str) -> Result<(), VaultError> {
+            self.inner.delete(n)
+        }
+        fn put_tagged(&self, n: &str, b: &[u8], t: &ItemTag) -> Result<(), VaultError> {
+            self.inner.put_tagged(n, b, t)
+        }
+        fn tag_of(&self, n: &str) -> Result<Option<ItemTag>, VaultError> {
+            self.inner.tag_of(n)
+        }
+        fn reachable(&self) -> bool {
+            let up = self.up.load(std::sync::atomic::Ordering::SeqCst);
+            if let Some(gate) = self.gate.lock().unwrap().take() {
+                gate.wait();
+                gate.wait();
+            }
+            up
+        }
+    }
+
+    /// Whether `bytes` hold `master` anywhere, as it is.
+    fn holds_raw(bytes: &[u8], master: &[u8; 32]) -> bool {
+        bytes.windows(32).any(|w| w == master)
+    }
+
+    /// Lal's review of we#431: a keychain build prepares a restored key unsealed for the
+    /// keychain, and before it takes the custody lock a build without the keychain (sharing the
+    /// folder) stores the same identity in a sealed file. The write that follows lands on that
+    /// file: it must be sealed there, or refused — never the raw master on disk.
+    #[test]
+    fn a_key_prepared_for_the_keychain_never_lands_unsealed_in_a_file_another_build_made() {
+        use crate::store::{FileStore, PlacedStore};
+        let master = [9u8; 32];
+        // A keychain flow collects no passphrase; one that has one (it asked for another
+        // reason) can seal the key for the file instead.
+        for signed_passphrase in [None, Some("the signed build's passphrase")] {
+            let dir = tempfile::tempdir().unwrap();
+            let custody = dir.path().join("custody");
+            let keychain = Arc::new(MemoryStore::as_kind(StoreKind::Keychain));
+            let gate = Arc::new(std::sync::Barrier::new(2));
+            let signed = DesktopVault::with_kdf(
+                Box::new(PlacedStore::new(
+                    Box::new(FileStore::new(&custody)),
+                    Some(Box::new(Gated::new(keychain.clone(), gate.clone()))),
+                )),
+                PendingIncepts::file(&custody),
+                CHEAP,
+            );
+            let unsigned = DesktopVault::with_kdf(
+                Box::new(PlacedStore::new(Box::new(FileStore::new(&custody)), None)),
+                PendingIncepts::file(&custody),
+                CHEAP,
+            );
+            let stored = std::thread::scope(|scope| {
+                let restoring = scope.spawn(|| {
+                    signed
+                        .unlocking(signed_passphrase.map(|p| Secret::new(p.to_string())))
+                        .store_master("QmScid", 0, Secret::new(master))
+                });
+                // Prepared for the keychain, not yet under the lock.
+                gate.wait();
+                unsigned
+                    .unlocking(pass("the unsigned build's passphrase"))
+                    .store_master("QmScid", 0, Secret::new(master))
+                    .unwrap();
+                gate.wait();
+                restoring.join().unwrap()
+            });
+            let bytes = std::fs::read(custody.join("QmScid.bin")).unwrap();
+            assert!(!holds_raw(&bytes, &master), "the raw master is in the file");
+            assert_eq!(seal::sealed_index(&bytes), Some(0));
+            assert!(keychain.all_bytes().is_empty());
+            let opens_with = match (stored, signed_passphrase) {
+                (Ok(Stored::Stored), Some(passphrase)) => passphrase,
+                (Err(VaultError::Cancelled), None) => "the unsigned build's passphrase",
+                (other, _) => panic!("stored {other:?}"),
+            };
+            let item = seal::open(&bytes, "QmScid", opens_with).unwrap();
+            assert_eq!(*item.master, master);
+        }
+    }
+
+    /// The same race in one build: the keyring locks (or its service goes away) between the
+    /// key's preparation for it and the write under the lock, so the write goes to the file —
+    /// sealed, or not at all. A staged key the same.
+    #[test]
+    fn a_key_prepared_for_a_keychain_that_went_away_is_sealed_or_refused() {
+        use crate::store::{FileStore, PlacedStore};
+        let master = [8u8; 32];
+        for stage in [false, true] {
+            for passphrase in [None, Some("a passphrase of length")] {
+                let dir = tempfile::tempdir().unwrap();
+                let custody = dir.path().join("custody");
+                let keychain = Arc::new(MemoryStore::as_kind(StoreKind::Keychain));
+                let gate = Arc::new(std::sync::Barrier::new(2));
+                let gated = Arc::new(Gated::new(keychain.clone(), gate.clone()));
+                let vault = DesktopVault::with_kdf(
+                    Box::new(PlacedStore::new(
+                        Box::new(FileStore::new(&custody)),
+                        Some(Box::new(gated.clone())),
+                    )),
+                    PendingIncepts::file(&custody),
+                    CHEAP,
+                );
+                let wrote = std::thread::scope(|scope| {
+                    let writing = scope.spawn(|| {
+                        let flow = vault.unlocking(passphrase.map(|p| Secret::new(p.to_string())));
+                        if stage {
+                            flow.stage_master(
+                                "QmScid",
+                                1,
+                                Secret::new(master),
+                                &StageToken([3; 16]),
+                            )
+                        } else {
+                            flow.store_master("QmScid", 0, Secret::new(master))
+                                .map(|_| ())
+                        }
+                    });
+                    gate.wait();
+                    gated.up.store(false, std::sync::atomic::Ordering::SeqCst);
+                    gate.wait();
+                    writing.join().unwrap()
+                });
+                assert!(keychain.all_bytes().is_empty());
+                let file = custody.join(if stage {
+                    "QmScid.staged.bin"
+                } else {
+                    "QmScid.bin"
+                });
+                match (wrote, passphrase) {
+                    (Ok(()), Some(passphrase)) => {
+                        let bytes = std::fs::read(&file).unwrap();
+                        assert!(!holds_raw(&bytes, &master), "the raw master is in the file");
+                        let item = seal::open(&bytes, "QmScid", passphrase).unwrap();
+                        assert_eq!(*item.master, master);
+                    }
+                    (Err(VaultError::Cancelled), None) => {
+                        assert!(!file.exists(), "a refused write left {file:?}")
+                    }
+                    (other, _) => panic!("stage {stage}, wrote {other:?}"),
+                }
+            }
+        }
     }
 
     fn ed25519_signing_key_multikey(secret: [u8; 32]) -> ad4m_identity_core::Multikey {

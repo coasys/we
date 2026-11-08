@@ -123,10 +123,13 @@ pub trait SecretStore: Send + Sync {
     /// the same operation as the bytes, for a store that keeps its items as they are
     /// ([`StoreKind::unlocks_itself`]): what [`tag_of`](SecretStore::tag_of) reads back with
     /// no unlock. A sealed item carries its tag in its own authenticated header
-    /// ([`crate::seal::sealed_index`]), so a store that only keeps sealed items keeps the bytes.
+    /// ([`crate::seal::sealed_index`]) and goes through `put`; what comes here is the item as
+    /// it is — the raw master key — so a store that keeps only sealed items (the file, the
+    /// Secret Service) refuses it, which is this default. Only a store that unlocks itself
+    /// overrides it.
     fn put_tagged(&self, name: &str, bytes: &[u8], tag: &ItemTag) -> Result<(), VaultError> {
-        let _ = tag;
-        self.put(name, bytes)
+        let _ = (name, bytes, tag);
+        Err(refused_unsealed(self.kind()))
     }
     /// The tag [`put_tagged`](SecretStore::put_tagged) kept with the item `name`, read without
     /// the item's bytes (no unlock, no prompt). `None` when the item is absent, or was kept
@@ -147,6 +150,13 @@ pub trait SecretStore: Send + Sync {
         }
         self.delete(from)
     }
+}
+
+/// A store that keeps only sealed items was handed one as it is ([`SecretStore::put_tagged`]).
+fn refused_unsealed(kind: StoreKind) -> VaultError {
+    VaultError::Unavailable(format!(
+        "the {kind:?} store keeps only sealed master keys; an unsealed one was refused"
+    ))
 }
 
 /// The item's name for an identity: its kept master key.
@@ -325,7 +335,11 @@ impl SecretStore for MemoryStore {
             .insert(name.into(), (bytes.to_vec(), None));
         Ok(())
     }
+    /// As the store it stands in for: kept only as a keychain is.
     fn put_tagged(&self, name: &str, bytes: &[u8], tag: &ItemTag) -> Result<(), VaultError> {
+        if !self.kind().unlocks_itself() {
+            return Err(refused_unsealed(self.kind()));
+        }
         self.items
             .lock()
             .map_err(|_| VaultError::Unavailable("poisoned".into()))?
@@ -1179,6 +1193,40 @@ mod tests {
         store.delete(&name).unwrap();
         store.delete(&name).unwrap();
         assert_eq!(store.get(&name).unwrap(), None);
+    }
+
+    /// An item kept as it is (`put_tagged`, for a store that unlocks itself) is the raw master
+    /// key: a store that keeps only sealed items refuses it rather than writing it down, whoever
+    /// asks — the file, a memory store standing in for one, and a placed store whose new items
+    /// go to the file.
+    #[test]
+    fn a_store_of_sealed_items_refuses_an_item_kept_as_it_is() {
+        let dir = tempfile::tempdir().unwrap();
+        let custody = dir.path().join("custody");
+        let name = item_name("QmScid");
+        let tag = ItemTag {
+            index: 0,
+            owner: None,
+        };
+        let raw = [9u8; 32];
+        let file = FileStore::new(&custody);
+        assert!(matches!(
+            file.put_tagged(&name, &raw, &tag),
+            Err(VaultError::Unavailable(_))
+        ));
+        assert!(!custody.join("QmScid.bin").exists());
+        let placed = PlacedStore::new(Box::new(FileStore::new(&custody)), None);
+        assert!(placed.put_tagged(&name, &raw, &tag).is_err());
+        assert!(!custody.join("QmScid.bin").exists());
+        for kind in [StoreKind::File, StoreKind::SecretService, StoreKind::Memory] {
+            let memory = MemoryStore::as_kind(kind);
+            assert!(memory.put_tagged(&name, &raw, &tag).is_err(), "{kind:?}");
+            assert!(memory.all_bytes().is_empty());
+        }
+        // The keychain keeps it, with its tag.
+        let keychain = MemoryStore::as_kind(StoreKind::Keychain);
+        keychain.put_tagged(&name, &raw, &tag).unwrap();
+        assert_eq!(keychain.tag_of(&name).unwrap(), Some(tag));
     }
 
     #[test]
