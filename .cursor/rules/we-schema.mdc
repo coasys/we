@@ -113,6 +113,9 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 Apps (`apps/we-web`, `apps/we-electron`, `apps/we-tauri`) are thin hosts over `@we/app-shell`.
 Each supplies two things: a `PlatformAdapter` (where am I running) and a `BackendConnector`
 (how do I reach the data layer).
+The phone app (`apps/we-mobile`, Capacitor, `org.coasys.app`) is not a fourth host: it ships
+`apps/we-web`'s build unchanged inside a native WebView, with only a page of its own for a WebView too
+old to run WE (`android.minWebViewVersion`). Its README says how to build it and where the floor came from.
 
 **Dependency direction:** `templates → shell → backend-shared ← backend-ad4m`, and
 `modules → shell → backend-shared`. Dependencies point inward toward the contract packages; there are

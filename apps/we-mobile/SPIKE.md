@@ -33,43 +33,9 @@ JNA 5.17.0, Android Gradle Plugin 8.13.0, Gradle 8.14.3, Kotlin 2.2.20, NDK 27.2
 
 ## How to run it
 
-On the desktop:
-
-1. Build WE for the web: `pnpm build:web` at the repo root.
-2. Start an executor to test against. Do not use your own. Use a throwaway one with a temporary
-   data directory, as `packages/backend-system/ad4m/tests/live/executor.ts` does:
-   `ad4m-executor init --data-path <tmp>`, then
-   `ad4m-executor run --app-data-path <tmp> --port 12600 --admin-credential <token> --hc-use-bootstrap false --hc-use-proxy false --hc-use-local-proxy false --hc-use-mdns false --run-dapp-server false`.
-   (`node scripts/ad4m-executor.mjs --path` names the pinned executor.)
-3. Start the endpoint:
-   `cd crates/phone-transport && cargo run --release --features endpoint --bin spike-endpoint -- --upstream ws://127.0.0.1:12600 --cert-dir ~/.local/share/coasys-spike-cert`.
-   It prints the pin, the URL and the QR code. The key in `--cert-dir` is the pin. Keep it. If the
-   machine's addresses change, delete only `cert.pem`: the endpoint issues a new certificate for the
-   same key, and the pin stays the same.
-
-Build and install the app:
-
-```sh
-source ~/.local/share/android-env.sh        # JAVA_HOME, ANDROID_HOME, ANDROID_NDK_HOME
-cd apps/we-phone
-pnpm build:web                              # assembles www/ from apps/we-web/dist
-npx cap sync android
-scripts/build-android-rust.sh               # .so files into jniLibs, Kotlin bindings into the plugin
-cd android && ./gradlew assembleDebug
-adb install -r app/build/outputs/apk/debug/app-debug.apk
-```
-
-On the phone (or emulator): the app opens the pairing screen when it has no pairing. Scan the QR
-code, or paste the `pairing:` line. On the emulator the desktop is `wss://10.0.2.2:<port>`. For WE
-to sign in, give the executor token too (spike only: see "What to decide next"). Press "Save and
-open WE".
-
-To measure from the desktop without tapping, with a debug build running:
-
-```sh
-node scripts/cdp-eval.mjs "await coasysDiag.roundTrips({url:'wss://10.0.2.2:8443', pin:'<pin>', token:'<token>'}, 200)"
-node scripts/host-baseline.mjs ws://127.0.0.1:12600 <token>
-```
+The spike's transport, plugin, pairing screen and scripts were removed when the app became
+`apps/we-mobile` (they are on the spike branch, PR #392). How to build and run the phone app now is
+in [README.md](./README.md).
 
 ## Exit criteria
 
