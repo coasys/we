@@ -13,16 +13,14 @@
 //! [`FileCheckpoints::store`] and [`FileCheckpoints::drop_scid`], never a silent "none" a store
 //! could roll the phone back through.
 //!
-//! At ad4m eeb0247b3 the port's methods return nothing, so [`LogCheckpoints`] here can only pass on
-//! what they can carry: an unreadable file reads as none and a failed write is dropped. ad4m #1673's
-//! next revision makes the port return a `Result`, and the impl then returns these errors as they
-//! are.
+//! [`LogCheckpoints`] passes each one on as a `CheckpointError`, and `ViaStore` then fails the read
+//! closed (`503`) rather than admit a log it has nothing to measure against.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use ad4m_identity_client::{Checkpoint, LogCheckpoints};
+use ad4m_identity_client::{Checkpoint, CheckpointError, LogCheckpoints};
 use serde::{Deserialize, Serialize};
 
 use crate::file::write_atomic;
@@ -128,18 +126,23 @@ pub(crate) enum CheckpointFileError {
     Write(String),
 }
 
-/// The port as ad4m eeb0247b3 has it, which carries no error: see the module's docs.
+impl From<CheckpointFileError> for CheckpointError {
+    fn from(e: CheckpointFileError) -> Self {
+        CheckpointError(e.to_string())
+    }
+}
+
 impl LogCheckpoints for FileCheckpoints {
-    fn get(&self, scid: &str) -> Option<Checkpoint> {
-        self.load(scid).ok().flatten()
+    fn get(&self, scid: &str) -> Result<Option<Checkpoint>, CheckpointError> {
+        Ok(self.load(scid)?)
     }
 
-    fn set(&self, scid: &str, checkpoint: Checkpoint) {
-        let _ = self.store(scid, checkpoint);
+    fn set(&self, scid: &str, checkpoint: Checkpoint) -> Result<(), CheckpointError> {
+        Ok(self.store(scid, checkpoint)?)
     }
 
-    fn forget(&self, scid: &str) {
-        let _ = self.drop_scid(scid);
+    fn forget(&self, scid: &str) -> Result<(), CheckpointError> {
+        Ok(self.drop_scid(scid)?)
     }
 }
 
@@ -157,11 +160,21 @@ mod tests {
     #[test]
     fn a_checkpoint_outlives_the_port_that_wrote_it() {
         let dir = tempfile::tempdir().unwrap();
-        assert_eq!(FileCheckpoints::new(dir.path()).get("a"), None);
-        FileCheckpoints::new(dir.path()).set("a", at(3, "h3"));
-        FileCheckpoints::new(dir.path()).set("b", at(1, "b1"));
-        assert_eq!(FileCheckpoints::new(dir.path()).get("a"), Some(at(3, "h3")));
-        assert_eq!(FileCheckpoints::new(dir.path()).get("b"), Some(at(1, "b1")));
+        assert_eq!(FileCheckpoints::new(dir.path()).get("a").unwrap(), None);
+        FileCheckpoints::new(dir.path())
+            .set("a", at(3, "h3"))
+            .unwrap();
+        FileCheckpoints::new(dir.path())
+            .set("b", at(1, "b1"))
+            .unwrap();
+        assert_eq!(
+            FileCheckpoints::new(dir.path()).get("a").unwrap(),
+            Some(at(3, "h3"))
+        );
+        assert_eq!(
+            FileCheckpoints::new(dir.path()).get("b").unwrap(),
+            Some(at(1, "b1"))
+        );
         assert!(!dir.path().join("log-checkpoints.json.tmp").exists());
     }
 
@@ -169,25 +182,27 @@ mod tests {
     fn a_checkpoint_goes_forward_and_only_forget_takes_it_back() {
         let dir = tempfile::tempdir().unwrap();
         let port = FileCheckpoints::new(dir.path());
-        port.set("a", at(5, "h5"));
-        port.set("a", at(4, "h4"));
-        assert_eq!(port.get("a"), Some(at(5, "h5")));
+        port.set("a", at(5, "h5")).unwrap();
+        port.set("a", at(4, "h4")).unwrap();
+        assert_eq!(port.get("a").unwrap(), Some(at(5, "h5")));
         // The same seq with another hash is ViaStore's to judge (a fork it admitted after a
         // reset); the port keeps what it is told.
-        port.set("a", at(5, "h5b"));
-        assert_eq!(port.get("a"), Some(at(5, "h5b")));
-        port.set("a", at(6, "h6"));
-        assert_eq!(port.get("a"), Some(at(6, "h6")));
-        port.forget("a");
-        assert_eq!(port.get("a"), None);
-        port.set("a", at(2, "h2"));
-        assert_eq!(port.get("a"), Some(at(2, "h2")));
+        port.set("a", at(5, "h5b")).unwrap();
+        assert_eq!(port.get("a").unwrap(), Some(at(5, "h5b")));
+        port.set("a", at(6, "h6")).unwrap();
+        assert_eq!(port.get("a").unwrap(), Some(at(6, "h6")));
+        port.forget("a").unwrap();
+        assert_eq!(port.get("a").unwrap(), None);
+        port.set("a", at(2, "h2")).unwrap();
+        assert_eq!(port.get("a").unwrap(), Some(at(2, "h2")));
     }
 
     #[test]
     fn the_file_is_written_whole_in_its_one_shape() {
         let dir = tempfile::tempdir().unwrap();
-        FileCheckpoints::new(dir.path()).set("a", at(1, "h1"));
+        FileCheckpoints::new(dir.path())
+            .set("a", at(1, "h1"))
+            .unwrap();
         let written: serde_json::Value =
             serde_json::from_slice(&std::fs::read(dir.path().join(FILE_NAME)).unwrap()).unwrap();
         assert_eq!(
@@ -233,5 +248,24 @@ mod tests {
             port.store("a", at(1, "h1")),
             Err(CheckpointFileError::Write(_))
         ));
+    }
+
+    // Through the port an unreadable file is an error ViaStore fails the read on, never "none".
+    #[test]
+    fn the_port_returns_the_file_errors() {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::write(dir.path().join(FILE_NAME), b"{not json").unwrap();
+        let port = FileCheckpoints::new(dir.path());
+        let err = port.get("a").unwrap_err();
+        assert!(err.0.contains("damaged"), "{err}");
+        assert!(port.set("a", at(1, "h1")).is_err());
+        assert!(port.forget("a").is_err());
+        let missing = FileCheckpoints::new(&dir.path().join("not-there"));
+        assert_eq!(missing.get("a").unwrap(), None);
+        assert!(missing
+            .set("a", at(1, "h1"))
+            .unwrap_err()
+            .0
+            .contains("written"));
     }
 }

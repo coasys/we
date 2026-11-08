@@ -39,14 +39,14 @@ uniffi = "0.32"
 # one. Every ad4m crate here is at the same rev. For a local ad4m checkout, override with
 #   cargo test --config 'patch."https://github.com/coasys/ad4m".ad4m-identity-client.path="<ad4m>/ad4m-identity-client"' …
 # (and the same for each crate below), as `crates/custody/README.md` says.
-ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "eeb0247b30de0c4c677d2bb931cbf217a5016e49", features = ["store"] }
+ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "4b49fa69f09ec97ad0476d74117533ba686ae379", features = ["store"] }
 # The claim on an offer (`link::make_claim`, `OfferString`, `match_code`), `signing_bytes`, the
 # device string and the record's types.
-ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "eeb0247b30de0c4c677d2bb931cbf217a5016e49", features = ["build"] }
+ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "4b49fa69f09ec97ad0476d74117533ba686ae379", features = ["build"] }
 # `encode_proof_value` (a signature as `z` + base58btc) and the Ed25519 multikey.
-ad4m-hash-chain = { git = "https://github.com/coasys/ad4m", rev = "eeb0247b30de0c4c677d2bb931cbf217a5016e49" }
+ad4m-hash-chain = { git = "https://github.com/coasys/ad4m", rev = "4b49fa69f09ec97ad0476d74117533ba686ae379" }
 # The request box's types (`DeviceRequest`, `DeviceRequestBody`).
-ad4m-ldk = { git = "https://github.com/coasys/ad4m", rev = "eeb0247b30de0c4c677d2bb931cbf217a5016e49" }
+ad4m-ldk = { git = "https://github.com/coasys/ad4m", rev = "4b49fa69f09ec97ad0476d74117533ba686ae379" }
 # `HttpClient` is an `async_trait(?Send)`; the flows are driven on the calling thread by
 # `futures-executor`'s `block_on` (a current-thread executor, no tokio runtime on the phone).
 async-trait = "0.1"
@@ -64,9 +64,9 @@ thiserror = "2"
 tempfile = "3"
 # The tests run the flows against a real identity store, its router in process (as
 # `ad4m-identity-client/tests/store.rs` does), with a holder whose master key is in a `MemoryVault`.
-ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "eeb0247b30de0c4c677d2bb931cbf217a5016e49", features = ["store", "test-vault"] }
-ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "eeb0247b30de0c4c677d2bb931cbf217a5016e49", features = ["build", "words"] }
-identity-store = { git = "https://github.com/coasys/ad4m", rev = "eeb0247b30de0c4c677d2bb931cbf217a5016e49" }
+ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "4b49fa69f09ec97ad0476d74117533ba686ae379", features = ["store", "test-vault"] }
+ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "4b49fa69f09ec97ad0476d74117533ba686ae379", features = ["build", "words"] }
+identity-store = { git = "https://github.com/coasys/ad4m", rev = "4b49fa69f09ec97ad0476d74117533ba686ae379" }
 axum = "0.8"
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"

@@ -870,6 +870,26 @@ fn a_restarted_phone_refuses_a_log_behind_the_one_it_admitted() {
     );
 }
 
+// A checkpoint file the phone cannot read is not "no checkpoint": the read fails closed, and the
+// file is left as it was for the person to see.
+#[test]
+fn a_damaged_checkpoint_file_fails_the_read_closed() {
+    let world = world();
+    let laptop = computer(&world, 1);
+    let did = create(&world, &laptop, 52);
+    let phone = phone(&world, "strongbox");
+    join(&world, &laptop, &phone, &did, false);
+    phone.identity.status().unwrap();
+
+    let path = phone.dir.path().join("log-checkpoints.json");
+    std::fs::write(&path, b"{not json").unwrap();
+    let restarted = open_identity(&phone.keys, &phone.http, &phone.master);
+    let closed = restarted.status();
+    assert!(closed.is_err(), "{closed:?}");
+    assert!(format!("{closed:?}").contains("checkpoint"), "{closed:?}");
+    assert_eq!(std::fs::read(&path).unwrap(), b"{not json");
+}
+
 // A device code from another store, or one that expired, is refused before anything is sent.
 #[test]
 fn a_device_code_of_another_store_is_refused() {
