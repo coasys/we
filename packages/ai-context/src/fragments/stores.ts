@@ -1945,6 +1945,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         'boolean — a panel is being dragged or resized right now. Suspend transitions while it is true so the edge tracks the cursor',
       panelMaximised:
         "boolean — some panel covers the whole window. The app's own chrome — sidebar, module rail — hides while it is true; a template's fixed chrome should too",
+      narrowWindow:
+        'boolean — the window is narrower than the sm breakpoint (640px): a phone held upright. Chrome only, because chrome sits outside every surface and has no surface.tier to read; the sidebar opens from a menu button while it is true rather than under the pointer. A template answers to its own surface with smUpProps instead',
       panelInstances:
         '{ id, panel, inputs, title? }[] — the instances open in the interface on screen: which declared panel each is of, and what it was opened with. To list them, or to tell a control whether its record already has one',
       panelFrames:

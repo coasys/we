@@ -55,6 +55,8 @@ const SOLID_TESTS = [
   // Drives the shell's real dock memos through stacking, folding, collapsing a lane and revealing a
   // hidden panel — reactive derivations, which the node project's SSR build of solid-js never runs.
   'tests/dockStowAndReveal.test.tsx',
+  // The shell store's window-width memo following a resize: reactive, so the node build would not do.
+  'tests/narrowWindow.test.tsx',
   'tests/homeLaneState.test.tsx',
   // A lane holding any panel: renders the shell store's real reactivity, so the node build would not do.
   'tests/laneSections.test.tsx',

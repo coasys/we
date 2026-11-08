@@ -3150,6 +3150,7 @@ export const contextData: ContextData = {
         coveredInset: { type: 'object' },
         dockResizing: { type: 'boolean' },
         panelMaximised: { type: 'boolean' },
+        narrowWindow: { type: 'boolean' },
         dockPlacement: { type: 'object' },
         panelFrames: { type: 'object' },
         movingDock: { type: 'string' },
