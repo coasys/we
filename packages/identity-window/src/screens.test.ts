@@ -123,6 +123,15 @@ describe('the identity window', () => {
     );
   });
 
+  it('says which device joins by what it is: a computer by default, a phone where the phone says so', () => {
+    const match = { screen: 'device-match', code: 'R7K Q2M', did: 'did:scid:coasys:1:abc' } as const;
+    expect(heading(match).lead).toContain('This computer then joins your identity.');
+    expect(heading(match, 'computer').lead).toContain('This computer then joins your identity.');
+    const onPhone = heading(match, 'phone').lead;
+    expect(onPhone).toContain('This phone then joins your identity.');
+    expect(onPhone).not.toContain('computer');
+  });
+
   it('titles the device steps as the Devices page names them', () => {
     expect(heading({ screen: 'enter-code', error: null }).title).toBe('Scan or paste a code');
     // The phone joins by the offer a device of the identity shows; the screen is not a last one.

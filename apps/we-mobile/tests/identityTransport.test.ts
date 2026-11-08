@@ -186,6 +186,8 @@ describe('joining an identity on the phone', () => {
       },
     );
     expect(await pending.start()).toEqual({ screen: 'device-match', code: 'R7K Q2M', did: 'did:scid:coasys:1:abc' });
+    // The window words its screens for a phone: "This phone then joins your identity".
+    expect(pending.deviceNoun).toBe('phone');
 
     const joined = phoneTransport(
       { kind: 'join' },

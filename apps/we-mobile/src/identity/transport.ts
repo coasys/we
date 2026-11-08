@@ -328,6 +328,7 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Ide
   };
 
   return {
+    deviceNoun: 'phone',
     start: () => guarded(begin),
     step: (input) => guarded(() => advance(input)),
     async cancel() {

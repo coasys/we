@@ -17,6 +17,7 @@ import {
   BOT_ACTIONS,
   BOT_DAYS_DEFAULT,
   BOT_DAYS_MAX,
+  type DeviceNoun,
   heading,
   isLast,
   refusedField,
@@ -45,6 +46,11 @@ export interface IdentityTransport {
    * there is none to use (the desktop): the window then offers only the field to paste into.
    */
   scan?(prefix: string): Promise<string | null>;
+  /**
+   * What this device is, in the words a person reads on the screens that speak of it ("This phone
+   * then joins your identity"). Absent means a computer: the desktop windows.
+   */
+  deviceNoun?: DeviceNoun;
 }
 
 let host: IdentityTransport;
@@ -367,7 +373,7 @@ function body(screen: Screen): Child[] {
       return shareable(
         screen.code,
         screen.qrSvg,
-        'QR code of this computer’s code',
+        `QR code of this ${host.deviceNoun ?? 'computer'}’s code`,
         screen.expires,
         'Waiting for your other device…',
       );
@@ -616,7 +622,7 @@ function draw(screen: Screen) {
     offerTimer = undefined;
   }
   if (screen.screen !== 'enter-words') forgetWords();
-  const { title, lead } = heading(screen);
+  const { title, lead } = heading(screen, host.deviceNoun);
   const parts: Child[] = [el('h1', { textContent: title }), el('p', { textContent: lead }), ...body(screen)];
   if (isLast(screen)) parts.push(el('div', { className: 'row' }, button('Done', finish, 'primary')));
   root.replaceChildren(...parts);

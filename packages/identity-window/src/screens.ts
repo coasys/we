@@ -200,8 +200,14 @@ export function spreadWords(pasted: string, at: number): Array<[number, string]>
   return words.slice(0, 12 - at).map((word, i) => [at + i, word]);
 }
 
-/** The lead of each screen: its title and the sentence under it. */
-export function heading(screen: Screen): { title: string; lead: string } {
+/** What the device the window runs on is called on its screens. */
+export type DeviceNoun = 'computer' | 'phone';
+
+/**
+ * The lead of each screen: its title and the sentence under it. `noun` is what this device is
+ * where a screen speaks of it while it joins an identity, which a phone does too.
+ */
+export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title: string; lead: string } {
   switch (screen.screen) {
     case 'show-words':
       return {
@@ -270,7 +276,7 @@ export function heading(screen: Screen): { title: string; lead: string } {
     case 'device-match':
       return {
         title: 'Check the code',
-        lead: 'Your other device shows a code too. When they match, confirm there. This computer then joins your identity.',
+        lead: `Your other device shows a code too. When they match, confirm there. This ${noun} then joins your identity.`,
       };
     case 'joined':
       return {
