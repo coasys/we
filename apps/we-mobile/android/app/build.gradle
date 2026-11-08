@@ -1,4 +1,5 @@
 apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
 
 android {
     namespace = "org.coasys.app"
@@ -10,10 +11,22 @@ android {
         versionCode 1
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+        ndk {
+            // The ABIs scripts/build-android-rust.sh builds the DeviceKey plugin's Rust for:
+            // phones, and the x86_64 emulator.
+            abiFilters 'arm64-v8a', 'x86_64'
+        }
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
              // Default: https://android.googlesource.com/platform/frameworks/base/+/282e181b58cf72b6ca770dc7ca5f91f135444502/tools/aapt/AaptAssets.cpp#61
             ignoreAssetsPattern = '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
+        }
+    }
+    testOptions {
+        unitTests.all {
+            // The JVM unit tests run the DeviceKey plugin's real Rust: the host build that
+            // scripts/build-android-rust.sh leaves here.
+            systemProperty 'jna.library.path', file('build/host-lib').absolutePath
         }
     }
     buildTypes {
@@ -21,6 +34,13 @@ android {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
         }
+    }
+}
+
+kotlin {
+    // Java 21, as capacitor.build.gradle sets for the Java sources.
+    compilerOptions {
+        jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21
     }
 }
 
@@ -36,6 +56,12 @@ dependencies {
     implementation "androidx.coordinatorlayout:coordinatorlayout:$androidxCoordinatorLayoutVersion"
     implementation "androidx.core:core-splashscreen:$coreSplashScreenVersion"
     implementation project(':capacitor-android')
+    // The Android JNA (its native dispatch for each ABI) in the app; the desktop jar, with the
+    // host's, for the JVM unit tests.
+    implementation "net.java.dev.jna:jna:$jnaVersion@aar"
+    testImplementation "net.java.dev.jna:jna:$jnaVersion"
+    // android.jar's org.json is a stub off the phone; the unit tests read JSON with the real one.
+    testImplementation "org.json:json:20250517"
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"
