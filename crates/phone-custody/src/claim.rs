@@ -63,8 +63,9 @@ pub fn state_url(store: &str, scid: &str, offer_id: &str, key: &str) -> String {
     format!("{}/state?key={key}", offer_url(store, scid, offer_id))
 }
 
-/// The claim on `offer` by `sign`, with the enc key `enc`. The phone does not offer to keep the
-/// master key: keeping one is phase 2b's, behind a biometric-gated key.
+/// The claim on `offer` by `sign`, with the enc key `enc`. The claim says `canKeepMaster`: the
+/// phone keeps a master key behind its own biometric-gated Keystore key ([`crate::vault`]), so
+/// the holder's confirm card offers "Keep my master key on this device too".
 pub fn prepare(
     offer: &OfferString,
     sign: &SigningKey,
@@ -79,7 +80,7 @@ pub fn prepare(
         *s,
         sign,
         enc.to_string(),
-        false,
+        true,
         hint,
     )
     .map_err(|e| invalid(e.to_string()))?;

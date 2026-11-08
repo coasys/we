@@ -4,9 +4,10 @@
 # caller, through uniffi; what crosses into JavaScript is public keys and signatures.
 #
 # Standalone, like `crates/custody`: its own `Cargo.lock` and toolchain, nothing on the desktop links
-# it. It does not depend on `we-custody`, which keeps master keys on a computer: in phase 2a the
-# phone holds no master key, so all it needs of the identity crates is the claim and the signing
-# bytes, from `ad4m-identity-core` (see `README.md`).
+# it. It does not depend on `we-custody`, which keeps master keys on a computer. Phase 2b's phone
+# keeps a master key too, behind a second, biometric-gated Keystore key, and runs
+# `ad4m-identity-client`'s flows against the identity store directly through `ViaStore` (the phone
+# has no executor of its own): see `README.md` and `apps/we-mobile/docs/phase-2b.md`.
 [package]
 name = "we-phone-custody"
 version = "0.1.0"
@@ -31,11 +32,25 @@ required-features = ["bindgen"]
 
 [dependencies]
 uniffi = "0.32"
-# The claim on an offer (`link::make_claim`, `OfferString`, `match_code`) and `signing_bytes`. The
-# ad4m commit WE pins (`node scripts/ad4m-pin.mjs --commit`), as `crates/custody` has it.
-ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "dc5964ba4e7b54c546dab759f95ff18ec987fed8", features = ["build"] }
+# The flows (take the master key, ask for it, answer a request, link a scanned device, revoke,
+# the private record), run over the store by `ViaStore` (feature `store`), the ports of which this
+# crate supplies (`ports.rs`). From coasys/ad4m PR #1673 (branch `identity/phone`), ahead of the
+# commit the rest of WE pins (`node scripts/ad4m-pin.mjs --commit`): `ViaStore` is not in that
+# one. Every ad4m crate here is at the same rev. For a local ad4m checkout, override with
+#   cargo test --config 'patch."https://github.com/coasys/ad4m".ad4m-identity-client.path="<ad4m>/ad4m-identity-client"' …
+# (and the same for each crate below), as `crates/custody/README.md` says.
+ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "98211551edb7d544f14077ae55c0d56fe8cb2d65", features = ["store"] }
+# The claim on an offer (`link::make_claim`, `OfferString`, `match_code`), `signing_bytes`, the
+# device string and the record's types.
+ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "98211551edb7d544f14077ae55c0d56fe8cb2d65", features = ["build"] }
 # `encode_proof_value` (a signature as `z` + base58btc) and the Ed25519 multikey.
-ad4m-hash-chain = { git = "https://github.com/coasys/ad4m", rev = "dc5964ba4e7b54c546dab759f95ff18ec987fed8" }
+ad4m-hash-chain = { git = "https://github.com/coasys/ad4m", rev = "98211551edb7d544f14077ae55c0d56fe8cb2d65" }
+# The request box's types (`DeviceRequest`, `DeviceRequestBody`).
+ad4m-ldk = { git = "https://github.com/coasys/ad4m", rev = "98211551edb7d544f14077ae55c0d56fe8cb2d65" }
+# `HttpClient` is an `async_trait(?Send)`; the flows are driven on the calling thread by
+# `futures-executor`'s `block_on` (a current-thread executor, no tokio runtime on the phone).
+async-trait = "0.1"
+futures-executor = "0.3"
 ed25519-dalek = { version = "2.2", features = ["zeroize"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
@@ -47,6 +62,15 @@ thiserror = "2"
 
 [dev-dependencies]
 tempfile = "3"
+# The tests run the flows against a real identity store, its router in process (as
+# `ad4m-identity-client/tests/store.rs` does), with a holder whose master key is in a `MemoryVault`.
+ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "98211551edb7d544f14077ae55c0d56fe8cb2d65", features = ["store", "test-vault"] }
+ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "98211551edb7d544f14077ae55c0d56fe8cb2d65", features = ["build", "words"] }
+identity-store = { git = "https://github.com/coasys/ad4m", rev = "98211551edb7d544f14077ae55c0d56fe8cb2d65" }
+axum = "0.8"
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+tokio = { version = "1", features = ["rt-multi-thread", "time"] }
 
 [profile.release]
 # The `.so` ships inside the APK twice (arm64 and x86_64): small and stripped.

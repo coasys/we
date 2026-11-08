@@ -388,7 +388,7 @@ fn a_claim_carries_both_keys_and_a_co_signature_the_store_accepts() {
     assert_eq!(claim.enc_key, public.enc);
     assert_eq!(claim.s, offer.s);
     assert_eq!(claim.hint.as_deref(), Some("Pixel 8"));
-    assert!(!claim.can_keep_master);
+    assert!(claim.can_keep_master);
     assert_eq!(
         prepared.claim_url,
         format!(

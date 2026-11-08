@@ -39,6 +39,11 @@ pub struct Joined {
     pub scid: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub seq: Option<u64>,
+    /// The store the offer that added this phone was at: where its log, inbox and record are.
+    /// Absent in a file a phone wrote before phase 2b, which then uses the store the app is
+    /// built with.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub store: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -96,7 +101,6 @@ impl KeyFile {
         decode(&self.sealed_sign, "sealedSign")
     }
 
-    #[cfg(test)]
     pub fn sealed_enc(&self) -> Result<Vec<u8>, PhoneKeyError> {
         decode(&self.sealed_enc, "sealedEnc")
     }
@@ -106,6 +110,7 @@ impl KeyFile {
             identity: Some(Joined {
                 scid: member.scid.clone(),
                 seq: member.seq,
+                store: self.pending.as_ref().map(|p| p.store.clone()),
             }),
             pending: None,
             ..self.clone()
@@ -165,10 +170,16 @@ pub fn read(path: &Path) -> Result<Option<KeyFile>, PhoneKeyError> {
 /// Writes `file` whole or not at all: a temporary file beside it, synced, then renamed over it.
 /// Readable by this app's user only.
 pub fn write(path: &Path, file: &KeyFile) -> Result<(), PhoneKeyError> {
+    let bytes = serde_json::to_vec_pretty(file).expect("the key file serialises");
+    write_atomic(path, &bytes)
+}
+
+/// `bytes` at `path`, whole or not at all: a temporary file beside it, synced, then renamed over
+/// it. Readable by this app's user only. The key file and the master-key file are both written so.
+pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), PhoneKeyError> {
     let io = |e: std::io::Error| PhoneKeyError::Io {
         reason: e.to_string(),
     };
-    let bytes = serde_json::to_vec_pretty(file).expect("the key file serialises");
     let tmp = path.with_extension("json.tmp");
     let mut options = fs::OpenOptions::new();
     options.write(true).create(true).truncate(true);
@@ -178,7 +189,7 @@ pub fn write(path: &Path, file: &KeyFile) -> Result<(), PhoneKeyError> {
         options.mode(0o600);
     }
     let mut out = options.open(&tmp).map_err(io)?;
-    out.write_all(&bytes).map_err(io)?;
+    out.write_all(bytes).map_err(io)?;
     out.sync_all().map_err(io)?;
     drop(out);
     fs::rename(&tmp, path).map_err(io)?;

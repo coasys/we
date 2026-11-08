@@ -25,7 +25,11 @@ uniffi::setup_scaffolding!();
 
 mod claim;
 mod file;
+mod holder;
+mod identity;
+mod ports;
 mod session;
+mod vault;
 
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
@@ -34,7 +38,14 @@ use ed25519_dalek::SigningKey;
 use zeroize::Zeroizing;
 
 pub use claim::{ClaimProgress, PreparedClaim};
+pub use holder::{HolderLink, LinkStep};
+pub use identity::{
+    AnswerView, AskedView, DeviceView, IdentityView, MasterTaken, PhoneIdentity, RequestView,
+    StoreConfig,
+};
+pub use ports::{Header, StoreReply, StoreRequest, StoreTransport, TransportError};
 pub use session::{SessionPurpose, SessionRequest};
+pub use vault::{MasterSealError, MasterSealer};
 
 use file::KeyFile;
 
@@ -101,6 +112,39 @@ pub enum PhoneKeyError {
     Invalid { reason: String },
     #[error("the key file could not be written: {reason}")]
     Io { reason: String },
+    /// The store did not answer, or answered that it is busy: a later try may pass. The app
+    /// says "offline" and tries again; nothing was changed.
+    #[error("the identity store is unreachable: {reason}")]
+    Unavailable { reason: String },
+    /// The store or the identity's log refused the step.
+    #[error("{reason}")]
+    Refused { reason: String },
+    /// The person closed the biometric prompt.
+    #[error("the fingerprint prompt was cancelled")]
+    Cancelled,
+    /// The phone has no biometric enrolled, so it cannot keep or use a master key.
+    #[error("set up a fingerprint or face unlock on this phone to keep the master key here")]
+    NoBiometrics,
+    /// A biometric enrolled since the master key was kept invalidated the key that sealed it:
+    /// the phone must be sent the master key again.
+    #[error("a new fingerprint or face was added, so the master key kept here can no longer open")]
+    KeyInvalidated,
+    /// The master sealer's key is not in secure hardware, and the person has not agreed to keep
+    /// the master key at `protection` anyway.
+    #[error("this phone keeps keys in {protection} only, not in secure hardware")]
+    WeakProtection { protection: String },
+    /// This phone keeps no master key of its identity.
+    #[error("this phone does not hold the master key")]
+    NoMasterKey,
+    /// The device may not keep the master key (its claim did not say it may).
+    #[error("{key} may not keep the master key")]
+    NotAKeeper { key: String },
+    /// The request asks for a rotation, which needs the 12 words.
+    #[error("this request replaces the master key, which needs the 12 words: answer it on your computer")]
+    NeedsWords,
+    /// The offer, ticket or request ended (expired, cancelled, answered elsewhere).
+    #[error("it ended: {reason}")]
+    Ended { reason: String },
 }
 
 impl From<SealError> for PhoneKeyError {
@@ -169,7 +213,7 @@ pub struct DeviceKeys {
 
 /// Calls [`Sealer::wipe`] when dropped: after a seed is copied out, whether or not what follows
 /// succeeds.
-struct WipeOnDrop<'a>(&'a dyn Sealer);
+pub(crate) struct WipeOnDrop<'a>(pub(crate) &'a dyn Sealer);
 
 impl Drop for WipeOnDrop<'_> {
     fn drop(&mut self) {
@@ -281,7 +325,39 @@ impl DeviceKeys {
     }
 }
 
+/// What the phone's executor is built from ([`identity`]'s one `ViaStore`): the device key opened
+/// for that executor's life, the enc key still sealed, and the identity the key file records.
+pub(crate) struct DeviceParts {
+    pub signing: SigningKey,
+    pub sealed_enc: Vec<u8>,
+    pub enc: String,
+    pub identity: Option<file::Joined>,
+}
+
 impl DeviceKeys {
+    pub(crate) fn parts(&self) -> Result<DeviceParts, PhoneKeyError> {
+        let guard = self.lock();
+        let file = guard.as_ref().ok_or(PhoneKeyError::NoKeys)?;
+        Ok(DeviceParts {
+            signing: self.signing_key(file)?,
+            sealed_enc: file.sealed_enc()?,
+            enc: file.enc.clone(),
+            identity: file.identity.clone(),
+        })
+    }
+
+    pub(crate) fn sealer(&self) -> Arc<dyn Sealer> {
+        self.sealer.clone()
+    }
+
+    /// The directory the key file is in: the master-key file sits beside it.
+    pub(crate) fn dir(&self) -> PathBuf {
+        self.path
+            .parent()
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from("."))
+    }
+
     fn lock(&self) -> MutexGuard<'_, Option<KeyFile>> {
         // A panic while the lock was held left the file as it was on disk, or the write before it.
         self.file
