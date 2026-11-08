@@ -6293,6 +6293,120 @@
       "needsArgs": ["activateApp"]
     },
     {
+      "name": "botStore",
+      "state": {
+        "available": {
+          "type": "boolean"
+        },
+        "canAdd": {
+          "type": "boolean"
+        },
+        "bots": {
+          "type": "array",
+          "properties": [
+            "did",
+            "name",
+            "state",
+            "status",
+            "statusTone",
+            "keyLine",
+            "keyTone",
+            "grantLine",
+            "created",
+            "paused",
+            "revoked",
+            "keyValid"
+          ]
+        },
+        "loaded": {
+          "type": "boolean"
+        },
+        "error": {
+          "type": "string"
+        },
+        "created": {
+          "type": "object",
+          "properties": ["name", "matchCode", "confirmBy", "token"]
+        },
+        "createError": {
+          "type": "string"
+        },
+        "creating": {
+          "type": "boolean"
+        },
+        "selected": {
+          "type": "object",
+          "properties": [
+            "did",
+            "name",
+            "state",
+            "status",
+            "statusTone",
+            "keyLine",
+            "keyTone",
+            "grantLine",
+            "created",
+            "paused",
+            "revoked",
+            "keyValid"
+          ]
+        },
+        "editor": {
+          "type": "object",
+          "properties": ["spaces", "actions", "days", "ends", "problem", "changed"]
+        },
+        "conflict": {
+          "type": "string"
+        },
+        "saving": {
+          "type": "boolean"
+        },
+        "activity": {
+          "type": "array",
+          "properties": ["id", "when", "allowed", "outcome", "what", "reason"]
+        },
+        "activityLoaded": {
+          "type": "boolean"
+        },
+        "hasOlder": {
+          "type": "boolean"
+        },
+        "loadingOlder": {
+          "type": "boolean"
+        }
+      },
+      "actions": [
+        "refresh",
+        "addBot",
+        "create",
+        "dismissCreated",
+        "select",
+        "close",
+        "toggleSpace",
+        "toggleAction",
+        "setDays",
+        "resetDraft",
+        "saveGrant",
+        "pause",
+        "resume",
+        "revoke",
+        "loadOlder"
+      ],
+      "ambient": [
+        "refresh",
+        "dismissCreated",
+        "select",
+        "close",
+        "toggleSpace",
+        "toggleAction",
+        "setDays",
+        "resetDraft",
+        "loadOlder"
+      ],
+      "destructive": ["revoke"],
+      "needsArgs": ["create", "select", "toggleSpace", "toggleAction", "setDays"]
+    },
+    {
       "name": "bundleStore",
       "state": {
         "pendingInstall": {

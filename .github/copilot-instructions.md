@@ -3040,6 +3040,41 @@ AppStore:
   - activateApp(id: string): activates an app and switches to its view
   - deactivateApp(): deactivates the current app and returns to the template view
 
+BotStore:
+- State:
+  - available: boolean — the backend runs bots. Gate the Bots page on it
+  - canAdd: boolean — "Add a bot" can be offered: this computer keeps the master key, which signs the bot’s key into the key log
+  - bots: { did, name, state, status, statusTone, keyLine, keyTone, grantLine, created, paused, revoked, keyValid }[] — the person's bots, oldest first, worded. `state` is 'active', 'paused' or 'revoked'; `status` and `statusTone` go in a badge; `keyLine` (with `keyTone` as its colour) says what the key log says of the bot's key and until when; `grantLine` what the grant lets it do now
+  - loaded: boolean — the list has been read once
+  - error: string — why the last read or change failed, or empty
+  - created: { name, matchCode, confirmBy, token } | null — the bot just made: the match code the identity window also shows, until when to confirm it there, and the bot's credential. Show the token once, with a copy button and a warning; it is gone after dismissCreated
+  - createError: string — why making the bot failed, or empty
+  - creating: boolean — making the bot is under way
+  - selected: the row of the bot open in the editor (as in `bots`), or null for the list
+  - editor: { spaces: { id, name, checked, known }[], actions: { action, label, checked, allowed }[], days, ends, problem, changed } | null — the grant editor for the selected bot. `known` is false for a space the grant names that is not one of the person's here; `allowed` is false for an action the bot's key may not take; `problem` says why it cannot be saved, or is empty
+  - conflict: string — a grant change was refused because another came first (or the bot is revoked): the grant was read again and is shown as it is now. Empty otherwise
+  - saving: boolean — a grant change is under way
+  - activity: { id, when, allowed, outcome, what, reason }[] — the selected bot's activity, newest first: each call it made, allowed or refused (`outcome` says why), and the reason it gave
+  - activityLoaded: boolean — the activity has been read once
+  - hasOlder: boolean — the last read filled a page: offer "Load older"
+  - loadingOlder: boolean — loadOlder is under way
+- Actions:
+  - refresh(): reads the bots again
+  - addBot(): "Add a bot" — asks where the master key is kept for the bot’s scope (what it may ever do, and for how many days), and shows an offer to paste into create. Resolves with the outcome
+  - create(offer: string, name: string): makes the bot from the offer, named so; sets created. Resolves true when it was made
+  - dismissCreated(): lets the credential go
+  - select(did: string): opens that bot in the grant editor and reads its activity
+  - close(): back to the list
+  - toggleSpace(id: string): adds that space to the draft grant, or takes it out
+  - toggleAction(action: 'read' | 'write' | 'join'): adds that action to the draft grant, or takes it out
+  - setDays(days: string): the draft grant ends that many days from now; empty for no end but the key’s
+  - resetDraft(): puts the editor back to the grant as read
+  - saveGrant(): saves the draft grant with the version it replaces. Resolves false on a conflict, with the grant read again
+  - pause(): pauses the selected bot: it may do nothing until resumed
+  - resume(): resumes the selected bot
+  - revoke(): revokes the selected bot for good — confirm first: a revoked grant never changes again
+  - loadOlder(): reads the next page of older activity
+
 BundleStore:
 - State:
   - pendingInstall: { name, icon, version, author, fileName, updates, unchanged, newInVersion, adds, capabilities, blocked, modulesToTurnOn, modulesNotInBuild, recordTypes, needsSpace, display } | null — the app an install prompt is asking about, everything already in the words a person reads. `author` is what the file claims and nothing attests to it; `updates` is the version already installed, empty for a first install; `unchanged` says the file is the one the installed version came from, by content rather than version, so installing it would change nothing and the prompt offers nothing to press; `newInVersion` ({ capabilities, modules, recordTypes }) is, on an update, what this version asks for that the installed one was never agreed to — each empty when nothing is, and null on a first install or where no agreement was recorded; `needsSpace` says it brings record types or sections, so the prompt lists spaceChoices; `display` is `ours` (every space opens in the app’s template while it is in use) or `theirs`. Host chrome only: an app must never draw the prompt vouching for it

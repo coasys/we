@@ -32,6 +32,7 @@ import {
   NO_IDENTITY_CAPABILITIES,
 } from '@we/backend-shared';
 
+import { type BotClientLike, createAd4mBotPort } from './botPort';
 import { recordMissingMethod } from './missingMethods';
 
 /** The slice of the SDK client this port uses — the whole of it, so a test can stand one in. */
@@ -42,6 +43,8 @@ export interface IdentityClientLike {
     devices(): Promise<unknown>;
   };
   on?: (type: 'identity-fork', handler: (event: unknown) => void) => () => void;
+  /** `bot.*`: absent on an SDK that predates bots. */
+  bot?: BotClientLike;
 }
 
 /**
@@ -208,6 +211,18 @@ export function readDevices(value: unknown): DeviceKeyView[] {
 export function createAd4mIdentityPort(backendClient: unknown, custody?: Ad4mCustodyHost): IdentityPort {
   const client = backendClient as IdentityClientLike & Partial<Ad4mClient>;
 
+  /** Whether this executor runs bots: it answers `bot.list`. */
+  async function answersBots(): Promise<boolean> {
+    if (!client.bot) return false;
+    try {
+      await client.bot.list();
+      return true;
+    } catch (error) {
+      recordMissingMethod(error);
+      return false;
+    }
+  }
+
   const port: IdentityPort = {
     async capabilities(): Promise<IdentityCapabilities> {
       try {
@@ -221,6 +236,7 @@ export function createAd4mIdentityPort(backendClient: unknown, custody?: Ad4mCus
       // The custody service also takes the 12 words back, to replace the master key or restore.
       return {
         ...NO_IDENTITY_CAPABILITIES,
+        bots: await answersBots(),
         keyLog: true,
         devices: true,
         masterKey: !!custody,
@@ -251,6 +267,7 @@ export function createAd4mIdentityPort(backendClient: unknown, custody?: Ad4mCus
     },
   };
 
+  if (client.bot) port.bots = createAd4mBotPort(client.bot);
   if (custody) {
     port.custody = async () => readCustody(await custody.publicState());
     port.change = (change) => custody.open(change);

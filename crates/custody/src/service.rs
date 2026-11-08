@@ -35,7 +35,7 @@ use ad4m_identity_client::{
 use ad4m_identity_core::link::{DeviceString, OfferKind, CONFIRM_GRACE_S, OFFER_TTL_S};
 use ad4m_identity_core::record::{DeviceEntry, DeviceKind, HoldsMaster as Holds, Place};
 use ad4m_identity_core::words::{self, Words};
-use ad4m_identity_core::{Event, Op};
+use ad4m_identity_core::{BotScope, Event, Op, BOT_ACTIONS};
 use ad4m_ldk::identity::DeviceRequestBody;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
@@ -88,6 +88,10 @@ pub enum IdentityStep {
     /// Forgets this computer's copy of the master key ("Also remove my master key from this
     /// computer", on log out). Refused while it is the only copy.
     RemoveMaster,
+    /// The holder adds a bot: picks what its key may ever do and until when, opens a bot offer
+    /// for the executor that runs the bot to claim (`bot.createAgent`), and confirms the match
+    /// code. The key joins the log with the bot mark and that scope; it never speaks for the person.
+    AddBot,
 }
 
 /// A key a `confirm-revoke` request asks to revoke, as the key log lists it: the key id and its
@@ -294,6 +298,30 @@ pub enum Screen {
     /// An identity made here earlier that the store refused for good: why, and the way out —
     /// discard it ([`StepInput::Discard`]) or cancel.
     PendingRefused { did: String, message: String },
+    /// What the bot's key may ever do (`read`, `write`, `join`) and for how many days, before the
+    /// offer is opened. `error`: why the last choice was refused.
+    BotScope { error: Option<String> },
+    /// The bot offer, as a string to paste where the bot runs (Settings → Bots on that computer,
+    /// or `bot.createAgent`). It works once, until `expires`.
+    BotOffer {
+        offer: String,
+        can: Vec<String>,
+        #[serde(rename = "keyExpires")]
+        key_expires: u64,
+        expires: u64,
+    },
+    /// The bot's executor claimed the offer: it shows this code too. `name`: what it was called
+    /// there.
+    BotMatch { code: String, name: Option<String> },
+    /// The bot's key is in the log (`add` published) as `key_id`, with the bot mark and its scope.
+    /// `note`: what did not happen yet (its name in the record), in words.
+    BotAdded {
+        seq: u64,
+        #[serde(rename = "keyId")]
+        key_id: String,
+        name: String,
+        note: Option<String>,
+    },
     /// The step stopped. Nothing was published unless the message says so.
     Failed { message: String },
 }
@@ -312,7 +340,8 @@ impl Screen {
             | Screen::Renamed { .. }
             | Screen::MasterReplaced { .. }
             | Screen::Restored { .. }
-            | Screen::MasterRemoved => Some(StepOutcome::Done),
+            | Screen::MasterRemoved
+            | Screen::BotAdded { .. } => Some(StepOutcome::Done),
             Screen::Failed { .. } => Some(StepOutcome::Failed),
             _ => None,
         }
@@ -440,6 +469,11 @@ pub enum StepInput {
     /// On `MasterNotKept` (type the 12 words again) or `RestoreNotLinked` (link this computer
     /// again).
     TryAgain,
+    /// On `BotScope`: the actions the bot's key may ever take, and for how many days.
+    BotScope {
+        can: Vec<String>,
+        days: u32,
+    },
 }
 
 impl std::fmt::Debug for StepInput {
@@ -462,6 +496,7 @@ impl std::fmt::Debug for StepInput {
             StepInput::Remove => "remove",
             StepInput::Discard => "discard",
             StepInput::TryAgain => "try-again",
+            StepInput::BotScope { .. } => "bot-scope",
         };
         f.write_str(name)
     }
@@ -785,6 +820,9 @@ async fn serve(vault: DesktopVault, address: ExecutorAddress, mut rx: Rx) {
                     }
                     IdentityStep::RemoveMaster => {
                         run_remove_master(&vault, &address, &mut rx, &mut reply).await
+                    }
+                    IdentityStep::AddBot => {
+                        run_add_bot(&vault, &address, &mut rx, &mut reply).await
                     }
                 }
             }
@@ -2584,6 +2622,214 @@ pub fn qr_svg(link: &str) -> String {
 
 // ─── revoke ─────────────────────────────────────────────────────────────────────
 
+// ─── add a bot ─────────────────────────────────────────────────────────────────────
+
+/// The longest a bot's key may live, in days. The key's scope is the ceiling of every grant the
+/// person gives the bot later, and a bot that should run longer is added again.
+pub const BOT_DAYS_MAX: u32 = 365;
+
+/// The scope a [`StepInput::BotScope`] asks for: its actions, each one a bot may take and each
+/// once, in the order read, write, join; and an expiry `days` after `now`. Why not, in words a
+/// person reads, when it is refused.
+pub fn bot_scope(can: &[String], days: u32, now: u64) -> Result<BotScope, String> {
+    if can.iter().any(|a| !BOT_ACTIONS.contains(&a.as_str())) {
+        return Err("A bot can read, write or join, and nothing else.".into());
+    }
+    let can: Vec<String> = BOT_ACTIONS
+        .iter()
+        .filter(|a| can.iter().any(|c| c == *a))
+        .map(|a| a.to_string())
+        .collect();
+    if can.is_empty() {
+        return Err("Choose at least one thing the bot may do.".into());
+    }
+    if days == 0 || days > BOT_DAYS_MAX {
+        return Err(format!("Choose from 1 to {BOT_DAYS_MAX} days."));
+    }
+    Ok(BotScope {
+        can,
+        expires: now + u64::from(days) * 86_400,
+    })
+}
+
+async fn run_add_bot(
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
+    let executor = match connect(address).await {
+        Ok(e) => e,
+        Err(message) => return answer(reply, Ok(Screen::Failed { message })),
+    };
+    add_bot_on(&executor, vault, address, rx, reply).await
+}
+
+/// Adds a bot. The person picks its scope first, so nothing is unlocked for a choice that is
+/// refused; then the one unlock of the step, the bot offer (`LinkFlow::open_bot`), the claim of
+/// the executor that runs the bot, the match code, and the `add`. Only the computer that keeps
+/// the master key can: the add is signed by it.
+async fn add_bot_on<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
+    let store_url = match trusted_store(executor).await {
+        Ok(url) => url,
+        Err(refused) => return answer(reply, Ok(refused)),
+    };
+    let (did, _) = match holder_of(executor, vault).await {
+        Ok(holder) => holder,
+        Err(screen) => return answer(reply, Ok(screen)),
+    };
+    // Only the master key signs a bot's key into the log: say so before asking anything.
+    let Some(scid) = ad4m_identity_core::scid_of(&did) else {
+        return answer(reply, Ok(failed(&ClientError::Vault(VaultError::NotFound))));
+    };
+    match vault.holds(scid) {
+        Ok(true) => {}
+        Err(e) => return answer(reply, Ok(failed(&ClientError::Vault(e)))),
+        Ok(false) => return answer(reply, Ok(failed(&ClientError::Vault(VaultError::NotFound)))),
+    }
+    let needs = match passphrase_for(vault, &did) {
+        Ok(needs) => needs,
+        Err(e) => return answer(reply, Ok(failed(&e))),
+    };
+    answer(reply, Ok(Screen::BotScope { error: None }));
+    let scope = loop {
+        let Some(input) = next_input(vault, address, rx, reply).await else {
+            return;
+        };
+        let StepInput::BotScope { can, days } = input else {
+            answer(reply, Err(CustodyError::WrongInput));
+            continue;
+        };
+        match bot_scope(&can, days, CLOCK.now()) {
+            Ok(scope) => break scope,
+            Err(error) => answer(reply, Ok(Screen::BotScope { error: Some(error) })),
+        }
+    };
+
+    let mut unlocking = vault.unlocking(None);
+    if needs {
+        answer(reply, Ok(Screen::EnterPassphrase { error: None }));
+    }
+    let flow = loop {
+        if needs {
+            let Some(input) = next_input(vault, address, rx, reply).await else {
+                return;
+            };
+            let StepInput::Passphrase { passphrase: p, .. } = input else {
+                answer(reply, Err(CustodyError::WrongInput));
+                continue;
+            };
+            unlocking = vault.unlocking(Some(p.into_secret()));
+        }
+        match LinkFlow::open_bot(
+            executor,
+            &unlocking,
+            &did,
+            scope.clone(),
+            &store_url,
+            &CLOCK,
+            &RANDOM,
+        )
+        .await
+        {
+            Ok(flow) => break flow,
+            Err(ClientError::Vault(VaultError::Cancelled)) if needs => {
+                answer(reply, Ok(wrong_passphrase()));
+            }
+            Err(e) => return answer(reply, Ok(failed(&e))),
+        }
+    };
+    answer(
+        reply,
+        Ok(Screen::BotOffer {
+            offer: flow.offer_string(),
+            can: scope.can.clone(),
+            key_expires: scope.expires,
+            expires: offer_expiry(),
+        }),
+    );
+    follow_bot(&flow, vault, address, rx, reply).await
+}
+
+/// The bot offer after it is out: waits for the bot's executor to claim it, shows the match code
+/// that executor shows too, and on the person's yes publishes the `add`. The key's bot mark and
+/// scope are the offer's, which the claim cannot change (`link::verify_claim_view`); the record
+/// lists it as a bot under the name the person gives (else the name it was made with).
+async fn follow_bot<R: ExecutorRpc>(
+    flow: &LinkFlow<'_, R>,
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
+    let mut claimed: Option<Claimed> = None;
+    loop {
+        let Some(input) = next_input(vault, address, rx, reply).await else {
+            return;
+        };
+        match input {
+            StepInput::WaitClaim if claimed.is_none() => {
+                let outcome = tokio::select! {
+                    claim = flow.wait_for_claim() => Some(claim),
+                    () = wait_cancel(vault, address, rx) => None,
+                };
+                match outcome {
+                    Some(Ok(claim)) => {
+                        let screen = Screen::BotMatch {
+                            code: claim.match_code.clone(),
+                            name: claim.hint.clone(),
+                        };
+                        claimed = Some(claim);
+                        answer(reply, Ok(screen));
+                    }
+                    Some(Err(e)) => return answer(reply, Ok(failed(&e))),
+                    None => return answer(reply, Err(CustodyError::NoStep)),
+                }
+            }
+            StepInput::Confirm { name, .. } if claimed.is_some() => {
+                let claim = claimed.take().expect("checked above");
+                let name = given_name(name)
+                    .or_else(|| given_name(claim.hint.clone()))
+                    .unwrap_or_else(|| "A bot".into());
+                let entry = DeviceEntry {
+                    name: name.clone(),
+                    kind: DeviceKind::Bot,
+                    place: None,
+                    address: None,
+                    runs_executor: false,
+                    holds_master: Holds::No,
+                    master_index: None,
+                    operator: None,
+                };
+                let linked = match flow.confirm(&claim, entry, false).await {
+                    Ok(linked) => linked,
+                    Err(e) => return answer(reply, Ok(failed(&e))),
+                };
+                let note = linked.record.as_ref().err().map(|e| {
+                    log::warn!("custody: the bot was not listed in the record: {e}");
+                    "Its name was not saved: your devices show it by its key id.".to_string()
+                });
+                return answer(
+                    reply,
+                    Ok(Screen::BotAdded {
+                        seq: linked.head.seq,
+                        key_id: linked.key_id.as_str().to_string(),
+                        name,
+                        note,
+                    }),
+                );
+            }
+            _ => answer(reply, Err(CustodyError::WrongInput)),
+        }
+    }
+}
+
 async fn run_revoke(
     vault: &DesktopVault,
     address: &ExecutorAddress,
@@ -3432,6 +3678,10 @@ mod tests {
                     cosign(&mut event, "d1", &self.device).unwrap();
                     Ok(serde_json::to_value(&event).unwrap())
                 }
+                // The store takes any offer, answering its id as it does.
+                "identity.openOffer" => Ok(json!({
+                    "offerId": p["signedOffer"]["offer"]["offerId"].clone(),
+                })),
                 "identity.publish" => {
                     if let Some((code, message)) = self.refuse_for_good.borrow().clone() {
                         return Err(RpcError { code, message });
@@ -5167,6 +5417,176 @@ mod tests {
         ad4m_identity_core::fold(&log).unwrap();
         assert_eq!(vault.master_index(&scid).unwrap(), Some(1));
         shows_no_word(&screens, &phrase, &["zzzq"]);
+    }
+
+    #[test]
+    fn a_bot_scope_is_the_actions_a_bot_can_take_once_each_until_a_day_in_range() {
+        let can = |list: &[&str]| list.iter().map(|a| a.to_string()).collect::<Vec<_>>();
+        let scope = bot_scope(&can(&["join", "read", "join"]), 30, 1_000).unwrap();
+        assert_eq!(scope.can, can(&["read", "join"]));
+        assert_eq!(scope.expires, 1_000 + 30 * 86_400);
+        assert_eq!(
+            bot_scope(&can(&["write"]), BOT_DAYS_MAX, 0)
+                .unwrap()
+                .expires,
+            u64::from(BOT_DAYS_MAX) * 86_400
+        );
+        for (list, days, says) in [
+            (can(&[]), 30, "at least one"),
+            (can(&["read", "admin"]), 30, "nothing else"),
+            (can(&["read"]), 0, "from 1 to 365"),
+            (can(&["read"]), BOT_DAYS_MAX + 1, "from 1 to 365"),
+        ] {
+            let refused = bot_scope(&list, days, 0).unwrap_err();
+            assert!(refused.contains(says), "{list:?} {days}: {refused}");
+        }
+    }
+
+    #[test]
+    fn the_add_bot_step_and_its_screens_cross_ipc_in_the_windows_shapes() {
+        let step: IdentityStep = serde_json::from_value(json!({ "kind": "add-bot" })).unwrap();
+        assert!(matches!(step, IdentityStep::AddBot));
+        let input: StepInput =
+            serde_json::from_value(json!({ "kind": "bot-scope", "can": ["read"], "days": 30 }))
+                .unwrap();
+        assert!(matches!(&input, StepInput::BotScope { can, days: 30 } if can == &["read"]));
+        assert_eq!(format!("{input:?}"), "bot-scope");
+        let offer = Screen::BotOffer {
+            offer: "coasys:offer:1:x".into(),
+            can: vec!["read".into()],
+            key_expires: 9,
+            expires: 8,
+        };
+        assert_eq!(
+            serde_json::to_value(&offer).unwrap(),
+            json!({ "screen": "bot-offer", "offer": "coasys:offer:1:x", "can": ["read"], "keyExpires": 9, "expires": 8 })
+        );
+        let added = Screen::BotAdded {
+            seq: 3,
+            key_id: "d3".into(),
+            name: "Test bot".into(),
+            note: None,
+        };
+        assert_eq!(
+            serde_json::to_value(&added).unwrap(),
+            json!({ "screen": "bot-added", "seq": 3, "keyId": "d3", "name": "Test bot", "note": null })
+        );
+        assert_eq!(
+            serde_json::to_value(Screen::BotScope { error: None }).unwrap(),
+            json!({ "screen": "bot-scope", "error": null })
+        );
+        assert_eq!(
+            serde_json::to_value(Screen::BotMatch {
+                code: "123456".into(),
+                name: None
+            })
+            .unwrap(),
+            json!({ "screen": "bot-match", "code": "123456", "name": null })
+        );
+        assert_eq!(added.outcome(), Some(StepOutcome::Done));
+        for open in [offer, Screen::BotScope { error: None }] {
+            assert_eq!(open.outcome(), None, "{open:?}");
+        }
+    }
+
+    /// An executor that speaks for the identity of `log_with_d2`, whose master key this vault
+    /// keeps, with a head from its store: one that can open an offer.
+    fn holder_with_head() -> (ViaExecutor<FakeExecutor>, DesktopVault) {
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        let scid = events[0].scid.clone();
+        let executor = executor_of(&events);
+        executor.rpc().answer(
+            "identity.log",
+            json!({
+                "did": did_of(&scid),
+                "events": events,
+                "head": { "scid": scid, "seq": events.len() - 1, "hash": "h", "time": 0, "store": "did:key:zStore", "sig": "s" },
+                "fork": null,
+            }),
+        );
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        keep_master(&vault, &scid, 0);
+        (executor, vault)
+    }
+
+    #[tokio::test]
+    async fn adding_a_bot_opens_a_bot_offer_of_the_scope_picked_and_nothing_before() {
+        let (executor, vault) = holder_with_head();
+        // The store lists no offer: the wait ends as the offer did.
+        executor.rpc().answer("identity.offers", json!([]));
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ex = &executor;
+        let ((), screens) = tokio::join!(
+            add_bot_on(&executor, &vault, &address, &mut rx, &mut reply),
+            async {
+                let mut shown = vec![first.await.unwrap().unwrap()];
+                for (can, days) in [(vec![], 30), (vec!["read".to_string()], 0)] {
+                    shown.push(window.step(StepInput::BotScope { can, days }).await);
+                }
+                // Nothing is opened for a scope refused.
+                assert!(ex.rpc().called("identity.openOffer").is_empty());
+                shown.push(
+                    window
+                        .step(StepInput::BotScope {
+                            can: vec!["write".into(), "read".into()],
+                            days: 30,
+                        })
+                        .await,
+                );
+                shown.push(window.step(StepInput::WaitClaim).await);
+                shown
+            }
+        );
+        assert!(
+            matches!(&screens[0], Screen::BotScope { error: None }),
+            "{screens:?}"
+        );
+        assert!(
+            matches!(&screens[1], Screen::BotScope { error: Some(m) } if m.contains("at least one")),
+            "{screens:?}"
+        );
+        assert!(
+            matches!(&screens[2], Screen::BotScope { error: Some(m) } if m.contains("days")),
+            "{screens:?}"
+        );
+        let Screen::BotOffer {
+            offer,
+            can,
+            key_expires,
+            ..
+        } = &screens[3]
+        else {
+            panic!("{screens:?}");
+        };
+        assert!(offer.starts_with("coasys:offer:1:"), "{offer}");
+        assert_eq!(can, &["read", "write"]);
+        let opened = executor.rpc().called("identity.openOffer");
+        assert_eq!(opened.len(), 1);
+        let sent = &opened[0]["signedOffer"]["offer"];
+        assert_eq!(sent["kind"], "bot", "{sent}");
+        assert_eq!(sent["bot"]["can"], json!(["read", "write"]), "{sent}");
+        assert_eq!(sent["bot"]["expires"], json!(key_expires), "{sent}");
+        let Screen::Failed { message } = &screens[4] else {
+            panic!("{screens:?}");
+        };
+        assert!(message.to_lowercase().contains("offer"), "{message}");
+        assert_eq!(executor.rpc().publishes.get(), 0);
+    }
+
+    #[tokio::test]
+    async fn only_the_computer_that_keeps_the_master_key_adds_a_bot() {
+        let executor = linked_executor();
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, _window, first) = opened();
+        let ((), shown) = tokio::join!(
+            add_bot_on(&executor, &vault, &address, &mut rx, &mut reply),
+            async { first.await.unwrap().unwrap() }
+        );
+        assert!(
+            matches!(&shown, Screen::Failed { message } if message.contains("does not keep your master key")),
+            "{shown:?}"
+        );
+        assert!(executor.rpc().called("identity.openOffer").is_empty());
     }
 
     /// A store that refuses its next rename, as a keychain that refuses an update: the vault

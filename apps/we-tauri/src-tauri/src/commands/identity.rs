@@ -49,6 +49,7 @@ fn step_kind(step: &Option<IdentityStep>) -> &'static str {
         Some(IdentityStep::ReplaceMaster) => "replace-master",
         Some(IdentityStep::Restore) => "restore",
         Some(IdentityStep::RemoveMaster) => "remove-master",
+        Some(IdentityStep::AddBot) => "add-bot",
         Some(IdentityStep::AnswerRequest { .. }) => "answer-request",
         Some(IdentityStep::Rename { .. }) => "rename",
         Some(IdentityStep::Revoke { .. }) => "revoke",

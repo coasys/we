@@ -225,6 +225,7 @@ describe('the identity window', () => {
       { kind: 'replace-master' },
       { kind: 'restore' },
       { kind: 'remove-master' },
+      { kind: 'add-bot' },
       { kind: 'answer-request', id: 'r1' },
       { kind: 'rename', keyId: 'd2' },
     ]) {

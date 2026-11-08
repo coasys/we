@@ -10,6 +10,7 @@ import type { SchemaNode } from '@we/schema-shared';
 import { comingSoon, confirmModal } from '@we/template-kit';
 
 import { accountSettings } from './AccountSettings.schema.ts';
+import { botsSection } from './BotSettingsPages.ts';
 import { hostCredits, hostSection } from './HostSettings.schema.ts';
 import {
   addDeviceButton,
@@ -458,18 +459,26 @@ export function thisDevicePage(advanced: SchemaNode[]): SchemaNode {
 
 // ─── Bots ───────────────────────────────────────────────────────────────────────
 
+/** The bots page where the backend runs bots (`BotSettingsPages.ts`); a preview of it where it does not. */
 export const botsPage: SchemaNode = {
-  type: 'Column',
-  props: { gap: '400' },
-  children: [
-    heading('Bots', 'Bots act for you with keys of their own, inside what you grant them.'),
-    comingSoon({
-      available: can('bots'),
-      icon: 'robot',
-      title: 'Your bots',
-      description:
-        'Each bot signs as itself, never as you, in the spaces you let it into — with an AI budget you set, and a log of what it did.',
-      preview: [actions('Connect a bot')],
-    }),
-  ],
+  type: '$if',
+  props: {
+    condition: { $: 'botStore.available' },
+    then: botsSection,
+    else: {
+      type: 'Column',
+      props: { gap: '400' },
+      children: [
+        heading('Bots', 'Bots act for you with keys of their own, inside what you grant them.'),
+        comingSoon({
+          available: can('bots'),
+          icon: 'robot',
+          title: 'Your bots',
+          description:
+            'Each bot signs as itself, never as you, in the spaces you let it into, and gives a reason for each thing it writes. Each thing it does is logged.',
+          preview: [actions('Add a bot')],
+        }),
+      ],
+    },
+  },
 };
