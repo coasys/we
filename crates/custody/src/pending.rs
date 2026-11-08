@@ -82,7 +82,7 @@ struct Metadata {
     /// The files written in this folder that must exist from then on.
     written: Vec<String>,
     /// Per file of [`written`](Self::written), the identities an entry was made for in it,
-    /// noted before the entry is written: an entry missing for one of them has been lost; one
+    /// noted once the entry is written: an entry missing for one of them has been lost; one
     /// missing for an identity never noted was never made. Absent in metadata written before
     /// identities were noted (an identity whose entry is in the file is found there all the
     /// same, and is noted with the file's next change).
@@ -643,10 +643,14 @@ fn read_noted<T: DeserializeOwned>(
     }
 }
 
-/// Writes `file`, one that must not go missing, holding entries for `scids`, noting the file and
-/// each identity in the folder's metadata first: noted and durable before the file is, so neither
-/// the file nor an entry in it is ever there unnoted (the metadata a file that predates it never
-/// had is written with its next change). A noted identity is never dropped from the metadata.
+/// Writes `file`, one that must not go missing, holding entries for `scids`, then notes the file
+/// and each identity in the folder's metadata: the file and its entries first, durable, the note
+/// second. A crash between the two leaves an entry that is there and not yet noted, which reads
+/// as it is and is noted with the next change; the other way round (note first) a crash left an
+/// identity noted with no entry, a loss with no way back in a first restore on a computer not
+/// linked yet. What the note buys is the detection of a loss *after* it exists: a file or entry
+/// that was noted and is gone. The metadata a file that predates it never had is written with
+/// the file's next change. A noted identity is never dropped from the metadata.
 fn write_noted<T: Serialize + ?Sized>(
     dir: &std::path::Path,
     file: &str,
@@ -654,6 +658,7 @@ fn write_noted<T: Serialize + ?Sized>(
     value: &T,
 ) -> Result<(), VaultError> {
     let mut noted = metadata(dir)?;
+    write_bytes(dir, file, &serde_json::to_vec(value).map_err(unavailable)?)?;
     let mut changed = false;
     if !noted.written.iter().any(|f| f == file) {
         noted.written.push(file.to_string());
@@ -674,7 +679,7 @@ fn write_noted<T: Serialize + ?Sized>(
             &serde_json::to_vec(&noted).map_err(unavailable)?,
         )?;
     }
-    write_bytes(dir, file, &serde_json::to_vec(value).map_err(unavailable)?)
+    Ok(())
 }
 
 /// The folder's [`Metadata`]: none written yet when its file is absent; unreadable is an error.
@@ -734,6 +739,36 @@ fn write_bytes(dir: &std::path::Path, file: &str, bytes: &[u8]) -> Result<(), Va
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Lal's P2 at 564d9aaa0. `write_noted` made the metadata note durable before the entry,
+    /// so a crash between the two in an identity's first `establish_epoch` (a first restore on
+    /// a computer not linked yet) left the identity noted with no entry: lost, and the way back
+    /// it names, "Replace my master key", refuses on a computer that is not linked. With the
+    /// entry written first, that crash leaves nothing of the identity: a fresh start, and the
+    /// restore goes on. Here the epochs file's write fails once, after whatever is written
+    /// before it: its temp name is taken by a directory.
+    #[test]
+    fn a_crash_between_an_identitys_first_entry_and_its_note_is_a_fresh_start_not_a_loss() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = PendingIncepts::file(dir.path().to_path_buf());
+        let blocked = dir
+            .path()
+            .join(format!("{EPOCHS_FILE_NAME}.{}.tmp", std::process::id()));
+        std::fs::create_dir_all(&blocked).unwrap();
+        assert!(folder.exclusive().unwrap().establish_epoch("QmB").is_err());
+        std::fs::remove_dir_all(&blocked).unwrap();
+
+        let epoch = folder.exclusive().unwrap().epoch("QmB");
+        assert!(
+            matches!(epoch, Ok(0)),
+            "after the crash the identity reads {epoch:?}, not as never made"
+        );
+        let established = folder.exclusive().unwrap().establish_epoch("QmB").unwrap();
+        assert_eq!(
+            folder.exclusive().unwrap().epoch("QmB").unwrap(),
+            established
+        );
+    }
     use ad4m_identity_client::vault::KeySigner;
     use ad4m_identity_core::build::{incept_human, Signer};
     use ad4m_identity_core::{words, DeviceKey, KeyLife};

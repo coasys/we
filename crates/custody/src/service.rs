@@ -708,9 +708,10 @@ const NOT_THESE_WORDS: &str = "These words do not make your identity's master ke
 /// back is the words-gated recovery in "Replace my master key" ([`rotate_with_words`]).
 const LOST_EPOCH: &str = "This computer has lost its count of the changes to the master key it \
      keeps (a file in its custody folder is gone), so it will not change or remove that key on \
-     its own. Your master key is still here. To go on, choose “Replace my master key” and type \
-     your 12 words: once they check out, this computer starts the count again and replaces the \
-     key.";
+     its own. Your master key is still here. To go on, type your 12 words: on a computer that \
+     is linked to this identity, choose “Replace my master key”; on one that is not linked yet, \
+     restore the identity. Once the words check out, this computer starts the count again and \
+     replaces the key.";
 
 /// Why a master key is not removed from this computer.
 const ONLY_COPY: &str = "This computer keeps the only copy of your master key: no other \
