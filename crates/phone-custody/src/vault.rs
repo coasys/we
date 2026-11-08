@@ -20,6 +20,20 @@
 //! acknowledge the inbox message, then write the record) leaves a crash between two steps to be
 //! retried from the inbox.
 //!
+//! **One lock, one file.** Each operation reads, decides and writes under the vault's one lock,
+//! and everything it decides on is in the same file: the kept and staged keys, each identity's
+//! **custody epoch** and each record's **high-water mark**. A change of a kept key and the move of
+//! its epoch are therefore one atomic write, never two. The rules are WE's desktop vault's
+//! (`crates/custody/src/vault.rs`): the kept key never goes back a generation (a store or promote
+//! under a higher kept index answers `AlreadyNewer`), a forget is a compare-and-delete (on the
+//! index, or on the epoch), and the epoch moves on every successful store, promote and forget,
+//! a same-index re-store included, never otherwise. An epoch is a counter, never a digest: the
+//! file's **incarnation** (drawn at random when the file is first made) in the high 32 bits and
+//! the identity's count of changes in the low, so a file lost and made again does not answer an
+//! epoch a removal read before the loss, except by a 1 in 2³² draw.
+//!
+//! The file is in `no_backup/device-keys/`, as the key file is.
+//!
 //! **Protection.** The master sealer reports what the Keystore gave its key (`strongbox`, `tee`,
 //! `software`, `unknown`). A master key is kept only at `strongbox` or `tee`, unless the person has
 //! agreed to keep it at the level the phone has ([`PhoneVault::allow_weak_protection`]): an
@@ -31,7 +45,7 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use ad4m_identity_client::vault::KeySigner;
 use ad4m_identity_client::{
-    MasterUse, PendingPush, Secret, StageToken, Unlocked, Vault, VaultError,
+    Forgot, MasterUse, PendingPush, Secret, StageToken, Stored, Unlocked, Vault, VaultError,
 };
 use ad4m_identity_core::build::Signer;
 use ad4m_identity_core::Event;
@@ -187,6 +201,76 @@ struct MasterFile {
     incepts: Vec<serde_json::Value>,
     #[serde(default)]
     pushes: Vec<PendingPush>,
+    /// Drawn at random when the file is first made; the high half of every custody epoch. `0` in
+    /// a file written before epochs were kept, which [`PhoneVault::open`] replaces with a draw.
+    #[serde(default)]
+    incarnation: u32,
+    /// Each identity's count of changes of its kept key.
+    #[serde(default)]
+    epochs: Vec<EpochEntry>,
+    /// Each identity's record high-water mark.
+    #[serde(default)]
+    seen: Vec<Seen>,
+}
+
+/// How many times an identity's kept key changed in this file.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct EpochEntry {
+    scid: String,
+    count: u32,
+}
+
+/// The highest version of an identity's record read; `None` after a reset.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Seen {
+    scid: String,
+    version: Option<u64>,
+}
+
+impl MasterFile {
+    fn kept(&self, scid: &str) -> Option<&Item> {
+        self.kept.iter().find(|k| k.scid == scid)
+    }
+
+    fn epoch(&self, scid: &str) -> u64 {
+        let count = self
+            .epochs
+            .iter()
+            .find(|e| e.scid == scid)
+            .map_or(0, |e| e.count);
+        (u64::from(self.incarnation) << 32) | u64::from(count)
+    }
+
+    /// Moves `scid`'s epoch, in this copy of the file: saved with the change it counts.
+    fn bump_epoch(&mut self, scid: &str) -> Result<(), VaultError> {
+        let entry = match self.epochs.iter_mut().find(|e| e.scid == scid) {
+            Some(entry) => entry,
+            None => {
+                self.epochs.push(EpochEntry {
+                    scid: scid.to_string(),
+                    count: 0,
+                });
+                self.epochs.last_mut().expect("just pushed")
+            }
+        };
+        entry.count = entry.count.checked_add(1).ok_or_else(|| {
+            VaultError::Unavailable("the custody epoch has no room left to move".into())
+        })?;
+        Ok(())
+    }
+}
+
+/// A non-zero incarnation, so a file that has one is told from one written before epochs.
+fn draw_incarnation() -> u32 {
+    use rand_core::RngCore;
+    loop {
+        let drawn = rand_core::OsRng.next_u32();
+        if drawn != 0 {
+            return drawn;
+        }
+    }
 }
 
 fn hex(bytes: &[u8]) -> String {
@@ -215,7 +299,7 @@ impl PhoneVault {
         device: Arc<dyn Sealer>,
     ) -> Result<Self, crate::PhoneKeyError> {
         let path = dir.join(MASTER_FILE_NAME);
-        let file = match std::fs::read(&path) {
+        let mut file = match std::fs::read(&path) {
             Ok(bytes) => {
                 let file: MasterFile =
                     serde_json::from_slice(&bytes).map_err(|e| crate::PhoneKeyError::Damaged {
@@ -238,6 +322,11 @@ impl PhoneVault {
                 })
             }
         };
+        // Saved with the first write; an epoch answered before it is drawn again at the next
+        // open, which a forget at it reads as a change and keeps the key.
+        if file.incarnation == 0 {
+            file.incarnation = draw_incarnation();
+        }
         Ok(PhoneVault {
             path,
             master,
@@ -361,6 +450,42 @@ impl PhoneVault {
         Ok(())
     }
 
+    /// The authenticated index of `scid`'s kept key in `file`, for a write that must not go back
+    /// a generation or a forget that must name what it leaves: an entry its tag does not vouch
+    /// for is refused (`Tampered`) rather than guessed at, as the desktop vault refuses an item
+    /// that does not say its index.
+    fn kept_index_held(&self, file: &MasterFile, scid: &str) -> Result<Option<u32>, VaultError> {
+        match file.kept(scid) {
+            Some(item) => {
+                self.verify(Kind::Kept, item)?;
+                Ok(Some(item.index))
+            }
+            None => Ok(None),
+        }
+    }
+
+    /// The compare-and-delete behind [`Vault::forget_master`] and [`Vault::forget_master_at`],
+    /// under the lock: the kept key is removed, and its epoch moved in the same write, only while
+    /// `unchanged(file, kept index)` holds; otherwise it is left and named.
+    fn forget_kept(
+        &self,
+        scid: &str,
+        unchanged: impl FnOnce(&MasterFile, u32) -> bool,
+    ) -> Result<Forgot, VaultError> {
+        let mut guard = self.lock();
+        let Some(kept) = self.kept_index_held(&guard, scid)? else {
+            return Ok(Forgot::Forgot);
+        };
+        if !unchanged(&guard, kept) {
+            return Ok(Forgot::Kept(kept));
+        }
+        let mut next = guard.clone();
+        next.kept.retain(|k| k.scid != scid);
+        next.bump_epoch(scid)?;
+        self.save(&mut guard, next)?;
+        Ok(Forgot::Forgot)
+    }
+
     /// The seed of `item` after one prompt, checked against the key its tag covers.
     fn open_item(&self, item: &Item, prompt: &str) -> Result<KeySigner, VaultError> {
         let sealed = STANDARD
@@ -401,13 +526,29 @@ impl Vault for PhoneVault {
         scid: &str,
         index: u32,
         secret: Secret<[u8; 32]>,
-    ) -> Result<(), VaultError> {
+    ) -> Result<Stored, VaultError> {
+        // Checked first so that a key that can never be kept costs no prompt, and again under
+        // the lock, where it decides: the prompt is not held under the lock.
+        if let Some(kept) = self.kept_index_held(&self.lock(), scid)? {
+            if kept > index {
+                return Ok(Stored::AlreadyNewer { kept });
+            }
+        }
         let item = self.seal_item(Kind::Kept, scid, index, &secret, None, PROMPT_KEEP)?;
         let mut guard = self.lock();
+        if let Some(kept) = self.kept_index_held(&guard, scid)? {
+            if kept > index {
+                return Ok(Stored::AlreadyNewer { kept });
+            }
+        }
         let mut next = guard.clone();
         next.kept.retain(|k| k.scid != scid);
         next.kept.push(item);
-        self.save(&mut guard, next)
+        // Every store moves it, a same-index re-store too: a forget that read the epoch before
+        // a duplicate delivery must not remove what that delivery just kept.
+        next.bump_epoch(scid)?;
+        self.save(&mut guard, next)?;
+        Ok(Stored::Stored)
     }
 
     fn master_index(&self, scid: &str) -> Result<Option<u32>, VaultError> {
@@ -458,15 +599,27 @@ impl Vault for PhoneVault {
         }
     }
 
-    fn promote_master(&self, scid: &str, index: u32) -> Result<(), VaultError> {
-        let staged = self
-            .lock()
+    /// Under the lock from the read of the staged and kept entries to the write: the tags are
+    /// the device sealer's, which needs no prompt.
+    fn promote_master(&self, scid: &str, index: u32) -> Result<Stored, VaultError> {
+        let mut guard = self.lock();
+        let staged = guard
             .staged
             .iter()
             .find(|k| k.scid == scid && k.index == index)
             .cloned()
             .ok_or(VaultError::NotFound)?;
         self.verify(Kind::Staged, &staged)?;
+        if let Some(kept) = self.kept_index_held(&guard, scid)? {
+            if kept > index {
+                // It can never become the kept key.
+                let mut next = guard.clone();
+                next.staged
+                    .retain(|k| !(k.scid == scid && k.index == index));
+                self.save(&mut guard, next)?;
+                return Ok(Stored::AlreadyNewer { kept });
+            }
+        }
         // The sealed seed moves as it is: its label names the identity and index, not the kind.
         let tag = self.tag(Kind::Kept, scid, index, &staged.key, &staged.sealed, None)?;
         let kept = Item {
@@ -474,13 +627,14 @@ impl Vault for PhoneVault {
             owner: None,
             ..staged
         };
-        let mut guard = self.lock();
         let mut next = guard.clone();
         next.staged
             .retain(|k| !(k.scid == scid && k.index == index));
         next.kept.retain(|k| k.scid != scid);
         next.kept.push(kept);
-        self.save(&mut guard, next)
+        next.bump_epoch(scid)?;
+        self.save(&mut guard, next)?;
+        Ok(Stored::Stored)
     }
 
     fn discard_staged(
@@ -504,14 +658,21 @@ impl Vault for PhoneVault {
         self.save(&mut guard, next)
     }
 
-    fn forget_master(&self, scid: &str) -> Result<(), VaultError> {
-        let mut guard = self.lock();
-        let mut next = guard.clone();
-        next.kept.retain(|k| k.scid != scid);
-        if next == *guard {
-            return Ok(());
-        }
-        self.save(&mut guard, next)
+    /// A compare-and-delete on the index: a kept key at another index is left and named. A
+    /// staged key stays.
+    fn forget_master(&self, scid: &str, index: u32) -> Result<Forgot, VaultError> {
+        self.forget_kept(scid, |_, kept| kept == index)
+    }
+
+    /// The counter in the file, read under the lock every write takes; no prompt.
+    fn custody_epoch(&self, scid: &str) -> Result<u64, VaultError> {
+        Ok(self.lock().epoch(scid))
+    }
+
+    /// A compare-and-delete on the custody epoch: a key kept since the caller read it (at any
+    /// index, the same key delivered again included) moved it, and is left and named.
+    fn forget_master_at(&self, scid: &str, epoch: u64) -> Result<Forgot, VaultError> {
+        self.forget_kept(scid, |file, _| file.epoch(scid) == epoch)
     }
 
     fn unlock(&self, scid: &str, why: MasterUse, now: u64) -> Result<Unlocked, VaultError> {
@@ -575,6 +736,39 @@ impl Vault for PhoneVault {
         let mut guard = self.lock();
         let mut next = guard.clone();
         next.pushes.retain(|p| p != push);
+        if next == *guard {
+            return Ok(());
+        }
+        self.save(&mut guard, next)
+    }
+
+    /// Kept in the file, under the lock: the mark only rises, and the answer is the mark before
+    /// this read. Written only when it moves.
+    fn record_seen(&self, scid: &str, version: u64) -> Result<Option<u64>, VaultError> {
+        let mut guard = self.lock();
+        let before = guard
+            .seen
+            .iter()
+            .find(|s| s.scid == scid)
+            .and_then(|s| s.version);
+        let after = before.map_or(version, |before| before.max(version));
+        if before == Some(after) {
+            return Ok(before);
+        }
+        let mut next = guard.clone();
+        next.seen.retain(|s| s.scid != scid);
+        next.seen.push(Seen {
+            scid: scid.to_string(),
+            version: Some(after),
+        });
+        self.save(&mut guard, next)?;
+        Ok(before)
+    }
+
+    fn record_seen_reset(&self, scid: &str) -> Result<(), VaultError> {
+        let mut guard = self.lock();
+        let mut next = guard.clone();
+        next.seen.retain(|s| s.scid != scid);
         if next == *guard {
             return Ok(());
         }
@@ -727,8 +921,169 @@ mod tests {
             signer.signer(0).unwrap().key(),
             KeySigner::new(&[4; 32], 1).key()
         );
-        again.forget_master("scid1").unwrap();
+        assert_eq!(again.forget_master("scid1", 0).unwrap(), Forgot::Kept(1));
+        assert_eq!(again.forget_master("scid1", 1).unwrap(), Forgot::Forgot);
         assert_eq!(vault(dir.path()).master_index("scid1").unwrap(), None);
+        assert_eq!(again.forget_master("scid1", 1).unwrap(), Forgot::Forgot);
+    }
+
+    // The kept key never goes back a generation: a lower store changes nothing (and costs no
+    // prompt), a staged key under a newer kept one is discarded rather than promoted.
+    #[test]
+    fn the_kept_key_never_goes_back_a_generation() {
+        let dir = tempfile::tempdir().unwrap();
+        let v = vault(dir.path());
+        assert_eq!(
+            v.store_master("scid1", 2, Secret::new([3; 32])).unwrap(),
+            Stored::Stored
+        );
+        let epoch = v.custody_epoch("scid1").unwrap();
+        assert_eq!(
+            v.store_master("scid1", 1, Secret::new([4; 32])).unwrap(),
+            Stored::AlreadyNewer { kept: 2 }
+        );
+        assert_eq!(v.custody_epoch("scid1").unwrap(), epoch);
+        assert_eq!(v.master_index("scid1").unwrap(), Some(2));
+
+        v.stage_master("scid1", 1, Secret::new([5; 32]), &StageToken([1; 16]))
+            .unwrap();
+        assert_eq!(
+            v.promote_master("scid1", 1).unwrap(),
+            Stored::AlreadyNewer { kept: 2 }
+        );
+        assert_eq!(v.custody_epoch("scid1").unwrap(), epoch);
+        let again = vault(dir.path());
+        assert_eq!(again.staged_index("scid1").unwrap(), None);
+        assert_eq!(again.master_index("scid1").unwrap(), Some(2));
+        assert!(matches!(
+            again.promote_master("scid1", 1),
+            Err(VaultError::NotFound)
+        ));
+    }
+
+    // The epoch moves on every store, promote and forget that changes the kept key, a same-index
+    // re-store included, and survives a restart; a forget at an epoch read before a change keeps
+    // the key and names it.
+    #[test]
+    fn a_forget_at_an_epoch_keeps_a_key_kept_since() {
+        let dir = tempfile::tempdir().unwrap();
+        let v = vault(dir.path());
+        let none = v.custody_epoch("scid1").unwrap();
+        assert_eq!(v.forget_master_at("scid1", none).unwrap(), Forgot::Forgot);
+
+        v.store_master("scid1", 0, Secret::new([3; 32])).unwrap();
+        let first = v.custody_epoch("scid1").unwrap();
+        assert_ne!(first, none);
+        // The same key delivered again: same index, same bytes, and still a move.
+        v.store_master("scid1", 0, Secret::new([3; 32])).unwrap();
+        let second = v.custody_epoch("scid1").unwrap();
+        assert_ne!(second, first);
+        assert_eq!(v.forget_master_at("scid1", first).unwrap(), Forgot::Kept(0));
+        assert_eq!(v.master_index("scid1").unwrap(), Some(0));
+
+        // Another identity's changes leave this one's epoch.
+        v.store_master("scid2", 0, Secret::new([4; 32])).unwrap();
+        let again = vault(dir.path());
+        assert_eq!(again.custody_epoch("scid1").unwrap(), second);
+
+        again
+            .stage_master("scid1", 1, Secret::new([5; 32]), &StageToken([1; 16]))
+            .unwrap();
+        // A stage is not a change of the kept key.
+        assert_eq!(again.custody_epoch("scid1").unwrap(), second);
+        again.promote_master("scid1", 1).unwrap();
+        let promoted = again.custody_epoch("scid1").unwrap();
+        assert_ne!(promoted, second);
+        assert_eq!(
+            again.forget_master_at("scid1", second).unwrap(),
+            Forgot::Kept(1)
+        );
+        assert_eq!(
+            again.forget_master_at("scid1", promoted).unwrap(),
+            Forgot::Forgot
+        );
+        assert_eq!(again.master_index("scid1").unwrap(), None);
+        let forgotten = again.custody_epoch("scid1").unwrap();
+        assert_ne!(forgotten, promoted);
+        assert_eq!(vault(dir.path()).custody_epoch("scid1").unwrap(), forgotten);
+        assert_eq!(vault(dir.path()).master_index("scid2").unwrap(), Some(0));
+    }
+
+    // An epoch is never a digest: a file made again (lost, the app's data cleared) starts from a
+    // fresh incarnation, so the epoch a removal read before the loss does not come back.
+    #[test]
+    fn a_file_made_again_does_not_repeat_an_epoch() {
+        let dir = tempfile::tempdir().unwrap();
+        let v = vault(dir.path());
+        v.store_master("scid1", 0, Secret::new([3; 32])).unwrap();
+        let before = v.custody_epoch("scid1").unwrap();
+        std::fs::remove_file(dir.path().join(MASTER_FILE_NAME)).unwrap();
+        let fresh = vault(dir.path());
+        fresh
+            .store_master("scid1", 0, Secret::new([3; 32]))
+            .unwrap();
+        assert_ne!(fresh.custody_epoch("scid1").unwrap(), before);
+        assert_eq!(
+            fresh.forget_master_at("scid1", before).unwrap(),
+            Forgot::Kept(0)
+        );
+    }
+
+    // A file written before epochs and marks were kept opens, and gets an incarnation.
+    #[test]
+    fn a_file_without_epochs_opens() {
+        let dir = tempfile::tempdir().unwrap();
+        vault(dir.path())
+            .store_master("scid1", 0, Secret::new([3; 32]))
+            .unwrap();
+        let mut file = read(dir.path());
+        let object = file.as_object_mut().unwrap();
+        object.remove("incarnation");
+        object.remove("epochs");
+        object.remove("seen");
+        write(dir.path(), &file);
+        let old = vault(dir.path());
+        assert_eq!(old.master_index("scid1").unwrap(), Some(0));
+        assert_ne!(old.custody_epoch("scid1").unwrap() >> 32, 0);
+    }
+
+    // A forget refuses an entry its tag does not vouch for rather than guessing at its index.
+    #[test]
+    fn a_forget_or_store_refuses_an_entry_it_cannot_vouch_for() {
+        let dir = tempfile::tempdir().unwrap();
+        vault(dir.path())
+            .store_master("scid1", 0, Secret::new([3; 32]))
+            .unwrap();
+        let mut file = read(dir.path());
+        file["kept"][0]["index"] = 1.into();
+        write(dir.path(), &file);
+        let edited = vault(dir.path());
+        assert!(matches!(
+            edited.forget_master("scid1", 1),
+            Err(VaultError::Tampered)
+        ));
+        assert!(matches!(
+            edited.store_master("scid1", 2, Secret::new([4; 32])),
+            Err(VaultError::Tampered)
+        ));
+        assert!(read(dir.path())["kept"][0]["index"] == 1);
+    }
+
+    // The record's high-water mark: each read answers the highest before it, the mark only
+    // rises, it survives a restart, and a reset forgets it.
+    #[test]
+    fn the_record_mark_rises_and_survives_a_restart() {
+        let dir = tempfile::tempdir().unwrap();
+        let v = vault(dir.path());
+        assert_eq!(v.record_seen("scid1", 3).unwrap(), None);
+        assert_eq!(v.record_seen("scid1", 5).unwrap(), Some(3));
+        assert_eq!(v.record_seen("scid1", 4).unwrap(), Some(5));
+        assert_eq!(v.record_seen("scid2", 1).unwrap(), None);
+        let again = vault(dir.path());
+        assert_eq!(again.record_seen("scid1", 5).unwrap(), Some(5));
+        again.record_seen_reset("scid1").unwrap();
+        assert_eq!(vault(dir.path()).record_seen("scid1", 2).unwrap(), None);
+        assert_eq!(vault(dir.path()).record_seen("scid2", 1).unwrap(), Some(1));
     }
 
     #[test]

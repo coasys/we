@@ -119,7 +119,13 @@ answers their requests.
   with what the key is about to do ("Add a device to your identity"). The device key's sealer is
   unchanged, so a key login never prompts. The master key is kept only at `strongbox` or `tee`. At
   `software` (an emulator) the phone asks first ("Keep your master key without secure hardware?"),
-  and keeps it only if the person agrees.
+  and keeps it only if the person agrees. The vault keeps the rules of WE's desktop vault
+  (`crates/custody`): each change is decided and written under one lock, the kept key never goes
+  back a generation, a forget is a compare-and-delete on the index or on the **custody epoch**,
+  and the epoch (a counter, never a digest) moves with every store, promote and forget, in the
+  same atomic write of `master-keys.json`. The record's high-water mark is kept there too, so a
+  store cannot serve the phone an older device list after a restart; a record that cannot be read
+  is an error in Settings, never a list of unnamed devices.
 - **The identity page.** `/mobile/identity.html` (`src/identity/`) is the shared identity window
   (`@we/identity-window`, the same screens the desktop opens) over the `DeviceKey` plugin. It is a
   page of its own, so no template, module or store code runs beside it. WE opens it in two cases:

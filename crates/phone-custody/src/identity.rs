@@ -16,8 +16,8 @@ use std::sync::Arc;
 use ad4m_identity_client::flows::{master, requests, revoke};
 use ad4m_identity_client::record::{self, Change};
 use ad4m_identity_client::{
-    ClientError, ExecutorRpc, OsRandom, RpcError, StoreEndpoint, SystemClock, Vault, VaultError, ViaExecutor,
-    ViaStore,
+    ClientError, ExecutorRpc, OsRandom, RpcError, StoreEndpoint, SystemClock, Vault, VaultError,
+    ViaExecutor, ViaStore,
 };
 use ad4m_identity_core::link::{match_code, may_keep_master};
 use ad4m_identity_core::record::{DeviceEntry, DeviceKind, HoldsMaster};
@@ -180,12 +180,18 @@ pub(crate) fn log_of(exec: &Executor, did: &str) -> Result<(Vec<Event>, KelChain
     Ok((events, chain))
 }
 
-/// The record's devices, or none when the phone cannot read the record yet. A record that does
-/// not open is no reason to hide the log's devices, so its failure is a missing name only.
-fn record_devices(exec: &Executor, did: &str) -> std::collections::BTreeMap<String, DeviceEntry> {
-    match block_on(record::read(exec, did)) {
-        Ok(Some(opened)) => opened.record.devices,
-        _ => Default::default(),
+/// The record's devices; none when the identity has no record yet. A record that is there and
+/// cannot be read (it does not open, the store's receipt does not verify, it is older than one
+/// read before) is an error, never an empty list: shown as one, every device would lose its name
+/// and kind and read as "Device d3", and nobody would know the record was the problem.
+fn record_devices(
+    exec: &Executor,
+    vault: &dyn Vault,
+    did: &str,
+) -> Result<std::collections::BTreeMap<String, DeviceEntry>, PhoneKeyError> {
+    match block_on(record::read(exec, vault, did)).map_err(phone_error)? {
+        Some(opened) => Ok(opened.record.devices),
+        None => Ok(Default::default()),
     }
 }
 
@@ -395,8 +401,8 @@ impl PhoneIdentity {
     pub fn master_waiting(&self) -> Result<bool, PhoneKeyError> {
         self.parts.member()?;
         let exec = self.parts.executor(None)?;
-        let listed = block_on(exec.rpc().call("identity.inbox", serde_json::json!({})))
-            .map_err(rpc)?;
+        let listed =
+            block_on(exec.rpc().call("identity.inbox", serde_json::json!({}))).map_err(rpc)?;
         Ok(listed
             .as_array()
             .is_some_and(|messages| messages.iter().any(|m| m["kind"] == "master")))
@@ -409,7 +415,7 @@ impl PhoneIdentity {
         let status = block_on(exec.status()).map_err(rpc)?;
         let listed = block_on(exec.requests(0)).map_err(rpc)?;
         let (_, chain) = log_of(&exec, &did)?;
-        let devices = record_devices(&exec, &did);
+        let devices = record_devices(&exec, self.vault.as_ref(), &did)?;
         let state = chain.state();
         Ok(listed
             .into_iter()
@@ -461,7 +467,7 @@ impl PhoneIdentity {
                 .ok_or_else(|| PhoneKeyError::Ended {
                     reason: "the request is no longer in the box".into(),
                 })?;
-        let devices = record_devices(&exec, &did);
+        let devices = record_devices(&exec, self.vault.as_ref(), &did)?;
         let device = device_name(&devices, &request.by);
         let answered = block_on(requests::answer(
             &exec,
@@ -499,7 +505,7 @@ impl PhoneIdentity {
         let exec = self.parts.executor(None)?;
         let status = block_on(exec.status()).map_err(rpc)?;
         let (events, chain) = log_of(&exec, &did)?;
-        let devices = record_devices(&exec, &did);
+        let devices = record_devices(&exec, self.vault.as_ref(), &did)?;
         Ok(chain
             .state()
             .keys
@@ -538,6 +544,7 @@ impl PhoneIdentity {
         let exec = self.parts.executor(None)?;
         block_on(record::write(
             &exec,
+            self.vault.as_ref(),
             &did,
             &[Change::Rename { key_id, name }],
             &OsRandom,

@@ -449,6 +449,7 @@ fn create(world: &World, computer: &Computer, entropy: u8) -> String {
             &computer.exec,
             &computer.vault,
             entry("Laptop", DeviceKind::DesktopApp),
+            &SystemClock,
             &OsRandom,
         ))
         .unwrap()
@@ -530,7 +531,10 @@ fn the_phone_takes_the_master_key_the_computer_sent_it() {
     assert!(!phone.identity.master_waiting().unwrap());
 
     // The record, as the computer reads it, says the phone holds master #0.
-    let opened = world.on(record::read(&laptop.exec, &did)).unwrap().unwrap();
+    let opened = world
+        .on(record::read(&laptop.exec, &laptop.vault, &did))
+        .unwrap()
+        .unwrap();
     assert_eq!(opened.record.devices["d2"].holds_master, HoldsMaster::Yes);
     assert_eq!(opened.record.devices["d2"].master_index, Some(0));
 
@@ -661,7 +665,7 @@ fn the_phone_answers_a_request_behind_the_prompt() {
     phone.identity.take_master(false).unwrap().unwrap();
 
     // The laptop forgets its key and asks for one.
-    laptop.vault.forget_master(&scid(&did)).unwrap();
+    laptop.vault.forget_master(&scid(&did), 0).unwrap();
     let id = world.on(ask_for_master(&laptop.exec, None)).unwrap();
 
     let listed = phone.identity.requests().unwrap();
@@ -865,6 +869,45 @@ fn rename_and_offline() {
         Err(PhoneKeyError::Unavailable { .. })
     ));
     assert!(phone.http.sent.load(Ordering::SeqCst) > 0);
+}
+
+// A record that is there and cannot be read is an error, not a device list with every name
+// gone: here the store serves a version older than the one the phone has already read (its
+// high-water mark, kept in `master-keys.json`, persists across a restart).
+#[test]
+fn a_record_the_phone_cannot_read_is_an_error_not_a_list_without_names() {
+    let world = world();
+    let laptop = computer(&world, 1);
+    let did = create(&world, &laptop, 53);
+    let phone = phone(&world, "strongbox");
+    join(&world, &laptop, &phone, &did, false);
+
+    let devices = phone.identity.devices().unwrap();
+    assert_eq!(devices[0].name, "Laptop");
+
+    let path = phone.dir.path().join("master-keys.json");
+    let mut kept: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let seen = kept["seen"]
+        .as_array_mut()
+        .expect("the record's mark is kept");
+    let mark = seen
+        .iter_mut()
+        .find(|s| s["scid"] == scid(&did))
+        .expect("this identity's mark");
+    let version = mark["version"].as_u64().expect("a version read");
+    mark["version"] = json!(version + 5);
+    std::fs::write(&path, serde_json::to_vec(&kept).unwrap()).unwrap();
+
+    let restarted = open_identity(&phone.keys, &phone.http, &phone.master);
+    let devices = restarted.devices();
+    assert!(
+        matches!(&devices, Err(e) if format!("{e:?}").contains("record")),
+        "{devices:?}"
+    );
+    let requests = restarted.requests();
+    assert!(requests.is_err(), "{requests:?}");
+    // The log itself still reads: only the record is refused.
+    restarted.status().unwrap();
 }
 
 // The head a log was admitted at is kept in `log-checkpoints.json` beside the key file, so a
