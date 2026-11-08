@@ -8,8 +8,15 @@
 //! sequence number and an event hash), but a file a backup restored over, or one that went back,
 //! would let a store roll the phone back, so it is never backed up and only ever written whole.
 //!
-//! The port's methods answer nothing, so a write that fails leaves the file as it was: the next
-//! read is measured against the head before, which is the in-memory default's guarantee at worst.
+//! It fails closed: only a file that is not there is "no checkpoint". One that cannot be read, does
+//! not parse, or cannot be written is a [`CheckpointFileError`] from [`FileCheckpoints::load`],
+//! [`FileCheckpoints::store`] and [`FileCheckpoints::drop_scid`], never a silent "none" a store
+//! could roll the phone back through.
+//!
+//! At ad4m eeb0247b3 the port's methods return nothing, so [`LogCheckpoints`] here can only pass on
+//! what they can carry: an unreadable file reads as none and a failed write is dropped. ad4m #1673's
+//! next revision makes the port return a `Result`, and the impl then returns these errors as they
+//! are.
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -47,52 +54,92 @@ impl FileCheckpoints {
         }
     }
 
-    /// The file, or none kept yet. One that does not parse is read as none: it can only be one
-    /// this app did not write, since every write is whole.
-    fn read(&self) -> CheckpointFile {
-        std::fs::read(&self.path)
-            .ok()
-            .and_then(|bytes| serde_json::from_slice::<CheckpointFile>(&bytes).ok())
-            .filter(|file| file.v == 1)
-            .unwrap_or(CheckpointFile {
-                v: 1,
-                logs: BTreeMap::new(),
-            })
+    /// The file, or an empty one where none was written yet. Anything else that keeps it from
+    /// being read is an error: every write is whole, so a file that does not parse is not one this
+    /// app left, and treating it as empty would forget every head.
+    fn read(&self) -> Result<CheckpointFile, CheckpointFileError> {
+        let bytes = match std::fs::read(&self.path) {
+            Ok(bytes) => bytes,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(CheckpointFile {
+                    v: 1,
+                    logs: BTreeMap::new(),
+                })
+            }
+            Err(e) => return Err(CheckpointFileError::Read(e.to_string())),
+        };
+        let file: CheckpointFile = serde_json::from_slice(&bytes)
+            .map_err(|e| CheckpointFileError::Damaged(e.to_string()))?;
+        if file.v != 1 {
+            return Err(CheckpointFileError::Damaged(format!("version {}", file.v)));
+        }
+        Ok(file)
     }
 
-    fn write(&self, file: &CheckpointFile) {
+    fn write(&self, file: &CheckpointFile) -> Result<(), CheckpointFileError> {
         let bytes = serde_json::to_vec_pretty(file).expect("the checkpoints serialise");
-        // Nothing to answer with (see the module's docs): the file stays as it was.
-        let _ = write_atomic(&self.path, &bytes);
-    }
-}
-
-impl LogCheckpoints for FileCheckpoints {
-    fn get(&self, scid: &str) -> Option<Checkpoint> {
-        let _held = LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        self.read().logs.remove(scid)
+        write_atomic(&self.path, &bytes).map_err(|e| CheckpointFileError::Write(e.to_string()))
     }
 
-    /// Never back: two calls that read the log at once may each admit a head, and the later
-    /// write may be the lower one. The higher stands; `forget` is the only way down.
-    fn set(&self, scid: &str, checkpoint: Checkpoint) {
+    /// The checkpoint kept for `scid`.
+    pub(crate) fn load(&self, scid: &str) -> Result<Option<Checkpoint>, CheckpointFileError> {
         let _held = LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let mut file = self.read();
+        Ok(self.read()?.logs.remove(scid))
+    }
+
+    /// Keeps `checkpoint` for `scid`. Never back: two calls that read the log at once may each
+    /// admit a head, and the later write may be the lower one. The higher stands; [`Self::drop_scid`]
+    /// is the only way down.
+    pub(crate) fn store(
+        &self,
+        scid: &str,
+        checkpoint: Checkpoint,
+    ) -> Result<(), CheckpointFileError> {
+        let _held = LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let mut file = self.read()?;
         if let Some(kept) = file.logs.get(scid) {
             if kept.seq > checkpoint.seq || *kept == checkpoint {
-                return;
+                return Ok(());
             }
         }
         file.logs.insert(scid.to_string(), checkpoint);
-        self.write(&file);
+        self.write(&file)
+    }
+
+    /// `identity.resetLog`: forgets `scid`'s checkpoint.
+    pub(crate) fn drop_scid(&self, scid: &str) -> Result<(), CheckpointFileError> {
+        let _held = LOCK.lock().unwrap_or_else(|p| p.into_inner());
+        let mut file = self.read()?;
+        if file.logs.remove(scid).is_some() {
+            self.write(&file)?;
+        }
+        Ok(())
+    }
+}
+
+/// Why the checkpoint file gave no answer. None of these is "no checkpoint".
+#[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
+pub(crate) enum CheckpointFileError {
+    #[error("the log checkpoints could not be read: {0}")]
+    Read(String),
+    #[error("the log checkpoints file is damaged: {0}")]
+    Damaged(String),
+    #[error("the log checkpoints could not be written: {0}")]
+    Write(String),
+}
+
+/// The port as ad4m eeb0247b3 has it, which carries no error: see the module's docs.
+impl LogCheckpoints for FileCheckpoints {
+    fn get(&self, scid: &str) -> Option<Checkpoint> {
+        self.load(scid).ok().flatten()
+    }
+
+    fn set(&self, scid: &str, checkpoint: Checkpoint) {
+        let _ = self.store(scid, checkpoint);
     }
 
     fn forget(&self, scid: &str) {
-        let _held = LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let mut file = self.read();
-        if file.logs.remove(scid).is_some() {
-            self.write(&file);
-        }
+        let _ = self.drop_scid(scid);
     }
 }
 
@@ -138,17 +185,53 @@ mod tests {
     }
 
     #[test]
-    fn a_file_this_app_did_not_write_is_none_and_is_replaced_whole() {
+    fn the_file_is_written_whole_in_its_one_shape() {
         let dir = tempfile::tempdir().unwrap();
-        std::fs::write(dir.path().join(FILE_NAME), b"{not json").unwrap();
-        let port = FileCheckpoints::new(dir.path());
-        assert_eq!(port.get("a"), None);
-        port.set("a", at(1, "h1"));
+        FileCheckpoints::new(dir.path()).set("a", at(1, "h1"));
         let written: serde_json::Value =
             serde_json::from_slice(&std::fs::read(dir.path().join(FILE_NAME)).unwrap()).unwrap();
         assert_eq!(
             written,
             serde_json::json!({ "v": 1, "logs": { "a": { "seq": 1, "hash": "h1" } } })
         );
+    }
+
+    // Only a missing file is "none": a damaged one is an error, and is not written over.
+    #[test]
+    fn a_file_that_does_not_read_is_an_error_and_is_kept() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(FILE_NAME);
+        let port = FileCheckpoints::new(dir.path());
+        for damaged in [&b"{not json"[..], br#"{"v":2,"logs":{}}"#, br#"{"v":1}"#] {
+            std::fs::write(&path, damaged).unwrap();
+            assert!(matches!(
+                port.load("a"),
+                Err(CheckpointFileError::Damaged(_))
+            ));
+            assert!(matches!(
+                port.store("a", at(1, "h1")),
+                Err(CheckpointFileError::Damaged(_))
+            ));
+            assert!(matches!(
+                port.drop_scid("a"),
+                Err(CheckpointFileError::Damaged(_))
+            ));
+            assert_eq!(std::fs::read(&path).unwrap(), damaged);
+        }
+
+        // A file that cannot be read at all: here, a directory where the file goes.
+        std::fs::remove_file(&path).unwrap();
+        std::fs::create_dir(&path).unwrap();
+        assert!(matches!(port.load("a"), Err(CheckpointFileError::Read(_))));
+    }
+
+    #[test]
+    fn a_write_that_fails_is_an_error() {
+        let dir = tempfile::tempdir().unwrap();
+        let port = FileCheckpoints::new(&dir.path().join("not-there"));
+        assert!(matches!(
+            port.store("a", at(1, "h1")),
+            Err(CheckpointFileError::Write(_))
+        ));
     }
 }
