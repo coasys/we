@@ -25,6 +25,7 @@ use ad4m_identity_core::{Event, KelChain};
 use ad4m_ldk::identity::DeviceRequestBody;
 use futures_executor::block_on;
 
+use crate::checkpoint::FileCheckpoints;
 use crate::holder::HolderLink;
 use crate::ports::{PhoneEncKey, StoreTransport, Transport, CANCELLED};
 use crate::vault::{MasterSealer, PhoneVault, INVALIDATED, WEAK_PROTECTION};
@@ -78,7 +79,8 @@ impl Parts {
             },
             parts.identity.map(|j| j.scid),
         )
-        .with_can_keep_master(true);
+        .with_can_keep_master(true)
+        .with_checkpoints(Box::new(FileCheckpoints::new(&self.keys.dir())));
         Ok(ViaExecutor::new(store))
     }
 

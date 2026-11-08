@@ -834,6 +834,42 @@ fn rename_and_offline() {
     assert!(phone.http.sent.load(Ordering::SeqCst) > 0);
 }
 
+// The head a log was admitted at is kept in `log-checkpoints.json` beside the key file, so a
+// restarted phone still refuses a store whose log is behind it.
+#[test]
+fn a_restarted_phone_refuses_a_log_behind_the_one_it_admitted() {
+    let world = world();
+    let laptop = computer(&world, 1);
+    let did = create(&world, &laptop, 51);
+    let phone = phone(&world, "strongbox");
+    join(&world, &laptop, &phone, &did, false);
+    phone.identity.status().unwrap();
+
+    let path = phone.dir.path().join("log-checkpoints.json");
+    let mut kept: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+    let head = kept["logs"][scid(&did)].clone();
+    let seq = head["seq"].as_u64().expect("the admitted head's seq");
+    assert!(seq >= 1, "{head}");
+    assert!(
+        head["hash"].as_str().is_some_and(|h| !h.is_empty()),
+        "{head}"
+    );
+
+    // A restart over the same file reads the log the same: nothing is refused.
+    let reopened = open_identity(&phone.keys, &phone.http, &phone.master);
+    reopened.status().unwrap();
+
+    // The phone had admitted a later head than the store now serves: the store is behind.
+    kept["logs"][scid(&did)] = json!({ "seq": seq + 3, "hash": "a later head" });
+    std::fs::write(&path, serde_json::to_vec(&kept).unwrap()).unwrap();
+    let restarted = open_identity(&phone.keys, &phone.http, &phone.master);
+    let behind = restarted.status();
+    assert!(
+        matches!(&behind, Err(PhoneKeyError::Refused { reason }) if reason.contains("store-behind")),
+        "{behind:?}"
+    );
+}
+
 // A device code from another store, or one that expired, is refused before anything is sent.
 #[test]
 fn a_device_code_of_another_store_is_refused() {

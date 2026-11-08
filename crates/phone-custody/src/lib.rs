@@ -23,6 +23,7 @@
 
 uniffi::setup_scaffolding!();
 
+mod checkpoint;
 mod claim;
 mod file;
 mod holder;
