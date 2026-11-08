@@ -139,7 +139,7 @@ class ScanActivity : AppCompatActivity() {
     scanner.process(InputImage.fromMediaImage(image, frame.imageInfo.rotationDegrees))
       .addOnSuccessListener { codes ->
         val texts = codes.mapNotNull { it.rawValue?.trim() }
-        val match = texts.firstOrNull { it.startsWith(prefix) }
+        val match = texts.firstOrNull { carries(it, prefix) }
         when {
           match != null -> finishWith(match, null)
           texts.isNotEmpty() -> hint.text = "That QR code is not one this step can use"
@@ -168,3 +168,11 @@ class ScanActivity : AppCompatActivity() {
     const val EXTRA_REASON = "org.coasys.app.scan.reason"
   }
 }
+
+/**
+ * Whether a QR code's text is a code of the step: the code itself (`coasys:device:1:…`), or a link
+ * carrying it after its `#`, as an offer link does (`https://…/o#coasys:offer:1:…`). The text goes
+ * back whole; the Rust crate parses it. Top-level, so a JVM test reaches it without an Activity.
+ */
+fun carries(text: String, prefix: String): Boolean =
+  prefix.isNotEmpty() && (text.startsWith(prefix) || text.substringAfter('#', "").startsWith(prefix))

@@ -207,6 +207,11 @@ class DeviceKeyPlugin : Plugin() {
   }
 
   @PluginMethod
+  fun masterWaiting(call: PluginCall) = run(call) {
+    JSObject().put("waiting", identity().masterWaiting())
+  }
+
+  @PluginMethod
   fun requests(call: PluginCall) = run(call) {
     JSObject().put("requests", JSArray(identity().requests().map(::requestJson)))
   }
@@ -445,6 +450,7 @@ class DeviceKeyPlugin : Plugin() {
       .put("fingerprint", v.fingerprint)
       .put("code", v.code)
       .put("targets", JSArray(v.targets))
+      .put("targetKeys", JSArray(v.targetKeys))
       .put("rotate", v.rotate)
       .put("expires", v.expires.toLong())
       .put("problem", v.problem.orNull())

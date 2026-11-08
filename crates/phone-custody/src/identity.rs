@@ -16,7 +16,7 @@ use std::sync::Arc;
 use ad4m_identity_client::flows::{master, requests, revoke};
 use ad4m_identity_client::record::{self, Change};
 use ad4m_identity_client::{
-    ClientError, OsRandom, RpcError, StoreEndpoint, SystemClock, Vault, VaultError, ViaExecutor,
+    ClientError, ExecutorRpc, OsRandom, RpcError, StoreEndpoint, SystemClock, Vault, VaultError, ViaExecutor,
     ViaStore,
 };
 use ad4m_identity_core::link::{match_code, may_keep_master};
@@ -249,6 +249,10 @@ pub struct RequestView {
     pub code: String,
     /// For `confirm-revoke`: the names of the devices to revoke.
     pub targets: Vec<String>,
+    /// For `confirm-revoke`: the key ids of the devices to revoke, as the request names them, in
+    /// the order of `targets`. The ids say which keys go; the names are the record's, which any
+    /// linked device can write.
+    pub target_keys: Vec<String>,
     pub rotate: bool,
     pub expires: u64,
     /// Why it cannot be answered (its poster does not check); `None` when it can.
@@ -385,6 +389,19 @@ impl PhoneIdentity {
         })
     }
 
+    /// Whether a master key another device sent waits in this phone's inbox, without taking it:
+    /// no prompt, and the message stays for [`Self::take_master`]. Reads the store, so a key put
+    /// there since the last read is seen.
+    pub fn master_waiting(&self) -> Result<bool, PhoneKeyError> {
+        self.parts.member()?;
+        let exec = self.parts.executor(None)?;
+        let listed = block_on(exec.rpc().call("identity.inbox", serde_json::json!({})))
+            .map_err(rpc)?;
+        Ok(listed
+            .as_array()
+            .is_some_and(|messages| messages.iter().any(|m| m["kind"] == "master")))
+    }
+
     /// The requests of the identity's other devices, newest last.
     pub fn requests(&self) -> Result<Vec<RequestView>, PhoneKeyError> {
         let (scid, did) = self.parts.member()?;
@@ -403,10 +420,11 @@ impl PhoneIdentity {
                     .get(&r.by)
                     .map(|k| k.sign.clone())
                     .unwrap_or_default();
-                let (targets, rotate) = match &r.body {
-                    DeviceRequestBody::SendMaster {} => (Vec::new(), false),
+                let (targets, target_keys, rotate) = match &r.body {
+                    DeviceRequestBody::SendMaster {} => (Vec::new(), Vec::new(), false),
                     DeviceRequestBody::ConfirmRevoke { key_ids, rotate } => (
                         key_ids.iter().map(|k| device_name(&devices, k)).collect(),
+                        key_ids.clone(),
                         *rotate,
                     ),
                 };
@@ -416,6 +434,7 @@ impl PhoneIdentity {
                     fingerprint: fingerprint(&sign),
                     code: match_code(&scid, &r.id, &sign),
                     targets,
+                    target_keys,
                     rotate,
                     expires: r.expires,
                     problem: requests::check_poster(&r, &did, &chain)

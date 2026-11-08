@@ -12,7 +12,7 @@ use std::sync::{Arc, Mutex};
 use ad4m_identity_client::flows::create::{CreateFlow, CreateScreen};
 use ad4m_identity_client::flows::link::LinkFlow;
 use ad4m_identity_client::flows::master::take_master;
-use ad4m_identity_client::flows::requests::{answer, ask_for_master};
+use ad4m_identity_client::flows::requests::{answer, ask_confirm_revoke, ask_for_master};
 use ad4m_identity_client::record;
 use ad4m_identity_client::{
     ExecutorRpc, HttpClient, HttpError, HttpRequest, HttpResponse, MemoryVault, OsRandom,
@@ -506,6 +506,10 @@ fn the_phone_takes_the_master_key_the_computer_sent_it() {
     assert_eq!(status.key_id.as_deref(), Some("d2"));
     assert_eq!(status.master_index, None);
     assert_eq!(status.protection, "strongbox");
+    // The phone sees the key waiting without a prompt, and seeing it leaves it there.
+    assert!(phone.identity.master_waiting().unwrap());
+    assert!(phone.identity.master_waiting().unwrap());
+    assert!(phone.master.prompts().is_empty());
 
     let taken = phone
         .identity
@@ -523,6 +527,7 @@ fn the_phone_takes_the_master_key_the_computer_sent_it() {
 
     // Nothing waits any more: the message was acknowledged.
     assert_eq!(phone.identity.take_master(false).unwrap(), None);
+    assert!(!phone.identity.master_waiting().unwrap());
 
     // The record, as the computer reads it, says the phone holds master #0.
     let opened = world.on(record::read(&laptop.exec, &did)).unwrap().unwrap();
@@ -667,6 +672,7 @@ fn the_phone_answers_a_request_behind_the_prompt() {
     assert_eq!(request.by, "d1");
     assert_eq!(request.device, "Laptop");
     assert_eq!(request.problem, None);
+    assert!(request.targets.is_empty() && request.target_keys.is_empty());
     let laptop_sign = ad4m_identity_core::build::Signer::key(&SigningKey::from_bytes(&[1; 32]));
     assert_eq!(
         request.code,
@@ -693,6 +699,33 @@ fn the_phone_answers_a_request_behind_the_prompt() {
         .unwrap()
         .expect("the phone's answer");
     assert_eq!(taken.index, 0);
+}
+
+// A revoke request lists the keys it names by id, beside the names the record gives them: the ids
+// say which keys go.
+#[test]
+fn a_revoke_request_names_its_keys_by_id() {
+    let world = world();
+    let laptop = computer(&world, 1);
+    let did = create(&world, &laptop, 47);
+    let phone = phone(&world, "strongbox");
+    join(&world, &laptop, &phone, &did, true);
+
+    let id = world
+        .on(ask_confirm_revoke(
+            &laptop.exec,
+            &did,
+            &["d1".to_string()],
+            false,
+            None,
+        ))
+        .unwrap();
+    let listed = phone.identity.requests().unwrap();
+    let request = listed.iter().find(|r| r.id == id).expect("the request");
+    assert_eq!(request.kind, "confirm-revoke");
+    assert_eq!(request.target_keys, vec!["d1".to_string()]);
+    assert_eq!(request.targets, vec!["Laptop".to_string()]);
+    assert!(!request.rotate);
 }
 
 // The phone scans a new computer's device code: the ticket lands in the computer's pre-join
