@@ -18,7 +18,12 @@ if (process.platform === 'win32') {
 }
 
 // From the crate's folder, so rustup takes the toolchain its `rust-toolchain.toml` pins.
-const result = spawnSync('cargo', ['build', '--release', '--bin', 'we-custody'], { cwd: CRATE, stdio: 'inherit' });
+// `--locked`: the binary that ships is built from the dependencies the crate's lockfile names, not
+// whatever newer ones a resolver would pick today.
+const result = spawnSync('cargo', ['build', '--release', '--locked', '--bin', 'we-custody'], {
+  cwd: CRATE,
+  stdio: 'inherit',
+});
 if (result.status === 0) process.exit(0);
 
 const why = result.error ? result.error.message : `cargo exited with ${result.status}`;

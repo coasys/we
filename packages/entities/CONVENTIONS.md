@@ -86,7 +86,7 @@ enforced.
 > **"Can a person meaningfully create this fresh, inline, while authoring a document?"**
 
 - **Yes** → `blockable: true`, and give it a `version`. `TextBlock`, `TaskBlock`, `ImageBlock`.
-- **No** → leave it off. `Space`, `Signal`, `ChatSession`, `Template`.
+- **No** → leave it off. `Space`, `Signal`, `Template`.
 
 Being blockable does **not** mean the entity only exists inside documents. `LocationBlock` is
 referenced by `Space.location`, `TaskBlock` renders standalone on a task board — both are ordinary
@@ -134,8 +134,55 @@ Almost every entity extends `WeNode`, which in turn extends `Ad4mModel`.
   a response is a child of nothing, and where it was said is its thread subject's `partOf`. See
   `docs/architecture/relations.md`
 - `signals: string[]` — HasMany relation for signal IDs
+- `runs` / `generatedBy` — what a model was asked to do about the node, and the run that wrote it
+  (see "What a model made" below)
 
 These are always present on every model instance but are only surfaced in the UI where contextually appropriate (e.g. a `LocationBlock` pin on a map might not show a thread of responses, but the data is there if needed in future).
+
+---
+
+## What a model made
+
+A record a model wrote on somebody's behalf says so, one way, whatever wrote it. **Whoever writes
+it marks it, in the same write, and the run's `kind` says what kind of writing it was.**
+
+- **`ModelRun`** is one time a model was asked to do something: its `kind` (`extraction`,
+  `transcription`, `chat`, `agent`), the model, what started it, how it ended (`outcome`), how many
+  records it made (`recordCount`), a per-kind `detail`, and, where the writer keeps it, the exchange
+  (`prompt`, `output`). What it was about holds it in its `runs`.
+- **`generatedBy`**, on every `WeNode`, is the run that wrote the record. A writer sets it in the
+  create itself (a to-one, as the single-entry list `[runId]`), so the record is never seen
+  unmarked. The author stays the person: `author` is who it was made for, `generatedBy` that a model
+  did the writing.
+- **`Amendment`** is a run's change to a record that already existed, one per property, with the
+  value it replaced. Hung off what it was made from (`CollectionBlock.amendments`, for a call), or
+  standing alone, naming its `run`.
+
+The writers today:
+
+| Writer                              | Run                                                | Marked                                                                                                                                 |
+| ----------------------------------- | -------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------- |
+| The agent's data tools              | the conversation's, `agent`                        | what they create; what they change is an `Amendment`                                                                                   |
+| The editor's own chat               | one per reply, `chat`, hung off the chat           | the reply's `TextBlock`; the person's messages carry nothing                                                                           |
+| The transcriber                     | one per speaker, call and model, `transcription`   | each spoken line, beside `source: 'spoken'`                                                                                            |
+| An extraction pass somebody presses | one per pass, `extraction`, opened before the pass | what the pass _made_, by the backend (`run` on the interpretation port), since only it knows which records it made rather than matched |
+
+Ask **`generatedRun(record)`** (`@we/entities`, and the host expression function of the same name)
+rather than reading the relation. It answers "did a model write this"; what kind of writing is the
+run's `kind`, so a surface hiding replies an assistant wrote filters on it rather than on
+`generatedRun` alone, which would hide every transcript too. Lineage stays separate:
+`extractedFrom` says which call a record came out of, and is not provenance.
+
+Two gaps, both in what a backend does rather than in the shape:
+
+- **A pass a standing watch runs is not marked.** A watch is configured once per call, and its run is
+  written when the pass settles, after the records are, so nothing names the run while they are
+  written. Its records keep their `extracted` link.
+- **Not every backend marks what a pass made.** The AD4M adapter does; a backend without
+  interpretation has nothing to mark. The conformance suite has no interpretation cases, since they
+  need a language model, so this is checked by the adapter's own tests.
+
+A template edit is not an amendment: a template is one document with its own `version` history.
 
 ---
 
@@ -161,7 +208,7 @@ All `@Property` predicates use the `we://` namespace. Use snake_case for multi-w
 @Property({ through: 'we://start_date' })
 ```
 
-**Prefer generic, reusable predicates.** When two models share the same semantic concept (e.g. `name`, `description`, `url`), use the same predicate — this enables cross-model graph pattern queries. For example, querying `?node we://name ?name` returns names from `LocationBlock`, `Theme`, `ChatSession`, `TagBlock`, and any future model without knowing the type in advance.
+**Prefer generic, reusable predicates.** When two models share the same semantic concept (e.g. `name`, `description`, `url`), use the same predicate — this enables cross-model graph pattern queries. For example, querying `?node we://name ?name` returns names from `LocationBlock`, `Theme`, `TagBlock`, and any future model without knowing the type in advance.
 
 ---
 

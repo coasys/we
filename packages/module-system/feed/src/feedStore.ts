@@ -291,6 +291,8 @@ export function createFeed(deps: FeedDeps) {
   });
 
   return {
+    /** Somebody is looking at the Feed's newest line. The store's own, so not a public member. */
+    followingLive: () => looking() && !fromStart(),
     feedOpen: state(open, 'Whether the Feed panel is open.'),
     openFeed: action(() => setOpen(true), 'Opens the Feed panel.', { ambient: true }),
     closeFeed: action(() => setOpen(false), 'Closes the Feed panel.', { ambient: true }),

@@ -69,20 +69,6 @@ export interface CalloutBlockRecord extends WeNodeRecord {
   version: number;
 }
 
-export interface ChatMessageRecord extends WeNodeRecord {
-  role: string;
-  content: string;
-}
-
-export interface ChatSessionRecord extends WeNodeRecord {
-  name: string;
-  templateId: string;
-  messages: ChatMessageRecord[];
-  addMessages(value: string | { id: string }, batch?: string): Promise<unknown>;
-  removeMessages(value: string | { id: string }, batch?: string): Promise<unknown>;
-  setMessages(values: (string | { id: string })[], batch?: string): Promise<unknown>;
-}
-
 export interface CodeBlockRecord extends WeNodeRecord {
   code: string;
   language: string;
@@ -107,7 +93,6 @@ export interface CollectionBlockRecord extends WeNodeRecord {
   arranges: string[];
   gathers?: string;
   board?: CollectionBlockRecord;
-  extractionPasses: string[];
   extracted: string[];
   recognised: string[];
   amendments: string[];
@@ -439,22 +424,26 @@ export interface ThemeRecord extends WeNodeRecord {
   setScreenshots(values: (string | { id: string })[], batch?: string): Promise<unknown>;
 }
 
-export interface ExtractionAmendmentRecord extends RecordInstance {
+export interface AmendmentRecord extends RecordInstance {
   property: string;
   previousValue: string;
   newValue: string;
   nodeType: string;
   node?: string;
+  run?: ModelRunRecord;
+  setRun(value: Pick<ModelRunRecord, 'id'>): Promise<unknown>;
 }
 
-export interface ExtractionPassRecord extends RecordInstance {
-  outcome: string;
-  recordCount: number;
-  targets: string;
-  error: string;
+export interface ModelRunRecord extends RecordInstance {
+  kind: string;
+  model: string;
   trigger: string;
+  outcome: string;
+  error: string;
+  recordCount: number;
+  detail: string;
   prompt: string;
-  response: string;
+  output: string;
 }
 
 export interface TypeStyleRecord extends RecordInstance {

@@ -47,16 +47,34 @@ function ToastItem(props: { toast: ToastItem }) {
       onFocusIn={() => toastService.pause(props.toast.id)}
       onFocusOut={() => toastService.resume(props.toast.id)}
     >
-      <we-icon name={TONE_ICONS[tone()]} color={TONE_COLORS[tone()]} size="20px" />
+      {/* A toast that is one kind of news names its own icon: a robot for a bot's message. */}
+      <we-icon name={props.toast.icon || TONE_ICONS[tone()]} color={TONE_COLORS[tone()]} size="20px" />
       {/*
         The action sits under the message rather than beside it. Beside it, a label longer than
         "Undo" took the width the message needed and squeezed it into a narrow column.
       */}
       <div class="we-toast__body">
+        {/*
+          Whose words these are, above the words: somebody's message reads as theirs only if the
+          reader sees who before reading it.
+        */}
+        {props.toast.from && (
+          <span class="we-toast__from">
+            <we-avatar size="20px" image={props.toast.from.image ?? ''} hash={props.toast.from.hash ?? ''} />
+            {props.toast.from.name}
+          </span>
+        )}
         <span class="we-toast__message">{props.toast.message}</span>
+        {/*
+          A button that looks like one. Bold text alone read as part of the message, so the one thing
+          a toast offers to do went unnoticed. Soft, so it is clearly pressable without outshining
+          the message.
+        */}
         {props.toast.action && (
-          <button
+          <we-button
             class="we-toast__action"
+            variant="soft"
+            size="sm"
             onClick={() => {
               const action = props.toast.action;
               toastService.remove(props.toast.id);
@@ -64,7 +82,7 @@ function ToastItem(props: { toast: ToastItem }) {
             }}
           >
             {props.toast.action.label}
-          </button>
+          </we-button>
         )}
       </div>
       <button onClick={() => toastService.remove(props.toast.id)} aria-label="Dismiss" class="we-toast__dismiss">

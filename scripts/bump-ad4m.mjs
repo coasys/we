@@ -5,7 +5,8 @@
  *
  * Moves WE's pin of @coasys/ad4m and @coasys/ad4m-connect: the root `pnpm.overrides`, which decide
  * what every workspace package installs. Nothing else declares a version (the packages say `*`), so
- * a bump is that and the lockfile.
+ * a bump is that and the lockfile — and the custody crate's ad4m revs and its Cargo.lock, which build
+ * the desktop app's Rust against the same commit.
  *
  * Two kinds of target (scripts/ad4m-pin.mjs has why):
  *
@@ -313,6 +314,36 @@ const root = JSON.parse(rootText);
 for (const name of PACKAGES) root.pnpm.overrides[name] = spec(name);
 writeFileSync(rootPath, JSON.stringify(root, null, 2) + '\n');
 console.log(`Pinned ${PACKAGES.join(' and ')} to ${describePin(next)}${commit ? ` (${commit})` : ''}.`);
+
+/*
+  The custody crate builds against the same ad4m, by commit (`crates/custody/tests/boundary.rs`
+  checks the two agree). Its revs move with the pin, and its lockfile with them; a bump that moved
+  only the JavaScript left the desktop app's Rust on the old ad4m, unnoticed until a release.
+*/
+const custodyDir = join(ROOT, 'crates', 'custody');
+const custodyManifest = join(custodyDir, 'Cargo.toml');
+const custodyText = readFileSync(custodyManifest, 'utf8');
+const AD4M_REV = /(git = "https:\/\/github\.com\/coasys\/ad4m", rev = ")[0-9a-f]+(")/g;
+if (!to) {
+  console.warn(
+    `\nThe ad4m commit of ${describePin(next)} is unknown, so crates/custody/Cargo.toml still names the old one: move its revs by hand.`,
+  );
+} else if (custodyText.replace(AD4M_REV, `$1${to}$2`) !== custodyText) {
+  writeFileSync(custodyManifest, custodyText.replace(AD4M_REV, `$1${to}$2`));
+  console.log(`Moved crates/custody to ad4m ${to.slice(0, 9)}.`);
+  try {
+    // From the crate's folder, so rustup takes the toolchain its `rust-toolchain.toml` pins.
+    execSync('cargo update -p ad4m-identity-client -p ad4m-identity-core -p ad4m-client', {
+      cwd: custodyDir,
+      stdio: 'inherit',
+    });
+  } catch {
+    fail(
+      'crates/custody/Cargo.lock could not be updated (is cargo installed?). From crates/custody, run:\n' +
+        '  cargo update -p ad4m-identity-client -p ad4m-identity-core -p ad4m-client',
+    );
+  }
+}
 
 if (lockfileOnly || install) {
   console.log(lockfileOnly ? '\nUpdating the lockfile…' : '\nInstalling…');

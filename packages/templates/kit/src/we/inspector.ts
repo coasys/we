@@ -1051,8 +1051,16 @@ const peopleSection: SchemaNode = {
 };
 
 /**
- * Where the selected record came from — extracted from the conversation, and on whose node, or added
- * by somebody — and when.
+ * Whether a model made the selected record: a run marks it (`generatedRun`), or it came out of a
+ * conversation — `extractedFrom`, or the call on screen listing it, for what a standing watch
+ * extracts with no run on it. The rule the cards' `modelMark` follows.
+ */
+const MODEL_MADE =
+  'generatedRun({ record: row }) || row.extractedFrom || row.id in first(local.inspectedCall).extracted';
+
+/**
+ * Where the selected record came from — extracted from the conversation, written by AI, or added by
+ * somebody — and on whose node, and when.
  *
  * Straight under the title and the description, and not the last line of People: it is about the
  * record, not about who is on it, and on a card it lives on the extracted mark for the same reason.
@@ -1097,7 +1105,7 @@ const originLine: SchemaNode = {
                       type: 'we-icon',
                       props: {
                         name: {
-                          $: "row.id in first(local.inspectedCall).extracted ? 'sparkle' : 'pencil-simple-line'",
+                          $: `(${MODEL_MADE}) ? 'sparkle' : 'pencil-simple-line'`,
                         },
                         size: 'xs',
                         color: 'text-faint',
@@ -1110,7 +1118,10 @@ const originLine: SchemaNode = {
                   props: { variant: 'footnote', color: 'text-faint', flex: '1', minWidth: '0' },
                   children: [
                     {
-                      $: "row.id in first(local.inspectedCall).extracted ? `Extracted from the conversation · run by ${author.name} · ` : `Added by ${author.did == me.did ? 'you' : author.name} · `",
+                      $:
+                        `row.extractedFrom || row.id in first(local.inspectedCall).extracted ? \`Extracted from the conversation · run by \${author.name} · \` : ` +
+                        `generatedRun({ record: row }) ? \`Written by AI · run by \${author.name} · \` : ` +
+                        "`Added by ${author.did == me.did ? 'you' : author.name} · `",
                     },
                     { type: 'we-timestamp', props: { value: { $: 'row.createdAt' }, relative: true, fontSize: '100' } },
                   ],

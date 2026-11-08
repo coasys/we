@@ -3,7 +3,7 @@
  * the key that is them (a master key, recovery words, the log of every key change), the devices that
  * act as them, the bots that act for them, and what their plan allows.
  *
- * ## Why a port with nothing in it yet
+ * ## Why a port with little in it yet
  *
  * Settings shows all of this — the person's account is part of the app, not a site beside it — and the
  * backend that holds it is being built. So the screens come first, against this contract, and say
@@ -13,16 +13,21 @@
  *
  * Optional, like every port a backend may not have: absent, every capability is off.
  *
- * ## Capabilities first, then the reads a backend answers
+ * ## Capabilities first, then the calls a backend answers
  *
  * What a screen needs to decide is whether to offer a control, so the contract starts there. The
  * calls behind each control are added with the backend that answers them — a method nothing implements
- * is a guess at a shape, and the shape is the backend's to settle. The key log and the device list
- * arrived with AD4M's `identity.*` calls: `status`, `log` and `devices` are reads.
+ * is a guess at a shape, and the shape is the backend's to settle.
  *
- * Nothing here changes the identity. Every change — making it, adding a device, revoking one — is
- * signed by the master key, which no backend and no web view holds: the desktop shell's custody
- * service does, behind its own window (`PlatformAdapter.identity`).
+ * ## Reads, and changes the port never sees the inside of
+ *
+ * `status`, `log` and `devices` are reads. A change — making the identity, adding a device, revoking
+ * one — is signed by the master key, and where that key is kept is the backend's business: one
+ * backend keeps it in a custody service its desktop host runs, another might keep it in a hardware
+ * key or behind a provider's own sign-in. So the port asks for a change by kind (`change`) and learns
+ * how it ended; the words, the passphrase and the key never pass through it, and nothing above the
+ * port knows what holds them. `custody` says whether this computer can sign changes at all, and why
+ * not when it cannot.
  */
 
 /** What the identity backend can do, one switch per part of Settings. */
@@ -91,6 +96,35 @@ export interface IdentityPort {
    * unsubscribe.
    */
   onFork?(listener: (fork: KeyLogFork) => void): () => void;
+  /**
+   * Whether this computer can sign changes to the identity, as public facts. Absent on a backend
+   * that cannot change an identity from here; the screens then offer no change.
+   */
+  custody?(): Promise<IdentityCustodyView>;
+  /**
+   * Runs a change wherever the master key is kept, and resolves with how it ended. The person is
+   * asked there, not here: whatever the backend shows them (its own window, a device prompt) is its
+   * own confirmation. Rejects only when the change could not be started at all.
+   */
+  change?(change: IdentityChange): Promise<IdentityChangeOutcome>;
+}
+
+/** A change to the identity, signed by the master key. */
+export type IdentityChange = { kind: 'create' } | { kind: 'add-device' } | { kind: 'revoke'; keyId: string };
+
+/** How a change ended: made, abandoned by the person, or refused along the way. */
+export type IdentityChangeOutcome = 'done' | 'cancelled' | 'failed';
+
+/** Whether this computer can sign changes to the identity: public facts, never a secret. */
+export interface IdentityCustodyView {
+  /** The identity whose master key this computer keeps, or `null`. */
+  did: string | null;
+  /** This computer keeps a master key of `did`. */
+  holdsMaster: boolean;
+  /** How the key is unlocked here: the operating system's own prompt, or a passphrase. */
+  unlock: 'os' | 'passphrase' | null;
+  /** Why no change can be made here, in words a person reads; `null` when one can. */
+  blocked: string | null;
 }
 
 /** Two different events at one place in a log, as the backend recorded them. */
@@ -175,26 +209,4 @@ export interface DeviceKeyView {
   addedSeq: number;
   /** The seq of the event that revoked it, or `null` while it is valid. */
   revokedSeq: number | null;
-}
-
-/**
- * A KEL event as the backend serves it (`did:scid:coasys:1`), read into {@link KeyLogEvent}.
- * Tolerant of fields it does not know, and of a malformed event, which becomes `op: 'unknown'`
- * rather than a thrown error: a key log screen that shows five events of six is still a key log.
- */
-export function readKeyLogEvent(raw: unknown, hash: string | null = null): KeyLogEvent {
-  const event = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
-  const devices = Array.isArray(event.add) ? event.add : [];
-  return {
-    seq: typeof event.seq === 'number' ? event.seq : -1,
-    op: typeof event.op === 'string' ? event.op : 'unknown',
-    hash,
-    added: devices
-      .filter((d): d is Record<string, unknown> => !!d && typeof d === 'object')
-      .map((d) => ({
-        id: typeof d.id === 'string' ? d.id : '',
-        sign: typeof d.sign === 'string' ? d.sign : '',
-      })),
-    revoked: Array.isArray(event.revoke) ? event.revoke.map(String) : [],
-  };
 }

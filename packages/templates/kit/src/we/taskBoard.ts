@@ -49,6 +49,7 @@
 import { field, formModal, sectionLabel } from '@we/schema-kit';
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
+import { modelMark } from './modelMark.ts';
 import { peopleFilter } from './peopleFilter.ts';
 import { signalDisplay } from './signalDisplay.ts';
 import {
@@ -129,8 +130,9 @@ export interface TaskCardOptions {
    */
   showState?: string;
   /**
-   * Whether a model proposed this card from a conversation rather than somebody writing it — an
-   * expression, per row. Omit where nothing on the board is extracted.
+   * Whether this card came out of a conversation without a run naming it — an expression, per row.
+   * A card a model made carries the mark anyway (`modelMark`, from `generatedRun`); this widens it to
+   * what a standing watch extracts, which no run marks yet. Omit where nothing on the board is extracted.
    *
    * Not the author, which is what this used to show, as a name in the card's own heading type. On an
    * extracted task the author is whichever member's node happened to run the pass — not who proposed
@@ -348,63 +350,14 @@ export function taskCard(opts: TaskCardOptions = {}): SchemaNode {
                   },
                 } as SchemaNode,
               ]),
-          ...(opts.extracted
-            ? [
-                {
-                  type: '$if',
-                  props: {
-                    condition: { $: opts.extracted },
-                    /*
-                      Where the card came from, on the mark that makes a reader ask.
+          /*
+            Where the card came from, on the mark that makes a reader ask.
 
-                      It used to be the last line of the people hovercard, which is about who is on the
-                      work — a different question. The sparkle is what says this card is unusual, so it
-                      is where the answer is: extracted from the conversation, on whose node, and when.
-                      A card somebody added by hand has nothing unusual to explain, and says nothing.
-                    */
-                    then: {
-                      type: 'we-tooltip',
-                      props: { placement: 'top' },
-                      children: [
-                        {
-                          // A native element carries the slot — see `peopleTooltip` for why a Column cannot.
-                          type: 'div',
-                          slot: 'content',
-                          children: [
-                            {
-                              type: '$agent',
-                              props: { did: { $: `${as}.author` }, as: 'author' },
-                              children: [
-                                {
-                                  type: 'Row',
-                                  props: { gap: '100', ay: 'center', wrap: true },
-                                  children: [
-                                    {
-                                      type: 'we-text',
-                                      props: {
-                                        fontSize: '200',
-                                        text: {
-                                          $: "`Extracted from the conversation · run by ${author.did == me.did ? 'you' : author.name}`",
-                                        },
-                                      },
-                                    },
-                                    {
-                                      type: 'we-timestamp',
-                                      props: { value: { $: `${as}.createdAt` }, relative: true, fontSize: '200' },
-                                    },
-                                  ],
-                                },
-                              ],
-                            },
-                          ],
-                        },
-                        { type: 'we-icon', props: { name: 'sparkle', size: 'xs', color: 'text-muted' } },
-                      ],
-                    },
-                  },
-                } as SchemaNode,
-              ]
-            : []),
+            It used to be the last line of the people hovercard, which is about who is on the work — a
+            different question. The sparkle is what says this card is unusual, so it is where the answer
+            is. A card somebody added by hand has nothing unusual to explain, and says nothing.
+          */
+          modelMark({ as, ...(opts.extracted ? { extracted: opts.extracted } : {}) }),
           // The card's state, where the caller says the column does not already give it away.
           {
             type: '$if',

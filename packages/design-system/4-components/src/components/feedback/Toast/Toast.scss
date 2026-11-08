@@ -110,22 +110,16 @@
     gap: var(--we-space-100);
   }
 
-  &__action {
-    // Pulled out by its own padding, so its label lines up with the message above it.
-    margin-inline-start: calc(-1 * var(--we-space-200));
-    background: none;
-    border: none;
-    cursor: pointer;
-    padding: var(--we-space-100) var(--we-space-200);
-    border-radius: var(--we-radius-200);
-    font: inherit;
+  &__from {
+    display: flex;
+    align-items: center;
+    gap: var(--we-space-200);
     font-weight: var(--we-font-weight-semibold, 600);
-    color: inherit;
-    white-space: nowrap;
+  }
 
-    &:hover {
-      background: var(--we-role-surface-hover);
-    }
+  // A soft button: room above it so it does not sit on the message's last line.
+  &__action {
+    margin-block-start: var(--we-space-100);
   }
 
   &__dismiss {
