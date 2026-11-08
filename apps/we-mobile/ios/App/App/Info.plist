@@ -2,12 +2,6 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- iOS asks before an app reaches devices on the local network; the desktop is one. -->
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>Coasys connects to the Coasys app on your computer, over your home network.</string>
-	<!-- The pairing QR code is scanned with the camera. -->
-	<key>NSCameraUsageDescription</key>
-	<string>Coasys scans the pairing code your computer shows.</string>
   <key>CAPACITOR_DEBUG</key>
 	<string>$(CAPACITOR_DEBUG)</string>
 	<key>CFBundleDevelopmentRegion</key>

@@ -192,9 +192,9 @@ export default [
       '**/dist-electron/**',
       // The phone app's copies of WE's built web app: www/, and the assets Capacitor syncs into
       // its native projects.
-      'apps/we-phone/www/**',
-      'apps/we-phone/android/**',
-      'apps/we-phone/ios/**',
+      'apps/we-mobile/www/**',
+      'apps/we-mobile/android/**',
+      'apps/we-mobile/ios/**',
       // Registries generated for a seed other than WE's own (`WE_SEED`), gitignored and outside every
       // tsconfig — see scripts/seed.cjs.
       '**/.seed-build/**',
