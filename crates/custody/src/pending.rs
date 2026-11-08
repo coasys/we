@@ -946,6 +946,100 @@ mod tests {
         );
     }
 
+    /// Makes the next write of `file` in `dir` fail, as a crash before it would leave the
+    /// folder: its temp name taken by a directory. Undone by the guard's drop.
+    struct Blocked(std::path::PathBuf);
+
+    impl Blocked {
+        fn write_of(dir: &std::path::Path, file: &str) -> Self {
+            let path = dir.join(format!("{file}.{}.tmp", std::process::id()));
+            std::fs::create_dir_all(&path).unwrap();
+            Blocked(path)
+        }
+    }
+
+    impl Drop for Blocked {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).unwrap();
+        }
+    }
+
+    /// What the metadata notes as having an entry in the epochs' file.
+    fn noted_epochs(dir: &std::path::Path) -> Vec<String> {
+        metadata(dir)
+            .unwrap()
+            .entries
+            .get(EPOCHS_FILE_NAME)
+            .cloned()
+            .unwrap_or_default()
+    }
+
+    /// Lal's P2 at 564d9aaa0, the other stop: an identity's first epoch written, the process
+    /// gone before its note. The entry is there and read as it is, never as lost; the next
+    /// change notes it, and from then on its loss is told apart. In a folder that never counted
+    /// an epoch, and beside another identity's.
+    #[test]
+    fn a_crash_after_an_identitys_first_entry_before_its_note_reads_the_entry() {
+        let dir = tempfile::tempdir().unwrap();
+        let pending = PendingIncepts::file(dir.path());
+        {
+            let _crash = Blocked::write_of(dir.path(), METADATA_FILE_NAME);
+            assert!(pending.exclusive().unwrap().establish_epoch("QmA").is_err());
+        }
+        assert!(dir.path().join(EPOCHS_FILE_NAME).exists());
+        assert!(noted_epochs(dir.path()).is_empty());
+        // The next start.
+        let pending = PendingIncepts::file(dir.path());
+        let read = pending.exclusive().unwrap().epoch("QmA");
+        assert!(matches!(read, Ok(e) if e != 0), "{read:?}");
+        let read = read.unwrap();
+        assert_eq!(
+            pending.exclusive().unwrap().establish_epoch("QmA").unwrap(),
+            read
+        );
+        assert_eq!(
+            pending.exclusive().unwrap().bump_epoch("QmA").unwrap(),
+            read + 1
+        );
+        assert_eq!(noted_epochs(dir.path()), ["QmA"]);
+
+        // A second identity, beside the first.
+        {
+            let _crash = Blocked::write_of(dir.path(), METADATA_FILE_NAME);
+            assert!(pending.exclusive().unwrap().establish_epoch("QmB").is_err());
+        }
+        let pending = PendingIncepts::file(dir.path());
+        let folder = pending.exclusive().unwrap();
+        assert_eq!(folder.epoch("QmA").unwrap(), read + 1);
+        assert!(matches!(folder.epoch("QmB"), Ok(e) if e != 0));
+        drop(folder);
+        // Noted, a loss of the file is a loss for both.
+        pending.exclusive().unwrap().bump_epoch("QmB").unwrap();
+        assert_eq!(noted_epochs(dir.path()), ["QmA", "QmB"]);
+        std::fs::remove_file(dir.path().join(EPOCHS_FILE_NAME)).unwrap();
+        let folder = pending.exclusive().unwrap();
+        assert!(folder.epoch("QmA").as_ref().is_err_and(is_lost_epoch));
+        assert!(folder.epoch("QmB").as_ref().is_err_and(is_lost_epoch));
+    }
+
+    /// A change of an entry that is there, stopped before it is written, leaves the entry it
+    /// had: the next change counts on from it.
+    #[test]
+    fn a_bump_stopped_before_its_write_leaves_the_entry_it_had() {
+        let dir = tempfile::tempdir().unwrap();
+        let pending = PendingIncepts::file(dir.path());
+        let first = pending.exclusive().unwrap().establish_epoch("QmA").unwrap();
+        {
+            let _crash = Blocked::write_of(dir.path(), EPOCHS_FILE_NAME);
+            assert!(pending.exclusive().unwrap().bump_epoch("QmA").is_err());
+        }
+        assert_eq!(pending.exclusive().unwrap().epoch("QmA").unwrap(), first);
+        assert_eq!(
+            pending.exclusive().unwrap().bump_epoch("QmA").unwrap(),
+            first + 1
+        );
+    }
+
     /// Lal's review of we#431 at 0d4501589: a reset is the way back from a lost marks file, so
     /// it does not fail on the read that lost it. It writes the file again with its reset;
     /// another identity's mark that went with the file is still lost, not a first opening.

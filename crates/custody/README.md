@@ -236,8 +236,10 @@ made, and a checked count (it errors rather than wraps), so within one incarnati
 Entries are never dropped, so a forget leaves its count behind. An identity's entry is made with its
 first stage or its first change of the kept key, whichever comes first, so a second identity restored
 into a folder that already counts another's is an ordinary first entry, and so is each identity a
-build before epochs kept here. `custody-metadata.json`, written before any other note, records which
-notes the folder has made and, per note, each identity it has made an entry for. A note it lists that
+build before epochs kept here. `custody-metadata.json` records which notes the folder has made and,
+per note, each identity it has made an entry for; it is written after the note it records, both
+durably, so a stop between the two leaves an entry that is there and not yet listed, read as it is
+(and listed with its next change), never a listed identity with no entry. A note it lists that
 has gone (`custody-epochs.json`, `record-seen.json`), or an entry gone for an identity it lists, is an
 **error**, never a fresh start, because a counter that started again could match a removal that read
 the old value and delete custody installed since; an identity it does not list simply has no entry
@@ -248,11 +250,14 @@ adds up over many recoveries of one identity. The same holds when the epochs fil
 lost together: the folder then looks as if it never counted, and the next entry is a fresh
 incarnation. Neither is rollback protection against a whole custody folder restored or deleted.
 
-The person reaches that recovery through **"Replace my master key"**: when this identity's epoch is
-lost, the step first checks that the typed words make the log's current master (the check the
-client's `rotate` makes before it publishes), then recovers the epoch, then rotates. Words that are
-not the identity's recover nothing. Any step that stops on a lost epoch says what happened and names
-that step. Forgetting a record's high-water mark (`record_seen_reset`) is likewise explicit, and
+The person reaches that recovery with their 12 words: through **"Replace my master key"** on a
+computer linked to the identity, and through **"Use my 12 words"** on one not linked yet (where
+"Replace my master key" is refused) — before the restore's rotation stages, and again before each
+"Try again" at linking after it. When the identity's epoch is lost, the step first checks that the
+typed words make the log's current master (the check the client's `rotate` makes before it
+publishes), then recovers the epoch, then goes on. Words that are not the identity's recover
+nothing, and another identity's lost epoch stays lost. Any step that stops on a lost epoch says what
+happened and names both steps. Forgetting a record's high-water mark (`record_seen_reset`) is likewise explicit, and
 leaves a mark that it was reset rather than lost; it is also how a lost `record-seen.json` (or one
 identity's mark in it) is repaired, one identity at a time: another identity's mark that went with
 the file stays an error until it is reset too.
