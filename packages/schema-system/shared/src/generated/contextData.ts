@@ -2454,6 +2454,7 @@ export const contextData: ContextData = {
           ],
         },
         devicesLoaded: { type: 'boolean' },
+        serving: { type: 'object', properties: ['label', 'subtitle', 'icon'] },
         validCount: { type: 'number' },
         canManage: { type: 'boolean' },
         canShowCode: { type: 'boolean' },

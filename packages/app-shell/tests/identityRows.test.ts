@@ -8,6 +8,7 @@ import {
   keyLogRows,
   lastRotation,
   requestRows,
+  servingDevice,
   shortDid,
   shortHash,
 } from '../src/shared/identityRows';
@@ -305,6 +306,31 @@ describe('this device, on a phone and on a desktop', () => {
     const asks = [{ id: 'r1', kind: 'confirm-revoke' as const, by: 'd3', keyIds: ['d2', 'd1'], expires: 9 }];
     expect(requestRows(asks, names, 'd2', 'This phone')[0].title).toBe('Box asks to revoke This phone, Laptop');
     expect(requestRows(asks, [], 'd1')[0].title).toBe('d3 asks to revoke d2, This computer');
+  });
+
+  it('the device serving the session is this computer on a desktop, the host on a phone', () => {
+    // The desktop: whatever the record names, the top card is this computer.
+    expect(servingDevice(keys, names, custodyDevice(custody(null)))).toEqual({
+      label: 'This computer',
+      subtitle: 'Serves you now',
+      icon: 'desktop',
+    });
+    expect(servingDevice([], [], null).label).toBe('This computer');
+
+    // A phone: the executor it signs in to marks d1, the laptop, which the record names.
+    const here = custodyDevice(custody({ keyId: 'd2', kind: 'phone-app' }));
+    expect(servingDevice(keys, names, here)).toEqual({
+      label: 'Laptop',
+      subtitle: 'Your host · serves you now',
+      icon: 'laptop',
+    });
+    // Never "This computer", whether the record names the host or not, or the list is not read yet.
+    expect(servingDevice(keys, [], here)).toEqual({
+      label: 'Your host',
+      subtitle: 'Serves you now',
+      icon: 'hard-drives',
+    });
+    expect(servingDevice([], names, here).label).toBe('Your host');
   });
 });
 

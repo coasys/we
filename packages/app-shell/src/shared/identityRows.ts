@@ -297,6 +297,39 @@ export function deviceRows(
     });
 }
 
+/** The device serving this session: the top card of Settings → Devices. */
+export interface ServingDevice {
+  /** "This computer" on the desktop; on a phone the host's name from the record, else "Your host". */
+  label: string;
+  subtitle: string;
+  icon: string;
+}
+
+export const YOUR_HOST = 'Your host';
+const SERVES_YOU_NOW = 'Serves you now';
+
+/**
+ * The device serving this session. On the desktop it is this computer. Where the custody service
+ * answers for a device apart from the backend (`here`, a phone), the session is served by the
+ * executor the phone signs in to: the key the backend marks as its own, named and drawn from the
+ * private record when the record has it.
+ */
+export function servingDevice(
+  devices: DeviceKeyView[],
+  names: DeviceNameView[] = [],
+  here: CustodyDevice | null = null,
+): ServingDevice {
+  if (!here) return { label: THIS_COMPUTER, subtitle: SERVES_YOU_NOW, icon: 'desktop' };
+  const host = devices.find((device) => device.thisDevice && !device.bot);
+  const record = host ? names.find((n) => n.keyId === host.keyId) : undefined;
+  const name = record?.name ?? '';
+  return {
+    label: name || YOUR_HOST,
+    subtitle: name ? `${YOUR_HOST} · serves you now` : SERVES_YOU_NOW,
+    icon: (record && DEVICE_ICONS[record.kind]) || 'hard-drives',
+  };
+}
+
 /** A date as the device list shows it, in the person's own locale. */
 function dateOf(seconds: number): string {
   return new Date(seconds * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });

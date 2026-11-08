@@ -19,6 +19,8 @@ import {
   lastRotation,
   type RequestRow,
   requestRows,
+  type ServingDevice,
+  servingDevice,
 } from '@shared/identityRows';
 import type { DeviceKeyView, IdentityChangeOutcome } from '@we/backend-shared';
 import {
@@ -39,6 +41,11 @@ export interface DeviceStore {
   /** The device keys, valid first, this computer at the top. */
   devices: Accessor<DeviceRow[]>;
   devicesLoaded: Accessor<boolean>;
+  /**
+   * The device serving this session, for the top of Devices: "This computer" on the desktop; on a
+   * phone, the host it signs in to, by its name in the record or "Your host".
+   */
+  serving: Accessor<ServingDevice>;
   /** How many device keys are valid: neither revoked nor ended. A bot's key is not a device's. */
   validCount: Accessor<number>;
   /**
@@ -166,6 +173,7 @@ export function DeviceStoreProvider(props: ParentProps) {
   const store: DeviceStore = {
     devices: rows,
     devicesLoaded,
+    serving: createMemo(() => servingDevice(raw(), names(), here())),
     validCount: () => rows().filter((d) => d.valid).length,
     canManage,
     canShowCode: () => linking() && identity.statusLoaded() && !identity.did() && !identity.custody()?.holdsMaster,
