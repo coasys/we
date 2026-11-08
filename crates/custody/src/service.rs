@@ -670,7 +670,9 @@ const NOT_THESE_WORDS: &str = "These words do not make your identity's master ke
 
 /// A step stopped because this computer lost its count of the changes to the master key it keeps
 /// (`custody-epochs.json`, or an identity's entry in it, gone from the custody folder). The way
-/// back is the words-gated recovery in "Replace my master key" ([`rotate_with_words`]).
+/// back is the words-gated recovery ([`recover_lost_epoch`]): in "Replace my master key"
+/// ([`rotate_with_words`]) on a linked computer, in "Use my 12 words" ([`restore_on`]) on one
+/// not linked yet.
 const LOST_EPOCH: &str = "This computer has lost its count of the changes to the master key it \
      keeps (a file in its custody folder is gone), so it will not change or remove that key on \
      its own. Your master key is still here. To go on, type your 12 words: on a computer that \
@@ -2900,7 +2902,8 @@ async fn rotate_with_words<R: ExecutorRpc>(
 }
 
 /// The way back from a lost custody epoch ([`LOST_EPOCH`]), taken by "Replace my master key"
-/// before it rotates. Only when the epoch of `did`'s key here is lost, and only once `words` are
+/// before it rotates, and by "Use my 12 words" on a computer not linked yet before its rotation
+/// stages and before each try at linking after it ([`restore_on`]). Only when the epoch of `did`'s key here is lost, and only once `words` are
 /// checked to make the identity's current master — the check `rotate` makes before it publishes
 /// ([`words_make_current_master`]) — is the epoch recovered
 /// ([`DesktopVault::recover_custody_epoch`], a fresh incarnation). Words that are not the
@@ -3186,7 +3189,10 @@ async fn restore_on<R: ExecutorRpc>(
         Ok(_) => {}
         Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
     }
-    let Some((mut typed, _)) = ask_words(vault, address, rx, reply, "restore", None).await else {
+    // The parsed words are kept past the flow's start: they are what recovers a lost custody
+    // epoch of the identity they name (`recover_lost_epoch`), once checked against its log.
+    let Some((mut typed, mut words)) = ask_words(vault, address, rx, reply, "restore", None).await
+    else {
         return;
     };
     // Where a new item is sealed, its passphrase now: the flow keeps the new key with it.
@@ -3212,7 +3218,10 @@ async fn restore_on<R: ExecutorRpc>(
                 )
                 .await
                 {
-                    Some((again, _)) => typed = again,
+                    Some((again, parsed)) => {
+                        typed = again;
+                        words = parsed;
+                    }
                     None => return,
                 }
             }
@@ -3279,7 +3288,15 @@ async fn restore_on<R: ExecutorRpc>(
         .iter()
         .map(|k| ad4m_identity_core::KeyId::from(k.as_str()))
         .collect();
-    let restored = match flow.finish(&lock_out, entry.clone()).await {
+    // Before the stage the rotation makes: a custody epoch of this identity this computer lost
+    // (a first restore stopped, a file of the custody folder gone) is recovered here, the words
+    // checked first to make the identity's current master. "Replace my master key", the way back
+    // on a linked computer, refuses this one: it is not linked yet.
+    let finished = match recover_lost_epoch(executor, vault, &did, &words).await {
+        Ok(()) => flow.finish(&lock_out, entry.clone()).await,
+        Err(e) => Err(e),
+    };
+    let restored = match finished {
         Ok(restored) => restored,
         Err(e) => return answer(reply, Ok(failed(&e))),
     };
@@ -3326,7 +3343,11 @@ async fn restore_on<R: ExecutorRpc>(
                 Some(_) => answer(reply, Err(CustodyError::WrongInput)),
             }
         }
-        enrolled = flow.enrol(entry.clone()).await;
+        // The same words, checked again, recover an epoch lost since the rotation.
+        enrolled = match recover_lost_epoch(executor, vault, &did, &words).await {
+            Ok(()) => flow.enrol(entry.clone()).await,
+            Err(e) => Err(e),
+        };
     }
 }
 
@@ -5629,6 +5650,204 @@ mod tests {
         assert_eq!(vault.master_index(&scid).unwrap(), Some(1));
         assert_eq!(vault.staged_index(&scid).unwrap(), None);
         shows_no_word(&screens, &phrase, &[]);
+    }
+
+    /// An executor of no identity yet whose device key is d1's, serving `events` and naming
+    /// their identity as the owner of any words: a computer a first restore runs on.
+    fn unlinked_executor(events: &[Event]) -> ViaExecutor<FakeExecutor> {
+        let executor = ViaExecutor::new(FakeExecutor {
+            device: KeySigner::new(&[2u8; 32], 0),
+            ..FakeExecutor::new()
+        });
+        serve_log(&executor, events);
+        for method in ["identity.record", "identity.takeMaster"] {
+            executor.rpc().answer(method, Value::Null);
+        }
+        for method in ["identity.inbox", "identity.requests"] {
+            executor.rpc().answer(method, json!([]));
+        }
+        executor.rpc().answer(
+            "identity.keyOwner",
+            json!({ "did": did_of(&events[0].scid), "keyId": "m0", "added": 0, "revoked": null }),
+        );
+        executor
+    }
+
+    /// "Use my 12 words" with `phrase` on `executor`, every other device locked out, as far as
+    /// it goes: its screens. Where the rotation published and the log served is still the one
+    /// before it, the log is served again with it and "Try again" links this computer, so a
+    /// restore that went through ends on [`Screen::Restored`].
+    async fn restore_with(
+        executor: &ViaExecutor<FakeExecutor>,
+        vault: &DesktopVault,
+        events: &[Event],
+        phrase: &str,
+    ) -> Vec<Screen> {
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), screens) = tokio::join!(
+            restore_on(executor, vault, &address, &mut rx, &mut reply),
+            async move {
+                let mut shown = vec![first.await.unwrap().unwrap()];
+                shown.push(
+                    window
+                        .step(StepInput::TwelveWords {
+                            words: phrase.to_string().into(),
+                        })
+                        .await,
+                );
+                if !matches!(shown.last(), Some(Screen::RestoreDevices { .. })) {
+                    return shown;
+                }
+                shown.push(
+                    window
+                        .step(StepInput::LockOut {
+                            key_ids: vec!["d2".into()],
+                            name: Some("Desk".into()),
+                        })
+                        .await,
+                );
+                if matches!(shown.last(), Some(Screen::RestoreNotLinked { .. })) {
+                    let mut log = events.to_vec();
+                    log.extend(published(executor));
+                    serve_log(executor, &log);
+                    shown.push(window.step(StepInput::TryAgain).await);
+                }
+                shown
+            }
+        );
+        screens
+    }
+
+    /// Lal's review of we#431 at 564d9aaa0: on a computer not linked to an identity yet, a lost
+    /// custody epoch of the identity the words name is recovered by "Use my 12 words" — the way
+    /// back the lost-epoch screen names there, "Replace my master key" refusing an unlinked
+    /// computer. The words are checked against the log's current master first. Both losses: the
+    /// whole epochs file, and the identity's entry in a file that is there. Another identity
+    /// noted and lost stays lost.
+    #[tokio::test]
+    async fn a_restore_on_an_unlinked_computer_recovers_a_lost_custody_epoch_with_the_right_words()
+    {
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        let scid = events[0].scid.clone();
+        for whole_file in [true, false] {
+            let dir = tempfile::tempdir().unwrap();
+            let folder = PendingIncepts::file(dir.path());
+            for s in [scid.as_str(), "QmOther"] {
+                folder.exclusive().unwrap().establish_epoch(s).unwrap();
+            }
+            std::fs::remove_file(dir.path().join(crate::pending::EPOCHS_FILE_NAME)).unwrap();
+            if !whole_file {
+                // The file there again, holding a third identity's entry only.
+                folder
+                    .exclusive()
+                    .unwrap()
+                    .recover_epoch("QmThird")
+                    .unwrap();
+            }
+            let vault = keychain_vault_in(dir.path());
+            assert!(vault
+                .custody_epoch(&scid)
+                .as_ref()
+                .is_err_and(crate::pending::is_lost_epoch));
+            let executor = unlinked_executor(&events);
+
+            let screens = restore_with(&executor, &vault, &events, &phrase_of(41)).await;
+            assert!(
+                matches!(screens.last(), Some(Screen::Restored { key_id, revoked, .. })
+                    if key_id == "d1" && revoked == &["d2".to_string()]),
+                "whole file {whole_file}: {screens:?}"
+            );
+            assert_eq!(executor.rpc().publishes.get(), 1);
+            assert_eq!(vault.master_index(&scid).unwrap(), Some(1));
+            assert_ne!(vault.custody_epoch(&scid).unwrap(), 0);
+            assert!(vault
+                .custody_epoch("QmOther")
+                .as_ref()
+                .is_err_and(crate::pending::is_lost_epoch));
+            shows_no_word(&screens, &phrase_of(41), &[]);
+        }
+    }
+
+    /// The same lost epoch, and words that are not the identity's: nothing is recovered — the
+    /// custody folder's files are as they were — and nothing is published.
+    #[tokio::test]
+    async fn a_restore_with_the_wrong_words_recovers_no_lost_custody_epoch() {
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        let scid = events[0].scid.clone();
+        let dir = tempfile::tempdir().unwrap();
+        PendingIncepts::file(dir.path())
+            .exclusive()
+            .unwrap()
+            .establish_epoch(&scid)
+            .unwrap();
+        std::fs::remove_file(dir.path().join(crate::pending::EPOCHS_FILE_NAME)).unwrap();
+        let metadata = dir.path().join(crate::pending::METADATA_FILE_NAME);
+        let before = std::fs::read(&metadata).unwrap();
+        let vault = keychain_vault_in(dir.path());
+        let executor = unlinked_executor(&events);
+
+        let screens = restore_with(&executor, &vault, &events, &phrase_of(9)).await;
+        assert!(
+            matches!(screens.last(), Some(Screen::EnterWords { error: Some(m), .. }) if m == NOT_THESE_WORDS),
+            "{screens:?}"
+        );
+        assert_eq!(executor.rpc().publishes.get(), 0);
+        assert_eq!(std::fs::read(&metadata).unwrap(), before);
+        assert!(!dir.path().join(crate::pending::EPOCHS_FILE_NAME).exists());
+        assert!(vault
+            .custody_epoch(&scid)
+            .as_ref()
+            .is_err_and(crate::pending::is_lost_epoch));
+    }
+
+    /// Lal's review of we#431 at 564d9aaa0, end to end: a first restore on an unlinked computer
+    /// stops as a crash would after the identity's first epoch entry and before its note (the
+    /// metadata's write fails: its temp name is taken), or before the entry (the epochs file's
+    /// write fails). The next start, the same words restore the identity: the epoch read as it
+    /// is in the first case, a fresh start in the second.
+    #[tokio::test]
+    async fn a_first_restore_stopped_around_its_first_epoch_restores_on_the_next_start() {
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        let scid = events[0].scid.clone();
+        for stopped in [
+            crate::pending::METADATA_FILE_NAME,
+            crate::pending::EPOCHS_FILE_NAME,
+        ] {
+            let dir = tempfile::tempdir().unwrap();
+            let blocked = dir
+                .path()
+                .join(format!("{stopped}.{}.tmp", std::process::id()));
+            std::fs::create_dir_all(&blocked).unwrap();
+            let executor = unlinked_executor(&events);
+            let screens = restore_with(
+                &executor,
+                &keychain_vault_in(dir.path()),
+                &events,
+                &phrase_of(41),
+            )
+            .await;
+            assert!(
+                matches!(screens.last(), Some(Screen::Failed { .. })),
+                "{stopped}: {screens:?}"
+            );
+            assert_eq!(executor.rpc().publishes.get(), 0);
+            std::fs::remove_dir_all(&blocked).unwrap();
+
+            // The next start: a new vault on the same folder (nothing of the key was kept).
+            let vault = keychain_vault_in(dir.path());
+            let epoch = vault.custody_epoch(&scid);
+            if stopped == crate::pending::METADATA_FILE_NAME {
+                assert!(matches!(epoch, Ok(e) if e != 0), "{epoch:?}");
+            } else {
+                assert!(matches!(epoch, Ok(0)), "{epoch:?}");
+            }
+            let screens = restore_with(&executor, &vault, &events, &phrase_of(41)).await;
+            assert!(
+                matches!(screens.last(), Some(Screen::Restored { .. })),
+                "{stopped}: {screens:?}"
+            );
+            assert_eq!(vault.master_index(&scid).unwrap(), Some(1));
+        }
     }
 
     #[test]
