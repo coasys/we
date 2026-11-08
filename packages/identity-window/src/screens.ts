@@ -20,6 +20,13 @@ export type Screen =
   | { screen: 'match'; code: string; hint: string | null; canKeep: boolean; ownName: boolean }
   | { screen: 'linked'; seq: number; masterSent: boolean; note: string | null }
   | { screen: 'enter-code'; error: string | null }
+  /** A device of no identity yet joins one by the offer a device of the identity shows (the phone). */
+  | {
+      screen: 'enter-offer';
+      error: string | null;
+      /** Present when the device also asks which executor it signs in to: the address so far. */
+      host?: string;
+    }
   | { screen: 'code-sent'; expires: number }
   | { screen: 'device-code'; code: string; qrSvg: string; expires: number }
   | { screen: 'device-match'; code: string; did: string }
@@ -152,6 +159,9 @@ export type StepInput =
   | { kind: 'wait-claim' }
   | { kind: 'confirm'; name?: string; keepMaster?: boolean; thisName?: string }
   | { kind: 'code'; code: string }
+  /** The offer link or `coasys:offer:1:` string `enter-offer` was given. Not a custody step: only
+   *  the phone shows `enter-offer`. */
+  | { kind: 'offer'; link: string; host?: string }
   | { kind: 'wait-link' }
   | { kind: 'wait-join' }
   | { kind: 'answer'; passphrase?: string }
@@ -242,6 +252,11 @@ export function heading(screen: Screen): { title: string; lead: string } {
         title: 'Scan or paste a code',
         lead: 'On the new device, choose “Show my code”. Copy the link it shows and paste it here.',
       };
+    case 'enter-offer':
+      return {
+        title: 'Join your identity',
+        lead: 'On a device that has your identity, choose “Add a device”. Scan the QR code it shows, or paste its link here.',
+      };
     case 'code-sent':
       return {
         title: 'Waiting for your device',
@@ -259,12 +274,12 @@ export function heading(screen: Screen): { title: string; lead: string } {
       };
     case 'joined':
       return {
-        title: 'This computer is one of your devices',
+        title: 'This device is one of yours now',
         lead: `It signs for you as ${screen.keyId}. It does not hold your master key, so it cannot add or remove devices.`,
       };
     case 'master-taken':
       return {
-        title: 'This computer keeps your master key',
+        title: 'This device keeps your master key',
         lead: ['It can add and remove your devices now.', ...(screen.note ? [screen.note] : [])].join(' '),
       };
     case 'request':

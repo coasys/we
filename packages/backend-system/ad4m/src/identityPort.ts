@@ -56,6 +56,12 @@ export interface Ad4mCustodyHost {
   /** Opens the custody service's window on `change`; resolves when the change ends there. */
   open(change: IdentityChange): Promise<IdentityChangeOutcome>;
   publicState(): Promise<Ad4mCustodyState>;
+  /**
+   * Whether the host takes the 12 words back, to replace the master key or restore the identity.
+   * Absent means it does, as the desktop custody service does; a phone, which takes no words, says
+   * `false`, and the screens then offer neither.
+   */
+  takesWords?: boolean;
 }
 
 /** The custody service's public state, as it answers `publicState`. */
@@ -247,7 +253,7 @@ export function createAd4mIdentityPort(backendClient: unknown, custody?: Ad4mCus
         keyLog: true,
         devices: true,
         masterKey: !!custody,
-        recoveryWords: !!custody,
+        recoveryWords: !!custody && custody.takesWords !== false,
         linkDevice: !!custody,
       };
     },

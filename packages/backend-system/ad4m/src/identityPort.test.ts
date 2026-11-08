@@ -203,6 +203,10 @@ describe('the AD4M identity port with a custody service', () => {
     const port = createAd4mIdentityPort(client({ status: {} }), host);
     // The custody service takes the 12 words back too: replacing the master key, restoring.
     expect(await port.capabilities()).toMatchObject({ masterKey: true, recoveryWords: true, linkDevice: true });
+    // A host that takes no words (the phone) keeps the master key and links devices, and offers
+    // neither replacing the master key nor restoring.
+    const phone = createAd4mIdentityPort(client({ status: {} }), { ...custody({}), takesWords: false });
+    expect(await phone.capabilities()).toMatchObject({ masterKey: true, recoveryWords: false, linkDevice: true });
     expect(await port.change!({ kind: 'replace-master' })).toBe('done');
     expect(host.open).toHaveBeenCalledWith({ kind: 'replace-master' });
     expect(await port.change!({ kind: 'revoke', keyId: 'd2' })).toBe('done');
