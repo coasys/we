@@ -18,6 +18,8 @@
 //! CUSTODY_LIVE=1 AD4M_REPO=<ad4m> cargo test --features cheap-kdf --test live -- --nocapture
 //! ```
 //!
+//! `AD4M_EXECUTOR` and `IDENTITY_STORE_BIN` name the two binaries when they were built elsewhere.
+//!
 //! The executors run in `<ad4m>/tests/js` with its shared language directories, as ad4m's own
 //! identity suite runs them (`tests/js/tests/identity.test.ts`), and without Holochain.
 //!
@@ -229,7 +231,9 @@ struct World {
 
 impl World {
     fn executor(&self) -> PathBuf {
-        self.repo.join("target/release/ad4m-executor")
+        std::env::var("AD4M_EXECUTOR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| self.repo.join("target/release/ad4m-executor"))
     }
 
     /// `init` (with `--operator` for B), shared stores as ad4m's suite sets them, `run`, then an agent.
@@ -365,7 +369,10 @@ async fn set_up() -> Option<(tokio::sync::MutexGuard<'static, ()>, World)> {
 
     // The identity store, on a temp database, with a cheap proof of work.
     let store_port = free_port();
-    let mut store = Command::new(repo.join("target/debug/identity-store"));
+    let store_bin = std::env::var("IDENTITY_STORE_BIN")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| repo.join("target/debug/identity-store"));
+    let mut store = Command::new(store_bin);
     store
         .arg("serve")
         .env("IDENTITY_STORE_DB", dir.join("store.sqlite"))
@@ -1304,4 +1311,97 @@ async fn log_ops(node: &Node, did: &str) -> Vec<String> {
         .iter()
         .map(|e| e["op"].as_str().unwrap().to_string())
         .collect()
+}
+
+/// The holder's side of the phone app's emulator run (`apps/we-mobile`, phase 2a): an identity made
+/// on executor A, an offer for the phone, and the `add` that lists the phone's device key once its
+/// claim matches. The phone is driven by hand or by script meanwhile; this case only waits.
+///
+/// Skipped unless `CUSTODY_PHONE_DIR` names a folder as well. Into it go `offer.json` (the link,
+/// executor A's URL, the store's URL and the identity) once the offer is open, and `joined.json`
+/// (the match code and the identity's log) once the phone's key is added. Then executor A keeps
+/// running, for the phone's key login, until a file `done` appears there (or 30 minutes pass).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_phone_joins_through_an_offer() {
+    let Ok(out) = std::env::var("CUSTODY_PHONE_DIR").map(PathBuf::from) else {
+        eprintln!("skipped: set CUSTODY_PHONE_DIR (see a_phone_joins_through_an_offer)");
+        return;
+    };
+    let Some((_one, world)) = set_up().await else {
+        return;
+    };
+    std::fs::create_dir_all(&out).unwrap();
+    let credential = "custody-phone-admin-credential";
+    let a = world.start_node("a", None, Some(credential), None).await;
+    let custody = custody_on(a.url(), credential, &world.dir.join("custody"));
+    let did = make_identity(&custody).await;
+    assert_eq!(log_ops(&a, &did).await, ["incept"]);
+
+    let enter = custody.start(IdentityStep::AddDevice).await.unwrap();
+    assert!(matches!(enter, Screen::EnterPassphrase { error: None }));
+    let offer = custody
+        .step(StepInput::Passphrase {
+            passphrase: PASSPHRASE.into(),
+            confirm: None,
+        })
+        .await
+        .unwrap();
+    let Screen::Offer { link, .. } = offer else {
+        panic!("no offer: {offer:?}")
+    };
+    let offer_file = json!({
+        "link": link,
+        "executor": a.url(),
+        "store": world.store_url,
+        "did": did,
+    });
+    std::fs::write(out.join("offer.json"), offer_file.to_string()).unwrap();
+    eprintln!("offer open: {offer_file}");
+
+    let matched = custody.step(StepInput::WaitClaim).await.unwrap();
+    let Screen::Match {
+        code,
+        hint,
+        can_keep,
+        ..
+    } = matched
+    else {
+        panic!("no match: {matched:?}")
+    };
+    eprintln!("match code {code}, hint {hint:?}");
+    // A phone offered no master key in 2a: it says it cannot keep one.
+    assert!(!can_keep);
+    let linked = custody
+        .step(StepInput::Confirm {
+            name: hint.clone(),
+            keep_master: false,
+            this_name: Some("Holder".into()),
+        })
+        .await
+        .unwrap();
+    assert!(
+        matches!(
+            linked,
+            Screen::Linked {
+                master_sent: false,
+                ..
+            }
+        ),
+        "{linked:?}"
+    );
+    assert_eq!(log_ops(&a, &did).await, ["incept", "add"]);
+    let log = a
+        .call(
+            "identity.log",
+            json!({ "did": did, "from": 0, "fresh": true }),
+        )
+        .await;
+    let joined = json!({ "code": code, "hint": hint, "log": log });
+    std::fs::write(out.join("joined.json"), joined.to_string()).unwrap();
+    eprintln!("joined: {joined}");
+
+    let deadline = std::time::Instant::now() + Duration::from_secs(30 * 60);
+    while !out.join("done").exists() && std::time::Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
 }
