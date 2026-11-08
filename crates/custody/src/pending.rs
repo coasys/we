@@ -109,9 +109,10 @@ pub struct Seen {
 ///
 /// The value ([`Epoch::value`]) is a random `incarnation`, drawn when the entry is made, above
 /// a `count` from 1: an entry made again (after the folder lost the file and its note, or by
-/// [`Exclusive::recover_epoch`]) counts in another incarnation, so it does not come back to a
-/// value read from the one before (but for a 1 in 2³² draw). The count is checked: at its last
-/// value the key can no longer change, rather than wrap.
+/// [`Exclusive::recover_epoch`]) counts in another incarnation, so it comes back to a value read
+/// from the one before only if the new draw equals the old: improbable (1 in 2³² per draw, the
+/// chance adding up over draws), not impossible. The count is checked: at its last value the key
+/// can no longer change, rather than wrap.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Epoch {
     pub scid: String,

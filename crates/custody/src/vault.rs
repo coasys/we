@@ -308,9 +308,11 @@ impl DesktopVault {
 
     /// Makes `scid`'s custody epoch readable again after it was lost (the epochs' file gone
     /// from the custody folder, or its entry for `scid`), when the person or the operator has
-    /// looked and means to go on: a new entry in a fresh incarnation, which no epoch read
-    /// before the loss can match, so a removal paused across it keeps the key rather than
-    /// forgetting it. An epoch that is there is left as it is. Answers the epoch.
+    /// looked and means to go on: a new entry in a fresh incarnation, which an epoch read
+    /// before the loss matches only by a 1 in 2³² draw (improbable, not impossible), so a
+    /// removal paused across it keeps the key rather than forgetting it. An epoch that is there
+    /// is left as it is. Answers the epoch. The app takes it in "Replace my master key", once
+    /// the words are checked (`crate::service`).
     pub fn recover_custody_epoch(&self, scid: &str) -> Result<u64, VaultError> {
         log::info!("custody: recover a lost custody epoch");
         self.pending.exclusive()?.recover_epoch(scid)
@@ -2311,7 +2313,7 @@ mod tests {
     /// to the value the removal read, and the removal would delete what was stored after its
     /// checks. Lost metadata is an error, never a fresh start.
     #[test]
-    fn a_lost_epochs_file_is_an_error_and_a_stale_epoch_never_matches() {
+    fn a_lost_epochs_file_is_an_error_and_a_stale_epoch_is_not_taken_up_again() {
         let dir = tempfile::tempdir().unwrap();
         let vault = file_vault(dir.path());
         let flow = vault.unlocking(pass("a passphrase of length"));
@@ -2331,7 +2333,8 @@ mod tests {
         assert!(vault.custody_epoch("QmOther").is_err());
 
         // Recovered on purpose: a fresh incarnation, which the epoch read before the loss
-        // never matches, whatever is stored after.
+        // matches only by a 1 in 2³² draw (improbable, not impossible; this test would fail
+        // on that draw), whatever is stored after.
         let recovered = vault.recover_custody_epoch("QmScid").unwrap();
         assert_ne!(recovered, read);
         assert_eq!(vault.recover_custody_epoch("QmScid").unwrap(), recovered);
@@ -2357,9 +2360,9 @@ mod tests {
 
     /// The epochs' file and the note that it was written both gone: the folder looks as if it
     /// never counted, but an entry made again is in a fresh incarnation, so the epoch read
-    /// before the loss still never matches a later store.
+    /// before the loss matches a later store only by a 1 in 2³² draw.
     #[test]
-    fn epochs_lost_with_their_note_still_never_repeat_a_value() {
+    fn epochs_lost_with_their_note_start_again_in_a_fresh_incarnation() {
         let dir = tempfile::tempdir().unwrap();
         let vault = file_vault(dir.path());
         let flow = vault.unlocking(pass("a passphrase of length"));
@@ -2384,7 +2387,7 @@ mod tests {
 
     /// The same with only one identity's entry gone from a file that is still there.
     #[test]
-    fn a_lost_epoch_entry_for_a_kept_key_is_an_error_and_a_stale_epoch_never_matches() {
+    fn a_lost_epoch_entry_for_a_kept_key_is_an_error_and_a_stale_epoch_is_not_taken_up_again() {
         let dir = tempfile::tempdir().unwrap();
         let vault = file_vault(dir.path());
         let flow = vault.unlocking(pass("a passphrase of length"));
@@ -2411,7 +2414,7 @@ mod tests {
         // An identity with no key here is unaffected.
         assert_eq!(vault.custody_epoch("QmNew").unwrap(), 0);
 
-        // Recovered on purpose, a stale epoch still never matches.
+        // Recovered on purpose, a stale epoch still does not match (but for a 1 in 2³² draw).
         vault.recover_custody_epoch("QmScid").unwrap();
         flow.store_master("QmScid", 1, Secret::new([5u8; 32]))
             .unwrap();

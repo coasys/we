@@ -230,17 +230,32 @@ again for where it lands now, or refuses when there is no passphrase to seal it 
 depth, a store that keeps only sealed items (the file, the Secret Service) refuses an unsealed one
 outright, so the raw master never reaches a file.
 
-**The custody epoch** (the ad4m client's `custody_epoch`) changes with every change of the kept key and
-never repeats within the folder's life. It is kept in `custody-epochs.json` as a random incarnation
-drawn when the identity's entry is made, and a checked count (it errors rather than wraps). Entries
-are never dropped, so a forget leaves its count behind. `custody-metadata.json`, written before any
-other note, records which notes the folder has made; a note it lists that has gone (`custody-epochs.json`,
-`record-seen.json`), or an epoch entry gone for a key the folder holds, is an **error**, never a fresh
-start, because a counter that started again could match a removal that read the old value and delete
-custody installed since. `DesktopVault::recover_custody_epoch` is the explicit recovery: it makes a
-new entry with a new incarnation, so no value read before the loss matches again. Forgetting a
-record's high-water mark (`record_seen_reset`) is likewise explicit, and leaves a mark that it was
-reset rather than lost.
+**The custody epoch** (the ad4m client's `custody_epoch`) changes with every change of the kept key. It
+is kept in `custody-epochs.json` as a random 32-bit incarnation drawn when the identity's entry is
+made, and a checked count (it errors rather than wraps), so within one incarnation it never repeats.
+Entries are never dropped, so a forget leaves its count behind. An identity's entry is made with its
+first stage or its first change of the kept key, whichever comes first, so a second identity restored
+into a folder that already counts another's is an ordinary first entry, and so is each identity a
+build before epochs kept here. `custody-metadata.json`, written before any other note, records which
+notes the folder has made and, per note, each identity it has made an entry for. A note it lists that
+has gone (`custody-epochs.json`, `record-seen.json`), or an entry gone for an identity it lists, is an
+**error**, never a fresh start, because a counter that started again could match a removal that read
+the old value and delete custody installed since; an identity it does not list simply has no entry
+yet. `DesktopVault::recover_custody_epoch` is the explicit recovery: it makes a new entry in a fresh
+incarnation, so a value read before the loss matches again only if the new incarnation happens to
+equal the old one — a 1 in 2³² chance per recovery, improbable but not impossible, and the chance
+adds up over many recoveries of one identity. The same holds when the epochs file and its note are
+lost together: the folder then looks as if it never counted, and the next entry is a fresh
+incarnation. Neither is rollback protection against a whole custody folder restored or deleted.
+
+The person reaches that recovery through **"Replace my master key"**: when this identity's epoch is
+lost, the step first checks that the typed words make the log's current master (the check the
+client's `rotate` makes before it publishes), then recovers the epoch, then rotates. Words that are
+not the identity's recover nothing. Any step that stops on a lost epoch says what happened and names
+that step. Forgetting a record's high-water mark (`record_seen_reset`) is likewise explicit, and
+leaves a mark that it was reset rather than lost; it is also how a lost `record-seen.json` (or one
+identity's mark in it) is repaired, one identity at a time: another identity's mark that went with
+the file stays an error until it is reset too.
 
 The epoch is bumped, durably, **before** the key is written, under the same lock. A write that then
 fails may still have bumped it, so the epoch can change when the kept key did not. The client's
