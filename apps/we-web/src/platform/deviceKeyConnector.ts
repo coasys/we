@@ -12,6 +12,10 @@
  * handed to an `Ad4mConnect` and its own `connect()` opens the client, checks the session and
  * watches it. So the rest of WE sees the same `core` and the same client whichever way the session
  * was opened. The token is not written to localStorage; every boot logs in afresh.
+ *
+ * A session that ends by itself — the renewal ran out of time, or the executor refused the token —
+ * is not left as an app whose calls all fail: by default WE starts again ({@link startAgain}),
+ * which logs in afresh or, failing that, shows the connect screen.
  */
 import { Ad4mClient } from '@coasys/ad4m';
 import Ad4mConnect from '@coasys/ad4m-connect/core';
@@ -41,13 +45,98 @@ export const KEY_SESSION_APP: KeySessionApp = {
   capabilities: CAPABILITIES,
 };
 
+/**
+ * How a key session ended without the person logging out: the renewal ran out of time
+ * (`expired`), or the executor refused the token (`refused`: revoked, or expired while the phone
+ * slept). Times are Unix milliseconds.
+ */
+export interface KeySessionEnd {
+  cause: 'expired' | 'refused';
+  openedAt: number;
+  endedAt: number;
+  error?: unknown;
+}
+
 /** What the connector needs from the phone and the page; the tests pass their own. */
 export interface DeviceKeyConnectorDeps {
   plugin: () => DeviceKeyPlugin | null;
   keyHost: () => string | null;
+  /** What happens when the session ends by itself. By default, {@link startAgain}. */
+  onSessionEnded?: (end: KeySessionEnd) => void;
+  /** Whether this boot skips the key login once. By default, {@link takeEndedTooSoon}. */
+  skipKeyLogin?: () => boolean;
 }
 
 const defaultDeps: DeviceKeyConnectorDeps = { plugin: () => deviceKeyPlugin(), keyHost: () => readKeyHost() };
+
+/** The tab's note that its last key session ended within {@link TOO_SOON_MS} of opening. */
+export const ENDED_TOO_SOON_KEY = 'we-phone/key-session-ended-too-soon';
+/** A key session that ends sooner than this after it opened is not logged straight back in to. */
+export const TOO_SOON_MS = 60_000;
+
+type TabStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+
+function safeSessionStorage(): TabStorage | undefined {
+  try {
+    return globalThis.sessionStorage;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The default answer to a key session that ended: WE starts again, as a boot. A boot logs in
+ * afresh with the device key, which asks the person nothing, so a session that expired while the
+ * phone slept comes straight back; one the executor will not open again (the key revoked, the
+ * executor gone) falls back to the connect screen. Either way the person sees where they stand,
+ * rather than an app whose every call fails.
+ *
+ * A session that ended within a minute of opening is noted first, and the boot after it skips the
+ * key login once ({@link takeEndedTooSoon}): an executor that grants a session and then refuses it
+ * at once would otherwise restart the app for as long as it was open.
+ */
+export function startAgain(
+  end: KeySessionEnd,
+  storage: TabStorage | undefined = safeSessionStorage(),
+  reload: () => void = () => globalThis.location?.reload(),
+): void {
+  console.error(`[WE] The key session ended (${end.cause}); starting again:`, end.error ?? '');
+  if (end.endedAt - end.openedAt < TOO_SOON_MS) {
+    try {
+      storage?.setItem(ENDED_TOO_SOON_KEY, String(end.endedAt));
+    } catch {
+      // An unwritable store only loses the loop guard; the restart still shows where things stand.
+    }
+  }
+  reload();
+}
+
+/** Whether the last key session in this tab ended too soon; forgets that it did, so it skips once. */
+export function takeEndedTooSoon(storage: TabStorage | undefined = safeSessionStorage()): boolean {
+  try {
+    if (storage?.getItem(ENDED_TOO_SOON_KEY) == null) return false;
+    storage.removeItem(ENDED_TOO_SOON_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Hands a renewed token to the live client, where the client can take one.
+ *
+ * `Ad4mClient.setToken` (ad4m after the pinned dc5964ba4) uses the token for every later call and
+ * the next connection. The pinned client has no such method and keeps the token it was built
+ * with, so here this answers `false` and the renewal reaches only `core.token` (and what reads it:
+ * the ports' `connection()`, an embedded app). Once WE pins an ad4m with `setToken`, this guard
+ * becomes a plain `client.setToken(token)`.
+ */
+export function handRenewedToken(client: unknown, token: string): boolean {
+  const live = client as { setToken?: (token: string) => void } | null;
+  if (typeof live?.setToken !== 'function') return false;
+  live.setToken(token);
+  return true;
+}
 
 /**
  * Whether this boot logs in with the device key, and where: the plugin, and the executor's URL,
@@ -74,6 +163,10 @@ export function createDeviceKeyConnector(
 ): BackendConnector {
   return {
     async initialize(ctx): Promise<BackendInitResult> {
+      if ((deps.skipKeyLogin ?? takeEndedTooSoon)()) {
+        console.warn('[WE] The last key session ended as soon as it opened; showing the connect screen.');
+        return fallback.initialize(ctx);
+      }
       const target = await keyLoginTarget(deps);
       if (!target) return fallback.initialize(ctx);
       const { plugin, url } = target;
@@ -106,15 +199,36 @@ export function createDeviceKeyConnector(
         throw new Error(`The executor at ${url} did not accept the key session (${core.authState})`);
       }
 
+      // A session that ends by itself is told once, and logging out is not an ending.
+      const openedAt = Date.now();
+      let over = false;
+      const onSessionEnded = deps.onSessionEnded ?? ((end: KeySessionEnd) => startAgain(end));
+      const ended = (cause: KeySessionEnd['cause'], error?: unknown) => {
+        if (over) return;
+        over = true;
+        renewal.stop();
+        onSessionEnded({ cause, openedAt, endedAt: Date.now(), error });
+      };
+
       const renewal = keepRenewed({
         plugin,
         agent: client.agent,
         url,
         session,
         // Read by `connection` below on each use, and by ad4m-connect when it builds a client.
+        // The client the ports hold takes it too, where it can: see `handRenewedToken`.
         onToken: (token) => {
           core.token = token;
+          handRenewedToken(client, token);
         },
+        onExpired: (error) => ended('expired', error),
+      });
+
+      // ad4m-connect watches the client: when the executor refuses its token (a 401, or the socket
+      // closed for auth), it drops the token and reports `unauthenticated`. The client the ports
+      // hold fails every call from then on, so this session is over.
+      core.addEventListener('authstatechange', (event) => {
+        if ((event as CustomEvent<string>).detail === 'unauthenticated') ended('refused');
       });
 
       return {
@@ -130,6 +244,7 @@ export function createDeviceKeyConnector(
         // Ends the session here and forgets the executor, so the next boot asks rather than
         // logging straight back in. The device key stays this phone's.
         disconnect: async () => {
+          over = true;
           renewal.stop();
           rememberKeyHost(null);
           try {
