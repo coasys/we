@@ -342,20 +342,27 @@ mod tests {
     fn a_made_directory_is_durable_at_each_parent_that_gained_it() {
         let dir = tempfile::tempdir().unwrap();
         let deep = dir.path().join("a").join("b").join("c");
-        let before = synced_dirs().len();
+        // The record is the whole process's: tests on other threads sync their own folders
+        // into it meanwhile, so only this test's folder is read.
+        let mine = || -> Vec<std::path::PathBuf> {
+            synced_dirs()
+                .into_iter()
+                .filter(|p| p.starts_with(dir.path()))
+                .collect()
+        };
+        assert!(mine().is_empty());
         create_dir_durable(&deep).unwrap();
         assert_eq!(
-            &synced_dirs()[before..],
-            &[
+            mine(),
+            [
                 dir.path().to_path_buf(),
                 dir.path().join("a"),
                 dir.path().join("a").join("b"),
             ],
             "each parent that gained an entry, from the one that was already there"
         );
-        let before = synced_dirs().len();
         create_dir_durable(&deep).unwrap();
-        assert_eq!(synced_dirs().len(), before, "nothing made, nothing synced");
+        assert_eq!(mine().len(), 3, "nothing made, nothing synced");
     }
 
     // The vault's transaction serializes on an exclusive lock of `master-keys.lock`, taken on a
