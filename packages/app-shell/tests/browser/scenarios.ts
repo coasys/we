@@ -2691,7 +2691,7 @@ const devicesOnPhone = (): Scenario => {
   ];
   const here = custodyDevice({
     did: 'did:scid:coasys:1:QmTest',
-    holdsMaster: null,
+    holdsMaster: false,
     unlock: null,
     blocked: null,
     devices: [],
