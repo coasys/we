@@ -332,6 +332,27 @@ describe('this device, on a phone and on a desktop', () => {
     });
     expect(servingDevice([], names, here).label).toBe('Your host');
   });
+
+  it('a computer the person did not name: its record name everywhere, "This computer" only on itself', () => {
+    // `crates/custody` writes an unnamed computer by what it is ("Linux computer"), never as
+    // "This computer", which every other device would then show as theirs.
+    const unnamed = [{ keyId: 'd1', name: 'Linux computer', kind: 'desktop-app', holdsMaster: 'yes' as const }];
+    const desktop = custodyDevice(custody(null));
+    expect(servingDevice(keys, unnamed, desktop).label).toBe('This computer');
+    expect(deviceRows(keys, unnamed, [], null, NOW, desktop)[0]).toMatchObject({
+      keyId: 'd1',
+      label: 'Linux computer',
+      subtitle: 'This computer · d1 · added at #0',
+    });
+    const phone = custodyDevice(custody({ keyId: 'd2', kind: 'phone-app' }));
+    expect(servingDevice(keys, unnamed, phone)).toEqual({
+      label: 'Linux computer',
+      subtitle: 'Your host · serves you now',
+      icon: 'laptop',
+    });
+    const host = deviceRows(keys, unnamed, [], null, NOW, phone).find((r) => r.keyId === 'd1');
+    expect(host).toMatchObject({ label: 'Linux computer', subtitle: 'd1 · added at #0' });
+  });
 });
 
 describe('short forms', () => {

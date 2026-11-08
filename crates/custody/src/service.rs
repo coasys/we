@@ -1576,6 +1576,11 @@ fn wrong_passphrase() -> Screen {
 /// The device is listed by the name the person gives (else the name it suggested). The first
 /// link also lists this computer, which made the identity before any record existed, under the
 /// name the person gives it then: the Devices page shows every device by name from then on.
+///
+/// Its kind is a guess: ad4m's claim carries a name hint and whether the device may keep the
+/// master key, never what the device is. One that may keep it is written as a computer, any other
+/// as a server; a phone writes its own entry as a phone app once it reads its devices
+/// (`crates/phone-custody`, `PhoneIdentity::devices`).
 #[allow(clippy::too_many_arguments)]
 async fn follow_link<R: ExecutorRpc>(
     flow: &LinkFlow<'_, R>,
@@ -1694,10 +1699,12 @@ fn given_name(name: Option<String>) -> Option<String> {
 }
 
 /// This computer's entry in the record: the desktop app, holding the master key or not, with the
-/// index of the one it keeps when its item says (`None`: unknown, or none held).
+/// index of the one it keeps when its item says (`None`: unknown, or none held). Unnamed, it is
+/// [`computer_name`]: the record is read by every device, and "This computer" is only true on this
+/// one, whose own Settings say so beside its row.
 fn this_computer(name: Option<String>, holds: bool, index: Option<u32>) -> DeviceEntry {
     DeviceEntry {
-        name: name.unwrap_or_else(|| "This computer".into()),
+        name: name.unwrap_or_else(|| computer_name(std::env::consts::OS).into()),
         kind: DeviceKind::DesktopApp,
         place: Some(Place::Computer),
         address: None,
@@ -1705,6 +1712,18 @@ fn this_computer(name: Option<String>, holds: bool, index: Option<u32>) -> Devic
         holds_master: if holds { Holds::Yes } else { Holds::No },
         master_index: if holds { index } else { None },
         operator: None,
+    }
+}
+
+/// The name a computer the person did not name goes by on every device: what it is, by the system
+/// it runs (`std::env::consts::OS`). Not its host name, which can carry a person's name to devices
+/// and screens it was never chosen for.
+fn computer_name(os: &str) -> &'static str {
+    match os {
+        "macos" => "Mac",
+        "windows" => "Windows PC",
+        "linux" => "Linux computer",
+        _ => "Computer",
     }
 }
 
@@ -3995,6 +4014,24 @@ mod tests {
         let input: StepInput =
             serde_json::from_str(r#"{"kind":"words","answers":["orbit","lamp"]}"#).unwrap();
         assert!(!format!("{input:?}").contains("orbit"));
+    }
+
+    // Every device reads the record, so an unnamed computer is written by what it is: "This
+    // computer" on the phone's Devices page named the phone's host as the phone itself.
+    #[test]
+    fn an_unnamed_computer_is_written_by_what_it_is_never_as_this_computer() {
+        assert_eq!(computer_name("macos"), "Mac");
+        assert_eq!(computer_name("windows"), "Windows PC");
+        assert_eq!(computer_name("linux"), "Linux computer");
+        assert_eq!(computer_name("freebsd"), "Computer");
+        let entry = this_computer(None, true, Some(0));
+        assert_eq!(entry.name, computer_name(std::env::consts::OS));
+        assert_ne!(entry.name, "This computer");
+        assert_eq!(entry.kind, DeviceKind::DesktopApp);
+        assert_eq!(
+            this_computer(Some("Studio".into()), false, None).name,
+            "Studio"
+        );
     }
 
     #[test]
