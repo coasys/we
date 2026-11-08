@@ -84,8 +84,11 @@ impl DesktopVault {
     /// Whether a flow on `scid`'s key must ask for a passphrase: true where that item is sealed
     /// (a file, the Secret Service), false where the keychain unlocks it. For an item not kept
     /// here, the answer for a new one. Asks the store where the item is, never reads it; an error
-    /// is returned, never guessed at.
+    /// is returned, never guessed at. Under the custody folder's lock ([`master_index`]).
+    ///
+    /// [`master_index`]: Self::master_index
     pub fn needs_passphrase_for(&self, scid: &str) -> Result<bool, VaultError> {
+        let _folder = self.pending.exclusive()?;
         Ok(!self.store.kind_of(&item_name(scid))?.unlocks_itself())
     }
 
@@ -104,8 +107,10 @@ impl DesktopVault {
     }
 
     /// Whether an item for `scid` is held, without an unlock (no prompt, no passphrase): the store is
-    /// asked whether the item exists, and the item itself is never read.
+    /// asked whether the item exists, and the item itself is never read. Under the custody
+    /// folder's lock ([`master_index`](Self::master_index)).
     pub fn holds(&self, scid: &str) -> Result<bool, VaultError> {
+        let _folder = self.pending.exclusive()?;
         self.store.contains(&item_name(scid))
     }
 
@@ -115,17 +120,26 @@ impl DesktopVault {
     /// operation as the key ([`SecretStore::index_of`]). So it names the key an unlock gives,
     /// or that unlock fails. `None` when no item is held, or when the item does not say (one
     /// sealed before the index was in its header, a keychain item without the attribute).
+    ///
+    /// Read under the custody folder's lock, as every write of the slots is made: a write under
+    /// way in another app on this computer is waited out, never seen half done (the keychain
+    /// replaces an item by delete, then add, and between the two no key is kept). The public
+    /// reads take the lock; the vault's own steps, which already hold it (it is not taken
+    /// twice), read through [`index_at`](Self::index_at) and the store.
     pub fn master_index(&self, scid: &str) -> Result<Option<u32>, VaultError> {
+        let _folder = self.pending.exclusive()?;
         self.index_at(&item_name(scid))
     }
 
-    /// The index of the key a rotation staged for `scid`, read as [`master_index`](Self::master_index);
-    /// `None` when none is staged.
+    /// The index of the key a rotation staged for `scid`, read as [`master_index`](Self::master_index)
+    /// (under the lock); `None` when none is staged.
     pub fn staged_index(&self, scid: &str) -> Result<Option<u32>, VaultError> {
+        let _folder = self.pending.exclusive()?;
         self.index_at(&staged_name(scid))
     }
 
-    /// The index the item `name` carries, with no unlock.
+    /// The index the item `name` carries, with no unlock. Takes no lock: for a caller that
+    /// holds the custody folder's lock, or reads under the public layer above.
     fn index_at(&self, name: &str) -> Result<Option<u32>, VaultError> {
         Ok(self.tag_at(name)?.map(|tag| tag.index))
     }
@@ -432,7 +446,7 @@ impl Vault for Unlocking<'_> {
     /// not higher; when it is, the staged key can never be kept and is deleted.
     fn promote_master(&self, scid: &str, index: u32) -> Result<Stored, VaultError> {
         let mut folder = self.vault.pending.exclusive()?;
-        if self.vault.staged_index(scid)? != Some(index) {
+        if self.vault.index_at(&staged_name(scid))? != Some(index) {
             return Err(VaultError::NotFound);
         }
         if let Some(kept) = self.vault.kept_index_held(scid)? {
@@ -2611,6 +2625,99 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// A keychain that replaces an item as the macOS one does — delete, then add — and, once
+    /// armed, stops between the two at `gate` (twice), as a slow `SecItemAdd` would.
+    struct DeleteThenAdd {
+        inner: MemoryStore,
+        gate: std::sync::Mutex<Option<Arc<std::sync::Barrier>>>,
+    }
+
+    impl SecretStore for DeleteThenAdd {
+        fn kind(&self) -> StoreKind {
+            StoreKind::Keychain
+        }
+        fn kind_of(&self, _: &str) -> Result<StoreKind, VaultError> {
+            Ok(StoreKind::Keychain)
+        }
+        fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
+            self.inner.put(n, b)
+        }
+        fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
+            self.inner.get(n)
+        }
+        fn contains(&self, n: &str) -> Result<bool, VaultError> {
+            self.inner.contains(n)
+        }
+        fn delete(&self, n: &str) -> Result<(), VaultError> {
+            self.inner.delete(n)
+        }
+        fn put_tagged(&self, n: &str, b: &[u8], t: &ItemTag) -> Result<(), VaultError> {
+            self.inner.delete(n)?;
+            if let Some(gate) = self.gate.lock().unwrap().take() {
+                gate.wait();
+                gate.wait();
+            }
+            self.inner.put_tagged(n, b, t)
+        }
+        fn tag_of(&self, n: &str) -> Result<Option<ItemTag>, VaultError> {
+            self.inner.tag_of(n)
+        }
+    }
+
+    /// Lal's review of we#431: the public reads of a key's index (and whether one is held) ran
+    /// without the custody lock, so during another app's replace of a keychain item — delete,
+    /// then add — they answered that no key is kept. They now wait for the write under way.
+    #[test]
+    fn a_read_on_another_handle_waits_out_a_keychain_replace() {
+        let dir = tempfile::tempdir().unwrap();
+        let keychain = Arc::new(DeleteThenAdd {
+            inner: MemoryStore::as_kind(StoreKind::Keychain),
+            gate: std::sync::Mutex::new(None),
+        });
+        let handle = || {
+            DesktopVault::with_kdf(
+                Box::new(keychain.clone()),
+                PendingIncepts::file(dir.path()),
+                CHEAP,
+            )
+        };
+        let (writing, reading) = (handle(), handle());
+        writing
+            .unlocking(None)
+            .store_master("QmScid", 0, Secret::new([4u8; 32]))
+            .unwrap();
+        type Reads = (Option<u32>, Option<u32>, bool);
+        let read = |vault: &DesktopVault| -> Reads {
+            (
+                vault.master_index("QmScid").unwrap(),
+                vault.staged_index("QmScid").unwrap(),
+                vault.holds("QmScid").unwrap(),
+            )
+        };
+        let gate = Arc::new(std::sync::Barrier::new(2));
+        *keychain.gate.lock().unwrap() = Some(gate.clone());
+        let (early, answered) = std::thread::scope(|scope| {
+            let stored = scope.spawn(|| {
+                writing
+                    .unlocking(None)
+                    .store_master("QmScid", 1, Secret::new([5u8; 32]))
+            });
+            // Deleted, not yet added.
+            gate.wait();
+            let (tx, rx) = std::sync::mpsc::channel();
+            let reading = &reading;
+            let reader = scope.spawn(move || tx.send(read(reading)).unwrap());
+            let early = rx.recv_timeout(std::time::Duration::from_millis(300)).ok();
+            gate.wait();
+            assert_eq!(stored.join().unwrap().unwrap(), Stored::Stored);
+            reader.join().unwrap();
+            let answered = early.or_else(|| rx.recv().ok()).unwrap();
+            (early, answered)
+        });
+        assert_eq!(early, None, "read during the replace");
+        assert_eq!(answered, (Some(1), None, true));
     }
 
     fn ed25519_signing_key_multikey(secret: [u8; 32]) -> ad4m_identity_core::Multikey {
