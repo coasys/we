@@ -44,7 +44,12 @@ export interface KeySession {
   /** Unix seconds, by the executor's clock. */
   expiresAt: number;
   grantId: string;
-  role: 'operator' | 'tenant' | 'app' | 'anonymous';
+  /**
+   * ad4m's `SessionRole`. A key login never answers `custody` (that is the desktop custody
+   * service's own channel, `session_info` in `key_login.rs`), but the type it answers with names
+   * it, and only `operator` administers the node.
+   */
+  role: 'operator' | 'tenant' | 'app' | 'custody' | 'anonymous';
   /** The agent the session acts as. */
   did: string;
   /** The identity that logged in. */
