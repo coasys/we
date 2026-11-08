@@ -16,6 +16,10 @@
  * A session that ends by itself — the renewal ran out of time, or the executor refused the token —
  * is not left as an app whose calls all fail: by default WE starts again ({@link startAgain}),
  * which logs in afresh or, failing that, shows the connect screen.
+ *
+ * A key login that cannot reach the executor (the phone offline past the session's hour, say) is
+ * not a failed one: it tries again for a while and then says the phone is offline, with a way to
+ * try again, rather than showing a password screen to someone whose identity is fine.
  */
 import { Ad4mClient } from '@coasys/ad4m';
 import Ad4mConnect from '@coasys/ad4m-connect/core';
@@ -65,6 +69,10 @@ export interface DeviceKeyConnectorDeps {
   onSessionEnded?: (end: KeySessionEnd) => void;
   /** Whether this boot skips the key login once. By default, {@link takeEndedTooSoon}. */
   skipKeyLogin?: () => boolean;
+  /** How a login that could not reach the executor waits before the next try; the tests pass their own. */
+  waitToRetry?: (ms: number) => Promise<void>;
+  /** The time, Unix ms; the tests pass their own. */
+  now?: () => number;
 }
 
 const defaultDeps: DeviceKeyConnectorDeps = { plugin: () => deviceKeyPlugin(), keyHost: () => readKeyHost() };
@@ -73,23 +81,46 @@ const defaultDeps: DeviceKeyConnectorDeps = { plugin: () => deviceKeyPlugin(), k
 export const ENDED_TOO_SOON_KEY = 'we-phone/key-session-ended-too-soon';
 /** A key session that ends sooner than this after it opened is not logged straight back in to. */
 export const TOO_SOON_MS = 60_000;
+/**
+ * How long the note that a session ended too soon holds. It is for the boot right after; one left
+ * in `localStorage` (where there is no `sessionStorage`) must not skip a key login days later.
+ */
+export const TOO_SOON_NOTE_MS = 10 * 60_000;
+
+/** How long a key login keeps trying an executor it cannot reach before it says so. */
+export const UNREACHABLE_MS = 60_000;
+/** The waits between those tries: doubling from the first, up to the last. */
+export const RETRY_FIRST_MS = 1_000;
+export const RETRY_MAX_MS = 15_000;
 
 type TabStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
 
-function safeSessionStorage(): TabStorage | undefined {
+function storageOf(name: 'sessionStorage' | 'localStorage'): TabStorage | undefined {
   try {
-    return globalThis.sessionStorage;
+    const storage = globalThis[name];
+    // A WebView can hand out a storage that throws on use (storage disabled, or full): probe it.
+    storage?.getItem(ENDED_TOO_SOON_KEY);
+    return storage ?? undefined;
   } catch {
     return undefined;
   }
 }
 
 /**
+ * Where the loop guard's note goes: the tab's `sessionStorage`, or where the WebView has none,
+ * `localStorage`, which outlives the tab, and so the note carries its time ({@link TOO_SOON_NOTE_MS}).
+ */
+export function guardStorage(): TabStorage | undefined {
+  return storageOf('sessionStorage') ?? storageOf('localStorage');
+}
+
+/**
  * The default answer to a key session that ended: WE starts again, as a boot. A boot logs in
  * afresh with the device key, which asks the person nothing, so a session that expired while the
  * phone slept comes straight back; one the executor will not open again (the key revoked, the
- * executor gone) falls back to the connect screen. Either way the person sees where they stand,
- * rather than an app whose every call fails.
+ * identity not known there) falls back to the connect screen; a phone still offline, or an
+ * executor out of reach, is told so with a way to try again ({@link loginUntilReached}). Either
+ * way the person sees where they stand, rather than an app whose every call fails.
  *
  * A session that ended within a minute of opening is noted first, and the boot after it skips the
  * key login once ({@link takeEndedTooSoon}): an executor that grants a session and then refuses it
@@ -97,7 +128,7 @@ function safeSessionStorage(): TabStorage | undefined {
  */
 export function startAgain(
   end: KeySessionEnd,
-  storage: TabStorage | undefined = safeSessionStorage(),
+  storage: TabStorage | undefined = guardStorage(),
   reload: () => void = () => globalThis.location?.reload(),
 ): void {
   console.error(`[WE] The key session ended (${end.cause}); starting again:`, end.error ?? '');
@@ -111,14 +142,106 @@ export function startAgain(
   reload();
 }
 
-/** Whether the last key session in this tab ended too soon; forgets that it did, so it skips once. */
-export function takeEndedTooSoon(storage: TabStorage | undefined = safeSessionStorage()): boolean {
+/**
+ * Whether the last key session ended too soon, within {@link TOO_SOON_NOTE_MS}; forgets that it
+ * did, so it skips once. A note older than that, or one that is not a time, is forgotten too.
+ */
+export function takeEndedTooSoon(storage: TabStorage | undefined = guardStorage(), now: number = Date.now()): boolean {
   try {
-    if (storage?.getItem(ENDED_TOO_SOON_KEY) == null) return false;
-    storage.removeItem(ENDED_TOO_SOON_KEY);
-    return true;
+    const note = storage?.getItem(ENDED_TOO_SOON_KEY);
+    if (note == null) return false;
+    storage!.removeItem(ENDED_TOO_SOON_KEY);
+    const endedAt = Number(note);
+    return Number.isFinite(endedAt) && now - endedAt >= 0 && now - endedAt < TOO_SOON_NOTE_MS;
   } catch {
     return false;
+  }
+}
+
+/**
+ * Whether a key login failed for want of a network rather than by the executor's answer: the
+ * request never got there (a `fetch` that rejected, a socket that closed or would not open, a call
+ * with no reply in time), the
+ * WebView knows it is offline, or the executor said it could not reach the identity store.
+ * Such a failure is no reason to ask for a password: the phone's identity is unchanged, and the
+ * key login will work once the network is back. Anything else is a refusal.
+ */
+export function isUnreachable(error: unknown, online: boolean | undefined = globalThis.navigator?.onLine): boolean {
+  if (online === false) return true;
+  // The client's own statuses for no answer (`@coasys/ad4m`'s `RpcError`): a socket that closed or
+  // would not open is 503, a call with no reply in time is 408; a gateway in front answers 502/504.
+  const status = (error as { status?: unknown } | null)?.status;
+  if (typeof status === 'number' && [0, 408, 502, 503, 504].includes(status)) return true;
+  const message = error instanceof Error ? `${error.name}: ${error.message}` : typeof error === 'string' ? error : '';
+  return (
+    (error instanceof TypeError && /fetch|network|load failed/i.test(message)) ||
+    /failed to fetch|networkerror|network request failed|load failed|err_internet_disconnected|err_network|err_name_not_resolved|err_connection|econnrefused|enotfound|etimedout|socket (?:hang up|closed)|websocket (?:closed|error)|connection (?:closed|refused|reset|lost)|timed? ?out|store-unavailable/i.test(
+      message,
+    )
+  );
+}
+
+/** A key login that could not reach its executor within {@link UNREACHABLE_MS}. */
+export class KeyLoginUnreachable extends Error {
+  constructor(
+    readonly url: string,
+    readonly cause: unknown,
+  ) {
+    super(
+      `This phone is offline, or ${hostOf(url)} cannot be reached. It is still signed in with its device key: try again once it is back online.`,
+    );
+    this.name = 'KeyLoginUnreachable';
+  }
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).host;
+  } catch {
+    return 'the executor';
+  }
+}
+
+function waitForOnline(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      globalThis.removeEventListener?.('online', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    globalThis.addEventListener?.('online', done);
+  });
+}
+
+/**
+ * Logs in with the device key, and keeps trying while the executor cannot be reached: doubling
+ * waits from {@link RETRY_FIRST_MS} up to {@link RETRY_MAX_MS}, cut short when the WebView comes
+ * back online, for {@link UNREACHABLE_MS} in all. Then it throws {@link KeyLoginUnreachable}, which
+ * the boot screen shows as "could not reach your data" with a way to try again — never the
+ * password screen, which would ask a person whose phone is merely offline to sign in again. A
+ * refusal is thrown at once.
+ */
+export async function loginUntilReached<T>(
+  login: () => Promise<T>,
+  url: string,
+  options: { waitToRetry?: (ms: number) => Promise<void>; now?: () => number } = {},
+): Promise<T> {
+  const wait = options.waitToRetry ?? waitForOnline;
+  const now = options.now ?? Date.now;
+  const started = now();
+  let delay = RETRY_FIRST_MS;
+  for (;;) {
+    try {
+      return await login();
+    } catch (error) {
+      if (!isUnreachable(error)) throw error;
+      const left = UNREACHABLE_MS - (now() - started);
+      if (left <= 0) throw new KeyLoginUnreachable(url, error);
+      console.warn(`[WE] The executor could not be reached for the key login; trying again in ${delay} ms:`, error);
+      await wait(Math.min(delay, left));
+      delay = Math.min(delay * 2, RETRY_MAX_MS);
+    }
   }
 }
 
@@ -183,17 +306,28 @@ export function createDeviceKeyConnector(
 
       const core = new Ad4mConnect({ appInfo: APP_INFO, url, capabilities: CAPABILITIES });
 
-      // A challenge and a login need no token: a client of its own, closed once it has answered.
-      const anonymous = new Ad4mClient(core.baseUrl);
+      // A challenge and a login need no token: a client of each try's own, closed once it has
+      // answered (a socket that failed is not dialled again).
       let session;
       try {
-        session = await loginWithDeviceKey(plugin, anonymous.agent, url, KEY_SESSION_APP);
+        session = await loginUntilReached(
+          async () => {
+            const anonymous = new Ad4mClient(core.baseUrl);
+            try {
+              return await loginWithDeviceKey(plugin, anonymous.agent, url, KEY_SESSION_APP);
+            } finally {
+              anonymous.close();
+            }
+          },
+          url,
+          { waitToRetry: deps.waitToRetry, now: deps.now },
+        );
       } catch (error) {
-        // Not known there, unreachable, or refused: the person can still sign in the ordinary way.
+        // Offline, or the executor out of reach: said on the boot screen, with a way to try again.
+        if (error instanceof KeyLoginUnreachable) throw error;
+        // Not known there, or refused: the person can still sign in the ordinary way.
         console.error('[WE] The key login was refused; falling back to the connect screen:', error);
         return fallback.initialize(ctx);
-      } finally {
-        anonymous.close();
       }
 
       // ad4m-connect's constructor restored whatever password session the connect screen left

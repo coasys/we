@@ -195,6 +195,92 @@ describe('createDeviceKeyConnector', () => {
     expect([later.url, later.token]).toEqual(['https://b.example', '']);
   });
 
+  describe('a key login that cannot reach the executor', () => {
+    const offline = () => new TypeError('Failed to fetch');
+    function clock() {
+      let t = 0;
+      const waits: number[] = [];
+      return {
+        waits,
+        now: () => t,
+        waitToRetry: async (ms: number) => {
+          waits.push(ms);
+          t += ms;
+        },
+      };
+    }
+
+    it('tries again, and logs in once the network is back', async () => {
+      const { createDeviceKeyConnector } = await import('./deviceKeyConnector');
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      agent.sessionChallenge.mockRejectedValueOnce(offline()).mockRejectedValueOnce(offline());
+      const time = clock();
+      const ordinary = { initialize: vi.fn(async () => ({}) as never) };
+      const connector = createDeviceKeyConnector(ordinary, { plugin, keyHost: () => 'https://b.example', ...time });
+      const result = await connector.initialize(ctx);
+      expect((result.client as { token?: string }).token).toBe('token-1');
+      expect(ordinary.initialize).not.toHaveBeenCalled();
+      expect(time.waits).toEqual([1_000, 2_000]);
+    });
+
+    it('says the phone is offline rather than asking for a password', async () => {
+      const { createDeviceKeyConnector, KeyLoginUnreachable, UNREACHABLE_MS, RETRY_MAX_MS } =
+        await import('./deviceKeyConnector');
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+      agent.sessionChallenge.mockRejectedValue(offline());
+      try {
+        const time = clock();
+        const ordinary = { initialize: vi.fn(async () => ({}) as never) };
+        const connector = createDeviceKeyConnector(ordinary, { plugin, keyHost: () => 'https://b.example', ...time });
+        const failed = await connector.initialize(ctx).catch((e: unknown) => e);
+        expect(failed).toBeInstanceOf(KeyLoginUnreachable);
+        expect((failed as Error).message).toContain('b.example');
+        expect((failed as Error).message).toContain('offline');
+        expect(ordinary.initialize).not.toHaveBeenCalled();
+        // Doubling waits, capped, for the minute and no longer.
+        expect(time.waits.slice(0, 5)).toEqual([1_000, 2_000, 4_000, 8_000, 15_000]);
+        expect(Math.max(...time.waits)).toBe(RETRY_MAX_MS);
+        expect(time.waits.reduce((a, b) => a + b, 0)).toBe(UNREACHABLE_MS);
+      } finally {
+        agent.sessionChallenge.mockReset();
+        agent.sessionChallenge.mockImplementation(async () => ({
+          challenge: `c${++agent.challenges}`,
+          executor: 'did:key:z6MkExecutor',
+          expiresAt: 0,
+        }));
+      }
+    });
+
+    it('still falls back to the connect screen when the executor refuses', async () => {
+      const { createDeviceKeyConnector } = await import('./deviceKeyConnector');
+      vi.spyOn(console, 'error').mockImplementation(() => {});
+      agent.loginWithKey.mockRejectedValueOnce(new Error('RPC error 403: not-known'));
+      const time = clock();
+      const ordinary = { initialize: vi.fn(async () => ({ client: 'fallback' }) as never) };
+      const connector = createDeviceKeyConnector(ordinary, { plugin, keyHost: () => 'https://b.example', ...time });
+      expect((await connector.initialize(ctx)).client).toBe('fallback');
+      expect(time.waits).toEqual([]);
+    });
+
+    it('tells a failure of the network from a refusal', async () => {
+      const { isUnreachable } = await import('./deviceKeyConnector');
+      expect(isUnreachable(new TypeError('Failed to fetch'), true)).toBe(true);
+      expect(isUnreachable(new TypeError('Load failed'), true)).toBe(true);
+      expect(
+        isUnreachable(Object.assign(new Error('RPC error 503: WebSocket connection closed'), { status: 503 }), true),
+      ).toBe(true);
+      expect(
+        isUnreachable(Object.assign(new Error("RPC call 'x' timed out after 30000ms"), { status: 408 }), true),
+      ).toBe(true);
+      expect(isUnreachable(new Error('RPC error 503: store-unavailable'), true)).toBe(true);
+      // Whatever it was, a WebView that knows it is offline is offline.
+      expect(isUnreachable(new Error('anything'), false)).toBe(true);
+      for (const reason of ['not-known', 'signature', 'key', 'audience', 'challenge', 'no-public-origin']) {
+        expect(isUnreachable(Object.assign(new Error(`RPC error 403: ${reason}`), { status: 403 }), true)).toBe(false);
+      }
+    });
+  });
+
   // Known gap (review of #436 at 110995400): `onToken` sets `core.token` only. The `Ad4mClient`
   // built by `connect()` keeps the token it was constructed with, and the ports and the renewal
   // hold that client, so the first dial after the original token expires goes out with it. The
@@ -298,7 +384,7 @@ describe('a key session that ends by itself', () => {
     expect(takeEndedTooSoon(storage)).toBe(false);
 
     // One refused as soon as it opened: the next boot shows the connect screen, once.
-    startAgain({ cause: 'refused', openedAt: 0, endedAt: TOO_SOON_MS - 1 }, storage, reload);
+    startAgain({ cause: 'refused', openedAt: Date.now() - TOO_SOON_MS + 1, endedAt: Date.now() }, storage, reload);
     expect(reload).toHaveBeenCalledTimes(2);
     vi.stubGlobal('sessionStorage', storage);
     const ordinary = { initialize: vi.fn(async () => ({ client: 'fallback' }) as never) };
@@ -310,6 +396,33 @@ describe('a key session that ends by itself', () => {
     expect((await connector.initialize(ctx)).client).toBe('fallback');
     expect(status).not.toHaveBeenCalled();
     expect(takeEndedTooSoon(storage)).toBe(false);
+  });
+
+  it('keeps its loop guard where there is no sessionStorage, and only for a while', async () => {
+    const { guardStorage, startAgain, takeEndedTooSoon, TOO_SOON_MS, TOO_SOON_NOTE_MS } =
+      await import('./deviceKeyConnector');
+    // A WebView whose sessionStorage throws on use: the note goes to localStorage.
+    vi.stubGlobal('sessionStorage', {
+      getItem() {
+        throw new Error('SecurityError');
+      },
+    });
+    const local = new MemoryStorage();
+    vi.stubGlobal('localStorage', local);
+    expect(guardStorage()).toBe(local);
+    const reload = vi.fn();
+    startAgain({ cause: 'refused', openedAt: 1_000, endedAt: 1_000 + TOO_SOON_MS - 1 }, undefined, reload);
+    expect(local.getItem('we-phone/key-session-ended-too-soon')).toBe(String(1_000 + TOO_SOON_MS - 1));
+    expect(takeEndedTooSoon(undefined, 1_000 + TOO_SOON_MS)).toBe(true);
+    expect(takeEndedTooSoon(undefined, 1_000 + TOO_SOON_MS)).toBe(false);
+
+    // One left from long ago is forgotten, not obeyed.
+    startAgain({ cause: 'refused', openedAt: 0, endedAt: 10 }, undefined, reload);
+    expect(takeEndedTooSoon(undefined, 10 + TOO_SOON_NOTE_MS)).toBe(false);
+    expect(local.getItem('we-phone/key-session-ended-too-soon')).toBeNull();
+    // Nor is one that is not a time.
+    local.setItem('we-phone/key-session-ended-too-soon', 'yes');
+    expect(takeEndedTooSoon(undefined, 10)).toBe(false);
   });
 
   it('hands a renewed token to a client that can take one', async () => {
