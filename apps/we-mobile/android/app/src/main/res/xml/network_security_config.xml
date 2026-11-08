@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  No cleartext, and no extra trust anchors. The WebView loads only its bundled files; the desktop
-  connection is TLS done by the Rust plugin, which trusts the pinned key and nothing in this file.
+  No cleartext, and no extra trust anchors. WE reaches its executor, on a host or Coasys cloud,
+  over https and wss with the system's own certificate checks.
 -->
 <network-security-config>
     <base-config cleartextTrafficPermitted="false" />
