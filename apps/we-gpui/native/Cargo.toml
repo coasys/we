@@ -1,0 +1,38 @@
+# The GPUI desktop shell for WE — a spike beside the Tauri and Electron shells (see ../SPIKE.md).
+#
+# Its own workspace, like `crates/custody` and `apps/we-tauri/src-tauri`: GPUI and the webview pull a
+# dependency graph nothing else in the repo shares.
+#
+# GPUI comes through `gpui-kit` (crates.io), which pins `gpui-pre` — a crates.io republish of
+# Zed's `crates/gpui` at a recent commit — because the webview crate, `gpui-webview`, is built
+# against exactly that. Zed's own `gpui` crate on crates.io (0.2.2) is older than gpui-pre and no
+# published webview crate supports it. Both are crates.io releases, so no git rev of zed is needed.
+[package]
+name = "we-gpui"
+version = "0.1.0"
+edition = "2024"
+description = "WE's GPUI desktop shell (spike)"
+publish = false
+
+[workspace]
+
+[dependencies]
+# GPUI itself (gpui-pre 0.3.11) plus gpui-component, re-exported under one name.
+gpui-kit = { version = "=0.9.0" }
+# Wry's webview as a child of a GPUI window. Linux: X11/XWayland only — see SPIKE.md.
+gpui-webview = { version = "=0.9.0" }
+# The wry gpui-webview is built on: longbridge's fork, the same copy, so the builder and the
+# `WebView` it returns are one type.
+wry = { package = "lb-wry", version = "=0.53.3" }
+anyhow = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+log = "0.4"
+env_logger = "0.11"
+
+[target.'cfg(target_os = "linux")'.dependencies]
+# The same gtk and webkit2gtk wry uses (it pins `=2.0.1`): to initialise GTK, and for the webview's
+# WebKitGTK settings (media, permission requests), as the Tauri host does in `enable_media`. A
+# second webkit2gtk would compile and hand back types the running webview does not recognise.
+gtk = "0.18"
+webkit2gtk = { version = "=2.0.1", features = ["v2_38"] }
