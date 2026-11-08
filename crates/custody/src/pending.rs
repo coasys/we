@@ -34,13 +34,10 @@
 //! key's epoch stays, a reset mark is kept as a reset), and the folder notes each of them in
 //! `<dir>/custody-metadata.json` before it is first written. A noted file that is gone has been
 //! lost, not never written: reading it is an error, never an empty start. The metadata notes each
-//! identity too, so an entry missing for a noted identity is the same loss, one entry at a time,
-//! while an identity never noted simply has none yet (a second identity first staged into a
-//! folder that counts another's epoch, an identity kept by a build before epochs were): its entry
-//! is made with its first stage or change. A record mark is noted before its entry is first
-//! written. An identity's first epoch is written before its note: stopped in between, the entry
-//! is there and read as it is; noted first, the same stop would leave the identity lost before
-//! any key of it was kept, on a computer that may not be linked to it yet.
+//! identity too, before its entry in either file is first written, so an entry missing for a
+//! noted identity is the same loss, one entry at a time, while an identity never noted simply
+//! has none yet (a second identity first staged into a folder that counts another's epoch, an
+//! identity kept by a build before epochs were): its entry is made with its first stage or change.
 //!
 //! The folder is shared by every desktop app and build on this computer, and two can run at once (a
 //! WE build and a white-labelled one each hold their own single-instance lock). So each read and
@@ -85,7 +82,7 @@ struct Metadata {
     /// The files written in this folder that must exist from then on.
     written: Vec<String>,
     /// Per file of [`written`](Self::written), the identities an entry was made for in it,
-    /// noted before the entry is written: an entry missing for one of them has been lost; one
+    /// noted once the entry is written: an entry missing for one of them has been lost; one
     /// missing for an identity never noted was never made. Absent in metadata written before
     /// identities were noted (an identity whose entry is in the file is found there all the
     /// same, and is noted with the file's next change).
@@ -245,21 +242,21 @@ impl Exclusive<'_> {
     pub fn bump_epoch(&mut self, scid: &str) -> Result<u64, VaultError> {
         let mut counted = self.epochs(false)?;
         counted.find(scid)?;
-        let (value, order) = match counted.epochs.iter_mut().find(|e| e.scid == scid) {
+        let value = match counted.epochs.iter_mut().find(|e| e.scid == scid) {
             Some(epoch) => {
                 epoch.count = epoch.count.checked_add(1).ok_or_else(|| {
                     unavailable("this identity's custody epoch is at its last value")
                 })?;
-                (epoch.value(), Order::NoteFirst)
+                epoch.value()
             }
             None => {
                 let epoch = Epoch::fresh(scid);
                 let value = epoch.value();
                 counted.epochs.push(epoch);
-                (value, Order::EntryFirst)
+                value
             }
         };
-        self.keep_epochs(counted.epochs, order)?;
+        self.keep_epochs(counted.epochs)?;
         Ok(value)
     }
 
@@ -267,23 +264,15 @@ impl Exclusive<'_> {
     /// is left as it is (a stage does not change the kept key). Taken before a key of `scid` is
     /// first staged, so the promote that follows finds the entry it bumps. A lost entry or file
     /// is an error, as for [`epoch`](Self::epoch). Answers the epoch.
-    ///
-    /// The entry is written before its note ([`Order::EntryFirst`]): an establish stopped in
-    /// between leaves an entry read as it is, not a noted identity with no entry; the next
-    /// establish finds it and notes it, so from then on its loss is told apart.
     pub fn establish_epoch(&mut self, scid: &str) -> Result<u64, VaultError> {
         let mut counted = self.epochs(false)?;
         if let Some(epoch) = counted.find(scid)? {
-            let value = epoch.value();
-            if self.lists.is_none() && !counted.noted.iter().any(|s| s == scid) {
-                self.keep_epochs(counted.epochs, Order::NoteFirst)?;
-            }
-            return Ok(value);
+            return Ok(epoch.value());
         }
         let epoch = Epoch::fresh(scid);
         let value = epoch.value();
         counted.epochs.push(epoch);
-        self.keep_epochs(counted.epochs, Order::EntryFirst)?;
+        self.keep_epochs(counted.epochs)?;
         Ok(value)
     }
 
@@ -300,14 +289,7 @@ impl Exclusive<'_> {
         let epoch = Epoch::fresh(scid);
         let value = epoch.value();
         counted.epochs.push(epoch);
-        // An identity noted (the loss this recovers) keeps its note first; one never noted has
-        // nothing lost, and its entry is made as any first one is.
-        let order = if counted.noted.iter().any(|s| s == scid) {
-            Order::NoteFirst
-        } else {
-            Order::EntryFirst
-        };
-        self.keep_epochs(counted.epochs, order)?;
+        self.keep_epochs(counted.epochs)?;
         Ok(value)
     }
 
@@ -335,7 +317,7 @@ impl Exclusive<'_> {
         }
     }
 
-    fn keep_epochs(&mut self, epochs: Vec<Epoch>, order: Order) -> Result<(), VaultError> {
+    fn keep_epochs(&mut self, epochs: Vec<Epoch>) -> Result<(), VaultError> {
         match (&mut self.lists, self.dir) {
             (Some(lists), _) => {
                 lists.epochs = epochs;
@@ -351,7 +333,6 @@ impl Exclusive<'_> {
                         version: FORMAT,
                         epochs,
                     },
-                    order,
                 )
             }
             (None, None) => Err(unavailable("no custody folder")),
@@ -624,7 +605,7 @@ impl PendingIncepts {
                 };
                 let answer = edit(&mut items, &noted)?;
                 let scids: Vec<String> = items.iter().map(|s| s.scid.clone()).collect();
-                write_noted(dir, file, &scids, &items, Order::NoteFirst)?;
+                write_noted(dir, file, &scids, &items)?;
                 Ok(answer)
             }
             PendingIncepts::Memory(lists) => {
@@ -662,32 +643,22 @@ fn read_noted<T: DeserializeOwned>(
     }
 }
 
-/// Which of [`write_noted`]'s two durable writes goes first.
-#[derive(Clone, Copy, PartialEq, Eq)]
-enum Order {
-    /// The metadata, then the file: for a change of entries that are there, so neither the file
-    /// nor an entry in it is ever there unnoted.
-    NoteFirst,
-    /// The file, then the metadata: for an entry made for an identity that has none and is not
-    /// noted. Stopped in between, the entry is there unnoted and is read as it is; stopped
-    /// before, neither is, a fresh start, and nothing written after the entry was written
-    /// either. Noted first, the same stop would leave a noted identity with no entry: lost, on a
-    /// computer that may have no way back yet (a first restore, not linked to the identity).
-    EntryFirst,
-}
-
-/// Writes `file`, one that must not go missing, holding entries for `scids`, noting the file and
-/// each identity in the folder's metadata, in `order`; both durable when it answers (the
-/// metadata a file that predates it never had is written with its next change). A noted identity
-/// is never dropped from the metadata.
+/// Writes `file`, one that must not go missing, holding entries for `scids`, then notes the file
+/// and each identity in the folder's metadata: the file and its entries first, durable, the note
+/// second. A crash between the two leaves an entry that is there and not yet noted, which reads
+/// as it is and is noted with the next change; the other way round (note first) a crash left an
+/// identity noted with no entry, a loss with no way back in a first restore on a computer not
+/// linked yet. What the note buys is the detection of a loss *after* it exists: a file or entry
+/// that was noted and is gone. The metadata a file that predates it never had is written with
+/// the file's next change. A noted identity is never dropped from the metadata.
 fn write_noted<T: Serialize + ?Sized>(
     dir: &std::path::Path,
     file: &str,
     scids: &[String],
     value: &T,
-    order: Order,
 ) -> Result<(), VaultError> {
     let mut noted = metadata(dir)?;
+    write_bytes(dir, file, &serde_json::to_vec(value).map_err(unavailable)?)?;
     let mut changed = false;
     if !noted.written.iter().any(|f| f == file) {
         noted.written.push(file.to_string());
@@ -700,68 +671,16 @@ fn write_noted<T: Serialize + ?Sized>(
             changed = true;
         }
     }
-    let entry = serde_json::to_vec(value).map_err(unavailable)?;
-    let note = if changed {
+    if changed {
         noted.version = FORMAT;
-        Some(serde_json::to_vec(&noted).map_err(unavailable)?)
-    } else {
-        None
-    };
-    if order == Order::EntryFirst {
-        crash::point()?;
-        write_bytes(dir, file, &entry)?;
-    }
-    if let Some(note) = note {
-        crash::point()?;
-        write_bytes(dir, METADATA_FILE_NAME, &note)?;
-    }
-    if order == Order::NoteFirst {
-        crash::point()?;
-        write_bytes(dir, file, &entry)?;
+        write_bytes(
+            dir,
+            METADATA_FILE_NAME,
+            &serde_json::to_vec(&noted).map_err(unavailable)?,
+        )?;
     }
     Ok(())
 }
-
-/// Where a test stops a write of [`write_noted`] as a crash would: before one of its durable
-/// writes, the ones before it done and the rest never made. Nothing outside tests.
-mod crash {
-    #[cfg(test)]
-    thread_local! {
-        static AFTER: std::cell::Cell<Option<usize>> = const { std::cell::Cell::new(None) };
-    }
-
-    /// The next write of this thread's [`super::write_noted`] stops after `writes` durable
-    /// writes, as the process ending there would leave the folder.
-    #[cfg(test)]
-    pub fn after(writes: usize) {
-        AFTER.with(|after| after.set(Some(writes)));
-    }
-
-    /// Before each durable write: an error where a test stops the write.
-    #[cfg(test)]
-    pub fn point() -> Result<(), super::VaultError> {
-        AFTER.with(|after| match after.get() {
-            Some(0) => {
-                after.set(None);
-                Err(super::unavailable("stopped here, as a crash would"))
-            }
-            Some(n) => {
-                after.set(Some(n - 1));
-                Ok(())
-            }
-            None => Ok(()),
-        })
-    }
-
-    #[cfg(not(test))]
-    #[inline(always)]
-    pub fn point() -> Result<(), super::VaultError> {
-        Ok(())
-    }
-}
-
-#[cfg(test)]
-pub(crate) use crash::after as crash_after;
 
 /// The folder's [`Metadata`]: none written yet when its file is absent; unreadable is an error.
 fn metadata(dir: &std::path::Path) -> Result<Metadata, VaultError> {
@@ -820,6 +739,36 @@ fn write_bytes(dir: &std::path::Path, file: &str, bytes: &[u8]) -> Result<(), Va
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Lal's P2 at 564d9aaa0. `write_noted` made the metadata note durable before the entry,
+    /// so a crash between the two in an identity's first `establish_epoch` (a first restore on
+    /// a computer not linked yet) left the identity noted with no entry: lost, and the way back
+    /// it names, "Replace my master key", refuses on a computer that is not linked. With the
+    /// entry written first, that crash leaves nothing of the identity: a fresh start, and the
+    /// restore goes on. Here the epochs file's write fails once, after whatever is written
+    /// before it: its temp name is taken by a directory.
+    #[test]
+    fn a_crash_between_an_identitys_first_entry_and_its_note_is_a_fresh_start_not_a_loss() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = PendingIncepts::file(dir.path().to_path_buf());
+        let blocked = dir
+            .path()
+            .join(format!("{EPOCHS_FILE_NAME}.{}.tmp", std::process::id()));
+        std::fs::create_dir_all(&blocked).unwrap();
+        assert!(folder.exclusive().unwrap().establish_epoch("QmB").is_err());
+        std::fs::remove_dir_all(&blocked).unwrap();
+
+        let epoch = folder.exclusive().unwrap().epoch("QmB");
+        assert!(
+            matches!(epoch, Ok(0)),
+            "after the crash the identity reads {epoch:?}, not as never made"
+        );
+        let established = folder.exclusive().unwrap().establish_epoch("QmB").unwrap();
+        assert_eq!(
+            folder.exclusive().unwrap().epoch("QmB").unwrap(),
+            established
+        );
+    }
     use ad4m_identity_client::vault::KeySigner;
     use ad4m_identity_core::build::{incept_human, Signer};
     use ad4m_identity_core::{words, DeviceKey, KeyLife};
@@ -997,6 +946,24 @@ mod tests {
         );
     }
 
+    /// Makes the next write of `file` in `dir` fail, as a crash before it would leave the
+    /// folder: its temp name taken by a directory. Undone by the guard's drop.
+    struct Blocked(std::path::PathBuf);
+
+    impl Blocked {
+        fn write_of(dir: &std::path::Path, file: &str) -> Self {
+            let path = dir.join(format!("{file}.{}.tmp", std::process::id()));
+            std::fs::create_dir_all(&path).unwrap();
+            Blocked(path)
+        }
+    }
+
+    impl Drop for Blocked {
+        fn drop(&mut self) {
+            std::fs::remove_dir_all(&self.0).unwrap();
+        }
+    }
+
     /// What the metadata notes as having an entry in the epochs' file.
     fn noted_epochs(dir: &std::path::Path) -> Vec<String> {
         metadata(dir)
@@ -1007,76 +974,70 @@ mod tests {
             .unwrap_or_default()
     }
 
-    /// Lal's review of we#431 at 564d9aaa0: a first restore on a computer of no identity yet
-    /// stops between the two durable writes that make an identity's first epoch. The entry is
-    /// written before its note, so what is left is an entry read as it is, never a noted
-    /// identity with no entry (lost, with no way back from a computer not linked yet). In a
-    /// folder that never counted an epoch, and beside another identity's.
+    /// Lal's P2 at 564d9aaa0, the other stop: an identity's first epoch written, the process
+    /// gone before its note. The entry is there and read as it is, never as lost; the next
+    /// change notes it, and from then on its loss is told apart. In a folder that never counted
+    /// an epoch, and beside another identity's.
     #[test]
-    fn a_crash_between_a_first_epoch_and_its_note_leaves_the_epoch_read_normally() {
+    fn a_crash_after_an_identitys_first_entry_before_its_note_reads_the_entry() {
         let dir = tempfile::tempdir().unwrap();
         let pending = PendingIncepts::file(dir.path());
-        crash_after(1);
-        assert!(pending.exclusive().unwrap().establish_epoch("QmA").is_err());
+        {
+            let _crash = Blocked::write_of(dir.path(), METADATA_FILE_NAME);
+            assert!(pending.exclusive().unwrap().establish_epoch("QmA").is_err());
+        }
+        assert!(dir.path().join(EPOCHS_FILE_NAME).exists());
+        assert!(noted_epochs(dir.path()).is_empty());
         // The next start.
         let pending = PendingIncepts::file(dir.path());
         let read = pending.exclusive().unwrap().epoch("QmA");
         assert!(matches!(read, Ok(e) if e != 0), "{read:?}");
-        // Established again, it is the same entry, now noted.
-        let again = pending.exclusive().unwrap().establish_epoch("QmA").unwrap();
-        assert_eq!(read.unwrap(), again);
+        let read = read.unwrap();
+        assert_eq!(
+            pending.exclusive().unwrap().establish_epoch("QmA").unwrap(),
+            read
+        );
+        assert_eq!(
+            pending.exclusive().unwrap().bump_epoch("QmA").unwrap(),
+            read + 1
+        );
         assert_eq!(noted_epochs(dir.path()), ["QmA"]);
 
-        // A second identity in the same folder.
-        crash_after(1);
-        assert!(pending.exclusive().unwrap().establish_epoch("QmB").is_err());
+        // A second identity, beside the first.
+        {
+            let _crash = Blocked::write_of(dir.path(), METADATA_FILE_NAME);
+            assert!(pending.exclusive().unwrap().establish_epoch("QmB").is_err());
+        }
         let pending = PendingIncepts::file(dir.path());
         let folder = pending.exclusive().unwrap();
-        assert_eq!(folder.epoch("QmA").unwrap(), again);
-        let b = folder.epoch("QmB");
-        assert!(matches!(b, Ok(e) if e != 0), "{b:?}");
+        assert_eq!(folder.epoch("QmA").unwrap(), read + 1);
+        assert!(matches!(folder.epoch("QmB"), Ok(e) if e != 0));
         drop(folder);
-        assert_eq!(
-            pending.exclusive().unwrap().establish_epoch("QmB").unwrap(),
-            b.unwrap()
-        );
+        // Noted, a loss of the file is a loss for both.
+        pending.exclusive().unwrap().bump_epoch("QmB").unwrap();
         assert_eq!(noted_epochs(dir.path()), ["QmA", "QmB"]);
+        std::fs::remove_file(dir.path().join(EPOCHS_FILE_NAME)).unwrap();
+        let folder = pending.exclusive().unwrap();
+        assert!(folder.epoch("QmA").as_ref().is_err_and(is_lost_epoch));
+        assert!(folder.epoch("QmB").as_ref().is_err_and(is_lost_epoch));
     }
 
-    /// The same first epoch stopped before its entry is written: nothing of it is left, a
-    /// fresh start (no key was written after it either).
+    /// A change of an entry that is there, stopped before it is written, leaves the entry it
+    /// had: the next change counts on from it.
     #[test]
-    fn a_crash_before_a_first_epoch_is_written_leaves_a_fresh_start() {
-        let dir = tempfile::tempdir().unwrap();
-        let pending = PendingIncepts::file(dir.path());
-        crash_after(0);
-        assert!(pending.exclusive().unwrap().establish_epoch("QmA").is_err());
-        let pending = PendingIncepts::file(dir.path());
-        assert_eq!(pending.exclusive().unwrap().epoch("QmA").unwrap(), 0);
-        assert!(!dir.path().join(EPOCHS_FILE_NAME).exists());
-        assert!(!dir.path().join(METADATA_FILE_NAME).exists());
-        let made = pending.exclusive().unwrap().establish_epoch("QmA").unwrap();
-        assert_ne!(made, 0);
-        assert_eq!(pending.exclusive().unwrap().epoch("QmA").unwrap(), made);
-    }
-
-    /// A later change of an entry that is there keeps the note first: an identity noted and
-    /// its entry made, a bump stopped anywhere leaves the entry it had or the one after.
-    #[test]
-    fn a_bump_stopped_anywhere_leaves_the_entry_before_or_after() {
+    fn a_bump_stopped_before_its_write_leaves_the_entry_it_had() {
         let dir = tempfile::tempdir().unwrap();
         let pending = PendingIncepts::file(dir.path());
         let first = pending.exclusive().unwrap().establish_epoch("QmA").unwrap();
-        // A first change of an identity never counted (a key a build before epochs kept) is
-        // the entry first too.
-        crash_after(1);
-        assert!(pending.exclusive().unwrap().bump_epoch("QmB").is_err());
-        assert_ne!(pending.exclusive().unwrap().epoch("QmB").unwrap(), 0);
-        crash_after(0);
-        assert!(pending.exclusive().unwrap().bump_epoch("QmA").is_err());
+        {
+            let _crash = Blocked::write_of(dir.path(), EPOCHS_FILE_NAME);
+            assert!(pending.exclusive().unwrap().bump_epoch("QmA").is_err());
+        }
         assert_eq!(pending.exclusive().unwrap().epoch("QmA").unwrap(), first);
-        let bumped = pending.exclusive().unwrap().bump_epoch("QmA").unwrap();
-        assert_eq!(bumped, first + 1);
+        assert_eq!(
+            pending.exclusive().unwrap().bump_epoch("QmA").unwrap(),
+            first + 1
+        );
     }
 
     /// Lal's review of we#431 at 0d4501589: a reset is the way back from a lost marks file, so
