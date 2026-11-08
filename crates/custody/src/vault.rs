@@ -22,12 +22,12 @@
 
 use ad4m_identity_client::vault::KeySigner;
 use ad4m_identity_client::{
-    MasterUse, PendingPush, Secret, StageToken, Unlocked, Vault, VaultError,
+    Forgot, MasterUse, PendingPush, Secret, StageToken, Stored, Unlocked, Vault, VaultError,
 };
 use ad4m_identity_core::Event;
 use zeroize::Zeroizing;
 
-use crate::pending::PendingIncepts;
+use crate::pending::{Exclusive, PendingIncepts};
 use crate::seal::{self, CustodyItem, Kdf};
 use crate::store::{item_name, staged_name, ItemTag, SecretStore};
 
@@ -169,25 +169,23 @@ impl DesktopVault {
         seal::open(&bytes, scid, passphrase)
     }
 
-    /// Writes `item` under `name` (its kept slot or its staged one), in one store operation that
-    /// carries its index with it, and `owner`, the staging flow's token, for a staged key.
-    fn write(
+    /// The bytes that keep `item` under `name` (its kept slot or its staged one), with its index,
+    /// and `owner`, the staging flow's token, for a staged key: sealed or not as the store this
+    /// item goes to (where it already is, or where a new one goes) keeps it. Made before the
+    /// folder's lock is taken, so the seal's Argon2id never holds every other app off.
+    fn prepare(
         &self,
         name: &str,
         item: &CustodyItem,
         owner: Option<&StageToken>,
         passphrase: Option<&str>,
-    ) -> Result<(), VaultError> {
-        log::info!("custody: write");
-        // Sealed or not as the store this item goes to (where it already is, or where a new one
-        // goes) keeps it.
+    ) -> Result<Prepared, VaultError> {
         if self.store.kind_of(name)?.unlocks_itself() {
-            let bytes = item.to_bytes();
             let tag = ItemTag {
                 index: item.index,
                 owner: owner.copied(),
             };
-            self.store.put_tagged(name, &bytes, &tag)
+            Ok(Prepared::Tagged(item.to_bytes(), tag))
         } else {
             let passphrase = passphrase.ok_or(VaultError::Cancelled)?;
             // The index (and the owner) are in the sealed header, under the tag.
@@ -195,8 +193,72 @@ impl DesktopVault {
                 Some(owner) => seal::seal_staged(item, owner, passphrase, self.kdf, &os_random)?,
                 None => seal::seal(item, passphrase, self.kdf, &os_random)?,
             };
-            self.store.put(name, &bytes)
+            Ok(Prepared::Sealed(bytes))
         }
+    }
+
+    /// Writes `prepared` under `name`, in one store operation that carries its index with it.
+    fn put(&self, name: &str, prepared: &Prepared) -> Result<(), VaultError> {
+        log::info!("custody: write");
+        match prepared {
+            Prepared::Tagged(bytes, tag) => self.store.put_tagged(name, bytes, tag),
+            Prepared::Sealed(bytes) => self.store.put(name, bytes),
+        }
+    }
+}
+
+/// An item ready for its slot ([`DesktopVault::prepare`]).
+enum Prepared {
+    /// As it is, for a store that unlocks itself, with the tag the store keeps beside it.
+    Tagged(Zeroizing<Vec<u8>>, ItemTag),
+    /// Sealed under the flow's passphrase; no secret without it.
+    Sealed(Vec<u8>),
+}
+
+impl DesktopVault {
+    /// The authenticated index of the kept key, under the folder's lock, for a write that must
+    /// not go back a generation: an item that does not say its index (sealed before the index
+    /// was in its header) is refused rather than guessed at, as a caller never forgets on a
+    /// `master_index` of `None` either.
+    fn kept_index_held(&self, scid: &str) -> Result<Option<u32>, VaultError> {
+        let name = item_name(scid);
+        match self.index_at(&name)? {
+            Some(index) => Ok(Some(index)),
+            None if self.store.contains(&name)? => Err(VaultError::Unavailable(
+                "the kept master key does not say its index".into(),
+            )),
+            None => Ok(None),
+        }
+    }
+
+    /// `scid`'s custody epoch ([`crate::pending::Epoch`]): how many times its kept master key
+    /// changed in this custody folder. Read under the folder's lock.
+    pub fn custody_epoch(&self, scid: &str) -> Result<u64, VaultError> {
+        self.pending.exclusive()?.epoch(scid)
+    }
+
+    /// The compare-and-delete behind [`Vault::forget_master`], under the custody folder's lock:
+    /// the kept key is deleted only while `unchanged(lock, kept index)` holds, and the epoch
+    /// bumped with it; otherwise it is left and named ([`Forgot::Kept`]). The precondition is a
+    /// parameter so the contract's move from "still this index" to "still this epoch" changes
+    /// only the caller: `|folder, _| Ok(folder.epoch(scid)? == epoch)`.
+    fn forget_kept(
+        &self,
+        scid: &str,
+        unchanged: impl FnOnce(&Exclusive<'_>, u32) -> Result<bool, VaultError>,
+    ) -> Result<Forgot, VaultError> {
+        let mut folder = self.pending.exclusive()?;
+        let Some(kept) = self.kept_index_held(scid)? else {
+            return Ok(Forgot::Forgot);
+        };
+        if !unchanged(&folder, kept)? {
+            log::info!("custody: the kept master key changed; nothing forgotten");
+            return Ok(Forgot::Kept(kept));
+        }
+        log::info!("custody: forget a master key");
+        self.store.delete(&item_name(scid))?;
+        folder.bump_epoch(scid)?;
+        Ok(Forgot::Forgot)
     }
 }
 
@@ -213,19 +275,34 @@ impl Unlocking<'_> {
 }
 
 impl Vault for Unlocking<'_> {
+    /// Under the custody folder's lock (every app on this computer takes it): the kept index is
+    /// read from the item, and the item written only when that index is not higher. The item is
+    /// sealed before the lock, so the lock is held for a header read and one put.
     fn store_master(
         &self,
         scid: &str,
         index: u32,
         secret: Secret<[u8; 32]>,
-    ) -> Result<(), VaultError> {
+    ) -> Result<Stored, VaultError> {
         let item = CustodyItem {
             scid: scid.to_string(),
             index,
             master: Zeroizing::new(*secret.expose()),
         };
-        self.vault
-            .write(&item_name(scid), &item, None, self.passphrase())
+        let name = item_name(scid);
+        let prepared = self.vault.prepare(&name, &item, None, self.passphrase())?;
+        let mut folder = self.vault.pending.exclusive()?;
+        if let Some(kept) = self.vault.kept_index_held(scid)? {
+            if kept > index {
+                log::info!("custody: a newer master key is kept; nothing stored");
+                return Ok(Stored::AlreadyNewer { kept });
+            }
+        }
+        self.vault.put(&name, &prepared)?;
+        // Every store bumps it, a same-index re-store too: a forget that read the epoch before
+        // a duplicate delivery must not delete what that delivery just wrote.
+        folder.bump_epoch(scid)?;
+        Ok(Stored::Stored)
     }
 
     fn master_index(&self, scid: &str) -> Result<Option<u32>, VaultError> {
@@ -251,8 +328,14 @@ impl Vault for Unlocking<'_> {
             index,
             master: Zeroizing::new(*secret.expose()),
         };
-        self.vault
-            .write(&staged_name(scid), &item, Some(owner), self.passphrase())
+        let name = staged_name(scid);
+        let prepared = self
+            .vault
+            .prepare(&name, &item, Some(owner), self.passphrase())?;
+        // Under the lock, so it never lands between another app's check of the staged slot and
+        // its promote or discard.
+        let _folder = self.vault.pending.exclusive()?;
+        self.vault.put(&name, &prepared)
     }
 
     fn staged_index(&self, scid: &str) -> Result<Option<u32>, VaultError> {
@@ -261,15 +344,27 @@ impl Vault for Unlocking<'_> {
 
     /// The staged item is moved over the kept one, as it is: sealed bytes stay sealed, so no
     /// passphrase and no prompt. A crash during the move leaves the key under one name or both,
-    /// never neither; `refresh_master` finishes it.
-    fn promote_master(&self, scid: &str, index: u32) -> Result<(), VaultError> {
+    /// never neither; `refresh_master` finishes it. Under the custody folder's lock, the staged
+    /// and kept indexes are read from their items and the move made only when the kept one is
+    /// not higher; when it is, the staged key can never be kept and is deleted.
+    fn promote_master(&self, scid: &str, index: u32) -> Result<Stored, VaultError> {
+        let mut folder = self.vault.pending.exclusive()?;
         if self.vault.staged_index(scid)? != Some(index) {
             return Err(VaultError::NotFound);
+        }
+        if let Some(kept) = self.vault.kept_index_held(scid)? {
+            if kept > index {
+                log::info!("custody: a newer master key is kept; the staged one is discarded");
+                self.vault.store.delete(&staged_name(scid))?;
+                return Ok(Stored::AlreadyNewer { kept });
+            }
         }
         log::info!("custody: promote a staged master key");
         self.vault
             .store
-            .rename(&staged_name(scid), &item_name(scid))
+            .rename(&staged_name(scid), &item_name(scid))?;
+        folder.bump_epoch(scid)?;
+        Ok(Stored::Stored)
     }
 
     /// Forgets the staged key only when it is staged at `index` and, with `owner` given, was
@@ -283,6 +378,7 @@ impl Vault for Unlocking<'_> {
         index: u32,
         owner: Option<&StageToken>,
     ) -> Result<(), VaultError> {
+        let _folder = self.vault.pending.exclusive()?;
         let ours = self.vault.tag_at(&staged_name(scid))?.is_some_and(|tag| {
             tag.index == index && owner.is_none_or(|owner| tag.owner.as_ref() == Some(owner))
         });
@@ -298,9 +394,12 @@ impl Vault for Unlocking<'_> {
     /// computer) may still be waiting for its publish, and `promote_master` needs it then. The
     /// logout (`remove_master`) calls this too, then discards a stage at or behind the log itself
     /// with [`Vault::discard_staged`], leaving one ahead of it.
-    fn forget_master(&self, scid: &str) -> Result<(), VaultError> {
-        log::info!("custody: forget a master key");
-        self.vault.store.delete(&item_name(scid))
+    ///
+    /// A compare-and-delete under the custody folder's lock: the kept index is read from the
+    /// item and the item deleted only while it is still `index`; another index is left and named
+    /// ([`Forgot::Kept`]). An item that does not say its index is left, with an error.
+    fn forget_master(&self, scid: &str, index: u32) -> Result<Forgot, VaultError> {
+        self.vault.forget_kept(scid, |_, kept| Ok(kept == index))
     }
 
     fn unlock(&self, scid: &str, why: MasterUse, now: u64) -> Result<Unlocked, VaultError> {
@@ -340,6 +439,17 @@ impl Vault for Unlocking<'_> {
     fn push_done(&self, push: &PendingPush) -> Result<(), VaultError> {
         log::info!("custody: forget a master-key push");
         self.vault.pending.push_done(push)
+    }
+
+    /// In the custody folder beside the pending lists ([`PendingIncepts::record_seen`]): a
+    /// version number per identity, no secret, so not in the secret store.
+    fn record_seen(&self, scid: &str, version: u64) -> Result<Option<u64>, VaultError> {
+        self.vault.pending.record_seen(scid, version)
+    }
+
+    fn record_seen_reset(&self, scid: &str) -> Result<(), VaultError> {
+        log::info!("custody: reset a record's high-water mark");
+        self.vault.pending.record_seen_reset(scid)
     }
 }
 
@@ -770,7 +880,9 @@ mod tests {
     }
 
     /// The index of the key kept is read with no unlock — a sealed item, no passphrase — from the
-    /// item, follows a rotation, and is gone with the key. No list beside the item is written.
+    /// item, follows a rotation, and is gone with the key. No index list beside the item is
+    /// written: the folder holds the item, the folder's lock and the custody epochs (counters,
+    /// no index in them).
     #[test]
     fn the_master_index_needs_no_unlock_and_goes_with_the_key() {
         let dir = tempfile::tempdir().unwrap();
@@ -788,20 +900,344 @@ mod tests {
         flow.store_master("QmScid", 1, Secret::new([5u8; 32]))
             .unwrap();
         assert_eq!(locked.master_index("QmScid").unwrap(), Some(1));
+        let mut files = std::fs::read_dir(dir.path())
+            .unwrap()
+            .map(|e| e.unwrap().file_name().into_string().unwrap())
+            .collect::<Vec<_>>();
+        files.sort();
         assert_eq!(
-            std::fs::read_dir(dir.path())
-                .unwrap()
-                .map(|e| e.unwrap().file_name().into_string().unwrap())
-                .collect::<Vec<_>>(),
-            vec!["QmScid.bin".to_string()]
+            files,
+            vec![
+                "QmScid.bin".to_string(),
+                crate::pending::EPOCHS_FILE_NAME.to_string(),
+                crate::pending::LOCK_NAME.to_string(),
+            ]
         );
-        locked.forget_master("QmScid").unwrap();
-        locked.forget_master("QmScid").unwrap();
+        let epochs =
+            std::fs::read_to_string(dir.path().join(crate::pending::EPOCHS_FILE_NAME)).unwrap();
+        assert_eq!(
+            serde_json::from_str::<Vec<crate::pending::Epoch>>(&epochs).unwrap(),
+            vec![crate::pending::Epoch {
+                scid: "QmScid".into(),
+                epoch: 2
+            }]
+        );
+        assert_eq!(locked.forget_master("QmScid", 1).unwrap(), Forgot::Forgot);
+        // None kept: forgotten already.
+        assert_eq!(locked.forget_master("QmScid", 1).unwrap(), Forgot::Forgot);
         assert!(!vault.holds("QmScid").unwrap());
         assert_eq!(locked.master_index("QmScid").unwrap(), None);
         assert_eq!(
             flow.unlock("QmScid", MasterUse::Link, 0).err(),
             Some(VaultError::NotFound)
+        );
+    }
+
+    /// The vaults the generation rules are checked on: a sealed file in a custody folder, and a
+    /// keychain (its index an attribute of the item); with the passphrase a flow on each needs.
+    fn generation_vaults(dir: &std::path::Path) -> Vec<(DesktopVault, Option<&'static str>)> {
+        vec![
+            (
+                DesktopVault::with_kdf(
+                    Box::new(crate::store::FileStore::new(dir)),
+                    PendingIncepts::file(dir),
+                    CHEAP,
+                ),
+                Some("a passphrase of length"),
+            ),
+            (
+                DesktopVault::new(
+                    Box::new(MemoryStore::as_kind(StoreKind::Keychain)),
+                    PendingIncepts::memory(),
+                ),
+                None,
+            ),
+        ]
+    }
+
+    /// The key a flow on `vault` unlocks for `scid`.
+    fn unlocked_key(vault: &DesktopVault, passphrase: Option<&str>) -> String {
+        let unlocked = vault
+            .unlocking(passphrase.map(|p| Secret::new(p.to_string())))
+            .unlock("QmScid", MasterUse::Link, 0)
+            .unwrap();
+        ad4m_identity_core::build::Signer::key(unlocked.signer(0).unwrap())
+    }
+
+    /// The custody epoch goes up with every change of the kept key — a store, a same-index
+    /// re-store (a duplicate delivery), a promote, a forget that deletes — and not with a write
+    /// that changes nothing (`AlreadyNewer`, a promote with nothing staged, a forget refused or
+    /// of nothing). A forget conditioned on an epoch read before a duplicate delivery keeps it.
+    #[test]
+    fn the_custody_epoch_counts_every_change_of_the_kept_key() {
+        let dir = tempfile::tempdir().unwrap();
+        for (vault, passphrase) in generation_vaults(dir.path()) {
+            let flow = vault.unlocking(passphrase.map(|p| Secret::new(p.to_string())));
+            let epoch = || vault.custody_epoch("QmScid").unwrap();
+            assert_eq!(epoch(), 0);
+            flow.store_master("QmScid", 1, Secret::new([5u8; 32]))
+                .unwrap();
+            assert_eq!(epoch(), 1);
+            let read_before = epoch();
+            // The same key delivered twice.
+            assert_eq!(
+                flow.store_master("QmScid", 1, Secret::new([5u8; 32]))
+                    .unwrap(),
+                Stored::Stored
+            );
+            assert_eq!(epoch(), 2);
+            assert_eq!(
+                vault
+                    .forget_kept("QmScid", |folder, _| Ok(
+                        folder.epoch("QmScid")? == read_before
+                    ))
+                    .unwrap(),
+                Forgot::Kept(1)
+            );
+            assert_eq!(vault.master_index("QmScid").unwrap(), Some(1));
+            assert_eq!(epoch(), 2);
+            // Nothing changed, nothing counted.
+            flow.store_master("QmScid", 0, Secret::new([4u8; 32]))
+                .unwrap();
+            assert_eq!(
+                flow.promote_master("QmScid", 2).err(),
+                Some(VaultError::NotFound)
+            );
+            assert_eq!(flow.forget_master("QmScid", 0).unwrap(), Forgot::Kept(1));
+            assert_eq!(epoch(), 2);
+            flow.stage_master("QmScid", 2, Secret::new([6u8; 32]), &StageToken([1; 16]))
+                .unwrap();
+            assert_eq!(epoch(), 2);
+            flow.promote_master("QmScid", 2).unwrap();
+            assert_eq!(epoch(), 3);
+            assert_eq!(
+                vault
+                    .forget_kept("QmScid", |folder, _| Ok(folder.epoch("QmScid")? == 3))
+                    .unwrap(),
+                Forgot::Forgot
+            );
+            assert_eq!(epoch(), 4);
+            assert_eq!(flow.forget_master("QmScid", 2).unwrap(), Forgot::Forgot);
+            assert_eq!(epoch(), 4);
+        }
+    }
+
+    /// Another app kept #2 since this flow read #0: this flow's store of #1 changes nothing and
+    /// names the index kept. The same index again is stored (the words derive the same key).
+    #[test]
+    fn an_older_store_does_not_replace_a_newer_kept_key() {
+        let dir = tempfile::tempdir().unwrap();
+        for (vault, passphrase) in generation_vaults(dir.path()) {
+            let flow = vault.unlocking(passphrase.map(|p| Secret::new(p.to_string())));
+            assert_eq!(
+                flow.store_master("QmScid", 2, Secret::new([6u8; 32]))
+                    .unwrap(),
+                Stored::Stored
+            );
+            assert_eq!(
+                flow.store_master("QmScid", 1, Secret::new([5u8; 32]))
+                    .unwrap(),
+                Stored::AlreadyNewer { kept: 2 }
+            );
+            assert_eq!(
+                flow.store_master("QmScid", 0, Secret::new([4u8; 32]))
+                    .unwrap(),
+                Stored::AlreadyNewer { kept: 2 }
+            );
+            assert_eq!(vault.master_index("QmScid").unwrap(), Some(2));
+            assert_eq!(
+                unlocked_key(&vault, passphrase),
+                ed25519_signing_key_multikey([6u8; 32])
+            );
+            assert_eq!(
+                flow.store_master("QmScid", 2, Secret::new([6u8; 32]))
+                    .unwrap(),
+                Stored::Stored
+            );
+            assert_eq!(
+                flow.store_master("QmScid", 3, Secret::new([7u8; 32]))
+                    .unwrap(),
+                Stored::Stored
+            );
+            assert_eq!(vault.master_index("QmScid").unwrap(), Some(3));
+        }
+    }
+
+    /// A rotation staged #1 while another app kept #2: its promote changes nothing kept, names
+    /// #2, and discards the staged #1, which can never be kept.
+    #[test]
+    fn a_promote_meeting_a_newer_kept_key_discards_the_staged_one() {
+        let dir = tempfile::tempdir().unwrap();
+        for (vault, passphrase) in generation_vaults(dir.path()) {
+            let flow = vault.unlocking(passphrase.map(|p| Secret::new(p.to_string())));
+            flow.stage_master("QmScid", 1, Secret::new([5u8; 32]), &StageToken([1; 16]))
+                .unwrap();
+            flow.store_master("QmScid", 2, Secret::new([6u8; 32]))
+                .unwrap();
+            assert_eq!(
+                flow.promote_master("QmScid", 1).unwrap(),
+                Stored::AlreadyNewer { kept: 2 }
+            );
+            assert_eq!(vault.staged_index("QmScid").unwrap(), None);
+            assert_eq!(vault.master_index("QmScid").unwrap(), Some(2));
+            assert_eq!(
+                unlocked_key(&vault, passphrase),
+                ed25519_signing_key_multikey([6u8; 32])
+            );
+            // Nothing staged at #1 any more.
+            assert_eq!(flow.promote_master("QmScid", 1), Err(VaultError::NotFound));
+            // A stage at the kept index or past it is promoted.
+            flow.stage_master("QmScid", 3, Secret::new([7u8; 32]), &StageToken([1; 16]))
+                .unwrap();
+            assert_eq!(flow.promote_master("QmScid", 3).unwrap(), Stored::Stored);
+            assert_eq!(vault.master_index("QmScid").unwrap(), Some(3));
+        }
+    }
+
+    /// A refresh that read #0 forgets #0; another app kept #2 since: the forget leaves #2 and
+    /// names it. With the kept key at the index named, it goes.
+    #[test]
+    fn a_forget_with_a_stale_index_keeps_the_newer_key() {
+        let dir = tempfile::tempdir().unwrap();
+        for (vault, passphrase) in generation_vaults(dir.path()) {
+            let flow = vault.unlocking(passphrase.map(|p| Secret::new(p.to_string())));
+            flow.store_master("QmScid", 2, Secret::new([6u8; 32]))
+                .unwrap();
+            assert_eq!(flow.forget_master("QmScid", 0).unwrap(), Forgot::Kept(2));
+            assert_eq!(flow.forget_master("QmScid", 3).unwrap(), Forgot::Kept(2));
+            assert_eq!(vault.master_index("QmScid").unwrap(), Some(2));
+            assert_eq!(
+                unlocked_key(&vault, passphrase),
+                ed25519_signing_key_multikey([6u8; 32])
+            );
+            assert_eq!(flow.forget_master("QmScid", 2).unwrap(), Forgot::Forgot);
+            assert!(!vault.holds("QmScid").unwrap());
+        }
+    }
+
+    /// A kept item that does not say its index is never forgotten, nor written over: the vault
+    /// cannot tell whether it is newer.
+    #[test]
+    fn a_kept_key_without_its_index_is_neither_forgotten_nor_replaced() {
+        let keychain = Arc::new(MemoryStore::as_kind(StoreKind::Keychain));
+        let vault = DesktopVault::new(Box::new(keychain.clone()), PendingIncepts::memory());
+        let item = CustodyItem {
+            scid: "QmScid".into(),
+            index: 2,
+            master: Zeroizing::new([6u8; 32]),
+        };
+        keychain
+            .put(&item_name("QmScid"), &item.to_bytes())
+            .unwrap();
+        let flow = vault.unlocking(None);
+        assert!(matches!(
+            flow.forget_master("QmScid", 2),
+            Err(VaultError::Unavailable(_))
+        ));
+        assert!(matches!(
+            flow.store_master("QmScid", 1, Secret::new([5u8; 32])),
+            Err(VaultError::Unavailable(_))
+        ));
+        assert_eq!(
+            unlocked_key(&vault, None),
+            ed25519_signing_key_multikey([6u8; 32])
+        );
+    }
+
+    /// A file store that, the first time the kept item is read (the forget's check), lets
+    /// `between` run on another thread and waits for it, up to a limit: where another process
+    /// would install its key between this one's check and its delete.
+    struct Interleaved {
+        file: crate::store::FileStore,
+        between: std::sync::Mutex<Option<Box<dyn FnOnce() + Send>>>,
+        /// The thread `between` runs on, to join once the forget is done.
+        other: std::sync::Mutex<Option<std::thread::JoinHandle<()>>>,
+    }
+
+    impl SecretStore for Interleaved {
+        fn kind(&self) -> StoreKind {
+            self.file.kind()
+        }
+        fn kind_of(&self, n: &str) -> Result<StoreKind, VaultError> {
+            self.file.kind_of(n)
+        }
+        fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
+            self.file.put(n, b)
+        }
+        fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
+            let got = self.file.get(n);
+            if n == item_name("QmScid") {
+                if let Some(between) = self.between.lock().unwrap().take() {
+                    let (tx, rx) = std::sync::mpsc::channel();
+                    *self.other.lock().unwrap() = Some(std::thread::spawn(move || {
+                        between();
+                        let _ = tx.send(());
+                    }));
+                    // Long enough for the other handle's whole store when nothing holds it off.
+                    let _ = rx.recv_timeout(std::time::Duration::from_secs(2));
+                }
+            }
+            got
+        }
+        fn contains(&self, n: &str) -> Result<bool, VaultError> {
+            self.file.contains(n)
+        }
+        fn delete(&self, n: &str) -> Result<(), VaultError> {
+            self.file.delete(n)
+        }
+        fn rename(&self, from: &str, to: &str) -> Result<(), VaultError> {
+            self.file.rename(from, to)
+        }
+    }
+
+    /// Two handles on one custody folder, each its own store and its own lists, as two apps'
+    /// custody services are: one forgets #0 (a refresh that read #0) and, between its check and
+    /// its delete, the other installs #1. The custody folder's lock holds the install off until
+    /// the forget is done, so #1 survives; without it the forget deleted #1.
+    #[test]
+    fn an_install_racing_a_forget_on_another_handle_survives() {
+        const PASS: &str = "a passphrase of length";
+        let dir = tempfile::tempdir().unwrap();
+        let custody = dir.path().to_path_buf();
+        sealed_in_file(&custody, "QmScid", [4u8; 32], PASS);
+        let installed = Arc::new(std::sync::Mutex::new(None));
+        let other_custody = custody.clone();
+        let other_installed = installed.clone();
+        let between: Box<dyn FnOnce() + Send> = Box::new(move || {
+            let other_app = DesktopVault::with_kdf(
+                Box::new(crate::store::FileStore::new(&other_custody)),
+                PendingIncepts::file(&other_custody),
+                CHEAP,
+            );
+            let stored =
+                other_app
+                    .unlocking(pass(PASS))
+                    .store_master("QmScid", 1, Secret::new([5u8; 32]));
+            *other_installed.lock().unwrap() = Some(stored);
+        });
+        let store = Arc::new(Interleaved {
+            file: crate::store::FileStore::new(&custody),
+            between: std::sync::Mutex::new(Some(between)),
+            other: std::sync::Mutex::new(None),
+        });
+        let this_app = DesktopVault::with_kdf(
+            Box::new(store.clone()),
+            PendingIncepts::file(&custody),
+            CHEAP,
+        );
+        let forgot = this_app.unlocking(None).forget_master("QmScid", 0);
+        let other = store.other.lock().unwrap().take();
+        other.expect("the other handle ran").join().unwrap();
+        assert_eq!(forgot.unwrap(), Forgot::Forgot);
+        assert_eq!(
+            installed.lock().unwrap().take().unwrap().unwrap(),
+            Stored::Stored
+        );
+        let vault = placed(&custody, None);
+        assert_eq!(vault.master_index("QmScid").unwrap(), Some(1));
+        assert_eq!(
+            unlocked_key(&vault, Some(PASS)),
+            ed25519_signing_key_multikey([5u8; 32])
         );
     }
 
@@ -861,7 +1297,13 @@ mod tests {
 
         // The other app's refresh with the log at #1: nothing for a stage ahead of the log, then
         // the kept #0 is behind the log and no key waits in its inbox.
-        other_app.unlocking(None).forget_master("QmScid").unwrap();
+        assert_eq!(
+            other_app
+                .unlocking(None)
+                .forget_master("QmScid", 0)
+                .unwrap(),
+            Forgot::Forgot
+        );
         assert_eq!(other_app.master_index("QmScid").unwrap(), None);
         assert_eq!(
             this_app.staged_index("QmScid").unwrap(),
@@ -1196,7 +1638,7 @@ mod tests {
         // be on its way).
         flow.stage_master("QmScid", 3, Secret::new([7u8; 32]), &ours)
             .unwrap();
-        locked.forget_master("QmScid").unwrap();
+        assert_eq!(locked.forget_master("QmScid", 2).unwrap(), Forgot::Forgot);
         assert_eq!(locked.staged_index("QmScid").unwrap(), Some(3));
         assert_eq!(locked.master_index("QmScid").unwrap(), None);
     }
@@ -1216,7 +1658,7 @@ mod tests {
         flow.stage_master("QmScid", 2, Secret::new([6u8; 32]), &StageToken([0xc; 16]))
             .unwrap();
 
-        locked.forget_master("QmScid").unwrap();
+        assert_eq!(locked.forget_master("QmScid", 0).unwrap(), Forgot::Forgot);
         assert_eq!(vault.master_index("QmScid").unwrap(), None);
         assert!(!vault.holds("QmScid").unwrap());
         assert_eq!(vault.staged_index("QmScid").unwrap(), Some(2));

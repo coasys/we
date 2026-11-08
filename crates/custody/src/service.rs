@@ -939,7 +939,7 @@ async fn public_state_on<R: ExecutorRpc>(
             }
         }
         refresh_stale(executor, vault, did, master_waiting && !os_unlocks).await;
-        devices = match record::read(executor, did).await {
+        devices = match record::read(executor, &vault.unlocking(None), did).await {
             Ok(opened) => opened.map(|o| device_names(&o.record)).unwrap_or_default(),
             Err(e) => {
                 log::warn!("custody: the device list cannot be read now: {e}");
@@ -1320,7 +1320,10 @@ async fn create_on<R: ExecutorRpc>(
     let unlocking = vault.unlocking(passphrase);
     // The record lists this computer from the start, as the one that holds master #0.
     let this = this_computer(None, true, Some(0));
-    let screen = match flow.finish(executor, &unlocking, this, &RANDOM).await {
+    let screen = match flow
+        .finish(executor, &unlocking, this, &CLOCK, &RANDOM)
+        .await
+    {
         Ok(created) => {
             if let Some(Err(e)) = &created.record {
                 log::warn!("custody: the record does not list this computer yet: {e}");
@@ -1534,7 +1537,7 @@ async fn follow_link<R: ExecutorRpc>(
     rx: &mut Rx,
     reply: &mut Reply,
 ) {
-    let own_listed = match (own_key, record::read(executor, did).await) {
+    let own_listed = match (own_key, record::read(executor, unlocking, did).await) {
         (Some(key), Ok(opened)) => opened.is_some_and(|o| o.record.devices.contains_key(key)),
         // Unknown: not asked, rather than a second entry over one the record may hold.
         (_, Err(_)) | (None, _) => true,
@@ -1601,7 +1604,9 @@ async fn follow_link<R: ExecutorRpc>(
                         key_id: own.to_string(),
                         entry: own_entry,
                     };
-                    if let Err(e) = record::write(executor, did, &[change], &RANDOM).await {
+                    if let Err(e) =
+                        record::write(executor, unlocking, did, &[change], &RANDOM).await
+                    {
                         log::warn!("custody: this computer was not listed in the record: {e}");
                         notes.push("This computer's name was not saved: rename it on Devices.");
                     }
@@ -2265,7 +2270,7 @@ async fn answer_on<R: ExecutorRpc>(
         Ok(needs) => needs,
         Err(e) => return answer(reply, Ok(failed(&e))),
     };
-    let names = match record::read(executor, &did).await {
+    let names = match record::read(executor, &vault.unlocking(None), &did).await {
         Ok(Some(opened)) => opened.record.devices,
         _ => Default::default(),
     };
@@ -2473,7 +2478,7 @@ async fn rename_on<R: ExecutorRpc>(
             }),
         );
     }
-    let listed = match record::read(executor, &did).await {
+    let listed = match record::read(executor, &vault.unlocking(None), &did).await {
         Ok(opened) => opened.and_then(|o| o.record.devices.get(&key_id).cloned()),
         Err(e) => return answer(reply, Ok(failed(&e))),
     };
@@ -2533,13 +2538,14 @@ async fn rename_on<R: ExecutorRpc>(
                 },
             }
         };
-        let screen = match record::write(executor, &did, &[change], &RANDOM).await {
-            Ok(_) => Screen::Renamed {
-                key_id: key_id.clone(),
-                name,
-            },
-            Err(e) => failed(&e),
-        };
+        let screen =
+            match record::write(executor, &vault.unlocking(None), &did, &[change], &RANDOM).await {
+                Ok(_) => Screen::Renamed {
+                    key_id: key_id.clone(),
+                    name,
+                },
+                Err(e) => failed(&e),
+            };
         return answer(reply, Ok(screen));
     }
 }
@@ -2784,8 +2790,10 @@ fn replaced(rotated: Rotated, extra: Option<String>) -> Screen {
         .collect();
     let note = joined(extra, handed_over(&rotated.pushes, &rotated.record));
     match rotated.kept {
-        Ok(()) => Screen::MasterReplaced {
-            index: rotated.index,
+        // The index this computer keeps: the rotation's, or a later one another app on this
+        // computer kept first (the vault never goes back a generation).
+        Ok(kept) => Screen::MasterReplaced {
+            index: kept,
             revoked,
             note,
         },
@@ -3497,6 +3505,7 @@ mod tests {
                 &executor,
                 &vault.unlocking(pass()),
                 this_computer(None, true, Some(0)),
+                &CLOCK,
                 &RANDOM,
             )
             .await;
@@ -3519,6 +3528,7 @@ mod tests {
                 &executor,
                 &vault.unlocking(pass()),
                 this_computer(None, true, Some(0)),
+                &CLOCK,
                 &RANDOM,
             )
             .await;
@@ -3563,6 +3573,7 @@ mod tests {
                 &executor,
                 &vault.unlocking(pass()),
                 this_computer(None, true, Some(0)),
+                &CLOCK,
                 &RANDOM,
             )
             .await
@@ -3900,6 +3911,7 @@ mod tests {
                 &executor,
                 &vault.unlocking(pass()),
                 this_computer(None, true, Some(0)),
+                &CLOCK,
                 &RANDOM,
             )
             .await;
@@ -3926,6 +3938,7 @@ mod tests {
                 &executor,
                 &vault.unlocking(pass()),
                 this_computer(None, true, Some(0)),
+                &CLOCK,
                 &RANDOM,
             )
             .await;
@@ -3967,6 +3980,7 @@ mod tests {
                 &executor,
                 &vault.unlocking(pass()),
                 this_computer(None, true, Some(0)),
+                &CLOCK,
                 &RANDOM,
             )
             .await;
@@ -4452,8 +4466,10 @@ mod tests {
 
     impl rand_core::CryptoRng for Fixed {}
 
-    /// An executor that is device `d1` of the identity `events` make, answering its log and
-    /// `record` sealed to the log's readers, as the store would.
+    /// An executor that is device `d1` of the identity `events` make (a log of
+    /// [`crate::keylog::tests::log_with_d2`]), answering its log with the store's signed head and
+    /// `record` sealed to the log's readers and signed by `d1`, with the store's receipt, as the
+    /// store would.
     fn executor_with(
         events: &[Event],
         record: &ad4m_identity_core::record::PrivateRecord,
@@ -4465,17 +4481,31 @@ mod tests {
             .iter()
             .map(|e| serde_json::to_value(e).unwrap())
             .collect();
+        let chain = ad4m_identity_core::fold(events).unwrap();
+        // The store's head key: the reader trusts it for the record's receipt as for the head.
+        let store = KeySigner::new(&[9u8; 32], 0);
+        let seq = chain.head().seq;
         executor.rpc().answer(
             "identity.log",
-            json!({ "did": did_of(&scid), "events": json_events, "head": null, "fork": null }),
+            json!({
+                "did": did_of(&scid), "events": json_events, "fork": null,
+                "head": {
+                    "scid": scid, "seq": seq, "hash": "h", "time": 0,
+                    "store": format!("did:key:{}", Signer::key(&store)), "sig": "s",
+                },
+            }),
         );
-        let chain = ad4m_identity_core::fold(events).unwrap();
+        // `d1`, the executor's device key in `log_with_d2`, signs the envelope.
+        let d1 = KeySigner::new(&[2u8; 32], 0);
         let sealed =
-            ad4m_identity_core::record::seal_record(&chain, 1, record, None, &mut Fixed(7))
+            ad4m_identity_core::record::seal_record(&chain, 1, record, None, &d1, &mut Fixed(7))
                 .unwrap();
-        executor
-            .rpc()
-            .answer("identity.record", serde_json::to_value(&sealed).unwrap());
+        let receipt =
+            ad4m_identity_core::record::sign_receipt(&scid, &sealed, seq, &store).unwrap();
+        executor.rpc().answer(
+            "identity.record",
+            json!({ "record": sealed, "receipt": receipt }),
+        );
         executor.rpc().answer(
             "identity.unwrapRecordKey",
             json!({ "key": bs58::encode([7u8; 32]).into_string() }),
