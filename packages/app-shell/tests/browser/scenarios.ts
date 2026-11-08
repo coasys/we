@@ -29,7 +29,14 @@ import {
   TREE_LEAD,
   treeRow,
 } from '@we/template-kit';
-import { bootScreen, bundlePrompt, createSpaceModal, safeModeBanner } from '@we/template-shell';
+import {
+  bootScreen,
+  bundlePrompt,
+  createSpaceModal,
+  safeModeBanner,
+  settingsTemplate,
+  sidebar,
+} from '@we/template-shell';
 import { CALL_CHROME_BAND, themeLabTemplate, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
 import {
   SHOWCASE_THEME_PRESETS,
@@ -1906,6 +1913,82 @@ const appRail = (): Scenario => {
 };
 
 /**
+ * WE's own sidebar beside the Settings overlay, on its Devices page, as a window of a given width.
+ *
+ * The real `sidebar` and the real `settingsTemplate`, with only the route outlet filled by a stand-in
+ * page — the page's own rows read stores this harness does not mount, and what is measured here is
+ * the frame around them: whether the rail stays a rail and the page has the room beside it. `scale`
+ * is the window's width, because the sidebar answers to the window (`shellStore.narrowWindow`) while
+ * Settings answers to its own surface, and a case sweeps the two together.
+ */
+const shellSettings = (scale?: number): Scenario => {
+  const windowWidth = scale ?? 1280;
+  const page: SchemaNode = {
+    type: 'Column',
+    props: { gap: '400', id: 'settings-page' },
+    children: [
+      { type: 'we-text', props: { variant: 'heading-md' }, children: ['Devices'] },
+      {
+        type: 'we-text',
+        props: { color: 'text-muted' },
+        children: ['Each device that can sign for you holds a key of its own. Revoke one you no longer use.'],
+      },
+      {
+        type: 'Row',
+        props: { gap: '300', ay: 'center' },
+        children: [
+          { type: 'we-icon', props: { name: 'device-mobile' } },
+          { type: 'we-text', children: ['This phone'] },
+        ],
+      },
+    ],
+  };
+  const fill = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(fill);
+    if (!node || typeof node !== 'object') return node;
+    if ((node as SchemaNode).type === '$routes') return page;
+    return Object.fromEntries(Object.entries(node).map(([k, v]) => [k, fill(v)]));
+  };
+  const {
+    meta: _meta,
+    routes: _routes,
+    ...settings
+  } = settingsTemplate as SchemaNode & { meta?: unknown; routes?: unknown };
+  return {
+    node: {
+      type: 'Column',
+      // The mount is the window: the frame below is placed in it, so a 412px mount is a 412px window.
+      props: { width: '100%', height: '100vh', position: 'relative', overflow: 'hidden' },
+      children: [
+        sidebar,
+        {
+          type: 'Column',
+          props: { id: 'settings-frame', position: 'absolute', top: '0', left: '80px', right: '0', bottom: '0' },
+          children: [
+            {
+              type: '$surface',
+              props: { height: '100%', overflow: 'auto' },
+              children: [fill(settings) as SchemaNode],
+            },
+          ],
+        },
+      ],
+    },
+    tables: {},
+    stores: {
+      sessionStore: { bootState: 'ready', devTools: false, devFeatures: false, isGuest: false },
+      shellStore: { panelMaximised: false, activeShellView: 'settings', narrowWindow: windowWidth < 640 },
+      routeStore: { params: {}, currentPath: '/devices', segments: ['devices'], templateSegments: [] },
+      templateStore: { brand: { name: 'WE' } },
+      runtimeStore: { canManageAi: true, canManageApps: true },
+      datasetStore: { marketplaceConfigured: false },
+      appStore: { apps: [], appsWithWe: [], activeAppId: null },
+      spaceStore: { mutedDids: [], currentSpace: { id: 'space-1' }, members: [], orderedSidebarItems: [] },
+    },
+  };
+};
+
+/**
  * The top of the Coasys tree under Glow: a rounded-square space face, a two-line description, and a
  * tree with one row selected — the pieces whose look is the theme's or the primitive's to get right.
  */
@@ -2557,6 +2640,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'profile:pages': profilePages,
   'tree:caret-end': treeCaretEnd,
   'rail:app': appRail,
+  'shell:settings': shellSettings,
   'coasys:tree-top': coasysTreeTop,
   'bundle:prompt': bundleInstallPrompt,
   'safe-mode:leaving': safeModeLeaving,

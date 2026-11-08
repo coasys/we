@@ -1394,8 +1394,11 @@ function navItem(label: string, icon: string, path: string): SchemaNode {
     type: 'we-button',
     props: {
       variant: expr`${selected} ? 'soft' : 'ghost'`,
-      width: '100%',
+      // A strip entry on a phone, where the nav runs across the top: its own width, never squeezed.
+      // A full-width row in the column it is from `sm` up.
+      flex: '0 0 auto',
       ax: 'start',
+      smUpProps: { width: '100%' },
       onClick: { $invoke: 'routeStore.navigate', args: [path] },
     },
     children: [
@@ -1405,16 +1408,29 @@ function navItem(label: string, icon: string, path: string): SchemaNode {
   };
 }
 
-/** A heading over a run of nav entries. */
+/**
+ * A heading over a run of nav entries.
+ *
+ * On a phone the nav is one strip across the top of the page, so a group is a run in that strip and
+ * its heading is left out: a heading between two buttons in a scrolling row reads as a third button
+ * that does nothing. From `sm` up it wraps with every entry the full width, which is the column
+ * under its heading it always was — see the nav in `settingsTemplate`.
+ */
 function navGroup(label: string, items: SchemaNode[]): SchemaNode {
   return {
-    type: 'Column',
-    props: { gap: '100' },
+    type: 'Row',
+    props: { gap: '100', flex: '0 0 auto', smUpProps: { wrap: true, width: '100%' } },
     children: [
       {
-        type: 'we-text',
-        props: { variant: 'footnote', color: 'text-muted', px: '300', pt: '300' },
-        children: [label],
+        type: '$if',
+        props: {
+          condition: { $: "surface.tier != 'base'" },
+          then: {
+            type: 'we-text',
+            props: { variant: 'footnote', color: 'text-muted', px: '300', pt: '300', width: '100%' },
+            children: [label],
+          },
+        },
       },
       ...items,
     ],
@@ -1585,16 +1601,45 @@ export const settingsTemplate: TemplateSchema = {
   children: [
     {
       type: 'Column',
-      props: { px: '400', py: '800', gap: '600', maxWidth: '960px', width: '100%' },
+      props: {
+        px: '300',
+        py: '500',
+        gap: '600',
+        maxWidth: '960px',
+        width: '100%',
+        smUpProps: { px: '400', py: '800' },
+      },
       children: [
         pageHeader,
+        /*
+          The nav above the page on a phone, beside it from `sm` up.
+
+          It was always beside it, with a 200px nav, and inside a 332px overlay that left the page a
+          column a few letters wide — "Devices" broke one letter to a line. Below `sm` the nav is one
+          strip across the top that scrolls sideways, and the page has the whole width under it.
+          Measured against the overlay's own surface, not the window, so a desktop window narrowed
+          by a docked panel gets the same answer for the same room.
+
+          Rows that wrap rather than a direction that flips, because a layout component's direction
+          is its type and no tier can change it. The row wraps, so a nav as wide as the row puts the
+          page on the line under it; from `sm` the nav is 200px and the page shares its line, as it
+          always did. The nav is a row too: unwrapped it is the strip, and from `sm` it wraps with
+          every entry the full 200px, which is a column drawn by the line breaks — so nothing
+          remounts at the threshold, and the page's own state survives the window crossing it.
+        */
         {
           type: 'Row',
-          props: { gap: '600', width: '100%', ay: 'start' },
+          props: { gap: '600', width: '100%', ay: 'start', wrap: true },
           children: [
             {
-              type: 'Column',
-              props: { gap: '300', width: '200px', minWidth: '200px' },
+              type: 'Row',
+              props: {
+                gap: '100',
+                width: '100%',
+                overflowX: 'auto',
+                scrollbarWidth: 'none',
+                smUpProps: { wrap: true, gap: '300', width: '200px', minWidth: '200px', overflowX: 'visible' },
+              },
               children: [
                 navGroup('Account', [
                   navItem('Profile', 'user', '/'),
@@ -1654,8 +1699,22 @@ export const settingsTemplate: TemplateSchema = {
                     },
                   },
                 ]),
-                // An action rather than a page, set apart at the foot of the nav — see `logOutAction`.
-                { type: 'Column', props: { pt: '300', borderTop: '1px solid border' }, children: [logOutAction] },
+                /*
+                  An action rather than a page, set apart at the foot of the nav — see `logOutAction`.
+                  Not in a phone's strip, where the foot of the nav is somewhere off to the right: the
+                  sidebar's own Logout is one press away there.
+                */
+                {
+                  type: '$if',
+                  props: {
+                    condition: { $: "surface.tier != 'base'" },
+                    then: {
+                      type: 'Column',
+                      props: { pt: '300', borderTop: '1px solid border', width: '100%' },
+                      children: [logOutAction],
+                    },
+                  },
+                },
               ],
             },
             // `minWidth: '0'`: a flex child is at least as wide as its widest content, so without it
