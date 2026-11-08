@@ -325,6 +325,9 @@ importers:
       '@capacitor/ios':
         specifier: ^8.6.0
         version: 8.6.0(@capacitor/core@8.6.0)
+      '@we/identity-window':
+        specifier: workspace:*
+        version: link:../../packages/identity-window
     devDependencies:
       '@capacitor/cli':
         specifier: ^8.6.0

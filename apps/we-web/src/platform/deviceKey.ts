@@ -87,11 +87,99 @@ export interface SignedSessionStatement {
 /**
  * Why a call was refused: the Rust error's variant (or the plugin's own), as `code`. The ones a
  * caller acts on: `NoKeys`, `KeysExist`, `NoIdentity`, `AlreadyJoined`, `NoClaim`, `Sealer`
- * (the Keystore refused), `Invalid`.
+ * (the Keystore refused), `Invalid`, `NoBiometrics`, `WeakProtection`, `Ended` (a link is over),
+ * `CameraDenied`, `NoCamera`, `Cancelled`.
  */
 export interface DeviceKeyError extends Error {
   code?: string;
 }
+
+/** The identity as this phone sees it, from the store. */
+export interface PhoneIdentityView {
+  did: string;
+  /** This phone's id in the log (`d3`); `null` before the store lists it. */
+  keyId: string | null;
+  fingerprint: string;
+  /** The log entry that revoked this phone, when one did. */
+  revoked: number | null;
+  /** The index of the master key this phone keeps, when it keeps one. */
+  masterIndex: number | null;
+  /** Where the master-key sealer's key is: `strongbox`, `tee`, `software` or `unknown`. */
+  protection: string;
+  store: string;
+  /** The log's head seq. */
+  head: number | null;
+  /** The phone has a strong biometric enrolled: without one it cannot keep the master key. */
+  biometrics: boolean;
+}
+
+/** A master key taken from the inbox. `note`: kept, but the record does not say so yet. */
+export interface MasterTaken {
+  did: string;
+  index: number;
+  note: string | null;
+}
+
+/** A request this phone posted for the master key. */
+export interface MasterAsked {
+  requestId: string;
+  keyId: string;
+  fingerprint: string;
+  /** The code the answering device shows beside the request. */
+  code: string;
+}
+
+/** Another device's request, as the holder sees it. */
+export interface DeviceRequestView {
+  id: string;
+  kind: 'send-master' | 'confirm-revoke';
+  /** The posting device's key id. */
+  by: string;
+  /** The posting device's name. */
+  device: string;
+  fingerprint: string;
+  /** The code the posting device shows. */
+  code: string;
+  /** For `confirm-revoke`: the names of the devices to revoke. */
+  targets: string[];
+  /** For `confirm-revoke`: their key ids, in the order of `targets`. */
+  targetKeys: string[];
+  rotate: boolean;
+  /** Unix seconds. */
+  expires: number;
+  /** Why it cannot be answered here; `null` when it can. */
+  problem: string | null;
+}
+
+/** A request answered. `note`: a later step (the record write) that did not pass. */
+export interface RequestAnswered {
+  kind: string;
+  device: string;
+  note: string | null;
+}
+
+/** One device of the identity: the log's key with the record's details. */
+export interface PhoneDeviceView {
+  keyId: string;
+  fingerprint: string;
+  name: string;
+  /** `phone-app`, `desktop-app`, …; `null` when the record does not say. */
+  kind: string | null;
+  addedSeq: number;
+  revokedSeq: number | null;
+  thisDevice: boolean;
+  holdsMaster: 'yes' | 'offered' | 'no';
+  masterIndex: number | null;
+  /** The log lets it keep the master key. */
+  mayKeepMaster: boolean;
+  bot: boolean;
+}
+
+/** How a link this phone runs as the holder stands. */
+export type LinkStep =
+  | { step: 'ticket-sent'; expires: number }
+  | { step: 'claimed'; code: string; hint: string | null; canKeepMaster: boolean }
+  | { step: 'linked'; keyId: string; seq: number; masterSent: boolean; note: string | null };
 
 /** The plugin's methods. Every one runs off the phone's main thread. */
 export interface DeviceKeyPlugin {
@@ -112,6 +200,37 @@ export interface DeviceKeyPlugin {
   waitJoined(options?: { seconds?: number }): Promise<{ progress: ClaimProgress }>;
   /** A key statement for one executor, signed by the device key. */
   signSession(request: SessionSignRequest): Promise<SignedSessionStatement>;
+  /** The identity as the store has it now. */
+  identityStatus(): Promise<PhoneIdentityView>;
+  /**
+   * Takes the master key waiting in this phone's inbox and seals it behind the biometric; `null`
+   * when none is waiting. Refused with `NoBiometrics` on a phone without one, and with
+   * `WeakProtection` when the Keystore is not secure hardware and the person declined.
+   */
+  takeMaster(): Promise<{ taken: MasterTaken | null }>;
+  /** Asks the devices that hold the master key to send it here. */
+  askForMaster(): Promise<MasterAsked>;
+  /** Whether a master key another device sent waits here, without taking it (no prompt). */
+  masterWaiting(): Promise<{ waiting: boolean }>;
+  /** Requests of other devices this phone can answer. */
+  requests(): Promise<{ requests: DeviceRequestView[] }>;
+  /** Answers a request; asks for the biometric to use the master key. */
+  answer(options: { id: string }): Promise<RequestAnswered>;
+  devices(): Promise<{ devices: PhoneDeviceView[] }>;
+  rename(options: { keyId: string; name: string }): Promise<Record<string, never>>;
+  revoke(options: { keyIds: string[] }): Promise<{ note: string | null }>;
+  /** Starts linking the device whose `coasys:device:1:` code this is; the link's id. */
+  scanDevice(options: { code: string }): Promise<{ link: string }>;
+  /** Waits for the link's next step. */
+  linkNext(options: { link: string }): Promise<LinkStep>;
+  /** The codes matched: add the device, with its name, and send it the master key or not. */
+  linkConfirm(options: { link: string; name?: string; keepMaster?: boolean }): Promise<Record<string, never>>;
+  linkCancel(options: { link: string }): Promise<Record<string, never>>;
+  /**
+   * Opens the camera on a QR code whose text starts with `prefix`. Refused with `CameraDenied`,
+   * `NoCamera` or `Cancelled`.
+   */
+  scanCode(options: { prefix: string; title?: string }): Promise<{ text: string }>;
 }
 
 /** The part of Capacitor's native bridge this uses: present only inside the phone app. */
@@ -138,5 +257,19 @@ export function deviceKeyPlugin(
     join: (options) => call('join', options),
     waitJoined: (options) => call('waitJoined', options),
     signSession: (request) => call('signSession', request),
+    identityStatus: () => call('identityStatus'),
+    takeMaster: () => call('takeMaster'),
+    askForMaster: () => call('askForMaster'),
+    masterWaiting: () => call('masterWaiting'),
+    requests: () => call('requests'),
+    answer: (options) => call('answer', options),
+    devices: () => call('devices'),
+    rename: (options) => call('rename', options),
+    revoke: (options) => call('revoke', options),
+    scanDevice: (options) => call('scanDevice', options),
+    linkNext: (options) => call('linkNext', options),
+    linkConfirm: (options) => call('linkConfirm', options),
+    linkCancel: (options) => call('linkCancel', options),
+    scanCode: (options) => call('scanCode', options),
   };
 }

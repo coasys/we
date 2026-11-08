@@ -15,7 +15,8 @@
   "dependencies": {
     "@capacitor/android": "^8.6.0",
     "@capacitor/core": "^8.6.0",
-    "@capacitor/ios": "^8.6.0"
+    "@capacitor/ios": "^8.6.0",
+    "@we/identity-window": "workspace:*"
   },
   "devDependencies": {
     "@capacitor/cli": "^8.6.0",

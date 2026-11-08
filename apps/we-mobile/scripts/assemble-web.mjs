@@ -8,11 +8,15 @@
  * 2. Builds `www/mobile/error.html`, the page Capacitor opens instead of WE when the phone's
  *    Android System WebView is older than WE's build needs (`android.minWebViewVersion`), or when
  *    WE's page fails to load (`server.errorPath`). See src/webViewFloor.ts.
+ * 3. Builds `www/mobile/identity.html`, the phone's identity page: the shared identity window
+ *    (`@we/identity-window`) over the `DeviceKey` plugin, under the window's own policy. WE opens it
+ *    to join an identity and for each identity change. See src/identity/.
  */
 import { cpSync, existsSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { identityWindowConfig } from '@we/identity-window/vite';
 import { build } from 'vite';
 
 const app = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -49,4 +53,18 @@ await build({
   },
 });
 
-console.log(`www/ assembled from ${weDist}, with mobile/error.html`);
+const identity = identityWindowConfig({ root: join(app, 'src/identity'), outDir: join(www, 'mobile') });
+await build({
+  ...identity,
+  configFile: false,
+  base: '/mobile/',
+  logLevel: 'warn',
+  build: {
+    ...identity.build,
+    // Beside error.html, which the step above wrote.
+    emptyOutDir: false,
+    rollupOptions: { input: join(app, 'src/identity/identity.html') },
+  },
+});
+
+console.log(`www/ assembled from ${weDist}, with mobile/error.html and mobile/identity.html`);

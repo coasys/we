@@ -2,11 +2,34 @@
  * The executor this phone logs in to with its device key: a URL, kept in the app's localStorage.
  *
  * Under its own key, apart from ad4m-connect's: the connect UI's choice of node is about a
- * password session, and a key login must never be confused with it, or replace it. Phase 2a sets
- * it only by hand (see `apps/we-mobile/README.md`); choosing the host is part of phase 2b's linking
- * screens (`apps/we-mobile/docs/phase-2b.md`).
+ * password session, and a key login must never be confused with it, or replace it. The phone's
+ * join screen (`apps/we-mobile/src/identity`) asks for it beside the offer.
  */
 export const KEY_HOST_KEY = 'we-phone/key-host';
+
+/**
+ * Set when the person chose "Not now" on the phone's join screen: WE then boots to its own sign-in
+ * rather than sending them back to join. {@link forgetJoinDeclined} asks again.
+ */
+export const JOIN_DECLINED_KEY = 'we-phone/join-declined';
+
+/** Whether the person said "Not now" to joining with this phone's device key. */
+export function joinDeclined(storage: Pick<Storage, 'getItem'> | undefined = safeLocalStorage()): boolean {
+  try {
+    return !!storage?.getItem(JOIN_DECLINED_KEY);
+  } catch {
+    return false;
+  }
+}
+
+/** Lets the next boot offer joining again. */
+export function forgetJoinDeclined(storage: Pick<Storage, 'removeItem'> | undefined = safeLocalStorage()): void {
+  try {
+    storage?.removeItem(JOIN_DECLINED_KEY);
+  } catch {
+    // No storage: nothing was kept.
+  }
+}
 
 /** The URL, when one is set and is http(s). */
 export function readKeyHost(storage: Pick<Storage, 'getItem'> | undefined = safeLocalStorage()): string | null {
