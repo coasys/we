@@ -174,12 +174,49 @@ pub fn write(path: &Path, file: &KeyFile) -> Result<(), PhoneKeyError> {
     write_atomic(path, &bytes)
 }
 
-/// `bytes` at `path`, whole or not at all: a temporary file beside it, synced, then renamed over
-/// it. Readable by this app's user only. The key file and the master-key file are both written so.
-pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), PhoneKeyError> {
-    let io = |e: std::io::Error| PhoneKeyError::Io {
+fn io(e: std::io::Error) -> PhoneKeyError {
+    PhoneKeyError::Io {
         reason: e.to_string(),
-    };
+    }
+}
+
+/// Makes `dir`'s entries durable: a file renamed into it is named after a crash too, not only
+/// its bytes durable (syncing the file before the rename covers the bytes, not the directory
+/// entry — POSIX `fsync(2)` of the directory). A no-op where a directory cannot be opened to
+/// sync. Counted in tests.
+fn sync_dir(dir: &Path) -> Result<(), PhoneKeyError> {
+    #[cfg(test)]
+    DIR_SYNCS.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    #[cfg(unix)]
+    fs::File::open(dir).map_err(io)?.sync_all().map_err(io)?;
+    #[cfg(not(unix))]
+    let _ = dir;
+    Ok(())
+}
+
+/// How many directory syncs this process ran (tests).
+#[cfg(test)]
+static DIR_SYNCS: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
+
+#[cfg(test)]
+fn dir_syncs() -> usize {
+    DIR_SYNCS.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// `bytes` at `path`, whole or not at all: a temporary file beside it, synced, then renamed over
+/// it, and the directory synced so the name itself is durable before `Ok`. Readable by this
+/// app's user only. The key file, the master-key file and the checkpoint file are all written
+/// so. A directory made for the write is made durable with it.
+pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), PhoneKeyError> {
+    if let Some(dir) = path.parent() {
+        if !dir.is_dir() {
+            fs::create_dir_all(dir).map_err(io)?;
+            // The new directory's own entry in its parent is durable with the write.
+            if let Some(up) = dir.parent() {
+                sync_dir(up)?;
+            }
+        }
+    }
     let tmp = path.with_extension("json.tmp");
     let mut options = fs::OpenOptions::new();
     options.write(true).create(true).truncate(true);
@@ -193,5 +230,34 @@ pub fn write_atomic(path: &Path, bytes: &[u8]) -> Result<(), PhoneKeyError> {
     out.sync_all().map_err(io)?;
     drop(out);
     fs::rename(&tmp, path).map_err(io)?;
+    if let Some(dir) = path.parent() {
+        // `Ok` means durable: the name the rename made too, not only the bytes.
+        sync_dir(dir)?;
+    }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The `Ok` of `write_atomic` means durable (`ad4m-identity-client`'s `Vault` contract):
+    /// the file's bytes and the directory entry that names them both. The first write into a
+    /// directory made on the way syncs the directory's parent too.
+    #[test]
+    fn a_write_syncs_the_directory_it_names() {
+        let dir = tempfile::tempdir().unwrap();
+        let before = dir_syncs();
+        write_atomic(&dir.path().join("one.json"), b"{}").unwrap();
+        assert!(dir_syncs() > before, "the rename is not durable unsynced");
+
+        let before = dir_syncs();
+        let made = dir.path().join("new").join("deep");
+        write_atomic(&made.join("two.json"), b"{}").unwrap();
+        assert!(
+            dir_syncs() >= before + 2,
+            "a directory made for the write is itself made durable"
+        );
+        assert_eq!(std::fs::read(made.join("two.json")).unwrap(), b"{}");
+    }
 }

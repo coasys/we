@@ -394,6 +394,16 @@ impl PhoneIdentity {
         }))
     }
 
+    /// The way back after the phone's master-key file, or this identity's epoch entry in it,
+    /// was lost: on purpose, never automatically — a fresh epoch under a fresh incarnation, so
+    /// a removal paused across the loss keeps the key rather than forgets it. Answers the new
+    /// custody epoch. The app takes it where it takes the desktop's
+    /// (`crates/custody`) `recover_custody_epoch`.
+    pub fn recover_custody_epoch(&self) -> Result<u64, PhoneKeyError> {
+        let (scid, _) = self.parts.member()?;
+        self.vault.recover_custody_epoch(&scid).map_err(vault_error)
+    }
+
     /// Asks the devices that hold the master key to send it to this phone: a `send-master`
     /// request, which a holder answers behind its own prompt. The code is the one the holder
     /// shows beside it.

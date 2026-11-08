@@ -20,17 +20,35 @@
 //! acknowledge the inbox message, then write the record) leaves a crash between two steps to be
 //! retried from the inbox.
 //!
-//! **One lock, one file.** Each operation reads, decides and writes under the vault's one lock,
-//! and everything it decides on is in the same file: the kept and staged keys, each identity's
-//! **custody epoch** and each record's **high-water mark**. A change of a kept key and the move of
-//! its epoch are therefore one atomic write, never two. The rules are WE's desktop vault's
-//! (`crates/custody/src/vault.rs`): the kept key never goes back a generation (a store or promote
-//! under a higher kept index answers `AlreadyNewer`), a forget is a compare-and-delete (on the
-//! index, or on the epoch), and the epoch moves on every successful store, promote and forget,
-//! a same-index re-store included, never otherwise. An epoch is a counter, never a digest: the
-//! file's **incarnation** (drawn at random when the file is first made) in the high 32 bits and
-//! the identity's count of changes in the low, so a file lost and made again does not answer an
-//! epoch a removal read before the loss, except by a 1 in 2³² draw.
+//! **One lock, one file, every handle.** The phone runs parallel native calls, each with its own
+//! `PhoneVault` on the same folder, and the `Vault` contract wants every operation linearizable
+//! across every handle and process. So no operation decides on a snapshot the handle read
+//! earlier: each takes the folder's lock (`master-keys.lock`, `std::fs::File::lock`, exclusive),
+//! **reads the file again**, decides and writes under it, and releases. The biometric seal and
+//! open stay outside the lock — the prompt must not hold every other call off — and what they
+//! decide on (the kept key's generation) is checked again inside. Everything decided on is in
+//! the same file: the kept and staged keys, each identity's **custody epoch** and each record's
+//! **high-water mark**, so a change of a kept key and the move of its epoch are one atomic
+//! write, never two. The rules are WE's desktop vault's (`crates/custody/src/vault.rs`): the
+//! kept key never goes back a generation (a store or promote under a higher kept index answers
+//! `AlreadyNewer`), a forget is a compare-and-delete (on the index, or on the epoch), and the
+//! epoch moves on every successful store, promote and forget, a same-index re-store included,
+//! never otherwise. An epoch is a counter, never a digest: the file's **incarnation** (drawn at
+//! random when the file is first made) in the high 32 bits and the identity's count of changes
+//! in the low, so a file made again does not answer an epoch a removal read before the loss,
+//! except by a 1 in 2³² draw.
+//!
+//! **A loss is not a fresh start.** The file holds what a missing file or entry would undo — a
+//! forget at an epoch counted again from nothing, a rolled-back record taken as the first. So
+//! the folder notes, in `custody-metadata.json`, that the file was written and which identities
+//! it holds an epoch or a mark for. A written file that is gone, or a noted identity's entry
+//! missing while the file stays, is an error on every operation, never an empty start: the way
+//! back is explicit — [`PhoneVault::recover_custody_epoch`] for an epoch (a fresh incarnation,
+//! so no epoch read before the loss repeats) and [`Vault::record_seen_reset`] for a mark. The
+//! note is written after the file that earns it (a crash between the two leaves an entry that
+//! is there and not yet noted, which reads as it is and is noted with the next change), and a
+//! noted identity is never dropped: a forgotten key's epoch stays, a reset mark stays as a
+//! reset.
 //!
 //! The file is in `no_backup/device-keys/`, as the key file is.
 //!
@@ -57,6 +75,11 @@ use zeroize::Zeroizing;
 use crate::{Sealer, WipeOnDrop};
 
 pub const MASTER_FILE_NAME: &str = "master-keys.json";
+/// The lock every handle and process takes around each read-decide-write of the file.
+pub const LOCK_FILE_NAME: &str = "master-keys.lock";
+/// Beside the file, what it has held: that it was written, and which identities it holds an
+/// epoch or a record mark for — so a missing one reads as a loss, not a fresh start.
+pub const MARKER_FILE_NAME: &str = "custody-metadata.json";
 /// The label an entry's tag is sealed under by the device sealer.
 pub const TAG_LABEL: &str = "coasys:phone-master-tag:1";
 /// What a `VaultError::Unavailable` starts with when the master sealer's protection is below
@@ -201,15 +224,14 @@ struct MasterFile {
     incepts: Vec<serde_json::Value>,
     #[serde(default)]
     pushes: Vec<PendingPush>,
-    /// Drawn at random when the file is first made; the high half of every custody epoch. `0` in
-    /// a file written before epochs were kept, which [`PhoneVault::open`] replaces with a draw.
-    #[serde(default)]
+    /// Drawn at random when the file is first made; the high half of every custody epoch. A
+    /// file without one is damaged, not a format to open: this schema was never written
+    /// without it.
     incarnation: u32,
-    /// Each identity's count of changes of its kept key.
-    #[serde(default)]
+    /// Each identity's count of changes of its kept key; a missing field is damaged, a noted
+    /// identity's missing entry a loss.
     epochs: Vec<EpochEntry>,
     /// Each identity's record high-water mark.
-    #[serde(default)]
     seen: Vec<Seen>,
 }
 
@@ -221,7 +243,9 @@ struct EpochEntry {
     count: u32,
 }
 
-/// The highest version of an identity's record read; `None` after a reset.
+/// The highest version of an identity's record read; `None` after a reset, which is kept —
+/// the reset itself — rather than the entry dropped, so a reset is never confused with a mark
+/// that was lost.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Seen {
@@ -229,25 +253,103 @@ struct Seen {
     version: Option<u64>,
 }
 
+/// What the folder noted the file has held (`custody-metadata.json`): that the file was
+/// written, and the identities an epoch or a record mark was written for. Written after the
+/// file that earns the note; a noted identity is never dropped from it.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Marker {
+    v: u8,
+    /// `master-keys.json` was written in this folder: gone, it is a loss, not a fresh start.
+    #[serde(default)]
+    written: bool,
+    /// The identities an epoch entry was written for.
+    #[serde(default)]
+    epochs: Vec<String>,
+    /// The identities a record mark was written for.
+    #[serde(default)]
+    seen: Vec<String>,
+}
+
+impl Marker {
+    fn fresh() -> Marker {
+        Marker {
+            v: 1,
+            ..Marker::default()
+        }
+    }
+}
+
+/// What a lost `master-keys.json` says.
+const LOST_FILE: &str = "was written in this folder and is gone; it is not started again empty";
+
+fn lost_epoch(scid: &str) -> VaultError {
+    VaultError::Unavailable(format!(
+        "{scid}'s custody epoch was written in this folder and is gone; \
+         it is not counted again from nothing"
+    ))
+}
+
+fn lost_mark(scid: &str) -> VaultError {
+    VaultError::Unavailable(format!(
+        "{scid}'s record mark was written in this folder and is gone; \
+         only a reset starts it again"
+    ))
+}
+
+fn lost_file() -> VaultError {
+    VaultError::Unavailable(format!("{MASTER_FILE_NAME} {LOST_FILE}"))
+}
+
+fn unavailable(why: impl std::fmt::Display) -> VaultError {
+    VaultError::Unavailable(why.to_string())
+}
+
 impl MasterFile {
+    /// The file's first state: a fresh incarnation, so nothing it answers later repeats what
+    /// a file this folder had before answered.
+    fn fresh() -> MasterFile {
+        MasterFile {
+            v: 1,
+            incarnation: draw_incarnation(),
+            ..MasterFile::default()
+        }
+    }
+
     fn kept(&self, scid: &str) -> Option<&Item> {
         self.kept.iter().find(|k| k.scid == scid)
     }
 
-    fn epoch(&self, scid: &str) -> u64 {
-        let count = self
-            .epochs
-            .iter()
-            .find(|e| e.scid == scid)
-            .map_or(0, |e| e.count);
-        (u64::from(self.incarnation) << 32) | u64::from(count)
+    /// `scid`'s epoch: the entry's count under the file's incarnation, or the incarnation
+    /// alone where no entry was ever made. An entry the folder noted and that is missing was
+    /// lost: an error, never counted again from nothing.
+    fn epoch(&self, scid: &str, noted: &[String]) -> Result<u64, VaultError> {
+        match self.epochs.iter().find(|e| e.scid == scid) {
+            Some(entry) => Ok((u64::from(self.incarnation) << 32) | u64::from(entry.count)),
+            None if noted.iter().any(|s| s == scid) => Err(lost_epoch(scid)),
+            None => Ok(u64::from(self.incarnation) << 32),
+        }
     }
 
-    /// Moves `scid`'s epoch, in this copy of the file: saved with the change it counts.
-    fn bump_epoch(&mut self, scid: &str) -> Result<(), VaultError> {
+    /// `scid`'s record mark as the file keeps it (`None` when none was ever read, or after a
+    /// reset); a noted mark that is missing was lost: an error, never a first read again.
+    fn seen_mark(&self, scid: &str, noted: &[String]) -> Result<Option<u64>, VaultError> {
+        match self.seen.iter().find(|s| s.scid == scid) {
+            Some(seen) => Ok(seen.version),
+            None if noted.iter().any(|s| s == scid) => Err(lost_mark(scid)),
+            None => Ok(None),
+        }
+    }
+
+    /// Moves `scid`'s epoch, in this copy of the file: saved with the change it counts. A noted
+    /// identity without an entry is a loss ([`MasterFile::epoch`]), not made again quietly.
+    fn bump_epoch(&mut self, scid: &str, noted: &[String]) -> Result<(), VaultError> {
         let entry = match self.epochs.iter_mut().find(|e| e.scid == scid) {
             Some(entry) => entry,
             None => {
+                if noted.iter().any(|s| s == scid) {
+                    return Err(lost_epoch(scid));
+                }
                 self.epochs.push(EpochEntry {
                     scid: scid.to_string(),
                     count: 0,
@@ -281,57 +383,43 @@ fn io(e: crate::PhoneKeyError) -> VaultError {
     VaultError::Unavailable(e.to_string())
 }
 
+/// The file read fresh under the folder's lock: what every operation decides on.
+struct Held<'a> {
+    /// Serializes this handle's operations (the folder's lock serializes across handles).
+    _in_process: MutexGuard<'a, ()>,
+    /// The folder's lock, held until the operation ends: `master-keys.lock` locked
+    /// exclusively (`std::fs::File::lock`), across every handle and process on the folder.
+    _folder: std::fs::File,
+    /// The file as the lock found it.
+    file: MasterFile,
+    /// What the folder noted the file has held.
+    marker: Marker,
+}
+
 /// The phone's master-key vault: `master-keys.json` in the key directory, the seeds sealed by
-/// [`MasterSealer`] and the entries tagged by the device [`Sealer`].
+/// [`MasterSealer`] and the entries tagged by the device [`Sealer`]. Keeps no copy of the file:
+/// every operation reads it again under the folder's lock ([`Held`]).
 pub struct PhoneVault {
-    path: PathBuf,
+    dir: PathBuf,
     master: Arc<dyn MasterSealer>,
     device: Arc<dyn Sealer>,
-    file: Mutex<MasterFile>,
+    lock: Mutex<()>,
     allow_weak: AtomicBool,
 }
 
 impl PhoneVault {
-    /// The vault kept in `dir`. Reads the file when there is one; makes nothing.
+    /// The vault kept in `dir`. Reads and writes are per operation, under the folder's lock;
+    /// opening makes nothing.
     pub fn open(
         dir: &std::path::Path,
         master: Arc<dyn MasterSealer>,
         device: Arc<dyn Sealer>,
     ) -> Result<Self, crate::PhoneKeyError> {
-        let path = dir.join(MASTER_FILE_NAME);
-        let mut file = match std::fs::read(&path) {
-            Ok(bytes) => {
-                let file: MasterFile =
-                    serde_json::from_slice(&bytes).map_err(|e| crate::PhoneKeyError::Damaged {
-                        reason: format!("{MASTER_FILE_NAME}: {e}"),
-                    })?;
-                if file.v != 1 {
-                    return Err(crate::PhoneKeyError::Damaged {
-                        reason: format!("{MASTER_FILE_NAME}: v is not 1"),
-                    });
-                }
-                file
-            }
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => MasterFile {
-                v: 1,
-                ..MasterFile::default()
-            },
-            Err(e) => {
-                return Err(crate::PhoneKeyError::Io {
-                    reason: e.to_string(),
-                })
-            }
-        };
-        // Saved with the first write; an epoch answered before it is drawn again at the next
-        // open, which a forget at it reads as a change and keeps the key.
-        if file.incarnation == 0 {
-            file.incarnation = draw_incarnation();
-        }
         Ok(PhoneVault {
-            path,
+            dir: dir.to_path_buf(),
             master,
             device,
-            file: Mutex::new(file),
+            lock: Mutex::new(()),
             allow_weak: AtomicBool::new(false),
         })
     }
@@ -360,20 +448,107 @@ impl PhoneVault {
         )))
     }
 
-    fn lock(&self) -> MutexGuard<'_, MasterFile> {
-        self.file
+    /// The file read fresh and the folder's lock held, for one operation: every handle and
+    /// process on the folder serializes on `master-keys.lock`, and decides on what the file is
+    /// then — never on a copy read earlier. `recovering` reads a written-and-lost file as its
+    /// fresh state; nothing else does.
+    fn held(&self, recovering: bool) -> Result<Held<'_>, VaultError> {
+        let in_process = self
+            .lock
             .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        std::fs::create_dir_all(&self.dir).map_err(unavailable)?;
+        let folder = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(self.dir.join(LOCK_FILE_NAME))
+            .map_err(unavailable)?;
+        folder.lock().map_err(unavailable)?;
+        let marker = self.read_marker()?;
+        let file = self.read(&marker, recovering)?;
+        Ok(Held {
+            _in_process: in_process,
+            _folder: folder,
+            file,
+            marker,
+        })
     }
 
-    fn save(
-        &self,
-        guard: &mut MutexGuard<'_, MasterFile>,
-        next: MasterFile,
-    ) -> Result<(), VaultError> {
+    /// What the folder noted (`custody-metadata.json`): none when it was never written;
+    /// unreadable is an error either way.
+    fn read_marker(&self) -> Result<Marker, VaultError> {
+        match std::fs::read(self.dir.join(MARKER_FILE_NAME)) {
+            Ok(bytes) => {
+                let marker: Marker = serde_json::from_slice(&bytes)
+                    .map_err(|e| unavailable(format!("{MARKER_FILE_NAME}: {e}")))?;
+                if marker.v != 1 {
+                    return Err(unavailable(format!("{MARKER_FILE_NAME}: v is not 1")));
+                }
+                Ok(marker)
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Marker::fresh()),
+            Err(e) => Err(unavailable(e)),
+        }
+    }
+
+    /// The master-key file. None written yet is `MasterFile::fresh` — or, `marker` says one was
+    /// written and it is gone, a loss: an error, not a fresh start, unless the caller is
+    /// recovering on purpose. One that does not read, or predates the history this schema
+    /// keeps, is damaged rather than opened.
+    fn read(&self, marker: &Marker, recovering: bool) -> Result<MasterFile, VaultError> {
+        match std::fs::read(self.dir.join(MASTER_FILE_NAME)) {
+            Ok(bytes) => {
+                let file: MasterFile = serde_json::from_slice(&bytes)
+                    .map_err(|e| unavailable(format!("{MASTER_FILE_NAME}: {e}")))?;
+                if file.v != 1 {
+                    return Err(unavailable(format!("{MASTER_FILE_NAME}: v is not 1")));
+                }
+                if file.incarnation == 0 {
+                    return Err(unavailable(format!("{MASTER_FILE_NAME}: incarnation 0")));
+                }
+                Ok(file)
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                if marker.written && !recovering {
+                    return Err(lost_file());
+                }
+                Ok(MasterFile::fresh())
+            }
+            Err(e) => Err(unavailable(e)),
+        }
+    }
+
+    /// Writes `next` whole, then notes in the marker what it holds: the file's entries first,
+    /// durable, the note second — a crash between the two leaves an entry that is there and
+    /// not yet noted, which reads as it is and is noted with the next change; noting first
+    /// would read an unwritten entry as lost. What the note buys is the detection of a loss
+    /// *after* it exists.
+    fn save(&self, held: &mut Held<'_>, next: MasterFile) -> Result<(), VaultError> {
         let bytes = serde_json::to_vec_pretty(&next).expect("the master-key file serialises");
-        crate::file::write_atomic(&self.path, &bytes).map_err(io)?;
-        **guard = next;
+        crate::file::write_atomic(&self.dir.join(MASTER_FILE_NAME), &bytes).map_err(io)?;
+        let mut marker = held.marker.clone();
+        let mut changed = !marker.written;
+        marker.written = true;
+        for entry in &next.epochs {
+            if !marker.epochs.contains(&entry.scid) {
+                marker.epochs.push(entry.scid.clone());
+                changed = true;
+            }
+        }
+        for entry in &next.seen {
+            if !marker.seen.contains(&entry.scid) {
+                marker.seen.push(entry.scid.clone());
+                changed = true;
+            }
+        }
+        if changed {
+            let bytes =
+                serde_json::to_vec_pretty(&marker).expect("the custody metadata serialises");
+            crate::file::write_atomic(&self.dir.join(MARKER_FILE_NAME), &bytes).map_err(io)?;
+            held.marker = marker;
+        }
+        held.file = next;
         Ok(())
     }
 
@@ -464,25 +639,62 @@ impl PhoneVault {
         }
     }
 
+    /// The way back after the file, or `scid`'s epoch entry in it, was lost
+    /// ([`PhoneVault::read`], [`MasterFile::epoch`]), taken on purpose — never automatically:
+    /// a fresh entry under a freshly drawn incarnation, so an epoch a flow read before the
+    /// loss cannot come back and a removal paused across it keeps the key rather than
+    /// forgetting it. An entry that is there is left as it is, and so is every other
+    /// identity's: one whose entry went with the file stays lost until it is recovered too.
+    /// Answers `scid`'s epoch.
+    pub fn recover_custody_epoch(&self, scid: &str) -> Result<u64, VaultError> {
+        let mut held = self.held(true)?;
+        if let Some(entry) = held.file.epochs.iter().find(|e| e.scid == scid) {
+            return Ok((u64::from(held.file.incarnation) << 32) | u64::from(entry.count));
+        }
+        // The entry was written and lost while the file stayed: a new count under the same
+        // incarnation would repeat epochs already answered. A fresh incarnation makes the new
+        // entry's epochs new — and moves the other identities' epochs too, the safe direction
+        // for a forget at an epoch read before (it keeps the key).
+        if held.marker.epochs.iter().any(|s| s == scid) {
+            loop {
+                let drawn = draw_incarnation();
+                if drawn != held.file.incarnation {
+                    held.file.incarnation = drawn;
+                    break;
+                }
+            }
+        }
+        let mut next = held.file.clone();
+        next.epochs.push(EpochEntry {
+            scid: scid.to_string(),
+            count: 0,
+        });
+        let epoch = next
+            .epoch(scid, &held.marker.epochs)
+            .expect("the entry was just made");
+        self.save(&mut held, next)?;
+        Ok(epoch)
+    }
+
     /// The compare-and-delete behind [`Vault::forget_master`] and [`Vault::forget_master_at`],
     /// under the lock: the kept key is removed, and its epoch moved in the same write, only while
     /// `unchanged(file, kept index)` holds; otherwise it is left and named.
     fn forget_kept(
         &self,
         scid: &str,
-        unchanged: impl FnOnce(&MasterFile, u32) -> bool,
+        unchanged: impl FnOnce(&MasterFile, &[String], u32) -> Result<bool, VaultError>,
     ) -> Result<Forgot, VaultError> {
-        let mut guard = self.lock();
-        let Some(kept) = self.kept_index_held(&guard, scid)? else {
+        let mut held = self.held(false)?;
+        let Some(kept) = self.kept_index_held(&held.file, scid)? else {
             return Ok(Forgot::Forgot);
         };
-        if !unchanged(&guard, kept) {
+        if !unchanged(&held.file, &held.marker.epochs, kept)? {
             return Ok(Forgot::Kept(kept));
         }
-        let mut next = guard.clone();
+        let mut next = held.file.clone();
         next.kept.retain(|k| k.scid != scid);
-        next.bump_epoch(scid)?;
-        self.save(&mut guard, next)?;
+        next.bump_epoch(scid, &held.marker.epochs)?;
+        self.save(&mut held, next)?;
         Ok(Forgot::Forgot)
     }
 
@@ -529,30 +741,36 @@ impl Vault for PhoneVault {
     ) -> Result<Stored, VaultError> {
         // Checked first so that a key that can never be kept costs no prompt, and again under
         // the lock, where it decides: the prompt is not held under the lock.
-        if let Some(kept) = self.kept_index_held(&self.lock(), scid)? {
+        if let Some(kept) = self.kept_index_held(&self.held(false)?.file, scid)? {
             if kept > index {
                 return Ok(Stored::AlreadyNewer { kept });
             }
         }
         let item = self.seal_item(Kind::Kept, scid, index, &secret, None, PROMPT_KEEP)?;
-        let mut guard = self.lock();
-        if let Some(kept) = self.kept_index_held(&guard, scid)? {
+        let mut held = self.held(false)?;
+        if let Some(kept) = self.kept_index_held(&held.file, scid)? {
             if kept > index {
                 return Ok(Stored::AlreadyNewer { kept });
             }
         }
-        let mut next = guard.clone();
+        let mut next = held.file.clone();
         next.kept.retain(|k| k.scid != scid);
         next.kept.push(item);
         // Every store moves it, a same-index re-store too: a forget that read the epoch before
         // a duplicate delivery must not remove what that delivery just kept.
-        next.bump_epoch(scid)?;
-        self.save(&mut guard, next)?;
+        next.bump_epoch(scid, &held.marker.epochs)?;
+        self.save(&mut held, next)?;
         Ok(Stored::Stored)
     }
 
     fn master_index(&self, scid: &str) -> Result<Option<u32>, VaultError> {
-        let item = self.lock().kept.iter().find(|k| k.scid == scid).cloned();
+        let item = self
+            .held(false)?
+            .file
+            .kept
+            .iter()
+            .find(|k| k.scid == scid)
+            .cloned();
         let Some(item) = item else {
             return Ok(None);
         };
@@ -580,15 +798,21 @@ impl Vault for PhoneVault {
             Some(owner),
             PROMPT_STAGE,
         )?;
-        let mut guard = self.lock();
-        let mut next = guard.clone();
+        let mut held = self.held(false)?;
+        let mut next = held.file.clone();
         next.staged.retain(|k| k.scid != scid);
         next.staged.push(item);
-        self.save(&mut guard, next)
+        self.save(&mut held, next)
     }
 
     fn staged_index(&self, scid: &str) -> Result<Option<u32>, VaultError> {
-        let item = self.lock().staged.iter().find(|k| k.scid == scid).cloned();
+        let item = self
+            .held(false)?
+            .file
+            .staged
+            .iter()
+            .find(|k| k.scid == scid)
+            .cloned();
         let Some(item) = item else {
             return Ok(None);
         };
@@ -602,21 +826,22 @@ impl Vault for PhoneVault {
     /// Under the lock from the read of the staged and kept entries to the write: the tags are
     /// the device sealer's, which needs no prompt.
     fn promote_master(&self, scid: &str, index: u32) -> Result<Stored, VaultError> {
-        let mut guard = self.lock();
-        let staged = guard
+        let mut held = self.held(false)?;
+        let staged = held
+            .file
             .staged
             .iter()
             .find(|k| k.scid == scid && k.index == index)
             .cloned()
             .ok_or(VaultError::NotFound)?;
         self.verify(Kind::Staged, &staged)?;
-        if let Some(kept) = self.kept_index_held(&guard, scid)? {
+        if let Some(kept) = self.kept_index_held(&held.file, scid)? {
             if kept > index {
                 // It can never become the kept key.
-                let mut next = guard.clone();
+                let mut next = held.file.clone();
                 next.staged
                     .retain(|k| !(k.scid == scid && k.index == index));
-                self.save(&mut guard, next)?;
+                self.save(&mut held, next)?;
                 return Ok(Stored::AlreadyNewer { kept });
             }
         }
@@ -627,13 +852,13 @@ impl Vault for PhoneVault {
             owner: None,
             ..staged
         };
-        let mut next = guard.clone();
+        let mut next = held.file.clone();
         next.staged
             .retain(|k| !(k.scid == scid && k.index == index));
         next.kept.retain(|k| k.scid != scid);
         next.kept.push(kept);
-        next.bump_epoch(scid)?;
-        self.save(&mut guard, next)?;
+        next.bump_epoch(scid, &held.marker.epochs)?;
+        self.save(&mut held, next)?;
         Ok(Stored::Stored)
     }
 
@@ -644,40 +869,45 @@ impl Vault for PhoneVault {
         owner: Option<&StageToken>,
     ) -> Result<(), VaultError> {
         let owner = owner.map(|o| hex(&o.0));
-        let mut guard = self.lock();
-        let mut next = guard.clone();
+        let mut held = self.held(false)?;
+        let mut next = held.file.clone();
         next.staged.retain(|k| {
             let matches = k.scid == scid
                 && k.index == index
                 && owner.as_ref().is_none_or(|o| k.owner.as_ref() == Some(o));
             !matches
         });
-        if next == *guard {
+        if next == held.file {
             return Ok(());
         }
-        self.save(&mut guard, next)
+        self.save(&mut held, next)
     }
 
     /// A compare-and-delete on the index: a kept key at another index is left and named. A
     /// staged key stays.
     fn forget_master(&self, scid: &str, index: u32) -> Result<Forgot, VaultError> {
-        self.forget_kept(scid, |_, kept| kept == index)
+        self.forget_kept(scid, |_, _, kept| Ok(kept == index))
     }
 
-    /// The counter in the file, read under the lock every write takes; no prompt.
+    /// The counter in the file, read under the lock every operation takes; no prompt. An entry
+    /// the folder noted and lost is an error, never 0 again ([`MasterFile::epoch`]).
     fn custody_epoch(&self, scid: &str) -> Result<u64, VaultError> {
-        Ok(self.lock().epoch(scid))
+        let held = self.held(false)?;
+        held.file.epoch(scid, &held.marker.epochs)
     }
 
     /// A compare-and-delete on the custody epoch: a key kept since the caller read it (at any
     /// index, the same key delivered again included) moved it, and is left and named.
     fn forget_master_at(&self, scid: &str, epoch: u64) -> Result<Forgot, VaultError> {
-        self.forget_kept(scid, |file, _| file.epoch(scid) == epoch)
+        self.forget_kept(scid, |file, noted, _| {
+            file.epoch(scid, noted).map(|now| now == epoch)
+        })
     }
 
     fn unlock(&self, scid: &str, why: MasterUse, now: u64) -> Result<Unlocked, VaultError> {
         let item = self
-            .lock()
+            .held(false)?
+            .file
             .kept
             .iter()
             .find(|k| k.scid == scid)
@@ -691,16 +921,17 @@ impl Vault for PhoneVault {
     fn store_pending_incept(&self, incept: &Event) -> Result<(), VaultError> {
         let value = serde_json::to_value(incept)
             .map_err(|e| VaultError::Unavailable(format!("the incept does not serialise: {e}")))?;
-        let mut guard = self.lock();
-        let mut next = guard.clone();
+        let mut held = self.held(false)?;
+        let mut next = held.file.clone();
         next.incepts
             .retain(|kept| kept["scid"].as_str() != Some(incept.scid.as_str()));
         next.incepts.push(value);
-        self.save(&mut guard, next)
+        self.save(&mut held, next)
     }
 
     fn pending_incepts(&self) -> Result<Vec<Event>, VaultError> {
-        self.lock()
+        self.held(false)?
+            .file
             .incepts
             .iter()
             .map(|value| Event::from_json(value).map_err(|_| VaultError::Tampered))
@@ -708,71 +939,80 @@ impl Vault for PhoneVault {
     }
 
     fn incept_published(&self, scid: &str) -> Result<(), VaultError> {
-        let mut guard = self.lock();
-        let mut next = guard.clone();
+        let mut held = self.held(false)?;
+        let mut next = held.file.clone();
         next.incepts
             .retain(|kept| kept["scid"].as_str() != Some(scid));
-        if next == *guard {
+        if next == held.file {
             return Ok(());
         }
-        self.save(&mut guard, next)
+        self.save(&mut held, next)
     }
 
     fn keep_push(&self, push: &PendingPush) -> Result<(), VaultError> {
-        let mut guard = self.lock();
-        if guard.pushes.contains(push) {
+        let mut held = self.held(false)?;
+        if held.file.pushes.contains(push) {
             return Ok(());
         }
-        let mut next = guard.clone();
+        let mut next = held.file.clone();
         next.pushes.push(push.clone());
-        self.save(&mut guard, next)
+        self.save(&mut held, next)
     }
 
     fn pending_pushes(&self) -> Result<Vec<PendingPush>, VaultError> {
-        Ok(self.lock().pushes.clone())
+        Ok(self.held(false)?.file.pushes.clone())
     }
 
     fn push_done(&self, push: &PendingPush) -> Result<(), VaultError> {
-        let mut guard = self.lock();
-        let mut next = guard.clone();
+        let mut held = self.held(false)?;
+        let mut next = held.file.clone();
         next.pushes.retain(|p| p != push);
-        if next == *guard {
+        if next == held.file {
             return Ok(());
         }
-        self.save(&mut guard, next)
+        self.save(&mut held, next)
     }
 
     /// Kept in the file, under the lock: the mark only rises, and the answer is the mark before
-    /// this read. Written only when it moves.
+    /// this read. Written only when it moves. A mark the folder noted and lost is an error,
+    /// never `None` again ([`MasterFile::seen_mark`]); a reset repairs it.
     fn record_seen(&self, scid: &str, version: u64) -> Result<Option<u64>, VaultError> {
-        let mut guard = self.lock();
-        let before = guard
-            .seen
-            .iter()
-            .find(|s| s.scid == scid)
-            .and_then(|s| s.version);
+        let mut held = self.held(false)?;
+        let before = held.file.seen_mark(scid, &held.marker.seen)?;
         let after = before.map_or(version, |before| before.max(version));
         if before == Some(after) {
             return Ok(before);
         }
-        let mut next = guard.clone();
+        let mut next = held.file.clone();
         next.seen.retain(|s| s.scid != scid);
         next.seen.push(Seen {
             scid: scid.to_string(),
             version: Some(after),
         });
-        self.save(&mut guard, next)?;
+        self.save(&mut held, next)?;
         Ok(before)
     }
 
+    /// Forgets the record versions of `scid` read so far, kept as a reset ([`Seen::version`]
+    /// `None`) — never the entry dropped, so a reset is told from marks lost. Also the way
+    /// back from a lost mark or a lost file: the reset is written, on purpose, and another
+    /// identity's mark that went with the file stays lost until it is reset too.
     fn record_seen_reset(&self, scid: &str) -> Result<(), VaultError> {
-        let mut guard = self.lock();
-        let mut next = guard.clone();
-        next.seen.retain(|s| s.scid != scid);
-        if next == *guard {
-            return Ok(());
+        let mut held = self.held(true)?;
+        let mut next = held.file.clone();
+        match next.seen.iter_mut().find(|s| s.scid == scid) {
+            Some(mark) => {
+                if mark.version.is_none() {
+                    return Ok(());
+                }
+                mark.version = None;
+            }
+            None => next.seen.push(Seen {
+                scid: scid.to_string(),
+                version: None,
+            }),
         }
-        self.save(&mut guard, next)
+        self.save(&mut held, next)
     }
 }
 
@@ -1009,29 +1249,114 @@ mod tests {
         assert_eq!(vault(dir.path()).master_index("scid2").unwrap(), Some(0));
     }
 
-    // An epoch is never a digest: a file made again (lost, the app's data cleared) starts from a
-    // fresh incarnation, so the epoch a removal read before the loss does not come back.
+    // Two handles on one folder — independently opened, not clones of one vault — each decide
+    // on the file as the other left it: a store under a newer kept index is `AlreadyNewer`
+    // even from the handle that opened first, a forget at an epoch the other moved keeps the
+    // key, and the epochs the two answer never repeat.
     #[test]
-    fn a_file_made_again_does_not_repeat_an_epoch() {
+    fn two_handles_on_one_folder_decide_on_the_same_store() {
         let dir = tempfile::tempdir().unwrap();
-        let v = vault(dir.path());
-        v.store_master("scid1", 0, Secret::new([3; 32])).unwrap();
-        let before = v.custody_epoch("scid1").unwrap();
-        std::fs::remove_file(dir.path().join(MASTER_FILE_NAME)).unwrap();
-        let fresh = vault(dir.path());
-        fresh
-            .store_master("scid1", 0, Secret::new([3; 32]))
-            .unwrap();
-        assert_ne!(fresh.custody_epoch("scid1").unwrap(), before);
+        let a = vault(dir.path());
+        let b = vault(dir.path());
+        a.store_master("scid1", 2, Secret::new([3; 32])).unwrap();
+        // b opened before a's store: deciding on a snapshot taken then would write index 1
+        // over the kept 2.
+        assert_eq!(b.master_index("scid1").unwrap(), Some(2));
         assert_eq!(
-            fresh.forget_master_at("scid1", before).unwrap(),
-            Forgot::Kept(0)
+            b.store_master("scid1", 1, Secret::new([4; 32])).unwrap(),
+            Stored::AlreadyNewer { kept: 2 }
+        );
+        assert_eq!(a.master_index("scid1").unwrap(), Some(2));
+
+        let first = b.custody_epoch("scid1").unwrap();
+        b.store_master("scid1", 3, Secret::new([5; 32])).unwrap();
+        let moved = a.custody_epoch("scid1").unwrap();
+        assert_ne!(first, moved);
+        assert_eq!(a.forget_master_at("scid1", first).unwrap(), Forgot::Kept(3));
+        assert_eq!(
+            a.custody_epoch("scid2").unwrap(),
+            b.custody_epoch("scid2").unwrap()
         );
     }
 
-    // A file written before epochs and marks were kept opens, and gets an incarnation.
+    // A file the folder wrote and lost is a loss, not a fresh start: nothing answers or writes
+    // over the loss, and the way back is an explicit recovery — a new epoch under a fresh
+    // incarnation, a reset mark — which never repeats what the file answered before.
     #[test]
-    fn a_file_without_epochs_opens() {
+    fn a_vault_file_written_and_lost_is_an_error_until_recovered() {
+        let dir = tempfile::tempdir().unwrap();
+        let v = vault(dir.path());
+        v.store_master("scid1", 0, Secret::new([3; 32])).unwrap();
+        v.record_seen("scid1", 5).unwrap();
+        let before = v.custody_epoch("scid1").unwrap();
+        std::fs::remove_file(dir.path().join(MASTER_FILE_NAME)).unwrap();
+
+        let lost = vault(dir.path());
+        assert!(lost.master_index("scid1").is_err());
+        assert!(lost.custody_epoch("scid1").is_err());
+        assert!(lost.record_seen("scid1", 6).is_err());
+        assert!(lost.store_master("scid1", 0, Secret::new([3; 32])).is_err());
+
+        let recovered = lost.recover_custody_epoch("scid1").unwrap();
+        assert_ne!(recovered, before);
+        // The epoch alone does not bring the record mark back: it is reset per identity, as
+        // the desktop's marks are.
+        assert!(lost.record_seen("scid1", 6).is_err());
+        lost.record_seen_reset("scid1").unwrap();
+        assert_eq!(lost.record_seen("scid1", 3).unwrap(), None);
+        assert_eq!(
+            lost.store_master("scid1", 0, Secret::new([3; 32])).unwrap(),
+            Stored::Stored
+        );
+        assert!(lost.custody_epoch("scid1").unwrap() > recovered);
+    }
+
+    // An entry the folder noted and that is missing while the file stays — an epoch's or a
+    // mark's — is a loss, not a first use. Another identity's entries are untouched. Recovery
+    // is explicit and does not repeat an epoch the file answered before the loss.
+    #[test]
+    fn a_noted_entry_missing_from_the_file_is_lost_not_first_use() {
+        let dir = tempfile::tempdir().unwrap();
+        let v = vault(dir.path());
+        v.store_master("scid1", 0, Secret::new([3; 32])).unwrap();
+        v.store_master("scid2", 0, Secret::new([4; 32])).unwrap();
+        v.record_seen("scid1", 5).unwrap();
+        let before = v.custody_epoch("scid1").unwrap();
+
+        let mut file = read(dir.path());
+        file.as_object_mut().unwrap()["epochs"] =
+            serde_json::json!([{"scid": "scid2", "count": 1}]);
+        write(dir.path(), &file);
+        let lost = vault(dir.path());
+        assert!(lost.custody_epoch("scid1").is_err());
+        assert!(lost.store_master("scid1", 1, Secret::new([5; 32])).is_err());
+        // A forget that read the epoch before the loss keeps the key rather than judge by 0.
+        assert!(lost.forget_master_at("scid1", before).is_err());
+        assert!(lost.custody_epoch("scid2").is_ok());
+
+        let recovered = lost.recover_custody_epoch("scid1").unwrap();
+        assert_ne!(recovered, before);
+        assert_ne!(
+            recovered >> 32,
+            before >> 32,
+            "a lost entry comes back under a fresh incarnation"
+        );
+
+        // A noted record mark gone from the file is the same, repaired by its reset only.
+        let mut file = read(dir.path());
+        file.as_object_mut().unwrap()["seen"] = serde_json::json!([]);
+        write(dir.path(), &file);
+        assert!(lost.record_seen("scid1", 9).is_err());
+        assert_eq!(lost.record_seen("scid2", 1).unwrap(), None);
+        lost.record_seen_reset("scid1").unwrap();
+        assert_eq!(lost.record_seen("scid1", 9).unwrap(), None);
+    }
+
+    // A file without the history this vault writes — no incarnation, epochs or marks — is
+    // damaged, not an older format to open: the schema is phase 2b's and was never written
+    // without them.
+    #[test]
+    fn a_file_without_its_history_is_damaged() {
         let dir = tempfile::tempdir().unwrap();
         vault(dir.path())
             .store_master("scid1", 0, Secret::new([3; 32]))
@@ -1043,8 +1368,8 @@ mod tests {
         object.remove("seen");
         write(dir.path(), &file);
         let old = vault(dir.path());
-        assert_eq!(old.master_index("scid1").unwrap(), Some(0));
-        assert_ne!(old.custody_epoch("scid1").unwrap() >> 32, 0);
+        assert!(old.master_index("scid1").is_err());
+        assert!(old.custody_epoch("scid1").is_err());
     }
 
     // A forget refuses an entry its tag does not vouch for rather than guessing at its index.
