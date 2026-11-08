@@ -1,0 +1,77 @@
+# The phone app (apps/we-mobile): WE's web build in a Capacitor shell. Builds the web app, assembles
+# the phone's web directory from it, checks it against the phone's WebView floor, and builds the
+# Android debug APK. See apps/we-mobile/README.md.
+#
+# Android only. The iOS project is kept in the tree and `cap sync ios` works, but building it needs a
+# macOS runner and signing to say anything a reader can rely on, so it is not claimed here.
+#
+# The floor check is why WE's packages are in the paths below: a package that starts using syntax
+# newer than the floor breaks the phone without touching apps/we-mobile, and this is where it shows.
+name: Phone app
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - apps/we-mobile/**
+      - apps/we-web/**
+      - packages/**
+      - we-seed.json
+      - pnpm-lock.yaml
+      - .github/workflows/phone-app.yaml
+  pull_request:
+    paths:
+      - apps/we-mobile/**
+      - apps/we-web/**
+      - packages/**
+      - we-seed.json
+      - pnpm-lock.yaml
+      - .github/workflows/phone-app.yaml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  android:
+    name: Android debug APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+
+      # The Ubuntu runner image ships the Android SDK at $ANDROID_HOME; Gradle wants JDK 21.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build WE for the web
+        run: pnpm build:web
+
+      - name: Assemble the phone's web directory
+        working-directory: apps/we-mobile
+        run: pnpm build:web
+
+      - name: Check the WebView floor
+        working-directory: apps/we-mobile
+        run: pnpm check:floor
+
+      - name: Test
+        working-directory: apps/we-mobile
+        run: pnpm test
+
+      - name: Copy the web directory into the Android project
+        working-directory: apps/we-mobile
+        run: pnpm exec cap sync android
+
+      - name: Build the APK
+        working-directory: apps/we-mobile/android
+        run: ./gradlew assembleDebug
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coasys-debug-apk
+          path: apps/we-mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
