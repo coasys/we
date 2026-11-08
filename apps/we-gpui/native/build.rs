@@ -7,6 +7,18 @@
 fn main() {
     #[cfg(target_os = "linux")]
     link_xkbcommon_x11();
+    seed_data_path();
+}
+
+/// The seed's `ad4m.dataPath`, as `WE_GPUI_SEED_DATA_PATH` — the default every desktop host uses
+/// when no account is selected (Tauri generates `seed_runtime.rs` from the same field).
+fn seed_data_path() {
+    let seed = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../we-seed.json");
+    println!("cargo:rerun-if-changed={}", seed.display());
+    let text = std::fs::read_to_string(&seed).expect("read we-seed.json");
+    let json: serde_json::Value = serde_json::from_str(&text).expect("parse we-seed.json");
+    let path = json["ad4m"]["dataPath"].as_str().unwrap_or("~/.ad4m");
+    println!("cargo:rustc-env=WE_GPUI_SEED_DATA_PATH={path}");
 }
 
 #[cfg(target_os = "linux")]
