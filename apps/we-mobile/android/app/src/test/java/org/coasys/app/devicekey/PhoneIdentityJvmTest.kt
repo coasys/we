@@ -3,6 +3,7 @@ package org.coasys.app.devicekey
 import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.IOException
 import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
@@ -174,6 +175,36 @@ class PhoneIdentityJvmTest {
       StoreHttp.Transport.send(StoreRequest("GET", "$store/v1/logs/x", emptyList(), ByteArray(0)))
     }
     assertTrue(e.reason, e.reason.contains("over"))
+  }
+
+  @Test
+  fun aRedirectAPlainHttpHostAndAStalledStoreAreNoAnswer() {
+    // A redirect is not followed, to the same origin or any other: the URL is the store's.
+    answer = { Triple(307, mapOf("Location" to "$store/v1/elsewhere"), ByteArray(0)) }
+    val moved = assertThrows(TransportException.Failed::class.java) {
+      StoreHttp.Transport.send(StoreRequest("GET", "$store/v1/logs/x", emptyList(), ByteArray(0)))
+    }
+    assertTrue(moved.reason, moved.reason.contains("redirect"))
+    assertEquals(1, seen.size)
+
+    // http is for the loopback alone (a debug build's `adb reverse`); anywhere else is https.
+    val plain = assertThrows(TransportException.Failed::class.java) {
+      StoreHttp.Transport.send(StoreRequest("GET", "http://store.example.org/v1/logs/x", emptyList(), ByteArray(0)))
+    }
+    assertTrue(plain.reason, plain.reason.contains("https"))
+    assertTrue(StoreHttp.allowed(java.net.URL("https://store.example.org/v1/logs/x")))
+
+    // A store that holds the answer past the call's deadline gives none.
+    answer = {
+      Thread.sleep(3_000)
+      Triple(200, emptyMap(), ByteArray(0))
+    }
+    val started = System.nanoTime()
+    val stalled = assertThrows(IOException::class.java) {
+      StoreHttp.exchange("GET", "$store/v1/logs/x", emptyList(), null, StoreHttp.MAX_BODY, deadlineMs = 500)
+    }
+    assertTrue(stalled.message!!, stalled.message!!.contains("within"))
+    assertTrue((System.nanoTime() - started) / 1_000_000 < 2_500)
   }
 
   @Test

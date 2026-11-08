@@ -11,13 +11,21 @@ import uniffi.we_phone_custody.TransportException
 
 /**
  * The plugin's requests to an identity store. Plain `HttpURLConnection`, so the platform's TLS and
- * the app's network security config apply (no cleartext in a release build). What the store
- * answered, any status, goes back to the Rust side to read; only a request that got no answer
- * throws.
+ * the app's network security config apply. What the store answered, any status, goes back to the
+ * Rust side to read; only a request that got no answer throws.
  *
  * [post] and [get] are a claim's two requests (phase 2a). [send] is everything else, the
  * [StoreTransport] the Rust side's `ViaStore` speaks through ([Transport]): any method, the headers
  * the Rust side signed, and bytes both ways.
+ *
+ * It holds to `ad4m-identity-client`'s `HttpClient` contract (the trait's docs in `store.rs`):
+ * - HTTPS only, except http to the phone's own loopback in a debug build (what the debug network
+ *   security config allows too: `adb reverse` to a store on the development machine).
+ * - No redirect is followed: a 3xx is no answer. The URL the Rust side built is the store's.
+ * - The answer is read with a cap and the read fails past it, without reading on to find out how
+ *   far past; a declared length past the cap is refused before a byte is read.
+ * - A connect timeout, a read timeout, and a deadline on the whole call ([DEADLINE_MS]).
+ * - Nothing is logged, and no error carries a header or a body.
  */
 internal object StoreHttp {
   data class Answer(val status: Int, val body: String)
@@ -27,8 +35,18 @@ internal object StoreHttp {
   private const val READ_MS = 20_000
   /** A claim's answers are small. */
   private const val MAX_CLAIM_BODY = 64 * 1024
-  /** A log of a long-lived identity, or a full inbox, is the largest answer the store gives. */
-  const val MAX_BODY = 4 * 1024 * 1024
+  /**
+   * One page of a log, the largest answer the store gives: `ad4m_ldk::identity::MAX_LOG_PAGE_BYTES`,
+   * (256 events + 1) × 64 KiB. The Rust side refuses a body past it, so the transport's cap is not
+   * lower.
+   */
+  const val MAX_BODY = (256 + 1) * 64 * 1024
+  /** The whole call, connect to the last byte: a store that trickles must not hold a flow. */
+  const val DEADLINE_MS = 60_000L
+
+  private val deadlines = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
+    Thread(r, "store-http-deadline").apply { isDaemon = true }
+  }
 
   @Throws(IOException::class)
   fun post(url: String, json: String): Answer =
@@ -49,13 +67,21 @@ internal object StoreHttp {
     headers: List<Pair<String, String>>,
     body: ByteArray?,
     limit: Int,
+    deadlineMs: Long = DEADLINE_MS,
   ): Raw {
     val target = URL(url)
-    if (target.protocol != "https" && target.protocol != "http") {
-      throw IOException("not an http(s) URL")
-    }
+    if (!allowed(target)) throw IOException("not an https URL")
     if (method !in METHODS) throw IOException("not a store method: $method")
     val conn = target.openConnection() as HttpURLConnection
+    val expired = java.util.concurrent.atomic.AtomicBoolean(false)
+    val deadline = deadlines.schedule(
+      {
+        expired.set(true)
+        conn.disconnect()
+      },
+      deadlineMs,
+      java.util.concurrent.TimeUnit.MILLISECONDS,
+    )
     try {
       conn.requestMethod = method
       conn.connectTimeout = CONNECT_MS
@@ -70,13 +96,20 @@ internal object StoreHttp {
         conn.outputStream.use { it.write(body) }
       }
       val status = conn.responseCode
+      if (status in 300..399) throw IOException("the store answered a redirect, which is not followed")
+      if (conn.contentLengthLong > limit) throw IOException("the store's answer is over $limit bytes")
       val stream = if (status >= 400) conn.errorStream else conn.inputStream
       val bytes = stream?.use { it.readAtMost(limit) } ?: ByteArray(0)
       val answered = conn.headerFields
         .filterKeys { it != null }
         .flatMap { (name, values) -> values.map { name to it } }
+      if (expired.get()) throw IOException("no whole answer within ${deadlineMs / 1000} s")
       return Raw(status, answered, bytes)
+    } catch (e: IOException) {
+      if (expired.get()) throw IOException("no whole answer within ${deadlineMs / 1000} s")
+      throw e
     } finally {
+      deadline.cancel(false)
       conn.disconnect()
     }
   }
@@ -98,6 +131,14 @@ internal object StoreHttp {
   }
 
   private val METHODS = setOf("GET", "POST", "PUT", "DELETE")
+  private val LOOPBACK = setOf("127.0.0.1", "localhost", "[::1]", "::1")
+
+  /** https anywhere; http only to the loopback, and only in a debug build. */
+  internal fun allowed(target: URL): Boolean = when (target.protocol) {
+    "https" -> true
+    "http" -> org.coasys.app.BuildConfig.DEBUG && target.host.lowercase() in LOOPBACK
+    else -> false
+  }
 
   /**
    * The identity store as the Rust side's HTTP. Blocking: the Rust side calls it on the thread
