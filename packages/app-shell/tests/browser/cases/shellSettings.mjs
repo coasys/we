@@ -20,8 +20,70 @@ async function rail(measureAll) {
   return (await measureAll('#we-sidebar *')).find((b) => b.w > 0 && b.x === 0);
 }
 
+/**
+ * The phone's nav strip, scrolled to its start, part way and to its end: the entries in view at
+ * rest. A strip cut flush at the page's edge showed a sliver of an entry scrolled past, to the left
+ * of "Plan & usage". Now it reaches over Settings' 12px padding and fades across it, and rests at
+ * the start of an entry, so the leftmost entry in view begins inside the fade's inner edge.
+ */
+async function stripEdges(evaluate, page, screenshot) {
+  const problems = [];
+  const at = (to) =>
+    evaluate(async (scrollTo) => {
+      const profile = [...document.querySelectorAll('we-button')].find(
+        (b) => b.textContent.trim() === 'Profile' && !b.closest('#we-sidebar'),
+      );
+      let strip = profile?.parentElement;
+      while (strip && getComputedStyle(strip).overflowX !== 'auto') strip = strip.parentElement;
+      if (!strip) return null;
+      const max = strip.scrollWidth - strip.clientWidth;
+      strip.scrollTo({ left: scrollTo === 'end' ? max : scrollTo, behavior: 'instant' });
+      // Snapping settles after the scroll; give it a few frames.
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      const box = strip.getBoundingClientRect();
+      const fade = parseFloat(getComputedStyle(strip).paddingLeft);
+      const entries = [...strip.querySelectorAll('we-button')]
+        .map((b) => b.getBoundingClientRect())
+        .filter((r) => r.width > 0)
+        .map((r) => ({ left: r.left, right: r.right }));
+      return { left: box.left, right: box.right, fade, max, scrollLeft: strip.scrollLeft, entries };
+    }, to);
+
+  const start = await at(0);
+  if (!start) return ['no scrolling nav strip on a phone'];
+  if (start.max <= 0) return problems;
+  if (start.fade < 8) problems.push(`the strip keeps ${start.fade}px inside its edges, too little to fade over`);
+  const first = start.entries[0];
+  if (first.left < start.left + start.fade - 1) {
+    problems.push(`at its start the first entry begins at ${first.left}px, inside the strip's fade`);
+  }
+  if (page && Math.abs(first.left - page.x) > 2) {
+    problems.push(`the strip's first entry (${first.left}px) is not on the page's edge (${page.x}px)`);
+  }
+
+  for (const to of [37, 150, Math.round(start.max / 2)]) {
+    const s = await at(to);
+    const inner = s.left + s.fade;
+    // The leftmost entry not wholly scrolled past the fade's inner edge.
+    const leftmost = s.entries.find((e) => e.right > inner + 1);
+    if (leftmost && leftmost.left < inner - 1 && s.scrollLeft < s.max - 1) {
+      problems.push(`scrolled to ${to}px the strip rests on part of an entry (${leftmost.left}px < ${inner}px)`);
+    }
+  }
+  await at(150);
+  await screenshot('settings-phone-strip-scrolled');
+
+  const end = await at('end');
+  const last = end.entries[end.entries.length - 1];
+  if (last.right > end.right - end.fade + 1) {
+    problems.push(`at its end the last entry ends at ${last.right}px, inside the strip's fade`);
+  }
+  await at(0);
+  return problems;
+}
+
 export async function check(
-  { measureAll, measure, measureText, measureControl, hover, pressAt, screenshot },
+  { measureAll, measure, measureText, measureControl, hover, pressAt, screenshot, evaluate },
   width,
   scale,
 ) {
@@ -62,6 +124,9 @@ export async function check(
   // Phone: the settings nav is above the page rather than beside it.
   const nav = await measureText('Profile', 'we-button');
   if (nav && page && nav.y >= page.y) problems.push('the settings nav is not above the page');
+
+  // The strip starts cleanly and comes to rest at the start of an entry, never on a sliver of one.
+  problems.push(...(await stripEdges(evaluate, page, screenshot)));
 
   // A touch is the pointer arriving: it must not open the rail on its own.
   await hover('#we-sidebar *');

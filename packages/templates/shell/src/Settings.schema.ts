@@ -1379,6 +1379,20 @@ const deviceSection: SchemaNode = {
 };
 
 /**
+ * The edges of the nav's strip on a phone: it reaches out over Settings' own padding (12px, `px:
+ * '300'` below `sm`) on both sides, keeps that much padding inside, and fades to nothing across it.
+ *
+ * A strip cut flush at the page's edge left a sliver of whatever entry had scrolled past: a stray
+ * clipped icon to the left of "Plan & usage", read as a broken button. Now an entry going out of view
+ * fades over the 12px the page's padding already gave, at rest the strip stops at the start of an
+ * entry (`scroll-snap-align` on each, `scroll-padding` keeping it clear of the fade), and at either
+ * end the first or last entry sits on the page's own edge, whole. From `sm` up the nav is a column
+ * that does not scroll, and none of this applies.
+ */
+const STRIP_EDGES =
+  "surface.tier == 'base' ? { 'margin-inline': '-0.75rem', 'padding-inline': '0.75rem', width: 'calc(100% + 1.5rem)', 'max-width': 'none', 'scroll-snap-type': 'x mandatory', 'scroll-padding-inline': '0.75rem', 'mask-image': 'linear-gradient(to right, transparent, #000 0.75rem, #000 calc(100% - 0.75rem), transparent)' } : null";
+
+/**
  * One entry in the left-hand nav.
  *
  * `secondary` when it is the open page, `ghost` otherwise — the DS convention for a selected item,
@@ -1399,6 +1413,9 @@ function navItem(label: string, icon: string, path: string): SchemaNode {
       flex: '0 0 auto',
       ax: 'start',
       smUpProps: { width: '100%' },
+      // Where the phone's strip comes to rest: at the start of an entry. Nothing scrolls in the
+      // column from `sm` up, so nothing snaps there.
+      styles: { 'scroll-snap-align': 'start' },
       onClick: { $invoke: 'routeStore.navigate', args: [path] },
     },
     children: [
@@ -1639,6 +1656,7 @@ export const settingsTemplate: TemplateSchema = {
                 overflowX: 'auto',
                 scrollbarWidth: 'none',
                 smUpProps: { wrap: true, gap: '300', width: '200px', minWidth: '200px', overflowX: 'visible' },
+                styles: { $: STRIP_EDGES },
               },
               children: [
                 navGroup('Account', [
