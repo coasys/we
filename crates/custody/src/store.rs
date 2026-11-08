@@ -123,10 +123,13 @@ pub trait SecretStore: Send + Sync {
     /// the same operation as the bytes, for a store that keeps its items as they are
     /// ([`StoreKind::unlocks_itself`]): what [`tag_of`](SecretStore::tag_of) reads back with
     /// no unlock. A sealed item carries its tag in its own authenticated header
-    /// ([`crate::seal::sealed_index`]), so a store that only keeps sealed items keeps the bytes.
+    /// ([`crate::seal::sealed_index`]) and goes through `put`; what comes here is the item as
+    /// it is — the raw master key — so a store that keeps only sealed items (the file, the
+    /// Secret Service) refuses it, which is this default. Only a store that unlocks itself
+    /// overrides it.
     fn put_tagged(&self, name: &str, bytes: &[u8], tag: &ItemTag) -> Result<(), VaultError> {
-        let _ = tag;
-        self.put(name, bytes)
+        let _ = (name, bytes, tag);
+        Err(refused_unsealed(self.kind()))
     }
     /// The tag [`put_tagged`](SecretStore::put_tagged) kept with the item `name`, read without
     /// the item's bytes (no unlock, no prompt). `None` when the item is absent, or was kept
@@ -147,6 +150,13 @@ pub trait SecretStore: Send + Sync {
         }
         self.delete(from)
     }
+}
+
+/// A store that keeps only sealed items was handed one as it is ([`SecretStore::put_tagged`]).
+fn refused_unsealed(kind: StoreKind) -> VaultError {
+    VaultError::Unavailable(format!(
+        "the {kind:?} store keeps only sealed master keys; an unsealed one was refused"
+    ))
 }
 
 /// The item's name for an identity: its kept master key.
@@ -199,6 +209,19 @@ fn io(e: std::io::Error) -> VaultError {
     VaultError::Unavailable(format!("custody file: {e}"))
 }
 
+/// Makes the entries of `dir` durable: a file renamed into it or removed from it is renamed or
+/// removed after a crash too. Syncing the file before its rename makes its bytes durable, not the
+/// directory entry that names it; until the directory is synced, a power loss can leave the old
+/// name (POSIX `fsync(2)` of the directory; ext4 commits it with the journal, seconds later). A
+/// no-op where a directory cannot be opened to sync (Windows, whose `MoveFileEx` the rename is).
+pub(crate) fn sync_dir(dir: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    std::fs::File::open(dir)?.sync_all()?;
+    #[cfg(not(unix))]
+    let _ = dir;
+    Ok(())
+}
+
 impl SecretStore for FileStore {
     fn kind(&self) -> StoreKind {
         StoreKind::File
@@ -223,7 +246,9 @@ impl SecretStore for FileStore {
         let mut file = options.open(&tmp).map_err(io)?;
         file.write_all(bytes).map_err(io)?;
         file.sync_all().map_err(io)?;
-        std::fs::rename(&tmp, &path).map_err(io)
+        std::fs::rename(&tmp, &path).map_err(io)?;
+        // `Ok` means durable: the name too, not only the bytes.
+        sync_dir(&self.dir).map_err(io)
     }
 
     fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
@@ -245,15 +270,20 @@ impl SecretStore for FileStore {
     fn delete(&self, name: &str) -> Result<(), VaultError> {
         match std::fs::remove_file(self.path(name)) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(io(e)),
-            _ => Ok(()),
+            Err(_) => Ok(()),
+            Ok(()) => sync_dir(&self.dir).map_err(io),
         }
     }
 
-    /// One `rename(2)`: the file under `to` is the old one or the new one, never neither.
+    /// One `rename(2)`: the file under `to` is the old one or the new one, never neither. The
+    /// folder is synced after it, so a promote answered `Ok` is still a promote after a crash.
     fn rename(&self, from: &str, to: &str) -> Result<(), VaultError> {
         match std::fs::rename(self.path(from), self.path(to)) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(VaultError::NotFound),
-            other => other.map_err(io),
+            other => {
+                other.map_err(io)?;
+                sync_dir(&self.dir).map_err(io)
+            }
         }
     }
 }
@@ -305,7 +335,11 @@ impl SecretStore for MemoryStore {
             .insert(name.into(), (bytes.to_vec(), None));
         Ok(())
     }
+    /// As the store it stands in for: kept only as a keychain is.
     fn put_tagged(&self, name: &str, bytes: &[u8], tag: &ItemTag) -> Result<(), VaultError> {
+        if !self.kind().unlocks_itself() {
+            return Err(refused_unsealed(self.kind()));
+        }
         self.items
             .lock()
             .map_err(|_| VaultError::Unavailable("poisoned".into()))?
@@ -1159,6 +1193,40 @@ mod tests {
         store.delete(&name).unwrap();
         store.delete(&name).unwrap();
         assert_eq!(store.get(&name).unwrap(), None);
+    }
+
+    /// An item kept as it is (`put_tagged`, for a store that unlocks itself) is the raw master
+    /// key: a store that keeps only sealed items refuses it rather than writing it down, whoever
+    /// asks — the file, a memory store standing in for one, and a placed store whose new items
+    /// go to the file.
+    #[test]
+    fn a_store_of_sealed_items_refuses_an_item_kept_as_it_is() {
+        let dir = tempfile::tempdir().unwrap();
+        let custody = dir.path().join("custody");
+        let name = item_name("QmScid");
+        let tag = ItemTag {
+            index: 0,
+            owner: None,
+        };
+        let raw = [9u8; 32];
+        let file = FileStore::new(&custody);
+        assert!(matches!(
+            file.put_tagged(&name, &raw, &tag),
+            Err(VaultError::Unavailable(_))
+        ));
+        assert!(!custody.join("QmScid.bin").exists());
+        let placed = PlacedStore::new(Box::new(FileStore::new(&custody)), None);
+        assert!(placed.put_tagged(&name, &raw, &tag).is_err());
+        assert!(!custody.join("QmScid.bin").exists());
+        for kind in [StoreKind::File, StoreKind::SecretService, StoreKind::Memory] {
+            let memory = MemoryStore::as_kind(kind);
+            assert!(memory.put_tagged(&name, &raw, &tag).is_err(), "{kind:?}");
+            assert!(memory.all_bytes().is_empty());
+        }
+        // The keychain keeps it, with its tag.
+        let keychain = MemoryStore::as_kind(StoreKind::Keychain);
+        keychain.put_tagged(&name, &raw, &tag).unwrap();
+        assert_eq!(keychain.tag_of(&name).unwrap(), Some(tag));
     }
 
     #[test]

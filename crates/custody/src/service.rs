@@ -703,6 +703,15 @@ fn names_no_store(e: &ClientError) -> bool {
 const NOT_THESE_WORDS: &str = "These words do not make your identity's master key. Check each \
      word against your paper, in order. Nothing was changed.";
 
+/// A step stopped because this computer lost its count of the changes to the master key it keeps
+/// (`custody-epochs.json`, or an identity's entry in it, gone from the custody folder). The way
+/// back is the words-gated recovery in "Replace my master key" ([`rotate_with_words`]).
+const LOST_EPOCH: &str = "This computer has lost its count of the changes to the master key it \
+     keeps (a file in its custody folder is gone), so it will not change or remove that key on \
+     its own. Your master key is still here. To go on, choose “Replace my master key” and type \
+     your 12 words: once they check out, this computer starts the count again and replaces the \
+     key.";
+
 /// Why a master key is not removed from this computer.
 const ONLY_COPY: &str = "This computer keeps the only copy of your master key: no other \
      computer or phone of yours keeps one. Removing it would leave only your 12 words to add or \
@@ -744,6 +753,7 @@ fn failed(e: &ClientError) -> Screen {
         ClientError::Vault(VaultError::NotFound) => {
             "This computer does not keep your master key.".into()
         }
+        ClientError::Vault(e) if crate::pending::is_lost_epoch(e) => LOST_EPOCH.into(),
         ClientError::Vault(VaultError::Unavailable(why)) => {
             format!("This computer could not keep your master key: {why}")
         }
@@ -977,7 +987,7 @@ async fn public_state_on<R: ExecutorRpc>(
             }
         }
         refresh_stale(executor, vault, did, master_waiting && !os_unlocks).await;
-        devices = match record::read(executor, did).await {
+        devices = match record::read(executor, &vault.unlocking(None), did).await {
             Ok(opened) => opened.map(|o| device_names(&o.record)).unwrap_or_default(),
             Err(e) => {
                 log::warn!("custody: the device list cannot be read now: {e}");
@@ -1358,7 +1368,10 @@ async fn create_on<R: ExecutorRpc>(
     let unlocking = vault.unlocking(passphrase);
     // The record lists this computer from the start, as the one that holds master #0.
     let this = this_computer(None, true, Some(0));
-    let screen = match flow.finish(executor, &unlocking, this, &RANDOM).await {
+    let screen = match flow
+        .finish(executor, &unlocking, this, &CLOCK, &RANDOM)
+        .await
+    {
         Ok(created) => {
             if let Some(Err(e)) = &created.record {
                 log::warn!("custody: the record does not list this computer yet: {e}");
@@ -1572,7 +1585,7 @@ async fn follow_link<R: ExecutorRpc>(
     rx: &mut Rx,
     reply: &mut Reply,
 ) {
-    let own_listed = match (own_key, record::read(executor, did).await) {
+    let own_listed = match (own_key, record::read(executor, unlocking, did).await) {
         (Some(key), Ok(opened)) => opened.is_some_and(|o| o.record.devices.contains_key(key)),
         // Unknown: not asked, rather than a second entry over one the record may hold.
         (_, Err(_)) | (None, _) => true,
@@ -1639,7 +1652,9 @@ async fn follow_link<R: ExecutorRpc>(
                         key_id: own.to_string(),
                         entry: own_entry,
                     };
-                    if let Err(e) = record::write(executor, did, &[change], &RANDOM).await {
+                    if let Err(e) =
+                        record::write(executor, unlocking, did, &[change], &RANDOM).await
+                    {
                         log::warn!("custody: this computer was not listed in the record: {e}");
                         notes.push("This computer's name was not saved: rename it on Devices.");
                     }
@@ -2303,7 +2318,7 @@ async fn answer_on<R: ExecutorRpc>(
         Ok(needs) => needs,
         Err(e) => return answer(reply, Ok(failed(&e))),
     };
-    let names = match record::read(executor, &did).await {
+    let names = match record::read(executor, &vault.unlocking(None), &did).await {
         Ok(Some(opened)) => opened.record.devices,
         _ => Default::default(),
     };
@@ -2511,7 +2526,7 @@ async fn rename_on<R: ExecutorRpc>(
             }),
         );
     }
-    let listed = match record::read(executor, &did).await {
+    let listed = match record::read(executor, &vault.unlocking(None), &did).await {
         Ok(opened) => opened.and_then(|o| o.record.devices.get(&key_id).cloned()),
         Err(e) => return answer(reply, Ok(failed(&e))),
     };
@@ -2571,13 +2586,14 @@ async fn rename_on<R: ExecutorRpc>(
                 },
             }
         };
-        let screen = match record::write(executor, &did, &[change], &RANDOM).await {
-            Ok(_) => Screen::Renamed {
-                key_id: key_id.clone(),
-                name,
-            },
-            Err(e) => failed(&e),
-        };
+        let screen =
+            match record::write(executor, &vault.unlocking(None), &did, &[change], &RANDOM).await {
+                Ok(_) => Screen::Renamed {
+                    key_id: key_id.clone(),
+                    name,
+                },
+                Err(e) => failed(&e),
+            };
         return answer(reply, Ok(screen));
     }
 }
@@ -3030,8 +3046,10 @@ fn replaced(rotated: Rotated, extra: Option<String>) -> Screen {
         .collect();
     let note = joined(extra, handed_over(&rotated.pushes, &rotated.record));
     match rotated.kept {
-        Ok(()) => Screen::MasterReplaced {
-            index: rotated.index,
+        // The index this computer keeps: the rotation's, or a later one another app on this
+        // computer kept first (the vault never goes back a generation).
+        Ok(kept) => Screen::MasterReplaced {
+            index: kept,
             revoked,
             note,
         },
@@ -3070,6 +3088,7 @@ fn after_publish(e: &ClientError) -> String {
         ClientError::Vault(VaultError::NotFound) => {
             "The new master key was no longer where this computer set it aside.".into()
         }
+        ClientError::Vault(e) if crate::pending::is_lost_epoch(e) => LOST_EPOCH.into(),
         ClientError::Vault(VaultError::Unavailable(why)) => {
             format!("Where it keeps keys answered: {why}")
         }
@@ -3113,12 +3132,71 @@ async fn rotate_with_words<R: ExecutorRpc>(
                     .1
             }
         };
-        match rotate(executor, unlocking, did, &words, &[], &CLOCK, &RANDOM).await {
+        let rotated = match recover_lost_epoch(executor, vault, did, &words).await {
+            Ok(()) => rotate(executor, unlocking, did, &words, &[], &CLOCK, &RANDOM).await,
+            Err(e) => Err(e),
+        };
+        match rotated {
             Ok(rotated) => return Some(Ok(replaced(rotated, None))),
             Err(ClientError::NotTheseWords(_)) => error = Some((NOT_THESE_WORDS.into(), None)),
             Err(e) => return Some(Err(e)),
         }
     }
+}
+
+/// The way back from a lost custody epoch ([`LOST_EPOCH`]), taken by "Replace my master key"
+/// before it rotates. Only when the epoch of `did`'s key here is lost, and only once `words` are
+/// checked to make the identity's current master — the check `rotate` makes before it publishes
+/// ([`words_make_current_master`]) — is the epoch recovered
+/// ([`DesktopVault::recover_custody_epoch`], a fresh incarnation). Words that are not the
+/// identity's recover nothing ([`ClientError::NotTheseWords`]); the rotation that follows moves
+/// the recovered epoch as any change of the kept key does.
+async fn recover_lost_epoch<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &DesktopVault,
+    did: &str,
+    words: &Words,
+) -> Result<(), ClientError> {
+    let Some(scid) = ad4m_identity_core::scid_of(did) else {
+        return Ok(());
+    };
+    match vault.custody_epoch(scid) {
+        Ok(_) => return Ok(()),
+        Err(e) if crate::pending::is_lost_epoch(&e) => {}
+        Err(e) => return Err(e.into()),
+    }
+    words_make_current_master(executor, did, words).await?;
+    log::info!("custody: the words make the current master key; recover its custody epoch");
+    vault.recover_custody_epoch(scid)?;
+    Ok(())
+}
+
+/// Whether `words` make `did`'s current master key, as the key log the executor serves says it
+/// (the rule of `ad4m_identity_client::flows::rotate`, whose `current_index` is not public):
+/// master *n* of the words, *n* the current master's index, signs as the log's current master.
+/// [`ClientError::NotTheseWords`] when they do not.
+async fn words_make_current_master<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    did: &str,
+    words: &Words,
+) -> Result<(), ClientError> {
+    let events = executor.events(did).await?;
+    let chain =
+        ad4m_identity_core::fold(&events).map_err(|e| ClientError::Protocol(e.to_string()))?;
+    let state = chain.state();
+    let current = state
+        .current_master()
+        .ok_or_else(|| ClientError::Protocol("the identity has ended".into()))?;
+    let index = u32::try_from(state.masters.len() - 1)
+        .map_err(|_| ClientError::Protocol("the log lists too many masters".into()))?;
+    let key =
+        ad4m_identity_core::words::master_key(&ad4m_identity_core::words::seed(words), index)?;
+    if ad4m_identity_core::build::Signer::key(&key) != current.sign {
+        return Err(ClientError::NotTheseWords(
+            "they do not derive the current master key".into(),
+        ));
+    }
+    Ok(())
 }
 
 /// Answers the screen a published rotation ended on, after the retry list is pushed again. On
@@ -3747,6 +3825,7 @@ mod tests {
                 &executor,
                 &vault.unlocking(pass()),
                 this_computer(None, true, Some(0)),
+                &CLOCK,
                 &RANDOM,
             )
             .await;
@@ -3769,6 +3848,7 @@ mod tests {
                 &executor,
                 &vault.unlocking(pass()),
                 this_computer(None, true, Some(0)),
+                &CLOCK,
                 &RANDOM,
             )
             .await;
@@ -3813,6 +3893,7 @@ mod tests {
                 &executor,
                 &vault.unlocking(pass()),
                 this_computer(None, true, Some(0)),
+                &CLOCK,
                 &RANDOM,
             )
             .await
@@ -4150,6 +4231,7 @@ mod tests {
                 &executor,
                 &vault.unlocking(pass()),
                 this_computer(None, true, Some(0)),
+                &CLOCK,
                 &RANDOM,
             )
             .await;
@@ -4176,6 +4258,7 @@ mod tests {
                 &executor,
                 &vault.unlocking(pass()),
                 this_computer(None, true, Some(0)),
+                &CLOCK,
                 &RANDOM,
             )
             .await;
@@ -4217,6 +4300,7 @@ mod tests {
                 &executor,
                 &vault.unlocking(pass()),
                 this_computer(None, true, Some(0)),
+                &CLOCK,
                 &RANDOM,
             )
             .await;
@@ -4702,8 +4786,10 @@ mod tests {
 
     impl rand_core::CryptoRng for Fixed {}
 
-    /// An executor that is device `d1` of the identity `events` make, answering its log and
-    /// `record` sealed to the log's readers, as the store would.
+    /// An executor that is device `d1` of the identity `events` make (a log of
+    /// [`crate::keylog::tests::log_with_d2`]), answering its log with the store's signed head and
+    /// `record` sealed to the log's readers and signed by `d1`, with the store's receipt, as the
+    /// store would.
     fn executor_with(
         events: &[Event],
         record: &ad4m_identity_core::record::PrivateRecord,
@@ -4715,17 +4801,31 @@ mod tests {
             .iter()
             .map(|e| serde_json::to_value(e).unwrap())
             .collect();
+        let chain = ad4m_identity_core::fold(events).unwrap();
+        // The store's head key: the reader trusts it for the record's receipt as for the head.
+        let store = KeySigner::new(&[9u8; 32], 0);
+        let seq = chain.head().seq;
         executor.rpc().answer(
             "identity.log",
-            json!({ "did": did_of(&scid), "events": json_events, "head": null, "fork": null }),
+            json!({
+                "did": did_of(&scid), "events": json_events, "fork": null,
+                "head": {
+                    "scid": scid, "seq": seq, "hash": "h", "time": 0,
+                    "store": format!("did:key:{}", Signer::key(&store)), "sig": "s",
+                },
+            }),
         );
-        let chain = ad4m_identity_core::fold(events).unwrap();
+        // `d1`, the executor's device key in `log_with_d2`, signs the envelope.
+        let d1 = KeySigner::new(&[2u8; 32], 0);
         let sealed =
-            ad4m_identity_core::record::seal_record(&chain, 1, record, None, &mut Fixed(7))
+            ad4m_identity_core::record::seal_record(&chain, 1, record, None, &d1, &mut Fixed(7))
                 .unwrap();
-        executor
-            .rpc()
-            .answer("identity.record", serde_json::to_value(&sealed).unwrap());
+        let receipt =
+            ad4m_identity_core::record::sign_receipt(&scid, &sealed, seq, &store).unwrap();
+        executor.rpc().answer(
+            "identity.record",
+            json!({ "record": sealed, "receipt": receipt }),
+        );
         executor.rpc().answer(
             "identity.unwrapRecordKey",
             json!({ "key": bs58::encode([7u8; 32]).into_string() }),
@@ -5587,6 +5687,138 @@ mod tests {
             "{shown:?}"
         );
         assert!(executor.rpc().called("identity.openOffer").is_empty());
+    }
+
+    /// A vault in the keychain (no passphrase) with its custody lists in `dir`, where a file can
+    /// go missing as it does on a disk.
+    fn keychain_vault_in(dir: &std::path::Path) -> DesktopVault {
+        DesktopVault::new(
+            Box::new(crate::store::MemoryStore::as_kind(
+                crate::store::StoreKind::Keychain,
+            )),
+            PendingIncepts::file(dir),
+        )
+    }
+
+    /// Lal's review of we#431 at 0d4501589: a custody folder that lost its epochs file refuses
+    /// to change the kept key, and "Replace my master key" is the way back. The words are
+    /// checked against the log's current master first; then the identity's epoch is recovered,
+    /// and the rotation goes on.
+    #[tokio::test]
+    async fn replacing_the_master_key_recovers_a_lost_custody_epoch_with_the_right_words() {
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        let scid = events[0].scid.clone();
+        let executor = executor_of(&events);
+        let dir = tempfile::tempdir().unwrap();
+        let vault = keychain_vault_in(dir.path());
+        keep_master(&vault, &scid, 0);
+        let read = vault.custody_epoch(&scid).unwrap();
+        std::fs::remove_file(dir.path().join(crate::pending::EPOCHS_FILE_NAME)).unwrap();
+        assert!(vault.custody_epoch(&scid).is_err());
+
+        let (address, mut rx, mut reply, window, first) = opened();
+        let phrase = phrase_of(41);
+        let ((), screens) = tokio::join!(
+            replace_master_on(&executor, &vault, &address, &mut rx, &mut reply),
+            async {
+                let mut shown = vec![first.await.unwrap().unwrap()];
+                shown.push(
+                    window
+                        .step(StepInput::TwelveWords {
+                            words: phrase.clone().into(),
+                        })
+                        .await,
+                );
+                shown
+            }
+        );
+        assert!(
+            matches!(&screens[1], Screen::MasterReplaced { index: 1, .. }),
+            "{:?}",
+            screens[1]
+        );
+        assert_eq!(published(&executor).len(), 1);
+        assert_eq!(vault.master_index(&scid).unwrap(), Some(1));
+        let now = vault.custody_epoch(&scid).unwrap();
+        assert_ne!(now, read);
+        // A removal paused across the loss keeps the key.
+        assert_eq!(
+            Vault::forget_master_at(&vault.unlocking(None), &scid, read).unwrap(),
+            ad4m_identity_client::vault::Forgot::Kept(1)
+        );
+    }
+
+    /// The same with words that are not the identity's: nothing is recovered, nothing published,
+    /// and the epoch read is still the error it was.
+    #[tokio::test]
+    async fn words_that_are_not_the_identitys_recover_no_lost_custody_epoch() {
+        let (events, _) = crate::keylog::tests::log_with_d2(true);
+        let scid = events[0].scid.clone();
+        let executor = executor_of(&events);
+        let dir = tempfile::tempdir().unwrap();
+        let vault = keychain_vault_in(dir.path());
+        keep_master(&vault, &scid, 0);
+        std::fs::remove_file(dir.path().join(crate::pending::EPOCHS_FILE_NAME)).unwrap();
+
+        let (address, mut rx, mut reply, window, first) = opened();
+        let other = phrase_of(9);
+        let ex = &executor;
+        let ((), screens) = tokio::join!(
+            replace_master_on(&executor, &vault, &address, &mut rx, &mut reply),
+            async {
+                let mut shown = vec![first.await.unwrap().unwrap()];
+                shown.push(
+                    window
+                        .step(StepInput::TwelveWords {
+                            words: other.clone().into(),
+                        })
+                        .await,
+                );
+                assert_eq!(ex.rpc().publishes.get(), 0);
+                // The window closes: the step ends.
+                drop(window);
+                shown
+            }
+        );
+        assert!(
+            matches!(&screens[1], Screen::EnterWords { error: Some(m), .. } if m == NOT_THESE_WORDS),
+            "{:?}",
+            screens[1]
+        );
+        assert_eq!(executor.rpc().publishes.get(), 0);
+        assert!(!dir.path().join(crate::pending::EPOCHS_FILE_NAME).exists());
+        let still = vault.custody_epoch(&scid);
+        assert!(
+            still.as_ref().is_err_and(crate::pending::is_lost_epoch),
+            "{still:?}"
+        );
+        assert_eq!(vault.master_index(&scid).unwrap(), Some(0));
+    }
+
+    /// A step that stops on a lost custody epoch says what happened and which step goes on.
+    #[test]
+    fn a_lost_custody_epoch_names_the_step_that_recovers_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let vault = keychain_vault_in(dir.path());
+        Vault::store_master(
+            &vault.unlocking(None),
+            LINKED_SCID,
+            0,
+            Secret::new([3u8; 32]),
+        )
+        .unwrap();
+        std::fs::remove_file(dir.path().join(crate::pending::EPOCHS_FILE_NAME)).unwrap();
+        let lost = vault.custody_epoch(LINKED_SCID).unwrap_err();
+        for message in [
+            match failed(&ClientError::Vault(lost.clone())) {
+                Screen::Failed { message } => message,
+                other => panic!("{other:?}"),
+            },
+            after_publish(&ClientError::Vault(lost)),
+        ] {
+            assert_eq!(message, LOST_EPOCH);
+            assert!(message.contains("Replace my master key"), "{message}");
+        }
     }
 
     /// A store that refuses its next rename, as a keychain that refuses an update: the vault
