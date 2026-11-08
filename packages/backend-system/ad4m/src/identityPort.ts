@@ -198,12 +198,19 @@ export function readKeyLog(value: unknown): KeyLogView {
 export function readDevices(value: unknown): DeviceKeyView[] {
   return (Array.isArray(value) ? value : []).map((item) => {
     const device = record(item);
+    // Any mark at all is a bot's key: a shape this build does not know never makes it a device.
+    const mark = device.bot === null || device.bot === undefined || device.bot === false ? null : record(device.bot);
     return {
       keyId: text(device.keyId) ?? '',
       sign: text(device.sign) ?? '',
       thisDevice: device.thisDevice === true,
       addedSeq: count(device.addedSeq) ?? 0,
       revokedSeq: count(device.revokedSeq),
+      bot: mark && {
+        can: (Array.isArray(mark.can) ? mark.can : []).filter((c): c is string => typeof c === 'string'),
+        expires: count(mark.expires),
+      },
+      expires: count(device.expires),
     };
   });
 }

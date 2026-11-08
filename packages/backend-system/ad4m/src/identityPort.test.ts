@@ -107,6 +107,45 @@ describe('the AD4M identity port', () => {
     ]);
   });
 
+  it('keeps the bot mark and the end the key log gives each key', async () => {
+    const port = createAd4mIdentityPort(
+      client({
+        devices: [
+          { keyId: 'd1', sign: 'z6MkOne', bot: null, expires: null, addedSeq: 0, revokedSeq: null, thisDevice: true },
+          {
+            keyId: 'd3',
+            sign: 'z6MkBot',
+            bot: { can: ['read', 'write', 'fly'], expires: 1_790_000_000 },
+            expires: 1_790_000_000,
+            addedSeq: 3,
+            revokedSeq: null,
+            thisDevice: false,
+          },
+          {
+            keyId: 'd4',
+            sign: 'z6MkFour',
+            bot: null,
+            expires: 1_700_000_000,
+            addedSeq: 4,
+            revokedSeq: null,
+            thisDevice: false,
+          },
+        ] satisfies DeviceView[],
+      }),
+    );
+    const devices = await port.devices!();
+    expect(devices.map((d) => [d.keyId, d.bot, d.expires])).toEqual([
+      ['d1', null, null],
+      ['d3', { can: ['read', 'write', 'fly'], expires: 1_790_000_000 }, 1_790_000_000],
+      ['d4', null, 1_700_000_000],
+    ]);
+    // A mark that is not an object is still a mark: the key is a bot's, whatever else it says.
+    const odd = await createAd4mIdentityPort(
+      client({ devices: [{ keyId: 'd5', sign: 'z', bot: true, addedSeq: 5, revokedSeq: null, thisDevice: false }] }),
+    ).devices!();
+    expect(odd[0].bot).toEqual({ can: [], expires: null });
+  });
+
   it('turns the key log and devices on against an executor that answers', async () => {
     const port = createAd4mIdentityPort(client({ status: { did: null, deviceKey: 'z6Mk' } }));
     const caps = await port.capabilities();

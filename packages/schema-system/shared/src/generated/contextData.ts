@@ -2444,6 +2444,7 @@ export const contextData: ContextData = {
             'icon',
             'thisDevice',
             'revoked',
+            'valid',
             'status',
             'canRevoke',
             'name',

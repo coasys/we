@@ -287,7 +287,7 @@ const deviceRow: SchemaNode = listRow(
   {
     type: 'we-text',
     // A name wraps between words, never inside one (typography defaults to `overflow-wrap: anywhere`).
-    props: { color: { $: "device.revoked ? 'text-muted' : 'text'" }, overflowWrap: 'normal' },
+    props: { color: { $: "device.valid ? 'text' : 'text-muted'" }, overflowWrap: 'normal' },
     children: [{ $: 'device.label' }],
   },
   [
@@ -320,7 +320,7 @@ const deviceRow: SchemaNode = listRow(
     },
     {
       type: 'we-badge',
-      props: { tone: { $: "device.revoked ? 'danger' : 'success'" }, size: 'sm' },
+      props: { tone: { $: "device.valid ? 'success' : 'danger'" }, size: 'sm' },
       children: [{ $: 'device.status' }],
     },
     {

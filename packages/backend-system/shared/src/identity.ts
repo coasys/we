@@ -273,7 +273,7 @@ export interface KeyLogView {
   fork: KeyLogFork | null;
 }
 
-/** One device key of the person. */
+/** One key of the person's key log: a device's, or a bot's (`bot` set). */
 export interface DeviceKeyView {
   keyId: string;
   /** The key, a multikey. */
@@ -284,4 +284,12 @@ export interface DeviceKeyView {
   addedSeq: number;
   /** The seq of the event that revoked it, or `null` while it is valid. */
   revokedSeq: number | null;
+  /**
+   * The key log's bot mark and the scope it gives the key: the key is a bot's, not a device's. This
+   * is the one trusted source for that; the private record's `kind` is the person's own label and
+   * never decides it. `null` or absent for a device key.
+   */
+  bot?: { can: string[]; expires: number | null } | null;
+  /** When the key ends, unix seconds, as the key log says; `null` or absent for no end. */
+  expires?: number | null;
 }

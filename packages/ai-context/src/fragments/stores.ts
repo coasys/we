@@ -752,6 +752,7 @@ export const storeEntries: StoreEntry[] = [
           'icon',
           'thisDevice',
           'revoked',
+          'valid',
           'status',
           'canRevoke',
           'name',
@@ -2157,9 +2158,9 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   deviceStore: {
     state: {
       devices:
-        "{ keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke, name, holdsMaster, master, replaceMaster }[] — the device keys of the person's key log, valid first and this computer on top, named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' or 'Device d2'; `name` the record's name or empty; `status` 'Valid' or 'Revoked at #2'; `canRevoke` is a valid key that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Holds the master key', 'Master key offered, not yet taken', or empty). A revoked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it ('Still holds a valid master key — replace your master key', 'May still hold a valid master key — replace your master key'): a revoke leaves a copy of the master key valid, until the master key is replaced: a rotation at or after the revoke clears the warning. `replaceMaster` is true on a row that warns: offer replaceMaster there, where canReplaceMaster. Draw `master` in a warning tone unless `holdsMaster` is 'yes'",
+        "{ keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, valid, status, canRevoke, name, holdsMaster, master, replaceMaster }[] — the device keys of the person's key log, valid first and this computer on top (a bot's key, which the key log marks, is not listed: botStore manages it), named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' or 'Device d2'; `name` the record's name or empty; `valid` is neither revoked nor past its end; `status` 'Valid', 'Revoked at #2' or 'Expired on 3 Dec 2026'; `canRevoke` is a key not revoked that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Holds the master key', 'Master key offered, not yet taken', or empty). A revoked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it ('Still holds a valid master key — replace your master key', 'May still hold a valid master key — replace your master key'): a revoke leaves a copy of the master key valid, until the master key is replaced: a rotation at or after the revoke clears the warning. `replaceMaster` is true on a row that warns: offer replaceMaster there, where canReplaceMaster. Draw `master` in a warning tone unless `holdsMaster` is 'yes'",
       devicesLoaded: 'boolean — the list has been read once',
-      validCount: 'number — how many keys are valid',
+      validCount: 'number — how many device keys are valid (neither revoked nor ended); bot keys are not counted',
       canManage:
         'boolean — linking (scanDevice, addDevice), Rename, Revoke and answering requests can be offered: this computer keeps the master key of the identity',
       canShowCode:
