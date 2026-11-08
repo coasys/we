@@ -232,16 +232,18 @@ impl DesktopVault {
     }
 
     /// `scid`'s custody epoch ([`crate::pending::Epoch`]): how many times its kept master key
-    /// changed in this custody folder. Read under the folder's lock.
+    /// changed in this custody folder. Read under the folder's lock, so it is never read between
+    /// a write of the kept key and its bump; reads no item, so no unlock and no passphrase. A
+    /// file of epochs that cannot be read is an error, never 0.
     pub fn custody_epoch(&self, scid: &str) -> Result<u64, VaultError> {
         self.pending.exclusive()?.epoch(scid)
     }
 
-    /// The compare-and-delete behind [`Vault::forget_master`], under the custody folder's lock:
-    /// the kept key is deleted only while `unchanged(lock, kept index)` holds, and the epoch
-    /// bumped with it; otherwise it is left and named ([`Forgot::Kept`]). The precondition is a
-    /// parameter so the contract's move from "still this index" to "still this epoch" changes
-    /// only the caller: `|folder, _| Ok(folder.epoch(scid)? == epoch)`.
+    /// The compare-and-delete behind [`Vault::forget_master`] (`unchanged` is "still this
+    /// index") and [`Vault::forget_master_at`] ("still this epoch"), under the custody folder's
+    /// lock: the kept key is deleted only while `unchanged(lock, kept index)` holds, and the
+    /// epoch bumped with it; otherwise it is left and named ([`Forgot::Kept`]). None kept is
+    /// [`Forgot::Forgot`]; a kept item that does not say its index is an error.
     fn forget_kept(
         &self,
         scid: &str,
@@ -400,6 +402,23 @@ impl Vault for Unlocking<'_> {
     /// ([`Forgot::Kept`]). An item that does not say its index is left, with an error.
     fn forget_master(&self, scid: &str, index: u32) -> Result<Forgot, VaultError> {
         self.vault.forget_kept(scid, |_, kept| Ok(kept == index))
+    }
+
+    /// [`DesktopVault::custody_epoch`]: the counter in `<custody>/custody-epochs.json`, read under
+    /// the custody folder's lock. Reads no item, so it needs no unlock.
+    fn custody_epoch(&self, scid: &str) -> Result<u64, VaultError> {
+        self.vault.custody_epoch(scid)
+    }
+
+    /// The compare-and-delete of [`Vault::forget_master`] on the custody epoch instead of the
+    /// index: under the custody folder's lock (the lock every store, promote and forget of the
+    /// kept key takes, in every app on this computer), the epoch is read and the kept item
+    /// deleted only while it is still `epoch`, the epoch bumped with the delete. A key installed
+    /// since the caller read the epoch (at any index, the same key delivered again included) has
+    /// moved it, so it is left and named ([`Forgot::Kept`]).
+    fn forget_master_at(&self, scid: &str, epoch: u64) -> Result<Forgot, VaultError> {
+        self.vault
+            .forget_kept(scid, |folder, _| Ok(folder.epoch(scid)? == epoch))
     }
 
     fn unlock(&self, scid: &str, why: MasterUse, now: u64) -> Result<Unlocked, VaultError> {
@@ -987,11 +1006,7 @@ mod tests {
             );
             assert_eq!(epoch(), 2);
             assert_eq!(
-                vault
-                    .forget_kept("QmScid", |folder, _| Ok(
-                        folder.epoch("QmScid")? == read_before
-                    ))
-                    .unwrap(),
+                flow.forget_master_at("QmScid", read_before).unwrap(),
                 Forgot::Kept(1)
             );
             assert_eq!(vault.master_index("QmScid").unwrap(), Some(1));
@@ -1010,12 +1025,7 @@ mod tests {
             assert_eq!(epoch(), 2);
             flow.promote_master("QmScid", 2).unwrap();
             assert_eq!(epoch(), 3);
-            assert_eq!(
-                vault
-                    .forget_kept("QmScid", |folder, _| Ok(folder.epoch("QmScid")? == 3))
-                    .unwrap(),
-                Forgot::Forgot
-            );
+            assert_eq!(flow.forget_master_at("QmScid", 3).unwrap(), Forgot::Forgot);
             assert_eq!(epoch(), 4);
             assert_eq!(flow.forget_master("QmScid", 2).unwrap(), Forgot::Forgot);
             assert_eq!(epoch(), 4);
@@ -1144,14 +1154,50 @@ mod tests {
         );
     }
 
-    /// A file store that, the first time the kept item is read (the forget's check), lets
-    /// `between` run on another thread and waits for it, up to a limit: where another process
-    /// would install its key between this one's check and its delete.
+    /// A file store that, the first time the kept item is read (the forget's check) or, with
+    /// `before_delete`, just before the kept item is deleted (after the forget's check and its
+    /// epoch comparison), lets `between` run on another thread and waits for it, up to a limit:
+    /// where another process would install its key between this one's check and its delete.
     struct Interleaved {
         file: crate::store::FileStore,
         between: std::sync::Mutex<Option<Box<dyn FnOnce() + Send>>>,
         /// The thread `between` runs on, to join once the forget is done.
         other: std::sync::Mutex<Option<std::thread::JoinHandle<()>>>,
+        before_delete: bool,
+    }
+
+    impl Interleaved {
+        fn new(
+            file: &std::path::Path,
+            between: Box<dyn FnOnce() + Send>,
+            before_delete: bool,
+        ) -> Self {
+            Interleaved {
+                file: crate::store::FileStore::new(file),
+                between: std::sync::Mutex::new(Some(between)),
+                other: std::sync::Mutex::new(None),
+                before_delete,
+            }
+        }
+
+        /// Runs `between` on another thread, once, and waits for it up to a limit.
+        fn interleave(&self) {
+            if let Some(between) = self.between.lock().unwrap().take() {
+                let (tx, rx) = std::sync::mpsc::channel();
+                *self.other.lock().unwrap() = Some(std::thread::spawn(move || {
+                    between();
+                    let _ = tx.send(());
+                }));
+                // Long enough for the other handle's whole store when nothing holds it off.
+                let _ = rx.recv_timeout(std::time::Duration::from_secs(2));
+            }
+        }
+
+        /// Joins the thread `between` ran on.
+        fn join(&self) {
+            let other = self.other.lock().unwrap().take();
+            other.expect("the other handle ran").join().unwrap();
+        }
     }
 
     impl SecretStore for Interleaved {
@@ -1166,16 +1212,8 @@ mod tests {
         }
         fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
             let got = self.file.get(n);
-            if n == item_name("QmScid") {
-                if let Some(between) = self.between.lock().unwrap().take() {
-                    let (tx, rx) = std::sync::mpsc::channel();
-                    *self.other.lock().unwrap() = Some(std::thread::spawn(move || {
-                        between();
-                        let _ = tx.send(());
-                    }));
-                    // Long enough for the other handle's whole store when nothing holds it off.
-                    let _ = rx.recv_timeout(std::time::Duration::from_secs(2));
-                }
+            if !self.before_delete && n == item_name("QmScid") {
+                self.interleave();
             }
             got
         }
@@ -1183,6 +1221,9 @@ mod tests {
             self.file.contains(n)
         }
         fn delete(&self, n: &str) -> Result<(), VaultError> {
+            if self.before_delete && n == item_name("QmScid") {
+                self.interleave();
+            }
             self.file.delete(n)
         }
         fn rename(&self, from: &str, to: &str) -> Result<(), VaultError> {
@@ -1215,19 +1256,14 @@ mod tests {
                     .store_master("QmScid", 1, Secret::new([5u8; 32]));
             *other_installed.lock().unwrap() = Some(stored);
         });
-        let store = Arc::new(Interleaved {
-            file: crate::store::FileStore::new(&custody),
-            between: std::sync::Mutex::new(Some(between)),
-            other: std::sync::Mutex::new(None),
-        });
+        let store = Arc::new(Interleaved::new(&custody, between, false));
         let this_app = DesktopVault::with_kdf(
             Box::new(store.clone()),
             PendingIncepts::file(&custody),
             CHEAP,
         );
         let forgot = this_app.unlocking(None).forget_master("QmScid", 0);
-        let other = store.other.lock().unwrap().take();
-        other.expect("the other handle ran").join().unwrap();
+        store.join();
         assert_eq!(forgot.unwrap(), Forgot::Forgot);
         assert_eq!(
             installed.lock().unwrap().take().unwrap().unwrap(),
@@ -1239,6 +1275,234 @@ mod tests {
             unlocked_key(&vault, Some(PASS)),
             ed25519_signing_key_multikey([5u8; 32])
         );
+    }
+
+    /// A forget at an epoch read before the kept key changed keeps the key, whatever changed it:
+    /// a newer index, an older key promoted over nothing, a forget and a store again. At the
+    /// current epoch the key is forgotten, and with none kept any epoch answers `Forgot`.
+    #[test]
+    fn a_forget_at_a_stale_epoch_keeps_the_key() {
+        let dir = tempfile::tempdir().unwrap();
+        for (vault, passphrase) in generation_vaults(dir.path()) {
+            let flow = vault.unlocking(passphrase.map(|p| Secret::new(p.to_string())));
+            flow.store_master("QmScid", 1, Secret::new([5u8; 32]))
+                .unwrap();
+            let read = vault.custody_epoch("QmScid").unwrap();
+            flow.store_master("QmScid", 2, Secret::new([6u8; 32]))
+                .unwrap();
+            assert_eq!(
+                flow.forget_master_at("QmScid", read).unwrap(),
+                Forgot::Kept(2)
+            );
+            assert_eq!(vault.master_index("QmScid").unwrap(), Some(2));
+
+            // Forgotten and kept again at the same index between the read and the forget.
+            let read = flow.custody_epoch("QmScid").unwrap();
+            flow.forget_master("QmScid", 2).unwrap();
+            flow.store_master("QmScid", 2, Secret::new([6u8; 32]))
+                .unwrap();
+            assert_eq!(
+                flow.forget_master_at("QmScid", read).unwrap(),
+                Forgot::Kept(2)
+            );
+            assert_eq!(
+                unlocked_key(&vault, passphrase),
+                ed25519_signing_key_multikey([6u8; 32])
+            );
+
+            // The epoch read now is the one the forget compares.
+            let read = flow.custody_epoch("QmScid").unwrap();
+            assert_eq!(
+                flow.forget_master_at("QmScid", read).unwrap(),
+                Forgot::Forgot
+            );
+            assert_eq!(vault.master_index("QmScid").unwrap(), None);
+            assert_eq!(
+                flow.forget_master_at("QmScid", read).unwrap(),
+                Forgot::Forgot
+            );
+            assert_eq!(flow.forget_master_at("QmScid", 0).unwrap(), Forgot::Forgot);
+        }
+    }
+
+    /// The duplicate delivery: a removal reads the epoch and checks who holds the key, the same
+    /// master #0 is taken again from the inbox (same index, same bytes), and the removal's forget
+    /// then keeps it, since that delivery is custody the removal never checked.
+    #[test]
+    fn a_same_index_delivery_between_the_epoch_read_and_the_forget_survives() {
+        let dir = tempfile::tempdir().unwrap();
+        for (vault, passphrase) in generation_vaults(dir.path()) {
+            let flow = vault.unlocking(passphrase.map(|p| Secret::new(p.to_string())));
+            flow.store_master("QmScid", 0, Secret::new([4u8; 32]))
+                .unwrap();
+            let read = flow.custody_epoch("QmScid").unwrap();
+            assert_eq!(
+                flow.store_master("QmScid", 0, Secret::new([4u8; 32]))
+                    .unwrap(),
+                Stored::Stored
+            );
+            assert_eq!(
+                flow.forget_master_at("QmScid", read).unwrap(),
+                Forgot::Kept(0)
+            );
+            assert_eq!(vault.master_index("QmScid").unwrap(), Some(0));
+            assert_eq!(
+                unlocked_key(&vault, passphrase),
+                ed25519_signing_key_multikey([4u8; 32])
+            );
+        }
+    }
+
+    /// The duplicate delivery from another app on this computer: two handles on one custody
+    /// folder, each its own store and its own lists. The removal on one reads the epoch; the
+    /// other takes the same master #0 again; the removal's forget keeps it.
+    #[test]
+    fn a_same_index_delivery_on_another_handle_survives_a_forget_at_the_epoch_read_before() {
+        const PASS: &str = "a passphrase of length";
+        let dir = tempfile::tempdir().unwrap();
+        let custody = dir.path().to_path_buf();
+        let handle = || {
+            DesktopVault::with_kdf(
+                Box::new(crate::store::FileStore::new(&custody)),
+                PendingIncepts::file(&custody),
+                CHEAP,
+            )
+        };
+        let (removing, taking) = (handle(), handle());
+        taking
+            .unlocking(pass(PASS))
+            .store_master("QmScid", 0, Secret::new([4u8; 32]))
+            .unwrap();
+        let read = removing.custody_epoch("QmScid").unwrap();
+        assert_eq!(removing.master_index("QmScid").unwrap(), Some(0));
+        taking
+            .unlocking(pass(PASS))
+            .store_master("QmScid", 0, Secret::new([4u8; 32]))
+            .unwrap();
+        assert_eq!(
+            removing
+                .unlocking(None)
+                .forget_master_at("QmScid", read)
+                .unwrap(),
+            Forgot::Kept(0)
+        );
+        let vault = placed(&custody, None);
+        assert_eq!(vault.master_index("QmScid").unwrap(), Some(0));
+        assert_eq!(
+            unlocked_key(&vault, Some(PASS)),
+            ed25519_signing_key_multikey([4u8; 32])
+        );
+    }
+
+    /// The same race inside the forget: the other handle's duplicate delivery of #0 comes after
+    /// the forget compared the epoch and before it deletes. The custody folder's lock holds the
+    /// delivery off until the forget is done, so the delivery lands after it and the key is
+    /// kept; without the lock the forget deleted what the delivery had just written.
+    #[test]
+    fn a_same_index_delivery_racing_a_forget_at_on_another_handle_survives() {
+        const PASS: &str = "a passphrase of length";
+        let dir = tempfile::tempdir().unwrap();
+        let custody = dir.path().to_path_buf();
+        sealed_in_file(&custody, "QmScid", [4u8; 32], PASS);
+        let delivered = Arc::new(std::sync::Mutex::new(None));
+        let other_custody = custody.clone();
+        let other_delivered = delivered.clone();
+        let between: Box<dyn FnOnce() + Send> = Box::new(move || {
+            let other_app = DesktopVault::with_kdf(
+                Box::new(crate::store::FileStore::new(&other_custody)),
+                PendingIncepts::file(&other_custody),
+                CHEAP,
+            );
+            let stored =
+                other_app
+                    .unlocking(pass(PASS))
+                    .store_master("QmScid", 0, Secret::new([4u8; 32]));
+            *other_delivered.lock().unwrap() = Some(stored);
+        });
+        let store = Arc::new(Interleaved::new(&custody, between, true));
+        let this_app = DesktopVault::with_kdf(
+            Box::new(store.clone()),
+            PendingIncepts::file(&custody),
+            CHEAP,
+        );
+        let read = this_app.custody_epoch("QmScid").unwrap();
+        let forgot = this_app.unlocking(None).forget_master_at("QmScid", read);
+        store.join();
+        assert_eq!(forgot.unwrap(), Forgot::Forgot);
+        assert_eq!(
+            delivered.lock().unwrap().take().unwrap().unwrap(),
+            Stored::Stored
+        );
+        let vault = placed(&custody, None);
+        assert_eq!(vault.master_index("QmScid").unwrap(), Some(0));
+        assert_eq!(
+            unlocked_key(&vault, Some(PASS)),
+            ed25519_signing_key_multikey([4u8; 32])
+        );
+        // The forget and the delivery each moved it.
+        assert_eq!(this_app.custody_epoch("QmScid").unwrap(), read + 2);
+    }
+
+    /// A write answered `Ok` is there when the vault is opened again (another start of the app,
+    /// another app on this computer): the kept key and its index, a staged key, a promote, and
+    /// the custody epoch, which goes on from where it was rather than starting again, so an
+    /// epoch read before the reopening never matches a key stored after it.
+    #[test]
+    fn what_a_write_answered_ok_is_there_when_the_vault_is_opened_again() {
+        const PASS: &str = "a passphrase of length";
+        let dir = tempfile::tempdir().unwrap();
+        let custody = dir.path().to_path_buf();
+        let open = || {
+            DesktopVault::with_kdf(
+                Box::new(crate::store::FileStore::new(&custody)),
+                PendingIncepts::file(&custody),
+                CHEAP,
+            )
+        };
+        let before_store;
+        let after_store;
+        {
+            let vault = open();
+            before_store = vault.custody_epoch("QmScid").unwrap();
+            vault
+                .unlocking(pass(PASS))
+                .store_master("QmScid", 0, Secret::new([4u8; 32]))
+                .unwrap();
+            vault
+                .unlocking(pass(PASS))
+                .stage_master("QmScid", 1, Secret::new([5u8; 32]), &StageToken([2; 16]))
+                .unwrap();
+            after_store = vault.custody_epoch("QmScid").unwrap();
+        }
+        {
+            let vault = open();
+            assert_eq!(vault.master_index("QmScid").unwrap(), Some(0));
+            assert_eq!(
+                unlocked_key(&vault, Some(PASS)),
+                ed25519_signing_key_multikey([4u8; 32])
+            );
+            assert_eq!(vault.staged_index("QmScid").unwrap(), Some(1));
+            assert_eq!(vault.custody_epoch("QmScid").unwrap(), after_store);
+            assert_eq!(
+                vault
+                    .unlocking(None)
+                    .forget_master_at("QmScid", before_store)
+                    .unwrap(),
+                Forgot::Kept(0)
+            );
+            assert_eq!(
+                vault.unlocking(None).promote_master("QmScid", 1).unwrap(),
+                Stored::Stored
+            );
+        }
+        let vault = open();
+        assert_eq!(vault.master_index("QmScid").unwrap(), Some(1));
+        assert_eq!(vault.staged_index("QmScid").unwrap(), None);
+        assert_eq!(
+            unlocked_key(&vault, Some(PASS)),
+            ed25519_signing_key_multikey([5u8; 32])
+        );
+        assert_eq!(vault.custody_epoch("QmScid").unwrap(), after_store + 1);
     }
 
     /// An item the vault cannot vouch for answers `None`, never a guess: a keychain item kept
