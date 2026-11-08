@@ -21,8 +21,43 @@ build allows no cleartext (`android/app/src/main/res/xml/network_security_config
 
 The session is kept: a closed and reopened app is still signed in. The executor token lives in the
 WebView's storage, like the web app's: Android's app sandbox protects it, nothing seals it further,
-and the app opts out of backup and device transfer so it does not leave the phone. Device keys and
-the master key, when the phone gets them, live in the custody plugin, not here.
+and the app opts out of backup and device transfer so it does not leave the phone.
+
+## The device key and key login (phase 2a)
+
+The phone has a key of its own, held by the `DeviceKey` plugin
+(`android/app/src/main/java/org/coasys/app/devicekey/`) over `crates/phone-custody`, a Rust crate
+built for Android with uniffi bindings:
+
+- **The keys.** An Ed25519 device key (signing) and an X25519 key (for what is sent to the phone
+  sealed), each a 32-byte seed. Each seed is sealed by an AES-256-GCM key in the Android Keystore,
+  in StrongBox where the phone has one and the TEE otherwise, which never leaves it
+  (`KeystoreKey.kt`; no user authentication, so a login asks nothing). The sealed seeds are in
+  `no_backup/device-keys/device-keys.json`, which no backup or transfer includes. Only public keys
+  and signatures cross into JS.
+- **Joining an identity.** `join({link})` claims an offer a computer holding the identity's master
+  key opened (`https://id.coasys.org/o#coasys:offer:1:…`); both sides show the same match code, the
+  computer signs an `add` listing the phone's keys, and `waitJoined()` sees it land.
+- **Key login.** Once the phone has joined and has an executor to log in to, WE logs in with the
+  device key (`user.sessionChallenge` → a signed statement → `user.loginWithKey`) instead of showing
+  the connect screen, and renews the session five minutes before each expiry
+  (`apps/we-web/src/platform/deviceKeyConnector.ts`, `keySession.ts`). The token is never stored:
+  every boot logs in afresh. Anywhere else, and on a phone that has not joined, WE connects as in
+  phase 1.
+
+Phase 2a has no screens for any of this. The executor to log in to is the localStorage key
+`we-phone/key-host` (an http(s) URL), set by hand; joining is driven from DevTools:
+
+```sh
+node scripts/cdp-eval.mjs "JSON.stringify(await Capacitor.Plugins.DeviceKey.create())"
+node scripts/cdp-eval.mjs "JSON.stringify(await Capacitor.Plugins.DeviceKey.join({link: '<offer link>', hint: 'My phone'}))"
+node scripts/cdp-eval.mjs "JSON.stringify(await Capacitor.Plugins.DeviceKey.waitJoined({seconds: 120}))"
+node scripts/cdp-eval.mjs "(localStorage.setItem('we-phone/key-host', 'http://127.0.0.1:<port>'), location.reload())"
+```
+
+`crates/custody/tests/live.rs`'s `a_phone_joins_through_an_offer` is the computer's side of that
+run, against a throwaway store and executor. What phase 2b adds (linking screens, the master key,
+the device inbox) is in [`docs/phase-2b.md`](docs/phase-2b.md).
 
 ## Build
 
@@ -36,11 +71,23 @@ pnpm build:web                 # www/ = apps/we-web/dist + the error page in www
 pnpm check:floor               # WE's scripts parse on the WebView floor; the error page parses on WebView 83
 pnpm test                      # the floor and the error page's wording
 pnpm exec cap sync android     # www/ and capacitor.config into android/
-cd android && ./gradlew assembleDebug
+scripts/build-android-rust.sh  # crates/phone-custody for the phone, and its Kotlin bindings
+cd android && ./gradlew :app:testDebugUnitTest assembleDebug
 ```
 
 The APK is `android/app/build/outputs/apk/debug/app-debug.apk`. Gradle needs JDK 21 and an Android
-SDK (`JAVA_HOME`, `ANDROID_HOME`). No NDK and no Rust are needed.
+SDK (`JAVA_HOME`, `ANDROID_HOME`). The Rust half needs rustup (the crate's `rust-toolchain.toml`
+picks the channel), `cargo install cargo-ndk`, and an NDK (`ANDROID_NDK_HOME`, 27 is what was used).
+`testDebugUnitTest` runs the plugin's Kotlin over a host build of the same crate; the Keystore half
+runs only on a device or emulator:
+
+```sh
+./gradlew :app:connectedDebugAndroidTest \
+  -Pandroid.testInstrumentationRunnerArguments.class=org.coasys.app.devicekey.KeystoreSealerTest
+```
+
+(Name the class: Capacitor's template `ExampleInstrumentedTest` asserts another package name and
+fails.)
 
 ## Run it on an emulator, or a phone over USB
 
@@ -72,6 +119,11 @@ Two things make that work, and both are debug-only or loopback-only:
   serves the app itself from `https://localhost` and answers every request to that host.
 - `android/app/src/debug/res/xml/network_security_config.xml` allows cleartext to `127.0.0.1` and
   `localhost` in debug builds. A release build uses `src/main`'s, which allows none.
+
+For a key login, forward the executor's own port to the same port (`adb reverse tcp:P tcp:P`): the
+signed statement names the origin the phone dials, and an executor with no `--public-origin`
+accepts only its own loopback origins on its own API port. The offer link names the identity store
+by its URL, so forward the store's port the same way.
 
 To read or drive the WebView without tapping (a debug build enables WebView debugging):
 
@@ -111,43 +163,29 @@ mechanically: a token that needs a newer CSS feature means moving the floor and 
 Android System WebView updates through the Play Store, separately from Android, so the floor is a
 WebView version, not an Android version. `minSdk` stays 30.
 
-## What phase 2 adds
+## What is left for phase 2
 
-Phase 1 signs in the way the web app does: email and password on a multi-user executor, which
-holds the agent. Phase 2 gives the phone its own device key and signs in with it, as the desktop
-apps do through their custody service (`crates/custody`, `ExecutorAddress` / `ViaExecutor`):
-
-1. **A custody plugin surface.** A Capacitor plugin the web app calls for what the desktop's identity
-   window does: hold the phone's device key, sign with it, and run the identity steps below. What
-   the plugin is made of — a platform keystore key, or the custody crate built for Android and iOS —
-   is the open device-key decision, and it changes this item most: which algorithms the key can use,
-   whether it can ever leave the phone, and whether the Rust and NDK build comes back.
-2. **Key login.** ad4m-connect signs in with the device key instead of a password: the executor
-   checks the key against the identity's key log. This replaces the email and password screen.
-3. **Link by scan.** The phone shows its device code (`show-code`), and a computer with the master key
-   scans it (`scan-device`), compares the match code and signs the `add`. That needs the camera,
-   which phase 1 removed with the spike's barcode scanner. If the device key cannot be exported, a
-   link is the only way the phone gets an identity.
-4. **Take the master key** (`take-master`, `ask-master`), only if the decision lets the phone keep one.
-   A key the platform will not export cannot be sent anywhere, so a phone that holds the master key
-   could never pass it on.
-5. **Devices.** The Devices page from `publicState`: the private record's names and kinds,
-   `holdsMaster`, and other devices' requests to answer.
-6. **Revoke and pause.** Revoke is `revoke` (with "Also replace my master key"). Pause has no step in
-   `crates/custody` yet and needs one.
-
-None of these exist in phase 1, and nothing here pre-empts the decision: there is no key code, no
-plugin and no native module.
+Phase 2a is the plugin, the join and the key login above, with no screens. Phase 2b, designed in
+[`docs/phase-2b.md`](docs/phase-2b.md) and not built: the linking screens and the camera, choosing
+the host, the master key (biometric-gated) and taking it, the device inbox, the Devices page, and
+revoke and pause.
 
 ## Files
 
-| Path                         | What it is                                                                   |
-| ---------------------------- | ---------------------------------------------------------------------------- |
-| `capacitor.config.ts`        | App id and name, `server.errorPath`, `android.minWebViewVersion`             |
-| `src/webViewFloor.ts`        | The floor, the error page's path, and which of its two messages a phone sees |
-| `src/error/`                 | The error page: plain DOM, built for WebView 83                              |
-| `scripts/assemble-web.mjs`   | Builds `www/` from `apps/we-web/dist` and the error page                     |
-| `scripts/check-floor.mjs`    | The script half of the floor, checked                                        |
-| `scripts/cdp-eval.mjs`       | Evaluates an expression in the app's WebView over DevTools                   |
-| `tests/webViewFloor.test.ts` | The floor, the messages, and that the Capacitor config uses both             |
-| `SPIKE.md`                   | The phone spike's record: the pinned Rust transport, since removed           |
+| Path                                                                  | What it is                                                                                                    |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `capacitor.config.ts`                                                 | App id and name, `server.errorPath`, `android.minWebViewVersion`                                              |
+| `src/webViewFloor.ts`                                                 | The floor, the error page's path, and which of its two messages a phone sees                                  |
+| `src/error/`                                                          | The error page: plain DOM, built for WebView 83                                                               |
+| `scripts/assemble-web.mjs`                                            | Builds `www/` from `apps/we-web/dist` and the error page                                                      |
+| `scripts/check-floor.mjs`                                             | The script half of the floor, checked                                                                         |
+| `scripts/cdp-eval.mjs`                                                | Evaluates an expression in the app's WebView over DevTools                                                    |
+| `tests/webViewFloor.test.ts`                                          | The floor, the messages, and that the Capacitor config uses both                                              |
+| `scripts/build-android-rust.sh`                                       | `crates/phone-custody` for arm64-v8a and x86_64, its Kotlin bindings, and the host library the JVM tests load |
+| `android/app/src/main/java/org/coasys/app/devicekey/`                 | The `DeviceKey` plugin: the Keystore key, the AES-GCM sealer, the store's HTTP                                |
+| `android/app/src/test/…/DeviceKeysJvmTest.kt`                         | The plugin's Kotlin over the real Rust library, on the JVM                                                    |
+| `android/app/src/androidTest/…/KeystoreSealerTest.kt`                 | The Keystore half, on a device or emulator                                                                    |
+| `../../crates/phone-custody/`                                         | The keys, the claim and the session statements, in Rust                                                       |
+| `../we-web/src/platform/deviceKey*.ts`, `keySession.ts`, `keyHost.ts` | The plugin's TS surface, key login and renewal, the key host                                                  |
+| `docs/phase-2b.md`                                                    | The design of phase 2b                                                                                        |
+| `SPIKE.md`                                                            | The phone spike's record: the pinned Rust transport, since removed                                            |
