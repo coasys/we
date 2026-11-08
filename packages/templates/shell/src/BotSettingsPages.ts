@@ -368,6 +368,18 @@ const grantEditor: SchemaNode = {
     condition: { $: 'botStore.editor && !botStore.selected.revoked' },
     then: card([
       { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['What it may do'] },
+      /*
+        A grant change does not go through the identity window: any app session holding
+        `agent:UPDATE` may widen a grant or resume a bot, as `bot.setGrant` allows. Said here so the
+        person knows the grant is not theirs alone to change.
+      */
+      {
+        type: 'we-text',
+        props: { variant: 'footnote', color: 'text-muted' },
+        children: [
+          'Apps you let manage your identity can change this grant, or resume a paused bot, without asking you again.',
+        ],
+      },
       sectionTitle('Spaces'),
       {
         type: '$if',
