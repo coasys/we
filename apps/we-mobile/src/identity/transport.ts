@@ -72,10 +72,27 @@ export function pageStart(search: string): PhoneStart | null {
   }
 }
 
-/** Where the page goes back to: a path of this app's own, else its start. */
-export function backPath(search: string): string {
+/**
+ * Where the page goes back to: a path of this app's own, else its start. The check runs on the
+ * URL the browser would make of `back`, not on the raw text — parsing removes control
+ * characters (a tab or newline between the first two slashes would turn `/\tevil` into
+ * `//evil`, a network-path reference to another origin) and folds `\` into `/` — so the
+ * decoded text passing a `startsWith('/')` check is not enough.
+ */
+export function backPath(search: string, origin: string): string {
   const back = new URLSearchParams(search).get('back');
-  return back && back.startsWith('/') && !back.startsWith('//') && !back.startsWith('/\\') ? back : '/';
+  if (!back || /[\u0000-\u001f\u007f]/.test(back)) return '/';
+  try {
+    const url = new URL(back, origin);
+    if (url.origin !== origin) return '/';
+    const path = url.pathname + url.search + url.hash;
+    // Only ever a same-origin local path: a path that is (or that a special-scheme URL would
+    // re-parse as) a network-path reference leaves the app's origin on `location.replace`.
+    if (path.startsWith('//') || path.includes('\\')) return '/';
+    return path;
+  } catch {
+    return '/';
+  }
 }
 
 /** Why the phone does not run a change: one only a computer can. */

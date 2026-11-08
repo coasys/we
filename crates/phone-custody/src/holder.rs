@@ -13,7 +13,7 @@ use std::sync::mpsc::{channel, Receiver, Sender};
 use std::sync::{Arc, Mutex};
 
 use ad4m_identity_client::flows::link::LinkFlow;
-use ad4m_identity_client::{Clock, OsRandom, SystemClock};
+use ad4m_identity_client::{Clock, MasterUse, OsRandom, SystemClock};
 use ad4m_identity_core::link::{DeviceString, OfferKind};
 use ad4m_identity_core::record::{DeviceEntry, DeviceKind, HoldsMaster, Place};
 use futures_executor::block_on;
@@ -114,6 +114,24 @@ impl HolderLink {
     }
 }
 
+/// The person's answer to a claimed link, waited for until `deadline` (unix seconds): the
+/// flow's unlock — and the decrypted master key it holds. When the deadline passes the link
+/// ends here and the flow drops with it; the page cannot leave it open forever.
+fn await_command(
+    commands: &Receiver<Command>,
+    deadline: u64,
+    now: u64,
+) -> Result<Command, PhoneKeyError> {
+    use std::sync::mpsc::RecvTimeoutError;
+    match commands.recv_timeout(std::time::Duration::from_secs(deadline.saturating_sub(now))) {
+        Ok(command) => Ok(command),
+        Err(RecvTimeoutError::Timeout) => Err(PhoneKeyError::Ended {
+            reason: "the time to confirm the link ran out".into(),
+        }),
+        Err(RecvTimeoutError::Disconnected) => Err(PhoneKeyError::Cancelled),
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run(
     parts: &Parts,
@@ -129,6 +147,11 @@ fn run(
     let clock = SystemClock;
     let random = OsRandom;
     block_on(async {
+        // The flow's unlock is made inside `scan` (at or after this `now`) and lasts
+        // `MasterUse::Link`'s ttl — the offer's life plus the store's confirm grace. The
+        // confirm's wait ends at the same time at the latest: waiting longer would keep the
+        // decrypted master in memory past the unlock the person allowed.
+        let unlocked_until = clock.now() + MasterUse::Link.ttl_s();
         let flow = LinkFlow::scan(
             &exec,
             vault,
@@ -151,9 +174,8 @@ fn run(
             hint: claimed.hint.clone(),
             can_keep_master: can_keep,
         }));
-        let Ok(Command::Confirm { name, keep_master }) = commands.recv() else {
-            return Err(PhoneKeyError::Cancelled);
-        };
+        let Command::Confirm { name, keep_master } =
+            await_command(commands, unlocked_until, clock.now())?;
         if cancelled.load(Ordering::SeqCst) {
             return Err(PhoneKeyError::Cancelled);
         }
@@ -247,5 +269,50 @@ impl HolderLink {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .take();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The confirm wait ends with the flow's unlock: past the deadline the link is `Ended` and
+    /// the `LinkFlow` — the unlocked master it holds — is dropped with it, never kept until
+    /// the page remembers it. A sender gone (`cancel`) is `Cancelled`, and a command in time
+    /// passes.
+    #[test]
+    fn a_confirm_wait_ends_at_the_unlocks_deadline() {
+        let (_tx, rx) = channel::<Command>();
+        assert!(matches!(
+            await_command(&rx, 100, 100),
+            Err(PhoneKeyError::Ended { .. })
+        ));
+        // Even with the deadline far away, a wait with nothing coming ends by itself.
+        let (_tx, rx) = channel::<Command>();
+        assert!(matches!(
+            await_command(&rx, u64::MAX, u64::MAX - 1),
+            Err(PhoneKeyError::Ended { .. })
+        ));
+
+        let (tx, rx) = channel::<Command>();
+        drop(tx);
+        assert!(matches!(
+            await_command(&rx, u64::MAX, 0),
+            Err(PhoneKeyError::Cancelled)
+        ));
+
+        let (tx, rx) = channel();
+        tx.send(Command::Confirm {
+            name: Some("Laptop".into()),
+            keep_master: false,
+        })
+        .unwrap();
+        assert!(matches!(
+            await_command(&rx, u64::MAX, 0),
+            Ok(Command::Confirm {
+                keep_master: false,
+                ..
+            })
+        ));
     }
 }

@@ -11,7 +11,7 @@ import { deviceKeyPlugin } from '../../../we-web/src/platform/deviceKey';
 import { JOIN_DECLINED_KEY, readKeyHost, rememberKeyHost } from '../../../we-web/src/platform/keyHost';
 import { backPath, pageStart, phoneTransport } from './transport';
 
-const back = backPath(location.search);
+const back = backPath(location.search, location.origin);
 const start = pageStart(location.search);
 const plugin = deviceKeyPlugin();
 

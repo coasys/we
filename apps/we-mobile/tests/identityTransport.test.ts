@@ -552,15 +552,42 @@ describe('the page’s address', () => {
     params.set('change', JSON.stringify({ kind: 'revoke', keyId: 'd3' }));
     params.set('back', '/settings/identity?tab=devices');
     expect(pageStart(`?${params}`)).toEqual({ kind: 'revoke', keyId: 'd3' });
-    expect(backPath(`?${params}`)).toBe('/settings/identity?tab=devices');
+    expect(backPath(`?${params}`, 'https://localhost')).toBe('/settings/identity?tab=devices');
   });
 
   it('goes back only to a path of the app’s own', () => {
-    expect(backPath('?back=%2Fsettings%2Fidentity')).toBe('/settings/identity');
-    expect(backPath('?back=https%3A%2F%2Fevil.example')).toBe('/');
-    expect(backPath('?back=%2F%2Fevil.example')).toBe('/');
-    expect(backPath('?back=%2F%5Cevil.example')).toBe('/');
-    expect(backPath('')).toBe('/');
+    const origin = 'https://localhost';
+    expect(backPath('?back=%2Fsettings%2Fidentity', origin)).toBe('/settings/identity');
+    expect(backPath('?back=%2Fsettings%2Fidentity%3Ftab%3Ddevices%23top', origin)).toBe(
+      '/settings/identity?tab=devices#top',
+    );
+    expect(backPath('?back=https%3A%2F%2Fevil.example', origin)).toBe('/');
+    expect(backPath('?back=%2F%2Fevil.example', origin)).toBe('/');
+    expect(backPath('?back=%2F%5Cevil.example', origin)).toBe('/');
+    expect(backPath('', origin)).toBe('/');
+  });
+
+  it('goes back nowhere a URL parser could make into another origin', () => {
+    const origin = 'https://localhost';
+    // A tab or newline between the first two slashes: URL parsing removes control characters,
+    // which would turn `/\tevil` into `//evil` — a network-path reference off the app.
+    expect(backPath(`?back=${encodeURIComponent('/\t/evil.example')}`, origin)).toBe('/');
+    expect(backPath(`?back=${encodeURIComponent('/\n/evil.example')}`, origin)).toBe('/');
+    expect(backPath('?back=/%09/evil.example', origin)).toBe('/');
+    expect(backPath('?back=/%0A/evil.example', origin)).toBe('/');
+    // A literal protocol-relative or backslash reference, and the same percent-encoded.
+    expect(backPath(`?back=${encodeURIComponent('//evil.example')}`, origin)).toBe('/');
+    expect(backPath(`?back=${encodeURIComponent('/\\evil.example')}`, origin)).toBe('/');
+    expect(backPath(`?back=${encodeURIComponent('/\\\\evil.example')}`, origin)).toBe('/');
+    expect(backPath('?back=%2F%2Fevil.example%2Fpath', origin)).toBe('/');
+    expect(backPath('?back=%2f%2fevil.example', origin)).toBe('/');
+    // Another scheme entirely, and one merely spelled like the app.
+    expect(backPath('?back=javascript%3Aalert(1)', origin)).toBe('/');
+    expect(backPath('?back=https%3A%2F%2Flocalhost.evil.example%2Fx', origin)).toBe('/');
+    // A same-origin URL or a plain relative path normalizes to its own path — that is allowed.
+    expect(backPath(`?back=${encodeURIComponent('https://localhost/settings/identity')}`, origin)).toBe(
+      '/settings/identity',
+    );
   });
 
   it('takes an executor only as an http(s) address', () => {

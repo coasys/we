@@ -66,7 +66,7 @@ import uniffi.we_phone_custody.StoreConfig
  *   revoke({keyIds})                → {note}                                   (one prompt)
  *   scanDevice({code})              → {link}                                   (one prompt, for the ticket)
  *   linkNext({link})                → {step: "ticket-sent", expires} | {step: "claimed", code, hint, canKeepMaster} | {step: "linked", keyId, seq, masterSent, note}
- *   linkConfirm({link, name?, keepMaster}) → {}                                (one prompt, for the add)
+ *   linkConfirm({link, name?, keepMaster}) → {}                                (no prompt; the scan's one unlock covers the add)
  *   linkCancel({link})              → {}
  *   scanCode({prefix, title?})      → {text}                                   (the camera; rejects `Cancelled` or `CameraDenied`)
  *
