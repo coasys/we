@@ -64,6 +64,7 @@ import {
   grantSpaces,
 } from '../../src/shared/botRows';
 import { custodyDevice, deviceRows, servingDevice } from '../../src/shared/identityRows';
+import { overlaySurfaceStyle } from '../../src/shared/overlaySurface';
 import { sharingPickerOptions } from '../../src/shared/sharingOptions';
 
 export interface Scenario {
@@ -2729,8 +2730,57 @@ const devicesOnPhone = (): Scenario => {
   };
 };
 
+/**
+ * A shell overlay's box around a page taller than the window, as `TemplateLayout` draws it: the
+ * overlay (absolute, the window's size, clipping) and inside it the surface, in the style the
+ * layout gives it. On a phone, Settings was taller than the screen and could not be scrolled: the
+ * surface is a size container, so what overflowed it was no part of the overlay's scrollable area.
+ */
+const overlayScroll = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { id: 'overlay-window', width: '100%', height: '100vh', position: 'relative', overflow: 'hidden' },
+    children: [
+      {
+        type: 'Column',
+        props: {
+          display: 'block',
+          position: 'absolute',
+          top: '0',
+          left: '0',
+          width: '100%',
+          height: '100%',
+          overflow: 'hidden',
+        },
+        children: [
+          {
+            type: 'Column',
+            props: { id: 'overlay-surface', display: 'block', styles: overlaySurfaceStyle() },
+            children: [
+              {
+                type: 'Column',
+                props: { gap: '400', p: '400', minHeight: '100%' },
+                children: [
+                  ...Array.from({ length: 30 }, (_, i) => ({
+                    type: 'we-text',
+                    children: [`Row ${i + 1} of a settings page taller than a phone`],
+                  })),
+                  { type: 'we-badge', props: { id: 'overlay-end', tone: 'accent' }, children: ['The last row'] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  tables: {},
+  stores: {},
+});
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'bots:detail': botDetail,
+  'overlay:scroll': overlayScroll,
   'devices:phone': devicesOnPhone,
   'coasys:about': coasysAbout,
   'feed:view': feedViewPage,

@@ -19,6 +19,7 @@
  * The shell overlay uses ShellRouteStoreProvider + <MemoryRouter> so shell schema
  * $routes outlets work with a real router context, without touching the browser URL.
  */
+import { overlaySurfaceStyle } from '@shared/overlaySurface';
 import { activePanels as panelsFor } from '@shared/panelScope';
 import { appFrame } from '@shared/registries/appFrame';
 import { registerHostChromeReserve } from '@shared/registries/dockRegistry';
@@ -165,29 +166,12 @@ function ShellOverlayInner(props: {
       root={(props) => (
         <ShellRouterRoot>
           {/*
-            `height: 100%`, because this surface is the one host site that adds a box.
-
-            The other three attach to an element that was already there and already sized. This one
-            sits between the overlay's scroll container and the view's root node, and every shell
-            view's root sizes itself with `minHeight: '100%'` — so the box has to pass a *definite*
-            height through or that percentage has nothing to resolve against.
-
-            Left at `auto` it resolved differently per engine: Chrome resolves a percentage through
-            an auto-height ancestor and looked correct, Firefox follows CSS2.1 and treats it as
-            indefinite, so profile and settings collapsed to their content height and the space
-            template showed through underneath. `min-height: 100%` here does *not* fix it — the box
-            is still auto-height, so the child's percentage is still indefinite. Measured in Chrome
-            150 and Firefox 152.
-
-            `height` rather than `min-height` costs nothing when the view is taller than the
-            viewport: overflow is visible, so a long settings page still overflows this box and
-            scrolls the overlay above it.
+            This surface is the one host site that adds a box: the other three attach to an element
+            that was already there and already sized. It sits between the overlay's box and the
+            view's root node, and it is the overlay's scroller too, at `height: 100%` (see
+            `overlaySurfaceStyle` for why it must be both).
           */}
-          <div
-            {...overlaySurface.outerAttrs}
-            style={{ ...surfaceStyles(), height: '100%' }}
-            ref={overlaySurface.outerRef}
-          >
+          <div {...overlaySurface.outerAttrs} style={overlaySurfaceStyle()} ref={overlaySurface.outerRef}>
             <div {...overlaySurface.tierAttrs} ref={overlaySurface.tierRef} />
             {/* The overlay's routes measure against the overlay, as its own chrome does — see `RouteSurface`. */}
             <RouteSurface.Provider value={overlaySurface.surface}>
@@ -573,13 +557,9 @@ export function TemplateLayout(
                 width="100%"
                 height="100%"
                 zIndex={11}
-                overflow="auto"
-                // Reserve the scrollbar gutter permanently. Without this, any shell view whose
-                // content crosses the viewport height gains and loses its scrollbar as content
-                // changes, and every reflow shifts the whole page horizontally. Most visible in the
-                // benchmark runner, which swaps between routes of wildly different heights, but it
-                // affects any shell view with variable-length content.
-                scrollbarGutter="stable"
+                // The view scrolls in its surface, not here: a size container's overflow is no part
+                // of this box's scrollable area. See `overlaySurfaceStyle`.
+                overflow="hidden"
               >
                 {/* A fault in settings or the marketplace must not take the space behind it down. */}
                 <TemplateBoundary
