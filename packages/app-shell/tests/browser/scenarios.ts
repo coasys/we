@@ -52,6 +52,7 @@ import fieldGuideBundle from '../../../../bundles/field-guide.bundle.json';
 import toolLibraryBundle from '../../../../bundles/tool-library.bundle.json';
 import { viewBar } from '../../../templates/cartridges/src/coasys/space/bar.ts';
 import { callBarAside } from '../../../templates/cartridges/src/coasys/space/views.ts';
+import { devicesPage } from '../../../templates/shell/src/AccountSettingsPages.ts';
 import { botsSection } from '../../../templates/shell/src/BotSettingsPages.ts';
 import {
   activityRow,
@@ -62,6 +63,7 @@ import {
   draftProblem,
   grantSpaces,
 } from '../../src/shared/botRows';
+import { custodyDevice, deviceRows, servingDevice } from '../../src/shared/identityRows';
 import { sharingPickerOptions } from '../../src/shared/sharingOptions';
 
 export interface Scenario {
@@ -2670,8 +2672,66 @@ const botDetail = (): Scenario => {
   };
 };
 
+/**
+ * Settings → Devices on a phone held upright (412px): the rail's 80px and Settings' 12px padding
+ * either side leave the page the rest, as in the app. The phone (d2) has been sent the master key
+ * and not taken it yet; its host (d1) holds it; a second computer (d3) holds nothing.
+ */
+const devicesOnPhone = (): Scenario => {
+  const keys = [
+    { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, revokedSeq: null },
+    { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, revokedSeq: null },
+    { keyId: 'd3', sign: 'z', thisDevice: false, addedSeq: 2, revokedSeq: null },
+  ];
+  const names = [
+    { keyId: 'd1', name: 'Linux computer', kind: 'desktop-app', holdsMaster: 'yes' as const },
+    { keyId: 'd2', name: 'Test phone', kind: 'phone-app', holdsMaster: 'offered' as const },
+    { keyId: 'd3', name: 'Test desktop B', kind: 'desktop-app', holdsMaster: 'no' as const },
+  ];
+  const here = custodyDevice({
+    did: 'did:scid:coasys:1:QmTest',
+    holdsMaster: null,
+    unlock: null,
+    blocked: null,
+    devices: [],
+    revokedHolders: [],
+    requests: [],
+    masterWaiting: false,
+    thisDevice: { keyId: 'd2', kind: 'phone-app' },
+  });
+  return {
+    node: {
+      type: 'Row',
+      props: { width: '100%', ay: 'start' },
+      children: [
+        { type: 'Column', props: { width: '80px', flexShrink: '0' } },
+        {
+          type: 'Column',
+          props: { id: 'devices-page', flex: '1', minWidth: '0', p: '300' },
+          children: [devicesPage],
+        },
+      ],
+    },
+    tables: {},
+    stores: {
+      sessionStore: { identityCapabilities: { devices: true }, host: null },
+      identityStore: { did: 'did:scid:coasys:1:QmTest', error: '', busy: false },
+      deviceStore: {
+        devices: deviceRows(keys, names, [], null, 1_800_000_000, here),
+        devicesLoaded: true,
+        serving: servingDevice(keys, names, here),
+        deviceNoun: 'phone',
+        canManage: false,
+        requests: [],
+        error: '',
+      },
+    },
+  };
+};
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'bots:detail': botDetail,
+  'devices:phone': devicesOnPhone,
   'coasys:about': coasysAbout,
   'feed:view': feedViewPage,
   'coasys:bar': coasysBar,

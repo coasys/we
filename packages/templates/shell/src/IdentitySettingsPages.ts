@@ -292,6 +292,19 @@ const deviceRow: SchemaNode = listRow(
   },
   [
     { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [{ $: 'device.subtitle' }] },
+    // A master key sent and not yet taken is a sentence and pending, not a problem: a muted line that
+    // wraps. As a badge it was drawn as a warning and, never wrapping, was cut off on a phone.
+    {
+      type: '$if',
+      props: {
+        condition: { $: "!device.revoked && device.holdsMaster == 'offered'" },
+        then: {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-muted', overflowWrap: 'normal' },
+          children: [{ $: 'device.master' }],
+        },
+      },
+    },
     // A revoked device's copy of the master key is a sentence and a warning, so it is a line that
     // wraps rather than a badge (which never does).
     {
@@ -310,10 +323,10 @@ const deviceRow: SchemaNode = listRow(
     {
       type: '$if',
       props: {
-        condition: { $: "!device.revoked && device.master != ''" },
+        condition: { $: "!device.revoked && device.holdsMaster == 'yes'" },
         then: {
           type: 'we-badge',
-          props: { tone: { $: "device.holdsMaster == 'yes' ? 'accent' : 'warning'" }, size: 'sm' },
+          props: { tone: 'accent', size: 'sm' },
           children: [{ $: 'device.master' }],
         },
       },
