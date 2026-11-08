@@ -294,6 +294,7 @@ export type {
 export type { ShapeInput, ShapeStore, StoredShape } from './shapes';
 export type { PersonPort } from './persons';
 export type {
+  CustodyDeviceView,
   DeviceKeyView,
   DeviceNameView,
   DeviceRequestView,

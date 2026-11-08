@@ -10,8 +10,18 @@
  * identity's private record, which only its devices read (`IdentityCustodyView.devices`). A key the
  * record does not name is "This computer" when it is this computer's, otherwise its id in the log
  * (`d2`), which is what the person sees in the log too.
+ *
+ * Which key is this device's is the backend's to say (`DeviceKeyView.thisDevice`), except where the
+ * custody service answers for a device of its own (`IdentityCustodyView.thisDevice`): a phone that
+ * reaches a computer's executor is "This phone", and the computer is one more device.
  */
-import type { DeviceKeyView, DeviceNameView, DeviceRequestView, KeyLogEvent } from '@we/backend-shared';
+import type {
+  DeviceKeyView,
+  DeviceNameView,
+  DeviceRequestView,
+  IdentityCustodyView,
+  KeyLogEvent,
+} from '@we/backend-shared';
 
 /** One row of Security → Key log. */
 export interface KeyLogRow {
@@ -79,6 +89,32 @@ export interface RequestRow {
 }
 
 export const THIS_COMPUTER = 'This computer';
+export const THIS_PHONE = 'This phone';
+
+/** The device the custody service answers for, where it is not the backend's: its key and name. */
+export interface CustodyDevice {
+  /** Its id in the key log; `null` before the log lists it, when no key is this device's. */
+  keyId: string | null;
+  /** "This phone". */
+  label: string;
+  /** What its row shows when the record gives no kind. */
+  icon: string;
+}
+
+/**
+ * The device the custody service answers for, named; `null` where the custody service runs beside
+ * the backend (the desktop), whose own key the backend marks.
+ */
+export function custodyDevice(custody: IdentityCustodyView | null | undefined): CustodyDevice | null {
+  const device = custody?.thisDevice;
+  if (!device) return null;
+  const phone = device.kind === 'phone-app';
+  return {
+    keyId: device.keyId,
+    label: phone ? THIS_PHONE : THIS_COMPUTER,
+    icon: DEVICE_ICONS[device.kind] ?? 'laptop',
+  };
+}
 
 /** "QmZkabc…xyz7rWd" → "QmZk…7rWd". */
 export function shortHash(hash: string | null | undefined): string {
@@ -94,16 +130,20 @@ export function shortDid(did: string | null | undefined): string {
 }
 
 /** The log's rows, newest first, as the design orders them. */
-export function keyLogRows(events: KeyLogEvent[], thisKeyId: string | null): KeyLogRow[] {
-  const name = (id: string) => (id === thisKeyId ? THIS_COMPUTER : id);
+export function keyLogRows(
+  events: KeyLogEvent[],
+  thisKeyId: string | null,
+  /** What this device is called: "This phone" on a phone ({@link custodyDevice}). */
+  thisLabel: string = THIS_COMPUTER,
+): KeyLogRow[] {
+  const name = (id: string) => (id === thisKeyId ? thisLabel : id);
   return events
     .slice()
     .sort((a, b) => b.seq - a.seq)
     .map((event) => {
       const keys = [...event.added.map((k) => k.id), ...event.revoked];
       const thisComputer = !!thisKeyId && keys.includes(thisKeyId);
-      const listed = (ids: string[]) =>
-        ids.map((id) => (id === thisKeyId ? `${id} · ${THIS_COMPUTER}` : id)).join(', ');
+      const listed = (ids: string[]) => ids.map((id) => (id === thisKeyId ? `${id} · ${thisLabel}` : id)).join(', ');
       let icon = 'circle';
       let title = `${event.op.charAt(0).toUpperCase()}${event.op.slice(1)}`;
       let detail = listed(keys);
@@ -168,10 +208,15 @@ const REVOKED_MASTER_WORDS = {
 } as const;
 
 /** What the private record calls `keyId`, or how the log alone would name it. */
-export function deviceName(keyId: string, names: DeviceNameView[], thisKeyId: string | null = null): string {
+export function deviceName(
+  keyId: string,
+  names: DeviceNameView[],
+  thisKeyId: string | null = null,
+  thisLabel: string = THIS_COMPUTER,
+): string {
   const named = names.find((n) => n.keyId === keyId)?.name;
   if (named) return named;
-  return keyId === thisKeyId ? THIS_COMPUTER : keyId;
+  return keyId === thisKeyId ? thisLabel : keyId;
 }
 
 /**
@@ -186,10 +231,18 @@ export function deviceRows(
   /** The seq of the key log's last rotation, or `null` when the master key was never replaced. */
   masterReplacedSeq: number | null = null,
   now: number = Math.floor(Date.now() / 1000),
+  /**
+   * The device the custody service answers for ({@link custodyDevice}): its key, not the one the
+   * backend marks, is this device. `null` leaves the backend's mark.
+   */
+  here: CustodyDevice | null = null,
 ): DeviceRow[] {
   const ended = (device: DeviceKeyView) => device.expires != null && device.expires <= now;
+  const thisLabel = here?.label ?? THIS_COMPUTER;
+  const thisIcon = here?.icon ?? 'laptop';
   return devices
     .filter((device) => !device.bot)
+    .map((device) => (here ? { ...device, thisDevice: here.keyId !== null && device.keyId === here.keyId } : device))
     .sort(
       (a, b) =>
         Number(a.revokedSeq !== null || ended(a)) - Number(b.revokedSeq !== null || ended(b)) ||
@@ -214,18 +267,18 @@ export function deviceRows(
             : revokedHolders.includes(device.keyId)
               ? REVOKED_MASTER_WORDS.may
               : '';
-      const fallback = device.thisDevice ? THIS_COMPUTER : `Device ${device.keyId}`;
+      const fallback = device.thisDevice ? thisLabel : `Device ${device.keyId}`;
       return {
         keyId: device.keyId,
         addedSeq: device.addedSeq,
         revokedSeq: device.revokedSeq,
         label: name || fallback,
         subtitle: [
-          ...(name && device.thisDevice ? [THIS_COMPUTER] : []),
+          ...(name && device.thisDevice ? [thisLabel] : []),
           device.keyId,
           `added at #${device.addedSeq}`,
         ].join(' · '),
-        icon: (record && DEVICE_ICONS[record.kind]) || (device.thisDevice ? 'laptop' : 'key'),
+        icon: (record && DEVICE_ICONS[record.kind]) || (device.thisDevice ? thisIcon : 'key'),
         thisDevice: device.thisDevice,
         revoked,
         valid: !revoked && !expired,
@@ -262,9 +315,10 @@ export function requestRows(
   requests: DeviceRequestView[],
   names: DeviceNameView[],
   thisKeyId: string | null = null,
+  thisLabel: string = THIS_COMPUTER,
 ): RequestRow[] {
   return requests.map((request) => {
-    const device = deviceName(request.by, names, thisKeyId);
+    const device = deviceName(request.by, names, thisKeyId, thisLabel);
     if (request.kind === 'send-master') {
       return {
         id: request.id,
@@ -273,7 +327,7 @@ export function requestRows(
         detail: 'With it, that device can add and remove your devices too.',
       };
     }
-    const keys = request.keyIds.map((k) => deviceName(k, names, thisKeyId)).join(', ');
+    const keys = request.keyIds.map((k) => deviceName(k, names, thisKeyId, thisLabel)).join(', ');
     return {
       id: request.id,
       kind: request.kind,

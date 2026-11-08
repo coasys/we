@@ -84,6 +84,11 @@ export interface Ad4mCustodyState {
   /** The revoked keys the key log says may still hold a valid master key. */
   revokedHolders?: string[];
   masterWaiting?: boolean;
+  /**
+   * The device this custody service answers for, where it is not the executor's: a phone's own key
+   * and kind. Absent on the desktop, where the custody service and the executor share a computer.
+   */
+  thisDevice?: { keyId: string | null; kind: string } | null;
 }
 
 type Raw = Record<string, unknown>;
@@ -169,7 +174,14 @@ export function readCustody(value: Ad4mCustodyState): IdentityCustodyView {
     revokedHolders: Array.isArray(value.revokedHolders) ? value.revokedHolders.map(String) : [],
     requests,
     masterWaiting: value.masterWaiting === true,
+    thisDevice: readCustodyDevice(value.thisDevice),
   };
+}
+
+function readCustodyDevice(value: unknown): IdentityCustodyView['thisDevice'] {
+  if (!value || typeof value !== 'object') return null;
+  const device = record(value);
+  return { keyId: text(device.keyId), kind: text(device.kind) ?? '' };
 }
 
 export function readIdentityStatus(value: unknown): IdentityStatusView {

@@ -221,7 +221,23 @@ describe('the AD4M identity port with a custody service', () => {
       revokedHolders: [],
       requests: [],
       masterWaiting: false,
+      // The desktop's custody service runs beside the executor, so it names no device of its own.
+      thisDevice: null,
     });
+  });
+
+  it('reads the device a custody service answers for apart from the executor’s', async () => {
+    const port = createAd4mIdentityPort(
+      client({ status: {} }),
+      custody({ thisDevice: { keyId: 'd2', kind: 'phone-app' } }),
+    );
+    expect((await port.custody!()).thisDevice).toEqual({ keyId: 'd2', kind: 'phone-app' });
+    // Before the log lists the phone, it is still the device here, with no key id yet.
+    const unlisted = createAd4mIdentityPort(
+      client({ status: {} }),
+      custody({ thisDevice: { keyId: null, kind: 'phone-app' } }),
+    );
+    expect((await unlisted.custody!()).thisDevice).toEqual({ keyId: null, kind: 'phone-app' });
   });
 
   it('reads the private record’s names, the waiting requests and a master key waiting here', async () => {

@@ -51,6 +51,9 @@ function messageOf(error: unknown): string {
   return typeof error === 'string' ? error : 'the phone did not say why';
 }
 
+/** The kind the private record gives a phone (`crates/phone-custody`). */
+export const PHONE_KIND = 'phone-app';
+
 /** The custody service over the phone's plugin. */
 export function phoneCustodyHost(plugin: DeviceKeyPlugin, nav: PageNav = browserNav): Ad4mCustodyHost {
   return {
@@ -63,18 +66,22 @@ export function phoneCustodyHost(plugin: DeviceKeyPlugin, nav: PageNav = browser
     },
 
     async publicState(): Promise<Ad4mCustodyState> {
+      // This device is the phone, whatever the executor it reaches calls its own key: Settings
+      // marks the phone's key "This phone", and the executor's computer is one more device.
       let status;
       try {
         status = await plugin.identityStatus();
       } catch (error) {
+        const thisDevice = { keyId: null, kind: PHONE_KIND };
         if ((error as DeviceKeyError).code === 'NoIdentity' || (error as DeviceKeyError).code === 'NoKeys') {
-          return { did: null, holdsMaster: null, unlock: null };
+          return { did: null, holdsMaster: null, unlock: null, thisDevice };
         }
         return {
           did: null,
           holdsMaster: null,
           unlock: null,
           blocked: `This phone cannot reach your identity store: ${messageOf(error)}`,
+          thisDevice,
         };
       }
       const holds = status.masterIndex !== null;
@@ -82,6 +89,7 @@ export function phoneCustodyHost(plugin: DeviceKeyPlugin, nav: PageNav = browser
         did: status.did,
         holdsMaster: holds ? { index: status.masterIndex } : null,
         unlock: holds ? 'os' : null,
+        thisDevice: { keyId: status.keyId, kind: PHONE_KIND },
       };
       if (status.revoked !== null) {
         return { ...base, blocked: 'This phone was removed from your identity: it changes nothing any more.' };

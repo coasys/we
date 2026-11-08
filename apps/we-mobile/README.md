@@ -141,7 +141,10 @@ answers their requests.
   - Send the master key to a device that asked, and answer a revoke request.
   - Rename and revoke devices.
 
-  Devices in Settings shows which devices hold the master key.
+  Devices in Settings shows which devices hold the master key. The phone's own key is "This
+  phone": the custody host names it (`thisDevice` in its state), since the device list comes from
+  the executor the phone signs in to, which marks its own computer's key. That computer is listed by
+  its name and kind like any other device.
 
 - **What it cannot.** Anything that needs the 12 words: replacing the master key, restoring, and a
   revoke that rotates. The phone takes no words (`takesWords: false`), and those requests are left
@@ -272,6 +275,12 @@ The relative colours are WE's design tokens (`packages/design-system/1-tokens/sr
 113: `structuredClone` (98) is the newest unguarded API on the boot path; newer ones (`toSorted`,
 `Object.hasOwn`, `RegExp.escape`, `AbortSignal.any`) are guarded or off it.
 
+A step up the surface stack also bounds its chroma, so a near-white surface stays inside sRGB.
+WebView 124 paints an out-of-gamut colour on the page's root background without clipping it: a
+page of `oklch(1 0.0023 288)` (the light theme's, before the bound) came out pure yellow, its blue
+channel past 255 and wrapped. The same colour on any other element, and in desktop Chrome, is
+clipped to white. `stepUp` in `role.ts` is the bound.
+
 `pnpm check:floor` keeps the script half of this true: it asks esbuild to lower every script in
 `www/` to `chrome121` and fails if anything changes, and does the same for the error page at
 `chrome83`, the oldest WebView the app installs on (Android 11). The CSS half is not checked
@@ -284,9 +293,6 @@ WebView version, not an Android version. `minSdk` stays 30.
 
 - The 12-word changes on the phone: replacing the master key, restoring, a rotating revoke. They run
   on a computer.
-- On the phone, Settings' Devices page calls the executor's own device (the one the phone signs in
-  to) "This computer". The device list comes from that executor, and nothing marks the phone's own
-  key there yet.
 - Pause, and choosing the host from a list.
 
 ## Files

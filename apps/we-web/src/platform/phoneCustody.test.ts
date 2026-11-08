@@ -114,6 +114,8 @@ describe('the phone custody host', () => {
       ],
       revokedHolders: ['d4'],
       masterWaiting: false,
+      // The phone's own key is this device, not the key of the executor it reaches.
+      thisDevice: { keyId: 'd2', kind: 'phone-app' },
     });
   });
 
@@ -135,6 +137,8 @@ describe('the phone custody host', () => {
         did: null,
         holdsMaster: null,
         unlock: null,
+        // Still the phone: the executor's key is not this device even before the phone joins.
+        thisDevice: { keyId: null, kind: 'phone-app' },
       });
     }
   });
@@ -142,6 +146,7 @@ describe('the phone custody host', () => {
   it('blocks changes on a phone that cannot reach its store, or was removed', async () => {
     const offline = await phoneCustodyHost(plugin({ status: refusal('Rpc', 'store-unavailable') })).publicState();
     expect(offline.blocked).toMatch(/cannot reach your identity store: store-unavailable/);
+    expect(offline.thisDevice).toEqual({ keyId: null, kind: 'phone-app' });
 
     const removed = plugin({ status: status({ revoked: 7 }) });
     const state = await phoneCustodyHost(removed).publicState();
