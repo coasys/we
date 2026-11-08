@@ -380,7 +380,7 @@ export function heading(screen: Screen): { title: string; lead: string } {
     case 'bot-match':
       return {
         title: screen.name ? `Add ${screen.name}?` : 'Add this bot?',
-        lead: 'Check that the place where you made the bot shows the same code. The bot acts for you only in the spaces you give it, and never speaks for you.',
+        lead: 'Check that the place where you made the bot shows the same code. Your computer lets the bot act only in the spaces you give it, within what this key allows, and it never speaks for you.',
       };
     case 'bot-added':
       return {

@@ -104,7 +104,7 @@ function keyLine(key: BotKeyView | null): { line: string; tone: BotRow['keyTone'
 
 function grantLine(bot: BotView): string {
   const { grant } = bot;
-  if (grant.state === 'revoked') return 'Revoked for good: it can do nothing again';
+  if (grant.state === 'revoked') return 'Revoked for good: this computer refuses it';
   if (!grant.spaces.length || !grant.can.length) return 'May do nothing yet: give it spaces';
   const spaces = grant.spaces.length === 1 ? '1 space' : `${grant.spaces.length} spaces`;
   const until = grant.expires === null ? '' : ` · until ${dateOf(grant.expires)}`;

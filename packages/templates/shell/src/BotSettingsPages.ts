@@ -298,7 +298,7 @@ const listView: SchemaNode = {
     makeBotCard,
     footnote(
       'lock',
-      'A bot signs as itself, never as you. Each thing it does, and each thing it is refused, is logged.',
+      'A bot signs as itself, never as you. Each write and join it makes here, and each call refused, is logged; its reads are not.',
     ),
   ],
 };
@@ -467,7 +467,7 @@ const stateCard: SchemaNode = {
         props: { variant: 'footnote', color: 'text-muted' },
         children: [
           {
-            $: "botStore.selected.paused ? 'Paused: it can do nothing until you resume it. Its grant is kept.' : 'Pause stops it at once and keeps its grant. Revoke stops it for good.'",
+            $: "botStore.selected.paused ? 'Paused: this computer refuses its next call until you resume it. Its grant is kept. A stream it already opened runs on until it ends.' : 'Pause makes this computer refuse its next call and keeps its grant. Revoke ends its sessions here for good.'",
           },
         ],
       },
@@ -572,7 +572,7 @@ const activityLog: SchemaNode = {
         else: {
           type: 'we-text',
           props: { color: 'text-muted', loading: { $: '!botStore.activityLoaded' } },
-          children: ['It has done nothing yet.'],
+          children: ['No recorded activity yet.'],
         },
       },
     },
@@ -630,7 +630,7 @@ const detailView: SchemaNode = {
       open: { $: 'local.confirmRevokeBot' },
       close: { $setLocal: 'confirmRevokeBot', value: false },
       title: { $: '`Revoke ${botStore.selected.name}?`' },
-      body: 'It stops at once, in every space, and can do nothing again. This is final: a revoked bot cannot be resumed.',
+      body: 'This computer ends its sessions and refuses every call from it, for good. Its key stays in your key log until you remove it under Devices, and other computers trust that log, not this grant. This is final: a revoked bot cannot be resumed.',
       detail: 'To use a bot again, add a new one. Its activity log is kept.',
       confirmLabel: 'Revoke for good',
       confirm: { $invoke: 'botStore.revoke' },
