@@ -19,7 +19,7 @@ use ad4m_identity_client::{
     SoftEncKey, StoreEndpoint, SystemClock, Vault, ViaExecutor, ViaStore,
 };
 use ad4m_identity_core::link::OfferKind;
-use ad4m_identity_core::record::{DeviceEntry, DeviceKind, HoldsMaster};
+use ad4m_identity_core::record::{DeviceEntry, DeviceKind, HoldsMaster, Place};
 use ad4m_identity_core::words;
 use async_trait::async_trait;
 use axum::body::Body;
@@ -807,6 +807,64 @@ fn the_phone_adds_a_device_by_its_code() {
     assert_eq!(me.holds_master, "yes");
     assert_eq!(me.master_index, Some(0));
     assert!(me.may_keep_master);
+}
+
+// A computer that adds the phone through a node offer cannot tell it is a phone (a claim carries
+// no kind) and writes it as a server, as WE's desktop does. The phone's first read of its devices
+// writes its own entry as a phone app, keeping its name, and every device reads it so after.
+#[test]
+fn the_phone_writes_itself_as_a_phone_where_it_was_added_as_a_server() {
+    let world = world();
+    let laptop = computer(&world, 1);
+    let did = create(&world, &laptop, 54);
+    let phone = phone(&world, "strongbox");
+    let flow = world
+        .on(LinkFlow::open(
+            &laptop.exec,
+            &laptop.vault,
+            &did,
+            OfferKind::Node,
+            None,
+            STORE_URL,
+            &SystemClock,
+            &OsRandom,
+        ))
+        .unwrap();
+    let prepared = phone.claim(&flow.link());
+    let claimed = world.on(flow.wait_for_claim()).unwrap();
+    let as_server = DeviceEntry {
+        place: Some(Place::Server),
+        runs_executor: true,
+        ..entry("Pixel 8", DeviceKind::Server)
+    };
+    world.on(flow.confirm(&claimed, as_server, false)).unwrap();
+    phone.joined(&prepared);
+
+    let devices = phone.identity.devices().unwrap();
+    let me = devices.iter().find(|d| d.this_device).unwrap();
+    assert_eq!(me.kind.as_deref(), Some("phone-app"));
+    assert_eq!(me.name, "Pixel 8");
+    let laptop_row = devices.iter().find(|d| d.key_id == "d1").unwrap();
+    assert_eq!(laptop_row.kind.as_deref(), Some("desktop-app"));
+
+    let opened = world
+        .on(record::read(&laptop.exec, &laptop.vault, &did))
+        .unwrap()
+        .unwrap();
+    let written = &opened.record.devices["d2"];
+    assert_eq!(written.kind, DeviceKind::PhoneApp);
+    assert_eq!(written.place, None);
+    assert!(!written.runs_executor);
+    assert_eq!(written.name, "Pixel 8");
+
+    // Once it says so, a read writes nothing more.
+    let version = opened.version;
+    phone.identity.devices().unwrap();
+    let again = world
+        .on(record::read(&laptop.exec, &laptop.vault, &did))
+        .unwrap()
+        .unwrap();
+    assert_eq!(again.version, version);
 }
 
 // A link the person cancels while it waits for the claim stops at its next request.

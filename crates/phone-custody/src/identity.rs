@@ -309,6 +309,22 @@ fn kind_name(kind: DeviceKind) -> String {
         .unwrap_or_default()
 }
 
+/// This phone's entry as the record should give it, when `entry` gives it otherwise: a phone app,
+/// which runs no executor (it signs in to one elsewhere), so it has no place. The device that adds
+/// the phone cannot tell: a claim says only whether a device may keep the master key, so a phone
+/// added through a node offer is written as a server. Name, master key and the rest are kept.
+pub(crate) fn as_phone(entry: &DeviceEntry) -> Option<DeviceEntry> {
+    if entry.kind == DeviceKind::PhoneApp && entry.place.is_none() && !entry.runs_executor {
+        return None;
+    }
+    Some(DeviceEntry {
+        kind: DeviceKind::PhoneApp,
+        place: None,
+        runs_executor: false,
+        ..entry.clone()
+    })
+}
+
 /// The phone's identity: its device keys, the store, and its master-key vault.
 #[derive(uniffi::Object)]
 pub struct PhoneIdentity {
@@ -505,7 +521,12 @@ impl PhoneIdentity {
         let exec = self.parts.executor(None)?;
         let status = block_on(exec.status()).map_err(rpc)?;
         let (events, chain) = log_of(&exec, &did)?;
-        let devices = record_devices(&exec, self.vault.as_ref(), &did)?;
+        let mut devices = record_devices(&exec, self.vault.as_ref(), &did)?;
+        if let Some(own) = &status.key_id {
+            if let Some(fixed) = self.say_phone(&exec, &did, own, devices.get(own)) {
+                devices.insert(own.clone(), fixed);
+            }
+        }
         Ok(chain
             .state()
             .keys
@@ -580,5 +601,46 @@ impl PhoneIdentity {
         let device = ad4m_identity_core::link::DeviceString::parse(code.trim())
             .map_err(|e| crate::invalid(format!("that is not a device code: {e}")))?;
         HolderLink::start(self.parts.clone(), self.vault.clone(), did, device)
+    }
+}
+
+impl PhoneIdentity {
+    /// Writes this phone's own entry as a phone app ([`as_phone`]) when the record says otherwise,
+    /// and answers the entry written. Only over the version `listed` was read from: a version
+    /// where another device changed the entry since (marked the master key offered, renamed it)
+    /// is left alone, and the next read tries again. Best effort: a write that fails changes
+    /// nothing the phone shows of its own row, which the app names "This phone" either way.
+    fn say_phone(
+        &self,
+        exec: &Executor,
+        did: &str,
+        key_id: &str,
+        listed: Option<&DeviceEntry>,
+    ) -> Option<DeviceEntry> {
+        let listed = listed?;
+        let fixed = as_phone(listed)?;
+        let unchanged = |record: Option<&ad4m_identity_core::record::PrivateRecord>,
+                         _: &KelChain| {
+            if record.and_then(|r| r.devices.get(key_id)) == Some(listed) {
+                Ok(())
+            } else {
+                Err(ClientError::Step(
+                    "this phone's entry changed since it was read",
+                ))
+            }
+        };
+        block_on(record::write_if(
+            exec,
+            self.vault.as_ref(),
+            did,
+            &[Change::Device {
+                key_id: key_id.to_string(),
+                entry: fixed.clone(),
+            }],
+            &unchanged,
+            &OsRandom,
+        ))
+        .ok()
+        .map(|_| fixed)
     }
 }

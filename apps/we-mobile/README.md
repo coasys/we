@@ -152,6 +152,13 @@ answers their requests.
   the executor the phone signs in to, which marks its own computer's key. That computer is listed by
   its name and kind like any other device.
 
+  The record says what each device is, but the device that adds the phone cannot know: ad4m's claim
+  carries a name hint and whether the device may keep the master key, not its kind, so a computer
+  that adds the phone through a link writes it as a server. The phone writes its own entry as a
+  `phone-app` (no place, no executor) the first time it reads its devices
+  (`PhoneIdentity::devices`), only over the version it read, so a change another device made since
+  is never overwritten.
+
 - **What it cannot.** Anything that needs the 12 words: replacing the master key, restoring, and a
   revoke that rotates. The phone takes no words (`takesWords: false`), and those requests are left
   for a computer.
