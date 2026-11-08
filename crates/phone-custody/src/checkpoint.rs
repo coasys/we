@@ -14,7 +14,9 @@
 //! through. And a file that was written and is *gone* is the same: the folder notes in
 //! `log-checkpoints.meta.json` that checkpoints were initialized and which identities they were
 //! kept for, so a missing file after initialization — or a noted identity's missing entry — is
-//! a loss, not a first run. Only a genuine first use, or an explicit reset
+//! a loss, not a first run. A checkpoint written whose note never landed (the process ended
+//! between the entry and its note) is noted under the lock by the next read or write that
+//! relies on it. Only a genuine first use, or an explicit reset
 //! (`identity.resetLog`, [`FileCheckpoints::drop_scid`]), starts a new baseline.
 //!
 //! And one admission at a time per identity, process-wide: `ViaStore::admitted` is get the
@@ -189,11 +191,15 @@ impl FileCheckpoints {
         }
     }
 
-    /// The file and the folder's note. A file that was never written is an empty one — or, the
-    /// note says it was initialized and it is gone, a loss: an error, never an empty start,
-    /// unless `recovering` (an explicit reset) reads it fresh. One that does not parse is
-    /// damaged: every write is whole, so it is not one this app left.
-    fn read(&self, recovering: bool) -> Result<(CheckpointFile, Marker), CheckpointFileError> {
+    /// The file, the folder's note, and whether the file is there. A file that was never
+    /// written is an empty one — or, the note says it was initialized and it is gone, a loss:
+    /// an error, never an empty start, unless `recovering` (an explicit reset) reads it
+    /// fresh. One that does not parse is damaged: every write is whole, so it is not one this
+    /// app left.
+    fn read(
+        &self,
+        recovering: bool,
+    ) -> Result<(CheckpointFile, Marker, bool), CheckpointFileError> {
         let marker = self.marker()?;
         let bytes = match std::fs::read(&self.path) {
             Ok(bytes) => bytes,
@@ -207,6 +213,7 @@ impl FileCheckpoints {
                         logs: BTreeMap::new(),
                     },
                     marker,
+                    false,
                 ));
             }
             Err(e) => return Err(CheckpointFileError::Read(e.to_string())),
@@ -216,7 +223,7 @@ impl FileCheckpoints {
         if file.v != 1 {
             return Err(CheckpointFileError::Damaged(format!("version {}", file.v)));
         }
-        Ok((file, marker))
+        Ok((file, marker, true))
     }
 
     fn write(&self, file: &CheckpointFile) -> Result<(), CheckpointFileError> {
@@ -260,7 +267,13 @@ impl FileCheckpoints {
     /// back through.
     pub(crate) fn load(&self, scid: &str) -> Result<Option<Checkpoint>, CheckpointFileError> {
         let _held = LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let (file, marker) = self.read(false)?;
+        let (file, mut marker, present) = self.read(false)?;
+        if present {
+            // An entry written whose note never landed (the process ended between the two)
+            // is noted before this read relies on it: a loss after the success must read as
+            // a loss, never a first use. Only ever adds — a noted-but-missing entry stays.
+            self.note(false, &mut marker, &file)?;
+        }
         match file.logs.get(scid) {
             Some(kept) => Ok(Some(kept.clone())),
             None if marker.logs.iter().any(|s| s == scid) => {
@@ -280,7 +293,12 @@ impl FileCheckpoints {
         checkpoint: Checkpoint,
     ) -> Result<(), CheckpointFileError> {
         let _held = LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let (mut file, mut marker) = self.read(false)?;
+        let (mut file, mut marker, present) = self.read(false)?;
+        // As in `load`: every entry the file already has is noted before an equal retry (or
+        // a fork refused against it) relies on it.
+        if present {
+            self.note(false, &mut marker, &file)?;
+        }
         match file.logs.get(scid) {
             Some(kept) if *kept == checkpoint || kept.seq > checkpoint.seq => return Ok(()),
             Some(kept) if kept.seq == checkpoint.seq => {
@@ -303,8 +321,8 @@ impl FileCheckpoints {
     /// too.
     pub(crate) fn drop_scid(&self, scid: &str) -> Result<(), CheckpointFileError> {
         let _held = LOCK.lock().unwrap_or_else(|p| p.into_inner());
-        let missing = !self.path.exists();
-        let (mut file, mut marker) = self.read(true)?;
+        let (mut file, mut marker, present) = self.read(true)?;
+        let missing = !present;
         let removed = file.logs.remove(scid).is_some();
         if removed || missing {
             self.write(&file)?;
@@ -530,6 +548,32 @@ mod tests {
         assert_eq!(port.load("b").unwrap(), None);
         port.set("b", at(2, "h2")).unwrap();
         assert_eq!(port.load("b").unwrap(), Some(at(2, "h2")));
+    }
+
+    // A checkpoint written whose note never landed — the process ended between the entry and
+    // its note — is reconciled under the lock before the next read or equal retry relies on
+    // it: noted durably first, so its loss after that success is an error, never a first use.
+    // Without the reconcile, the equal retry returns `Ok` leaving the note unwritten, and a
+    // later loss reads as `None` — a fresh baseline a store could roll the phone back through.
+    #[test]
+    fn an_interrupted_write_is_noted_by_the_retry_or_read_that_relies_on_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let port = FileCheckpoints::new(dir.path());
+        port.set("crash", at(3, "h3")).unwrap();
+        // The interruption: the checkpoint stands, its note is gone.
+        std::fs::remove_file(dir.path().join(MARKER_FILE_NAME)).unwrap();
+        // The equal retry succeeds — and completes the note it relied on.
+        port.store("crash", at(3, "h3")).unwrap();
+        std::fs::remove_file(dir.path().join(FILE_NAME)).unwrap();
+        assert!(matches!(port.load("crash"), Err(CheckpointFileError::Lost)));
+
+        // The same on a read: `load` notes the present-but-unnoted entry before answering.
+        port.drop_scid("crash").unwrap();
+        port.set("read", at(2, "h2")).unwrap();
+        std::fs::remove_file(dir.path().join(MARKER_FILE_NAME)).unwrap();
+        assert_eq!(port.load("read").unwrap(), Some(at(2, "h2")));
+        std::fs::remove_file(dir.path().join(FILE_NAME)).unwrap();
+        assert!(matches!(port.load("read"), Err(CheckpointFileError::Lost)));
     }
 
     #[test]
