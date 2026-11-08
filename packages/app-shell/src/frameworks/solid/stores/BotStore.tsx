@@ -324,18 +324,27 @@ export function BotStoreProvider(props: ParentProps) {
     const did = selectedDid();
     const p = port();
     if (!did || !p) return false;
+    let fresh: BotView;
     try {
       // Read first: a pause must not undo a grant change made elsewhere since this page read it.
-      take(await p.grant(did), false);
+      fresh = await p.grant(did);
+      take(fresh, false);
     } catch (e) {
       setError(message(e));
       return false;
     }
     const kept = draft();
+    // The edit in progress started from the grant at `kept.version`. The same version now means
+    // nothing changed elsewhere, so the edit may go on over the pause; a newer one means it did,
+    // and giving the old draft the new version would let a Save restore what was removed, with
+    // no conflict to show it. Then the page shows the grant as it is now and says so.
+    const unchanged = !!kept && fresh.grant.version === kept.version;
     const ok = await send(did, (bot) => ({ ...draftOf(bot), state }));
     // A pause keeps an edit in progress; a revoke ends every edit.
-    if (ok && kept && state !== 'revoked')
-      setDraft({ ...kept, state, version: selectedBot()?.grant.version ?? kept.version });
+    if (ok && kept && state !== 'revoked') {
+      if (unchanged) setDraft({ ...kept, state, version: selectedBot()?.grant.version ?? kept.version });
+      else setConflict('The grant changed while you edited it. It is shown again as it is now.');
+    }
     return ok;
   }
 

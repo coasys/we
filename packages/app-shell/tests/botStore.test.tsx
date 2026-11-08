@@ -278,6 +278,39 @@ describe('botStore', () => {
     expect(store.selected()?.status).toBe('Active');
   });
 
+  it('does not carry an edit over a pause when the grant changed elsewhere meanwhile', async () => {
+    /*
+      Window A edits a broad grant; window B removes `write` and a space. A pauses: the pause
+      carries B's grant (right), but A's old draft must not come back with the new version, or
+      a later Save restores what B removed without any conflict.
+    */
+    const fake = fakePort();
+    fake.elsewhere({ spaces: [SHARED, SWAP], can: ['read', 'write'] });
+    setPorts({ identity: { bots: fake.port } });
+    const store = mount();
+    await settle();
+    await store.select(BOT);
+    store.setDays('30');
+    // B narrows the grant behind A's back.
+    fake.elsewhere({ spaces: [SHARED], can: ['read'] });
+    expect(await store.pause()).toBe(true);
+    expect(fake.sent[0]).toMatchObject({ spaces: [SHARED], can: ['read'], state: 'paused' });
+    // A is told, and sees the grant as it is now, not the draft it started from.
+    expect(store.conflict()).toContain('changed while you edited it');
+    expect(
+      store
+        .editor()
+        ?.spaces.filter((s) => s.checked)
+        .map((s) => s.id),
+    ).toEqual([SHARED]);
+    expect(await store.resume()).toBe(true);
+    expect(await store.saveGrant()).toBe(true);
+    // Nothing B removed comes back.
+    const saved = fake.sent[fake.sent.length - 1];
+    expect(saved.spaces).toEqual([SHARED]);
+    expect(saved.can).toEqual(['read']);
+  });
+
   it('revokes for good: a later change is refused and the grant is shown as revoked', async () => {
     const fake = fakePort();
     setPorts({ identity: { bots: fake.port } });
