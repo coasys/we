@@ -1,7 +1,8 @@
 /**
  * The page Capacitor opens instead of WE: below the WebView floor, or when WE's page fails to load.
- * It cannot reach Capacitor's plugins (Capacitor does not inject them into the error page), and it
- * must run on WebViews WE's bundle does not, so it is plain DOM. An https link out of the app opens
+ * It does not use Capacitor's plugins, but it is not isolated from them: it shares the app's origin
+ * and native bridge, so it must never render anything a third party supplies. It must run on
+ * WebViews WE's bundle does not, so it is plain DOM. An https link out of the app opens
  * in the Play Store: Capacitor hands navigation to other hosts to the system.
  */
 import { errorReason } from '../webViewFloor';

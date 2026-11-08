@@ -19,7 +19,10 @@ register with email and password on that executor (a multi-user executor: a host
 The executor must be reachable over `https`/`wss` with a certificate the phone trusts. The release
 build allows no cleartext (`android/app/src/main/res/xml/network_security_config.xml`).
 
-The session is kept: a closed and reopened app is still signed in.
+The session is kept: a closed and reopened app is still signed in. The executor token lives in the
+WebView's storage, like the web app's: Android's app sandbox protects it, nothing seals it further,
+and the app opts out of backup and device transfer so it does not leave the phone. Device keys and
+the master key, when the phone gets them, live in the custody plugin, not here.
 
 ## Build
 

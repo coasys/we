@@ -33,13 +33,22 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+
 jobs:
   android:
     name: Android debug APK
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: ./.github/actions/setup
+
+      # The checked-in Gradle wrapper runs below: check it is Gradle's own (the distribution it
+      # fetches is pinned by distributionSha256Sum in gradle-wrapper.properties).
+      - uses: gradle/actions/wrapper-validation@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
 
       # The Ubuntu runner image ships the Android SDK at $ANDROID_HOME; Gradle wants JDK 21.
       - uses: actions/setup-java@v5
