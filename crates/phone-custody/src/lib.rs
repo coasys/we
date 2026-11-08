@@ -4,8 +4,13 @@
 //! identity's key log lists and which signs the phone's logins, and an X25519 **enc key**, which a
 //! holder seals the master key (and inbox messages) to. Both are made here from the OS's random
 //! source and are kept only as seeds sealed by a [`Sealer`] the app hands in: on Android a
-//! non-exportable Keystore AES-GCM key (StrongBox when the phone has one, else the TEE). A seed is
-//! opened for the one signature that needs it and zeroed when the signature is made.
+//! non-exportable Keystore AES-GCM key, in StrongBox when the phone has one and otherwise at
+//! whatever level the Keystore gives (TEE, or software on an emulator), which the app reports. The
+//! seeds themselves are software keys: only the sealing key can be in secure hardware. A seed is
+//! opened for the one signature that needs it, and this crate's copies are zeroed when the
+//! signature is made. UniFFI's own copies are not: a seed crossing the FFI (`seal`'s argument,
+//! `open`'s result) passes through serialisation buffers that nothing zeroes (the phone app's
+//! README, "Known limits").
 //!
 //! What leaves this crate is public: multikeys, the `did:key`, a signed key statement, a claim
 //! (which carries the offer's secret `s` back to the store that issued it, and the device's public
@@ -43,7 +48,9 @@ pub const ENC_LABEL: &str = "coasys:phone-seed:enc:1";
 ///
 /// `open` returns the seed; [`Sealer::wipe`] is called as soon as the seed is copied out, so the
 /// implementation can zero the copy it handed back, which the language it is written in may
-/// otherwise keep until a garbage collector frees it.
+/// otherwise keep until a garbage collector frees it. That covers the implementation's copy and
+/// this crate's, not the buffers UniFFI serialises the bytes through on the way, which stay as
+/// they were left.
 #[uniffi::export(with_foreign)]
 pub trait Sealer: Send + Sync {
     /// The sealed form of `plaintext`, bound to `label`.

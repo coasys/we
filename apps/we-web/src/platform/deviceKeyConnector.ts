@@ -150,7 +150,17 @@ export async function keyLoginTarget(
   if (!plugin || !url) return null;
   try {
     const status = await plugin.status();
-    return status.identity ? { plugin, url } : null;
+    if (!status.identity) return null;
+    // What the Keystore actually gives the key that seals the device key: StrongBox is asked for,
+    // and anything is accepted. Said here so a reviewer reading the log sees it.
+    if (status.protection === 'strongbox' || status.protection === 'tee') {
+      console.info(`[WE] Logging in with the device key; its seeds are sealed at ${status.protection} protection.`);
+    } else {
+      console.warn(
+        `[WE] Logging in with the device key; its seeds are sealed at ${status.protection} protection, which is neither StrongBox nor the TEE.`,
+      );
+    }
+    return { plugin, url };
   } catch (error) {
     console.error('[WE] The DeviceKey plugin did not answer:', error);
     return null;

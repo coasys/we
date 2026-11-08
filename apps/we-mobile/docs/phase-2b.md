@@ -80,7 +80,9 @@ sealed messages. For each message, Rust in `phone-custody` does the following:
 
 1. The key's public half must be `state.masters[index].sign`, and that master must be current.
 2. The 32-byte master seed is sealed under a **second** Keystore key,
-   `org.coasys.app.master-seeds.v1`. That key is AES-256-GCM, in StrongBox or the TEE, with
+   `org.coasys.app.master-seeds.v1`. That key is AES-256-GCM, in StrongBox where the phone has
+   one and otherwise at the level the Keystore gives (reported, as 2a's is; see "Open questions"
+   for `software`), with
    `setUserAuthenticationRequired(true)`, an auth-per-use timeout of 0 and
    `setInvalidatedByBiometricEnrollment(true)`. It is only usable through `BiometricPrompt` with a
    `CryptoObject`. The device-key sealer stays as 2a left it, with no user auth, so key login never

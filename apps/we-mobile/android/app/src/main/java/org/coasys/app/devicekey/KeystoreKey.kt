@@ -12,7 +12,10 @@ import javax.crypto.SecretKeyFactory
 
 /**
  * The Keystore key that seals the device key's and the enc key's seeds: AES-256-GCM, never
- * exportable, made in StrongBox when the phone has one and in the TEE otherwise. It needs no user
+ * exportable. StrongBox is preferred; without it the key is at whatever level AndroidKeyStore
+ * gives (the TEE on a phone with a hardware Keystore, software on an emulator), every level is
+ * accepted, and [protectionOf] reports the one it has. The seeds it seals are software keys made
+ * in Rust; only this key can be in secure hardware. It needs no user
  * authentication (`setUserAuthenticationRequired(false)`): the phone signs its logins without
  * asking, as a computer's executor does with its own key. The master key, when phase 2b lets a
  * phone keep one, is sealed by a different, biometric-gated key; this one never opens it.
@@ -34,7 +37,10 @@ object KeystoreKey {
   /** The key, when it has been made. */
   fun existing(): SecretKey? = store().getKey(ALIAS, null) as SecretKey?
 
-  /** The key, made now when there is none: in StrongBox when the phone has one, else the TEE. */
+  /**
+   * The key, made now when there is none: in StrongBox when the phone has one, else at the
+   * Keystore's default level, which may be software. See [protectionOf].
+   */
   fun getOrCreate(): SecretKey = existing() ?: create()
 
   private fun create(): SecretKey {

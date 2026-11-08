@@ -301,6 +301,28 @@ describe('keyLoginTarget', () => {
     }).plugin;
     expect(await keyLoginTarget({ plugin: () => broken, keyHost: () => URL_ })).toBeNull();
   });
+
+  it('says what protection the sealing key has, and warns when it is not secure hardware', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {});
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    try {
+      const joined = fakePlugin().plugin;
+      const software = {
+        ...joined,
+        status: async () => ({ ...(await joined.status()), protection: 'software' as const }),
+      };
+      // Accepted at every level: software still logs in.
+      expect(await keyLoginTarget({ plugin: () => software, keyHost: () => URL_ })).not.toBeNull();
+      expect(warn).toHaveBeenCalledWith(expect.stringContaining('software protection'));
+
+      expect(await keyLoginTarget({ plugin: () => joined, keyHost: () => URL_ })).not.toBeNull();
+      expect(info).toHaveBeenCalledWith(expect.stringContaining('tee protection'));
+      expect(warn).toHaveBeenCalledTimes(1);
+    } finally {
+      info.mockRestore();
+      warn.mockRestore();
+    }
+  });
 });
 
 describe('the key host', () => {

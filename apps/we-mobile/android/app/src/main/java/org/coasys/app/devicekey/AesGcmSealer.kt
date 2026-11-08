@@ -10,15 +10,17 @@ import uniffi.we_phone_custody.Sealer
 /**
  * Seals the phone's seeds with AES-256-GCM under [key], the label as associated data, so a seed
  * sealed for one slot does not open in the other. On the phone the key is the Keystore's
- * ([KeystoreKey]), which never leaves the secure hardware; the cipher runs there and only the
- * plaintext comes back.
+ * ([KeystoreKey]), which never leaves the Keystore; the cipher runs there and only the plaintext
+ * comes back. Whether that is secure hardware is the key's protection level, which
+ * [KeystoreKey.protectionOf] reports (software on an emulator).
  *
  * The sealed form is `0x01 ‖ iv (12 bytes) ‖ ciphertext ‖ tag (16 bytes)`. The IV is the
  * cipher's own (the Keystore refuses a caller's IV for encryption, which is what rules out reuse).
  *
  * Every plaintext [open] returns is kept until [wipe], which zeroes it: the Rust side calls
  * `wipe` as soon as it has copied the seed out, so the JVM's copy does not wait for a collector.
- * The plaintext [seal] receives is zeroed once it is encrypted.
+ * The plaintext [seal] receives is zeroed once it is encrypted. These are the JVM arrays this
+ * class holds; the buffers UniFFI copies the bytes through between here and Rust are not zeroed.
  */
 class AesGcmSealer(private val key: () -> SecretKey) : Sealer {
   private val handedOut = mutableListOf<ByteArray>()

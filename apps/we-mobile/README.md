@@ -30,11 +30,16 @@ The phone has a key of its own, held by the `DeviceKey` plugin
 built for Android with uniffi bindings:
 
 - **The keys.** An Ed25519 device key (signing) and an X25519 key (for what is sent to the phone
-  sealed), each a 32-byte seed. Each seed is sealed by an AES-256-GCM key in the Android Keystore,
-  in StrongBox where the phone has one and the TEE otherwise, which never leaves it
-  (`KeystoreKey.kt`; no user authentication, so a login asks nothing). The sealed seeds are in
-  `no_backup/device-keys/device-keys.json`, which no backup or transfer includes. Only public keys
-  and signatures cross into JS. The bridge is `status`, `create`, `join`, `waitJoined` and
+  sealed), each a 32-byte seed. The seeds are made in software, in Rust, from the OS's random
+  source, and are never kept in secure hardware: what the Keystore holds is the key that seals
+  them, a non-exportable AES-256-GCM key (`KeystoreKey.kt`; no user authentication, so a login asks
+  nothing). StrongBox is preferred: the app asks for the key there first. Where the phone has no
+  StrongBox it takes whatever level `AndroidKeyStore` gives instead: the TEE on a phone with a
+  hardware Keystore, software on an emulator or a phone without one. Every level is accepted, and
+  the one the key actually has is reported: `protection` in `status()` and `create()` (`strongbox`,
+  `tee`, `software` or `unknown`), and WE logs it at each key login, as a warning when it is not
+  `strongbox` or `tee`. The sealed seeds are in `no_backup/device-keys/device-keys.json`, which no
+  backup or transfer includes. Only public keys and signatures cross into JS. The bridge is `status`, `create`, `join`, `waitJoined` and
   `signSession`, and `signSession` signs a login or renewal statement for whatever executor and
   URL the page names, with no prompt: the statement's shape and domain separation are the native
   side's, but which executor to log in to is the page's choice. So every script that runs in the
@@ -48,8 +53,30 @@ built for Android with uniffi bindings:
   the connect screen, and renews the session five minutes before each expiry
   (`apps/we-web/src/platform/deviceKeyConnector.ts`, `keySession.ts`). The token is never stored:
   every boot logs in afresh, and a key login removes the password session the connect screen may
-  have stored before it, so a later fall-back never sends one host's token to another. Anywhere
-  else, and on a phone that has not joined, WE connects as in phase 1.
+  have stored before it, so a later fall-back never sends one host's token to another. A session
+  that ends by itself (no renewal succeeded before it expired, or the executor refused the token)
+  starts WE again: the boot logs in afresh, or shows the connect screen when it cannot; a session
+  that ended within a minute of opening skips the key login on the next boot, so it cannot loop.
+  Anywhere else, and on a phone that has not joined, WE connects as in phase 1.
+
+### Known limits of phase 2a
+
+- **Protection is reported, not required.** A sealing key at `software` protection is used like any
+  other; the only sign is the `protection` field and the warning WE logs. Phase 2b's master key
+  should not be kept at that level without the person agreeing ([`docs/phase-2b.md`](docs/phase-2b.md),
+  "Open questions").
+- **What is wiped, and what is not.** Rust holds every seed it opens or makes in `Zeroizing`
+  buffers, zeroed when the signature is made; the Kotlin sealer zeroes the plaintext `seal` was
+  given once it is encrypted, and every plaintext `open` returned when Rust calls `wipe`. Not
+  wiped: the copies UniFFI (0.32) makes on the way across the FFI. `seal` takes and `open` returns
+  a plain `Vec<u8>`, serialised through a `RustBuffer` and the JVM's own buffers on each side with
+  no zeroing, so a seed's plaintext can stay in freed native and JVM memory until it is reused.
+  Follow-up: a zeroizing transfer path for secret bytes across the FFI.
+- **A renewed token does not reach the open client.** Renewal updates the token ad4m-connect and
+  an embedded app read, but the `Ad4mClient` WE's ports hold keeps the one it was built with, so a
+  socket that reconnects after the first token expired is refused (and WE starts again, above).
+  The pinned ad4m has no way to hand a client a new token; `Ad4mClient.setToken` is the fix, and
+  `handRenewedToken` in `deviceKeyConnector.ts` calls it once WE pins an ad4m that has it.
 
 Phase 2a has no screens for any of this. The executor to log in to is the localStorage key
 `we-phone/key-host` (an http(s) URL), set by hand; joining is driven from DevTools:
