@@ -12,6 +12,7 @@ import weSeed from '@we/seed-file';
 import { render } from 'solid-js/web';
 
 import { ad4mConnector } from './platform/ad4mConnector';
+import { createDeviceKeyConnector } from './platform/deviceKeyConnector';
 import { createGuestConnector, hasStoredSession, parseGuestParams } from './platform/guestConnector';
 import { webPlatform } from './platform/webPlatform';
 
@@ -29,7 +30,10 @@ const guestTarget = parseGuestParams();
   does, taking them to the space's join gate to decide for themselves.
 */
 const storedSession = hasStoredSession();
-const connector = guestTarget && !storedSession ? createGuestConnector(guestTarget.hostUrl) : ad4mConnector;
+// Inside the phone app, a phone that has joined an identity logs in with its device key; anywhere
+// else this is `ad4mConnector` itself. See `deviceKeyConnector`.
+const connector =
+  guestTarget && !storedSession ? createGuestConnector(guestTarget.hostUrl) : createDeviceKeyConnector(ad4mConnector);
 
 // The boot controller reads this to reach the target space once auth completes. Stored on the
 // global rather than in a store because it must survive the entire provider tree mounting.
