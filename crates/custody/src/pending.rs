@@ -346,7 +346,8 @@ fn write<T: Serialize>(dir: &std::path::Path, file: &str, events: &[T]) -> Resul
     if events.is_empty() {
         return match std::fs::remove_file(&path) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(unavailable(e)),
-            _ => Ok(()),
+            Err(_) => Ok(()),
+            Ok(()) => crate::store::sync_dir(dir).map_err(unavailable),
         };
     }
     std::fs::create_dir_all(dir).map_err(unavailable)?;
@@ -356,7 +357,10 @@ fn write<T: Serialize>(dir: &std::path::Path, file: &str, events: &[T]) -> Resul
     let mut file = std::fs::File::create(&tmp).map_err(unavailable)?;
     file.write_all(&bytes).map_err(unavailable)?;
     file.sync_all().map_err(unavailable)?;
-    std::fs::rename(&tmp, &path).map_err(unavailable)
+    std::fs::rename(&tmp, &path).map_err(unavailable)?;
+    // The rename too, not only the bytes: a custody epoch bumped and answered must not come
+    // back lower after a power loss, or a later bump would repeat a value a flow already read.
+    crate::store::sync_dir(dir).map_err(unavailable)
 }
 
 #[cfg(test)]

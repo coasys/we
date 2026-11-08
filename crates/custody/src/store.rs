@@ -199,6 +199,19 @@ fn io(e: std::io::Error) -> VaultError {
     VaultError::Unavailable(format!("custody file: {e}"))
 }
 
+/// Makes the entries of `dir` durable: a file renamed into it or removed from it is renamed or
+/// removed after a crash too. Syncing the file before its rename makes its bytes durable, not the
+/// directory entry that names it; until the directory is synced, a power loss can leave the old
+/// name (POSIX `fsync(2)` of the directory; ext4 commits it with the journal, seconds later). A
+/// no-op where a directory cannot be opened to sync (Windows, whose `MoveFileEx` the rename is).
+pub(crate) fn sync_dir(dir: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    std::fs::File::open(dir)?.sync_all()?;
+    #[cfg(not(unix))]
+    let _ = dir;
+    Ok(())
+}
+
 impl SecretStore for FileStore {
     fn kind(&self) -> StoreKind {
         StoreKind::File
@@ -223,7 +236,9 @@ impl SecretStore for FileStore {
         let mut file = options.open(&tmp).map_err(io)?;
         file.write_all(bytes).map_err(io)?;
         file.sync_all().map_err(io)?;
-        std::fs::rename(&tmp, &path).map_err(io)
+        std::fs::rename(&tmp, &path).map_err(io)?;
+        // `Ok` means durable: the name too, not only the bytes.
+        sync_dir(&self.dir).map_err(io)
     }
 
     fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
@@ -245,15 +260,20 @@ impl SecretStore for FileStore {
     fn delete(&self, name: &str) -> Result<(), VaultError> {
         match std::fs::remove_file(self.path(name)) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(io(e)),
-            _ => Ok(()),
+            Err(_) => Ok(()),
+            Ok(()) => sync_dir(&self.dir).map_err(io),
         }
     }
 
-    /// One `rename(2)`: the file under `to` is the old one or the new one, never neither.
+    /// One `rename(2)`: the file under `to` is the old one or the new one, never neither. The
+    /// folder is synced after it, so a promote answered `Ok` is still a promote after a crash.
     fn rename(&self, from: &str, to: &str) -> Result<(), VaultError> {
         match std::fs::rename(self.path(from), self.path(to)) {
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(VaultError::NotFound),
-            other => other.map_err(io),
+            other => {
+                other.map_err(io)?;
+                sync_dir(&self.dir).map_err(io)
+            }
         }
     }
 }
