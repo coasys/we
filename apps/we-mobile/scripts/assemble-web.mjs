@@ -1,16 +1,15 @@
 #!/usr/bin/env node
 /**
- * Builds `www/`, the directory Capacitor serves: WE's real web build, unchanged, plus the phone's
- * own pages beside it.
+ * Builds `www/`, the directory Capacitor serves: WE's web build, unchanged, plus the one page of the
+ * app's own beside it.
  *
- * 1. Copies `apps/we-web/dist` (build it first: `pnpm build:web` at the repo root).
- * 2. Builds `www/phone/diag.html` (pairing and diagnostics) and `www/phone/boot.js`.
- * 3. Puts one classic `<script src="/phone/boot.js">` into WE's `index.html`, before WE's module
- *    bundle, so the pinned WebSocket is in place before WE opens its executor connection.
- *
- * That script tag is the only change made to WE's files.
+ * 1. Copies `apps/we-web/dist` (build it first: `pnpm build:web` at the repo root). WE's files are
+ *    not edited: WE connects to its executor the way it does in a browser.
+ * 2. Builds `www/mobile/error.html`, the page Capacitor opens instead of WE when the phone's
+ *    Android System WebView is older than WE's build needs (`android.minWebViewVersion`), or when
+ *    WE's page fails to load (`server.errorPath`). See src/webViewFloor.ts.
  */
-import { cpSync, existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -30,47 +29,24 @@ cpSync(weDist, www, { recursive: true });
 // Netlify's files: nothing in a Capacitor app reads them.
 for (const f of ['_headers', '_redirects']) rmSync(join(www, f), { force: true });
 
-// ad4m-connect keeps its settings under `<version>/<key>`; boot.js has to write the keys this
-// build of it reads.
-// The phone's own pages are built for old WebViews on purpose: they are what tells someone with a
-// stale system WebView what is wrong, so they have to run where WE's `esnext` bundle cannot.
-// Android 11's factory WebView is Chrome 83; iOS 15 is the floor Capacitor 8 supports.
-const target = ['chrome83', 'safari15'];
-
-const connectPkg = JSON.parse(
-  readFileSync(resolve(app, '../we-web/node_modules/@coasys/ad4m-connect/package.json'), 'utf8'),
-);
-
 await build({
   configFile: false,
-  root: join(app, 'src/diag'),
-  base: '/phone/',
+  root: join(app, 'src/error'),
+  base: '/mobile/',
   logLevel: 'warn',
   build: {
-    outDir: join(www, 'phone'),
+    outDir: join(www, 'mobile'),
     emptyOutDir: false,
-    target,
-    rollupOptions: { input: join(app, 'src/diag/diag.html') },
+    // This page is what tells someone whose WebView is too old for WE what to do, so it is built
+    // for the oldest one the app installs on: Android 11 (minSdk 30) ships WebView 83. iOS 15 is
+    // the oldest Capacitor 8 supports.
+    target: ['chrome83', 'safari15'],
+    // One file: the page must not depend on anything else loading.
+    assetsInlineLimit: Number.MAX_SAFE_INTEGER,
+    cssCodeSplit: false,
+    modulePreload: false,
+    rollupOptions: { input: join(app, 'src/error/error.html') },
   },
 });
 
-await build({
-  configFile: false,
-  logLevel: 'warn',
-  define: { __AD4M_CONNECT_VERSION__: JSON.stringify(connectPkg.version) },
-  build: {
-    outDir: join(www, 'phone'),
-    emptyOutDir: false,
-    target,
-    lib: { entry: join(app, 'src/boot.ts'), formats: ['iife'], name: 'CoasysBoot', fileName: () => 'boot.js' },
-  },
-});
-
-const indexPath = join(www, 'index.html');
-const html = readFileSync(indexPath, 'utf8');
-const firstModule = html.indexOf('<script type="module"');
-if (firstModule < 0) throw new Error('WE index.html has no module script to put boot.js before');
-const tag = '<script src="/phone/boot.js"></script>\n    ';
-writeFileSync(indexPath, html.slice(0, firstModule) + tag + html.slice(firstModule));
-
-console.log(`www/ assembled: WE build from ${weDist}, ad4m-connect ${connectPkg.version}`);
+console.log(`www/ assembled from ${weDist}, with mobile/error.html`);

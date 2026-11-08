@@ -1,6 +1,7 @@
 ext {
-    // Android 11: the spike's floor. The pinned connection needs nothing newer; it is where the
-    // app's support starts.
+    // Android 11: where the app's support starts. What WE itself needs is a WebView version, not an
+    // Android version (Android System WebView updates through the Play Store): see
+    // android.minWebViewVersion in capacitor.config.ts.
     minSdkVersion = 30
     compileSdkVersion = 36
     targetSdkVersion = 36

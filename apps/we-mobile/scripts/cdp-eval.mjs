@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
  * Evaluates an expression in the app's WebView over the DevTools protocol and prints the result as
- * JSON. How the spike's measurements are taken on an emulator or a USB phone, with no tapping.
+ * JSON. How the app is driven on an emulator or a USB phone without tapping: reading what WE shows,
+ * or filling ad4m-connect's fields in a scripted run.
  *
- *   node scripts/cdp-eval.mjs "await coasysDiag.roundTrips({url:'wss://10.0.2.2:8443', pin:'…'}, 200)"
- *   node scripts/cdp-eval.mjs --page diag "location.href"
+ *   node scripts/cdp-eval.mjs "location.href"
+ *   node scripts/cdp-eval.mjs --page error.html "document.body.innerText"
  *
  * Needs `adb` on PATH and a debug build (Capacitor enables WebView debugging only there). It
  * forwards a local port to the WebView's DevTools socket, picks the page whose URL contains
