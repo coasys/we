@@ -6,7 +6,8 @@
  * 1. The error page Capacitor opens below the floor is where `server.errorPath` says.
  * 2. Its script parses on WebView 83, Android 11's factory WebView: it is the page an old WebView
  *    has to be able to show.
- * 3. No script of WE's uses syntax newer than the floor.
+ * 3. No other script uses syntax newer than the floor: WE's, and the identity page's beside the
+ *    error page, which only WE opens, so it never runs below the floor.
  *
  * How: esbuild prints each file once for `esnext` and once for the target. Where they differ, the
  * file uses syntax esbuild had to rewrite for that browser, so the browser cannot parse the
@@ -26,7 +27,6 @@ import { ERROR_PAGE_PATH, MIN_WEBVIEW_MAJOR } from '../src/webViewFloor.ts';
 
 const app = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const www = join(app, 'www');
-const errorPageDir = join(www, dirname(ERROR_PAGE_PATH));
 
 const supported = { 'regexp-unicode-property-escapes': true };
 
@@ -61,14 +61,26 @@ if (!existsSync(join(www, 'index.html'))) {
 }
 if (!existsSync(join(www, ERROR_PAGE_PATH))) failures.push(`no error page at www/${ERROR_PAGE_PATH}`);
 
-const errorScripts = existsSync(errorPageDir) ? scripts(errorPageDir) : [];
-if (existsSync(errorPageDir) && errorScripts.length === 0) failures.push(`no script beside www/${ERROR_PAGE_PATH}`);
+/** The scripts a page loads, by the `src` its own HTML names. */
+function pageScripts(page) {
+  const html = readFileSync(page, 'utf8');
+  return [...html.matchAll(/<script\b[^>]*\bsrc="([^"]+)"/g)].map(([, src]) =>
+    src.startsWith('/') ? join(www, src) : join(dirname(page), src),
+  );
+}
+
+const errorPage = join(www, ERROR_PAGE_PATH);
+const errorScripts = existsSync(errorPage) ? pageScripts(errorPage) : [];
+if (existsSync(errorPage) && errorScripts.length === 0) failures.push(`no script loaded by www/${ERROR_PAGE_PATH}`);
 for (const file of errorScripts) {
+  if (!existsSync(file)) failures.push(`www/${ERROR_PAGE_PATH} loads ${relative(app, file)}, which is not there`);
+}
+for (const file of errorScripts.filter((f) => existsSync(f))) {
   const why = await needsNewer(readFileSync(file, 'utf8'), 'chrome83');
   if (why) failures.push(`${relative(app, file)} does not parse on WebView 83 (${why})`);
 }
 
-const weScripts = scripts(www).filter((f) => !f.startsWith(errorPageDir + '/'));
+const weScripts = scripts(www).filter((f) => !errorScripts.includes(f));
 for (const file of weScripts) {
   const why = await needsNewer(readFileSync(file, 'utf8'), `chrome${MIN_WEBVIEW_MAJOR}`);
   if (why) failures.push(`${relative(app, file)} needs a WebView newer than ${MIN_WEBVIEW_MAJOR} (${why})`);
