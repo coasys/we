@@ -23,6 +23,12 @@ pub fn origin(scheme: &str) -> String {
     }
 }
 
+/// Where a bundle window opens: the origin's root, not `/index.html`. WE routes on the path, so a
+/// window opened at `/index.html` asks its router for a page called `index.html` and gets none.
+pub fn start_url(scheme: &str) -> String {
+    format!("{}/", origin(scheme))
+}
+
 /// The file under `root` a request path names, or `None` when it would leave `root`. A path naming
 /// no file with an extension falls back to `index.html`, so client-side routes load the app.
 pub fn resolve(root: &Path, request_path: &str) -> Option<PathBuf> {
@@ -94,6 +100,16 @@ pub fn serve(root: &Path, request: &Request<Vec<u8>>) -> Response<Cow<'static, [
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_window_opens_at_the_root_its_router_knows() {
+        let url = start_url(APP_SCHEME);
+        assert!(url.ends_with("localhost/"), "{url}");
+        assert!(!url.contains("index.html"));
+        // And the root still serves the app.
+        let dir = bundle();
+        assert_eq!(resolve(dir.path(), "/"), Some(dir.path().join("index.html")));
+    }
 
     fn bundle() -> tempfile::TempDir {
         let dir = tempfile::tempdir().unwrap();

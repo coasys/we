@@ -103,7 +103,7 @@ impl Surface {
     pub fn start_url(&self) -> String {
         self.dev_url
             .clone()
-            .unwrap_or_else(|| format!("{}/index.html", assets::origin(self.scheme)))
+            .unwrap_or_else(|| assets::start_url(self.scheme))
     }
 }
 
