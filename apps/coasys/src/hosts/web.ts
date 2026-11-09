@@ -112,8 +112,8 @@ export function webBaseHost(connector: BackendConnector, deps: ReachDeps = {}): 
   const online = deps.online ?? (() => globalThis.navigator?.onLine ?? true);
   return {
     kind: 'browser',
-    connections: async () => [CONNECT],
-    connector: async (_connection, how) => connectFor(connector, how, { ...deps, online }),
+    connections: () => Promise.resolve([CONNECT]),
+    connector: (_connection, how) => Promise.resolve(connectFor(connector, how, { ...deps, online })),
     isUnreachable: (error) => unreachable(error, online),
     online,
   };

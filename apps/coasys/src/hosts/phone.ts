@@ -99,21 +99,25 @@ export function phoneBaseHost(deps: PhoneHostDeps): BaseHost {
   return {
     kind: 'phone',
     identity: phoneIdentitySource(deps.plugin, nav, declined),
-    connections: async () => {
+    connections: () => {
       const url = keyHost();
-      return url ? [keyHostConnection(url), CONNECT] : [CONNECT];
+      return Promise.resolve(url ? [keyHostConnection(url), CONNECT] : [CONNECT]);
     },
-    connector: async (connection, how) => {
+    connector: (connection, how) => {
       if (connection.kind !== 'key-host')
-        return connectFor(deps.fallback, how, { remembered: deps.remembered, reach: deps.reach, online });
-      return makeKeyConnector({
-        plugin: () => deps.plugin,
-        keyHost,
-        nav,
-        // The base app asks about joining itself, before a connection is chosen; the connector must
-        // not send the person to the join page a second time.
-        joinDeclined: () => true,
-      });
+        return Promise.resolve(
+          connectFor(deps.fallback, how, { remembered: deps.remembered, reach: deps.reach, online }),
+        );
+      return Promise.resolve(
+        makeKeyConnector({
+          plugin: () => deps.plugin,
+          keyHost,
+          nav,
+          // The base app asks about joining itself, before a connection is chosen; the connector must
+          // not send the person to the join page a second time.
+          joinDeclined: () => true,
+        }),
+      );
     },
     isUnreachable: (error) => error instanceof KeyLoginUnreachable || unreachable(error, online),
     online,
