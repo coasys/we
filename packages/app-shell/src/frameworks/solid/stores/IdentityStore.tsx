@@ -104,9 +104,17 @@ const IdentityStoreContext = createContext<IdentityStore>();
  */
 export const startNowKey = (deviceKey: string) => `we.identity.startNow:${deviceKey}`;
 
+/**
+ * Where "Start now" is remembered for this whole device, before any account: the base app asks the
+ * first-run question once for the computer (its custody service is the computer's, not an account's),
+ * and an answer given there is not asked again inside each session.
+ */
+export const START_NOW_HERE_KEY = 'we.identity.startNow';
+
 function readStartNow(deviceKey: string): boolean {
-  if (!deviceKey) return false;
   try {
+    if (localStorage.getItem(START_NOW_HERE_KEY) === '1') return true;
+    if (!deviceKey) return false;
     return localStorage.getItem(startNowKey(deviceKey)) === '1';
   } catch {
     return false;

@@ -32,6 +32,7 @@
   "devDependencies": {
     "@coasys/ad4m": "*",
     "@types/node": "^26.6.6",
+    "@we/app-coasys": "workspace:*",
     "@we/app-shell": "workspace:*",
     "@we/backend-ad4m": "workspace:*",
     "@we/brand": "workspace:*",

@@ -113,8 +113,13 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 Apps (`apps/we-web`, `apps/we-electron`, `apps/we-tauri`) are thin hosts over `@we/app-shell`.
 Each supplies two things: a `PlatformAdapter` (where am I running) and a `BackendConnector`
 (how do I reach the data layer).
+`apps/coasys` is the Coasys app's web entry. It boots with no backend at all: `BaseBoot` draws the
+deployment's `base` template (first run, where to connect, offline) against `baseStore` alone, then
+mounts `App` in the same page with the connector for the place chosen. Its hosts (`src/hosts/`)
+say, per device, where the identity is and what can be connected to; the desktop entries render the
+same `BaseBoot` with its desktop host. See "Before a session" in docs/architecture/apps-as-data.md.
 The phone app (`apps/we-mobile`, Capacitor, `org.coasys.app`) is not a fourth host: it ships
-`apps/we-web`'s build unchanged inside a native WebView, with only a page of its own for a WebView too
+`apps/coasys`'s build unchanged inside a native WebView, with only a page of its own for a WebView too
 old to run WE (`android.minWebViewVersion`). Its README says how to build it and where the floor came from.
 
 **Dependency direction:** `templates → shell → backend-shared ← backend-ad4m`, and
@@ -3042,6 +3047,42 @@ AppStore:
 - Actions:
   - activateApp(id: string): activates an app and switches to its view
   - deactivateApp(): deactivates the current app and returns to the template view
+
+BaseStore:
+- State:
+  - stage: 'loading' | 'starting' | 'failed' | 'first-run' | 'connect' | 'offline' | 'handing-off' | 'session' — which screen of the app before a session is due. Only a bundle's `base` template (role 'base') reads this store, and only before WE's app has a session: `starting`/`failed` while this device's own backend starts or after it failed to, `first-run` for the three doors, `connect` for the connection choice, `offline` when the chosen place cannot be reached, `handing-off` while it is reached, `session` once the app has it (nothing of the base is drawn then)
+  - page: '' | 'devices' | 'security' — a read-only page open over the stage
+  - hostKind: 'computer' | 'phone' | 'browser' — what this device is
+  - deviceNoun: 'computer' | 'phone' | 'browser' — the same, for a sentence: 'This ' + baseStore.deviceNoun + ' keeps no master key'
+  - brand: { name, mark } — the deployment’s name and mark (an image URL) for the header; templateStore is not there before a session
+  - executorPhase: 'none' | 'starting' | 'ready' | 'failed' — this device’s own backend: 'none' where it runs none (a browser, a phone)
+  - executorReason: string — why it failed to start, ready to show; empty otherwise. Offer retry beside it
+  - hasIdentity: boolean — this device keeps an identity of its own (a computer’s custody service, a phone’s key); false in a browser, which goes straight to the connection choice
+  - identityKnown: boolean — the identity source answered, so did / holdsMaster are facts, not defaults
+  - did: string — the identity this device speaks for, or empty. Draw didShort; never the whole identifier in a screenshot-sized space
+  - didShort: string — the same, shortened for the eye
+  - holdsMaster: boolean — this device keeps a master key of it
+  - keepsLine: string — 'This computer keeps your master key behind its own sign-in' / '… behind your passphrase' / 'This phone keeps no master key', ready to show
+  - blocked: string — why no identity change can be made here, ready to show; empty when one can
+  - devices: { keyId, label, subtitle, icon, thisDevice, master }[] — the devices the identity's private record names, read-only before a session: `label` 'This computer' / 'This phone', the record's name, or 'Device d2'; `master` 'Holds the master key', 'Master key offered, not yet taken' or empty
+  - doors: { make, link, words } each { open: boolean, note: string } — the three ways in as this device offers them: `open` the door runs a step here, else `note` says why not ('A phone joins an identity made on a computer'). Draw a closed door disabled with its note, never hide it
+  - connections: { id, kind, label, detail, icon, chosen }[] — where a session can be had from here. `kind` 'this-device' (the backend this computer runs), 'server' (one the person added), 'key-host' (the computer this phone's key signs in to), 'connect' (the browser's AD4M Connect screen, which asks where). Coasys cloud and the hosting index are not in it until they exist: a template says so in its own words rather than listing them
+  - chosen: string — the id of the connection chosen last, remembered on this device; empty for none
+  - busy: boolean — an identity step or a connection is under way
+  - lastOutcome: 'done' | 'cancelled' | 'failed' | '' — how the last identity step ended
+  - error: string — why the last step, read or connection failed, ready to show; empty otherwise
+  - offlineReason: string — why the offline state is up: no network, or the place chosen could not be reached
+- Actions:
+  - refresh(): reads the identity and the connections again and works out the stage afresh
+  - makeIdentity(): "Make my identity here" — opens the host’s identity window on making one (the 12 words are shown there, never here); resolves with the outcome, and the stage moves on once the identity exists
+  - linkIdentity(): "Link to my identity" — opens the identity window on joining one another device keeps: on a computer it shows this computer’s code, on a phone it opens the join page
+  - useWords(): "Use my 12 words" — opens the identity window on bringing the identity back from them; the words are typed there only
+  - startNow(): "Start now" — no identity on this device for now; remembered here (and inside the session), and offered again from Settings
+  - choose(id): connects to one of `connections` and hands the session to the app; remembered for the next boot
+  - retry(): "Try again" — starts this device’s backend again after a failure, or reaches the chosen place again from offline
+  - showConnections(): back to the connection choice, from offline or after a first run
+  - openPage(page: 'devices' | 'security'): opens a read-only page over the stage
+  - closePage(): closes it
 
 BotStore:
 - State:

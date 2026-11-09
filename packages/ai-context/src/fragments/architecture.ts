@@ -115,8 +115,13 @@ Glossary (these terms pervade stores, models, and \`$query\`/\`perspective\` in 
 Apps (\`apps/we-web\`, \`apps/we-electron\`, \`apps/we-tauri\`) are thin hosts over \`@we/app-shell\`.
 Each supplies two things: a \`PlatformAdapter\` (where am I running) and a \`BackendConnector\`
 (how do I reach the data layer).
+\`apps/coasys\` is the Coasys app's web entry. It boots with no backend at all: \`BaseBoot\` draws the
+deployment's \`base\` template (first run, where to connect, offline) against \`baseStore\` alone, then
+mounts \`App\` in the same page with the connector for the place chosen. Its hosts (\`src/hosts/\`)
+say, per device, where the identity is and what can be connected to; the desktop entries render the
+same \`BaseBoot\` with its desktop host. See "Before a session" in docs/architecture/apps-as-data.md.
 The phone app (\`apps/we-mobile\`, Capacitor, \`org.coasys.app\`) is not a fourth host: it ships
-\`apps/we-web\`'s build unchanged inside a native WebView, with only a page of its own for a WebView too
+\`apps/coasys\`'s build unchanged inside a native WebView, with only a page of its own for a WebView too
 old to run WE (\`android.minWebViewVersion\`). Its README says how to build it and where the floor came from.
 
 **Dependency direction:** \`templates → shell → backend-shared ← backend-ad4m\`, and

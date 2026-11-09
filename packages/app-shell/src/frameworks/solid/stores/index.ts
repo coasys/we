@@ -13,7 +13,21 @@ export { type EditorStore, useEditorStore, EditorStoreProvider } from './EditorS
 export { type AppStore, useAppStore, AppStoreProvider } from './AppStore';
 export { type ClockStore, type ClockView, useClockStore, ClockStoreProvider } from './ClockStore';
 export { type WorkflowStore, useWorkflowStore, WorkflowStoreProvider } from './WorkflowStore';
-export { type IdentityStore, useIdentityStore, IdentityStoreProvider } from './IdentityStore';
+export { type IdentityStore, useIdentityStore, IdentityStoreProvider, START_NOW_HERE_KEY } from './IdentityStore';
+export {
+  BASE_CONNECTION_KEY,
+  type BaseBrand,
+  type BaseConnectionRow,
+  type BaseDeviceRow,
+  type BaseDoors,
+  type BaseDoorView,
+  type BasePage,
+  type BaseStage,
+  type BaseStorage,
+  type BaseStore,
+  type BaseStoreOptions,
+  createBaseStore,
+} from './BaseStore';
 export { type DeviceStore, useDeviceStore, DeviceStoreProvider } from './DeviceStore';
 export { type BotStore, useBotStore, BotStoreProvider } from './BotStore';
 export {

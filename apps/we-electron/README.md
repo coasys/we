@@ -28,7 +28,9 @@ The WE Electron launcher:
   - Handles IPC for AD4M connection details (port/token)
   - Implements screen sharing polyfill for embedded apps
 - **Preload Script** (`electron/preload.js`): Exposes secure IPC bridge via `window.electron`
-- **Renderer** (`src/`): SolidJS app using the shared `@we/app-shell`
+- **Renderer** (`src/`): SolidJS app using the shared `@we/app-shell`. It renders `BaseBoot` with the
+  desktop host from `@we/app-coasys/hosts/desktop`: the deployment's app before a session (first run,
+  where to connect, the executor starting or failed), then WE's app once a place is chosen
 - **Platform Adapter** (`src/platform/electronAdapter.ts`): Implements AD4M connection using Electron IPC
 
 ## How it Works
@@ -39,6 +41,13 @@ Unlike the Tauri app which embeds the Rust executor as a library, the Electron a
 2. Passes configuration via command-line arguments (port, token, data path)
 3. Communicates with the frontend via IPC to provide connection details
 4. The renderer uses these details to connect to the executor's GraphQL API
+
+The window opens before the executor is up. The main process sends the executor's state to the
+window (`executor-state`: `starting`, `ready`, or `failed` with a reason that names no path), and the
+window asks for another try with `executor-start`. An executor that fails to start is a screen in the
+app with "Try again", not a dialog and a quit. `main.executor-failed.test.js` covers this. The
+reason's words come from `electron/executorWords.js`: a system error (a data folder it cannot write)
+is told by its code, and any other message has its paths replaced (`executorWords.test.js`).
 
 ## Embedding External Apps
 

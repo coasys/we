@@ -193,7 +193,7 @@ export function keyLogRows(
 }
 
 /** The device list: valid keys first, this computer at the top, then in the order they were added. */
-const DEVICE_ICONS: Record<string, string> = {
+export const DEVICE_ICONS: Record<string, string> = {
   'desktop-app': 'laptop',
   'phone-app': 'device-mobile',
   browser: 'browser',

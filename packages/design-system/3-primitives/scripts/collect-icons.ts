@@ -7,6 +7,7 @@
 
 import { existsSync, globSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // Phosphor icon weights
 const WEIGHTS = ['thin', 'light', 'regular', 'bold', 'fill', 'duotone'] as const;
@@ -71,7 +72,7 @@ function collectSourceFiles(): string[] {
 }
 
 /** Extract icon references from a file's content */
-function extractIconRefs(content: string): IconRef[] {
+export function extractIconRefs(content: string): IconRef[] {
   const refs: IconRef[] = [];
   let match: RegExpExecArray | null;
 
@@ -144,6 +145,21 @@ function extractIconRefs(content: string): IconRef[] {
   const valueIconRegex = /\b(?:icon|triggerIcon|iconSecondary|on|off)\s*:\s*['"]([a-z][a-z0-9-]{2,})['"]/g;
   while ((match = valueIconRegex.exec(content)) !== null) {
     refs.push({ name: match[1], weight: 'regular' });
+  }
+
+  /*
+    Pattern 6: a table of icons by kind — `const DEVICE_ICONS = { 'desktop-app': 'laptop', … }`.
+
+    The key is the kind and the value is the icon, so pattern 5 never sees a name: the devices in
+    Settings and the places to connect before a session were drawn with icons no build carried. A
+    table whose name ends in `ICONS` is taken to hold nothing but icon names, and every string value
+    in it is collected. A value that is not an icon costs nothing, as above.
+  */
+  const iconTableRegex = /\b[A-Z][A-Z0-9_]*ICONS\b[^=]*=\s*\{([^}]*)\}/g;
+  while ((match = iconTableRegex.exec(content)) !== null) {
+    for (const value of match[1].matchAll(/:\s*['"]([a-z][a-z0-9-]{2,})['"]/g)) {
+      refs.push({ name: value[1], weight: 'regular' });
+    }
   }
 
   return refs;
@@ -221,4 +237,5 @@ function main() {
   console.log(`  ${entries.length} icons bundled, ${missing} missing.`);
 }
 
-main();
+// Run as the build's script; imported (by its test), it only defines.
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) main();

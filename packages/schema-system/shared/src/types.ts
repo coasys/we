@@ -249,8 +249,13 @@ export type TemplateMeta = {
    * A `'page'` is a page of an app's own — its About page, a guide — opened above everything as the
    * host's settings and profile are, never as a space's template. Only a bundle brings one, in its
    * `pages`; see `Bundle.pages`.
+   *
+   * A `'base'` is the app before a session: the screens a deployment shows before any backend is
+   * connected — making or linking an identity, choosing where to connect, the device being offline.
+   * Only a bundle brings one, in its `base`, and only the base host draws it, against the session-less
+   * `baseStore`; see `Bundle.base`.
    */
-  role?: 'shell' | 'view' | 'app' | 'page';
+  role?: 'shell' | 'view' | 'app' | 'page' | 'base';
   /**
    * For a `'view'`: the URL segment it renders at, and the identity a space enables or disables it
    * by. Ignored on a shell.

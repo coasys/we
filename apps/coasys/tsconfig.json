@@ -1,0 +1,21 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "target": "ESNext",
+    "jsx": "preserve",
+    "jsxImportSource": "solid-js",
+    "types": ["vite/client"],
+    "noEmit": true,
+    "isolatedModules": true,
+    "experimentalDecorators": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    // The shell's aliases, as apps/we-web's tsconfig gives them, and the seed this build is for.
+    "paths": {
+      "@we/seed-file": ["../../seeds/coasys.seed.json"],
+      "@shared/*": ["../../packages/app-shell/src/shared/*"],
+      "@solid/*": ["../../packages/app-shell/src/frameworks/solid/*"]
+    }
+  },
+  "include": ["src", "*.config.ts", "../../packages/app-shell/src/shared/global.d.ts"]
+}

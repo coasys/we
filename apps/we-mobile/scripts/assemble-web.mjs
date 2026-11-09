@@ -1,10 +1,12 @@
 #!/usr/bin/env node
 /**
- * Builds `www/`, the directory Capacitor serves: WE's web build, unchanged, plus the one page of the
- * app's own beside it.
+ * Builds `www/`, the directory Capacitor serves: the Coasys app's web build, unchanged, plus the pages
+ * of the phone's own beside it.
  *
- * 1. Copies `apps/we-web/dist` (build it first: `pnpm build:web` at the repo root). WE's files are
- *    not edited: WE connects to its executor the way it does in a browser.
+ * 1. Copies `apps/coasys/dist` (build it first: `pnpm build:coasys` at the repo root). Its files are
+ *    not edited. It is the same page as in a browser: it finds the `DeviceKey` plugin and boots as
+ *    the phone's host, with the identity, the phone's join and the choice of where the session comes
+ *    from before any executor (see apps/coasys/README.md).
  * 2. Builds `www/mobile/error.html`, the page Capacitor opens instead of WE when the phone's
  *    Android System WebView is older than WE's build needs (`android.minWebViewVersion`), or when
  *    WE's page fails to load (`server.errorPath`). See src/webViewFloor.ts.
@@ -20,11 +22,11 @@ import { identityWindowConfig } from '@we/identity-window/vite';
 import { build } from 'vite';
 
 const app = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const weDist = resolve(app, '../we-web/dist');
+const weDist = resolve(app, '../coasys/dist');
 const www = join(app, 'www');
 
 if (!existsSync(join(weDist, 'index.html'))) {
-  console.error(`No WE web build at ${weDist}. Run \`pnpm build:web\` at the repo root first.`);
+  console.error(`No Coasys web build at ${weDist}. Run \`pnpm build:coasys\` at the repo root first.`);
   process.exit(1);
 }
 

@@ -1,9 +1,16 @@
 # Coasys phone app (`apps/we-mobile`)
 
-WE on a phone: `org.coasys.app`, shown as "Coasys". A Capacitor 8 shell around WE's own web build
-(`apps/we-web/dist`), copied unchanged. WE runs in the platform WebView and reaches its executor
-with the WebView's own `WebSocket` and `fetch`, the same way it does in a browser. Nothing is
-replaced or patched in.
+WE on a phone: `org.coasys.app`, shown as "Coasys". A Capacitor 8 shell around the Coasys app's web
+build (`apps/coasys/dist`), copied unchanged. It runs in the platform WebView and reaches its
+executor with the WebView's own `WebSocket` and `fetch`, the same way it does in a browser. Nothing
+is replaced or patched in.
+
+The Coasys app boots before any session (`apps/coasys/README.md`). On the phone it finds the
+`DeviceKey` plugin and uses the phone's host: the first run asks the person to link the phone to
+their identity (the phone joins one; making one and the 12 words are a computer's, and the screen
+says so), and the connection choice offers the key host the phone was given (`we-phone/key-host`)
+and AD4M Connect. With no network it shows the offline screen rather than a connect screen that
+cannot answer. WE's app mounts in the same page once a connection is chosen.
 
 The app adds one page of its own: the page Capacitor opens when the phone's Android System WebView
 is too old to run WE, or when WE's page fails to load (`src/error/`).
@@ -13,7 +20,8 @@ tree, and `cap sync ios` works, but nothing builds it.
 
 ## How the phone connects (phase 1)
 
-Through ad4m-connect, as the web app does (`apps/we-web/src/platform/ad4mConnector.ts`). On a
+Through ad4m-connect, as the web app does (`apps/we-web/src/platform/ad4mConnector.ts`), once
+"AD4M Connect" is chosen on the connection choice. On a
 phone-sized screen it offers only **Remote Node**: pick a listed host or type a URL, then sign in or
 register with email and password on that executor (a multi-user executor: a host or Coasys cloud).
 The executor must be reachable over `https`/`wss` with a certificate the phone trusts. The release
@@ -205,9 +213,9 @@ From the repo root:
 
 ```sh
 pnpm install
-pnpm build:web                 # WE's web build: apps/we-web/dist
+pnpm build:coasys              # the Coasys app's web build: apps/coasys/dist
 cd apps/we-mobile
-pnpm build:web                 # www/ = apps/we-web/dist + the error page in www/mobile/
+pnpm build:web                 # www/ = apps/coasys/dist + the error and identity pages in www/mobile/
 pnpm check:floor               # WE's scripts parse on the WebView floor; the error page parses on WebView 83
 pnpm test                      # the floor and the error page's wording
 pnpm exec cap sync android     # www/ and capacitor.config into android/
@@ -322,7 +330,7 @@ WebView version, not an Android version. `minSdk` stays 30.
 | `capacitor.config.ts`                                                        | App id and name, `server.errorPath`, `android.minWebViewVersion`                                              |
 | `src/webViewFloor.ts`                                                        | The floor, the error page's path, and which of its two messages a phone sees                                  |
 | `src/error/`                                                                 | The error page: plain DOM, built for WebView 83                                                               |
-| `scripts/assemble-web.mjs`                                                   | Builds `www/` from `apps/we-web/dist` and the error page                                                      |
+| `scripts/assemble-web.mjs`                                                   | Builds `www/` from `apps/coasys/dist`, the error page and the identity page                                   |
 | `scripts/check-floor.mjs`                                                    | The script half of the floor, checked                                                                         |
 | `scripts/cdp-eval.mjs`                                                       | Evaluates an expression in the app's WebView over DevTools                                                    |
 | `tests/webViewFloor.test.ts`                                                 | The floor, the messages, and that the Capacitor config uses both                                              |

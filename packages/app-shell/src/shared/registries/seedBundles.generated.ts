@@ -31751,6 +31751,1139 @@ export const seedBundles: Bundle[] = [
         },
       },
     },
+    base: {
+      id: 'base',
+      type: 'Column',
+      meta: {
+        name: 'Coasys before you sign in',
+        description: 'Your identity, and where your Coasys is, before anything is connected.',
+        icon: 'hexagon',
+        role: 'base',
+        themeId: 'glow',
+      },
+      props: { styles: { display: 'contents' } },
+      children: [
+        {
+          type: '$if',
+          props: {
+            condition: { $: "baseStore.stage == 'starting'" },
+            then: {
+              id: 'base__starting',
+              type: 'Column',
+              props: {
+                position: 'fixed',
+                top: '0',
+                left: '0',
+                width: '100vw',
+                height: '100dvh',
+                bg: 'page',
+                ax: 'center',
+                ay: 'center',
+                gap: '500',
+              },
+              children: [
+                {
+                  type: 'we-image',
+                  props: { src: { $: 'baseStore.brand.mark' }, alt: '', width: '48px', height: '48px' },
+                },
+                { type: 'we-animated-icon', props: { name: 'spinner', size: 'lg' } },
+                { type: 'we-text', props: { color: 'text-muted' }, children: ['Starting Coasys on this computer…'] },
+              ],
+            },
+          },
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: "baseStore.stage == 'failed'" },
+            then: {
+              id: 'chrome__executor-failed',
+              type: 'Column',
+              props: {
+                position: 'fixed',
+                top: '0',
+                left: '0',
+                width: '100vw',
+                height: '100dvh',
+                bg: 'page',
+                overflowY: 'auto',
+                gap: '600',
+                pb: '800',
+              },
+              children: [
+                {
+                  type: 'Row',
+                  props: { width: '100%', ay: 'center', ax: 'space-between', gap: '300', minHeight: '72px' },
+                  children: [
+                    {
+                      type: 'Row',
+                      props: { ay: 'center', gap: '300', pl: 'calc((72px - 28px) / 2)' },
+                      children: [
+                        {
+                          type: 'we-image',
+                          props: {
+                            src: { $: 'baseStore.brand.mark' },
+                            alt: '',
+                            width: '28px',
+                            height: '28px',
+                            flexShrink: 0,
+                          },
+                        },
+                        {
+                          type: 'we-text',
+                          props: { variant: 'body', fontWeight: 'semibold', letterSpacing: 'tight' },
+                          children: [{ $: 'baseStore.brand.name' }],
+                        },
+                      ],
+                    },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: "baseStore.identityKnown && baseStore.did != ''" },
+                        then: {
+                          type: 'Row',
+                          props: { gap: '200', pr: '400' },
+                          children: [
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: 'ghost',
+                                size: 'sm',
+                                onClick: { $invoke: 'baseStore.openPage', args: ['devices'] },
+                              },
+                              children: [{ type: 'we-icon', props: { name: 'devices', slot: 'start' } }, 'Devices'],
+                            },
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: 'ghost',
+                                size: 'sm',
+                                onClick: { $invoke: 'baseStore.openPage', args: ['security'] },
+                              },
+                              children: [
+                                { type: 'we-icon', props: { name: 'shield-check', slot: 'start' } },
+                                'Security',
+                              ],
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  ],
+                },
+                {
+                  type: 'Column',
+                  props: { width: '100%', maxWidth: '720px', mx: 'auto', px: '600', gap: '600' },
+                  children: [
+                    {
+                      type: 'Column',
+                      props: { gap: '200' },
+                      children: [
+                        {
+                          type: 'we-text',
+                          props: { variant: 'heading-xl', tag: 'h1' },
+                          children: ['Coasys could not start'],
+                        },
+                        {
+                          type: 'we-text',
+                          props: { color: 'text-muted' },
+                          children: [
+                            'The part of Coasys that keeps your spaces on this computer stopped before it was ready.',
+                          ],
+                        },
+                      ],
+                    },
+                    {
+                      type: 'we-alert',
+                      props: { tone: 'danger' },
+                      children: [
+                        { $: "baseStore.executorReason != '' ? baseStore.executorReason : 'No reason was given.'" },
+                      ],
+                    },
+                    {
+                      type: 'Row',
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'primary',
+                            loading: { $: 'baseStore.busy' },
+                            onClick: { $invoke: 'baseStore.retry' },
+                          },
+                          children: ['Try again'],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: "baseStore.stage == 'loading' || baseStore.stage == 'handing-off'" },
+            then: {
+              id: 'base__connecting',
+              type: 'Column',
+              props: {
+                position: 'fixed',
+                top: '0',
+                left: '0',
+                width: '100vw',
+                height: '100dvh',
+                bg: 'page',
+                ax: 'center',
+                ay: 'center',
+                gap: '500',
+              },
+              children: [
+                {
+                  type: 'we-image',
+                  props: { src: { $: 'baseStore.brand.mark' }, alt: '', width: '48px', height: '48px' },
+                },
+                { type: 'we-animated-icon', props: { name: 'spinner', size: 'lg' } },
+                {
+                  type: 'we-text',
+                  props: { color: 'text-muted' },
+                  children: [{ $: "baseStore.stage == 'loading' ? 'Reading your identity…' : 'Opening your spaces…'" }],
+                },
+              ],
+            },
+          },
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: "baseStore.stage == 'first-run'" },
+            then: {
+              id: 'base__first-run',
+              type: 'Column',
+              props: {
+                position: 'fixed',
+                top: '0',
+                left: '0',
+                width: '100vw',
+                height: '100dvh',
+                bg: 'page',
+                overflowY: 'auto',
+                gap: '600',
+                pb: '800',
+              },
+              children: [
+                {
+                  type: 'Row',
+                  props: { width: '100%', ay: 'center', ax: 'space-between', gap: '300', minHeight: '72px' },
+                  children: [
+                    {
+                      type: 'Row',
+                      props: { ay: 'center', gap: '300', pl: 'calc((72px - 28px) / 2)' },
+                      children: [
+                        {
+                          type: 'we-image',
+                          props: {
+                            src: { $: 'baseStore.brand.mark' },
+                            alt: '',
+                            width: '28px',
+                            height: '28px',
+                            flexShrink: 0,
+                          },
+                        },
+                        {
+                          type: 'we-text',
+                          props: { variant: 'body', fontWeight: 'semibold', letterSpacing: 'tight' },
+                          children: [{ $: 'baseStore.brand.name' }],
+                        },
+                      ],
+                    },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: "baseStore.identityKnown && baseStore.did != ''" },
+                        then: {
+                          type: 'Row',
+                          props: { gap: '200', pr: '400' },
+                          children: [
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: 'ghost',
+                                size: 'sm',
+                                onClick: { $invoke: 'baseStore.openPage', args: ['devices'] },
+                              },
+                              children: [{ type: 'we-icon', props: { name: 'devices', slot: 'start' } }, 'Devices'],
+                            },
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: 'ghost',
+                                size: 'sm',
+                                onClick: { $invoke: 'baseStore.openPage', args: ['security'] },
+                              },
+                              children: [
+                                { type: 'we-icon', props: { name: 'shield-check', slot: 'start' } },
+                                'Security',
+                              ],
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  ],
+                },
+                {
+                  type: 'Column',
+                  props: { width: '100%', maxWidth: '720px', mx: 'auto', px: '600', gap: '600' },
+                  children: [
+                    {
+                      type: 'Column',
+                      props: { gap: '200' },
+                      children: [
+                        {
+                          type: 'we-text',
+                          props: { variant: 'heading-xl', tag: 'h1' },
+                          children: [
+                            { $: "baseStore.hostKind == 'phone' ? 'Join your identity' : 'Welcome to Coasys'" },
+                          ],
+                        },
+                        {
+                          type: 'we-text',
+                          props: { color: 'text-muted' },
+                          children: [
+                            {
+                              $: "baseStore.hostKind == 'phone' ? 'This phone acts as you once a computer that keeps your master key adds it.' : 'Your identity is yours: no email, no account with anybody. Choose how this computer comes in.'",
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                    {
+                      type: 'Column',
+                      props: { bg: 'surface', r: 'surface', border: '1px solid border', overflow: 'hidden' },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'bare',
+                            width: '100%',
+                            disabled: { $: 'baseStore.busy || !baseStore.doors.make.open' },
+                            onClick: { $invoke: 'baseStore.makeIdentity' },
+                          },
+                          children: [
+                            {
+                              type: 'Row',
+                              props: {
+                                width: '100%',
+                                gap: '400',
+                                ay: 'center',
+                                px: '400',
+                                py: '400',
+                                borderBottom: '1px solid border',
+                                opacity: { $: '!baseStore.doors.make.open ? 0.55 : 1' },
+                                hoverProps: { bg: 'surface-hover' },
+                              },
+                              children: [
+                                {
+                                  type: 'Row',
+                                  props: {
+                                    width: '44px',
+                                    height: '44px',
+                                    r: 'full',
+                                    bg: 'surface-sunken',
+                                    ax: 'center',
+                                    ay: 'center',
+                                    flexShrink: '0',
+                                  },
+                                  children: [{ type: 'we-icon', props: { name: 'sparkle', color: 'accent-text' } }],
+                                },
+                                {
+                                  type: 'Column',
+                                  props: { gap: '100', flex: '1', minWidth: '0', textAlign: 'left' },
+                                  children: [
+                                    { type: 'we-text', children: ['Make my identity here'] },
+                                    {
+                                      type: 'we-text',
+                                      props: { variant: 'footnote', color: 'text-muted' },
+                                      children: [
+                                        {
+                                          $: "baseStore.doors.make.open ? 'Your 12 words, no email needed. This computer keeps your master key' : baseStore.doors.make.note",
+                                        },
+                                      ],
+                                    },
+                                  ],
+                                },
+                                { type: 'we-icon', props: { name: 'caret-right', color: 'text-faint' } },
+                              ],
+                            },
+                          ],
+                        },
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'bare',
+                            width: '100%',
+                            disabled: { $: 'baseStore.busy || !baseStore.doors.link.open' },
+                            onClick: { $invoke: 'baseStore.linkIdentity' },
+                          },
+                          children: [
+                            {
+                              type: 'Row',
+                              props: {
+                                width: '100%',
+                                gap: '400',
+                                ay: 'center',
+                                px: '400',
+                                py: '400',
+                                borderBottom: '1px solid border',
+                                opacity: { $: '!baseStore.doors.link.open ? 0.55 : 1' },
+                                hoverProps: { bg: 'surface-hover' },
+                              },
+                              children: [
+                                {
+                                  type: 'Row',
+                                  props: {
+                                    width: '44px',
+                                    height: '44px',
+                                    r: 'full',
+                                    bg: 'surface-sunken',
+                                    ax: 'center',
+                                    ay: 'center',
+                                    flexShrink: '0',
+                                  },
+                                  children: [{ type: 'we-icon', props: { name: 'qr-code', color: 'accent-text' } }],
+                                },
+                                {
+                                  type: 'Column',
+                                  props: { gap: '100', flex: '1', minWidth: '0', textAlign: 'left' },
+                                  children: [
+                                    { type: 'we-text', children: ['Link to my identity'] },
+                                    {
+                                      type: 'we-text',
+                                      props: { variant: 'footnote', color: 'text-muted' },
+                                      children: [
+                                        {
+                                          $: "baseStore.doors.link.open ? 'From a device that keeps your master key: it scans this code' : baseStore.doors.link.note",
+                                        },
+                                      ],
+                                    },
+                                  ],
+                                },
+                                { type: 'we-icon', props: { name: 'caret-right', color: 'text-faint' } },
+                              ],
+                            },
+                          ],
+                        },
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'bare',
+                            width: '100%',
+                            disabled: { $: 'baseStore.busy || !baseStore.doors.words.open' },
+                            onClick: { $invoke: 'baseStore.useWords' },
+                          },
+                          children: [
+                            {
+                              type: 'Row',
+                              props: {
+                                width: '100%',
+                                gap: '400',
+                                ay: 'center',
+                                px: '400',
+                                py: '400',
+                                borderBottom: '1px solid border',
+                                opacity: { $: '!baseStore.doors.words.open ? 0.55 : 1' },
+                                hoverProps: { bg: 'surface-hover' },
+                              },
+                              children: [
+                                {
+                                  type: 'Row',
+                                  props: {
+                                    width: '44px',
+                                    height: '44px',
+                                    r: 'full',
+                                    bg: 'surface-sunken',
+                                    ax: 'center',
+                                    ay: 'center',
+                                    flexShrink: '0',
+                                  },
+                                  children: [{ type: 'we-icon', props: { name: 'key', color: 'accent-text' } }],
+                                },
+                                {
+                                  type: 'Column',
+                                  props: { gap: '100', flex: '1', minWidth: '0', textAlign: 'left' },
+                                  children: [
+                                    { type: 'we-text', children: ['Use my 12 words'] },
+                                    {
+                                      type: 'we-text',
+                                      props: { variant: 'footnote', color: 'text-muted' },
+                                      children: [
+                                        {
+                                          $: "baseStore.doors.words.open ? 'Bring your identity back to this computer' : baseStore.doors.words.note",
+                                        },
+                                      ],
+                                    },
+                                  ],
+                                },
+                                { type: 'we-icon', props: { name: 'caret-right', color: 'text-faint' } },
+                              ],
+                            },
+                          ],
+                        },
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'bare',
+                            width: '100%',
+                            disabled: { $: 'baseStore.busy' },
+                            onClick: { $invoke: 'baseStore.startNow' },
+                          },
+                          children: [
+                            {
+                              type: 'Row',
+                              props: {
+                                width: '100%',
+                                gap: '400',
+                                ay: 'center',
+                                px: '400',
+                                py: '400',
+                                borderBottom: '1px solid border',
+                                opacity: 1,
+                                hoverProps: { bg: 'surface-hover' },
+                              },
+                              children: [
+                                {
+                                  type: 'Row',
+                                  props: {
+                                    width: '44px',
+                                    height: '44px',
+                                    r: 'full',
+                                    bg: 'surface-sunken',
+                                    ax: 'center',
+                                    ay: 'center',
+                                    flexShrink: '0',
+                                  },
+                                  children: [{ type: 'we-icon', props: { name: 'lightning', color: 'accent-text' } }],
+                                },
+                                {
+                                  type: 'Column',
+                                  props: { gap: '100', flex: '1', minWidth: '0', textAlign: 'left' },
+                                  children: [
+                                    { type: 'we-text', children: ['Start now'] },
+                                    {
+                                      type: 'we-text',
+                                      props: { variant: 'footnote', color: 'text-muted' },
+                                      children: [
+                                        {
+                                          $: '`Use Coasys on this ${baseStore.deviceNoun} alone. Make or link your identity later, from Settings`',
+                                        },
+                                      ],
+                                    },
+                                  ],
+                                },
+                                { type: 'we-icon', props: { name: 'caret-right', color: 'text-faint' } },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: "baseStore.lastOutcome == 'failed'" },
+                        then: {
+                          type: 'we-alert',
+                          props: { tone: 'danger' },
+                          children: [
+                            {
+                              $: "baseStore.error != '' ? baseStore.error : 'That did not finish. Nothing was changed; try again.'",
+                            },
+                          ],
+                        },
+                      },
+                    },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: "baseStore.lastOutcome != 'failed' && baseStore.error != ''" },
+                        then: { type: 'we-alert', props: { tone: 'danger' }, children: [{ $: 'baseStore.error' }] },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: "baseStore.stage == 'connect'" },
+            then: {
+              id: 'base__connect',
+              type: 'Column',
+              props: {
+                position: 'fixed',
+                top: '0',
+                left: '0',
+                width: '100vw',
+                height: '100dvh',
+                bg: 'page',
+                overflowY: 'auto',
+                gap: '600',
+                pb: '800',
+              },
+              children: [
+                {
+                  type: 'Row',
+                  props: { width: '100%', ay: 'center', ax: 'space-between', gap: '300', minHeight: '72px' },
+                  children: [
+                    {
+                      type: 'Row',
+                      props: { ay: 'center', gap: '300', pl: 'calc((72px - 28px) / 2)' },
+                      children: [
+                        {
+                          type: 'we-image',
+                          props: {
+                            src: { $: 'baseStore.brand.mark' },
+                            alt: '',
+                            width: '28px',
+                            height: '28px',
+                            flexShrink: 0,
+                          },
+                        },
+                        {
+                          type: 'we-text',
+                          props: { variant: 'body', fontWeight: 'semibold', letterSpacing: 'tight' },
+                          children: [{ $: 'baseStore.brand.name' }],
+                        },
+                      ],
+                    },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: "baseStore.identityKnown && baseStore.did != ''" },
+                        then: {
+                          type: 'Row',
+                          props: { gap: '200', pr: '400' },
+                          children: [
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: 'ghost',
+                                size: 'sm',
+                                onClick: { $invoke: 'baseStore.openPage', args: ['devices'] },
+                              },
+                              children: [{ type: 'we-icon', props: { name: 'devices', slot: 'start' } }, 'Devices'],
+                            },
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: 'ghost',
+                                size: 'sm',
+                                onClick: { $invoke: 'baseStore.openPage', args: ['security'] },
+                              },
+                              children: [
+                                { type: 'we-icon', props: { name: 'shield-check', slot: 'start' } },
+                                'Security',
+                              ],
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  ],
+                },
+                {
+                  type: 'Column',
+                  props: { width: '100%', maxWidth: '720px', mx: 'auto', px: '600', gap: '600' },
+                  children: [
+                    {
+                      type: 'Column',
+                      props: { gap: '200' },
+                      children: [
+                        {
+                          type: 'we-text',
+                          props: { variant: 'heading-xl', tag: 'h1' },
+                          children: ['Where is your Coasys?'],
+                        },
+                        {
+                          type: 'we-text',
+                          props: { color: 'text-muted' },
+                          children: [
+                            {
+                              $: "baseStore.did != '' ? `Your spaces live where you keep them. This ${baseStore.deviceNoun} speaks for ${baseStore.didShort}.` : 'Your spaces live where you keep them. Choose where to open them from.'",
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                    {
+                      type: 'Column',
+                      props: { bg: 'surface', r: 'surface', border: '1px solid border', overflow: 'hidden' },
+                      children: [
+                        {
+                          type: '$each',
+                          props: { items: { $: 'baseStore.connections' }, as: 'place' },
+                          children: [
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: 'bare',
+                                width: '100%',
+                                disabled: { $: 'baseStore.busy' },
+                                onClick: { $invoke: 'baseStore.choose', args: [{ $: 'place.id' }] },
+                              },
+                              children: [
+                                {
+                                  type: 'Row',
+                                  props: {
+                                    width: '100%',
+                                    gap: '400',
+                                    ay: 'center',
+                                    px: '400',
+                                    py: '400',
+                                    borderBottom: '1px solid border',
+                                    opacity: 1,
+                                    hoverProps: { bg: 'surface-hover' },
+                                  },
+                                  children: [
+                                    {
+                                      type: 'Row',
+                                      props: {
+                                        width: '44px',
+                                        height: '44px',
+                                        r: 'full',
+                                        bg: 'surface-sunken',
+                                        ax: 'center',
+                                        ay: 'center',
+                                        flexShrink: '0',
+                                      },
+                                      children: [
+                                        { type: 'we-icon', props: { name: { $: 'place.icon' }, color: 'accent-text' } },
+                                      ],
+                                    },
+                                    {
+                                      type: 'Column',
+                                      props: { gap: '100', flex: '1', minWidth: '0', textAlign: 'left' },
+                                      children: [
+                                        { type: 'we-text', children: [{ $: 'place.label' }] },
+                                        {
+                                          type: 'we-text',
+                                          props: { variant: 'footnote', color: 'text-muted' },
+                                          children: [{ $: 'place.detail' }],
+                                        },
+                                      ],
+                                    },
+                                    {
+                                      type: '$if',
+                                      props: {
+                                        condition: { $: 'place.chosen' },
+                                        then: { type: 'we-tag', props: { tone: 'neutral' }, children: ['Last used'] },
+                                        else: { type: 'we-icon', props: { name: 'caret-right', color: 'text-faint' } },
+                                      },
+                                    },
+                                  ],
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                      ],
+                    },
+                    {
+                      id: 'base__hosted',
+                      type: 'Column',
+                      props: { gap: '200', p: '400', r: 'surface', border: '1px dashed border' },
+                      children: [
+                        {
+                          type: 'Row',
+                          props: { gap: '200', ay: 'center' },
+                          children: [
+                            { type: 'we-icon', props: { name: 'cloud', color: 'text-muted' } },
+                            {
+                              type: 'we-text',
+                              props: { fontWeight: 'semibold' },
+                              children: ['Coasys cloud and community hosts'],
+                            },
+                            { type: 'we-tag', props: { tone: 'neutral' }, children: ['Later release'] },
+                          ],
+                        },
+                        {
+                          type: 'we-text',
+                          props: { variant: 'footnote', color: 'text-muted' },
+                          children: [
+                            'Hosted Coasys, and an index of hosts communities run, will be listed here. None is offered yet.',
+                          ],
+                        },
+                      ],
+                    },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: "baseStore.error != ''" },
+                        then: { type: 'we-alert', props: { tone: 'danger' }, children: [{ $: 'baseStore.error' }] },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: "baseStore.stage == 'offline'" },
+            then: {
+              id: 'chrome__offline',
+              type: 'Column',
+              props: {
+                position: 'fixed',
+                top: '0',
+                left: '0',
+                width: '100vw',
+                height: '100dvh',
+                bg: 'page',
+                overflowY: 'auto',
+                gap: '600',
+                pb: '800',
+              },
+              children: [
+                {
+                  type: 'Row',
+                  props: { width: '100%', ay: 'center', ax: 'space-between', gap: '300', minHeight: '72px' },
+                  children: [
+                    {
+                      type: 'Row',
+                      props: { ay: 'center', gap: '300', pl: 'calc((72px - 28px) / 2)' },
+                      children: [
+                        {
+                          type: 'we-image',
+                          props: {
+                            src: { $: 'baseStore.brand.mark' },
+                            alt: '',
+                            width: '28px',
+                            height: '28px',
+                            flexShrink: 0,
+                          },
+                        },
+                        {
+                          type: 'we-text',
+                          props: { variant: 'body', fontWeight: 'semibold', letterSpacing: 'tight' },
+                          children: [{ $: 'baseStore.brand.name' }],
+                        },
+                      ],
+                    },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: "baseStore.identityKnown && baseStore.did != ''" },
+                        then: {
+                          type: 'Row',
+                          props: { gap: '200', pr: '400' },
+                          children: [
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: 'ghost',
+                                size: 'sm',
+                                onClick: { $invoke: 'baseStore.openPage', args: ['devices'] },
+                              },
+                              children: [{ type: 'we-icon', props: { name: 'devices', slot: 'start' } }, 'Devices'],
+                            },
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: 'ghost',
+                                size: 'sm',
+                                onClick: { $invoke: 'baseStore.openPage', args: ['security'] },
+                              },
+                              children: [
+                                { type: 'we-icon', props: { name: 'shield-check', slot: 'start' } },
+                                'Security',
+                              ],
+                            },
+                          ],
+                        },
+                      },
+                    },
+                  ],
+                },
+                {
+                  type: 'Column',
+                  props: { width: '100%', maxWidth: '720px', mx: 'auto', px: '600', gap: '600' },
+                  children: [
+                    {
+                      type: 'Column',
+                      props: { gap: '200' },
+                      children: [
+                        { type: 'we-text', props: { variant: 'heading-xl', tag: 'h1' }, children: ['You are offline'] },
+                        {
+                          type: 'we-text',
+                          props: { color: 'text-muted' },
+                          children: [{ $: 'baseStore.offlineReason' }],
+                        },
+                      ],
+                    },
+                    {
+                      type: 'Row',
+                      props: { gap: '300' },
+                      children: [
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'primary',
+                            loading: { $: 'baseStore.busy' },
+                            onClick: { $invoke: 'baseStore.retry' },
+                          },
+                          children: ['Try again'],
+                        },
+                        {
+                          type: 'we-button',
+                          props: {
+                            variant: 'secondary',
+                            disabled: { $: 'baseStore.busy' },
+                            onClick: { $invoke: 'baseStore.showConnections' },
+                          },
+                          children: ['Choose another place'],
+                        },
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: "baseStore.page == 'devices'" },
+            then: {
+              id: 'base__devices',
+              type: 'Column',
+              props: {
+                position: 'fixed',
+                top: '0',
+                left: '0',
+                width: '100vw',
+                height: '100dvh',
+                bg: 'page',
+                overflowY: 'auto',
+                zIndex: 'modal',
+                gap: '600',
+                pb: '800',
+              },
+              children: [
+                {
+                  type: 'Row',
+                  props: { minHeight: '72px', ay: 'center', px: '400' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: { variant: 'ghost', onClick: { $invoke: 'baseStore.closePage' } },
+                      children: [{ type: 'we-icon', props: { name: 'arrow-left', slot: 'start' } }, 'Back'],
+                    },
+                  ],
+                },
+                {
+                  type: 'Column',
+                  props: { width: '100%', maxWidth: '720px', mx: 'auto', px: '600', gap: '500' },
+                  children: [
+                    { type: 'we-text', props: { variant: 'heading-xl', tag: 'h1' }, children: ['Devices'] },
+                    {
+                      type: 'Column',
+                      props: { bg: 'surface', r: 'surface', border: '1px solid border', overflow: 'hidden' },
+                      children: [
+                        {
+                          type: '$each',
+                          props: { items: { $: 'baseStore.devices' }, as: 'device' },
+                          children: [
+                            {
+                              type: 'Row',
+                              props: {
+                                gap: '400',
+                                px: '400',
+                                py: '400',
+                                ay: 'center',
+                                borderBottom: '1px solid border',
+                              },
+                              children: [
+                                { type: 'we-icon', props: { name: { $: 'device.icon' }, color: 'accent-text' } },
+                                {
+                                  type: 'Column',
+                                  props: { gap: '100', flex: '1', minWidth: '0' },
+                                  children: [
+                                    { type: 'we-text', children: [{ $: 'device.label' }] },
+                                    {
+                                      type: 'we-text',
+                                      props: { variant: 'footnote', color: 'text-muted' },
+                                      children: [{ $: 'device.subtitle' }],
+                                    },
+                                  ],
+                                },
+                                {
+                                  type: '$if',
+                                  props: {
+                                    condition: { $: "device.master != ''" },
+                                    then: {
+                                      type: 'we-tag',
+                                      props: { tone: 'accent' },
+                                      children: [{ $: 'device.master' }],
+                                    },
+                                  },
+                                },
+                              ],
+                            },
+                          ],
+                        },
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $: 'baseStore.devices.length == 0' },
+                            then: {
+                              type: 'we-text',
+                              props: { color: 'text-muted', px: '400', py: '400' },
+                              children: [
+                                'No device is named yet. Name them in Settings → Devices once you are connected.',
+                              ],
+                            },
+                          },
+                        },
+                      ],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-muted' },
+                      children: [
+                        'Change these in Settings once you are connected, where your master key is asked for.',
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: "baseStore.page == 'security'" },
+            then: {
+              id: 'base__security',
+              type: 'Column',
+              props: {
+                position: 'fixed',
+                top: '0',
+                left: '0',
+                width: '100vw',
+                height: '100dvh',
+                bg: 'page',
+                overflowY: 'auto',
+                zIndex: 'modal',
+                gap: '600',
+                pb: '800',
+              },
+              children: [
+                {
+                  type: 'Row',
+                  props: { minHeight: '72px', ay: 'center', px: '400' },
+                  children: [
+                    {
+                      type: 'we-button',
+                      props: { variant: 'ghost', onClick: { $invoke: 'baseStore.closePage' } },
+                      children: [{ type: 'we-icon', props: { name: 'arrow-left', slot: 'start' } }, 'Back'],
+                    },
+                  ],
+                },
+                {
+                  type: 'Column',
+                  props: { width: '100%', maxWidth: '720px', mx: 'auto', px: '600', gap: '500' },
+                  children: [
+                    { type: 'we-text', props: { variant: 'heading-xl', tag: 'h1' }, children: ['Security'] },
+                    {
+                      type: 'Column',
+                      props: { bg: 'surface', r: 'surface', border: '1px solid border', overflow: 'hidden' },
+                      children: [
+                        {
+                          type: 'Row',
+                          props: { gap: '400', px: '400', py: '300', borderBottom: '1px solid border', ay: 'center' },
+                          children: [
+                            {
+                              type: 'we-text',
+                              props: { color: 'text-muted', width: '160px', flexShrink: '0' },
+                              children: ['Your identity'],
+                            },
+                            {
+                              type: 'we-text',
+                              props: { flex: '1', minWidth: '0' },
+                              children: [{ $: "baseStore.didShort != '' ? baseStore.didShort : 'None yet'" }],
+                            },
+                          ],
+                        },
+                        {
+                          type: 'Row',
+                          props: { gap: '400', px: '400', py: '300', borderBottom: '1px solid border', ay: 'center' },
+                          children: [
+                            {
+                              type: 'we-text',
+                              props: { color: 'text-muted', width: '160px', flexShrink: '0' },
+                              children: ['Master key'],
+                            },
+                            {
+                              type: 'we-text',
+                              props: { flex: '1', minWidth: '0' },
+                              children: [{ $: 'baseStore.keepsLine' }],
+                            },
+                          ],
+                        },
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $: "baseStore.blocked != ''" },
+                            then: {
+                              type: 'Row',
+                              props: {
+                                gap: '400',
+                                px: '400',
+                                py: '300',
+                                borderBottom: '1px solid border',
+                                ay: 'center',
+                              },
+                              children: [
+                                {
+                                  type: 'we-text',
+                                  props: { color: 'text-muted', width: '160px', flexShrink: '0' },
+                                  children: ['Changes'],
+                                },
+                                {
+                                  type: 'we-text',
+                                  props: { flex: '1', minWidth: '0' },
+                                  children: [{ $: 'baseStore.blocked' }],
+                                },
+                              ],
+                            },
+                          },
+                        },
+                      ],
+                    },
+                    {
+                      type: 'we-text',
+                      props: { variant: 'footnote', color: 'text-muted' },
+                      children: [
+                        'Change these in Settings once you are connected, where your master key is asked for.',
+                      ],
+                    },
+                  ],
+                },
+              ],
+            },
+          },
+        },
+      ],
+    },
     starters: [
       {
         id: 'coasys-default',

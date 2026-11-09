@@ -17,6 +17,9 @@ const SOLID_TESTS = [
   'tests/runtimeStore.test.tsx',
   'tests/accountStore.test.tsx',
   'tests/identityStore.test.tsx',
+  // The app before a session: memos over a host of fakes, and the hand-off rendering WE's app.
+  'tests/baseStore.test.tsx',
+  'tests/baseBoot.test.tsx',
   'tests/botStore.test.tsx',
   'tests/profileStore.test.tsx',
   // Counts effect re-runs through a real provider. The node project resolves solid-js to its SSR

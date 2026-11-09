@@ -741,6 +741,45 @@ export const storeEntries: StoreEntry[] = [
     actions: ['refresh', 'open', 'makeIdentity', 'startWithoutIdentity'],
   },
   {
+    name: 'baseStore',
+    state: {
+      stage: { type: 'string' },
+      page: { type: 'string' },
+      hostKind: { type: 'string' },
+      deviceNoun: { type: 'string' },
+      brand: { type: 'object' },
+      executorPhase: { type: 'string' },
+      executorReason: { type: 'string' },
+      hasIdentity: { type: 'boolean' },
+      identityKnown: { type: 'boolean' },
+      did: { type: 'string' },
+      didShort: { type: 'string' },
+      holdsMaster: { type: 'boolean' },
+      keepsLine: { type: 'string' },
+      blocked: { type: 'string' },
+      devices: { type: 'array', properties: ['keyId', 'label', 'subtitle', 'icon', 'thisDevice', 'master'] },
+      doors: { type: 'object' },
+      connections: { type: 'array', properties: ['id', 'kind', 'label', 'detail', 'icon', 'chosen'] },
+      chosen: { type: 'string' },
+      busy: { type: 'boolean' },
+      lastOutcome: { type: 'string' },
+      error: { type: 'string' },
+      offlineReason: { type: 'string' },
+    },
+    actions: [
+      'refresh',
+      'makeIdentity',
+      'linkIdentity',
+      'useWords',
+      'startNow',
+      'choose',
+      'retry',
+      'showConnections',
+      'openPage',
+      'closePage',
+    ],
+  },
+  {
     name: 'deviceStore',
     state: {
       devices: {
@@ -2157,6 +2196,58 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       makeIdentity: '(): "Make my identity here" — runs `create`',
       startWithoutIdentity:
         '(): "Start now" — use this account without an identity; remembered for it on this computer, so the first-run question stops',
+    },
+  },
+  baseStore: {
+    state: {
+      stage:
+        "'loading' | 'starting' | 'failed' | 'first-run' | 'connect' | 'offline' | 'handing-off' | 'session' — which screen of the app before a session is due. Only a bundle's `base` template (role 'base') reads this store, and only before WE's app has a session: `starting`/`failed` while this device's own backend starts or after it failed to, `first-run` for the three doors, `connect` for the connection choice, `offline` when the chosen place cannot be reached, `handing-off` while it is reached, `session` once the app has it (nothing of the base is drawn then)",
+      page: "'' | 'devices' | 'security' — a read-only page open over the stage",
+      hostKind: "'computer' | 'phone' | 'browser' — what this device is",
+      deviceNoun:
+        "'computer' | 'phone' | 'browser' — the same, for a sentence: 'This ' + baseStore.deviceNoun + ' keeps no master key'",
+      brand:
+        '{ name, mark } — the deployment’s name and mark (an image URL) for the header; templateStore is not there before a session',
+      executorPhase:
+        "'none' | 'starting' | 'ready' | 'failed' — this device’s own backend: 'none' where it runs none (a browser, a phone)",
+      executorReason: 'string — why it failed to start, ready to show; empty otherwise. Offer retry beside it',
+      hasIdentity:
+        'boolean — this device keeps an identity of its own (a computer’s custody service, a phone’s key); false in a browser, which goes straight to the connection choice',
+      identityKnown: 'boolean — the identity source answered, so did / holdsMaster are facts, not defaults',
+      did: 'string — the identity this device speaks for, or empty. Draw didShort; never the whole identifier in a screenshot-sized space',
+      didShort: 'string — the same, shortened for the eye',
+      holdsMaster: 'boolean — this device keeps a master key of it',
+      keepsLine:
+        "string — 'This computer keeps your master key behind its own sign-in' / '… behind your passphrase' / 'This phone keeps no master key', ready to show",
+      blocked: 'string — why no identity change can be made here, ready to show; empty when one can',
+      devices:
+        "{ keyId, label, subtitle, icon, thisDevice, master }[] — the devices the identity's private record names, read-only before a session: `label` 'This computer' / 'This phone', the record's name, or 'Device d2'; `master` 'Holds the master key', 'Master key offered, not yet taken' or empty",
+      doors:
+        "{ make, link, words } each { open: boolean, note: string } — the three ways in as this device offers them: `open` the door runs a step here, else `note` says why not ('A phone joins an identity made on a computer'). Draw a closed door disabled with its note, never hide it",
+      connections:
+        "{ id, kind, label, detail, icon, chosen }[] — where a session can be had from here. `kind` 'this-device' (the backend this computer runs), 'server' (one the person added), 'key-host' (the computer this phone's key signs in to), 'connect' (the browser's AD4M Connect screen, which asks where). Coasys cloud and the hosting index are not in it until they exist: a template says so in its own words rather than listing them",
+      chosen: 'string — the id of the connection chosen last, remembered on this device; empty for none',
+      busy: 'boolean — an identity step or a connection is under way',
+      lastOutcome: "'done' | 'cancelled' | 'failed' | '' — how the last identity step ended",
+      error: 'string — why the last step, read or connection failed, ready to show; empty otherwise',
+      offlineReason: 'string — why the offline state is up: no network, or the place chosen could not be reached',
+    },
+    actions: {
+      refresh: '(): reads the identity and the connections again and works out the stage afresh',
+      makeIdentity:
+        '(): "Make my identity here" — opens the host’s identity window on making one (the 12 words are shown there, never here); resolves with the outcome, and the stage moves on once the identity exists',
+      linkIdentity:
+        '(): "Link to my identity" — opens the identity window on joining one another device keeps: on a computer it shows this computer’s code, on a phone it opens the join page',
+      useWords:
+        '(): "Use my 12 words" — opens the identity window on bringing the identity back from them; the words are typed there only',
+      startNow:
+        '(): "Start now" — no identity on this device for now; remembered here (and inside the session), and offered again from Settings',
+      choose: '(id): connects to one of `connections` and hands the session to the app; remembered for the next boot',
+      retry:
+        '(): "Try again" — starts this device’s backend again after a failure, or reaches the chosen place again from offline',
+      showConnections: '(): back to the connection choice, from offline or after a first run',
+      openPage: "(page: 'devices' | 'security'): opens a read-only page over the stage",
+      closePage: '(): closes it',
     },
   },
   deviceStore: {

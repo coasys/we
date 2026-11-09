@@ -15,6 +15,7 @@ file in Settings.
 | `assets/BricolageGrotesque-latin.woff2` | Glow's typeface (SIL OFL 1.1), carried in its `fontFaces` as a `data:` URL                           |
 | `app.ts`                                | The chrome around every space: one rail, no module rail                                              |
 | `firstRun.ts`                           | "Welcome to Coasys": make your identity here, or start without one                                   |
+| `base.ts`                               | Before a session: the first run's three doors, where to connect, offline, Devices and Security       |
 | `space/shell.ts`                        | A space as one tree and one view, on a home lane                                                     |
 | `space/tree.ts`                         | The tree: channels, calls, workflows, people, Social DNA                                             |
 | `space/views.ts`                        | The pages: the Feed, the workflows, and a call's own page                                            |

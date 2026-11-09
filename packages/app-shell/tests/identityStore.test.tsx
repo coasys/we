@@ -37,6 +37,7 @@ import { type DeviceStore, DeviceStoreProvider, useDeviceStore } from '../src/fr
 import {
   type IdentityStore,
   IdentityStoreProvider,
+  START_NOW_HERE_KEY,
   startNowKey,
   useIdentityStore,
 } from '../src/frameworks/solid/stores/IdentityStore';
@@ -373,6 +374,19 @@ describe('identityStore', () => {
     await flush();
     await flush();
     expect(identity.needsFirstRun()).toBe(true);
+  });
+
+  it('takes "Start now" given before any account, in the app before a session, as this account\'s too', async () => {
+    localStorage.setItem(START_NOW_HERE_KEY, '1');
+    try {
+      setPorts({ identity: custody(backend({ did: null, events: [], devices: [] }).port, () => {}).identity });
+      const { identity } = mount();
+      await flush();
+      await flush();
+      expect(identity.needsFirstRun()).toBe(false);
+    } finally {
+      localStorage.removeItem(START_NOW_HERE_KEY);
+    }
   });
 
   it('reports a change the person cancelled, and reads again all the same', async () => {

@@ -40,6 +40,7 @@ import {
   waitUntilReady,
   withoutCustodyCredential,
 } from './executorProcess.js';
+import { LOG_WORDS, startFailureWords, stoppedWords } from './executorWords.js';
 import { createIdentity, IDENTITY_PAGE, IDENTITY_SCHEME, identityFile, isIdentityPage } from './identityWindow.js';
 import { executorSpawnEnv, handleFromWindow, isFromWindow } from './ipcSender.js';
 import {
@@ -82,6 +83,54 @@ let switchingAccount = false;
 const executorBackoff = crashBackoff();
 /** The current run's log in the account's data directory (see `executorLog.js`), or null. */
 let executorLog = null;
+
+/*
+  The executor as the window sees it: starting, ready, or failed and why.
+
+  The window opens before the executor is up, and draws the app before a session (the base app)
+  while it starts. A start that fails is a state of that app, with the reason and "Try again"
+  (`executor-start`), rather than an error box and a quit: the person can read why, change what
+  is wrong and try again without starting the app over, and the identity window and Settings'
+  account switch stay in reach.
+
+  `executorUp` is whether a first start has succeeded. Until it has, a start's own exit code is read
+  by the start (`startWithPortRetry` tries another port on exit 80); after it, the exit handler owns
+  every recovery. It used to be "the window exists", which meant the same thing when the window was
+  opened only after the first start.
+*/
+let executorUp = false;
+let executorState = { phase: 'starting' };
+/** The start running now, so a second "Try again" waits on it rather than starting another. */
+let executorBooting = null;
+
+function setExecutorState(next) {
+  executorState = next;
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('executor-state', next);
+}
+
+/** Why a start failed, in words for the window, with no path in them (`executorWords.js`). */
+const startFailure = (err) => startFailureWords(err, { logged: Boolean(executorLog) });
+
+/** Starts the executor and says how it went in `executorState`; never throws. */
+function bootExecutor() {
+  executorBooting ??= (async () => {
+    setExecutorState({ phase: 'starting' });
+    try {
+      // A start that timed out can leave its executor running; a try again starts from nothing.
+      await stopExecutor();
+      await startExecutor();
+      executorUp = true;
+      setExecutorState({ phase: 'ready' });
+    } catch (err) {
+      console.error('[main] The executor did not start:', err);
+      setExecutorState({ phase: 'failed', reason: startFailure(err) });
+    } finally {
+      executorBooting = null;
+    }
+  })();
+  return executorBooting;
+}
 
 /*
   This process's own console goes into the executor log too.
@@ -317,7 +366,7 @@ async function waitForGraphQL(port, proc) {
  * executor's last lines as the reason.
  */
 function startExecutor({ samePort = false } = {}) {
-  return startWithPortRetry(startExecutorOnce, { samePort, appUp: () => Boolean(mainWindow) });
+  return startWithPortRetry(startExecutorOnce, { samePort, appUp: () => executorUp });
 }
 
 /** The config file `--config` names, in the account's data folder. See `ensureExecutorConfig`. */
@@ -440,7 +489,7 @@ async function startExecutorOnce({ samePort }) {
         {
           current: executorProcess === proc,
           quitting: executorStoppedForQuit,
-          appUp: Boolean(mainWindow),
+          appUp: executorUp,
           startedAt,
           code,
           signal,
@@ -464,6 +513,7 @@ async function startExecutorOnce({ samePort }) {
       }
       if (outcome.action === 'refused' || outcome.action === 'busy' || outcome.action === 'give-up') {
         showExecutorStopped(outcome.action, tail.lines(), configFile, ad4mDataPath);
+        setExecutorState({ phase: 'failed', reason: `${stoppedWords(outcome.action)}\n\n${LOG_WORDS}` });
       }
       // Gone for good: the sidecar would only keep restarting against a dead port.
       if (outcome.action !== 'stopped' && outcome.action !== 'leave') void stopCustody();
@@ -1032,6 +1082,21 @@ handle('accounts-apply', () => restartExecutorAndReload());
  */
 handle('executor-restart', () => restartExecutorAndReload());
 
+/** The executor as the window last heard it: `{ phase: 'starting' | 'ready' | 'failed', reason? }`. */
+handle('executor-state', () => executorState);
+
+/**
+ * Try again after a start failed. Answers at once; the window hears how it went as `executor-state`.
+ * Only a failed executor is started: one starting or running is left alone, so a second click, or a
+ * page that asks twice, starts nothing. Once the app has been up, the same restart as Settings'.
+ */
+handle('executor-start', () => {
+  if (executorState.phase !== 'failed') return executorState;
+  if (executorUp) void restartExecutorAndReload();
+  else void bootExecutor();
+  return { phase: 'starting' };
+});
+
 /**
  * A path on this machine, for the backend to write to or read from.
  *
@@ -1110,14 +1175,18 @@ function restartExecutorAndReload({ samePort = false, delayMs = 0 } = {}) {
 async function restartExecutorAndReloadOnce({ samePort = false } = {}) {
   switchingAccount = true;
   let started = false;
+  setExecutorState({ phase: 'starting' });
   try {
     await stopExecutor();
     // startExecutor picks up the new path, waits for GraphQL, and refreshes port/token — which the
     // reloaded renderer asks for again over IPC, so it never sees the old credentials.
     await startExecutor({ samePort });
     started = true;
+    executorUp = true;
+    setExecutorState({ phase: 'ready' });
   } catch (err) {
     console.error('[main] Could not start the executor for the selected account:', err);
+    setExecutorState({ phase: 'failed', reason: startFailure(err) });
     // A refused start (78, 79) has already said why in a dialog, from the exit handler.
     // Fall through to the reload anyway: the renderer's boot will surface a connection failure,
     // which is a screen the user can act on. Leaving them on a spinner is not.
@@ -1257,26 +1326,16 @@ app.whenReady().then(async () => {
     delete process.env.WE_EXTERNAL_AD4M_CUSTODY_CREDENTIAL;
     if (custodyToken) startCustodyFor(ad4mPort, custodyToken);
     else console.error('[main] No WE_EXTERNAL_AD4M_CUSTODY_CREDENTIAL — identity is off');
-  } else {
-    try {
-      await startExecutor();
-    } catch (err) {
-      // No window exists yet, so this box is the only way to say the app failed. Before it, the
-      // rejection went unhandled and the app ran on with no window until it was killed.
-      const logLine = executorLog ? `\n\nThe executor's log: ${executorLog.path}` : '';
-      dialog.showErrorBox(
-        'The app could not start',
-        `The AD4M executor it runs on did not start.\n\n${err.message}${logLine}`,
-      );
-      app.quit();
-      return;
-    }
+    executorUp = true;
+    executorState = { phase: 'ready' };
   }
 
-  // Then create the window
+  // The window first: it draws the app before a session (identity, connection choice, settings)
+  // while the executor starts, and says so in the window if it does not (`bootExecutor`).
   installApplicationMenu();
   installTray();
   createWindow();
+  if (!executorUp) void bootExecutor();
 
   // macOS: a click on the Dock icon opens the window, hidden or not.
   app.on('activate', () => openMainWindow());

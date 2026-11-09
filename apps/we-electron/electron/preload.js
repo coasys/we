@@ -36,6 +36,21 @@ contextBridge.exposeInMainWorld('electron', {
   restartExecutor: () => ipcRenderer.invoke('executor-restart'),
   chooseFile: (options) => ipcRenderer.invoke('executor-choose-file', options),
 
+  /*
+    The executor this app runs, as the app before a session reads it: starting, ready, or failed and
+    why. The window opens before it is up, so it asks, hears each change, and may try a failed start
+    again. `onState` hands back its own unsubscribe.
+  */
+  executor: {
+    state: () => ipcRenderer.invoke('executor-state'),
+    onState: (listener) => {
+      const forward = (_event, state) => listener(state);
+      ipcRenderer.on('executor-state', forward);
+      return () => ipcRenderer.removeListener('executor-state', forward);
+    },
+    start: () => ipcRenderer.invoke('executor-start'),
+  },
+
   // Every download in the app: the main process asks where, and writes it. See `save-file` in main.js.
   saveFile: (file) => ipcRenderer.invoke('save-file', file),
 

@@ -12,6 +12,9 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
   },
+  "exports": {
+    "./platform/*": "./src/platform/*.ts"
+  },
   "dependencies": {
     "@we/app-shell": "workspace:*",
     "@coasys/ad4m": "*",
