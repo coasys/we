@@ -4,7 +4,7 @@
  * signs in there. The identity comes with that session; Devices and Security are Settings' once it
  * runs.
  */
-import type { BackendConnector, BaseConnection, BaseHost } from '@we/app-shell/shared';
+import type { BackendConnector, BaseConnection, BaseHandOff, BaseHost } from '@we/app-shell/shared';
 import { isUnreachable } from '@we/app-web/platform/deviceKeyConnector';
 import { rememberedSessionBase } from '@we/app-web/platform/storedSession';
 
@@ -66,7 +66,8 @@ export async function answers(base: string, ms: number = REACH_MS): Promise<void
  * executor switched off, or out of reach, is the base app's offline state instead: the reason and
  * "Try again". So the failure is thrown before AD4M Connect starts, and the base app, which hears an
  * unreachable place from the session's connector, takes the page back. With no session remembered
- * nothing has been chosen yet, and AD4M Connect's screen is the right one.
+ * nothing has been chosen yet, and AD4M Connect's screen is the right one; and the person choosing
+ * AD4M Connect from the list ({@link connectFor}) is asking for that screen, so it is not asked first.
  */
 export function reachRemembered(connector: BackendConnector, deps: ReachDeps = {}): BackendConnector {
   const remembered = deps.remembered ?? rememberedSessionBase;
@@ -94,12 +95,25 @@ export function unreachable(error: unknown, online: () => boolean): boolean {
   return error instanceof ConnectUnreachable || isUnreachable(error, online());
 }
 
+/**
+ * AD4M Connect's connector for a hand-off: asked about the remembered executor first on a resume or
+ * "Try again", and handed over as it is when the person chose it, so a retired executor still lets
+ * them reach AD4M Connect's screen and give another address.
+ */
+export function connectFor(
+  connector: BackendConnector,
+  how: BaseHandOff | undefined,
+  deps: ReachDeps,
+): BackendConnector {
+  return how?.chosen ? connector : reachRemembered(connector, deps);
+}
+
 export function webBaseHost(connector: BackendConnector, deps: ReachDeps = {}): BaseHost {
   const online = deps.online ?? (() => globalThis.navigator?.onLine ?? true);
   return {
     kind: 'browser',
     connections: async () => [CONNECT],
-    connector: async () => reachRemembered(connector, { ...deps, online }),
+    connector: async (_connection, how) => connectFor(connector, how, { ...deps, online }),
     isUnreachable: (error) => unreachable(error, online),
     online,
   };

@@ -160,8 +160,8 @@ export function BaseBoot(props: BaseBootProps): JSX.Element {
   */
   const store = createBaseStore(base ? host : { ...host, identity: undefined }, {
     brand: base?.brand ?? { name: WE_PRODUCT_NAME, mark: '' },
-    onHandOff: async (connection) => {
-      const connector = await host.connector(connection);
+    onHandOff: async (connection, how) => {
+      const connector = await host.connector(connection, how);
       setSession(() => handBackOnUnreachable(connector, host, connection, back));
     },
     takeFirst: !base,

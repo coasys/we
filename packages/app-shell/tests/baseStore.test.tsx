@@ -258,6 +258,25 @@ describe('baseStore, the first run', () => {
     expect(store.doors().link.open).toBe(true);
   });
 
+  /*
+    Lal's P2 on #438: an identity that could not be read is not "no identity". The first run is not
+    offered for it; the reason is shown and "Try again" reads it again.
+  */
+  it('offers no first run for an identity it could not read, and reads it again on "Try again"', async () => {
+    const identity = fakeIdentity(view({ did: DID }));
+    const state = identity.source.state as ReturnType<typeof vi.fn>;
+    state.mockRejectedValueOnce(new Error('This phone cannot reach your identity store: StoreDown'));
+    const { store } = make(host({ kind: 'phone', identity: identity.source }), { identityAttempts: 1 });
+    await until(() => store.stage() === 'connect');
+    expect(store.error()).toBe(
+      'This phone could not read its identity: This phone cannot reach your identity store: StoreDown',
+    );
+    await store.retry();
+    await until(() => store.error() === '');
+    expect(store.stage()).toBe('connect');
+    expect(state).toHaveBeenCalledTimes(2);
+  });
+
   it('remembers "Start now" for the whole device, and asks no first run after it', async () => {
     const storage = memoryStorage();
     const first = make(host({ identity: fakeIdentity(view()).source }), { storage });
@@ -334,6 +353,34 @@ describe('baseStore, the connection', () => {
     await store.retry();
     expect(store.stage()).toBe('connect');
     expect(store.error()).toBe('Refused: wrong token');
+  });
+
+  /*
+    Lal's P2 on #438: the host asks a remembered place first, so that a relaunch whose place is gone
+    lands on the offline state. A person choosing a place from the list is not resuming, and the host
+    is told so (the browser's AD4M Connect then opens its own screen, where a new address goes).
+  */
+  it('tells the host a place was chosen by the person, and not when it resumes or tries again', async () => {
+    const calls: [string, boolean][] = [];
+    const unreachable = Object.assign(new Error('Failed to fetch'), { unreachable: true });
+    const { store } = make(host({ isUnreachable: (e) => (e as { unreachable?: boolean }).unreachable === true }), {
+      storage: memoryStorage({ [BASE_CONNECTION_KEY]: 'server:a' }),
+      onHandOff: async (c, how) => {
+        calls.push([c.id, how?.chosen === true]);
+        if (!how?.chosen) throw unreachable;
+      },
+    });
+    await until(() => store.stage() === 'offline');
+    await store.retry();
+    expect(store.stage()).toBe('offline');
+    await store.showConnections();
+    await store.choose('server:a');
+    expect(store.stage()).toBe('session');
+    expect(calls).toEqual([
+      ['server:a', false],
+      ['server:a', false],
+      ['server:a', true],
+    ]);
   });
 
   it('says so for a place no longer offered', async () => {
