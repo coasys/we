@@ -211,18 +211,23 @@ impl Supervisor {
         // Ready when its RPC answers `runtime.info`; gone when the process is.
         let url = format!("http://127.0.0.1:{}", launch.port);
         let deadline = Instant::now() + Duration::from_secs(120);
+        let mut last_error = String::from("no probe yet");
         loop {
             if let Some(code) = self.exited(generation) {
                 let phase = Phase::Exited(code);
                 self.update(generation, |s| s.phase = phase.clone());
                 return Err(format!("the executor exited while starting ({code:?}); see {}", log.path().display()));
             }
-            if let Ok(info) = probe(&url, &launch.credential).await {
+            let answer = probe(&url, &launch.credential).await;
+            if let Err(error) = &answer {
+                last_error = format!("{error:#}");
+            }
+            if let Ok(info) = answer {
                 let ready = started.elapsed().as_millis();
                 log.host(&format!("executor ready after {ready} ms"));
                 self.update(generation, |s| {
                     s.phase = Phase::Running;
-                    s.version = Some(info.version);
+                    s.version = info.version;
                     s.commit = info.commit;
                     s.did = info.did;
                     s.initialized = Some(info.initialized);
@@ -233,8 +238,10 @@ impl Supervisor {
                 return Ok(());
             }
             if Instant::now() > deadline {
-                self.update(generation, |s| s.phase = Phase::Failed("no answer in 120 s".into()));
-                return Err("the executor did not answer within 120 s".into());
+                let reason = format!("no answer in 120 s (last: {last_error})");
+                log.host(&reason);
+                self.update(generation, |s| s.phase = Phase::Failed(reason.clone()));
+                return Err(format!("the executor did not answer within 120 s (last: {last_error})"));
             }
             tokio::time::sleep(Duration::from_millis(500)).await;
         }
@@ -270,6 +277,10 @@ impl Supervisor {
                 }
                 let alive = match probe(&url, &credential).await {
                     Ok(info) => this.update(generation, |s| {
+                        if info.version.is_some() {
+                            s.version = info.version;
+                            s.commit = info.commit;
+                        }
                         s.did = info.did;
                         s.initialized = Some(info.initialized);
                         s.unlocked = Some(info.unlocked);
@@ -388,7 +399,7 @@ fn stop_child(child: &mut Child, _grace: Duration) {
 }
 
 pub struct Info {
-    pub version: String,
+    pub version: Option<String>,
     pub commit: Option<String>,
     pub did: Option<String>,
     pub initialized: bool,
@@ -396,27 +407,47 @@ pub struct Info {
 }
 
 /// The executor's version and its agent's state, over its RPC.
+///
+/// The executor is ready once its RPC answers `agent.status`, which it does before any agent
+/// exists. `runtime.info` answers only once there is an agent (before that it is an RPC error,
+/// `Agent not found`), so the version is filled in when it can be.
 pub async fn probe(url: &str, credential: &str) -> anyhow::Result<Info> {
     let client = tokio::time::timeout(
         Duration::from_secs(3),
         ad4m_client::Ad4mClient::connect(url.to_string(), credential.to_string()),
     )
     .await??;
-    let info = tokio::time::timeout(Duration::from_secs(3), client.runtime.info()).await??;
     let status = tokio::time::timeout(Duration::from_secs(3), client.agent.status()).await??;
+    let info = match tokio::time::timeout(Duration::from_secs(3), client.runtime.info()).await? {
+        Ok(info) => Some(info),
+        Err(error) if no_agent_yet(&format!("{error:#}")) => None,
+        Err(error) => return Err(error),
+    };
     Ok(Info {
-        version: info.ad4m_executor_version,
-        commit: info.ad4m_executor_commit,
+        version: info.as_ref().map(|i| i.ad4m_executor_version.clone()),
+        commit: info.and_then(|i| i.ad4m_executor_commit),
         did: status.did,
         initialized: status.is_initialized,
         unlocked: status.is_unlocked,
     })
 }
 
+/// Whether an `agent.status` error means the executor has no agent yet.
+fn no_agent_yet(error: &str) -> bool {
+    error.contains("Agent not found")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use std::collections::HashMap;
+
+    #[test]
+    fn an_executor_with_no_agent_yet_is_still_up() {
+        assert!(no_agent_yet("RPC error 404: Agent not found"));
+        assert!(!no_agent_yet("RPC error 401: Unauthorized"));
+        assert!(!no_agent_yet("connection refused"));
+    }
 
     fn launch() -> Launch {
         Launch {
