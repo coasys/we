@@ -152,7 +152,7 @@ fn remember(shell: &Shell, outcome: Option<we_custody::StepOutcome>) {
 fn close_identity(shell: &Shell, cx: &mut AsyncApp) {
     let window = shell.identity.borrow().window;
     if let Some(window) = window {
-        let _ = window.update(cx, |_, window, _| window.remove_window());
+        cx.update(|cx| shell::close_webview_window(window, cx));
     }
 }
 

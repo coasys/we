@@ -186,12 +186,9 @@ impl Supervisor {
         };
         let started = Instant::now();
 
-        let spawned = {
-            let launch = launch.clone();
-            tokio::task::spawn_blocking(move || spawn(&launch))
-                .await
-                .map_err(|e| e.to_string())?
-        };
+        let spawned = spawn_on_parent_thread(launch.clone())?
+            .await
+            .map_err(|_| "the executor's thread ended before it started".to_string())?;
         let (child, log) = match spawned {
             Ok(spawned) => spawned,
             Err(why) => {
@@ -320,7 +317,10 @@ fn now_ms() -> u128 {
 }
 
 /// `init` when needed, then the `run` child with its output in this run's log.
-fn spawn(launch: &Launch) -> Result<(Child, ExecutorLog), String> {
+/// The executor's stdout, which the caller pumps (see `Supervisor::start` for why that matters).
+type Stdout = Box<dyn std::io::Read + Send>;
+
+fn spawn(launch: &Launch) -> Result<(Child, ExecutorLog, Option<Stdout>), String> {
     std::fs::create_dir_all(&launch.data_path).map_err(|e| format!("data path: {e}"))?;
     let log = ExecutorLog::open(&launch.data_path);
     log.host(&format!("we-gpui: data path {}", launch.data_path.display()));
@@ -354,24 +354,62 @@ fn spawn(launch: &Launch) -> Result<(Child, ExecutorLog), String> {
         // Its own group, so a stop reaches what it starts (Holochain, lair) as well.
         command.process_group(0);
     }
+    // The executor goes when this process does, however that happens (a crash included).
+    // `AD4M_EXIT_WITH_PARENT` is set as the other shells set it, but no ad4m reads it yet.
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::process::CommandExt;
+        // SAFETY: prctl is async-signal-safe and touches only the calling (child) process.
+        unsafe {
+            command.pre_exec(|| {
+                if libc::prctl(libc::PR_SET_PDEATHSIG, libc::SIGTERM) != 0 {
+                    return Err(std::io::Error::last_os_error());
+                }
+                Ok(())
+            });
+        }
+    }
     let mut child = command
         .spawn()
         .map_err(|e| format!("could not start {}: {e}", launch.binary.display()))?;
-    for stream in [
-        child.stdout.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
-        child.stderr.take().map(|s| Box::new(s) as Box<dyn std::io::Read + Send>),
-    ]
-    .into_iter()
-    .flatten()
-    {
-        let mut sink = log.clone();
-        std::thread::spawn(move || {
-            for line in BufReader::new(stream).lines().map_while(Result::ok) {
-                let _ = writeln!(sink, "{line}");
-            }
-        });
+    if let Some(stderr) = child.stderr.take() {
+        let sink = log.clone();
+        std::thread::spawn(move || pump(Box::new(stderr), sink));
     }
-    Ok((child, log))
+    let stdout = child.stdout.take().map(|s| Box::new(s) as Stdout);
+    Ok((child, log, stdout))
+}
+
+type Spawned = Result<(Child, ExecutorLog), String>;
+
+/// Spawns the executor from a thread that lives exactly as long as the child's stdout, because it
+/// pumps it. On Linux the child's death signal (see `spawn`) fires when the *thread* that forked it
+/// ends, so a pooled thread retired when idle would take the executor with it.
+fn spawn_on_parent_thread(launch: Launch) -> Result<tokio::sync::oneshot::Receiver<Spawned>, String> {
+    let (tx, rx) = tokio::sync::oneshot::channel();
+    std::thread::Builder::new()
+        .name("executor-parent".into())
+        .spawn(move || match spawn(&launch) {
+            Ok((child, log, stdout)) => {
+                let sink = log.clone();
+                let _ = tx.send(Ok((child, log)));
+                if let Some(stdout) = stdout {
+                    pump(stdout, sink);
+                }
+            }
+            Err(why) => {
+                let _ = tx.send(Err(why));
+            }
+        })
+        .map_err(|e| format!("could not start the executor's thread: {e}"))?;
+    Ok(rx)
+}
+
+/// Copies a stream into the executor log, line by line, until it closes.
+fn pump(stream: Stdout, mut sink: ExecutorLog) {
+    for line in BufReader::new(stream).lines().map_while(Result::ok) {
+        let _ = writeln!(sink, "{line}");
+    }
 }
 
 #[cfg(unix)]
@@ -541,6 +579,64 @@ mod tests {
         stop_child(&mut child, Duration::from_millis(300));
         assert!(started.elapsed() < Duration::from_secs(5));
         assert!(child.try_wait().unwrap().is_some());
+    }
+
+    /// The stand-in for a shell that crashes: starts a fake executor, records its pid, and dies
+    /// without any cleanup. Run only by `the_executor_dies_with_a_crashed_shell`, in its own process.
+    #[cfg(target_os = "linux")]
+    #[test]
+    #[ignore = "a helper process for the_executor_dies_with_a_crashed_shell"]
+    fn crashing_shell_helper() {
+        let Ok(dir) = std::env::var("WE_GPUI_TEST_CRASH_DIR") else { return };
+        let dir = PathBuf::from(dir);
+        let mut l = launch();
+        l.binary = dir.join("fake-executor");
+        l.data_path = dir.join("data");
+        let spawned = futures::executor::block_on(spawn_on_parent_thread(l).unwrap()).unwrap();
+        let (child, _log) = spawned.unwrap();
+        std::fs::write(dir.join("spawned"), child.id().to_string()).unwrap();
+        // Let the pump thread be the long-lived one, as in the app, then go as a crash does.
+        std::thread::sleep(Duration::from_millis(300));
+        // SAFETY: ends this helper process at once, skipping destructors, as a crash would.
+        unsafe { libc::_exit(0) };
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn the_executor_dies_with_a_crashed_shell() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().join("data");
+        std::fs::create_dir_all(&data).unwrap();
+        std::fs::write(data.join("mainnet_seed.seed"), "{}").unwrap();
+        let fake = dir.path().join("fake-executor");
+        std::fs::write(&fake, "#!/bin/sh\nexec sleep 60\n").unwrap();
+        std::fs::set_permissions(&fake, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let status = Command::new(std::env::current_exe().unwrap())
+            .args(["--exact", "executor::tests::crashing_shell_helper", "--ignored", "--test-threads=1"])
+            .env("WE_GPUI_TEST_CRASH_DIR", dir.path())
+            .stdout(Stdio::null())
+            .status()
+            .unwrap();
+        assert!(status.success());
+        let pid: i32 = std::fs::read_to_string(dir.path().join("spawned")).unwrap().trim().parse().unwrap();
+
+        // Gone (and reaped by whoever inherited it), not left running as an orphan.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        let alive = |pid: i32| {
+            std::fs::read_to_string(format!("/proc/{pid}/stat"))
+                .is_ok_and(|stat| !stat.rsplit(')').next().unwrap_or("").trim_start().starts_with('Z'))
+        };
+        while alive(pid) && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(50));
+        }
+        let survived = alive(pid);
+        if survived {
+            // SAFETY: the fake executor this test started.
+            unsafe { libc::kill(pid, libc::SIGKILL) };
+        }
+        assert!(!survived, "the executor outlived the shell that started it");
     }
 
     #[cfg(unix)]

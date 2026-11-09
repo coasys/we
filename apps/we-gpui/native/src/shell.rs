@@ -232,6 +232,7 @@ pub fn open_main(cx: &mut App) -> anyhow::Result<()> {
     let url = surface.start_url();
     let mut built = None;
     let handle = cx.open_window(window_options("WE", 1280., 800., true, cx), |window, cx| {
+        close_in_order(window, cx);
         let webview = build_webview(surface, window, cx);
         cx.new(|_| match webview {
             Ok(webview) => {
@@ -267,6 +268,7 @@ pub fn open_identity(cx: &mut App) -> anyhow::Result<AnyWindowHandle> {
     let handle = cx.open_window(
         window_options("WE — your identity", 480., 640., false, cx),
         |window, cx| {
+            close_in_order(window, cx);
             let webview = build_webview(surface, window, cx);
             cx.new(|_| match webview {
                 Ok(webview) => WebViewWindowOrError::WebView(webview),
@@ -281,6 +283,8 @@ pub fn open_identity(cx: &mut App) -> anyhow::Result<AnyWindowHandle> {
 pub enum WebViewWindowOrError {
     WebView(Entity<WebView>),
     Error(String),
+    /// Its webview has been let go, and the window is about to be removed (`close_webview_window`).
+    Released,
 }
 
 impl Render for WebViewWindowOrError {
@@ -291,6 +295,7 @@ impl Render for WebViewWindowOrError {
                 .flex()
                 .child(inner.clone())
                 .into_any_element(),
+            WebViewWindowOrError::Released => div().size_full().into_any_element(),
             WebViewWindowOrError::Error(message) => div()
                 .size_full()
                 .p_4()
@@ -300,6 +305,39 @@ impl Render for WebViewWindowOrError {
                 .into_any_element(),
         }
     }
+}
+
+/// How long a released webview is given to be torn down before its window goes.
+const RELEASE_GRACE: std::time::Duration = std::time::Duration::from_millis(100);
+
+/// Closes a webview window in the order its webview needs: the webview first, then the window.
+///
+/// The webview is a GTK child of the GPUI window's X11 window. Removed the other way round, GTK
+/// goes on configuring a child of a window that no longer exists, X answers `BadWindow`, and
+/// GDK's error handler ends the process — which is how cancelling the identity window took the
+/// whole app down. gpui-webview states the rule: every handle goes before the parent window.
+pub fn close_webview_window(handle: AnyWindowHandle, cx: &mut App) {
+    if let Some(typed) = handle.downcast::<WebViewWindowOrError>() {
+        let _ = typed.update(cx, |view, _, cx| {
+            *view = WebViewWindowOrError::Released;
+            cx.notify();
+        });
+    }
+    cx.spawn(async move |cx| {
+        cx.background_executor().timer(RELEASE_GRACE).await;
+        let _ = handle.update(cx, |_, window, _| window.remove_window());
+    })
+    .detach();
+}
+
+/// Routes a close from the window manager through [`close_webview_window`].
+fn close_in_order(window: &Window, cx: &App) {
+    window.on_window_should_close(cx, |window, cx| {
+        let handle = window.window_handle();
+        // Deferred: this runs inside the window's own update, where it cannot be updated again.
+        cx.defer(move |cx| close_webview_window(handle, cx));
+        false
+    });
 }
 
 pub fn window_options(title: &str, w: f32, h: f32, resizable: bool, cx: &App) -> WindowOptions {
