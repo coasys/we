@@ -155,6 +155,7 @@ pub fn build_webview(
             wry::NewWindowResponse::Deny
         })
         .with_devtools(std::env::var("WE_GPUI_DEVTOOLS").is_ok())
+        .with_bounds(initial_bounds())
         .with_url(surface.start_url());
     drop(tx);
 
@@ -410,4 +411,42 @@ fn enable_media(webview: &wry::WebView) {
         }
         true
     });
+}
+
+/// The bounds a webview is built with, before the first layout places it.
+///
+/// They are physical on purpose. wry's X11 path converts *logical* initial bounds with a scale
+/// it derives from the screen's size in millimetres, and an X server that reports no physical
+/// size (XWayland under GNOME does) makes that scale infinite and wry panics in `dpi`. Physical
+/// bounds are passed through unscaled; the first layout replaces them with the real ones, and
+/// that path uses GTK's own integer scale.
+fn initial_bounds() -> wry::Rect {
+    wry::Rect {
+        position: wry::dpi::PhysicalPosition::new(0, 0).into(),
+        size: wry::dpi::PhysicalSize::new(1u32, 1u32).into(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::initial_bounds;
+
+    #[test]
+    fn initial_bounds_survive_a_screen_with_no_physical_size() {
+        // What wry computes for a screen whose width in millimetres is 0.
+        let scale = 1280.0 * 25.4 / 0.0 / 96.0;
+        assert!(f64::is_infinite(scale));
+        let bounds = initial_bounds();
+        let (x, y): (f64, f64) = bounds.position.to_physical::<f64>(scale).into();
+        let (w, h): (u32, u32) = bounds.size.to_physical::<u32>(scale).into();
+        assert_eq!((x, y, w, h), (0.0, 0.0, 1, 1));
+    }
+
+    #[test]
+    fn logical_bounds_are_what_panicked() {
+        let scale = 1280.0 * 25.4 / 0.0 / 96.0;
+        let logical = wry::Rect::default();
+        let caught = std::panic::catch_unwind(|| logical.position.to_physical::<f64>(scale));
+        assert!(caught.is_err(), "dpi accepted an infinite scale; the workaround may be unneeded");
+    }
 }
