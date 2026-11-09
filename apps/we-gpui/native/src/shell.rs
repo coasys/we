@@ -182,8 +182,10 @@ pub fn build_webview(
                     // Each call runs on its own, so a slow one (a restart, a dialog) does not
                     // hold up the next.
                     cx.spawn(async move |cx| {
-                        let id = request.id;
+                        let (id, cmd) = (request.id, request.cmd.clone());
                         let result = commands::dispatch(label, request, cx).await;
+                        // The command's name and outcome only: arguments carry passwords.
+                        log::debug!("{label}: {cmd} -> {}", if result.is_ok() { "ok" } else { "error" });
                         reply(&weak, &bridge::settle_script(id, &result), cx);
                     })
                     .detach();

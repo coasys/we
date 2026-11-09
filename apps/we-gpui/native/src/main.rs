@@ -98,17 +98,14 @@ fn main() {
         launcher: Rc::new(RefCell::new(None)),
     };
 
-    let modes = match windowing {
+    // Choosing X11 or Wayland is a Linux matter; elsewhere there is one windowing system.
+    #[cfg(target_os = "linux")]
+    let app = gpui_kit::platform::linux(match windowing {
         Windowing::X11 => WindowingModes::X11,
         Windowing::Wayland => WindowingModes::WAYLAND,
-    };
-    #[cfg(target_os = "linux")]
-    let app = gpui_kit::platform::linux(modes);
+    });
     #[cfg(not(target_os = "linux"))]
-    let app = {
-        let _ = modes;
-        gpui_kit::platform::application()
-    };
+    let app = gpui_kit::platform::application();
 
     app.run(move |cx| {
         gpui_kit::init(cx);
