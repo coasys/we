@@ -69,6 +69,12 @@ export interface BaseExecutor {
   start(): Promise<void>;
 }
 
+/** How a connection came to be handed off. */
+export interface BaseHandOff {
+  /** The person picked it from the list just now; absent for a resume, "Try again" or coming online. */
+  chosen?: boolean;
+}
+
 export interface BaseHost {
   /** What this device is, for the sentences about it. */
   kind: 'computer' | 'phone' | 'browser';
@@ -78,8 +84,12 @@ export interface BaseHost {
   executor?: BaseExecutor;
   /** The places a session can be had from here. */
   connections(): Promise<BaseConnection[]>;
-  /** The connector for one of them, handed to WE's `App` once it is chosen. */
-  connector(connection: BaseConnection): Promise<BackendConnector>;
+  /**
+   * The connector for one of them, handed to WE's `App` once it is chosen. `chosen` when the person
+   * picked it from the list just now, rather than the app resuming the remembered one or trying it
+   * again: a host that checks a remembered place before resuming it skips that check for a choice.
+   */
+  connector(connection: BaseConnection, how?: BaseHandOff): Promise<BackendConnector>;
   /**
    * Whether a connector's failure means the place could not be reached — the device offline, the
    * server down — rather than a refusal. Such a failure comes back to the base app's offline state,

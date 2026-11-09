@@ -29,6 +29,7 @@ import type {
   BaseConnection,
   BaseDoor,
   BaseExecutorState,
+  BaseHandOff,
   BaseHost,
   BaseIdentityStep,
 } from '@shared/platform/baseHost';
@@ -103,7 +104,7 @@ export interface BaseStore {
   useWords: () => Promise<IdentityChangeOutcome>;
   /** "Start now": no identity on this device for now; remembered here, and offered again in Settings. */
   startNow: () => Promise<void>;
-  /** Connects to one of `connections`, by its id, and hands the session to the app. */
+  /** Connects to one of `connections`, by its id, and hands the session to the app, as the person's choice. */
   choose: (id: string) => Promise<void>;
   /** "Try again": starts this device's backend again, or reaches the chosen place again. */
   retry: () => Promise<void>;
@@ -172,7 +173,7 @@ export interface BaseStoreOptions {
    * host could not even make a connector for it, which comes back here as an error or, where the host
    * says the place is unreachable, the offline state.
    */
-  onHandOff: (connection: BaseConnection) => Promise<void>;
+  onHandOff: (connection: BaseConnection, how: BaseHandOff) => Promise<void>;
   /** Where the choice and "Start now" are remembered. `localStorage` where there is one. */
   storage?: BaseStorage;
   /**
@@ -374,7 +375,7 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
   const doorStep = (door: BaseDoor | undefined) => (door?.step ? door.step : null);
   const doorNote = (door: BaseDoor | undefined) => (door && !door.step ? door.note : '');
 
-  async function choose(id: string): Promise<void> {
+  async function choose(id: string, how: BaseHandOff = {}): Promise<void> {
     const connection = connections().find((c) => c.id === id);
     if (!connection) {
       setError('That place is no longer offered here.');
@@ -397,7 +398,7 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
     setStage('handing-off');
     setBusy(true);
     try {
-      await options.onHandOff(connection);
+      await options.onHandOff(connection, how);
       setStage('session');
     } catch (e) {
       if (host.isUnreachable?.(e)) {
@@ -517,7 +518,8 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
       setStartNowChosen(true);
       await evaluate();
     },
-    choose,
+    // The list's rows: the person choosing, which the host is told (`BaseHandOff.chosen`).
+    choose: (id) => choose(id, { chosen: true }),
     retry: async () => {
       setError('');
       const own = host.executor;

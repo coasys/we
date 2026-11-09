@@ -20,7 +20,7 @@ import { joinDeclined, readKeyHost } from '@we/app-web/platform/keyHost';
 import { browserNav, identityPageUrl, type PageNav, phoneCustodyHost } from '@we/app-web/platform/phoneCustody';
 import { readCustody } from '@we/backend-ad4m';
 
-import { CONNECT, type ReachDeps, reachRemembered, unreachable } from './web';
+import { CONNECT, connectFor, type ReachDeps, unreachable } from './web';
 
 /** What the phone host is built from; the tests pass their own. */
 export interface PhoneHostDeps extends Pick<ReachDeps, 'remembered' | 'reach'> {
@@ -48,7 +48,13 @@ export function phoneIdentitySource(
 ): BaseIdentitySource {
   const custody = phoneCustodyHost(plugin, nav);
   return {
-    state: async () => readCustody(await custody.publicState()),
+    state: async () => {
+      const state = await custody.publicState();
+      // A store it could not read says nothing of whether there is an identity: a read that failed,
+      // which the base app says and reads again, not "none" and the first run.
+      if (state.did === null && state.blocked) throw new Error(state.blocked);
+      return readCustody(state);
+    },
     doors: {
       make: { step: null, note: MAKE_ON_A_COMPUTER },
       link: { step: { kind: 'join' } },
@@ -97,9 +103,9 @@ export function phoneBaseHost(deps: PhoneHostDeps): BaseHost {
       const url = keyHost();
       return url ? [keyHostConnection(url), CONNECT] : [CONNECT];
     },
-    connector: async (connection) => {
+    connector: async (connection, how) => {
       if (connection.kind !== 'key-host')
-        return reachRemembered(deps.fallback, { remembered: deps.remembered, reach: deps.reach, online });
+        return connectFor(deps.fallback, how, { remembered: deps.remembered, reach: deps.reach, online });
       return makeKeyConnector({
         plugin: () => deps.plugin,
         keyHost,

@@ -63,11 +63,17 @@ describe('the phone identity source', () => {
     expect(view.thisDevice).toEqual({ keyId: 'p1', kind: 'phone-app' });
   });
 
-  it('reads no identity as none, and a store it cannot reach as blocked', async () => {
+  /*
+    Lal's P2 on #438: a store it cannot read came back as `did: null`, which the base app takes for
+    "no identity", so a linked phone was offered the first run. It is a read that failed: the base
+    app says so and reads again, as it does for a computer's custody service that does not answer.
+  */
+  it('reads no identity as none, and a store it cannot reach as a read that failed', async () => {
+    expect((await phoneIdentitySource(plugin(refusal('NoKeys')), nav()).state()).did).toBeNull();
     expect((await phoneIdentitySource(plugin(refusal('NoIdentity')), nav()).state()).did).toBeNull();
-    const blocked = await phoneIdentitySource(plugin(refusal('StoreDown')), nav()).state();
-    expect(blocked.did).toBeNull();
-    expect(blocked.blocked).toMatch(/cannot reach your identity store/);
+    await expect(phoneIdentitySource(plugin(refusal('StoreDown')), nav()).state()).rejects.toThrow(
+      /cannot reach your identity store: StoreDown/,
+    );
   });
 
   it("opens only the link door, and says why the other two are a computer's", () => {
@@ -166,6 +172,24 @@ describe('the phone host', () => {
     expect(failed).toBeInstanceOf(ConnectUnreachable);
     expect(host.isUnreachable?.(failed)).toBe(true);
     expect(initialize).not.toHaveBeenCalled();
+  });
+
+  it('opens AD4M Connect when the person chooses it, without asking that executor first', async () => {
+    const initialize = vi.fn(async () => ({}));
+    const reach = vi.fn(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    const host = phoneBaseHost({
+      plugin: plugin(),
+      fallback: { initialize } as unknown as BackendConnector,
+      nav: nav(),
+      online: () => true,
+      remembered: () => 'http://10.0.2.2:12000',
+      reach,
+    });
+    await (await host.connector(CONNECT, { chosen: true })).initialize({} as never);
+    expect(reach).not.toHaveBeenCalled();
+    expect(initialize).toHaveBeenCalledTimes(1);
   });
 
   it('tells a place it could not reach from one that refused', () => {

@@ -54,6 +54,26 @@ describe('the browser host', () => {
     expect(initialize).not.toHaveBeenCalled();
   });
 
+  /*
+    Lal's P2 on #438: "Choose another place", then AD4M Connect, asked the dead executor again and
+    came back Offline, so AD4M Connect's own screen, where a new address is entered, never opened.
+    Only a resume and "Try again" are asked first; a person choosing AD4M Connect gets its screen.
+  */
+  it('opens AD4M Connect when the person chooses it, without asking the executor that did not answer', async () => {
+    const initialize = vi.fn(async () => ({}));
+    const reach = vi.fn(async () => {
+      throw new TypeError('Failed to fetch');
+    });
+    const host = webBaseHost({ initialize } as unknown as BackendConnector, {
+      remembered: () => 'http://10.0.2.2:12000',
+      reach,
+      online: () => true,
+    });
+    await (await host.connector(CONNECT, { chosen: true })).initialize({} as never);
+    expect(reach).not.toHaveBeenCalled();
+    expect(initialize).toHaveBeenCalledTimes(1);
+  });
+
   it('leaves an answer that is not about reaching it to AD4M Connect, which has words for it', async () => {
     const initialize = vi.fn(async () => ({}));
     const wrapped = reachRemembered({ initialize } as unknown as BackendConnector, {
