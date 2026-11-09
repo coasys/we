@@ -6328,6 +6328,9 @@
         "didShort": {
           "type": "string"
         },
+        "unpublished": {
+          "type": "string"
+        },
         "holdsMaster": {
           "type": "boolean"
         },

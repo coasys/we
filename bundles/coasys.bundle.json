@@ -27799,6 +27799,9 @@
                         "textDecoration": "none",
                         "fontSize": "24px",
                         "fontWeight": "800",
+                        "whiteSpace": "nowrap",
+                        "overflowWrap": "normal",
+                        "flexShrink": "0",
                         "smUpProps": { "fontSize": "34px" }
                       },
                       "children": [
@@ -30153,7 +30156,7 @@
                                     "props": { "variant": "footnote", "color": "text-muted" },
                                     "children": [
                                       {
-                                        "$": "baseStore.doors.link.open ? 'From a device that keeps your master key: it scans this code' : baseStore.doors.link.note"
+                                        "$": "baseStore.doors.link.open ? (baseStore.hostKind == 'phone' ? 'From a computer that keeps your master key: scan or paste the offer it makes for this phone' : 'From a device that keeps your master key: it scans this code') : baseStore.doors.link.note"
                                       }
                                     ]
                                   }
@@ -30283,7 +30286,22 @@
                   {
                     "type": "$if",
                     "props": {
-                      "condition": { "$": "baseStore.lastOutcome == 'failed'" },
+                      "condition": { "$": "baseStore.unpublished != ''" },
+                      "then": {
+                        "type": "we-alert",
+                        "props": { "tone": "warning" },
+                        "children": [
+                          {
+                            "$": "`Your identity was made on this ${baseStore.deviceNoun} and its master key is kept here, but it is not published yet. Coasys publishes it again each time it starts. To finish it now, choose Make my identity here: it finishes the same identity, with no new words.`"
+                          }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
+                      "condition": { "$": "baseStore.lastOutcome == 'failed' && baseStore.unpublished == ''" },
                       "then": {
                         "type": "we-alert",
                         "props": { "tone": "danger" },
@@ -30292,6 +30310,19 @@
                             "$": "baseStore.error != '' ? baseStore.error : 'That did not finish. Nothing was changed; try again.'"
                           }
                         ]
+                      }
+                    }
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
+                      "condition": {
+                        "$": "baseStore.lastOutcome == 'failed' && baseStore.unpublished != '' && baseStore.error != ''"
+                      },
+                      "then": {
+                        "type": "we-alert",
+                        "props": { "tone": "danger" },
+                        "children": [{ "$": "baseStore.error" }]
                       }
                     }
                   },

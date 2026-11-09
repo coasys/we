@@ -14,17 +14,16 @@ import type { DeviceKeyPlugin } from '@we/app-web/platform/deviceKey';
 import {
   createDeviceKeyConnector,
   type DeviceKeyConnectorDeps,
-  isUnreachable,
   KeyLoginUnreachable,
 } from '@we/app-web/platform/deviceKeyConnector';
 import { joinDeclined, readKeyHost } from '@we/app-web/platform/keyHost';
 import { browserNav, identityPageUrl, type PageNav, phoneCustodyHost } from '@we/app-web/platform/phoneCustody';
 import { readCustody } from '@we/backend-ad4m';
 
-import { CONNECT } from './web';
+import { CONNECT, type ReachDeps, reachRemembered, unreachable } from './web';
 
 /** What the phone host is built from; the tests pass their own. */
-export interface PhoneHostDeps {
+export interface PhoneHostDeps extends Pick<ReachDeps, 'remembered' | 'reach'> {
   plugin: DeviceKeyPlugin;
   /** The connector AD4M Connect gives: the browser's. */
   fallback: BackendConnector;
@@ -88,6 +87,7 @@ export function phoneBaseHost(deps: PhoneHostDeps): BaseHost {
   const keyHost = deps.keyHost ?? (() => readKeyHost());
   const declined = deps.joinDeclined ?? joinDeclined;
   const nav = deps.nav ?? browserNav;
+  const online = deps.online ?? (() => globalThis.navigator?.onLine ?? true);
   const makeKeyConnector =
     deps.keyConnector ?? ((d: DeviceKeyConnectorDeps) => createDeviceKeyConnector(deps.fallback, d));
   return {
@@ -98,7 +98,8 @@ export function phoneBaseHost(deps: PhoneHostDeps): BaseHost {
       return url ? [keyHostConnection(url), CONNECT] : [CONNECT];
     },
     connector: async (connection) => {
-      if (connection.kind !== 'key-host') return deps.fallback;
+      if (connection.kind !== 'key-host')
+        return reachRemembered(deps.fallback, { remembered: deps.remembered, reach: deps.reach, online });
       return makeKeyConnector({
         plugin: () => deps.plugin,
         keyHost,
@@ -108,7 +109,7 @@ export function phoneBaseHost(deps: PhoneHostDeps): BaseHost {
         joinDeclined: () => true,
       });
     },
-    isUnreachable: (error) => error instanceof KeyLoginUnreachable || isUnreachable(error, deps.online?.()),
-    online: deps.online ?? (() => globalThis.navigator?.onLine ?? true),
+    isUnreachable: (error) => error instanceof KeyLoginUnreachable || unreachable(error, online),
+    online,
   };
 }

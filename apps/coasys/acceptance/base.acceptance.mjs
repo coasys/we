@@ -130,6 +130,9 @@ describe('the phone, with no identity and no executor', () => {
     assert.equal(await closed(control(page, 'Make my identity here')), true);
     assert.equal(await closed(control(page, 'Use my 12 words')), true);
     await sees(page, 'make it on your computer');
+    // A phone is the one scanned or handed an offer, never the one showing a code to scan.
+    await sees(page, 'scan or paste the offer it makes for this phone');
+    assert.equal(await page.getByText('it scans this code').count(), 0);
     await context.close();
   });
 
@@ -177,6 +180,28 @@ describe('the phone, with no identity and no executor', () => {
     // The network coming back is a try of its own: nobody has to press anything.
     await context.setOffline(false);
     await handedOff(page);
+    await context.close();
+  });
+
+  /*
+    Found on a real phone: relaunched with the executor AD4M Connect signed in to last switched off,
+    the app drew AD4M Connect's own "How would you like to connect?" instead of the base's offline
+    state. The session is the shape ad4m-connect stores, against an address where nothing listens.
+  */
+  it("relaunches to the offline state when AD4M Connect's last executor does not answer", async () => {
+    const { context, page } = await open({ phone: true });
+    await control(page, 'Start now').click();
+    await control(page, 'AD4M Connect').click();
+    await handedOff(page);
+    await page.evaluate((url) => {
+      localStorage.setItem('0.13.1-test/ad4m-token', 'a-test-token');
+      localStorage.setItem('0.13.1-test/ad4m-url', url);
+    }, 'http://127.0.0.1:9');
+    await page.reload();
+    await sees(page, 'could not be reached');
+    await sees(page, 'did not answer');
+    assert.equal(await page.getByText('How would you like to connect?').count(), 0);
+    await shot(page, 'phone-relaunch-offline');
     await context.close();
   });
 });

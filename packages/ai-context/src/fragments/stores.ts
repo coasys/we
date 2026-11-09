@@ -754,6 +754,7 @@ export const storeEntries: StoreEntry[] = [
       identityKnown: { type: 'boolean' },
       did: { type: 'string' },
       didShort: { type: 'string' },
+      unpublished: { type: 'string' },
       holdsMaster: { type: 'boolean' },
       keepsLine: { type: 'string' },
       blocked: { type: 'string' },
@@ -2216,6 +2217,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       identityKnown: 'boolean — the identity source answered, so did / holdsMaster are facts, not defaults',
       did: 'string — the identity this device speaks for, or empty. Draw didShort; never the whole identifier in a screenshot-sized space',
       didShort: 'string — the same, shortened for the eye',
+      unpublished:
+        "string — an identity a step made on this device whose publish has not gone through yet (its DID), or empty. Its master key is kept here and it is published again on the next attempt, so after `lastOutcome == 'failed'` say it was made, not that nothing changed",
       holdsMaster: 'boolean — this device keeps a master key of it',
       keepsLine:
         "string — 'This computer keeps your master key behind its own sign-in' / '… behind your passphrase' / 'This phone keeps no master key', ready to show",

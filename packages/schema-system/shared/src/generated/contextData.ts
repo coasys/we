@@ -2305,6 +2305,7 @@ export const contextData: ContextData = {
         identityKnown: { type: 'boolean' },
         did: { type: 'string' },
         didShort: { type: 'string' },
+        unpublished: { type: 'string' },
         holdsMaster: { type: 'boolean' },
         keepsLine: { type: 'string' },
         blocked: { type: 'string' },

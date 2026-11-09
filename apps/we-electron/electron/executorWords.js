@@ -46,5 +46,14 @@ export function startFailureWords(err, { logged = false } = {}) {
   else if (typeof err?.code === 'string' && typeof err?.syscall === 'string')
     reason = `The app could not use this account's data folder: ${SYSTEM_WORDS[err.code] ?? 'the system refused'} (${err.code}).`;
   else reason = String(err?.message || err || 'The executor did not start.').replace(PATH, '(a path)');
-  return logged ? `${reason}\n\n${LOG_WORDS}` : reason;
+  return logged ? `${sentence(reason)}\n\n${LOG_WORDS}` : reason;
+}
+
+/**
+ * `words` ending as a sentence does. The window draws a reason as one paragraph, so the break before
+ * the next sentence reads as a space, and a reason with no stop ran on into it.
+ */
+function sentence(words) {
+  const trimmed = words.trimEnd();
+  return /[.!?…]$/.test(trimmed) ? trimmed : `${trimmed}.`;
 }

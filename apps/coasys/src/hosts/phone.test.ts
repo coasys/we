@@ -16,7 +16,7 @@ import {
   phoneIdentitySource,
   WORDS_ON_A_COMPUTER,
 } from './phone';
-import { CONNECT } from './web';
+import { CONNECT, ConnectUnreachable } from './web';
 
 const DID = 'did:scid:coasys:1:QmTestIdentity';
 const KEY_HOST = 'https://executor.example:12000';
@@ -133,9 +133,39 @@ describe('the phone host', () => {
 
   it('hands AD4M Connect the browser connector', async () => {
     const keyConnector = vi.fn();
-    const host = phoneBaseHost({ plugin: plugin(), fallback, nav: nav(), keyConnector });
-    expect(await host.connector(CONNECT)).toBe(fallback);
+    const initialize = vi.fn(async () => ({}));
+    const host = phoneBaseHost({
+      plugin: plugin(),
+      fallback: { initialize } as unknown as BackendConnector,
+      nav: nav(),
+      keyConnector,
+      remembered: () => null,
+    });
+    await (await host.connector(CONNECT)).initialize({} as never);
+    expect(initialize).toHaveBeenCalledTimes(1);
     expect(keyConnector).not.toHaveBeenCalled();
+  });
+
+  /*
+    Found on a real phone: relaunched with the executor AD4M Connect signed in to last switched off,
+    the app drew AD4M Connect's own connect screen rather than the base's offline state.
+  */
+  it("hands back as unreachable when AD4M Connect's last executor does not answer", async () => {
+    const initialize = vi.fn(async () => ({}));
+    const host = phoneBaseHost({
+      plugin: plugin(),
+      fallback: { initialize } as unknown as BackendConnector,
+      nav: nav(),
+      online: () => true,
+      remembered: () => 'http://10.0.2.2:12000',
+      reach: async () => {
+        throw new TypeError('Failed to fetch');
+      },
+    });
+    const failed = await (await host.connector(CONNECT)).initialize({} as never).catch((e: unknown) => e);
+    expect(failed).toBeInstanceOf(ConnectUnreachable);
+    expect(host.isUnreachable?.(failed)).toBe(true);
+    expect(initialize).not.toHaveBeenCalled();
   });
 
   it('tells a place it could not reach from one that refused', () => {

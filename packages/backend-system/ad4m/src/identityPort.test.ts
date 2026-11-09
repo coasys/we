@@ -223,7 +223,22 @@ describe('the AD4M identity port with a custody service', () => {
       masterWaiting: false,
       // The desktop's custody service runs beside the executor, so it names no device of its own.
       thisDevice: null,
+      pending: null,
     });
+  });
+
+  it('names an identity made here whose publish has not gone through yet', async () => {
+    const made = createAd4mIdentityPort(
+      client({ status: {} }),
+      custody({ did: null, holdsMaster: null, pending: DID }),
+    );
+    expect(await made.custody!()).toMatchObject({ did: null, pending: DID });
+    // A custody service that predates it, or says something else, names none.
+    const older = createAd4mIdentityPort(
+      client({ status: {} }),
+      custody({ did: null, pending: 7 as unknown as string }),
+    );
+    expect((await older.custody!()).pending).toBeNull();
   });
 
   it('reads the device a custody service answers for apart from the executor’s', async () => {

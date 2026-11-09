@@ -380,22 +380,178 @@ impl SecretStore for MemoryStore {
 
 // ─── Linux: the Secret Service ──────────────────────────────────────────────────
 
+/// What a store's error says when the keyring it keeps items in is locked and was not unlocked in
+/// time, and [`is_keyring_locked`] looks for.
+const KEYRING_LOCKED: &str = "the keyring is locked";
+
+/// The keyring is locked: it asked to be unlocked and nobody answered in time, or the person
+/// dismissed the prompt. Nothing was written.
+pub fn keyring_locked() -> VaultError {
+    VaultError::Unavailable(format!("Secret Service: {KEYRING_LOCKED}"))
+}
+
+/// Whether `error` is a store's keyring that stayed locked ([`keyring_locked`]).
+pub fn is_keyring_locked(error: &VaultError) -> bool {
+    matches!(error, VaultError::Unavailable(why) if why.contains(KEYRING_LOCKED))
+}
+
 #[cfg(target_os = "linux")]
 pub use secret_service_store::SecretServiceStore;
 
 #[cfg(target_os = "linux")]
 mod secret_service_store {
     use std::collections::HashMap;
+    use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
     use std::sync::mpsc;
+    use std::time::Duration;
 
-    use secret_service::blocking::SecretService;
+    use secret_service::blocking::{Collection, Item, SecretService};
     use secret_service::EncryptionType;
 
     use super::*;
 
     const ATTRIBUTE: &str = "coasys-identity";
 
-    type Job = Box<dyn FnOnce(&SecretService<'static>) + Send>;
+    // ── A call answered within a bound ──
+    //
+    // Unlocking a locked keyring asks the person, through a prompt the Secret Service draws, and
+    // the client waits for the answer with no limit: a prompt nobody answers (a desktop left, a
+    // session with no prompter that can draw) held the store, and custody behind it, for good.
+    // So a call waits a bound, and past it answers that the keyring is locked; the prompt stays
+    // up for the person to answer, and "try again" then finds the keyring open.
+    //
+    // The job cannot be stopped where it waits, so a job its caller stopped waiting for must
+    // change nothing when it does go on. Each job carries a [`Claim`]: its effect happens only
+    // after it commits, and a caller that gives up first abandons it. Exactly one of the two wins.
+
+    /// Not yet run, or running up to the point where it would change something.
+    const PENDING: u8 = 0;
+    /// Waiting on the person to unlock the keyring.
+    const UNLOCKING: u8 = 1;
+    /// Past the point of no return: its caller waits for its answer.
+    const COMMITTED: u8 = 2;
+    /// Its caller stopped waiting: it changes nothing.
+    const ABANDONED: u8 = 3;
+
+    /// One job's side of the bound: whether it may still act for its caller.
+    pub(super) struct Claim {
+        state: Arc<AtomicU8>,
+        unlocking: Arc<AtomicBool>,
+    }
+
+    impl Claim {
+        /// Whether the caller has stopped waiting: the job changes nothing and answers nothing.
+        pub(super) fn abandoned(&self) -> bool {
+            self.state.load(Ordering::SeqCst) == ABANDONED
+        }
+
+        /// Runs `unlock`, a call that may wait on the person, marked as waiting on the keyring so a
+        /// caller that gives up meanwhile says the keyring is locked. A prompt the person dismissed
+        /// is a keyring that stays locked.
+        pub(super) fn unlocking(
+            &self,
+            unlock: impl FnOnce() -> Result<(), secret_service::Error>,
+        ) -> Result<(), VaultError> {
+            if self
+                .state
+                .compare_exchange(PENDING, UNLOCKING, Ordering::SeqCst, Ordering::SeqCst)
+                .is_err()
+            {
+                return Err(keyring_locked());
+            }
+            self.unlocking.store(true, Ordering::SeqCst);
+            let unlocked = unlock();
+            self.unlocking.store(false, Ordering::SeqCst);
+            // Back to pending, unless the caller gave up meanwhile.
+            let _ =
+                self.state
+                    .compare_exchange(UNLOCKING, PENDING, Ordering::SeqCst, Ordering::SeqCst);
+            match unlocked {
+                Ok(()) => Ok(()),
+                Err(secret_service::Error::Prompt) | Err(secret_service::Error::Locked) => {
+                    Err(keyring_locked())
+                }
+                Err(e) => Err(unavailable(e)),
+            }
+        }
+
+        /// Takes the job's effect for its caller, just before it changes anything. False once the
+        /// caller stopped waiting: the job must then change nothing.
+        pub(super) fn commit(&self) -> bool {
+            self.state
+                .compare_exchange(PENDING, COMMITTED, Ordering::SeqCst, Ordering::SeqCst)
+                .is_ok()
+        }
+    }
+
+    type Job<S> = Box<dyn FnOnce(&S) + Send>;
+
+    /// A thread that owns a client of type `S` and runs jobs on it, each answered within `wait`.
+    pub(super) struct Bounded<S> {
+        jobs: mpsc::Sender<Job<S>>,
+        wait: Duration,
+        /// Set while a job waits on the person to unlock the keyring: a job queued behind it waits
+        /// on the same thing.
+        unlocking: Arc<AtomicBool>,
+    }
+
+    impl<S> Bounded<S> {
+        pub(super) fn new(jobs: mpsc::Sender<Job<S>>, wait: Duration) -> Self {
+            Bounded {
+                jobs,
+                wait,
+                unlocking: Arc::new(AtomicBool::new(false)),
+            }
+        }
+
+        /// Runs `job` on the client's thread and waits up to the bound for its answer. Past it, a
+        /// job that has not committed is abandoned and the answer is that the keyring is locked
+        /// (when it, or the job ahead of it, waits on an unlock) or that the Secret Service did
+        /// not answer; a job that has committed is waited for, as its effect is already happening.
+        pub(super) fn run<T: Send + 'static>(
+            &self,
+            job: impl FnOnce(&S, &Claim) -> Result<T, VaultError> + Send + 'static,
+        ) -> Result<T, VaultError> {
+            let state = Arc::new(AtomicU8::new(PENDING));
+            let claim = Claim {
+                state: state.clone(),
+                unlocking: self.unlocking.clone(),
+            };
+            let (answer, answered) = mpsc::channel();
+            self.jobs
+                .send(Box::new(move |client: &S| {
+                    if claim.abandoned() {
+                        return;
+                    }
+                    let _ = answer.send(job(client, &claim));
+                }))
+                .map_err(|_| ended())?;
+            match answered.recv_timeout(self.wait) {
+                Ok(result) => result,
+                Err(mpsc::RecvTimeoutError::Disconnected) => Err(ended()),
+                Err(mpsc::RecvTimeoutError::Timeout) => {
+                    let locked = self.unlocking.load(Ordering::SeqCst);
+                    for from in [PENDING, UNLOCKING] {
+                        if state
+                            .compare_exchange(from, ABANDONED, Ordering::SeqCst, Ordering::SeqCst)
+                            .is_ok()
+                        {
+                            return Err(if locked || from == UNLOCKING {
+                                keyring_locked()
+                            } else {
+                                VaultError::Unavailable(format!(
+                                    "Secret Service: no answer in {} s",
+                                    self.wait.as_secs()
+                                ))
+                            });
+                        }
+                    }
+                    // Committed: its effect is under way, and its answer is the one to give.
+                    answered.recv().map_err(|_| ended())?
+                }
+            }
+        }
+    }
 
     /// The default collection of the session's Secret Service (GNOME Keyring, KWallet), attribute
     /// `coasys-identity = <name>`.
@@ -405,7 +561,7 @@ mod secret_service_store {
     /// runs one: the custody service's thread does, so the client is never called, or dropped,
     /// there. `tests/secret_service.rs` checks this against a real Secret Service.
     pub struct SecretServiceStore {
-        jobs: mpsc::Sender<Job>,
+        jobs: Bounded<SecretService<'static>>,
     }
 
     fn unavailable(e: secret_service::Error) -> VaultError {
@@ -424,9 +580,19 @@ mod secret_service_store {
     }
 
     impl SecretServiceStore {
+        /// How long a call waits on the Secret Service, unlocking the keyring included, before it
+        /// answers that the keyring is locked: long enough to type a keyring's password into its
+        /// prompt.
+        pub const UNLOCK_WAIT: Duration = Duration::from_secs(90);
+
         /// Connects, or answers why not — the caller falls back to [`FileStore`].
         pub fn connect() -> Result<Self, VaultError> {
-            let (jobs, inbox) = mpsc::channel::<Job>();
+            Self::connect_waiting(Self::UNLOCK_WAIT)
+        }
+
+        /// [`Self::connect`], with each call waiting at most `wait` ([`Self::UNLOCK_WAIT`]).
+        pub fn connect_waiting(wait: Duration) -> Result<Self, VaultError> {
+            let (jobs, inbox) = mpsc::channel::<Job<SecretService<'static>>>();
             let (opened, connected) = mpsc::channel();
             std::thread::Builder::new()
                 .name("custody-secret-service".into())
@@ -446,22 +612,38 @@ mod secret_service_store {
                 })
                 .map_err(|e| VaultError::Unavailable(format!("Secret Service thread: {e}")))?;
             connected.recv().map_err(|_| ended())??;
-            Ok(SecretServiceStore { jobs })
+            Ok(SecretServiceStore {
+                jobs: Bounded::new(jobs, wait),
+            })
         }
 
-        /// Runs `job` on the client's thread and waits for its answer.
+        /// Runs `job` on the client's thread, answered within the bound ([`Bounded::run`]).
         fn run<T: Send + 'static>(
             &self,
-            job: impl FnOnce(&SecretService<'static>) -> Result<T, VaultError> + Send + 'static,
+            job: impl FnOnce(&SecretService<'static>, &Claim) -> Result<T, VaultError> + Send + 'static,
         ) -> Result<T, VaultError> {
-            let (answer, answered) = mpsc::channel();
-            self.jobs
-                .send(Box::new(move |service| {
-                    let _ = answer.send(job(service));
-                }))
-                .map_err(|_| ended())?;
-            answered.recv().map_err(|_| ended())?
+            self.jobs.run(job)
         }
+    }
+
+    /// The default collection, unlocked: asks the person when it is locked.
+    fn unlocked<'a>(
+        service: &'a SecretService<'static>,
+        claim: &Claim,
+    ) -> Result<Collection<'a>, VaultError> {
+        let collection = service.get_default_collection().map_err(unavailable)?;
+        if collection.is_locked().map_err(unavailable)? {
+            claim.unlocking(|| collection.unlock())?;
+        }
+        Ok(collection)
+    }
+
+    /// `item`, unlocked: asks the person when it is locked.
+    fn unlocked_item(item: &Item<'_>, claim: &Claim) -> Result<(), VaultError> {
+        if item.is_locked().map_err(unavailable)? {
+            claim.unlocking(|| item.unlock())?;
+        }
+        Ok(())
     }
 
     impl SecretStore for SecretServiceStore {
@@ -476,10 +658,10 @@ mod secret_service_store {
         fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
             // The copy that crosses to the client's thread is wiped when the job ends.
             let (name, bytes) = (name.to_string(), zeroize::Zeroizing::new(bytes.to_vec()));
-            self.run(move |service| {
-                let collection = service.get_default_collection().map_err(unavailable)?;
-                if collection.is_locked().map_err(unavailable)? {
-                    collection.unlock().map_err(unavailable)?;
+            self.run(move |service, claim| {
+                let collection = unlocked(service, claim)?;
+                if !claim.commit() {
+                    return Err(keyring_locked());
                 }
                 collection
                     .create_item(
@@ -496,7 +678,7 @@ mod secret_service_store {
 
         fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
             let name = name.to_string();
-            self.run(move |service| {
+            self.run(move |service, claim| {
                 let found = service
                     .search_items(HashMap::from([(ATTRIBUTE, name.as_str())]))
                     .map_err(unavailable)?;
@@ -506,7 +688,7 @@ mod secret_service_store {
                 ) {
                     (Some(item), _) => item,
                     (None, Some(item)) => {
-                        item.unlock().map_err(unavailable)?;
+                        unlocked_item(&item, claim)?;
                         item
                     }
                     (None, None) => return Ok(None),
@@ -519,7 +701,7 @@ mod secret_service_store {
             // `SearchItems` answers for locked items too, listing them apart: nothing is unlocked
             // and no secret is fetched.
             let name = name.to_string();
-            self.run(move |service| {
+            self.run(move |service, _| {
                 let found = service
                     .search_items(HashMap::from([(ATTRIBUTE, name.as_str())]))
                     .map_err(unavailable)?;
@@ -529,15 +711,167 @@ mod secret_service_store {
 
         fn delete(&self, name: &str) -> Result<(), VaultError> {
             let name = name.to_string();
-            self.run(move |service| {
+            self.run(move |service, claim| {
                 let found = service
                     .search_items(HashMap::from([(ATTRIBUTE, name.as_str())]))
                     .map_err(unavailable)?;
+                // Deleting asks nobody: a locked item's delete answers that it is locked.
+                if !claim.commit() {
+                    return Err(keyring_locked());
+                }
                 for item in found.unlocked.into_iter().chain(found.locked) {
-                    item.delete().map_err(unavailable)?;
+                    item.delete().map_err(|e| match e {
+                        secret_service::Error::Locked => keyring_locked(),
+                        e => unavailable(e),
+                    })?;
                 }
                 Ok(())
             })
+        }
+    }
+
+    /// The bound, over a client that is nothing and jobs that wait where they are told to: a job
+    /// stands in for the client's unlock, which waits on a person.
+    #[cfg(test)]
+    mod tests {
+        use std::sync::Mutex;
+        use std::time::Instant;
+
+        use super::*;
+
+        const WAIT: Duration = Duration::from_millis(200);
+
+        /// A client thread of its own, as the store's.
+        fn bounded() -> Bounded<()> {
+            let (jobs, inbox) = mpsc::channel::<Job<()>>();
+            std::thread::spawn(move || {
+                for job in inbox {
+                    job(&());
+                }
+            });
+            Bounded::new(jobs, WAIT)
+        }
+
+        /// A prompt nobody has answered yet: `answer` answers it.
+        fn prompt() -> (mpsc::Sender<bool>, Arc<Mutex<mpsc::Receiver<bool>>>) {
+            let (answer, asked) = mpsc::channel();
+            (answer, Arc::new(Mutex::new(asked)))
+        }
+
+        fn answered(asked: &Arc<Mutex<mpsc::Receiver<bool>>>) -> Result<(), secret_service::Error> {
+            match asked.lock().unwrap().recv() {
+                Ok(true) => Ok(()),
+                _ => Err(secret_service::Error::Prompt),
+            }
+        }
+
+        #[test]
+        fn a_prompt_nobody_answers_is_a_locked_keyring_within_the_bound_and_writes_nothing() {
+            let store = bounded();
+            let (answer, asked) = prompt();
+            let wrote = Arc::new(AtomicBool::new(false));
+            let started = Instant::now();
+            let result = store.run({
+                let (asked, wrote) = (asked.clone(), wrote.clone());
+                move |_, claim| {
+                    claim.unlocking(|| answered(&asked))?;
+                    if !claim.commit() {
+                        return Err(keyring_locked());
+                    }
+                    wrote.store(true, Ordering::SeqCst);
+                    Ok(())
+                }
+            });
+            assert!(is_keyring_locked(&result.unwrap_err()));
+            assert!(started.elapsed() < WAIT * 5, "{:?}", started.elapsed());
+
+            // The person unlocks afterwards: the job goes on, and writes nothing for a caller gone.
+            answer.send(true).unwrap();
+            // The next job runs after it on the same thread, so its answer means the first is done.
+            store.run(|_, _| Ok(())).unwrap();
+            assert!(!wrote.load(Ordering::SeqCst));
+        }
+
+        #[test]
+        fn a_job_queued_behind_an_unanswered_prompt_is_a_locked_keyring_and_never_runs() {
+            let store = bounded();
+            let (answer, asked) = prompt();
+            let first = std::thread::spawn({
+                let store_jobs = store.jobs.clone();
+                let unlocking = store.unlocking.clone();
+                move || {
+                    let store = Bounded {
+                        jobs: store_jobs,
+                        wait: WAIT,
+                        unlocking,
+                    };
+                    store.run(move |_, claim| claim.unlocking(|| answered(&asked)))
+                }
+            });
+            // Wait until the first job is at its prompt.
+            while !store.unlocking.load(Ordering::SeqCst) {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            let ran = Arc::new(AtomicBool::new(false));
+            let second = store.run({
+                let ran = ran.clone();
+                move |_, _| {
+                    ran.store(true, Ordering::SeqCst);
+                    Ok(())
+                }
+            });
+            assert!(is_keyring_locked(&second.unwrap_err()));
+            assert!(is_keyring_locked(&first.join().unwrap().unwrap_err()));
+            answer.send(true).unwrap();
+            store.run(|_, _| Ok(())).unwrap();
+            assert!(
+                !ran.load(Ordering::SeqCst),
+                "a job its caller gave up on ran"
+            );
+        }
+
+        #[test]
+        fn a_dismissed_prompt_is_a_locked_keyring_at_once() {
+            let store = bounded();
+            let started = Instant::now();
+            let result = store.run(|_, claim| {
+                claim.unlocking(|| Err(secret_service::Error::Prompt))?;
+                Ok(())
+            });
+            assert!(is_keyring_locked(&result.unwrap_err()));
+            assert!(started.elapsed() < WAIT);
+        }
+
+        #[test]
+        fn a_job_that_committed_is_waited_for_past_the_bound() {
+            let store = bounded();
+            let result = store.run(|_, claim| {
+                assert!(claim.commit());
+                std::thread::sleep(WAIT * 2);
+                Ok(7)
+            });
+            assert_eq!(result.unwrap(), 7);
+        }
+
+        #[test]
+        fn a_slow_answer_with_no_prompt_is_no_answer_rather_than_a_locked_keyring() {
+            let store = bounded();
+            let result = store.run(|_, _| {
+                std::thread::sleep(WAIT * 2);
+                Ok(())
+            });
+            let error = result.unwrap_err();
+            assert!(!is_keyring_locked(&error), "{error:?}");
+            assert!(matches!(&error, VaultError::Unavailable(why) if why.contains("no answer")));
+        }
+
+        #[test]
+        fn an_answer_in_time_is_the_answer() {
+            let store = bounded();
+            assert_eq!(store.run(|_, _| Ok("kept")).unwrap(), "kept");
+            assert!(store
+                .run(|_, _| -> Result<(), VaultError> { Err(VaultError::NotFound) })
+                .is_err_and(|e| matches!(e, VaultError::NotFound)));
         }
     }
 }

@@ -64,6 +64,20 @@ describe('startFailureWords', () => {
   });
 
   it("adds where the log is when this start's log is open", () => {
-    expect(startFailureWords(new Error('it stopped'), { logged: true })).toBe(`it stopped\n\n${LOG_WORDS}`);
+    expect(startFailureWords(new Error('it stopped.'), { logged: true })).toBe(`it stopped.\n\n${LOG_WORDS}`);
+  });
+
+  /*
+    The window draws the reason as one paragraph, so the break before the log's sentence reads as a
+    space: a reason with no full stop ran on into it ("…before it was ready Its log is…").
+  */
+  it('ends the reason with a full stop before the log sentence', () => {
+    expect(startFailureWords(new Error('The executor exited before it was ready'), { logged: true })).toBe(
+      `The executor exited before it was ready.\n\n${LOG_WORDS}`,
+    );
+    expect(startFailureWords(new Error('Is it running?'), { logged: true })).toBe(`Is it running?\n\n${LOG_WORDS}`);
+    expect(startFailureWords(new Error('it stopped:\n\nlast line'), { logged: true })).toBe(
+      `it stopped:\n\nlast line.\n\n${LOG_WORDS}`,
+    );
   });
 });

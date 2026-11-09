@@ -11,6 +11,7 @@ import type { BundlePieces } from '@shared/bundles/bundlePieces';
 import type { BaseConnection, BaseHost } from '@shared/platform/baseHost';
 import type { PlatformAdapter } from '@shared/platform/types';
 import { render, screen } from '@solidjs/testing-library';
+import type { IdentityCustodyView } from '@we/backend-shared';
 import type { JSX } from 'solid-js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -162,6 +163,43 @@ describe('BaseBoot', () => {
     listener!({ phase: 'ready' });
     await until(() => mounted.apps === 1);
     expect(store().stage()).toBe('session');
+  });
+
+  it("says a failed Make made the identity, in the deployment's own base, rather than that nothing changed", async () => {
+    const empty: IdentityCustodyView = {
+      did: null,
+      holdsMaster: false,
+      unlock: 'os',
+      blocked: null,
+      devices: [],
+      revokedHolders: [],
+      requests: [],
+      masterWaiting: false,
+    };
+    let state = empty;
+    let store!: BaseStore;
+    const host: BaseHost = {
+      kind: 'computer',
+      connections: async () => [HERE],
+      connector: async () => connector(async () => ({ client: {}, ports: {} }) as never),
+      identity: {
+        state: async () => state,
+        doors: {
+          make: { step: { kind: 'create' } },
+          link: { step: { kind: 'show-code' } },
+          words: { step: { kind: 'restore' } },
+        },
+        // The custody service made and kept the identity; its publish did not go through.
+        open: async () => ((state = { ...empty, pending: 'did:scid:coasys:1:QmTest' }), 'failed'),
+      },
+    };
+    const base = deploymentBase(SEED);
+    expect(base?.template.meta?.role).toBe('base');
+    render(() => <BaseBoot host={host} platform={PLATFORM} seed={SEED} onStore={(s) => (store = s)} />);
+    await until(() => screen.queryByText(/Make my identity here/) !== null);
+    expect(await store.makeIdentity()).toBe('failed');
+    await until(() => screen.queryByText(/is not published yet/) !== null);
+    expect(screen.queryByText(/Nothing was changed/)).toBeNull();
   });
 
   it('takes the page back to the offline state when the place cannot be reached', async () => {

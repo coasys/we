@@ -64,6 +64,12 @@ export interface BaseStore {
   did: Accessor<string>;
   /** The same, shortened for the eye. */
   didShort: Accessor<string>;
+  /**
+   * An identity a step made on this device and could not publish yet, by its DID; empty when none.
+   * Its master key is kept here and it is published again on the next attempt, so a failed step
+   * that left one changed something.
+   */
+  unpublished: Accessor<string>;
   /** This device keeps a master key of it. */
   holdsMaster: Accessor<boolean>;
   /** "This computer keeps your master key behind its own sign-in", or what this device keeps instead. */
@@ -466,6 +472,7 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
     identityKnown: () => custody() !== null,
     did: () => custody()?.did ?? '',
     didShort: () => shortDid(custody()?.did ?? ''),
+    unpublished: () => custody()?.pending ?? '',
     holdsMaster: () => custody()?.holdsMaster ?? false,
     keepsLine: () => {
       const state = custody();

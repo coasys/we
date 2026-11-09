@@ -1485,6 +1485,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     identityKnown: state('keys'),
     did: state('keys'),
     didShort: state('keys'),
+    unpublished: state('keys'),
     holdsMaster: state('keys'),
     keepsLine: state('keys'),
     blocked: state('keys'),

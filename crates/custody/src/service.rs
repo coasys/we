@@ -507,6 +507,11 @@ impl std::fmt::Debug for StepInput {
 #[serde(rename_all = "camelCase")]
 pub struct CustodyPublic {
     pub did: Option<String>,
+    /// An identity made on this computer whose publish did not go through yet, by its DID: its
+    /// master key and incept are kept here, and it is published again whenever the state is asked
+    /// or a step runs. `None` once it is published, when there is none, and while the executor does
+    /// not answer (whose it is cannot be told then).
+    pub pending: Option<String>,
     pub holds_master: Option<HoldsMaster>,
     pub unlock: &'static str,
     /// Why no identity step can run on this computer, in words a person reads; `None` when they
@@ -715,6 +720,13 @@ const LOST_EPOCH: &str = "This computer has lost its count of the changes to the
      restore the identity. Once the words check out, this computer starts the count again and \
      replaces the key.";
 
+/// A step stopped because the keyring this computer keeps keys in is locked
+/// ([`crate::store::is_keyring_locked`]): it asked to be unlocked and nobody answered in time, or
+/// the person dismissed the prompt. The store stops waiting, so custody is never held by a prompt.
+const KEYRING_LOCKED_WORDS: &str = "Your keyring is locked, so this computer could not keep \
+     your master key in it. Unlock it when your desktop asks for its password (or in its \
+     Passwords and Keys app), then try again. Nothing was changed.";
+
 /// Why a master key is not removed from this computer.
 const ONLY_COPY: &str = "This computer keeps the only copy of your master key: no other \
      computer or phone of yours keeps one. Removing it would leave only your 12 words to add or \
@@ -757,6 +769,7 @@ fn failed(e: &ClientError) -> Screen {
             "This computer does not keep your master key.".into()
         }
         ClientError::Vault(e) if crate::pending::is_lost_epoch(e) => LOST_EPOCH.into(),
+        ClientError::Vault(e) if crate::store::is_keyring_locked(e) => KEYRING_LOCKED_WORDS.into(),
         ClientError::Vault(VaultError::Unavailable(why)) => {
             format!("This computer could not keep your master key: {why}")
         }
@@ -793,7 +806,20 @@ fn failed(e: &ClientError) -> Screen {
         ),
         other => other.to_string(),
     };
-    Screen::Failed { message }
+    Screen::Failed {
+        message: a_sentence(message),
+    }
+}
+
+/// `message`, ending as a sentence: the executor's and the vault's own answers are quoted as they
+/// come, without a stop, and another sentence may follow (`unfinished`).
+fn a_sentence(mut message: String) -> String {
+    let trimmed = message.trim_end().len();
+    message.truncate(trimmed);
+    if !message.ends_with(['.', '!', '?']) {
+        message.push('.');
+    }
+    message
 }
 
 async fn serve(vault: DesktopVault, address: ExecutorAddress, mut rx: Rx) {
@@ -944,18 +970,32 @@ async fn public_state_on<R: ExecutorRpc>(
     executor: Option<&ViaExecutor<R>>,
     vault: &DesktopVault,
 ) -> CustodyPublic {
-    let (did, blocked) = match executor {
+    let (did, blocked, pending) = match executor {
         Some(executor) => {
             finish_pending_quietly(executor, vault).await;
             match executor.status().await {
-                Ok(status) => (
-                    status.did,
-                    (!status.store.is_some_and(|s| s.trusted)).then_some(NO_STORE),
-                ),
-                Err(_) => (None, None),
+                Ok(status) => {
+                    // Still kept after the attempt above: made here, and not published yet.
+                    let pending = match status.did {
+                        Some(_) => None,
+                        None => match own_pending(vault, &status.device_key) {
+                            Ok(incept) => incept.map(|i| ad4m_identity_core::did_of(&i.scid)),
+                            Err(e) => {
+                                log::warn!("custody: the pending identity cannot be read: {e}");
+                                None
+                            }
+                        },
+                    };
+                    (
+                        status.did,
+                        (!status.store.is_some_and(|s| s.trusted)).then_some(NO_STORE),
+                        pending,
+                    )
+                }
+                Err(_) => (None, None, None),
             }
         }
-        None => (None, None),
+        None => (None, None, None),
     };
     let mut master_waiting = false;
     let mut devices = Vec::new();
@@ -1037,6 +1077,7 @@ async fn public_state_on<R: ExecutorRpc>(
     };
     CustodyPublic {
         did,
+        pending,
         holds_master,
         unlock,
         blocked,
@@ -3111,6 +3152,9 @@ fn after_publish(e: &ClientError) -> String {
             "The new master key was no longer where this computer set it aside.".into()
         }
         ClientError::Vault(e) if crate::pending::is_lost_epoch(e) => LOST_EPOCH.into(),
+        ClientError::Vault(e) if crate::store::is_keyring_locked(e) => {
+            "Your keyring is locked: unlock it when your desktop asks for its password.".into()
+        }
         ClientError::Vault(VaultError::Unavailable(why)) => {
             format!("Where it keeps keys answered: {why}")
         }
@@ -3925,6 +3969,43 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn the_public_state_names_an_identity_made_here_and_not_published_yet() {
+        let dir = tempfile::tempdir().unwrap();
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        executor.rpc().refuse_publish.set(true);
+        let vault = open_vault(dir.path());
+        let failed_create = confirmed(24)
+            .finish(
+                &executor,
+                &vault.unlocking(pass()),
+                this_computer(None, true, Some(0)),
+                &CLOCK,
+                &RANDOM,
+            )
+            .await;
+        assert!(failed_create.is_err(), "{failed_create:?}");
+        let scid = vault.pending_incepts().unwrap()[0].scid.clone();
+
+        // The publish is still refused: no identity yet, but the one made here is named, so the
+        // main window can say it was made rather than that nothing changed.
+        executor.rpc().refuse_publish.set(true);
+        let public = public_state_on(Some(&executor), &vault).await;
+        assert_eq!(public.did, None);
+        assert_eq!(public.pending.as_deref(), Some(did_of(&scid).as_str()));
+        let wire = serde_json::to_value(&public).unwrap();
+        assert_eq!(wire["pending"], json!(did_of(&scid)));
+
+        // With no executor nothing is known, so nothing is claimed.
+        let unknown = public_state_on::<FakeExecutor>(None, &vault).await;
+        assert_eq!(unknown.pending, None);
+
+        // Once the store takes it, the state asking finishes it: published, nothing pending.
+        let public = public_state_on(Some(&executor), &vault).await;
+        assert_eq!(public.did.as_deref(), Some(did_of(&scid).as_str()));
+        assert_eq!(public.pending, None);
+    }
+
+    #[tokio::test]
     async fn a_create_that_publishes_leaves_nothing_pending() {
         let dir = tempfile::tempdir().unwrap();
         let executor = ViaExecutor::new(FakeExecutor::new());
@@ -3966,6 +4047,7 @@ mod tests {
         assert_eq!(screen["positions"][1], 11);
         let public = serde_json::to_value(CustodyPublic {
             did: Some("did:scid:coasys:1:Qm".into()),
+            pending: None,
             holds_master: Some(HoldsMaster { index: Some(0) }),
             unlock: "passphrase",
             blocked: Some(NO_STORE),
@@ -5414,6 +5496,36 @@ mod tests {
     }
 
     #[test]
+    fn a_foreign_answer_ends_its_sentence_before_the_next_one() {
+        // As the executor answers an agent language with no identity log (seen on a real computer).
+        let answer = ClientError::Rpc(RpcError {
+            code: 503,
+            message: "unavailable: the agent language does not serve identity-append".into(),
+        });
+        let Screen::Failed { message } = unfinished(&answer) else {
+            unreachable!()
+        };
+        assert!(
+            message.contains("does not serve identity-append. Try again in a moment"),
+            "{message}"
+        );
+        let Screen::Failed { message } = failed(&answer) else {
+            unreachable!()
+        };
+        assert!(message.ends_with("identity-append."), "{message}");
+
+        // An answer that ends its own sentence keeps the one stop it has.
+        let stopped = ClientError::Rpc(RpcError {
+            code: 500,
+            message: "The log is full!".into(),
+        });
+        let Screen::Failed { message } = failed(&stopped) else {
+            unreachable!()
+        };
+        assert!(message.ends_with("answered: The log is full!"), "{message}");
+    }
+
+    #[test]
     fn a_count_refusal_says_word_for_one_and_words_for_more() {
         let count = |typed: &str| words_refused(&words::parse(typed).unwrap_err()).0;
         assert_eq!(count("abandon"), "That is 1 word. Type all 12, in order.");
@@ -6327,6 +6439,27 @@ mod tests {
             let reason = after_publish(e);
             assert!(!reason.contains("Nothing"), "{e:?}: {reason}");
         }
+    }
+
+    /*
+      Found on a real desktop: a locked login keyring held custody with no limit. The store now
+      stops waiting and says the keyring is locked; the person reads what that means and what to
+      do, never the store's own words.
+    */
+    #[test]
+    fn a_locked_keyring_says_so_and_what_to_do() {
+        let locked = ClientError::Vault(crate::store::keyring_locked());
+        let Screen::Failed { message } = failed(&locked) else {
+            panic!("failed() answers Failed");
+        };
+        assert_eq!(message, KEYRING_LOCKED_WORDS);
+        assert!(message.contains("keyring is locked") && message.contains("Nothing was changed"));
+        assert!(!message.contains("Secret Service"), "{message}");
+        let after = after_publish(&locked);
+        assert!(
+            after.contains("keyring is locked") && !after.contains("Nothing"),
+            "{after}"
+        );
     }
 
     #[tokio::test]

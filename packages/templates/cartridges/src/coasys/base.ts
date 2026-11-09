@@ -191,12 +191,26 @@ function row(options: {
   };
 }
 
-/** A door of the first run: open, or drawn closed with the reason this device gives. */
-function door(name: 'make' | 'link' | 'words', icon: string, title: Words, detail: string, action: string): SchemaNode {
+/**
+ * A door of the first run: open, or drawn closed with the reason this device gives. `detail` is what an
+ * open door says; one that does the reverse on a phone (the phone takes a computer's offer, where a
+ * computer shows its code) says so in `{ computer, phone }`.
+ */
+function door(
+  name: 'make' | 'link' | 'words',
+  icon: string,
+  title: Words,
+  detail: string | { computer: string; phone: string },
+  action: string,
+): SchemaNode {
+  const open =
+    typeof detail === 'string'
+      ? `'${detail}'`
+      : `(baseStore.hostKind == 'phone' ? '${detail.phone}' : '${detail.computer}')`;
   return row({
     icon,
     title,
-    detail: { $: `baseStore.doors.${name}.open ? '${detail}' : baseStore.doors.${name}.note` },
+    detail: { $: `baseStore.doors.${name}.open ? ${open} : baseStore.doors.${name}.note` },
     off: `!baseStore.doors.${name}.open`,
     onClick: { $invoke: `baseStore.${action}` },
   });
@@ -243,7 +257,10 @@ const firstRun = screen('base__first-run', [
       'link',
       'qr-code',
       'Link to my identity',
-      'From a device that keeps your master key: it scans this code',
+      {
+        computer: 'From a device that keeps your master key: it scans this code',
+        phone: 'From a computer that keeps your master key: scan or paste the offer it makes for this phone',
+      },
       'linkIdentity',
     ),
     door('words', 'key', 'Use my 12 words', 'Bring your identity back to this computer', 'useWords'),
@@ -256,9 +273,30 @@ const firstRun = screen('base__first-run', [
       onClick: { $invoke: 'baseStore.startNow' },
     }),
   ]),
+  // A step that made the identity and could not publish it did change something: the master key
+  // is kept here. Said whenever it is so, after the step and after a relaunch alike.
+  {
+    type: '$if',
+    props: {
+      condition: { $: "baseStore.unpublished != ''" },
+      then: {
+        type: 'we-alert',
+        props: { tone: 'warning' },
+        children: [
+          {
+            $: '`Your identity was made on this ${baseStore.deviceNoun} and its master key is kept here, but it is not published yet. Coasys publishes it again each time it starts. To finish it now, choose Make my identity here: it finishes the same identity, with no new words.`',
+          },
+        ],
+      },
+    },
+  },
   failedAlert(
-    "baseStore.lastOutcome == 'failed'",
+    "baseStore.lastOutcome == 'failed' && baseStore.unpublished == ''",
     "baseStore.error != '' ? baseStore.error : 'That did not finish. Nothing was changed; try again.'",
+  ),
+  failedAlert(
+    "baseStore.lastOutcome == 'failed' && baseStore.unpublished != '' && baseStore.error != ''",
+    'baseStore.error',
   ),
   failedAlert("baseStore.lastOutcome != 'failed' && baseStore.error != ''", 'baseStore.error'),
 ]);

@@ -230,6 +230,26 @@ describe('baseStore, the first run', () => {
     expect(store.error()).toBe('No words here.');
   });
 
+  it('names an identity a failed step made and could not publish, and forgets it once published', async () => {
+    const identity = fakeIdentity(view(), () => {
+      // The custody service kept the identity it made, then the publish failed.
+      identity.set(view({ pending: DID }));
+      return 'failed';
+    });
+    const { store } = make(host({ identity: identity.source }));
+    await until(() => store.stage() === 'first-run');
+    expect(store.unpublished()).toBe('');
+    expect(await store.makeIdentity()).toBe('failed');
+    // Still the first run (no identity speaks for this device yet), but not "nothing changed".
+    expect(store.stage()).toBe('first-run');
+    expect(store.lastOutcome()).toBe('failed');
+    expect(store.unpublished()).toBe(DID);
+
+    identity.set(view({ did: DID, holdsMaster: true }));
+    await store.refresh();
+    expect(store.unpublished()).toBe('');
+  });
+
   it('closes making one where custody says no change can be made, and leaves the others', async () => {
     const identity = fakeIdentity(view({ blocked: 'The custody service is locked.' }));
     const { store } = make(host({ identity: identity.source }));

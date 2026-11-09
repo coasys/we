@@ -13,6 +13,9 @@
 */
 const AD4M_TOKEN_KEY = 'ad4m-token';
 const AD4M_URL_KEY = 'ad4m-url';
+const AD4M_PORT_KEY = 'ad4m-port';
+/** ad4m-connect's port where none is stored (its `DEFAULT_PORT`). */
+const AD4M_DEFAULT_PORT = 12000;
 
 /** Mirrors ad4m-connect's own normalisation, so the marker below is looked up under the key it wrote. */
 function guestMarkerKey(hostUrl: string): string {
@@ -122,4 +125,37 @@ export function hasStoredSession(): boolean {
     if (!url || !read(`${prefix}${guestMarkerKey(url)}`)) return true;
   }
   return false;
+}
+
+/**
+ * The executor ad4m-connect will open on this load, as the http base it checks (`${base}/health`),
+ * when it holds a session to open there; null when it holds none.
+ *
+ * ## Why the base app asks
+ *
+ * ad4m-connect goes back to the executor it signed in to last, and when that one does not answer it
+ * draws its own "How would you like to connect?" over the page, as if the person had never chosen.
+ * The base app has an offline state for exactly that, with the reason and "Try again", so it asks
+ * where the session is and whether that place answers before ad4m-connect is started. Without a
+ * session nothing has been chosen yet, and ad4m-connect's screen is the right first step.
+ *
+ * ad4m-connect reads only its own version's keys. Where several versions left a session, the
+ * newest version's is the one it will read, so that is the one named: a version bump cannot make
+ * this read a key ad4m-connect no longer does, which is how {@link hasStoredSession} once broke.
+ */
+export function rememberedSessionBase(): string | null {
+  const entries = localEntries();
+  const read = (key: string): string | null => entries.find(([k]) => k === key)?.[1] || null;
+
+  const prefixes = entries
+    .filter(([key, token]) => token && prefixOf(key, AD4M_TOKEN_KEY) !== null)
+    .map(([key]) => prefixOf(key, AD4M_TOKEN_KEY) as string)
+    .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
+  const prefix = prefixes[0];
+  if (prefix === undefined) return null;
+
+  const port = Number.parseInt(read(`${prefix}${AD4M_PORT_KEY}`) ?? '', 10) || AD4M_DEFAULT_PORT;
+  const url = read(`${prefix}${AD4M_URL_KEY}`) ?? `http://localhost:${port}`;
+  // ad4m-connect's `baseUrl`: a ws(s) address as http(s), then `/health` after it.
+  return url.replace(/^ws(s?):\/\//, (_, s: string) => `http${s}://`).replace(/\/+$/, '');
 }
