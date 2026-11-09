@@ -15,9 +15,10 @@ import { COLLAPSED } from './lockup.ts';
  *   "Use my 12 words", and "Start now". On a phone it is the join: a phone links to an identity a
  *   computer keeps, and the doors it cannot open say why. Every door opens the host's own identity
  *   window — the only place the 12 words are ever shown or typed.
- * - **connect** — where this device gets its session: this computer, the servers added on it, the
- *   computer a phone's key signs in to, or the browser's connect screen. Coasys cloud and the hosting
- *   index have a place of their own, labelled as coming, with nothing listed until they exist.
+ * - **connect** — where this device gets its session: this computer, the servers added on it (listed,
+ *   but not wired on the desktop yet: choosing one says so, coasys/we#428), the computer a phone's
+ *   key signs in to, or the browser's connect screen. Coasys cloud and the hosting index have a place
+ *   of their own, labelled as coming, with nothing listed until they exist.
  * - **offline** — the place chosen could not be reached, with "Try again" and the way back to the
  *   choice.
  *
@@ -290,9 +291,11 @@ const firstRun = screen('base__first-run', [
       },
     },
   },
+  // Nothing tells the base that a failed step changed nothing (with the executor down, custody
+  // cannot say it kept the key either), so it says only that the step did not finish.
   failedAlert(
     "baseStore.lastOutcome == 'failed' && baseStore.unpublished == ''",
-    "baseStore.error != '' ? baseStore.error : 'That did not finish. Nothing was changed; try again.'",
+    "baseStore.error != '' ? baseStore.error : 'That did not finish; try again.'",
   ),
   failedAlert(
     "baseStore.lastOutcome == 'failed' && baseStore.unpublished != '' && baseStore.error != ''",
@@ -363,6 +366,24 @@ const connect = screen('base__connect', [
     ],
   },
   failedAlert("baseStore.error != ''", 'baseStore.error'),
+  // A reason here is one a second try may clear: an identity that could not be read, a place that
+  // refused. "Try again" reads the identity and the places again, as a relaunch would.
+  {
+    type: '$if',
+    props: {
+      condition: { $: "baseStore.error != ''" },
+      then: {
+        type: 'Row',
+        children: [
+          {
+            type: 'we-button',
+            props: { variant: 'secondary', loading: { $: 'baseStore.busy' }, onClick: { $invoke: 'baseStore.retry' } },
+            children: ['Try again'],
+          },
+        ],
+      },
+    },
+  },
 ]);
 
 const offline = screen('chrome__offline', [

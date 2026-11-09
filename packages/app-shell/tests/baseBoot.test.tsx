@@ -44,6 +44,27 @@ async function until(check: () => boolean, ms = 2_000) {
   throw new Error('timed out waiting');
 }
 
+type Node = { id?: string; type?: string; props?: Record<string, unknown>; children?: unknown[] };
+
+/** The first node of a template, at any depth and in any `$if` branch, that `match` accepts. */
+function findNode(node: unknown, match: (n: Node) => boolean): Node | undefined {
+  if (!node || typeof node !== 'object') return undefined;
+  if (Array.isArray(node)) {
+    for (const item of node) {
+      const found = findNode(item, match);
+      if (found) return found;
+    }
+    return undefined;
+  }
+  const n = node as Node;
+  if (typeof n.type === 'string' && match(n)) return n;
+  for (const value of Object.values(n)) {
+    const found = findNode(value, match);
+    if (found) return found;
+  }
+  return undefined;
+}
+
 const connector = (initialize: BackendConnector['initialize']): BackendConnector =>
   ({ initialize }) as BackendConnector;
 const unreachable = (e: unknown) => (e as Error)?.message === 'Failed to fetch';
@@ -201,6 +222,85 @@ describe('BaseBoot', () => {
     await until(() => screen.queryByText(/is not published yet/) !== null);
     expect(screen.queryByText(/Nothing was changed/)).toBeNull();
   });
+
+  /*
+    Lal's review of coasys/we#438: with the executor down the custody view has no `pending` either,
+    so a Make that kept the master key and failed to publish was told "Nothing was changed". Nothing
+    tells the base that a failed step changed nothing, so it does not say so.
+  */
+  it('says a failed step did not finish, and never that nothing was changed', async () => {
+    const empty: IdentityCustodyView = {
+      did: null,
+      holdsMaster: false,
+      unlock: 'os',
+      blocked: null,
+      devices: [],
+      revokedHolders: [],
+      requests: [],
+      masterWaiting: false,
+    };
+    let store!: BaseStore;
+    const host: BaseHost = {
+      kind: 'computer',
+      connections: async () => [HERE],
+      connector: async () => connector(async () => ({ client: {}, ports: {} }) as never),
+      identity: {
+        state: async () => empty,
+        doors: {
+          make: { step: { kind: 'create' } },
+          link: { step: { kind: 'show-code' } },
+          words: { step: { kind: 'restore' } },
+        },
+        // Failed, with no `pending` to say whether the key was kept (the executor was down).
+        open: async () => 'failed',
+      },
+    };
+    render(() => <BaseBoot host={host} platform={PLATFORM} seed={SEED} onStore={(s) => (store = s)} />);
+    await until(() => screen.queryByText(/Make my identity here/) !== null);
+    expect(await store.makeIdentity()).toBe('failed');
+    await until(() => screen.queryByText('That did not finish; try again.') !== null);
+    expect(screen.queryByText(/Nothing was changed/)).toBeNull();
+  });
+
+  /*
+    Lal's review of coasys/we#438: an identity that could not be read is drawn on the connection
+    choice with its reason, and that screen had no "Try again", so the only way to read it again was
+    to relaunch. Pressing it here reads the identity again.
+  */
+  it('offers "Try again" beside a reason on the connection choice, and reads the identity again', async () => {
+    let store!: BaseStore;
+    let reads = 0;
+    const host: BaseHost = {
+      kind: 'computer',
+      connections: async () => [HERE],
+      connector: async () => connector(async () => ({ client: {}, ports: {} }) as never),
+      identity: {
+        state: async () => {
+          reads += 1;
+          throw new Error('the custody service did not answer');
+        },
+        doors: {
+          make: { step: { kind: 'create' } },
+          link: { step: { kind: 'show-code' } },
+          words: { step: { kind: 'restore' } },
+        },
+        open: async () => 'failed',
+      },
+    };
+    render(() => <BaseBoot host={host} platform={PLATFORM} seed={SEED} onStore={(s) => (store = s)} />);
+    await until(() => screen.queryByText(/could not read its identity/) !== null, 15_000);
+    expect(store.stage()).toBe('connect');
+    expect(screen.getByText('Where is your Coasys?')).toBeTruthy();
+    expect(screen.getByText('Try again').closest('we-button')).toBeTruthy();
+    // The press itself needs a trusted event (the base app's gesture gate), which jsdom cannot make:
+    // what the drawn control invokes is read from the deployment's own base, and invoked as a press would.
+    const connect = findNode(deploymentBase(SEED)!.template, (n) => n.id === 'base__connect');
+    const button = connect && findNode(connect, (n) => n.type === 'we-button' && n.children?.[0] === 'Try again');
+    expect(button?.props?.onClick).toEqual({ $invoke: 'baseStore.retry' });
+    const before = reads;
+    await store.retry();
+    expect(reads).toBeGreaterThan(before);
+  }, 40_000);
 
   it('takes the page back to the offline state when the place cannot be reached', async () => {
     const { store } = boot({

@@ -1,10 +1,12 @@
 /**
  * Does this browser already hold somebody's real AD4M session?
  *
- * Split out from `guestConnector` and importing nothing, so the one decision that stands between a
- * guest link and an agent's existing identity can be tested without an executor, a connect client
- * or a DOM. It reads localStorage and answers a question; that is the whole module.
+ * Split out from `guestConnector`, importing nothing but ad4m-connect's own storage read (`utils`,
+ * which imports nothing itself), so the one decision that stands between a guest link and an agent's
+ * existing identity can be tested without an executor, a connect client or a DOM. It reads
+ * localStorage and answers a question; that is the whole module.
  */
+import { getLocal } from '@coasys/ad4m-connect/utils';
 
 /*
   The three keys ad4m-connect writes, named without their prefix.
@@ -139,23 +141,26 @@ export function hasStoredSession(): boolean {
  * where the session is and whether that place answers before ad4m-connect is started. Without a
  * session nothing has been chosen yet, and ad4m-connect's screen is the right first step.
  *
- * ad4m-connect reads only its own version's keys. Where several versions left a session, the
- * newest version's is the one it will read, so that is the one named: a version bump cannot make
- * this read a key ad4m-connect no longer does, which is how {@link hasStoredSession} once broke.
+ * ad4m-connect reads only its own version's keys (`${version}/${key}`, the version of its package).
+ * So this reads with ad4m-connect's own `getLocal`, from the copy this app bundles: the namespace is
+ * the one the running client will read, whatever version that is, and a session left by any other
+ * version (older, after an upgrade; newer, after a downgrade) is one it will not resume and so is
+ * not probed. Unlike {@link hasStoredSession}, which is about protecting any session at all, this
+ * asks what this client will do next.
  */
 export function rememberedSessionBase(): string | null {
-  const entries = localEntries();
-  const read = (key: string): string | null => entries.find(([k]) => k === key)?.[1] || null;
+  const read = (key: string): string | null => {
+    try {
+      return getLocal(key) || null;
+    } catch {
+      // A storage the browser refuses: nothing is remembered.
+      return null;
+    }
+  };
+  if (!read(AD4M_TOKEN_KEY)) return null;
 
-  const prefixes = entries
-    .filter(([key, token]) => token && prefixOf(key, AD4M_TOKEN_KEY) !== null)
-    .map(([key]) => prefixOf(key, AD4M_TOKEN_KEY) as string)
-    .sort((a, b) => b.localeCompare(a, undefined, { numeric: true }));
-  const prefix = prefixes[0];
-  if (prefix === undefined) return null;
-
-  const port = Number.parseInt(read(`${prefix}${AD4M_PORT_KEY}`) ?? '', 10) || AD4M_DEFAULT_PORT;
-  const url = read(`${prefix}${AD4M_URL_KEY}`) ?? `http://localhost:${port}`;
+  const port = Number.parseInt(read(AD4M_PORT_KEY) ?? '', 10) || AD4M_DEFAULT_PORT;
+  const url = read(AD4M_URL_KEY) ?? `http://localhost:${port}`;
   // ad4m-connect's `baseUrl`: a ws(s) address as http(s), then `/health` after it.
   return url.replace(/^ws(s?):\/\//, (_, s: string) => `http${s}://`).replace(/\/+$/, '');
 }

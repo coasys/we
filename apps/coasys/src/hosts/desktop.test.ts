@@ -12,6 +12,7 @@ import {
   desktopBaseHost,
   type DesktopServers,
   type ExecutorBridge,
+  ServerNotConnectable,
   serverUnreachable,
   shellRefusal,
   THIS_COMPUTER_CONNECTION,
@@ -129,13 +130,33 @@ describe('the desktop host', () => {
     ]);
   });
 
-  it('records the place chosen with the shell, and connects through the local connector either way', async () => {
+  it('connects this computer through the local connector, and records it with the shell', async () => {
     const kept = servers([{ address: 'https://one.example', name: 'Test server' }]);
     const host = desktopBaseHost({ local, servers: kept });
-    const [here, server] = await host.connections();
-    expect(await host.connector(server)).toBe(local);
+    const [here] = await host.connections();
     expect(await host.connector(here)).toBe(local);
-    expect(kept.chosen).toEqual(['https://one.example', null]);
+    expect(kept.chosen).toEqual([null]);
+  });
+
+  /*
+    Lal's review of coasys/we#438: the local connector always builds `http://localhost:<port>` with
+    this computer's own credential, so handing it over for a server would at best connect here under
+    the server's name, and at worst take the local admin credential somewhere it does not belong.
+    Until a server has its own connector (coasys/we#428) the choice refuses, in words, and changes
+    nothing the shell keeps.
+  */
+  it("refuses a server, in words, rather than reaching it with this computer's connector", async () => {
+    const kept = servers([{ address: 'https://one.example', name: 'Test server' }]);
+    const host = desktopBaseHost({ local, servers: kept });
+    const [, server] = await host.connections();
+    const refused = await host.connector(server).catch((e: unknown) => e);
+    expect(refused).toBeInstanceOf(ServerNotConnectable);
+    expect((refused as Error).message).toBe(
+      'Test server cannot be opened from this app yet: only this computer can. Choose This computer.',
+    );
+    // A refusal, not a place out of reach: the connection choice says it, not the offline state.
+    expect(host.isUnreachable?.(refused)).toBe(false);
+    expect(kept.chosen).toEqual([]);
   });
 });
 

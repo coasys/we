@@ -1,6 +1,7 @@
 /**
  * The desktop's base host: this computer's custody service keeps the identity, this computer runs its
- * own executor, and a session is had from that executor or from a server the account was given.
+ * own executor, and a session is had from that executor. The servers the account was given are listed
+ * too, but a session on one is not wired yet (coasys/we#428): choosing one refuses.
  *
  * Shared by both desktop shells, each passing what it has: Electron its preload bridge
  * (`window.electron.custody`, `executor`, `servers`), Tauri its `identity_*` commands. The doors are
@@ -21,8 +22,8 @@ import { type Ad4mCustodyHost, readCustody } from '@we/backend-ad4m';
 
 /**
  * The servers the signed-in account was given, and the one it is served by (`null`: this computer),
- * as the desktop shell keeps them. `choose` only records; the local connector reads the choice when
- * it starts.
+ * as the desktop shell keeps them. Bookkeeping only: they are listed as places, but a session on one
+ * is not wired yet (coasys/we#428), so choosing one refuses and only `choose(null)` is ever recorded.
  */
 export interface DesktopServers {
   list(): Promise<{ servers: { address: string; name: string }[]; serving: string | null }>;
@@ -161,6 +162,18 @@ export function serverUnreachable(error: unknown): boolean {
   );
 }
 
+/**
+ * A server chosen on the desktop, which cannot be opened from it yet: the remote session comes with
+ * coasys/we#428. A refusal rather than a place out of reach, so the base app says it as it is and
+ * does not wait for a network that would not change it.
+ */
+export class ServerNotConnectable extends Error {
+  constructor(readonly server: string) {
+    super(`${server} cannot be opened from this app yet: only this computer can. Choose This computer.`);
+    this.name = 'ServerNotConnectable';
+  }
+}
+
 export function desktopBaseHost(options: DesktopHostOptions): BaseHost {
   const servers = options.servers;
   return {
@@ -180,9 +193,14 @@ export function desktopBaseHost(options: DesktopHostOptions): BaseHost {
       ];
     },
     connector: async (connection) => {
-      // The shell records which device serves the account; the local connector follows that record.
-      if (servers)
-        await servers.choose(connection.kind === 'server' ? connection.id.slice(SERVER_PREFIX.length) : null);
+      /*
+        The local connector reaches `localhost` with this computer's own admin credential, whatever was
+        chosen: handed over for a server it would carry that credential under the server's name. A
+        server has no connector of its own yet (coasys/we#428), so the choice refuses, and the shell's
+        record of who serves the account is left as it was.
+      */
+      if (connection.kind !== 'this-device') throw new ServerNotConnectable(connection.label);
+      if (servers) await servers.choose(null);
       return options.local;
     },
     isUnreachable: serverUnreachable,

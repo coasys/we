@@ -32314,9 +32314,7 @@ export const seedBundles: Bundle[] = [
                           type: 'we-alert',
                           props: { tone: 'danger' },
                           children: [
-                            {
-                              $: "baseStore.error != '' ? baseStore.error : 'That did not finish. Nothing was changed; try again.'",
-                            },
+                            { $: "baseStore.error != '' ? baseStore.error : 'That did not finish; try again.'" },
                           ],
                         },
                       },
@@ -32551,6 +32549,26 @@ export const seedBundles: Bundle[] = [
                       props: {
                         condition: { $: "baseStore.error != ''" },
                         then: { type: 'we-alert', props: { tone: 'danger' }, children: [{ $: 'baseStore.error' }] },
+                      },
+                    },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: "baseStore.error != ''" },
+                        then: {
+                          type: 'Row',
+                          children: [
+                            {
+                              type: 'we-button',
+                              props: {
+                                variant: 'secondary',
+                                loading: { $: 'baseStore.busy' },
+                                onClick: { $invoke: 'baseStore.retry' },
+                              },
+                              children: ['Try again'],
+                            },
+                          ],
+                        },
                       },
                     },
                   ],

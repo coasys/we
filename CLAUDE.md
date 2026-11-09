@@ -3061,13 +3061,13 @@ BaseStore:
   - identityKnown: boolean — the identity source answered, so did / holdsMaster are facts, not defaults
   - did: string — the identity this device speaks for, or empty. Draw didShort; never the whole identifier in a screenshot-sized space
   - didShort: string — the same, shortened for the eye
-  - unpublished: string — an identity a step made on this device whose publish has not gone through yet (its DID), or empty. Its master key is kept here and it is published again on the next attempt, so after `lastOutcome == 'failed'` say it was made, not that nothing changed
+  - unpublished: string — an identity a step made on this device whose publish has not gone through yet (its DID), or empty. Its master key is kept here and it is published again on the next attempt, so after `lastOutcome == 'failed'` say it was made, not that nothing changed. When it is empty a failed step still may have changed something: say it did not finish, never that nothing changed
   - holdsMaster: boolean — this device keeps a master key of it
   - keepsLine: string — 'This computer keeps your master key behind its own sign-in' / '… behind your passphrase' / 'This phone keeps no master key', ready to show
   - blocked: string — why no identity change can be made here, ready to show; empty when one can
   - devices: { keyId, label, subtitle, icon, thisDevice, master }[] — the devices the identity's private record names, read-only before a session: `label` 'This computer' / 'This phone', the record's name, or 'Device d2'; `master` 'Holds the master key', 'Master key offered, not yet taken' or empty
   - doors: { make, link, words } each { open: boolean, note: string } — the three ways in as this device offers them: `open` the door runs a step here, else `note` says why not ('A phone joins an identity made on a computer'). Draw a closed door disabled with its note, never hide it
-  - connections: { id, kind, label, detail, icon, chosen }[] — where a session can be had from here. `kind` 'this-device' (the backend this computer runs), 'server' (one the person added), 'key-host' (the computer this phone's key signs in to), 'connect' (the browser's AD4M Connect screen, which asks where). Coasys cloud and the hosting index are not in it until they exist: a template says so in its own words rather than listing them
+  - connections: { id, kind, label, detail, icon, chosen }[] — where a session can be had from here. `kind` 'this-device' (the backend this computer runs), 'server' (one the person added; on the desktop it is listed but not wired yet, so choosing it ends on the connection choice with `error` saying so), 'key-host' (the computer this phone's key signs in to), 'connect' (the browser's AD4M Connect screen, which asks where). Coasys cloud and the hosting index are not in it until they exist: a template says so in its own words rather than listing them
   - chosen: string — the id of the connection chosen last, remembered on this device; empty for none
   - busy: boolean — an identity step or a connection is under way
   - lastOutcome: 'done' | 'cancelled' | 'failed' | '' — how the last identity step ended

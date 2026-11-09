@@ -23,17 +23,23 @@ A guest link skips the base and boots the guest connector, as `apps/we-web` does
 
 `src/hosts/` holds one `BaseHost` per kind of device:
 
-| File         | Host                                   | Identity                     | Places                                                |
-| ------------ | -------------------------------------- | ---------------------------- | ----------------------------------------------------- |
-| `web.ts`     | A browser                              | none                         | AD4M Connect                                          |
-| `phone.ts`   | The phone app's WebView                | the `DeviceKey` plugin       | the executor the phone's key logs in to, AD4M Connect |
-| `desktop.ts` | Electron and Tauri (their own entries) | the custody service          | this computer, then the account's servers             |
-| `choose.ts`  | Picks the phone's or the browser's     | the plugin answering decides |                                                       |
+| File         | Host                                   | Identity                     | Places                                                       |
+| ------------ | -------------------------------------- | ---------------------------- | ------------------------------------------------------------ |
+| `web.ts`     | A browser                              | none                         | AD4M Connect                                                 |
+| `phone.ts`   | The phone app's WebView                | the `DeviceKey` plugin       | the executor the phone's key logs in to, AD4M Connect        |
+| `desktop.ts` | Electron and Tauri (their own entries) | the custody service          | this computer (the account's servers: listed, not wired yet) |
+| `choose.ts`  | Picks the phone's or the browser's     | the plugin answering decides |                                                              |
 
 `desktop.ts` is exported (`@we/app-coasys/hosts/desktop`) for `apps/we-electron` and `apps/we-tauri`,
 which render `BaseBoot` from their own entries. `bridgedExecutor` reads Electron's executor state over
 its preload bridge, so the window shows "starting" or a failure with "Try again" while the executor is
 not up.
+
+**The desktop's remote servers are not wired yet** (they come with coasys/we#428). A server the account
+was given is listed as a place, but the only connector a desktop has reaches this computer's executor
+with this computer's own admin credential, so choosing a server refuses (`ServerNotConnectable`) with
+words saying so rather than connecting anywhere, and the shell's record of who serves the account is
+left as it was.
 
 ## Commands
 

@@ -14,11 +14,12 @@
  * Needs `pnpm build:coasys` first, and Chrome (`WE_CHROME`, `/usr/bin/google-chrome` by default).
  * `WE_COASYS_SHOTS=<dir>` keeps a screenshot after each step.
  */
-import { createReadStream, existsSync, mkdirSync, statSync } from 'node:fs';
+import { createReadStream, existsSync, mkdirSync, readFileSync, statSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { dirname, extname, join, normalize } from 'node:path';
 import { after, before, describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 
 import { chromium } from 'playwright-core';
@@ -27,6 +28,16 @@ const DIST = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
 const CHROME = process.env.WE_CHROME ?? '/usr/bin/google-chrome';
 const SHOTS = process.env.WE_COASYS_SHOTS ?? null;
 const STEP_MS = 20_000;
+
+/**
+ * The namespace the AD4M Connect this app bundles keeps its keys under: `${version}/`, its package's
+ * version (its `setLocal`). A session written under any other is one the page would not resume.
+ */
+const CONNECT_PREFIX = (() => {
+  const utils = createRequire(import.meta.url).resolve('@coasys/ad4m-connect/utils');
+  const { version } = JSON.parse(readFileSync(join(dirname(utils), '..', 'package.json'), 'utf8'));
+  return `${version}/`;
+})();
 
 const MIME = {
   '.html': 'text/html',
@@ -193,10 +204,13 @@ describe('the phone, with no identity and no executor', () => {
     await control(page, 'Start now').click();
     await control(page, 'AD4M Connect').click();
     await handedOff(page);
-    await page.evaluate((url) => {
-      localStorage.setItem('0.13.1-test/ad4m-token', 'a-test-token');
-      localStorage.setItem('0.13.1-test/ad4m-url', url);
-    }, 'http://127.0.0.1:9');
+    await page.evaluate(
+      ({ prefix, url }) => {
+        localStorage.setItem(`${prefix}ad4m-token`, 'a-test-token');
+        localStorage.setItem(`${prefix}ad4m-url`, url);
+      },
+      { prefix: CONNECT_PREFIX, url: 'http://127.0.0.1:9' },
+    );
     await page.reload();
     await sees(page, 'could not be reached');
     await sees(page, 'did not answer');

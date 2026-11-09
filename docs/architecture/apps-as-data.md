@@ -156,11 +156,15 @@ the bundle's `base`, a template with `meta.role: 'base'`. The Coasys cartridge's
 source, its own executor if it runs one, the places it can connect to, and the connector for each. The
 hosts are in `apps/coasys/src/hosts/`:
 
-| Host    | Identity                                      | Executor                                          | Places                                                |
-| ------- | --------------------------------------------- | ------------------------------------------------- | ----------------------------------------------------- |
-| Desktop | the custody service (Electron preload, Tauri) | Electron reports its own; Tauri's runs in-process | this computer, then the servers the account was given |
-| Phone   | the `DeviceKey` plugin (`phoneCustody.ts`)    | none                                              | the executor its key logs in to, then AD4M Connect    |
-| Browser | none: the identity comes with the session     | none                                              | AD4M Connect                                          |
+| Host    | Identity                                      | Executor                                          | Places                                                       |
+| ------- | --------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------ |
+| Desktop | the custody service (Electron preload, Tauri) | Electron reports its own; Tauri's runs in-process | this computer (the account's servers: listed, not wired yet) |
+| Phone   | the `DeviceKey` plugin (`phoneCustody.ts`)    | none                                              | the executor its key logs in to, then AD4M Connect           |
+| Browser | none: the identity comes with the session     | none                                              | AD4M Connect                                                 |
+
+The desktop's remote servers are bookkeeping only until coasys/we#428: they are listed, but choosing
+one refuses in words (`ServerNotConnectable`), because the desktop's one connector reaches this
+computer's executor with its own admin credential and must never be handed over for another place.
 
 **The hand-off.** When a place is chosen, `BaseBoot` mounts WE's `App` in the same page with the
 host's connector for it. A place that cannot be reached (`BaseHost.isUnreachable`) comes back to the
