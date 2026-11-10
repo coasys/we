@@ -120,7 +120,7 @@ function agentApi(req, socket) {
   const send = (value) => socket.write(wsLite.textFrame(JSON.stringify(value)));
   wsLite.readFrames(socket, (text) => {
     const { id, type, params = {} } = JSON.parse(text);
-    const fail = (message) => send({ id, error: { code: 500, message } });
+    const fail = (message, code = 500) => send({ id, error: { code, message } });
     if (type === 'agent.status') {
       const delayFile = path.join(data, 'fake-executor.status-delay');
       if (!fs.existsSync(delayFile)) return send({ id, result: agentStatus() });
@@ -136,7 +136,9 @@ function agentApi(req, socket) {
       return send({ id, result: agentStatus() });
     }
     if (type === 'agent.generate') {
-      if (fs.existsSync(agentFile)) return fail('the agent is already made');
+      // As the executor does: 409, never a new agent over the one there is.
+      if (fs.existsSync(agentFile))
+        return fail('the agent is already initialised; unlock it with agent.unlock instead', 409);
       fs.writeFileSync(agentFile, JSON.stringify({ passphrase: params.passphrase }));
       unlocked = true;
       log('agent generated');

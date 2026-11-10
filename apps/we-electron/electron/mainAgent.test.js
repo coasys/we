@@ -25,7 +25,13 @@ import {
 const SECRET = 'kept-passphrase-0123456789abcdefghijklmnopqrstuvwxyz';
 
 /** An executor's agent as `agent.status` answers it, and the calls made to it. */
-function fakeExecutor({ initialized = false, unlocked = false, passphrase = null, refuseUnlock = false } = {}) {
+function fakeExecutor({
+  initialized = false,
+  unlocked = false,
+  passphrase = null,
+  refuseUnlock = false,
+  madeJustBeforeGenerate = null,
+} = {}) {
   const agent = { initialized, unlocked, passphrase };
   const calls = [];
   const status = () => ({
@@ -41,6 +47,15 @@ function fakeExecutor({ initialized = false, unlocked = false, passphrase = null
       calls.push({ method, params });
       if (method === 'agent.status') return status();
       if (method === 'agent.generate') {
+        // Another made it between the last status read and this call (WE's own "Create account").
+        if (madeJustBeforeGenerate !== null)
+          Object.assign(agent, { initialized: true, passphrase: madeJustBeforeGenerate });
+        // The executor refuses to make over an agent already made, as `executorRpc` marks it.
+        if (agent.initialized)
+          throw Object.assign(new Error('the agent is already initialised; unlock it with agent.unlock instead'), {
+            refused: true,
+            code: 409,
+          });
         Object.assign(agent, { initialized: true, unlocked: true, passphrase: params.passphrase });
         return status();
       }
@@ -170,6 +185,49 @@ describe('ensureMainAgent', () => {
       };
       expect(await ensureMainAgent({ call: executor.call, keyring, log: () => {} })).toBe('unlocked');
       expect(executor.calls.map((c) => c.method)).toEqual(['agent.status', 'agent.status']);
+    });
+  });
+
+  /*
+    The executor refuses `agent.generate` for an agent already made. One made between the last status
+    read and the generate is unlocked with the kept passphrase, as one made during the keyring's wait is.
+  */
+  describe('an agent made between the status read and agent.generate', () => {
+    it('is unlocked with the kept passphrase where that is its own', async () => {
+      const executor = fakeExecutor({ madeJustBeforeGenerate: SECRET });
+      const logged = [];
+      const log = (...args) => logged.push(args.join(' '));
+      expect(await ensureMainAgent({ call: executor.call, keyring: fakeKeyring(), log })).toBe('unlocked');
+      expect(executor.calls.map((c) => c.method)).toEqual([
+        'agent.status',
+        'agent.status',
+        'agent.generate',
+        'agent.unlock',
+      ]);
+      expect(executor.calls[3].params).toEqual({ passphrase: SECRET, holochain: true });
+      expect(executor.agent.unlocked).toBe(true);
+      expect(logged.join('\n')).not.toContain(SECRET);
+    });
+
+    it('is left locked for sign-in where it was made with another', async () => {
+      const executor = fakeExecutor({ madeJustBeforeGenerate: 'the person’s own' });
+      expect(await ensureMainAgent({ call: executor.call, keyring: fakeKeyring(), log: () => {} })).toBe('locked');
+      expect(executor.calls.at(-1)).toEqual({
+        method: 'agent.unlock',
+        params: { passphrase: SECRET, holochain: true },
+      });
+      expect(executor.agent.passphrase).toBe('the person’s own');
+    });
+
+    it('still fails the start for any other refusal of agent.generate', async () => {
+      const executor = fakeExecutor();
+      const call = async (method, params) => {
+        if (method === 'agent.generate')
+          throw Object.assign(new Error('Failed to start Holochain'), { refused: true, code: 500 });
+        return executor.call(method, params);
+      };
+      await expect(ensureMainAgent({ call, keyring: fakeKeyring(), log: () => {} })).rejects.toThrow('Holochain');
+      expect(executor.calls.map((c) => c.method)).not.toContain('agent.unlock');
     });
   });
 
@@ -387,6 +445,39 @@ describe('giveAgentPassword', () => {
     expect(executor.calls.map((c) => c.method)).toEqual(['agent.status', 'agent.unlock']);
   });
 
+  describe('an agent made between the status read and agent.generate', () => {
+    it('is unlocked with the password where it is its own, and the note of a kept passphrase stays', async () => {
+      const executor = fakeExecutor({ madeJustBeforeGenerate: PASSWORD });
+      const marker = fakeMarker(true);
+      const answer = await giveAgentPassword({
+        call: executor.call,
+        need: 'needs-new-password',
+        password: PASSWORD,
+        marker,
+        log: quiet,
+      });
+      expect(answer).toBe('unlocked');
+      expect(executor.calls.map((c) => c.method)).toEqual(['agent.status', 'agent.generate', 'agent.unlock']);
+      expect(executor.calls[2].params).toEqual({ passphrase: PASSWORD, holochain: true });
+      expect(marker.kept).toBe(true);
+    });
+
+    it('answers wrong where it was made with another, and the note of a kept passphrase stays', async () => {
+      const executor = fakeExecutor({ madeJustBeforeGenerate: SECRET });
+      const marker = fakeMarker(true);
+      const answer = await giveAgentPassword({
+        call: executor.call,
+        need: 'needs-new-password',
+        password: PASSWORD,
+        marker,
+        log: quiet,
+      });
+      expect(answer).toBe('wrong');
+      expect(executor.agent.unlocked).toBe(false);
+      expect(marker.kept).toBe(true);
+    });
+  });
+
   it('rejects where the executor could not be asked, rather than calling the password wrong', async () => {
     const call = async () => {
       throw new Error('the executor’s WebSocket closed');
@@ -536,6 +627,8 @@ describe('executorRpc', () => {
       const refusal = await rpc.call('agent.unlock', { passphrase: 'p' }).catch((err) => err);
       expect(refusal.message).toBe('Agent not initialized');
       expect(refusal.refused).toBe(true);
+      // With the executor's code, so a caller can tell one refusal from another.
+      expect(refusal.code).toBe(500);
     } finally {
       rpc.close();
     }

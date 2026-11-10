@@ -17,6 +17,7 @@ import {
   type DatasetLifecyclePort,
   type EphemeralPort,
   type IdentityCapabilities,
+  isAgentExists,
   isSessionTimeout,
   NO_IDENTITY_CAPABILITIES,
   trace,
@@ -44,6 +45,9 @@ export type BootState = 'initialising' | 'login' | 'createAgent' | 'finishing' |
 /** What a session call that outlasted the backend's patience says, on either form. */
 const SESSION_TIMEOUT_MESSAGE =
   'Your account is taking longer than usual to start. It may still be finishing — try again in a moment.';
+
+/** What signing up says where the backend already has an account: the person signs in instead. */
+const AGENT_EXISTS_MESSAGE = 'An account already exists on this computer. Sign in with its password instead.';
 
 /** The authenticated identity as the shell holds it — neutral `id` plus the backend's own fields
  * (`did` is template-facing vocabulary: `$me.did`). */
@@ -463,8 +467,17 @@ export function SessionStoreProvider(props: ParentProps) {
         await session.signUp({ kind: 'password', password });
       } catch (err) {
         console.error('SessionStore: agent creation failed', err);
-        // Leave bootState on 'createAgent' so the user can retry against the same screen.
         settingUp = false;
+        // An account was made since the boot read said there was none, and the backend will not make
+        // another over it: send the person to sign in, and say why on that screen too.
+        if (isAgentExists(err)) {
+          setCreateAgentError(AGENT_EXISTS_MESSAGE);
+          setPasswordError(false);
+          setLoginError(AGENT_EXISTS_MESSAGE);
+          setBootState('login');
+          throw err;
+        }
+        // Leave bootState on 'createAgent' so the user can retry against the same screen.
         setCreateAgentError(
           isSessionTimeout(err)
             ? SESSION_TIMEOUT_MESSAGE

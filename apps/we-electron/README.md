@@ -97,8 +97,8 @@ What it leaves alone, and what follows:
   asks for `executor-state` again when the app before a session is shown and before a door opens,
   and the supervisor reads the agent again to answer, so the doors open once sign-in has unlocked it.
 - **An agent made while the keyring was asked** (a prompt can wait) is not made over: the agent is
-  read again before `agent.generate`. That read and the call are not atomic; the ad4m change that
-  makes agent.generate refuse an initialised agent closes the rest of the window.
+  read again before `agent.generate`. That read and the call are not atomic, so the executor refuses
+  `agent.generate` for an agent already made (409), and one made in between is unlocked, not made over.
 - **Two reads of the agent in flight at once** (the window asks `executor-state` again while one is):
   only the newest is told to the window, so an older one that answers last does not undo it. `wallet-passphrase make` is read-then-write with no lock of
   its own, and relies on Electron's single-instance lock for there being one supervisor.

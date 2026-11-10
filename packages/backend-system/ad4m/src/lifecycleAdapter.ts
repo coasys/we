@@ -6,6 +6,7 @@
  */
 import { Ad4mClient, Perspective, PerspectiveHandle, type PerspectiveProxy, PerspectiveState } from '@coasys/ad4m';
 import {
+  AgentExistsError,
   type AgentSessionPort,
   type DatasetChangeHandlers,
   type DatasetLifecyclePort,
@@ -565,9 +566,17 @@ export function createAd4mAgentSession(backendClient: unknown): AgentSessionPort
      * `agent.generate` returns an already-unlocked status, so there is no unlock step after it —
      * the executor holds the freshly derived keys in memory. Holochain is started as part of the
      * same call, matching what `unlock(password, true)` does on the returning-agent path.
+     *
+     * The executor refuses to generate over an agent already made, with 409: translated here, and
+     * nowhere above, into the contract's `AgentExistsError`.
      */
     async signUp(credentials) {
-      await settleSessionCall(() => client.agent.generate(credentials.password));
+      try {
+        await settleSessionCall(() => client.agent.generate(credentials.password));
+      } catch (err) {
+        if (rpcStatus(err) === 409) throw new AgentExistsError(err instanceof Error ? err.message : String(err));
+        throw err;
+      }
       passphrase = credentials.password;
       await ensureFileStorage();
     },

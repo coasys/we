@@ -25,7 +25,7 @@ import type {
   RendererDataBindings,
   SchemaPort,
 } from '@we/backend-shared';
-import { createInMemoryEphemeralPort, InMemoryBus, manifestEntries } from '@we/backend-shared';
+import { AgentExistsError, createInMemoryEphemeralPort, InMemoryBus, manifestEntries } from '@we/backend-shared';
 import { createJsonShapeStore, getEntity, getEntityForDataset, registerEntity, registerFileStore } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 
@@ -179,7 +179,7 @@ export function createInMemoryAgentSession(opts: InMemoryAgentOptions = {}): Age
      * rather than a silent key replacement.
      */
     signUp(credentials) {
-      if (hasAgent) return Promise.reject(new Error('an agent already exists'));
+      if (hasAgent) return Promise.reject(new AgentExistsError());
       password = credentials.password;
       hasAgent = true;
       unlocked = true;

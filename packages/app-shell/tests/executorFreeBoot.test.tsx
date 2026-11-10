@@ -12,6 +12,7 @@
  */
 import { render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
+import { isAgentExists } from '@we/backend-shared';
 import { createBlocks, registerCoreBlocks } from '@we/block-shared';
 import { toastService } from '@we/components/solid';
 import { AgentSettings, CollectionBlock, getEntity, Policy, Space, SpaceLandmark } from '@we/entities';
@@ -435,16 +436,52 @@ describe('first run', () => {
   }, 10000);
 
   it('reports a failed creation and stays put, so the screen can be retried', async () => {
-    // An agent already exists — the backend refuses, as the executor does.
-    agentOptions = { hasAgent: true, unlocked: false, password: 'existing' };
+    onPorts = (ports) => {
+      ports.agentSession.signUp = () => Promise.reject(new Error('the backend could not start'));
+    };
     const stores = mountShell();
-    await vi.waitFor(() => expect(stores.session.bootState()).toBe('login'));
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('createAgent'));
 
-    await expect(stores.session.createAgent('another-passphrase')).rejects.toThrow(/already exists/);
+    await expect(stores.session.createAgent('a-strong-passphrase')).rejects.toThrow(/could not start/);
 
-    expect(stores.session.createAgentError()).toBe('an agent already exists');
+    expect(stores.session.createAgentError()).toBe('the backend could not start');
+    expect(stores.session.createAgentLoading()).toBe(false);
+    expect(stores.session.bootState()).toBe('createAgent');
+  });
+
+  /*
+    An agent made after the create screen came up (on a desktop, the supervisor's own, say). The
+    backend refuses to make another over it, and the person is sent to sign in, in words they can act on.
+  */
+  it('sends the person to sign in when an account already exists', async () => {
+    agentOptions = { hasAgent: true, unlocked: false, password: 'existing' };
+    onPorts = (ports) => {
+      // The status read still says there is none: the agent appeared between it and the sign-up.
+      const status = ports.agentSession.status.bind(ports.agentSession);
+      let first = true;
+      ports.agentSession.status = async () => {
+        const answer = await status();
+        if (!first) return answer;
+        first = false;
+        return { ...answer, hasAgent: false };
+      };
+    };
+    const stores = mountShell();
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('createAgent'));
+
+    await expect(stores.session.createAgent('another-passphrase')).rejects.toSatisfy(isAgentExists);
+
+    const words = 'An account already exists on this computer. Sign in with its password instead.';
+    expect(stores.session.createAgentError()).toBe(words);
+    // The sign-in screen has its own error line, so the words are said there too.
+    expect(stores.session.loginError()).toBe(words);
+    expect(stores.session.passwordError()).toBe(false);
     expect(stores.session.createAgentLoading()).toBe(false);
     expect(stores.session.bootState()).toBe('login');
+
+    // And signing in with the account's own password works from there.
+    await stores.session.login('existing');
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('ready'));
   });
 
   it('the passphrase chosen at creation is the one that unlocks later', async () => {
