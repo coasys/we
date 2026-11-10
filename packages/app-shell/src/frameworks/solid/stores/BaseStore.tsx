@@ -486,6 +486,8 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
     blocked: () => custody()?.blocked ?? '',
     devices,
     doors: createMemo<BaseDoors>(() => {
+      // Tracked: a host's doors may follow its own backend (`BaseIdentitySource.doors`).
+      executor();
       const source = host.identity;
       const none = `This ${deviceNoun()} keeps no identity of its own; connect to the place that does.`;
       const blocked = custody()?.blocked ?? '';

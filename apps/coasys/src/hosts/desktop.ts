@@ -47,10 +47,15 @@ export interface ExecutorBridge {
   start(): Promise<unknown>;
 }
 
-/** What the shell says about its executor, as a state; anything else is a failure with no reason. */
+/**
+ * What the shell says about its executor, as a state; anything else is a failure with no reason. Up,
+ * how its agent is, where the shell says (Electron's supervisor, which makes it: `mainAgent.js`).
+ */
 function asState(value: unknown): BaseExecutorState {
-  const v = value as { phase?: unknown; reason?: unknown } | null;
-  if (v?.phase === 'starting' || v?.phase === 'ready') return { phase: v.phase };
+  const v = value as { phase?: unknown; reason?: unknown; agent?: unknown } | null;
+  if (v?.phase === 'starting') return { phase: 'starting' };
+  if (v?.phase === 'ready')
+    return v.agent === 'unlocked' || v.agent === 'locked' ? { phase: 'ready', agent: v.agent } : { phase: 'ready' };
   if (v?.phase === 'failed') return { phase: 'failed', reason: typeof v.reason === 'string' ? v.reason : '' };
   return { phase: 'failed', reason: 'The app did not say how its executor is.' };
 }
@@ -117,8 +122,30 @@ export function shellRefusal(error: unknown): string {
   return text.replace(/^Error invoking remote method '[^']*': (?:Error: )?/, '');
 }
 
-/** The custody service as the base app's identity source. */
-export function custodyIdentitySource(custody: Ad4mCustodyHost): BaseIdentitySource {
+export const WORDS_EXECUTOR_NOT_UP =
+  "This computer's executor is not up yet. Your identity can be changed here once it is.";
+
+export const WORDS_AGENT_LOCKED =
+  "This computer's agent is locked, so your identity cannot be changed here yet. Choose This computer and sign in.";
+
+/**
+ * The custody service as the base app's identity source. With the shell's `executor`, the doors open
+ * only once it is ready with its agent unlocked: every step runs against the executor's main agent,
+ * which Electron's supervisor makes and unlocks at each start (`mainAgent.js`, a stopgap until AR-06's
+ * `storage.unlock`). An agent made before that, with a WE password, stays locked until sign-in. An
+ * executor that does not say how its agent is leaves the doors as they were.
+ */
+export function custodyIdentitySource(custody: Ad4mCustodyHost, executor?: BaseExecutor): BaseIdentitySource {
+  const open = {
+    make: { step: { kind: 'create' } },
+    link: { step: { kind: 'show-code' } },
+    words: custody.takesWords === false ? { step: null, note: WORDS_HERE_OFF } : { step: { kind: 'restore' } },
+  } satisfies BaseIdentitySource['doors'];
+  const closed = (note: string): BaseIdentitySource['doors'] => ({
+    make: { step: null, note },
+    link: { step: null, note },
+    words: { step: null, note },
+  });
   return {
     state: async () => {
       try {
@@ -127,10 +154,11 @@ export function custodyIdentitySource(custody: Ad4mCustodyHost): BaseIdentitySou
         throw new Error(shellRefusal(error));
       }
     },
-    doors: {
-      make: { step: { kind: 'create' } },
-      link: { step: { kind: 'show-code' } },
-      words: custody.takesWords === false ? { step: null, note: WORDS_HERE_OFF } : { step: { kind: 'restore' } },
+    get doors() {
+      const now = executor?.state();
+      if (!now) return open;
+      if (now.phase !== 'ready') return closed(WORDS_EXECUTOR_NOT_UP);
+      return now.agent === 'locked' ? closed(WORDS_AGENT_LOCKED) : open;
     },
     open: async (step) => {
       // A computer joins by showing its code, never by a phone's offer page.
@@ -178,7 +206,7 @@ export function desktopBaseHost(options: DesktopHostOptions): BaseHost {
   const servers = options.servers;
   return {
     kind: 'computer',
-    ...(options.custody ? { identity: custodyIdentitySource(options.custody) } : {}),
+    ...(options.custody ? { identity: custodyIdentitySource(options.custody, options.executor) } : {}),
     ...(options.executor ? { executor: options.executor } : {}),
     connections: async () => {
       const listed = servers ? (await servers.list()).servers : [];

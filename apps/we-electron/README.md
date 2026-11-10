@@ -49,6 +49,34 @@ app with "Try again", not a dialog and a quit. `main.executor-failed.test.js` co
 reason's words come from `electron/executorWords.js`: a system error (a data folder it cannot write)
 is told by its code, and any other message has its paths replaced (`executorWords.test.js`).
 
+### The main agent, made and unlocked with no password (a stopgap until AR-06)
+
+The identity window's steps run in custody against the executor's main agent, so it must exist and
+be unlocked before the app before a session opens a door. Once the executor answers, the supervisor
+makes sure of that (`electron/mainAgent.js`): on the first start it keeps a random passphrase in this
+computer's keyring and makes the agent with it (`agent.generate`); on every start after, it reads the
+passphrase and unlocks the agent (`agent.unlock`), with no prompt. The keyring is custody's own
+(`we-custody wallet-passphrase`, `crates/custody/src/wallet.rs`): the Secret Service on Linux, with
+the same 90 s bound on a locked keyring; the login keychain on macOS. There is one item per executor
+data folder. `ready` then carries `agent: 'unlocked'`, and the desktop host opens the doors only then.
+
+What it leaves alone, and what follows:
+
+- **A locked keyring, or none**, fails the start, in words with no path and no secret; "Try again"
+  asks again. Without a keyring the agent cannot be made or unlocked here, and making it under a
+  passphrase nothing keeps would lose it.
+- **An agent made before this, with a WE password**, has no item. It stays locked, and `ready`
+  carries `agent: 'locked'`. WE's sign-in unlocks it as before, and the doors stay closed with a
+  note until then.
+- **Signing out** restarts the executor, which unlocks the agent again: on the desktop, sign-out no
+  longer leaves it locked.
+- **Windows, or a build with no `we-custody`**: identity is off and nothing is made; WE's own create
+  and sign-in make and unlock the agent, as they always did.
+
+This is a stopgap. Slice 3's AR-06 replaces it: the executor's storage is unlocked by a secret of its
+own (`storage.unlock`), and `mainAgent.js`, the keyring item and `wallet-passphrase` go.
+`electron/mainAgent.test.js` and `main.main-agent.test.js` cover it.
+
 ## Embedding External Apps
 
 This launcher can embed external apps (like Flux) via iframe. The embedded apps receive AD4M credentials through a postMessage protocol.

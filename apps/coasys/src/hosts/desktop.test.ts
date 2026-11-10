@@ -16,6 +16,8 @@ import {
   serverUnreachable,
   shellRefusal,
   THIS_COMPUTER_CONNECTION,
+  WORDS_AGENT_LOCKED,
+  WORDS_EXECUTOR_NOT_UP,
   WORDS_HERE_OFF,
 } from './desktop';
 
@@ -68,6 +70,35 @@ describe('the custody identity source', () => {
     });
   });
 
+  /*
+    #438: the identity window's steps run against the executor's main agent, which the supervisor
+    makes and unlocks (apps/we-electron/electron/mainAgent.js). Until it reports one ready and
+    unlocked, every door is closed and says why; an executor that does not say how its agent is
+    (one this app does not make it for) leaves them as they were.
+  */
+  it('opens the doors once the executor reports a ready, unlocked agent', () => {
+    let state: BaseExecutorState = { phase: 'starting' };
+    const executor = { state: () => state, subscribe: () => () => {}, start: async () => {} };
+    const source = custodyIdentitySource(custody(), executor);
+    const closed = (note: string) => ({
+      make: { step: null, note },
+      link: { step: null, note },
+      words: { step: null, note },
+    });
+
+    expect(source.doors).toEqual(closed(WORDS_EXECUTOR_NOT_UP));
+    state = { phase: 'failed', reason: 'x' };
+    expect(source.doors).toEqual(closed(WORDS_EXECUTOR_NOT_UP));
+    state = { phase: 'ready', agent: 'locked' };
+    expect(source.doors).toEqual(closed(WORDS_AGENT_LOCKED));
+    state = { phase: 'ready', agent: 'unlocked' };
+    expect(source.doors.make).toEqual({ step: { kind: 'create' } });
+    expect(source.doors.link).toEqual({ step: { kind: 'show-code' } });
+    expect(source.doors.words).toEqual({ step: { kind: 'restore' } });
+    state = { phase: 'ready' };
+    expect(source.doors.make).toEqual({ step: { kind: 'create' } });
+  });
+
   it("runs a step in the service's window, and refuses a phone's join", async () => {
     const service = custody();
     const source = custodyIdentitySource(service);
@@ -100,6 +131,15 @@ describe('shellRefusal', () => {
 });
 
 describe('the desktop host', () => {
+  it("closes the identity's doors on the shell's executor until its agent is unlocked", () => {
+    let state: BaseExecutorState = { phase: 'ready', agent: 'locked' };
+    const executor = { state: () => state, subscribe: () => () => {}, start: async () => {} };
+    const host = desktopBaseHost({ local, custody: custody(), executor });
+    expect(host.identity?.doors.make).toEqual({ step: null, note: WORDS_AGENT_LOCKED });
+    state = { phase: 'ready', agent: 'unlocked' };
+    expect(host.identity?.doors.make).toEqual({ step: { kind: 'create' } });
+  });
+
   it('has an identity only with a custody service, and an executor only where the shell reports one', () => {
     const bare = desktopBaseHost({ local });
     expect(bare.kind).toBe('computer');
@@ -255,6 +295,18 @@ describe('bridgedExecutor', () => {
     b.push({ phase: 'ready' });
     b.started({ phase: 'starting' });
     await second;
+    expect(executor.state()).toEqual({ phase: 'ready' });
+  });
+
+  it('keeps what the shell says of its agent, and nothing it cannot make out', async () => {
+    const b = bridge();
+    const executor = bridgedExecutor(b);
+    b.answer({ phase: 'ready', agent: 'unlocked', passphrase: 'never kept' });
+    await tick();
+    expect(executor.state()).toEqual({ phase: 'ready', agent: 'unlocked' });
+    b.push({ phase: 'ready', agent: 'locked' } as BaseExecutorState);
+    expect(executor.state()).toEqual({ phase: 'ready', agent: 'locked' });
+    b.push({ phase: 'ready', agent: 'sleepy' } as unknown as BaseExecutorState);
     expect(executor.state()).toEqual({ phase: 'ready' });
   });
 

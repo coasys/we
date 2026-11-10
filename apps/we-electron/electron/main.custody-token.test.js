@@ -169,10 +169,16 @@ function invoke(channel, ...args) {
 
 /**
  * A `we-custody` that reads the first line of its stdin (the credential, as the real one does),
- * writes it with what it was started with, then waits for its stdin to close.
+ * writes it with what it was started with, then waits for its stdin to close. Asked for the wallet
+ * passphrase (`mainAgent.js`), it writes what it was started with beside that and answers one.
  */
 const fakeCustody = (file) => `#!${process.execPath}
 const fs = require('fs');
+if (process.argv[2] === 'wallet-passphrase') {
+  fs.writeFileSync(${JSON.stringify(file)} + '.wallet', JSON.stringify({ argv: process.argv.slice(2), env: process.env }));
+  process.stdout.write(JSON.stringify({ passphrase: 'test-wallet-passphrase' }) + '\\n');
+  process.exit(0);
+}
 let pending = '';
 process.stdin.on('data', (chunk) => {
   if (pending === null) return;
@@ -203,6 +209,8 @@ describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp
       const fake = `#!${process.execPath}\n${readFileSync(join(here, 'fixtures', 'fake-executor.cjs'), 'utf8')}`;
       writeFileSync(join(resources, 'ad4m-executor'), fake);
       chmodSync(join(resources, 'ad4m-executor'), 0o755);
+      // The agent calls the supervisor makes (`mainAgent.js`) need the fake's WebSocket.
+      writeFileSync(join(resources, 'ws-lite.cjs'), readFileSync(join(here, 'fixtures', 'ws-lite.cjs')));
       writeFileSync(join(resources, 'we-custody'), fakeCustody(custodyFile()));
       chmodSync(join(resources, 'we-custody'), 0o755);
       writeFileSync(join(dataDir(), 'fake-executor.plan.json'), JSON.stringify({ steps: [] }));
@@ -264,6 +272,18 @@ describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp
       expect(custody.env.AD4M_ADMIN_CREDENTIAL).toBeUndefined();
       expect(Object.values(custody.env)).not.toContain(custody.firstLine);
       expect(Object.values(custody.env)).not.toContain(token);
+    });
+
+    it('asks the keyring for the wallet passphrase with neither credential in its environment', async () => {
+      const wallet = JSON.parse(readFileSync(`${custodyFile()}.wallet`, 'utf8'));
+      const custody = JSON.parse(readFileSync(custodyFile(), 'utf8'));
+      const token = await invoke('get-token');
+      expect(wallet.argv).toEqual(['wallet-passphrase', 'make', '--data-folder', dataDir()]);
+      expect(Object.keys(wallet.env).filter((name) => CUSTODY_VARS.test(name))).toEqual([]);
+      expect(wallet.env.AD4M_ADMIN_CREDENTIAL).toBeUndefined();
+      expect(Object.values(wallet.env)).not.toContain(custody.firstLine);
+      expect(Object.values(wallet.env)).not.toContain(token);
+      expect(executorLog()).toMatch(/^1 agent generated$/m);
     });
 
     it('answers get-token with the admin credential, never the custody credential', async () => {

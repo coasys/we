@@ -1,0 +1,179 @@
+//! The executor's wallet passphrase in this computer's keyring (`we_custody::wallet`), over the
+//! in-memory store: one item per data folder, made once and read back the same, and a keyring that
+//! refuses answered as refused — with the passphrase never in what is answered about a refusal.
+
+use std::sync::Mutex;
+
+use ad4m_identity_client::VaultError;
+use we_custody::store::{keyring_locked, MemoryStore, SecretStore, StoreKind};
+use we_custody::wallet::{self, Answer, Mode};
+
+#[test]
+fn a_first_make_keeps_a_new_passphrase_and_every_read_after_answers_the_same_one() {
+    let store = MemoryStore::new();
+    let folder = tempfile::tempdir().unwrap();
+    let name = wallet::item_name(folder.path());
+
+    assert!(matches!(
+        wallet::answer(&store, &name, Mode::Read),
+        Answer::None
+    ));
+
+    let made = match wallet::answer(&store, &name, Mode::Make) {
+        Answer::Passphrase(p) => p,
+        other => panic!("make answered {other:?}"),
+    };
+    // Long and random: 32 bytes from the OS, in base58.
+    assert!(
+        made.len() >= 40,
+        "a passphrase of {} characters",
+        made.len()
+    );
+
+    for mode in [Mode::Read, Mode::Make] {
+        match wallet::answer(&store, &name, mode) {
+            Answer::Passphrase(p) => assert_eq!(*p, *made),
+            other => panic!("{mode:?} answered {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn each_data_folder_has_its_own_item_and_its_own_passphrase() {
+    let store = MemoryStore::new();
+    let one = tempfile::tempdir().unwrap();
+    let two = tempfile::tempdir().unwrap();
+    let (a, b) = (wallet::item_name(one.path()), wallet::item_name(two.path()));
+    assert_ne!(a, b);
+    assert!(a.starts_with(wallet::ITEM_PREFIX));
+
+    let pa = wallet::answer(&store, &a, Mode::Make);
+    let pb = wallet::answer(&store, &b, Mode::Make);
+    match (pa, pb) {
+        (Answer::Passphrase(pa), Answer::Passphrase(pb)) => assert_ne!(*pa, *pb),
+        other => panic!("answered {other:?}"),
+    }
+}
+
+#[test]
+fn the_same_folder_named_two_ways_is_one_item() {
+    let folder = tempfile::tempdir().unwrap();
+    let inner = folder.path().join("data");
+    std::fs::create_dir(&inner).unwrap();
+    let roundabout = folder.path().join("data").join("..").join("data");
+    assert_eq!(wallet::item_name(&inner), wallet::item_name(&roundabout));
+}
+
+/// A keyring that answers every call with `error`, and counts the writes it took.
+struct Refusing {
+    error: fn() -> VaultError,
+    writes: Mutex<u32>,
+}
+
+impl SecretStore for Refusing {
+    fn kind(&self) -> StoreKind {
+        StoreKind::SecretService
+    }
+    fn kind_of(&self, _: &str) -> Result<StoreKind, VaultError> {
+        Ok(StoreKind::SecretService)
+    }
+    fn put(&self, _: &str, _: &[u8]) -> Result<(), VaultError> {
+        *self.writes.lock().unwrap() += 1;
+        Err((self.error)())
+    }
+    fn get(&self, _: &str) -> Result<Option<Vec<u8>>, VaultError> {
+        Err((self.error)())
+    }
+    fn contains(&self, _: &str) -> Result<bool, VaultError> {
+        Err((self.error)())
+    }
+    fn delete(&self, _: &str) -> Result<(), VaultError> {
+        Err((self.error)())
+    }
+}
+
+#[test]
+fn a_locked_keyring_is_answered_locked_and_nothing_is_written() {
+    let store = Refusing {
+        error: keyring_locked,
+        writes: Mutex::new(0),
+    };
+    for mode in [Mode::Read, Mode::Make] {
+        assert!(matches!(
+            wallet::answer(&store, "coasys.wallet/x", mode),
+            Answer::Locked
+        ));
+    }
+    assert_eq!(*store.writes.lock().unwrap(), 0);
+}
+
+#[test]
+fn a_keyring_that_is_not_there_is_answered_unavailable_with_its_reason() {
+    let store = Refusing {
+        error: || VaultError::Unavailable("Secret Service: no such service".into()),
+        writes: Mutex::new(0),
+    };
+    match wallet::answer(&store, "coasys.wallet/x", Mode::Make) {
+        Answer::Unavailable(reason) => assert!(reason.contains("no such service")),
+        other => panic!("answered {other:?}"),
+    }
+}
+
+#[test]
+fn a_dismissed_unlock_prompt_is_a_locked_keyring() {
+    let store = Refusing {
+        error: || VaultError::Cancelled,
+        writes: Mutex::new(0),
+    };
+    assert!(matches!(
+        wallet::answer(&store, "coasys.wallet/x", Mode::Read),
+        Answer::Locked
+    ));
+}
+
+#[test]
+fn the_answer_line_carries_the_passphrase_only_when_there_is_one() {
+    let store = MemoryStore::new();
+    let made = match wallet::answer(&store, "coasys.wallet/y", Mode::Make) {
+        Answer::Passphrase(p) => p,
+        other => panic!("answered {other:?}"),
+    };
+    let line: serde_json::Value =
+        serde_json::from_str(&wallet::answer_line(&Answer::Passphrase(made.clone()))).unwrap();
+    assert_eq!(line["passphrase"], made.as_str());
+
+    for (answer, refused) in [
+        (Answer::None, None),
+        (Answer::Locked, Some("locked")),
+        (Answer::Unavailable("why".into()), Some("unavailable")),
+    ] {
+        let text = wallet::answer_line(&answer);
+        assert!(!text.contains(made.as_str()));
+        let line: serde_json::Value = serde_json::from_str(&text).unwrap();
+        assert!(line.get("passphrase").is_none());
+        match refused {
+            None => assert_eq!(line["none"], true),
+            Some(kind) => assert_eq!(line["refused"], kind),
+        }
+    }
+}
+
+#[test]
+fn the_command_line_names_a_mode_and_a_data_folder() {
+    let folder = tempfile::tempdir().unwrap();
+    let path = folder.path().to_string_lossy().to_string();
+    let args = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+
+    let (mode, name) = wallet::parse_args(args(&["make", "--data-folder", &path])).unwrap();
+    assert_eq!(mode, Mode::Make);
+    assert_eq!(name, wallet::item_name(folder.path()));
+    assert_eq!(
+        wallet::parse_args(args(&["read", "--data-folder", &path]))
+            .unwrap()
+            .0,
+        Mode::Read
+    );
+    assert!(wallet::parse_args(args(&["make"])).is_err());
+    assert!(wallet::parse_args(args(&["burn", "--data-folder", &path])).is_err());
+    assert!(wallet::parse_args(args(&["read", "--data-folder"])).is_err());
+}

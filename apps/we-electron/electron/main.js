@@ -43,6 +43,7 @@ import {
 import { LOG_WORDS, startFailureWords, stoppedWords } from './executorWords.js';
 import { createIdentity, IDENTITY_PAGE, IDENTITY_SCHEME, identityFile, isIdentityPage } from './identityWindow.js';
 import { executorSpawnEnv, handleFromWindow, isFromWindow } from './ipcSender.js';
+import { ensureMainAgent, executorRpc, walletKeyring } from './mainAgent.js';
 import {
   allowMediaPermission,
   isExternallyOpenable,
@@ -100,6 +101,13 @@ let executorLog = null;
 */
 let executorUp = false;
 let executorState = { phase: 'starting' };
+/**
+ * The main agent as the last start left it (`mainAgent.js`): `'unlocked'`, `'locked'` (made with a WE
+ * password, left to sign-in), or null where the supervisor does not make it (no custody). Told to the
+ * window with `ready`, as `agent`: the identity doors need it unlocked.
+ */
+let mainAgent = null;
+const readyState = () => (mainAgent ? { phase: 'ready', agent: mainAgent } : { phase: 'ready' });
 /** The start running now, so a second "Try again" waits on it rather than starting another. */
 let executorBooting = null;
 
@@ -121,7 +129,7 @@ function bootExecutor() {
       await stopExecutor();
       await startExecutor();
       executorUp = true;
-      setExecutorState({ phase: 'ready' });
+      setExecutorState(readyState());
     } catch (err) {
       console.error('[main] The executor did not start:', err);
       setExecutorState({ phase: 'failed', reason: startFailure(err) });
@@ -540,6 +548,8 @@ async function startExecutorOnce({ samePort }) {
     }
 
     console.log('AD4M executor ready');
+    mainAgent = null;
+    mainAgent = await ensureMainAgentFor(ad4mPort, ad4mToken, ad4mDataPath);
     startCustodyFor(ad4mPort, custodyToken);
   } catch (error) {
     console.error('Error starting executor:', error);
@@ -590,6 +600,36 @@ const custodyBinary = () =>
   app.isPackaged
     ? join(process.resourcesPath, 'we-custody')
     : join(__dirname, '..', '..', '..', 'crates', 'custody', 'target', 'release', 'we-custody');
+
+/** The `we-custody` binary where identity is on, else null: never on Windows, and only if built. */
+const custodyBinaryHere = () => {
+  if (process.platform === 'win32') return null;
+  const binary = custodyBinary();
+  return existsSync(binary) ? binary : null;
+};
+
+/**
+ * Makes the executor's main agent, or unlocks it, with the passphrase this computer's keyring keeps
+ * for `dataPath` (`mainAgent.js`): the identity doors run against it. A stopgap: slice 3's AR-06
+ * (`storage.unlock`) replaces it. Where identity is off there is nothing to make it for, and WE's own
+ * create and sign-in make and unlock it, as they always have: null. Throws, in words for the window,
+ * when the keyring is locked or missing.
+ */
+async function ensureMainAgentFor(port, token, dataPath) {
+  const binary = custodyBinaryHere();
+  if (!binary) return null;
+  const rpc = executorRpc({ port, token });
+  try {
+    const agent = await ensureMainAgent({
+      call: rpc.call,
+      keyring: walletKeyring({ binary, dataFolder: dataPath }),
+    });
+    console.log('[main] The main agent is', agent);
+    return agent;
+  } finally {
+    rpc.close();
+  }
+}
 
 /** Starts the sidecar against the executor on `port`, whose custody credential is `credential`. */
 function startCustodyFor(port, credential) {
@@ -1183,7 +1223,7 @@ async function restartExecutorAndReloadOnce({ samePort = false } = {}) {
     await startExecutor({ samePort });
     started = true;
     executorUp = true;
-    setExecutorState({ phase: 'ready' });
+    setExecutorState(readyState());
   } catch (err) {
     console.error('[main] Could not start the executor for the selected account:', err);
     setExecutorState({ phase: 'failed', reason: startFailure(err) });

@@ -258,6 +258,32 @@ describe('baseStore, the first run', () => {
     expect(store.doors().link.open).toBe(true);
   });
 
+  it("reads a host's doors again when its own backend changes: they may follow it", async () => {
+    // The desktop's close while its executor's agent is locked (`apps/coasys/src/hosts/desktop.ts`).
+    const own = fakeExecutor({ phase: 'ready', agent: 'locked' });
+    const identity = fakeIdentity(view());
+    const closed = { step: null, note: 'Locked.' } as const;
+    const source: BaseIdentitySource = {
+      ...identity.source,
+      get doors() {
+        const s = own.executor.state();
+        const open = s.phase === 'ready' && s.agent !== 'locked';
+        return open ? identity.source.doors : { make: closed, link: closed, words: closed };
+      },
+    };
+    const { store } = make(host({ executor: own.executor, identity: source }));
+    await until(() => store.stage() === 'first-run');
+    expect(store.doors().make).toEqual({ open: false, note: 'Locked.' });
+    expect(await store.makeIdentity()).toBe('failed');
+    expect(identity.opened).toEqual([]);
+
+    own.move({ phase: 'ready', agent: 'unlocked' });
+    await flush();
+    expect(store.doors().make.open).toBe(true);
+    expect(await store.makeIdentity()).toBe('done');
+    expect(identity.opened).toEqual([{ kind: 'create' }]);
+  });
+
   /*
     Lal's P2 on #438: an identity that could not be read is not "no identity". The first run is not
     offered for it; the reason is shown and "Try again" reads it again.

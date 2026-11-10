@@ -33,8 +33,12 @@ export interface BaseIdentitySource {
    * its devices. Rejects while the source cannot answer yet (a custody service still starting).
    */
   state(): Promise<IdentityCustodyView>;
-  /** "Make my identity here", "Link to my identity" and "Use my 12 words", as this host offers each. */
-  doors: { make: BaseDoor; link: BaseDoor; words: BaseDoor };
+  /**
+   * "Make my identity here", "Link to my identity" and "Use my 12 words", as this host offers each.
+   * Read again whenever the host's own backend ({@link BaseHost.executor}) changes, so a host's doors
+   * may follow it: the desktop's stay closed until its executor's agent is unlocked.
+   */
+  readonly doors: { make: BaseDoor; link: BaseDoor; words: BaseDoor };
   /**
    * Opens the host's identity window on a step and resolves with how it ended. A host whose window is
    * a page of its own (the phone's) leaves this page, and the promise never settles.
@@ -58,8 +62,13 @@ export interface BaseConnection {
   detail: string;
 }
 
-/** The backend this device runs, where it runs one: starting, up, or failed to start and why. */
-export type BaseExecutorState = { phase: 'starting' } | { phase: 'ready' } | { phase: 'failed'; reason: string };
+/**
+ * The backend this device runs, where it runs one: starting, up, or failed to start and why. Up, it may
+ * say how its agent is: `unlocked`, or `locked` until the person signs in. Absent where the host does
+ * not make the agent itself.
+ */
+export type BaseExecutorState =
+  { phase: 'starting' } | { phase: 'ready'; agent?: 'unlocked' | 'locked' } | { phase: 'failed'; reason: string };
 
 export interface BaseExecutor {
   state(): BaseExecutorState;

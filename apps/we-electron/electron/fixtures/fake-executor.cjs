@@ -14,9 +14,22 @@
 // custody credential as the first line of stdin before it listens, and exits 78 when stdin closes
 // before a non-blank line ends. What it was started with — `argv`, `env` and that line — is written
 // to `<data>/fake-executor.start-<n>.json`.
+//
+// With `ws-lite.cjs` beside it, it also answers the agent calls the supervisor makes on
+// `/api/v1/ws?token=<admin credential>` (`mainAgent.js`): `agent.status`, `agent.generate` and
+// `agent.unlock`. The agent is `<data>/fake-executor.agent.json` (`{passphrase}`, made by generate),
+// locked at every start; a wrong passphrase is an error. Each is a line in the log: `<n> agent
+// generated`, `<n> agent unlocked`, `<n> agent unlock refused`. Another credential is refused (401).
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
+
+let wsLite = null;
+try {
+  wsLite = require(path.join(__dirname, 'ws-lite.cjs'));
+} catch {
+  // No agent API: the tests that need none copy only this file.
+}
 
 const args = process.argv.slice(2);
 const flag = (name) => {
@@ -69,6 +82,7 @@ const serve = () => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end('{"data":{"__typename":"Query"}}');
   });
+  if (wsLite) server.on('upgrade', agentApi);
   // A taken port is exit 80, as for the executor (`BindFailed`).
   server.on('error', (err) => {
     process.stderr.write(`fake executor: cannot listen on ${port}: ${err.code}\n`);
@@ -77,6 +91,48 @@ const serve = () => {
   });
   server.listen(port, '127.0.0.1', () => log('ready'));
 };
+
+const agentFile = path.join(data, 'fake-executor.agent.json');
+let unlocked = false;
+const agentStatus = () => {
+  const made = fs.existsSync(agentFile);
+  return { did: made ? 'did:key:z6MkFakeAgent' : null, isInitialized: made, isUnlocked: made && unlocked, error: null };
+};
+
+function agentApi(req, socket) {
+  const url = new URL(req.url, 'http://127.0.0.1');
+  if (url.pathname !== '/api/v1/ws' || url.searchParams.get('token') !== process.env.AD4M_ADMIN_CREDENTIAL) {
+    socket.end('HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n');
+    return;
+  }
+  socket.write(
+    `HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ${wsLite.wsAccept(req.headers['sec-websocket-key'])}\r\n\r\n`,
+  );
+  const send = (value) => socket.write(wsLite.textFrame(JSON.stringify(value)));
+  wsLite.readFrames(socket, (text) => {
+    const { id, type, params = {} } = JSON.parse(text);
+    const fail = (message) => send({ id, error: { code: 500, message } });
+    if (type === 'agent.status') return send({ id, result: agentStatus() });
+    if (type === 'agent.generate') {
+      if (fs.existsSync(agentFile)) return fail('the agent is already made');
+      fs.writeFileSync(agentFile, JSON.stringify({ passphrase: params.passphrase }));
+      unlocked = true;
+      log('agent generated');
+      return send({ id, result: agentStatus() });
+    }
+    if (type === 'agent.unlock') {
+      if (!fs.existsSync(agentFile)) return fail('Agent not initialized');
+      if (JSON.parse(fs.readFileSync(agentFile, 'utf8')).passphrase !== params.passphrase) {
+        log('agent unlock refused');
+        return fail('Failed to decrypt the agent keys');
+      }
+      unlocked = true;
+      log('agent unlocked');
+      return send({ id, result: agentStatus() });
+    }
+    fail(`unknown method ${type}`);
+  });
+}
 
 // The custody credential first, as the executor reads it before it starts anything.
 let pending = custodyChannel ? '' : null;
