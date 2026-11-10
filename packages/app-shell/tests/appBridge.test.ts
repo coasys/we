@@ -153,8 +153,8 @@ describe('the proxies', () => {
     send(embed.source, ATTACKER_ORIGIN, {
       type: 'AD4M_PROXY_HTTP_REQUEST',
       id: '1',
-      url: 'http://proxy/graphql',
-      method: 'POST',
+      url: 'http://proxy/health',
+      method: 'GET',
       headers: {},
       body: null,
     });
@@ -201,14 +201,14 @@ describe('the proxies', () => {
     send(app.source, APP_ORIGIN, {
       type: 'AD4M_PROXY_HTTP_REQUEST',
       id: '1',
-      url: 'http://proxy/graphql',
-      method: 'POST',
+      url: 'http://proxy/health',
+      method: 'GET',
       headers: {},
       body: null,
     });
 
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalled());
-    expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:12000/graphql');
+    expect(fetchMock.mock.calls[0][0]).toBe('http://localhost:12000/health');
     vi.unstubAllGlobals();
   });
 });
