@@ -31,7 +31,8 @@ use ad4m_identity_client::flows::rotate::{rotate, Rotated};
 use ad4m_identity_client::record::{self, Change};
 use ad4m_identity_client::vault::{MasterUse, Vault};
 use ad4m_identity_client::{
-    ClientError, Clock, ExecutorRpc, OsRandom, Secret, SystemClock, VaultError, ViaExecutor,
+    ClientError, Clock, ExecutorRpc, OsRandom, Secret, Standing, SystemClock, VaultError,
+    ViaExecutor,
 };
 use ad4m_identity_core::link::{DeviceString, OfferKind, CONFIRM_GRACE_S, OFFER_TTL_S};
 use ad4m_identity_core::record::{DeviceEntry, DeviceKind, HoldsMaster as Holds, Place};
@@ -945,18 +946,19 @@ async fn public_state_on<R: ExecutorRpc>(
     executor: Option<&ViaExecutor<R>>,
     vault: &DesktopVault,
 ) -> CustodyPublic {
-    let (did, blocked) = match executor {
+    let (did, own_key, blocked) = match executor {
         Some(executor) => {
             finish_pending_quietly(executor, vault).await;
             match executor.status().await {
                 Ok(status) => (
                     status.did,
+                    status.key_id,
                     (!status.store.is_some_and(|s| s.trusted)).then_some(NO_STORE),
                 ),
-                Err(_) => (None, None),
+                Err(_) => (None, None, None),
             }
         }
-        None => (None, None),
+        None => (None, None, None),
     };
     let mut master_waiting = false;
     let mut devices = Vec::new();
@@ -995,7 +997,14 @@ async fn public_state_on<R: ExecutorRpc>(
                 Err(e) => log::warn!("custody: the waiting master key was not taken: {e}"),
             }
         }
-        refresh_stale(executor, vault, did, master_waiting && !os_unlocks).await;
+        refresh_stale(
+            executor,
+            vault,
+            did,
+            own_key.as_deref(),
+            master_waiting && !os_unlocks,
+        )
+        .await;
         devices = match record::read(executor, &vault.unlocking(None), did).await {
             Ok(opened) => opened.map(|o| device_names(&o.record)).unwrap_or_default(),
             Err(e) => {
@@ -1074,11 +1083,13 @@ async fn master_waits<R: ExecutorRpc>(executor: &ViaExecutor<R>) -> bool {
 /// current one ([`refresh_master`]). Only when the log, read fresh, lists a master after the one
 /// kept here, so a log read behind can never make it forget a current key. `sealed_waits`: the
 /// current key waits in the inbox and needs the passphrase of a sealed item, so "Take the master
-/// key" takes it rather than this.
+/// key" takes it rather than this. And whenever this computer's custody note (`own_key`'s)
+/// owes the record its mark, so the mark a take or promote left owed is made from the note.
 async fn refresh_stale<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
     vault: &DesktopVault,
     did: &str,
+    own_key: Option<&str>,
     sealed_waits: bool,
 ) {
     let Some(scid) = ad4m_identity_core::scid_of(did) else {
@@ -1091,6 +1102,16 @@ async fn refresh_stale<R: ExecutorRpc>(
     // the log, and discards it only once the log is past it. Nothing here discards a staged key.
     let staged = vault.staged_index(scid).ok().flatten();
     let kept = vault.master_index(scid).ok().flatten();
+    // This computer's custody note, when it owes the record something (a take or promote here
+    // kept the key and its mark has not landed, or an intent was left open): `refresh_master`
+    // marks it or clears it ([`Refreshed::Repaired`]) even while the kept key is current. A
+    // release owes nothing, and is never re-marked.
+    let owes = own_key.is_some_and(|key_id| {
+        matches!(
+            vault.unlocking(None).custody_note(scid, key_id),
+            Ok(Some(note)) if note.standing() != Standing::Released
+        )
+    });
     if staged.is_none() {
         // Nothing to bring forward without a kept index that is known: an unknown one is never
         // taken for a replaced key.
@@ -1104,7 +1125,7 @@ async fn refresh_stale<R: ExecutorRpc>(
             },
             Err(e) => return log::warn!("custody: the key log cannot be read now: {e}"),
         };
-        if kept as usize >= current || sealed_waits {
+        if (kept as usize >= current && !owes) || sealed_waits {
             return;
         }
     }
@@ -1118,8 +1139,21 @@ async fn refresh_stale<R: ExecutorRpc>(
             }
         }
         Ok(Refreshed::Taken(taken)) => {
-            log::info!("custody: took master #{} in place of {kept}", taken.index)
+            log::info!("custody: took master #{} in place of {kept}", taken.index);
+            if let Err(e) = &taken.record {
+                log::warn!("custody: the record does not mark this computer yet: {e}");
+            }
         }
+        Ok(Refreshed::Repaired { index, record }) => match record {
+            Ok(version) => log::info!(
+                "custody: the record now marks this computer holding master #{index} \
+                 (version {version}), a mark a take or promote here still owed"
+            ),
+            Err(e) => log::warn!(
+                "custody: the record still does not mark this computer holding master \
+                 #{index}; the next refresh tries again: {e}"
+            ),
+        },
         Ok(Refreshed::Asked(id)) => log::info!(
             "custody: forgot the replaced master {kept}, and asked for the current one ({id})"
         ),
@@ -2151,10 +2185,10 @@ async fn new_passphrase(
 /// A take whose `holdsMaster` write was refused because the record's recovery key waits for the
 /// new master's attestation ([`Taken::record_pending`]): the master just taken signs the mark
 /// itself, re-attesting the recovery key ([`complete_pending_mark`], one more unlock for
-/// [`MasterUse::Record`]). ad4m keeps no repair queue and a later refresh answers `Current`
-/// without repairing, so the take is completed here or the record keeps its stale recovery key
-/// and never lists this computer holding the key. As `refresh_master` completes its own take;
-/// any other take is answered as it is.
+/// [`MasterUse::Record`]). Completed here, at once, rather than left to the next
+/// `refresh_master` that repairs it from this computer's custody note
+/// ([`Refreshed::Repaired`]), so the person sees the record list this computer holding the key
+/// now. As `refresh_master` completes its own take; any other take is answered as it is.
 async fn complete_take<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
     vault: &dyn Vault,
@@ -6875,6 +6909,54 @@ mod tests {
             Some(PASSPHRASE),
         )
         .await;
+    }
+
+    /// A take or promote here kept the current master and its record mark did not land: this
+    /// computer's custody note owes it. `refresh_stale` never refreshes a current key on its
+    /// own, so the note is what hands it to `refresh_master` ([`Refreshed::Repaired`] makes the
+    /// mark from it). A release owes nothing, and no note owes nothing: neither reads past the
+    /// log.
+    #[tokio::test]
+    async fn an_owed_custody_note_is_refreshed_though_the_kept_key_is_current() {
+        use ad4m_identity_client::{CustodyNote, NoteToken};
+        let events = rotated_log();
+        let scid = events[0].scid.clone();
+        let did = did_of(&scid);
+        let seed = words::seed(&words::from_entropy(&[41u8; 16]));
+        let key = |index| Secret::new(words::master_key(&seed, index).unwrap().to_bytes());
+        for (note, logs_read) in [(None, 1), (Some(false), 1), (Some(true), 2)] {
+            let vault = memory_vault(crate::store::StoreKind::Keychain);
+            let executor = executor_of(&events);
+            let flow = vault.unlocking(None);
+            flow.store_master(&scid, 1, key(1)).unwrap();
+            let epoch = flow.custody_epoch(&scid).unwrap();
+            let note = note.map(|owed| match owed {
+                true => CustodyNote::MarkOwed {
+                    index: 1,
+                    epoch,
+                    token: NoteToken([7; 16]),
+                    acquired: true,
+                    restores: None,
+                },
+                false => CustodyNote::Released {
+                    epoch,
+                    token: NoteToken([7; 16]),
+                    restores: None,
+                },
+            });
+            if let Some(note) = &note {
+                assert!(flow
+                    .swap_custody_note(&scid, "d1", None, Some(note))
+                    .unwrap());
+            }
+            refresh_stale(&executor, &vault, &did, Some("d1"), false).await;
+            assert_eq!(
+                executor.rpc().called("identity.log").len(),
+                logs_read,
+                "{note:?}"
+            );
+            assert_eq!(vault.master_index(&scid).unwrap(), Some(1), "{note:?}");
+        }
     }
 
     #[tokio::test]

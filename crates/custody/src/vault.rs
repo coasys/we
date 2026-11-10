@@ -22,7 +22,8 @@
 
 use ad4m_identity_client::vault::KeySigner;
 use ad4m_identity_client::{
-    Forgot, MasterUse, PendingPush, Secret, StageToken, Stored, Unlocked, Vault, VaultError,
+    CustodyNote, Forgot, MasterUse, PendingPush, Secret, StageToken, Stored, Unlocked, Vault,
+    VaultError,
 };
 use ad4m_identity_core::Event;
 use zeroize::Zeroizing;
@@ -564,6 +565,27 @@ impl Vault for Unlocking<'_> {
     fn record_seen_reset(&self, scid: &str) -> Result<(), VaultError> {
         log::info!("custody: reset a record's high-water mark");
         self.vault.pending.record_seen_reset(scid)
+    }
+
+    /// In the custody folder beside the record marks (`custody-notes.json`,
+    /// [`PendingIncepts::custody_note`]): not secret, so not in the secret store, and needs no
+    /// passphrase.
+    fn custody_note(&self, scid: &str, key_id: &str) -> Result<Option<CustodyNote>, VaultError> {
+        self.vault.pending.custody_note(scid, key_id)
+    }
+
+    /// A compare-and-swap of the whole note under the custody folder's lock, the one every
+    /// write of this vault takes ([`PendingIncepts::swap_custody_note`]).
+    fn swap_custody_note(
+        &self,
+        scid: &str,
+        key_id: &str,
+        expected: Option<&CustodyNote>,
+        note: Option<&CustodyNote>,
+    ) -> Result<bool, VaultError> {
+        self.vault
+            .pending
+            .swap_custody_note(scid, key_id, expected, note)
     }
 }
 

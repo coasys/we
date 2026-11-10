@@ -30,7 +30,9 @@
 //! decide on (the kept key's generation) is checked again inside. Everything decided on is in
 //! the same file: the kept and staged keys, each identity's **custody epoch** and each record's
 //! **high-water mark**, so a change of a kept key and the move of its epoch are one atomic
-//! write, never two. The rules are WE's desktop vault's (`crates/custody/src/vault.rs`): the
+//! write, never two. Each device's **custody note** per identity is there too, as the client's
+//! serde JSON, never read here: a swap compares the whole note (every layer of its stack) with
+//! the one expected and writes the file only when they match. The rules are WE's desktop vault's (`crates/custody/src/vault.rs`): the
 //! kept key never goes back a generation (a store or promote under a higher kept index answers
 //! `AlreadyNewer`), a forget is a compare-and-delete (on the index, or on the epoch), and the
 //! epoch moves on every successful store, promote and forget, a same-index re-store included,
@@ -64,7 +66,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use ad4m_identity_client::vault::KeySigner;
 use ad4m_identity_client::{
-    Forgot, MasterUse, PendingPush, Secret, StageToken, Stored, Unlocked, Vault, VaultError,
+    CustodyNote, Forgot, MasterUse, PendingPush, Secret, StageToken, Stored, Unlocked, Vault,
+    VaultError,
 };
 use ad4m_identity_core::build::Signer;
 use ad4m_identity_core::Event;
@@ -237,6 +240,11 @@ struct MasterFile {
     epochs: Vec<EpochEntry>,
     /// Each identity's record high-water mark.
     seen: Vec<Seen>,
+    /// Each device's custody note per identity ([`Vault::custody_note`]), kept as the
+    /// client's serde JSON: swapped whole under the lock, never read here. Absent in a file
+    /// written before notes were kept, which had none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    notes: Vec<Note>,
 }
 
 /// How many times an identity's kept key changed in this file.
@@ -255,6 +263,16 @@ struct EpochEntry {
 struct Seen {
     scid: String,
     version: Option<u64>,
+}
+
+/// One device's custody note for one identity, as the client's [`CustodyNote`] serialised it.
+/// A note cleared is dropped: unlike a mark, its absence is a state the client writes.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Note {
+    scid: String,
+    key_id: String,
+    note: serde_json::Value,
 }
 
 /// What the folder noted the file has held (`custody-metadata.json`): that the file was
@@ -1038,6 +1056,63 @@ impl Vault for PhoneVault {
         }
         self.save(&mut held, next)
     }
+
+    /// From the file, under the lock: not secret, so no prompt. Gone with a lost file (an
+    /// error, as every read of a lost file is), never `None` in its place.
+    fn custody_note(&self, scid: &str, key_id: &str) -> Result<Option<CustodyNote>, VaultError> {
+        let held = self.held(false)?;
+        held.file
+            .notes
+            .iter()
+            .find(|n| n.scid == scid && n.key_id == key_id)
+            .map(|n| {
+                serde_json::from_value(n.note.clone())
+                    .map_err(|e| unavailable(format!("{MASTER_FILE_NAME}: a custody note: {e}")))
+            })
+            .transpose()
+    }
+
+    /// A compare-and-swap under the folder's lock, the one every write here takes: the file is
+    /// read again, the kept note compared with `expected` as whole JSON values (every layer
+    /// below the top included), and the file written whole and durable only when they match
+    /// and the note changes.
+    fn swap_custody_note(
+        &self,
+        scid: &str,
+        key_id: &str,
+        expected: Option<&CustodyNote>,
+        note: Option<&CustodyNote>,
+    ) -> Result<bool, VaultError> {
+        let as_json = |n: &CustodyNote| serde_json::to_value(n).map_err(unavailable);
+        let expected = expected.map(as_json).transpose()?;
+        let note = note.map(as_json).transpose()?;
+        let mut held = self.held(false)?;
+        let at = held
+            .file
+            .notes
+            .iter()
+            .position(|n| n.scid == scid && n.key_id == key_id);
+        if at.map(|i| &held.file.notes[i].note) != expected.as_ref() {
+            return Ok(false);
+        }
+        let mut next = held.file.clone();
+        match (at, note) {
+            (None, None) => return Ok(true),
+            (Some(i), Some(note)) => next.notes[i].note = note,
+            (Some(i), None) => {
+                next.notes.remove(i);
+            }
+            (None, Some(note)) => next.notes.push(Note {
+                scid: scid.to_string(),
+                key_id: key_id.to_string(),
+                note,
+            }),
+        }
+        if next != held.file {
+            self.save(&mut held, next)?;
+        }
+        Ok(true)
+    }
 }
 
 #[cfg(test)]
@@ -1485,5 +1560,145 @@ mod tests {
         );
         v.push_done(&push).unwrap();
         assert!(vault(dir.path()).pending_pushes().unwrap().is_empty());
+    }
+
+    use ad4m_identity_client::{CustodyNote, NoteToken};
+
+    /// A release over an intent over `deepest`: three layers, so a note that differs from
+    /// another only two layers down can be made.
+    fn stacked(deepest: CustodyNote) -> CustodyNote {
+        CustodyNote::Released {
+            epoch: 9,
+            token: NoteToken([3; 16]),
+            restores: Some(Box::new(CustodyNote::MarkOwed {
+                index: 1,
+                epoch: 8,
+                token: NoteToken([2; 16]),
+                acquired: false,
+                restores: Some(Box::new(deepest)),
+            })),
+        }
+    }
+
+    fn receipt(acquired: bool) -> CustodyNote {
+        CustodyNote::MarkOwed {
+            index: 0,
+            epoch: 1,
+            token: NoteToken([1; 16]),
+            acquired,
+            restores: None,
+        }
+    }
+
+    /// A note is kept per identity and per device key, whole: every layer comes back through
+    /// another handle on the folder (a restart), and another device's or identity's note is
+    /// its own. Cleared, it is gone.
+    #[test]
+    fn a_custody_note_survives_a_restart_whole_and_per_device() {
+        let dir = tempfile::tempdir().unwrap();
+        let note = stacked(receipt(true));
+        let v = vault(dir.path());
+        assert_eq!(v.custody_note("scid1", "d1").unwrap(), None);
+        assert!(v
+            .swap_custody_note("scid1", "d1", None, Some(&note))
+            .unwrap());
+        drop(v);
+
+        let v = vault(dir.path());
+        assert_eq!(v.custody_note("scid1", "d1").unwrap(), Some(note.clone()));
+        assert_eq!(v.custody_note("scid1", "d2").unwrap(), None);
+        assert_eq!(v.custody_note("scid2", "d1").unwrap(), None);
+        assert!(v
+            .swap_custody_note("scid1", "d1", Some(&note), None)
+            .unwrap());
+        assert_eq!(vault(dir.path()).custody_note("scid1", "d1").unwrap(), None);
+    }
+
+    /// The compare is on the whole note: an expected note equal to the kept one at the top,
+    /// and different only in the deepest layer's receipt, is stale and changes nothing.
+    #[test]
+    fn a_swap_from_a_note_that_differs_only_in_a_nested_layer_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let v = vault(dir.path());
+        let kept = stacked(receipt(true));
+        let stale = stacked(receipt(false));
+        assert_eq!(kept.token(), stale.token(), "the same top layer");
+        assert!(v
+            .swap_custody_note("scid1", "d1", None, Some(&kept))
+            .unwrap());
+        assert!(!v
+            .swap_custody_note("scid1", "d1", Some(&stale), None)
+            .unwrap());
+        assert!(!v
+            .swap_custody_note("scid1", "d1", None, Some(&stale))
+            .unwrap());
+        assert_eq!(v.custody_note("scid1", "d1").unwrap(), Some(kept.clone()));
+        assert!(v
+            .swap_custody_note("scid1", "d1", Some(&kept), Some(&receipt(true)))
+            .unwrap());
+        assert_eq!(v.custody_note("scid1", "d1").unwrap(), Some(receipt(true)));
+    }
+
+    /// Handles on one folder (parallel native calls) swapping at once: each swap is one step
+    /// under the folder's lock, so of every pair that read the same note one wins, and none
+    /// is lost.
+    #[test]
+    fn swaps_from_two_handles_on_one_folder_never_lose_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let counter = |n: u64| CustodyNote::Released {
+            epoch: n,
+            token: NoteToken([0; 16]),
+            restores: None,
+        };
+        vault(dir.path())
+            .swap_custody_note("scid1", "d1", None, Some(&counter(0)))
+            .unwrap();
+        let threads: Vec<_> = (0..2)
+            .map(|_| {
+                let dir = dir.path().to_path_buf();
+                std::thread::spawn(move || {
+                    let v = vault(&dir);
+                    let mut won = 0;
+                    while won < 20 {
+                        let Some(CustodyNote::Released { epoch, .. }) =
+                            v.custody_note("scid1", "d1").unwrap()
+                        else {
+                            panic!("the counter's note is gone");
+                        };
+                        if v.swap_custody_note(
+                            "scid1",
+                            "d1",
+                            Some(&counter(epoch)),
+                            Some(&counter(epoch + 1)),
+                        )
+                        .unwrap()
+                        {
+                            won += 1;
+                        }
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        assert_eq!(
+            vault(dir.path()).custody_note("scid1", "d1").unwrap(),
+            Some(counter(40))
+        );
+    }
+
+    /// Notes live in the master-key file, so its loss is theirs: an error, never "no note".
+    #[test]
+    fn a_lost_file_loses_no_note_quietly() {
+        let dir = tempfile::tempdir().unwrap();
+        let v = vault(dir.path());
+        v.swap_custody_note("scid1", "d1", None, Some(&receipt(true)))
+            .unwrap();
+        std::fs::remove_file(dir.path().join(MASTER_FILE_NAME)).unwrap();
+        assert!(v.custody_note("scid1", "d1").is_err());
+        assert!(v
+            .swap_custody_note("scid1", "d1", None, Some(&receipt(true)))
+            .is_err());
     }
 }
