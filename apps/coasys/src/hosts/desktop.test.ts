@@ -17,6 +17,7 @@ import {
   shellRefusal,
   THIS_COMPUTER_CONNECTION,
   WORDS_AGENT_LOCKED,
+  WORDS_AGENT_NEEDS_PASSWORD,
   WORDS_EXECUTOR_NOT_UP,
   WORDS_HERE_OFF,
 } from './desktop';
@@ -91,6 +92,11 @@ describe('the custody identity source', () => {
     expect(source.doors).toEqual(closed(WORDS_EXECUTOR_NOT_UP));
     state = { phase: 'ready', agent: 'locked' };
     expect(source.doors).toEqual(closed(WORDS_AGENT_LOCKED));
+    // No keyring: the WE password is asked for first, and the doors wait on it.
+    state = { phase: 'ready', agent: 'needs-password' };
+    expect(source.doors).toEqual(closed(WORDS_AGENT_NEEDS_PASSWORD));
+    state = { phase: 'ready', agent: 'needs-new-password' };
+    expect(source.doors).toEqual(closed(WORDS_AGENT_NEEDS_PASSWORD));
     state = { phase: 'ready', agent: 'unlocked' };
     expect(source.doors.make).toEqual({ step: { kind: 'create' } });
     expect(source.doors.link).toEqual({ step: { kind: 'show-code' } });
@@ -138,6 +144,26 @@ describe('the desktop host', () => {
     expect(host.identity?.doors.make).toEqual({ step: null, note: WORDS_AGENT_LOCKED });
     state = { phase: 'ready', agent: 'unlocked' };
     expect(host.identity?.doors.make).toEqual({ step: { kind: 'create' } });
+  });
+
+  /*
+    Lal's review of #438: a locked agent with nothing kept for it is either one made with a WE
+    password or one whose kept passphrase this computer lost, and the app cannot tell which. The
+    words cover both, and say what to do in each.
+  */
+  it('says, for a locked agent, to sign in with the WE password, or else to restore with the 12 words', () => {
+    const executor = {
+      state: () => ({ phase: 'ready', agent: 'locked' }) as const,
+      subscribe: () => () => {},
+      start: async () => {},
+    };
+    const doors = desktopBaseHost({ local, custody: custody(), executor }).identity?.doors;
+    for (const door of [doors?.make, doors?.link, doors?.words]) {
+      expect(door).toEqual({ step: null, note: WORDS_AGENT_LOCKED });
+    }
+    expect(WORDS_AGENT_LOCKED).toMatch(/sign in with your WE password/);
+    expect(WORDS_AGENT_LOCKED).toMatch(/never set one/);
+    expect(WORDS_AGENT_LOCKED).toMatch(/12 words/);
   });
 
   it('has an identity only with a custody service, and an executor only where the shell reports one', () => {
@@ -308,6 +334,76 @@ describe('bridgedExecutor', () => {
     expect(executor.state()).toEqual({ phase: 'ready', agent: 'locked' });
     b.push({ phase: 'ready', agent: 'sleepy' } as unknown as BaseExecutorState);
     expect(executor.state()).toEqual({ phase: 'ready' });
+    // No keyring to use: the WE password is asked for, for a new agent or one made with it.
+    for (const agent of ['needs-password', 'needs-new-password'] as const) {
+      b.push({ phase: 'ready', agent });
+      expect(executor.state()).toEqual({ phase: 'ready', agent });
+    }
+  });
+
+  /*
+    Where no keyring could be used, the base app's password step sends the WE password to the shell
+    (Electron's `executor-agent-password`), once, and learns how it went: never the password back.
+  */
+  it('sends the WE password to the shell, and answers how it went', async () => {
+    const b = bridge();
+    const sent: unknown[] = [];
+    const answers: unknown[] = ['unlocked', 'wrong', 'refused', 'failed', { password: 'x' }];
+    const executor = bridgedExecutor({
+      ...b,
+      password: async (password: string) => (sent.push(password), answers.shift()),
+    });
+    expect(await executor.givePassword?.('test-password')).toBe('unlocked');
+    expect(sent).toEqual(['test-password']);
+    expect(await executor.givePassword?.('test-password')).toBe('wrong');
+    expect(await executor.givePassword?.('test-password')).toBe('refused');
+    expect(await executor.givePassword?.('test-password')).toBe('failed');
+    // An answer it cannot make out is a failure.
+    expect(await executor.givePassword?.('test-password')).toBe('failed');
+  });
+
+  it('says why the shell refused a password, without its wrapping, and has no way to send one where the shell takes none', async () => {
+    const b = bridge();
+    const executor = bridgedExecutor({
+      ...b,
+      password: async () => {
+        throw new Error("Error invoking remote method 'executor-agent-password': Error: not from this window");
+      },
+    });
+    await expect(executor.givePassword?.('test-password')).rejects.toThrow(/^not from this window$/);
+    expect(bridgedExecutor(bridge()).givePassword).toBeUndefined();
+  });
+
+  /*
+    Lal's review of #438: what the shell said of the agent at its start goes stale once WE's sign-in
+    unlocks it. The base app asks again when it is shown (`BaseExecutor.refresh`), and the shell
+    reads the agent again to answer (`executor-state` in main.js).
+  */
+  it('asks the shell again on refresh, and takes its answer unless the shell has said since', async () => {
+    const b = bridge();
+    const executor = bridgedExecutor(b);
+    b.answer({ phase: 'ready', agent: 'locked' });
+    await tick();
+    const seen: BaseExecutorState[] = [];
+    executor.subscribe((s) => seen.push(s));
+
+    const again = executor.refresh?.();
+    b.answer({ phase: 'ready', agent: 'unlocked' });
+    await again;
+    expect(executor.state()).toEqual({ phase: 'ready', agent: 'unlocked' });
+    expect(seen).toEqual([{ phase: 'ready', agent: 'unlocked' }]);
+
+    const stale = executor.refresh?.();
+    b.push({ phase: 'starting' });
+    b.answer({ phase: 'ready', agent: 'locked' });
+    await stale;
+    expect(executor.state()).toEqual({ phase: 'starting' });
+
+    // A shell that cannot answer leaves what it last said: this is a second look, not a start.
+    const refused = executor.refresh?.();
+    b.refuse(new Error('No handler for executor-state'));
+    await refused;
+    expect(executor.state()).toEqual({ phase: 'starting' });
   });
 
   it('stops telling a listener once it unsubscribes', async () => {

@@ -2317,6 +2317,10 @@ export const contextData: ContextData = {
         lastOutcome: { type: 'string' },
         error: { type: 'string' },
         offlineReason: { type: 'string' },
+        passwordIsNew: { type: 'boolean' },
+        passwordWrong: { type: 'boolean' },
+        passwordEntered: { type: 'boolean' },
+        passwordConfirmed: { type: 'boolean' },
       },
       actions: [
         'refresh',
@@ -2329,8 +2333,10 @@ export const contextData: ContextData = {
         'showConnections',
         'openPage',
         'closePage',
+        'submitPassword',
+        'clearPasswordWrong',
       ],
-      ambient: ['refresh', 'showConnections', 'openPage', 'closePage'],
+      ambient: ['refresh', 'showConnections', 'openPage', 'closePage', 'clearPasswordWrong'],
       needsArgs: ['choose', 'openPage'],
     },
     {

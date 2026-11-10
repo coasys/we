@@ -11,6 +11,9 @@ import { COLLAPSED } from './lockup.ts';
  *
  * - **starting / failed** — the desktop's own backend coming up, and why it did not, with "Try
  *   again". It used to be an error box and a quit.
+ * - **password** — a computer with no keyring the app can use: the WE password protects the agent
+ *   here instead, asked for in the host's own field (twice on a first start) and never held by this
+ *   template.
  * - **first-run** — this device speaks for nobody yet: "Make my identity here", "Link to my identity",
  *   "Use my 12 words", and "Start now". On a phone it is the join: a phone links to an identity a
  *   computer keeps, and the doors it cannot open say why. Every door opens the host's own identity
@@ -447,6 +450,61 @@ const failed = screen('chrome__executor-failed', [
   },
 ]);
 
+/*
+  No keyring could be used, so the WE password protects this computer's agent: one field, the host's
+  own (it holds the value; this template only learns whether something is typed), and Continue.
+*/
+const password = screen('base__password', [
+  {
+    type: 'Column',
+    props: { gap: '200' },
+    children: [
+      {
+        type: 'we-text',
+        props: { variant: 'heading-xl', tag: 'h1' },
+        children: [{ $: "baseStore.passwordIsNew ? 'Choose your WE password' : 'Enter your WE password'" }],
+      },
+      {
+        type: 'we-text',
+        props: { color: 'text-muted' },
+        children: [
+          'This computer’s keyring is not available, so your WE password protects your agent on this computer.',
+        ],
+      },
+    ],
+  },
+  {
+    type: 'CredentialField',
+    props: {
+      purpose: { $: "baseStore.passwordIsNew ? 'new' : 'unlock'" },
+      width: '100%',
+      placeholder: 'Password...',
+      confirmPlaceholder: 'Password again...',
+      onEdit: { $invoke: 'baseStore.clearPasswordWrong' },
+      onSubmit: { $invoke: 'baseStore.submitPassword' },
+    },
+  },
+  failedAlert('baseStore.passwordWrong', "'That password did not unlock your agent. Try again.'"),
+  failedAlert("baseStore.error != ''", 'baseStore.error'),
+  {
+    type: 'Row',
+    children: [
+      {
+        type: 'we-button',
+        props: {
+          variant: 'primary',
+          loading: { $: 'baseStore.busy' },
+          disabled: {
+            $: '!baseStore.passwordEntered || (baseStore.passwordIsNew && !baseStore.passwordConfirmed)',
+          },
+          onClick: { $invoke: 'baseStore.submitPassword' },
+        },
+        children: ['Continue'],
+      },
+    ],
+  },
+]);
+
 /** A line of a read-only page: a label, and what it says. */
 const fact = (label: string, value: Words): SchemaNode => ({
   type: 'Row',
@@ -590,6 +648,7 @@ export const coasysBase: TemplateSchema & { id: string } = {
   children: [
     stage("baseStore.stage == 'starting'", waiting('base__starting', 'Starting Coasys on this computer…')),
     stage("baseStore.stage == 'failed'", failed),
+    stage("baseStore.stage == 'password'", password),
     stage(
       "baseStore.stage == 'loading' || baseStore.stage == 'handing-off'",
       waiting('base__connecting', {

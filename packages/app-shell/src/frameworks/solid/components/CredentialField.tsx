@@ -27,7 +27,7 @@
  * template would have to hold the value to run.
  */
 import { Column } from '@we/components/solid';
-import { createSignal, onCleanup, onMount, Show } from 'solid-js';
+import { createEffect, createSignal, onCleanup, onMount, Show } from 'solid-js';
 
 import { credential } from '../credential';
 
@@ -84,6 +84,20 @@ export default function CredentialField(props: CredentialFieldProps) {
   });
   // Gone from the screen means done with: signed in, set up, or abandoned for another account.
   onCleanup(() => credential.clear());
+
+  /*
+    Cleared once it is sent, the box empties too. A wrong password leaves the screen up, and a box
+    still showing it had Continue disabled beside it and took what was typed next onto the end of it.
+    The first `we-input` is the password; a `new` field's second is its confirmation.
+  */
+  createEffect(() => {
+    const gone = [!credential.entered(), !credential.confirmationEntered()];
+    const inputs = boundary ? [...boundary.querySelectorAll('we-input')] : [];
+    inputs.forEach((input, i) => {
+      const box = input as HTMLElement & { value?: string };
+      if (gone[Math.min(i, 1)] && box.value) box.value = '';
+    });
+  });
 
   const edit = (value: string, which: 'secret' | 'confirmation') => {
     if (which === 'secret') credential.set(value);

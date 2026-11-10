@@ -38,13 +38,15 @@ it or read it:
   key, and they bubble, so a wrapping node with an `onInput` would read every keystroke. Every input
   and key event stops at the field. A schema cannot attach a capturing listener, and the host's own
   gesture tracking listens in the capture phase, so neither is affected.
-- **No action takes a password.** `sessionStore.unlock()` and `profileStore.completeAccountSetup(name)`
-  read the held value. `login(password)` and `createAgent(password)` are host wiring, absent from
+- **No action takes a password.** `sessionStore.unlock()`, `profileStore.completeAccountSetup(name)`
+  and, before a session, `baseStore.submitPassword()` (the WE password a desktop with no keyring asks
+  for) read the held value. `login(password)` and `createAgent(password)` are host wiring, absent from
   every bag. An action that accepted a password as an argument would accept one a template's own
   field collected.
 
 What a template gets is `onEdit` and `onSubmit`, which carry nothing, and two booleans:
-`credentialEntered` and `credentialConfirmed`.
+`credentialEntered` and `credentialConfirmed` (before a session, `baseStore.passwordEntered` and
+`passwordConfirmed`).
 
 An app's sign-in screen must have the field, or it is a sign-in nobody can use: `judgeBundle`
 refuses one without it, and the host keeps the screen it had. Placing WE's sign-in form

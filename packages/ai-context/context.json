@@ -6365,6 +6365,18 @@
         },
         "offlineReason": {
           "type": "string"
+        },
+        "passwordIsNew": {
+          "type": "boolean"
+        },
+        "passwordWrong": {
+          "type": "boolean"
+        },
+        "passwordEntered": {
+          "type": "boolean"
+        },
+        "passwordConfirmed": {
+          "type": "boolean"
         }
       },
       "actions": [
@@ -6377,9 +6389,11 @@
         "retry",
         "showConnections",
         "openPage",
-        "closePage"
+        "closePage",
+        "submitPassword",
+        "clearPasswordWrong"
       ],
-      "ambient": ["refresh", "showConnections", "openPage", "closePage"],
+      "ambient": ["refresh", "showConnections", "openPage", "closePage", "clearPasswordWrong"],
       "needsArgs": ["choose", "openPage"]
     },
     {

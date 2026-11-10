@@ -6,9 +6,12 @@
  *
  * Scenario: a first start keeps a new passphrase in the keyring and makes the agent with it; the
  * window hears the executor is ready with its agent unlocked. A restart reads the passphrase and
- * unlocks the agent, with no new one made. With the keyring locked, and then with none, the start
- * fails, and the window is told why in words with no path and no secret; "Try again" once the
- * keyring is open unlocks it. The passphrase is in no log the app writes.
+ * unlocks the agent, with no new one made. With the keyring locked, and then with none, the start of
+ * that agent (its passphrase kept in the keyring) fails, and the window is told why in words with no
+ * path and no secret; "Try again" once the keyring is open unlocks it. With no keyring on a first
+ * start, or for an agent made before the keyring, the window is asked for the WE password
+ * (`executor-agent-password`), which makes or unlocks the agent; a wrong one is answered wrong. The
+ * passphrase and the password are in no log the app writes.
  */
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'fs';
 import { tmpdir } from 'os';
@@ -16,7 +19,7 @@ import { dirname, join } from 'path';
 import { fileURLToPath } from 'url';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
-import { KEYRING_WORDS } from './mainAgent.js';
+import { executorRpc, KEYRING_WORDS } from './mainAgent.js';
 
 const state = vi.hoisted(() => {
   const s = {
@@ -162,7 +165,7 @@ const fromWindow = () => ({
   sender: state.windows[0].webContents,
   senderFrame: { ...state.windows[0].webContents.mainFrame, url: 'http://localhost:5173/', parent: null },
 });
-const ask = (channel) => state.ipc[channel](fromWindow());
+const ask = (channel, ...args) => state.ipc[channel](fromWindow(), ...args);
 
 /** Waits for the window to hear an end to the start under way: ready or failed. */
 async function settled(after) {
@@ -276,6 +279,86 @@ describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp
       expect(await settled(before)).toEqual({ phase: 'ready', agent: 'unlocked' });
       expect(keyringLog().at(-1)).toBe('read open');
       expect(executorLog().match(/agent generated/g)).toHaveLength(1);
+    }, 30_000);
+
+    /*
+      Lal's review of #438: `agent` was the start's snapshot, so an agent WE's sign-in unlocked stayed
+      `locked` to the window, and the base app's doors stayed shut when the person came back to it.
+      Asking for the executor's state reads the agent again.
+    */
+    it('says the agent is unlocked once sign-in has unlocked it, when the window asks again', async () => {
+      // Nothing kept for it: as for an agent made with a WE password.
+      writeFileSync(keyringFile(), JSON.stringify({ state: 'open', items: {} }));
+      const before = state.executorStates.length;
+      await ask('executor-restart');
+      expect(await settled(before)).toEqual({ phase: 'ready', agent: 'locked' });
+      expect(await ask('executor-state')).toEqual({ phase: 'ready', agent: 'locked' });
+
+      // WE's sign-in, on the executor's own API.
+      const rpc = executorRpc({ port: await ask('get-port'), token: await ask('get-token'), timeoutMs: 5_000 });
+      try {
+        const { passphrase } = JSON.parse(read(join(dataDir(), 'fake-executor.agent.json')));
+        expect((await rpc.call('agent.unlock', { passphrase, holochain: true })).isUnlocked).toBe(true);
+      } finally {
+        rpc.close();
+      }
+
+      expect(await ask('executor-state')).toEqual({ phase: 'ready', agent: 'unlocked' });
+      // And told to the window, as every change is.
+      expect(state.executorStates.at(-1)).toEqual({ phase: 'ready', agent: 'unlocked' });
+    }, 30_000);
+
+    /*
+      A desktop with no keyring the app can use (Josh, 10 Nov: option 2). The WE password stands in
+      for the kept passphrase: the window is told the agent needs it, and sends it on
+      `executor-agent-password`, once. It is in no file and no log the app writes.
+    */
+    const PASSWORD = 'test-password-for-the-agent';
+
+    it('with no keyring on a first start, asks for a new WE password and makes the agent with it', async () => {
+      // A new computer: no agent, nothing noted as kept.
+      rmSync(join(dataDir(), 'fake-executor.agent.json'), { force: true });
+      rmSync(join(dataDir(), 'we-agent-passphrase-kept'), { force: true });
+      writeFileSync(keyringFile(), JSON.stringify({ state: 'absent', items: {} }));
+      const before = state.executorStates.length;
+      await ask('executor-restart');
+      expect(await settled(before)).toEqual({ phase: 'ready', agent: 'needs-new-password' });
+      expect(executorLog().match(/agent generated/g)).toHaveLength(1);
+      // Asked again, it is still the password that is due.
+      expect(await ask('executor-state')).toEqual({ phase: 'ready', agent: 'needs-new-password' });
+
+      expect(await ask('executor-agent-password', PASSWORD)).toBe('unlocked');
+      expect(state.executorStates.at(-1)).toEqual({ phase: 'ready', agent: 'unlocked' });
+      expect(executorLog().match(/agent generated/g)).toHaveLength(2);
+      expect(JSON.parse(read(join(dataDir(), 'fake-executor.agent.json'))).passphrase).toBe(PASSWORD);
+      expect(keyring().items).toEqual({});
+      expect(everythingWritten()).not.toContain(PASSWORD);
+    }, 30_000);
+
+    it('with no keyring, asks for the WE password of an agent made with one, and asks again when it is wrong', async () => {
+      const before = state.executorStates.length;
+      await ask('executor-restart');
+      expect(await settled(before)).toEqual({ phase: 'ready', agent: 'needs-password' });
+
+      expect(await ask('executor-agent-password', 'not-the-password')).toBe('wrong');
+      expect(executorLog()).toMatch(/agent unlock refused/);
+      expect(await ask('executor-state')).toEqual({ phase: 'ready', agent: 'needs-password' });
+
+      expect(await ask('executor-agent-password', PASSWORD)).toBe('unlocked');
+      expect(state.executorStates.at(-1)).toEqual({ phase: 'ready', agent: 'unlocked' });
+      expect(everythingWritten()).not.toContain(PASSWORD);
+      expect(everythingWritten()).not.toContain('not-the-password');
+    }, 30_000);
+
+    it('takes a password only while one is asked for, and only as text', async () => {
+      expect(await ask('executor-agent-password', PASSWORD)).toBe('refused');
+      const before = state.executorStates.length;
+      await ask('executor-restart');
+      expect(await settled(before)).toEqual({ phase: 'ready', agent: 'needs-password' });
+      for (const odd of [undefined, '', 42, { passphrase: PASSWORD }]) {
+        expect(await ask('executor-agent-password', odd)).toBe('refused');
+      }
+      expect(await ask('executor-state')).toEqual({ phase: 'ready', agent: 'needs-password' });
     }, 30_000);
   },
 );

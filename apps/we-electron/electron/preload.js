@@ -49,6 +49,8 @@ contextBridge.exposeInMainWorld('electron', {
       return () => ipcRenderer.removeListener('executor-state', forward);
     },
     start: () => ipcRenderer.invoke('executor-start'),
+    // The WE password, where no keyring could be used: sent once, from the host's own field.
+    password: (password) => ipcRenderer.invoke('executor-agent-password', password),
   },
 
   // Every download in the app: the main process asks where, and writes it. See `save-file` in main.js.

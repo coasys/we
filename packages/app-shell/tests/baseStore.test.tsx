@@ -7,6 +7,7 @@ import type { IdentityChangeOutcome, IdentityCustodyView } from '@we/backend-sha
 import { createRoot } from 'solid-js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { credential } from '../src/frameworks/solid/credential';
 import {
   BASE_CONNECTION_KEY,
   type BaseStorage,
@@ -431,6 +432,68 @@ describe('baseStore, the connection', () => {
     expect(store.busy()).toBe(false);
   });
 
+  /*
+    Lal's review of #438: the desktop's executor says how its agent is at each start, and WE's sign-in
+    unlocks a locked one after that. Coming back to the base app — the offline state, "Choose another
+    place" — or opening a door asks the executor again, so the doors follow the agent as it is now.
+  */
+  describe('an agent unlocked after the start said it was locked', () => {
+    /** The executor the host reports, whose agent is `truth` when asked again (`refresh`). */
+    function lockedThenUnlocked() {
+      let truth: 'locked' | 'unlocked' = 'locked';
+      const own = fakeExecutor({ phase: 'ready', agent: 'locked' });
+      const refreshes: number[] = [];
+      const executor = {
+        ...own.executor,
+        refresh: async () => {
+          refreshes.push(Date.now());
+          own.move({ phase: 'ready', agent: truth });
+        },
+      };
+      const identity = fakeIdentity(view({ did: DID }));
+      const gated: BaseIdentitySource = {
+        ...identity.source,
+        get doors() {
+          const now = executor.state();
+          const note = 'The agent is locked.';
+          return now.phase === 'ready' && now.agent === 'unlocked'
+            ? identity.source.doors
+            : { make: { step: null, note }, link: { step: null, note }, words: { step: null, note } };
+        },
+      };
+      return { executor, identity, gated, refreshes, signIn: () => (truth = 'unlocked') };
+    }
+
+    it('opens the doors when the session hands back to the offline state', async () => {
+      const t = lockedThenUnlocked();
+      const { store } = make(host({ identity: t.gated, executor: t.executor }), { takeFirst: true });
+      await until(() => store.stage() === 'session');
+      expect(store.doors().make.open).toBe(false);
+      t.signIn();
+      store.handBack('This computer could not be reached: socket closed');
+      await until(() => store.doors().make.open);
+      expect(store.doors().link.open).toBe(true);
+    });
+
+    it('opens the doors when the person goes back to the choice', async () => {
+      const t = lockedThenUnlocked();
+      const { store } = make(host({ identity: t.gated, executor: t.executor }));
+      await until(() => store.stage() === 'connect');
+      t.signIn();
+      await store.showConnections();
+      expect(store.doors().make.open).toBe(true);
+    });
+
+    it('asks again before deciding whether a door opens', async () => {
+      const t = lockedThenUnlocked();
+      const { store } = make(host({ identity: t.gated, executor: t.executor }));
+      await until(() => store.stage() === 'connect');
+      t.signIn();
+      expect(await store.makeIdentity()).toBe('done');
+      expect(t.identity.opened).toEqual([{ kind: 'create' }]);
+    });
+  });
+
   it('opens Devices and Security over the stage, read-only, and closes them on a choice', async () => {
     const identity = fakeIdentity(
       view({
@@ -467,5 +530,125 @@ describe('baseStore, the connection', () => {
     store.openPage('security');
     await store.choose('this-device');
     expect(store.page()).toBe('');
+  });
+});
+
+/*
+  A desktop with no keyring it can use (no Secret Service, or one still locked past custody's 90 s):
+  the executor's agent is made, or unlocked, with the WE password instead, asked for here before
+  anything else. The password is typed in the host's own field (`CredentialField`) and read from it
+  (`credential`), never passed by a template, and the field is cleared once it is sent.
+*/
+describe('baseStore, the WE password where no keyring could be used', () => {
+  const PASSWORD = 'test-password';
+  afterEach(() => credential.clear());
+
+  /** The executor the host reports, asking for the password; `agentPassword` is the one that unlocks it. */
+  function noKeyring(need: 'needs-password' | 'needs-new-password', agentPassword = PASSWORD) {
+    const own = fakeExecutor({ phase: 'ready', agent: need });
+    const given: string[] = [];
+    const executor = {
+      ...own.executor,
+      givePassword: async (password: string) => {
+        given.push(password);
+        if (need === 'needs-new-password' || password === agentPassword) {
+          own.move({ phase: 'ready', agent: 'unlocked' });
+          return 'unlocked' as const;
+        }
+        return 'wrong' as const;
+      },
+    };
+    return { own, executor, given };
+  }
+
+  it('asks a first start for a new password, twice, and makes the agent with it', async () => {
+    const t = noKeyring('needs-new-password');
+    const identity = fakeIdentity(view());
+    const { store } = make(host({ identity: identity.source, executor: t.executor }));
+    await until(() => store.stage() === 'password');
+    expect(store.passwordIsNew()).toBe(true);
+    expect(identity.source.state).not.toHaveBeenCalled();
+
+    // Typed once, or twice and not the same: nothing is sent, and the field says why.
+    credential.set(PASSWORD);
+    expect(store.passwordEntered()).toBe(true);
+    expect(store.passwordConfirmed()).toBe(false);
+    await store.submitPassword();
+    credential.setConfirmation('something else');
+    await store.submitPassword();
+    expect(t.given).toEqual([]);
+    expect(credential.touched()).toBe(true);
+    expect(store.stage()).toBe('password');
+
+    credential.setConfirmation(PASSWORD);
+    expect(store.passwordConfirmed()).toBe(true);
+    await store.submitPassword();
+    expect(t.given).toEqual([PASSWORD]);
+    // Cleared once sent.
+    expect(credential.read()).toBe('');
+    expect(store.passwordEntered()).toBe(false);
+    await until(() => store.stage() === 'first-run');
+  });
+
+  it('asks for the password of an agent made with one, and unlocks it', async () => {
+    const t = noKeyring('needs-password');
+    const { store } = make(host({ identity: fakeIdentity(view({ did: DID })).source, executor: t.executor }));
+    await until(() => store.stage() === 'password');
+    expect(store.passwordIsNew()).toBe(false);
+    credential.set(PASSWORD);
+    await store.submitPassword();
+    expect(t.given).toEqual([PASSWORD]);
+    await until(() => store.stage() === 'connect');
+  });
+
+  it('says a wrong password was wrong and asks again, with the agent still waiting on it', async () => {
+    const t = noKeyring('needs-password');
+    const { store } = make(host({ identity: fakeIdentity(view({ did: DID })).source, executor: t.executor }));
+    await until(() => store.stage() === 'password');
+    credential.set('not-the-password');
+    await store.submitPassword();
+    expect(store.passwordWrong()).toBe(true);
+    expect(store.stage()).toBe('password');
+    expect(credential.read()).toBe('');
+    expect(store.busy()).toBe(false);
+
+    // Typing again takes the verdict back; the right one goes on.
+    store.clearPasswordWrong();
+    expect(store.passwordWrong()).toBe(false);
+    credential.set(PASSWORD);
+    await store.submitPassword();
+    await until(() => store.stage() === 'connect');
+    expect(t.given).toEqual(['not-the-password', PASSWORD]);
+  });
+
+  it('sends nothing with nothing typed', async () => {
+    const t = noKeyring('needs-password');
+    const { store } = make(host({ identity: fakeIdentity(view({ did: DID })).source, executor: t.executor }));
+    await until(() => store.stage() === 'password');
+    await store.submitPassword();
+    expect(t.given).toEqual([]);
+  });
+
+  it('says why a password could not be given, and clears it', async () => {
+    const t = noKeyring('needs-password');
+    const executor = {
+      ...t.executor,
+      givePassword: async () => Promise.reject(new Error('not from this window')),
+    };
+    const { store } = make(host({ identity: fakeIdentity(view({ did: DID })).source, executor }));
+    await until(() => store.stage() === 'password');
+    credential.set(PASSWORD);
+    await store.submitPassword();
+    expect(store.error()).toBe('not from this window');
+    expect(store.stage()).toBe('password');
+    expect(credential.read()).toBe('');
+  });
+
+  it('leaves the password to WE’s own sign-in where the deployment draws no base', async () => {
+    const t = noKeyring('needs-password');
+    const { store, handedOff } = make(host({ executor: t.executor }), { takeFirst: true });
+    await until(() => store.stage() === 'session');
+    expect(handedOff).toEqual([HERE]);
+    expect(t.given).toEqual([]);
   });
 });

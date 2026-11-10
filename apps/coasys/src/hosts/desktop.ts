@@ -12,6 +12,8 @@
  */
 import type {
   BackendConnector,
+  BaseAgentPasswordAnswer,
+  BaseAgentState,
   BaseConnection,
   BaseExecutor,
   BaseExecutorState,
@@ -45,7 +47,12 @@ export interface ExecutorBridge {
   state(): Promise<BaseExecutorState>;
   onState(listener: (state: BaseExecutorState) => void): () => void;
   start(): Promise<unknown>;
+  /** Sends the agent its WE password, where no keyring could be used; answers how it went. */
+  password?(password: string): Promise<unknown>;
 }
+
+const AGENT_STATES: readonly BaseAgentState[] = ['unlocked', 'locked', 'needs-password', 'needs-new-password'];
+const PASSWORD_ANSWERS: readonly BaseAgentPasswordAnswer[] = ['unlocked', 'wrong', 'refused', 'failed'];
 
 /**
  * What the shell says about its executor, as a state; anything else is a failure with no reason. Up,
@@ -54,8 +61,10 @@ export interface ExecutorBridge {
 function asState(value: unknown): BaseExecutorState {
   const v = value as { phase?: unknown; reason?: unknown; agent?: unknown } | null;
   if (v?.phase === 'starting') return { phase: 'starting' };
-  if (v?.phase === 'ready')
-    return v.agent === 'unlocked' || v.agent === 'locked' ? { phase: 'ready', agent: v.agent } : { phase: 'ready' };
+  if (v?.phase === 'ready') {
+    const agent = AGENT_STATES.find((known) => known === v.agent);
+    return agent ? { phase: 'ready', agent } : { phase: 'ready' };
+  }
   if (v?.phase === 'failed') return { phase: 'failed', reason: typeof v.reason === 'string' ? v.reason : '' };
   return { phase: 'failed', reason: 'The app did not say how its executor is.' };
 }
@@ -107,6 +116,38 @@ export function bridgedExecutor(bridge: ExecutorBridge): BaseExecutor {
       }
       if (heard === asked) set(answer);
     },
+    /*
+      The shell reads its agent again to answer (Electron's `executor-state`, `main.js`), and tells
+      every listener of a change as well. An answer the shell has said something since is dropped;
+      a shell that cannot answer leaves the state as it was, since this is a second look.
+    */
+    async refresh() {
+      const asked = heard;
+      let answer: unknown;
+      try {
+        answer = await bridge.state();
+      } catch {
+        return;
+      }
+      if (heard === asked) set(asState(answer));
+    },
+    /*
+      The WE password, where the shell asked for it (Electron's `executor-agent-password`). The shell
+      tells every listener the agent is unlocked as well; the answer is only how it went.
+    */
+    ...(bridge.password
+      ? {
+          async givePassword(password: string): Promise<BaseAgentPasswordAnswer> {
+            let answer: unknown;
+            try {
+              answer = await bridge.password!(password);
+            } catch (error) {
+              throw new Error(shellRefusal(error));
+            }
+            return PASSWORD_ANSWERS.find((known) => known === answer) ?? 'failed';
+          },
+        }
+      : {}),
   };
 }
 
@@ -125,15 +166,25 @@ export function shellRefusal(error: unknown): string {
 export const WORDS_EXECUTOR_NOT_UP =
   "This computer's executor is not up yet. Your identity can be changed here once it is.";
 
+/*
+  A locked agent with nothing kept for it is one made with a WE password, or one whose kept passphrase
+  this computer lost (its keyring item deleted, the keyring reset): the app cannot tell the two apart,
+  so the words say what to do for each.
+*/
+/** Where no keyring could be used, the base app asks for the WE password before anything else. */
+export const WORDS_AGENT_NEEDS_PASSWORD =
+  "This computer's agent waits for your WE password. Give it first, then your identity can be changed here.";
+
 export const WORDS_AGENT_LOCKED =
-  "This computer's agent is locked, so your identity cannot be changed here yet. Choose This computer and sign in.";
+  "This computer's agent is locked, so your identity cannot be changed here yet. Choose This computer and sign in with your WE password. If you never set one, the key this computer kept for your agent is gone: restore your identity with your 12 words.";
 
 /**
  * The custody service as the base app's identity source. With the shell's `executor`, the doors open
  * only once it is ready with its agent unlocked: every step runs against the executor's main agent,
  * which Electron's supervisor makes and unlocks at each start (`mainAgent.js`, a stopgap until AR-06's
- * `storage.unlock`). An agent made before that, with a WE password, stays locked until sign-in. An
- * executor that does not say how its agent is leaves the doors as they were.
+ * `storage.unlock`). An agent with nothing kept for it stays locked until sign-in, and the base app
+ * asks the executor again (`refresh`) when it is shown and before a door opens. An executor that does
+ * not say how its agent is leaves the doors as they were.
  */
 export function custodyIdentitySource(custody: Ad4mCustodyHost, executor?: BaseExecutor): BaseIdentitySource {
   const open = {
@@ -158,7 +209,10 @@ export function custodyIdentitySource(custody: Ad4mCustodyHost, executor?: BaseE
       const now = executor?.state();
       if (!now) return open;
       if (now.phase !== 'ready') return closed(WORDS_EXECUTOR_NOT_UP);
-      return now.agent === 'locked' ? closed(WORDS_AGENT_LOCKED) : open;
+      if (now.agent === 'locked') return closed(WORDS_AGENT_LOCKED);
+      if (now.agent === 'needs-password' || now.agent === 'needs-new-password')
+        return closed(WORDS_AGENT_NEEDS_PASSWORD);
+      return open;
     },
     open: async (step) => {
       // A computer joins by showing its code, never by a phone's offer page.

@@ -11,7 +11,10 @@
  * Framework-neutral, and backend-neutral: a host implements it over whatever it has — the desktop's
  * custody service and executor, the phone's device key, the browser's AD4M Connect — and the store
  * above learns none of those names. Words, passphrases and keys never cross it: a step that needs one
- * opens the host's own identity window, and what comes back is how the step ended.
+ * opens the host's own identity window, and what comes back is how the step ended. The one exception
+ * is the WE password a desktop with no keyring asks for ({@link BaseExecutor.givePassword}): it is
+ * typed in the host's own field (`CredentialField`) and handed to the executor by the store, never
+ * through a template.
  */
 import type { IdentityChange, IdentityChangeOutcome, IdentityCustodyView } from '@we/backend-shared';
 
@@ -63,12 +66,25 @@ export interface BaseConnection {
 }
 
 /**
+ * How the agent of the backend this device runs is, where the host makes it: `unlocked`; `locked` until
+ * the person signs in; or, where no keyring could keep its passphrase, waiting on the WE password —
+ * `needs-new-password` for an agent not made yet (asked twice), `needs-password` for one made with it.
+ */
+export type BaseAgentState = 'unlocked' | 'locked' | 'needs-password' | 'needs-new-password';
+
+/**
  * The backend this device runs, where it runs one: starting, up, or failed to start and why. Up, it may
- * say how its agent is: `unlocked`, or `locked` until the person signs in. Absent where the host does
- * not make the agent itself.
+ * say how its agent is ({@link BaseAgentState}). Absent where the host does not make the agent itself.
  */
 export type BaseExecutorState =
-  { phase: 'starting' } | { phase: 'ready'; agent?: 'unlocked' | 'locked' } | { phase: 'failed'; reason: string };
+  { phase: 'starting' } | { phase: 'ready'; agent?: BaseAgentState } | { phase: 'failed'; reason: string };
+
+/**
+ * How a WE password given to the host went: `unlocked` (the agent was made or unlocked with it),
+ * `wrong` (it did not unlock the agent, which stays as it was), `refused` (no password is asked for
+ * now), `failed` (the backend could not make or unlock the agent; its state says so).
+ */
+export type BaseAgentPasswordAnswer = 'unlocked' | 'wrong' | 'refused' | 'failed';
 
 export interface BaseExecutor {
   state(): BaseExecutorState;
@@ -76,6 +92,19 @@ export interface BaseExecutor {
   subscribe(listener: (state: BaseExecutorState) => void): () => void;
   /** Starts it again after a failure. Resolves once the attempt is under way; the state says how it went. */
   start(): Promise<void>;
+  /**
+   * Asks the host again how it is, where what it said can go stale without a change being sent: its
+   * agent, `locked` at the start, is unlocked by a sign-in in the session. The base app asks when it
+   * is shown again and before it opens a door. Resolves once the state says what the host answered.
+   */
+  refresh?(): Promise<void>;
+  /**
+   * Gives the agent its WE password where the state asks for one (`needs-password`,
+   * `needs-new-password`): the host makes the agent with it, or unlocks it. Called by the base store
+   * with what the host's own field holds, never with a value a template could reach. The state follows
+   * the answer. Absent where the host never asks for one.
+   */
+  givePassword?(password: string): Promise<BaseAgentPasswordAnswer>;
 }
 
 /** How a connection came to be handed off. */

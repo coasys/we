@@ -158,6 +158,35 @@ fn the_answer_line_carries_the_passphrase_only_when_there_is_one() {
     }
 }
 
+/// Lal's review of #438: the line held the passphrase in a `serde_json::Value`, and in the `String`
+/// made from it, neither zeroised. It is written straight into one buffer, reserved up front for the
+/// longest the line can be and never grown: a grown buffer frees its old copy without zeroising it.
+#[test]
+fn the_answer_line_is_written_into_one_buffer_that_is_never_grown() {
+    // The longest a passphrase's line can be: every character escaped as `\u00XX`.
+    let worst: String = (1u8..32).map(char::from).cycle().take(4096).collect();
+    for answer in [
+        Answer::Passphrase(zeroize::Zeroizing::new(worst.clone())),
+        Answer::Passphrase(zeroize::Zeroizing::new("p".into())),
+        Answer::Passphrase(zeroize::Zeroizing::new(String::new())),
+        Answer::None,
+        Answer::Locked,
+        Answer::Unavailable(worst.clone()),
+    ] {
+        let line = wallet::answer_line(&answer);
+        assert_eq!(
+            line.capacity(),
+            wallet::line_capacity(&answer),
+            "grown past what was reserved"
+        );
+        let value: serde_json::Value = serde_json::from_str(&line).unwrap();
+        if let Answer::Passphrase(p) = &answer {
+            assert_eq!(value["passphrase"], p.as_str());
+            assert_eq!(value.as_object().unwrap().len(), 1);
+        }
+    }
+}
+
 #[test]
 fn the_command_line_names_a_mode_and_a_data_folder() {
     let folder = tempfile::tempdir().unwrap();

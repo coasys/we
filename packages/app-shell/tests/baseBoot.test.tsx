@@ -302,6 +302,83 @@ describe('BaseBoot', () => {
     expect(reads).toBeGreaterThan(before);
   }, 40_000);
 
+  /*
+    A computer with no keyring the app can use: the deployment's own base asks for the WE password in
+    the host's field, twice on a first start, and Continue gives what the field holds to the host.
+  */
+  describe('the WE password, where no keyring could be used', () => {
+    const empty: IdentityCustodyView = {
+      did: null,
+      holdsMaster: false,
+      unlock: 'os',
+      blocked: null,
+      devices: [],
+      revokedHolders: [],
+      requests: [],
+      masterWaiting: false,
+    };
+
+    function noKeyring(agent: 'needs-password' | 'needs-new-password', answer: 'unlocked' | 'wrong') {
+      let store!: BaseStore;
+      const given: string[] = [];
+      const host: BaseHost = {
+        kind: 'computer',
+        connections: async () => [HERE],
+        connector: async () => connector(async () => ({ client: {}, ports: {} }) as never),
+        executor: {
+          state: () => ({ phase: 'ready', agent }),
+          subscribe: () => () => {},
+          start: async () => {},
+          givePassword: async (password) => (given.push(password), answer),
+        },
+        identity: {
+          state: async () => empty,
+          doors: {
+            make: { step: { kind: 'create' } },
+            link: { step: { kind: 'show-code' } },
+            words: { step: { kind: 'restore' } },
+          },
+          open: async () => 'failed',
+        },
+      };
+      render(() => <BaseBoot host={host} platform={PLATFORM} seed={SEED} onStore={(s) => (store = s)} />);
+      return { store: () => store, given };
+    }
+
+    const type = (input: Element, value: string) =>
+      input.dispatchEvent(new CustomEvent('input', { detail: value, bubbles: true, composed: true }));
+    const fields = () => [...document.querySelectorAll('we-input[type="password"]')];
+
+    it('asks a first start for a new password twice, and gives it to the host', async () => {
+      const { store, given } = noKeyring('needs-new-password', 'unlocked');
+      await until(() => screen.queryByText('Choose your WE password') !== null);
+      expect(screen.getByText(/keyring is not available, so your WE password protects your agent/)).toBeTruthy();
+      expect(fields()).toHaveLength(2);
+      const [first, again] = fields();
+      type(first, 'test-password');
+      type(again, 'test-password');
+      expect(store().passwordConfirmed()).toBe(true);
+      // The press itself needs a trusted event (the base app's gesture gate): what the drawn Continue
+      // invokes is read from the deployment's own base, and invoked as a press would.
+      const step = findNode(deploymentBase(SEED)!.template, (n) => n.id === 'base__password');
+      const button = step && findNode(step, (n) => n.type === 'we-button' && n.children?.[0] === 'Continue');
+      expect(button?.props?.onClick).toEqual({ $invoke: 'baseStore.submitPassword' });
+      await store().submitPassword();
+      expect(given).toEqual(['test-password']);
+    });
+
+    it('asks for the password of an agent made with one in one field, and says when it is wrong', async () => {
+      const { store, given } = noKeyring('needs-password', 'wrong');
+      await until(() => screen.queryByText('Enter your WE password') !== null);
+      expect(fields()).toHaveLength(1);
+      type(fields()[0], 'not-the-password');
+      await store().submitPassword();
+      expect(given).toEqual(['not-the-password']);
+      await until(() => screen.queryByText('That password did not unlock your agent. Try again.') !== null);
+      expect(store().stage()).toBe('password');
+    });
+  });
+
   it('takes the page back to the offline state when the place cannot be reached', async () => {
     const { store } = boot({
       connector: async () => connector(async () => Promise.reject(new Error('Failed to fetch'))),

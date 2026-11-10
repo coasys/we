@@ -17,11 +17,15 @@
 //!
 //! The supervisor runs `we-custody wallet-passphrase read|make --data-folder <dir>` and reads one
 //! JSON line ([`answer_line`]); nothing else is printed, and a refusal's line carries no secret.
+//! What this process holds of the passphrase is zeroised when it is dropped; the supervisor's
+//! JavaScript strings and the executor still hold plaintext copies, so this is defence in depth, not
+//! zeroisation end to end.
 
 use std::path::{Path, PathBuf};
 
 use ad4m_identity_client::VaultError;
 use rand_core::{OsRng, RngCore};
+use serde::Serialize;
 use zeroize::Zeroizing;
 
 use crate::store::{is_keyring_locked, SecretStore};
@@ -107,18 +111,66 @@ pub fn answer(store: &dyn SecretStore, name: &str, mode: Mode) -> Answer {
     }
 }
 
+/// The line as it is written: borrowed from the [`Answer`], so the passphrase is copied once, into
+/// the line's own buffer.
+#[derive(Serialize)]
+#[serde(untagged)]
+enum Line<'a> {
+    Passphrase {
+        passphrase: &'a str,
+    },
+    None {
+        none: bool,
+    },
+    Refused {
+        refused: &'static str,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        reason: Option<&'a str>,
+    },
+}
+
+/// Everything in a line but its one text, with room to spare: `{"refused":"unavailable","reason":""}`
+/// is the longest, at 38 bytes.
+const LINE_FRAME: usize = 64;
+
+/// What [`answer_line`] reserves for `answer`'s line: its frame and its text with every character
+/// escaped as `\u00XX`, six bytes, the most JSON writes for one byte. The line never needs more, so
+/// its buffer is never grown.
+pub fn line_capacity(answer: &Answer) -> usize {
+    let text = match answer {
+        Answer::Passphrase(p) => p.len(),
+        Answer::Unavailable(reason) => reason.len(),
+        Answer::None | Answer::Locked => 0,
+    };
+    LINE_FRAME + 6 * text
+}
+
 /// The one line the command prints: `{"passphrase": …}`, `{"none": true}`, or
 /// `{"refused": "locked" | "unavailable", "reason": …}`.
+///
+/// Written straight into one buffer, reserved up front ([`line_capacity`]) and zeroised on drop: no
+/// `serde_json::Value` or `String` in between holds the passphrase, and the buffer is never grown,
+/// which would free its old copy without zeroising it. This is defence in depth on this side only,
+/// not zeroisation end to end: the supervisor reads the line into JavaScript strings, and the
+/// executor keeps the passphrase it is given, and neither is zeroised.
 pub fn answer_line(answer: &Answer) -> Zeroizing<String> {
-    let value = match answer {
-        Answer::Passphrase(p) => serde_json::json!({ "passphrase": p.as_str() }),
-        Answer::None => serde_json::json!({ "none": true }),
-        Answer::Locked => serde_json::json!({ "refused": "locked" }),
-        Answer::Unavailable(reason) => {
-            serde_json::json!({ "refused": "unavailable", "reason": reason })
-        }
+    let line = match answer {
+        Answer::Passphrase(p) => Line::Passphrase { passphrase: p },
+        Answer::None => Line::None { none: true },
+        Answer::Locked => Line::Refused {
+            refused: "locked",
+            reason: None,
+        },
+        Answer::Unavailable(reason) => Line::Refused {
+            refused: "unavailable",
+            reason: Some(reason),
+        },
     };
-    Zeroizing::new(value.to_string())
+    let mut bytes = Zeroizing::new(Vec::with_capacity(line_capacity(answer)));
+    serde_json::to_writer(&mut *bytes, &line).expect("a line of strings is written to memory");
+    debug_assert!(bytes.capacity() == line_capacity(answer), "the line grew");
+    // JSON is UTF-8; the buffer moves into the String, uncopied.
+    Zeroizing::new(String::from_utf8(std::mem::take(&mut *bytes)).expect("JSON is UTF-8"))
 }
 
 /// `read|make --data-folder <dir>`: the mode and the item it names.

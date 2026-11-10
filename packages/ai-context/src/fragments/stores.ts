@@ -766,6 +766,10 @@ export const storeEntries: StoreEntry[] = [
       lastOutcome: { type: 'string' },
       error: { type: 'string' },
       offlineReason: { type: 'string' },
+      passwordIsNew: { type: 'boolean' },
+      passwordWrong: { type: 'boolean' },
+      passwordEntered: { type: 'boolean' },
+      passwordConfirmed: { type: 'boolean' },
     },
     actions: [
       'refresh',
@@ -778,6 +782,8 @@ export const storeEntries: StoreEntry[] = [
       'showConnections',
       'openPage',
       'closePage',
+      'submitPassword',
+      'clearPasswordWrong',
     ],
   },
   {
@@ -2202,7 +2208,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   baseStore: {
     state: {
       stage:
-        "'loading' | 'starting' | 'failed' | 'first-run' | 'connect' | 'offline' | 'handing-off' | 'session' — which screen of the app before a session is due. Only a bundle's `base` template (role 'base') reads this store, and only before WE's app has a session: `starting`/`failed` while this device's own backend starts or after it failed to, `first-run` for the three doors, `connect` for the connection choice, `offline` when the chosen place cannot be reached, `handing-off` while it is reached, `session` once the app has it (nothing of the base is drawn then)",
+        "'loading' | 'starting' | 'failed' | 'password' | 'first-run' | 'connect' | 'offline' | 'handing-off' | 'session' — which screen of the app before a session is due. Only a bundle's `base` template (role 'base') reads this store, and only before WE's app has a session: `starting`/`failed` while this device's own backend starts or after it failed to, `password` while its agent waits on the WE password because this computer has no keyring it can use (draw a CredentialField and Continue), `first-run` for the three doors, `connect` for the connection choice, `offline` when the chosen place cannot be reached, `handing-off` while it is reached, `session` once the app has it (nothing of the base is drawn then)",
       page: "'' | 'devices' | 'security' — a read-only page open over the stage",
       hostKind: "'computer' | 'phone' | 'browser' — what this device is",
       deviceNoun:
@@ -2234,6 +2240,13 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       lastOutcome: "'done' | 'cancelled' | 'failed' | '' — how the last identity step ended",
       error: 'string — why the last step, read or connection failed, ready to show; empty otherwise',
       offlineReason: 'string — why the offline state is up: no network, or the place chosen could not be reached',
+      passwordIsNew:
+        "boolean — on the password stage, the password makes this computer's agent (a first start): ask for it twice, with CredentialField purpose 'new'; false: it unlocks one, purpose 'unlock'",
+      passwordWrong:
+        'boolean — the password last given did not unlock the agent: say so beside the field, and clear it with clearPasswordWrong as the field is typed in (onEdit)',
+      passwordEntered: 'boolean — something is typed in the password field (never what): gate Continue on it',
+      passwordConfirmed:
+        'boolean — a new password is typed twice, the same both times: gate Continue on it where passwordIsNew',
     },
     actions: {
       refresh: '(): reads the identity and the connections again and works out the stage afresh',
@@ -2251,6 +2264,9 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       showConnections: '(): back to the connection choice, from offline or after a first run',
       openPage: "(page: 'devices' | 'security'): opens a read-only page over the stage",
       closePage: '(): closes it',
+      submitPassword:
+        "(): Continue on the password stage — gives what the host's CredentialField holds to this computer's backend, which makes or unlocks the agent with it, and clears the field. Takes no argument: the password is never in a template. Wire it to the field's onSubmit and to the button",
+      clearPasswordWrong: '(): takes back passwordWrong; wire it to the field’s onEdit',
     },
   },
   deviceStore: {

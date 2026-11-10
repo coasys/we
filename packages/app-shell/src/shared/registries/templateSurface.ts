@@ -1497,6 +1497,10 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     lastOutcome: state('keys'),
     error: state('session'),
     offlineReason: state('session'),
+    passwordIsNew: state('session'),
+    passwordWrong: state('session'),
+    passwordEntered: state('session'),
+    passwordConfirmed: state('session'),
     refresh: ambient('session'),
     makeIdentity: action('keys'),
     linkIdentity: action('keys'),
@@ -1508,6 +1512,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     openPage: ambient('session'),
     closePage: ambient('session'),
     handBack: WIRING,
+    // Gives the host's own password field to the backend: a press. The template never holds the value.
+    submitPassword: action('session'),
+    clearPasswordWrong: ambient('session'),
   },
   deviceStore: {
     devices: state('devices'),

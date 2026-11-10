@@ -43,7 +43,7 @@ import {
 import { LOG_WORDS, startFailureWords, stoppedWords } from './executorWords.js';
 import { createIdentity, IDENTITY_PAGE, IDENTITY_SCHEME, identityFile, isIdentityPage } from './identityWindow.js';
 import { executorSpawnEnv, handleFromWindow, isFromWindow } from './ipcSender.js';
-import { ensureMainAgent, executorRpc, walletKeyring } from './mainAgent.js';
+import { ensureMainAgent, executorRpc, giveAgentPassword, keptMarker, walletKeyring } from './mainAgent.js';
 import {
   allowMediaPermission,
   isExternallyOpenable,
@@ -102,11 +102,18 @@ let executorLog = null;
 let executorUp = false;
 let executorState = { phase: 'starting' };
 /**
- * The main agent as the last start left it (`mainAgent.js`): `'unlocked'`, `'locked'` (made with a WE
- * password, left to sign-in), or null where the supervisor does not make it (no custody). Told to the
- * window with `ready`, as `agent`: the identity doors need it unlocked.
+ * The main agent as last read (`mainAgent.js`): `'unlocked'`, `'locked'` (nothing kept for it, left to
+ * sign-in), `'needs-new-password'` / `'needs-password'` (no keyring to use: the WE password is asked
+ * for, `executor-agent-password`), or null where the supervisor does not make it (no custody). Set by
+ * each start, and read again when the window asks for `executor-state` (`refreshMainAgent`), since
+ * sign-in unlocks a locked one later. Told to the window with `ready`, as `agent`: the identity doors
+ * need it unlocked.
  */
 let mainAgent = null;
+/** The data folder of the executor `mainAgent` was read from: where its kept passphrase is noted. */
+let mainAgentFolder = null;
+/** The agent states the WE password is asked for in. */
+const ASKS_PASSWORD = new Set(['needs-new-password', 'needs-password']);
 const readyState = () => (mainAgent ? { phase: 'ready', agent: mainAgent } : { phase: 'ready' });
 /** The start running now, so a second "Try again" waits on it rather than starting another. */
 let executorBooting = null;
@@ -549,6 +556,7 @@ async function startExecutorOnce({ samePort }) {
 
     console.log('AD4M executor ready');
     mainAgent = null;
+    mainAgentFolder = ad4mDataPath;
     mainAgent = await ensureMainAgentFor(ad4mPort, ad4mToken, ad4mDataPath);
     startCustodyFor(ad4mPort, custodyToken);
   } catch (error) {
@@ -613,7 +621,8 @@ const custodyBinaryHere = () => {
  * for `dataPath` (`mainAgent.js`): the identity doors run against it. A stopgap: slice 3's AR-06
  * (`storage.unlock`) replaces it. Where identity is off there is nothing to make it for, and WE's own
  * create and sign-in make and unlock it, as they always have: null. Throws, in words for the window,
- * when the keyring is locked or missing.
+ * when the keyring is locked or missing for an agent whose passphrase it keeps; for any other agent a
+ * keyring that refuses is `needs-new-password` or `needs-password`.
  */
 async function ensureMainAgentFor(port, token, dataPath) {
   const binary = custodyBinaryHere();
@@ -623,6 +632,7 @@ async function ensureMainAgentFor(port, token, dataPath) {
     const agent = await ensureMainAgent({
       call: rpc.call,
       keyring: walletKeyring({ binary, dataFolder: dataPath }),
+      marker: keptMarker(dataPath),
     });
     console.log('[main] The main agent is', agent);
     return agent;
@@ -630,6 +640,78 @@ async function ensureMainAgentFor(port, token, dataPath) {
     rpc.close();
   }
 }
+
+/**
+ * Reads the main agent again where the executor is ready and the supervisor made it (`mainAgent` set),
+ * and tells the window if it has changed: a WE password's agent is unlocked by sign-in, after the
+ * start. A read that fails, or a start begun meanwhile, leaves the state as it was. Never throws.
+ */
+async function refreshMainAgent() {
+  if (!mainAgent || executorBooting || executorState.phase !== 'ready' || !ad4mPort || !ad4mToken) return;
+  // What it was asked of: an answer from an executor started since is not this one's.
+  const asked = { state: executorState, port: ad4mPort, token: ad4mToken };
+  const rpc = executorRpc({ port: asked.port, token: asked.token, timeoutMs: 5_000 });
+  let now;
+  try {
+    const status = await rpc.call('agent.status');
+    // Still locked, an agent the WE password is asked for is still asked it: never `locked`.
+    now = status?.isUnlocked ? 'unlocked' : ASKS_PASSWORD.has(mainAgent) ? mainAgent : 'locked';
+  } catch (err) {
+    console.error('[main] Could not read the main agent again:', err?.message);
+    return;
+  } finally {
+    rpc.close();
+  }
+  const same = executorState === asked.state && ad4mPort === asked.port && ad4mToken === asked.token;
+  if (!same || executorBooting || !mainAgent || now === mainAgent) return;
+  console.log('[main] The main agent is now', now);
+  mainAgent = now;
+  setExecutorState(readyState());
+}
+
+/**
+ * The WE password, sent by the window's password step where the start answered `needs-new-password` or
+ * `needs-password` (`executor-agent-password`). Answers `'unlocked'` (the window hears `ready` with the
+ * agent unlocked), `'wrong'` (it stays as it was, and the step asks again), `'refused'` (no password is
+ * asked for now, or this is not one) or `'failed'` (the executor could not make or unlock it: the
+ * window hears the start failed, with "Try again").
+ *
+ * The password goes to the executor in this one call and nowhere else: it is not logged, kept, or put
+ * in an argument or the environment of any process.
+ */
+let agentPasswordBusy = false;
+async function takeAgentPassword(password) {
+  if (typeof password !== 'string' || !password) return 'refused';
+  if (agentPasswordBusy || executorBooting || executorState.phase !== 'ready' || !ASKS_PASSWORD.has(mainAgent))
+    return 'refused';
+  agentPasswordBusy = true;
+  const asked = { state: executorState, need: mainAgent };
+  const rpc = executorRpc({ port: ad4mPort, token: ad4mToken });
+  try {
+    const answer = await giveAgentPassword({
+      call: rpc.call,
+      need: asked.need,
+      password,
+      marker: keptMarker(mainAgentFolder),
+    });
+    if (answer === 'unlocked' && executorState === asked.state) {
+      mainAgent = 'unlocked';
+      setExecutorState(readyState());
+    }
+    return answer;
+  } catch (err) {
+    // The executor's own words, which carry no password.
+    console.error('[main] The WE password could not make or unlock the main agent:', err?.message);
+    if (executorState === asked.state) setExecutorState({ phase: 'failed', reason: AGENT_PASSWORD_FAILED });
+    return 'failed';
+  } finally {
+    agentPasswordBusy = false;
+    rpc.close();
+  }
+}
+
+const AGENT_PASSWORD_FAILED =
+  "The app could not make or unlock your agent with your password. Try again; if it keeps happening, the executor's log says why.";
 
 /** Starts the sidecar against the executor on `port`, whose custody credential is `credential`. */
 function startCustodyFor(port, credential) {
@@ -1122,8 +1204,21 @@ handle('accounts-apply', () => restartExecutorAndReload());
  */
 handle('executor-restart', () => restartExecutorAndReload());
 
-/** The executor as the window last heard it: `{ phase: 'starting' | 'ready' | 'failed', reason? }`. */
-handle('executor-state', () => executorState);
+/**
+ * The executor as the window last heard it: `{ phase: 'starting' | 'ready' | 'failed', reason?, agent? }`.
+ * Ready, its agent is read again first (`agent.status`): WE's sign-in unlocks a locked one after the
+ * start that reported it, and the base app asks again when it is shown, to open its doors then.
+ */
+handle('executor-state', async () => {
+  await refreshMainAgent();
+  return executorState;
+});
+
+/**
+ * The WE password, from the base app's password step, where no keyring could be used: see
+ * `takeAgentPassword`. Only the main window may send it (`handle`).
+ */
+handle('executor-agent-password', (_event, password) => takeAgentPassword(password));
 
 /**
  * Try again after a start failed. Answers at once; the window hears how it went as `executor-state`.

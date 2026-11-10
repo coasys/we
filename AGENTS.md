@@ -3050,7 +3050,7 @@ AppStore:
 
 BaseStore:
 - State:
-  - stage: 'loading' | 'starting' | 'failed' | 'first-run' | 'connect' | 'offline' | 'handing-off' | 'session' — which screen of the app before a session is due. Only a bundle's `base` template (role 'base') reads this store, and only before WE's app has a session: `starting`/`failed` while this device's own backend starts or after it failed to, `first-run` for the three doors, `connect` for the connection choice, `offline` when the chosen place cannot be reached, `handing-off` while it is reached, `session` once the app has it (nothing of the base is drawn then)
+  - stage: 'loading' | 'starting' | 'failed' | 'password' | 'first-run' | 'connect' | 'offline' | 'handing-off' | 'session' — which screen of the app before a session is due. Only a bundle's `base` template (role 'base') reads this store, and only before WE's app has a session: `starting`/`failed` while this device's own backend starts or after it failed to, `password` while its agent waits on the WE password because this computer has no keyring it can use (draw a CredentialField and Continue), `first-run` for the three doors, `connect` for the connection choice, `offline` when the chosen place cannot be reached, `handing-off` while it is reached, `session` once the app has it (nothing of the base is drawn then)
   - page: '' | 'devices' | 'security' — a read-only page open over the stage
   - hostKind: 'computer' | 'phone' | 'browser' — what this device is
   - deviceNoun: 'computer' | 'phone' | 'browser' — the same, for a sentence: 'This ' + baseStore.deviceNoun + ' keeps no master key'
@@ -3073,6 +3073,10 @@ BaseStore:
   - lastOutcome: 'done' | 'cancelled' | 'failed' | '' — how the last identity step ended
   - error: string — why the last step, read or connection failed, ready to show; empty otherwise
   - offlineReason: string — why the offline state is up: no network, or the place chosen could not be reached
+  - passwordIsNew: boolean — on the password stage, the password makes this computer's agent (a first start): ask for it twice, with CredentialField purpose 'new'; false: it unlocks one, purpose 'unlock'
+  - passwordWrong: boolean — the password last given did not unlock the agent: say so beside the field, and clear it with clearPasswordWrong as the field is typed in (onEdit)
+  - passwordEntered: boolean — something is typed in the password field (never what): gate Continue on it
+  - passwordConfirmed: boolean — a new password is typed twice, the same both times: gate Continue on it where passwordIsNew
 - Actions:
   - refresh(): reads the identity and the connections again and works out the stage afresh
   - makeIdentity(): "Make my identity here" — opens the host’s identity window on making one (the 12 words are shown there, never here); resolves with the outcome, and the stage moves on once the identity exists
@@ -3084,6 +3088,8 @@ BaseStore:
   - showConnections(): back to the connection choice, from offline or after a first run
   - openPage(page: 'devices' | 'security'): opens a read-only page over the stage
   - closePage(): closes it
+  - submitPassword(): Continue on the password stage — gives what the host's CredentialField holds to this computer's backend, which makes or unlocks the agent with it, and clears the field. Takes no argument: the password is never in a template. Wire it to the field's onSubmit and to the button
+  - clearPasswordWrong(): takes back passwordWrong; wire it to the field’s onEdit
 
 BotStore:
 - State:

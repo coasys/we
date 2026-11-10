@@ -29907,6 +29907,168 @@
       {
         "type": "$if",
         "props": {
+          "condition": { "$": "baseStore.stage == 'password'" },
+          "then": {
+            "id": "base__password",
+            "type": "Column",
+            "props": {
+              "position": "fixed",
+              "top": "0",
+              "left": "0",
+              "width": "100vw",
+              "height": "100dvh",
+              "bg": "page",
+              "overflowY": "auto",
+              "gap": "600",
+              "pb": "800"
+            },
+            "children": [
+              {
+                "type": "Row",
+                "props": { "width": "100%", "ay": "center", "ax": "space-between", "gap": "300", "minHeight": "72px" },
+                "children": [
+                  {
+                    "type": "Row",
+                    "props": { "ay": "center", "gap": "300", "pl": "calc((72px - 28px) / 2)" },
+                    "children": [
+                      {
+                        "type": "we-image",
+                        "props": {
+                          "src": { "$": "baseStore.brand.mark" },
+                          "alt": "",
+                          "width": "28px",
+                          "height": "28px",
+                          "flexShrink": 0
+                        }
+                      },
+                      {
+                        "type": "we-text",
+                        "props": { "variant": "body", "fontWeight": "semibold", "letterSpacing": "tight" },
+                        "children": [{ "$": "baseStore.brand.name" }]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
+                      "condition": { "$": "baseStore.identityKnown && baseStore.did != ''" },
+                      "then": {
+                        "type": "Row",
+                        "props": { "gap": "200", "pr": "400" },
+                        "children": [
+                          {
+                            "type": "we-button",
+                            "props": {
+                              "variant": "ghost",
+                              "size": "sm",
+                              "onClick": { "$invoke": "baseStore.openPage", "args": ["devices"] }
+                            },
+                            "children": [
+                              { "type": "we-icon", "props": { "name": "devices", "slot": "start" } },
+                              "Devices"
+                            ]
+                          },
+                          {
+                            "type": "we-button",
+                            "props": {
+                              "variant": "ghost",
+                              "size": "sm",
+                              "onClick": { "$invoke": "baseStore.openPage", "args": ["security"] }
+                            },
+                            "children": [
+                              { "type": "we-icon", "props": { "name": "shield-check", "slot": "start" } },
+                              "Security"
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "Column",
+                "props": { "width": "100%", "maxWidth": "720px", "mx": "auto", "px": "600", "gap": "600" },
+                "children": [
+                  {
+                    "type": "Column",
+                    "props": { "gap": "200" },
+                    "children": [
+                      {
+                        "type": "we-text",
+                        "props": { "variant": "heading-xl", "tag": "h1" },
+                        "children": [
+                          { "$": "baseStore.passwordIsNew ? 'Choose your WE password' : 'Enter your WE password'" }
+                        ]
+                      },
+                      {
+                        "type": "we-text",
+                        "props": { "color": "text-muted" },
+                        "children": [
+                          "This computer’s keyring is not available, so your WE password protects your agent on this computer."
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "CredentialField",
+                    "props": {
+                      "purpose": { "$": "baseStore.passwordIsNew ? 'new' : 'unlock'" },
+                      "width": "100%",
+                      "placeholder": "Password...",
+                      "confirmPlaceholder": "Password again...",
+                      "onEdit": { "$invoke": "baseStore.clearPasswordWrong" },
+                      "onSubmit": { "$invoke": "baseStore.submitPassword" }
+                    }
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
+                      "condition": { "$": "baseStore.passwordWrong" },
+                      "then": {
+                        "type": "we-alert",
+                        "props": { "tone": "danger" },
+                        "children": [{ "$": "'That password did not unlock your agent. Try again.'" }]
+                      }
+                    }
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
+                      "condition": { "$": "baseStore.error != ''" },
+                      "then": {
+                        "type": "we-alert",
+                        "props": { "tone": "danger" },
+                        "children": [{ "$": "baseStore.error" }]
+                      }
+                    }
+                  },
+                  {
+                    "type": "Row",
+                    "children": [
+                      {
+                        "type": "we-button",
+                        "props": {
+                          "variant": "primary",
+                          "loading": { "$": "baseStore.busy" },
+                          "disabled": {
+                            "$": "!baseStore.passwordEntered || (baseStore.passwordIsNew && !baseStore.passwordConfirmed)"
+                          },
+                          "onClick": { "$invoke": "baseStore.submitPassword" }
+                        },
+                        "children": ["Continue"]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "type": "$if",
+        "props": {
           "condition": { "$": "baseStore.stage == 'loading' || baseStore.stage == 'handing-off'" },
           "then": {
             "id": "base__connecting",

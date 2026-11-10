@@ -11,7 +11,9 @@
  *
  * 1. **The device's own backend.** Where the host runs one (`executor`), nothing else is asked until
  *    it is up — the identity lives behind it on the desktop — and a failure to start is a screen with
- *    the reason and "Try again", not a dialog and a quit.
+ *    the reason and "Try again", not a dialog and a quit. Where it is up but its agent waits on the
+ *    WE password (a desktop with no keyring it can use), that is asked for first, in the host's own
+ *    field (`CredentialField`, read through `credential`), and given to the host, never to a template.
  * 2. **The first run.** A device whose custody speaks for nobody, keeps no master key, and where
  *    "Start now" was not chosen is asked how it comes in: make the identity here, link to one, or use
  *    the 12 words. Each door opens the host's own identity window, the only place a secret is shown or
@@ -26,6 +28,7 @@
  */
 import { custodyDevice, DEVICE_ICONS, shortDid, THIS_COMPUTER, THIS_PHONE } from '@shared/identityRows';
 import type {
+  BaseAgentPasswordAnswer,
   BaseConnection,
   BaseDoor,
   BaseExecutorState,
@@ -36,12 +39,14 @@ import type {
 import type { IdentityChangeOutcome, IdentityCustodyView } from '@we/backend-shared';
 import { type Accessor, batch, createMemo, createSignal, getOwner, onCleanup } from 'solid-js';
 
+import { credential } from '../credential';
 import { START_NOW_HERE_KEY } from './IdentityStore';
 
 export interface BaseStore {
   /**
    * Which screen is due: `loading` while the identity is read, `starting` / `failed` while this
-   * device's backend starts or after it failed to, `first-run`, `connect` (the connection choice),
+   * device's backend starts or after it failed to, `password` while its agent waits on the WE
+   * password (no keyring could be used), `first-run`, `connect` (the connection choice),
    * `offline`, `handing-off` while the chosen connection is reached, `session` once WE's app has it.
    */
   stage: Accessor<BaseStage>;
@@ -93,6 +98,14 @@ export interface BaseStore {
   error: Accessor<string>;
   /** Why the offline state is up: no network, or the place chosen could not be reached. */
   offlineReason: Accessor<string>;
+  /** The password asked for makes this device's agent, so it is a new one: typed twice. */
+  passwordIsNew: Accessor<boolean>;
+  /** The password last given did not unlock the agent; cleared when the field is typed in again. */
+  passwordWrong: Accessor<boolean>;
+  /** Something is typed in the password field. Never what. */
+  passwordEntered: Accessor<boolean>;
+  /** A new password is typed twice, the same both times. */
+  passwordConfirmed: Accessor<boolean>;
 
   /** Reads the identity and the connections again, and works out the stage afresh. */
   refresh: () => Promise<void>;
@@ -115,10 +128,18 @@ export interface BaseStore {
   closePage: () => void;
   /** The host's own: a session the app had came back unreachable, and the offline state is due. */
   handBack: (reason: string) => void;
+  /**
+   * "Continue" on the password step: gives what the password field holds to this device's backend,
+   * which makes or unlocks its agent with it, then clears the field. Takes no argument: the password
+   * is read from the host's own field, never passed by a template.
+   */
+  submitPassword: () => Promise<void>;
+  /** Takes back "that password was wrong", as the password field is typed in again. */
+  clearPasswordWrong: () => void;
 }
 
 export type BaseStage =
-  'loading' | 'starting' | 'failed' | 'first-run' | 'connect' | 'offline' | 'handing-off' | 'session';
+  'loading' | 'starting' | 'failed' | 'password' | 'first-run' | 'connect' | 'offline' | 'handing-off' | 'session';
 
 export type BasePage = '' | 'devices' | 'security';
 
@@ -211,6 +232,10 @@ const KIND_WORDS: Record<string, string> = {
 };
 
 const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
+
+/** The agent states that wait on the WE password, because no keyring could be used. */
+const asksPassword = (state: BaseExecutorState | null): boolean =>
+  state?.phase === 'ready' && (state.agent === 'needs-password' || state.agent === 'needs-new-password');
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 function defaultStorage(): BaseStorage {
@@ -258,6 +283,7 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
   const [lastOutcome, setLastOutcome] = createSignal<IdentityChangeOutcome | ''>('');
   const [error, setError] = createSignal('');
   const [offlineReason, setOfflineReason] = createSignal('');
+  const [passwordWrong, setPasswordWrong] = createSignal(false);
   const [startNowChosen, setStartNowChosen] = createSignal(
     safely(() => storage.getItem(START_NOW_HERE_KEY) === '1', false),
   );
@@ -324,6 +350,15 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
       setStage(own.phase === 'failed' ? 'failed' : 'starting');
       return;
     }
+    /*
+      The agent waits on the WE password. Asked here only where a base template draws the step (an
+      identity to keep) and the host can take it; otherwise WE's own sign-in and create ask for it,
+      as they did before there was a keyring.
+    */
+    if (asksPassword(own) && host.identity && host.executor?.givePassword) {
+      setStage('password');
+      return;
+    }
     if (host.identity && !custody()) {
       setStage('loading');
       await readIdentity(current);
@@ -375,6 +410,26 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
   const doorStep = (door: BaseDoor | undefined) => (door?.step ? door.step : null);
   const doorNote = (door: BaseDoor | undefined) => (door && !door.step ? door.note : '');
 
+  /*
+    Asks this device's backend again how it is (`BaseExecutor.refresh`): what it said at its start goes
+    stale where a session changes it without a word (WE's sign-in unlocks a locked agent), and the
+    doors follow it. Done when the base app is shown again and before a door is opened. A host that
+    cannot answer leaves the state as it was.
+  */
+  async function lookAgain(): Promise<void> {
+    try {
+      await host.executor?.refresh?.();
+    } catch {
+      // As it was: this is a second look, not a start.
+    }
+  }
+
+  async function openDoor(which: 'make' | 'link' | 'words'): Promise<IdentityChangeOutcome> {
+    await lookAgain();
+    const door = host.identity?.doors[which];
+    return open(doorStep(door), doorNote(door));
+  }
+
   async function choose(id: string, how: BaseHandOff = {}): Promise<void> {
     const connection = connections().find((c) => c.id === id);
     if (!connection) {
@@ -417,8 +472,13 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
     const off = host.executor.subscribe((next) => {
       const before = executor();
       setExecutor(next);
-      // A session has its own way to follow its backend; and ready twice is nothing new.
-      if (stage() === 'session' || (next.phase === 'ready' && before?.phase === 'ready')) return;
+      /*
+        A session has its own way to follow its backend; and ready twice is nothing new, unless the
+        agent came to wait on the password or stopped waiting on it.
+      */
+      const sameReady =
+        next.phase === 'ready' && before?.phase === 'ready' && stage() !== 'password' && !asksPassword(next);
+      if (stage() === 'session' || sameReady) return;
       void evaluate();
     });
     if (getOwner()) onCleanup(off);
@@ -507,14 +567,22 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
     lastOutcome,
     error,
     offlineReason,
+    passwordIsNew: () => {
+      const state = executor();
+      return state?.phase === 'ready' && state.agent === 'needs-new-password';
+    },
+    passwordWrong,
+    passwordEntered: credential.entered,
+    passwordConfirmed: credential.confirmed,
 
     refresh: async () => {
       setCustody(null);
+      await lookAgain();
       await evaluate();
     },
-    makeIdentity: () => open(doorStep(host.identity?.doors.make), doorNote(host.identity?.doors.make)),
-    linkIdentity: () => open(doorStep(host.identity?.doors.link), doorNote(host.identity?.doors.link)),
-    useWords: () => open(doorStep(host.identity?.doors.words), doorNote(host.identity?.doors.words)),
+    makeIdentity: () => openDoor('make'),
+    linkIdentity: () => openDoor('link'),
+    useWords: () => openDoor('words'),
     startNow: async () => {
       safely(() => storage.setItem(START_NOW_HERE_KEY, '1'), undefined);
       setStartNowChosen(true);
@@ -545,7 +613,7 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
       auto = false;
       setPage('');
       const asked = ++generation;
-      const list = await loadConnections(() => asked === generation);
+      const [list] = await Promise.all([loadConnections(() => asked === generation), lookAgain()]);
       if (list) setStage('connect');
     },
     openPage: (next) => setPage(next === 'devices' || next === 'security' ? next : ''),
@@ -557,7 +625,45 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
         setOfflineReason(reason);
         setStage('offline');
       });
+      // The base app is shown again: the session may have unlocked the agent.
+      void lookAgain();
     },
+    submitPassword: async () => {
+      const own = host.executor;
+      const asked = executor();
+      if (!own?.givePassword || !asksPassword(asked) || busy()) return;
+      const password = credential.read();
+      if (!password) return;
+      if (store.passwordIsNew() && !credential.confirmed()) {
+        // Typed once, or twice and not the same: the field says which.
+        credential.touch();
+        return;
+      }
+      batch(() => {
+        setBusy(true);
+        setError('');
+        setPasswordWrong(false);
+      });
+      let answer: BaseAgentPasswordAnswer | null = null;
+      try {
+        answer = await own.givePassword(password);
+      } catch (e) {
+        setError(message(e));
+      } finally {
+        credential.clear();
+        setBusy(false);
+      }
+      if (answer === null) return;
+      if (answer === 'wrong') {
+        setPasswordWrong(true);
+        return;
+      }
+      // Unlocked, refused (the host had moved on) or failed: the host's state says what follows.
+      if (answer === 'unlocked' && executor() === asked) setExecutor({ phase: 'ready', agent: 'unlocked' });
+      await lookAgain();
+      await evaluate();
+    },
+    clearPasswordWrong: () => setPasswordWrong(false),
   };
 
   void evaluate();
