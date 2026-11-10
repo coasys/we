@@ -3,12 +3,12 @@
  * token the client WE keeps on dials with after a renewal.
  *
  * `@coasys/ad4m` and `@coasys/ad4m-connect/core` are replaced by small doubles that keep the
- * two facts under test true to the pinned sources (cd97f2ac2): `Ad4mClient` takes its token at
- * construction and has no way to change it (`core/src/apiClient.ts:140-148`, `:205`: every dial
- * uses that token; `:176`: "a new token needs a new client"); `Ad4mConnect`'s constructor restores
- * the stored `ad4m-token` (`connect/src/core.ts:104`), `connect()` builds the client from
+ * two facts under test true to the pinned sources (1fc10759c): `Ad4mClient` takes its token at
+ * construction and `setToken` replaces it for every later call and the next connection
+ * (`core/src/Ad4mClient.ts:152-155`, `core/src/apiClient.ts:194`); `Ad4mConnect`'s constructor
+ * restores the stored `ad4m-token` (`connect/src/core.ts:104`), `connect()` builds the client from
  * `this.token` and writes `ad4m-url` (`:197`, `:213`), and `disconnect()` removes the stored token
- * (`:345-346`). Storage keys are prefixed with the connect package's version (`connect/src/utils.ts`).
+ * (`:344-345`). Storage keys are prefixed with the connect package's version (`connect/src/utils.ts`).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -63,6 +63,10 @@ vi.mock('@coasys/ad4m', () => {
       public baseUrl: string,
       public token?: string,
     ) {}
+    /** What the real one dials with from here on (`core/src/Ad4mClient.ts:152-155`). */
+    setToken(token: string) {
+      this.token = token;
+    }
     close() {}
   }
   return { Ad4mClient };
@@ -283,12 +287,10 @@ describe('createDeviceKeyConnector', () => {
     });
   });
 
-  // Known gap (review of #436 at 110995400): `onToken` sets `core.token` only. The `Ad4mClient`
-  // built by `connect()` keeps the token it was constructed with, and the ports and the renewal
-  // hold that client, so the first dial after the original token expires goes out with it. The
-  // fix is a client that can take a new token, or a rebuild of the client and everything that
-  // holds it; when it lands, this becomes `it(...)`.
-  it.fails('dials with the renewed token after a renewal', async () => {
+  // The gap the review of #436 at 110995400 found: the `Ad4mClient` built by `connect()` kept the
+  // token it was constructed with, and the ports and the renewal hold that client, so the first
+  // dial after the original token expired went out with it. `onToken` now hands it the new one.
+  it('dials with the renewed token after a renewal', async () => {
     const { createDeviceKeyConnector } = await import('./deviceKeyConnector');
     const connector = createDeviceKeyConnector(fallback, { plugin, keyHost: () => 'https://b.example' });
     const result = await connector.initialize(ctx);
@@ -504,15 +506,5 @@ describe('a key session that ends by itself', () => {
     // Nor is one that is not a time.
     local.setItem('we-phone/key-session-ended-too-soon', 'yes');
     expect(takeEndedTooSoon(undefined, 10)).toBe(false);
-  });
-
-  it('hands a renewed token to a client that can take one', async () => {
-    const { handRenewedToken } = await import('./deviceKeyConnector');
-    const setToken = vi.fn();
-    expect(handRenewedToken({ setToken }, 'token-2')).toBe(true);
-    expect(setToken).toHaveBeenCalledWith('token-2');
-    // The pinned Ad4mClient has no `setToken`: nothing to call, and nothing thrown.
-    expect(handRenewedToken({}, 'token-2')).toBe(false);
-    expect(handRenewedToken(undefined, 'token-2')).toBe(false);
   });
 });

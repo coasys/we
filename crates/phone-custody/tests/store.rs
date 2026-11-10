@@ -5,18 +5,21 @@
 //! The phone's calls block, as they do on Android's background thread; the computer's flows run
 //! on the test's runtime between them.
 
+use std::cell::Cell;
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use std::task::Poll;
 
 use ad4m_identity_client::flows::create::{CreateFlow, CreateScreen};
 use ad4m_identity_client::flows::link::LinkFlow;
-use ad4m_identity_client::flows::master::take_master;
+use ad4m_identity_client::flows::master::{send_master, take_master};
 use ad4m_identity_client::flows::requests::{answer, ask_confirm_revoke, ask_for_master};
+use ad4m_identity_client::flows::rotate::rotate;
 use ad4m_identity_client::record;
 use ad4m_identity_client::{
-    ExecutorRpc, HttpClient, HttpError, HttpRequest, HttpResponse, MemoryVault, OsRandom,
-    SoftEncKey, StoreEndpoint, SystemClock, Vault, ViaExecutor, ViaStore,
+    ClientError, ExecutorRpc, HttpClient, HttpError, HttpRequest, HttpResponse, MemoryVault,
+    OsRandom, RpcError, SoftEncKey, StoreEndpoint, SystemClock, Vault, ViaExecutor, ViaStore,
 };
 use ad4m_identity_core::link::OfferKind;
 use ad4m_identity_core::record::{DeviceEntry, DeviceKind, HoldsMaster, Place};
@@ -703,6 +706,106 @@ fn the_phone_answers_a_request_behind_the_prompt() {
         .unwrap()
         .expect("the phone's answer");
     assert_eq!(taken.index, 0);
+}
+
+/// The computer's executor, cut off once its rotation's publish has landed: the publish answers
+/// nothing, so the flow never re-attests the record's recovery key with the new master.
+struct CutOffAfterPublish<'a> {
+    inner: &'a ViaStore,
+    published: Cell<bool>,
+}
+
+#[async_trait(?Send)]
+impl ExecutorRpc for CutOffAfterPublish<'_> {
+    async fn call(&self, method: &str, params: Value) -> Result<Value, RpcError> {
+        let answer = self.inner.call(method, params).await;
+        if method == "identity.publish" {
+            self.published.set(true);
+            std::future::pending::<()>().await;
+        }
+        answer
+    }
+}
+
+// A rotation lands and its flow is cut off before the record's recovery key is re-attested by the
+// new master. The computer sends the phone master #1 while the record is still stale: the phone's
+// own record write is refused, so the take signs the mark with the master it just took (a second
+// prompt, for the record), which re-attests the recovery key and lists the phone holding #1.
+#[test]
+fn a_take_while_the_record_waits_for_reattestation_marks_the_phone_with_the_master() {
+    let world = world();
+    let laptop = computer(&world, 1);
+    let did = create(&world, &laptop, 48);
+    let phone = phone(&world, "strongbox");
+    join(&world, &laptop, &phone, &did, false);
+
+    let cut = ViaExecutor::new(CutOffAfterPublish {
+        inner: laptop.exec.rpc(),
+        published: Cell::new(false),
+    });
+    let words = words::from_entropy(&[48; 16]);
+    let mut rotating = std::pin::pin!(rotate(
+        &cut,
+        &laptop.vault,
+        &did,
+        &words,
+        &[],
+        &SystemClock,
+        &OsRandom
+    ));
+    world.on(std::future::poll_fn(|cx| {
+        match rotating.as_mut().poll(cx) {
+            Poll::Ready(rotated) => panic!("the rotation was not cut off: {rotated:?}"),
+            Poll::Pending if cut.rpc().published.get() => Poll::Ready(()),
+            Poll::Pending => Poll::Pending,
+        }
+    }));
+    let events = world.on(laptop.exec.events(&did)).unwrap();
+    let chain = ad4m_identity_core::fold(&events).unwrap();
+    assert_eq!(chain.state().masters.len(), 2, "the rotation landed");
+
+    // The laptop keeps #1 and pushes it to the phone; its own record write is refused.
+    laptop.vault.promote_master(&scid(&did), 1).unwrap();
+    let sent = world
+        .on(send_master(
+            &laptop.exec,
+            &laptop.vault,
+            &did,
+            "d2",
+            &SystemClock,
+            &OsRandom,
+        ))
+        .unwrap();
+    assert!(
+        matches!(sent.record, Err(ClientError::RecoveryNeedsReattest)),
+        "{:?}",
+        sent.record
+    );
+
+    let taken = phone
+        .identity
+        .take_master(false)
+        .unwrap()
+        .expect("master #1 waits");
+    assert_eq!(taken.index, 1);
+    assert_eq!(taken.note, None, "the mark was completed");
+    assert_eq!(
+        phone.master.prompts(),
+        vec![
+            "Keep your master key on this phone",
+            "Update your identity's private record"
+        ]
+    );
+    assert_eq!(phone.identity.take_master(false).unwrap(), None);
+
+    // The record lists the phone holding #1, its recovery key attested by master #1.
+    let opened = world
+        .on(record::read(&laptop.exec, &laptop.vault, &did))
+        .unwrap()
+        .unwrap();
+    assert_eq!(opened.record.devices["d2"].holds_master, HoldsMaster::Yes);
+    assert_eq!(opened.record.devices["d2"].master_index, Some(1));
+    assert_eq!(opened.recovery.unwrap().attestation.key_id, "m1");
 }
 
 // A revoke request lists the keys it names by id, beside the names the record gives them: the ids

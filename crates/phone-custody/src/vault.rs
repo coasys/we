@@ -160,6 +160,9 @@ fn prompt_for(why: MasterUse) -> &'static str {
         MasterUse::Link => "Add a device to your identity",
         MasterUse::Revoke => "Revoke a device of your identity",
         MasterUse::SendMaster => "Send your master key to your device",
+        // The master key signs the private record itself: re-attesting the recovery key after a
+        // rotation, which a device's own write of the record waits for.
+        MasterUse::Record => "Update your identity's private record",
     }
 }
 

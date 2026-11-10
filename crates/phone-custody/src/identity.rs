@@ -374,6 +374,10 @@ impl PhoneIdentity {
     /// Takes a master key a holder put into this phone's inbox: checks it is the log's current
     /// master, seals it behind the biometric (one prompt), acknowledges the message, and marks
     /// this phone as holding it in the record, in that order. `None` when no master key waits.
+    /// When that record write waits for the recovery key's re-attestation after a rotation
+    /// ([`master::Taken::record_pending`]), the master just taken signs it itself
+    /// ([`master::complete_pending_mark`], a second prompt): ad4m keeps no repair queue, so a
+    /// take not completed here would leave the record's recovery key stale and the phone unlisted.
     /// `WeakProtection` before any prompt when the phone's key store is not secure hardware:
     /// the app asks the person once and calls again with `allow_weak_protection`.
     pub fn take_master(
@@ -383,8 +387,25 @@ impl PhoneIdentity {
         self.parts.member()?;
         self.vault.allow_weak_protection(allow_weak_protection);
         let exec = self.parts.executor(None)?;
-        let taken = block_on(master::take_master(&exec, self.vault.as_ref(), &OsRandom))
-            .map_err(phone_error)?;
+        let vault = self.vault.as_ref();
+        let taken = block_on(async {
+            let Some(mut taken) = master::take_master(&exec, vault, &OsRandom).await? else {
+                return Ok(None);
+            };
+            if taken.record_pending {
+                taken.record = master::complete_pending_mark(
+                    &exec,
+                    vault,
+                    &taken.did,
+                    &SystemClock,
+                    &OsRandom,
+                )
+                .await;
+                taken.record_pending = taken.record.is_err();
+            }
+            Ok(Some(taken))
+        })
+        .map_err(phone_error)?;
         Ok(taken.map(|t| MasterTaken {
             did: t.did,
             index: t.index,

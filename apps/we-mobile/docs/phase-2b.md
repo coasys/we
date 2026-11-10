@@ -6,7 +6,7 @@ executor with renewal. Phase 2b covers the rest of what a device does in an iden
 screens and the camera, the device inbox, taking and holding the master key, asking for it, and
 acting as a holder for other devices.
 
-The references are to the ad4m pin WE uses (`cd97f2ac2`): `ad4m-identity-core` (the wire formats),
+The references are to the ad4m pin WE uses (`1fc10759c`): `ad4m-identity-core` (the wire formats),
 `ad4m-identity-client` (the flows), `rust-executor/src/api/identity_ws.rs` (the executor's identity
 RPCs and their guards) and `identity-store` (the store's routes). They also cite WE's own
 `crates/custody/src/service.rs`, the desktop's `IdentityStep` machine.
@@ -76,7 +76,7 @@ sealed messages. For each message, Rust in `phone-custody` does the following:
    `{kind: "master", did, index}`.
 
 **Taking the master key.** This is the phone's version of `ad4m-identity-client`'s `take_master`
-(`flows/master.rs:292`). It has the same checks, but over the store instead of `identity.takeMaster`:
+(`flows/master.rs:421`). It has the same checks, but over the store instead of `identity.takeMaster`:
 
 1. The key's public half must be `state.masters[index].sign`, and that master must be current.
 2. The 32-byte master seed is sealed under a **second** Keystore key,
@@ -102,7 +102,7 @@ and wipes the seed. The uses are:
 - answering a request;
 - writing a ticket to another device's inbox.
 
-`Vault` (`ad4m-identity-client/src/vault.rs:129`) is the interface to match. `store_master`,
+`Vault` (`ad4m-identity-client/src/vault.rs:190`) is the interface to match. `store_master`,
 `master_index` and the staging calls that rotation needs map onto the sealed file plus the
 biometric key, and `master_index` reads the authenticated index without a prompt.
 
@@ -117,7 +117,7 @@ above.
 ## The private record
 
 The record (`/v1/private/<scid>`) is sealed with a record key. Each device has its own entry, which
-holds that key sealed to the device (`rust-executor/src/identity/record.rs:203`). On a computer the
+holds that key sealed to the device (`rust-executor/src/identity/record.rs:234-237`). On a computer the
 executor opens its entry (`identity.unwrapRecordKey`, operator-only). The phone unwraps its copy in Rust with its own enc seed, reads and writes the
 record over the store with a device-signed request, and never sends the record key to JS or to the
 host.
@@ -170,11 +170,10 @@ record key or unsealed `Master` body crosses.
    `x86_64-linux-android` without tokio's full runtime (phone-custody is synchronous today and has
    no async runtime). Either the flows get a blocking facade, or phone-custody takes a
    current-thread runtime.
-3. **`Ad4mClient` token update on reconnect.** The JS client's `ApiClient` keeps the token it was
-   built with. A WebSocket that drops after the first expiry reconnects with the old token and
-   fails. 2a renews within the connection's life, so this has not been hit, but a phone that sleeps
-   past an expiry will hit it. ad4m needs a `setToken` (or a token getter) on the client, used by
-   its reconnect.
+3. **`Ad4mClient` token update on reconnect.** Done in the pin: `Ad4mClient.setToken`
+   (`core/src/Ad4mClient.ts:152-155`) uses a token for every later call and the next socket, and
+   replaces a socket opened with another. The phone's connector hands it each renewed token, so a
+   WebSocket that drops after the first expiry reconnects with the current one.
 4. **`--public-origin` on hosts.** With no public origin, an executor accepts login statements only
    for its own loopback origins. Any real host the phone logs in to over `https` must set it to the
    URL the phone dials. This is a deployment requirement to document, not a code change.
