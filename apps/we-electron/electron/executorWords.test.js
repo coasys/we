@@ -49,8 +49,8 @@ describe('startFailureWords', () => {
   });
 
   it('keeps any other message, with every path in it replaced', () => {
-    expect(startFailureWords(new Error('GraphQL server on port 12001 not ready after 60 s'))).toBe(
-      'GraphQL server on port 12001 not ready after 60 s',
+    expect(startFailureWords(new Error('The executor on port 12001 was not ready after 60 s'))).toBe(
+      'The executor on port 12001 was not ready after 60 s',
     );
     expect(startFailureWords(new Error(`no executor at ${root}/ad4m-executor, or at '~/bin/x'`))).toBe(
       "no executor at (a path), or at '(a path)'",
