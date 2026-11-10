@@ -4,12 +4,12 @@
  * Every method here is a thin wrapper over `client.runtime.*` or `client.agent.*`. That thinness
  * is the point: the launcher's equivalent screens are React components with the same calls buried
  * inside them, which is why none of it was reachable from a host that bundles the executor instead
- * of shelling out to the launcher. Reaching the same GraphQL from the shell needs no new
+ * of shelling out to the launcher. Reaching the same RPC calls from the shell needs no new
  * privileges — only a place to put it.
  *
  * Not covered, and not by oversight: multi-agent switching, log levels, data paths, MCP and proxy
  * configuration. Those are Tauri commands in the launcher because they manipulate the host's
- * filesystem and process, and no amount of GraphQL reaches them — they need a host capability
+ * filesystem and process, and no amount of executor RPC reaches them — they need a host capability
  * (see `RuntimeHost` in the follow-up), not a port over the client.
  *
  * Publishing a language is left out for a nearer reason: `languages.publish` takes a path to a
