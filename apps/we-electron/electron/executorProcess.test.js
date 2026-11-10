@@ -254,11 +254,11 @@ describe('stopChild', () => {
 });
 
 describe('waitUntilReady', () => {
-  /** A probe answering `answers` in turn, and a wait that takes no time. */
+  /** A probe answering `answers` in turn, and a clock that moves only when the wait waits. */
   const setup = (answers) => {
     let asked = 0;
     const probe = async () => answers[asked++] ?? false;
-    return { probe, asked: () => asked, wait: async () => {} };
+    return { probe, asked: () => asked, ...clock() };
   };
 
   it('is ready once the probe answers', async () => {
@@ -267,15 +267,31 @@ describe('waitUntilReady', () => {
     expect(asked()).toBe(3);
   });
 
-  it('times out after its attempts', async () => {
-    const { probe, asked, wait } = setup([]);
-    expect(await waitUntilReady(probe, { attempts: 5, wait })).toBe('timeout');
+  it('times out once its time has passed', async () => {
+    const { probe, asked, wait, now } = setup([]);
+    expect(await waitUntilReady(probe, { timeoutMs: 2_500, interval: 500, wait, now })).toBe('timeout');
     expect(asked()).toBe(5);
+    expect(now()).toBe(2_500);
+  });
+
+  // Each probe of the executor may take 2 s, so 120 tries could run far past the 60 s the error
+  // names. The probe is given the time left, and the wait between probes stops at the deadline.
+  it('never runs past its time: a probe is given the time left, and the last wait is cut short', async () => {
+    const { wait, now, advance } = clock();
+    const given = [];
+    const probe = async (left) => {
+      given.push(left);
+      advance(Math.min(1_800, left));
+      return false;
+    };
+    expect(await waitUntilReady(probe, { timeoutMs: 5_000, interval: 500, wait, now })).toBe('timeout');
+    expect(given).toEqual([5_000, 2_700, 400]);
+    expect(now()).toBe(5_000);
   });
 
   // An executor that died while it started: on dev the wait polled its dead port for a minute.
   it('stops as soon as the process it waits on is gone', async () => {
-    const { probe, asked, wait } = setup([]);
+    const { probe, asked, wait, now } = setup([]);
     let exited = false;
     const outcome = waitUntilReady(
       async () => {
@@ -283,7 +299,7 @@ describe('waitUntilReady', () => {
         if (asked() === 2) exited = true;
         return answer;
       },
-      { gone: () => exited, wait },
+      { gone: () => exited, wait, now },
     );
     expect(await outcome).toBe('gone');
     expect(asked()).toBe(2);
@@ -305,8 +321,20 @@ const reply =
     res.end(body);
   };
 
-/** No time between attempts, and few of them: a server that is not the executor stays not ready. */
-const quick = { attempts: 3, wait: async () => {} };
+/** A clock that moves only when `wait` waits or `advance` is called: the waits take no real time. */
+function clock() {
+  let t = 0;
+  const advance = (ms) => {
+    t += ms;
+  };
+  return { now: () => t, advance, wait: async (ms) => advance(ms) };
+}
+
+/** A wait whose clock moves only between probes: a server that is not the executor stays not ready. */
+const quick = () => {
+  const { now, wait } = clock();
+  return { timeoutMs: 1_500, now, wait };
+};
 
 describe('executorHealthy', () => {
   const servers = [];
@@ -358,21 +386,21 @@ describe('waitForExecutorReady', () => {
   it('resolves once /health answers ok', async () => {
     const { server, port } = await serve(reply(200, '{"status":"ok"}'));
     servers.push(server);
-    await expect(waitForExecutorReady(port, quick)).resolves.toBeUndefined();
+    await expect(waitForExecutorReady(port, quick())).resolves.toBeUndefined();
   });
 
   it('does not treat a server answering 404 as the executor, and says it was not ready', async () => {
     const { server, port } = await serve(reply(404, 'not found', 'text/plain'));
     servers.push(server);
-    await expect(waitForExecutorReady(port, quick)).rejects.toThrow(
-      `The executor on port ${port} was not ready after 60 s`,
+    await expect(waitForExecutorReady(port, quick())).rejects.toThrow(
+      `The executor on port ${port} was not ready after 1.5 s`,
     );
   });
 
   it('says the executor exited when the process it waits on is gone', async () => {
     const { server, port } = await serve(reply(404, 'not found', 'text/plain'));
     servers.push(server);
-    await expect(waitForExecutorReady(port, { ...quick, gone: () => true })).rejects.toThrow(
+    await expect(waitForExecutorReady(port, { ...quick(), gone: () => true })).rejects.toThrow(
       `The executor exited before it was ready on port ${port}`,
     );
   });
