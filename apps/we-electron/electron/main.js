@@ -16,7 +16,6 @@ import {
 import contextMenu from 'electron-context-menu';
 import express from 'express';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'fs';
-import http from 'http';
 import net from 'net';
 import { homedir } from 'os';
 import { basename, dirname, extname, join } from 'path';
@@ -37,7 +36,7 @@ import {
   outputTail,
   startWithPortRetry,
   stopChild,
-  waitUntilReady,
+  waitForExecutorReady,
   withoutCustodyCredential,
 } from './executorProcess.js';
 import { createIdentity, IDENTITY_PAGE, IDENTITY_SCHEME, identityFile, isIdentityPage } from './identityWindow.js';
@@ -269,42 +268,6 @@ function findFreePort(startPort, endPort) {
   });
 }
 
-// Wait for the GraphQL server to be fully ready (not just TCP port open).
-// Polls the /graphql HTTP endpoint — any HTTP response (even 400) means GraphQL is up.
-// Gives up as soon as `proc`, the executor being waited on, has exited: see `waitUntilReady`.
-async function waitForGraphQL(port, proc) {
-  const answers = () =>
-    new Promise((resolve) => {
-      const req = http.request(
-        {
-          method: 'POST',
-          hostname: '127.0.0.1',
-          port,
-          path: '/graphql',
-          headers: { 'Content-Type': 'application/json' },
-        },
-        (res) => {
-          res.resume(); // discard response body
-          resolve(true);
-        },
-      );
-      req.on('error', () => resolve(false));
-      req.write(JSON.stringify({ query: '{ __typename }' }));
-      req.end();
-    });
-
-  const outcome = await waitUntilReady(answers, { gone: () => proc.exitCode !== null || proc.signalCode !== null });
-  if (outcome === 'ready') {
-    console.log(`GraphQL server on port ${port} is ready`);
-    return;
-  }
-  throw new Error(
-    outcome === 'gone'
-      ? `The executor exited before its GraphQL server on port ${port} was ready`
-      : `GraphQL server on port ${port} not ready after 60 s`,
-  );
-}
-
 /**
  * Start the AD4M executor, supervised by its run contract (`executorProcess.js`, `EXIT`).
  *
@@ -477,11 +440,12 @@ async function startExecutorOnce({ samePort }) {
       mainWindow.webContents.executeJavaScript(`console.error(${JSON.stringify(msg)})`).catch(() => {});
     });
 
-    console.log('AD4M executor process started, waiting for GraphQL server...');
+    console.log('AD4M executor process started, waiting for it to be ready...');
 
-    // Wait for the GraphQL server to be fully ready (not just TCP port open)
+    // Ready is its /health answering ok, not just the TCP port open (`waitForExecutorReady`).
     try {
-      await waitForGraphQL(ad4mPort, proc);
+      await waitForExecutorReady(ad4mPort, { gone: () => proc.exitCode !== null || proc.signalCode !== null });
+      console.log(`The executor on port ${ad4mPort} is ready`);
     } catch (err) {
       const reason = startRefusal(proc.exitCode, tail.lines(), configFile, ad4mDataPath);
       if (reason) throw Object.assign(new Error(reason), { exitCode: proc.exitCode });
@@ -1084,7 +1048,7 @@ handle('executor-choose-file', async (_event, { save, defaultName } = {}) => {
 /*
   Restarts run one after another. Two at once — a crash restart and a settings restart or an
   account switch — would each stop and start the executor, and the one whose executor was replaced
-  waits out GraphQL on a dead port, then reloads the window a minute later and clears
+  waits out the readiness check on a dead port, then reloads the window a minute later and clears
   `switchingAccount` under the other. Queued rather than joined, so a switch made during a restart
   still gets its own: the executor reads the selected account when it starts.
 */
@@ -1112,8 +1076,9 @@ async function restartExecutorAndReloadOnce({ samePort = false } = {}) {
   let started = false;
   try {
     await stopExecutor();
-    // startExecutor picks up the new path, waits for GraphQL, and refreshes port/token — which the
-    // reloaded renderer asks for again over IPC, so it never sees the old credentials.
+    // startExecutor picks up the new path, waits for the executor to be ready, and refreshes
+    // port/token — which the reloaded renderer asks for again over IPC, so it never sees the old
+    // credentials.
     await startExecutor({ samePort });
     started = true;
   } catch (err) {
