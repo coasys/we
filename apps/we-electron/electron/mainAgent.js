@@ -21,14 +21,23 @@
  *
  * ## A desktop with no keyring it can use
  *
- * No Secret Service, or a keyring still locked past custody's 90 s: the WE password stands in for the
- * kept passphrase. The start answers `needs-new-password` where there is no agent yet, and
- * `needs-password` for an agent with nothing kept for it; the base app asks for the password, and
- * {@link giveAgentPassword} makes the agent with it or unlocks it. Only an agent whose passphrase *is*
- * kept fails the start, in {@link KEYRING_WORDS}: its passphrase is random, the person never knew it,
- * and nothing but the keyring opens it. Which agent that is cannot be read from a keyring that does not
- * answer, so the supervisor notes it beside the data folder ({@link keptMarker}) once the agent is made
- * or unlocked with a kept passphrase.
+ * Custody answers a keyring that refuses in one of three words (`crates/custody/src/wallet.rs`):
+ * `unavailable`, there is no keyring at all (no session bus, no Secret Service on it, no keychain);
+ * `locked`, it is there and stayed locked (its prompt dismissed, or unanswered for 90 s); `failed`, it
+ * is there and the call failed. This file adds `failed` for a helper that did not answer at all.
+ *
+ * Where there is no agent yet, only `unavailable` gives it the WE password instead
+ * (`needs-new-password`): an agent made with one is that password's for good, so a keyring that is
+ * merely locked, dismissed or failing for now fails the start in {@link NEW_AGENT_KEYRING_WORDS}, and
+ * "Try again" asks it again. For an agent already made, any refusal asks the WE password
+ * (`needs-password`) where nothing is kept for it, which changes nothing about the agent; the base app
+ * asks for the password, and {@link giveAgentPassword} makes the agent with it or unlocks it. Only an
+ * agent whose passphrase *is* kept fails the start, in {@link KEYRING_WORDS}: its passphrase is random,
+ * the person never knew it, and nothing but the keyring opens it. Which agent that is cannot be read
+ * from a keyring that does not open, so the supervisor notes it beside the data folder
+ * ({@link keptMarker}) before the agent is made with a kept passphrase, and once one is unlocked with
+ * it; and custody says when a read it refused found the item there all the same (`kept`), which is
+ * taken as the note where the note is missing.
  *
  * Neither the passphrase nor the password is ever logged: this process's console is copied into the
  * executor log (`main.js`), and the words the window is given carry neither it nor a path.
@@ -46,9 +55,37 @@ import { withoutCustodyCredential } from './executorProcess.js';
 export const KEYRING_WORDS = Object.freeze({
   locked:
     "This computer's keyring is locked, and it keeps the key to your agent, so the app cannot unlock it. Unlock the keyring (your login password usually does), then try again.",
+  failed:
+    "The key to your agent is kept in this computer's keyring, and the keyring did not answer. Try again; if it keeps happening, restart the keyring (on Linux, a Secret Service such as GNOME Keyring or KWallet), or the computer.",
   unavailable:
     "The key to your agent is kept in this computer's keyring, and the app cannot reach the keyring (on Linux, a Secret Service such as GNOME Keyring or KWallet). Start it, then try again.",
 });
+
+/**
+ * Why a first start failed for the keyring, in words for the window: there is a keyring, and it would
+ * keep the new agent's key, but it is locked or did not answer. Never said where there is no keyring at
+ * all: that start asks for the WE password instead.
+ */
+export const NEW_AGENT_KEYRING_WORDS = Object.freeze({
+  locked:
+    "This computer's keyring is locked, and the app keeps the key to your new agent there, so it cannot make your agent yet. Unlock the keyring (your login password usually does), then try again.",
+  failed:
+    "The app keeps the key to your new agent in this computer's keyring, and the keyring did not answer. Try again; if it keeps happening, restart the keyring (on Linux, a Secret Service such as GNOME Keyring or KWallet), or the computer.",
+});
+
+/**
+ * How long a WE password may be, in UTF-16 code units, as a string's `length` counts: the window's field
+ * stops there (`maxlength`), and anything longer is refused before it reaches the executor. A ceiling on
+ * what is sent over IPC and hashed, not a rule about strength.
+ */
+export const AGENT_PASSWORD_MAX = 1024;
+
+/**
+ * The fewest characters (code points) a NEW WE password may have: one the agent is made with. A password
+ * an agent was already made with is never measured, so one made before this floor still opens it. This
+ * is a floor, not a strength check; typing it twice to confirm only catches a typo.
+ */
+export const NEW_AGENT_PASSWORD_MIN = 8;
 
 /** The marker's file, in the executor's data folder. It holds no secret: it says only that one is kept. */
 const KEPT_MARKER = 'we-agent-passphrase-kept';
@@ -82,10 +119,11 @@ const NO_MARKER = Object.freeze({ has: () => false, note: () => {}, forget: () =
  * Makes sure the executor's main agent exists and is unlocked. `call(method, params)` is an admin
  * call to the executor ({@link executorRpc}); `keyring` answers `read()` and `make()`
  * ({@link walletKeyring}); `marker` notes which agent's passphrase is kept ({@link keptMarker}).
- * Resolves `'unlocked'`; `'locked'` for an agent left to WE's sign-in; or, where the keyring refuses,
- * `'needs-new-password'` (no agent yet) or `'needs-password'` (one with nothing kept for it), for the
- * WE password ({@link giveAgentPassword}). Rejects when the keyring refuses for an agent whose
- * passphrase it keeps, or when the executor fails to make the agent.
+ * Resolves `'unlocked'`; `'locked'` for an agent left to WE's sign-in; `'needs-new-password'` where
+ * there is no agent and no keyring at all (`unavailable`); or `'needs-password'` where the keyring
+ * refuses for an agent with nothing kept for it — both for the WE password ({@link giveAgentPassword}).
+ * Rejects, in words for the window, when the keyring refuses for an agent whose passphrase it keeps or
+ * is there but locked or failing on a first start, and when the executor fails to make the agent.
  */
 export async function ensureMainAgent({ call, keyring, marker = NO_MARKER, log = console.log }) {
   const status = await call('agent.status');
@@ -97,11 +135,16 @@ export async function ensureMainAgent({ call, keyring, marker = NO_MARKER, log =
     // Electron's single-instance lock (`main.js`) is what keeps there from being two.
     const answer = await keyring.make();
     if (refusal(answer)) {
-      log('[main] No keyring can keep the main agent’s passphrase: the WE password is asked for instead');
-      return 'needs-new-password';
+      // Only where there is no keyring at all: the WE password is the agent's for good.
+      if (answer.refused === 'unavailable') {
+        log('[main] No keyring can keep the main agent’s passphrase: the WE password is asked for instead');
+        return 'needs-new-password';
+      }
+      // Locked, its prompt dismissed, or failing for now: "Try again" asks it again.
+      throw new Error(NEW_AGENT_KEYRING_WORDS[answer.refused] ?? NEW_AGENT_KEYRING_WORDS.failed);
     }
     const passphrase = kept(answer);
-    if (passphrase === null) throw new Error(KEYRING_WORDS.unavailable);
+    if (passphrase === null) throw new Error(NEW_AGENT_KEYRING_WORDS.failed);
     // The keyring may have waited on a prompt, and the agent been made meanwhile (WE's own "Create
     // account"). `agent.generate` makes over one that is made, keys and all: read it again first.
     const now = await call('agent.status');
@@ -111,8 +154,15 @@ export async function ensureMainAgent({ call, keyring, marker = NO_MARKER, log =
       return unlockWith(call, passphrase, marker, log);
     }
     log('[main] Making the main agent: its passphrase is kept in this computer’s keyring');
-    const made = await call('agent.generate', { passphrase });
+    // Noted before the agent is made, not after: a start that ends in between, or a note written after
+    // that failed, would leave an agent only the keyring opens looking like a WE password's. A note
+    // with no agent behind it is harmless: the next start finds no agent and makes it, with the same
+    // kept passphrase (`make` keeps the item there is).
     marker.note();
+    // Read, then generate: not atomic. The status is read again just above, and the ad4m change that
+    // makes agent.generate refuse an initialised agent closes the rest of the window (an agent made
+    // between that read and this call).
+    const made = await call('agent.generate', { passphrase });
     // Languages that did not load are the executor's to report; the agent is made either way.
     if (made?.error) log('[main] The main agent was made, with an error:', made.error);
     return 'unlocked';
@@ -121,7 +171,9 @@ export async function ensureMainAgent({ call, keyring, marker = NO_MARKER, log =
   const answer = await keyring.read();
   if (refusal(answer)) {
     // Kept there, nothing else opens it: the start fails, and "Try again" asks the keyring again.
-    if (marker.has()) throw new Error(KEYRING_WORDS[answer.refused] ?? KEYRING_WORDS.unavailable);
+    // Custody says so (`kept`) where it found the item all the same: the note is written now.
+    if (answer.kept === true) marker.note();
+    if (answer.kept === true || marker.has()) throw new Error(KEYRING_WORDS[answer.refused] ?? KEYRING_WORDS.failed);
     log(
       '[main] The keyring cannot be read, and the main agent’s passphrase is not kept there: the WE password is asked for',
     );
@@ -139,11 +191,13 @@ export async function ensureMainAgent({ call, keyring, marker = NO_MARKER, log =
 /**
  * The WE password, given where the start answered `need` — `'needs-new-password'` or
  * `'needs-password'` — because the keyring could not be used. Makes the agent with it (`agent.generate`)
- * where there is none, or unlocks the agent with it. Resolves `'unlocked'`, or `'wrong'` where the
- * executor refused the password (the agent stays locked); rejects where the executor could not be
+ * where there is none, or unlocks the agent with it. Resolves `'unlocked'`; `'wrong'` where the
+ * executor refused the password (the agent stays locked); or `'refused'`, asking the executor nothing,
+ * for a password that does not fit ({@link agentPasswordFits}). Rejects where the executor could not be
  * asked, or refused to make the agent. The password is used for this one call and never logged.
  */
 export async function giveAgentPassword({ call, need, password, marker = NO_MARKER, log = console.log }) {
+  if (!agentPasswordFits(password, need)) return 'refused';
   if (need === 'needs-new-password') {
     // Read first: `agent.generate` makes over an agent already made.
     const status = await call('agent.status');
@@ -166,6 +220,17 @@ export async function giveAgentPassword({ call, need, password, marker = NO_MARK
     return 'wrong';
   }
   return after?.isUnlocked ? 'unlocked' : 'wrong';
+}
+
+/**
+ * Whether `password` may be given where the start answered `need`: text, at most
+ * {@link AGENT_PASSWORD_MAX} long, and, for a new one (`needs-new-password`), at least
+ * {@link NEW_AGENT_PASSWORD_MIN} characters. A password for an agent already made is measured against
+ * the ceiling only, so one made before the floor still opens it.
+ */
+export function agentPasswordFits(password, need) {
+  if (typeof password !== 'string' || !password || password.length > AGENT_PASSWORD_MAX) return false;
+  return need !== 'needs-new-password' || [...password].length >= NEW_AGENT_PASSWORD_MIN;
 }
 
 /**
@@ -213,9 +278,10 @@ const HELPER_TIMEOUT_MS = 100_000;
 
 /**
  * The keyring, through `we-custody wallet-passphrase <read|make> --data-folder <dataFolder>`: its
- * one line of JSON, `{passphrase}`, `{none: true}` or `{refused, reason?}`. A helper that fails or
- * answers nothing readable is an unavailable keyring; one that takes past `timeoutMs` is stopped
- * and is a locked one (a keyring prompt nobody answered). No credential reaches it.
+ * one line of JSON, `{passphrase}`, `{none: true}` or `{refused: 'locked' | 'failed' | 'unavailable',
+ * reason?, kept?}`. A helper that fails, does not start, or answers nothing readable is a failed
+ * keyring; one that takes past `timeoutMs` is stopped and is a locked one (a keyring prompt nobody
+ * answered). No credential reaches it.
  */
 export function walletKeyring({ binary, dataFolder, baseEnv = process.env, timeoutMs = HELPER_TIMEOUT_MS }) {
   const env = withoutCustodyCredential(baseEnv);
@@ -241,9 +307,9 @@ export function walletKeyring({ binary, dataFolder, baseEnv = process.env, timeo
       child.stdout.on('data', (chunk) => (out += chunk.toString('utf8')));
       // Its stderr holds no secret: a reason, at most.
       child.stderr.on('data', (chunk) => process.stderr.write(chunk));
-      child.on('error', (err) =>
-        done({ refused: 'unavailable', reason: `the keyring helper did not start: ${err.code}` }),
-      );
+      // A helper that did not start or did not answer says nothing of whether there is a keyring:
+      // `failed`, never `unavailable`, which would give a new agent the WE password for good.
+      child.on('error', (err) => done({ refused: 'failed', reason: `the keyring helper did not start: ${err.code}` }));
       child.on('close', (code) => {
         let answer = null;
         try {
@@ -253,7 +319,7 @@ export function walletKeyring({ binary, dataFolder, baseEnv = process.env, timeo
         }
         out = '';
         if (code === 0 && answer && typeof answer === 'object') done(answer);
-        else done({ refused: 'unavailable', reason: `the keyring helper exited ${code}` });
+        else done({ refused: 'failed', reason: `the keyring helper exited ${code}` });
       });
     });
   return { read: () => ask('read'), make: () => ask('make') };

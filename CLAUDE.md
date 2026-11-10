@@ -3076,7 +3076,7 @@ BaseStore:
   - passwordIsNew: boolean — on the password stage, the password makes this computer's agent (a first start): ask for it twice, with CredentialField purpose 'new'; false: it unlocks one, purpose 'unlock'
   - passwordWrong: boolean — the password last given did not unlock the agent: say so beside the field, and clear it with clearPasswordWrong as the field is typed in (onEdit)
   - passwordEntered: boolean — something is typed in the password field (never what): gate Continue on it
-  - passwordConfirmed: boolean — a new password is typed twice, the same both times: gate Continue on it where passwordIsNew
+  - passwordConfirmed: boolean — a new password is typed twice, the same both times, and is at least 8 characters: gate Continue on it where passwordIsNew, and give the CredentialField minLength: 8 so it says when it is short. Typing it twice only catches a typo; it is not a strength check
 - Actions:
   - refresh(): reads the identity and the connections again and works out the stage afresh
   - makeIdentity(): "Make my identity here" — opens the host’s identity window on making one (the 12 words are shown there, never here); resolves with the outcome, and the stage moves on once the identity exists

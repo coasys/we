@@ -395,6 +395,22 @@ pub fn is_keyring_locked(error: &VaultError) -> bool {
     matches!(error, VaultError::Unavailable(why) if why.contains(KEYRING_LOCKED))
 }
 
+/// What a store's error says when there is no keyring at all to keep items in, and
+/// [`is_no_keyring`] looks for.
+const NO_KEYRING: &str = "there is no keyring";
+
+/// There is no keyring: no session bus, or nothing on it answers for the Secret Service and nothing
+/// can be started to; on macOS, no keychain. Not a keyring that is there and failed, or is locked:
+/// those are other errors, and asking again may find it working.
+pub fn no_keyring(why: impl std::fmt::Display) -> VaultError {
+    VaultError::Unavailable(format!("{NO_KEYRING}: {why}"))
+}
+
+/// Whether `error` is a keyring that is not there ([`no_keyring`]).
+pub fn is_no_keyring(error: &VaultError) -> bool {
+    matches!(error, VaultError::Unavailable(why) if why.contains(NO_KEYRING))
+}
+
 #[cfg(target_os = "linux")]
 pub use secret_service_store::SecretServiceStore;
 
@@ -573,10 +589,42 @@ mod secret_service_store {
     }
 
     fn open() -> Result<SecretService<'static>, VaultError> {
-        let service = SecretService::connect(EncryptionType::Dh).map_err(unavailable)?;
+        let service = SecretService::connect(EncryptionType::Dh).map_err(connect_failed)?;
         // A session bus with no Secret Service answers the connect and fails here.
-        service.get_default_collection().map_err(unavailable)?;
+        service.get_default_collection().map_err(connect_failed)?;
         Ok(service)
+    }
+
+    /// The D-Bus errors that say nothing answers for the Secret Service's name and nothing can be
+    /// started to: the bus's own, so their names are fixed by the D-Bus specification.
+    const NOBODY_THERE: [&str; 3] = [
+        "org.freedesktop.DBus.Error.ServiceUnknown",
+        "org.freedesktop.DBus.Error.NameHasNoOwner",
+        "org.freedesktop.DBus.Error.Spawn.ServiceNotFound",
+    ];
+
+    /// Whether `e`, from connecting, says there is no Secret Service: no session bus
+    /// (`Error::Unavailable`, the client's own word for it), or a bus that answers for nobody under
+    /// the Secret Service's name ([`NOBODY_THERE`], carried in the zbus error's text). Anything else
+    /// — a timeout, a service that failed to start, a default collection that is not there — is a
+    /// keyring that is there and failed.
+    pub(super) fn no_secret_service(e: &secret_service::Error) -> bool {
+        match e {
+            secret_service::Error::Unavailable => true,
+            secret_service::Error::Zbus(_) | secret_service::Error::ZbusFdo(_) => {
+                let text = e.to_string();
+                NOBODY_THERE.iter().any(|name| text.contains(name))
+            }
+            _ => false,
+        }
+    }
+
+    fn connect_failed(e: secret_service::Error) -> VaultError {
+        if no_secret_service(&e) {
+            no_keyring(format!("Secret Service: {e}"))
+        } else {
+            unavailable(e)
+        }
     }
 
     impl SecretServiceStore {
@@ -863,6 +911,28 @@ mod secret_service_store {
             let error = result.unwrap_err();
             assert!(!is_keyring_locked(&error), "{error:?}");
             assert!(matches!(&error, VaultError::Unavailable(why) if why.contains("no answer")));
+        }
+
+        /// Only a Secret Service that is not there is no keyring; one that is there and locked,
+        /// dismissed or failing is not (the bus's own "nobody there" errors: `tests/wallet_no_keyring.rs`).
+        #[test]
+        fn only_a_secret_service_that_is_not_there_is_no_keyring() {
+            assert!(no_secret_service(&secret_service::Error::Unavailable));
+            for there in [
+                secret_service::Error::Locked,
+                secret_service::Error::Prompt,
+                secret_service::Error::NoResult,
+                secret_service::Error::Crypto("bad padding"),
+            ] {
+                assert!(!no_secret_service(&there), "{there:?}");
+            }
+            assert!(is_no_keyring(&connect_failed(
+                secret_service::Error::Unavailable
+            )));
+            assert!(!is_no_keyring(&connect_failed(
+                secret_service::Error::NoResult
+            )));
+            assert!(!is_no_keyring(&keyring_locked()));
         }
 
         #[test]

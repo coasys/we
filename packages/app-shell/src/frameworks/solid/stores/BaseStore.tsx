@@ -39,7 +39,7 @@ import type {
 import type { IdentityChangeOutcome, IdentityCustodyView } from '@we/backend-shared';
 import { type Accessor, batch, createMemo, createSignal, getOwner, onCleanup } from 'solid-js';
 
-import { credential } from '../credential';
+import { credential, NEW_PASSWORD_MIN_LENGTH } from '../credential';
 import { START_NOW_HERE_KEY } from './IdentityStore';
 
 export interface BaseStore {
@@ -104,7 +104,10 @@ export interface BaseStore {
   passwordWrong: Accessor<boolean>;
   /** Something is typed in the password field. Never what. */
   passwordEntered: Accessor<boolean>;
-  /** A new password is typed twice, the same both times. */
+  /**
+   * A new password is typed twice, the same both times, and is at least `NEW_PASSWORD_MIN_LENGTH`
+   * characters. Typing it twice only catches a typo; it says nothing of how strong it is.
+   */
   passwordConfirmed: Accessor<boolean>;
 
   /** Reads the identity and the connections again, and works out the stage afresh. */
@@ -573,7 +576,7 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
     },
     passwordWrong,
     passwordEntered: credential.entered,
-    passwordConfirmed: credential.confirmed,
+    passwordConfirmed: () => credential.confirmed() && credential.longEnough(NEW_PASSWORD_MIN_LENGTH),
 
     refresh: async () => {
       setCustody(null);
@@ -634,8 +637,11 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
       if (!own?.givePassword || !asksPassword(asked) || busy()) return;
       const password = credential.read();
       if (!password) return;
-      if (store.passwordIsNew() && !credential.confirmed()) {
-        // Typed once, or twice and not the same: the field says which.
+      // Past the ceiling every field stops at: not sent. The host refuses it too.
+      if (!credential.withinMax()) return;
+      // The floor is a new password's only: one an agent was made with opens it whatever its length.
+      if (store.passwordIsNew() && !store.passwordConfirmed()) {
+        // Typed once, twice and not the same, or under the floor: the field says which.
         credential.touch();
         return;
       }

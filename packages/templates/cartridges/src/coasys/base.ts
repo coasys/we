@@ -12,8 +12,9 @@ import { COLLAPSED } from './lockup.ts';
  * - **starting / failed** — the desktop's own backend coming up, and why it did not, with "Try
  *   again". It used to be an error box and a quit.
  * - **password** — a computer with no keyring the app can use: the WE password protects the agent
- *   here instead, asked for in the host's own field (twice on a first start) and never held by this
- *   template.
+ *   here instead, asked for in the host's own field and never held by this template. On a first start
+ *   it is typed twice, which only catches a typo, and has a floor of 8 characters; a password an agent
+ *   was already made with has none.
  * - **first-run** — this device speaks for nobody yet: "Make my identity here", "Link to my identity",
  *   "Use my 12 words", and "Start now". On a phone it is the join: a phone links to an identity a
  *   computer keeps, and the doors it cannot open say why. Every door opens the host's own identity
@@ -477,6 +478,8 @@ const password = screen('base__password', [
     type: 'CredentialField',
     props: {
       purpose: { $: "baseStore.passwordIsNew ? 'new' : 'unlock'" },
+      // A new one's floor, as baseStore.passwordConfirmed holds it; one an agent was made with has none.
+      minLength: 8,
       width: '100%',
       placeholder: 'Password...',
       confirmPlaceholder: 'Password again...',

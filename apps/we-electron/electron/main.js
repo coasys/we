@@ -43,7 +43,14 @@ import {
 import { LOG_WORDS, startFailureWords, stoppedWords } from './executorWords.js';
 import { createIdentity, IDENTITY_PAGE, IDENTITY_SCHEME, identityFile, isIdentityPage } from './identityWindow.js';
 import { executorSpawnEnv, handleFromWindow, isFromWindow } from './ipcSender.js';
-import { ensureMainAgent, executorRpc, giveAgentPassword, keptMarker, walletKeyring } from './mainAgent.js';
+import {
+  agentPasswordFits,
+  ensureMainAgent,
+  executorRpc,
+  giveAgentPassword,
+  keptMarker,
+  walletKeyring,
+} from './mainAgent.js';
 import {
   allowMediaPermission,
   isExternallyOpenable,
@@ -621,8 +628,9 @@ const custodyBinaryHere = () => {
  * for `dataPath` (`mainAgent.js`): the identity doors run against it. A stopgap: slice 3's AR-06
  * (`storage.unlock`) replaces it. Where identity is off there is nothing to make it for, and WE's own
  * create and sign-in make and unlock it, as they always have: null. Throws, in words for the window,
- * when the keyring is locked or missing for an agent whose passphrase it keeps; for any other agent a
- * keyring that refuses is `needs-new-password` or `needs-password`.
+ * when the keyring refuses for an agent whose passphrase it keeps, or is there but locked or failing
+ * where there is no agent yet. No keyring at all on a first start is `needs-new-password`; a keyring
+ * that refuses for an agent with nothing kept for it is `needs-password`.
  */
 async function ensureMainAgentFor(port, token, dataPath) {
   const binary = custodyBinaryHere();
@@ -641,6 +649,9 @@ async function ensureMainAgentFor(port, token, dataPath) {
   }
 }
 
+/** How many reads of the main agent `refreshMainAgent` has begun: the newest is the one told. */
+let mainAgentReads = 0;
+
 /**
  * Reads the main agent again where the executor is ready and the supervisor made it (`mainAgent` set),
  * and tells the window if it has changed: a WE password's agent is unlocked by sign-in, after the
@@ -650,6 +661,9 @@ async function refreshMainAgent() {
   if (!mainAgent || executorBooting || executorState.phase !== 'ready' || !ad4mPort || !ad4mToken) return;
   // What it was asked of: an answer from an executor started since is not this one's.
   const asked = { state: executorState, port: ad4mPort, token: ad4mToken };
+  // Which read this is: two can be in flight (the window asks again while one is), and the older can
+  // answer last. Only the newest is told; an older one answering after it would undo what it found.
+  const read = ++mainAgentReads;
   const rpc = executorRpc({ port: asked.port, token: asked.token, timeoutMs: 5_000 });
   let now;
   try {
@@ -663,7 +677,7 @@ async function refreshMainAgent() {
     rpc.close();
   }
   const same = executorState === asked.state && ad4mPort === asked.port && ad4mToken === asked.token;
-  if (!same || executorBooting || !mainAgent || now === mainAgent) return;
+  if (read !== mainAgentReads || !same || executorBooting || !mainAgent || now === mainAgent) return;
   console.log('[main] The main agent is now', now);
   mainAgent = now;
   setExecutorState(readyState());
@@ -681,7 +695,9 @@ async function refreshMainAgent() {
  */
 let agentPasswordBusy = false;
 async function takeAgentPassword(password) {
-  if (typeof password !== 'string' || !password) return 'refused';
+  // Text, within the ceiling, and a new one over the floor (`agentPasswordFits`): what is not is
+  // refused here, before it is held or sent anywhere.
+  if (!agentPasswordFits(password, mainAgent)) return 'refused';
   if (agentPasswordBusy || executorBooting || executorState.phase !== 'ready' || !ASKS_PASSWORD.has(mainAgent))
     return 'refused';
   agentPasswordBusy = true;

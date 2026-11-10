@@ -4,8 +4,10 @@
 // `wallet-passphrase read|make --data-folder <dir>` answers from a keyring that is a JSON file,
 // `$FAKE_KEYRING`: `{ "state": "open" | "locked" | "absent", "items": { <folder>: <passphrase> } }`,
 // as the real one answers (`crates/custody/src/wallet.rs`): `{passphrase}`, `{none: true}`, or
-// `{refused}`. A make on an open keyring with nothing kept keeps a new passphrase. Each ask is a line
-// in `$FAKE_KEYRING.log`: `<mode> <state>`.
+// `{refused}`: `locked`, or `unavailable` for no keyring at all (`absent`). A read the locked keyring
+// refuses says `kept: true` where an item is kept for the folder all the same, as custody does. A make
+// on an open keyring with nothing kept keeps a new passphrase. Each ask is a line in
+// `$FAKE_KEYRING.log`: `<mode> <state>`.
 //
 // Otherwise it is the sidecar: it reads stdin until it closes, and exits 0.
 const crypto = require('crypto');
@@ -20,7 +22,8 @@ if (args[0] === 'wallet-passphrase') {
   keyring.items ??= {};
   fs.appendFileSync(`${file}.log`, `${mode} ${keyring.state}\n`);
   let answer;
-  if (keyring.state === 'locked') answer = { refused: 'locked' };
+  if (keyring.state === 'locked')
+    answer = mode === 'read' && keyring.items[folder] ? { refused: 'locked', kept: true } : { refused: 'locked' };
   else if (keyring.state === 'absent') answer = { refused: 'unavailable', reason: 'no Secret Service on this bus' };
   else if (keyring.items[folder]) answer = { passphrase: keyring.items[folder] };
   else if (mode === 'read') answer = { none: true };

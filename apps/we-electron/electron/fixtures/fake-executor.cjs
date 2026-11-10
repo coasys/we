@@ -18,8 +18,11 @@
 // With `ws-lite.cjs` beside it, it also answers the agent calls the supervisor makes on
 // `/api/v1/ws?token=<admin credential>` (`mainAgent.js`): `agent.status`, `agent.generate` and
 // `agent.unlock`. The agent is `<data>/fake-executor.agent.json` (`{passphrase}`, made by generate),
-// locked at every start; a wrong passphrase is an error. Each is a line in the log: `<n> agent
-// generated`, `<n> agent unlocked`, `<n> agent unlock refused`. Another credential is refused (401).
+// locked at every start; a wrong passphrase is an error; `agent.lock` locks it again. Each is a line in
+// the log: `<n> agent generated`, `<n> agent unlocked`, `<n> agent unlock refused`, `<n> agent locked`.
+// Another credential is refused (401). With `<data>/fake-executor.status-delay` holding a number of
+// milliseconds, the next `agent.status` is read when it arrives and answered that much later, and the
+// file is removed (`<n> agent status delayed`): an answer that is already old when it lands.
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
@@ -112,7 +115,20 @@ function agentApi(req, socket) {
   wsLite.readFrames(socket, (text) => {
     const { id, type, params = {} } = JSON.parse(text);
     const fail = (message) => send({ id, error: { code: 500, message } });
-    if (type === 'agent.status') return send({ id, result: agentStatus() });
+    if (type === 'agent.status') {
+      const delayFile = path.join(data, 'fake-executor.status-delay');
+      if (!fs.existsSync(delayFile)) return send({ id, result: agentStatus() });
+      const ms = Number(fs.readFileSync(delayFile, 'utf8'));
+      fs.unlinkSync(delayFile);
+      const status = agentStatus();
+      log('agent status delayed');
+      return setTimeout(() => send({ id, result: status }), ms);
+    }
+    if (type === 'agent.lock') {
+      unlocked = false;
+      log('agent locked');
+      return send({ id, result: agentStatus() });
+    }
     if (type === 'agent.generate') {
       if (fs.existsSync(agentFile)) return fail('the agent is already made');
       fs.writeFileSync(agentFile, JSON.stringify({ passphrase: params.passphrase }));

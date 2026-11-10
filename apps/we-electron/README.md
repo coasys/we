@@ -63,19 +63,33 @@ Anyone who can run the app as this OS user gets an unlocked agent, with no passw
 
 What it leaves alone, and what follows:
 
-- **No keyring the app can use** (no Secret Service, or one still locked after 90 s) asks for the WE
-  password instead, as a step of the app before a session: `ready` carries `agent: 'needs-new-password'`
-  on a first start (asked twice) or `'needs-password'` for an agent with no kept passphrase, and the
-  window sends what the host's password field holds over `executor-agent-password`. The supervisor
-  makes the agent with it (`agent.generate`) or unlocks it (`agent.unlock`) — `giveAgentPassword` in
-  `mainAgent.js` — and answers `wrong` for a password that does not unlock it, so the step asks
-  again. The password is never logged, stored, or put in argv or the environment, and the field is
-  cleared once it is sent. The agent is then protected by the WE password, as before this stopgap.
-- **A locked or missing keyring for an agent whose passphrase it keeps** fails the start, in words
-  with no path and no secret, and "Try again" asks again: no password unlocks that agent, only the
-  keyring's passphrase does. The supervisor knows which agents those are from a marker in the data
-  folder, `we-agent-passphrase-kept`, written when one is made or unlocked with a kept passphrase
-  and removed when one is made with the WE password; it holds no secret.
+- **What the keyring answers when it will not give a passphrase.** `wallet-passphrase` says one of
+  three things: `unavailable`, there is no keyring at all (no session bus, no Secret Service on it,
+  no keychain); `locked`, it is there and stayed locked (its prompt dismissed, or unanswered for
+  90 s); `failed`, it is there and the call failed (and the supervisor says `failed` for a helper that
+  did not start or answer). A refused read also says `kept` where it found the item all the same.
+- **No keyring at all, on a first start** asks for a new WE password instead, as a step of the app
+  before a session: `ready` carries `agent: 'needs-new-password'`. Only `unavailable` does this. An
+  agent made with the WE password is that password's for good, so a keyring that is there but locked,
+  dismissed or failing fails a first start in words (`NEW_AGENT_KEYRING_WORDS`) and "Try again" asks
+  it again.
+- **A keyring that refuses for an agent with nothing kept for it** asks for that agent's WE password:
+  `ready` carries `agent: 'needs-password'`. For either, the window sends what the host's password
+  field holds over `executor-agent-password`. The supervisor makes the agent with it
+  (`agent.generate`) or unlocks it (`agent.unlock`) — `giveAgentPassword` in `mainAgent.js` — and
+  answers `wrong` for a password that does not unlock it, so the step asks again. Any password longer
+  than 1024 (`AGENT_PASSWORD_MAX`) is answered `refused`, and so is a new one under 8 characters
+  (`NEW_AGENT_PASSWORD_MIN`); a password an agent was already made with is never held to the floor,
+  so one made before it still opens it. The new one is typed twice, which only catches a typo: it says
+  nothing of how strong the password is. The password is never logged, stored, or put in argv or the
+  environment, and the field is cleared once it is sent. The agent is then protected by the WE
+  password, as before this stopgap.
+- **A keyring that refuses for an agent whose passphrase it keeps** fails the start, in words with no
+  path and no secret (`KEYRING_WORDS`), and "Try again" asks again: no password unlocks that agent,
+  only the keyring's passphrase does. The supervisor knows which agents those are from a marker in the
+  data folder, `we-agent-passphrase-kept`, written before one is made with a kept passphrase and when
+  one is unlocked with it, and removed when one is made with the WE password; it holds no secret. A
+  read the keyring refused that says `kept` counts as the marker, and writes it.
 - **An agent made before this, with a WE password**, has no item, and nor does one whose item was
   lost; the two cannot be told apart. It stays locked, and `ready` carries `agent: 'locked'`. WE's
   sign-in unlocks the first as before; the doors stay closed until then, with a note that says to
@@ -83,7 +97,10 @@ What it leaves alone, and what follows:
   asks for `executor-state` again when the app before a session is shown and before a door opens,
   and the supervisor reads the agent again to answer, so the doors open once sign-in has unlocked it.
 - **An agent made while the keyring was asked** (a prompt can wait) is not made over: the agent is
-  read again before `agent.generate`. `wallet-passphrase make` is read-then-write with no lock of
+  read again before `agent.generate`. That read and the call are not atomic; the ad4m change that
+  makes agent.generate refuse an initialised agent closes the rest of the window.
+- **Two reads of the agent in flight at once** (the window asks `executor-state` again while one is):
+  only the newest is told to the window, so an older one that answers last does not undo it. `wallet-passphrase make` is read-then-write with no lock of
   its own, and relies on Electron's single-instance lock for there being one supervisor.
 - **Signing out** restarts the executor, which unlocks the agent again: on the desktop, sign-out no
   longer leaves it locked.

@@ -32,6 +32,7 @@ vi.mock('../src/frameworks/solid/providers/PlatformProvider', () => ({
 }));
 
 import { BaseBoot, deploymentBase, handBackOnUnreachable } from '../src/frameworks/solid/base/BaseApp';
+import { NEW_PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH } from '../src/frameworks/solid/credential';
 import type { BaseStore } from '../src/frameworks/solid/stores/BaseStore';
 import type { WeSeedFile } from '../src/types/seed';
 
@@ -355,6 +356,18 @@ describe('BaseBoot', () => {
       expect(screen.getByText(/keyring is not available, so your WE password protects your agent/)).toBeTruthy();
       expect(fields()).toHaveLength(2);
       const [first, again] = fields();
+      // Under the floor: not given, and the drawn field says why. Typed twice only catches a typo.
+      type(first, 'short');
+      type(again, 'short');
+      expect(store().passwordConfirmed()).toBe(false);
+      await store().submitPassword();
+      expect(given).toEqual([]);
+      const [passwordField] = [...document.querySelectorAll('we-form-field')];
+      expect((passwordField as unknown as { error: string }).error).toBe(
+        `Use at least ${NEW_PASSWORD_MIN_LENGTH} characters`,
+      );
+      for (const field of fields())
+        expect((field as unknown as { maxlength: number }).maxlength).toBe(PASSWORD_MAX_LENGTH);
       type(first, 'test-password');
       type(again, 'test-password');
       expect(store().passwordConfirmed()).toBe(true);

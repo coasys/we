@@ -2246,7 +2246,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         'boolean — the password last given did not unlock the agent: say so beside the field, and clear it with clearPasswordWrong as the field is typed in (onEdit)',
       passwordEntered: 'boolean — something is typed in the password field (never what): gate Continue on it',
       passwordConfirmed:
-        'boolean — a new password is typed twice, the same both times: gate Continue on it where passwordIsNew',
+        'boolean — a new password is typed twice, the same both times, and is at least 8 characters: gate Continue on it where passwordIsNew, and give the CredentialField minLength: 8 so it says when it is short. Typing it twice only catches a typo; it is not a strength check',
     },
     actions: {
       refresh: '(): reads the identity and the connections again and works out the stage afresh',

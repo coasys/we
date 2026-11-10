@@ -10,11 +10,15 @@ import { join } from 'path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import {
+  AGENT_PASSWORD_MAX,
+  agentPasswordFits,
   ensureMainAgent,
   executorRpc,
   giveAgentPassword,
   keptMarker,
   KEYRING_WORDS,
+  NEW_AGENT_KEYRING_WORDS,
+  NEW_AGENT_PASSWORD_MIN,
   walletKeyring,
 } from './mainAgent.js';
 
@@ -192,11 +196,11 @@ describe('ensureMainAgent', () => {
   });
 
   /*
-    A keyring that refuses (none on this desktop, or one still locked past custody's 90 s) can still
-    fail the start, but only where the agent's passphrase is kept in it: that agent opens with nothing
-    else, and the person does not know its passphrase. Everywhere else the WE password is asked for.
+    A keyring that refuses can still fail the start, but only where the agent's passphrase is kept in
+    it: that agent opens with nothing else, and the person does not know its passphrase. For an agent
+    with nothing kept for it the WE password is asked for.
   */
-  for (const refused of ['locked', 'unavailable']) {
+  for (const refused of ['locked', 'failed', 'unavailable']) {
     it(`fails the start when the keyring is ${refused} and keeps the agent's passphrase, in words with no path and no secret`, async () => {
       const executor = fakeExecutor({ initialized: true, passphrase: SECRET });
       const failure = await ensureMainAgent({
@@ -214,15 +218,6 @@ describe('ensureMainAgent', () => {
       expect(executor.calls.map((c) => c.method)).toEqual(['agent.status']);
     });
 
-    it(`asks for a new WE password on a first start when the keyring is ${refused}, and makes nothing`, async () => {
-      const executor = fakeExecutor();
-      const marker = fakeMarker();
-      const keyring = fakeKeyring({ refused });
-      expect(await ensureMainAgent({ call: executor.call, keyring, marker, log: () => {} })).toBe('needs-new-password');
-      expect(executor.calls.map((c) => c.method)).toEqual(['agent.status']);
-      expect(marker.kept).toBe(false);
-    });
-
     it(`asks for the WE password of an agent with nothing kept for it when the keyring is ${refused}`, async () => {
       const executor = fakeExecutor({ initialized: true, passphrase: 'the person’s own' });
       expect(
@@ -237,6 +232,92 @@ describe('ensureMainAgent', () => {
       expect(executor.agent.unlocked).toBe(false);
     });
   }
+
+  /*
+    Lal's review of #438: the WE password a first start falls back to is the agent's for good, so it
+    is asked for only where there is no keyring at all (`unavailable`). A keyring that is there and
+    locked, whose prompt was dismissed, or that failed for now, fails the start with "Try again", as it
+    does for an agent already made.
+  */
+  it('asks for a new WE password on a first start only where there is no keyring, and makes nothing', async () => {
+    const executor = fakeExecutor();
+    const marker = fakeMarker();
+    const keyring = fakeKeyring({ refused: 'unavailable' });
+    expect(await ensureMainAgent({ call: executor.call, keyring, marker, log: () => {} })).toBe('needs-new-password');
+    expect(executor.calls.map((c) => c.method)).toEqual(['agent.status']);
+    expect(marker.kept).toBe(false);
+  });
+
+  for (const refused of ['locked', 'failed', 'something-new']) {
+    it(`fails a first start with "Try again" where the keyring is ${refused}, and makes nothing`, async () => {
+      const executor = fakeExecutor();
+      const failure = await ensureMainAgent({
+        call: executor.call,
+        keyring: fakeKeyring({ refused }),
+        marker: fakeMarker(),
+        log: () => {},
+      }).catch((err) => err);
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure.message).toBe(NEW_AGENT_KEYRING_WORDS[refused] ?? NEW_AGENT_KEYRING_WORDS.failed);
+      expect(failure.message).toMatch(/keyring/);
+      expect(failure.message).not.toMatch(/\/run\/|unix:|\//);
+      expect(executor.calls.map((c) => c.method)).toEqual(['agent.status']);
+    });
+  }
+
+  it('fails a first start with "Try again" where the keyring’s unlock prompt was dismissed, and makes the agent on the next', async () => {
+    // Custody answers a dismissed prompt as a locked keyring (`crates/custody/src/wallet.rs`).
+    const executor = fakeExecutor();
+    const keyring = fakeKeyring({ refused: 'locked' });
+    const marker = fakeMarker();
+    const failure = await ensureMainAgent({ call: executor.call, keyring, marker, log: () => {} }).catch((e) => e);
+    expect(failure.message).toBe(NEW_AGENT_KEYRING_WORDS.locked);
+    expect(executor.agent.initialized).toBe(false);
+
+    // "Try again", with the keyring unlocked this time.
+    const open = fakeKeyring();
+    expect(await ensureMainAgent({ call: executor.call, keyring: open, marker, log: () => {} })).toBe('unlocked');
+    expect(executor.agent.passphrase).toBe(SECRET);
+    expect(marker.kept).toBe(true);
+  });
+
+  /*
+    Lal's review of #438: the note that the passphrase is kept was written after `agent.generate`, so a
+    crash between the two, or a note that could not be written, left an agent whose only passphrase
+    is the kept random one looking like a WE password's: `needs-password`, for a password nobody knows.
+  */
+  describe('the note that the passphrase is kept', () => {
+    it('is written before the agent is made, so a start that ends in between leaves it', async () => {
+      const executor = fakeExecutor();
+      const marker = fakeMarker();
+      const generate = executor.call;
+      executor.call = async (method, params) => {
+        if (method === 'agent.generate') {
+          expect(marker.kept).toBe(true);
+          throw new Error('the executor’s WebSocket closed');
+        }
+        return generate(method, params);
+      };
+      await expect(
+        ensureMainAgent({ call: executor.call, keyring: fakeKeyring(), marker, log: () => {} }),
+      ).rejects.toThrow('closed');
+      expect(marker.kept).toBe(true);
+    });
+
+    it('missing, is taken as written where the keyring says the item is there all the same', async () => {
+      for (const refused of ['locked', 'failed']) {
+        const executor = fakeExecutor({ initialized: true, passphrase: SECRET });
+        const marker = fakeMarker();
+        const keyring = { read: async () => ({ refused, kept: true }), make: async () => ({ refused, kept: true }) };
+        const failure = await ensureMainAgent({ call: executor.call, keyring, marker, log: () => {} }).catch((e) => e);
+        expect(failure).toBeInstanceOf(Error);
+        expect(failure.message).toBe(KEYRING_WORDS[refused]);
+        // And written now, for a keyring that later answers nothing at all.
+        expect(marker.kept).toBe(true);
+        expect(executor.calls.map((c) => c.method)).toEqual(['agent.status']);
+      }
+    });
+  });
 });
 
 /*
@@ -314,6 +395,51 @@ describe('giveAgentPassword', () => {
       giveAgentPassword({ call, need: 'needs-password', password: PASSWORD, marker: fakeMarker(), log: quiet }),
     ).rejects.toThrow('closed');
   });
+
+  /*
+    Lal's review of #438 at e4d38fc84: a ceiling for every password, and a floor for a new one only.
+    An agent made with a WE password before there was a floor still opens with it.
+  */
+  it('refuses a new password under the floor, and any password over the ceiling, asking the executor nothing', async () => {
+    const tooShort = 'x'.repeat(NEW_AGENT_PASSWORD_MIN - 1);
+    const tooLong = 'x'.repeat(AGENT_PASSWORD_MAX + 1);
+    for (const [need, password] of [
+      ['needs-new-password', tooShort],
+      ['needs-new-password', tooLong],
+      ['needs-password', tooLong],
+    ]) {
+      const executor = fakeExecutor({ initialized: need === 'needs-password', passphrase: password });
+      const answer = await giveAgentPassword({ call: executor.call, need, password, marker: fakeMarker(), log: quiet });
+      expect(answer, `${need} ${password.length}`).toBe('refused');
+      expect(executor.calls).toEqual([]);
+    }
+  });
+
+  it('takes a new password at the floor and at the ceiling, counting characters, not code units', async () => {
+    for (const password of ['x'.repeat(NEW_AGENT_PASSWORD_MIN), 'x'.repeat(AGENT_PASSWORD_MAX)]) {
+      const executor = fakeExecutor();
+      const need = 'needs-new-password';
+      expect(await giveAgentPassword({ call: executor.call, need, password, marker: fakeMarker(), log: quiet })).toBe(
+        'unlocked',
+      );
+    }
+    // Four emoji are eight code units and four characters: under the floor.
+    expect(agentPasswordFits('\u{1F511}'.repeat(4), 'needs-new-password')).toBe(false);
+    expect(agentPasswordFits('\u{1F511}'.repeat(8), 'needs-new-password')).toBe(true);
+  });
+
+  it('unlocks an agent with the short password it was made with before there was a floor', async () => {
+    const executor = fakeExecutor({ initialized: true, passphrase: 'abc' });
+    const answer = await giveAgentPassword({
+      call: executor.call,
+      need: 'needs-password',
+      password: 'abc',
+      marker: fakeMarker(),
+      log: quiet,
+    });
+    expect(answer).toBe('unlocked');
+    expect(executor.agent.unlocked).toBe(true);
+  });
 });
 
 describe('keptMarker', () => {
@@ -372,10 +498,15 @@ describe('walletKeyring', () => {
     expect(asked().argv[1]).toBe('read');
   });
 
-  it('answers a helper that fails or says nothing readable as an unavailable keyring', async () => {
+  /*
+    Lal's review of #438: `unavailable` gives a new agent the WE password for good, and a helper that
+    failed says nothing about whether there is a keyring. It is a keyring that failed: "Try again".
+  */
+  it('answers a helper that fails, says nothing readable, or does not start as a failed keyring, never an unavailable one', async () => {
     const binary = helper(`process.stdout.write('not json'); process.exit(3)`);
-    const answer = await walletKeyring({ binary, dataFolder: '/d', baseEnv: {} }).read();
-    expect(answer.refused).toBe('unavailable');
+    expect((await walletKeyring({ binary, dataFolder: '/d', baseEnv: {} }).read()).refused).toBe('failed');
+    const missing = join(dir, 'no-such-helper');
+    expect((await walletKeyring({ binary: missing, dataFolder: '/d', baseEnv: {} }).make()).refused).toBe('failed');
   });
 
   it('answers a helper that never answers as a locked keyring, and stops it', async () => {

@@ -5,7 +5,7 @@
 use std::sync::Mutex;
 
 use ad4m_identity_client::VaultError;
-use we_custody::store::{keyring_locked, MemoryStore, SecretStore, StoreKind};
+use we_custody::store::{keyring_locked, no_keyring, MemoryStore, SecretStore, StoreKind};
 use we_custody::wallet::{self, Answer, Mode};
 
 #[test]
@@ -101,7 +101,7 @@ fn a_locked_keyring_is_answered_locked_and_nothing_is_written() {
     for mode in [Mode::Read, Mode::Make] {
         assert!(matches!(
             wallet::answer(&store, "coasys.wallet/x", mode),
-            Answer::Locked
+            Answer::Locked { kept: false }
         ));
     }
     assert_eq!(*store.writes.lock().unwrap(), 0);
@@ -110,7 +110,7 @@ fn a_locked_keyring_is_answered_locked_and_nothing_is_written() {
 #[test]
 fn a_keyring_that_is_not_there_is_answered_unavailable_with_its_reason() {
     let store = Refusing {
-        error: || VaultError::Unavailable("Secret Service: no such service".into()),
+        error: || no_keyring("Secret Service: no such service"),
         writes: Mutex::new(0),
     };
     match wallet::answer(&store, "coasys.wallet/x", Mode::Make) {
@@ -127,8 +127,103 @@ fn a_dismissed_unlock_prompt_is_a_locked_keyring() {
     };
     assert!(matches!(
         wallet::answer(&store, "coasys.wallet/x", Mode::Read),
-        Answer::Locked
+        Answer::Locked { kept: false }
     ));
+}
+
+/// Lal's review of #438: the supervisor gives an agent a WE password for good on `unavailable`, so
+/// only a keyring that is not there may be answered so. A Secret Service that is there and fails — no
+/// answer within the bound with no prompt up, a D-Bus error mid-call — is `failed`, which the
+/// supervisor answers with "Try again".
+#[test]
+fn a_keyring_that_is_there_and_fails_is_answered_failed_not_unavailable() {
+    const NO_ANSWER: &str = "Secret Service: no answer in 90 s";
+    const ENDED: &str = "Secret Service: its thread ended";
+    const NO_REPLY: &str =
+        "Secret Service: zbus error: org.freedesktop.DBus.Error.NoReply: timed out";
+    type MakeError = fn() -> VaultError;
+    let errors: [(MakeError, &str); 3] = [
+        (|| VaultError::Unavailable(NO_ANSWER.into()), NO_ANSWER),
+        (|| VaultError::Unavailable(ENDED.into()), ENDED),
+        (|| VaultError::Unavailable(NO_REPLY.into()), NO_REPLY),
+    ];
+    for (error, why) in errors {
+        let store = Refusing {
+            error,
+            writes: Mutex::new(0),
+        };
+        for mode in [Mode::Read, Mode::Make] {
+            let line: serde_json::Value = serde_json::from_str(&wallet::answer_line(
+                &wallet::answer(&store, "coasys.wallet/x", mode),
+            ))
+            .unwrap();
+            assert_eq!(line["refused"], "failed", "{why} on {mode:?}: {line}");
+            assert!(line["reason"].as_str().unwrap().contains(why));
+        }
+    }
+}
+
+/// A keyring that refuses to open an item it does hold: locked behind a prompt, or failing.
+struct Holding {
+    error: fn() -> VaultError,
+}
+
+impl SecretStore for Holding {
+    fn kind(&self) -> StoreKind {
+        StoreKind::SecretService
+    }
+    fn kind_of(&self, _: &str) -> Result<StoreKind, VaultError> {
+        Ok(StoreKind::SecretService)
+    }
+    fn put(&self, _: &str, _: &[u8]) -> Result<(), VaultError> {
+        Err((self.error)())
+    }
+    fn get(&self, _: &str) -> Result<Option<Vec<u8>>, VaultError> {
+        Err((self.error)())
+    }
+    // Asked without unlocking anything, as the Secret Service's `SearchItems` answers.
+    fn contains(&self, _: &str) -> Result<bool, VaultError> {
+        Ok(true)
+    }
+    fn delete(&self, _: &str) -> Result<(), VaultError> {
+        Err((self.error)())
+    }
+}
+
+/// Lal's review of #438: an agent whose passphrase the keyring keeps, with no note of it beside the
+/// data folder (the note's write failed), was asked a WE password nobody knows. A read the keyring
+/// refuses says when the item is there all the same, and the supervisor takes it as kept.
+#[test]
+fn a_refused_read_says_when_the_item_is_kept_all_the_same() {
+    for (error, refused) in [
+        (keyring_locked as fn() -> VaultError, "locked"),
+        (
+            || VaultError::Unavailable("Secret Service: no answer in 90 s".into()),
+            "failed",
+        ),
+    ] {
+        let store = Holding { error };
+        let line: serde_json::Value = serde_json::from_str(&wallet::answer_line(&wallet::answer(
+            &store,
+            "coasys.wallet/x",
+            Mode::Read,
+        )))
+        .unwrap();
+        assert_eq!(line["refused"], refused);
+        assert_eq!(line["kept"], true, "{line}");
+    }
+    // And says nothing of the kind where it does not know.
+    let store = Refusing {
+        error: keyring_locked,
+        writes: Mutex::new(0),
+    };
+    let line: serde_json::Value = serde_json::from_str(&wallet::answer_line(&wallet::answer(
+        &store,
+        "coasys.wallet/x",
+        Mode::Read,
+    )))
+    .unwrap();
+    assert!(line.get("kept").is_none(), "{line}");
 }
 
 #[test]
@@ -144,7 +239,15 @@ fn the_answer_line_carries_the_passphrase_only_when_there_is_one() {
 
     for (answer, refused) in [
         (Answer::None, None),
-        (Answer::Locked, Some("locked")),
+        (Answer::Locked { kept: false }, Some("locked")),
+        (Answer::Locked { kept: true }, Some("locked")),
+        (
+            Answer::Failed {
+                reason: "why".into(),
+                kept: true,
+            },
+            Some("failed"),
+        ),
         (Answer::Unavailable("why".into()), Some("unavailable")),
     ] {
         let text = wallet::answer_line(&answer);
@@ -170,7 +273,11 @@ fn the_answer_line_is_written_into_one_buffer_that_is_never_grown() {
         Answer::Passphrase(zeroize::Zeroizing::new("p".into())),
         Answer::Passphrase(zeroize::Zeroizing::new(String::new())),
         Answer::None,
-        Answer::Locked,
+        Answer::Locked { kept: true },
+        Answer::Failed {
+            reason: worst.clone(),
+            kept: true,
+        },
         Answer::Unavailable(worst.clone()),
     ] {
         let line = wallet::answer_line(&answer);

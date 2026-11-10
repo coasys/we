@@ -7,7 +7,7 @@ import type { IdentityChangeOutcome, IdentityCustodyView } from '@we/backend-sha
 import { createRoot } from 'solid-js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { credential } from '../src/frameworks/solid/credential';
+import { credential, NEW_PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH } from '../src/frameworks/solid/credential';
 import {
   BASE_CONNECTION_KEY,
   type BaseStorage,
@@ -619,6 +619,44 @@ describe('baseStore, the WE password where no keyring could be used', () => {
     await store.submitPassword();
     await until(() => store.stage() === 'connect');
     expect(t.given).toEqual(['not-the-password', PASSWORD]);
+  });
+
+  /*
+    Lal's review of #438 at e4d38fc84: a new WE password has a floor, and every one a ceiling. The
+    floor is for a new one only: a password an agent was made with before it opens it still.
+  */
+  it('sends no new password shorter than the floor, and says why', async () => {
+    const t = noKeyring('needs-new-password');
+    const { store } = make(host({ identity: fakeIdentity(view()).source, executor: t.executor }));
+    await until(() => store.stage() === 'password');
+    const short = 'x'.repeat(NEW_PASSWORD_MIN_LENGTH - 1);
+    credential.set(short);
+    credential.setConfirmation(short);
+    expect(store.passwordConfirmed()).toBe(false);
+    await store.submitPassword();
+    expect(t.given).toEqual([]);
+    expect(credential.touched()).toBe(true);
+
+    const enough = 'x'.repeat(NEW_PASSWORD_MIN_LENGTH);
+    credential.set(enough);
+    credential.setConfirmation(enough);
+    expect(store.passwordConfirmed()).toBe(true);
+    await store.submitPassword();
+    expect(t.given).toEqual([enough]);
+  });
+
+  it('unlocks with a short password an agent was made with, and sends none over the ceiling', async () => {
+    const t = noKeyring('needs-password', 'abc');
+    const { store } = make(host({ identity: fakeIdentity(view({ did: DID })).source, executor: t.executor }));
+    await until(() => store.stage() === 'password');
+    credential.set('x'.repeat(PASSWORD_MAX_LENGTH + 1));
+    await store.submitPassword();
+    expect(t.given).toEqual([]);
+
+    credential.set('abc');
+    await store.submitPassword();
+    expect(t.given).toEqual(['abc']);
+    await until(() => store.stage() === 'connect');
   });
 
   it('sends nothing with nothing typed', async () => {

@@ -15,6 +15,20 @@
 //! login keychain. There is no file to fall back to: the passphrase rests unsealed, so only a
 //! keyring may keep it, and a computer with none is answered [`Answer::Unavailable`].
 //!
+//! The refusals are three, and the supervisor treats them differently, so they are kept apart:
+//!
+//! - [`Answer::Unavailable`] — there is no keyring: no session bus, nothing on it answers for the
+//!   Secret Service and nothing can be started to, or no keychain. The supervisor's one answer that
+//!   gives a new agent the WE password instead, for good, so it says this and nothing else.
+//! - [`Answer::Locked`] — the keyring is there and stayed locked: its prompt was dismissed, or
+//!   nobody answered it within the bound.
+//! - [`Answer::Failed`] — the keyring is there and the call failed: no answer within the bound with
+//!   no prompt up, a D-Bus error part way, an item that was not kept. Asking again may work.
+//!
+//! A refused read also says whether the item is there all the same ([`SecretStore::contains`],
+//! which unlocks nothing), so an agent whose passphrase is kept is known as one even where the note
+//! the supervisor keeps of it was never written.
+//!
 //! The supervisor runs `we-custody wallet-passphrase read|make --data-folder <dir>` and reads one
 //! JSON line ([`answer_line`]); nothing else is printed, and a refusal's line carries no secret.
 //! What this process holds of the passphrase is zeroised when it is dropped; the supervisor's
@@ -28,7 +42,7 @@ use rand_core::{OsRng, RngCore};
 use serde::Serialize;
 use zeroize::Zeroizing;
 
-use crate::store::{is_keyring_locked, SecretStore};
+use crate::store::{is_keyring_locked, is_no_keyring, SecretStore};
 
 /// What every wallet item's name starts with, apart from custody's own (`coasys.identity/`).
 pub const ITEM_PREFIX: &str = "coasys.wallet/";
@@ -55,17 +69,32 @@ pub enum Answer {
     Passphrase(Zeroizing<String>),
     /// Nothing is kept for this folder.
     None,
-    /// The keyring is locked, and was not unlocked within the bound (or its prompt was dismissed).
-    Locked,
-    /// There is no keyring to use, or it failed; why, in the store's words (no secret in them).
+    /// The keyring is there and locked, and was not unlocked within the bound (or its prompt was
+    /// dismissed). `kept`: the item is there all the same.
+    Locked {
+        kept: bool,
+    },
+    /// The keyring is there and the call failed; why, in the store's words (no secret in them).
+    /// `kept`: the item is there all the same.
+    Failed {
+        reason: String,
+        kept: bool,
+    },
+    /// There is no keyring to use at all; why, in the store's words.
     Unavailable(String),
 }
 
-fn refused(error: VaultError) -> Answer {
+/// The answer for `error`. `kept`: whether the item is known to be there all the same.
+fn refused(error: VaultError, kept: bool) -> Answer {
     if is_keyring_locked(&error) || matches!(error, VaultError::Cancelled) {
-        Answer::Locked
-    } else {
+        Answer::Locked { kept }
+    } else if is_no_keyring(&error) {
         Answer::Unavailable(error.to_string())
+    } else {
+        Answer::Failed {
+            reason: error.to_string(),
+            kept,
+        }
     }
 }
 
@@ -88,11 +117,14 @@ fn new_passphrase() -> Zeroizing<String> {
 
 /// Answers `mode` for the item `name` in `store`. A make reads first, so a folder whose agent was
 /// made, or nearly made, keeps the passphrase it has; a new one is read back after it is kept, so
-/// what is answered is what the keyring holds.
+/// what is answered is what the keyring holds. A read the keyring refuses says whether the item is
+/// there all the same: asked first, as the asking unlocks nothing and prompts nobody, where after a
+/// read left waiting on a prompt it would queue behind that prompt.
 pub fn answer(store: &dyn SecretStore, name: &str, mode: Mode) -> Answer {
+    let there = mode == Mode::Read && matches!(store.contains(name), Ok(true));
     let kept = match read(store, name) {
         Ok(kept) => kept,
-        Err(e) => return refused(e),
+        Err(e) => return refused(e, there),
     };
     match (kept, mode) {
         (Some(passphrase), _) => Answer::Passphrase(passphrase),
@@ -100,12 +132,15 @@ pub fn answer(store: &dyn SecretStore, name: &str, mode: Mode) -> Answer {
         (None, Mode::Make) => {
             let made = new_passphrase();
             if let Err(e) = store.put(name, made.as_bytes()) {
-                return refused(e);
+                return refused(e, false);
             }
             match read(store, name) {
                 Ok(Some(back)) if *back == *made => Answer::Passphrase(made),
-                Ok(_) => Answer::Unavailable("the keyring did not keep the passphrase".into()),
-                Err(e) => refused(e),
+                Ok(_) => Answer::Failed {
+                    reason: "the keyring did not keep the passphrase".into(),
+                    kept: false,
+                },
+                Err(e) => refused(e, false),
             }
         }
     }
@@ -126,11 +161,14 @@ enum Line<'a> {
         refused: &'static str,
         #[serde(skip_serializing_if = "Option::is_none")]
         reason: Option<&'a str>,
+        /// Written only when true: the item is there all the same.
+        #[serde(skip_serializing_if = "std::ops::Not::not")]
+        kept: bool,
     },
 }
 
-/// Everything in a line but its one text, with room to spare: `{"refused":"unavailable","reason":""}`
-/// is the longest, at 38 bytes.
+/// Everything in a line but its one text, with room to spare:
+/// `{"refused":"failed","reason":"","kept":true}` is the longest, at 45 bytes.
 const LINE_FRAME: usize = 64;
 
 /// What [`answer_line`] reserves for `answer`'s line: its frame and its text with every character
@@ -139,14 +177,15 @@ const LINE_FRAME: usize = 64;
 pub fn line_capacity(answer: &Answer) -> usize {
     let text = match answer {
         Answer::Passphrase(p) => p.len(),
-        Answer::Unavailable(reason) => reason.len(),
-        Answer::None | Answer::Locked => 0,
+        Answer::Unavailable(reason) | Answer::Failed { reason, .. } => reason.len(),
+        Answer::None | Answer::Locked { .. } => 0,
     };
     LINE_FRAME + 6 * text
 }
 
 /// The one line the command prints: `{"passphrase": …}`, `{"none": true}`, or
-/// `{"refused": "locked" | "unavailable", "reason": …}`.
+/// `{"refused": "locked" | "failed" | "unavailable", "reason": …, "kept": true}` (`reason` and
+/// `kept` only where there is one, and where it is true).
 ///
 /// Written straight into one buffer, reserved up front ([`line_capacity`]) and zeroised on drop: no
 /// `serde_json::Value` or `String` in between holds the passphrase, and the buffer is never grown,
@@ -157,13 +196,20 @@ pub fn answer_line(answer: &Answer) -> Zeroizing<String> {
     let line = match answer {
         Answer::Passphrase(p) => Line::Passphrase { passphrase: p },
         Answer::None => Line::None { none: true },
-        Answer::Locked => Line::Refused {
+        Answer::Locked { kept } => Line::Refused {
             refused: "locked",
             reason: None,
+            kept: *kept,
+        },
+        Answer::Failed { reason, kept } => Line::Refused {
+            refused: "failed",
+            reason: Some(reason),
+            kept: *kept,
         },
         Answer::Unavailable(reason) => Line::Refused {
             refused: "unavailable",
             reason: Some(reason),
+            kept: false,
         },
     };
     let mut bytes = Zeroizing::new(Vec::with_capacity(line_capacity(answer)));
@@ -197,13 +243,13 @@ pub fn parse_args(args: impl IntoIterator<Item = String>) -> Result<(Mode, Strin
     Ok((mode, item_name(&folder)))
 }
 
-/// This computer's keyring for the wallet passphrase, or why there is none.
-pub fn keyring() -> Result<Box<dyn SecretStore>, String> {
+/// This computer's keyring for the wallet passphrase, or why there is none ([`no_keyring`] where
+/// there is none at all; another error where it is there and could not be reached).
+pub fn keyring() -> Result<Box<dyn SecretStore>, VaultError> {
     #[cfg(target_os = "linux")]
     {
         crate::store::SecretServiceStore::connect()
             .map(|store| Box::new(store) as Box<dyn SecretStore>)
-            .map_err(|e| e.to_string())
     }
     #[cfg(target_os = "macos")]
     {
@@ -211,7 +257,9 @@ pub fn keyring() -> Result<Box<dyn SecretStore>, String> {
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
-        Err("this app keeps no keyring item on this system".to_string())
+        Err(crate::store::no_keyring(
+            "this app keeps no keyring item on this system",
+        ))
     }
 }
 
@@ -233,7 +281,7 @@ pub fn main(args: impl IntoIterator<Item = String>) -> std::process::ExitCode {
             std::mem::forget(store);
             answered
         }
-        Err(reason) => Answer::Unavailable(reason),
+        Err(e) => refused(e, false),
     };
     let line = answer_line(&answered);
     let mut out = std::io::stdout().lock();
@@ -259,7 +307,7 @@ mod login_keychain {
     };
 
     use super::*;
-    use crate::store::{keyring_locked, StoreKind};
+    use crate::store::{keyring_locked, no_keyring, StoreKind};
 
     pub const UNLOCK_WAIT: Duration = Duration::from_secs(90);
     const SERVICE: &str = "org.coasys.app.wallet";
@@ -267,6 +315,9 @@ mod login_keychain {
     const ERR_SEC_USER_CANCELED: i32 = -128;
     const ERR_SEC_AUTH_FAILED: i32 = -25293;
     const ERR_SEC_INTERACTION_NOT_ALLOWED: i32 = -25308;
+    /// No default keychain, and no keychain by the name asked: there is no keychain to keep it in.
+    const ERR_SEC_NO_DEFAULT_KEYCHAIN: i32 = -25307;
+    const ERR_SEC_NO_SUCH_KEYCHAIN: i32 = -25294;
 
     pub struct LoginKeychain;
 
@@ -281,6 +332,10 @@ mod login_keychain {
             ERR_SEC_USER_CANCELED | ERR_SEC_AUTH_FAILED | ERR_SEC_INTERACTION_NOT_ALLOWED => {
                 keyring_locked()
             }
+            ERR_SEC_NO_DEFAULT_KEYCHAIN | ERR_SEC_NO_SUCH_KEYCHAIN => {
+                no_keyring(format!("keychain: {e}"))
+            }
+            // Another failure of a keychain that is there: `failed`, not `unavailable`.
             _ => VaultError::Unavailable(format!("keychain: {e}")),
         }
     }

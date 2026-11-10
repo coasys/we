@@ -32030,6 +32030,7 @@ export const seedBundles: Bundle[] = [
                       type: 'CredentialField',
                       props: {
                         purpose: { $: "baseStore.passwordIsNew ? 'new' : 'unlock'" },
+                        minLength: 8,
                         width: '100%',
                         placeholder: 'Password...',
                         confirmPlaceholder: 'Password again...',

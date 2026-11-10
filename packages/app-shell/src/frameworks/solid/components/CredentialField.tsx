@@ -24,12 +24,14 @@
  *
  * Two purposes: `unlock` is one field, for signing in; `new` is a password and its confirmation, for
  * creating an account, with the confirmation checked here rather than by a validation rule a
- * template would have to hold the value to run.
+ * template would have to hold the value to run. Typing it twice only catches a typo; it says nothing
+ * of how strong the password is. A `new` field may be given a floor (`minLength`) and says when what
+ * is typed is under it; every field stops at {@link PASSWORD_MAX_LENGTH}.
  */
 import { Column } from '@we/components/solid';
 import { createEffect, createSignal, onCleanup, onMount, Show } from 'solid-js';
 
-import { credential } from '../credential';
+import { credential, PASSWORD_MAX_LENGTH } from '../credential';
 
 export interface CredentialFieldProps {
   /** `unlock` — one field, for signing in (the default). `new` — a password typed twice. */
@@ -42,6 +44,11 @@ export interface CredentialFieldProps {
   confirmLabel?: string;
   /** The `unlock` field's width. A `new` field fills the column it is placed in. */
   width?: string;
+  /**
+   * For `new`: the fewest characters the password may have. The field says when it is under it, once
+   * asked (`credential.touch`) or once the field is left. A floor, not a strength check. Absent: none.
+   */
+  minLength?: number;
   /** The text changed. Carries nothing. */
   onEdit?: () => void;
   /** Enter, with something typed. Carries nothing — wire it to `sessionStore.unlock`. */
@@ -73,6 +80,7 @@ const isEnter = (event: Event) =>
 export default function CredentialField(props: CredentialFieldProps) {
   let boundary: HTMLDivElement | undefined;
   const [confirmLeft, setConfirmLeft] = createSignal(false);
+  const [passwordLeft, setPasswordLeft] = createSignal(false);
 
   onMount(() => {
     const el = boundary;
@@ -105,7 +113,13 @@ export default function CredentialField(props: CredentialFieldProps) {
     props.onEdit?.();
   };
 
-  const passwordError = () => (credential.touched() && !credential.entered() ? 'Password is required' : '');
+  const passwordError = () => {
+    if (credential.touched() && !credential.entered()) return 'Password is required';
+    const min = props.minLength ?? 0;
+    if ((credential.touched() || passwordLeft()) && credential.entered() && !credential.longEnough(min))
+      return `Use at least ${min} characters`;
+    return '';
+  };
   const confirmError = () => {
     if (credential.touched() && !credential.confirmationEntered()) return 'Please confirm your password';
     if ((credential.touched() || confirmLeft()) && credential.confirmationEntered() && !credential.confirmed())
@@ -122,6 +136,7 @@ export default function CredentialField(props: CredentialFieldProps) {
             type="password"
             revealable
             autocomplete="current-password"
+            maxlength={PASSWORD_MAX_LENGTH}
             width={props.width}
             placeholder={props.placeholder ?? 'Password...'}
             on:input={(e: CustomEvent) => edit(String(e.detail ?? ''), 'secret')}
@@ -137,9 +152,12 @@ export default function CredentialField(props: CredentialFieldProps) {
               type="password"
               revealable
               autocomplete="new-password"
+              maxlength={PASSWORD_MAX_LENGTH}
+              minlength={props.minLength}
               width="100%"
               placeholder={props.placeholder ?? 'Password...'}
               on:input={(e: CustomEvent) => edit(String(e.detail ?? ''), 'secret')}
+              on:blur={() => setPasswordLeft(true)}
             />
           </we-form-field>
           <we-form-field label={props.confirmLabel ?? 'Confirm password'} error={confirmError()}>
@@ -147,6 +165,7 @@ export default function CredentialField(props: CredentialFieldProps) {
               type="password"
               revealable
               autocomplete="new-password"
+              maxlength={PASSWORD_MAX_LENGTH}
               width="100%"
               placeholder={props.confirmPlaceholder ?? 'Confirm password...'}
               on:input={(e: CustomEvent) => edit(String(e.detail ?? ''), 'confirmation')}
