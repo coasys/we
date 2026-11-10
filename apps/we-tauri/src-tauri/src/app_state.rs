@@ -1,7 +1,8 @@
 use std::path::PathBuf;
 
 pub struct AppState {
-    pub graphql_port: u16,
+    /// The executor's port: its WebSocket RPC (`/api/v1/ws`) and `GET /health`.
+    pub executor_port: u16,
     pub req_credential: String,
     /// Where this app keeps its own configuration — the account registry, and the directories of
     /// accounts it created. Resolved once at startup and carried here so the account commands do

@@ -39,8 +39,8 @@ Unlike the Tauri app which embeds the Rust executor as a library, the Electron a
 
 1. Spawns the `ad4m-executor` binary as a separate child process
 2. Passes configuration via command-line arguments (port, token, data path)
-3. Communicates with the frontend via IPC to provide connection details
-4. The renderer uses these details to connect to the executor's GraphQL API
+3. Waits until the executor's `GET /health` answers `{"status":"ok"}`, then communicates with the frontend via IPC to provide connection details
+4. The renderer uses these details to connect to the executor's WebSocket RPC API (`/api/v1/ws` on the executor's port)
 
 The window opens before the executor is up. The main process sends the executor's state to the
 window (`executor-state`: `starting`, `ready`, or `failed` with a reason that names no path), and the

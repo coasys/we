@@ -117,8 +117,8 @@ fn enable_media(app: &tauri::App) {
 }
 
 pub fn run() {
-    // Find a free port for the GraphQL server
-    let graphql_port = find_port(12000, 13000).expect("Failed to find free port");
+    // Find a free port for the executor's API (WebSocket RPC at /api/v1/ws, and /health)
+    let executor_port = find_port(12000, 13000).expect("Failed to find free port");
 
     // Generate a credential token
     let req_credential = Uuid::new_v4().to_string();
@@ -214,13 +214,13 @@ pub fn run() {
             we_custody::PendingIncepts::file(custody_dir),
         ),
         we_custody::ExecutorAddress {
-            url: format!("http://127.0.0.1:{graphql_port}"),
+            url: format!("http://127.0.0.1:{executor_port}"),
             credential: std::sync::Arc::from(req_credential.as_str()),
         },
     );
 
     let state = AppState {
-        graphql_port,
+        executor_port,
         req_credential: req_credential.clone(),
         config_dir,
         default_data_path,
@@ -268,9 +268,10 @@ pub fn run() {
                 // A `Secret`: the executor can compare it and never print or serialise it.
                 admin_credential: Some(Secret::new(req_credential.clone())),
                 app_data_path: Some(app_data_path.to_str().unwrap().to_string()),
-                // `port` is the executor's GraphQL/REST port — the same one the electron host
-                // passes as `--port`. It was `gql_port` in an older Ad4mConfig.
-                port: Some(graphql_port),
+                // `port` is the executor's API port — its WebSocket RPC at `/api/v1/ws` and
+                // `GET /health` — the same one the electron host passes as `--port`. It was
+                // `gql_port` in an older Ad4mConfig, from when that API was GraphQL.
+                port: Some(executor_port),
                 run_dapp_server: Some(false), // Disabled - we serve the app ourselves
                 connect_holochain: Some(true),
                 // Off unless asked for: MCP opens a port that serves this agent's data to anything

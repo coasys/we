@@ -21,8 +21,9 @@
  *
  * ## Why recognition is by substring and not by type
  *
- * Nothing this crosses throws typed errors: the AD4M client rethrows GraphQL strings, `fetch`
- * throws a `TypeError`, and a Holochain failure arrives as text from three layers down. So this
+ * Nothing this crosses throws errors it can tell apart by type: the AD4M client carries the
+ * executor's WebSocket RPC error message as text (and its error class is not one app-shell may
+ * import), `fetch` throws a `TypeError`, and a Holochain failure arrives as text from three layers down. So this
  * matches on what is reliably present, and deliberately recognises very little — a wrong guess
  * that reassures somebody about the wrong problem is worse than the honest fallback.
  */
@@ -36,7 +37,7 @@ const REFUSED = ['unauthorized', 'unauthenticated', 'not authorized', 'capabilit
 /** Messages that mean "it took too long", which is the one class worth suggesting a retry for. */
 const TIMEOUT = ['timeout', 'timed out', 'deadline exceeded'];
 
-/** What an error says: a thrown Error, a bare string, or an object carrying a `message` (as GraphQL errors do). */
+/** What an error says: a thrown Error, a bare string, or an object carrying a `message` (as the executor's RPC error replies do). */
 function messageOf(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === 'string') return error;

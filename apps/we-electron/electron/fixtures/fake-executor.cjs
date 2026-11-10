@@ -3,7 +3,8 @@
 //
 // `init --data-path <dir>` writes the marker the app looks for and exits 0. `run` reads
 // `<data>/fake-executor.plan.json`: `steps[n - 1]` is what the n-th start does — a number exits with
-// that code at once; `"serve"` (the default past the plan) answers POST /graphql on `--port`, exits 0
+// that code at once; `"serve"` (the default past the plan) answers GET /health on `--port` with 200
+// `{"status":"ok"}` as the executor does (anything else is 404), exits 0
 // when its stdin closes (`--watch-stdin true`) or on SIGTERM, and with `{ "serve": true, "thenExit":
 // <code>, "afterMs": <ms> }` exits that code once up. Every start, ready and exit is a line in
 // `<data>/fake-executor.log`: `<n> start port=<p> pid=<pid>`, `<n> ready`, `<n> exit <code>`,
@@ -82,8 +83,13 @@ if (typeof step === 'number') {
 
 const serve = () => {
   const server = http.createServer((req, res) => {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end('{"data":{"__typename":"Query"}}');
+    if (req.method === 'GET' && req.url === '/health') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end('{"status":"ok"}');
+      return;
+    }
+    res.writeHead(404, { 'Content-Type': 'text/plain' });
+    res.end('not found');
   });
   if (wsLite) server.on('upgrade', agentApi);
   // A taken port is exit 80, as for the executor (`BindFailed`).
