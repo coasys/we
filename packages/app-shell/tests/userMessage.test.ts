@@ -48,7 +48,7 @@ describe('explain', () => {
     ['request timed out after 30000ms', /took too long/i],
   ])('recognises %s', (message, expected) => {
     // Matched on text rather than on type because nothing this crosses throws typed errors: the
-    // AD4M client rethrows GraphQL strings, `fetch` throws a TypeError, and a Holochain failure
+    // AD4M client carries the executor's RPC error message as text, `fetch` throws a TypeError, and a Holochain failure
     // arrives as text from three layers down.
     const answer = explain(new Error(message), 'Could not publish');
     expect(answer).toMatch(expected);

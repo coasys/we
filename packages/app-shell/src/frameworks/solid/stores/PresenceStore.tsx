@@ -25,7 +25,7 @@
  *
  * Presence for *every* joined space is a different proposition and remains refused. The traffic is
  * (spaces × members ÷ heartbeat) inbound signals per second, paid continuously whether or not
- * anything happens — each one crossing the executor's GraphQL boundary and landing in reactive state
+ * anything happens — each one crossing the executor's WebSocket RPC boundary and landing in reactive state
  * on the main thread. Anything that wants to know about a space you are *not* in, such as unread
  * counts, should ask the data rather than the beacon: that cost is paid only when something changes.
  * Keeping the set bounded by what is live is what keeps the two apart, and `MAX_LEASES` says so out
