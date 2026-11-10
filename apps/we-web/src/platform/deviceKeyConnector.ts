@@ -251,22 +251,6 @@ export async function loginUntilReached<T>(
 }
 
 /**
- * Hands a renewed token to the live client, where the client can take one.
- *
- * `Ad4mClient.setToken` (ad4m after the pinned cd97f2ac2) uses the token for every later call and
- * the next connection. The pinned client has no such method and keeps the token it was built
- * with, so here this answers `false` and the renewal reaches only `core.token` (and what reads it:
- * the ports' `connection()`, an embedded app). Once WE pins an ad4m with `setToken`, this guard
- * becomes a plain `client.setToken(token)`.
- */
-export function handRenewedToken(client: unknown, token: string): boolean {
-  const live = client as { setToken?: (token: string) => void } | null;
-  if (typeof live?.setToken !== 'function') return false;
-  live.setToken(token);
-  return true;
-}
-
-/**
  * Whether this boot logs in with the device key, and where: the plugin, and the executor's URL,
  * when the phone has joined an identity and has an executor to log in to; otherwise `null`.
  */
@@ -387,10 +371,11 @@ export function createDeviceKeyConnector(
         url,
         session,
         // Read by `connection` below on each use, and by ad4m-connect when it builds a client.
-        // The client the ports hold takes it too, where it can: see `handRenewedToken`.
+        // The client the ports hold takes it too (`Ad4mClient.setToken`): every later call and
+        // the next socket go out with it, so a reconnect after the first token expired opens.
         onToken: (token) => {
           core.token = token;
-          handRenewedToken(client, token);
+          client.setToken(token);
         },
         onExpired: (error) => ended('expired', error),
       });

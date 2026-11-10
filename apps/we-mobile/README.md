@@ -72,11 +72,6 @@ built for Android with uniffi bindings:
   a plain `Vec<u8>`, serialised through a `RustBuffer` and the JVM's own buffers on each side with
   no zeroing, so a seed's plaintext can stay in freed native and JVM memory until it is reused.
   Follow-up: a zeroizing transfer path for secret bytes across the FFI.
-- **A renewed token does not reach the open client.** Renewal updates the token ad4m-connect and
-  an embedded app read, but the `Ad4mClient` WE's ports hold keeps the one it was built with, so a
-  socket that reconnects after the first token expired is refused (and WE starts again, above).
-  The pinned ad4m has no way to hand a client a new token; `Ad4mClient.setToken` is the fix, and
-  `handRenewedToken` in `deviceKeyConnector.ts` calls it once WE pins an ad4m that has it.
 
 Phase 2a had no screens for any of this (phase 2b's identity page, below, is how a person does it
 now). The executor to log in to is the localStorage key `we-phone/key-host` (an http(s) URL); the
