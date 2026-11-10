@@ -48,22 +48,34 @@ export function executorEnv(env = process.env) {
   return { ...env };
 }
 
+/** How long a start waits for the executor to answer ready, and how long one probe of it may take. */
+const READY_TIMEOUT_MS = 60_000;
+const PROBE_TIMEOUT_MS = 2_000;
+
 /**
  * Poll `probe` until it answers true: `'ready'`, or `'gone'` once `gone()` says the process being
- * waited on has exited, or `'timeout'` after `attempts` tries `interval` ms apart.
+ * waited on has exited, or `'timeout'` once `timeoutMs` have passed on `now`'s clock. Tries are
+ * `interval` ms apart. `probe` is given the time left, so a probe that bounds itself by it and a
+ * wait cut short at the deadline keep the whole wait within `timeoutMs`: with a count of tries, slow
+ * probes ran it past the time its error message names.
  *
  * `gone` is what keeps a start that has already failed from waiting out the whole budget. An
  * executor that dies while it starts leaves nothing listening, and without it the wait polled the
  * dead port for a minute: on first launch that minute passed before the start reported its error,
  * and during a crash restart the restart queued behind it waited too.
  */
-export async function waitUntilReady(probe, { gone = () => false, attempts = 120, interval = 500, wait = sleep } = {}) {
-  for (let i = 0; i < attempts; i++) {
+export async function waitUntilReady(
+  probe,
+  { gone = () => false, timeoutMs = READY_TIMEOUT_MS, interval = 500, wait = sleep, now = Date.now } = {},
+) {
+  const deadline = now() + timeoutMs;
+  for (;;) {
     if (gone()) return 'gone';
-    if (await probe()) return 'ready';
-    await wait(interval);
+    const left = deadline - now();
+    if (left <= 0) return 'timeout';
+    if (await probe(left)) return 'ready';
+    await wait(Math.min(interval, Math.max(0, deadline - now())));
   }
-  return 'timeout';
 }
 
 /**
@@ -74,7 +86,7 @@ export async function waitUntilReady(probe, { gone = () => false, attempts = 120
  * an unrelated server on the port, or from the executor itself for a path it does not serve — passed.
  * A request that gets no answer within `timeoutMs` is not ready, and the caller asks again.
  */
-export function executorHealthy(port, { timeoutMs = 2_000 } = {}) {
+export function executorHealthy(port, { timeoutMs = PROBE_TIMEOUT_MS } = {}) {
   return new Promise((resolve) => {
     const req = http.get({ hostname: '127.0.0.1', port, path: '/health', timeout: timeoutMs }, (res) => {
       if (res.statusCode !== 200) {
@@ -102,17 +114,23 @@ export function executorHealthy(port, { timeoutMs = 2_000 } = {}) {
 }
 
 /**
- * Wait, up to 60 s at the defaults of {@link waitUntilReady}, for the executor on `port` to be
- * {@link executorHealthy}. Throws when it is not, saying whether the executor exited first (`gone`,
- * checked between attempts) or never answered.
+ * Wait, up to `timeoutMs` (60 s), for the executor on `port` to be {@link executorHealthy}. Each
+ * probe's own timeout is cut to the time left. Throws when it is not, saying whether the executor
+ * exited first (`gone`, checked between probes) or never answered.
  */
-export async function waitForExecutorReady(port, { gone = () => false, attempts, interval, wait } = {}) {
-  const outcome = await waitUntilReady(() => executorHealthy(port), { gone, attempts, interval, wait });
+export async function waitForExecutorReady(
+  port,
+  { gone = () => false, timeoutMs = READY_TIMEOUT_MS, interval, wait, now } = {},
+) {
+  const outcome = await waitUntilReady(
+    (left) => executorHealthy(port, { timeoutMs: Math.min(PROBE_TIMEOUT_MS, left) }),
+    { gone, timeoutMs, interval, wait, now },
+  );
   if (outcome === 'ready') return;
   throw new Error(
     outcome === 'gone'
       ? `The executor exited before it was ready on port ${port}`
-      : `The executor on port ${port} was not ready after 60 s`,
+      : `The executor on port ${port} was not ready after ${timeoutMs / 1000} s`,
   );
 }
 
