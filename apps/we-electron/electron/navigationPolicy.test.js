@@ -36,7 +36,7 @@ describe('which origins the window treats as itself', () => {
 
   it('does not trust a different port on the same host', () => {
     // The executor is on localhost too. "localhost" is not an origin.
-    expect(isTrusted('http://localhost:12000/graphql', origins)).toBe(false);
+    expect(isTrusted('http://localhost:12000/health', origins)).toBe(false);
   });
 
   it('does not trust anywhere else', () => {
