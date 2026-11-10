@@ -70,6 +70,7 @@ import { routeWrite } from '../../../shared/edgeRoute';
 import { hostSlot } from '../../../shared/hostSlot';
 import { kindHue } from '../../../shared/kindHue';
 import { notifyCopiedIn } from '../../../shared/registries/moduleHostServices';
+import { WE_PLUMBING_CLASSES } from '../../../shared/shapes/extractionCandidates';
 import {
   presentationFields,
   presentationOf,
@@ -97,6 +98,7 @@ import {
   withRelationEntry,
   writeFieldValue,
 } from '../../../shared/shapes/recordDraft';
+import { groupSpaceClasses, type SpaceClassGroup } from '../../../shared/shapes/spaceClasses';
 import { isRank, seatInRow } from '../../../shared/treeOrder';
 import { type AppDataset, useDatasetStore } from './DatasetStore';
 import { useSessionStore } from './SessionStore';
@@ -312,6 +314,13 @@ export interface RecordStore {
    * which is the whole point — a content type that is manifest + fragments needs no component.
    */
   displays: Accessor<Record<string, RecordDisplay>>;
+  /**
+   * Every class this space has, grouped by where it comes from — `{ key, label, classes }[]`, each
+   * class `{ name, label, icon, hinted }`: the space's own models, then each other app's namespace
+   * (`conv://`, `flux://`), then WE's built-ins. What the space's DNA lists by default. See
+   * `groupSpaceClasses`.
+   */
+  spaceClasses: Accessor<SpaceClassGroup[]>;
   /**
    * Every kind of record that can be shown here — what can be made, then every core block and the
    * kinds read without being made (a drawn connection, the space's vocabulary) — each with its name,
@@ -946,6 +955,10 @@ export function RecordStoreProvider(props: ParentProps) {
     return extra.length ? [...creatableEntities(), ...extra] : creatableEntities();
   });
 
+  const spaceClasses = createMemo(() =>
+    groupSpaceClasses({ known: displayableEntities(), foreign: datasetStore.currentDatasetEntities() }),
+  );
+
   const vocabularies = hostSlot<(vocabulary: string) => string[] | undefined>();
   const contentHomes = hostSlot<{ forCanvas: (canvas: string) => string; root: () => string }>();
   /** Where content made on `canvas` lives — or, with no canvas, content with no other home. See `provideContentHomes`. */
@@ -971,14 +984,15 @@ export function RecordStoreProvider(props: ParentProps) {
       });
     }
     /*
-      A class the space already had and offers for extraction (`foreignExtractionCandidates`). No WE
-      model says how to show one, so its scalar properties are listed as its SHACL names them —
-      without this an accepted record of one is an empty card. Display only: `schemaFor` still does
+      A class the space already had — every one the space's DNA lists (`spaceClasses`), which is also
+      every one a call may extract into. No WE model says how to show one, so its scalar properties
+      are listed as its SHACL names them — without this an accepted record of one is an empty card,
+      and opening the class from the DNA lists nothing readable. Display only: `schemaFor` still does
       not know it, so nothing here makes one creatable or placeable.
     */
-    const extractable = new Set(shapeStore.extractionCandidates());
+    const plumbing = new Set(WE_PLUMBING_CLASSES);
     for (const entry of datasetStore.currentDatasetEntities()) {
-      if (out[entry.name] || !extractable.has(entry.name)) continue;
+      if (out[entry.name] || plumbing.has(entry.name)) continue;
       const scalars = entry.properties.filter((p) => p.relatedEntity === undefined);
       const properties = Object.fromEntries(
         scalars.map((p) => [p.name, { type: p.type === 'uri' ? ('string' as const) : p.type }]),
@@ -3289,6 +3303,7 @@ export function RecordStoreProvider(props: ParentProps) {
     recordDraftDirty,
     displays,
     kinds: displayableEntities,
+    spaceClasses,
     provideVocabularies: vocabularies.provide,
     provideContentHomes: contentHomes.provide,
     recordErrors,

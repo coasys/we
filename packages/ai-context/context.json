@@ -6761,6 +6761,9 @@
         "displays": {
           "type": "object"
         },
+        "spaceClasses": {
+          "type": "array"
+        },
         "kinds": {
           "type": "array"
         },
