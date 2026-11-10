@@ -55,5 +55,27 @@ export async function check({ evaluate, partStyle, screenshot }) {
   });
   if (exported !== 'call-1') problems.push(`the export button gave ${exported}, not call-1`);
 
+  // Extraction's button does what its rail entry does in WE: it launches the panel's dock.
+  const launched = await evaluate(async () => {
+    const button = [...document.querySelectorAll('we-button')].find(
+      (b) => b.getAttribute('label') === 'Extraction' || b.label === 'Extraction',
+    );
+    if (!button) return 'no button';
+    const expanded = button.expanded;
+    button.click();
+    await new Promise((r) => setTimeout(r, 50));
+    return { id: globalThis.__launched ?? 'not called', expanded };
+  });
+  if (launched === 'no button') {
+    problems.push('no Extraction button');
+  } else {
+    if (launched.id !== 'transcribe:extraction') {
+      problems.push(`the Extraction button launched ${launched.id}, not transcribe:extraction`);
+    }
+    if (launched.expanded !== false) {
+      problems.push(`the Extraction button's expanded is ${launched.expanded}, not false`);
+    }
+  }
+
   return problems;
 }

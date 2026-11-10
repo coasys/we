@@ -37,7 +37,7 @@ import { canvasPane } from './coasys/space/canvas.ts';
 import { DNA_LISTS } from './coasys/space/dna.ts';
 import { callPath, groupPath, personPath, SELECTED_EXPR } from './coasys/space/paths.ts';
 import { treeSection } from './coasys/space/tree.ts';
-import { callPage, spaceRoutes } from './coasys/space/views.ts';
+import { callBarAside, callPage, spaceRoutes } from './coasys/space/views.ts';
 import { bundleFileName, type Cartridge, cartridgeBundles, coasys, fieldGuide, toolLibrary } from './index.ts';
 
 const contextData = JSON.parse(readFileSync(resolve(import.meta.dirname, '../../../ai-context/context.json'), 'utf-8'));
@@ -118,6 +118,26 @@ describe('the Coasys cartridge', () => {
         .map((e) => `${template.id}: ${e.path}: ${e.message}`),
     );
     expect(errors).toEqual([]);
+  });
+
+  /*
+    WE's rail carries the extraction panel's button; this interface has no rail, so the call page is
+    where a way back to the panel has to live. It is the rail's own action — `launchModule` on the
+    panel's dock — so a press toggles and an open-but-hidden panel is brought forward, not closed.
+  */
+  it('opens the extraction panel from a call’s bar, the rail’s own way', () => {
+    const button = findNode(
+      { children: callBarAside("'call-1'") },
+      (n) => (n.props as { label?: string } | undefined)?.label === 'Extraction',
+    )!;
+    expect(button).toBeDefined();
+    expect(JSON.stringify(button.props)).toContain('spaceStore.launchModule');
+    expect(JSON.stringify(button.props)).toContain('transcribe:extraction');
+    // The panel's own glyph, and its state on the button.
+    expect(JSON.stringify(button)).toContain('sparkle');
+    expect(JSON.stringify(button.props)).toContain('modules.transcribe.extractionOpen');
+    // The transcript export it sits beside is still offered the same way.
+    expect(JSON.stringify(callBarAside("'call-1'"))).toContain('spaceStore.exportCallTranscript');
   });
 
   it('brings its own name, mark, sign-in screen and theme', () => {
