@@ -32,7 +32,7 @@ import {
   validateManifest,
 } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
-import { createJsonShapeStore, Shape } from '@we/entities';
+import { createJsonShapeStore, getRegisteredEntityNames, Shape } from '@we/entities';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import type { BundleRecordType } from '@we/schema-shared';
 import {
@@ -51,6 +51,7 @@ import {
   generateShapeDraft as runShapeGeneration,
   type ShapeGenerationTransport,
 } from '../../../shared/ai/shapeGeneration';
+import { foreignExtractionCandidates } from '../../../shared/shapes/extractionCandidates';
 import { hintToDisplay } from '../../../shared/shapes/hintEditor';
 import {
   additiveViolations,
@@ -478,10 +479,30 @@ export function ShapeStoreProvider(props: ParentProps) {
     prefers the native class, so the two names resolve to one class and requesting it twice would
     put the same shape in the prompt twice at the community's expense.
   */
+  /*
+    Then the classes the space already had: SHACL WE did not write, offered when the class carries an
+    interpretation hint — see `foreignExtractionCandidates`. Last, so WE's own read first.
+  */
+  const foreignCandidates = createMemo(() =>
+    foreignExtractionCandidates(datasetStore.currentDatasetEntities(), {
+      taken: [...Object.keys(CORE_MANIFEST.entities), ...getRegisteredEntityNames()],
+      adopted: spaceShapes().map((shape) => shape.name),
+    }),
+  );
+  createEffect(() => {
+    const { shadowed } = foreignCandidates();
+    if (shadowed.length)
+      console.warn(
+        `extraction: not offering ${shadowed.map((n) => `"${n}"`).join(', ')} from this space's own classes — ` +
+          `WE has a class of the same name, which the name would extract into instead`,
+      );
+  });
+
   const extractionCandidates = createMemo<string[]>(() => {
     const names = [
       ...coreExtractionTargets,
       ...spaceShapes().flatMap((shape) => (shape.manifest ? extractableEntities(shape.manifest) : [])),
+      ...foreignCandidates().offered,
     ];
     return [...new Set(names)];
   });
