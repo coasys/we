@@ -164,7 +164,7 @@ class DeviceKeysJvmTest {
   private fun login() = SessionRequest(
     purpose = SessionPurpose.LOGIN,
     executor = "did:key:z6MkhaXgBZDvotDkL5257faiztiGiC2QtKLGpbnnEGta2doK",
-    url = "wss://AD4M.example.org:443/graphql",
+    url = "wss://AD4M.example.org:443/api/v1/ws",
     challenge = b64url(ByteArray(32) { 3 }),
     grant = null,
   )

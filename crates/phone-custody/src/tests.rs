@@ -105,7 +105,7 @@ fn login(challenge: &str) -> SessionRequest {
     SessionRequest {
         purpose: SessionPurpose::Login,
         executor: "did:key:z6MkExecutor".into(),
-        url: "ws://127.0.0.1:12600/graphql".into(),
+        url: "ws://127.0.0.1:12600/api/v1/ws".into(),
         challenge: challenge.into(),
         grant: None,
     }
@@ -345,7 +345,7 @@ fn a_statement_needs_a_challenge_an_executor_and_an_identity() {
 #[test]
 fn the_audience_is_the_dialed_origin_normalised_as_the_executor_does() {
     let cases = [
-        ("ws://127.0.0.1:12600/graphql", "http://127.0.0.1:12600"),
+        ("ws://127.0.0.1:12600/api/v1/ws", "http://127.0.0.1:12600"),
         ("http://localhost:12000", "http://localhost:12000"),
         ("wss://Host.Example.org/api?x=1", "https://host.example.org"),
         ("https://host.example.org:443/", "https://host.example.org"),
