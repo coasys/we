@@ -16,12 +16,19 @@
  * removes its own stale socket, and RocksDB locks the LOCK file rather than relying on its absence —
  * while for a live one they broke the executor that exit 79 now protects.
  *
+ * ## Ready
+ *
+ * The executor is ready when `GET /health` on its port answers 200 `{"status":"ok"}`
+ * ({@link waitForExecutorReady}). It has no GraphQL: its API is the WebSocket RPC at `/api/v1/ws`.
+ *
  * ## How
  *
  * The executor shuts down cleanly on SIGTERM and when its stdin closes: it stops the Holochain
  * conductor and exits. So the stop closes stdin, then SIGTERM, then a wait for the process to go,
  * and SIGKILL only if it does not. SIGKILL first left the conductor and the stores mid-write.
  */
+
+import http from 'http';
 
 /**
  * The environment the executor is started with.
@@ -57,6 +64,56 @@ export async function waitUntilReady(probe, { gone = () => false, attempts = 120
     await wait(interval);
   }
   return 'timeout';
+}
+
+/**
+ * Whether the executor on `port` says it is up: `GET /health` answering 200 with `{"status":"ok"}`,
+ * which it serves once its API is listening (the WebSocket RPC at `/api/v1/ws` is on the same port).
+ *
+ * Only that answer counts. The check this replaced took any HTTP response as ready, so a 404 — from
+ * an unrelated server on the port, or from the executor itself for a path it does not serve — passed.
+ * A request that gets no answer within `timeoutMs` is not ready, and the caller asks again.
+ */
+export function executorHealthy(port, { timeoutMs = 2_000 } = {}) {
+  return new Promise((resolve) => {
+    const req = http.get({ hostname: '127.0.0.1', port, path: '/health', timeout: timeoutMs }, (res) => {
+      if (res.statusCode !== 200) {
+        res.resume();
+        resolve(false);
+        return;
+      }
+      let body = '';
+      res.setEncoding('utf8');
+      res.on('data', (chunk) => {
+        body += chunk;
+      });
+      res.on('end', () => {
+        try {
+          resolve(JSON.parse(body)?.status === 'ok');
+        } catch {
+          resolve(false);
+        }
+      });
+      res.on('error', () => resolve(false));
+    });
+    req.on('timeout', () => req.destroy());
+    req.on('error', () => resolve(false));
+  });
+}
+
+/**
+ * Wait, up to 60 s at the defaults of {@link waitUntilReady}, for the executor on `port` to be
+ * {@link executorHealthy}. Throws when it is not, saying whether the executor exited first (`gone`,
+ * checked between attempts) or never answered.
+ */
+export async function waitForExecutorReady(port, { gone = () => false, attempts, interval, wait } = {}) {
+  const outcome = await waitUntilReady(() => executorHealthy(port), { gone, attempts, interval, wait });
+  if (outcome === 'ready') return;
+  throw new Error(
+    outcome === 'gone'
+      ? `The executor exited before it was ready on port ${port}`
+      : `The executor on port ${port} was not ready after 60 s`,
+  );
 }
 
 const isAlive = (pid) => {

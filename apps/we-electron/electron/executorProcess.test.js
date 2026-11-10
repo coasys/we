@@ -6,19 +6,22 @@
  * executor there now refuses to start beside it (exit 79), which `afterExecutorExit` reports.
  */
 import { spawn } from 'child_process';
-import { describe, expect, it } from 'vitest';
+import http from 'http';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   afterExecutorExit,
   crashBackoff,
   executorArgs,
   executorEnv,
+  executorHealthy,
   EXIT,
   initialExecutorConfig,
   outputTail,
   startWithPortRetry,
   stopChild,
   stopProcess,
+  waitForExecutorReady,
   waitUntilReady,
 } from './executorProcess.js';
 
@@ -284,6 +287,94 @@ describe('waitUntilReady', () => {
     );
     expect(await outcome).toBe('gone');
     expect(asked()).toBe(2);
+  });
+});
+
+/** A server on a free local port answering every request with `handler`. Resolves with its port. */
+function serve(handler) {
+  const server = http.createServer(handler);
+  return new Promise((resolve) =>
+    server.listen(0, '127.0.0.1', () => resolve({ server, port: server.address().port })),
+  );
+}
+
+const reply =
+  (status, body, type = 'application/json') =>
+  (_req, res) => {
+    res.writeHead(status, { 'Content-Type': type });
+    res.end(body);
+  };
+
+/** No time between attempts, and few of them: a server that is not the executor stays not ready. */
+const quick = { attempts: 3, wait: async () => {} };
+
+describe('executorHealthy', () => {
+  const servers = [];
+  afterEach(() => {
+    for (const s of servers.splice(0)) s.close();
+  });
+  const up = async (handler) => {
+    const { server, port } = await serve(handler);
+    servers.push(server);
+    return port;
+  };
+
+  it('is true for GET /health answering 200 {"status":"ok"}, as the executor does', async () => {
+    const seen = [];
+    const port = await up((req, res) => {
+      seen.push(`${req.method} ${req.url}`);
+      if (req.method === 'GET' && req.url === '/health') reply(200, '{"status":"ok"}')(req, res);
+      else reply(404, 'not found', 'text/plain')(req, res);
+    });
+    expect(await executorHealthy(port)).toBe(true);
+    expect(seen).toEqual(['GET /health']);
+  });
+
+  // Any answer once counted, so an unrelated server on the port — or the executor, which has no
+  // /graphql — passed as ready by its 404.
+  it('is false for a server that answers 404', async () => {
+    expect(await executorHealthy(await up(reply(404, 'not found', 'text/plain')))).toBe(false);
+  });
+
+  it('is false for a 200 that is not the executor saying ok', async () => {
+    expect(await executorHealthy(await up(reply(200, '<html></html>', 'text/html')))).toBe(false);
+    expect(await executorHealthy(await up(reply(200, '{"status":"starting"}')))).toBe(false);
+    expect(await executorHealthy(await up(reply(503, '{"status":"ok"}')))).toBe(false);
+  });
+
+  it('is false when nothing listens on the port', async () => {
+    const { server, port } = await serve(reply(200, '{"status":"ok"}'));
+    await new Promise((r) => server.close(r));
+    expect(await executorHealthy(port)).toBe(false);
+  });
+});
+
+describe('waitForExecutorReady', () => {
+  const servers = [];
+  afterEach(() => {
+    for (const s of servers.splice(0)) s.close();
+  });
+
+  it('resolves once /health answers ok', async () => {
+    const { server, port } = await serve(reply(200, '{"status":"ok"}'));
+    servers.push(server);
+    await expect(waitForExecutorReady(port, quick)).resolves.toBeUndefined();
+  });
+
+  it('does not treat a server answering 404 as the executor, and says it was not ready', async () => {
+    const { server, port } = await serve(reply(404, 'not found', 'text/plain'));
+    servers.push(server);
+    await expect(waitForExecutorReady(port, quick)).rejects.toThrow(
+      `The executor on port ${port} was not ready after 60 s`,
+    );
+  });
+
+  it('says the executor exited when the process it waits on is gone', async () => {
+    const { server, port } = await serve(reply(404, 'not found', 'text/plain'));
+    servers.push(server);
+    await expect(waitForExecutorReady(port, { ...quick, gone: () => true })).rejects.toThrow(
+      `The executor exited before it was ready on port ${port}`,
+    );
   });
 });
 

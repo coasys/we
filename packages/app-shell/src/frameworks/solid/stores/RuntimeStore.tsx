@@ -518,7 +518,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
         thing rather than the leak.
 
         Everywhere else a raw `error.message` went through `explain` (see `shared/userMessage.ts`),
-        because a GraphQL failure from three layers down tells a member nothing they can act on.
+        because an RPC failure from three layers down tells a member nothing they can act on.
         Here the reader is administering the node, and the messages *are* the answer: "Choose a port
         between 1024 and 65535", "languages is part of the running node and cannot be removed". A
         generic sentence would replace a fix with a shrug.
