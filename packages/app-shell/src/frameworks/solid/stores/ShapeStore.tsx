@@ -480,8 +480,9 @@ export function ShapeStoreProvider(props: ParentProps) {
     put the same shape in the prompt twice at the community's expense.
   */
   /*
-    Then the classes the space already had: SHACL WE did not write, offered when the class carries an
-    interpretation hint — see `foreignExtractionCandidates`. Last, so WE's own read first.
+    Then the classes the space already had: every SHACL class WE did not write, apart from WE's own
+    plumbing, those carrying an interpretation hint first — see `foreignExtractionCandidates`. Last,
+    so WE's own read first.
   */
   const foreignCandidates = createMemo(() =>
     foreignExtractionCandidates(datasetStore.currentDatasetEntities(), {
