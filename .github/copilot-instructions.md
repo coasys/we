@@ -106,6 +106,7 @@ Glossary (these terms pervade stores, models, and `$query`/`perspective` in sche
 | `@we/drag` | design-system/drag | The drag session and its payload — references, never DOM — plus the ghost, the zone registry and the press-to-drag threshold | Agnostic |
 | `@we/entities` | packages/entities | WE's domain models: the authored neutral manifest (src/manifest, the source of truth), the neutral type contract, and the entity proxies backends register into | **Agnostic** |
 | `@we/app-shell` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
+| `@we/identity-window` | packages/identity-window | The desktop identity window's screens (make an identity, add or revoke a device) over an `IdentityTransport`; each desktop app supplies the transport to its custody service (`crates/custody`) | Vanilla DOM |
 | `@we/ai-context` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
 | `@we/agent-tools` | packages/agent-tools | What a model can do with WE: templates and themes as tools for any host, a space's records and WE's conventions for a conversation WE runs itself, and a single-file bundle for agent hosts | **Agnostic** |
 
@@ -489,7 +490,7 @@ To target another dataset: { "$invoke": "record.update", "args": ["EntityName", 
 record.delete — deletes one record:
 { "$invoke": "record.delete", "args": ["EntityName", { "$": "item.id" }] }
 
-Use dataset: 'datasetStore.rootDataset' for we-root entities (AgentSettings, ChatSession, etc.), and
+Use dataset: 'datasetStore.rootDataset' for we-root entities (AgentSettings, Template, etc.), and
 'datasetStore.personalDataset' for the agent's own content (a note, a Pocket folder). Both are chrome-tier.
 Use the default (no dataset) for space-scoped entities (Space, Signal, etc.). The same key $query
 takes, and it names the same accessors.
@@ -595,6 +596,7 @@ registers (listed last). Wrong-typed input answers with the empty value of its k
     voices(options) — Whose reactions a weighted score was made from, as a list a reader turns voices up and down in — { did, name, avatar, cards, mean, weight, share, mine, pretend }, the busiest first. `weight` is how much the voice counts (0–100) and `share` its part of everybody's say. Options: summary (what a GraphView's onSeedSummary reported — the canvas seed's `{ type, voices }`), param (the weights as the address holds them, `did=50,did=0`), profiles (profileStore.profiles), me (me.did).  e.g. voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did })
     voicesParam(options) — The weights address form with one voice changed — options param, did and weight (0–100) — or, with only (a DID) and voices (the listed rows), every voice at nothing but that one. A voice back at full is left out, so putting everything back leaves a clean address.  e.g. voicesParam({ param: local.voices, did: voice.did, weight: event.detail })
     formatJson(options) — A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an extraction pass’s prompt and response); a schema has no JSON.stringify of its own.  e.g. formatJson({ text: pass.prompt })
+    generatedRun(options) — Whether a model made a record: { by: "run", run } naming the run that wrote it (a transcribed line, a record an extraction pass or an agent made, a reply in the editor’s chat), or null for what a person made. Reads the record’s own generatedBy, as an id or an included record, so it needs no query. Ask this rather than reading the relation. Options: record.  e.g. generatedRun({ record: post }) ? 'Written by AI' : ''
 
 The where-object — one grammar shared by filter(), find(), and $query's where. Keys are field names;
 values may be expressions (in an expression) or tokens (in a $query):
@@ -1164,6 +1166,14 @@ which is what a feed wants, and why absent must not read as "same as the last it
 
 Both shadow in a nested $each, exactly as the item does: the inner index restarts at 0.
 
+**Give a row an "id" and it keeps its place.** When every item of a store's list is a plain object
+with an id of its own, a row whose record changes is updated where it is: its $localState, whatever
+is typed into it and the page's scroll position all survive. A row is drawn afresh only when it
+moves, since its index and prev are handed to it when it is drawn. Items without ids, or with an id
+two of them share, are matched by identity instead, so a list that is rebuilt as new objects redraws
+every row on every change. A store that derives a list should give each row an id. A $query's rows
+are kept by id already.
+
 Conditional rendering:
 { "type": "$if", "props": { "condition": ..., "then": { ... }, "else": { ... } } }
 Renders "then" node if condition is truthy, else renders "else" node.
@@ -1313,6 +1323,29 @@ Most @we/primitives also accept Design System Props (see next section for detail
 @we/primitives:
 - we-alert (DesignSystemElement)
   Props: variant: 'soft' | 'edge' = 'soft', dismissible: boolean = false, icon: string = ''
+- we-animated-icon (LayoutElement) — A small drawing that moves, for something happening now: loading, a call that is live, somebody
+typing, somebody speaking.
+
+`name` picks the drawing:
+
+- `spinner` — a turning ring, for waiting on something.
+- `live` — a dot with a ring going out from it, for something running now: a live call, a
+  recording (in the danger tone), somebody online.
+- `typing` — three dots rising in turn, for somebody writing, or the assistant thinking.
+- `speaking` — bars moving out of step, for whoever is talking, or audio playing.
+
+Sized and coloured as `we-icon` is, so one can take an icon's place: `size` is a size token or any
+CSS length, and with none it is the icon size its container publishes. Its colour is the accent
+unless `color` names a role, a palette token or any CSS colour — so `tone` re-points it, a live
+dot inside a success badge is the success colour, and `color: 'currentColor'` makes it the text's.
+
+Every copy of a drawing is at the same point in its cycle at the same moment, wherever and
+whenever it mounted: the live dots in a sidebar and on a page pulse together, and a spinner that
+reappears after the window reloads picks up where the last left off.
+
+For somebody who asked for less motion, the dot and the bars stand still, the typing dots fade in
+turn rather than rise, and the spinner keeps turning, since a still spinner looks stuck.
+  Props: name: 'spinner' | 'live' | 'typing' | 'speaking' = 'spinner', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}' = '', color: string = ''
 - we-audio (LayoutVisualElement)
   Props: src: string = '', controls: boolean = false, preload: 'none' | 'metadata' | 'auto' = 'metadata', autoplay: boolean = false, loop: boolean = false, muted: boolean = false, stream?: MediaStream | null | undefined
 - we-avatar (LayoutVisualElement)
@@ -1591,8 +1624,6 @@ Same principle as nested zones, one layer up: the innermost thing under the poin
 gesture. A sortable *inside* an overlay is unaffected — only the path between the press and the
 item is considered.
   Props: direction: 'vertical' | 'horizontal' = 'vertical', gap: string = '', zone: string = '', group: string = '', locked: boolean = false
-- we-spinner (LayoutElement)
-  Props: size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | (string & {}) = 'md', color: string = ''
 - we-switch (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', labelOff: string = '', labelOn: string = ''
 - we-tab (DesignSystemElement)
@@ -2228,7 +2259,7 @@ seven roles every family has. So `"red"` as a colour is the theme's red, not CSS
 for that.
 
 **Layout-only primitives** — these accept only Layout props (not Visual, Flex, Typography, or State):
-we-divider, we-icon, we-menu-group, we-popover, we-spinner, we-tooltip
+we-animated-icon, we-divider, we-icon, we-menu-group, we-popover, we-tooltip
 
 ### Layout
 
@@ -2570,18 +2601,6 @@ CalloutBlock extends WeNode:
   - icon: string [we://icon]
   - version: number [we://version]
 
-ChatMessage extends WeNode:
-  Fields:
-  - role: string [we://role]
-  - content: string [we://content]
-
-ChatSession extends WeNode:
-  Fields:
-  - name: string [we://name]
-  - templateId: string [we://template_id]
-  Relations:
-  - messages: HasMany → ChatMessage [we://chat_message]
-
 CodeBlock extends WeNode:
   Fields:
   - code: string (required) [we://code]
@@ -2608,10 +2627,9 @@ CollectionBlock extends WeNode:
   - arranges: HasMany [we://arranges]
   - gathers: HasOne [we://gathers]
   - board: HasOne → CollectionBlock [we://board]
-  - extractionPasses: HasMany → ExtractionPass [we://extraction_pass_record]
   - extracted: HasMany [we://extracted]
   - recognised: HasMany [we://recognised]
-  - amendments: HasMany → ExtractionAmendment [we://extraction_amendment]
+  - amendments: HasMany → Amendment [we://amendment]
 
 DividerBlock extends WeNode:
   Fields:
@@ -2929,7 +2947,7 @@ Theme extends WeNode:
   Relations:
   - screenshots: HasMany → ImageBlock [we://screenshot]
 
-ExtractionAmendment extends Ad4mModel:
+Amendment extends Ad4mModel:
   Fields:
   - property: string [we://amended_property]
   - previousValue: string [we://previous_value]
@@ -2937,16 +2955,19 @@ ExtractionAmendment extends Ad4mModel:
   - nodeType: string [we://node_type]
   Relations:
   - node: HasOne [we://amended_node]
+  - run: HasOne → ModelRun [we://amendment_run]
 
-ExtractionPass extends Ad4mModel:
+ModelRun extends Ad4mModel:
   Fields:
-  - outcome: string = 'done' [we://outcome]
-  - recordCount: number [we://record_count]
-  - targets: string [we://extraction_targets]
-  - error: string [we://error]
+  - kind: string [we://model_run_kind]
+  - model: string [we://model_run_model]
   - trigger: string = 'manual' [we://trigger]
+  - outcome: string = 'done' [we://outcome]
+  - error: string [we://error]
+  - recordCount: number [we://model_run_record_count]
+  - detail: string [we://model_run_detail]
   - prompt: string [we://prompt]
-  - response: string [we://response]
+  - output: string [we://model_run_output]
 
 TypeStyle extends Ad4mModel:
   Fields:
@@ -2973,6 +2994,8 @@ WeNode extends Ad4mModel:
   - inThread: HasOne [we://thread]
   - partOf: HasOne [we://child]
   - extractedFrom: HasOne [we://extracted]
+  - runs: HasMany → ModelRun [we://model_run]
+  - generatedBy: HasOne → ModelRun [we://generated_by]
   - signals: HasMany → Signal [we://signal]
   - participants: HasMany [we://participant]
   - mentions: HasMany [we://mention]
@@ -3074,9 +3097,21 @@ DatasetStore:
   - removeDataset(uuid: string): removes a dataset from the backend and from local state. The low-level half of spaceStore.removeSpace, which also clears the global-discovery listing — call that from a template, and this only for a dataset that is not a space
   - cleanupSpaceSdna(uuid?: string): one-time remediation for a space that accumulated duplicate SDNA installs — removes the redundant duplicate link copies. Defaults to the current dataset. Returns a display-ready summary string naming how many links were removed and the DIDs that authored them (your own DID annotated with "(you)"), or an empty string if nothing needed cleaning up
 
+DeviceStore:
+- State:
+  - devices: { keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke }[] — the device keys of the person's key log, valid first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Valid' or 'Revoked at #2'; `canRevoke` is a valid key that is not this computer's
+  - devicesLoaded: boolean — the list has been read once
+  - validCount: number — how many keys are valid
+  - canManage: boolean — Add a device and Revoke can be offered: this computer keeps the master key of the identity
+  - error: string — why the last read failed, or empty
+- Actions:
+  - refresh(): reads the device list again
+  - addDevice(): adds a device — the backend asks the person wherever it keeps the master key (on the desktop: the offer link and QR code, then the match code, then the confirmation that signs it). Resolves with the outcome; the list is read again
+  - revoke(keyId: string): revokes that device key, once the person confirms it where the master key is kept. Resolves with the outcome
+
 EditorStore:
 - State:
-  - messages: ChatMessage[] — the active AI session's messages (id, role: 'user' | 'assistant' | 'system', content, createdAt, status). Empty for a new chat
+  - messages: the active chat's messages (id, role: 'user' | 'assistant' | 'system', content, createdAt, status). Empty for a new chat
   - isOpen: boolean — the AI chat panel is open
   - isStreaming: boolean — an assistant reply is arriving; streamingContent holds what has arrived so far
   - streamingContent: string — the partial assistant reply while isStreaming, empty otherwise
@@ -3091,7 +3126,7 @@ EditorStore:
   - pickerDefaultName: string — what the picker’s name field starts with
   - pickerDefaultIcon: string — what its icon field starts with
   - pickerShowDestination: boolean — the picker offers a personal-or-space destination, which it can only do while a space is open to save into
-  - sessions: ChatSession[] — this template's saved AI sessions (id, name, templateId), newest first
+  - sessions: this template's saved chats (id, name), newest first
   - activeSessionId: string | null — the session whose messages are shown
   - contentMode: 'preview' | 'visual' — whether the editor shows the rendered template or the visual editing surface
   - schemaJson: string — the template being edited, serialised with its node ids — what the code panel shows and edits. Ids are permanent, so a save keeps them
@@ -3141,9 +3176,34 @@ EditorStore:
   - sendMessage(text: string): sends a message to the assistant. Patches it proposes are applied to the template and land in undo history; the reply streams into streamingContent
   - clearHistory(): deletes the active session's messages
 
+IdentityStore:
+- State:
+  - available: boolean — the backend keeps a key log, so it can say who this device speaks for
+  - canChange: boolean — this computer can sign changes to the identity, and has said so. False where the backend cannot change an identity from here (the web, and desktop builds without a custody service): Settings shows the log and devices and offers no change. False too while the backend has not answered, and where changeBlocked says why
+  - changeBlocked: string — why the identity cannot be made or changed on this computer although it could sign changes (the backend has nowhere to publish them, say), ready to show; empty when it can. Show it beside a disabled "Make my identity here" rather than hiding the door
+  - status: { did, deviceKey, keyId, revoked, head, fork, storeBehind } | null — what this device’s key speaks for, as the executor reports it. `storeBehind` ({ since, seq }) is set while the shared store answers the log behind what the executor has checked, which then answers from its own copy
+  - statusLoaded: boolean — the backend has answered `status` once. Gate a "no identity yet" sentence on it
+  - did: string — the person’s identifier, or empty while this device speaks for nobody
+  - keyId: string — this device’s id in the key log (`d1`), or empty
+  - thisDeviceRevoked: boolean — the key log revoked this device’s key: it no longer speaks for the person
+  - keyLog: { seq, op, keys, position, icon, title, detail, hash, hashShort, thisComputer }[] — the key log, newest first, with what each row says made from `op` and `keys` (reword from those where a template wants other words), already worded: `title` "Created your identity", "Added d2", "Revoked d2"; `detail` the keys it names with this computer’s marked "This computer"; `hashShort` the event’s hash for a monospace column
+  - keyLogLoaded: boolean — the log has been read once
+  - forked: boolean — the backend found two different logs for this identity
+  - fork: { seq, ours, theirs } | null — where they part
+  - custody: { did, holdsMaster, unlock, blocked } | null — whether this computer can sign changes, as public facts: whether it keeps a master key (`holdsMaster`, a boolean), how that key unlocks ('os' for the computer's own prompt, or 'passphrase'), and why no change can run, if one cannot (`blocked`). Null where the backend cannot change an identity from here
+  - needsFirstRun: boolean — ask the first-run question now: this computer can sign changes, this device speaks for nobody, and "Start now" was not chosen for this account on this computer. Still true where changeBlocked is set, so the person learns why; offer "Start now" then
+  - busy: boolean — a change is running
+  - lastOutcome: 'done' | 'cancelled' | 'failed' | '' — how the last change ended
+  - error: string — why the last read or change failed, ready to show, or empty. A change never rejects: it resolves "failed" and the reason is here, so draw it beside the control that asked
+- Actions:
+  - refresh(): reads the status, the key log and the custody state again
+  - open(change: { kind: 'create' } | { kind: 'add-device' } | { kind: 'revoke', keyId }): runs a change and resolves with its outcome once it ends; the backend asks the person itself, wherever it keeps the master key, and everything is read again then. Words, passphrases and keys never reach the app
+  - makeIdentity(): "Make my identity here" — runs `create`
+  - startWithoutIdentity(): "Start now" — use this account without an identity; remembered for it on this computer, so the first-run question stops
+
 InterpretationStore:
 - State:
-  - activity: InterpretationActivityView[] — every extraction pass this agent knows about, its own and its peers’, running first then most recent. Each row carries display-ready strings: `label` is a whole clause ("Anna is waiting on the model", "Extracted 3 records"), `elapsed` is `m:ss` while running and empty once settled, `name`/`avatar`/`runner` identify who is running it, and `mine` says whether it is this agent’s. Only a row with `mine` carries `prompt`/`response` — a peer’s exchange is never sent live; read it from the call’s `ExtractionPass` records once the pass settles — so gate a details affordance on `hasDetail`
+  - activity: InterpretationActivityView[] — every extraction pass this agent knows about, its own and its peers’, running first then most recent. Each row carries display-ready strings: `label` is a whole clause ("Anna is waiting on the model", "Extracted 3 records"), `elapsed` is `m:ss` while running and empty once settled, `name`/`avatar`/`runner` identify who is running it, and `mine` says whether it is this agent’s. Only a row with `mine` carries `prompt`/`response` — a peer’s exchange is never sent live; read it from the call’s extraction runs (`ModelRun` records under `runs`) once the pass settles — so gate a details affordance on `hasDetail`
   - runningCount: number — how many passes are still in flight. What a collapsed "N extractions running" summary counts
   - hasActivity: boolean — whether there is anything to show at all. Counts settled rows too, so a bar gated on it does not vanish the instant a pass finishes and take its result with it
   - runningPasses: InterpretationActivityView[] — the passes still in flight, for a readout that lists them
@@ -3562,6 +3622,7 @@ SpaceStore:
   - autoInterpret: boolean — whether a NEW collection here (a call, a channel) starts out extracted into records as it grows. A community default, copied onto each collection when it is made — a conversation already under way keeps its own answer, read with autoExtractFor. Readable by every member; writing it is space-settings
   - root: string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one
   - landmarks: Record<name, id> — the records this space names as its landmarks, e.g. spaceStore.landmarks.canvas is the space's canvas. Written by the space's starter at creation. A landmark can be absent — a space can switch template and a template must never assume what another set up — so guard every read
+  - landmarksLoaded: boolean — the landmarks have answered for the space on screen. Until then an absent landmark is not yet an answer, so gate a 'there is no board yet' on it: { $: 'spaceStore.landmarksLoaded && !spaceStore.landmarks.board' }. Not on `root`, which arrives first
   - extractionTargets: string[] — the models a NEW collection here starts out extracting. The middle of three layers: shapeStore.extractionCandidates says what COULD be extracted, this says which of them a new conversation begins with, and each collection then holds its own list, which its participants change (modules.transcribe.extractionFor[id].targets). A default, copied when a collection is made. Unset falls back to the two classes that were hardcoded before the setting existed, so no space silently stops extracting. Writing it is space-settings
   - taskWorkflowRule: '' | 'next' | 'next-and-back' — how a task may move between this space's states, in their order: anywhere, on to the next only, or on and back one. Anything but '' runs the states as a workflow, so a move the rule does not allow is refused on the board — say so beside a picker of states
   - taskWorkflowEnabled: boolean — this space’s task states ask for agreement: some state needs more than one approval, or names whose approval counts. Where true, a card dragged into such a state waits instead of moving, and arrangedBoard(…).workflow[card.id] describes what it is waiting on. Gate an explanation of the waiting on it; the board needs nothing else
@@ -3993,6 +4054,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
 Everything said and written in a space, and what was found in it, in one stream.
 Needs: kernels records, interpretation.
 - State (read in an expression as `modules.feed.<name>`):
+  - botAuthors — The authors of lines in the Feed’s window whose own profile says they are a bot, by id — for `row.author in modules.feed.botAuthors`.
   - feedFromStart — Whether the Feed is read from the beginning rather than the live end.
   - feedHasMore — Whether there is more of the space beyond the Feed’s window.
   - feedLoaded — Whether the Feed has answered for this space yet.
@@ -4016,7 +4078,7 @@ Needs: kernels records, interpretation.
   - watchFeed — The Feed is drawn somewhere: keep it live.
 - Parts: `feed.feedView`
 - Panels (`meta.panels[].dock`): `feed` "Feed" (module-owned openness)
-- Settings: `timelineOrder` (enum; agent) — Newest messages
+- Settings: `timelineOrder` (enum; agent) — Newest messages; `botNotices` (boolean; agent) — Tell me when a bot answers
 
 ### Live presence (`live`)
 See each other’s cursors, and follow one person’s screen.
@@ -5596,7 +5658,7 @@ WRONG icon names (Heroicons/Material — do NOT use):
 - Size a template root with `minHeight`, never `height`. `height: '100%'` makes the root exactly as tall as the viewport, so a route with more content than that overflows the *box* — and the root's background stops at the fold while the content keeps scrolling. `minHeight: '100%'` fills the viewport when a route is short and grows when it is long, which is what a page background needs. The same applies to `'100vh'` — and prefer `'100dvh'` to `'100vh'` anywhere a full-viewport height is meant: on a phone the address bar makes `vh` taller than what is actually visible, so the last rows of the page sit under the browser chrome. Identical on a desktop.
 
 Most @we/primitives inherit all Design System Props documented above (layout, visual, flex, typography, state).
-Some layout-only primitives (we-avatar, we-icon, we-image, we-spinner, etc.) only accept Layout props — see the Design System Props section for the full list.
+Some layout-only primitives (we-avatar, we-icon, we-image, we-animated-icon, etc.) only accept Layout props — see the Design System Props section for the full list.
 
 Native HTML elements (lowercase tags render directly without registry entries):
 - Layout: div, section, article, aside, main, nav, header, footer

@@ -22,6 +22,7 @@ import { gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/t
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
+import { readSpaceRoot } from '@shared/spaceLandmarks';
 import { isSystemDataset, SYSTEM_DATASET_NAMES, SYSTEM_DATASETS } from '@shared/systemDatasets';
 import {
   type DatasetHandle,
@@ -32,7 +33,7 @@ import {
   trace,
 } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
-import { AgentSettings, type DatasetProxy, ExtractionPass, getEntityForDataset } from '@we/entities';
+import { AgentSettings, type DatasetProxy, getEntityForDataset, ModelRun } from '@we/entities';
 import {
   Accessor,
   batch,
@@ -51,7 +52,7 @@ import { useSessionStore } from './SessionStore';
   Where a pass files what it read, by the relations of `CollectionBlock` that hold each — named, not
   stored: how a relation is stored is the backend's business.
 
-  - `extractionPasses` — a record of each pass, hung off the collection it read.
+  - `runs` — a `ModelRun` for each pass, `kind: 'extraction'`, hung off the collection it read.
   - `extracted` — a record a model proposed from reading the collection. Written beside containment
     rather than instead of it: `children` is ownership, and the call's board gathers through it, so a
     record that stopped being a child would vanish from the board it exists to appear on. This is the
@@ -86,7 +87,7 @@ export interface AppDataset extends Omit<DatasetRef, 'handle'> {
   handle: DatasetProxy;
 }
 
-const toApp = (ref: DatasetRef): AppDataset => ref as AppDataset;
+const toApp = (ref: DatasetRef): AppDataset => ref;
 
 /**
  * The one segment a space is addressed by — its shared id when it has one, its local id otherwise.
@@ -215,7 +216,7 @@ export interface DatasetStore {
    * the record has to be written by whoever is watching the report — and that is
    * InterpretationStore, which is the one place subscribed to it.
    *
-   * Here rather than there because this is where an `ExtractionPass` is written and where a call's
+   * Here rather than there because this is where an extraction run is written and where a call's
    * target list is resolved, and neither is worth a second copy. Called only for this agent's own
    * passes: every peer sees the same event, and a row per peer would be a history of who was
    * watching rather than of what ran.
@@ -342,8 +343,31 @@ export function DatasetStoreProvider(props: ParentProps) {
    * a model since deleted, or a call list naming one whose `extractable` was withdrawn, has to
    * narrow the request rather than break it.
    */
+  /** What a pass is written down with — see {@link recordPass}. */
+  type PassRecord = {
+    outcome: string;
+    recordCount: number;
+    targets: string[];
+    error?: string;
+    /** What started it. Defaults to a press, which is what the only writer used to be. */
+    trigger?: 'manual' | 'auto';
+    prompt?: string;
+    response?: string;
+  };
+
+  const passFields = (pass: PassRecord) => ({
+    kind: 'extraction',
+    outcome: pass.outcome,
+    recordCount: pass.recordCount,
+    detail: JSON.stringify({ targets: pass.targets }),
+    error: pass.error ?? '',
+    trigger: pass.trigger ?? 'manual',
+    prompt: pass.prompt ?? '',
+    output: pass.response ?? '',
+  });
+
   /**
-   * Write down that a pass happened — see {@link ExtractionPass}.
+   * Write down that a pass happened, as a `ModelRun` of kind `extraction` — see {@link ModelRun}.
    *
    * Best effort, and deliberately so: the pass is the thing that mattered and it has already run,
    * so a failed *note* about it must not turn a successful extraction into a rejected one. Logged
@@ -351,37 +375,39 @@ export function DatasetStoreProvider(props: ParentProps) {
    *
    * Written by the host rather than by the module for the same reason `interpretCollection` is: where
    * a pass is filed is the host's to say, and a module names a collection and nothing else.
+   *
+   * With `run`, the pass's run already exists — {@link openPass} made it so the pass could mark what
+   * it wrote — and this completes it rather than writing a second.
    */
-  async function recordPass(
-    handle: DatasetProxy,
-    collectionId: string,
-    pass: {
-      outcome: string;
-      recordCount: number;
-      targets: string[];
-      error?: string;
-      /** What started it. Defaults to a press, which is what the only writer used to be. */
-      trigger?: 'manual' | 'auto';
-      prompt?: string;
-      response?: string;
-    },
-  ): Promise<void> {
+  async function recordPass(handle: DatasetProxy, collectionId: string, pass: PassRecord, run?: string): Promise<void> {
     try {
-      await ExtractionPass.create(
-        handle as never,
-        {
-          outcome: pass.outcome,
-          recordCount: pass.recordCount,
-          targets: JSON.stringify(pass.targets),
-          error: pass.error ?? '',
-          trigger: pass.trigger ?? 'manual',
-          prompt: pass.prompt ?? '',
-          response: pass.response ?? '',
-        } as never,
-        { parent: { id: collectionId, relation: 'extractionPasses', entity: 'CollectionBlock' } },
-      );
+      if (run) await ModelRun.update(handle, run, passFields(pass));
+      else
+        await ModelRun.create(handle, passFields(pass), {
+          parent: { id: collectionId, relation: 'runs', entity: 'CollectionBlock' },
+        });
     } catch (error) {
       console.warn('[interpretation] could not record that a pass ran', error);
+    }
+  }
+
+  /**
+   * The run a pass is about to be, written before it starts so the pass can mark what it makes with
+   * it — `generatedBy`, in the same writes that make them. `running` until {@link recordPass}
+   * completes it, which is also what a pass that never returns is left saying.
+   *
+   * `undefined` where the write fails: the pass still runs, unmarked, and is written down afterwards
+   * as before. A history entry is not worth an extraction.
+   */
+  async function openPass(handle: DatasetProxy, collectionId: string, targets: string[]): Promise<string | undefined> {
+    try {
+      const run = await ModelRun.create(handle, passFields({ outcome: 'running', recordCount: 0, targets }), {
+        parent: { id: collectionId, relation: 'runs', entity: 'CollectionBlock' },
+      });
+      return run.id;
+    } catch (error) {
+      console.warn('[interpretation] could not open a run for this pass', error);
+      return undefined;
     }
   }
 
@@ -428,9 +454,9 @@ export function DatasetStoreProvider(props: ParentProps) {
         },
         offeredModel: () => session.backendPorts()?.transcription?.offeredModel?.() ?? null,
         installOfferedModel: async () => {
-          const install = session.backendPorts()?.transcription?.installOfferedModel;
-          if (!install) throw new Error('transcription: this backend cannot install a model');
-          return install();
+          const port = session.backendPorts()?.transcription;
+          if (!port?.installOfferedModel) throw new Error('transcription: this backend cannot install a model');
+          return port.installOfferedModel();
         },
       },
       // The node's own language model, for a module that summarises, translates or tags. The port
@@ -502,7 +528,8 @@ export function DatasetStoreProvider(props: ParentProps) {
       interpretCollection: async (collectionId) => {
         const port = session.backendPorts()?.interpretation;
         if (!port) throw new Error('interpretation: this backend cannot interpret');
-        const dataset = currentDataset();
+        // The dataset this pass was asked for: a space switched mid-pass must not redirect its writes.
+        const dataset = untrack(currentDataset);
         if (!dataset) throw new Error('interpretation: no dataset to interpret into');
 
         const modelFor = (entity: string) => getEntityForDataset(entity, dataset.handle);
@@ -515,25 +542,32 @@ export function DatasetStoreProvider(props: ParentProps) {
         // space's default, this call's own — are all host state. A module names a collection and
         // nothing else, exactly as it does for the watch id and where a pass is filed.
         const classes = targetsForCollection(collectionId);
+        const run = await openPass(dataset.handle, collectionId, classes);
         try {
           const result = await port.interpret(dataset.handle, turns, {
             classes,
             parent: await filedUnder(dataset.handle, collectionId),
             provenance: extractedFrom(collectionId),
             recognised: recognisedBy(collectionId),
+            ...(run ? { run } : {}),
           });
-          await recordPass(dataset.handle, collectionId, {
-            // Nothing to look for is not a failure and not a quiet meeting — it is a call whose
-            // targets are all switched off, which reads as "0 records" and blames the conversation
-            // unless it is said.
-            outcome: classes.length === 0 ? 'skipped' : 'done',
-            recordCount: result.ids.length,
-            targets: classes,
-            // Handed back by the run rather than found on the progress feed afterwards, so one
-            // write holds the whole pass — see `prompt` on the result.
-            prompt: result.prompt,
-            response: result.response,
-          });
+          await recordPass(
+            dataset.handle,
+            collectionId,
+            {
+              // Nothing to look for is not a failure and not a quiet meeting — it is a call whose
+              // targets are all switched off, which reads as "0 records" and blames the conversation
+              // unless it is said.
+              outcome: classes.length === 0 ? 'skipped' : 'done',
+              recordCount: result.ids.length,
+              targets: classes,
+              // Handed back by the run rather than found on the progress feed afterwards, so one
+              // write holds the whole pass — see `prompt` on the result.
+              prompt: result.prompt,
+              response: result.response,
+            },
+            run,
+          );
           return result;
         } catch (error) {
           /*
@@ -544,12 +578,17 @@ export function DatasetStoreProvider(props: ParentProps) {
             the pair somebody reviewing a meeting most needs told apart, and it is the one the live
             feed cannot keep.
           */
-          await recordPass(dataset.handle, collectionId, {
-            outcome: 'failed',
-            recordCount: 0,
-            targets: classes,
-            error: error instanceof Error ? error.message : String(error),
-          });
+          await recordPass(
+            dataset.handle,
+            collectionId,
+            {
+              outcome: 'failed',
+              recordCount: 0,
+              targets: classes,
+              error: error instanceof Error ? error.message : String(error),
+            },
+            run,
+          );
           throw error;
         }
       },
@@ -683,22 +722,15 @@ export function DatasetStoreProvider(props: ParentProps) {
     what it found in place.
 
     A dataset with no space collection — one made before spaces had one — files under the
-    conversation itself, which is what every pass did before. Read once per dataset and kept: the
-    collection is written at creation and never changes.
+    conversation itself, which is what every pass did before. Read once per dataset and kept, by
+    `readSpaceRoot`: the collection is written at creation and never changes.
   */
-  const spaceRoots = new WeakMap<object, string>();
   async function filedUnder(handle: unknown, conversation: string): Promise<ParentRef> {
-    let root = spaceRoots.get(handle as object);
-    if (root === undefined) {
-      try {
-        const SpaceModel = getEntityForDataset('Space', handle) as
-          { findOne(h: unknown, q: unknown): Promise<{ root?: { id?: string } } | null> } | undefined;
-        const space = await SpaceModel?.findOne(handle, { include: { root: true } });
-        root = space?.root?.id ?? '';
-      } catch {
-        root = '';
-      }
-      if (root) spaceRoots.set(handle as object, root);
+    let root = '';
+    try {
+      root = (await readSpaceRoot(handle))?.root ?? '';
+    } catch {
+      // Filed under the conversation, and asked again next pass.
     }
     return { id: root || conversation, relation: 'children', entity: 'CollectionBlock' };
   }
@@ -743,7 +775,8 @@ export function DatasetStoreProvider(props: ParentProps) {
     const json = agentSettings()?.datasetOrder;
     if (!json) return [];
     try {
-      return JSON.parse(json);
+      const order: unknown = JSON.parse(json);
+      return Array.isArray(order) ? order.filter((id): id is string => typeof id === 'string') : [];
     } catch {
       return [];
     }
@@ -1039,11 +1072,17 @@ export function DatasetStoreProvider(props: ParentProps) {
     }
   }
 
+  /** The stored fields of an `AgentSettings` record — its keys minus its methods. */
+  type AgentSettingsField = {
+    [K in keyof AgentSettings]: AgentSettings[K] extends (...args: never[]) => unknown ? never : K;
+  }[keyof AgentSettings];
+
   async function updateAgentSettings(updates: Partial<AgentSettings>): Promise<boolean> {
     const settings = agentSettings();
     if (!settings) return false;
 
-    const keys = Object.keys(updates) as (keyof AgentSettings)[];
+    // Updates name stored fields only, never one of the record's methods.
+    const keys = Object.keys(updates) as AgentSettingsField[];
     const before = Object.fromEntries(keys.map((key) => [key, settings[key]])) as Partial<AgentSettings>;
 
     Object.assign(settings, updates);
@@ -1259,11 +1298,11 @@ export function DatasetStoreProvider(props: ParentProps) {
     }
 
     try {
-      const handle = (await lifecycle.get(targetUuid))?.handle as DatasetProxy | undefined;
+      const handle = (await lifecycle.get(targetUuid))?.handle;
       if (!handle) return '';
-      const dedupe = session.backendPorts()?.schemas.dedupe;
-      if (!dedupe) return '';
-      const { removed, authors } = await dedupe(handle);
+      const schemas = session.backendPorts()?.schemas;
+      if (!schemas?.dedupe) return '';
+      const { removed, authors } = await schemas.dedupe(handle);
       if (removed === 0) return 'No duplicate SDNA links found.';
       const myDid = session.me()?.did;
       const authorList = authors.map((did) => (did === myDid ? `${did} (you)` : did)).join(', ');

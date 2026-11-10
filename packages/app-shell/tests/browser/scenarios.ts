@@ -42,6 +42,7 @@ import coasysBundle from '../../../../bundles/coasys.bundle.json';
 import fieldGuideBundle from '../../../../bundles/field-guide.bundle.json';
 import toolLibraryBundle from '../../../../bundles/tool-library.bundle.json';
 import { viewBar } from '../../../templates/cartridges/src/coasys/space/bar.ts';
+import { callBarAside } from '../../../templates/cartridges/src/coasys/space/views.ts';
 import { sharingPickerOptions } from '../../src/shared/sharingOptions';
 
 export interface Scenario {
@@ -771,6 +772,56 @@ const squareLoading = (): Scenario => ({
         type: 'we-button',
         props: { id: 'xs-busy', variant: 'soft', size: 'xs', square: true, loading: true },
         children: [{ type: 'we-icon', props: { name: 'arrows-clockwise' } }],
+      },
+    ],
+  },
+  tables: {},
+});
+
+/**
+ * The drawings that move, beside a primitive that animated before they existed.
+ *
+ * The skeleton is here for the reduced-motion fix rather than for itself: it is the plainest loop in
+ * a shadow root, and it is what showed the document's rule never reached one. Two live dots, so the
+ * case can see two copies move in step; two badges, the size a bar draws and the size the tree does.
+ */
+const animatedIcons = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { gap: '400', p: '300' },
+    children: [
+      {
+        type: 'Row',
+        props: { gap: '400', ay: 'center' },
+        children: [
+          { type: 'we-animated-icon', props: { id: 'spinner', name: 'spinner', size: 'md' } },
+          { type: 'we-animated-icon', props: { id: 'live', name: 'live', size: 'md', color: 'success' } },
+          { type: 'we-animated-icon', props: { id: 'live-2', name: 'live', size: 'md', color: '#e62b63' } },
+          { type: 'we-animated-icon', props: { id: 'typing', name: 'typing', size: 'md', color: 'text-muted' } },
+          { type: 'we-animated-icon', props: { id: 'speaking', name: 'speaking', size: 'md' } },
+          { type: 'we-skeleton', props: { id: 'skeleton', width: '80px', height: '16px' } },
+        ],
+      },
+      {
+        type: 'Row',
+        props: { gap: '400', ay: 'center' },
+        children: [
+          {
+            type: 'we-badge',
+            props: { id: 'badge-md', tone: 'success' },
+            children: [{ type: 'we-animated-icon', props: { name: 'live' } }, 'Live'],
+          },
+          {
+            type: 'we-badge',
+            props: { id: 'badge-sm', tone: 'success', size: 'sm' },
+            children: [{ type: 'we-animated-icon', props: { name: 'live' } }, 'Live'],
+          },
+          {
+            type: 'we-badge',
+            props: { id: 'badge-xs', tone: 'success', size: 'xs' },
+            children: [{ type: 'we-animated-icon', props: { name: 'live' } }, 'Live'],
+          },
+        ],
       },
     ],
   },
@@ -2155,6 +2206,34 @@ const coasysBar = (): Scenario => {
 };
 
 /**
+ * A running call's bar: Live and the transcript export at its end, beside Page and Canvas, in Glow.
+ */
+const coasysCallBar = (): Scenario => {
+  const glow = BUNDLE_LAB_THEMES.find((t) => t.label === 'coasys-glow')?.theme ?? {};
+  return {
+    node: {
+      type: 'Column',
+      theme: glow,
+      props: { width: '900px', bg: 'page' },
+      children: [
+        viewBar(
+          [{ label: 'Calls', onClick: { $invoke: 'routeStore.navigate', args: ['/calls'] } }, { label: 'Standup' }],
+          'phone',
+          callBarAside("'call-1'"),
+        ),
+      ],
+    },
+    tables: {},
+    stores: {
+      routeStore: { params: {}, templateSegments: [], setParam: () => {}, navigate: () => {} },
+      shellStore: { collapsedLanes: [] },
+      modules: { call: { liveCalls: [{ recordId: 'call-1', count: 2 }] } },
+      spaceStore: { exportCallTranscript: (id: string) => ((globalThis as { __exported?: string }).__exported = id) },
+    },
+  };
+};
+
+/**
  * The Coasys mark and name as the sign-in screen draws them and as the open rail does, each from the
  * bundle itself, in boxes of the same size: signing in fades the one away over the other, so their
  * marks and names must sit on the same pixels.
@@ -2335,6 +2414,7 @@ const feedViewPage = (): Scenario => {
       modules: {
         feed: {
           feedRows: [
+            line('m4', 'did:data', 'The venue is booked for Friday.', '2026-10-27T10:04:00Z', 'call-1', 'Monday sync'),
             line('m3', 'did:them', 'See you all on Friday', '2026-10-27T10:03:00Z'),
             {
               kind: 'activity',
@@ -2355,12 +2435,15 @@ const feedViewPage = (): Scenario => {
           feedFromStart: false,
           timelineOrientation: 'newestBottom',
           replyingTo: null,
+          // Data's own profile says it is a bot.
+          botAuthors: ['did:data'],
         },
       },
       profileStore: {
         profiles: [
           { did: 'did:them', name: 'Theodora Fairweather', avatar: '' },
           { did: 'did:me', name: 'Alexandra Whitfield', avatar: '' },
+          { did: 'did:data', name: 'Data', avatar: '', kind: 'bot' },
         ],
       },
     },
@@ -2371,6 +2454,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'coasys:about': coasysAbout,
   'feed:view': feedViewPage,
   'coasys:bar': coasysBar,
+  'coasys:call-bar': coasysCallBar,
   'border:with-hover': borderWithHover,
   'coasys:lockup': coasysLockup,
   'signIn:coasys': coasysSignIn,
@@ -2418,6 +2502,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'ds:surface-images': surfaceImages,
   'ds:token-offsets': tokenOffsets,
   'ds:square-loading': squareLoading,
+  'ds:animated-icons': animatedIcons,
   'ds:crowded-square-row': crowdedSquareRow,
   'ds:pinned-page': pinnedPage(120),
   'ds:pinned-short': pinnedPage(20),

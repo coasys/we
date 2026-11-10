@@ -23,10 +23,9 @@ import {
   useThemeStore,
 } from '@solid/stores';
 import { countedPatches, prepareTemplateRequest, runEditSession } from '@we/agent-tools';
-import type { ConversationTurn, LanguageModelStatus, NewRecord } from '@we/backend-shared';
+import type { ConversationTurn, LanguageModelStatus } from '@we/backend-shared';
 import { AgentUnavailableError } from '@we/backend-shared';
 import { toastService } from '@we/components/solid';
-import { ChatMessage as ChatMessageRecord, ChatSession as ChatSessionRecord } from '@we/entities';
 import type { DockEdge, DockSize } from '@we/module-shared';
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { contextData, setLocalWarningSink } from '@we/schema-shared';
@@ -43,6 +42,15 @@ import {
   useContext,
 } from 'solid-js';
 
+import {
+  appendMessage,
+  chatMessages,
+  chatsAbout,
+  type ChatSummary,
+  clearChat,
+  deleteChat,
+  startChat,
+} from '../../../shared/editorChats';
 import { createEditTarget, EditTargetContext } from './editTarget';
 
 export interface ChatMessage {
@@ -92,11 +100,11 @@ export interface EditorStore {
   pickerShowDestination: Accessor<boolean>;
 
   // --- Session management ---
-  /** The saved sessions, to name and address — never to read messages off. See the signal's note. */
-  sessions: Accessor<NewRecord<ChatSessionRecord>[]>;
+  /** This template's saved chats, to name and address — newest first. See `shared/editorChats.ts`. */
+  sessions: Accessor<ChatSummary[]>;
   activeSessionId: Accessor<string | null>;
-  newChat: () => void;
-  switchSession: (sessionId: string) => void;
+  newChat: () => Promise<void>;
+  switchSession: (sessionId: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
 
   // --- Content mode (preview / visual) ---
@@ -186,7 +194,7 @@ export interface EditorStore {
 
   // --- Chat actions ---
   sendMessage: (text: string) => Promise<void>;
-  clearHistory: () => void;
+  clearHistory: () => Promise<void>;
 }
 
 /**
@@ -316,20 +324,12 @@ export function EditorStoreProvider(props: ParentProps) {
   /*
     --- Session management ---
 
-    `NewRecord`, and that is the whole of the fix below: these rows are here to be named, addressed
-    and deleted, never to be read for their messages. A session's `messages` is a relation, so it
-    holds whatever it held at the moment the record was read — nothing for one this run created, and
-    the state at load for one it loaded — and `persistMessage` appends without touching it.
-
-    Reading it back off a held row was why leaving a conversation and returning to it showed an empty
-    one, and why deleting a chat walked an empty list and left every message behind with nothing
-    pointing at it. Both cleared on reload, which is what kept them. Messages now come from
-    `messagesFor`, which asks.
+    The chats are `CollectionBlock`s of kind `chat` in the root dataset, their messages `TextBlock`s
+    — see `shared/editorChats.ts`. Held here as summaries, to name and address; messages are always
+    asked for, because a relation on a held record is a snapshot of when it was read.
   */
-  const [sessions, setSessions] = createSignal<NewRecord<ChatSessionRecord>[]>([]);
+  const [sessions, setSessions] = createSignal<ChatSummary[]>([]);
   const [activeSessionId, setActiveSessionId] = createSignal<string | null>(null);
-  // Track the AD4M ChatSession model instance for the active session
-  let activeSessionRecord: NewRecord<ChatSessionRecord> | null = null;
 
   // --- Content mode (preview / visual / code) ---
   const [contentMode, setContentModeSignal] = createSignal<'preview' | 'visual'>('preview');
@@ -361,7 +361,7 @@ export function EditorStoreProvider(props: ParentProps) {
   function pushSnapshot() {
     const current = isReadOnly() ? (pendingTemplate() ?? deepClone(edit.template())) : deepClone(edit.template());
     setUndoStack((prev) => {
-      const next = [...prev, { type: 'template' as const, snapshot: current as TemplateSchema }];
+      const next = [...prev, { type: 'template' as const, snapshot: current }];
       return next.length > MAX_UNDO ? next.slice(next.length - MAX_UNDO) : next;
     });
     setRedoStack([]);
@@ -380,7 +380,7 @@ export function EditorStoreProvider(props: ParentProps) {
       await edit.persist();
       return;
     }
-    setPendingTemplate(deepClone(edit.template()) as TemplateSchema);
+    setPendingTemplate(deepClone<TemplateSchema>(edit.template()));
   }
 
   async function undo() {
@@ -390,9 +390,7 @@ export function EditorStoreProvider(props: ParentProps) {
     setUndoStack((prev) => prev.slice(0, -1));
 
     if (entry.type === 'template') {
-      const currentSnap = (
-        isReadOnly() ? (pendingTemplate() ?? deepClone(edit.template())) : deepClone(edit.template())
-      ) as TemplateSchema;
+      const currentSnap = isReadOnly() ? (pendingTemplate() ?? deepClone(edit.template())) : deepClone(edit.template());
       setRedoStack((prev) => [...prev, { type: 'template' as const, snapshot: currentSnap }]);
       if (isReadOnly()) {
         setPendingTemplate(entry.snapshot);
@@ -418,9 +416,7 @@ export function EditorStoreProvider(props: ParentProps) {
     setRedoStack((prev) => prev.slice(0, -1));
 
     if (entry.type === 'template') {
-      const currentSnap = (
-        isReadOnly() ? (pendingTemplate() ?? deepClone(edit.template())) : deepClone(edit.template())
-      ) as TemplateSchema;
+      const currentSnap = isReadOnly() ? (pendingTemplate() ?? deepClone(edit.template())) : deepClone(edit.template());
       setUndoStack((prev) => [...prev, { type: 'template' as const, snapshot: currentSnap }]);
       if (isReadOnly()) {
         setPendingTemplate(entry.snapshot);
@@ -468,50 +464,30 @@ export function EditorStoreProvider(props: ParentProps) {
   // Session management — load, create, switch, delete
   // ----------------------------------------------------------------
 
-  /**
-   * One session's messages, asked for rather than read off a held record.
-   *
-   * The session row is re-read with its `messages` included — the same query `loadSessionsForTemplate`
-   * makes for all of them — because a relation on a held instance is a snapshot of when that instance
-   * was read, and every message written since is missing from it. See the note on `sessions`.
-   *
-   * Answers `[]` for a session that has gone, which is what a caller wants: an empty conversation,
-   * not a thrown one.
-   */
-  async function messagesFor(sessionId: string): Promise<ChatMessage[]> {
+  /** One chat's messages, or none where it has gone or cannot be read. */
+  async function messagesFor(chatId: string): Promise<ChatMessage[]> {
     const perspective = datasetStore.rootDataset()?.handle;
     if (!perspective) return [];
     try {
-      const fresh = await ChatSessionRecord.findOne(perspective, {
-        where: { id: sessionId },
-        include: { messages: { order: { createdAt: 'ASC' } } },
-      });
-      // One fallback, not two: the inner `?? []` already makes this non-nullish, so the outer one was
-      // unreachable. TypeScript 6 reports that (TS2869) where 5 accepted it in silence.
-      return (fresh?.messages ?? []) as ChatMessage[];
+      return await chatMessages(perspective, chatId);
     } catch (err) {
-      console.error('Failed to read messages for session', sessionId, err);
+      console.error('Failed to read messages for chat', chatId, err);
       return [];
     }
   }
 
-  /** Load sessions for a given template and activate the most recent one */
-  async function loadSessionsForTemplate(templateId: string) {
-    // Core (read-only) templates use ephemeral in-memory sessions
-    if (templateStore.isBuiltInTemplateId(templateId)) {
-      setSessions([]);
-      setActiveSessionId(null);
-      activeSessionRecord = null;
-      setMessages([]);
-      return;
-    }
+  function showNoChat() {
+    setSessions([]);
+    setActiveSessionId(null);
+    setMessages([]);
+  }
 
-    const templateRecord = templateStore.getTemplateRecord(templateId);
-    if (!templateRecord) {
-      setSessions([]);
-      setActiveSessionId(null);
-      activeSessionRecord = null;
-      setMessages([]);
+  /** Load the chats about a template and open the most recent one */
+  async function loadSessionsForTemplate(templateId: string) {
+    // A built-in template is never edited in place, so a conversation about one is not kept: it is
+    // forked first, and the fork's chats are kept from then on.
+    if (templateStore.isBuiltInTemplateId(templateId) || !templateStore.getTemplateRecord(templateId)) {
+      showNoChat();
       return;
     }
 
@@ -519,62 +495,34 @@ export function EditorStoreProvider(props: ParentProps) {
     if (!perspective) return;
 
     try {
-      // Single query: sessions for this template with messages already hydrated
-      const templateSessions = await ChatSessionRecord.findAll(perspective, {
-        where: { templateId: templateRecord.id },
-        order: { updatedAt: 'DESC' },
-        include: { messages: { order: { createdAt: 'ASC' } } },
-      });
-
-      setSessions(templateSessions);
-
-      // Activate the most recent session
-      if (templateSessions.length > 0) {
-        const latest = templateSessions[0];
-        setActiveSessionId(latest.id);
-        activeSessionRecord = latest;
-        setMessages((latest.messages as ChatMessage[]) || []);
-      } else {
-        setActiveSessionId(null);
-        activeSessionRecord = null;
-        setMessages([]);
-      }
+      const { chats, latest } = await chatsAbout(perspective, templateId);
+      setSessions(chats);
+      setActiveSessionId(chats[0]?.id ?? null);
+      setMessages(latest);
     } catch (err) {
-      console.error('Failed to load sessions for template', templateId, err);
-      setSessions([]);
-      setActiveSessionId(null);
-      activeSessionRecord = null;
-      setMessages([]);
+      console.error('Failed to load chats for template', templateId, err);
+      showNoChat();
     }
   }
 
-  /** Create a new chat session for the current template */
+  /** Start a new chat about the current template */
   async function newChat() {
     const templateId = edit.template().id;
     if (!templateId || templateStore.isBuiltInTemplateId(templateId)) {
-      // For core templates, clear in-memory messages (ephemeral sessions)
+      // For a built-in, the conversation is only in memory; a new one just clears it.
       setMessages([]);
       setMessages((prev) => [...prev, createMessage('assistant', 'Chat cleared. Start a new conversation!')]);
       return;
     }
 
-    const templateRecord = templateStore.getTemplateRecord(templateId);
     const perspective = datasetStore.rootDataset()?.handle;
-    if (!templateRecord || !perspective) return;
+    if (!templateStore.getTemplateRecord(templateId) || !perspective) return;
 
     try {
-      const sessionName = `Chat ${sessions().length + 1}`;
-      const now = new Date().toISOString();
-      const session = await ChatSessionRecord.create(perspective, {
-        name: sessionName,
-        templateId: templateRecord.id,
-        updatedAt: now,
-      });
-
-      activeSessionRecord = session;
-      setActiveSessionId(session.id);
+      const chat = await startChat(perspective, templateId, `Chat ${sessions().length + 1}`);
+      setActiveSessionId(chat.id);
       setMessages([]);
-      setSessions((prev) => [session, ...prev]);
+      setSessions((prev) => [chat, ...prev]);
     } catch (err) {
       console.error('Failed to create new chat session', err);
       // The button leaves the old conversation on screen when this fails, so without a word it
@@ -583,55 +531,28 @@ export function EditorStoreProvider(props: ParentProps) {
     }
   }
 
-  /** Switch to an existing session */
+  /** Switch to an existing chat */
   async function switchSession(sessionId: string) {
     if (sessionId === activeSessionId()) return;
+    if (!sessions().some((s) => s.id === sessionId)) return;
 
-    const target = sessions().find((s) => s.id === sessionId);
-    if (!target) return;
-
-    activeSessionRecord = target;
     setActiveSessionId(sessionId);
     setMessages(await messagesFor(sessionId));
   }
 
-  /** Delete a session and its messages */
+  /** Delete a chat and everything in it */
   async function deleteSession(sessionId: string) {
-    const templateId = edit.template().id;
-    if (!templateId) return;
-
-    const templateRecord = templateStore.getTemplateRecord(templateId);
     const perspective = datasetStore.rootDataset()?.handle;
-    if (!templateRecord || !perspective) return;
+    if (!perspective || !sessions().some((s) => s.id === sessionId)) return;
 
     try {
-      const target = sessions().find((s) => s.id === sessionId);
-      if (!target) return;
-
-      // Asked for, not read off `target`: its `messages` is a snapshot from whenever that row was
-      // read, so a chat created or added to this run walked an empty list here and left every
-      // message behind in the root dataset with nothing left pointing at it.
-      for (const msg of await messagesFor(sessionId)) {
-        await (msg as ChatMessageRecord).delete();
-      }
-
-      await target.delete();
-
-      // Update local state
+      await deleteChat(perspective, sessionId);
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
 
       if (activeSessionId() === sessionId) {
-        const remaining = sessions();
-        if (remaining.length > 0) {
-          const next = remaining[0];
-          activeSessionRecord = next;
-          setActiveSessionId(next.id);
-          setMessages(await messagesFor(next.id));
-        } else {
-          setActiveSessionId(null);
-          activeSessionRecord = null;
-          setMessages([]);
-        }
+        const next = sessions()[0];
+        setActiveSessionId(next?.id ?? null);
+        setMessages(next ? await messagesFor(next.id) : []);
       }
     } catch (err) {
       console.error('Failed to delete session', err);
@@ -641,20 +562,17 @@ export function EditorStoreProvider(props: ParentProps) {
     }
   }
 
-  /** Persist a message to AD4M and link it to the active session */
+  /**
+   * Keep a message in the active chat. A reply is marked as the model's, with the model the status
+   * line last named — see `appendMessage`.
+   */
   async function persistMessage(role: 'user' | 'assistant', content: string) {
-    if (!activeSessionRecord) return;
-
+    const chatId = activeSessionId();
     const perspective = datasetStore.rootDataset()?.handle;
-    if (!perspective) return;
+    if (!chatId || !perspective) return;
 
     try {
-      await ChatMessageRecord.create(
-        perspective,
-        { role, content },
-        // The session's `messages`, by name — the backend resolves how it stores them.
-        { parent: { id: activeSessionRecord.id, relation: 'messages', entity: 'ChatSession' } },
-      );
+      await appendMessage(perspective, chatId, { role, content, model: assistantStatus()?.model ?? '' });
     } catch (err) {
       console.error('Failed to persist message', err);
     }
@@ -947,7 +865,7 @@ export function EditorStoreProvider(props: ParentProps) {
         ...deepClone(starterTemplate),
         id: templateId,
         meta: { name, icon, description: '' },
-      } as TemplateSchema;
+      };
     } else {
       // Fork: clone current state (with any pending changes)
       const base = pendingTemplate() ?? edit.template();
@@ -955,7 +873,7 @@ export function EditorStoreProvider(props: ParentProps) {
         ...deepClone(base),
         id: templateId,
         meta: { ...base.meta, name, icon },
-      } as TemplateSchema;
+      };
     }
 
     const saveDestination = destination === 'space' ? 'space' : 'root';
@@ -979,7 +897,7 @@ export function EditorStoreProvider(props: ParentProps) {
     }
 
     // Enter template editing on the newly created template
-    enterTemplateEditing(action as 'fork' | 'fresh');
+    enterTemplateEditing(action);
   }
 
   function cancelPicker() {
@@ -992,7 +910,7 @@ export function EditorStoreProvider(props: ParentProps) {
   async function sendMessage(text: string) {
     // Lazy session creation for custom templates: if no active session, create one
     const templateId = edit.template().id;
-    if (templateId && !templateStore.isBuiltInTemplateId(templateId) && !activeSessionRecord) {
+    if (templateId && !templateStore.isBuiltInTemplateId(templateId) && !activeSessionId()) {
       await newChat();
     }
 
@@ -1000,10 +918,8 @@ export function EditorStoreProvider(props: ParentProps) {
     const userMsg = createMessage('user', text, 'sending');
     setMessages((prev) => [...prev, userMsg]);
 
-    // Persist user message to AD4M (custom templates only)
-    if (activeSessionRecord) {
-      persistMessage('user', text);
-    }
+    // Kept in the chat (a saved template only; a built-in's chat is in memory)
+    if (activeSessionId()) void persistMessage('user', text);
 
     setIsStreaming(true);
     setStreamingContent('<span class="shimmer">*Thinking...*</span>');
@@ -1064,7 +980,7 @@ export function EditorStoreProvider(props: ParentProps) {
     setMessages((prev) => [...prev, streamMsg]);
     setStreamingContent('<span class="shimmer">*Working on it…*</span>');
     try {
-      const before = deepClone(template) as TemplateSchema;
+      const before = deepClone<TemplateSchema>(template);
       const { result, stored: after } = await templateStore.writtenElsewhere(template, () =>
         agents.run({
           dataset: stored.dataset,
@@ -1119,7 +1035,7 @@ export function EditorStoreProvider(props: ParentProps) {
       a read-only template continues from them rather than reverting them.
     */
     const prepared = await prepareTemplateRequest({
-      template: deepClone(pendingTemplate() ?? edit.template()) as SchemaNode,
+      template: deepClone(pendingTemplate() ?? edit.template()),
       request: text,
       models: datasetStore.currentDatasetEntities(),
     });
@@ -1158,7 +1074,7 @@ export function EditorStoreProvider(props: ParentProps) {
         edit.update({
           ...authored,
           id: edit.template().id,
-        } as TemplateSchema);
+        });
         await edit.persist();
         setPendingTemplate(null);
         return prepared.accepted;
@@ -1211,7 +1127,7 @@ export function EditorStoreProvider(props: ParentProps) {
     return history;
   }
 
-  /** Update or create the assistant message, then persist to AD4M */
+  /** Update or create the assistant message, then keep it in the chat */
   function updateAssistantMessage(streamMsgId: string | undefined, content: string) {
     if (streamMsgId) {
       setMessages((prev) => prev.map((m) => (m.id === streamMsgId ? { ...m, content, status: undefined } : m)));
@@ -1219,10 +1135,8 @@ export function EditorStoreProvider(props: ParentProps) {
       setMessages((prev) => [...prev, createMessage('assistant', content)]);
     }
 
-    // Persist to AD4M (fire-and-forget for custom templates)
-    if (activeSessionRecord) {
-      persistMessage('assistant', content);
-    }
+    // Kept in the chat, not awaited (a saved template only)
+    if (activeSessionId()) void persistMessage('assistant', content);
   }
 
   // ----------------------------------------------------------------
@@ -1230,7 +1144,7 @@ export function EditorStoreProvider(props: ParentProps) {
   // ----------------------------------------------------------------
   function onSchemaEdit(json: string) {
     try {
-      const parsed = JSON.parse(json);
+      const parsed: unknown = JSON.parse(json);
       pushSnapshot();
       /*
         Ids kept as typed: a node keeps its identity through an edit here like any other. One typed
@@ -1251,18 +1165,11 @@ export function EditorStoreProvider(props: ParentProps) {
   // Clear chat
   // ----------------------------------------------------------------
   async function clearHistory() {
-    // If persisted session, delete messages from AD4M
-    const record = activeSessionRecord;
-    if (record) {
+    const chatId = activeSessionId();
+    const perspective = datasetStore.rootDataset()?.handle;
+    if (chatId && perspective) {
       try {
-        // Asked for, not read off the held record — its `messages` is a snapshot of whenever that
-        // row was read, and every message written since is missing from it. The comment here used to
-        // say they were "already hydrated on the session model", which is what made Clear History a
-        // no-op on any conversation this run had started.
-        for (const msg of await messagesFor(record.id)) {
-          await record.removeMessages(msg as ChatMessageRecord);
-          await (msg as ChatMessageRecord).delete();
-        }
+        await clearChat(perspective, chatId);
       } catch (err) {
         console.error('Failed to clear persisted messages', err);
       }
@@ -1311,7 +1218,7 @@ export function EditorStoreProvider(props: ParentProps) {
   // Chats are about what is being edited, which is not always the template on screen.
   createEffect(() => {
     const templateId = edit.template().id;
-    if (templateId && datasetStore.rootDataset()) loadSessionsForTemplate(templateId);
+    if (templateId && datasetStore.rootDataset()) void loadSessionsForTemplate(templateId);
   });
 
   // Save/restore undo/redo stacks per edited template — keyed with its origin, see `EditTargetPort.key`.

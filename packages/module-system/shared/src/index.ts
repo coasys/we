@@ -86,6 +86,8 @@ export type {
   ModuleScope,
   ModuleSetting,
   ModuleStoreDeps,
+  NotifyOptions,
+  NotifyTone,
   PanelBid,
   PanelContribution,
   SettingLevel,

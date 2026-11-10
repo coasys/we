@@ -21,10 +21,16 @@
  * the community's states are, and how a failure reaches a person — arrive as `BoardDeps` rather than
  * as imports.
  */
-import { CollectionBlock, type DatasetProxy, getEntityForDataset, runEntityTransaction, Space } from '@we/entities';
+import {
+  CollectionBlock,
+  type DatasetProxy,
+  getEntityForDataset,
+  runEntityTransaction,
+  type TaskBlock,
+} from '@we/entities';
 
 import { spliceSubsetOrder } from './shapes/subsetOrder';
-import { readSpaceLandmarks, writeSpaceLandmark } from './spaceLandmarks';
+import { readSpaceLandmarks, readSpaceRoot, writeSpaceLandmark } from './spaceLandmarks';
 import type { TaskMoveOutcome } from './taskWorkflow';
 
 /** What the board actions need from the app around them. */
@@ -144,6 +150,9 @@ export interface BoardActions {
 
 const ids = (value: unknown): string[] => (Array.isArray(value) ? (value as string[]) : []);
 
+// The registry answers untyped, but what it holds under 'TaskBlock' is the TaskBlock class.
+const taskEntity = (dataset: DatasetProxy) => getEntityForDataset('TaskBlock', dataset) as typeof TaskBlock | undefined;
+
 export function createBoardActions(deps: BoardDeps): BoardActions {
   const { dataset, offeredStates, notify, resolveSuggestion, workflow } = deps;
   const hold = deps.hold ?? (() => {});
@@ -231,7 +240,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
             ...(options?.gathers ? { gathers: [options.gathers] } : {}),
             // In the order made, which is the community's order — see the note above on why here.
             ...(columns.length ? { children: columns } : {}),
-          } as never,
+          },
           { batchId: tx.batchId },
         );
         if (parentId) {
@@ -275,13 +284,13 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
       if (anchorId) {
         const anchor = await CollectionBlock.findOne(p, { where: { id: anchorId }, include: { board: true } });
         if (!anchor) return '';
-        const existing = anchor.board as unknown as CollectionBlock | undefined;
+        const existing = anchor.board;
         if (existing?.id) return existing.id;
         const made = await createBoard(title?.trim() || 'This call', anchorId, {
           dataset: datasetUri,
           gathers: anchorId,
         });
-        if (made) await anchor.setBoard({ id: made } as CollectionBlock);
+        if (made) await anchor.setBoard({ id: made });
         return made;
       }
 
@@ -291,7 +300,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
       */
       const existing = (await readSpaceLandmarks(p)).board;
       if (existing) return existing;
-      const space = await Space.findOne(p, { include: { root: true } });
+      const space = await readSpaceRoot(p);
       if (!space) return '';
       /*
         Gathering from the space collection, where everything top-level in the space lives — every
@@ -299,7 +308,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         before spaces had a collection gathers from the space record, which a board reads as the
         whole space, as it always did.
       */
-      const root = (space.root as unknown as { id?: string } | undefined)?.id;
+      const root = space.root;
       const made = await createBoard(title?.trim() || 'Everything', root || undefined, {
         dataset: datasetUri,
         gathers: root || space.id,
@@ -345,14 +354,14 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         include: { board: true },
       });
       if (!anchor) return '';
-      const existing = anchor.board as unknown as CollectionBlock | undefined;
+      const existing = anchor.board;
       if (existing?.id) return existing.id;
       const held = ids(anchor.children);
 
       // A bare list of ids is native on this backend — it pushes down to a VALUES clause — so this
       // asks "are any of these children tasks?" in one round trip rather than hydrating them all.
       if (!held.length) return '';
-      const Task = getEntityForDataset('TaskBlock', p);
+      const Task = taskEntity(p);
       const tasks = await Task?.findAll(p, { where: { id: held }, limit: 1 });
       if (!tasks?.length) return '';
 
@@ -696,7 +705,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         release(toColumnId, 'arranges');
         return;
       }
-      const task = to.slug ? await getEntityForDataset('TaskBlock', p)?.findOne(p, { where: { id: cardId } }) : null;
+      const task = to.slug ? await taskEntity(p)?.findOne(p, { where: { id: cardId } }) : null;
       // The drag decides the state; a staged suggestion for it, if there is one, is superseded rather
       // than left to overwrite this the moment somebody presses Keep. Before the write, so the two
       // cannot race.
@@ -707,7 +716,8 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         surface reads. One that is waiting leaves the board as it was; its card shows the question.
       */
       if (task && to.slug && workflow?.enabled()) {
-        const current = workflow.stateOf(cardId) ?? String((task as { status?: unknown }).status ?? '');
+        const status = (task as { status?: unknown }).status;
+        const current = workflow.stateOf(cardId) ?? (typeof status === 'string' ? status : '');
         const outcome = await workflow.move(cardId, current, to.slug);
         /*
           Already there counts as moved: the writes below put `status` and the arrangement where the
@@ -784,8 +794,8 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         }
         if (from) await CollectionBlock.removeRelation(p, from.id, 'arranges', cardId, tx.batchId);
         if (task) {
-          (task as Record<string, unknown>).status = to.slug;
-          await (task as { save: (batch?: string) => Promise<unknown> }).save(tx.batchId);
+          task.status = to.slug;
+          await task.save(tx.batchId);
         }
       });
       /*
@@ -827,7 +837,7 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
     try {
       const column = await CollectionBlock.findOne(p, { where: { id: columnId } });
       if (!column) return;
-      const Task = getEntityForDataset('TaskBlock', p);
+      const Task = taskEntity(p);
       if (!Task) return;
       /*
         A column whose state waits for agreement cannot be the state a task is born in — that would be
@@ -835,17 +845,21 @@ export function createBoardActions(deps: BoardDeps): BoardActions {
         for this one straight away, so it appears where the rest of the waiting work does, saying so.
       */
       const asking = Boolean(column.slug && workflow?.enabled() && workflow.needsAgreement(column.slug));
-      const initial = asking && workflow ? workflow.entryFor(column.slug!) : column.slug;
+      const initial = asking && workflow ? workflow.entryFor(column.slug) : column.slug;
       let taskId = '';
       await runEntityTransaction(p, async (tx) => {
-        const task = await Task.create(p, { title: title.trim(), ...(initial ? { status: initial } : {}) }, {
-          ...(anchorId ? { parent: { id: anchorId, relation: 'children', entity: 'CollectionBlock' } } : {}),
-          batchId: tx.batchId,
-        } as never);
+        const task = await Task.create(
+          p,
+          { title: title.trim(), ...(initial ? { status: initial } : {}) },
+          {
+            ...(anchorId ? { parent: { id: anchorId, relation: 'children', entity: 'CollectionBlock' } } : {}),
+            batchId: tx.batchId,
+          },
+        );
         taskId = (task as { id: string }).id;
         if (!asking) await CollectionBlock.addRelation(p, column.id, 'arranges', taskId, tx.batchId);
       });
-      if (asking && workflow && taskId && initial) await workflow.move(taskId, initial, column.slug!);
+      if (asking && workflow && taskId && initial) await workflow.move(taskId, initial, column.slug);
     } catch (error) {
       console.error('SpaceStore: could not add that task', error);
       notify('Could not add that task');

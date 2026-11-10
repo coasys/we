@@ -15,6 +15,7 @@ import {
   type AmendmentEntry,
   exportFileName,
   formatExtractionLog,
+  isoOf,
   type PassEntry,
   transcriptLine,
 } from '@shared/interpretation/callExport';
@@ -52,7 +53,13 @@ import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry'
 import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
 import { type SharingPickerOption, sharingPickerOptions } from '@shared/sharingOptions';
-import { readSpaceLandmarks, writeSpaceLandmark } from '@shared/spaceLandmarks';
+import {
+  landmarksByName,
+  readSpaceLandmarks,
+  readSpaceRoot,
+  seedSpaceRoot,
+  writeSpaceLandmark,
+} from '@shared/spaceLandmarks';
 import {
   createPolicyCheck,
   type GovernedSpace,
@@ -118,7 +125,7 @@ import {
   viewSettings,
 } from '@shared/viewResolution';
 import { evidenceLabel, refusalWords } from '@shared/workflowViews';
-import type { AgentProfileSummary, DatasetRef, WorkflowView } from '@we/backend-shared';
+import type { AgentProfileSummary, DatasetRef, EntityStatic, RecordInstance, WorkflowView } from '@we/backend-shared';
 import { displayName, isPolicyRefusal, parseServerUrl, SELF_PERSONS, trace, validatePolicy } from '@we/backend-shared';
 import type { ContentInput } from '@we/block-shared';
 import {
@@ -165,6 +172,7 @@ import {
   Space,
   SpaceLandmark,
   SpacePreference,
+  type TaskBlock,
   TaskState,
 } from '@we/entities';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
@@ -178,6 +186,7 @@ import {
 import { hasViewsMarker, templateThemeId } from '@we/schema-shared';
 import {
   Accessor,
+  batch,
   createComputed,
   createContext,
   createEffect,
@@ -327,7 +336,7 @@ interface ShareTask {
 function resolveEnabledModules(raw: string | undefined, fallback: () => string[] = defaultEnabledModules): string[] {
   if (raw) {
     try {
-      const parsed = JSON.parse(raw);
+      const parsed: unknown = JSON.parse(raw);
       if (Array.isArray(parsed)) return parsed.filter((id): id is string => typeof id === 'string');
     } catch {
       console.warn('enabledModules is not valid JSON; falling back to the default');
@@ -956,6 +965,11 @@ export interface SpaceStore {
    */
   landmarks: Accessor<Record<string, string>>;
   /**
+   * The landmarks have answered for the space on screen. Until then an absent landmark means "not
+   * known yet", not "none": gate a "there is no board" on this, never on `root`, which arrives first.
+   */
+  landmarksLoaded: Accessor<boolean>;
+  /**
    * Whether one collection — a call, a channel, the space's own — is extracted as it grows: its own
    * answer, copied from the space's default when it was made. False until it has been read.
    */
@@ -1189,6 +1203,16 @@ const SPACE_AVATAR_PX = 512;
  */
 const TASK_STATE_SEMANTICS: TaskStateView['semantic'][] = ['open', 'active', 'blocked', 'done', 'cancelled'];
 
+/**
+ * A model's live query, as this store follows one. `subscribe` resolves with the rows it opened on and
+ * hands the callback every later result whole — the records themselves, so a change is applied from
+ * what arrived rather than by asking the backend the same question again.
+ */
+type LiveRows<T> = { subscribe(cb: (rows: T[]) => void): Promise<T[]>; dispose(): void };
+
+/** What a collection's extraction settings are read from — see `autoExtractFor`. */
+const COLLECTION_SETTINGS_FIELDS = ['autoExtract', 'extractionTargets'] as const;
+
 export function SpaceStoreProvider(props: ParentProps) {
   const session = useSessionStore();
   const datasetStore = useDatasetStore();
@@ -1342,7 +1366,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const raw = preferenceFor(spaceUuid)?.mutedModules;
     if (!raw) return [];
     try {
-      const parsed = JSON.parse(raw);
+      const parsed: unknown = JSON.parse(raw);
       return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === 'string') : [];
     } catch {
       return [];
@@ -1838,7 +1862,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     space: SpaceInput,
     location?: Partial<LocationBlock>,
   ): Promise<Space> {
-    const spaceRecord = await Space.create(dataset, space as Partial<Space>);
+    const spaceRecord = await Space.create(dataset, space);
     if (location) {
       const locationRecord = await LocationBlock.create(dataset, location);
       await spaceRecord.setLocation(locationRecord);
@@ -1890,7 +1914,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       ...defaults,
       ...(starter?.input !== undefined && { autoExtract: starter.input }),
     });
-    await space.setRoot({ id: root.id } as CollectionBlock);
+    await space.setRoot({ id: root.id });
 
     const target = {
       rootId: root.id,
@@ -1899,14 +1923,15 @@ export function SpaceStoreProvider(props: ParentProps) {
     };
     await applyStarterRecords(starter, target, {
       create: async (entity, fields, parentId) => {
-        const Model = getEntityForDataset(entity, dataset);
+        // Any entity a starter names; the registry answers untyped, but every class has this surface.
+        const Model = getEntityForDataset(entity, dataset) as EntityStatic<RecordInstance> | undefined;
         if (!Model) throw new Error(`no ${entity} in this space's schema`);
         const made = await Model.create(
           dataset,
-          fields as never,
-          (parentId ? { parent: { id: parentId, relation: 'children', entity: 'CollectionBlock' } } : {}) as never,
+          fields,
+          parentId ? { parent: { id: parentId, relation: 'children', entity: 'CollectionBlock' } } : {},
         );
-        return (made as { id: string }).id;
+        return made.id;
       },
       landmark: (name, nodeId) => writeSpaceLandmark(dataset, space.id, name, nodeId),
       linkSpace: (relations) => linkSpaceRelations(Space, dataset, space.id, relations),
@@ -1949,7 +1974,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
       // Create the dataset
       const spaceRef = await lifecycle.create(name);
-      const spaceHandle = spaceRef.handle as DatasetProxy;
+      const spaceHandle = spaceRef.handle;
       if (access === 'shared' && !lifecycle.publish) throw new Error('This backend cannot publish shared datasets.');
 
       // Register SDNA models (full set, same as switchDataset uses)
@@ -2080,7 +2105,9 @@ export function SpaceStoreProvider(props: ParentProps) {
         routeStore.navigate(`/space/${sharedId}${rest}${window.location.search}`, { replace: true });
       }
       // Only now does the space show as shared: before this, a failure leaves it retryable.
-      const shared = Object.assign(Object.create(Object.getPrototypeOf(space)), space, { url: sharedId }) as Space;
+      const shared = Object.assign(Object.create(Object.getPrototypeOf(space) as object | null), space, {
+        url: sharedId,
+      }) as Space;
       setMySpaces((prev) => prev.map((s) => (s.uuid === uuid ? shared : s)));
       setShares(({ [uuid]: _done, ...rest }) => rest);
       if (shared.discovery === 'listed') await listInGlobal(shared, task.listing);
@@ -2143,7 +2170,7 @@ export function SpaceStoreProvider(props: ParentProps) {
 
     const spaceRecord = await addSpaceToDataset(ds.handle, spaceData);
     // A space made from a foreign perspective is still a new WE space, so it gets the same structure.
-    await writeSpaceStructure(ds.handle as DatasetProxy, spaceRecord, starter);
+    await writeSpaceStructure(ds.handle, spaceRecord, starter);
 
     if (!mySpaces().some((s) => s.uuid === spaceRecord.uuid)) {
       setMySpaces((prev) => [...prev, spaceRecord]);
@@ -2210,7 +2237,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    * space was joined, and none of the things that make a joined space usable had happened.
    */
   async function finishJoin(joinedRef: DatasetRef, focus: boolean): Promise<void> {
-    const joinedHandle = joinedRef.handle as DatasetProxy;
+    const joinedHandle = joinedRef.handle;
 
     // A join returns before the dataset has synced, and until it has it holds none of the
     // space's data — the creator's schema included. Everything below reads it, so wait.
@@ -2353,7 +2380,9 @@ export function SpaceStoreProvider(props: ParentProps) {
   function updateSpaceInCache(dataset: AppDataset, updates: Partial<Space>): void {
     setMySpaces((prev) =>
       prev.map((s) =>
-        isSpaceSelf(s, dataset) ? Object.assign(Object.create(Object.getPrototypeOf(s)), s, updates) : s,
+        isSpaceSelf(s, dataset)
+          ? (Object.assign(Object.create(Object.getPrototypeOf(s) as object | null), s, updates) as Space)
+          : s,
       ),
     );
   }
@@ -2724,9 +2753,9 @@ export function SpaceStoreProvider(props: ParentProps) {
   }
 
   function broadcastPerspectiveNavigation(communityId: string): void {
-    const iframes = document.querySelectorAll('we-iframe') as NodeListOf<
-      HTMLElement & { postMessage: (data: unknown, origin: string) => void }
-    >;
+    const iframes = document.querySelectorAll<HTMLElement & { postMessage: (data: unknown, origin: string) => void }>(
+      'we-iframe',
+    );
     iframes.forEach((el) => {
       if (typeof el.postMessage === 'function') {
         el.postMessage({ type: 'NAVIGATE_PERSPECTIVE', communityId }, '*');
@@ -2765,7 +2794,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     await Space.update(ds.handle, spaceRecord.id, { [field]: fileData });
     // Only the current space has a live subscription refreshing it; every other row in the spaces
     // list is served from this cache, so without it the change would not appear until a reload.
-    updateSpaceInCache(ds, { [field]: fileData } as never);
+    updateSpaceInCache(ds, { [field]: fileData });
     if (spaceRecord.discovery === 'listed') {
       const globalDs = datasetStore.globalDataset();
       if (globalDs) {
@@ -2796,7 +2825,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     await spaceRecord.save();
     // See updateSpaceImage — only the current space is refreshed by a live subscription.
     const { location: _location, ...scalars } = updates;
-    updateSpaceInCache(ds, scalars as never);
+    updateSpaceInCache(ds, scalars);
 
     if (updates.location !== undefined) {
       if (updates.location === null) {
@@ -3000,10 +3029,10 @@ export function SpaceStoreProvider(props: ParentProps) {
         At most one reaction per person per type is what "upsert" means here, so the write enforces
         it rather than assuming it.
       */
-      const mine = (await Signal.findAll(p, {
+      const mine = await Signal.findAll(p, {
         parent: { id: nodeId, relation: 'signals' },
         where: { signalTypeId, author: myDid },
-      })) as Signal[];
+      });
 
       /*
         Withdrawing a reaction removes the record; changing one edits it in place.
@@ -3157,15 +3186,19 @@ export function SpaceStoreProvider(props: ParentProps) {
               target class — a pass writes whatever models the call looks for — and the class this
               store reads through did not carry the flag, so the executor refused to hydrate it.
             */
-            include: { extractionPasses: true, extracted: { polymorphic: true }, amendments: true },
+            include: {
+              runs: { where: { kind: 'extraction' } },
+              extracted: { polymorphic: true },
+              amendments: true,
+            },
           } as never);
           const row = call as unknown as {
             title?: string;
-            extractionPasses?: unknown;
+            runs?: unknown;
             extracted?: unknown;
             amendments?: unknown;
           } | null;
-          const passes = (Array.isArray(row?.extractionPasses) ? row.extractionPasses : []) as PassEntry[];
+          const passes = (Array.isArray(row?.runs) ? row.runs : []) as PassEntry[];
           const records = Array.isArray(row?.extracted) ? (row.extracted as unknown[]) : [];
           const amendments = (Array.isArray(row?.amendments) ? row.amendments : []) as AmendmentEntry[];
           if (!passes.length) return null;
@@ -3229,22 +3262,43 @@ export function SpaceStoreProvider(props: ParentProps) {
   */
   const [spaceRoot, setSpaceRoot] = createSignal('');
   const [spaceLandmarks, setSpaceLandmarks] = createSignal<Record<string, string>>({});
+  /**
+   * The landmarks have answered for the space on screen. Its own flag, set with them, so a template
+   * asking "is there a board?" never hears "no" before they are in — `root` arrives first now, and
+   * used to be what said so.
+   */
+  const [landmarksLoaded, setLandmarksLoaded] = createSignal(false);
+  // The collection to modules too, so the Feed starts from this answer rather than reading the space
+  // record again for it.
+  onCleanup(provideModuleHostServices({ spaceRoot: () => spaceRoot() }));
   /** Read the space collection and the landmarks again — after an action made a record the space's. */
   async function reloadSpaceStructure(): Promise<void> {
-    const dataset = datasetStore.currentDataset()?.handle;
-    const uuid = datasetStore.currentDataset()?.id;
-    if (!dataset || !datasetStore.isWeSpace()) return;
-    try {
-      const space = await Space.findOne(dataset, { include: { root: true } });
-      const landmarks = await readSpaceLandmarks(dataset);
-      if (datasetStore.currentDataset()?.id !== uuid) return; // navigated away while loading
-      // Landmarks first: `root` is what says the read has answered, so a template asking "is there a
-      // board?" never hears "no" in the frame between the two.
-      setSpaceLandmarks(landmarks);
-      setSpaceRoot(space?.root?.id ?? '');
-    } catch (error) {
-      console.warn('SpaceStore: could not read the space’s collection and landmarks', error);
-    }
+    const ds = datasetStore.currentDataset();
+    const dataset = ds?.handle;
+    if (!ds || !dataset || !datasetStore.isWeSpace()) return;
+    const here = () => datasetStore.currentDataset()?.id === ds.id; // not navigated away while loading
+    /*
+      The list has read this space's row, and that row carries its collection's id, so the collection
+      is known without asking — the read below answers from it. The two reads are independent and run
+      together; each is set the moment it is in. The Feed and every channel branch wait on `root`,
+      and only a template asking about a landmark waits on the landmarks, through `landmarksLoaded`.
+    */
+    seedSpaceRoot(
+      dataset,
+      untrack(mySpaces).find((space) => isSpaceSelf(space, ds)),
+    );
+    const root = readSpaceRoot(dataset).then((space) => {
+      if (here()) setSpaceRoot(space?.root ?? '');
+    });
+    const landmarks = readSpaceLandmarks(dataset).then((found) => {
+      if (!here()) return;
+      batch(() => {
+        setSpaceLandmarks(found);
+        setLandmarksLoaded(true);
+      });
+    });
+    const failed = (await Promise.allSettled([root, landmarks])).find((r) => r.status === 'rejected');
+    if (failed) console.warn('SpaceStore: could not read the space’s collection and landmarks', failed.reason);
   }
   /*
     Read on entering the space, then follow its landmarks.
@@ -3257,19 +3311,34 @@ export function SpaceStoreProvider(props: ParentProps) {
     const dataset = datasetStore.currentDataset()?.handle;
     const weSpace = datasetStore.isWeSpace();
     let stopped = false;
-    let watch: { subscribe(cb: () => void): Promise<unknown>; dispose(): void } | undefined;
+    let watch: LiveRows<SpaceLandmark> | undefined;
     onCleanup(() => {
       stopped = true;
       watch?.dispose();
     });
     setSpaceRoot('');
     setSpaceLandmarks({});
+    setLandmarksLoaded(false);
+    /*
+      The pushed rows are the landmarks, whole: the same query `readSpaceLandmarks` makes. Only a space
+      whose collection was not there yet when it was read — a starter still writing — is read again,
+      since the collection is not what this query watches.
+    */
+    const follow = (rows: SpaceLandmark[], opened = false) => {
+      if (stopped) return;
+      if (!opened && !untrack(spaceRoot)) return void reloadSpaceStructure();
+      batch(() => {
+        setSpaceLandmarks(landmarksByName(rows));
+        setLandmarksLoaded(true);
+      });
+    };
     void untrack(reloadSpaceStructure).then(() => {
       if (stopped || !dataset || !weSpace) return;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      watch = (SpaceLandmark as any).query(dataset, {}) as typeof watch;
+      watch = SpaceLandmark.query(dataset, {});
       watch
-        ?.subscribe(() => void (!stopped && reloadSpaceStructure()))
+        ?.subscribe((rows) => follow(rows))
+        // What the watch opened on: a landmark written between the first read and now is in it.
+        .then((rows) => follow(rows, true))
         .catch((error: unknown) => {
           console.warn('SpaceStore: could not watch the space’s landmarks', error);
         });
@@ -3312,11 +3381,7 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   function dedupeBySlug(records: TaskState[]): TaskState[] {
     const stamp = (r: TaskState) =>
-      String(
-        (r as unknown as { timestamp?: unknown }).timestamp ??
-          (r as unknown as { createdAt?: unknown }).createdAt ??
-          '',
-      );
+      isoOf((r as unknown as { timestamp?: unknown }).timestamp ?? (r as unknown as { createdAt?: unknown }).createdAt);
     const bySlug = new Map<string, TaskState>();
     for (const record of [...records].sort((a, b) => stamp(a).localeCompare(stamp(b)))) {
       const slug = record.slug || deriveSlug(record.name || '');
@@ -3343,36 +3408,42 @@ export function SpaceStoreProvider(props: ParentProps) {
       // Every space predates this entity, so none of them have its shape installed. `ensure` is the
       // diff-first idempotent path — a read in the common case — and the same step `loadShapes`
       // takes for exactly this reason.
-      await ports.ensure(dataset, TaskState as never);
-      const records = dedupeBySlug(await TaskState.findAll(dataset));
+      await ports.ensure(dataset, TaskState);
+      const records = await TaskState.findAll(dataset);
       if (datasetStore.currentDataset()?.id !== uuid) return; // navigated away while loading
-      setOwnTaskStates(
-        records.map((r: TaskState) => ({
-          id: r.id,
-          name: r.name || r.slug,
-          slug: r.slug || deriveSlug(r.name || ''),
-          semantic: (r.semantic || 'open') as TaskStateView['semantic'],
-          color: r.color || '',
-          icon: r.icon || '',
-          retired: Boolean(r.retired),
-          // A record written before these existed has neither: one approval, from anybody.
-          approvals: approvalsOf({ slug: '', approvals: r.approvals }),
-          approverKind: r.approverKind || '',
-          evidence: parseTaskStateEvidence(r.evidence).map((g) => ({
-            entity: g.entity,
-            ...(g.where ? { where: g.where } : {}),
-            via: g.via && 'relation' in g.via ? g.via.relation : '',
-            min: g.min ?? 1,
-            label: evidenceLabel(g),
-          })),
-        })),
-      );
+      applyTaskStates(records);
     } catch (error) {
       console.warn('SpaceStore: could not read task states', error);
       if (datasetStore.currentDataset()?.id === uuid) setOwnTaskStates([]);
     } finally {
       if (datasetStore.currentDataset()?.id === uuid) setTaskStatesLoaded(true);
     }
+  }
+
+  /** The space's state records, as the store holds them — from a read, or from what a watch pushed. */
+  function applyTaskStates(rows: TaskState[]): void {
+    const records = dedupeBySlug(rows);
+    setOwnTaskStates(
+      records.map((r: TaskState) => ({
+        id: r.id,
+        name: r.name || r.slug,
+        slug: r.slug || deriveSlug(r.name || ''),
+        semantic: r.semantic || 'open',
+        color: r.color || '',
+        icon: r.icon || '',
+        retired: Boolean(r.retired),
+        // A record written before these existed has neither: one approval, from anybody.
+        approvals: approvalsOf({ slug: '', approvals: r.approvals }),
+        approverKind: r.approverKind || '',
+        evidence: parseTaskStateEvidence(r.evidence).map((g) => ({
+          entity: g.entity,
+          ...(g.where ? { where: g.where } : {}),
+          via: g.via && 'relation' in g.via ? g.via.relation : '',
+          min: g.min ?? 1,
+          label: evidenceLabel(g),
+        })),
+      })),
+    );
   }
 
   /*
@@ -3390,17 +3461,28 @@ export function SpaceStoreProvider(props: ParentProps) {
     const dataset = datasetStore.currentDataset()?.handle;
     const weSpace = datasetStore.isWeSpace();
     let stopped = false;
-    let watch: { subscribe(cb: () => void): Promise<unknown>; dispose(): void } | undefined;
+    let watch: LiveRows<TaskState> | undefined;
     onCleanup(() => {
       stopped = true;
       watch?.dispose();
     });
+    // The pushed rows are the states, whole — the read `loadTaskStates` makes — so a change is
+    // applied from them. The list is already on screen, so nothing drops back to "not loaded".
+    const follow = (rows: TaskState[]) => {
+      if (stopped) return;
+      try {
+        applyTaskStates(rows);
+      } catch (error) {
+        console.warn('SpaceStore: could not read task states', error);
+      }
+    };
     void loadTaskStates().then(() => {
       if (stopped || !dataset || !weSpace) return;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      watch = (TaskState as any).query(dataset, {}) as typeof watch;
+      watch = TaskState.query(dataset, {});
       watch
-        ?.subscribe(() => void (!stopped && loadTaskStates(true)))
+        ?.subscribe(follow)
+        // What the watch opened on: a state written between the first read and now is in it.
+        .then(follow)
         .catch((error: unknown) => {
           console.warn('SpaceStore: could not watch task states', error);
         });
@@ -3621,10 +3703,10 @@ export function SpaceStoreProvider(props: ParentProps) {
    */
   async function mirrorTaskStatus(taskId: string, slug: string): Promise<void> {
     const p = datasetStore.currentDataset()?.handle;
-    const Task = p ? getEntityForDataset('TaskBlock', p) : undefined;
+    // The registry answers untyped, but what it holds under 'TaskBlock' is the TaskBlock class.
+    const Task = p ? (getEntityForDataset('TaskBlock', p) as typeof TaskBlock | undefined) : undefined;
     if (!p || !Task) return;
-    const task = (await Task.findOne(p, { where: { id: taskId } })) as
-      { status?: string; save(): Promise<unknown> } | null | undefined;
+    const task = await Task.findOne(p, { where: { id: taskId } });
     if (!task || task.status === slug) return;
     task.status = slug;
     const started = performance.now();
@@ -3687,10 +3769,10 @@ export function SpaceStoreProvider(props: ParentProps) {
       toastService.error('Could not save this change for the space.');
       throw error;
     }
-    updateSpaceInCache(ds, { archivedWorkflows: archivedWorkflowsJson } as never);
+    updateSpaceInCache(ds, { archivedWorkflows: archivedWorkflowsJson });
     setCurrentSpace((prev) =>
       prev
-        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, {
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev) as object | null), prev, {
             archivedWorkflows: archivedWorkflowsJson,
           }) as Space)
         : prev,
@@ -3735,10 +3817,12 @@ export function SpaceStoreProvider(props: ParentProps) {
       toastService.error('Could not save this change for the space.');
       throw error;
     }
-    updateSpaceInCache(ds, { taskWorkflowRule: next } as never);
+    updateSpaceInCache(ds, { taskWorkflowRule: next });
     setCurrentSpace((prev) =>
       prev
-        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, { taskWorkflowRule: next }) as Space)
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev) as object | null), prev, {
+            taskWorkflowRule: next,
+          }) as Space)
         : prev,
     );
   }
@@ -4047,11 +4131,11 @@ export function SpaceStoreProvider(props: ParentProps) {
     setInvolvementTypesLoaded(false);
     try {
       // Every space predates the entity; `ensure` is the diff-first install `loadTaskStates` uses.
-      await ports.ensure(dataset, InvolvementType as never);
+      await ports.ensure(dataset, InvolvementType);
       const records = (await InvolvementType.findAll(dataset)) as InvolvementType[];
       if (datasetStore.currentDataset()?.id !== uuid) return;
       const stamp = (r: InvolvementType) =>
-        String((r as unknown as { timestamp?: unknown; createdAt?: unknown }).timestamp ?? r.createdAt ?? '');
+        isoOf((r as unknown as { timestamp?: unknown; createdAt?: unknown }).timestamp ?? r.createdAt);
       setOwnInvolvementTypes(
         [...records]
           .sort((a, b) => stamp(a).localeCompare(stamp(b)))
@@ -4059,7 +4143,7 @@ export function SpaceStoreProvider(props: ParentProps) {
             id: r.id,
             name: r.name || r.slug,
             slug: r.slug || deriveSlug(r.name || ''),
-            semantic: (INVOLVEMENT_SEMANTICS.includes(r.semantic) ? r.semantic : 'responsible') as InvolvementSemantic,
+            semantic: INVOLVEMENT_SEMANTICS.includes(r.semantic) ? r.semantic : 'responsible',
             reflexive: Boolean(r.reflexive),
             appliesTo: parseAppliesTo(r.appliesTo),
             icon: r.icon || '',
@@ -4140,21 +4224,31 @@ export function SpaceStoreProvider(props: ParentProps) {
     try {
       const [roles, grants] = await Promise.all([Role.findAll(dataset), RoleGrant.findAll(dataset)]);
       if (datasetStore.currentDataset()?.id !== uuid) return;
-      setRoleRows(roles.map((r) => ({ id: r.id, slug: r.slug, name: r.name, description: r.description })));
-      setGrantRows(
-        grants.map((g) => ({
-          id: g.id,
-          role: g.role,
-          agent: g.agent,
-          createdAt: g.createdAt as GrantRow['createdAt'],
-          revokedAt: g.revokedAt,
-        })),
-      );
+      applyRoles(roles);
+      applyGrants(grants);
     } catch (error) {
       console.warn('SpaceStore: could not read the space’s roles', error);
     } finally {
       if (datasetStore.currentDataset()?.id === uuid) setRolesLoaded(true);
     }
+  }
+
+  /** The space's role records, as the store holds them — from a read, or from what a watch pushed. */
+  function applyRoles(roles: Role[]): void {
+    setRoleRows(roles.map((r) => ({ id: r.id, slug: r.slug, name: r.name, description: r.description })));
+  }
+
+  /** The space's grants, likewise. */
+  function applyGrants(grants: RoleGrant[]): void {
+    setGrantRows(
+      grants.map((g) => ({
+        id: g.id,
+        role: g.role,
+        agent: g.agent,
+        createdAt: g.createdAt as GrantRow['createdAt'],
+        revokedAt: g.revokedAt,
+      })),
+    );
   }
 
   createEffect(() => {
@@ -4178,16 +4272,20 @@ export function SpaceStoreProvider(props: ParentProps) {
       }
       await untrack(reloadRoles);
       if (stopped || !dataset || !weSpace) return;
-      for (const Model of [Role, RoleGrant]) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const watch = (Model as any).query(dataset, {}) as
-          { subscribe(cb: () => void): Promise<unknown>; dispose(): void } | undefined;
-        if (!watch) continue;
+      // Each watch pushes its own model's records whole, which is all its half of the roles is made
+      // of — so a change is applied from them, and the other half is left as it is.
+      const followAll = <T,>(watch: LiveRows<T> | undefined, apply: (rows: T[]) => void) => {
+        if (!watch) return;
         watches.push(watch);
+        const follow = (rows: T[]) => void (!stopped && apply(rows));
         watch
-          .subscribe(() => void (!stopped && reloadRoles()))
+          .subscribe(follow)
+          // What the watch opened on: a grant written between the first read and now is in it.
+          .then(follow)
           .catch((error: unknown) => console.warn('SpaceStore: could not watch the space’s roles', error));
-      }
+      };
+      followAll(Role.query(dataset, {}), applyRoles);
+      followAll(RoleGrant.query(dataset, {}), applyGrants);
     })();
   });
 
@@ -4297,7 +4395,11 @@ export function SpaceStoreProvider(props: ParentProps) {
 
   /** Every version, with its author as a person. */
   async function readPolicyVersions(dataset: DatasetProxy): Promise<PolicyVersion[]> {
-    const rows = (await Policy.findAll(dataset).catch(() => [])) as Policy[];
+    return policyVersionsOf((await Policy.findAll(dataset).catch(() => [])) as Policy[]);
+  }
+
+  /** The policy records as versions — from a read, or from what a watch pushed. */
+  function policyVersionsOf(rows: Policy[]): Promise<PolicyVersion[]> {
     return Promise.all(
       rows.map(async (row) => ({
         id: row.id,
@@ -4328,23 +4430,35 @@ export function SpaceStoreProvider(props: ParentProps) {
     const dataset = datasetStore.currentDataset()?.handle;
     const weSpace = datasetStore.isWeSpace();
     let stopped = false;
-    let watch: { subscribe(cb: () => void): Promise<unknown>; dispose(): void } | undefined;
+    let watch: LiveRows<Policy> | undefined;
     onCleanup(() => {
       stopped = true;
       watch?.dispose();
     });
     setPolicyRows([]);
     setPolicyLoaded(false);
+    // The pushed rows are every version, whole — the read `reloadPolicy` makes — so a new version is
+    // applied from them. A later push supersedes an earlier one still resolving its authors.
+    let pushed = 0;
+    const follow = (rows: Policy[]) => {
+      if (stopped) return;
+      const turn = ++pushed;
+      void policyVersionsOf(rows).then(
+        (versions) => void (!stopped && turn === pushed && setPolicyRows(versions)),
+        (error: unknown) => console.warn('SpaceStore: could not read the space’s policy', error),
+      );
+    };
     void (async () => {
       const schemas = session.backendPorts()?.schemas;
       // A space made before policies existed has the entity uninstalled; see the roles effect above.
       if (dataset && weSpace && schemas) await schemas.ensure(dataset, Policy as never).catch(() => undefined);
       await untrack(reloadPolicy);
       if (stopped || !dataset || !weSpace) return;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      watch = (Policy as any).query(dataset, {}) as { subscribe(cb: () => void): Promise<unknown>; dispose(): void };
+      watch = Policy.query(dataset, {});
       watch
-        ?.subscribe(() => void (!stopped && reloadPolicy()))
+        ?.subscribe(follow)
+        // What the watch opened on: a version written between the first read and now is in it.
+        .then(follow)
         .catch((error: unknown) => console.warn('SpaceStore: could not watch the space’s policy', error));
     })();
   });
@@ -4568,7 +4682,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   const settingLevels = createMemo<LevelValues>(() => {
     const uuid = datasetStore.currentDataset()?.id;
     return {
-      deployment: (getSeed().settings ?? {}) as LevelValues['deployment'],
+      deployment: getSeed().settings ?? {},
       agent: parseSettings(datasetStore.agentSettings()?.moduleSettings, 'AgentSettings.moduleSettings'),
       space: parseSettings(currentSpace()?.moduleSettings, 'Space.moduleSettings'),
       'agent-in-space': parseSettings(preferenceFor(uuid)?.moduleSettings, 'SpacePreference.moduleSettings'),
@@ -4605,9 +4719,20 @@ export function SpaceStoreProvider(props: ParentProps) {
       return !definition || !isCommunityDecided(definition) || on.has(group.id);
     });
   });
-  const spaceModuleSettings = createMemo<SettingRow[]>(() => settingRows(groupsHere(), 'space', settingLevels()));
-  const myModuleSettings = createMemo<SettingRow[]>(() => settingRows(groupsHere(), 'agent-in-space', settingLevels()));
-  const agentModuleSettings = createMemo<SettingRow[]>(() => settingRows(settingGroups(), 'agent', settingLevels()));
+  /*
+    Each row stays the same object while its setting is listed; a change to it changes its fields in
+    place. The rows are rebuilt on every write, and `$each` keys by reference, so a fresh object per row
+    redrew every row under a settings screen: pressing one switch threw the page's scroll. The fix
+    `spaceList` already has, for the same reason.
+  */
+  function keptRows(rows: () => SettingRow[]): Accessor<SettingRow[]> {
+    const [kept, setKept] = createStore<SettingRow[]>([]);
+    createComputed(() => setKept(reconcile(rows(), { key: 'id', merge: true })));
+    return () => kept;
+  }
+  const spaceModuleSettings = keptRows(() => settingRows(groupsHere(), 'space', settingLevels()));
+  const myModuleSettings = keptRows(() => settingRows(groupsHere(), 'agent-in-space', settingLevels()));
+  const agentModuleSettings = keptRows(() => settingRows(settingGroups(), 'agent', settingLevels()));
 
   /**
    * Write, or withdraw, the community's opinion about one setting.
@@ -4628,17 +4753,19 @@ export function SpaceStoreProvider(props: ParentProps) {
     const raw = (space as unknown as { moduleSettings?: string }).moduleSettings;
     const next = value === undefined ? clearSetting(raw, group, key) : writeSetting(raw, group, key, value);
     try {
-      await Space.update(ds.handle, space.id, { moduleSettings: next } as Partial<Space>);
+      await Space.update(ds.handle, space.id, { moduleSettings: next });
     } catch (error) {
       console.error('SpaceStore: could not persist a module setting', error);
       toastService.error('Could not save this change for the space.');
       throw error;
     }
-    updateSpaceInCache(ds, { moduleSettings: next } as never);
+    updateSpaceInCache(ds, { moduleSettings: next });
     if (!isCurrent(ds)) return;
     setCurrentSpace((prev) =>
       prev
-        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, { moduleSettings: next }) as Space)
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev) as object | null), prev, {
+            moduleSettings: next,
+          }) as Space)
         : prev,
     );
   }
@@ -4654,7 +4781,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (!uuid) return;
     const raw = preferenceFor(uuid)?.moduleSettings;
     const next = value === undefined ? clearSetting(raw, group, key) : writeSetting(raw, group, key, value);
-    await updateSpacePreference(uuid, { moduleSettings: next } as Partial<SpacePreference>);
+    await updateSpacePreference(uuid, { moduleSettings: next });
   }
 
   /** The same, for this agent everywhere. Also private, and also the root dataset. */
@@ -4738,34 +4865,45 @@ export function SpaceStoreProvider(props: ParentProps) {
     const ids = askedCollections();
     if (!handle || !datasetStore.isWeSpace() || !ids.length) return;
     let stopped = false;
-    let watch: { subscribe(cb: () => void): Promise<unknown>; dispose(): void } | undefined;
+    let watch: LiveRows<CollectionBlock> | undefined;
     onCleanup(() => {
       stopped = true;
       watch?.dispose();
     });
+    /*
+      Only the two fields the settings are made of. Without `properties` a read hydrates every field,
+      `children` among them — and the space's own collection holds everything in the space.
+    */
+    const query = { where: { id: ids }, properties: [...COLLECTION_SETTINGS_FIELDS] };
+    const apply = (rows: CollectionBlock[]) => {
+      setCollectionSettings((current) => {
+        const next = { ...current };
+        for (const row of rows) {
+          next[row.id] = { autoExtract: row.autoExtract, extractionTargets: row.extractionTargets };
+        }
+        return next;
+      });
+    };
     const read = async () => {
       try {
-        const rows = await CollectionBlock.findAll(handle, { where: { id: ids } });
+        const rows = await CollectionBlock.findAll(handle, query as never);
         if (stopped) return;
-        setCollectionSettings((current) => {
-          const next = { ...current };
-          for (const row of rows) {
-            next[row.id] = { autoExtract: row.autoExtract, extractionTargets: row.extractionTargets };
-          }
-          return next;
-        });
+        apply(rows);
       } catch (error) {
         console.warn('SpaceStore: could not read what these collections extract', error);
       } finally {
         if (!stopped) setLoadedCollections(new Set(ids));
       }
     };
+    // The watch asks what the read asked, so what it pushes is the settings, whole.
+    const follow = (rows: CollectionBlock[]) => void (!stopped && apply(rows));
     void read().then(() => {
       if (stopped) return;
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      watch = (CollectionBlock as any).query(handle, { where: { id: ids } }) as typeof watch;
+      watch = CollectionBlock.query(handle, query);
       watch
-        ?.subscribe(() => void (!stopped && read()))
+        ?.subscribe(follow)
+        // What the watch opened on: a switch thrown between the first read and now is in it.
+        .then(follow)
         .catch((error: unknown) => {
           console.warn('SpaceStore: could not follow what these collections extract', error);
         });
@@ -5212,8 +5350,9 @@ export function SpaceStoreProvider(props: ParentProps) {
   const readAsDataURI = (file: File) =>
     new Promise<string>((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => resolve(String(reader.result));
-      reader.onerror = () => reject(reader.error);
+      // `readAsDataURL` always yields a string.
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = () => reject(reader.error ?? new Error(`Could not read ${file.name}`));
       reader.readAsDataURL(file);
     });
 
@@ -5391,7 +5530,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const next = new Set(mutedModulesFor(uuid));
     if (visible) next.delete(moduleId);
     else next.add(moduleId);
-    await updateSpacePreference(uuid, { mutedModules: JSON.stringify([...next]) } as Partial<SpacePreference>);
+    await updateSpacePreference(uuid, { mutedModules: JSON.stringify([...next]) });
   }
 
   /**
@@ -5504,7 +5643,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   async function setSpaceTemplateOverride(templateId: string, spaceUuid?: string): Promise<void> {
     const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
     if (!uuid) return;
-    await updateSpacePreference(uuid, { templateId } as Partial<SpacePreference>);
+    await updateSpacePreference(uuid, { templateId });
     if (datasetStore.currentDataset()?.id !== uuid) return;
     const template = templateStore.allTemplates().find((t) => t.id === resolveTemplateFor(uuid));
     if (template) templateStore.replaceTemplate(template);
@@ -5514,7 +5653,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   async function setSpaceThemeOverride(themeId: string, spaceUuid?: string): Promise<void> {
     const uuid = spaceUuid ?? datasetStore.currentDataset()?.id;
     if (!uuid) return;
-    await updateSpacePreference(uuid, { themeId } as Partial<SpacePreference>);
+    await updateSpacePreference(uuid, { themeId });
     if (datasetStore.currentDataset()?.id !== uuid) return;
     const effective = resolveThemeFor(uuid);
     // Explicit: this is only reached by someone choosing a theme, so it outranks an editing
@@ -5543,7 +5682,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   async function applyTheme(themeId: string): Promise<void> {
     const uuid = datasetStore.currentDataset()?.id;
     if (uuid) await setSpaceThemeOverride(themeId, uuid);
-    else themeStore.setDefaultTheme(themeId);
+    else await themeStore.setDefaultTheme(themeId);
   }
 
   /**
@@ -5742,11 +5881,13 @@ export function SpaceStoreProvider(props: ParentProps) {
       toastService.error('Could not save this change for the space.');
       throw error;
     }
-    updateSpaceInCache(ds, { autoInterpret: enabled } as never);
+    updateSpaceInCache(ds, { autoInterpret: enabled });
     if (!isCurrent(ds)) return;
     setCurrentSpace((prev) =>
       prev
-        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, { autoInterpret: enabled }) as Space)
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev) as object | null), prev, {
+            autoInterpret: enabled,
+          }) as Space)
         : prev,
     );
   }
@@ -5774,13 +5915,15 @@ export function SpaceStoreProvider(props: ParentProps) {
       toastService.error('Could not save this change for the space.');
       throw error;
     }
-    updateSpaceInCache(ds, { threadMode } as never);
+    updateSpaceInCache(ds, { threadMode });
     if (!isCurrent(ds)) return;
     // A new instance, the `setExtractionTarget` idiom: `currentSpace` is a plain signal and Solid
     // dedupes on `===`, so handing back the object just written notifies nothing and every thread
     // on screen would keep the previous answer until something else refetched the space.
     setCurrentSpace((prev) =>
-      prev ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, { threadMode }) as Space) : prev,
+      prev
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev) as object | null), prev, { threadMode }) as Space)
+        : prev,
     );
   }
 
@@ -5809,7 +5952,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       toastService.error('Could not save this change for the space.');
       throw error;
     }
-    updateSpaceInCache(ds, { extractionTargets: extractionTargetsJson } as never);
+    updateSpaceInCache(ds, { extractionTargets: extractionTargetsJson });
     if (!isCurrent(ds)) return;
     // Republished as a *new* instance, the `setModuleEnabled` idiom: `currentSpace` is a plain
     // signal and Solid dedupes on `===`, so handing back the object just written through notifies
@@ -5817,7 +5960,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     // previous value until something else refetched the space.
     setCurrentSpace((prev) =>
       prev
-        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, {
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev) as object | null), prev, {
             extractionTargets: extractionTargetsJson,
           }) as Space)
         : prev,
@@ -5846,7 +5989,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       // the setting is a community decision, and the next member to open the page sees the old one.
       throw error;
     }
-    updateSpaceInCache(ds, { enabledModules: enabledModulesJson } as never);
+    updateSpaceInCache(ds, { enabledModules: enabledModulesJson });
     if (!isCurrent(ds)) return;
     // Republished as a *new* instance rather than the one just written through. `currentSpace` is a
     // plain signal, so Solid dedupes on `===` — handing back the same object (which is what mutating
@@ -5855,7 +5998,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     // idiom as `updateSpaceInCache`.
     setCurrentSpace((prev) =>
       prev
-        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, {
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev) as object | null), prev, {
             enabledModules: enabledModulesJson,
           }) as Space)
         : prev,
@@ -5936,13 +6079,13 @@ export function SpaceStoreProvider(props: ParentProps) {
       toastService.error('Could not save this change for the space.');
       throw error;
     }
-    updateSpaceInCache(ds, { enabledViews: enabledViewsJson } as never);
+    updateSpaceInCache(ds, { enabledViews: enabledViewsJson });
     if (!isCurrent(ds)) return;
     // A new instance, for the reason `setModuleEnabled` spells out: `currentSpace` dedupes on `===`,
     // so re-setting a mutated object notifies nothing and the nav strip keeps its old sections.
     setCurrentSpace((prev) =>
       prev
-        ? (Object.assign(Object.create(Object.getPrototypeOf(prev)), prev, {
+        ? (Object.assign(Object.create(Object.getPrototypeOf(prev) as object | null), prev, {
             enabledViews: enabledViewsJson,
           }) as Space)
         : prev,
@@ -5962,7 +6105,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const next = new Set(hiddenViewsFor(uuid));
     if (visible) next.delete(viewId);
     else next.add(viewId);
-    await updateSpacePreference(uuid, { hiddenViews: JSON.stringify([...next]) } as Partial<SpacePreference>);
+    await updateSpacePreference(uuid, { hiddenViews: JSON.stringify([...next]) });
   }
 
   // Subscribe to current space data reactively whenever the dataset changes.
@@ -5973,11 +6116,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       setCurrentSpace(null);
       return;
     }
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const builder = (Space as any).query(ds.handle, { where: spaceSelfWhere(ds), include: { location: true } }) as {
-      subscribe: (cb: (results: Space[]) => void) => Promise<Space[]>;
-      dispose: () => void;
-    };
+    const builder: LiveRows<Space> = Space.query(ds.handle, { where: spaceSelfWhere(ds), include: { location: true } });
     const handleResult = (results: Space[]) => setCurrentSpace(results[0] ?? null);
     builder
       .subscribe(handleResult)
@@ -6104,7 +6243,7 @@ export function SpaceStoreProvider(props: ParentProps) {
       if (template) templateStore.replaceTemplate(template);
     }
     // Keep mySpaces cache in sync so template pre-loading uses the fresh defaultTemplateId
-    updateSpaceInCache(ds, { defaultTemplateId: templateId } as never);
+    updateSpaceInCache(ds, { defaultTemplateId: templateId });
     const [space] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
     if (space) await Space.update(ds.handle, space.id, { defaultTemplateId: templateId });
   }
@@ -6113,7 +6252,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     const ds = targetDataset(spaceUuid);
     if (!ds) return;
     if (isCurrent(ds)) setSpaceDefaultThemeId(themeId);
-    updateSpaceInCache(ds, { defaultThemeId: themeId } as never);
+    updateSpaceInCache(ds, { defaultThemeId: themeId });
     if (isCurrent(ds)) explainHiddenSpaceTheme();
     const [space] = await Space.findAll(ds.handle, { where: spaceSelfWhere(ds) });
     if (space) await Space.update(ds.handle, space.id, { defaultThemeId: themeId });
@@ -6151,7 +6290,7 @@ export function SpaceStoreProvider(props: ParentProps) {
         const allDids = myDid ? [...new Set([myDid, ...dids])] : dids;
         setMemberDids(allDids);
         for (const did of allDids) {
-          profileStore.fetchProfile(did);
+          void profileStore.fetchProfile(did);
         }
       })
       .catch(() => {
@@ -6279,8 +6418,15 @@ export function SpaceStoreProvider(props: ParentProps) {
       return;
     }
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const CommunityClass = getEntityForDataset('Community', ds.handle) as any;
+    // A foreign app's own model, so WE declares none of it; this is the one read made of it.
+    const CommunityClass = getEntityForDataset('Community', ds.handle) as
+      | {
+          findOne(
+            dataset: unknown,
+            query: object,
+          ): Promise<{ name?: string; description?: string; thumbnail?: string } | null>;
+        }
+      | undefined;
     if (!CommunityClass) {
       setForeignSpacePrefill(null);
       return;
@@ -6369,6 +6515,7 @@ export function SpaceStoreProvider(props: ParentProps) {
     autoInterpret,
     root: spaceRoot,
     landmarks: spaceLandmarks,
+    landmarksLoaded,
     starterChoices,
     autoExtractFor,
     setAutoExtractFor,

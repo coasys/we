@@ -276,7 +276,21 @@ export type {
 } from './policy';
 export type { ShapeInput, ShapeStore, StoredShape } from './shapes';
 export type { PersonPort } from './persons';
-export type { IdentityCapabilities, IdentityPort } from './identity';
+export type {
+  DeviceKeyView,
+  IdentityCapabilities,
+  IdentityChange,
+  IdentityChangeOutcome,
+  IdentityCustodyView,
+  IdentityPort,
+  IdentityStatusView,
+  KeyLogDevice,
+  KeyLogEvent,
+  KeyLogFork,
+  KeyLogHead,
+  KeyLogStoreBehind,
+  KeyLogView,
+} from './identity';
 export type {
   TranscriptionModelOffer,
   TranscriptionRecord,

@@ -47,7 +47,7 @@ function harness(proposals: { id: string; kind: string }[] = []) {
   const updated: { entity: string; id: string; fields: Record<string, unknown> }[] = [];
   const subscriptions: string[] = [];
   const records = {
-    find: async (entity: string) => (entity === 'Space' ? [{ id: 'space-1', root: { id: 'root-1' } }] : []),
+    find: async () => [],
     subscribe: (entity: string) => {
       subscriptions.push(entity);
       return () => {};
@@ -72,6 +72,7 @@ function harness(proposals: { id: string; kind: string }[] = []) {
     action: markAction,
     onDispose: () => {},
     dataset: () => 'space-1',
+    spaceRoot: () => 'root-1',
     settings: () => ({}),
     kernels: { records, interpretation },
   } as never) as Record<string, (...args: unknown[]) => unknown>;
@@ -126,13 +127,14 @@ describe('staying live', () => {
       { id: 'a-change', kind: 'update' },
     ]);
     await vi.runAllTimersAsync();
-    expect(h.subscriptions).toEqual([]);
+    // Only the bot watch, which is for the reader who is not looking (see `botWatch.ts`).
+    expect(h.subscriptions).toEqual(['TextBlock']);
     expect(h.interpretation.proposals).not.toHaveBeenCalled();
 
     // A view of the Feed is drawn: the host calls `watchFeed`, as it would open the panel.
     h.store.watchFeed();
     await vi.runAllTimersAsync();
-    expect(h.subscriptions).toContain('TextBlock');
+    expect(h.subscriptions).toEqual(['TextBlock', 'TextBlock', 'CollectionBlock']);
     // Asked of the whole space, by the host's kernel rather than by another module.
     expect(h.interpretation.proposals).toHaveBeenCalledWith(undefined, undefined);
 

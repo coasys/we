@@ -31,7 +31,7 @@ describe('a rail button', () => {
 
     expect(swap.type).toBe('$if');
     expect(swap.props?.condition).toBe(busy);
-    expect((swap.props?.then as Node).type).toBe('we-spinner');
+    expect((swap.props?.then as Node).type).toBe('we-animated-icon');
     expect(swap.props?.else).toEqual({ type: 'we-icon', props: { name: 'sparkle' } });
   });
 });

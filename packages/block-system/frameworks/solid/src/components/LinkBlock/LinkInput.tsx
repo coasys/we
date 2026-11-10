@@ -75,19 +75,19 @@ export function LinkInput(props: LinkInputProps) {
               <we-input
                 type="text"
                 value={url()}
-                on:input={(e: CustomEvent) => setUrl(e.detail)}
+                on:input={(e: CustomEvent<string>) => setUrl(e.detail)}
                 placeholder="https://example.com"
               />
               <we-input
                 type="text"
                 value={title()}
-                on:input={(e: CustomEvent) => setTitle(e.detail)}
+                on:input={(e: CustomEvent<string>) => setTitle(e.detail)}
                 placeholder="Title (optional)"
               />
               <we-input
                 type="text"
                 value={description()}
-                on:input={(e: CustomEvent) => setDescription(e.detail)}
+                on:input={(e: CustomEvent<string>) => setDescription(e.detail)}
                 placeholder="Description (optional)"
               />
             </Column>

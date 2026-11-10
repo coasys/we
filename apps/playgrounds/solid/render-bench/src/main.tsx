@@ -19,7 +19,7 @@
  * built from the thing it measures. The status text updates before every sample — as a plain span
  * that is a synchronous text write costing microseconds and landing before the clock starts, but as
  * a Lit element it is an async microtask update that can land *inside* the measured window. An
- * animating `we-spinner` in the previous harness did exactly that, inflating every result in
+ * animating spinner in the previous harness did exactly that, inflating every result in
  * proportion to DOM size until it was found and removed.
  *
  * The element counts depend on this too: `runner.ts` counts the whole document and subtracts a
@@ -170,7 +170,7 @@ function ResultRow(props: { fixtureKey: string; label: string }) {
         {/* Plain <button>, deliberately. The harness chrome must not be built from the design
             system it measures: a we-button updates on a microtask and could land inside a measured
             window, which is the class of contamination an animating spinner already caused once. */}
-        <button onClick={() => runSingle(props.fixtureKey)} disabled={busy()} style="font-size:11px">
+        <button onClick={() => void runSingle(props.fixtureKey)} disabled={busy()} style="font-size:11px">
           Run
         </button>{' '}
         <button onClick={() => show(props.fixtureKey)} disabled={busy()} style="font-size:11px">
@@ -240,7 +240,7 @@ function App() {
       </p>
 
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-        <button onClick={runAll} disabled={!!status()} style="padding:6px 14px;font-size:14px">
+        <button onClick={() => void runAll()} disabled={!!status()} style="padding:6px 14px;font-size:14px">
           {status() ? 'Running…' : 'Run all'}
         </button>
         <button onClick={clearResults} disabled={!!status()} style="padding:6px 14px;font-size:14px">

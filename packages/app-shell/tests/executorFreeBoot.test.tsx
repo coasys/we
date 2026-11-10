@@ -129,8 +129,10 @@ import { ShellStoreProvider } from '../src/frameworks/solid/stores/ShellStore';
 import { type SpaceStore, SpaceStoreProvider, useSpaceStore } from '../src/frameworks/solid/stores/SpaceStore';
 import { NO_STARTER } from '../src/shared/bundles/bundleStarter';
 import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
+import { moduleRegistry } from '../src/shared/registries/moduleRegistry';
 import { provideSeed } from '../src/shared/seedRegistry';
 import { writeSpaceLandmark } from '../src/shared/spaceLandmarks';
+import { COMMUNITY_POLICY } from '../src/shared/spacePolicy';
 
 provideSeed({ name: 'test', modules: [] } as never);
 
@@ -692,6 +694,34 @@ describe('dataset lifecycle through the real stores', () => {
 
     expect(rowOf()?.defaultThemeId).toBe('retro');
     expect(rowOf()).toBe(before);
+  }, 10000);
+
+  /*
+    The same for a module's setting rows, which are rebuilt on every write: pressing one switch on a
+    settings screen redrew every row under it and threw the page's scroll.
+  */
+  it('keeps a module setting’s row the same object when it changes', async () => {
+    moduleRegistry.register(
+      {
+        manifest: { id: 'rowtest', name: 'Row test' },
+        contributes: { settings: [{ key: 'loud', label: 'Loud', type: 'boolean', default: true, levels: ['agent'] }] },
+      },
+      { backend: 'ad4m', framework: 'solid' },
+    );
+    try {
+      const stores = mountShell();
+      await ready(stores);
+      const rowOf = () => stores.spaces.agentModuleSettings().find((r) => r.id === 'rowtest.loud');
+      const before = rowOf();
+      expect(before?.value).toBe(true);
+
+      await stores.spaces.setAgentModuleSetting('rowtest', 'loud', false);
+
+      await vi.waitFor(() => expect(rowOf()?.value).toBe(false));
+      expect(rowOf()).toBe(before);
+    } finally {
+      moduleRegistry.unregister('rowtest');
+    }
   }, 10000);
 
   /*
@@ -1453,6 +1483,253 @@ describe('how a space presents a type', () => {
 
     await stores.records.setSpaceTypePresentation(spaceId, 'TaskBlock', null);
     await vi.waitFor(() => expect(summary()).toBe('description'));
+  }, 10000);
+});
+
+describe('following a space from the rows its live queries push', () => {
+  /*
+    A live query delivers the records it watches every time they change. Each of these used to treat
+    the push only as "something changed" and read the same records again with `findAll` — a second
+    round trip to the executor for an answer already in hand, on every write anybody made. The store
+    must update from the pushed rows, so a peer's write costs nothing beyond the push.
+  */
+  type FindAllSpy = ReturnType<typeof vi.spyOn>;
+  const spyFindAll = (entity: string): FindAllSpy =>
+    vi.spyOn(getEntity(entity) as unknown as { findAll: (...a: unknown[]) => Promise<unknown[]> }, 'findAll');
+
+  /** Opens a new space. `beforeEntering` runs once the backend's entities exist, before the space opens. */
+  async function openSpace(name: string, beforeEntering?: () => void) {
+    const stores = mountShell();
+    await ready(stores);
+    beforeEntering?.();
+    await stores.spaces.createSpace(name, 'x', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === name)!;
+    await stores.datasets.switchDataset(ref.id);
+    await vi.waitFor(() => expect(stores.spaces.currentSpace()?.name).toBe(name));
+    await vi.waitFor(() => expect(stores.spaces.root()).not.toBe(''));
+    await vi.waitFor(() => expect(stores.spaces.taskStatesLoaded()).toBe(true));
+    await vi.waitFor(() => expect(stores.spaces.policy().loaded).toBe(true));
+    return { stores, handle: ref.handle as never, spaceId: stores.spaces.currentSpace()!.id };
+  }
+
+  it('hears a new landmark without reading the landmarks again', async () => {
+    const { stores, handle, spaceId } = await openSpace('Pushed Landmarks');
+    const reads = spyFindAll('SpaceLandmark');
+    const board = await CollectionBlock.create(handle, { kind: 'board', title: 'Board' } as never);
+    await writeSpaceLandmark(handle, spaceId, 'board', board.id);
+    await vi.waitFor(() => expect(stores.spaces.landmarks().board).toBe(board.id));
+    expect(reads).not.toHaveBeenCalled();
+    reads.mockRestore();
+  }, 10000);
+
+  it('hears a new task state without reading the states again', async () => {
+    const { stores, handle } = await openSpace('Pushed States');
+    const reads = spyFindAll('TaskState');
+    await getEntity('TaskState').create(handle, { name: 'Blocked', slug: 'blocked', semantic: 'blocked' } as never);
+    await vi.waitFor(() => expect(stores.spaces.taskStates().map((s) => s.slug)).toContain('blocked'));
+    expect(reads).not.toHaveBeenCalled();
+    reads.mockRestore();
+  }, 10000);
+
+  it('hears a new role and a new grant without reading either again', async () => {
+    const { stores, handle } = await openSpace('Pushed Roles');
+    await vi.waitFor(() => expect(stores.spaces.roles().length).toBeGreaterThan(0));
+    const roleReads = spyFindAll('Role');
+    const grantReads = spyFindAll('RoleGrant');
+    await getEntity('Role').create(handle, { slug: 'steward', name: 'Steward' } as never);
+    await getEntity('RoleGrant').create(handle, { role: 'steward', agent: 'did:key:steward' } as never);
+    await vi.waitFor(() =>
+      expect(stores.spaces.roles().find((r) => r.slug === 'steward')?.holders).toEqual(['did:key:steward']),
+    );
+    expect(roleReads).not.toHaveBeenCalled();
+    expect(grantReads).not.toHaveBeenCalled();
+    roleReads.mockRestore();
+    grantReads.mockRestore();
+  }, 10000);
+
+  it('hears a new version of the policy without reading the versions again', async () => {
+    const { stores, handle } = await openSpace('Pushed Policy');
+    expect(stores.spaces.policy().preset).not.toBe('community');
+    const reads = spyFindAll('Policy');
+    await Policy.create(handle, { document: JSON.stringify(COMMUNITY_POLICY) } as never);
+    await vi.waitFor(() => expect(stores.spaces.policy().preset).toBe('community'));
+    expect(reads).not.toHaveBeenCalled();
+    reads.mockRestore();
+  }, 10000);
+
+  it('hears a collection switched off without reading it again, and never hydrates its contents', async () => {
+    // The space's own collection is asked about on entering, so watch from before that.
+    let asked!: ReturnType<typeof vi.spyOn>;
+    let reads!: FindAllSpy;
+    const isSettingsRead = (call: unknown[]) =>
+      Array.isArray((call[1] as { where?: { id?: unknown } } | undefined)?.where?.id);
+    const { stores, handle } = await openSpace('Pushed Extraction', () => {
+      asked = vi.spyOn(getEntity('CollectionBlock') as unknown as { query: (...a: unknown[]) => unknown }, 'query');
+      reads = spyFindAll('CollectionBlock');
+    });
+    const root = stores.spaces.root();
+    // Ask, and wait for the first answer and the watch behind it.
+    stores.spaces.autoExtractFor(root);
+    await vi.waitFor(() => expect(asked.mock.calls.some(isSettingsRead)).toBe(true));
+    const before = stores.spaces.autoExtractFor(root);
+    // Only the two fields the settings are made of: a collection's children are the whole space.
+    for (const call of [...reads.mock.calls, ...asked.mock.calls].filter(isSettingsRead)) {
+      expect((call[1] as { properties?: string[] }).properties).toEqual(['autoExtract', 'extractionTargets']);
+    }
+    const settingsReads = () => reads.mock.calls.filter(isSettingsRead).length;
+    const readsBefore = settingsReads();
+
+    await CollectionBlock.update(handle, root, { autoExtract: !before } as never);
+    await vi.waitFor(() => expect(stores.spaces.autoExtractFor(root)).toBe(!before));
+    expect(settingsReads()).toBe(readsBefore);
+    reads.mockRestore();
+    asked.mockRestore();
+  }, 10000);
+
+  it('hears the space’s presentation of a type without reading the space or its types again', async () => {
+    const { stores, handle, spaceId } = await openSpace('Pushed Presentation');
+    const summary = () => stores.records.displays().TaskBlock?.fields.find((f) => f.role === 'summary')?.name;
+    expect(summary()).toBe('description');
+    const styleReads = spyFindAll('TypeStyle');
+    const spaceReads = vi.spyOn(getEntity('Space') as unknown as { findOne: (...a: unknown[]) => unknown }, 'findOne');
+    await getEntity('TypeStyle').create(
+      handle,
+      { nodeType: 'TaskBlock', display: JSON.stringify({ summary: 'assignee' }) } as never,
+      { parent: { id: spaceId, relation: 'typeStyles', entity: 'Space' } } as never,
+    );
+    await vi.waitFor(() => expect(summary()).toBe('assignee'));
+    expect(styleReads).not.toHaveBeenCalled();
+    // The presentation's own read of the space asks for it bare; other stores ask for it by a `where`.
+    expect(spaceReads.mock.calls.filter((call) => call[1] === undefined)).toEqual([]);
+    styleReads.mockRestore();
+    spaceReads.mockRestore();
+  }, 10000);
+});
+
+describe('entering a space: its collection and its landmarks', () => {
+  /*
+    The Feed waits for `root`: until it is known the template cannot tell that `?channel=<root>` is
+    the Feed. Entering a space read the Space record again to learn its collection — though the space
+    list had read that record already, and a row read without an include carries the collection's id
+    — and only then read the landmarks, one after the other. On a busy executor that was 1.9 s and
+    then 0.85 s, end to end before the Feed could start.
+  */
+  type Held<T> = { release: () => void; promise: Promise<T> };
+  /** Holds every call to `entity.method` until released, passing it on to the real one then. */
+  function hold(entity: string, method: 'findAll' | 'findOne') {
+    const target = getEntity(entity) as unknown as Record<string, (...a: unknown[]) => Promise<unknown>>;
+    const real = target[method].bind(target);
+    const held: Held<unknown>[] = [];
+    let open = false;
+    const spy = vi.spyOn(target, method).mockImplementation((...args: unknown[]) => {
+      if (open) return real(...args);
+      let release!: () => void;
+      const promise = new Promise<void>((resolve) => (release = resolve)).then(() => real(...args));
+      held.push({ release, promise });
+      return promise;
+    });
+    return {
+      spy,
+      release: () => {
+        open = true;
+        for (const h of held.splice(0)) h.release();
+      },
+    };
+  }
+  const isRootRead = (call: unknown[]) =>
+    Boolean((call[1] as { include?: { root?: unknown } } | undefined)?.include?.root);
+
+  /** A space made and listed, not yet entered — the shape a boot is in when it navigates. */
+  async function listedSpace(name: string) {
+    const stores = mountShell();
+    await ready(stores);
+    await stores.spaces.createSpace(name, 'x', 'personal', 'hidden');
+    const ref = (await lifecycle.list()).find((d) => d.name === name)!;
+    return { stores, ref };
+  }
+
+  it('takes the collection from the space row it already has, reading no Space for it', async () => {
+    const { stores, ref } = await listedSpace('Row Root');
+    // What the list holds for this space carries its collection.
+    const row = stores.spaces.mySpaces().find((s) => s.name === 'Row Root') as unknown as { root?: unknown };
+    expect(row?.root).toBeTruthy();
+    const spaceReads = vi.spyOn(getEntity('Space') as unknown as { findOne: (...a: unknown[]) => unknown }, 'findOne');
+
+    await stores.datasets.switchDataset(ref.id);
+    await vi.waitFor(() => expect(stores.spaces.root()).not.toBe(''));
+
+    expect(spaceReads.mock.calls.filter(isRootRead)).toEqual([]);
+    spaceReads.mockRestore();
+  }, 10000);
+
+  it('sets the collection without waiting for the landmarks, which say for themselves when they have answered', async () => {
+    const { stores, ref } = await listedSpace('Parallel Structure');
+    const [space] = await Space.findAll(ref.handle as never);
+    const board = await CollectionBlock.create(ref.handle as never, { kind: 'board', title: 'Board' } as never);
+    await writeSpaceLandmark(ref.handle as never, space.id, 'board', board.id);
+    const landmarks = hold('SpaceLandmark', 'findAll');
+
+    await stores.datasets.switchDataset(ref.id);
+    await vi.waitFor(() => expect(landmarks.spy).toHaveBeenCalled());
+    // The landmarks are still out, and the collection is known regardless.
+    await vi.waitFor(() => expect(stores.spaces.root()).not.toBe(''));
+    expect(stores.spaces.landmarksLoaded()).toBe(false);
+
+    landmarks.release();
+    await vi.waitFor(() => expect(stores.spaces.landmarksLoaded()).toBe(true));
+    expect(stores.spaces.landmarks().board).toBe(board.id);
+    landmarks.spy.mockRestore();
+  }, 10000);
+
+  it('asks for the collection and the landmarks at once when it has to read the collection', async () => {
+    // A space whose row did not carry its collection — read in the moment before it was written.
+    const { stores, ref } = await listedSpace('Both At Once');
+    const spaceRow = stores.spaces.mySpaces().find((s) => s.name === 'Both At Once') as unknown as {
+      root?: unknown;
+    };
+    const carried = spaceRow.root;
+    spaceRow.root = undefined;
+    const spaceReads = hold('Space', 'findOne');
+    const landmarks = hold('SpaceLandmark', 'findAll');
+
+    await stores.datasets.switchDataset(ref.id);
+    // Both issued while neither has answered.
+    await vi.waitFor(() => expect(spaceReads.spy.mock.calls.some(isRootRead)).toBe(true));
+    await vi.waitFor(() => expect(landmarks.spy).toHaveBeenCalled());
+
+    spaceReads.release();
+    landmarks.release();
+    await vi.waitFor(() => expect(stores.spaces.root()).not.toBe(''));
+    await vi.waitFor(() => expect(stores.spaces.landmarksLoaded()).toBe(true));
+    spaceRow.root = carried;
+    spaceReads.spy.mockRestore();
+    landmarks.spy.mockRestore();
+  }, 10000);
+
+  it('never says "no board" before the landmarks have answered', async () => {
+    /*
+      A template asks "is there a board?" by `landmarksLoaded && !landmarks.board`. Root used to be
+      that signal, set after the landmarks; now it arrives first, so the frames are watched for a
+      moment that says loaded without the board.
+    */
+    const { stores, ref } = await listedSpace('Board Gate');
+    const [space] = await Space.findAll(ref.handle as never);
+    const board = await CollectionBlock.create(ref.handle as never, { kind: 'board', title: 'Board' } as never);
+    await writeSpaceLandmark(ref.handle as never, space.id, 'board', board.id);
+    const frames: { loaded: boolean; board: string | undefined }[] = [];
+    const stop = createRoot((dispose) => {
+      createEffect(() =>
+        frames.push({ loaded: stores.spaces.landmarksLoaded(), board: stores.spaces.landmarks().board }),
+      );
+      return dispose;
+    });
+
+    await stores.datasets.switchDataset(ref.id);
+    await vi.waitFor(() => expect(stores.spaces.landmarks().board).toBe(board.id));
+    stop();
+
+    expect(frames.some((f) => f.loaded)).toBe(true);
+    expect(frames.filter((f) => f.loaded && f.board !== board.id)).toEqual([]);
   }, 10000);
 });
 

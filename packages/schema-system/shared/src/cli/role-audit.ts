@@ -323,7 +323,7 @@ for (const file of await filesUnder(codeRoots, CODE_FILE)) {
   const exempt = (i: number) => {
     if (LINE_EXEMPTION.test(raw[i] ?? '')) return true;
     for (let j = i - 1; j >= 0 && /^\s*(\/\/|\*|\/\*)/.test(raw[j] ?? ''); j -= 1) {
-      if (LINE_EXEMPTION.test(raw[j]!)) return true;
+      if (LINE_EXEMPTION.test(raw[j])) return true;
     }
     return false;
   };
@@ -334,7 +334,7 @@ for (const file of await filesUnder(codeRoots, CODE_FILE)) {
       re.lastIndex = 0;
       return re.test(line);
     };
-    const unknown = [...line.matchAll(TOKEN_VAR)].map((m) => m[1]!).filter((name) => !isKnownColour(name));
+    const unknown = [...line.matchAll(TOKEN_VAR)].map((m) => m[1]).filter((name) => !isKnownColour(name));
 
     for (const [kind, hit] of [
       ['scale', matches(CODE_SCALE) || matches(CODE_DS_PROP)],

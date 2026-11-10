@@ -40,6 +40,7 @@ export function CollapsedContent(props: CollapsedContentProps) {
     would attach to nothing and the content would never be measured again.
   */
   createEffect(() => {
+    // eslint-disable-next-line solid/reactivity -- the effect re-runs, and re-observes, when the element changes
     const el = innerEl();
     if (!el) return;
 
@@ -118,7 +119,7 @@ export function CollapsedContent(props: CollapsedContentProps) {
           {/* Clickable overlay — same onClick binding as the button, only when collapsed */}
           <Show when={effectivelyCollapsed()}>
             <div
-              onClick={props.onExpandClick}
+              onClick={() => props.onExpandClick?.()}
               style={{
                 position: 'absolute',
                 inset: '0',
@@ -133,7 +134,7 @@ export function CollapsedContent(props: CollapsedContentProps) {
           <div style={{ display: 'flex', 'justify-content': 'center', 'padding-top': '8px' }}>
             <button
               type="button"
-              onClick={props.onExpandClick}
+              onClick={() => props.onExpandClick?.()}
               style={{
                 background: 'none',
                 border: 'none',

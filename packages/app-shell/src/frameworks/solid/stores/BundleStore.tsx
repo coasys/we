@@ -20,7 +20,7 @@
  * A seed's bundles are built in rather than installed (see `seedBundles.ts`), so they are never asked
  * about and cannot be removed — but a space can be set up for one all the same, and it is listed.
  */
-import { selectBootSnapshot, writeBootSnapshot } from '@shared/bundles/bootSnapshot';
+import { type BootSnapshot, selectBootSnapshot, writeBootSnapshot } from '@shared/bundles/bootSnapshot';
 import { currentProductName } from '@shared/bundles/brand';
 import { bundlePieces } from '@shared/bundles/bundlePieces';
 import { bundleDigest, type BundleGrant, grantOf, whatIsNew } from '@shared/bundles/consent';
@@ -163,7 +163,7 @@ const named = (names: string[]) => names.map((name) => `“${name}”`).join(', 
 /** A `File`, however a control reports it — itself, a list of one, or an event carrying either. */
 function fileOf(input: unknown): File | null {
   const value = (input as { detail?: unknown } | null)?.detail ?? input;
-  const first = Array.isArray(value) ? value[0] : value;
+  const first: unknown = Array.isArray(value) ? value[0] : value;
   return typeof File !== 'undefined' && first instanceof File ? first : null;
 }
 
@@ -195,7 +195,8 @@ export function BundleStoreProvider(props: ParentProps) {
   });
   createEffect(() => {
     const json = snapshot();
-    if (json) writeBootSnapshot(session.me()?.did, JSON.parse(json));
+    // The string is the memo's own JSON of a BootSnapshot, kept as text only so it compares by value.
+    if (json) writeBootSnapshot(session.me()?.did, JSON.parse(json) as BootSnapshot);
   });
 
   const [pending, setPending] = createSignal<{

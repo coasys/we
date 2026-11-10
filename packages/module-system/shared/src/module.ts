@@ -582,10 +582,30 @@ export interface ModuleIdentityAccess {
   fetch: (agentId: string) => void;
 }
 
+/** How a module's notice reads. */
+export type NotifyTone = 'info' | 'success' | 'warning' | 'error';
+
+/** What a notice may carry beside its sentence. */
+export interface NotifyOptions {
+  /** One thing the person can do about it, as a button on the notice. `info` and `success` only. */
+  action?: { label: string; run: () => void };
+  /** How long it stays, in ms. The host's default when absent. */
+  duration?: number;
+  /**
+   * Whose words these are, for a notice carrying somebody's message: drawn as their avatar and name
+   * above it. `id` is the agent's, which the avatar is drawn from when there is no picture.
+   */
+  from?: { name: string; avatar?: string; id?: string };
+  /** An icon in place of the tone's, for a notice that is one kind of news: `robot` for a bot's. */
+  icon?: string;
+}
+
 /** What a module gets to know about an agent. */
 export interface ModuleIdentity {
   name?: string;
   avatar?: string;
+  /** `bot` when the agent's own profile says it is one; absent when it says nothing. */
+  kind?: 'bot' | 'person';
 }
 
 /**
@@ -647,6 +667,12 @@ export interface ModuleStoreDeps {
 
   /** The dataset the module is currently scoped to, read reactively. `null` outside a space. */
   dataset?: () => DatasetHandle | null;
+  /**
+   * The collection the space on screen hangs off (`Space.root`) — where its top-level records live —
+   * read reactively. Empty until the host knows it, outside a space, and in a space made before spaces
+   * had one. The host's own answer, so a module never reads the space record again to find it.
+   */
+  spaceRoot?: () => string;
   /** The current dataset's **global** uri — what presence puts in `Focus.datasetUri`. */
   datasetUri?: () => string | null;
   /** How the current dataset is named inside a record reference — `n:<cid>` or `p:<uuid>`. Empty while none is open. */
@@ -670,8 +696,12 @@ export interface ModuleStoreDeps {
    * spoke. Reactive. Secret-typed settings are absent here — read them through the `secrets` kernel.
    */
   settings?: () => Record<string, boolean | string | number>;
-  /** Say something to the person, outside this module's own surfaces. Three tones and a sentence. */
-  notify?: (tone: 'success' | 'warning' | 'error', message: string) => void;
+  /**
+   * Say something to the person, outside this module's own surfaces: a tone and a sentence, and for
+   * `info` or `success` one thing they can do about it (`action`, a button on the notice) and how
+   * long it stays (`duration`, in ms). `info` is for news rather than an outcome: something arrived.
+   */
+  notify?: (tone: NotifyTone, message: string, options?: NotifyOptions) => void;
   /** Who an agent id belongs to. */
   identities?: ModuleIdentityAccess;
   /** Naming and reaching spaces. */

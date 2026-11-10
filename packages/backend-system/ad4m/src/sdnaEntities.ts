@@ -3,24 +3,22 @@ import { type EntityClass, getEntityPredicates, getEntityTargetClass } from '@we
 
 import {
   AgentSettings,
+  Amendment,
   AudioBlock,
   CalloutBlock,
-  ChatMessage,
-  ChatSession,
   CodeBlock,
   CollectionBlock,
   DividerBlock,
   EdgeRoute,
   EmbedBlock,
   EventBlock,
-  ExtractionAmendment,
-  ExtractionPass,
   FileBlock,
   ImageBlock,
   Involvement,
   InvolvementType,
   LinkBlock,
   LocationBlock,
+  ModelRun,
   MutedAgent,
   Placement,
   Policy,
@@ -56,8 +54,6 @@ import { readInterpretationHints, writeInterpretationHints } from './interpretat
  */
 export const ROOT_MODELS = [
   AgentSettings,
-  ChatMessage,
-  ChatSession,
   SpacePreference,
   SpaceTemplatePreference,
   Template,
@@ -67,6 +63,11 @@ export const ROOT_MODELS = [
   // sync one agent's read positions, and their mute list, to every member of that community.
   ReadMarker,
   MutedAgent,
+  // What a model was asked to do about a root record, such as a template, and what it wrote.
+  ModelRun,
+  // The editor's chats: a `CollectionBlock` of kind `chat`, its messages `TextBlock`s.
+  CollectionBlock,
+  TextBlock,
 ] as const;
 
 /**
@@ -197,7 +198,7 @@ async function storedShapes(p: PerspectiveProxy): Promise<Map<string, StoredShap
     return created;
   };
   const select = async (query: string) => {
-    const rows = await p.querySparql(query);
+    const rows: unknown = await p.querySparql(query);
     return Array.isArray(rows) ? (rows as Record<string, string | undefined>[]) : [];
   };
 
@@ -693,7 +694,7 @@ export const SPACE_MODELS = [
     about the call rather than about whoever happened to be watching. Private, it would answer
     differently for every member, and for most of them not at all.
   */
-  ExtractionPass,
+  ModelRun,
   /*
     A change a pass suggested to a record that already existed, and somebody kept.
 
@@ -703,7 +704,7 @@ export const SPACE_MODELS = [
     Private, a member would see the record change with no explanation that anybody else could see
     either.
   */
-  ExtractionAmendment,
+  Amendment,
   Template,
   Theme,
   WeNode,

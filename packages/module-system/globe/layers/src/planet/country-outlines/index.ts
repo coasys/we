@@ -22,6 +22,17 @@ export interface CountryOutlinesOptions {
   dataUrl?: string;
 }
 
+/** The geometry kinds an outline is drawn from, as GeoJSON writes them ([longitude, latitude] pairs). */
+type OutlineGeometry =
+  | { type: 'Polygon'; coordinates: number[][][] }
+  | { type: 'MultiPolygon'; coordinates: number[][][][] }
+  | { type: 'LineString'; coordinates: number[][] }
+  | { type: 'MultiLineString'; coordinates: number[][][] };
+
+interface OutlinesCollection {
+  features?: { geometry?: OutlineGeometry | null }[];
+}
+
 /** Only a URL on the app's own origin is fetched; see `permittedDataUrl` in `@we/globe-core`. */
 export { permittedDataUrl };
 
@@ -39,7 +50,7 @@ export const countryOutlinesLayer: LayerKind<CountryOutlinesOptions> = {
   ...COUNTRY_OUTLINES,
   renderers: {
     cesium: async (context: CesiumRendererContext, options: CountryOutlinesOptions) => {
-      const { viewer, events, onCleanup } = context;
+      const { viewer, events } = context;
       const { color = '#ffffff', opacity = 0.5, width = 2 } = options;
       const dataUrl = outlinesUrl(options.dataUrl);
 
@@ -47,7 +58,7 @@ export const countryOutlinesLayer: LayerKind<CountryOutlinesOptions> = {
       let cancelled = false;
 
       // Register cleanup first
-      onCleanup(() => {
+      context.onCleanup(() => {
         cancelled = true;
         entities.forEach((id) => {
           try {
@@ -64,7 +75,9 @@ export const countryOutlinesLayer: LayerKind<CountryOutlinesOptions> = {
         if (cancelled) return;
         if (!response.ok) throw new Error(`${dataUrl} answered ${response.status}`);
 
-        const geojson = await response.json();
+        // The file is a GeoJSON FeatureCollection; each position is still checked below before it is
+        // drawn, and a geometry of any other type is skipped.
+        const geojson = (await response.json()) as OutlinesCollection;
         if (cancelled) return;
 
         const polylineColor = Color.fromCssColorString(color).withAlpha(opacity);

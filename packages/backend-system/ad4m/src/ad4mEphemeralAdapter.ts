@@ -134,7 +134,7 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
 
       let payload: unknown;
       try {
-        payload = JSON.parse(source as string);
+        payload = JSON.parse(source);
       } catch {
         // A peer on a newer/older protocol, or a corrupted signal. Dropping one message is correct —
         // presence is idempotent, so the next heartbeat repairs the gap.
@@ -152,7 +152,7 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
       */
       listeners.forEach((cb) => {
         try {
-          cb(link.author as string, payload);
+          cb(link.author, payload);
         } catch (error) {
           trace('ephemeral', 'recv:listener-threw', { tag, from: link.author, error: String(error) });
         }
@@ -282,7 +282,7 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
               subscribers.set(tag, listeners);
             }
             listeners.add(cb);
-            return () => listeners!.delete(cb);
+            return () => listeners.delete(cb);
           },
         };
 

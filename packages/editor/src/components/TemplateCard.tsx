@@ -38,7 +38,7 @@ export function TemplateCard(props: Props) {
   const mode = () => props.mode ?? 'marketplace';
 
   onMount(() => {
-    if (props.template.author) identity.fetchAgent(props.template.author);
+    if (props.template.author) void identity.fetchAgent(props.template.author);
   });
 
   const author = createMemo<AgentProfileSummary | undefined>(() =>
@@ -69,7 +69,7 @@ export function TemplateCard(props: Props) {
     if (props.onInstall) {
       props.onInstall();
     } else if (props.template.id) {
-      templateStore.installFromMarketplace(props.template.id);
+      void templateStore.installFromMarketplace(props.template.id);
     }
   };
 
@@ -84,58 +84,56 @@ export function TemplateCard(props: Props) {
   const [lightboxIndex, setLightboxIndex] = createSignal<number | null>(null);
 
   // ── Compact (list-row) mode ──────────────────────────────────────────────
-  if (mode() === 'compact') {
-    return (
-      <Row ay="center" ax="between" p="400" r="300" border="1px solid border" bg="surface" gap="300">
-        <Row ay="center" gap="400" flex="1" minWidth="0">
-          <we-icon name={props.template.icon ?? 'layout'} color="accent" />
-          <Column gap="100" flex="1" minWidth="0">
-            <Row gap="300" ay="center">
-              <we-text fontWeight="600" truncate>
-                {props.template.name}
+  const compactRow = () => (
+    <Row ay="center" ax="between" p="400" r="300" border="1px solid border" bg="surface" gap="300">
+      <Row ay="center" gap="400" flex="1" minWidth="0">
+        <we-icon name={props.template.icon ?? 'layout'} color="accent" />
+        <Column gap="100" flex="1" minWidth="0">
+          <Row gap="300" ay="center">
+            <we-text fontWeight="600" truncate>
+              {props.template.name}
+            </we-text>
+            <we-badge size="xs">v{props.template.version}</we-badge>
+          </Row>
+          <Show when={author()}>
+            <Row ay="center" gap="200">
+              <we-avatar size="xs" image={author()?.avatar} initials={authorName()} />
+              <we-text fontSize="300" color="text-muted" truncate>
+                {authorName()}
               </we-text>
-              <we-badge size="xs">v{props.template.version}</we-badge>
+              <Show when={props.template.createdAt}>
+                <we-timestamp value={props.template.createdAt} relative color="text-faint" fontSize="300" />
+              </Show>
             </Row>
-            <Show when={author()}>
-              <Row ay="center" gap="200">
-                <we-avatar size="xs" image={author()?.avatar} initials={authorName()} />
-                <we-text fontSize="300" color="text-muted" truncate>
-                  {authorName()}
-                </we-text>
-                <Show when={props.template.createdAt}>
-                  <we-timestamp value={props.template.createdAt} relative color="text-faint" fontSize="300" />
-                </Show>
-              </Row>
-            </Show>
-          </Column>
-        </Row>
+          </Show>
+        </Column>
+      </Row>
+      <Show
+        when={isInstalled()}
+        fallback={
+          <we-button variant="solid" size="sm" loading={installLoading()} onClick={handleInstall}>
+            {props.installLabel ?? 'Install'}
+          </we-button>
+        }
+      >
         <Show
-          when={isInstalled()}
+          when={hasUpdate()}
           fallback={
-            <we-button variant="solid" size="sm" loading={installLoading()} onClick={handleInstall}>
-              {props.installLabel ?? 'Install'}
-            </we-button>
+            <we-badge tone="success" size="sm">
+              Installed
+            </we-badge>
           }
         >
-          <Show
-            when={hasUpdate()}
-            fallback={
-              <we-badge tone="success" size="sm">
-                Installed
-              </we-badge>
-            }
-          >
-            <we-button variant="soft" size="sm" loading={installLoading()} onClick={handleInstall}>
-              Update
-            </we-button>
-          </Show>
+          <we-button variant="soft" size="sm" loading={installLoading()} onClick={handleInstall}>
+            Update
+          </we-button>
         </Show>
-      </Row>
-    );
-  }
+      </Show>
+    </Row>
+  );
 
   // ── Grid card mode (marketplace + preview) ───────────────────────────────
-  return (
+  const gridCard = () => (
     <Card
       bg="surface-sunken"
       border="1px solid border"
@@ -155,9 +153,10 @@ export function TemplateCard(props: Props) {
             variant="ghost"
             size="sm"
             square
-            onClick={() =>
-              props.onDelete ? props.onDelete!() : templateStore.deleteMarketplaceTemplate(props.template.id!)
-            }
+            onClick={() => {
+              if (props.onDelete) props.onDelete();
+              else void templateStore.deleteMarketplaceTemplate(props.template.id!);
+            }}
           >
             <we-icon name="trash" />
           </we-button>
@@ -244,5 +243,12 @@ export function TemplateCard(props: Props) {
         </Show>
       </Row>
     </Card>
+  );
+
+  // The mode is read where it can change, so a card given another mode redraws as that mode.
+  return (
+    <Show when={mode() === 'compact'} fallback={gridCard()}>
+      {compactRow()}
+    </Show>
   );
 }

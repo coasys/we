@@ -5,7 +5,7 @@
  * takes flush from ~681ms to ~192ms on a 3006-element tree. Removing a property that was never set
  * is a no-op by definition, so the change should be invisible — these cases prove it, including the
  * two names where a primitive writes a custom property directly AND helpers.ts generates the same
- * name (`--we-spinner-color`, `--we-markdown-gap`).
+ * name (`--we-animated-icon-color`, `--we-markdown-gap`).
  *
  * NOTE ON LOCATION: this belongs in @we/primitives, but that package has no test infrastructure at
  * all — nor do @we/components, @we/design-utils or @we/tokens. It sits here because this is the
@@ -86,9 +86,9 @@ describe('setProperty write-tracking', () => {
     el.remove();
   });
 
-  it('does not clobber --we-spinner-color written directly by we-spinner', async () => {
-    const el = await mount('we-spinner', { color: 'accent-500' });
-    expect(el.getAttribute('style') ?? '').toContain('--we-spinner-color');
+  it('does not clobber --we-animated-icon-color written directly by we-animated-icon', async () => {
+    const el = await mount('we-animated-icon', { color: 'accent-500' });
+    expect(el.getAttribute('style') ?? '').toContain('--we-animated-icon-color');
     el.remove();
   });
 });

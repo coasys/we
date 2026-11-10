@@ -101,14 +101,14 @@ export const pollsModule: ModuleDefinition = defineModule({
     functions: [
       {
         ...tallyFunction,
-        fn: ((args: { votes?: unknown; pending?: { poll?: unknown } } | undefined) => {
+        fn: (args: { votes?: unknown; pending?: { poll?: unknown } } | undefined) => {
           const rows = tally(args ?? {});
-          const pollId = (args?.pending as { poll?: unknown } | undefined)?.poll;
+          const pollId = args?.pending?.poll;
           if (typeof pollId === 'string' && pollId) {
             queueMicrotask(() => pollsStore?.settleFromRows(pollId, args?.votes));
           }
           return rows;
-        }) as (...args: never[]) => unknown,
+        },
       },
     ],
 

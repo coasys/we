@@ -229,7 +229,7 @@ const EXTRACTED_COUNT = `count(${EXTRACTED_ROWS})`;
  * nothing down — so a task the conversation moved from "todo" to "done" left the panel with no
  * account of it at all, and the record itself with a new value and no provenance.
  *
- * `ExtractionAmendment` is that account, and this is the list of them. No filter, unlike
+ * `Amendment` is that account, and this is the list of them. No filter, unlike
  * {@link EXTRACTED_ROWS}: an amendment exists only because somebody accepted one, so there is no
  * unconfirmed state to take back out.
  */
@@ -1820,7 +1820,7 @@ export const extractionTargets: SchemaNode = {
  * rather than defaulted. So the row asks rather than assuming, and one written last week stays a
  * plain line instead of a disclosure that opens onto nothing.
  */
-const HISTORY_OPENABLE = 'pass.prompt || pass.response';
+const HISTORY_OPENABLE = 'pass.prompt || pass.output';
 
 /**
  * Whose finger was on it — the one difference between the two kinds of pass that is worth seeing.
@@ -1866,14 +1866,17 @@ const historyRow: SchemaNode = {
 
       The template's own version of this list drew a green check on every settled row because it
       never read the outcome — so a pass that failed and one that wrote nine records looked
-      identical, which is the whole reason a failure is worth storing.
+      identical, which is the whole reason a failure is worth storing. `running` is a pass still
+      reading, whose run is opened before it starts — or one that never came back.
     */
     {
       type: 'we-icon',
       props: {
         size: 'sm',
         name: {
-          $: "pass.outcome == 'failed' ? 'warning' : pass.outcome == 'skipped' ? 'minus-circle' : 'check-circle'",
+          $:
+            "pass.outcome == 'failed' ? 'warning' : pass.outcome == 'skipped' ? 'minus-circle' : " +
+            "pass.outcome == 'running' ? 'hourglass' : 'check-circle'",
         },
         color: {
           $: "pass.outcome == 'failed' ? 'danger-text' : pass.outcome == 'done' ? 'success-text' : 'text-muted'",
@@ -1907,6 +1910,7 @@ const historyRow: SchemaNode = {
           $:
             "pass.outcome == 'failed' ? pass.error : " +
             "pass.outcome == 'skipped' ? 'Nothing was being looked for' : " +
+            "pass.outcome == 'running' ? 'Reading the call' : " +
             "pass.recordCount ? `${pass.recordCount} ${plural(pass.recordCount, 'thing', 'things')} found` : " +
             "'Nothing found'",
         },
@@ -1985,7 +1989,7 @@ const historyPassDetail: SchemaNode = {
         }),
         codePane({
           label: 'Response',
-          value: { $: 'formatJson({ text: pass.response })' },
+          value: { $: 'formatJson({ text: pass.output })' },
           field: 'closedHistoryResponses',
           isOpen: { $: '!(pass.id in local.closedHistoryResponses)' },
           key: { $: 'pass.id' },
@@ -2003,7 +2007,7 @@ const historyPassDetail: SchemaNode = {
  * something happen and useless the moment you reload — a call read an hour ago looked exactly like
  * one never read at all, and a pass that *failed* looked exactly like one that found nothing.
  *
- * So the durable half is a query, over the `ExtractionPass` records the host writes beside every
+ * So the durable half is a query, over the extraction `ModelRun` records the host writes beside every
  * pass, scoped to the call on screen like everything else in this panel. Which also settles the
  * question the live feed could not answer: these rows belong to *this* call, because containment is
  * what they hang off.
@@ -2114,7 +2118,9 @@ const extractionHistory: SchemaNode = {
                           ': `Reading this call`',
                       },
                     },
-                    children: [{ type: 'we-spinner', props: { size: 'xs', color: 'text-faint' } }],
+                    children: [
+                      { type: 'we-animated-icon', props: { name: 'spinner', size: 'xs', color: 'text-faint' } },
+                    ],
                   },
                 },
               },
@@ -2756,7 +2762,7 @@ const extract: SchemaNode = {
           type: 'Row',
           props: { gap: '200', ay: 'center' },
           children: [
-            { type: 'we-spinner', props: { size: 'sm' } },
+            { type: 'we-animated-icon', props: { name: 'spinner', size: 'sm' } },
             {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-muted' },
@@ -2810,7 +2816,7 @@ const extract: SchemaNode = {
 
       It was a tick and "N records written.", which every pass left standing above the chips until
       the next one — and the two readouts below say it with more: the results themselves appear under
-      "Accepted", and `ExtractionPass` records the outcome and the count of every pass, one-shot and
+      "Accepted", and an extraction `ModelRun` records the outcome and the count of every pass, one-shot and
       standing alike, so the history holds what this held and keeps holding it after the next press.
 
       Worth knowing what went with it: a pass that finds *nothing* now changes nothing on screen
@@ -3102,7 +3108,7 @@ const moreComing = (end: 'start' | 'end', words: string | { $: string }): Schema
   */
   props: { 'data-we-more': end, ay: 'center', gap: '300', py: '200' },
   children: [
-    { type: 'we-spinner', props: { size: 'xs', color: 'text-faint' } },
+    { type: 'we-animated-icon', props: { name: 'spinner', size: 'xs', color: 'text-faint' } },
     { type: 'we-text', props: { variant: 'footnote', color: 'text-faint' }, children: [words] },
   ],
 });
@@ -3318,7 +3324,9 @@ export const transcriptLines: SchemaNode = {
                     else: {
                       type: 'Column',
                       props: { ax: 'center', ay: 'center', py: '800', width: '100%' },
-                      children: [{ type: 'we-spinner', props: { size: 'md', color: 'text-faint' } }],
+                      children: [
+                        { type: 'we-animated-icon', props: { name: 'spinner', size: 'md', color: 'text-faint' } },
+                      ],
                     },
                   },
                 },
@@ -3628,7 +3636,7 @@ export const pendingUtterance: SchemaNode = {
                   type: '$if',
                   props: {
                     condition: { $: 'modules.transcribe.transcribing' },
-                    then: { type: 'we-spinner', props: { size: 'xs', color: 'text-muted' } },
+                    then: { type: 'we-animated-icon', props: { name: 'spinner', size: 'xs', color: 'text-muted' } },
                   },
                 },
               ],
@@ -4043,12 +4051,13 @@ export const extractionPanel: SchemaNode = {
 
               `when` is what the section's own `$if` used to provide: an unresolved anchor is pruned
               rather than sent, and pruning widens, so without it a call-less panel would ask for
-              every ExtractionPass in the space.
+              every extraction run in the space.
             */
                 $queries: {
                   passes: {
-                    entity: 'ExtractionPass',
-                    scope: { anchor: 'CollectionBlock', via: 'extractionPasses', anchorId: EXTRACTION_SUBJECT },
+                    entity: 'ModelRun',
+                    scope: { anchor: 'CollectionBlock', via: 'runs', anchorId: EXTRACTION_SUBJECT },
+                    where: { kind: 'extraction' },
                     order: { createdAt: 'desc' },
                     limit: 50,
                     when: EXTRACTION_SUBJECT,

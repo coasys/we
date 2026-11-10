@@ -5,12 +5,14 @@ import type { SchemaNode, SchemaProp } from '@we/schema-shared';
  */
 
 /**
- * Something happening now: a dot in the success colour, lit in its own colour as Nico's "online" and
- * "live call" dots are. `tone` points the glow at the dot's colour; how bright it is, is the theme's.
+ * Something happening now: a dot in the success colour with a ring going out from it, as Nico's
+ * "online" and "live call" dots are. The design system's live drawing, so every one in the space
+ * pulses in step and keeps still for anyone who asked for less motion. Unsized, it takes the icon
+ * size of the badge it sits in; give it a size where it stands on its own.
  */
 export const liveDot: SchemaNode = {
-  type: 'Column',
-  props: { width: '7px', height: '7px', r: 'full', bg: 'success', tone: 'success', shadow: 'glow', flex: '0 0 auto' },
+  type: 'we-animated-icon',
+  props: { name: 'live', color: 'success' },
 };
 
 /**

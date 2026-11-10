@@ -8,7 +8,7 @@
     "start": "vite",
     "dev": "vite",
     "prebuild:steps": "node scripts/generate-seed-config.cjs",
-    "build:steps": "vite build",
+    "build:steps": "vite build && vite build -c vite.identity.config.ts",
     "build": "we-build",
     "serve": "vite preview",
     "tauri": "tauri",
@@ -16,18 +16,20 @@
     "tauri:dev": "concurrently \"pnpm dev\" \"wait-on http://localhost:1420 && tauri dev --config src-tauri/tauri.seed.conf.json -- --release\"",
     "pretauri:build": "node scripts/generate-seed-config.cjs",
     "tauri:build": "tauri build --config src-tauri/tauri.seed.conf.json && node scripts/rename-bundle.cjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run identity"
   },
   "dependencies": {
     "@coasys/ad4m": "*",
     "@tauri-apps/api": "2.12.4",
     "@we/app-shell": "workspace:*",
-    "solid-js": "^1.9.17",
+    "@we/identity-window": "workspace:*",
+    "solid-js": "^1.9.18",
     "@we/backend-ad4m": "workspace:*"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "2.12.3",
-    "@types/three": "^0.185.4",
+    "@tauri-apps/cli": "2.12.4",
+    "@types/three": "^0.187.0",
     "@we/brand": "workspace:*",
     "@we/cli": "workspace:*",
     "@we/csp": "workspace:*",
@@ -35,8 +37,9 @@
     "@we/globe-widget": "workspace:*",
     "concurrently": "^10.0.6",
     "typescript": "^6.0.3",
-    "vite": "^8.3.4",
-    "vite-plugin-solid": "^2.11.14",
+    "vite": "^8.3.5",
+    "vite-plugin-solid": "^2.11.15",
+    "vitest": "^5.0.5",
     "wait-on": "^9.5.1"
   }
 }

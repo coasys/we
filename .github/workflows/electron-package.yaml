@@ -109,7 +109,9 @@ jobs:
 
       # ── Package ────────────────────────────────────────────────────────
       #
-      # `electron:build` runs vite build + electron-builder.
+      # `electron:build` runs vite build (the app and the identity window), builds the custody
+      # sidecar from `crates/custody` with the runner's rustup (its `rust-toolchain.toml` picks the
+      # toolchain), then electron-builder.
       # `generate-seed-config.cjs` runs as a `preelectron:build` script
       # and resolves the executor path into `seed-extra-resources.json`,
       # which electron-builder reads to copy the binary into the package.

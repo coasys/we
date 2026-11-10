@@ -78,7 +78,7 @@ export interface InterpretationActivityView {
   /** Why, for a pass that skipped or failed. Empty otherwise. */
   detail: string;
   /** The raw prompt and response — on this agent's own rows only. A peer's exchange is not sent
-   *  live; it arrives with the `ExtractionPass` record once the pass settles. */
+   *  live; it arrives with the extraction `ModelRun` once the pass settles. */
   prompt: string;
   response: string;
   /** Whether there is anything behind the disclosure triangle — so a UI can disable it with an
@@ -316,7 +316,7 @@ export function InterpretationStoreProvider(props: ParentProps) {
     };
 
     /*
-      Ask for the model exchange here, for this agent's own rows and for the `ExtractionPass` record.
+      Ask for the model exchange here, for this agent's own rows and for the extraction `ModelRun` record.
 
       The backend's `detail` is a subscription-time choice and the events carry the payload over a
       local socket regardless, so taking it costs nothing and is what makes the disclosure instant.
@@ -449,7 +449,7 @@ export function InterpretationStoreProvider(props: ParentProps) {
     moment later, which is the same degradation every other agent-facing surface here accepts.
   */
   createEffect(() => {
-    for (const row of rows()) if (row.runner) profileStore.fetchProfile(row.runner);
+    for (const row of rows()) if (row.runner) void profileStore.fetchProfile(row.runner);
   });
 
   /*
@@ -484,14 +484,20 @@ export function InterpretationStoreProvider(props: ParentProps) {
     }),
   );
 
+  const runningCount = createMemo(() => activity().filter((row) => row.running).length);
+  const hasActivity = createMemo(() => activity().length > 0);
+  const runningPasses = createMemo(() => activity().filter((row) => row.running));
+  const settledPasses = createMemo(() => activity().filter((row) => !row.running));
+  const settledCount = createMemo(() => activity().filter((row) => !row.running).length);
+
   const store: InterpretationStore = {
     activity,
     capable,
-    runningCount: createMemo(() => activity().filter((row) => row.running).length),
-    hasActivity: createMemo(() => activity().length > 0),
-    runningPasses: createMemo(() => activity().filter((row) => row.running)),
-    settledPasses: createMemo(() => activity().filter((row) => !row.running)),
-    settledCount: createMemo(() => activity().filter((row) => !row.running).length),
+    runningCount,
+    hasActivity,
+    runningPasses,
+    settledPasses,
+    settledCount,
     // Only the settled ones, and only from this view: a running pass is not this agent's to
     // dismiss, and the rows themselves belong to whoever is running them.
     dismissSettled: () =>

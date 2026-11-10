@@ -548,7 +548,7 @@ describe('what belongs to the live microphone only', () => {
 
     expect(meter).toContain("modules.transcribe.speaking ? 'hearing you' : 'quiet'");
     expect(meter).not.toContain('starting');
-    expect(JSON.stringify(captureStatus)).not.toContain('we-spinner');
+    expect(JSON.stringify(captureStatus)).not.toContain('we-animated-icon');
   });
 
   it('gates the unsaved line itself, rather than leaving that to whoever places it', () => {
@@ -1153,7 +1153,7 @@ describe('the extraction panel', () => {
   it('leaves what a pass produced to the two readouts that already say it', () => {
     /*
       A tick and "N records written." stood above the chips until the next press. The results
-      themselves appear under "Accepted", and `ExtractionPass` records the outcome and count of
+      themselves appear under "Accepted", and an extraction `ModelRun` records the outcome and count of
       every pass — one-shot and standing alike — so the history holds what this held and keeps
       holding it afterwards.
 
@@ -1833,8 +1833,9 @@ describe('the history of what was read', () => {
       read at all, and a failed pass looked exactly like one that found nothing — which are the two
       things somebody reviewing a meeting most needs told apart.
     */
-    expect(json).toContain('"entity":"ExtractionPass"');
-    expect(json).toContain('"via":"extractionPasses"');
+    expect(json).toContain('"entity":"ModelRun"');
+    expect(json).toContain('"via":"runs"');
+    expect(json).toContain('"kind":"extraction"');
     expect(json).toContain(`"anchorId":{"$":"${EXTRACTION_SUBJECT_EXPR}"}`);
   });
 
@@ -1866,7 +1867,7 @@ describe('the history of what was read', () => {
       way, so the host lends the function the expression library deliberately lacks.
     */
     expect(json).toContain('formatJson({ text: pass.prompt })');
-    expect(json).toContain('formatJson({ text: pass.response })');
+    expect(json).toContain('formatJson({ text: pass.output })');
   });
 
   it('says which passes somebody fired by hand', () => {
@@ -1885,8 +1886,8 @@ describe('the history of what was read', () => {
     // The point of storing the prompt and response is that they outlive the bar. Same two panes,
     // same defaults — prompt closed, response open — so a pass read while it ran and the same pass
     // read a week later are the same thing.
-    expect(json).toContain('"code":{"$":"pass.prompt"}');
-    expect(json).toContain('"code":{"$":"pass.response"}');
+    expect(json).toContain('"code":{"$":"formatJson({ text: pass.prompt })"}');
+    expect(json).toContain('"code":{"$":"formatJson({ text: pass.output })"}');
     expect(json).toContain('"$toggleLocalIn":"openHistoryPasses"');
     expect(json).toContain('!(pass.id in local.closedHistoryResponses)');
   });
@@ -1894,7 +1895,7 @@ describe('the history of what was read', () => {
   it('offers the disclosure only where there is an exchange under it', () => {
     // A record written before the fields existed carries neither half, and a press answered with an
     // empty box is worse than a row that never looked pressable.
-    expect(json).toContain('"condition":{"$":"pass.prompt || pass.response"}');
+    expect(json).toContain('"condition":{"$":"pass.prompt || pass.output"}');
   });
 
   it('keeps the live feed to the live call, and to passes still running', () => {
@@ -1904,7 +1905,7 @@ describe('the history of what was read', () => {
 
       And `runningCount` rather than `hasActivity`, which counts settled rows too. That was right
       while this was the only place a finished pass was reported; once every pass became an
-      `ExtractionPass` listed under "Logs" in the same panel, the settled half of this feed was the
+      extraction `ModelRun` listed under "Logs" in the same panel, the settled half of this feed was the
       same rows again a few hundred pixels higher with no heading to tell them apart.
     */
     expect(JSON.stringify(extractionActivity)).toContain(
@@ -2089,7 +2090,7 @@ describe('a pass that is running is part of the log', () => {
   it('spins in the heading while the section is folded over it', () => {
     // From the heading rather than from the top: the panel has a spinner of its own further up —
     // searching the whole document finds that one and says nothing about this section.
-    const spinner = json.indexOf('"we-spinner"', logs);
+    const spinner = json.indexOf('"we-animated-icon"', logs);
     const exportButton = json.indexOf('"Export the extraction log"', logs);
     expect(spinner, 'the Logs heading has a spinner').toBeGreaterThan(-1);
     expect(spinner, 'the spinner comes before the export button, not after it').toBeLessThan(exportButton);

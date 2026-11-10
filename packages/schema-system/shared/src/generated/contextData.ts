@@ -15,6 +15,18 @@ export const contextData: ContextData = {
       ],
     },
     {
+      tagName: 'we-animated-icon',
+      className: 'AnimatedIcon',
+      description:
+        "A small drawing that moves, for something happening now: loading, a call that is live, somebody\ntyping, somebody speaking.\n\n`name` picks the drawing:\n\n- `spinner` — a turning ring, for waiting on something.\n- `live` — a dot with a ring going out from it, for something running now: a live call, a\n  recording (in the danger tone), somebody online.\n- `typing` — three dots rising in turn, for somebody writing, or the assistant thinking.\n- `speaking` — bars moving out of step, for whoever is talking, or audio playing.\n\nSized and coloured as `we-icon` is, so one can take an icon's place: `size` is a size token or any\nCSS length, and with none it is the icon size its container publishes. Its colour is the accent\nunless `color` names a role, a palette token or any CSS colour — so `tone` re-points it, a live\ndot inside a success badge is the success colour, and `color: 'currentColor'` makes it the text's.\n\nEvery copy of a drawing is at the same point in its cycle at the same moment, wherever and\nwhenever it mounted: the live dots in a sidebar and on a page pulse together, and a spinner that\nreappears after the window reloads picks up where the last left off.\n\nFor somebody who asked for less motion, the dot and the bars stand still, the typing dots fade in\nturn rather than rise, and the spinner keeps turning, since a still spinner looks stuck.",
+      superclass: 'LayoutElement',
+      ownProps: [
+        { name: 'name', type: "'spinner' | 'live' | 'typing' | 'speaking'", optional: false, default: "'spinner'" },
+        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl' | '{css-length}'", optional: false, default: "''" },
+        { name: 'color', type: 'string', optional: false, default: "''" },
+      ],
+    },
+    {
       tagName: 'we-audio',
       className: 'Audio',
       superclass: 'LayoutVisualElement',
@@ -567,15 +579,6 @@ export const contextData: ContextData = {
         { name: 'zone', type: 'string', optional: false, default: "''" },
         { name: 'group', type: 'string', optional: false, default: "''" },
         { name: 'locked', type: 'boolean', optional: false, default: 'false' },
-      ],
-    },
-    {
-      tagName: 'we-spinner',
-      className: 'Spinner',
-      superclass: 'LayoutElement',
-      ownProps: [
-        { name: 'size', type: "'xs' | 'sm' | 'md' | 'lg' | 'xl' | (string & {})", optional: false, default: "'md'" },
-        { name: 'color', type: 'string', optional: false, default: "''" },
       ],
     },
     {
@@ -1441,26 +1444,6 @@ export const contextData: ContextData = {
       relations: [],
     },
     {
-      name: 'ChatMessage',
-      className: 'ChatMessage',
-      extends: 'WeNode',
-      fields: [
-        { name: 'role', type: 'string', predicate: 'we://role', required: false },
-        { name: 'content', type: 'string', predicate: 'we://content', required: false },
-      ],
-      relations: [],
-    },
-    {
-      name: 'ChatSession',
-      className: 'ChatSession',
-      extends: 'WeNode',
-      fields: [
-        { name: 'name', type: 'string', predicate: 'we://name', required: false },
-        { name: 'templateId', type: 'string', predicate: 'we://template_id', required: false },
-      ],
-      relations: [{ name: 'messages', kind: 'HasMany', predicate: 'we://chat_message', target: 'ChatMessage' }],
-    },
-    {
       name: 'CodeBlock',
       className: 'CodeBlock',
       extends: 'WeNode',
@@ -1495,15 +1478,9 @@ export const contextData: ContextData = {
         { name: 'arranges', kind: 'HasMany', predicate: 'we://arranges' },
         { name: 'gathers', kind: 'HasOne', predicate: 'we://gathers' },
         { name: 'board', kind: 'HasOne', predicate: 'we://board', target: 'CollectionBlock' },
-        {
-          name: 'extractionPasses',
-          kind: 'HasMany',
-          predicate: 'we://extraction_pass_record',
-          target: 'ExtractionPass',
-        },
         { name: 'extracted', kind: 'HasMany', predicate: 'we://extracted' },
         { name: 'recognised', kind: 'HasMany', predicate: 'we://recognised' },
-        { name: 'amendments', kind: 'HasMany', predicate: 'we://extraction_amendment', target: 'ExtractionAmendment' },
+        { name: 'amendments', kind: 'HasMany', predicate: 'we://amendment', target: 'Amendment' },
       ],
     },
     {
@@ -1983,8 +1960,8 @@ export const contextData: ContextData = {
       relations: [{ name: 'screenshots', kind: 'HasMany', predicate: 'we://screenshot', target: 'ImageBlock' }],
     },
     {
-      name: 'ExtractionAmendment',
-      className: 'ExtractionAmendment',
+      name: 'Amendment',
+      className: 'Amendment',
       extends: 'Ad4mModel',
       fields: [
         { name: 'property', type: 'string', predicate: 'we://amended_property', required: false },
@@ -1992,20 +1969,25 @@ export const contextData: ContextData = {
         { name: 'newValue', type: 'string', predicate: 'we://new_value', required: false },
         { name: 'nodeType', type: 'string', predicate: 'we://node_type', required: false },
       ],
-      relations: [{ name: 'node', kind: 'HasOne', predicate: 'we://amended_node' }],
+      relations: [
+        { name: 'node', kind: 'HasOne', predicate: 'we://amended_node' },
+        { name: 'run', kind: 'HasOne', predicate: 'we://amendment_run', target: 'ModelRun' },
+      ],
     },
     {
-      name: 'ExtractionPass',
-      className: 'ExtractionPass',
+      name: 'ModelRun',
+      className: 'ModelRun',
       extends: 'Ad4mModel',
       fields: [
-        { name: 'outcome', type: 'string', predicate: 'we://outcome', required: false, default: "'done'" },
-        { name: 'recordCount', type: 'number', predicate: 'we://record_count', required: false },
-        { name: 'targets', type: 'string', predicate: 'we://extraction_targets', required: false },
-        { name: 'error', type: 'string', predicate: 'we://error', required: false },
+        { name: 'kind', type: 'string', predicate: 'we://model_run_kind', required: false },
+        { name: 'model', type: 'string', predicate: 'we://model_run_model', required: false },
         { name: 'trigger', type: 'string', predicate: 'we://trigger', required: false, default: "'manual'" },
+        { name: 'outcome', type: 'string', predicate: 'we://outcome', required: false, default: "'done'" },
+        { name: 'error', type: 'string', predicate: 'we://error', required: false },
+        { name: 'recordCount', type: 'number', predicate: 'we://model_run_record_count', required: false },
+        { name: 'detail', type: 'string', predicate: 'we://model_run_detail', required: false },
         { name: 'prompt', type: 'string', predicate: 'we://prompt', required: false },
-        { name: 'response', type: 'string', predicate: 'we://response', required: false },
+        { name: 'output', type: 'string', predicate: 'we://model_run_output', required: false },
       ],
       relations: [],
     },
@@ -2048,6 +2030,8 @@ export const contextData: ContextData = {
         { name: 'inThread', kind: 'HasOne', predicate: 'we://thread' },
         { name: 'partOf', kind: 'HasOne', predicate: 'we://child' },
         { name: 'extractedFrom', kind: 'HasOne', predicate: 'we://extracted' },
+        { name: 'runs', kind: 'HasMany', predicate: 'we://model_run', target: 'ModelRun' },
+        { name: 'generatedBy', kind: 'HasOne', predicate: 'we://generated_by', target: 'ModelRun' },
         { name: 'signals', kind: 'HasMany', predicate: 'we://signal', target: 'Signal' },
         { name: 'participants', kind: 'HasMany', predicate: 'we://participant' },
         { name: 'mentions', kind: 'HasMany', predicate: 'we://mention' },
@@ -2366,6 +2350,22 @@ export const contextData: ContextData = {
       needsArgs: ['switchDataset', 'reorderDatasets', 'removeDataset'],
     },
     {
+      name: 'deviceStore',
+      state: {
+        devices: {
+          type: 'array',
+          properties: ['keyId', 'label', 'subtitle', 'icon', 'thisDevice', 'revoked', 'status', 'canRevoke'],
+        },
+        devicesLoaded: { type: 'boolean' },
+        validCount: { type: 'number' },
+        canManage: { type: 'boolean' },
+        error: { type: 'string' },
+      },
+      actions: ['refresh', 'addDevice', 'revoke'],
+      ambient: ['refresh'],
+      needsArgs: ['revoke'],
+    },
+    {
       name: 'editorStore',
       state: {
         messages: { type: 'array' },
@@ -2453,6 +2453,34 @@ export const contextData: ContextData = {
       ],
       destructive: ['deleteSession', 'clearHistory'],
       needsArgs: ['switchSession', 'deleteSession', 'setContentMode', 'confirmPicker', 'sendMessage'],
+    },
+    {
+      name: 'identityStore',
+      state: {
+        available: { type: 'boolean' },
+        canChange: { type: 'boolean' },
+        changeBlocked: { type: 'string' },
+        status: { type: 'object' },
+        statusLoaded: { type: 'boolean' },
+        did: { type: 'string' },
+        keyId: { type: 'string' },
+        thisDeviceRevoked: { type: 'boolean' },
+        keyLog: {
+          type: 'array',
+          properties: ['seq', 'position', 'icon', 'title', 'detail', 'hash', 'hashShort', 'thisComputer'],
+        },
+        keyLogLoaded: { type: 'boolean' },
+        forked: { type: 'boolean' },
+        fork: { type: 'object' },
+        custody: { type: 'object' },
+        needsFirstRun: { type: 'boolean' },
+        busy: { type: 'boolean' },
+        lastOutcome: { type: 'string' },
+        error: { type: 'string' },
+      },
+      actions: ['refresh', 'open', 'makeIdentity', 'startWithoutIdentity'],
+      ambient: ['refresh'],
+      needsArgs: ['open'],
     },
     {
       name: 'interpretationStore',
@@ -3239,6 +3267,7 @@ export const contextData: ContextData = {
         autoInterpret: { type: 'boolean' },
         root: { type: 'string' },
         landmarks: { type: 'object' },
+        landmarksLoaded: { type: 'boolean' },
         extractionTargets: { type: 'array' },
         taskWorkflowRule: { type: 'string' },
         taskWorkflowEnabled: { type: 'boolean' },
@@ -3803,6 +3832,12 @@ export const contextData: ContextData = {
       params: ['options'],
       doc: 'A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an extraction pass’s prompt and response); a schema has no JSON.stringify of its own.',
       example: 'formatJson({ text: pass.prompt })',
+    },
+    {
+      name: 'generatedRun',
+      params: ['options'],
+      doc: 'Whether a model made a record: { by: "run", run } naming the run that wrote it (a transcribed line, a record an extraction pass or an agent made, a reply in the editor’s chat), or null for what a person made. Reads the record’s own generatedBy, as an id or an included record, so it needs no query. Ask this rather than reading the relation. Options: record.',
+      example: "generatedRun({ record: post }) ? 'Written by AI' : ''",
     },
   ],
   modules: [
@@ -4509,6 +4544,11 @@ export const contextData: ContextData = {
       requires: { kernels: ['records', 'interpretation'] },
       capabilities: ['kernel:records', 'kernel:interpretation', 'dock'],
       members: [
+        {
+          name: 'botAuthors',
+          kind: 'state',
+          doc: 'The authors of lines in the Feed’s window whose own profile says they are a bot, by id — for `row.author in modules.feed.botAuthors`.',
+        },
         { name: 'cancelReply', kind: 'action', doc: 'Puts a reply down without sending it.', ambient: true },
         { name: 'closeFeed', kind: 'action', doc: 'Closes the Feed panel.', ambient: true },
         {
@@ -4581,6 +4621,13 @@ export const contextData: ContextData = {
           label: 'Newest messages',
           description: 'Where the newest line of the Feed is drawn.',
           type: 'enum',
+          levels: ['agent'],
+        },
+        {
+          key: 'botNotices',
+          label: 'Tell me when a bot answers',
+          description: 'A notice when a bot writes in the space while you are not reading the Feed.',
+          type: 'boolean',
           levels: ['agent'],
         },
       ],

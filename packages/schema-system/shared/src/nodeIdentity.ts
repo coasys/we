@@ -96,8 +96,8 @@ export function derivedNodeId(source: string): string {
 function namedPositions(node: SchemaNode): { group: string; nodes: SchemaNode[] }[] {
   const out: { group: string; nodes: SchemaNode[] }[] = [];
   const nodesIn = (value: unknown): SchemaNode[] => {
-    if (Array.isArray(value)) return value.filter((v) => isSchemaChild(v) || isPropsSchemaNode(v)) as SchemaNode[];
-    return isSchemaChild(value) || isPropsSchemaNode(value) ? [value as SchemaNode] : [];
+    if (Array.isArray(value)) return value.filter<SchemaNode>((v) => isSchemaChild(v) || isPropsSchemaNode(v));
+    return isSchemaChild(value) || isPropsSchemaNode(value) ? [value] : [];
   };
   if (Array.isArray(node.children)) out.push({ group: 'c', nodes: nodesIn(node.children) });
   if (Array.isArray(node.routes)) out.push({ group: 'r', nodes: nodesIn(node.routes) });
@@ -115,7 +115,11 @@ function namedPositions(node: SchemaNode): { group: string; nodes: SchemaNode[] 
     if (nodes.length) out.push({ group: `p:${name}`, nodes });
   }
   for (const panel of panelsOf(node) ?? []) {
-    if (isSchemaChild(panel.node)) out.push({ group: `panel:${panel.id}`, nodes: [panel.node as SchemaNode] });
+    if (!isSchemaChild(panel.node)) continue;
+    // The group is part of every derived id inside the panel, so the id is printed exactly as it
+    // always has been: changing how an unusual one reads would re-key nodes already stored.
+    // eslint-disable-next-line @typescript-eslint/restrict-template-expressions -- see above; a panel id is text in practice.
+    out.push({ group: `panel:${panel.id}`, nodes: [panel.node] });
   }
   for (const [name, def] of Object.entries(node.$defs ?? {})) out.push({ group: `d:${name}`, nodes: [def] });
   return out;

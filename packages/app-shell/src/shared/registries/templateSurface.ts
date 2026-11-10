@@ -65,6 +65,8 @@ export const CAPABILITY_GROUPS = {
   editor: 'Drive the template and theme editing surface',
   'host-layout': "Move and resize the app's own panels and docks",
   clipboard: 'Put text on your clipboard when you ask it to',
+  keys: 'See your identity and its key log, and ask to make or change it — you confirm every change yourself',
+  devices: 'See the devices that act as you, and ask to add or remove one — you confirm every change yourself',
 } as const;
 
 export type CapabilityGroup = keyof typeof CAPABILITY_GROUPS;
@@ -122,6 +124,18 @@ export const CHROME_TIER: readonly CapabilityGroup[] = [
     until somebody decides it should have it.
   */
   'clipboard',
+  /*
+    Chrome only, and decided so: a space template learns nothing of who a person is beyond their
+    profile — not their identifier, not their devices, not that a key log exists.
+
+    Chrome includes an installed app and its pages (`judgeBundle`), not only what ships with WE: one
+    bag serves every chrome template, so an app the person installed can ask for a change as WE's own
+    Settings can. The guard is the change itself: the backend asks the person wherever it keeps the
+    master key and shows what will be signed, and nothing is signed without them. Narrowing these to
+    the app's own chrome waits for grants per template, which this tier list is shaped for.
+  */
+  'keys',
+  'devices',
 ];
 
 /** Host wiring: never in any template bag, at any tier. */
@@ -487,6 +501,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // shows the space at all, so `content` for the reason the space's vocabulary is.
     root: state('content'),
     landmarks: state('content'),
+    landmarksLoaded: state('content'),
     taskWorkflowEnabled: state('content'),
     offeredTaskStates: state('content'),
     taskStatesLoaded: state('content'),
@@ -1406,6 +1421,45 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     setSpeed: ambient('view-state'),
     setLoop: ambient('view-state'),
     configure: ambient('view-state'),
+  },
+
+  /*
+    Reading the identity and asking for a change to it. Neither action is `destructive`: the backend
+    runs the change where it keeps the master key, and that is its own confirmation — it shows what
+    will be signed and asks for the unlock — so a host dialog in front of it would be a second question.
+  */
+  identityStore: {
+    available: state('keys'),
+    canChange: state('keys'),
+    changeBlocked: state('keys'),
+    status: state('keys'),
+    statusLoaded: state('keys'),
+    did: state('keys'),
+    keyId: state('keys'),
+    thisDeviceRevoked: state('keys'),
+    keyLog: state('keys'),
+    keyLogLoaded: state('keys'),
+    forked: state('keys'),
+    fork: state('keys'),
+    custody: state('keys'),
+    needsFirstRun: state('keys'),
+    busy: state('keys'),
+    lastOutcome: state('keys'),
+    error: state('keys'),
+    refresh: ambient('keys'),
+    open: action('keys'),
+    makeIdentity: action('keys'),
+    startWithoutIdentity: action('keys'),
+  },
+  deviceStore: {
+    devices: state('devices'),
+    devicesLoaded: state('devices'),
+    validCount: state('devices'),
+    canManage: state('devices'),
+    error: state('devices'),
+    refresh: ambient('devices'),
+    addDevice: action('devices'),
+    revoke: action('devices'),
   },
 
   /*

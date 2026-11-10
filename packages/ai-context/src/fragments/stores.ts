@@ -420,6 +420,7 @@ export const storeEntries: StoreEntry[] = [
       taskStatesLoaded: { type: 'boolean' },
       root: { type: 'string' },
       landmarks: { type: 'object' },
+      landmarksLoaded: { type: 'boolean' },
       starterChoices: { type: 'array' },
       taskWorkflowEnabled: { type: 'boolean' },
       archivedWorkflows: { type: 'array' },
@@ -706,6 +707,46 @@ export const storeEntries: StoreEntry[] = [
       'addEvidence',
       'removeEvidence',
     ],
+  },
+  {
+    name: 'identityStore',
+    state: {
+      available: { type: 'boolean' },
+      canChange: { type: 'boolean' },
+      changeBlocked: { type: 'string' },
+      status: { type: 'object' },
+      statusLoaded: { type: 'boolean' },
+      did: { type: 'string' },
+      keyId: { type: 'string' },
+      thisDeviceRevoked: { type: 'boolean' },
+      keyLog: {
+        type: 'array',
+        properties: ['seq', 'position', 'icon', 'title', 'detail', 'hash', 'hashShort', 'thisComputer'],
+      },
+      keyLogLoaded: { type: 'boolean' },
+      forked: { type: 'boolean' },
+      fork: { type: 'object' },
+      custody: { type: 'object' },
+      needsFirstRun: { type: 'boolean' },
+      busy: { type: 'boolean' },
+      lastOutcome: { type: 'string' },
+      error: { type: 'string' },
+    },
+    actions: ['refresh', 'open', 'makeIdentity', 'startWithoutIdentity'],
+  },
+  {
+    name: 'deviceStore',
+    state: {
+      devices: {
+        type: 'array',
+        properties: ['keyId', 'label', 'subtitle', 'icon', 'thisDevice', 'revoked', 'status', 'canRevoke'],
+      },
+      devicesLoaded: { type: 'boolean' },
+      validCount: { type: 'number' },
+      canManage: { type: 'boolean' },
+      error: { type: 'string' },
+    },
+    actions: ['refresh', 'addDevice', 'revoke'],
   },
   {
     name: 'clockStore',
@@ -1219,6 +1260,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       root: "string — the id of this space's collection: the one CollectionBlock (kind 'space') everything top-level hangs off — calls, loose messages, posts, channels, extracted items, the canvas. Scope a top-level read through it: { anchor: 'CollectionBlock', via: 'children', anchorId: spaceStore.root }. Empty outside a space, and in a space made before spaces had one",
       landmarks:
         "Record<name, id> — the records this space names as its landmarks, e.g. spaceStore.landmarks.canvas is the space's canvas. Written by the space's starter at creation. A landmark can be absent — a space can switch template and a template must never assume what another set up — so guard every read",
+      landmarksLoaded:
+        "boolean — the landmarks have answered for the space on screen. Until then an absent landmark is not yet an answer, so gate a 'there is no board yet' on it: { $: 'spaceStore.landmarksLoaded && !spaceStore.landmarks.board' }. Not on `root`, which arrives first",
       starterChoices:
         "{ id, name, description, icon, includes, app? }[] — what a space made now can start with, the default first: the app's kit when the app in use came built in and brings one (app is its name), otherwise the deployment's own starter, then id '$none' (an empty space: no task states, reactions, canvas or board, drawn with the agent's own default template and theme). includes is what it writes, counted from its records (\"3 task states · a canvas · a board\"), empty for an empty space. Pass an id to createSpace; show the default as chosen while nothing is — { $: \"local.starter ? find(spaceStore.starterChoices, { id: local.starter }) : first(spaceStore.starterChoices)\" }. Installed apps' starters are never listed",
       autoInterpret:
@@ -1672,7 +1715,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       canUndo: 'boolean (true when there are schema edits that can be undone)',
       canRedo: 'boolean (true when there are undone schema edits that can be redone)',
       messages:
-        "ChatMessage[] — the active AI session's messages (id, role: 'user' | 'assistant' | 'system', content, createdAt, status). Empty for a new chat",
+        "the active chat's messages (id, role: 'user' | 'assistant' | 'system', content, createdAt, status). Empty for a new chat",
       isOpen: 'boolean — the AI chat panel is open',
       isStreaming: 'boolean — an assistant reply is arriving; streamingContent holds what has arrived so far',
       streamingContent: 'string — the partial assistant reply while isStreaming, empty otherwise',
@@ -1691,7 +1734,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       pickerDefaultIcon: 'string — what its icon field starts with',
       pickerShowDestination:
         'boolean — the picker offers a personal-or-space destination, which it can only do while a space is open to save into',
-      sessions: "ChatSession[] — this template's saved AI sessions (id, name, templateId), newest first",
+      sessions: "this template's saved chats (id, name), newest first",
       activeSessionId: 'string | null — the session whose messages are shown',
       contentMode:
         "'preview' | 'visual' — whether the editor shows the rendered template or the visual editing surface",
@@ -1956,6 +1999,58 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       delete: '(entity: string, id: string, options?: { dataset?: string }): deletes one record. Irreversible',
     },
   },
+  identityStore: {
+    state: {
+      available: 'boolean — the backend keeps a key log, so it can say who this device speaks for',
+      canChange:
+        'boolean — this computer can sign changes to the identity, and has said so. False where the backend cannot change an identity from here (the web, and desktop builds without a custody service): Settings shows the log and devices and offers no change. False too while the backend has not answered, and where changeBlocked says why',
+      changeBlocked:
+        'string — why the identity cannot be made or changed on this computer although it could sign changes (the backend has nowhere to publish them, say), ready to show; empty when it can. Show it beside a disabled "Make my identity here" rather than hiding the door',
+      status:
+        '{ did, deviceKey, keyId, revoked, head, fork, storeBehind } | null — what this device’s key speaks for, as the executor reports it. `storeBehind` ({ since, seq }) is set while the shared store answers the log behind what the executor has checked, which then answers from its own copy',
+      statusLoaded: 'boolean — the backend has answered `status` once. Gate a "no identity yet" sentence on it',
+      did: 'string — the person’s identifier, or empty while this device speaks for nobody',
+      keyId: 'string — this device’s id in the key log (`d1`), or empty',
+      thisDeviceRevoked: 'boolean — the key log revoked this device’s key: it no longer speaks for the person',
+      keyLog:
+        '{ seq, op, keys, position, icon, title, detail, hash, hashShort, thisComputer }[] — the key log, newest first, with what each row says made from `op` and `keys` (reword from those where a template wants other words), already worded: `title` "Created your identity", "Added d2", "Revoked d2"; `detail` the keys it names with this computer’s marked "This computer"; `hashShort` the event’s hash for a monospace column',
+      keyLogLoaded: 'boolean — the log has been read once',
+      forked: 'boolean — the backend found two different logs for this identity',
+      fork: '{ seq, ours, theirs } | null — where they part',
+      custody:
+        "{ did, holdsMaster, unlock, blocked } | null — whether this computer can sign changes, as public facts: whether it keeps a master key (`holdsMaster`, a boolean), how that key unlocks ('os' for the computer's own prompt, or 'passphrase'), and why no change can run, if one cannot (`blocked`). Null where the backend cannot change an identity from here",
+      needsFirstRun:
+        'boolean — ask the first-run question now: this computer can sign changes, this device speaks for nobody, and "Start now" was not chosen for this account on this computer. Still true where changeBlocked is set, so the person learns why; offer "Start now" then',
+      busy: 'boolean — a change is running',
+      lastOutcome: "'done' | 'cancelled' | 'failed' | '' — how the last change ended",
+      error:
+        'string — why the last read or change failed, ready to show, or empty. A change never rejects: it resolves "failed" and the reason is here, so draw it beside the control that asked',
+    },
+    actions: {
+      refresh: '(): reads the status, the key log and the custody state again',
+      open: "(change: { kind: 'create' } | { kind: 'add-device' } | { kind: 'revoke', keyId }): runs a change and resolves with its outcome once it ends; the backend asks the person itself, wherever it keeps the master key, and everything is read again then. Words, passphrases and keys never reach the app",
+      makeIdentity: '(): "Make my identity here" — runs `create`',
+      startWithoutIdentity:
+        '(): "Start now" — use this account without an identity; remembered for it on this computer, so the first-run question stops',
+    },
+  },
+  deviceStore: {
+    state: {
+      devices:
+        "{ keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke }[] — the device keys of the person's key log, valid first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Valid' or 'Revoked at #2'; `canRevoke` is a valid key that is not this computer's",
+      devicesLoaded: 'boolean — the list has been read once',
+      validCount: 'number — how many keys are valid',
+      canManage: 'boolean — Add a device and Revoke can be offered: this computer keeps the master key of the identity',
+      error: 'string — why the last read failed, or empty',
+    },
+    actions: {
+      refresh: '(): reads the device list again',
+      addDevice:
+        '(): adds a device — the backend asks the person wherever it keeps the master key (on the desktop: the offer link and QR code, then the match code, then the confirmation that signs it). Resolves with the outcome; the list is read again',
+      revoke:
+        '(keyId: string): revokes that device key, once the person confirms it where the master key is kept. Resolves with the outcome',
+    },
+  },
   workflowStore: {
     state: {
       available:
@@ -2072,7 +2167,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   interpretationStore: {
     state: {
       activity:
-        'InterpretationActivityView[] — every extraction pass this agent knows about, its own and its peers’, running first then most recent. Each row carries display-ready strings: `label` is a whole clause ("Anna is waiting on the model", "Extracted 3 records"), `elapsed` is `m:ss` while running and empty once settled, `name`/`avatar`/`runner` identify who is running it, and `mine` says whether it is this agent’s. Only a row with `mine` carries `prompt`/`response` — a peer’s exchange is never sent live; read it from the call’s `ExtractionPass` records once the pass settles — so gate a details affordance on `hasDetail`',
+        'InterpretationActivityView[] — every extraction pass this agent knows about, its own and its peers’, running first then most recent. Each row carries display-ready strings: `label` is a whole clause ("Anna is waiting on the model", "Extracted 3 records"), `elapsed` is `m:ss` while running and empty once settled, `name`/`avatar`/`runner` identify who is running it, and `mine` says whether it is this agent’s. Only a row with `mine` carries `prompt`/`response` — a peer’s exchange is never sent live; read it from the call’s extraction runs (`ModelRun` records under `runs`) once the pass settles — so gate a details affordance on `hasDetail`',
       runningCount:
         'number — how many passes are still in flight. What a collapsed "N extractions running" summary counts',
       hasActivity:

@@ -62,15 +62,15 @@ const RELEASE_MS = 0;
  * see the module comment for what that keeps.
  */
 export function placeNode(parent: HTMLElement, node: HTMLElement): void {
-  const move = (parent as HTMLElement & { moveBefore?: (node: Node, child: Node | null) => void }).moveBefore;
+  const movable = parent as HTMLElement & { moveBefore?: (node: Node, child: Node | null) => void };
   if (
-    typeof move === 'function' &&
+    typeof movable.moveBefore === 'function' &&
     parent.isConnected &&
     node.isConnected &&
     parent.ownerDocument === node.ownerDocument
   ) {
     try {
-      move.call(parent, node, null);
+      movable.moveBefore(node, null);
       return;
     } catch {
       // A move the browser refuses (a node from another document) falls back to the plain one.

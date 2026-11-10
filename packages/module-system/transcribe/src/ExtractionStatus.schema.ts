@@ -39,7 +39,7 @@ import { VIEWING_LIVE_EXPR } from './subject';
  * How big the leading glyph is, whichever glyph it happens to be.
  *
  * Stated once and applied to both, because the spinner and the icon are swapped in place when a
- * pass settles. `we-icon` left unsized falls back to something larger than `we-spinner` resolves
+ * pass settles. `we-icon` left unsized falls back to something larger than the spinner resolves
  * for the same token, so the row grew by a few pixels at the exact moment the pass completed — a
  * twitch on every row, in a bar that is meant to be glanceable.
  *
@@ -69,7 +69,7 @@ const phaseIcon: SchemaNode = {
   type: '$if',
   props: {
     condition: { $: 'pass.running' },
-    then: { type: 'we-spinner', props: { size: GLYPH_SIZE } },
+    then: { type: 'we-animated-icon', props: { name: 'spinner', size: GLYPH_SIZE } },
     else: {
       type: 'we-icon',
       props: {
@@ -239,7 +239,7 @@ export function codePane(options: {
    * What identifies the row this pane belongs to, in the `$localState` set.
    *
    * The live bar keys on `pass.passId`, the processor id its rows are built around. The durable
-   * history renders `ExtractionPass` *records*, which have an ordinary record id and no passId at
+   * history renders extraction `ModelRun` *records*, which have an ordinary record id and no passId at
    * all — so the key is a parameter rather than the constant it started as. Both halves of the
    * exchange are then read and displayed the same way whichever list they are in, which is the
    * whole point of the manual and automatic passes now being stored alike.
@@ -487,7 +487,7 @@ const runningList: SchemaNode = {
 
   It collapsed every finished pass behind a count so the bar stayed the size of what was happening
   now — the right shape while this was the only place a finished pass was reported. It stopped being
-  that when every pass, one-shot and watched alike, started being written down as an `ExtractionPass`
+  that when every pass, one-shot and watched alike, started being written down as an extraction `ModelRun`
   and listed under "Logs" in this same panel: two lists of the same rows a few hundred pixels apart,
   neither saying which was which.
 
@@ -525,7 +525,7 @@ const activityLocalState = {
   /*
     There was a `historyOpen` here, folding this readout's own list of finished passes.
 
-    It went with the list. Every pass is written down as an `ExtractionPass` and read back under
+    It went with the list. Every pass is written down as an extraction `ModelRun` and read back under
     "Logs" in the panel, so the settled half of this feed was the same rows again a few hundred
     pixels away; what is left is a pass *while it runs*, which is never a list long enough to fold.
     The field outlived the thing it opened and nothing read it — declared state that no expression
@@ -569,7 +569,7 @@ export const extractionActivity: SchemaNode = {
     opened from a link it listed the live call's passes above that call's records, and nothing said
     they were about different conversations.
 
-    What a *past* call did is a different question with a different answer: `ExtractionPass` records,
+    What a *past* call did is a different question with a different answer: extraction `ModelRun` records,
     which are written down and hang off the collection. See `extractionHistory`.
   */
   props: {
@@ -579,7 +579,7 @@ export const extractionActivity: SchemaNode = {
       `hasActivity` counts settled rows too — deliberately, so a readout gated on it did not vanish
       the instant a pass finished and take its result with it. That was right while this was the only
       place a finished pass was reported. It is not any more: every pass, one-shot and watched alike,
-      is now written down as an `ExtractionPass` and listed under "Logs" in the same panel, so the
+      is now written down as an extraction `ModelRun` and listed under "Logs" in the same panel, so the
       settled half of this feed was the same passes again a few hundred pixels higher, with no
       heading to say which list was which.
 
@@ -597,7 +597,7 @@ export const extractionActivity: SchemaNode = {
       },
       /*
         No footnote about a peer's row not opening: a peer's exchange is never sent live, and every
-        member reads it from the call's `ExtractionPass` record once the pass settles.
+        member reads it from the call's extraction `ModelRun` once the pass settles.
       */
       children: [runningList],
     },

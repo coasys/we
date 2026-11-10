@@ -129,7 +129,7 @@ function resolvePalette() {
     most of them, and would make this break on whichever theme was chosen rather than on all of them.
   */
   const p = THEME_PRESETS[ICON_THEME].parameters as ThemeParameters;
-  const polarity = (p.polarity ?? 'light') as 'light' | 'dark';
+  const polarity = p.polarity ?? 'light';
   const floor = parseFloat(String(p.lightnessFloor ?? '0%'));
   const ceiling = parseFloat(String(p.lightnessCeiling ?? '100%'));
   const hue = p.accentHue ?? 288;
@@ -267,7 +267,9 @@ const WINDOW_ICON_MAX = 256;
 
 function assertTauriIconOrder() {
   const confPath = join(REPO, 'apps', 'we-tauri', 'src-tauri', 'tauri.conf.json');
-  const icons: string[] = JSON.parse(readFileSync(confPath, 'utf8')).bundle?.icon ?? [];
+  const conf: unknown = JSON.parse(readFileSync(confPath, 'utf8'));
+  const listed = (conf as { bundle?: { icon?: unknown } } | null)?.bundle?.icon;
+  const icons = Array.isArray(listed) ? listed.filter((i): i is string => typeof i === 'string') : [];
   const firstPng = icons.find((i) => i.endsWith('.png'));
   if (!firstPng) throw new Error('[brand] tauri.conf.json lists no .png, so Tauri has no window icon to embed.');
 

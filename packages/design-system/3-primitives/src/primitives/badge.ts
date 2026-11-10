@@ -84,7 +84,12 @@ const styles = css`
     white-space: nowrap;
   }
 
-  /* Provide icon sizing context and size-specific padding/gap for slotted we-icon children */
+  /*
+    Provide icon sizing context and size-specific padding/gap for slotted we-icon children.
+
+    Every size sets a gap. Only xs and sm did, and the rest fell back to none, so an md badge put its
+    icon or dot flush against its label.
+  */
   :host([size='xs']) {
     --we-context-icon-size: var(--we-size-xxs);
     --we-badge-size-padding-x: var(--we-space-200);
@@ -98,14 +103,17 @@ const styles = css`
   :host([size='md']) {
     --we-context-icon-size: var(--we-size-sm);
     --we-badge-size-padding-x: var(--we-space-400);
+    --we-badge-size-gap: var(--we-space-200);
   }
   :host([size='lg']) {
     --we-context-icon-size: var(--we-size-md);
     --we-badge-size-padding-x: var(--we-space-500);
+    --we-badge-size-gap: var(--we-space-300);
   }
   :host([size='xl']) {
     --we-context-icon-size: var(--we-size-lg);
     --we-badge-size-padding-x: var(--we-space-500);
+    --we-badge-size-gap: var(--we-space-300);
   }
 
   [part='base'] {

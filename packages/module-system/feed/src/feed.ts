@@ -97,6 +97,21 @@ export interface FeedWindowOptions {
   activityTypes: string[];
   /** Records still awaiting a decision, by id. */
   pending?: ReadonlySet<string>;
+  /**
+   * Whether the answer is no longer wanted — the window moved, or nobody is looking. Asked before
+   * each further step, so a read nobody will draw stops instead of running its call pages against
+   * the executor alongside the read that replaced it. A stopped read rejects with
+   * {@link FeedReadStopped}.
+   */
+  stopped?: () => boolean;
+}
+
+/** What {@link readFeedWindow} rejects with when `stopped` says its answer is no longer wanted. */
+export class FeedReadStopped extends Error {
+  constructor() {
+    super('the feed read was stopped');
+    this.name = 'FeedReadStopped';
+  }
 }
 
 const timeOf = (row: Row | FeedRow | undefined): number => {
@@ -192,6 +207,22 @@ export function groupActivity(
 }
 
 /**
+ * The same rows with each activity item marked by whether it is still a suggestion — so the
+ * suggestions settling re-marks what is on screen rather than reading the window again. A row whose
+ * marks did not move is returned as it was, and so is the list when none did, so nothing redraws.
+ */
+export function markPending(rows: FeedRow[], pending: ReadonlySet<string>): FeedRow[] {
+  let moved = false;
+  const marked = rows.map((row) => {
+    if (row.kind !== 'activity' || row.items.every((item) => item.pending === pending.has(item.id))) return row;
+    moved = true;
+    const items = row.items.map((item) => ({ ...item, pending: pending.has(item.id) }));
+    return { ...row, items, suggested: items.filter((item) => item.pending).length };
+  });
+  return moved ? marked : rows;
+}
+
+/**
  * One window of the Feed: the rows to draw, in the order the window grows (newest first from the
  * live end, oldest first from the start), and whether there is more beyond it.
  */
@@ -224,13 +255,23 @@ export async function readFeedWindow(
       order: { createdAt: order },
       limit: CALL_WINDOW,
     }),
+    /*
+      What extraction found, per kind. No `include`: a row carries `extractedFrom` as the source's
+      id unasked, which is all an activity row reads — its title comes from `calls` above. Including
+      it hydrated the source into every row, and the source is usually a call holding every line said
+      in it: about 18 KB a row, near a megabyte a page, re-read on every refresh.
+    */
     ...options.activityTypes.map((entity) =>
-      find(entity, { within: root, order: { createdAt: order }, limit: shown, include: { extractedFrom: true } }).then(
-        (rows) => rows.map((row) => ({ row, entity })),
+      find(entity, { within: root, order: { createdAt: order }, limit: shown }).then((rows) =>
+        rows.map((row) => ({ row, entity })),
       ),
     ),
   ]);
 
+  const stop = () => {
+    if (options.stopped?.()) throw new FeedReadStopped();
+  };
+  stop();
   const titles = new Map<string, string>(calls.map((call) => [text(call.id), text(call.title) || 'A call']));
   titles.set(root, 'the space');
 
@@ -241,7 +282,7 @@ export async function readFeedWindow(
   for (const call of calls) {
     const sorted = [...lines].sort((a, b) => (fromStart ? timeOf(a) - timeOf(b) : timeOf(b) - timeOf(a)));
     if (sorted.length >= shown) {
-      const edge = timeOf(sorted[shown - 1] as unknown as Row);
+      const edge = timeOf(sorted[shown - 1]);
       const began = timeOf(call);
       // Nothing this call said can reach into a full window — see "When to stop reading calls".
       const outOfReach = fromStart ? began > edge : began + MAX_CALL_SPAN_MS < edge;
@@ -249,6 +290,7 @@ export async function readFeedWindow(
     }
     reachedCalls += 1;
     const callId = text(call.id);
+    stop();
     const said = await find('TextBlock', page(callId));
     if (said.length >= shown) filled = true;
     lines = lines.concat(
@@ -257,9 +299,7 @@ export async function readFeedWindow(
   }
 
   const activity = groupActivity(extracted.flat(), titles, options.pending);
-  const merged: FeedRow[] = [...lines, ...activity].sort((a, b) =>
-    before(timeOf(a as unknown as Row), timeOf(b as unknown as Row)) ? -1 : 1,
-  );
+  const merged: FeedRow[] = [...lines, ...activity].sort((a, b) => (before(timeOf(a), timeOf(b)) ? -1 : 1));
   const hasMore = merged.length > shown || filled || reachedCalls < calls.length || calls.length >= CALL_WINDOW;
   return { rows: merged.slice(0, shown), hasMore };
 }

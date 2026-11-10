@@ -1,6 +1,7 @@
 import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
 import { confirmModal, railGroup, railItem, railShell } from '@we/template-kit';
 
+import { coasysFirstRun } from './firstRun.ts';
 import { COLLAPSED, lockup } from './lockup.ts';
 
 /**
@@ -196,11 +197,20 @@ export const coasysApp: TemplateSchema & { id: string } = {
       type: '$if',
       props: {
         condition: { $: "sessionStore.bootState == 'ready'" },
-        // Out of the way while a panel covers the window, without forgetting what it held.
         then: {
           type: 'Column',
-          props: { styles: { $: "shellStore.panelMaximised ? { display: 'none' } : null" } },
-          children: [rail],
+          props: { display: 'contents' },
+          children: [
+            // Out of the way while a panel covers the window, without forgetting what it held.
+            {
+              type: 'Column',
+              props: { display: { $: "shellStore.panelMaximised ? 'none' : 'flex'" } },
+              children: [rail],
+            },
+            // Not inside the rail's column: the first run covers the whole window, a maximised panel
+            // included, so hiding the rail must not hide the question.
+            coasysFirstRun,
+          ],
         },
       },
     },

@@ -74,6 +74,12 @@ export interface CanvasSeedOptions {
    */
   origin?: string;
   /**
+   * The relation naming what made each record, read onto its card as `madeBy` — WE passes
+   * `generatedBy`, so a card a model wrote can say so. Its id only: a card draws a mark, and the
+   * record behind the id is a press away in the inspector.
+   */
+  madeBy?: string;
+  /**
    * Keep only the records whose `origin` is this — every other card left off, with its lines, as
    * `hidden` leaves them. A reader asking "what came out of Monday's call" and putting the rest
    * away. Needs `origin`; a record with no origin is not from anywhere, so it goes too.
@@ -313,7 +319,7 @@ export function placementStyle(row: Record<string, unknown>): Record<string, Gra
   };
   const text = (key: string, as: string) => {
     // The sentinel is dropped exactly as an empty value is — that is what makes it mean "unset".
-    if (typeof row[key] === 'string' && row[key] && row[key] !== PLACEMENT_UNSET) style[as] = row[key] as string;
+    if (typeof row[key] === 'string' && row[key] && row[key] !== PLACEMENT_UNSET) style[as] = row[key];
   };
   number('width', 'canvasWidth');
   number('height', 'canvasHeight');
@@ -702,13 +708,15 @@ export function canvasSeed(): SeedSource {
         return data;
       };
 
-      /** Where a row came from, as an id — an included record or a bare reference, either way. */
-      const originOf = (row: Record<string, unknown>): string | undefined => {
-        if (!options.origin) return undefined;
-        const value = row[options.origin];
+      /** A relation's target on a row, as an id — an included record or a bare reference, either way. */
+      const idAt = (row: Record<string, unknown>, relation: string | undefined): string | undefined => {
+        if (!relation) return undefined;
+        const value = row[relation];
         const id = typeof value === 'string' ? value : (value as { id?: unknown } | null | undefined)?.id;
         return typeof id === 'string' && id ? id : undefined;
       };
+      /** Where a row came from. */
+      const originOf = (row: Record<string, unknown>): string | undefined => idAt(row, options.origin);
 
       /*
         Rows a row-to-node could make nothing of, counted rather than passed over in silence.
@@ -771,6 +779,7 @@ export function canvasSeed(): SeedSource {
           ...(typeof row.id === 'string' && pending.has(row.id) ? { pending: true } : {}),
           ...(typeof row.id === 'string' && changed.has(row.id) ? { changed: true } : {}),
           ...(originOf(row) ? { origin: originOf(row)! } : {}),
+          ...(idAt(row, options.madeBy) ? { madeBy: idAt(row, options.madeBy)! } : {}),
           ...(at ? { ...at.style, x: at.x, y: at.y } : {}),
         };
         nodes.push({ ...node, data });

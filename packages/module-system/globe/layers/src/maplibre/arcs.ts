@@ -124,7 +124,7 @@ function compile(gl: WebGL2RenderingContext, prelude: string, define: string): W
   const vertex = shader(gl.VERTEX_SHADER, VERTEX(prelude, define));
   const fragment = shader(gl.FRAGMENT_SHADER, FRAGMENT);
   if (!vertex || !fragment) return null;
-  const program = gl.createProgram()!;
+  const program = gl.createProgram();
   gl.attachShader(program, vertex);
   gl.attachShader(program, fragment);
   gl.linkProgram(program);
@@ -322,10 +322,10 @@ export class ArcLayer implements CustomLayerInterface {
         gl.deleteFramebuffer(this.pickTarget.framebuffer);
         gl.deleteTexture(this.pickTarget.texture);
       }
-      const texture = gl.createTexture()!;
+      const texture = gl.createTexture();
       gl.bindTexture(gl.TEXTURE_2D, texture);
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-      const framebuffer = gl.createFramebuffer()!;
+      const framebuffer = gl.createFramebuffer();
       gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
       gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
       this.pickTarget = { framebuffer, texture, width, height };

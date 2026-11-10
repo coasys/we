@@ -1,4 +1,4 @@
-import { DISABLED_OPACITY, scrollbarRules } from '@we/tokens';
+import { DISABLED_OPACITY, MOTION_ATTRIBUTE, scrollbarRules } from '@we/tokens';
 import { css, unsafeCSS } from 'lit';
 
 export default css`
@@ -53,6 +53,38 @@ export default css`
 
   [hidden] {
     display: none !important;
+  }
+
+  /*
+    Less motion, inside the shadow root, where the document's own rule cannot reach.
+
+    The tokens stylesheet stops every animation for somebody who asked for less motion, with a rule
+    on '*' — and a document's '*' does not match inside a shadow root. Transitions were never the
+    problem, since they read the duration tokens and a variable does inherit in; keyframes with a
+    duration of their own were. The spinner's ring, the skeleton's pulse and wave, the typewriter's
+    caret and the markdown shimmer all carried on moving, whichever way it was asked for.
+
+    The same declarations as the document's, so a loop ends after one imperceptible pass and the
+    element shows its resting state. A component whose motion IS its message (a spinner) keeps it
+    with a more specific rule of its own, written beside these two conditions.
+
+    Twice, because there are two ways to ask: the system's preference, which a media query sees from
+    anywhere, and the app's own Motion setting, which is the attribute on the document root and so
+    is only seen through :host-context.
+  */
+  @media (prefers-reduced-motion: reduce) {
+    :host *,
+    :host *::before,
+    :host *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+    }
+  }
+  :host-context([${unsafeCSS(MOTION_ATTRIBUTE)}='reduced']) *,
+  :host-context([${unsafeCSS(MOTION_ATTRIBUTE)}='reduced']) *::before,
+  :host-context([${unsafeCSS(MOTION_ATTRIBUTE)}='reduced']) *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
   }
 
   /*

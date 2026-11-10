@@ -45,6 +45,8 @@ import type {
   ModuleIdentityAccess,
   ModuleKernels,
   ModuleStoreDeps,
+  NotifyOptions,
+  NotifyTone,
   RecordQuery,
   ViewKernel,
 } from '@we/module-shared';
@@ -71,6 +73,8 @@ export interface ModuleHostServices {
    * the address is what survives a reload. So the one thing that reads routes publishes it, once.
    */
   callOnScreen?: () => string | null;
+  /** The space on screen's collection — `spaceStore.root`. Forwarded as `spaceRoot`; see there. */
+  spaceRoot?: () => string;
   /**
    * Name a call record in the address — the write half of `callOnScreen`, bound by the same store.
    * Forwarded to a module as `showCallOnScreen`; see there for when it writes.
@@ -100,7 +104,7 @@ export interface ModuleHostServices {
   interpretation?: InterpretationPort;
   languageModel?: LanguageModelPort;
   /** Where a module's `notify` lands — a toast, in this host. */
-  notify?: (tone: 'success' | 'warning' | 'error', message: string) => void;
+  notify?: (tone: NotifyTone, message: string, options?: NotifyOptions) => void;
   /**
    * Gather a collection's children and interpret them, published by whichever store can read the
    * dataset's models. Separate from `interpretation` because the port takes turns and only the host
@@ -539,9 +543,9 @@ export function createModuleStoreDeps(framework: {
       },
       offeredModel: () => services.transcription?.offeredModel?.() ?? null,
       installOfferedModel: async () => {
-        const install = services.transcription?.installOfferedModel;
-        if (!install) throw new Error('transcription: this backend cannot install a model');
-        return install();
+        const port = services.transcription;
+        if (!port?.installOfferedModel) throw new Error('transcription: this backend cannot install a model');
+        return port.installOfferedModel();
       },
     },
 
@@ -666,11 +670,12 @@ export function createModuleStoreDeps(framework: {
 
     dataset: tracked(() => services.dataset?.() ?? null),
     datasetUri: tracked(() => services.datasetUri?.() ?? null),
+    spaceRoot: tracked(() => services.spaceRoot?.() ?? ''),
     callOnScreen: tracked(() => services.callOnScreen?.() ?? null),
     showCallOnScreen: (recordId, datasetUri) => services.showCallOnScreen?.(recordId, datasetUri),
     datasetRefKey: tracked(() => services.datasetRefKey?.() ?? ''),
     selfId: tracked(() => services.selfId?.() ?? null),
-    notify: (tone, message) => services.notify?.(tone, message),
+    notify: (tone, message, options) => services.notify?.(tone, message, options),
     datasets: {
       get: (uri) => services.datasets?.get(uri),
       open: (uri) => services.datasets?.open(uri),

@@ -88,7 +88,7 @@ export function createCollabSession(
   nodeId: string,
   options: CollabSessionOptions = {},
 ): CollabSession | null {
-  const scope = ephemeral(dataset as never);
+  const scope = ephemeral(dataset);
   if (!scope) return null;
 
   const channel = scope.channel(`we:collab:${nodeId}`);
