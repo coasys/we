@@ -38,13 +38,20 @@ fn a_first_make_keeps_a_new_secret_and_every_call_after_answers_the_same_one() {
     ));
 
     let made = secret_of(storage_secret::answer(&store, &name, Mode::Make));
-    assert!(storage_secret::is_secret_hex(&made), "{} characters", made.len());
+    assert!(
+        storage_secret::is_secret_hex(&made),
+        "{} characters",
+        made.len()
+    );
     assert_eq!(*made, made.to_ascii_lowercase());
     // What the keyring holds is the 64 hex characters the executor takes.
     assert_eq!(store.get(&name).unwrap().unwrap(), made.as_bytes());
 
     for mode in [Mode::Read, Mode::Make] {
-        assert_eq!(*secret_of(storage_secret::answer(&store, &name, mode)), *made);
+        assert_eq!(
+            *secret_of(storage_secret::answer(&store, &name, mode)),
+            *made
+        );
     }
 }
 
@@ -140,7 +147,10 @@ fn a_keyring_that_refuses_is_answered_by_kind_and_nothing_is_written() {
     let cases: [(MakeError, &str); 4] = [
         (keyring_locked, "locked"),
         (|| VaultError::Cancelled, "locked"),
-        (|| no_keyring("Secret Service: no such service"), "unavailable"),
+        (
+            || no_keyring("Secret Service: no such service"),
+            "unavailable",
+        ),
         (
             || VaultError::Unavailable("Secret Service: its thread ended".into()),
             "failed",
@@ -191,9 +201,15 @@ fn a_storage_passphrase_derives_the_same_secret_for_the_same_folder_and_another_
         passphrase: Zeroizing::new("correct horse battery staple".into()),
         confirm: None,
     };
-    let a1 = secret_of(storage_secret::answer_passphrase(&line, &id_a, false, CHEAP));
-    let a2 = secret_of(storage_secret::answer_passphrase(&line, &id_a, false, CHEAP));
-    let b = secret_of(storage_secret::answer_passphrase(&line, &id_b, false, CHEAP));
+    let a1 = secret_of(storage_secret::answer_passphrase(
+        &line, &id_a, false, CHEAP,
+    ));
+    let a2 = secret_of(storage_secret::answer_passphrase(
+        &line, &id_a, false, CHEAP,
+    ));
+    let b = secret_of(storage_secret::answer_passphrase(
+        &line, &id_b, false, CHEAP,
+    ));
     assert!(storage_secret::is_secret_hex(&a1));
     assert_eq!(*a1, *a2);
     assert_ne!(*a1, *b);
@@ -204,7 +220,9 @@ fn a_storage_passphrase_derives_the_same_secret_for_the_same_folder_and_another_
         confirm: None,
     };
     assert_eq!(
-        *secret_of(storage_secret::answer_passphrase(&wide, &id_a, false, CHEAP)),
+        *secret_of(storage_secret::answer_passphrase(
+            &wide, &id_a, false, CHEAP
+        )),
         *a1
     );
 }
@@ -296,7 +314,8 @@ fn the_arguments_name_the_mode_and_the_folder_or_the_keyring_id() {
 
 #[test]
 fn the_passphrase_line_is_read_from_json() {
-    let mut input = std::io::Cursor::new(b"{\"passphrase\":\"words\",\"confirm\":\"words\"}\n".to_vec());
+    let mut input =
+        std::io::Cursor::new(b"{\"passphrase\":\"words\",\"confirm\":\"words\"}\n".to_vec());
     let line = storage_secret::read_passphrase_line(&mut input).unwrap();
     assert_eq!(line.passphrase.as_str(), "words");
     assert_eq!(line.confirm.as_deref().map(String::as_str), Some("words"));
