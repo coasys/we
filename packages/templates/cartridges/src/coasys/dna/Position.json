@@ -1,0 +1,49 @@
+{
+  "target_class": "conv://Position",
+  "interpretation_hint": "A view one participant states on a topic: a proposal, support, doubt or objection. Write the view in the field `statement` (never `title`). Every participant who says something substantive about a topic gets their own Position, so a topic discussed by three people usually has two to four Positions. Always link it to its DiscussionTopic with `about`.",
+  "properties": [
+    {
+      "path": "conv://statement",
+      "name": "statement",
+      "datatype": "xsd://string",
+      "min_count": 1,
+      "max_count": 1,
+      "writable": true,
+      "interpretation_hint": "The view in one sentence, in the speaker's terms.",
+      "setter": [{ "action": "setSingleTarget", "source": "this", "predicate": "conv://statement", "target": "value" }],
+      "identity": true
+    },
+    {
+      "path": "conv://holder",
+      "name": "holder",
+      "datatype": "xsd://string",
+      "min_count": 0,
+      "max_count": 1,
+      "writable": true,
+      "interpretation_hint": "The participant's name exactly as in the transcript's `speaker` field. If every turn has the same speaker (one recording without speaker labels), infer the person from the content: who is addressed by name, who says 'I will' about their own work; write 'unknown' if you cannot tell.",
+      "setter": [{ "action": "setSingleTarget", "source": "this", "predicate": "conv://holder", "target": "value" }]
+    },
+    {
+      "path": "conv://stance",
+      "name": "stance",
+      "datatype": "xsd://string",
+      "min_count": 0,
+      "max_count": 1,
+      "writable": true,
+      "interpretation_hint": "One of: proposes, supports, questions, objects.",
+      "setter": [{ "action": "setSingleTarget", "source": "this", "predicate": "conv://stance", "target": "value" }]
+    },
+    {
+      "path": "conv://about",
+      "name": "about",
+      "min_count": 0,
+      "max_count": 1,
+      "writable": true,
+      "interpretation_hint": "The DiscussionTopic this position is about.",
+      "setter": [{ "action": "setSingleTarget", "source": "this", "predicate": "conv://about", "target": "value" }],
+      "relation_kind": "hasOne",
+      "target_class_name": "DiscussionTopic",
+      "node_kind": "IRI"
+    }
+  ]
+}

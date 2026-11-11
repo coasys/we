@@ -1,0 +1,39 @@
+{
+  "target_class": "conv://Question",
+  "interpretation_hint": "A question the group raises and leaves open: something they say they do not know yet or must decide later. Not rhetorical questions and not questions answered a few turns later. Write it in the field `text`.",
+  "properties": [
+    {
+      "path": "conv://text",
+      "name": "text",
+      "datatype": "xsd://string",
+      "min_count": 1,
+      "max_count": 1,
+      "writable": true,
+      "interpretation_hint": "The question, phrased as a question.",
+      "setter": [{ "action": "setSingleTarget", "source": "this", "predicate": "conv://text", "target": "value" }],
+      "identity": true
+    },
+    {
+      "path": "conv://askedBy",
+      "name": "askedBy",
+      "datatype": "xsd://string",
+      "min_count": 0,
+      "max_count": 1,
+      "writable": true,
+      "interpretation_hint": "Name of the participant who raised it, as in `speaker`.",
+      "setter": [{ "action": "setSingleTarget", "source": "this", "predicate": "conv://askedBy", "target": "value" }]
+    },
+    {
+      "path": "conv://about",
+      "name": "about",
+      "min_count": 0,
+      "max_count": 1,
+      "writable": true,
+      "interpretation_hint": "The DiscussionTopic the question belongs to.",
+      "setter": [{ "action": "setSingleTarget", "source": "this", "predicate": "conv://about", "target": "value" }],
+      "relation_kind": "hasOne",
+      "target_class_name": "DiscussionTopic",
+      "node_kind": "IRI"
+    }
+  ]
+}
