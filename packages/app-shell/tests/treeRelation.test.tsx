@@ -503,6 +503,35 @@ describe('a tree drop on a model relation', () => {
     expect(world.posts.get('p1')?.author).toBe('a1');
   });
 
+  it('undo of a move across classes restores the old field, not the new one', async () => {
+    /*
+      `t2` hangs under `t1` by `subTopicOf`; the wildcard move to an AgendaItem writes
+      `agendaItem` — a different field, a different class. An undo that replays the new write
+      with the old parent writes a DiscussionTopic's id into an AgendaItem's field and leaves
+      `subTopicOf` empty — both links lost, one of them corrupt. The entry has to clear what it
+      wrote *and* restore what it cleared, through the two writes they each went by.
+    */
+    const store = mount();
+    await store.arrangeOnTree(CANVAS, 'rel:*', {
+      recordId: 't2',
+      recordType: 'DiscussionTopic',
+      into: 'child',
+      targetId: 'a1',
+      targetType: 'AgendaItem',
+      order: ['t2'],
+    });
+    expect(world.topics.get('t2')?.agendaItem).toBe('a1');
+    expect(world.topics.get('t2')?.subTopicOf).toBeFalsy();
+
+    await store.undoCanvas(CANVAS);
+    expect(world.topics.get('t2')?.subTopicOf).toBe('t1');
+    expect(world.topics.get('t2')?.agendaItem).toBeFalsy();
+
+    await store.redoCanvas(CANVAS);
+    expect(world.topics.get('t2')?.agendaItem).toBe('a1');
+    expect(world.topics.get('t2')?.subTopicOf).toBeFalsy();
+  });
+
   it('rewrites the pointer the card hangs by, not the first of the right class', async () => {
     /*
       Two pointers at the same class — `about` and `regarding`, both → DiscussionTopic — and a

@@ -1960,64 +1960,82 @@ export function RecordStoreProvider(props: ParentProps) {
    *
    * The same shape and the same rule: replayed forwards, each half applied only when the link is
    * still where this entry left it, so a card a peer has moved since is left where they put it.
-   * `write` says which side of the relation the move went through, since that is what the check
-   * re-reads and what the write re-applies.
+   * `write` says which side of the relation the move went through; `oldWrite` the side the link
+   * it replaced went through — the same when a reparent stays on one property, a different
+   * field on a different class when it does not. Both are needed: an undo clears what the move
+   * wrote *and* restores what it cleared.
    */
   function rememberRelationDrop(
     canvas: string,
     handle: unknown,
     card: { id: string; type: string },
     write: { side: 'child'; type: string; prop: string } | { side: 'parent'; type: string; prop: string },
+    oldWrite: { side: 'child'; type: string; prop: string } | { side: 'parent'; type: string; prop: string },
     from: { id: string; type: string } | null,
     to: { id: string; type: string } | null,
     ranks: StyleChange[],
   ): void {
     if (!canvas || (!from && !to && !ranks.length)) return;
     /*
-      Where the card hangs *now*, re-read rather than assumed — the same "only if still there" check
-      the connection steps make. A parent-side write names the holder of the list; a child-side one
-      reads the card's own field.
+      Where the card hangs through `via`, re-read rather than assumed — the same "only if still
+      there" check the connection steps make. A parent-side write names the holder of the list; a
+      child-side one reads the card's own field.
     */
-    const currentParent = async (): Promise<string> => {
-      if (write.side === 'child') {
-        const record = (await entityClass(write.type, handle).findOne(handle, {
+    const currentParent = async (via: typeof write): Promise<string> => {
+      if (via.side === 'child') {
+        const record = (await entityClass(via.type, handle).findOne(handle, {
           where: { id: card.id },
         } as never)) as Record<string, unknown> | null;
-        return relationIdsOf(record, write.prop)[0] ?? '';
+        return relationIdsOf(record, via.prop)[0] ?? '';
       }
-      const rows = (await entityClass(write.type, handle).findAll(handle, {
-        include: { [write.prop]: true },
+      const rows = (await entityClass(via.type, handle).findAll(handle, {
+        include: { [via.prop]: true },
       } as never)) as unknown as Record<string, unknown>[];
       for (const row of rows) {
-        if (relationIdsOf(row, write.prop).includes(card.id)) return String(row.id);
+        if (relationIdsOf(row, via.prop).includes(card.id)) return String(row.id);
       }
       return '';
+    };
+    /*
+      Out of the link `via` spells — the half an undo/redo has to clear before it writes the
+      other. A to-one's setter would overwrite anyway, but a parent's list does not vacate on
+      add: skip only the detach a re-attach to the same list would undo again anyway.
+    */
+    const detach = async (via: typeof write, stayingUnder?: string): Promise<void> => {
+      if (via.side === 'parent') {
+        const currentId = await currentParent(via);
+        if (currentId && currentId !== stayingUnder) {
+          await entityClass(via.type, handle).removeRelation(handle, currentId, via.prop, card.id);
+        }
+        return;
+      }
+      await writeTreeRelation(handle, via, card.id, null);
     };
     // A reorder among the same siblings moved no link, and replaying one would add the card to a
     // parent's list a second time.
     const moved = (from?.id ?? '') !== (to?.id ?? '');
-    const apply = async (parent: { id: string; type: string } | null) => {
-      // A list does not vacate on add the way a to-one's setter overwrites: out of the list the
-      // card is in first, or an undo of a reparent lands it under both.
-      if (moved && write.side === 'parent') {
-        const currentId = await currentParent();
-        if (currentId && currentId !== parent?.id) {
-          await entityClass(write.type, handle).removeRelation(handle, currentId, write.prop, card.id);
-        }
+    /*
+      `parent` through `via`, the card off `leaving` first. A move between relations of different
+      classes — `about` for `agendaItem`, say — is two links, and an undo that wrote the old
+      parent through the *new* property would point a field at a class it does not join.
+    */
+    const apply = async (parent: { id: string; type: string } | null, via: typeof write, leaving: typeof write) => {
+      if (moved) {
+        await detach(leaving, parent?.id);
+        await writeTreeRelation(handle, via, card.id, parent);
       }
-      if (moved) await writeTreeRelation(handle, write, card.id, parent);
       for (const change of ranks) await stylePlacement(canvas, change.nodeId, change.before, change.after);
     };
     history.push({
       scope: canvas,
       label: !to ? 'take card out of tree' : 'move card in tree',
       undo: async () => {
-        if ((await currentParent()) !== (to?.id ?? '')) return;
-        await apply(from);
+        if ((await currentParent(write)) !== (to?.id ?? '')) return;
+        await apply(from, oldWrite, write);
       },
       redo: async () => {
-        if ((await currentParent()) !== (from?.id ?? '')) return;
-        await apply(to);
+        if ((await currentParent(oldWrite)) !== (from?.id ?? '')) return;
+        await apply(to, write, oldWrite);
       },
     });
   }
@@ -2203,7 +2221,7 @@ export function RecordStoreProvider(props: ParentProps) {
         toastService.info('That field cannot be cleared from the tree — edit the record itself.');
         return;
       }
-      rememberRelationDrop(canvas, handle, { id: cardId, type: cardType }, write, from, null, []);
+      rememberRelationDrop(canvas, handle, { id: cardId, type: cardType }, write, write, from, null, []);
       return;
     }
 
@@ -2279,18 +2297,25 @@ export function RecordStoreProvider(props: ParentProps) {
     // A drop beside its own siblings moves nothing but its place in the row — the ranks below still
     // run, as they do on a connection spine.
     const stays = from?.id === parentId;
+    /*
+      The write the old link came down by, remembered for undo: the same `write` when a reparent
+      stays on one property — a to-one's set is clear enough — and the old prop's own write plan
+      when the move crosses to a different field, possibly on a different class.
+    */
+    let oldWrite = write;
     // Off the old parent first — a to-one's set would overwrite it anyway, a parent's list would not.
     if (from && !stays && !(write.side === 'child' && held!.prop.name === write.prop)) {
-      const oldWrite = writePlanFor(named ? named.entity : cardType, held!.prop);
-      if (!oldWrite) {
+      const clearing = writePlanFor(named ? named.entity : cardType, held!.prop);
+      if (!clearing) {
         toastService.info('That relation is derived — it cannot be moved.');
         return;
       }
       // Left where it was rather than hung under two parents when the old link cannot be cleared.
-      if (!(await writeTreeRelation(handle, oldWrite, cardId, null, from.id))) {
+      if (!(await writeTreeRelation(handle, clearing, cardId, null, from.id))) {
         toastService.info('That field cannot be cleared from the tree — edit the record itself.');
         return;
       }
+      oldWrite = clearing;
     }
     if (!stays && !(await writeTreeRelation(handle, write, cardId, { id: parentId, type: parentType }))) return;
 
@@ -2364,6 +2389,7 @@ export function RecordStoreProvider(props: ParentProps) {
       handle,
       { id: cardId, type: cardType },
       write,
+      oldWrite,
       from,
       { id: parentId, type: parentType },
       [...writes].map(([nodeId, rank]) => ({ nodeId, before: { rank: rankOf.get(nodeId) ?? 0 }, after: { rank } })),
