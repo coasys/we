@@ -107,15 +107,15 @@ export interface CanvasSeedOptions {
    * Follow the classes' own declared relations beside `connections` — for a canvas read as a tree.
    *
    * A `Relationship` is a connection somebody drew; a relation a class declares is one the data
-   * already holds — a position's `about`, a topic's `subTopicOf`. With this set, every drawn card's
+   * already holds — a reply's `replyTo`, a note's `partOf`. With this set, every drawn card's
    * typed relations are read and emitted as edges typed `relation`, each carrying `data.relation`
    * naming `Class.property`, so a layout or a picker can take them on their own or beside `relates`.
    *
    * ## Which end is the parent
    *
    * A tree edge means "the parent is above the child". For a relation the data holds, the instance
-   * whose field *points* is the child and the pointed-at instance the parent — a sub-topic's
-   * `subTopicOf` names the topic it hangs under. That is the one case the value is the parent:
+   * whose field *points* is the child and the pointed-at instance the parent — a reply's
+   * `replyTo` names the message it hangs under. That is the one case the value is the parent:
    * a forward to-one. Every other kind reads the other way — a `hasMany` lists what the holder
    * contains, and a `belongsTo`/`reverseOf` reads a link the *other* end owns, so its values are
    * the records pointing at the holder, which are children too. So: forward to-one → each value is
@@ -123,8 +123,8 @@ export interface CanvasSeedOptions {
    *
    * ## Children nobody placed
    *
-   * Extracted items often never get a `Placement` — a call's positions and questions point at a
-   * topic that was placed, but sit in the space rather than on the canvas. With `children` on (the
+   * Extracted items often never get a `Placement` — the records a call's extraction wrote point at
+   * one that was placed, but sit in the space rather than on the canvas. With `children` on (the
    * default), every drawn card is also asked "what points at you", the answers are drawn as unplaced
    * cards — the layout positions them — and the walk repeats down the tree until it stops producing
    * new cards or `max` nodes is hit. Cycle-safe by the same set the canvas dedups with.
@@ -623,7 +623,7 @@ export function canvasSeed(): SeedSource {
       }
       /**
        * Whether the holder is the *child* end of this link — the value it reads is a parent.
-       * True for a forward to-one (`Position.about` names its topic) and for the back-pointer of
+       * True for a forward to-one (`Reply.replyTo` names its message) and for the back-pointer of
        * a parent's to-many (`Comment.respondsTo`); false for a to-many list and for the inverse
        * side of a to-one, which are children read through the holder.
        */
@@ -980,7 +980,7 @@ export function canvasSeed(): SeedSource {
 
         Round-wise, the way the entity expander walks a level: every card the last round produced
         becomes a parent to check, in the two directions a child can arrive by —
-        what points at it through a forward to-one on the *child's* class (`Position.about`), and
+        what points at it through a forward to-one on the *child's* class (`Reply.replyTo`), and
         what it lists through a to-many or `belongsTo` of its own (`Comment.responses`). The former
         batches every parent of a type into one `where` read, the way the connections round batches
         its ends; the latter drills per parent through `scope`, the only spelling of "the children
