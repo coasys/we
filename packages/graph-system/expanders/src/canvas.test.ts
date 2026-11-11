@@ -1623,6 +1623,30 @@ describe('canvasSeed — model relations', () => {
     expect(warnings.some((m) => m.includes('stopped at 2'))).toBe(true);
   });
 
+  it('always leaves the same cards standing when the cap cuts the pull short', async () => {
+    /*
+      `pos2` sits ahead of `pos1` in the table, so a pull that took the rows as they came would
+      draw `pos2` and cap out — an order that was never a choice, and one that shifts whenever
+      the reads resolve differently. Drawn in id order the survivor is `pos1` every time: an
+      arbitrary rule, but the same arbitrary rule on every load.
+    */
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 }],
+      DiscussionTopic: [{ id: 't1', title: 'Roadmap' }],
+      Position: [
+        { id: 'pos2', text: 'b', about: 't1' },
+        { id: 'pos1', text: 'a', about: 't1' },
+      ],
+    });
+
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', relations: { children: true, max: 2 } }, ctx);
+
+    expect(nodes.map((n) => n.id)).toEqual([
+      'we-graph://entity/ds/DiscussionTopic/t1',
+      'we-graph://entity/ds/Position/pos1',
+    ]);
+  });
+
   it('draws a relation and a connection between the same cards without confusing the two', async () => {
     const { context: ctx } = context({
       Placement: [

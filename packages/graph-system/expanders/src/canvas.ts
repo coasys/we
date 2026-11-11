@@ -1113,7 +1113,13 @@ export function canvasSeed(): SeedSource {
             if (options.onlyFrom && originOf(row) !== options.onlyFrom) continue;
             pending.set(id, { entity, row, via });
           }
-          for (const [id, { entity, row, via }] of pending) {
+          /*
+            Drawn in id order rather than the order the reads happened to resolve in: the cap
+            decides who survives, and a choice that varies with promise timing is a different
+            canvas every load. Sorted is arbitrary but stable — the same walk finds the same
+            five hundred.
+          */
+          for (const [id, { entity, row, via }] of [...pending.entries()].sort(([a], [b]) => a.localeCompare(b))) {
             if (nodes.length >= maxNodes) break;
             pending.delete(id);
             const node = rowToNode(
