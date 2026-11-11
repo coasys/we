@@ -1878,6 +1878,12 @@ export function RecordStoreProvider(props: ParentProps) {
    *
    * To-one goes through the record's own accessors rather than the statics, per the record contract:
    * a `setRelation` over a to-one is the guess the contract says an implementation refuses.
+   *
+   * A record without those accessors is the common case for an installed SDNA, not an edge one:
+   * AD4M's `fromSHACL` registers a `max_count: 1` relation as a plain property and generates no
+   * `set`/`add`/`remove` for it. Pointing such a field somewhere is then the static `update` of one
+   * field. Clearing one has no spelling there (`update` skips an empty value), so that is reported
+   * rather than pretended. Answers whether the link was written.
    */
   async function writeTreeRelation(
     handle: unknown,
@@ -1885,14 +1891,14 @@ export function RecordStoreProvider(props: ParentProps) {
     cardId: string,
     parent: { id: string; type: string } | null,
     detachFromId?: string,
-  ): Promise<void> {
+  ): Promise<boolean> {
     if (via.side === 'child') {
       const Model = entityClass(via.type, handle);
       const record = (await Model.findOne(handle, { where: { id: cardId } } as never)) as Record<
         string,
         unknown
       > | null;
-      if (!record) return;
+      if (!record) return false;
       const suffix = via.prop.charAt(0).toUpperCase() + via.prop.slice(1);
       const set = record[`set${suffix}`] as ((v: unknown) => Promise<unknown>) | undefined;
       const add = record[`add${suffix}`] as ((v: unknown) => Promise<unknown>) | undefined;
@@ -1900,22 +1906,24 @@ export function RecordStoreProvider(props: ParentProps) {
       if (parent) {
         if (typeof set === 'function') await set.call(record, parent.id);
         else if (typeof add === 'function') await add.call(record, parent.id);
-        return;
+        else await Model.update(handle, cardId, { [via.prop]: parent.id } as never);
+        return true;
       }
+      if (typeof remove !== 'function' && typeof set !== 'function') return false;
       for (const id of relationIdsOf(record, via.prop)) {
         if (typeof remove === 'function') await remove.call(record, id);
       }
       // Nothing held, or no remove accessor: a setter clears it whole where one exists.
       if (typeof set === 'function') await set.call(record, []);
-      return;
+      return true;
     }
     if (parent) {
       await entityClass(via.type, handle).addRelation(handle, parent.id, via.prop, cardId);
-      return;
+      return true;
     }
     if (detachFromId) {
       await entityClass(via.type, handle).removeRelation(handle, detachFromId, via.prop, cardId);
-      return;
+      return true;
     }
     // A detach naming no holder: whichever row of the holding class lists the card — the only
     // spelling of "who names me" a parent-side relation leaves.
@@ -1927,6 +1935,7 @@ export function RecordStoreProvider(props: ParentProps) {
         await entityClass(via.type, handle).removeRelation(handle, row.id, via.prop, cardId);
       }
     }
+    return true;
   }
 
   /**
@@ -1967,16 +1976,19 @@ export function RecordStoreProvider(props: ParentProps) {
       }
       return '';
     };
+    // A reorder among the same siblings moved no link, and replaying one would add the card to a
+    // parent's list a second time.
+    const moved = (from?.id ?? '') !== (to?.id ?? '');
     const apply = async (parent: { id: string; type: string } | null) => {
       // A list does not vacate on add the way a to-one's setter overwrites: out of the list the
       // card is in first, or an undo of a reparent lands it under both.
-      if (write.side === 'parent') {
+      if (moved && write.side === 'parent') {
         const currentId = await currentParent();
         if (currentId && currentId !== parent?.id) {
           await entityClass(write.type, handle).removeRelation(handle, currentId, write.prop, card.id);
         }
       }
-      await writeTreeRelation(handle, write, card.id, parent);
+      if (moved) await writeTreeRelation(handle, write, card.id, parent);
       for (const change of ranks) await stylePlacement(canvas, change.nodeId, change.before, change.after);
     };
     history.push({
@@ -2145,7 +2157,10 @@ export function RecordStoreProvider(props: ParentProps) {
         return;
       }
       const from = { id: held.parentId, type: held.parentType };
-      await writeTreeRelation(handle, write, cardId, null);
+      if (!(await writeTreeRelation(handle, write, cardId, null))) {
+        toastService.info('That field cannot be cleared from the tree — edit the record itself.');
+        return;
+      }
       rememberRelationDrop(canvas, handle, { id: cardId, type: cardType }, write, from, null, []);
       return;
     }
@@ -2212,17 +2227,23 @@ export function RecordStoreProvider(props: ParentProps) {
     }
 
     const from = held ? { id: held.parentId, type: held.parentType } : null;
-    if (from?.id === parentId && (named === undefined || held!.prop.name === write.prop)) return;
+    // A drop beside its own siblings moves nothing but its place in the row — the ranks below still
+    // run, as they do on a connection spine.
+    const stays = from?.id === parentId;
     // Off the old parent first — a to-one's set would overwrite it anyway, a parent's list would not.
-    if (from && !(write.side === 'child' && held!.prop.name === write.prop)) {
+    if (from && !stays && !(write.side === 'child' && held!.prop.name === write.prop)) {
       const oldWrite = writePlanFor(named ? named.entity : cardType, held!.prop);
       if (!oldWrite) {
         toastService.info('That relation is derived — it cannot be moved.');
         return;
       }
-      await writeTreeRelation(handle, oldWrite, cardId, null, from.id);
+      // Left where it was rather than hung under two parents when the old link cannot be cleared.
+      if (!(await writeTreeRelation(handle, oldWrite, cardId, null, from.id))) {
+        toastService.info('That field cannot be cleared from the tree — edit the record itself.');
+        return;
+      }
     }
-    await writeTreeRelation(handle, write, cardId, { id: parentId, type: parentType });
+    if (!stays && !(await writeTreeRelation(handle, write, cardId, { id: parentId, type: parentType }))) return;
 
     /*
       Siblings for the rank row — the children the drop lands beside, under this spine.
@@ -2250,8 +2271,15 @@ export function RecordStoreProvider(props: ParentProps) {
       parent: { id: canvas, relation: 'children', entity: 'CollectionBlock' },
     })) as unknown as { node?: string; rank?: number }[];
     const rankOf = new Map<string, number>();
+    /*
+      Which cards have a placement to hold a rank. A model relation's children are mostly pulled in
+      by the seed and never placed, and a rank written at one of those fails with "drag this onto the
+      canvas first" — once per sibling, on every drop. Their order stays the layout's own.
+    */
+    const placed = new Set<string>();
     for (const row of placements) {
       const rank = Number(row.rank);
+      if (typeof row.node === 'string') placed.add(row.node);
       if (typeof row.node === 'string' && isRank(rank)) rankOf.set(row.node, rank);
     }
     const byRank = (a: string, b: string) => {
@@ -2271,10 +2299,14 @@ export function RecordStoreProvider(props: ParentProps) {
       const beside = row.indexOf(targetId);
       index = event.into === 'child' || beside < 0 ? row.length : beside + (event.before ? 0 : 1);
     }
-    const writes = seatInRow(
-      row.map((id) => ({ id, ...(rankOf.has(id) ? { rank: rankOf.get(id)! } : {}) })),
-      cardId,
-      index,
+    const writes = new Map(
+      [
+        ...seatInRow(
+          row.map((id) => ({ id, ...(rankOf.has(id) ? { rank: rankOf.get(id)! } : {}) })),
+          cardId,
+          index,
+        ),
+      ].filter(([id]) => placed.has(id)),
     );
     for (const [id, rank] of writes) hold(id, { rank });
     for (const [id, rank] of writes) await stylePlacement(canvas, id, { rank });

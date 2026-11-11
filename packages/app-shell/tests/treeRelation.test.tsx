@@ -9,7 +9,8 @@
  * must read back the same way.
  */
 import { render } from '@solidjs/testing-library';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { toastService } from '@we/components/solid';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const CANVAS = 'canvas-1';
 const SPINE = 'rel:Position.about';
@@ -37,6 +38,8 @@ const { world } = vi.hoisted(() => ({
     topics: new Map<string, Topic>(),
     positions: new Map<string, Pos>(),
     rows: new Map<string, Row>(),
+    /** Instances without `set`/`add`/`remove` — how AD4M's `fromSHACL` builds an installed SDNA's to-ones. */
+    bare: false,
   },
 }));
 
@@ -48,7 +51,7 @@ const { TopicModel, PositionModel, AgendaModel } = vi.hoisted(() => {
   type AnyRow = Record<string, unknown> & { id: string };
   const live = (table: Map<string, AnyRow>, row: AnyRow, toOnes: string[]) => {
     const instance = { ...row };
-    for (const prop of toOnes) {
+    for (const prop of world.bare ? [] : toOnes) {
       const suffix = prop.charAt(0).toUpperCase() + prop.slice(1);
       instance[`set${suffix}`] = async (value: unknown) => {
         const one = Array.isArray(value) ? value[0] : value;
@@ -75,6 +78,13 @@ const { TopicModel, PositionModel, AgendaModel } = vi.hoisted(() => {
     findOne: async (_p: unknown, query: { where: { id: string } }) => {
       const row = table.get(query.where.id);
       return row ? live(table, row, toOnes) : null;
+    },
+    update: async (_p: unknown, id: string, patch: Record<string, unknown>) => {
+      const row = table.get(id);
+      if (!row) return null;
+      // Ad4mModel's update skips an empty value: it can point a field somewhere, never clear it.
+      for (const [field, value] of Object.entries(patch)) if (value !== '' && value != null) row[field] = value;
+      return row;
     },
     addRelation: async () => {},
     removeRelation: async () => {},
@@ -234,6 +244,7 @@ beforeEach(() => {
   world.topics.clear();
   world.positions.clear();
   world.rows.clear();
+  world.bare = false;
   world.topics.set('t1', { id: 't1', title: 'Roadmap' });
   world.topics.set('t2', { id: 't2', title: 'Q3', subTopicOf: 't1' });
   world.positions.set('pos1', { id: 'pos1', text: 'Ship it', about: 't2' });
@@ -348,4 +359,68 @@ describe('a tree drop on a model relation', () => {
     expect(world.topics.get('t3')?.subTopicOf).toBeUndefined();
     expect(world.topics.get('t3')?.agendaItem).toBeUndefined();
   });
+
+  describe('on an installed SDNA, whose records carry no relation accessors', () => {
+    it('points the field through the static update', async () => {
+      world.bare = true;
+      const store = mount();
+      await store.arrangeOnTree(CANVAS, SPINE, {
+        recordId: 'pos2',
+        recordType: 'Position',
+        into: 'child',
+        targetId: 't1',
+        targetType: 'DiscussionTopic',
+        order: ['pos2'],
+      });
+      expect(aboutOf('pos2')).toBe('t1');
+    });
+
+    it('says it cannot clear the field rather than pretending it did', async () => {
+      world.bare = true;
+      const info = vi.spyOn(toastService, 'info');
+      const store = mount();
+      await store.arrangeOnTree(CANVAS, SPINE, { recordId: 'pos1', recordType: 'Position', into: 'loose' });
+      expect(aboutOf('pos1')).toBe('t2');
+      expect(info).toHaveBeenCalledWith(expect.stringContaining('cannot be cleared'));
+    });
+  });
+
+  it('reorders a card among its own siblings — no link moves, the ranks do', async () => {
+    world.positions.set('pos3', { id: 'pos3', text: 'Later', about: 't2' });
+    world.rows.get('row-pos1')!.rank = 1;
+    place('pos3', 2);
+    const store = mount();
+    await store.arrangeOnTree(CANVAS, SPINE, {
+      recordId: 'pos3',
+      recordType: 'Position',
+      into: 'sibling',
+      targetId: 'pos1',
+      targetType: 'Position',
+      before: true,
+      order: ['pos3', 'pos1'],
+    });
+    expect(aboutOf('pos3')).toBe('t2');
+    expect(world.rows.get('row-pos3')!.rank!).toBeLessThan(world.rows.get('row-pos1')!.rank!);
+  });
+
+  it('writes no rank at a sibling the seed pulled in rather than anybody placed', async () => {
+    // The usual case for extracted items: pos1 hangs under t2 by its field and has no placement.
+    world.rows.delete('row-pos1');
+    const error = vi.spyOn(toastService, 'error');
+    const store = mount();
+    await store.arrangeOnTree(CANVAS, SPINE, {
+      recordId: 'pos2',
+      recordType: 'Position',
+      into: 'child',
+      targetId: 't2',
+      targetType: 'DiscussionTopic',
+      order: ['pos1', 'pos2'],
+    });
+    expect(aboutOf('pos2')).toBe('t2');
+    expect(error).not.toHaveBeenCalled();
+  });
+});
+
+afterEach(() => {
+  vi.restoreAllMocks();
 });
