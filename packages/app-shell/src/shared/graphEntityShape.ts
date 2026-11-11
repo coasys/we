@@ -35,6 +35,11 @@ export function toEntityShape(entry: EntityManifestEntry): EntityShape {
         name: property.name,
         target: property.relatedEntity ?? '',
         cardinality: property.isCollection ? 'many' : 'one',
+        // A `belongsTo`/`reverseOf` reads a link the other end owns — the direction matters to
+        // anything that has to know which side of the edge is the holder, so carry it through,
+        // and the forward property's name with it: that is the field a write of this link goes to.
+        ...(property.reverse ? { reverse: true } : {}),
+        ...(property.reverseOf ? { reverseOf: property.reverseOf } : {}),
       });
     } else {
       properties.push({

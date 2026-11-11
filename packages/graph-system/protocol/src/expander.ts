@@ -155,8 +155,25 @@ export interface EntityShape {
   name: string;
   /** Scalar fields, in declaration order. */
   properties: { name: string; type: 'string' | 'number' | 'boolean' | 'uri'; required?: boolean }[];
-  /** Typed relations — the edges of a schema-derived graph. */
-  relations: { name: string; target: string; cardinality: 'one' | 'many' }[];
+  /**
+   * Typed relations — the edges of a schema-derived graph.
+   *
+   * `reverse` marks a `belongsTo`/`reverseOf` relation: the link is owned by the *target* side and
+   * this property reads it back, so the value is the record that holds the pointer. An ordinary
+   * `hasOne`/`hasMany` (or one not marked) stores the link on the instance itself.
+   *
+   * `reverseOf`, where the model names it, is the forward property the other end writes — needed
+   * to say which way round a `reverse` link runs (a child's back-pointer to its parent and a
+   * parent's inverse view of a to-one are both `reverse` to-ones) and to write the link at all,
+   * since a `reverse` read has no setter of its own.
+   */
+  relations: {
+    name: string;
+    target: string;
+    cardinality: 'one' | 'many';
+    reverse?: boolean;
+    reverseOf?: string;
+  }[];
   /**
    * The property that names an instance — what a node is captioned with.
    *

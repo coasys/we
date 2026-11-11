@@ -88,6 +88,51 @@ const SHAPES: EntityShape[] = [
     ],
     relations: [{ name: 'node', target: '', cardinality: 'one' }],
   },
+  // A subject-class model the way extracted records arrive: every link is a typed relation on the
+  // instances themselves, and no `Relationship` rows exist for any of it.
+  {
+    name: 'DiscussionTopic',
+    identityProperty: 'title',
+    properties: [{ name: 'title', type: 'string' }],
+    relations: [
+      { name: 'agendaItem', target: 'AgendaItem', cardinality: 'one' },
+      { name: 'subTopicOf', target: 'DiscussionTopic', cardinality: 'one' },
+    ],
+  },
+  {
+    name: 'AgendaItem',
+    identityProperty: 'title',
+    properties: [{ name: 'title', type: 'string' }],
+    relations: [],
+  },
+  {
+    name: 'Position',
+    identityProperty: 'text',
+    properties: [{ name: 'text', type: 'string' }],
+    relations: [{ name: 'about', target: 'DiscussionTopic', cardinality: 'one' }],
+  },
+  // A parent-held list: `Thread.posts` names its children, so the children carry the foreign key
+  // (`__Thread_posts`, the way the backend stores it) and are found through a `scope` read.
+  {
+    name: 'Thread',
+    identityProperty: 'title',
+    properties: [{ name: 'title', type: 'string' }],
+    relations: [{ name: 'posts', target: 'Post', cardinality: 'many' }],
+  },
+  {
+    name: 'Post',
+    identityProperty: 'text',
+    properties: [{ name: 'text', type: 'string' }],
+    relations: [],
+  },
+  // A reverse (belongsTo) relation: the inverse side, whose values are the records pointing at the
+  // holder — children, found the same `scope` way as a held list.
+  {
+    name: 'Author',
+    identityProperty: 'name',
+    properties: [{ name: 'name', type: 'string' }],
+    relations: [{ name: 'posts', target: 'Post', cardinality: 'many', reverse: true }],
+  },
 ];
 
 /**
@@ -117,8 +162,11 @@ function answer(
           Array.isArray(expected) ? expected.includes(row[field]) : row[field] === expected,
         ),
       );
-    } else if (request.scope?.anchorId !== canvas) {
-      rows = [];
+    } else if (request.scope && request.scope.anchorId !== canvas) {
+      // A scope read past the canvas is a relation pull: the children the anchor names through
+      // `via`, which the backend keeps as a foreign key on the child's own row.
+      const { anchor, via, anchorId } = request.scope;
+      rows = rows.filter((row) => row[`__${anchor}_${via}`] === anchorId || row[via] === anchorId);
     }
     // A placement's `node` is an untyped to-one, so an include reads it as whatever kind it is.
     if (withCards && entity === 'Placement') rows = rows.map((row) => ({ ...row, node: cardFor(tables, row.node) }));
@@ -1417,5 +1465,169 @@ describe('a canvas over another record’s members', () => {
     const { nodes } = await canvasSeed().seed({ ...options, onlyFrom: 'call-1' }, ctx);
 
     expect(nodes.map((n) => n.label)).toEqual(['Loose']);
+  });
+});
+
+/**
+ * The model-relation half of `relations`: the classes' own typed edges, beside the connections.
+ *
+ * The rule being kept is the template's direction rule — the record that *holds* a to-one pointer
+ * is the child of the record it points at — because that is what makes an extracted call's fields
+ * (`Position.about`, `DiscussionTopic.subTopicOf`) draw as the agenda they describe rather than
+ * upside down.
+ */
+describe('canvasSeed — model relations', () => {
+  const topic = (id: string) => `we-graph://entity/ds/DiscussionTopic/${id}`;
+  const position = (id: string) => `we-graph://entity/ds/Position/${id}`;
+
+  it('draws a forward to-one as parent → child: the record holding the pointer is the child', async () => {
+    const { context: ctx } = context({
+      Placement: [
+        { id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 },
+        { id: 'p2', node: 'pos1', nodeType: 'Position', x: 10, y: 0 },
+      ],
+      DiscussionTopic: [{ id: 't1', title: 'Roadmap' }],
+      Position: [{ id: 'pos1', text: 'Ship it', about: 't1' }],
+    });
+
+    const { edges } = await canvasSeed().seed({ canvas: 'b1', relations: { children: false } }, ctx);
+
+    const edge = edges.find((e) => e.type === 'relation');
+    expect(edge).toBeDefined();
+    expect(edge!.source).toBe(topic('t1'));
+    expect(edge!.target).toBe(position('pos1'));
+    expect(edge!.data).toMatchObject({ relation: 'Position.about', holder: 'pos1', target: 't1', heldByChild: true });
+  });
+
+  it('draws a to-one relation between two topics as the tree the links describe', async () => {
+    const { context: ctx } = context({
+      Placement: [
+        { id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 },
+        { id: 'p2', node: 't2', nodeType: 'DiscussionTopic', x: 0, y: 40 },
+      ],
+      DiscussionTopic: [
+        { id: 't1', title: 'Roadmap' },
+        { id: 't2', title: 'Q3', subTopicOf: 't1' },
+      ],
+    });
+
+    const { edges } = await canvasSeed().seed({ canvas: 'b1', relations: true }, ctx);
+
+    const edge = edges.find((e) => e.type === 'relation');
+    expect(edge).toBeDefined();
+    expect([edge!.source, edge!.target]).toEqual([topic('t1'), topic('t2')]);
+    expect(edge!.data?.relation).toBe('DiscussionTopic.subTopicOf');
+  });
+
+  it('draws nothing extra off — relations is a tree-mode ask, not a freeform one', async () => {
+    const { context: ctx } = context({
+      Placement: [
+        { id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 },
+        { id: 'p2', node: 'pos1', nodeType: 'Position', x: 10, y: 0 },
+      ],
+      DiscussionTopic: [{ id: 't1', title: 'Roadmap' }],
+      Position: [{ id: 'pos1', text: 'Ship it', about: 't1' }],
+    });
+
+    const { edges } = await canvasSeed().seed({ canvas: 'b1' }, ctx);
+
+    expect(edges.filter((e) => e.type === 'relation')).toEqual([]);
+  });
+
+  it('pulls in a child nobody placed, and then whatever points at the child', async () => {
+    // The case the option exists for: the extraction wrote `about`/`subTopicOf` and no placements,
+    // so the topic a person put on the canvas has to bring its whole thread with it.
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 }],
+      DiscussionTopic: [
+        { id: 't1', title: 'Roadmap' },
+        { id: 't2', title: 'Q3', subTopicOf: 't1' },
+      ],
+      Position: [{ id: 'pos1', text: 'Ship it', about: 't2' }],
+    });
+
+    const { nodes, edges } = await canvasSeed().seed({ canvas: 'b1', relations: { children: true } }, ctx);
+
+    expect(nodes.map((n) => n.id)).toEqual(expect.arrayContaining([topic('t1'), topic('t2'), position('pos1')]));
+    // t2 is unplaced: the tree layout positions it, the seed must not invent a coordinate.
+    expect(nodes.find((n) => n.id === topic('t2'))?.data?.x).toBeUndefined();
+    const pairs = edges.filter((e) => e.type === 'relation').map((e) => [e.source, e.target]);
+    expect(pairs).toEqual(
+      expect.arrayContaining([
+        [topic('t1'), topic('t2')],
+        [topic('t2'), position('pos1')],
+      ]),
+    );
+  });
+
+  it('pulls children a parent lists, where the foreign key sits on the child', async () => {
+    // A `hasMany`/`belongsTo` is found by drilling the child table (`scope`) — the parent row's
+    // own field is only a cache of that and not always hydrated.
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'th1', nodeType: 'Thread', x: 0, y: 0 }],
+      Thread: [{ id: 'th1', title: 'Weekly' }],
+      Post: [{ id: 'po1', text: 'notes', __Thread_posts: 'th1' }],
+    });
+
+    const { nodes, edges } = await canvasSeed().seed({ canvas: 'b1', relations: { children: true } }, ctx);
+
+    expect(nodes.map((n) => n.id)).toEqual(
+      expect.arrayContaining(['we-graph://entity/ds/Thread/th1', 'we-graph://entity/ds/Post/po1']),
+    );
+    const edge = edges.find((e) => e.type === 'relation');
+    expect(edge).toBeDefined();
+    expect([edge!.source, edge!.target]).toEqual(['we-graph://entity/ds/Thread/th1', 'we-graph://entity/ds/Post/po1']);
+    expect(edge!.data?.relation).toBe('Thread.posts');
+  });
+
+  it('terminates on a loop in the data rather than walking it forever', async () => {
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 }],
+      DiscussionTopic: [
+        { id: 't1', title: 'One', subTopicOf: 't2' },
+        { id: 't2', title: 'Two', subTopicOf: 't1' },
+      ],
+    });
+
+    const { nodes, edges } = await canvasSeed().seed({ canvas: 'b1', relations: { children: true } }, ctx);
+
+    expect(nodes).toHaveLength(2);
+    expect(edges.filter((e) => e.type === 'relation')).toHaveLength(2);
+  });
+
+  it('stops at the cap and says so, rather than drawing a silent half of the tree', async () => {
+    const { context: ctx, warnings } = context({
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 }],
+      DiscussionTopic: [{ id: 't1', title: 'Roadmap' }],
+      Position: [
+        { id: 'pos1', text: 'a', about: 't1' },
+        { id: 'pos2', text: 'b', about: 't1' },
+        { id: 'pos3', text: 'c', about: 't1' },
+      ],
+    });
+
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', relations: { children: true, max: 2 } }, ctx);
+
+    expect(nodes).toHaveLength(2);
+    expect(warnings.some((m) => m.includes('stopped at 2'))).toBe(true);
+  });
+
+  it('draws a relation and a connection between the same cards without confusing the two', async () => {
+    const { context: ctx } = context({
+      Placement: [
+        { id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 },
+        { id: 'p2', node: 't2', nodeType: 'DiscussionTopic', x: 0, y: 40 },
+      ],
+      DiscussionTopic: [
+        { id: 't1', title: 'One' },
+        { id: 't2', title: 'Two', subTopicOf: 't1' },
+      ],
+      Relationship: [{ id: 'r1', label: 'depends', source: 't1', target: 't2' }],
+    });
+
+    const { edges } = await canvasSeed().seed({ canvas: 'b1', connections: 'Relationship', relations: true }, ctx);
+
+    expect(edges.find((e) => e.type === 'relation')?.data?.relation).toBe('DiscussionTopic.subTopicOf');
+    expect(edges.find((e) => e.type === 'relates')?.reifiedAs).toContain('Relationship');
   });
 });

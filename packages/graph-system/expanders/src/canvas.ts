@@ -104,6 +104,44 @@ export interface CanvasSeedOptions {
    */
   connections?: string;
   /**
+   * Follow the classes' own declared relations beside `connections` — for a canvas read as a tree.
+   *
+   * A `Relationship` is a connection somebody drew; a relation a class declares is one the data
+   * already holds — a position's `about`, a topic's `subTopicOf`. With this set, every drawn card's
+   * typed relations are read and emitted as edges typed `relation`, each carrying `data.relation`
+   * naming `Class.property`, so a layout or a picker can take them on their own or beside `relates`.
+   *
+   * ## Which end is the parent
+   *
+   * A tree edge means "the parent is above the child". For a relation the data holds, the instance
+   * whose field *points* is the child and the pointed-at instance the parent — a sub-topic's
+   * `subTopicOf` names the topic it hangs under. That is the one case the value is the parent:
+   * a forward to-one. Every other kind reads the other way — a `hasMany` lists what the holder
+   * contains, and a `belongsTo`/`reverseOf` reads a link the *other* end owns, so its values are
+   * the records pointing at the holder, which are children too. So: forward to-one → each value is
+   * a parent of the card; `many` or `reverse` → the card is a parent of each value.
+   *
+   * ## Children nobody placed
+   *
+   * Extracted items often never get a `Placement` — a call's positions and questions point at a
+   * topic that was placed, but sit in the space rather than on the canvas. With `children` on (the
+   * default), every drawn card is also asked "what points at you", the answers are drawn as unplaced
+   * cards — the layout positions them — and the walk repeats down the tree until it stops producing
+   * new cards or `max` nodes is hit. Cycle-safe by the same set the canvas dedups with.
+   *
+   * Untyped relations are left alone: one without a declared target could point at anything, and
+   * walking `children`-of-anything or `respondsTo` under every card is the tangle the entity
+   * expander's forward pass already refuses.
+   */
+  relations?:
+    | boolean
+    | {
+        /** Pull in unplaced children — records that point at a drawn card — recursively. Default true. */
+        children?: boolean;
+        /** The most nodes the graph may hold once the pull is done, placements included. Default 500. */
+        max?: number;
+      };
+  /**
    * Entity holding this canvas's per-type colours, if any — WE passes `TypeStyle`.
    *
    * Read into every node's data as `canvasTypeColor`, for a style rule to pick up. The canvas decides
@@ -528,6 +566,98 @@ export function canvasSeed(): SeedSource {
       const orNothing = (fields: Record<string, unknown>) => (Object.keys(fields).length ? fields : undefined);
 
       /*
+        The declared relations being followed — see `relations` in the options.
+
+        Typed only: a relation that does not name its target could point at anything, and following
+        `children`-of-anything or `respondsTo` under every card is the tangle the entity expander's
+        forward pass already declines to walk. The placement's own `node` is a relation in this
+        sense too, and likewise left out — it is the canvas's furniture rather than its content.
+      */
+      interface RelationSpec {
+        name: string;
+        target: string;
+        /** `hasMany` — the holder lists the values, so it is their parent. */
+        many: boolean;
+        /** `belongsTo`/`reverseOf` — the link is owned by the other end; see `forwardMany`. */
+        reverse: boolean;
+        /** The forward property the other end writes, where the model names it (`reverseOf`). */
+        forwardName?: string;
+        /**
+         * Whether the forward relation is a to-many, resolved on the target class. Decides which
+         * way a `reverse` to-one runs: the back-pointer of a parent's to-many (`respondsTo`) names
+         * a parent, while the inverse of a to-one (`Author.post`) names a child.
+         */
+        forwardMany: boolean;
+      }
+      const followRelations = Boolean(options.relations);
+      const pullChildren =
+        followRelations &&
+        (options.relations === true ||
+          (typeof options.relations === 'object' && options.relations?.children !== false));
+      const maxNodes =
+        (typeof options.relations === 'object' && options.relations !== null && Number(options.relations.max)) || 500;
+      const relSpecs = new Map<string, RelationSpec[]>();
+      if (followRelations) {
+        for (const shape of shapes) {
+          if (shape.name === placementEntity || shape.name === options.connections) continue;
+          const specs = shape.relations
+            .filter((relation) => relation.target)
+            .map((relation) => {
+              const forward = relation.reverseOf
+                ? shapes.find((s) => s.name === relation.target)?.relations.find((r) => r.name === relation.reverseOf)
+                : undefined;
+              return {
+                name: relation.name,
+                target: relation.target,
+                many: relation.cardinality === 'many',
+                reverse: relation.reverse === true,
+                forwardName: relation.reverseOf,
+                // Unresolvable reads as a to-one: a `belongsTo` declared without naming its
+                // forward is AD4M's, and there the inverse of `hasOne`/`hasMany` is always the
+                // children side.
+                forwardMany: forward?.cardinality === 'many',
+              };
+            });
+          if (specs.length) relSpecs.set(shape.name, specs);
+        }
+      }
+      /**
+       * Whether the holder is the *child* end of this link — the value it reads is a parent.
+       * True for a forward to-one (`Position.about` names its topic) and for the back-pointer of
+       * a parent's to-many (`Comment.respondsTo`); false for a to-many list and for the inverse
+       * side of a to-one, which are children read through the holder.
+       */
+      const heldByChild = (spec: RelationSpec) => !spec.many && (!spec.reverse || spec.forwardMany);
+      /*
+        Relations are hydrated where they are followed, so a card arrives knowing where it points.
+        Without it a `belongsTo` or a list comes back empty and the edges silently do not form.
+
+        Two spellings of the same set: a union map, for the reads over several kinds — a union
+        filters each include key down to the relations that kind declares, and a kind asked for one
+        it does not have would refuse the whole read rather than answer without it — and a
+        per-entity map, for the reads that name a single kind, where no such filtering stands
+        between the request and the backend.
+      */
+      const relationNames = [...new Set([...relSpecs.values()].flatMap((specs) => specs.map((spec) => spec.name)))];
+      const relationInclude = Object.fromEntries(relationNames.map((name) => [name, true]));
+      const includeFor = (entity: string) =>
+        orNothing(Object.fromEntries((relSpecs.get(entity) ?? []).map((spec) => [spec.name, true])));
+      /**
+       * A relation's targets on a row, as ids — hydrated records, bare references, or a list of
+       * either, whichever the read brought back.
+       */
+      const idsAt = (row: Record<string, unknown>, relation: string): string[] => {
+        const value = row[relation];
+        const list = Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
+        const out: string[] = [];
+        for (const entry of list) {
+          const id = typeof entry === 'string' ? entry : (entry as { id?: unknown } | null)?.id;
+          if (typeof id === 'string' && id) out.push(id);
+        }
+        return out;
+      };
+
+      /*
         Round one: everything this canvas says about itself, and everything it owns. Two reads, together.
 
         Every read here is a round trip to a peer-to-peer data layer, and each one is also a standing
@@ -563,13 +693,19 @@ export function canvasSeed(): SeedSource {
       const origin = options.origin ? { [options.origin]: true } : undefined;
       const [furnished, owned] = await Promise.all([
         furniture.length
-          ? read(furniture, undefined, { node: { include: cardFields() } }, scope, limit * furniture.length)
+          ? read(
+              furniture,
+              undefined,
+              { node: { include: { ...cardFields(), ...relationInclude } } },
+              scope,
+              limit * furniture.length,
+            )
           : [],
         trayTypes.length
           ? read(
               trayTypes,
               undefined,
-              orNothing({ ...cardFields(), ...origin }),
+              orNothing({ ...cardFields(), ...relationInclude, ...origin }),
               membersScope,
               limit * trayTypes.length,
             )
@@ -685,6 +821,8 @@ export function canvasSeed(): SeedSource {
       const onCanvas = new Set<string>();
       /** Record id → its entity name, so a connection's endpoints can be addressed. */
       const typeOf = new Map<string, string>();
+      /** Record id → the row it was drawn from, so a card's declared relations can be read for edges. */
+      const cardRows = new Map<string, { entity: string; row: Record<string, unknown> }>();
 
       /*
         The type of the card actually drawn wins over the one the connection stored. Both ends are
@@ -786,6 +924,191 @@ export function canvasSeed(): SeedSource {
         if (typeof row.id === 'string') {
           onCanvas.add(row.id);
           typeOf.set(row.id, entity);
+          cardRows.set(row.id, { entity, row });
+        }
+      }
+
+      /*
+        The model relations — the structure the classes already declare, beside the connections
+        somebody drew. See `relations` in the options for the direction rule; in short, a forward
+        to-one names a parent and every other kind names children.
+
+        The edges are collected in a map keyed `parent|child` rather than pushed as they are found:
+        two classes commonly declare the same link from both ends (`Comment.respondsTo` beside
+        `Comment.responses`), and a link stated once is drawn once. Where a pair names both ends,
+        the child's own field wins the entry — it is the one a reparent writes — and `heldByChild`
+        records which statement of the pair survived.
+      */
+      const relationEdges = new Map<string, { edge: GraphEdge; heldByChild: boolean }>();
+      /**
+       * One edge for one held link: `holder`/`value` in the property's own direction, with the
+       * parent-to-child ends worked out by the kind — see {@link heldByChild}.
+       */
+      const addRelationEdge = (holder: string, spec: RelationSpec, holderId: string, valueId: string) => {
+        const byChild = heldByChild(spec);
+        const [parentId, childId] = byChild ? [valueId, holderId] : [holderId, valueId];
+        if (parentId === childId || !onCanvas.has(parentId) || !onCanvas.has(childId)) return;
+        const key = `${parentId}|${childId}`;
+        const existing = relationEdges.get(key);
+        if (existing && (existing.heldByChild || !byChild)) return;
+        const source = addressOf(undefined, parentId);
+        const target = addressOf(undefined, childId);
+        if (!source || !target) return;
+        relationEdges.set(key, {
+          heldByChild: byChild,
+          edge: {
+            id: `relation|${holder}.${spec.name}|${holderId}|${valueId}`,
+            source,
+            target,
+            type: 'relation',
+            label: spec.name,
+            // The raw ids travel in the data: a reparent is handed the edge and needs the records,
+            // not another decode of the addresses.
+            data: {
+              relation: `${holder}.${spec.name}`,
+              holder: holderId,
+              holderType: holder,
+              target: valueId,
+              heldByChild: byChild,
+            },
+          },
+        });
+      };
+
+      /*
+        Children nobody placed — the pull half of `relations`.
+
+        Round-wise, the way the entity expander walks a level: every card the last round produced
+        becomes a parent to check, in the two directions a child can arrive by —
+        what points at it through a forward to-one on the *child's* class (`Position.about`), and
+        what it lists through a to-many or `belongsTo` of its own (`Comment.responses`). The former
+        batches every parent of a type into one `where` read, the way the connections round batches
+        its ends; the latter drills per parent through `scope`, the only spelling of "the children
+        this relation names" that works on both backends — a `belongsToMany` is a getter on AD4M
+        and a foreign key stamped under the relation's own name in memory, and `scope` already
+        knows both. New answers are drawn as unplaced cards — the layout positions them — and become
+        the next round's parents, until a round produces nothing new or `max` is hit. `onCanvas`
+        doubles as the visited set, so a loop in the data terminates rather than walking forever.
+      */
+      if (pullChildren && onCanvas.size) {
+        let frontier = [...onCanvas].map((id) => ({ id, type: typeOf.get(id)! }));
+        // Found but not yet drawn — the walk's backlog, and all the cap is counting against. A
+        // scope-found row remembers the (parent, relation) that produced it: its edge cannot be
+        // read back off the row, because a to-many's foreign key lives on the child's side of a
+        // field the parent spells.
+        interface Found {
+          entity: string;
+          row: Record<string, unknown>;
+          via?: { holder: string; spec: RelationSpec; id: string };
+        }
+        const pending = new Map<string, Found>();
+        while (frontier.length && nodes.length + pending.size < maxNodes) {
+          const next: { id: string; type: string }[] = [];
+          const found: Found[] = [];
+          const parentsByType = new Map<string, string[]>();
+          for (const { id, type } of frontier) {
+            const list = parentsByType.get(type) ?? [];
+            list.push(id);
+            parentsByType.set(type, list);
+          }
+          await Promise.all(
+            [...parentsByType.entries()].flatMap(([type, ids]) => {
+              const queries: Promise<unknown>[] = [];
+              // Child-held pointers: one read per (class, relation) for every parent of this type —
+              // `where` already speaks a list of ends, the same way the connections read does.
+              for (const [entity, specs] of relSpecs) {
+                for (const spec of specs) {
+                  if (spec.target !== type || !heldByChild(spec)) continue;
+                  queries.push(
+                    read(entity, { [spec.name]: ids }, includeFor(entity), scope, maxNodes).then((rows) =>
+                      found.push(...rows.map((row) => ({ entity, row }))),
+                    ),
+                  );
+                }
+              }
+              // Parent-side lists: one drill per parent, per relation it declares toward a child.
+              for (const spec of relSpecs.get(type) ?? []) {
+                if (heldByChild(spec)) continue;
+                if (!declared(spec.target)) continue;
+                for (const id of ids) {
+                  const via = { holder: type, spec, id };
+                  queries.push(
+                    context
+                      .query({
+                        entity: spec.target,
+                        dataset,
+                        scope: { anchor: type, via: spec.name, anchorId: id },
+                        include: includeFor(spec.target),
+                        limit: maxNodes,
+                        signal,
+                      })
+                      .then((rows) => found.push(...rows.map((row) => ({ entity: spec.target, row, via }))))
+                      .catch((error: unknown) =>
+                        context.warn(
+                          `canvas: cannot read children of ${type} ${id} via ${spec.name}: ${
+                            error instanceof Error ? error.message : String(error)
+                          }`,
+                        ),
+                      ),
+                  );
+                }
+              }
+              return queries;
+            }),
+          );
+          for (const { entity, row, via } of found) {
+            const id = typeof row.id === 'string' ? row.id : undefined;
+            if (!id || onCanvas.has(id) || hidden.has(id) || pending.has(id)) continue;
+            if (options.onlyFrom && originOf(row) !== options.onlyFrom) continue;
+            pending.set(id, { entity, row, via });
+          }
+          for (const [id, { entity, row, via }] of pending) {
+            if (nodes.length >= maxNodes) break;
+            pending.delete(id);
+            const node = rowToNode(
+              row,
+              entity,
+              dataset,
+              shapes.find((s) => s.name === entity),
+              'canvas',
+            );
+            if (!node || seen.has(node.id)) {
+              dropped++;
+              continue;
+            }
+            seen.add(node.id);
+            nodes.push(node);
+            onCanvas.add(id);
+            typeOf.set(id, entity);
+            cardRows.set(id, { entity, row });
+            next.push({ id, type: entity });
+            // The edge the scope answered for, drawn from the asking rather than the fields —
+            // which is also the only place a `belongsTo` link can be read back reliably.
+            if (via) addRelationEdge(via.holder, via.spec, via.id, id);
+          }
+          frontier = next;
+        }
+        if (nodes.length + pending.size >= maxNodes) {
+          context.warn(
+            `canvas: stopped at ${maxNodes} cards while pulling in what points at them — ` +
+              `raise the seed's \`relations.max\` to see the rest.`,
+          );
+        }
+      }
+
+      /*
+        The relation edges themselves, read off the rows — after the pull, so a drawn card's fields
+        and a pulled child's both speak. A relation's values on a row answer the same question the
+        pull asked the backend (`scope` for a to-many reads the key the row does not spell out), so
+        a to-many on this backend's own shape of a card answers here too when the read hydrated it.
+      */
+      if (followRelations) {
+        for (const [holderId, { entity, row }] of cardRows) {
+          for (const spec of relSpecs.get(entity) ?? []) {
+            for (const valueId of idsAt(row, spec.name)) {
+              addRelationEdge(entity, spec, holderId, valueId);
+            }
+          }
         }
       }
 
@@ -801,6 +1124,7 @@ export function canvasSeed(): SeedSource {
         the half a backend can do, and the target check is a set lookup against what was just loaded.
       */
       const edges: GraphEdge[] = [];
+      edges.push(...[...relationEdges.values()].map(({ edge }) => edge));
       // Round three: the connections, which genuinely could not be asked for until the ends were known.
       const connections = options.connections;
       if (connections && declared(connections) && onCanvas.size) {
