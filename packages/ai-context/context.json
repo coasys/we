@@ -8551,6 +8551,12 @@
       "example": "formatJson({ text: pass.prompt })"
     },
     {
+      "name": "treeSpines",
+      "params": ["options"],
+      "doc": "The choices a tree-mode spine picker offers: the space's named connection kinds, then every typed relation the installed models declare, grouped under \"Model relations\" and spelled rel:Class.prop — plus rel:* for all of them. Pass kinds (a RelationshipType query), shapes (shapeStore.spaceShapes) and foreign (datasetStore.currentDatasetEntities).",
+      "example": "treeSpines({ kinds: local.relationshipKinds, shapes: shapeStore.spaceShapes, foreign: datasetStore.currentDatasetEntities })"
+    },
+    {
       "name": "generatedRun",
       "params": ["options"],
       "doc": "Whether a model made a record: { by: \"run\", run } naming the run that wrote it (a transcribed line, a record an extraction pass or an agent made, a reply in the editor’s chat), or null for what a person made. Reads the record’s own generatedBy, as an id or an included record, so it needs no query. Ask this rather than reading the relation. Options: record.",

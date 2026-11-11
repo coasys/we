@@ -97,8 +97,20 @@ export const TREE_QUERIES = {
 
 export const TREE_ON = 'local.treeMode';
 
-/** The spine, as the `forest` layout names one: one field of a line, and the value it must hold. */
-const SPINE_SELECTOR = `{ field: 'data.relationshipTypeId', value: local.spine }`;
+/**
+ * The spine, as the `forest` layout names one: one field of a line, and the value it must hold.
+ *
+ * `local.spine` holds a `RelationshipType` id as it always has, and now also the model relations the
+ * seed draws — spelled `rel:Class.prop`, which `treeSpines` builds the picker entries in — plus
+ * `rel:*` for "the models' relations, all of them". Each spelling selects the field that carries its
+ * kind of claim: `rel:` decodes to `data.relation` (the `Class.prop` a `relation` edge names), `rel:*`
+ * to the edge's `type`, and anything else stays `data.relationshipTypeId` — so an address saved with
+ * `?spine=<kindId>` still means the same tree.
+ */
+const SPINE_SELECTOR =
+  `(local.spine == 'rel:*' ? { field: 'type', value: 'relation' }` +
+  ` : (startsWith(local.spine, 'rel:') ? { field: 'data.relation', value: split(local.spine, ':')[1] }` +
+  ` : { field: 'data.relationshipTypeId', value: local.spine }))`;
 
 /** Whether the order in force is one a reaction decides — which is also when a weight is worth fetching. */
 /**
@@ -547,7 +559,13 @@ export const TREE_EDGE_RULES: SchemaProp = {
       going away and coming back is animated rather than snapped.
     */
     `{ style: { sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true } },` +
-    ` { when: { 'data.relationshipTypeId': { not: local.spine } },` +
+    /*
+      The field the dimming checks is the one the picked spine reads — `data.relation` for a model
+      relation, `data.relationshipTypeId` for a connection kind. A line that carries neither is
+      dimmed either way, which is the point: what is not the spine is background.
+    */
+    ` { when: (startsWith(local.spine, 'rel:') ? { 'data.relation': { not: split(local.spine, ':')[1] } }` +
+    ` : { 'data.relationshipTypeId': { not: local.spine } }),` +
     ` style: { opacity: 0.25, dashed: true, arrow: 'none' } }] : []`,
 };
 
@@ -681,7 +699,9 @@ export function treeStrip(opts: { below?: string; controls?: SchemaNode[] } = {}
                   fit: true,
                   placeholder: 'Any connection',
                   value: { $: 'local.spine' },
-                  options: { $: 'local.relationshipKinds.map(k, { label: k.name, value: k.id, icon: k.icon })' },
+                  options: {
+                    $: 'treeSpines({ kinds: local.relationshipKinds, shapes: shapeStore.spaceShapes, foreign: datasetStore.currentDatasetEntities })',
+                  },
                   onChange: { $setLocal: 'spine', value: { $: 'event.detail' } },
                 },
               },

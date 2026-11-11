@@ -1699,6 +1699,16 @@ const canvas: SchemaNode = {
         // Kinds the reader put away from the key's eye — every card of each, and the lines to them.
         hiddenTypes: { $: HIDDEN_KINDS },
         /*
+          The models' own declared relations, followed as tree edges — only in tree mode.
+
+          An extracted item points at its topic (`about`, `subTopicOf`) without any `Relationship`
+          record being written, so in the tree the seed also emits a `relation` edge per declared
+          link — parent at the pointed-at end — and pulls in children nobody placed. Kept off on the
+          freeform canvas, whose lines stay the ones somebody drew: a canvas read freely has no
+          "under", and drawing every claim the models hold there would be a tangle, not a map.
+        */
+        relations: { $: `${TREE_ON} ? { children: true } : false` },
+        /*
           What each card weighs, whenever the tree is shown or the order is a reaction — see `TREE_WEIGH`
           in `WorkshopTree` for why both.
 

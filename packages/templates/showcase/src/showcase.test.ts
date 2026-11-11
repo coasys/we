@@ -2161,7 +2161,15 @@ describe('the workshop’s tree', () => {
       switch, throwing away the selection, the camera and every card's identity — and with it the
       travel, which is what makes the switch read as one movement over one set of cards.
     */
-    expect(canvas).toContain("{ type: 'forest', options: { spine: { field: 'data.relationshipTypeId'");
+    expect(canvas).toContain("{ type: 'forest', options: { spine:");
+    /*
+      The spine decodes the picker's spelling: `rel:*` selects every `relation`-typed edge,
+      `rel:Class.prop` one relation by name, and anything else stays a connection kind — so a
+      `?spine=<kindId>` link saved before relations existed still means the same tree.
+    */
+    expect(canvas).toContain("local.spine == 'rel:*' ? { field: 'type', value: 'relation' }");
+    expect(canvas).toContain("{ field: 'data.relation', value: split(local.spine, ':')[1] }");
+    expect(canvas).toContain("{ field: 'data.relationshipTypeId', value: local.spine }");
     expect(canvas).toContain("{ type: 'manual', options: { size: { width: 180, height: 135 }");
     // One layout prop on the canvas's graph, so there is exactly one place the mode is read. (The
     // route also holds the vocabulary map, a different graph with a layout of its own.)
@@ -2309,7 +2317,9 @@ describe('the workshop’s tree', () => {
     // select would render empty. Guarded globally as well, and stated here where the temptation was.
     expect(canvas).toContain('"placeholder":"Any connection"');
     expect(canvas).toContain('"$setLocal":"spine","value":""');
-    expect(canvas).toContain('local.relationshipKinds.map(k, { label: k.name, value: k.id, icon: k.icon })');
+    // The kinds still come from the RelationshipType query — `treeSpines` merges the model
+    // relations the installed classes declare into the same list.
+    expect(canvas).toContain('treeSpines({ kinds: local.relationshipKinds');
   });
 });
 
