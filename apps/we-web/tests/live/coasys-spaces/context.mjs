@@ -1,0 +1,213 @@
+/**
+ * What every vertical of the coasys-spaces suite stands on: one executor (multi-user, MCP on), one
+ * served build of the app, one browser, and a language model — the stub or a real one, by tier.
+ *
+ * The world is made once, on the first vertical that asks, and closed once, after the last. Each
+ * vertical then makes its own people (fresh accounts, so one vertical's installs and spaces never leak
+ * into the next) and wraps each step in {@link step}, which saves a screenshot of every page the
+ * vertical holds when a step fails, skips the steps after it, and keeps the vertical's Playwright
+ * trace when anything in it failed.
+ *
+ * Environment:
+ *
+ * - `COASYS_SPACES_TIER` — `stub` (default) or `real`.
+ * - `COASYS_SPACES_LLM_BASE_URL`, `COASYS_SPACES_LLM_MODEL`, `COASYS_SPACES_LLM_API_KEY` — the real
+ *   tier's OpenAI-compatible model.
+ * - `COASYS_SPACES_WAV` — the real tier's recording the fake microphone plays.
+ * - `COASYS_SPACES_ARTIFACTS` — where failure screenshots, traces and the executor log go.
+ * - `SOCIAL_DNA_PACKAGE` — the social DNA package to install (see `dna.mjs`).
+ */
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { after, describe, it } from 'node:test';
+
+import { createAd4mBackendPorts } from '@we/backend-ad4m';
+
+import { device, launchBrowser, registerLlm, serveApp, signUp, sleep, startExecutor, until } from '../harness.mjs';
+import { dismissNamePrompt } from '../space.mjs';
+import { startStubLlm } from './stub-llm.mjs';
+
+const HERE = dirname(fileURLToPath(import.meta.url));
+
+export const TIER = process.env.COASYS_SPACES_TIER === 'real' ? 'real' : 'stub';
+export const STUB = TIER === 'stub';
+
+export const ARTIFACTS = process.env.COASYS_SPACES_ARTIFACTS
+  ? resolve(process.env.COASYS_SPACES_ARTIFACTS)
+  : mkdtempSync(join(tmpdir(), 'coasys-spaces-'));
+mkdirSync(ARTIFACTS, { recursive: true });
+
+export const DNA_PATH = resolve(process.env.SOCIAL_DNA_PACKAGE ?? join(HERE, 'fixtures', 'software-team.dna.json'));
+
+/** How long a step waits for what extraction, sync or a flow write produces. Longer for a real model. */
+export const SLOW = STUB ? 120_000 : 600_000;
+
+function realLlm() {
+  const baseUrl = process.env.COASYS_SPACES_LLM_BASE_URL;
+  const model = process.env.COASYS_SPACES_LLM_MODEL;
+  if (!baseUrl || !model) {
+    throw new Error('COASYS_SPACES_TIER=real needs COASYS_SPACES_LLM_BASE_URL and COASYS_SPACES_LLM_MODEL.');
+  }
+  return { baseUrl, model, apiKey: process.env.COASYS_SPACES_LLM_API_KEY ?? 'none', stub: null };
+}
+
+/** Whisper on the executor, loaded: what the real tier's call transcribes with. */
+async function loadWhisper(admin) {
+  const id = await admin.ai.addModel({
+    name: 'Whisper small',
+    local: { fileName: 'whisper_small' },
+    modelType: 'TRANSCRIPTION',
+  });
+  await admin.ai.setDefaultModel('TRANSCRIPTION', id);
+  await until(
+    () => admin.ai.modelLoadingStatus(id),
+    // "Loaded" is the end of a transcription load: the executor reports it with `loaded: false`.
+    (status) => status?.loaded || status?.status === 'Loaded',
+    { timeout: 1_800_000, interval: 5_000, what: 'Whisper to download and load' },
+  );
+  return id;
+}
+
+let made = null;
+
+/** The shared world, made on first use. */
+export function world() {
+  made ??= (async () => {
+    // The scripted lines, spoken (fixtures/call.wav), unless another recording is named.
+    const wav = resolve(process.env.COASYS_SPACES_WAV ?? join(HERE, 'fixtures', 'call.wav'));
+    const stub = STUB ? await startStubLlm() : null;
+    const llm = stub ? { baseUrl: stub.baseUrl, model: stub.model, apiKey: 'none', stub } : realLlm();
+    const executor = await startExecutor({ mcp: true });
+    await registerLlm(executor.admin, {
+      name: 'coasys-spaces',
+      baseUrl: llm.baseUrl,
+      apiKey: llm.apiKey,
+      model: llm.model,
+    });
+    if (!STUB) await loadWhisper(executor.admin);
+    const app = await serveApp();
+    const browser = await launchBrowser({ fakeAudio: STUB ? undefined : wav });
+    return { executor, app, browser, llm, stub };
+  })();
+  return made;
+}
+
+/** Closes the world and leaves the executor's log beside the other artifacts. */
+async function closeWorld() {
+  if (!made) return;
+  const w = await made.catch(() => null);
+  if (!w) return;
+  await w.browser.close().catch(() => {});
+  await w.app.close().catch(() => {});
+  writeFileSync(join(ARTIFACTS, 'executor.log'), w.executor.output.join(''));
+  w.executor.admin.close?.();
+  await w.executor.stop().catch(() => {});
+  await w.stub?.close().catch(() => {});
+  console.log(`coasys-spaces: artifacts in ${ARTIFACTS}`);
+}
+after(closeWorld);
+
+const slug = (s) =>
+  String(s)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-|-$/g, '');
+
+/**
+ * A vertical: one `describe`, its people, and its failure artifacts. `body(v)` declares the steps with
+ * `v.step(name, fn)` and `v.todo(words)`, and makes people with `await v.person(name)` inside a step.
+ */
+export function vertical(name, body) {
+  const v = {
+    name,
+    slug: slug(name),
+    failed: false,
+    people: [],
+    /** A fresh account signed in on its own device, its app open and its name given. */
+    async person(display) {
+      const w = await world();
+      const email = `${slug(display)}-${v.slug}@coasys-spaces.test`;
+      const account = await signUp(w.executor, email);
+      const dev = await device(w.browser, w.executor, account, { name: `${display}/${v.slug}` });
+      await dev.context.tracing.start({ screenshots: true, snapshots: true, title: `${name}: ${display}` });
+      const page = await dev.tab('main');
+      await page.goto(w.app.url);
+      await page.getByRole('textbox', { name: 'Name...', exact: true }).waitFor({ timeout: 120_000 });
+      await dismissNamePrompt(page, display);
+      await page.getByRole('textbox', { name: 'Name...', exact: true }).waitFor({ state: 'hidden', timeout: 30_000 });
+      // The prompt can come back on a later load, before the saved name has reached the app. It covers
+      // the page, so it is answered whenever it stands in the way of an action.
+      await page.addLocatorHandler(page.getByRole('textbox', { name: 'Name...', exact: true }), () =>
+        dismissNamePrompt(page, display),
+      );
+      const ports = createAd4mBackendPorts(account.client, { selfId: () => account.did });
+      const who = { name: display, account, client: account.client, did: account.did, device: dev, page, ports };
+      v.people.push(who);
+      return who;
+    },
+    step(title, fn, opts = {}) {
+      it(title, { timeout: opts.timeout ?? SLOW + 120_000 }, async (t) => {
+        if (v.failed) {
+          t.skip('an earlier step of this vertical failed');
+          return;
+        }
+        try {
+          await fn(t);
+        } catch (error) {
+          v.failed = true;
+          await snapshotAll(v, title);
+          throw error;
+        }
+      });
+    },
+    todo(words) {
+      it.todo(words);
+    },
+    closers: [],
+    /** Something to undo when the vertical ends, pass or fail — a client with no browser, say. */
+    onClose(fn) {
+      v.closers.push(fn);
+    },
+  };
+
+  describe(name, () => {
+    after(async () => {
+      for (const who of v.people) {
+        const trace = v.failed ? join(ARTIFACTS, `${v.slug}-${slug(who.name)}.trace.zip`) : undefined;
+        await who.device.context.tracing.stop(trace ? { path: trace } : {}).catch(() => {});
+        if (v.failed || process.env.WE_LIVE_VERBOSE) {
+          writeFileSync(join(ARTIFACTS, `${v.slug}-${slug(who.name)}.console.log`), who.device.logs.join('\n'));
+        }
+        await who.device.close().catch(() => {});
+        // The account's client reconnects its socket for ever once the executor stops, which keeps
+        // the test process alive after the last test.
+        who.account.client.close?.();
+      }
+      for (const close of v.closers)
+        await Promise.resolve()
+          .then(close)
+          .catch(() => {});
+    });
+    body(v);
+  });
+  return v;
+}
+
+/** A screenshot and an accessibility snapshot of every page a vertical holds, named for the step. */
+async function snapshotAll(v, title) {
+  for (const who of v.people) {
+    for (const [i, page] of who.device.context.pages().entries()) {
+      const base = join(ARTIFACTS, `${v.slug}-${slug(who.name)}-${i}-${slug(title).slice(0, 60)}`);
+      await page.screenshot({ path: `${base}.png`, fullPage: true }).catch(() => {});
+      const aria = await page
+        .locator('body')
+        .ariaSnapshot({ timeout: 10_000 })
+        .catch((e) => `no snapshot: ${e.message}`);
+      writeFileSync(`${base}.aria.txt`, `${page.url()}\n\n${aria}`);
+    }
+  }
+}
+
+export { sleep, until };
