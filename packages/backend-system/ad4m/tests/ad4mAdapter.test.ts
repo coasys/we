@@ -220,6 +220,40 @@ describe('adapter.lower — scope → parent (Tier-2 adapter-rewrite)', () => {
     });
   });
 
+  it('asks incoming links for a reverse relation — a belongsTo’s children point at the anchor', () => {
+    /*
+      `Author.posts` is declared `belongsToMany`: the link lives on the post (`post.author →
+      author`), so the author's posts arrive over the anchor's *incoming* links. The plain
+      `{ id, predicate }` form walks only the outgoing ones and would answer every belongsTo
+      drill with nothing — which is exactly what a relation tree pulling `Author.posts`
+      children saw on AD4M. The traverse form carries `direction: 'in'`.
+    */
+    const withReverse = createAd4mQueryAdapter(() => [
+      {
+        name: 'Author',
+        targetClass: 'flux://author',
+        properties: [
+          {
+            name: 'posts',
+            predicate: 'flux://wrote',
+            type: 'uri',
+            isCollection: true,
+            required: false,
+            writable: true,
+            relatedEntity: 'Post',
+            reverse: true,
+          },
+        ],
+      },
+    ]);
+    const opts = withReverse.lower({
+      irVersion: 1,
+      entity: 'Post',
+      scope: { anchor: 'Author', via: 'posts', anchorId: 'a1' },
+    });
+    expect(opts).toMatchObject({ parent: { ids: ['a1'], predicate: 'flux://wrote', direction: 'in' } });
+  });
+
   it('throws (surfaced, not silent) when the relation is not in the manifest', () => {
     const ir: QueryIR = {
       irVersion: 1,
