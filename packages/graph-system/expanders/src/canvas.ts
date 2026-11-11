@@ -598,10 +598,20 @@ export function canvasSeed(): SeedSource {
         (typeof options.relations === 'object' && options.relations !== null && Number(options.relations.max)) || 500;
       const relSpecs = new Map<string, RelationSpec[]>();
       if (followRelations) {
+        /*
+          Only what the space's own DNA declares. WE's core classes carry typed relations too —
+          every card's `signals`, its `runs` and `generatedBy` — and following them puts reactions,
+          model runs and the transcripts they wrote under every card: the furniture, walked as if
+          it were the structure. A host marks them `bookkeeping` (WE's is the extraction list,
+          `WE_PLUMBING_CLASSES`) and a relation to or from one is never a spine here.
+        */
+        const plumbing = new Set(shapes.filter((shape) => shape.bookkeeping).map((shape) => shape.name));
         for (const shape of shapes) {
-          if (shape.name === placementEntity || shape.name === options.connections) continue;
+          if (shape.name === placementEntity || shape.name === options.connections || plumbing.has(shape.name)) {
+            continue;
+          }
           const specs = shape.relations
-            .filter((relation) => relation.target)
+            .filter((relation) => relation.target && !plumbing.has(relation.target))
             .map((relation) => {
               const forward = relation.reverseOf
                 ? shapes.find((s) => s.name === relation.target)?.relations.find((r) => r.name === relation.reverseOf)

@@ -1703,4 +1703,53 @@ describe('canvasSeed — model relations', () => {
     expect(nodes.map((n) => n.id)).toContain(topic('t2'));
     expect(nodes.map((n) => n.id)).not.toContain(position('pos1'));
   });
+
+  it('follows only the space’s declared relations — never the host’s own bookkeeping', async () => {
+    /*
+      `Signal` and `ModelRun` are typed relations every WE card carries. Followed as if they were
+      the community's structure, "any connection" hangs every reaction, model run and transcript
+      line the call produced under each card — the furniture, walked as if it were the tree. A host
+      marks them `bookkeeping`; the seed then follows only what the space's own DNA declares.
+    */
+    const shapes: EntityShape[] = [
+      ...SHAPES,
+      { name: 'Signal', properties: [{ name: 'value', type: 'number' }], relations: [], bookkeeping: true },
+      { name: 'ModelRun', properties: [{ name: 'summary', type: 'string' }], relations: [], bookkeeping: true },
+      {
+        name: 'Minute',
+        identityProperty: 'title',
+        properties: [{ name: 'title', type: 'string' }],
+        relations: [
+          { name: 'signals', target: 'Signal', cardinality: 'many' },
+          { name: 'generatedBy', target: 'ModelRun', cardinality: 'one' },
+          { name: 'runs', target: 'ModelRun', cardinality: 'many' },
+          { name: 'about', target: 'DiscussionTopic', cardinality: 'one' },
+        ],
+      },
+    ];
+    const { context: base, asked } = context({
+      Placement: [
+        { id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 },
+        { id: 'p2', node: 'm1', nodeType: 'Minute', x: 0, y: 40 },
+      ],
+      DiscussionTopic: [{ id: 't1', title: 'Roadmap' }],
+      Minute: [
+        { id: 'm1', title: 'First call', about: 't1', signals: ['s1'], generatedBy: 'run1', runs: ['run1'] },
+        { id: 'm2', title: 'Second call', about: 't1' },
+      ],
+      Signal: [{ id: 's1', value: 5, __Minute_signals: 'm1' }],
+      ModelRun: [{ id: 'run1', summary: 'extracted', __Minute_runs: 'm1' }],
+    });
+    const ctx = { ...base, models: () => shapes } as ExpanderContext;
+
+    const { nodes, edges } = await canvasSeed().seed({ canvas: 'b1', relations: { children: true } }, ctx);
+
+    // The DNA relation is followed: m2 was never placed and still arrives under t1.
+    expect(nodes.map((n) => n.id)).toContain('we-graph://entity/ds/Minute/m2');
+    expect(edges.find((e) => e.type === 'relation')?.data?.relation).toBe('Minute.about');
+    // The bookkeeping links are real — they are just never a spine: not drawn, and not asked for.
+    expect(nodes.some((n) => n.id.includes('/Signal/') || n.id.includes('/ModelRun/'))).toBe(false);
+    expect(asked).not.toContain('Signal');
+    expect(asked).not.toContain('ModelRun');
+  });
 });

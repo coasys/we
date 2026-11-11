@@ -26,6 +26,8 @@
 import { type EntityManifestEntry, manifestEntries } from '@we/backend-shared';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 
+import { WE_PLUMBING_CLASSES } from '../shapes/extractionCandidates';
+
 /** A shape record as `shapeStore.spaceShapes` hands one over — only the fields this reads. */
 interface ShapeInput {
   name: string;
@@ -78,10 +80,19 @@ export function treeSpines(options: {
   shapes?: readonly ShapeInput[];
   foreign?: readonly EntityManifestEntry[];
 }): SpineOption[] {
+  /*
+    Only relations the space's own DNA declares. Every core WE class carries typed relations too —
+    `signals`, `runs`, `generatedBy` — and offering one as a spine means a picker that names the
+    furniture beside the community's structure, then a tree full of it. The canvas seed leaves the
+    same classes out (`bookkeeping`, `WE_PLUMBING_CLASSES`), so a spine never follows what the seed
+    would not draw.
+  */
+  const plumbing = new Set<string>(WE_PLUMBING_CLASSES);
   const relations: SpineOption[] = [];
   for (const entry of modelManifestEntries(options)) {
+    if (plumbing.has(entry.name)) continue;
     for (const property of entry.properties) {
-      if (property.type !== 'uri' || !property.relatedEntity) continue;
+      if (property.type !== 'uri' || !property.relatedEntity || plumbing.has(property.relatedEntity)) continue;
       relations.push({
         label: `${entry.name} › ${property.name}`,
         value: `rel:${entry.name}.${property.name}`,

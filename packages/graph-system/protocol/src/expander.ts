@@ -190,6 +190,13 @@ export interface EntityShape {
    * only after {@link nameProperty} and the conventional names, where it is better than nothing.
    */
   identityProperty?: string;
+  /**
+   * The host's own bookkeeping — reactions, model runs, placements, the space itself — rather than
+   * anything a community's DNA declares. A seed following the models' relations skips a class marked
+   * so: the link is real, but following it fills the tree with furniture. WE marks its plumbing the
+   * same way the extraction candidates do — one list, `WE_PLUMBING_CLASSES` in the app shell.
+   */
+  bookkeeping?: boolean;
   /** Human description of the type, where the backend has one. Shown in legends and tooltips. */
   description?: string;
 }
