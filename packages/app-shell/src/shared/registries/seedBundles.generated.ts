@@ -1049,6 +1049,7 @@ export const seedBundles: Bundle[] = [
                 props: { width: '100%', height: '100%' },
                 $localState: {
                   openRows: { type: 'array', initial: ['group|calls', 'group|workflows'], persist: 'coasys.tree.open' },
+                  dnaLens: { type: 'string', initial: 'classes', persist: 'coasys.tree.dnaLens' },
                 },
                 $queries: {
                   calls: {
@@ -1346,7 +1347,9 @@ export const seedBundles: Bundle[] = [
                             },
                             {
                               $if: {
-                                condition: { $: "startsWith(event.detail.value, 'dna|')" },
+                                condition: {
+                                  $: "startsWith(event.detail.value, 'dna|') && split(event.detail.value, '|')[1] != 'class'",
+                                },
                                 then: {
                                   $if: {
                                     condition: { $: "routeStore.params.view == 'canvas'" },
@@ -1375,7 +1378,7 @@ export const seedBundles: Bundle[] = [
                             {
                               $if: {
                                 condition: {
-                                  $: "startsWith(event.detail.value, 'dna|') && split(event.detail.value, '|')[1] != 'model'",
+                                  $: "startsWith(event.detail.value, 'dna|') && !(split(event.detail.value, '|')[1] in ['model', 'class'])",
                                 },
                                 then: [
                                   {
@@ -1393,6 +1396,24 @@ export const seedBundles: Bundle[] = [
                                   },
                                   { $invoke: 'shellStore.openTemplatePanel', args: ['inspector'] },
                                 ],
+                              },
+                            },
+                            {
+                              $if: {
+                                condition: { $: "startsWith(event.detail.value, 'dna|class|')" },
+                                then: {
+                                  $invoke: 'routeStore.navigate',
+                                  args: [
+                                    { $: "spaceStore.spacePath + '/dna'" },
+                                    { $: "{ query: { dna: 'class|' + split(event.detail.value, '|')[2] } }" },
+                                  ],
+                                },
+                              },
+                            },
+                            {
+                              $if: {
+                                condition: { $: "startsWith(event.detail.value, 'dnaorigin|')" },
+                                then: { $toggleLocalIn: 'openRows', value: { $: 'event.detail.value' } },
                               },
                             },
                             {
@@ -1786,7 +1807,7 @@ export const seedBundles: Bundle[] = [
                                 },
                               },
                               expandable: {
-                                $: 'count(local.signalTypes) + count(local.relationshipTypes) + count(spaceStore.taskStates) + count(spaceStore.involvementTypes) + count(local.topics) + count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) + count(spaceStore.policy.sentences) > 0',
+                                $: "(local.dnaLens == 'categories' ? count(local.signalTypes) + count(local.relationshipTypes) + count(spaceStore.taskStates) + count(spaceStore.involvementTypes) + count(local.topics) + count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) + count(spaceStore.policy.sentences) : sum(recordStore.spaceClasses.map(g, count(g.classes)))) > 0",
                               },
                             },
                             children: [
@@ -1808,82 +1829,83 @@ export const seedBundles: Bundle[] = [
                                         type: '$if',
                                         props: {
                                           condition: {
-                                            $: 'count(local.signalTypes) + count(local.relationshipTypes) + count(spaceStore.taskStates) + count(spaceStore.involvementTypes) + count(local.topics) + count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) + count(spaceStore.policy.sentences)',
+                                            $: "(local.dnaLens == 'categories' ? count(local.signalTypes) + count(local.relationshipTypes) + count(spaceStore.taskStates) + count(spaceStore.involvementTypes) + count(local.topics) + count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) + count(spaceStore.policy.sentences) : sum(recordStore.spaceClasses.map(g, count(g.classes))))",
                                           },
                                           then: {
                                             type: 'we-badge',
                                             props: { variant: 'soft', size: 'xs' },
                                             children: [
                                               {
-                                                $: 'count(local.signalTypes) + count(local.relationshipTypes) + count(spaceStore.taskStates) + count(spaceStore.involvementTypes) + count(local.topics) + count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) + count(spaceStore.policy.sentences)',
+                                                $: "(local.dnaLens == 'categories' ? count(local.signalTypes) + count(local.relationshipTypes) + count(spaceStore.taskStates) + count(spaceStore.involvementTypes) + count(local.topics) + count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) + count(spaceStore.policy.sentences) : sum(recordStore.spaceClasses.map(g, count(g.classes))))",
                                               },
                                             ],
                                           },
                                         },
+                                      },
+                                      {
+                                        type: 'we-tooltip',
+                                        props: {
+                                          content: {
+                                            $: "local.dnaLens == 'categories' ? 'Show every class' : 'Show categories'",
+                                          },
+                                          placement: 'right',
+                                        },
+                                        children: [
+                                          {
+                                            type: 'we-button',
+                                            props: {
+                                              variant: 'ghost',
+                                              size: 'xs',
+                                              square: true,
+                                              label: {
+                                                $: "local.dnaLens == 'categories' ? 'Show every class' : 'Show categories'",
+                                              },
+                                              onClick: {
+                                                $setLocal: 'dnaLens',
+                                                value: {
+                                                  $: "local.dnaLens == 'categories' ? 'classes' : 'categories'",
+                                                },
+                                              },
+                                            },
+                                            children: [
+                                              {
+                                                type: 'we-icon',
+                                                props: {
+                                                  name: {
+                                                    $: "local.dnaLens == 'categories' ? 'list' : 'squares-four'",
+                                                  },
+                                                },
+                                              },
+                                            ],
+                                          },
+                                        ],
                                       },
                                     ],
                                   },
                                 ],
                               },
                               {
-                                type: 'we-tree-item',
-                                slot: 'children',
+                                type: '$if',
                                 props: {
-                                  value: { $: "'dnakind|signal'" },
-                                  open: {
-                                    $: "(('dnakind|signal') in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'signal|')))",
-                                  },
-                                  onOpenChange: {
-                                    $if: {
-                                      condition: {
-                                        $: "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'signal|')))",
-                                      },
-                                      then: [
-                                        { $invoke: 'routeStore.setParam', args: ['dna', { $: "'signal'" }] },
-                                        {
-                                          $if: {
-                                            condition: { $: "('dnakind|signal') in local.openRows" },
-                                            then: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|signal'" } },
-                                          },
-                                        },
-                                      ],
-                                      else: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|signal'" } },
-                                    },
-                                  },
-                                  expandable: { $: 'count(local.signalTypes) > 0' },
-                                },
-                                children: [
-                                  {
-                                    type: 'Row',
-                                    props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
-                                    children: [
-                                      { type: 'we-icon', props: { name: 'heart', size: 'sm', color: 'text-faint' } },
-                                      {
-                                        type: 'we-text',
-                                        props: { truncate: true, flex: '1', minWidth: '0' },
-                                        children: ['Signal types'],
-                                      },
-                                      {
-                                        type: '$if',
-                                        props: {
-                                          condition: { $: 'count(local.signalTypes)' },
-                                          then: {
-                                            type: 'we-badge',
-                                            props: { variant: 'soft', size: 'xs' },
-                                            children: [{ $: 'count(local.signalTypes)' }],
-                                          },
-                                        },
-                                      },
-                                    ],
-                                  },
-                                  {
+                                  condition: { $: "!(local.dnaLens == 'categories')" },
+                                  then: {
                                     type: '$each',
-                                    props: { items: { $: 'local.signalTypes' }, as: 'def' },
+                                    props: { items: { $: 'recordStore.spaceClasses' }, as: 'origin' },
                                     children: [
                                       {
                                         type: 'we-tree-item',
                                         slot: 'children',
-                                        props: { value: { $: "'dna|signal|' + def.id" } },
+                                        props: {
+                                          value: { $: "'dnaorigin|' + origin.key" },
+                                          open: {
+                                            $: "startsWith(routeStore.params.dna ?? '', 'class|') && origin.classes.exists(c, 'class|' + c.name == routeStore.params.dna) || ('dnaorigin|' + origin.key) in local.openRows",
+                                          },
+                                          onOpenChange: {
+                                            $toggleLocalIn: 'openRows',
+                                            value: { $: "'dnaorigin|' + origin.key" },
+                                          },
+                                          expandable: { $: 'count(origin.classes) > 0' },
+                                        },
                                         children: [
                                           {
                                             type: 'Row',
@@ -1892,7 +1914,9 @@ export const seedBundles: Bundle[] = [
                                               {
                                                 type: 'we-icon',
                                                 props: {
-                                                  name: { $: "def.icon ? def.icon : 'heart'" },
+                                                  name: {
+                                                    $: "origin.key == 'we' ? 'cube' : origin.key == 'space' ? 'users-three' : 'package'",
+                                                  },
                                                   size: 'sm',
                                                   color: 'text-faint',
                                                 },
@@ -1900,271 +1924,50 @@ export const seedBundles: Bundle[] = [
                                               {
                                                 type: 'we-text',
                                                 props: { truncate: true, flex: '1', minWidth: '0' },
-                                                children: [{ $: 'def.name' }],
+                                                children: [{ $: 'origin.label' }],
                                               },
-                                            ],
-                                          },
-                                        ],
-                                      },
-                                    ],
-                                  },
-                                ],
-                              },
-                              {
-                                type: 'we-tree-item',
-                                slot: 'children',
-                                props: {
-                                  value: { $: "'dnakind|connection'" },
-                                  open: {
-                                    $: "(('dnakind|connection') in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'connection|')))",
-                                  },
-                                  onOpenChange: {
-                                    $if: {
-                                      condition: {
-                                        $: "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'connection|')))",
-                                      },
-                                      then: [
-                                        { $invoke: 'routeStore.setParam', args: ['dna', { $: "'connection'" }] },
-                                        {
-                                          $if: {
-                                            condition: { $: "('dnakind|connection') in local.openRows" },
-                                            then: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|connection'" } },
-                                          },
-                                        },
-                                      ],
-                                      else: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|connection'" } },
-                                    },
-                                  },
-                                  expandable: { $: 'count(local.relationshipTypes) > 0' },
-                                },
-                                children: [
-                                  {
-                                    type: 'Row',
-                                    props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
-                                    children: [
-                                      {
-                                        type: 'we-icon',
-                                        props: { name: 'arrows-left-right', size: 'sm', color: 'text-faint' },
-                                      },
-                                      {
-                                        type: 'we-text',
-                                        props: { truncate: true, flex: '1', minWidth: '0' },
-                                        children: ['Connection types'],
-                                      },
-                                      {
-                                        type: '$if',
-                                        props: {
-                                          condition: { $: 'count(local.relationshipTypes)' },
-                                          then: {
-                                            type: 'we-badge',
-                                            props: { variant: 'soft', size: 'xs' },
-                                            children: [{ $: 'count(local.relationshipTypes)' }],
-                                          },
-                                        },
-                                      },
-                                    ],
-                                  },
-                                  {
-                                    type: '$each',
-                                    props: { items: { $: 'local.relationshipTypes' }, as: 'def' },
-                                    children: [
-                                      {
-                                        type: 'we-tree-item',
-                                        slot: 'children',
-                                        props: { value: { $: "'dna|connection|' + def.id" } },
-                                        children: [
-                                          {
-                                            type: 'Row',
-                                            props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
-                                            children: [
                                               {
-                                                type: 'we-icon',
+                                                type: '$if',
                                                 props: {
-                                                  name: { $: "'arrows-left-right'" },
-                                                  size: 'sm',
-                                                  color: 'text-faint',
+                                                  condition: { $: 'count(origin.classes)' },
+                                                  then: {
+                                                    type: 'we-badge',
+                                                    props: { variant: 'soft', size: 'xs' },
+                                                    children: [{ $: 'count(origin.classes)' }],
+                                                  },
                                                 },
                                               },
-                                              {
-                                                type: 'we-text',
-                                                props: { truncate: true, flex: '1', minWidth: '0' },
-                                                children: [{ $: 'def.name' }],
-                                              },
                                             ],
                                           },
-                                        ],
-                                      },
-                                    ],
-                                  },
-                                ],
-                              },
-                              {
-                                type: 'we-tree-item',
-                                slot: 'children',
-                                props: {
-                                  value: { $: "'dnakind|state'" },
-                                  open: {
-                                    $: "(('dnakind|state') in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'state|')))",
-                                  },
-                                  onOpenChange: {
-                                    $if: {
-                                      condition: {
-                                        $: "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'state|')))",
-                                      },
-                                      then: [
-                                        { $invoke: 'routeStore.setParam', args: ['dna', { $: "'state'" }] },
-                                        {
-                                          $if: {
-                                            condition: { $: "('dnakind|state') in local.openRows" },
-                                            then: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|state'" } },
-                                          },
-                                        },
-                                      ],
-                                      else: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|state'" } },
-                                    },
-                                  },
-                                  expandable: { $: 'count(spaceStore.taskStates) > 0' },
-                                },
-                                children: [
-                                  {
-                                    type: 'Row',
-                                    props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
-                                    children: [
-                                      {
-                                        type: 'we-icon',
-                                        props: { name: 'circle-half', size: 'sm', color: 'text-faint' },
-                                      },
-                                      {
-                                        type: 'we-text',
-                                        props: { truncate: true, flex: '1', minWidth: '0' },
-                                        children: ['Task states'],
-                                      },
-                                      {
-                                        type: '$if',
-                                        props: {
-                                          condition: { $: 'count(spaceStore.taskStates)' },
-                                          then: {
-                                            type: 'we-badge',
-                                            props: { variant: 'soft', size: 'xs' },
-                                            children: [{ $: 'count(spaceStore.taskStates)' }],
-                                          },
-                                        },
-                                      },
-                                    ],
-                                  },
-                                  {
-                                    type: '$each',
-                                    props: { items: { $: 'spaceStore.taskStates' }, as: 'def' },
-                                    children: [
-                                      {
-                                        type: 'we-tree-item',
-                                        slot: 'children',
-                                        props: { value: { $: "'dna|state|' + def.id" } },
-                                        children: [
                                           {
-                                            type: 'Row',
-                                            props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
+                                            type: '$each',
+                                            props: { items: { $: 'origin.classes' }, as: 'cls' },
                                             children: [
                                               {
-                                                type: 'we-icon',
-                                                props: {
-                                                  name: { $: "def.icon ? def.icon : 'circle'" },
-                                                  size: 'sm',
-                                                  color: 'text-faint',
-                                                },
-                                              },
-                                              {
-                                                type: 'we-text',
-                                                props: { truncate: true, flex: '1', minWidth: '0' },
-                                                children: [{ $: 'def.name' }],
-                                              },
-                                            ],
-                                          },
-                                        ],
-                                      },
-                                    ],
-                                  },
-                                ],
-                              },
-                              {
-                                type: 'we-tree-item',
-                                slot: 'children',
-                                props: {
-                                  value: { $: "'dnakind|involvement'" },
-                                  open: {
-                                    $: "(('dnakind|involvement') in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'involvement|')))",
-                                  },
-                                  onOpenChange: {
-                                    $if: {
-                                      condition: {
-                                        $: "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'involvement|')))",
-                                      },
-                                      then: [
-                                        { $invoke: 'routeStore.setParam', args: ['dna', { $: "'involvement'" }] },
-                                        {
-                                          $if: {
-                                            condition: { $: "('dnakind|involvement') in local.openRows" },
-                                            then: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|involvement'" } },
-                                          },
-                                        },
-                                      ],
-                                      else: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|involvement'" } },
-                                    },
-                                  },
-                                  expandable: { $: 'count(spaceStore.involvementTypes) > 0' },
-                                },
-                                children: [
-                                  {
-                                    type: 'Row',
-                                    props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
-                                    children: [
-                                      {
-                                        type: 'we-icon',
-                                        props: { name: 'hand-waving', size: 'sm', color: 'text-faint' },
-                                      },
-                                      {
-                                        type: 'we-text',
-                                        props: { truncate: true, flex: '1', minWidth: '0' },
-                                        children: ['Involvement'],
-                                      },
-                                      {
-                                        type: '$if',
-                                        props: {
-                                          condition: { $: 'count(spaceStore.involvementTypes)' },
-                                          then: {
-                                            type: 'we-badge',
-                                            props: { variant: 'soft', size: 'xs' },
-                                            children: [{ $: 'count(spaceStore.involvementTypes)' }],
-                                          },
-                                        },
-                                      },
-                                    ],
-                                  },
-                                  {
-                                    type: '$each',
-                                    props: { items: { $: 'spaceStore.involvementTypes' }, as: 'def' },
-                                    children: [
-                                      {
-                                        type: 'we-tree-item',
-                                        slot: 'children',
-                                        props: { value: { $: "'dna|involvement|' + def.id" } },
-                                        children: [
-                                          {
-                                            type: 'Row',
-                                            props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
-                                            children: [
-                                              {
-                                                type: 'we-icon',
-                                                props: {
-                                                  name: { $: "def.icon ? def.icon : 'user'" },
-                                                  size: 'sm',
-                                                  color: 'text-faint',
-                                                },
-                                              },
-                                              {
-                                                type: 'we-text',
-                                                props: { truncate: true, flex: '1', minWidth: '0' },
-                                                children: [{ $: 'def.name' }],
+                                                type: 'we-tree-item',
+                                                slot: 'children',
+                                                props: { value: { $: "'dna|class|' + cls.name" } },
+                                                children: [
+                                                  {
+                                                    type: 'Row',
+                                                    props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
+                                                    children: [
+                                                      {
+                                                        type: 'we-icon',
+                                                        props: {
+                                                          name: { $: 'cls.icon' },
+                                                          size: 'sm',
+                                                          color: 'text-faint',
+                                                        },
+                                                      },
+                                                      {
+                                                        type: 'we-text',
+                                                        props: { truncate: true, flex: '1', minWidth: '0' },
+                                                        children: [{ $: 'cls.label' }],
+                                                      },
+                                                    ],
+                                                  },
+                                                ],
                                               },
                                             ],
                                           },
@@ -2172,178 +1975,575 @@ export const seedBundles: Bundle[] = [
                                       },
                                     ],
                                   },
-                                ],
+                                },
                               },
                               {
-                                type: 'we-tree-item',
-                                slot: 'children',
+                                type: '$if',
                                 props: {
-                                  value: { $: "'dnakind|topic'" },
-                                  open: {
-                                    $: "(('dnakind|topic') in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'topic|')))",
-                                  },
-                                  onOpenChange: {
-                                    $if: {
-                                      condition: {
-                                        $: "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'topic|')))",
+                                  condition: { $: "local.dnaLens == 'categories'" },
+                                  then: {
+                                    type: 'we-tree-item',
+                                    slot: 'children',
+                                    props: {
+                                      value: { $: "'dnakind|signal'" },
+                                      open: {
+                                        $: "(('dnakind|signal') in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'signal|')))",
                                       },
-                                      then: [
-                                        { $invoke: 'routeStore.setParam', args: ['dna', { $: "'topic'" }] },
-                                        {
-                                          $if: {
-                                            condition: { $: "('dnakind|topic') in local.openRows" },
-                                            then: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|topic'" } },
-                                          },
-                                        },
-                                      ],
-                                      else: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|topic'" } },
-                                    },
-                                  },
-                                  expandable: { $: 'count(local.topics) > 0' },
-                                },
-                                children: [
-                                  {
-                                    type: 'Row',
-                                    props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
-                                    children: [
-                                      { type: 'we-icon', props: { name: 'hash', size: 'sm', color: 'text-faint' } },
-                                      {
-                                        type: 'we-text',
-                                        props: { truncate: true, flex: '1', minWidth: '0' },
-                                        children: ['Topics'],
-                                      },
-                                      {
-                                        type: '$if',
-                                        props: {
-                                          condition: { $: 'count(local.topics)' },
-                                          then: {
-                                            type: 'we-badge',
-                                            props: { variant: 'soft', size: 'xs' },
-                                            children: [{ $: 'count(local.topics)' }],
-                                          },
-                                        },
-                                      },
-                                    ],
-                                  },
-                                  {
-                                    type: '$each',
-                                    props: { items: { $: 'local.topics' }, as: 'def' },
-                                    children: [
-                                      {
-                                        type: 'we-tree-item',
-                                        slot: 'children',
-                                        props: { value: { $: "'dna|topic|' + def.id" } },
-                                        children: [
-                                          {
-                                            type: 'Row',
-                                            props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
-                                            children: [
-                                              {
-                                                type: 'we-icon',
-                                                props: { name: { $: "'hash'" }, size: 'sm', color: 'text-faint' },
-                                              },
-                                              {
-                                                type: 'we-text',
-                                                props: { truncate: true, flex: '1', minWidth: '0' },
-                                                children: [{ $: 'def.name' }],
-                                              },
-                                            ],
-                                          },
-                                        ],
-                                      },
-                                    ],
-                                  },
-                                ],
-                              },
-                              {
-                                type: 'we-tree-item',
-                                slot: 'children',
-                                props: {
-                                  value: { $: "'dnakind|model'" },
-                                  open: {
-                                    $: "(('dnakind|model') in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'model|')))",
-                                  },
-                                  onOpenChange: {
-                                    $if: {
-                                      condition: {
-                                        $: "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'model|')))",
-                                      },
-                                      then: [
-                                        { $invoke: 'routeStore.setParam', args: ['dna', { $: "'model'" }] },
-                                        {
-                                          $if: {
-                                            condition: { $: "('dnakind|model') in local.openRows" },
-                                            then: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|model'" } },
-                                          },
-                                        },
-                                      ],
-                                      else: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|model'" } },
-                                    },
-                                  },
-                                  expandable: {
-                                    $: 'count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) > 0',
-                                  },
-                                },
-                                children: [
-                                  {
-                                    type: 'Row',
-                                    props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
-                                    children: [
-                                      { type: 'we-icon', props: { name: 'shapes', size: 'sm', color: 'text-faint' } },
-                                      {
-                                        type: 'we-text',
-                                        props: { truncate: true, flex: '1', minWidth: '0' },
-                                        children: ['Models'],
-                                      },
-                                      {
-                                        type: '$if',
-                                        props: {
+                                      onOpenChange: {
+                                        $if: {
                                           condition: {
-                                            $: 'count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description }))',
+                                            $: "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'signal|')))",
                                           },
-                                          then: {
-                                            type: 'we-badge',
-                                            props: { variant: 'soft', size: 'xs' },
+                                          then: [
+                                            { $invoke: 'routeStore.setParam', args: ['dna', { $: "'signal'" }] },
+                                            {
+                                              $if: {
+                                                condition: { $: "('dnakind|signal') in local.openRows" },
+                                                then: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|signal'" } },
+                                              },
+                                            },
+                                          ],
+                                          else: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|signal'" } },
+                                        },
+                                      },
+                                      expandable: { $: 'count(local.signalTypes) > 0' },
+                                    },
+                                    children: [
+                                      {
+                                        type: 'Row',
+                                        props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
+                                        children: [
+                                          {
+                                            type: 'we-icon',
+                                            props: { name: 'heart', size: 'sm', color: 'text-faint' },
+                                          },
+                                          {
+                                            type: 'we-text',
+                                            props: { truncate: true, flex: '1', minWidth: '0' },
+                                            children: ['Signal types'],
+                                          },
+                                          {
+                                            type: '$if',
+                                            props: {
+                                              condition: { $: 'count(local.signalTypes)' },
+                                              then: {
+                                                type: 'we-badge',
+                                                props: { variant: 'soft', size: 'xs' },
+                                                children: [{ $: 'count(local.signalTypes)' }],
+                                              },
+                                            },
+                                          },
+                                        ],
+                                      },
+                                      {
+                                        type: '$each',
+                                        props: { items: { $: 'local.signalTypes' }, as: 'def' },
+                                        children: [
+                                          {
+                                            type: 'we-tree-item',
+                                            slot: 'children',
+                                            props: { value: { $: "'dna|signal|' + def.id" } },
                                             children: [
                                               {
+                                                type: 'Row',
+                                                props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
+                                                children: [
+                                                  {
+                                                    type: 'we-icon',
+                                                    props: {
+                                                      name: { $: "def.icon ? def.icon : 'heart'" },
+                                                      size: 'sm',
+                                                      color: 'text-faint',
+                                                    },
+                                                  },
+                                                  {
+                                                    type: 'we-text',
+                                                    props: { truncate: true, flex: '1', minWidth: '0' },
+                                                    children: [{ $: 'def.name' }],
+                                                  },
+                                                ],
+                                              },
+                                            ],
+                                          },
+                                        ],
+                                      },
+                                    ],
+                                  },
+                                },
+                              },
+                              {
+                                type: '$if',
+                                props: {
+                                  condition: { $: "local.dnaLens == 'categories'" },
+                                  then: {
+                                    type: 'we-tree-item',
+                                    slot: 'children',
+                                    props: {
+                                      value: { $: "'dnakind|connection'" },
+                                      open: {
+                                        $: "(('dnakind|connection') in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'connection|')))",
+                                      },
+                                      onOpenChange: {
+                                        $if: {
+                                          condition: {
+                                            $: "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'connection|')))",
+                                          },
+                                          then: [
+                                            { $invoke: 'routeStore.setParam', args: ['dna', { $: "'connection'" }] },
+                                            {
+                                              $if: {
+                                                condition: { $: "('dnakind|connection') in local.openRows" },
+                                                then: {
+                                                  $toggleLocalIn: 'openRows',
+                                                  value: { $: "'dnakind|connection'" },
+                                                },
+                                              },
+                                            },
+                                          ],
+                                          else: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|connection'" } },
+                                        },
+                                      },
+                                      expandable: { $: 'count(local.relationshipTypes) > 0' },
+                                    },
+                                    children: [
+                                      {
+                                        type: 'Row',
+                                        props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
+                                        children: [
+                                          {
+                                            type: 'we-icon',
+                                            props: { name: 'arrows-left-right', size: 'sm', color: 'text-faint' },
+                                          },
+                                          {
+                                            type: 'we-text',
+                                            props: { truncate: true, flex: '1', minWidth: '0' },
+                                            children: ['Connection types'],
+                                          },
+                                          {
+                                            type: '$if',
+                                            props: {
+                                              condition: { $: 'count(local.relationshipTypes)' },
+                                              then: {
+                                                type: 'we-badge',
+                                                props: { variant: 'soft', size: 'xs' },
+                                                children: [{ $: 'count(local.relationshipTypes)' }],
+                                              },
+                                            },
+                                          },
+                                        ],
+                                      },
+                                      {
+                                        type: '$each',
+                                        props: { items: { $: 'local.relationshipTypes' }, as: 'def' },
+                                        children: [
+                                          {
+                                            type: 'we-tree-item',
+                                            slot: 'children',
+                                            props: { value: { $: "'dna|connection|' + def.id" } },
+                                            children: [
+                                              {
+                                                type: 'Row',
+                                                props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
+                                                children: [
+                                                  {
+                                                    type: 'we-icon',
+                                                    props: {
+                                                      name: { $: "'arrows-left-right'" },
+                                                      size: 'sm',
+                                                      color: 'text-faint',
+                                                    },
+                                                  },
+                                                  {
+                                                    type: 'we-text',
+                                                    props: { truncate: true, flex: '1', minWidth: '0' },
+                                                    children: [{ $: 'def.name' }],
+                                                  },
+                                                ],
+                                              },
+                                            ],
+                                          },
+                                        ],
+                                      },
+                                    ],
+                                  },
+                                },
+                              },
+                              {
+                                type: '$if',
+                                props: {
+                                  condition: { $: "local.dnaLens == 'categories'" },
+                                  then: {
+                                    type: 'we-tree-item',
+                                    slot: 'children',
+                                    props: {
+                                      value: { $: "'dnakind|state'" },
+                                      open: {
+                                        $: "(('dnakind|state') in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'state|')))",
+                                      },
+                                      onOpenChange: {
+                                        $if: {
+                                          condition: {
+                                            $: "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'state|')))",
+                                          },
+                                          then: [
+                                            { $invoke: 'routeStore.setParam', args: ['dna', { $: "'state'" }] },
+                                            {
+                                              $if: {
+                                                condition: { $: "('dnakind|state') in local.openRows" },
+                                                then: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|state'" } },
+                                              },
+                                            },
+                                          ],
+                                          else: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|state'" } },
+                                        },
+                                      },
+                                      expandable: { $: 'count(spaceStore.taskStates) > 0' },
+                                    },
+                                    children: [
+                                      {
+                                        type: 'Row',
+                                        props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
+                                        children: [
+                                          {
+                                            type: 'we-icon',
+                                            props: { name: 'circle-half', size: 'sm', color: 'text-faint' },
+                                          },
+                                          {
+                                            type: 'we-text',
+                                            props: { truncate: true, flex: '1', minWidth: '0' },
+                                            children: ['Task states'],
+                                          },
+                                          {
+                                            type: '$if',
+                                            props: {
+                                              condition: { $: 'count(spaceStore.taskStates)' },
+                                              then: {
+                                                type: 'we-badge',
+                                                props: { variant: 'soft', size: 'xs' },
+                                                children: [{ $: 'count(spaceStore.taskStates)' }],
+                                              },
+                                            },
+                                          },
+                                        ],
+                                      },
+                                      {
+                                        type: '$each',
+                                        props: { items: { $: 'spaceStore.taskStates' }, as: 'def' },
+                                        children: [
+                                          {
+                                            type: 'we-tree-item',
+                                            slot: 'children',
+                                            props: { value: { $: "'dna|state|' + def.id" } },
+                                            children: [
+                                              {
+                                                type: 'Row',
+                                                props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
+                                                children: [
+                                                  {
+                                                    type: 'we-icon',
+                                                    props: {
+                                                      name: { $: "def.icon ? def.icon : 'circle'" },
+                                                      size: 'sm',
+                                                      color: 'text-faint',
+                                                    },
+                                                  },
+                                                  {
+                                                    type: 'we-text',
+                                                    props: { truncate: true, flex: '1', minWidth: '0' },
+                                                    children: [{ $: 'def.name' }],
+                                                  },
+                                                ],
+                                              },
+                                            ],
+                                          },
+                                        ],
+                                      },
+                                    ],
+                                  },
+                                },
+                              },
+                              {
+                                type: '$if',
+                                props: {
+                                  condition: { $: "local.dnaLens == 'categories'" },
+                                  then: {
+                                    type: 'we-tree-item',
+                                    slot: 'children',
+                                    props: {
+                                      value: { $: "'dnakind|involvement'" },
+                                      open: {
+                                        $: "(('dnakind|involvement') in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'involvement|')))",
+                                      },
+                                      onOpenChange: {
+                                        $if: {
+                                          condition: {
+                                            $: "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'involvement|')))",
+                                          },
+                                          then: [
+                                            { $invoke: 'routeStore.setParam', args: ['dna', { $: "'involvement'" }] },
+                                            {
+                                              $if: {
+                                                condition: { $: "('dnakind|involvement') in local.openRows" },
+                                                then: {
+                                                  $toggleLocalIn: 'openRows',
+                                                  value: { $: "'dnakind|involvement'" },
+                                                },
+                                              },
+                                            },
+                                          ],
+                                          else: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|involvement'" } },
+                                        },
+                                      },
+                                      expandable: { $: 'count(spaceStore.involvementTypes) > 0' },
+                                    },
+                                    children: [
+                                      {
+                                        type: 'Row',
+                                        props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
+                                        children: [
+                                          {
+                                            type: 'we-icon',
+                                            props: { name: 'hand-waving', size: 'sm', color: 'text-faint' },
+                                          },
+                                          {
+                                            type: 'we-text',
+                                            props: { truncate: true, flex: '1', minWidth: '0' },
+                                            children: ['Involvement'],
+                                          },
+                                          {
+                                            type: '$if',
+                                            props: {
+                                              condition: { $: 'count(spaceStore.involvementTypes)' },
+                                              then: {
+                                                type: 'we-badge',
+                                                props: { variant: 'soft', size: 'xs' },
+                                                children: [{ $: 'count(spaceStore.involvementTypes)' }],
+                                              },
+                                            },
+                                          },
+                                        ],
+                                      },
+                                      {
+                                        type: '$each',
+                                        props: { items: { $: 'spaceStore.involvementTypes' }, as: 'def' },
+                                        children: [
+                                          {
+                                            type: 'we-tree-item',
+                                            slot: 'children',
+                                            props: { value: { $: "'dna|involvement|' + def.id" } },
+                                            children: [
+                                              {
+                                                type: 'Row',
+                                                props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
+                                                children: [
+                                                  {
+                                                    type: 'we-icon',
+                                                    props: {
+                                                      name: { $: "def.icon ? def.icon : 'user'" },
+                                                      size: 'sm',
+                                                      color: 'text-faint',
+                                                    },
+                                                  },
+                                                  {
+                                                    type: 'we-text',
+                                                    props: { truncate: true, flex: '1', minWidth: '0' },
+                                                    children: [{ $: 'def.name' }],
+                                                  },
+                                                ],
+                                              },
+                                            ],
+                                          },
+                                        ],
+                                      },
+                                    ],
+                                  },
+                                },
+                              },
+                              {
+                                type: '$if',
+                                props: {
+                                  condition: { $: "local.dnaLens == 'categories'" },
+                                  then: {
+                                    type: 'we-tree-item',
+                                    slot: 'children',
+                                    props: {
+                                      value: { $: "'dnakind|topic'" },
+                                      open: {
+                                        $: "(('dnakind|topic') in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'topic|')))",
+                                      },
+                                      onOpenChange: {
+                                        $if: {
+                                          condition: {
+                                            $: "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'topic|')))",
+                                          },
+                                          then: [
+                                            { $invoke: 'routeStore.setParam', args: ['dna', { $: "'topic'" }] },
+                                            {
+                                              $if: {
+                                                condition: { $: "('dnakind|topic') in local.openRows" },
+                                                then: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|topic'" } },
+                                              },
+                                            },
+                                          ],
+                                          else: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|topic'" } },
+                                        },
+                                      },
+                                      expandable: { $: 'count(local.topics) > 0' },
+                                    },
+                                    children: [
+                                      {
+                                        type: 'Row',
+                                        props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
+                                        children: [
+                                          { type: 'we-icon', props: { name: 'hash', size: 'sm', color: 'text-faint' } },
+                                          {
+                                            type: 'we-text',
+                                            props: { truncate: true, flex: '1', minWidth: '0' },
+                                            children: ['Topics'],
+                                          },
+                                          {
+                                            type: '$if',
+                                            props: {
+                                              condition: { $: 'count(local.topics)' },
+                                              then: {
+                                                type: 'we-badge',
+                                                props: { variant: 'soft', size: 'xs' },
+                                                children: [{ $: 'count(local.topics)' }],
+                                              },
+                                            },
+                                          },
+                                        ],
+                                      },
+                                      {
+                                        type: '$each',
+                                        props: { items: { $: 'local.topics' }, as: 'def' },
+                                        children: [
+                                          {
+                                            type: 'we-tree-item',
+                                            slot: 'children',
+                                            props: { value: { $: "'dna|topic|' + def.id" } },
+                                            children: [
+                                              {
+                                                type: 'Row',
+                                                props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
+                                                children: [
+                                                  {
+                                                    type: 'we-icon',
+                                                    props: { name: { $: "'hash'" }, size: 'sm', color: 'text-faint' },
+                                                  },
+                                                  {
+                                                    type: 'we-text',
+                                                    props: { truncate: true, flex: '1', minWidth: '0' },
+                                                    children: [{ $: 'def.name' }],
+                                                  },
+                                                ],
+                                              },
+                                            ],
+                                          },
+                                        ],
+                                      },
+                                    ],
+                                  },
+                                },
+                              },
+                              {
+                                type: '$if',
+                                props: {
+                                  condition: { $: "local.dnaLens == 'categories'" },
+                                  then: {
+                                    type: 'we-tree-item',
+                                    slot: 'children',
+                                    props: {
+                                      value: { $: "'dnakind|model'" },
+                                      open: {
+                                        $: "(('dnakind|model') in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'model|')))",
+                                      },
+                                      onOpenChange: {
+                                        $if: {
+                                          condition: {
+                                            $: "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'model|')))",
+                                          },
+                                          then: [
+                                            { $invoke: 'routeStore.setParam', args: ['dna', { $: "'model'" }] },
+                                            {
+                                              $if: {
+                                                condition: { $: "('dnakind|model') in local.openRows" },
+                                                then: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|model'" } },
+                                              },
+                                            },
+                                          ],
+                                          else: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|model'" } },
+                                        },
+                                      },
+                                      expandable: {
+                                        $: 'count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) > 0',
+                                      },
+                                    },
+                                    children: [
+                                      {
+                                        type: 'Row',
+                                        props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
+                                        children: [
+                                          {
+                                            type: 'we-icon',
+                                            props: { name: 'shapes', size: 'sm', color: 'text-faint' },
+                                          },
+                                          {
+                                            type: 'we-text',
+                                            props: { truncate: true, flex: '1', minWidth: '0' },
+                                            children: ['Models'],
+                                          },
+                                          {
+                                            type: '$if',
+                                            props: {
+                                              condition: {
                                                 $: 'count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description }))',
                                               },
-                                            ],
+                                              then: {
+                                                type: 'we-badge',
+                                                props: { variant: 'soft', size: 'xs' },
+                                                children: [
+                                                  {
+                                                    $: 'count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description }))',
+                                                  },
+                                                ],
+                                              },
+                                            },
                                           },
-                                        },
+                                        ],
                                       },
-                                    ],
-                                  },
-                                  {
-                                    type: '$each',
-                                    props: {
-                                      items: {
-                                        $: 'recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })',
-                                      },
-                                      as: 'def',
-                                    },
-                                    children: [
                                       {
-                                        type: 'we-tree-item',
-                                        slot: 'children',
-                                        props: { value: { $: "'dna|model|' + def.id" } },
+                                        type: '$each',
+                                        props: {
+                                          items: {
+                                            $: 'recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })',
+                                          },
+                                          as: 'def',
+                                        },
                                         children: [
                                           {
-                                            type: 'Row',
-                                            props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
+                                            type: 'we-tree-item',
+                                            slot: 'children',
+                                            props: { value: { $: "'dna|model|' + def.id" } },
                                             children: [
                                               {
-                                                type: 'we-icon',
-                                                props: {
-                                                  name: { $: "def.icon ? def.icon : 'dna'" },
-                                                  size: 'sm',
-                                                  color: 'text-faint',
-                                                },
-                                              },
-                                              {
-                                                type: 'we-text',
-                                                props: { truncate: true, flex: '1', minWidth: '0' },
-                                                children: [{ $: 'def.name' }],
+                                                type: 'Row',
+                                                props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
+                                                children: [
+                                                  {
+                                                    type: 'we-icon',
+                                                    props: {
+                                                      name: { $: "def.icon ? def.icon : 'dna'" },
+                                                      size: 'sm',
+                                                      color: 'text-faint',
+                                                    },
+                                                  },
+                                                  {
+                                                    type: 'we-text',
+                                                    props: { truncate: true, flex: '1', minWidth: '0' },
+                                                    children: [{ $: 'def.name' }],
+                                                  },
+                                                ],
                                               },
                                             ],
                                           },
@@ -2351,76 +2551,85 @@ export const seedBundles: Bundle[] = [
                                       },
                                     ],
                                   },
-                                ],
+                                },
                               },
                               {
-                                type: 'we-tree-item',
-                                slot: 'children',
+                                type: '$if',
                                 props: {
-                                  value: { $: "'dnakind|policy'" },
-                                  open: {
-                                    $: "(('dnakind|policy') in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'policy|')))",
-                                  },
-                                  onOpenChange: {
-                                    $if: {
-                                      condition: {
-                                        $: "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'policy|')))",
+                                  condition: { $: "local.dnaLens == 'categories'" },
+                                  then: {
+                                    type: 'we-tree-item',
+                                    slot: 'children',
+                                    props: {
+                                      value: { $: "'dnakind|policy'" },
+                                      open: {
+                                        $: "(('dnakind|policy') in local.openRows) || ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'policy|')))",
                                       },
-                                      then: [
-                                        { $invoke: 'routeStore.setParam', args: ['dna', { $: "'policy'" }] },
-                                        {
-                                          $if: {
-                                            condition: { $: "('dnakind|policy') in local.openRows" },
-                                            then: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|policy'" } },
+                                      onOpenChange: {
+                                        $if: {
+                                          condition: {
+                                            $: "!event.detail.open && ((((routeStore.params.view == 'canvas') || (routeStore.templateSegments[0] ? routeStore.templateSegments[0] : '') == 'dna') && routeStore.params.dna) && (startsWith(routeStore.params.dna, 'policy|')))",
                                           },
+                                          then: [
+                                            { $invoke: 'routeStore.setParam', args: ['dna', { $: "'policy'" }] },
+                                            {
+                                              $if: {
+                                                condition: { $: "('dnakind|policy') in local.openRows" },
+                                                then: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|policy'" } },
+                                              },
+                                            },
+                                          ],
+                                          else: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|policy'" } },
                                         },
-                                      ],
-                                      else: { $toggleLocalIn: 'openRows', value: { $: "'dnakind|policy'" } },
+                                      },
+                                      expandable: { $: 'count(spaceStore.policy.sentences) > 0' },
                                     },
-                                  },
-                                  expandable: { $: 'count(spaceStore.policy.sentences) > 0' },
-                                },
-                                children: [
-                                  {
-                                    type: 'Row',
-                                    props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
-                                    children: [
-                                      { type: 'we-icon', props: { name: 'scales', size: 'sm', color: 'text-faint' } },
-                                      {
-                                        type: 'we-text',
-                                        props: { truncate: true, flex: '1', minWidth: '0' },
-                                        children: ['Policy'],
-                                      },
-                                      {
-                                        type: '$if',
-                                        props: {
-                                          condition: { $: 'count(spaceStore.policy.sentences)' },
-                                          then: {
-                                            type: 'we-badge',
-                                            props: { variant: 'soft', size: 'xs' },
-                                            children: [{ $: 'count(spaceStore.policy.sentences)' }],
-                                          },
-                                        },
-                                      },
-                                    ],
-                                  },
-                                  {
-                                    type: '$each',
-                                    props: { items: { $: 'spaceStore.policy.sentences' }, as: 'rule' },
                                     children: [
                                       {
-                                        type: 'we-tree-item',
-                                        slot: 'children',
-                                        props: { value: { $: "'dnaprop|policy|' + rule" } },
+                                        type: 'Row',
+                                        props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
                                         children: [
                                           {
-                                            type: 'Row',
-                                            props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
+                                            type: 'we-icon',
+                                            props: { name: 'scales', size: 'sm', color: 'text-faint' },
+                                          },
+                                          {
+                                            type: 'we-text',
+                                            props: { truncate: true, flex: '1', minWidth: '0' },
+                                            children: ['Policy'],
+                                          },
+                                          {
+                                            type: '$if',
+                                            props: {
+                                              condition: { $: 'count(spaceStore.policy.sentences)' },
+                                              then: {
+                                                type: 'we-badge',
+                                                props: { variant: 'soft', size: 'xs' },
+                                                children: [{ $: 'count(spaceStore.policy.sentences)' }],
+                                              },
+                                            },
+                                          },
+                                        ],
+                                      },
+                                      {
+                                        type: '$each',
+                                        props: { items: { $: 'spaceStore.policy.sentences' }, as: 'rule' },
+                                        children: [
+                                          {
+                                            type: 'we-tree-item',
+                                            slot: 'children',
+                                            props: { value: { $: "'dnaprop|policy|' + rule" } },
                                             children: [
                                               {
-                                                type: 'we-text',
-                                                props: { truncate: true, flex: '1', minWidth: '0' },
-                                                children: [{ $: 'rule' }],
+                                                type: 'Row',
+                                                props: { gap: '200', ay: 'center', minWidth: '0', width: '100%' },
+                                                children: [
+                                                  {
+                                                    type: 'we-text',
+                                                    props: { truncate: true, flex: '1', minWidth: '0' },
+                                                    children: [{ $: 'rule' }],
+                                                  },
+                                                ],
                                               },
                                             ],
                                           },
@@ -2428,7 +2637,7 @@ export const seedBundles: Bundle[] = [
                                       },
                                     ],
                                   },
-                                ],
+                                },
                               },
                             ],
                           },
@@ -21263,7 +21472,7 @@ export const seedBundles: Bundle[] = [
                                         props: { variant: 'heading-sm', truncate: true, minWidth: '0', flexShrink: 1 },
                                         children: [
                                           {
-                                            $: "{ signal: 'Signal types', connection: 'Connection types', state: 'Task states', involvement: 'Involvement', topic: 'Topics', model: 'Models', policy: 'Policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]]",
+                                            $: "{ signal: 'Signal types', connection: 'Connection types', state: 'Task states', involvement: 'Involvement', topic: 'Topics', model: 'Models', policy: 'Policy', class: 'Classes' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]]",
                                           },
                                         ],
                                       },
@@ -21314,7 +21523,7 @@ export const seedBundles: Bundle[] = [
                                                 props: { variant: 'heading-sm', truncate: true, minWidth: '0' },
                                                 children: [
                                                   {
-                                                    $: "{ signal: 'Signal types', connection: 'Connection types', state: 'Task states', involvement: 'Involvement', topic: 'Topics', model: 'Models', policy: 'Policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]]",
+                                                    $: "{ signal: 'Signal types', connection: 'Connection types', state: 'Task states', involvement: 'Involvement', topic: 'Topics', model: 'Models', policy: 'Policy', class: 'Classes' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]]",
                                                   },
                                                 ],
                                               },
@@ -21352,7 +21561,7 @@ export const seedBundles: Bundle[] = [
                                         props: { variant: 'heading-sm', truncate: true, minWidth: '0', flexShrink: 1 },
                                         children: [
                                           {
-                                            $: "(split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'policy' ? split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] : { signal: local.signalTypes, connection: local.relationshipTypes, state: spaceStore.taskStates, involvement: spaceStore.involvementTypes, topic: local.topics, model: recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description }), policy: [] }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]].find(d, d.id == (split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1])).name) ?? 'Definition'",
+                                            $: "(split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'policy' ? split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] : split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'class' ? (recordStore.displays[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]].label ?? split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]) : { signal: local.signalTypes, connection: local.relationshipTypes, state: spaceStore.taskStates, involvement: spaceStore.involvementTypes, topic: local.topics, model: recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description }), policy: [], class: [] }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]].find(d, d.id == (split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1])).name) ?? 'Definition'",
                                           },
                                         ],
                                       },
@@ -21376,7 +21585,7 @@ export const seedBundles: Bundle[] = [
                                             },
                                             children: [
                                               {
-                                                $: "(split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'policy' ? split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] : { signal: local.signalTypes, connection: local.relationshipTypes, state: spaceStore.taskStates, involvement: spaceStore.involvementTypes, topic: local.topics, model: recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description }), policy: [] }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]].find(d, d.id == (split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1])).name) ?? 'Definition'",
+                                                $: "(split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'policy' ? split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] : split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'class' ? (recordStore.displays[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]].label ?? split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]) : { signal: local.signalTypes, connection: local.relationshipTypes, state: spaceStore.taskStates, involvement: spaceStore.involvementTypes, topic: local.topics, model: recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description }), policy: [], class: [] }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]].find(d, d.id == (split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1])).name) ?? 'Definition'",
                                               },
                                             ],
                                           },
@@ -22027,10 +22236,10 @@ export const seedBundles: Bundle[] = [
                                         },
                                         { when: { kind: 'literal' }, style: { shape: 'circle', size: 12 } },
                                         {
-                                          $: "((routeStore.params.dna ? routeStore.params.dna : 'all') != 'all') ? [{ when: { 'data.bucket': { exists: true, not: { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]] } }, style: { opacity: 0.1 } }] : []",
+                                          $: "((routeStore.params.dna ? routeStore.params.dna : 'all') != 'all') ? [{ when: { 'data.bucket': { exists: true, not: { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy', class: 'models' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]] } }, style: { opacity: 0.1 } }] : []",
                                         },
                                         {
-                                          $: "(split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]) ? [{ when: (split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'model' ? { 'data.bucket': { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]], type: { not: 'vocabulary' }, 'data.entity': { not: split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] } } : split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'policy' ? { 'data.bucket': { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]], type: { not: 'vocabulary' }, 'data.item': { not: split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] } } : { 'data.bucket': { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]], type: { not: 'vocabulary' }, 'data.recordId': { not: split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] } }), style: { opacity: 0.1 } }] : []",
+                                          $: "(split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]) ? [{ when: (split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'model' ? { 'data.bucket': { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy', class: 'models' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]], type: { not: 'vocabulary' }, 'data.entity': { not: split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] } } : split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'policy' ? { 'data.bucket': { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy', class: 'models' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]], type: { not: 'vocabulary' }, 'data.item': { not: split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] } } : { 'data.bucket': { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy', class: 'models' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]], type: { not: 'vocabulary' }, 'data.recordId': { not: split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] } }), style: { opacity: 0.1 } }] : []",
                                         },
                                       ],
                                       edgeStyle: [
@@ -22051,7 +22260,7 @@ export const seedBundles: Bundle[] = [
                                         { when: { type: 'move' }, style: { dashed: true, color: 'accent-text' } },
                                       ],
                                       open: {
-                                        $: "distinct(local.vocabOpen, (routeStore.params.dna ? routeStore.params.dna : 'all') != 'all' ? ['we-graph://cluster/vocabulary/' + { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]]] : [], split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] && split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] != 'policy' ? [split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]] : [])",
+                                        $: "distinct(local.vocabOpen, (routeStore.params.dna ? routeStore.params.dna : 'all') != 'all' ? ['we-graph://cluster/vocabulary/' + { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy', class: 'models' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]]] : [], split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] && split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] != 'policy' ? [split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]] : [])",
                                       },
                                       onNodeOpen: {
                                         $setLocal: 'vocabOpen',
@@ -22060,7 +22269,7 @@ export const seedBundles: Bundle[] = [
                                         },
                                       },
                                       focus: {
-                                        $: "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' ? '' : !(split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]) ? 'we-graph://cluster/vocabulary/' + { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]] : split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'policy' ? 'policy:' + split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] : split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]",
+                                        $: "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' ? '' : !(split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]) ? 'we-graph://cluster/vocabulary/' + { signal: 'signals', connection: 'connections', state: 'states', involvement: 'kinds', topic: 'topics', model: 'models', policy: 'policy', class: 'models' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]] : split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'policy' ? 'policy:' + split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] : split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]",
                                       },
                                       focusCentre: true,
                                       onNodeClick: [
@@ -28349,7 +28558,7 @@ export const seedBundles: Bundle[] = [
                                 props: { variant: 'heading-sm', truncate: true, minWidth: '0', flexShrink: 1 },
                                 children: [
                                   {
-                                    $: "{ signal: 'Signal types', connection: 'Connection types', state: 'Task states', involvement: 'Involvement', topic: 'Topics', model: 'Models', policy: 'Policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]]",
+                                    $: "{ signal: 'Signal types', connection: 'Connection types', state: 'Task states', involvement: 'Involvement', topic: 'Topics', model: 'Models', policy: 'Policy', class: 'Classes' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]]",
                                   },
                                 ],
                               },
@@ -28394,7 +28603,7 @@ export const seedBundles: Bundle[] = [
                                         props: { variant: 'heading-sm', truncate: true, minWidth: '0' },
                                         children: [
                                           {
-                                            $: "{ signal: 'Signal types', connection: 'Connection types', state: 'Task states', involvement: 'Involvement', topic: 'Topics', model: 'Models', policy: 'Policy' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]]",
+                                            $: "{ signal: 'Signal types', connection: 'Connection types', state: 'Task states', involvement: 'Involvement', topic: 'Topics', model: 'Models', policy: 'Policy', class: 'Classes' }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]]",
                                           },
                                         ],
                                       },
@@ -28421,7 +28630,7 @@ export const seedBundles: Bundle[] = [
                             props: { variant: 'heading-sm', truncate: true, minWidth: '0', flexShrink: 1 },
                             children: [
                               {
-                                $: "(split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'policy' ? split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] : { signal: local.signalTypes, connection: local.relationshipTypes, state: spaceStore.taskStates, involvement: spaceStore.involvementTypes, topic: local.topics, model: recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description }), policy: [] }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]].find(d, d.id == (split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1])).name) ?? 'Definition'",
+                                $: "(split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'policy' ? split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1] : split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'class' ? (recordStore.displays[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]].label ?? split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]) : { signal: local.signalTypes, connection: local.relationshipTypes, state: spaceStore.taskStates, involvement: spaceStore.involvementTypes, topic: local.topics, model: recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description }), policy: [], class: [] }[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0]].find(d, d.id == (split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1])).name) ?? 'Definition'",
                               },
                             ],
                           },
@@ -28494,13 +28703,300 @@ export const seedBundles: Bundle[] = [
                     type: '$if',
                     props: {
                       condition: {
-                        $: "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(local.signalTypes) == 0 && count(local.relationshipTypes) == 0 && count(spaceStore.taskStates) == 0 && count(spaceStore.involvementTypes) == 0 && count(local.topics) == 0 && count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) == 0 && count(spaceStore.policy.sentences) == 0",
+                        $: "(routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && count(local.signalTypes) == 0 && count(local.relationshipTypes) == 0 && count(spaceStore.taskStates) == 0 && count(spaceStore.involvementTypes) == 0 && count(local.topics) == 0 && count(recordStore.creatableEntities.map(k, { id: k.value, name: k.label, icon: k.icon, description: k.description })) == 0 && count(spaceStore.policy.sentences) == 0 && sum(recordStore.spaceClasses.map(g, count(g.classes))) == 0",
                       },
                       then: {
                         type: 'we-text',
                         props: { variant: 'footnote', color: 'text-muted', italic: true },
                         children: [
                           'This space has defined nothing about itself yet. Add signal types, task states and more in its settings.',
+                        ],
+                      },
+                    },
+                  },
+                  {
+                    type: '$if',
+                    props: {
+                      condition: {
+                        $: "((routeStore.params.dna ? routeStore.params.dna : 'all') == 'all' && sum(recordStore.spaceClasses.map(g, count(g.classes))) > 0) || (routeStore.params.dna ? routeStore.params.dna : 'all') == 'class'",
+                      },
+                      then: {
+                        type: 'Column',
+                        props: { gap: '400' },
+                        children: [
+                          {
+                            type: 'we-button',
+                            props: {
+                              variant: 'bare',
+                              alignSelf: 'start',
+                              onClick: {
+                                $invoke: 'routeStore.navigate',
+                                args: [{ $: "spaceStore.spacePath + '/dna'" }, { $: "{ query: { dna: 'class' } }" }],
+                              },
+                            },
+                            children: [
+                              {
+                                type: 'Row',
+                                props: { gap: '200', ay: 'center' },
+                                children: [
+                                  { type: 'we-icon', props: { name: 'cube', color: 'text-muted' } },
+                                  {
+                                    type: 'we-text',
+                                    props: { variant: 'subheading', fontWeight: 'semibold' },
+                                    children: ['Classes'],
+                                  },
+                                  {
+                                    type: 'we-text',
+                                    props: { color: 'text-muted' },
+                                    children: [{ $: 'sum(recordStore.spaceClasses.map(g, count(g.classes)))' }],
+                                  },
+                                ],
+                              },
+                            ],
+                          },
+                          {
+                            type: '$each',
+                            props: { items: { $: 'recordStore.spaceClasses' }, as: 'origin' },
+                            children: [
+                              {
+                                type: 'Column',
+                                props: { gap: '200' },
+                                children: [
+                                  {
+                                    type: 'we-text',
+                                    props: { variant: 'overline', color: 'text-muted' },
+                                    children: [{ $: 'origin.label' }],
+                                  },
+                                  {
+                                    type: 'Grid',
+                                    props: { minChildWidth: '240px', gap: '300' },
+                                    children: [
+                                      {
+                                        type: '$each',
+                                        props: { items: { $: 'origin.classes' }, as: 'cls' },
+                                        children: [
+                                          {
+                                            type: 'we-button',
+                                            props: {
+                                              variant: 'bare',
+                                              width: '100%',
+                                              onClick: {
+                                                $invoke: 'routeStore.navigate',
+                                                args: [
+                                                  { $: "spaceStore.spacePath + '/dna'" },
+                                                  { $: "{ query: { dna: 'class|' + cls.name } }" },
+                                                ],
+                                              },
+                                            },
+                                            children: [
+                                              {
+                                                type: 'Card',
+                                                props: {
+                                                  bg: 'surface',
+                                                  gap: '300',
+                                                  width: '100%',
+                                                  height: '100%',
+                                                  direction: 'row',
+                                                  ay: 'center',
+                                                  border: '1px solid transparent',
+                                                  hoverProps: { border: '1px solid accent-border', shadow: 'glow' },
+                                                },
+                                                children: [
+                                                  {
+                                                    type: 'we-icon',
+                                                    props: {
+                                                      name: { $: 'cls.icon' },
+                                                      color: 'accent-text',
+                                                      size: 'md',
+                                                    },
+                                                  },
+                                                  {
+                                                    type: 'Column',
+                                                    props: { flex: '1', minWidth: '0', gap: '100' },
+                                                    children: [
+                                                      {
+                                                        type: 'we-text',
+                                                        props: { fontWeight: 'semibold', truncate: true },
+                                                        children: [{ $: 'cls.label' }],
+                                                      },
+                                                      {
+                                                        type: 'we-text',
+                                                        props: {
+                                                          variant: 'footnote',
+                                                          color: 'text-muted',
+                                                          truncate: true,
+                                                        },
+                                                        children: [
+                                                          { $: "cls.hinted ? 'Says how to read it' : cls.name" },
+                                                        ],
+                                                      },
+                                                    ],
+                                                  },
+                                                ],
+                                              },
+                                            ],
+                                          },
+                                        ],
+                                      },
+                                    ],
+                                  },
+                                ],
+                              },
+                            ],
+                          },
+                        ],
+                      },
+                    },
+                  },
+                  {
+                    type: '$if',
+                    props: {
+                      condition: {
+                        $: "split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'class' && split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]",
+                      },
+                      then: {
+                        type: 'Column',
+                        props: { gap: '300' },
+                        $queries: {
+                          classRows: {
+                            entity: { $: "split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]" },
+                            order: { createdAt: 'desc' },
+                            limit: 100,
+                            when: {
+                              $: "split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[0] == 'class' && split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]",
+                            },
+                          },
+                        },
+                        children: [
+                          {
+                            type: 'Row',
+                            props: { gap: '200', ay: 'center' },
+                            children: [
+                              {
+                                type: 'we-icon',
+                                props: {
+                                  name: {
+                                    $: "recordStore.displays[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]].icon ?? 'cube'",
+                                  },
+                                  color: 'text-muted',
+                                },
+                              },
+                              {
+                                type: 'we-text',
+                                props: { variant: 'subheading', fontWeight: 'semibold' },
+                                children: [
+                                  {
+                                    $: "recordStore.displays[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]].label ?? split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]",
+                                  },
+                                ],
+                              },
+                              {
+                                type: 'we-text',
+                                props: { color: 'text-muted' },
+                                children: [{ $: 'count(local.classRows)' }],
+                              },
+                            ],
+                          },
+                          {
+                            type: '$if',
+                            props: {
+                              condition: { $: 'count(local.classRows) > 0' },
+                              then: {
+                                type: 'Grid',
+                                props: { minChildWidth: '240px', gap: '300' },
+                                children: [
+                                  {
+                                    type: '$each',
+                                    props: { items: { $: 'local.classRows' }, as: 'row' },
+                                    children: [
+                                      {
+                                        type: 'we-button',
+                                        props: {
+                                          variant: 'bare',
+                                          width: '100%',
+                                          onClick: [
+                                            {
+                                              $invoke: 'routeStore.setParam',
+                                              args: [
+                                                'cardType',
+                                                {
+                                                  $: "split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]",
+                                                },
+                                              ],
+                                            },
+                                            { $invoke: 'routeStore.setParam', args: ['card', { $: 'row.id' }] },
+                                            { $invoke: 'shellStore.openTemplatePanel', args: ['inspector'] },
+                                          ],
+                                        },
+                                        children: [
+                                          {
+                                            type: 'Card',
+                                            props: {
+                                              bg: 'surface',
+                                              gap: '300',
+                                              width: '100%',
+                                              height: '100%',
+                                              direction: 'row',
+                                              ay: 'center',
+                                              border: '1px solid transparent',
+                                              hoverProps: { border: '1px solid accent-border', shadow: 'glow' },
+                                            },
+                                            children: [
+                                              {
+                                                type: 'we-icon',
+                                                props: {
+                                                  name: {
+                                                    $: "recordStore.displays[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]].icon ?? 'cube'",
+                                                  },
+                                                  color: 'accent-text',
+                                                  size: 'md',
+                                                },
+                                              },
+                                              {
+                                                type: 'Column',
+                                                props: { flex: '1', minWidth: '0', gap: '100' },
+                                                children: [
+                                                  {
+                                                    type: 'we-text',
+                                                    props: { fontWeight: 'semibold', truncate: true },
+                                                    children: [
+                                                      {
+                                                        $: "row[recordStore.displays[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]].title] ?? row.id",
+                                                      },
+                                                    ],
+                                                  },
+                                                  {
+                                                    type: 'we-text',
+                                                    props: { variant: 'footnote', color: 'text-muted', truncate: true },
+                                                    children: [
+                                                      {
+                                                        $: "row[recordStore.displays[split((routeStore.params.dna ? routeStore.params.dna : 'all'), '|')[1]].summary] ?? ''",
+                                                      },
+                                                    ],
+                                                  },
+                                                ],
+                                              },
+                                            ],
+                                          },
+                                        ],
+                                      },
+                                    ],
+                                  },
+                                ],
+                              },
+                              else: {
+                                type: '$if',
+                                props: {
+                                  condition: { $: 'local.classRowsLoaded' },
+                                  then: {
+                                    type: 'we-text',
+                                    props: { variant: 'footnote', color: 'text-muted', italic: true },
+                                    children: ['Nothing of this kind here yet.'],
+                                  },
+                                },
+                              },
+                            },
+                          },
                         ],
                       },
                     },
