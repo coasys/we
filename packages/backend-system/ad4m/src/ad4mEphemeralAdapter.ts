@@ -57,6 +57,9 @@ const TARGET_ALL = '*';
  */
 const SLOW_SEND_MS = 5_000;
 
+/** How many of its own sends an `ownClients` channel remembers, to recognise their echoes. */
+const SENT_REMEMBERED = 32;
+
 export const ad4mEphemeralCapabilities: EphemeralCapabilities = {
   fanout: true,
   // Real unicast exists upstream but `sendSignalU` is broken; we address over broadcast instead.
@@ -102,6 +105,16 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
 
     const channels = new Map<string, EphemeralChannel>();
     const subscribers = new Map<string, Set<(from: string, payload: unknown) => void>>();
+    /**
+     * Per `ownClients` channel, what this client sent lately — how its own echo is told apart from
+     * a sibling's message, when both arrive authored by this agent.
+     *
+     * The executor hands a broadcast back to every client of the agent that sent it, the sender
+     * included, and the link carries nothing about which client that was. What it does carry is the
+     * exact bytes sent, so a message matching something this client just sent is its echo. Bounded:
+     * an echo arrives within one round trip, so a short memory is a complete one.
+     */
+    const sentHere = new Map<string, Set<string>>();
 
     // One AD4M handler for the whole scope, fanned out to channels by predicate suffix. Registering
     // per-channel would mean N executor subscriptions for what is one stream.
@@ -120,7 +133,11 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
         trace('ephemeral', 'recv:drop', { tag, from: link.author, reason: 'addressed-elsewhere' });
         return;
       }
-      if (link.author === myDid) return;
+      if (link.author === myDid) {
+        const sent = sentHere.get(tag);
+        // Another client of this agent is heard only where the channel asked; this client never is.
+        if (!sent || sent.has(source)) return;
+      }
 
       const listeners = subscribers.get(tag);
       if (!listeners?.size) {
@@ -189,6 +206,7 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
         if (existing) return existing;
 
         const predicate = PREDICATE_PREFIX + tag;
+        if (options?.ownClients) sentHere.set(tag, new Set());
         let inFlight = false;
         let failures = 0;
         /** The one message waiting for the in-flight send to finish. See `publish` below. */
@@ -204,8 +222,14 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
           const startedAt = Date.now();
           try {
             await listening;
+            const source = JSON.stringify(payload);
+            const sent = sentHere.get(tag);
+            if (sent) {
+              sent.add(source);
+              if (sent.size > SENT_REMEMBERED) sent.delete(sent.values().next().value as string);
+            }
             await neighbourhood.sendBroadcastU({
-              links: [{ source: JSON.stringify(payload), predicate, target: to?.agentId ?? TARGET_ALL }],
+              links: [{ source, predicate, target: to?.agentId ?? TARGET_ALL }],
             });
             // The number that settles "is it us or the transport": a send that acks in 20ms and a
             // peer that never sees it is the network's problem, not ours.
@@ -301,6 +325,7 @@ export function createAd4mEphemeralPort(getMyDid: () => string | undefined): Eph
         neighbourhood.removeSignalHandler(handler);
         subscribers.clear();
         channels.clear();
+        sentHere.clear();
         scopes.delete(perspective);
       },
     };

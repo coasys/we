@@ -21,8 +21,16 @@
 /** Quality layer the backend can forward (SFU simulcast). */
 export type CallQuality = 'high' | 'medium' | 'low';
 
-/** A remote participant as reported by the session. */
+/**
+ * A remote participant as reported by the session.
+ *
+ * A participant is one session, not one agent. An agent in the call from two devices is two
+ * participants with the same `agentDid` and different `participantId`s, and this agent's own other
+ * devices are listed too. On a mesh the two ids are the same.
+ */
 export interface CallParticipant {
+  /** The session in the call. Unique among the participants; on a mesh, the DID. */
+  participantId: string;
   agentDid: string;
   stream: MediaStream;
   hasAudio: boolean;
@@ -47,6 +55,10 @@ export interface CallSession {
   setQualityPreference(pref: CallQuality): Promise<void>;
   readonly participants: ReadonlyArray<CallParticipant>;
   getState(): string;
+  /**
+   * Session events. `replaced` says this device joined the call again from another tab: this
+   * session's call has ended, it is idle, and it does not rejoin by itself.
+   */
   on(event: string, cb: (...args: unknown[]) => void): void;
   off(event: string, cb?: (...args: unknown[]) => void): void;
   /** Send data to all other participants via the session's relay (SFU or mesh signalling). */
