@@ -463,6 +463,9 @@ importers:
       '@we/globe-widget':
         specifier: workspace:*
         version: link:../../packages/module-system/globe/widget
+      playwright-core:
+        specifier: ^1.64.1
+        version: 1.64.1
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -2520,11 +2523,11 @@ packages:
     engines: {node: '>=22.0.0'}
 
   '@coasys/ad4m-connect@https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@fce90ee851de46f6b78efe1f19fa18ec6f9d0eac':
-    resolution: {tarball: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@fce90ee851de46f6b78efe1f19fa18ec6f9d0eac}
+    resolution: {integrity: sha512-fyuLi07jjiTpiahBUkrJTUmhbBRcF1gp3D932TAOn+PvJdhacouZtTU9aYpXrqFzDSqQ41EZr2nQDsTayGqmRA==, tarball: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@fce90ee851de46f6b78efe1f19fa18ec6f9d0eac}
     version: 0.13.1-staging.8
 
   '@coasys/ad4m@https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@fce90ee851de46f6b78efe1f19fa18ec6f9d0eac':
-    resolution: {tarball: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@fce90ee851de46f6b78efe1f19fa18ec6f9d0eac}
+    resolution: {integrity: sha512-nRbLuGWfE177aNLQDhM8HXwa3c6FtHPaZWDdwx3gZzVz7y8qvB1wadiJlgimHpVsPVWCgKflhG4nBej+uXbloA==, tarball: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@fce90ee851de46f6b78efe1f19fa18ec6f9d0eac}
     version: 0.13.1-staging.8
     engines: {node: '>=22'}
 

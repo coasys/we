@@ -44,6 +44,8 @@ export {
   callRosters,
   createHeartbeatPresence,
   derivePeers,
+  isPresenceFarewell,
+  mergeClients,
   peerTone,
   peersInDataset,
   peersMatching,

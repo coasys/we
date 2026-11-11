@@ -174,6 +174,44 @@ describe('createInMemoryEphemeralPort', () => {
 
     expect(seen).toEqual([]);
   });
+
+  describe("an agent's own clients", () => {
+    it('reaches a sibling client only on a channel opened with ownClients, and never the sender', () => {
+      const bus = new InMemoryBus();
+      const [tabA, tabB, anna] = ports(bus, 'me', 'me', 'anna');
+      const seen: string[] = [];
+      tabA.channel('presence', { ownClients: true }).onMessage((from, p) => seen.push(`tabA<-${from}:${p}`));
+      tabB.channel('presence', { ownClients: true }).onMessage((from, p) => seen.push(`tabB<-${from}:${p}`));
+      anna.channel('presence', { ownClients: true }).onMessage((from, p) => seen.push(`anna<-${from}:${p}`));
+
+      tabA.channel('presence').publish('beat');
+
+      expect(seen).toEqual(['tabB<-me:beat', 'anna<-me:beat']);
+    });
+
+    it('keeps the old rule on a channel that did not ask', () => {
+      const bus = new InMemoryBus();
+      const [tabA, tabB] = ports(bus, 'me', 'me');
+      const seen: unknown[] = [];
+      tabB.channel('rtc').onMessage((_f, p) => seen.push(p));
+
+      tabA.channel('rtc').publish('offer');
+
+      expect(seen).toEqual([]);
+    });
+
+    it('disposing one client leaves its sibling subscribed', () => {
+      const bus = new InMemoryBus();
+      const [tabA, tabB, anna] = ports(bus, 'me', 'me', 'anna');
+      const seen: unknown[] = [];
+      tabB.channel('t').onMessage((_f, p) => seen.push(p));
+
+      tabA.dispose();
+      anna.channel('t').publish('still here');
+
+      expect(seen).toEqual(['still here']);
+    });
+  });
 });
 
 describe('presence over a second backend', () => {
