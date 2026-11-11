@@ -395,6 +395,14 @@ export function RuntimeStoreProvider(props: ParentProps) {
     if (stop) onCleanup(stop);
   });
 
+  // The storage line follows the backend's storage as the host hears it change, so a move under its
+  // keys or a store that opens shows at once; a host that cannot follow it is read when settings opens.
+  createEffect(() => {
+    const host = executorHost();
+    const stop = host?.onStorageStatus?.((status) => setStorageStatus(status ?? null));
+    if (stop) onCleanup(stop);
+  });
+
   // Sorted, so adding an override does not reorder the rows under the cursor.
   const logLevels = createMemo(() =>
     Object.entries(logLevelMap())

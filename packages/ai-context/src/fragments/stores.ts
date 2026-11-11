@@ -1040,7 +1040,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         'string — the newest lines of this run’s backend log, oldest first. Empty until loadExecutorLogTail runs',
       canRestartExecutor: 'boolean — the host starts the backend, so a restart can be offered',
       storageLine:
-        'string — one sentence on how this device keeps the data on its disk, from the backend’s own storage status, read when settings opens. Show it as it is; empty where the host does not start the backend or nothing true can be said yet (storage not open, a store being moved under its key)',
+        'string — one sentence on how this device keeps the data on its disk, from the backend’s own storage status, followed as it changes where the host hears it and read when settings opens otherwise. Show it as it is: while the data moves under its keys it says how far (“Moving your data under its key: 3 of 5.”); empty where the host does not start the backend or nothing true can be said yet (storage not open)',
       canBackUp:
         'boolean — a database export/import can be offered: the backend writes the file and the host can name one. False on web',
       logLevels:

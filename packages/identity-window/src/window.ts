@@ -20,6 +20,7 @@ import {
   type DeviceNoun,
   heading,
   isLast,
+  migrationProgress,
   refusedField,
   remaining,
   type Screen,
@@ -333,6 +334,27 @@ function body(screen: Screen): Child[] {
     }
     case 'storage-open':
       return [];
+    case 'storage-migrating': {
+      // The supervisor answers with the next count, or the data open: wait for it now.
+      waitFor({ kind: 'wait-storage' });
+      const bar = el('progress');
+      // No count yet: an indeterminate bar, which has no value.
+      if (screen.storesTotal > 0) {
+        bar.max = screen.storesTotal;
+        bar.value = Math.min(screen.storesDone, screen.storesTotal);
+      }
+      bar.setAttribute('aria-label', migrationProgress(screen.storesDone, screen.storesTotal));
+      return [bar, el('div', { className: 'row' }, button('Close', cancel))];
+    }
+    case 'storage-migration-failed':
+      return [
+        el(
+          'div',
+          { className: 'row' },
+          button('Try again', () => step({ kind: 'try-again' }), 'primary'),
+          button('Close', cancel),
+        ),
+      ];
     case 'offer':
       // The claim can come at any moment: wait for it now.
       waitFor({ kind: 'wait-claim' });

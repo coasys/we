@@ -38,6 +38,13 @@ contextBridge.exposeInMainWorld('electron', {
   // How the executor keeps its data on this computer's disk, for the device settings page; null
   // while it is not up. Only the state and each store's: the main process asks with the credential.
   storageStatus: () => ipcRenderer.invoke('executor-storage-status'),
+  // The same, each time the executor says it changed (`storage-state-changed`). Hands back its own
+  // unsubscribe.
+  onStorageStatus: (listener) => {
+    const forward = (_event, status) => listener(status);
+    ipcRenderer.on('executor-storage-status', forward);
+    return () => ipcRenderer.removeListener('executor-storage-status', forward);
+  },
 
   /*
     The executor this app runs, as the app before a session reads it: starting, ready, or failed and

@@ -27,6 +27,7 @@ declare global {
       chooseFile: (options: { save: boolean; defaultName?: string }) => Promise<string | null>;
       // Absent in an older main process.
       storageStatus?: () => Promise<StorageStatus | null>;
+      onStorageStatus?: (listener: (status: StorageStatus | null) => void) => () => void;
       saveFile: (file: { name: string; type: string; bytes: Uint8Array }) => Promise<boolean>;
       // The custody sidecar's window and public state; absent where there is no custody service.
       custody?: Ad4mCustodyHost;

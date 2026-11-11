@@ -13,6 +13,7 @@ import {
   BOT_ACTIONS,
   heading,
   isLast,
+  migrationProgress,
   refusedField,
   remaining,
   type RevokeTarget,
@@ -385,6 +386,36 @@ describe('the identity window', () => {
     const open: Screen = { screen: 'storage-open' };
     expect(heading(open).title).toBe('Your data is open');
     expect(isLast(open)).toBe(true);
+  });
+
+  it('shows how far the move of the data under its key is, and that nothing was lost when it fails', () => {
+    const moving: Screen = { screen: 'storage-migrating', storesDone: 2, storesTotal: 5 };
+    expect(heading(moving).title).toBe('Encrypting your data');
+    expect(heading(moving).lead.startsWith('Moving your data under its key: 2 of 5.')).toBe(true);
+    expect(heading(moving).lead).toContain('on this computer');
+    expect(heading(moving, 'phone').lead).toContain('on this phone');
+    // The window waits for the next count: the move is not a last screen, nor is its failure.
+    expect(isLast(moving)).toBe(false);
+    expect(migrationProgress(0, 3)).toBe('Moving your data under its key: 0 of 3.');
+    expect(migrationProgress(4, 3)).toBe('Moving your data under its key: 3 of 3.');
+    expect(migrationProgress(0, 0)).toBe('Moving your data under its key.');
+    expect(migrationProgress(-1, 3)).toBe('Moving your data under its key.');
+    expect(heading({ screen: 'storage-migrating', storesDone: 0, storesTotal: 0 }).lead).toMatch(
+      /^Moving your data under its key\. /,
+    );
+
+    const failed: Screen = { screen: 'storage-migration-failed' };
+    expect(heading(failed).title).toBe('Your data could not be moved under its key');
+    expect(heading(failed).lead).toContain('Nothing was lost');
+    expect(heading(failed).lead).toContain('Try again');
+    expect(isLast(failed)).toBe(false);
+  });
+
+  it('waits for the next storage state on the move screen, and offers Try again on its failure', () => {
+    const moving = windowSource.slice(windowSource.indexOf("case 'storage-migrating'"));
+    expect(moving.slice(0, moving.indexOf('case ', 10))).toContain("waitFor({ kind: 'wait-storage' })");
+    const failed = windowSource.slice(windowSource.indexOf("case 'storage-migration-failed'"));
+    expect(failed.slice(0, failed.indexOf('case ', 10))).toContain("step({ kind: 'try-again' })");
   });
 
   it('names no app: the host titles the window, so a WE build and a Coasys build say their own name', () => {

@@ -57,6 +57,25 @@ describe('storageLine', () => {
     expect(storageLine(undefined)).toBeNull();
   });
 
+  it('says how far the move of the data under its key is, store by store', () => {
+    const moving = (storesDone: number, storesTotal: number): StorageStatus => ({
+      state: 'migrating',
+      encryptedAtRest: false,
+      stores: null,
+      migration: { storesDone, storesTotal },
+    });
+    expect(storageLine(moving(0, 4))).toBe('Moving your data under its key: 0 of 4.');
+    expect(storageLine(moving(3, 4))).toBe('Moving your data under its key: 3 of 4.');
+    // Never more done than there are.
+    expect(storageLine(moving(5, 4))).toBe('Moving your data under its key: 4 of 4.');
+    // No count yet, or none that reads as one: that it is moving, and no number.
+    expect(storageLine({ state: 'migrating', encryptedAtRest: false, stores: null })).toBe(
+      'Moving your data under its key.',
+    );
+    expect(storageLine(moving(0, 0))).toBe('Moving your data under its key.');
+    expect(storageLine(moving(-1, 4))).toBe('Moving your data under its key.');
+  });
+
   it('says nothing while any store is being moved under its key', () => {
     expect(storageLine(open('migrating', 'encrypted', 'plain'))).toBeNull();
     expect(storageLine(open('encrypted', 'migrating', 'plain'))).toBeNull();

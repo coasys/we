@@ -3462,7 +3462,7 @@ RuntimeStore:
   - executorConfigRows: { id, key, value, kind, checked, editable, note }[] — every key of that file: value ready to show (empty when the file leaves the key to its default, "Default" for a fixed one), kind the control it takes, from the key’s type rather than its value (boolean | number | text, or fixed for one only shown), checked for a switch, editable, and note saying why one is not (a flag of this start sets it) or that it is changed only from this computer
   - executorLogTail: string — the newest lines of this run’s backend log, oldest first. Empty until loadExecutorLogTail runs
   - canRestartExecutor: boolean — the host starts the backend, so a restart can be offered
-  - storageLine: string — one sentence on how this device keeps the data on its disk, from the backend’s own storage status, read when settings opens. Show it as it is; empty where the host does not start the backend or nothing true can be said yet (storage not open, a store being moved under its key)
+  - storageLine: string — one sentence on how this device keeps the data on its disk, from the backend’s own storage status, followed as it changes where the host hears it and read when settings opens otherwise. Show it as it is: while the data moves under its keys it says how far (“Moving your data under its key: 3 of 5.”); empty where the host does not start the backend or nothing true can be said yet (storage not open)
   - pendingConsent: ConsentRequest | null — a request awaiting the user's decision (kind: 'capability' | 'trust', title, message, app, peerId)
   - consentSecret: string — a code an approval returned, to be relayed to the asking app
 - Actions:

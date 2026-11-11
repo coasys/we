@@ -60,7 +60,7 @@ import {
   trustedOrigins,
 } from './navigationPolicy.js';
 import { setupSeedServers } from './seed-servers.js';
-import { isFirstStart, storageKeystore, storageShown, unlockStorage } from './storageUnlock.js';
+import { followStorage, isFirstStart, storageKeystore, storageShown, unlockStorage } from './storageUnlock.js';
 import { closeHides, createTray, trayHostPresent } from './tray.js';
 
 // Enable right-click context menu with inspect element in dev mode
@@ -604,14 +604,49 @@ async function unlockStorageFor(port, token, dataPath) {
   try {
     const { how } = await unlockStorage({
       call: rpc.call,
+      onEvent: rpc.onEvent,
       keystore: binary ? storageKeystore({ binary, dataFolder: dataPath }) : null,
       firstStart: isFirstStart(dataPath),
       askPassphrase: (step) => identity.openStorage(step),
+      showMigration: (step) => identity.openStorage(step),
     });
     console.log('[main] The executor’s storage is open', how === 'already' ? '(it already was)' : `(${how})`);
   } finally {
     rpc.close();
   }
+  followStorageFor(port, token);
+}
+
+/**
+ * The running executor's storage, followed on its own admin socket from `storage-state-changed` (and
+ * `storage-migration-progress`) for as long as the executor runs, so the device settings page's storage
+ * line changes the moment the storage does: each status goes to the main window as
+ * `executor-storage-status`, stripped to `storageShown`. Null while no executor is followed.
+ */
+let storageFollower = null;
+
+function followStorageFor(port, token) {
+  stopFollowingStorage();
+  const rpc = executorRpc({ port, token, timeoutMs: 5_000 });
+  // Only events (nothing here calls `next`, so nothing polls): the page reads the status itself when
+  // it opens (`executor-storage-status`).
+  const follow = followStorage({ call: rpc.call, onEvent: rpc.onEvent });
+  const unsubscribe = follow.subscribe((status) => {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    mainWindow.webContents.send('executor-storage-status', storageShown(status));
+  });
+  storageFollower = {
+    close() {
+      unsubscribe();
+      follow.close();
+      rpc.close();
+    },
+  };
+}
+
+function stopFollowingStorage() {
+  storageFollower?.close();
+  storageFollower = null;
 }
 
 /**
@@ -1540,7 +1575,10 @@ function installApplicationMenu() {
 }
 
 // Stop the executor and the custody sidecar beside it.
-const stopExecutor = () => Promise.all([stopCustody(), stopExecutorProcess()]);
+const stopExecutor = () => {
+  stopFollowingStorage();
+  return Promise.all([stopCustody(), stopExecutorProcess()]);
+};
 
 // Stop the executor and wait for it to exit: closing its stdin (`--watch-stdin true`) lets it shut
 // the Holochain conductor down and exit 0; SIGTERM, then SIGKILL to its process group (spawned
