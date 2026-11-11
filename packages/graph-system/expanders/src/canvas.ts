@@ -701,12 +701,21 @@ export function canvasSeed(): SeedSource {
         ),
       ];
       const origin = options.origin ? { [options.origin]: true } : undefined;
+      const madeBy = options.madeBy ? { [options.madeBy]: true } : undefined;
+      /*
+        A child the pull draws is read the way every card is — counts, reactions, where it came
+        from and what made it, and the relation fields its edges are read back off. Reading less
+        meant a pulled card arrived with none of the facts a card answers with (a `pending` mark
+        nobody could see, an `origin` the "this call" filter needed and never got).
+      */
+      const pullInclude = (entity: string) =>
+        orNothing({ ...cardFields(), ...includeFor(entity), ...origin, ...madeBy });
       const [furnished, owned] = await Promise.all([
         furniture.length
           ? read(
               furniture,
               undefined,
-              { node: { include: { ...cardFields(), ...relationInclude } } },
+              { node: { include: { ...cardFields(), ...relationInclude, ...origin, ...madeBy } } },
               scope,
               limit * furniture.length,
             )
@@ -715,7 +724,7 @@ export function canvasSeed(): SeedSource {
           ? read(
               trayTypes,
               undefined,
-              orNothing({ ...cardFields(), ...relationInclude, ...origin }),
+              orNothing({ ...cardFields(), ...relationInclude, ...origin, ...madeBy }),
               membersScope,
               limit * trayTypes.length,
             )
@@ -867,6 +876,43 @@ export function canvasSeed(): SeedSource {
       const originOf = (row: Record<string, unknown>): string | undefined => idAt(row, options.origin);
 
       /*
+        What a card carries beside its own fields — the same for one somebody placed, one waiting
+        in the tray, and one the relation pull drew. A pulled card was once pushed as bare
+        `rowToNode` output: no pending mark (so a drop could write a suggestion's field), no
+        counts, no weight, no colour, no origin, no made-by — every fact a card answers with,
+        missing. `at` is the one thing a pull cannot supply: a card nobody placed has no position.
+      */
+      const cardData = (
+        entity: string,
+        row: Record<string, unknown>,
+        node: GraphNode,
+        at?: Placed,
+      ): Record<string, GraphValue> => {
+        const typeColor = typeColors.get(entity);
+        return {
+          ...node.data,
+          // Before the canvas's own fields: a count is the record's, and nothing a placement
+          // carries is named like one, so the order is only a statement of which layer owns what.
+          ...countsOf(row),
+          // Beside the counts, and for the same reason they are before the canvas's own fields: a
+          // weight is a fact about the record rather than about this canvas's arrangement of it.
+          // What each person answered, weighed by `derive` — see `answersOn`.
+          ...(options.weigh?.signalTypeId ? answersOn(row.signals, options.weigh.signalTypeId) : {}),
+          // Type colour first, so a card's own colour lands in front of it — and both are dropped
+          // when unset, which is what lets a style rule defer to the one above it.
+          ...(typeColor ? { canvasTypeColor: typeColor } : {}),
+          // Only when true, so a style rule matching `{ pending: true }` and one matching nothing
+          // are the two states — an explicit `false` on every other card would make "not pending"
+          // a value a rule could accidentally match on.
+          ...(typeof row.id === 'string' && pending.has(row.id) ? { pending: true } : {}),
+          ...(typeof row.id === 'string' && changed.has(row.id) ? { changed: true } : {}),
+          ...(originOf(row) ? { origin: originOf(row)! } : {}),
+          ...(idAt(row, options.madeBy) ? { madeBy: idAt(row, options.madeBy)! } : {}),
+          ...(at ? { ...at.style, x: at.x, y: at.y } : {}),
+        };
+      };
+
+      /*
         Rows a row-to-node could make nothing of, counted rather than passed over in silence.
 
         `rowToNode` returns null for a row with no string `id`, which is the one shape of failure
@@ -908,29 +954,7 @@ export function canvasSeed(): SeedSource {
           has: it is handed nodes and returns positions, and a seed that needed its own channel to
           the layout would be a seed only one layout could use.
         */
-        // Type colour first, so a card's own colour lands in front of it — and both are dropped
-        // when unset, which is what lets a style rule defer to the one above it.
-        const typeColor = typeColors.get(entity);
-        const data = {
-          ...node.data,
-          // Before the canvas's own fields: a count is the record's, and nothing a placement
-          // carries is named like one, so the order is only a statement of which layer owns what.
-          ...countsOf(row),
-          // Beside the counts, and for the same reason they are before the canvas's own fields: a
-          // weight is a fact about the record rather than about this canvas's arrangement of it.
-          // What each person answered, weighed by `derive` — see `answersOn`.
-          ...(options.weigh?.signalTypeId ? answersOn(row.signals, options.weigh.signalTypeId) : {}),
-          ...(typeColor ? { canvasTypeColor: typeColor } : {}),
-          // Only when true, so a style rule matching `{ pending: true }` and one matching nothing
-          // are the two states — an explicit `false` on every other card would make "not pending"
-          // a value a rule could accidentally match on.
-          ...(typeof row.id === 'string' && pending.has(row.id) ? { pending: true } : {}),
-          ...(typeof row.id === 'string' && changed.has(row.id) ? { changed: true } : {}),
-          ...(originOf(row) ? { origin: originOf(row)! } : {}),
-          ...(idAt(row, options.madeBy) ? { madeBy: idAt(row, options.madeBy)! } : {}),
-          ...(at ? { ...at.style, x: at.x, y: at.y } : {}),
-        };
-        nodes.push({ ...node, data });
+        nodes.push({ ...node, data: cardData(entity, row, node, at) });
         if (typeof row.id === 'string') {
           onCanvas.add(row.id);
           typeOf.set(row.id, entity);
@@ -1032,7 +1056,7 @@ export function canvasSeed(): SeedSource {
                 for (const spec of specs) {
                   if (spec.target !== type || !heldByChild(spec)) continue;
                   queries.push(
-                    read(entity, { [spec.name]: ids }, includeFor(entity), scope, maxNodes).then((rows) =>
+                    read(entity, { [spec.name]: ids }, pullInclude(entity), scope, maxNodes).then((rows) =>
                       found.push(...rows.map((row) => ({ entity, row }))),
                     ),
                   );
@@ -1050,7 +1074,7 @@ export function canvasSeed(): SeedSource {
                         entity: spec.target,
                         dataset,
                         scope: { anchor: type, via: spec.name, anchorId: id },
-                        include: includeFor(spec.target),
+                        include: pullInclude(spec.target),
                         limit: maxNodes,
                         signal,
                       })
@@ -1089,7 +1113,7 @@ export function canvasSeed(): SeedSource {
               continue;
             }
             seen.add(node.id);
-            nodes.push(node);
+            nodes.push({ ...node, data: cardData(entity, row, node) });
             onCanvas.add(id);
             typeOf.set(id, entity);
             cardRows.set(id, { entity, row });

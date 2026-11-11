@@ -1752,4 +1752,57 @@ describe('canvasSeed — model relations', () => {
     expect(asked).not.toContain('Signal');
     expect(asked).not.toContain('ModelRun');
   });
+
+  it('enriches a pulled card like every other card — pending, weighed, and from somewhere', async () => {
+    /*
+      A card the relation pull draws used to arrive as bare `rowToNode` output: no `pending` flag
+      for a suggestion still awaiting acceptance (so a drop could write its field as if it were
+      settled), no counts, no weight, no type colour, no origin, no made-by. It is read with the
+      same fields and stamped with the same facts as a card somebody placed.
+    */
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 }],
+      TypeStyle: [{ id: 'ts1', nodeType: 'Position', color: 'hotpink' }],
+      DiscussionTopic: [{ id: 't1', title: 'Roadmap' }],
+      Position: [
+        {
+          id: 'pos1',
+          text: 'Ship it',
+          about: 't1',
+          extractedFrom: 'call-1',
+          generatedBy: 'run-1',
+          signals: [{ signalTypeId: 'rate', value: 5, author: 'did:a', createdAt: '2026-01-01' }],
+          $responsesCount: 3,
+        },
+      ],
+    });
+    const seed = canvasSeed();
+    const fragment = await seed.seed(
+      {
+        canvas: 'b1',
+        relations: { children: true },
+        origin: 'extractedFrom',
+        madeBy: 'generatedBy',
+        counts: ['responses'],
+        pending: ['pos1'],
+        typeStyles: 'TypeStyle',
+        weigh: { signalTypeId: 'rate', mode: 'rating' },
+      },
+      ctx,
+    );
+
+    const pulled = fragment.nodes.find((n) => n.id === position('pos1'));
+    expect(pulled?.data).toMatchObject({
+      pending: true,
+      origin: 'call-1',
+      madeBy: 'run-1',
+      canvasTypeColor: 'hotpink',
+      responsesCount: 3,
+      weightType: 'rate',
+    });
+    // Its real answers, not a 0: the votes a `derive` weighs are the ones the read brought back.
+    expect(JSON.parse(pulled?.data?.weightVotes as string)).toEqual([['did:a', 5]]);
+    const weighed = seed.derive!(fragment, { canvas: 'b1', weigh: { signalTypeId: 'rate', mode: 'rating' } });
+    expect(weighed.nodes.find((n) => n.id === position('pos1'))?.data?.weight).toBe(5);
+  });
 });
