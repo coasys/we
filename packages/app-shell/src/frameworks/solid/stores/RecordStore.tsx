@@ -2021,7 +2021,15 @@ export function RecordStoreProvider(props: ParentProps) {
     */
     const apply = async (parent: { id: string; type: string } | null, via: typeof write, leaving: typeof write) => {
       if (moved) {
-        const detached = await detach(leaving, parent?.id);
+        // The same to-one on both ends: the set is its own clear, as on the way out. Cleared first,
+        // an installed SDNA (which cannot spell a clear) would report a failure the set undoes.
+        const selfClearing =
+          parent &&
+          via.side === 'child' &&
+          leaving.side === 'child' &&
+          via.type === leaving.type &&
+          via.prop === leaving.prop;
+        const detached = selfClearing ? true : await detach(leaving, parent?.id);
         const written = parent ? await writeTreeRelation(handle, via, card.id, parent) : detached;
         /*
           A card whose field cannot be spelled — an installed SDNA's to-one, which can be pointed

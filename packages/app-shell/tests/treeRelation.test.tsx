@@ -626,6 +626,32 @@ describe('a tree drop on a model relation', () => {
       expect(aboutOf('pos2')).toBe('t1');
       expect(info).toHaveBeenCalledWith(expect.stringContaining('take that move back'));
     });
+
+    it('undoes a reparent along one field by the set alone, and says nothing failed', async () => {
+      /*
+        `pos1` moves from `t2` to `t1` by `about`, and back on undo. Both ends are the same to-one,
+        so the set to `t2` is its own clear, as on the way out. Clearing first finds no spelling on
+        an installed SDNA, and the undo said it could not be taken back while it was.
+      */
+      world.bare = true;
+      const info = vi.spyOn(toastService, 'info');
+      const store = mount();
+      await store.arrangeOnTree(CANVAS, SPINE, {
+        recordId: 'pos1',
+        recordType: 'Position',
+        into: 'child',
+        targetId: 't1',
+        targetType: 'DiscussionTopic',
+        order: ['pos1'],
+      });
+      expect(aboutOf('pos1')).toBe('t1');
+
+      await store.undoCanvas(CANVAS);
+      expect(aboutOf('pos1')).toBe('t2');
+      await store.redoCanvas(CANVAS);
+      expect(aboutOf('pos1')).toBe('t1');
+      expect(info).not.toHaveBeenCalled();
+    });
   });
 
   it('reorders a card among its own siblings — no link moves, the ranks do', async () => {
