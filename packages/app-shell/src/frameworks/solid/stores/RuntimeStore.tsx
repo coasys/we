@@ -490,8 +490,15 @@ export function RuntimeStoreProvider(props: ParentProps) {
    */
   const [aiFormOpenedAs, setAiFormOpenedAs] = createSignal('');
   const [aiEndpointFormOpenedAs, setAiEndpointFormOpenedAs] = createSignal('');
+  /**
+   * Which opening of each form is on screen, so a save closes the form it was pressed in and not one
+   * opened after it: a form can be closed while its save waits on the server.
+   */
+  let aiFormOpening = 0;
+  let aiEndpointFormOpening = 0;
 
   function openAiForm(form: AiModelForm): void {
+    aiFormOpening += 1;
     batch(() => {
       setAiForm(form);
       setAiFormOpenedAs(JSON.stringify(form));
@@ -499,6 +506,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
   }
 
   function openAiEndpointForm(form: AiEndpointForm): void {
+    aiEndpointFormOpening += 1;
     batch(() => {
       setAiEndpointForm(form);
       setAiEndpointFormOpenedAs(JSON.stringify(form));
@@ -637,6 +645,9 @@ export function RuntimeStoreProvider(props: ParentProps) {
     onCleanup(() => {
       stopModels?.();
       stopHealth?.();
+      // Nobody hears how a download ends while the page is shut, so what was running is let go of
+      // rather than kept for ever; one the server is still running says so again with its next event.
+      setServerPulls([]);
     });
   });
 
@@ -832,7 +843,9 @@ export function RuntimeStoreProvider(props: ParentProps) {
     if (field === 'kind' && form.kind !== before.kind) {
       const model = form.remoteModel.trim();
       const listed = aiDiscoveredModelOptions().map((option) => option.value);
-      if (model && discoveredForForm() && !serves(listed, model)) setAiForm({ ...form, remoteModel: '' });
+      // Kept only where the server has said it serves the new kind: with discovery still out, the
+      // model is of the kind the form was for, and discovery's fill keeps a field it finds full.
+      if (model && !(discoveredForForm() && serves(listed, model))) setAiForm({ ...form, remoteModel: '' });
       fillModel();
     }
   }
@@ -889,12 +902,13 @@ export function RuntimeStoreProvider(props: ParentProps) {
     const form = aiForm();
     if (!form || !modelFormComplete(form)) return;
     const draft = toModelDraft(form);
+    const opening = aiFormOpening;
     const saved = await run('saveAiModel', () =>
       form.id ? modelAdmin()?.update?.(form.id, draft) : modelAdmin()?.add?.(draft),
     );
     // The form stays open on failure, holding what was typed — the error slot above it says why.
     if (!saved.ok) return;
-    closeAiForm();
+    if (opening === aiFormOpening) closeAiForm();
     await loadAiModels();
   }
 
@@ -958,11 +972,12 @@ export function RuntimeStoreProvider(props: ParentProps) {
       .filter((e) => e.id !== form.id)
       .map((e) => e.name);
     const draft = toEndpointDraft(form, endpointName(form, others));
+    const opening = aiEndpointFormOpening;
     const saved = await run('saveAiEndpoint', () =>
       form.id ? modelAdmin()?.updateEndpoint?.(form.id, draft) : modelAdmin()?.addEndpoint?.(draft),
     );
     if (!saved.ok) return;
-    setAiEndpointForm(null);
+    if (opening === aiEndpointFormOpening) setAiEndpointForm(null);
     await loadAiModels();
   }
 

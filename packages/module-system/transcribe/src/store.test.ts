@@ -3003,6 +3003,34 @@ describe('models', () => {
     expect(p.opened).toEqual(['base']);
   });
 
+  it('stops asking about a model that cannot run once nobody is waiting on it, and asks again on open', async () => {
+    // A model the server never readies — not answering, or does not have it — was re-read every few
+    // seconds for as long as the app ran, with the panel shut and nothing recording.
+    vi.useFakeTimers();
+    const p = port([{ id: 'small', name: 'faster-whisper small', ready: false, isDefault: true }]);
+    let reads = 0;
+    const transcription = { ...p.transcription, models: () => ((reads += 1), p.transcription.models()) };
+    const h = harness([], { transcription });
+
+    h.store.openPanel();
+    h.setPeers([]);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(h.store.modelUnready()).toBe(true);
+
+    h.store.closePanel();
+    await vi.advanceTimersByTimeAsync(3_000);
+    const shut = reads;
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(reads).toBe(shut);
+
+    // Opened again, the panel does not show what was true when it closed.
+    p.setModels([{ id: 'small', name: 'faster-whisper small', ready: true, isDefault: true }]);
+    h.store.openPanel();
+    h.setPeers([]);
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(h.store.modelUnready()).toBe(false);
+  });
+
   it('lets an auto-join that gave up for want of a model try again after a connect', async () => {
     const p = port([]);
     const h = harness(IN_CALL, { dataset: () => ({}), transcription: p.transcription });
