@@ -1843,4 +1843,42 @@ describe('canvasSeed — model relations', () => {
     // The child's own field wins the one edge — it is the statement a reparent writes.
     expect(between[0].data).toMatchObject({ relation: 'Comment.post', heldByChild: true });
   });
+
+  it('keeps a pulled child under "this call" only when its origin was actually read', async () => {
+    /*
+      `onlyFrom` filters a pulled child by `origin` — which is a *relation*, so AD4M returns it
+      only when the read asks, and then as the record it points at (`{ id }`), not a plain
+      field. The pull's reads never asked, so every pulled child read as from nowhere and the
+      filter dropped them all. The mock here honours the include the way the backend does.
+    */
+    const tables: Record<string, Record<string, unknown>[]> = {
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 }],
+      DiscussionTopic: [{ id: 't1', title: 'Roadmap', extractedFrom: { id: 'call-1' } }],
+      Position: [{ id: 'pos1', text: 'Ship it', about: 't1', extractedFrom: { id: 'call-1' } }],
+    };
+    const ctx = {
+      query: async (request: ExpanderQuery) => {
+        const include = request.include as Record<string, unknown> | undefined;
+        const askedForOrigin =
+          Boolean(include?.extractedFrom) ||
+          Boolean((include?.node as { include?: Record<string, unknown> } | undefined)?.include?.extractedFrom);
+        const found = answer(tables, request, 'b1');
+        // A relation comes back only when the read asked for it — as a link record, not a field.
+        return askedForOrigin ? found : found.map(({ extractedFrom: _dropped, ...row }) => row);
+      },
+      defaultDataset: () => 'ds',
+      models: () => SHAPES,
+      warn: () => {},
+    } as ExpanderContext;
+
+    const { nodes } = await canvasSeed().seed(
+      { canvas: 'b1', relations: { children: true }, origin: 'extractedFrom', onlyFrom: 'call-1' },
+      ctx,
+    );
+
+    expect(nodes.map((n) => n.id)).toEqual(
+      expect.arrayContaining(['we-graph://entity/ds/DiscussionTopic/t1', 'we-graph://entity/ds/Position/pos1']),
+    );
+    expect(nodes.find((n) => n.id.endsWith('/Position/pos1'))?.data?.origin).toBe('call-1');
+  });
 });
