@@ -1017,6 +1017,8 @@ export function canvasSeed(): SeedSource {
               // Child-held pointers: one read per (class, relation) for every parent of this type —
               // `where` already speaks a list of ends, the same way the connections read does.
               for (const [entity, specs] of relSpecs) {
+                // A kind the reader put away is not asked for — the same rule the tray read keeps.
+                if (hiddenTypes.has(entity)) continue;
                 for (const spec of specs) {
                   if (spec.target !== type || !heldByChild(spec)) continue;
                   queries.push(
@@ -1029,7 +1031,7 @@ export function canvasSeed(): SeedSource {
               // Parent-side lists: one drill per parent, per relation it declares toward a child.
               for (const spec of relSpecs.get(type) ?? []) {
                 if (heldByChild(spec)) continue;
-                if (!declared(spec.target)) continue;
+                if (!declared(spec.target) || hiddenTypes.has(spec.target)) continue;
                 for (const id of ids) {
                   const via = { holder: type, spec, id };
                   queries.push(

@@ -1630,4 +1630,24 @@ describe('canvasSeed — model relations', () => {
     expect(edges.find((e) => e.type === 'relation')?.data?.relation).toBe('DiscussionTopic.subTopicOf');
     expect(edges.find((e) => e.type === 'relates')?.reifiedAs).toContain('Relationship');
   });
+
+  it('pulls in no record of a kind the reader put away', async () => {
+    // `hiddenTypes` means the kind is never asked for — on the tray, and so here too.
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 }],
+      DiscussionTopic: [
+        { id: 't1', title: 'Roadmap' },
+        { id: 't2', title: 'Q3', subTopicOf: 't1' },
+      ],
+      Position: [{ id: 'pos1', text: 'Ship it', about: 't1' }],
+    });
+
+    const { nodes } = await canvasSeed().seed(
+      { canvas: 'b1', relations: { children: true }, hiddenTypes: ['Position'] },
+      ctx,
+    );
+
+    expect(nodes.map((n) => n.id)).toContain(topic('t2'));
+    expect(nodes.map((n) => n.id)).not.toContain(position('pos1'));
+  });
 });
