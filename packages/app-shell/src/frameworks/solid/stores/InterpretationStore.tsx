@@ -36,6 +36,7 @@ import {
   displayName,
   INTERPRETATION_ACTIVITY_CHANNEL,
   isSettled,
+  trace,
 } from '@we/backend-shared';
 import {
   type Accessor,
@@ -287,19 +288,17 @@ export function InterpretationStoreProvider(props: ParentProps) {
     const unwatch = local.onChange(sync);
 
     /*
-      Write down a watched pass as it settles, so the history holds both kinds.
+      Log a watched pass as it settles, through the `interpretation` trace scope.
 
-      What makes a row worth writing is `watchPassRecord`, next to the other rule about this feed
-      that was worth deciding away from a store. What is here is the two things only a store can do:
-      find the merged row, and make the write happen once.
+      A log line, not a record in the space: a standing watch runs on every batch of every watched
+      conversation, and a record per pass filled the space with links that every peer synced. The
+      scope is on by default in a development build and off in a production build (see
+      `installConsoleTrace`); on the desktop app the lines go into the executor log.
 
       The **merged** row, because the exchange and the outcome arrive on different events —
       `llmRequestSent` carries the prompt, `processed` carries the ids, and several steps separate
-      them. Reading the settling event alone stored every watched pass with an empty prompt and
-      response, which is the one thing this was added to keep. `mine` narrows the lookup because a
-      peer's row can carry the same pass id and is kept under its own key.
-
-      `written` is the guard that makes it once: a settled row goes on receiving updates.
+      them. `mine` narrows the lookup because a peer's row can carry the same pass id and is kept
+      under its own key. `written` makes it once: a settled row goes on receiving updates.
     */
     const written = new Set<string>();
     const record = (activity: InterpretationActivity) => {
@@ -308,11 +307,7 @@ export function InterpretationStoreProvider(props: ParentProps) {
       const fields = watchPassRecord({ ...merged, settled: isSettled(merged.phase) });
       if (!fields) return;
       written.add(activity.passId);
-      void datasetStore.recordWatchPass(fields).catch((error) => {
-        // The pass happened either way; a lost note about it is a gap in a list, not a failure
-        // worth interrupting anybody over. `recordPass` logs its own reason.
-        console.warn('[interpretation] could not write down a watched pass', error);
-      });
+      trace('interpretation', 'pass', fields);
     };
 
     /*
