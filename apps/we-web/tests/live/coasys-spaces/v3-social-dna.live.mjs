@@ -55,6 +55,7 @@ vertical('V3 social DNA: install, shapes, targets, wizard', (v) => {
     await enableTargets(
       alice.page,
       DNA.classes.map((c) => c.name),
+      perspective,
     );
     const Space = getEntityForDataset('Space', perspective);
     const targets = await until(

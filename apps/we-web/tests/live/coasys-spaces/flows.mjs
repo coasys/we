@@ -3,20 +3,33 @@
  */
 import { until } from '../harness.mjs';
 
-/** One read of a workflow's records: the port's `watch`, answered once and let go. */
+/**
+ * One read of a workflow's records: the port's `watch`, answered once and let go. The watch is let go
+ * on a timeout too; when its disposer arrives after the read has ended, it is called at once.
+ */
 export async function workflowView(ports, perspective, workflow) {
-  let stop = () => {};
-  const view = await new Promise((resolve, reject) => {
-    const timer = setTimeout(() => reject(new Error(`no view of workflow ${workflow} in 30s`)), 30_000);
-    ports.workflows
-      .watch(perspective, workflow, (v) => {
-        clearTimeout(timer);
-        resolve(v);
-      })
-      .then((unwatch) => (stop = unwatch), reject);
-  });
-  stop();
-  return view;
+  let stop = null;
+  let done = false;
+  const end = () => {
+    done = true;
+    stop?.();
+  };
+  try {
+    return await new Promise((resolve, reject) => {
+      const timer = setTimeout(() => reject(new Error(`no view of workflow ${workflow} in 30s`)), 30_000);
+      ports.workflows
+        .watch(perspective, workflow, (v) => {
+          clearTimeout(timer);
+          resolve(v);
+        })
+        .then((unwatch) => {
+          stop = unwatch;
+          if (done) unwatch();
+        }, reject);
+    });
+  } finally {
+    end();
+  }
 }
 
 /** Where a record stands in a workflow, and what is waiting on it; null when it is not in it. */

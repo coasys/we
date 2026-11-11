@@ -5,13 +5,14 @@
 import assert from 'node:assert/strict';
 
 import { LinkQuery } from '@coasys/ad4m';
+import { getEntityForDataset } from '@we/backend-ad4m';
 
 import { until } from '../harness.mjs';
 import { dismissNamePrompt } from '../space.mjs';
-import { leaveCall, startCall, typeIntoCall, watchCall } from './call.mjs';
+import { leaveCall, startCall, stopTranscribing, typeIntoCall, untilHeard, watchCall } from './call.mjs';
 import { SLOW, STUB, world } from './context.mjs';
 import { DNA, records, spacePerspective, valueOf } from './dna.mjs';
-import { LINES, SCRIPT } from './stub-llm.mjs';
+import { HEARD, LINES, SCRIPT } from './stub-llm.mjs';
 
 /**
  * Why the Feed steps are todos. The Feed reads each of the space's extraction targets through the
@@ -61,11 +62,14 @@ export async function rowCount(page, label) {
 }
 
 /**
- * Space settings → Features → "What new calls look for": switches each named model on, checks it
- * reads back on, and closes the panel. Only someone who administers the space can; it applies to
+ * Space settings → Features → "What new calls look for": switches each named model on, waits for
+ * each to be in the space's stored list before the next, and closes the panel. Only someone who administers the space can; it applies to
  * calls started after.
  */
-export async function enableTargets(page, names) {
+export async function enableTargets(page, names, perspective) {
+  const Space = getEntityForDataset('Space', perspective);
+  const stored = async () => String((await Space.findAll(perspective))[0]?.extractionTargets ?? '');
+  const has = (name) => (t) => JSON.parse(t || '[]').includes(name);
   await openSpaceSettings(page, 'Features');
   await page.getByText('What new calls look for').waitFor({ timeout: 30_000 });
   for (const name of names) {
@@ -73,8 +77,13 @@ export async function enableTargets(page, names) {
     await toggle.waitFor({ timeout: 60_000 });
     // Forced: the switch's own track (`part="track"`) lies over its input and takes the pointer.
     if (!(await toggle.isChecked())) await toggle.click({ force: true });
-    await until(() => toggle.isChecked(), Boolean, { timeout: 30_000, what: `${name} switched on` });
+    // Each switch writes the whole list, read from the app's copy of the space
+    // (SpaceStore.tsx `setExtractionTarget`). A second click before the first write lands reads the
+    // list without the first class and writes it back without it, so each write is waited for.
+    await until(stored, has(name), { timeout: 30_000, what: `${name} in the space's extraction targets` });
   }
+  const all = await stored();
+  for (const name of names) assert.ok(has(name)(all), `${name} is still an extraction target`);
   // Closed again: the panel lies over the space's own controls (Page, Canvas) on a narrow window.
   await closeSpaceSettings(page);
 }
@@ -100,11 +109,24 @@ export async function closeSpaceSettings(page) {
 
 /** The records the stub's script makes from the film's lines, by the package's class and title field. */
 export function expectedRecords() {
-  const role = (name) => name.toLowerCase();
   return SCRIPT.flatMap((entry) => {
-    const cls = DNA.classes.find((c) => role(c.name) === entry.role);
+    const cls = classForRole(entry.role);
     const title = cls && entry.fields[cls.titleField];
     return cls && title ? [{ cls: cls.name, title, entry }] : [];
+  });
+}
+
+const classForRole = (role) => DNA.classes.find((c) => c.name.toLowerCase() === role);
+
+/** Why each script entry makes no record of the package: no class plays its role, or no title. */
+function uncoveredRoles() {
+  return SCRIPT.flatMap((entry) => {
+    const cls = classForRole(entry.role);
+    if (!cls) return [`${entry.role}: the package has no class of that name`];
+    if (!entry.fields[cls.titleField]) {
+      return [`${entry.role}: the script fills no "${cls.titleField}", ${cls.name}'s title field`];
+    }
+    return [];
   });
 }
 
@@ -166,36 +188,56 @@ export async function joinByInvite(who, sharedUrl) {
 /**
  * Setup shared by the verticals after V2: a call in which the film's lines are said, the records
  * extraction makes of them, and the call left. Resolves with the call's id and the records by class.
- * The stub tier waits for every record the script makes; the real tier for any record of the package.
+ *
+ * The stub tier waits for every record the script makes. The real tier waits until every line has
+ * landed, stops transcribing (the fake microphone loops its recording), and then waits for a titled
+ * record of each class in `needs` — the classes the vertical goes on to use — or, with none named,
+ * for any record of the package.
  */
-export async function callThatFinds(who, perspective) {
+export async function callThatFinds(who, perspective, needs = []) {
   const callId = await startCall(who.page);
   if (STUB) {
     await watchCall(who, perspective, callId);
     await typeIntoCall(who, perspective, callId, Object.values(LINES));
+  } else {
+    await untilHeard(perspective, callId, HEARD, SLOW);
+    await stopTranscribing(who.page);
   }
   const found = new Map();
-  await untilExtracted(perspective, callId, found, STUB ? expectedRecords() : null);
+  await untilExtracted(perspective, callId, found, STUB ? expectedRecords() : null, needs);
   await leaveCall(who.page);
   return { callId, found };
 }
 
 /**
- * Waits for what extraction makes of a call: with `want`, every scripted record; without, any record
- * of the package. When it times out, the error says why a pass did not run or found nothing — the
- * call's watch as the executor stores it, the turns its scope query reads, and what the model was
- * asked — since the executor logs none of that at its default level.
+ * Waits for what extraction makes of a call: with `want`, every scripted record; without, a titled
+ * record of each class in `needs`, or, with no `needs`, any record of the package. Matched on class,
+ * not title: a real model's titles are its own. When it times out, the error says why a pass did not
+ * run or found nothing — the call's watch as the executor stores it, the turns its scope query reads,
+ * and what the model was asked — since the executor logs none of that at its default level.
  */
-export async function untilExtracted(perspective, callId, found, want) {
+export async function untilExtracted(perspective, callId, found, want, needs = []) {
+  if (want && want.length === 0) {
+    // Nothing to wait for would pass on the first read, and assert nothing.
+    throw new Error(
+      `The stub's script makes no record of the package's classes (${DNA.classes.map((c) => c.name).join(', ')}): ${uncoveredRoles().join('; ')}`,
+    );
+  }
+  const what = want
+    ? 'the scripted records'
+    : needs.length
+      ? `an extracted ${needs.join(' and ')}`
+      : 'an extracted record of the package';
   try {
     await until(
       async () => {
         for (const cls of DNA.classes) found.set(cls.name, await records(perspective, cls));
-        if (!want) return [...found.values()].flat().length;
-        return want.every(({ cls, title }) => (found.get(cls) ?? []).some((r) => r.title === title));
+        if (want) return want.every(({ cls, title }) => (found.get(cls) ?? []).some((r) => r.title === title));
+        if (needs.length) return needs.every((cls) => (found.get(cls) ?? []).some((r) => r.title));
+        return [...found.values()].flat().length;
       },
       Boolean,
-      { timeout: SLOW, interval: 2_000, what: 'the extracted records' },
+      { timeout: SLOW, interval: 2_000, what },
     );
   } catch (error) {
     const facts = await extractionFacts(perspective, callId).catch((e) => ({ unreadable: e.message }));
@@ -235,10 +277,10 @@ async function extractionFacts(perspective, callId) {
   };
 }
 
-/** The record the script makes for a class, as found; in the real tier, the first of that class. */
+/** The record the script makes for a class, as found; in the real tier, the first of that class with a title. */
 export function recordOf(found, className) {
   const list = found.get(className) ?? [];
-  if (!STUB) return list[0];
+  if (!STUB) return list.find((r) => r.title);
   const title = expectedRecords().find((r) => r.cls === className)?.title;
   return list.find((r) => r.title === title);
 }

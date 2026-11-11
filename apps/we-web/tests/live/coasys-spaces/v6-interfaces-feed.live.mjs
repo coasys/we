@@ -44,6 +44,7 @@ vertical('V6 interfaces: the Feed, page and canvas, a theme', (v) => {
     await enableTargets(
       alice.page,
       DNA.classes.map((c) => c.name),
+      perspective,
     );
     const result = await callThatFinds(alice, perspective);
     titles = STUB ? expectedRecords().map((r) => r.title) : [[...result.found.values()].flat()[0].title];
@@ -102,7 +103,7 @@ vertical('V6 interfaces: the Feed, page and canvas, a theme', (v) => {
     );
     await until(
       () => painted(page),
-      (now) => now !== before,
+      (now) => now !== 'no theme scope' && now !== before,
       { timeout: 30_000, what: `the page painted in ${THEME}` },
     );
   });

@@ -34,12 +34,20 @@ import { createServer } from 'node:http';
 
 import { freePort } from '../harness.mjs';
 
-/** The film's lines, as the suite types them into the call. */
+/** The film's lines, as the suite types them into the call and as `fixtures/call.wav` speaks them. */
 export const LINES = {
   sync: 'Sync dropped my edits again. Should we rebuild it?',
   mobile: 'Okay: mobile comes first this quarter.',
   release: 'A rebuild could push back the v2.4 release.',
+  task: 'Alice will rebuild the sync script by Friday.',
 };
+
+/**
+ * One word from each line that only the transcript holds: not in a space's name, and not a word the
+ * suite types anywhere else. The real tier reads them in the call's lines to know that every line
+ * landed, whatever else the speech-to-text model wrote. Lower case; matched without case.
+ */
+export const HEARD = ['edits', 'quarter', 'release', 'friday'];
 
 /**
  * What each line yields, per role. `when` is matched against the transcript (lower-cased); `role`
@@ -53,9 +61,9 @@ export const SCRIPT = [
     fields: { asks: 'Should we rebuild sync?', options: 'rebuild / patch', status: 'open' },
   },
   {
-    when: 'sync dropped my edits',
+    when: 'rebuild the sync script',
     role: 'task',
-    fields: { title: 'Fix sync dropping edits', owner: '' },
+    fields: { title: 'Rebuild the sync script', owner: 'Alice' },
   },
   {
     when: 'mobile comes first',

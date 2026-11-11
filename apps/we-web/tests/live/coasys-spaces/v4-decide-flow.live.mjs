@@ -6,9 +6,9 @@
 import assert from 'node:assert/strict';
 
 import { createSpace } from '../space.mjs';
-import { STUB, vertical } from './context.mjs';
+import { STUB, until, vertical } from './context.mjs';
 import { DNA, installDnaThroughUi, installFlows, spacePerspective } from './dna.mjs';
-import { itemOf, untilItem } from './flows.mjs';
+import { untilItem } from './flows.mjs';
 import {
   callThatFinds,
   enableTargets,
@@ -39,6 +39,7 @@ vertical('V4 decide flow: two approvals', (v) => {
     await enableTargets(
       alice.page,
       DNA.classes.map((c) => c.name),
+      perspective,
     );
     await installFlows(alice.ports, perspective);
     // Loaded, not reached through the tree: the app reads a space's workflows when the space opens
@@ -55,7 +56,7 @@ vertical('V4 decide flow: two approvals', (v) => {
 
   v.step(`a call finds a ${CLASS}, and Alice accepts it`, async () => {
     await openSpacePath(alice.page, shared);
-    const { found } = await callThatFinds(alice, perspective);
+    const { found } = await callThatFinds(alice, perspective, [CLASS]);
     question = recordOf(found, CLASS);
     assert.ok(question, `a ${CLASS} was found`);
     await alice.ports.interpretation.accept(perspective, question.id);
@@ -122,12 +123,24 @@ vertical('V4 decide flow: two approvals', (v) => {
       (i) => i.state === GATED,
       `${CLASS} in ${GATED}`,
     );
-    const history = await alice.ports.workflows.history(perspective, FLOW.name, question.id);
+    // Read from Alice's copy, which has the move only once Bob's approval has synced to her.
+    const both = [alice.did, bob.did].sort();
+    const history = await until(
+      () => alice.ports.workflows.history(perspective, FLOW.name, question.id),
+      (moves) => moves.some((m) => m.to === GATED && [...m.approvers].sort().join() === both.join()),
+      { timeout: 120_000, interval: 1_500, what: `the move to ${GATED} with both approvers in Alice's history` },
+    );
     const gate = history.find((m) => m.to === GATED);
-    assert.ok(gate, `the move to ${GATED} is in the history`);
-    assert.deepEqual([...gate.approvers].sort(), [alice.did, bob.did].sort(), 'both approved the move');
-    const seen = await itemOf(alice.ports, perspective, FLOW.name, question.id);
-    assert.equal(seen?.state, GATED, `Alice reads it in ${GATED} too`);
+    assert.deepEqual([...gate.approvers].sort(), both, 'both approved the move');
+    const seen = await untilItem(
+      alice.ports,
+      perspective,
+      FLOW.name,
+      question.id,
+      (i) => i.state === GATED,
+      `${CLASS} in ${GATED} in Alice's copy`,
+    );
+    assert.equal(seen.state, GATED, `Alice reads it in ${GATED} too`);
   });
 
   v.step(`Alice's screen shows it ${GATED}`, async () => {

@@ -18,6 +18,14 @@ const VERTICALS = [
   ['v6', './v6-interfaces-feed.live.mjs'],
 ];
 
+// A name that is not a vertical would run fewer verticals than asked for, or none, and still pass.
+const unknown = ONLY.filter((key) => !VERTICALS.some(([k]) => k === key));
+if (unknown.length) {
+  throw new Error(
+    `COASYS_SPACES_ONLY names no vertical: ${unknown.join(', ')}. The verticals are ${VERTICALS.map(([k]) => k).join(', ')}.`,
+  );
+}
+
 for (const [key, path] of VERTICALS) {
   if (!ONLY.length || ONLY.includes(key)) await import(path);
 }

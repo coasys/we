@@ -308,9 +308,17 @@ export function videoFlow(page, ms = 2_000) {
   }, ms);
 }
 
-/** Polls `read` until `accept` holds for what it returns, or throws with the last value. */
+/**
+ * Polls `read` until `accept` holds for what it returns, or throws with the last value.
+ *
+ * A wait longer than a minute logs one line a minute: what it waits for, and for how long so far.
+ * CI ends a job that writes nothing for a while (CircleCI's no-output timeout), and the real tier's
+ * waits on a model can be longer than that taken together.
+ */
 export async function until(read, accept, { timeout = 60_000, interval = 500, what = 'condition' } = {}) {
-  const deadline = Date.now() + timeout;
+  const start = Date.now();
+  const deadline = start + timeout;
+  let said = start;
   let last;
   for (;;) {
     try {
@@ -321,6 +329,11 @@ export async function until(read, accept, { timeout = 60_000, interval = 500, wh
     }
     if (Date.now() > deadline) {
       throw new Error(`Timed out waiting for ${what}. Last: ${JSON.stringify(last, null, 1)?.slice(0, 2_000)}`);
+    }
+    if (Date.now() - said >= 60_000) {
+      said = Date.now();
+      const s = (ms) => `${Math.round(ms / 1_000)} s`;
+      console.log(`[until] still waiting for ${what}: ${s(said - start)} of ${s(timeout)}`);
     }
     await sleep(interval);
   }

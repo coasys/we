@@ -72,39 +72,61 @@ async function loadWhisper(admin) {
 
 let made = null;
 
+/**
+ * What the world has started so far. Kept apart from `made` so that a world which fails half-way —
+ * no web build to serve, say — still has its stub and its executor stopped.
+ */
+const started = { stub: null, executor: null, app: null, browser: null };
+
 /** The shared world, made on first use. */
 export function world() {
   made ??= (async () => {
     // The scripted lines, spoken (fixtures/call.wav), unless another recording is named.
     const wav = resolve(process.env.COASYS_SPACES_WAV ?? join(HERE, 'fixtures', 'call.wav'));
-    const stub = STUB ? await startStubLlm() : null;
-    const llm = stub ? { baseUrl: stub.baseUrl, model: stub.model, apiKey: 'none', stub } : realLlm();
-    const executor = await startExecutor({ mcp: true });
-    await registerLlm(executor.admin, {
-      name: 'coasys-spaces',
-      baseUrl: llm.baseUrl,
-      apiKey: llm.apiKey,
-      model: llm.model,
-    });
-    if (!STUB) await loadWhisper(executor.admin);
-    const app = await serveApp();
-    const browser = await launchBrowser({ fakeAudio: STUB ? undefined : wav });
-    return { executor, app, browser, llm, stub };
+    try {
+      const stub = (started.stub = STUB ? await startStubLlm() : null);
+      const llm = stub ? { baseUrl: stub.baseUrl, model: stub.model, apiKey: 'none', stub } : realLlm();
+      const executor = (started.executor = await startExecutor({ mcp: true }));
+      await registerLlm(executor.admin, {
+        name: 'coasys-spaces',
+        baseUrl: llm.baseUrl,
+        apiKey: llm.apiKey,
+        model: llm.model,
+      });
+      if (!STUB) await loadWhisper(executor.admin);
+      const app = (started.app = await serveApp());
+      const browser = (started.browser = await launchBrowser({ fakeAudio: STUB ? undefined : wav }));
+      return { executor, app, browser, llm, stub };
+    } catch (error) {
+      await stopStarted();
+      throw error;
+    }
   })();
   return made;
 }
 
-/** Closes the world and leaves the executor's log beside the other artifacts. */
+/**
+ * Stops whatever the world has started, once each, and leaves the executor's log beside the other
+ * artifacts.
+ */
+async function stopStarted() {
+  const { browser, app, executor, stub } = started;
+  Object.assign(started, { stub: null, executor: null, app: null, browser: null });
+  await browser?.close().catch(() => {});
+  await app?.close().catch(() => {});
+  if (executor) {
+    writeFileSync(join(ARTIFACTS, 'executor.log'), executor.output.join(''));
+    executor.admin.close?.();
+    await executor.stop().catch(() => {});
+  }
+  await stub?.close().catch(() => {});
+}
+
+/** Closes the world, whether it was made or failed half-way. */
 async function closeWorld() {
   if (!made) return;
-  const w = await made.catch(() => null);
-  if (!w) return;
-  await w.browser.close().catch(() => {});
-  await w.app.close().catch(() => {});
-  writeFileSync(join(ARTIFACTS, 'executor.log'), w.executor.output.join(''));
-  w.executor.admin.close?.();
-  await w.executor.stop().catch(() => {});
-  await w.stub?.close().catch(() => {});
+  await made.catch(() => null);
+  await stopStarted();
   console.log(`coasys-spaces: artifacts in ${ARTIFACTS}`);
 }
 after(closeWorld);
@@ -130,9 +152,13 @@ export function vertical(name, body) {
       const w = await world();
       const email = `${slug(display)}-${v.slug}@coasys-spaces.test`;
       const account = await signUp(w.executor, email);
-      const dev = await device(w.browser, w.executor, account, { name: `${display}/${v.slug}` });
+      // Held from here, so the vertical's teardown closes the account's client even if a step below
+      // throws; `device`, `page` and `ports` are filled in as they are made.
+      const who = { name: display, account, client: account.client, did: account.did, device: null, page: null };
+      v.people.push(who);
+      const dev = (who.device = await device(w.browser, w.executor, account, { name: `${display}/${v.slug}` }));
       await dev.context.tracing.start({ screenshots: true, snapshots: true, title: `${name}: ${display}` });
-      const page = await dev.tab('main');
+      const page = (who.page = await dev.tab('main'));
       await page.goto(w.app.url);
       await page.getByRole('textbox', { name: 'Name...', exact: true }).waitFor({ timeout: 120_000 });
       await dismissNamePrompt(page, display);
@@ -142,9 +168,7 @@ export function vertical(name, body) {
       await page.addLocatorHandler(page.getByRole('textbox', { name: 'Name...', exact: true }), () =>
         dismissNamePrompt(page, display),
       );
-      const ports = createAd4mBackendPorts(account.client, { selfId: () => account.did });
-      const who = { name: display, account, client: account.client, did: account.did, device: dev, page, ports };
-      v.people.push(who);
+      who.ports = createAd4mBackendPorts(account.client, { selfId: () => account.did });
       return who;
     },
     step(title, fn, opts = {}) {
@@ -175,12 +199,14 @@ export function vertical(name, body) {
   describe(name, () => {
     after(async () => {
       for (const who of v.people) {
-        const trace = v.failed ? join(ARTIFACTS, `${v.slug}-${slug(who.name)}.trace.zip`) : undefined;
-        await who.device.context.tracing.stop(trace ? { path: trace } : {}).catch(() => {});
-        if (v.failed || process.env.WE_LIVE_VERBOSE) {
-          writeFileSync(join(ARTIFACTS, `${v.slug}-${slug(who.name)}.console.log`), who.device.logs.join('\n'));
+        if (who.device) {
+          const trace = v.failed ? join(ARTIFACTS, `${v.slug}-${slug(who.name)}.trace.zip`) : undefined;
+          await who.device.context.tracing.stop(trace ? { path: trace } : {}).catch(() => {});
+          if (v.failed || process.env.WE_LIVE_VERBOSE) {
+            writeFileSync(join(ARTIFACTS, `${v.slug}-${slug(who.name)}.console.log`), who.device.logs.join('\n'));
+          }
+          await who.device.close().catch(() => {});
         }
-        await who.device.close().catch(() => {});
         // The account's client reconnects its socket for ever once the executor stops, which keeps
         // the test process alive after the last test.
         who.account.client.close?.();
@@ -198,7 +224,7 @@ export function vertical(name, body) {
 /** A screenshot and an accessibility snapshot of every page a vertical holds, named for the step. */
 async function snapshotAll(v, title) {
   for (const who of v.people) {
-    for (const [i, page] of who.device.context.pages().entries()) {
+    for (const [i, page] of (who.device?.context.pages() ?? []).entries()) {
       const base = join(ARTIFACTS, `${v.slug}-${slug(who.name)}-${i}-${slug(title).slice(0, 60)}`);
       await page.screenshot({ path: `${base}.png`, fullPage: true }).catch(() => {});
       const aria = await page

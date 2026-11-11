@@ -126,10 +126,51 @@ COASYS_SPACES_LLM_BASE_URL=http://127.0.0.1:8080/v1 COASYS_SPACES_LLM_MODEL=<mod
 pnpm --filter @we/app-web test:spaces
 ```
 
-The fake microphone plays `fixtures/call.wav`: the three lines in `stub-llm.mjs` (`LINES`), spoken by
-a TTS voice with 1.5 s of silence around each, 16 kHz mono PCM (15 s). A speech-to-text model reads
-it back word for word. Change `LINES` and the recording together; `COASYS_SPACES_WAV` names another
-recording.
+The fake microphone plays `fixtures/call.wav`: the four lines in `stub-llm.mjs` (`LINES`), spoken by
+a TTS voice with 1.5 s of silence before, between and after them, 16 kHz mono PCM (19.7 s). A
+speech-to-text model reads it back word for word:
+
+1. "Sync dropped my edits again. Should we rebuild it?"
+2. "Okay: mobile comes first this quarter."
+3. "A rebuild could push back the v2.4 release."
+4. "Alice will rebuild the sync script by Friday." (the line that states a task, for V5)
+
+Change `LINES`, `HEARD` and the recording together. `COASYS_SPACES_WAV` names another recording.
+
+- Chromium plays the recording in a loop. So the suite waits until the call's stored lines hold one
+  word of each line (`HEARD`: edits, quarter, release, friday), and then presses the call bar's
+  "Stop transcribing". The call and its extraction watch stay. Extraction then reads one pass of
+  the recording, not a transcript that grows every 20 s.
+- The transcript check reads those words from the call's `TextBlock` records. Then it finds on the
+  screen a stored line that holds "quarter", as Whisper wrote it. No space name holds these words,
+  so only the transcript can pass the check.
+- V4 waits for a titled `Question` and V5 for a titled `Task`. Each waits for the class that it
+  uses, not for the first record of any class.
+- A wait longer than a minute writes one line each minute (`[until] still waiting for …`), so that
+  CI's no-output timeout does not stop a long real-tier run.
+
+### A red V4 or V5 in the real tier
+
+In the real tier, a model decides what is in the call. If V4 does not get a `Question` or V5 does
+not get a `Task`, the cause can be model variance and not a product break. To find which:
+
+1. Read the step's error. It ends with the extraction facts: the call's watch config, the `turns`
+   that its scope query reads, and the call's links. If the turns hold the four lines and the call
+   has records of other classes, extraction ran and the model did not find that class.
+2. Read `executor.log` in the artifacts. Find the interpretation lines:
+   - `🧠 interpretation start … classes=[…]` — a pass started, and the classes it asked for.
+   - `✅ 🧠 interpretation done … bases_written=N` — the pass ended and wrote N records.
+   - `❌ 🧠 interpretation failed … err=…` (after `prompt attempt N failed` warnings) — the model
+     endpoint refused the prompt, for example because the prompt is larger than its context.
+
+   If the passes ended with `bases_written` above 0 and the class is not in the step's records, the
+   cause is model variance. If no pass started, or every pass failed, the cause is a product break
+   or a setup break.
+
+3. Look at the screenshot and the ARIA snapshot of the failed step. Make sure that the call bar shows
+   "Transcribe this call" (transcription stopped) and that the transcript shows the lines.
+4. If it is model variance, run the vertical again (`COASYS_SPACES_ONLY=v4`) or use a stronger model.
+   The stub tier is the gate for product breaks.
 
 ### Environment
 
@@ -160,7 +201,10 @@ The executor's log (`executor.log`) is written there at the end of every run.
 
 ## The ad4m nightly
 
-ad4m's nightly runs this suite against ad4m `dev`, not against WE's pin. It does two things:
+[coasys/ad4m#1708](https://github.com/coasys/ad4m/pull/1708) adds a nightly CircleCI job,
+`coasys-spaces`, that runs this suite in the **real** tier against ad4m `dev`, not against WE's pin.
+The job runs only after that PR merges. Until then, no nightly runs this suite. The job does two
+things:
 
 1. It overrides `@coasys/ad4m` and `@coasys/ad4m-connect` with tarballs packed from the ad4m commit under
    test. To do this, it replaces the `pnpm.overrides` entries in the root `package.json` with
@@ -168,8 +212,9 @@ ad4m's nightly runs this suite against ad4m `dev`, not against WE's pin. It does
 2. It sets `AD4M_EXECUTOR` to the executor built from that same commit. The harness then runs that
    binary instead of downloading the pinned one.
 
-The client, the app's connect UI and the executor then all come from the same commit. Run the stub tier in the
-nightly. The real tier needs a model endpoint and is opt-in.
+The client, the app's connect UI and the executor then all come from the same commit. The job gives
+the real tier a model endpoint on its runner (see the PR for the model and its context window). The
+stub tier needs no model; run it locally, or in any job that has no model endpoint.
 
 ## Selectors
 

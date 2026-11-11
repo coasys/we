@@ -7,10 +7,10 @@
 import assert from 'node:assert/strict';
 
 import { createSpace } from '../space.mjs';
-import { leaveCall, startCall, typeIntoCall, watchCall } from './call.mjs';
+import { leaveCall, startCall, stopTranscribing, typeIntoCall, untilHeard, watchCall } from './call.mjs';
 import { SLOW, STUB, until, vertical, world } from './context.mjs';
 import { DNA, installDnaThroughUi, linked, spacePerspective } from './dna.mjs';
-import { LINES } from './stub-llm.mjs';
+import { HEARD, LINES } from './stub-llm.mjs';
 import {
   acceptInInspector,
   enableTargets,
@@ -39,6 +39,7 @@ vertical('V2 call: transcript, extraction, accept, leave', (v) => {
     await enableTargets(
       alice.page,
       DNA.classes.map((c) => c.name),
+      perspective,
     );
   });
 
@@ -58,10 +59,17 @@ vertical('V2 call: transcript, extraction, accept, leave', (v) => {
     await treeRow(alice.page, 'Call Live').click();
     if (STUB) {
       for (const line of lines) await alice.page.getByText(line).first().waitFor({ timeout: SLOW });
-    } else {
-      // Loose: Whisper's words, not the script's.
-      await alice.page.getByText(/sync/i).first().waitFor({ timeout: SLOW });
+      return;
     }
+    // The stored lines hold a word of each recorded line — words the space's name and the page's
+    // controls do not, so only the transcript can pass this. Whisper's spelling, not the script's.
+    const said = await untilHeard(perspective, callId, HEARD, SLOW);
+    // On the screen: a stored line that says "quarter", exactly as Whisper wrote it.
+    const line = said.find((t) => t.toLowerCase().includes('quarter')).trim();
+    await alice.page.getByText(line).first().waitFor({ timeout: SLOW });
+    // The fake microphone plays its recording in a loop; every line is in, so it stops here, and
+    // extraction reads one pass of the recording rather than a transcript that grows without end.
+    await stopTranscribing(alice.page);
   });
 
   v.step("extraction makes records of the package's classes, linked to the call", async () => {

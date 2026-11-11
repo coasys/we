@@ -14,11 +14,18 @@ import { createAd4mBackendPorts } from '@we/backend-ad4m';
 
 import { signUp } from '../harness.mjs';
 import { createSpace } from '../space.mjs';
-import { STUB, until, vertical, world } from './context.mjs';
+import { SLOW, STUB, until, vertical, world } from './context.mjs';
 import { DNA, installDnaThroughUi, installFlows, records, spacePerspective } from './dna.mjs';
 import { untilItem } from './flows.mjs';
 import { mcpSession } from './mcp.mjs';
-import { callThatFinds, enableTargets, openInspectorWorkflows, openOnCanvas, openSpacePath } from './steps.mjs';
+import {
+  callThatFinds,
+  enableTargets,
+  openInspectorWorkflows,
+  openOnCanvas,
+  openSpacePath,
+  recordOf,
+} from './steps.mjs';
 
 const SPACE = 'Ship it';
 const FLOW = DNA.flows.find((f) => f.name === 'Build') ?? DNA.flows.at(-1);
@@ -60,13 +67,13 @@ vertical('V5 build flow: an agent over MCP, evidence and a human approval', (v) 
     await enableTargets(
       alice.page,
       DNA.classes.map((c) => c.name),
+      perspective,
     );
     await installFlows(alice.ports, perspective);
     // Loaded again: the app reads a space's workflows when the space opens and after its own writes.
     await openSpacePath(alice.page, shared);
-    const { found } = await callThatFinds(alice, perspective);
-    const list = found.get(CLASS) ?? [];
-    task = STUB ? list.find((r) => r.title) : list[0];
+    const { found } = await callThatFinds(alice, perspective, [CLASS]);
+    task = recordOf(found, CLASS);
     assert.ok(task, `a ${CLASS} was found`);
     await alice.ports.interpretation.accept(perspective, task.id);
   });
@@ -90,31 +97,36 @@ vertical('V5 build flow: an agent over MCP, evidence and a human approval', (v) 
     }
   });
 
-  v.step(`the agent finds the ${CLASS} and takes it`, async () => {
-    const id = agentPerspective.uuid;
-    // Asked until the space's shapes and the task have synced to the agent's node.
-    await until(
-      () => instance(mcp, 'query', { perspective_id: id, class_name: CLASS }).catch((e) => e.message),
-      (answer) => addresses(answer).includes(task.id),
-      { timeout: 180_000, interval: 3_000, what: `the ${CLASS} in the agent's query` },
-    );
-    const got = await instance(mcp, 'get', { perspective_id: id, class_name: CLASS, base_uri: task.id });
-    assert.ok(addresses(got).includes(task.title), `the agent reads the ${CLASS}'s title (${addresses(got)})`);
-    await instance(mcp, 'update', {
-      perspective_id: id,
-      class_name: CLASS,
-      base_uri: task.id,
-      properties: { owner: OWNER },
-    });
-    const cls = DNA.byName(CLASS);
-    await until(
-      async () => (await records(perspective, cls)).find((r) => r.id === task.id)?.values.owner,
-      (owner) => owner === OWNER,
-      { timeout: 180_000, interval: 2_000, what: "the agent's ownership in Alice's copy" },
-    );
-    await openOnCanvas(alice.page, task.title);
-    await alice.page.getByText(OWNER).first().waitFor({ timeout: 120_000 });
-  });
+  v.step(
+    `the agent finds the ${CLASS} and takes it`,
+    async () => {
+      const id = agentPerspective.uuid;
+      // Asked until the space's shapes and the task have synced to the agent's node.
+      await until(
+        () => instance(mcp, 'query', { perspective_id: id, class_name: CLASS }).catch((e) => e.message),
+        (answer) => addresses(answer).includes(task.id),
+        { timeout: 180_000, interval: 3_000, what: `the ${CLASS} in the agent's query` },
+      );
+      const got = await instance(mcp, 'get', { perspective_id: id, class_name: CLASS, base_uri: task.id });
+      assert.ok(addresses(got).includes(task.title), `the agent reads the ${CLASS}'s title (${addresses(got)})`);
+      await instance(mcp, 'update', {
+        perspective_id: id,
+        class_name: CLASS,
+        base_uri: task.id,
+        properties: { owner: OWNER },
+      });
+      const cls = DNA.byName(CLASS);
+      await until(
+        async () => (await records(perspective, cls)).find((r) => r.id === task.id)?.values.owner,
+        (owner) => owner === OWNER,
+        { timeout: 180_000, interval: 2_000, what: "the agent's ownership in Alice's copy" },
+      );
+      await openOnCanvas(alice.page, task.title);
+      await alice.page.getByText(OWNER).first().waitFor({ timeout: 120_000 });
+      // Two 180 s polls, a 120 s wait for the owner on the screen, and the canvas's own wait (`SLOW`).
+    },
+    { timeout: SLOW + 600_000 },
+  );
 
   v.step(`Alice starts ${FLOW.name} on the ${CLASS} from its inspector`, async () => {
     await alice.page.getByRole('button', { name: 'Start a workflow on this' }).first().click({ timeout: 60_000 });
@@ -208,26 +220,44 @@ vertical('V5 build flow: an agent over MCP, evidence and a human approval', (v) 
       .waitFor({ timeout: 120_000 });
   });
 
-  v.step(`Alice agrees, and the ${CLASS} ships`, async () => {
-    await alice.page.getByRole('button', { name: 'Agree', exact: true }).first().click({ timeout: 60_000 });
-    await untilItem(alice.ports, perspective, FLOW.name, task.id, (i) => i.state === SHIPPED, `${CLASS} in ${SHIPPED}`);
-    const history = await alice.ports.workflows.history(perspective, FLOW.name, task.id);
-    const gate = history.find((m) => m.to === SHIPPED);
-    assert.ok(gate, `the move to ${SHIPPED} is in the history`);
-    assert.deepEqual([...gate.approvers].sort(), [alice.did, agent.did].sort(), 'the agent and Alice approved it');
-    await untilItem(
-      agentPorts,
-      agentPerspective,
-      FLOW.name,
-      task.id,
-      (i) => i.state === SHIPPED,
-      `the agent reads ${SHIPPED}`,
-    );
-    await alice.page
-      .getByText(new RegExp(`Asked to move to ${SHIPPED}`))
-      .first()
-      .waitFor({ state: 'detached', timeout: 120_000 });
-  });
+  v.step(
+    `Alice agrees, and the ${CLASS} ships`,
+    async () => {
+      await alice.page.getByRole('button', { name: 'Agree', exact: true }).first().click({ timeout: 60_000 });
+      await untilItem(
+        alice.ports,
+        perspective,
+        FLOW.name,
+        task.id,
+        (i) => i.state === SHIPPED,
+        `${CLASS} in ${SHIPPED}`,
+      );
+      const history = await alice.ports.workflows.history(perspective, FLOW.name, task.id);
+      const gate = history.find((m) => m.to === SHIPPED);
+      assert.ok(gate, `the move to ${SHIPPED} is in the history`);
+      assert.deepEqual([...gate.approvers].sort(), [alice.did, agent.did].sort(), 'the agent and Alice approved it');
+      await untilItem(
+        agentPorts,
+        agentPerspective,
+        FLOW.name,
+        task.id,
+        (i) => i.state === SHIPPED,
+        `the agent reads ${SHIPPED}`,
+      );
+      await alice.page
+        .getByText(new RegExp(`Asked to move to ${SHIPPED}`))
+        .first()
+        .waitFor({ state: 'detached', timeout: 120_000 });
+      // The record's card on the canvas names its workflow and the state it is in: "Build · Shipped".
+      await openSpacePath(alice.page, shared);
+      await alice.page.getByRole('button', { name: 'Canvas', exact: true }).click();
+      const canvas = alice.page.locator('.we-graph');
+      await canvas.getByText(task.title).first().waitFor({ timeout: SLOW });
+      await canvas.getByText(`${FLOW.name} · ${SHIPPED}`).first().waitFor({ timeout: 60_000 });
+      // Three 120 s reads of the flow, a 120 s wait for the ask to go, the page load and the canvas.
+    },
+    { timeout: SLOW + 600_000 },
+  );
 
   v.todo('the agent asks for a flow move over MCP: no MCP tool proposes a flow transition');
   v.todo('the agent joins the call and is heard in it');
