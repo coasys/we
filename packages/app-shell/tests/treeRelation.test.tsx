@@ -333,6 +333,42 @@ describe('a tree drop on a model relation', () => {
     expect(world.topics.get('t1')?.subTopicOf).toBeUndefined();
   });
 
+  it('refuses to move a card still awaiting acceptance — and writes nothing', async () => {
+    /*
+      A suggestion not yet accepted has no settled state a field write, or an undo of it, could
+      return to — so the drop is refused rather than written. `pos1` keeps its `about: 't2'`.
+    */
+    const info = vi.spyOn(toastService, 'info');
+    const store = mount();
+    await store.arrangeOnTree(CANVAS, SPINE, {
+      recordId: 'pos1',
+      recordType: 'Position',
+      pending: true,
+      into: 'child',
+      targetId: 't1',
+      targetType: 'DiscussionTopic',
+      order: ['pos1'],
+    });
+    expect(aboutOf('pos1')).toBe('t2');
+    expect(info).toHaveBeenCalledWith(expect.stringContaining('suggestion'));
+  });
+
+  it('refuses to move a card carrying an unsaved change — and writes nothing', async () => {
+    const info = vi.spyOn(toastService, 'info');
+    const store = mount();
+    await store.arrangeOnTree(CANVAS, SPINE, {
+      recordId: 'pos1',
+      recordType: 'Position',
+      changed: true,
+      into: 'child',
+      targetId: 't1',
+      targetType: 'DiscussionTopic',
+      order: ['pos1'],
+    });
+    expect(aboutOf('pos1')).toBe('t2');
+    expect(info).toHaveBeenCalledWith(expect.stringContaining('changes'));
+  });
+
   it('follows the child’s matching pointer under the wildcard spine', async () => {
     const store = mount();
     await store.arrangeOnTree(CANVAS, 'rel:*', {

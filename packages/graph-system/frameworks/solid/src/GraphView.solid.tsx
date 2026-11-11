@@ -760,6 +760,8 @@ export function GraphView(props: GraphViewProps) {
             into: named || event.into === 'loose' ? event.into : 'loose',
             recordId: at.id,
             recordType: at.type ?? '',
+            ...(event.node.data?.pending === true ? { pending: true } : {}),
+            ...(event.node.data?.changed === true ? { changed: true } : {}),
             ...(named ? { targetId: named.id, targetType: named.type ?? '' } : {}),
             ...(event.before === undefined ? {} : { before: event.before }),
             ...(order ? { order } : {}),

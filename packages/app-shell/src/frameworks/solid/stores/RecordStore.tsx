@@ -2030,6 +2030,8 @@ export function RecordStoreProvider(props: ParentProps) {
     event: {
       recordId?: string;
       recordType?: string;
+      pending?: boolean;
+      changed?: boolean;
       into?: 'child' | 'sibling' | 'loose';
       targetId?: string;
       targetType?: string;
@@ -2039,6 +2041,23 @@ export function RecordStoreProvider(props: ParentProps) {
   ): Promise<void> {
     const cardId = event.recordId!;
     const cardType = event.recordType!;
+
+    /*
+      A card still awaiting acceptance, or carrying a change nobody has saved, is not moved: the
+      drop would write the record's field as if that record were settled, and there is no earlier
+      settled state an undo could return it to.
+      Whether one agent may rewrite *another* agent's record by dragging its card is intentionally
+      not asked here — that is an open product question for Nico and Josh, and this guard waits on
+      it rather than guessing.
+    */
+    if (event.pending || event.changed) {
+      toastService.info(
+        event.pending
+          ? 'That card is still a suggestion — accept or discard it before moving it.'
+          : 'Save or discard that card’s changes before moving it.',
+      );
+      return;
+    }
 
     /*
       The write side of a declared relation — which class and property the link is written through,
@@ -2352,6 +2371,8 @@ export function RecordStoreProvider(props: ParentProps) {
     const event = (payload ?? {}) as {
       recordId?: string;
       recordType?: string;
+      pending?: boolean;
+      changed?: boolean;
       into?: 'child' | 'sibling' | 'loose';
       targetId?: string;
       targetType?: string;
