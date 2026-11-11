@@ -307,7 +307,14 @@ export function InterpretationStoreProvider(props: ParentProps) {
       const fields = watchPassRecord({ ...merged, settled: isSettled(merged.phase) });
       if (!fields) return;
       written.add(activity.passId);
-      trace('interpretation', 'pass', fields);
+      // The exchange's lengths, not its text: the prompt is the conversation the pass read, and a
+      // log file is what gets attached to a bug report.
+      const { prompt, response, ...outcome } = fields;
+      trace('interpretation', 'pass', {
+        ...outcome,
+        promptChars: prompt?.length ?? 0,
+        responseChars: response?.length ?? 0,
+      });
     };
 
     /*
