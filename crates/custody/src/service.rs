@@ -6203,6 +6203,9 @@ mod tests {
         fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
             self.items.put(name, bytes)
         }
+        fn claim_public(&self, name: &str, bytes: &[u8]) -> Result<bool, VaultError> {
+            self.items.claim_public(name, bytes)
+        }
         fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
             self.items.get(name)
         }

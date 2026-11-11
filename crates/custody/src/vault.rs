@@ -21,7 +21,10 @@
 //! is lost only with the keys, so a reset of the custody folder never draws a second id for a key
 //! the keychain or the Secret Service still keeps. The id names the custody folder that drew it,
 //! and a platform-store slot named for another folder is refused, so two folders over one store
-//! never keep one identity under two locks and two epochs.
+//! never keep one identity under two locks and two epochs. The id is written by a claim that
+//! never replaces one ([`SecretStore::claim_public`]), so two folders that both find no id keep
+//! one, and the folder that lost is refused. On Linux the id item has the same trust boundary as
+//! the Secret Service itself: any program of the same user can change it.
 //!
 //! Beside the master keys the vault keeps the incept of an identity `create` made here until its
 //! publish is confirmed, and the retry list of master-key pushes to other devices
@@ -53,17 +56,21 @@ struct KeptId {
     folder: String,
 }
 
-/// The custody folder `folder` is the lock of, as a [`KeptId`] names it.
-fn owner_of(folder: &Exclusive<'_>) -> String {
-    folder
-        .folder()
-        .map(|dir| {
-            std::fs::canonicalize(dir)
-                .unwrap_or_else(|_| dir.to_path_buf())
-                .to_string_lossy()
-                .into_owned()
-        })
-        .unwrap_or_default()
+/// The custody folder `folder` is the lock of, as a [`KeptId`] names it: its canonical path.
+/// Refused when the path cannot be made canonical, never named by the path as given: one folder
+/// reached by two paths (a symlink, a relative path) would read as two owners, and an id it
+/// kept would refuse it, or one it did not keep would not.
+fn owner_of(folder: &Exclusive<'_>) -> Result<String, VaultError> {
+    let Some(dir) = folder.folder() else {
+        return Ok(String::new());
+    };
+    let canonical = std::fs::canonicalize(dir).map_err(|e| {
+        VaultError::Unavailable(format!(
+            "the custody folder's path cannot be made canonical, so the owner of a vault id \
+             cannot be told: {e}"
+        ))
+    })?;
+    Ok(canonical.to_string_lossy().into_owned())
 }
 
 /// What an identity's id slot holds ([`DesktopVault::id_slot`]).
@@ -407,31 +414,42 @@ impl DesktopVault {
             )));
         }
         // An id in the custody folder's own files belongs to that folder, wherever it is.
-        if self.store.kind_of(&name)? != StoreKind::File && kept.folder != owner_of(folder) {
+        if self.store.kind_of(&name)? != StoreKind::File && kept.folder != owner_of(folder)? {
             return Err(another_folder());
         }
         Ok(IdSlot::Kept(kept.id))
     }
 
-    /// [`kept_id`](Self::kept_id), or a fresh id drawn and kept beside where the key goes
-    /// ([`SecretStore::put_public`]) when there is none: one step under the folder's lock, so
-    /// two first asks keep one id. Answers only once the store has kept it.
+    /// [`kept_id`](Self::kept_id), or, when there is none, a fresh id drawn and claimed beside
+    /// where the key goes ([`SecretStore::claim_public`]), then read back. The folder's lock makes
+    /// two first asks of one folder keep one id; the claim does the same for two folders over one
+    /// platform store, which have two locks: both can read "no id", and the store keeps the id of
+    /// one claim only, never replacing it. Each claimant then answers with what the store keeps,
+    /// so the one that lost reads the winner's id, names another folder, and is refused
+    /// ([`another_folder`]). Answers only once the store has kept an id.
     fn id_for(&self, folder: &Exclusive<'_>, scid: &str) -> Result<VaultId, VaultError> {
         if let Some(id) = self.kept_id(folder, scid)? {
             return Ok(id);
         }
         let mut bytes = [0u8; 16];
         os_random(&mut bytes);
-        let id = VaultId(bytes);
         let kept = KeptId {
             version: ID_FORMAT,
-            id,
-            folder: owner_of(folder),
+            id: VaultId(bytes),
+            folder: owner_of(folder)?,
         };
         let json = serde_json::to_vec(&kept).map_err(|e| VaultError::Unavailable(e.to_string()))?;
-        log::info!("custody: keep a new vault id");
-        self.store.put_public(&vault_id_name(scid), &json)?;
-        Ok(id)
+        log::info!("custody: claim a new vault id");
+        if !self.store.claim_public(&vault_id_name(scid), &json)? {
+            log::info!("custody: another claim kept this vault id first");
+        }
+        self.kept_id(folder, scid)?.ok_or_else(|| {
+            VaultError::Unavailable(
+                "this identity's vault id was claimed at the same time by another custody \
+                 folder, and neither claim was kept; ask again"
+                    .into(),
+            )
+        })
     }
 
     /// Refuses a delete over a slot whose id names another custody folder
@@ -888,6 +906,9 @@ mod tests {
             fn put(&self, _: &str, _: &[u8]) -> Result<(), VaultError> {
                 Err(VaultError::Unavailable("cannot write".into()))
             }
+            fn claim_public(&self, _: &str, _: &[u8]) -> Result<bool, VaultError> {
+                Err(VaultError::Unavailable("cannot write".into()))
+            }
             fn get(&self, _: &str) -> Result<Option<Vec<u8>>, VaultError> {
                 Err(VaultError::Unavailable("cannot read".into()))
             }
@@ -1016,8 +1037,8 @@ mod tests {
         fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
             (**self).put(n, b)
         }
-        fn put_public(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
-            (**self).put_public(n, b)
+        fn claim_public(&self, n: &str, b: &[u8]) -> Result<bool, VaultError> {
+            (**self).claim_public(n, b)
         }
         fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
             (**self).get(n)
@@ -1055,6 +1076,9 @@ mod tests {
             }
             fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
                 self.0.put(n, b)
+            }
+            fn claim_public(&self, n: &str, b: &[u8]) -> Result<bool, VaultError> {
+                self.0.claim_public(n, b)
             }
             fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
                 self.0.get(n)
@@ -1118,6 +1142,9 @@ mod tests {
             }
             fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
                 self.0.put(n, b)
+            }
+            fn claim_public(&self, n: &str, b: &[u8]) -> Result<bool, VaultError> {
+                self.0.claim_public(n, b)
             }
             fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
                 // The vault id is not secret, and a store reads it beside the key.
@@ -1506,6 +1533,9 @@ mod tests {
         fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
             self.file.put(n, b)
         }
+        fn claim_public(&self, n: &str, b: &[u8]) -> Result<bool, VaultError> {
+            self.file.claim_public(n, b)
+        }
         fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
             let got = self.file.get(n);
             if !self.before_delete && n == item_name("QmScid") {
@@ -1831,6 +1861,11 @@ mod tests {
         }
         fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
             self.answer(self.items.put(n, b))
+        }
+        fn claim_public(&self, n: &str, b: &[u8]) -> Result<bool, VaultError> {
+            let made = self.items.claim_public(n, b)?;
+            self.answer(Ok(()))?;
+            Ok(made)
         }
         fn put_tagged(&self, n: &str, b: &[u8], tag: &ItemTag) -> Result<(), VaultError> {
             self.answer(self.items.put_tagged(n, b, tag))
@@ -2786,6 +2821,9 @@ mod tests {
         fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
             self.inner.put(n, b)
         }
+        fn claim_public(&self, n: &str, b: &[u8]) -> Result<bool, VaultError> {
+            self.inner.claim_public(n, b)
+        }
         fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
             self.inner.get(n)
         }
@@ -2953,6 +2991,9 @@ mod tests {
         }
         fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
             self.inner.put(n, b)
+        }
+        fn claim_public(&self, n: &str, b: &[u8]) -> Result<bool, VaultError> {
+            self.inner.claim_public(n, b)
         }
         fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
             self.inner.get(n)
