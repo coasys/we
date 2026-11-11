@@ -221,6 +221,8 @@ enum Finger {
 struct MasterKeystore {
     protection: Mutex<String>,
     finger: Mutex<Finger>,
+    /// Fingers for the prompts to come, in order, before `finger` answers again.
+    script: Mutex<std::collections::VecDeque<Finger>>,
     prompts: Mutex<Vec<String>>,
     opened: Mutex<Vec<String>>,
 }
@@ -230,6 +232,7 @@ impl MasterKeystore {
         Arc::new(MasterKeystore {
             protection: Mutex::new(protection.into()),
             finger: Mutex::new(Finger::Touch),
+            script: Mutex::new(std::collections::VecDeque::new()),
             prompts: Mutex::new(Vec::new()),
             opened: Mutex::new(Vec::new()),
         })
@@ -240,9 +243,14 @@ impl MasterKeystore {
     fn next(&self, finger: Finger) {
         *self.finger.lock().unwrap() = finger;
     }
+    /// The fingers of the next prompts, one each, in order.
+    fn script(&self, fingers: &[Finger]) {
+        self.script.lock().unwrap().extend(fingers);
+    }
     fn prompt(&self, prompt: String) -> Result<(), MasterSealError> {
         self.prompts.lock().unwrap().push(prompt);
-        match *self.finger.lock().unwrap() {
+        let scripted = self.script.lock().unwrap().pop_front();
+        match scripted.unwrap_or(*self.finger.lock().unwrap()) {
             Finger::Touch => Ok(()),
             Finger::Cancel => Err(MasterSealError::Cancelled),
             Finger::Invalidated => Err(MasterSealError::Invalidated),
@@ -800,6 +808,94 @@ fn a_take_while_the_record_waits_for_reattestation_marks_the_phone_with_the_mast
     assert_eq!(phone.identity.take_master(false).unwrap(), None);
 
     // The record lists the phone holding #1, its recovery key attested by master #1.
+    let opened = world
+        .on(record::read(&laptop.exec, &laptop.vault, &did))
+        .unwrap()
+        .unwrap();
+    assert_eq!(opened.record.devices["d2"].holds_master, HoldsMaster::Yes);
+    assert_eq!(opened.record.devices["d2"].master_index, Some(1));
+    assert_eq!(opened.recovery.unwrap().attestation.key_id, "m1");
+}
+
+// The same take, with the record's prompt cancelled: the phone keeps master #1 and owes the
+// record its mark. No message waits after a restart, and "Take the master key" is still offered:
+// the take makes the mark now (one prompt, for the record), with the person's consent.
+#[test]
+fn a_mark_a_cancelled_take_still_owes_is_made_by_a_take_after_a_restart() {
+    let world = world();
+    let laptop = computer(&world, 1);
+    let did = create(&world, &laptop, 49);
+    let phone = phone(&world, "strongbox");
+    join(&world, &laptop, &phone, &did, false);
+
+    let cut = ViaExecutor::new(CutOffAfterPublish {
+        inner: laptop.exec.rpc(),
+        published: Cell::new(false),
+    });
+    let words = words::from_entropy(&[49; 16]);
+    let mut rotating = std::pin::pin!(rotate(
+        &cut,
+        &laptop.vault,
+        &did,
+        &words,
+        &[],
+        &SystemClock,
+        &OsRandom
+    ));
+    world.on(std::future::poll_fn(|cx| {
+        match rotating.as_mut().poll(cx) {
+            Poll::Ready(rotated) => panic!("the rotation was not cut off: {rotated:?}"),
+            Poll::Pending if cut.rpc().published.get() => Poll::Ready(()),
+            Poll::Pending => Poll::Pending,
+        }
+    }));
+    laptop.vault.promote_master(&scid(&did), 1).unwrap();
+    world
+        .on(send_master(
+            &laptop.exec,
+            &laptop.vault,
+            &did,
+            "d2",
+            &SystemClock,
+            &OsRandom,
+        ))
+        .unwrap();
+
+    // The seal is touched, the record's prompt is cancelled.
+    phone.master.script(&[Finger::Touch, Finger::Cancel]);
+    let taken = phone
+        .identity
+        .take_master(false)
+        .unwrap()
+        .expect("master #1 waits");
+    assert_eq!(taken.index, 1);
+    assert!(taken.note.is_some(), "the mark was not made");
+    assert_eq!(phone.master.prompts().len(), 2);
+    let opened = world
+        .on(record::read(&laptop.exec, &laptop.vault, &did))
+        .unwrap()
+        .unwrap();
+    assert_ne!(opened.record.devices["d2"].master_index, Some(1));
+
+    // A restart: no message waits, the mark is still owed, and the take makes it.
+    let restarted = open_identity(&phone.keys, &phone.http, &phone.master);
+    assert!(
+        restarted.master_waiting().unwrap(),
+        "the owed mark is offered"
+    );
+    let repaired = restarted
+        .take_master(false)
+        .unwrap()
+        .expect("the owed mark is made");
+    assert_eq!(repaired.index, 1);
+    assert_eq!(repaired.note, None, "the mark was made");
+    assert_eq!(
+        phone.master.prompts()[2..],
+        ["Update your identity's private record".to_string()]
+    );
+    assert!(!restarted.master_waiting().unwrap());
+    assert_eq!(restarted.take_master(false).unwrap(), None);
+
     let opened = world
         .on(record::read(&laptop.exec, &laptop.vault, &did))
         .unwrap()

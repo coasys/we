@@ -624,8 +624,18 @@ impl PhoneVault {
     /// not yet noted, which reads as it is and is noted under the lock before the next
     /// operation relies on it ([`PhoneVault::held`]); noting first would read an unwritten
     /// entry as lost. What the note buys is the detection of a loss *after* it exists.
+    ///
+    /// `next` is read back first with the reader [`read`](Self::read) uses, and refused when it
+    /// does not read: serde_json writes a value nested past its recursion limit (128), a custody
+    /// note say, and cannot read it, and written, that file would lose every key and note in it.
     fn save(&self, held: &mut Held<'_>, next: MasterFile) -> Result<(), VaultError> {
         let bytes = serde_json::to_vec_pretty(&next).expect("the master-key file serialises");
+        serde_json::from_slice::<MasterFile>(&bytes).map_err(|e| {
+            unavailable(format!(
+                "{MASTER_FILE_NAME}: a change that cannot be read back was refused, and the file \
+                 left as it was: {e}"
+            ))
+        })?;
         crate::file::write_atomic(&self.dir.join(MASTER_FILE_NAME), &bytes).map_err(io)?;
         if noted(&mut held.marker, &next, true) {
             self.write_marker(&held.marker)?;
@@ -1825,6 +1835,32 @@ mod tests {
             vault(dir.path()).custody_note("scid1", "d1").unwrap(),
             Some(note)
         );
+    }
+
+    /// A note nested past serde_json's recursion limit (128) is written by it and cannot be read
+    /// back: the change is refused before `master-keys.json` is replaced, so the file, with the
+    /// sealed keys and every other note in it, still opens after a restart.
+    #[test]
+    fn a_note_nested_past_what_can_be_read_back_is_refused_and_the_file_stays_readable() {
+        let mut deep = receipt(true);
+        for _ in 0..70 {
+            deep = stacked(deep);
+        }
+        let kept = stacked(receipt(true));
+        let dir = tempfile::tempdir().unwrap();
+        let v = vault(dir.path());
+        assert!(v
+            .swap_custody_note("scid2", "d1", None, Some(&kept))
+            .unwrap());
+        assert!(v
+            .swap_custody_note("scid1", "d1", None, Some(&deep))
+            .is_err());
+        assert_eq!(v.custody_note("scid1", "d1").unwrap(), None);
+        drop(v);
+
+        let v = vault(dir.path());
+        assert_eq!(v.custody_note("scid2", "d1").unwrap(), Some(kept));
+        assert_eq!(v.custody_note("scid1", "d1").unwrap(), None);
     }
 
     /// A vault id is drawn once per identity and kept: the same on every ask and through another

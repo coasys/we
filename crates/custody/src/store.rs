@@ -109,6 +109,13 @@ pub trait SecretStore: Send + Sync {
     /// it. An error is an error: it never means the item is absent.
     fn kind_of(&self, name: &str) -> Result<StoreKind, VaultError>;
     fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError>;
+    /// [`put`](SecretStore::put) for an item that is not secret (a vault id,
+    /// [`vault_id_name`]): kept in the same store, and read back with no unlock and no prompt.
+    /// The same as `put` for a store that asks for nothing on a read; the keychain writes it with
+    /// no access control.
+    fn put_public(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
+        self.put(name, bytes)
+    }
     fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError>;
     /// Whether an item is kept under `name`, without reading it: no unlock, no prompt, and the bytes
     /// never leave the store.
@@ -170,21 +177,45 @@ pub fn staged_name(scid: &str) -> String {
     format!("{STAGED_PREFIX}{scid}")
 }
 
-const KEPT_PREFIX: &str = "coasys.identity/";
-const STAGED_PREFIX: &str = "coasys.identity.staged/";
-
-/// The file stem a name is kept under beside the sealed files: `<scid>` for a kept item,
-/// `<scid>.staged` for a staged one (a scid is base58, so it has no dot of its own).
-fn stem(name: &str) -> String {
-    match name.strip_prefix(STAGED_PREFIX) {
-        Some(scid) => format!("{scid}.staged"),
-        None => name.rsplit('/').next().unwrap_or(name).to_string(),
-    }
+/// The name of this vault's id for an identity (`Vault::vault_id`): a third slot beside the kept
+/// and staged ones, in the store that keeps them, so the id goes only where the key goes. Not
+/// secret ([`SecretStore::put_public`]), and kept when the key is forgotten.
+pub fn vault_id_name(scid: &str) -> String {
+    format!("{VAULT_PREFIX}{scid}")
 }
 
-/// The kept item a staged name stands beside; `None` for any other name.
-fn kept_beside(name: &str) -> Option<String> {
-    name.strip_prefix(STAGED_PREFIX).map(item_name)
+const KEPT_PREFIX: &str = "coasys.identity/";
+const STAGED_PREFIX: &str = "coasys.identity.staged/";
+const VAULT_PREFIX: &str = "coasys.identity.vault/";
+
+/// The file stem a name is kept under beside the sealed files: `<scid>` for a kept item,
+/// `<scid>.staged` for a staged one, `<scid>.vault` for the vault id (a scid is base58, so it has
+/// no dot of its own).
+fn stem(name: &str) -> String {
+    if let Some(scid) = name.strip_prefix(STAGED_PREFIX) {
+        return format!("{scid}.staged");
+    }
+    if let Some(scid) = name.strip_prefix(VAULT_PREFIX) {
+        return format!("{scid}.vault");
+    }
+    name.rsplit('/').next().unwrap_or(name).to_string()
+}
+
+/// The items of the same identity a new item under `name` goes beside, in the order they are
+/// asked: a staged key beside the kept one, else beside the vault id; a kept key beside the vault
+/// id; the vault id beside the kept key, else the staged one. So a key and its id never land on
+/// two sides of a [`PlacedStore`].
+fn anchors(name: &str) -> Vec<String> {
+    if let Some(scid) = name.strip_prefix(STAGED_PREFIX) {
+        return vec![item_name(scid), vault_id_name(scid)];
+    }
+    if let Some(scid) = name.strip_prefix(VAULT_PREFIX) {
+        return vec![item_name(scid), staged_name(scid)];
+    }
+    if let Some(scid) = name.strip_prefix(KEPT_PREFIX) {
+        return vec![vault_id_name(scid)];
+    }
+    Vec::new()
 }
 
 // ─── File ───────────────────────────────────────────────────────────────────────
@@ -631,6 +662,13 @@ mod keychain_store {
             set_generic_password_options(bytes, options).map_err(unavailable)
         }
 
+        /// No access control: the vault id is not secret, and a read of it must not prompt.
+        /// Still in the data-protection keychain, under this service and this app's access group.
+        fn put_public(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
+            self.delete(name)?;
+            set_generic_password_options(bytes, item(name)).map_err(unavailable)
+        }
+
         /// The tag as the item's comment (`kSecAttrComment`, [`tag_comment`]), added in the same
         /// `SecItemAdd` as the bytes: an attribute, so it is read with no prompt ([`tag_of`]),
         /// and only this app's access group can write it.
@@ -881,16 +919,17 @@ impl PlacedStore {
         }
     }
 
-    /// The side that holds `name`, or the one it goes to when it is new. A new staged key goes to
-    /// the side of the kept item it stands beside, so it is sealed (or not) as that item is, and
-    /// its promote is a move within one store: a key staged on the keychain, unsealed, never lands
-    /// in a file.
+    /// The side that holds `name`, or the one it goes to when it is new: the side of the first of
+    /// its [`anchors`] that is held. A new staged key goes beside the kept item, so it is sealed
+    /// (or not) as that item is, and its promote is a move within one store: a key staged on the
+    /// keychain, unsealed, never lands in a file. A key and the vault id go beside each other, so
+    /// the id is lost only with the store that keeps the key.
     fn side(&self, name: &str) -> Result<&dyn SecretStore, VaultError> {
         if let Some(held) = self.holder(name)? {
             return Ok(held);
         }
-        if let Some(kept) = kept_beside(name) {
-            if let Some(held) = self.holder(&kept)? {
+        for anchor in anchors(name) {
+            if let Some(held) = self.holder(&anchor)? {
                 return Ok(held);
             }
         }
@@ -909,6 +948,10 @@ impl SecretStore for PlacedStore {
 
     fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
         self.side(name)?.put(name, bytes)
+    }
+
+    fn put_public(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
+        self.side(name)?.put_public(name, bytes)
     }
 
     fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
@@ -1070,6 +1113,12 @@ impl SecretStore for Reconnecting {
     fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
         let connected = self.reach()?;
         self.on(&connected, |store| store.put(name, bytes))?;
+        self.mark(name)
+    }
+
+    fn put_public(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
+        let connected = self.reach()?;
+        self.on(&connected, |store| store.put_public(name, bytes))?;
         self.mark(name)
     }
 

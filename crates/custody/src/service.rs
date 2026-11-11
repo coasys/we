@@ -1005,6 +1005,13 @@ async fn public_state_on<R: ExecutorRpc>(
             master_waiting && !os_unlocks,
         )
         .await;
+        // A mark still owed after that refresh (a sealed item, whose passphrase only the person
+        // gives; or a record write that failed again) is offered as "Take the master key", which
+        // makes it ([`repair_mark_on`]).
+        if !master_waiting {
+            master_waiting = ad4m_identity_core::scid_of(did)
+                .is_some_and(|scid| receipt_owed(vault, scid, own_key.as_deref()));
+        }
         devices = match record::read(executor, &vault.unlocking(None), did).await {
             Ok(opened) => opened.map(|o| device_names(&o.record)).unwrap_or_default(),
             Err(e) => {
@@ -2238,27 +2245,20 @@ async fn take_master_on<R: ExecutorRpc>(
     rx: &mut Rx,
     reply: &mut Reply,
 ) {
-    let did = match executor.status().await {
-        Ok(status) => match status.did {
-            Some(did) => did,
-            None => {
-                return answer(
-                    reply,
-                    Ok(Screen::Failed {
-                        message: "This computer is not linked to an identity yet.".into(),
-                    }),
-                )
-            }
-        },
+    let status = match executor.status().await {
+        Ok(status) => status,
         Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
     };
-    if !master_waits(executor).await {
+    let Some(did) = status.did.clone() else {
         return answer(
             reply,
             Ok(Screen::Failed {
-                message: NO_MASTER_WAITING.into(),
+                message: "This computer is not linked to an identity yet.".into(),
             }),
         );
+    };
+    if !master_waits(executor).await {
+        return repair_mark_on(executor, vault, &status, &did, address, rx, reply).await;
     }
     let Some(scid) = ad4m_identity_core::scid_of(&did) else {
         return answer(reply, Ok(failed(&ClientError::Vault(VaultError::NotFound))));
@@ -2297,12 +2297,7 @@ async fn take_master_on<R: ExecutorRpc>(
         };
         let screen = match taken {
             Ok(Some(taken)) => Screen::MasterTaken {
-                note: taken.record.err().map(|e| {
-                    log::warn!("custody: the record does not mark this computer yet: {e}");
-                    "Your device list does not show it yet: it is updated the next time a \
-                     device changes it."
-                        .to_string()
-                }),
+                note: taken.record.err().map(not_listed_yet),
                 did: taken.did,
             },
             Ok(None) => Screen::Failed {
@@ -2316,6 +2311,121 @@ async fn take_master_on<R: ExecutorRpc>(
         };
         return answer(reply, Ok(screen));
     }
+}
+
+/// Whether this computer owes the record its mark for the master key it keeps: its custody note
+/// (`own_key`'s) is a receipt for the index the vault keeps ([`CustodyNote::landed`]), so a take
+/// or promote here kept the key and its record write was cancelled or failed. No unlock.
+fn receipt_owed(vault: &DesktopVault, scid: &str, own_key: Option<&str>) -> bool {
+    let Some(key_id) = own_key else {
+        return false;
+    };
+    let unlocking = vault.unlocking(None);
+    match unlocking.custody_note(scid, key_id) {
+        Ok(Some(note)) => note.landed(&unlocking, scid).unwrap_or_else(|e| {
+            log::warn!("custody: cannot tell whether the custody note has landed: {e}");
+            false
+        }),
+        Ok(None) => false,
+        Err(e) => {
+            log::warn!("custody: the custody note cannot be read: {e}");
+            false
+        }
+    }
+}
+
+/// "Take the master key" with no master key waiting: the mark this computer still owes the
+/// record for the key it keeps ([`receipt_owed`]) is made now ([`refresh_master`]), the click
+/// being the consent its unlock needs. A sealed item asks for its passphrase first, which the
+/// refresh that runs as the app starts ([`refresh_stale`]) cannot. Nothing owed:
+/// [`NO_MASTER_WAITING`].
+#[allow(clippy::too_many_arguments)]
+async fn repair_mark_on<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &DesktopVault,
+    status: &IdentityStatus,
+    did: &str,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
+    let owed = ad4m_identity_core::scid_of(did)
+        .filter(|scid| receipt_owed(vault, scid, status.key_id.as_deref()));
+    let Some(scid) = owed else {
+        return answer(
+            reply,
+            Ok(Screen::Failed {
+                message: NO_MASTER_WAITING.into(),
+            }),
+        );
+    };
+    let sealed = match held_sealed(vault, scid) {
+        Ok(sealed) => sealed == Some(true),
+        Err(e) => return answer(reply, Ok(failed(&ClientError::Vault(e)))),
+    };
+    if sealed {
+        answer(reply, Ok(Screen::EnterPassphrase { error: None }));
+    }
+    let mut unlocking = vault.unlocking(None);
+    loop {
+        if sealed {
+            let Some(input) = next_input(vault, address, rx, reply).await else {
+                return;
+            };
+            let StepInput::Passphrase { passphrase: p, .. } = input else {
+                answer(reply, Err(CustodyError::WrongInput));
+                continue;
+            };
+            unlocking = vault.unlocking(Some(p.into_secret()));
+        }
+        let screen = match refresh_master(executor, &unlocking, did, &CLOCK, &RANDOM).await {
+            // The mark is signed by the master, opened for it: a wrong passphrase leaves the
+            // mark owed, and is asked again.
+            Ok(
+                Refreshed::Repaired {
+                    record: Err(ClientError::Vault(VaultError::Cancelled)),
+                    ..
+                }
+                | Refreshed::Promoted {
+                    record: Err(ClientError::Vault(VaultError::Cancelled)),
+                    ..
+                },
+            )
+            | Err(ClientError::Vault(VaultError::Cancelled))
+                if sealed =>
+            {
+                answer(reply, Ok(wrong_passphrase()));
+                continue;
+            }
+            Ok(Refreshed::Repaired { record, .. } | Refreshed::Promoted { record, .. }) => {
+                Screen::MasterTaken {
+                    did: did.to_string(),
+                    note: record.err().map(not_listed_yet),
+                }
+            }
+            Ok(Refreshed::Taken(taken)) => Screen::MasterTaken {
+                did: taken.did,
+                note: taken.record.err().map(not_listed_yet),
+            },
+            Ok(Refreshed::Asked(id)) => Screen::Asked {
+                key_id: status.key_id.clone().unwrap_or_default(),
+                fingerprint: crate::keylog::fingerprint(&status.device_key),
+                code: ad4m_identity_core::link::match_code(scid, &id, &status.device_key),
+            },
+            Ok(Refreshed::Current | Refreshed::Unknown) => Screen::Failed {
+                message: NO_MASTER_WAITING.into(),
+            },
+            Err(e) => failed(&e),
+        };
+        return answer(reply, Ok(screen));
+    }
+}
+
+/// The note of a key kept here whose record write failed: the record is marked later.
+fn not_listed_yet(e: ClientError) -> String {
+    log::warn!("custody: the record does not mark this computer yet: {e}");
+    "Your device list does not show it yet: it is updated the next time a device changes it."
+        .to_string()
 }
 
 /// A linked app without the master key asks the identity's other devices for it: a
@@ -6973,6 +7083,135 @@ mod tests {
             );
             assert_eq!(vault.master_index(&scid).unwrap(), Some(1), "{note:?}");
         }
+    }
+
+    /// A take kept master #1 in a sealed file and its record write did not land (the passphrase
+    /// was not given, or the put failed), and the app started again: the custody note owes the
+    /// mark, no message waits, the record's recovery key waits for m1's re-attestation, and the
+    /// refresh as the app starts cannot open a sealed item. "Take the
+    /// master key" is offered, asks for the passphrase (again on a wrong one) and makes the mark.
+    #[tokio::test]
+    async fn an_owed_mark_on_a_sealed_item_is_made_by_take_with_the_passphrase() {
+        use ad4m_identity_client::{CustodyNote, NoteToken};
+        let dir = tempfile::tempdir().unwrap();
+        let seed = words::seed(&words::from_entropy(&[41u8; 16]));
+        let master = |index| words::master_key(&seed, index).unwrap().to_bytes();
+        // The record as it was before the rotation to #1: its recovery key attested by m0.
+        let (at_0, _) = crate::keylog::tests::log_with_d2(true);
+        let events = rotated_log();
+        let scid = events[0].scid.clone();
+        let mut record = ad4m_identity_core::record::PrivateRecord::default();
+        record
+            .devices
+            .insert("d1".into(), this_computer(None, false, None));
+        let (executor, did) = executor_with(&events, &record);
+        let chain_0 = ad4m_identity_core::fold(&at_0).unwrap();
+        let recovery = ad4m_identity_core::record::attest_recovery_key(
+            &chain_0,
+            ad4m_identity_core::encode_x25519_multikey(&[9u8; 32]),
+            &KeySigner::new(&master(0), 0),
+        )
+        .unwrap();
+        let stale = ad4m_identity_core::record::seal_record(
+            &chain_0,
+            1,
+            &record,
+            Some(recovery),
+            &KeySigner::new(&[2u8; 32], 0),
+            &mut Fixed(7),
+        )
+        .unwrap();
+        let receipt = ad4m_identity_core::record::sign_receipt(
+            &scid,
+            &stale,
+            chain_0.head().seq,
+            &store_key(),
+        )
+        .unwrap();
+        executor.rpc().answer(
+            "identity.record",
+            json!({ "record": stale, "receipt": receipt }),
+        );
+        executor.rpc().keep_puts(&events);
+        executor.rpc().answer("identity.inbox", json!([]));
+        executor.rpc().answer("identity.requests", json!([]));
+
+        // A take kept #1 here, sealed; its mark is owed.
+        let vault = open_vault(dir.path());
+        let flow = vault.unlocking(pass());
+        flow.store_master(&scid, 1, Secret::new(master(1))).unwrap();
+        let epoch = flow.custody_epoch(&scid).unwrap();
+        let owed = CustodyNote::MarkOwed {
+            index: 1,
+            epoch,
+            token: NoteToken([7; 16]),
+            acquired: true,
+            restores: None,
+        };
+        assert!(flow
+            .swap_custody_note(&scid, "d1", None, Some(&owed))
+            .unwrap());
+        drop(flow);
+
+        // The app starts again: nothing waits in the inbox, and the mark is offered.
+        let vault = open_vault(dir.path());
+        let public = public_state_on(Some(&executor), &vault).await;
+        // The device key alone cannot write it (the recovery key waits for m1), and the
+        // refresh as the app starts cannot open a sealed item.
+        assert!(public.master_waiting, "the owed mark is offered");
+        assert!(receipt_owed(&vault, &scid, Some("d1")));
+
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), screens) = tokio::join!(
+            take_master_on(&executor, &vault, &address, &mut rx, &mut reply),
+            async {
+                let mut shown = vec![first.await.unwrap().unwrap()];
+                if !matches!(shown[0], Screen::EnterPassphrase { error: None }) {
+                    return shown;
+                }
+                for passphrase in ["not the passphrase at all", PASSPHRASE] {
+                    // Any other screen ends the step, and a step sent after it would wait forever.
+                    if !matches!(shown.last(), Some(Screen::EnterPassphrase { .. })) {
+                        break;
+                    }
+                    shown.push(
+                        window
+                            .step(StepInput::Passphrase {
+                                passphrase: passphrase.into(),
+                                confirm: None,
+                            })
+                            .await,
+                    );
+                }
+                shown
+            }
+        );
+        assert!(
+            matches!(screens[0], Screen::EnterPassphrase { error: None }),
+            "{screens:?}"
+        );
+        assert!(
+            matches!(screens[1], Screen::EnterPassphrase { error: Some(_) }),
+            "{screens:?}"
+        );
+        assert!(
+            matches!(&screens[2], Screen::MasterTaken { did: d, note: None } if *d == did),
+            "{screens:?}"
+        );
+
+        let opened = record::read(&executor, &vault.unlocking(None), &did)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(opened.record.devices["d1"].holds_master, Holds::Yes);
+        assert_eq!(opened.record.devices["d1"].master_index, Some(1));
+        assert_eq!(opened.recovery.unwrap().attestation.key_id, "m1");
+        assert_eq!(
+            opened.record.devices["d1"].vault,
+            Some(vault.vault_id(&scid).unwrap())
+        );
+        let public = public_state_on(Some(&executor), &vault).await;
+        assert!(!public.master_waiting, "nothing is owed now");
     }
 
     #[tokio::test]

@@ -176,7 +176,11 @@ export interface IdentityCustodyView {
   revokedHolders: string[];
   /** What other devices asked and is waiting for an answer from a device that keeps the master key. */
   requests: DeviceRequestView[];
-  /** A master key another device sent waits for this computer to take it. */
+  /**
+   * "Take the master key" has something to do here: a master key another device sent waits for
+   * this device to take it, or the private record is still owed this device's mark for the key it
+   * keeps (a take whose record write was cancelled or failed), which the take makes.
+   */
   masterWaiting: boolean;
   /**
    * The device the custody service answers for, where it is not the backend's own: a phone that
