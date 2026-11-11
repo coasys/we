@@ -123,7 +123,18 @@ const SHAPES: EntityShape[] = [
     name: 'Post',
     identityProperty: 'text',
     properties: [{ name: 'text', type: 'string' }],
-    relations: [],
+    relations: [{ name: 'comments', target: 'Comment', cardinality: 'many', predicate: 'discuss://comments' }],
+  },
+  /*
+    A `belongsToOne` declared without naming its forward — the shape installed SDNA arrives as.
+    The back-pointer still shares its forward's predicate: `Comment.post` and `Post.comments`
+    are the one `discuss://comments` link read from the two ends.
+  */
+  {
+    name: 'Comment',
+    identityProperty: 'text',
+    properties: [{ name: 'text', type: 'string' }],
+    relations: [{ name: 'post', target: 'Post', cardinality: 'one', reverse: true, predicate: 'discuss://comments' }],
   },
   // A reverse (belongsTo) relation: the inverse side, whose values are the records pointing at the
   // holder — children, found the same `scope` way as a held list.
@@ -1804,5 +1815,32 @@ describe('canvasSeed — model relations', () => {
     expect(JSON.parse(pulled?.data?.weightVotes as string)).toEqual([['did:a', 5]]);
     const weighed = seed.derive!(fragment, { canvas: 'b1', weigh: { signalTypeId: 'rate', mode: 'rating' } });
     expect(weighed.nodes.find((n) => n.id === position('pos1'))?.data?.weight).toBe(5);
+  });
+
+  it('draws a named list and its unnamed back-pointer once — one edge, not a two-cycle', async () => {
+    /*
+      `Post.comments` and `Comment.post` are the same link declared from both ends, the second
+      as a `belongsTo` that never names the first — how installed SDNA arrives, `reverseOf`
+      unread. Paired by the predicate they share, the back-pointer knows its forward is a
+      to-many and reads as "the comment's parent": one Post → Comment edge. Unpaired it read
+      the other way and both directions were drawn — the post under its own comment.
+    */
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'post1', nodeType: 'Post', x: 0, y: 0 }],
+      Post: [{ id: 'post1', text: 'Ship it' }],
+      // The foreign key both reads speak: `__Post_comments` is the scope answer, `post` the
+      // child's own field once the back-pointer is paired.
+      Comment: [{ id: 'c1', text: 'A take', post: 'post1', __Post_comments: 'post1' }],
+    });
+
+    const { nodes, edges } = await canvasSeed().seed({ canvas: 'b1', relations: { children: true } }, ctx);
+
+    expect(nodes.map((n) => n.id)).toContain('we-graph://entity/ds/Comment/c1');
+    const between = edges.filter((e) => e.type === 'relation');
+    expect(between).toHaveLength(1);
+    expect(between[0].source).toBe('we-graph://entity/ds/Post/post1');
+    expect(between[0].target).toBe('we-graph://entity/ds/Comment/c1');
+    // The child's own field wins the one edge — it is the statement a reparent writes.
+    expect(between[0].data).toMatchObject({ relation: 'Comment.post', heldByChild: true });
   });
 });

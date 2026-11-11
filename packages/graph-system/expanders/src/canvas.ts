@@ -613,15 +613,30 @@ export function canvasSeed(): SeedSource {
           const specs = shape.relations
             .filter((relation) => relation.target && !plumbing.has(relation.target))
             .map((relation) => {
-              const forward = relation.reverseOf
-                ? shapes.find((s) => s.name === relation.target)?.relations.find((r) => r.name === relation.reverseOf)
-                : undefined;
+              /*
+                The forward this relation inverts. Named where the declaration says it
+                (`reverseOf`); where it does not, a reverse is still pairable — a `belongsTo`
+                shares its forward's predicate, the same link read from the other end. Left
+                unpaired, a reverse to-one falls to the children-side default below and the seed
+                draws the link *and* its inverse — `Post.comments` and `Comment.post` as two
+                opposing edges, a two-cycle.
+              */
+              const forward = (() => {
+                const target = shapes.find((s) => s.name === relation.target);
+                if (relation.reverseOf) {
+                  return target?.relations.find((r) => r.name === relation.reverseOf);
+                }
+                if (relation.reverse && relation.predicate) {
+                  return target?.relations.find((r) => !r.reverse && r.predicate === relation.predicate);
+                }
+                return undefined;
+              })();
               return {
                 name: relation.name,
                 target: relation.target,
                 many: relation.cardinality === 'many',
                 reverse: relation.reverse === true,
-                forwardName: relation.reverseOf,
+                forwardName: relation.reverseOf ?? (relation.reverse ? forward?.name : undefined),
                 // Unresolvable reads as a to-one: a `belongsTo` declared without naming its
                 // forward is AD4M's, and there the inverse of `hasOne`/`hasMany` is always the
                 // children side.

@@ -173,6 +173,12 @@ export interface EntityShape {
     cardinality: 'one' | 'many';
     reverse?: boolean;
     reverseOf?: string;
+    /**
+     * The storage binding, where the manifest carries one. A `belongsTo` and the forward link it
+     * inverts are the *same* predicate read from the two ends — so when `reverseOf` is absent this
+     * is what still pairs a reverse with its forward and settles which way it runs.
+     */
+    predicate?: string;
   }[];
   /**
    * The property that names an instance — what a node is captioned with.
