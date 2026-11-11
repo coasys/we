@@ -29,6 +29,10 @@ AgendaItem                      a part of the call, given as agenda or detected
    └─ Position, Question, ActionItem   `about` points at their topic
 ```
 
+An instance belongs to a class when it has the class's required properties, so `AgendaItem` keeps its
+properties under predicates of its own (`conv://agenda_title` ...). With `conv://title` every agenda item
+would also count as a `DiscussionTopic`.
+
 `AgendaItem.status` (`upcoming`, `current`, `done`) tells every later pass where the call is, so a new
 topic lands under the part of the call it was raised in. Two items can be `current` together.
 
