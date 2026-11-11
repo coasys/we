@@ -602,6 +602,30 @@ describe('a tree drop on a model relation', () => {
       expect(world.posts.get('p1')?.author).toBe('a2');
       expect(info).not.toHaveBeenCalledWith(expect.stringContaining('cannot be cleared'));
     });
+
+    it('says an undo could not take a first attach back when nothing can clear the field', async () => {
+      /*
+        The attach went through the static update; the undo needs the field cleared, which an
+        installed SDNA cannot spell — so it used to do nothing, silently, leaving a move on the
+        board that looks undone. Nothing is still what happens; it is just no longer silent.
+      */
+      world.bare = true;
+      const info = vi.spyOn(toastService, 'info');
+      const store = mount();
+      await store.arrangeOnTree(CANVAS, SPINE, {
+        recordId: 'pos2',
+        recordType: 'Position',
+        into: 'child',
+        targetId: 't1',
+        targetType: 'DiscussionTopic',
+        order: ['pos2'],
+      });
+      expect(aboutOf('pos2')).toBe('t1');
+
+      await store.undoCanvas(CANVAS);
+      expect(aboutOf('pos2')).toBe('t1');
+      expect(info).toHaveBeenCalledWith(expect.stringContaining('take that move back'));
+    });
   });
 
   it('reorders a card among its own siblings — no link moves, the ranks do', async () => {

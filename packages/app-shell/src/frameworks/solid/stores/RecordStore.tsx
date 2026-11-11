@@ -2001,15 +2001,15 @@ export function RecordStoreProvider(props: ParentProps) {
       other. A to-one's setter would overwrite anyway, but a parent's list does not vacate on
       add: skip only the detach a re-attach to the same list would undo again anyway.
     */
-    const detach = async (via: typeof write, stayingUnder?: string): Promise<void> => {
+    const detach = async (via: typeof write, stayingUnder?: string): Promise<boolean> => {
       if (via.side === 'parent') {
         const currentId = await currentParent(via);
         if (currentId && currentId !== stayingUnder) {
           await entityClass(via.type, handle).removeRelation(handle, currentId, via.prop, card.id);
         }
-        return;
+        return true;
       }
-      await writeTreeRelation(handle, via, card.id, null);
+      return writeTreeRelation(handle, via, card.id, null);
     };
     // A reorder among the same siblings moved no link, and replaying one would add the card to a
     // parent's list a second time.
@@ -2021,8 +2021,16 @@ export function RecordStoreProvider(props: ParentProps) {
     */
     const apply = async (parent: { id: string; type: string } | null, via: typeof write, leaving: typeof write) => {
       if (moved) {
-        await detach(leaving, parent?.id);
-        await writeTreeRelation(handle, via, card.id, parent);
+        const detached = await detach(leaving, parent?.id);
+        const written = parent ? await writeTreeRelation(handle, via, card.id, parent) : detached;
+        /*
+          A card whose field cannot be spelled — an installed SDNA's to-one, which can be pointed
+          but never cleared — takes nothing back, and a silent no-op reads as the undo having
+          landed. Said instead.
+        */
+        if (!detached || !written) {
+          toastService.info('Could not take that move back — the record cannot be written from here.');
+        }
       }
       for (const change of ranks) await stylePlacement(canvas, change.nodeId, change.before, change.after);
     };
