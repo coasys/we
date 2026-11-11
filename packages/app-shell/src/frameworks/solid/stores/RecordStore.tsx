@@ -2310,10 +2310,18 @@ export function RecordStoreProvider(props: ParentProps) {
         toastService.info('That relation is derived — it cannot be moved.');
         return;
       }
-      // Left where it was rather than hung under two parents when the old link cannot be cleared.
-      if (!(await writeTreeRelation(handle, clearing, cardId, null, from.id))) {
-        toastService.info('That field cannot be cleared from the tree — edit the record itself.');
-        return;
+      /*
+        A named `belongsTo`'s clear resolves to the *same* write as the set it precedes — the
+        forward to-one either way — and a set is its own clear. Attempted anyway, an installed
+        SDNA (whose records cannot spell a clear at all) refuses a move it could have made.
+      */
+      const sameWrite = clearing.side === write.side && clearing.type === write.type && clearing.prop === write.prop;
+      if (!(sameWrite && write.side === 'child')) {
+        // Left where it was rather than hung under two parents when the old link cannot be cleared.
+        if (!(await writeTreeRelation(handle, clearing, cardId, null, from.id))) {
+          toastService.info('That field cannot be cleared from the tree — edit the record itself.');
+          return;
+        }
       }
       oldWrite = clearing;
     }

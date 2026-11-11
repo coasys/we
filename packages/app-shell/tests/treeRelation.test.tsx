@@ -577,6 +577,31 @@ describe('a tree drop on a model relation', () => {
       expect(aboutOf('pos1')).toBe('t2');
       expect(info).toHaveBeenCalledWith(expect.stringContaining('cannot be cleared'));
     });
+
+    it('moves a named belongsTo by the set alone — the to-one’s write is its own clear', async () => {
+      /*
+        Under `rel:Author.post` the card hangs by `Post.author` — clearing it and setting it are
+        the same write. Taken as two steps, the clear found no spelling on an installed SDNA and
+        refused a move the set alone would have made.
+      */
+      world.bare = true;
+      world.posts.set('p1', { id: 'p1', text: 'A take', author: 'a1' });
+      world.authors.set('a1', { id: 'a1', name: 'Ada', post: 'p1' });
+      world.authors.set('a2', { id: 'a2', name: 'Bob' });
+      place('p1');
+      const info = vi.spyOn(toastService, 'info');
+      const store = mount();
+      await store.arrangeOnTree(CANVAS, 'rel:Author.post', {
+        recordId: 'p1',
+        recordType: 'Post',
+        into: 'child',
+        targetId: 'a2',
+        targetType: 'Author',
+        order: ['p1'],
+      });
+      expect(world.posts.get('p1')?.author).toBe('a2');
+      expect(info).not.toHaveBeenCalledWith(expect.stringContaining('cannot be cleared'));
+    });
   });
 
   it('reorders a card among its own siblings — no link moves, the ranks do', async () => {
