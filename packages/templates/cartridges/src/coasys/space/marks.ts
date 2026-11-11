@@ -30,3 +30,28 @@ export const countPill = (expr: string, tone?: SchemaProp): SchemaNode => ({
     },
   },
 });
+
+/**
+ * A call's transcript to take away, as a ghost square with a tooltip: at the end of a call's bar and
+ * on each card of the Calls page. Offered whether the call is running or over, and to everyone: it
+ * reads the shared record and writes to the reader's own device, so there is nobody else's account
+ * involved. `callId` is an expression for the call's record id. `md` stands the height of the bar's
+ * Page / Canvas switch; a card takes `sm`, so it does not make the card taller or take its title's room.
+ */
+export const exportTranscriptButton = (callId: string, size: 'sm' | 'md' = 'md'): SchemaNode => ({
+  type: 'we-tooltip',
+  props: { content: 'Export the transcript', placement: 'bottom' },
+  children: [
+    {
+      type: 'we-button',
+      props: {
+        variant: 'ghost',
+        size,
+        square: true,
+        label: 'Export the transcript',
+        onClick: { $invoke: 'spaceStore.exportCallTranscript', args: [{ $: callId }] },
+      },
+      children: [{ type: 'we-icon', props: { name: 'download-simple' } }],
+    },
+  ],
+});
