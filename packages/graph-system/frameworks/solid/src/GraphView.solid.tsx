@@ -755,13 +755,18 @@ export function GraphView(props: GraphViewProps) {
             const card = parseAddress(id);
             return card?.kind === 'entity' && card.id ? [card.id] : [];
           });
+          /*
+            The event's node is the gesture's stub — an id and nothing else — so the seed's marks are
+            read off the stored node, resolved exactly as `nodeClick` resolves it above.
+          */
+          const node = engine.store.node(event.node.id);
           props.onNodeArrange?.({
             id: event.node.id,
             into: named || event.into === 'loose' ? event.into : 'loose',
             recordId: at.id,
             recordType: at.type ?? '',
-            ...(event.node.data?.pending === true ? { pending: true } : {}),
-            ...(event.node.data?.changed === true ? { changed: true } : {}),
+            ...(node?.data?.pending === true ? { pending: true } : {}),
+            ...(node?.data?.changed === true ? { changed: true } : {}),
             ...(named ? { targetId: named.id, targetType: named.type ?? '' } : {}),
             ...(event.before === undefined ? {} : { before: event.before }),
             ...(order ? { order } : {}),
