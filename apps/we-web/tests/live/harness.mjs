@@ -313,28 +313,47 @@ export function videoFlow(page, ms = 2_000) {
  *
  * A wait longer than a minute logs one line a minute: what it waits for, and for how long so far.
  * CI ends a job that writes nothing for a while (CircleCI's no-output timeout), and the real tier's
- * waits on a model can be longer than that taken together.
+ * waits on a model can be longer than that taken together. The line has its own timer, so a read that
+ * is slow to answer does not hold it back; and each read gets only what is left of the deadline, so a
+ * read that never answers cannot extend it.
  */
 export async function until(read, accept, { timeout = 60_000, interval = 500, what = 'condition' } = {}) {
   const start = Date.now();
   const deadline = start + timeout;
-  let said = start;
+  const s = (ms) => `${Math.round(ms / 1_000)} s`;
+  const heartbeat = setInterval(
+    () => console.log(`[until] still waiting for ${what}: ${s(Date.now() - start)} of ${s(timeout)}`),
+    60_000,
+  );
+  const late = Symbol('late');
   let last;
-  for (;;) {
-    try {
-      last = await read();
-      if (accept(last)) return last;
-    } catch (error) {
-      last = `threw: ${error.message}`;
+  const timedOut = (pending = '') =>
+    new Error(`Timed out waiting for ${what}${pending}. Last: ${JSON.stringify(last, null, 1)?.slice(0, 2_000)}`);
+  try {
+    for (let first = true; ; first = false) {
+      // The first read always happens; a later one only while there is time left for it.
+      if (!first && Date.now() >= deadline) throw timedOut();
+      let timer;
+      let unanswered = false;
+      try {
+        const value = await Promise.race([
+          Promise.resolve().then(read),
+          new Promise((done) => (timer = setTimeout(() => done(late), Math.max(0, deadline - Date.now())))),
+        ]);
+        unanswered = value === late;
+        if (!unanswered) {
+          last = value;
+          if (accept(last)) return last;
+        }
+      } catch (error) {
+        last = `threw: ${error.message}`;
+      } finally {
+        clearTimeout(timer);
+      }
+      if (unanswered) throw timedOut(' (a read was still unanswered at the deadline)');
+      await sleep(Math.max(0, Math.min(interval, deadline - Date.now())));
     }
-    if (Date.now() > deadline) {
-      throw new Error(`Timed out waiting for ${what}. Last: ${JSON.stringify(last, null, 1)?.slice(0, 2_000)}`);
-    }
-    if (Date.now() - said >= 60_000) {
-      said = Date.now();
-      const s = (ms) => `${Math.round(ms / 1_000)} s`;
-      console.log(`[until] still waiting for ${what}: ${s(said - start)} of ${s(timeout)}`);
-    }
-    await sleep(interval);
+  } finally {
+    clearInterval(heartbeat);
   }
 }

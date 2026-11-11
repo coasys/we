@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import { getEntityForDataset } from '@we/backend-ad4m';
 
 import { createSpace } from '../space.mjs';
-import { SLOW, STUB, until, vertical } from './context.mjs';
+import { CALL_STEP, SLOW, STUB, until, vertical } from './context.mjs';
 import { DNA, installDnaThroughUi, spacePerspective } from './dna.mjs';
 import { LINES } from './stub-llm.mjs';
 import { callThatFinds, enableTargets, expectedRecords, FEED_BUG, openSpacePath, openSpaceSettings } from './steps.mjs';
@@ -35,7 +35,7 @@ const painted = (page) =>
 vertical('V6 interfaces: the Feed, page and canvas, a theme', (v) => {
   let alice, shared, perspective, titles;
 
-  v.step('a call in the space finds what was said', async () => {
+  v.step('Alice makes a space with the package', async () => {
     alice = await v.person('Alice');
     shared = await createSpace(alice.page, alice.account, SPACE);
     perspective = await spacePerspective(alice.client, shared);
@@ -46,13 +46,20 @@ vertical('V6 interfaces: the Feed, page and canvas, a theme', (v) => {
       DNA.classes.map((c) => c.name),
       perspective,
     );
-    const result = await callThatFinds(alice, perspective);
-    titles = STUB ? expectedRecords().map((r) => r.title) : [[...result.found.values()].flat()[0].title];
-    const Collection = getEntityForDataset('CollectionBlock', perspective);
-    const [call] = await Collection.findAll(perspective, { where: { id: result.callId } });
-    assert.ok(call, 'the call is a record of the space');
-    assert.equal(call.kind, 'call');
   });
+
+  v.step(
+    'a call in the space finds what was said',
+    async () => {
+      const result = await callThatFinds(alice, perspective);
+      titles = STUB ? expectedRecords().map((r) => r.title) : [[...result.found.values()].flat()[0].title];
+      const Collection = getEntityForDataset('CollectionBlock', perspective);
+      const [call] = await Collection.findAll(perspective, { where: { id: result.callId } });
+      assert.ok(call, 'the call is a record of the space');
+      assert.equal(call.kind, 'call');
+    },
+    { timeout: CALL_STEP },
+  );
 
   v.todo(`the Feed shows the call, its lines and what was found: ${FEED_BUG}`);
   v.todo(`a line's call in the Feed opens the call it was said in: ${FEED_BUG}`);

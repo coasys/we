@@ -142,7 +142,7 @@ Change `LINES`, `HEARD` and the recording together. `COASYS_SPACES_WAV` names an
   "Stop transcribing". The call and its extraction watch stay. Extraction then reads one pass of
   the recording, not a transcript that grows every 20 s.
 - The transcript check reads those words from the call's `TextBlock` records. Then it finds on the
-  screen a stored line that holds "quarter", as Whisper wrote it. No space name holds these words,
+  screen a stored line that holds one of them, as Whisper wrote it. No space name holds these words,
   so only the transcript can pass the check.
 - V4 waits for a titled `Question` and V5 for a titled `Task`. Each waits for the class that it
   uses, not for the first record of any class.
@@ -156,14 +156,19 @@ not get a `Task`, the cause can be model variance and not a product break. To fi
 
 1. Read the step's error. It ends with the extraction facts: the call's watch config, the `turns`
    that its scope query reads, and the call's links. If the turns hold the four lines and the call
-   has records of other classes, extraction ran and the model did not find that class.
+   has records of other classes, extraction ran. Step 2 says whether it asked for that class.
 2. Read `executor.log` in the artifacts. Find the interpretation lines:
    - `🧠 interpretation start … classes=[…]` — a pass started, and the classes it asked for.
    - `✅ 🧠 interpretation done … bases_written=N` — the pass ended and wrote N records.
    - `❌ 🧠 interpretation failed … err=…` (after `prompt attempt N failed` warnings) — the model
      endpoint refused the prompt, for example because the prompt is larger than its context.
 
-   If the passes ended with `bases_written` above 0 and the class is not in the step's records, the
+   A pass can write records without having asked for the missing class, so `bases_written` above 0
+   says nothing on its own. First check that the class is a target of the call: it is in the
+   `classes=[…]` of the passes, and in the call's watch config in the step's error (the space's
+   extraction targets, Space settings → Features → "What new calls look for", when the call
+   started). If it is not, the cause is the extraction setup, not the model. If the passes asked for
+   the class, ended with `bases_written` above 0, and the class is not in the step's records, the
    cause is model variance. If no pass started, or every pass failed, the cause is a product break
    or a setup break.
 

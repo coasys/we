@@ -6,7 +6,7 @@
 import assert from 'node:assert/strict';
 
 import { createSpace } from '../space.mjs';
-import { STUB, until, vertical } from './context.mjs';
+import { CALL_STEP, SLOW, STUB, until, vertical } from './context.mjs';
 import { DNA, installDnaThroughUi, installFlows, spacePerspective } from './dna.mjs';
 import { untilItem } from './flows.mjs';
 import {
@@ -54,13 +54,17 @@ vertical('V4 decide flow: two approvals', (v) => {
     bobPerspective = await joinByInvite(bob, shared);
   });
 
-  v.step(`a call finds a ${CLASS}, and Alice accepts it`, async () => {
-    await openSpacePath(alice.page, shared);
-    const { found } = await callThatFinds(alice, perspective, [CLASS]);
-    question = recordOf(found, CLASS);
-    assert.ok(question, `a ${CLASS} was found`);
-    await alice.ports.interpretation.accept(perspective, question.id);
-  });
+  v.step(
+    `a call finds a ${CLASS}, and Alice accepts it`,
+    async () => {
+      await openSpacePath(alice.page, shared);
+      const { found } = await callThatFinds(alice, perspective, [CLASS]);
+      question = recordOf(found, CLASS);
+      assert.ok(question, `a ${CLASS} was found`);
+      await alice.ports.interpretation.accept(perspective, question.id);
+    },
+    { timeout: CALL_STEP },
+  );
 
   v.step(`Alice starts ${FLOW.name} on the ${CLASS} from its inspector`, async () => {
     await openOnCanvas(alice.page, question.title);
@@ -110,38 +114,44 @@ vertical('V4 decide flow: two approvals', (v) => {
       .waitFor({ timeout: 60_000 });
   });
 
-  v.step('Bob agrees, and the run moves on with two approvals', async () => {
-    await openSpacePath(bob.page, shared);
-    await openOnCanvas(bob.page, question.title);
-    await openInspectorWorkflows(bob.page);
-    await bob.page.getByRole('button', { name: 'Agree', exact: true }).first().click({ timeout: 120_000 });
-    await untilItem(
-      bob.ports,
-      bobPerspective,
-      FLOW.name,
-      question.id,
-      (i) => i.state === GATED,
-      `${CLASS} in ${GATED}`,
-    );
-    // Read from Alice's copy, which has the move only once Bob's approval has synced to her.
-    const both = [alice.did, bob.did].sort();
-    const history = await until(
-      () => alice.ports.workflows.history(perspective, FLOW.name, question.id),
-      (moves) => moves.some((m) => m.to === GATED && [...m.approvers].sort().join() === both.join()),
-      { timeout: 120_000, interval: 1_500, what: `the move to ${GATED} with both approvers in Alice's history` },
-    );
-    const gate = history.find((m) => m.to === GATED);
-    assert.deepEqual([...gate.approvers].sort(), both, 'both approved the move');
-    const seen = await untilItem(
-      alice.ports,
-      perspective,
-      FLOW.name,
-      question.id,
-      (i) => i.state === GATED,
-      `${CLASS} in ${GATED} in Alice's copy`,
-    );
-    assert.equal(seen.state, GATED, `Alice reads it in ${GATED} too`);
-  });
+  v.step(
+    'Bob agrees, and the run moves on with two approvals',
+    async () => {
+      await openSpacePath(bob.page, shared);
+      await openOnCanvas(bob.page, question.title);
+      await openInspectorWorkflows(bob.page);
+      await bob.page.getByRole('button', { name: 'Agree', exact: true }).first().click({ timeout: 120_000 });
+      await untilItem(
+        bob.ports,
+        bobPerspective,
+        FLOW.name,
+        question.id,
+        (i) => i.state === GATED,
+        `${CLASS} in ${GATED}`,
+      );
+      // Read from Alice's copy, which has the move only once Bob's approval has synced to her.
+      const both = [alice.did, bob.did].sort();
+      const history = await until(
+        () => alice.ports.workflows.history(perspective, FLOW.name, question.id),
+        (moves) => moves.some((m) => m.to === GATED && [...m.approvers].sort().join() === both.join()),
+        { timeout: 120_000, interval: 1_500, what: `the move to ${GATED} with both approvers in Alice's history` },
+      );
+      const gate = history.find((m) => m.to === GATED);
+      assert.deepEqual([...gate.approvers].sort(), both, 'both approved the move');
+      const seen = await untilItem(
+        alice.ports,
+        perspective,
+        FLOW.name,
+        question.id,
+        (i) => i.state === GATED,
+        `${CLASS} in ${GATED} in Alice's copy`,
+      );
+      assert.equal(seen.state, GATED, `Alice reads it in ${GATED} too`);
+      // Four waits of up to 120 s (the Agree button, Bob's item, Alice's history, Alice's item), after
+      // the space's load (120 s) and the canvas's own wait (`SLOW`).
+    },
+    { timeout: SLOW + 840_000 },
+  );
 
   v.step(`Alice's screen shows it ${GATED}`, async () => {
     await alice.page

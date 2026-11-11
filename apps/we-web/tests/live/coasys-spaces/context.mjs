@@ -21,7 +21,7 @@ import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { after, describe, it } from 'node:test';
+import { after, before, describe, it } from 'node:test';
 
 import { createAd4mBackendPorts } from '@we/backend-ad4m';
 
@@ -44,6 +44,25 @@ export const DNA_PATH = resolve(process.env.SOCIAL_DNA_PACKAGE ?? join(HERE, 'fi
 /** How long a step waits for what extraction, sync or a flow write produces. Longer for a real model. */
 export const SLOW = STUB ? 120_000 : 600_000;
 
+/** How long a step may take by default: one {@link SLOW} wait, and two minutes for the screen around it. */
+const STEP = SLOW + 120_000;
+
+/**
+ * How long a step that holds a call until it finds records may take (`callThatFinds` in
+ * `steps.mjs`): the lines landing, then extraction, each up to {@link SLOW}, and five minutes for
+ * starting, leaving and reaching the call on the screen.
+ */
+export const CALL_STEP = 2 * SLOW + 300_000;
+
+/** How long the real tier waits for Whisper to load: the first run downloads it. */
+const WHISPER_LOAD = 1_800_000;
+
+/**
+ * How long making the world may take: the executor, its model, the served app and the browser, and in
+ * the real tier Whisper's load on top. Its own budget, so a first download is not cut short by a step's.
+ */
+const WORLD = (STUB ? 0 : WHISPER_LOAD) + 600_000;
+
 function realLlm() {
   const baseUrl = process.env.COASYS_SPACES_LLM_BASE_URL;
   const model = process.env.COASYS_SPACES_LLM_MODEL;
@@ -65,7 +84,7 @@ async function loadWhisper(admin) {
     () => admin.ai.modelLoadingStatus(id),
     // "Loaded" is the end of a transcription load: the executor reports it with `loaded: false`.
     (status) => status?.loaded || status?.status === 'Loaded',
-    { timeout: 1_800_000, interval: 5_000, what: 'Whisper to download and load' },
+    { timeout: WHISPER_LOAD, interval: 5_000, what: 'Whisper to download and load' },
   );
   return id;
 }
@@ -112,14 +131,29 @@ export function world() {
 async function stopStarted() {
   const { browser, app, executor, stub } = started;
   Object.assign(started, { stub: null, executor: null, app: null, browser: null });
-  await browser?.close().catch(() => {});
-  await app?.close().catch(() => {});
-  if (executor) {
-    writeFileSync(join(ARTIFACTS, 'executor.log'), executor.output.join(''));
-    executor.admin.close?.();
-    await executor.stop().catch(() => {});
+  try {
+    await browser?.close().catch(() => {});
+    await app?.close().catch(() => {});
+    if (executor) {
+      saveArtifact(join(ARTIFACTS, 'executor.log'), executor.output.join(''));
+      try {
+        executor.admin.close?.();
+      } finally {
+        await executor.stop().catch(() => {});
+      }
+    }
+  } finally {
+    await stub?.close().catch(() => {});
   }
-  await stub?.close().catch(() => {});
+}
+
+/** Writes an artifact, best-effort: a write that fails is said, and never stops what comes after it. */
+function saveArtifact(path, content) {
+  try {
+    writeFileSync(path, content);
+  } catch (error) {
+    console.log(`coasys-spaces: could not write ${path}: ${error.message}`);
+  }
 }
 
 /** Closes the world, whether it was made or failed half-way. */
@@ -172,7 +206,7 @@ export function vertical(name, body) {
       return who;
     },
     step(title, fn, opts = {}) {
-      it(title, { timeout: opts.timeout ?? SLOW + 120_000 }, async (t) => {
+      it(title, { timeout: opts.timeout ?? STEP }, async (t) => {
         if (v.failed) {
           t.skip('an earlier step of this vertical failed');
           return;
@@ -197,19 +231,29 @@ export function vertical(name, body) {
   };
 
   describe(name, () => {
+    // Made before the first step, on its own budget: see `WORLD`.
+    before(() => world(), { timeout: WORLD });
     after(async () => {
       for (const who of v.people) {
-        if (who.device) {
-          const trace = v.failed ? join(ARTIFACTS, `${v.slug}-${slug(who.name)}.trace.zip`) : undefined;
-          await who.device.context.tracing.stop(trace ? { path: trace } : {}).catch(() => {});
-          if (v.failed || process.env.WE_LIVE_VERBOSE) {
-            writeFileSync(join(ARTIFACTS, `${v.slug}-${slug(who.name)}.console.log`), who.device.logs.join('\n'));
+        try {
+          if (who.device) {
+            try {
+              const trace = v.failed ? join(ARTIFACTS, `${v.slug}-${slug(who.name)}.trace.zip`) : undefined;
+              await who.device.context.tracing.stop(trace ? { path: trace } : {}).catch(() => {});
+              if (v.failed || process.env.WE_LIVE_VERBOSE) {
+                saveArtifact(join(ARTIFACTS, `${v.slug}-${slug(who.name)}.console.log`), who.device.logs.join('\n'));
+              }
+            } finally {
+              await who.device.close().catch(() => {});
+            }
           }
-          await who.device.close().catch(() => {});
+        } finally {
+          // The account's client reconnects its socket for ever once the executor stops, which keeps
+          // the test process alive after the last test.
+          await Promise.resolve()
+            .then(() => who.account.client.close?.())
+            .catch(() => {});
         }
-        // The account's client reconnects its socket for ever once the executor stops, which keeps
-        // the test process alive after the last test.
-        who.account.client.close?.();
       }
       for (const close of v.closers)
         await Promise.resolve()
@@ -231,7 +275,7 @@ async function snapshotAll(v, title) {
         .locator('body')
         .ariaSnapshot({ timeout: 10_000 })
         .catch((e) => `no snapshot: ${e.message}`);
-      writeFileSync(`${base}.aria.txt`, `${page.url()}\n\n${aria}`);
+      saveArtifact(`${base}.aria.txt`, `${page.url()}\n\n${aria}`);
     }
   }
 }

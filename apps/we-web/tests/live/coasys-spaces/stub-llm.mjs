@@ -77,8 +77,11 @@ export const SCRIPT = [
   },
 ];
 
-/** Which role a class plays, from its name: the package's names, and WE's own task block. */
-function roleOf(className) {
+/**
+ * Which role a class plays, from its name: the package's names, and WE's own task block. The one
+ * mapping: the stub answers by it, and the suite's expectations (`expectedRecords` in steps.mjs) read it.
+ */
+export function roleOf(className) {
   const name = String(className).toLowerCase().split(/[/#:]/).pop();
   if (name === 'question') return 'question';
   if (name === 'tension') return 'tension';

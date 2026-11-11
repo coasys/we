@@ -12,7 +12,7 @@ import { dismissNamePrompt } from '../space.mjs';
 import { leaveCall, startCall, stopTranscribing, typeIntoCall, untilHeard, watchCall } from './call.mjs';
 import { SLOW, STUB, world } from './context.mjs';
 import { DNA, records, spacePerspective, valueOf } from './dna.mjs';
-import { HEARD, LINES, SCRIPT } from './stub-llm.mjs';
+import { HEARD, LINES, roleOf, SCRIPT } from './stub-llm.mjs';
 
 /**
  * Why the Feed steps are todos. The Feed reads each of the space's extraction targets through the
@@ -116,13 +116,14 @@ export function expectedRecords() {
   });
 }
 
-const classForRole = (role) => DNA.classes.find((c) => c.name.toLowerCase() === role);
+/** The package's class that plays a role, by the stub's own mapping, so both check the same classes. */
+const classForRole = (role) => DNA.classes.find((c) => roleOf(c.name) === role);
 
 /** Why each script entry makes no record of the package: no class plays its role, or no title. */
 function uncoveredRoles() {
   return SCRIPT.flatMap((entry) => {
     const cls = classForRole(entry.role);
-    if (!cls) return [`${entry.role}: the package has no class of that name`];
+    if (!cls) return [`${entry.role}: no class of the package plays that role`];
     if (!entry.fields[cls.titleField]) {
       return [`${entry.role}: the script fills no "${cls.titleField}", ${cls.name}'s title field`];
     }

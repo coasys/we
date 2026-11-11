@@ -14,7 +14,7 @@ import { createAd4mBackendPorts } from '@we/backend-ad4m';
 
 import { signUp } from '../harness.mjs';
 import { createSpace } from '../space.mjs';
-import { SLOW, STUB, until, vertical, world } from './context.mjs';
+import { CALL_STEP, SLOW, STUB, until, vertical, world } from './context.mjs';
 import { DNA, installDnaThroughUi, installFlows, records, spacePerspective } from './dna.mjs';
 import { untilItem } from './flows.mjs';
 import { mcpSession } from './mcp.mjs';
@@ -54,10 +54,16 @@ async function instance(mcp, op, args) {
 /** Every address a tool answer mentions, whether it answers a list, an object or text. */
 const addresses = (answer) => JSON.stringify(answer ?? '');
 
+/** Every value a tool answer holds under `key`, at any depth: an instance may come flat or nested. */
+function valuesAt(answer, key) {
+  if (!answer || typeof answer !== 'object') return [];
+  return Object.entries(answer).flatMap(([k, value]) => [...(k === key ? [value] : []), ...valuesAt(value, key)]);
+}
+
 vertical('V5 build flow: an agent over MCP, evidence and a human approval', (v) => {
   let alice, perspective, shared, task, agent, mcp, agentPerspective, agentPorts;
 
-  v.step('a call finds a task in a space with the package and its flows', async () => {
+  v.step('Alice makes a space with the package and its flows', async () => {
     assert.ok(SHIPPED && EVIDENCE, `the package has a ${FLOW?.name} flow with an evidence requirement`);
     alice = await v.person('Alice');
     shared = await createSpace(alice.page, alice.account, SPACE, 'mesh');
@@ -70,13 +76,20 @@ vertical('V5 build flow: an agent over MCP, evidence and a human approval', (v) 
       perspective,
     );
     await installFlows(alice.ports, perspective);
-    // Loaded again: the app reads a space's workflows when the space opens and after its own writes.
-    await openSpacePath(alice.page, shared);
-    const { found } = await callThatFinds(alice, perspective, [CLASS]);
-    task = recordOf(found, CLASS);
-    assert.ok(task, `a ${CLASS} was found`);
-    await alice.ports.interpretation.accept(perspective, task.id);
   });
+
+  v.step(
+    `a call finds a ${CLASS}`,
+    async () => {
+      // Loaded again: the app reads a space's workflows when the space opens and after its own writes.
+      await openSpacePath(alice.page, shared);
+      const { found } = await callThatFinds(alice, perspective, [CLASS]);
+      task = recordOf(found, CLASS);
+      assert.ok(task, `a ${CLASS} was found`);
+      await alice.ports.interpretation.accept(perspective, task.id);
+    },
+    { timeout: CALL_STEP },
+  );
 
   v.step('the agent connects over MCP and joins the space from its link', async () => {
     const w = await world();
@@ -108,7 +121,11 @@ vertical('V5 build flow: an agent over MCP, evidence and a human approval', (v) 
         { timeout: 180_000, interval: 3_000, what: `the ${CLASS} in the agent's query` },
       );
       const got = await instance(mcp, 'get', { perspective_id: id, class_name: CLASS, base_uri: task.id });
-      assert.ok(addresses(got).includes(task.title), `the agent reads the ${CLASS}'s title (${addresses(got)})`);
+      const titleField = DNA.byName(CLASS).titleField;
+      assert.ok(
+        valuesAt(got, titleField).includes(task.title),
+        `the agent reads the ${CLASS}'s ${titleField} "${task.title}" (${addresses(got)})`,
+      );
       await instance(mcp, 'update', {
         perspective_id: id,
         class_name: CLASS,
