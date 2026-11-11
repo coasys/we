@@ -223,6 +223,14 @@ export async function untilExtracted(perspective, callId, found, want, needs = [
       `The stub's script makes no record of the package's classes (${DNA.classes.map((c) => c.name).join(', ')}): ${uncoveredRoles().join('; ')}`,
     );
   }
+  // A class the vertical goes on to use must be in the package, or the wait could only time out.
+  const missing = needs.filter((cls) => !DNA.classes.some((c) => c.name === cls));
+  if (missing.length) {
+    throw new Error(`The package has no class ${missing.join(', ')}, which this vertical needs`);
+  }
+  // A package may cover only some of the script's roles; say which ones this run does not check.
+  const uncovered = uncoveredRoles();
+  if (uncovered.length) console.log(`[coasys-spaces] not checked with this package: ${uncovered.join('; ')}`);
   const what = want
     ? 'the scripted records'
     : needs.length
