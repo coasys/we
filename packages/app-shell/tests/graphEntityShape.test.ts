@@ -53,6 +53,16 @@ describe('toEntityShape', () => {
     expect(shape.properties.some((p) => p.name === 'title')).toBe(true);
     expect(shape.relations.some((r) => r.name === 'title')).toBe(false);
   });
+
+  it("marks WE's plumbing as bookkeeping, so a relation tree never follows `signals` or `runs`", () => {
+    // The canvas seed skips a relation only when its target's shape carries the mark. Without it,
+    // every card's reactions and model runs hang under it in "Any connection".
+    expect(shapeOf('Signal').bookkeeping).toBe(true);
+    expect(shapeOf('ModelRun').bookkeeping).toBe(true);
+    expect(
+      toEntityShape({ name: 'Proposal', targetClass: 'x://Proposal', properties: [] }).bookkeeping,
+    ).toBeUndefined();
+  });
 });
 
 /**
