@@ -234,7 +234,12 @@ export function buildEntityManifest(shapes: ForeignShape[]): EntityManifestEntry
         required: (p.minCount ?? 0) >= 1,
         writable: p.writable ?? true,
         ...(p.resolveLanguage !== undefined && { resolveLanguage: p.resolveLanguage }),
-        ...(p.class !== undefined && { relatedEntity: shaclClassToLocalName(p.class) }),
+        // The target class reaches us two ways: `sh:class` reads as `p.class`, while a model's
+        // `target_class_name` is lifted into `p.targetClassName` — a shape declaring only the
+        // second still knows which entity its relation points at, so take whichever is set.
+        ...((p.class ?? p.targetClassName) !== undefined && {
+          relatedEntity: shaclClassToLocalName((p.class ?? p.targetClassName)!),
+        }),
         // The shape says which end owns the link, so an entry read back from storage keeps it.
         ...(p.relationKind?.startsWith('belongsTo') && { reverse: true }),
         ...(p.interpretationHint !== undefined && { interpretationHint: p.interpretationHint }),

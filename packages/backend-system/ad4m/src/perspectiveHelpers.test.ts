@@ -14,7 +14,7 @@ vi.mock('@we/entities', () => ({
   },
 }));
 
-import { getForeignShacl } from './perspectiveHelpers';
+import { buildEntityManifest, getForeignShacl } from './perspectiveHelpers';
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -200,5 +200,54 @@ describe('getForeignShacl', () => {
 
     expect((await getForeignShacl(perspective)).map((s) => s.name)).toEqual(['Task']);
     expect(shapesRead(perspective)).toEqual(['Task']);
+  });
+});
+
+describe('buildEntityManifest', () => {
+  it('reads a relation target declared only as a target class name', () => {
+    // The SDK's SHACLShape lifts `sh:class` into `p.class` but a model's own
+    // `target_class_name` into `p.targetClassName` — a shape written by the model API, rather than
+    // by hand, declares the second and no `sh:class`. Read only the first and every extracted
+    // model relation pointed at nothing.
+    const shape = {
+      nodeShapeUri: 'TopicShape',
+      targetClass: 'discussion://Topic',
+      properties: [
+        {
+          name: 'about',
+          path: 'discussion://about',
+          nodeKind: 'IRI',
+          relationKind: 'hasOne',
+          targetClassName: 'DiscussionTopic',
+          minCount: 0,
+        },
+      ],
+      parentShapes: [],
+    } as unknown as SHACLShape;
+
+    const [entry] = buildEntityManifest([{ name: 'Position', shape }]);
+    expect(entry.properties[0]).toMatchObject({ name: 'about', type: 'uri', relatedEntity: 'DiscussionTopic' });
+  });
+
+  it('still prefers sh:class when both are declared', () => {
+    const shape = {
+      nodeShapeUri: 'TopicShape',
+      targetClass: 'discussion://Topic',
+      properties: [
+        {
+          name: 'about',
+          path: 'discussion://about',
+          nodeKind: 'IRI',
+          relationKind: 'hasOne',
+          class: 'discussion://DiscussionTopicShape',
+          targetClassName: 'DiscussionTopic',
+          minCount: 0,
+        },
+      ],
+      parentShapes: [],
+    } as unknown as SHACLShape;
+
+    const [entry] = buildEntityManifest([{ name: 'Position', shape }]);
+    expect(entry.properties[0].relatedEntity).toBe('DiscussionTopicShape');
   });
 });

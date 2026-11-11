@@ -34,6 +34,12 @@ export type EntityManifestProperty = {
    * it, `partOf` through `we://child` reads this record's own children instead of its container.
    */
   reverse?: boolean;
+  /**
+   * Relations only, and only on a `reverse` one: the name of the forward property the other end
+   * owns — the writable side, which a caller moving this link needs since a `reverse` read has no
+   * setter. Carried because the declaration knows it and nothing downstream can guess it.
+   */
+  reverseOf?: string;
 };
 
 export type EntityManifestEntry = {
@@ -141,7 +147,7 @@ export function manifestEntries(
             ...(spec.target ? { relatedEntity: spec.target } : {}),
             ...(spec.ordered ? { ordered: true } : {}),
             ...(resolvesPolymorphically(spec) ? { polymorphic: true } : {}),
-            ...(spec.reverseOf ? { reverse: true } : {}),
+            ...(spec.reverseOf ? { reverse: true, reverseOf: spec.reverseOf } : {}),
             ...(spec.interpretationHint ? { interpretationHint: spec.interpretationHint } : {}),
           })),
       ],
