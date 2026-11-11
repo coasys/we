@@ -1906,7 +1906,7 @@ export function RecordStoreProvider(props: ParentProps) {
       if (parent) {
         if (typeof set === 'function') await set.call(record, parent.id);
         else if (typeof add === 'function') await add.call(record, parent.id);
-        else await Model.update(handle, cardId, { [via.prop]: parent.id } as never);
+        else await Model.update(handle, cardId, { [via.prop]: parent.id });
         return true;
       }
       if (typeof remove !== 'function' && typeof set !== 'function') return false;

@@ -2414,7 +2414,8 @@ describe('the tree’s spine over model relations', () => {
   const other = { type: 'relation', data: { relation: 'Note.replyTo' } };
   const connection = { type: 'relates', data: { relationshipTypeId: 'k-blocks' } };
   const dimRule = (spine: string) =>
-    (run(TREE_EDGE_RULES.$ as string, { treeMode: true, spine }) as { when?: Record<string, unknown> }[])[1].when!;
+    (run((TREE_EDGE_RULES as { $: string }).$, { treeMode: true, spine }) as { when?: Record<string, unknown> }[])[1]
+      .when!;
 
   it('keeps every model relation at full strength under "All model relations"', () => {
     const when = dimRule('rel:*');
@@ -2438,7 +2439,8 @@ describe('the tree’s spine over model relations', () => {
 
   it('selects in the layout the same lines it keeps strong', () => {
     const spine = (value: string) =>
-      (run(TREE_LAYOUT.$ as string, { treeMode: true, spine: value }) as { options: { spine: unknown } }).options.spine;
+      (run((TREE_LAYOUT as { $: string }).$, { treeMode: true, spine: value }) as { options: { spine: unknown } })
+        .options.spine;
     expect(spine('rel:*')).toEqual({ field: 'type', value: 'relation' });
     expect(spine('rel:Note.about')).toEqual({ field: 'data.relation', value: 'Note.about' });
     expect(spine('k-blocks')).toEqual({ field: 'data.relationshipTypeId', value: 'k-blocks' });
