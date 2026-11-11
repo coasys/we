@@ -1701,13 +1701,17 @@ const canvas: SchemaNode = {
         /*
           The models' own declared relations, followed as tree edges — only in tree mode.
 
-          An extracted item points at its topic (`about`, `subTopicOf`) without any `Relationship`
-          record being written, so in the tree the seed also emits a `relation` edge per declared
-          link — parent at the pointed-at end — and pulls in children nobody placed. Kept off on the
-          freeform canvas, whose lines stay the ones somebody drew: a canvas read freely has no
-          "under", and drawing every claim the models hold there would be a tangle, not a map.
+          An extracted item points at what it hangs under through a field of its own, without any
+          `Relationship` record being written, so in the tree the seed also emits a `relation` edge
+          per declared link — parent at the pointed-at end — and pulls in children nobody placed.
+          Kept off on the freeform canvas, whose lines stay the ones somebody drew: a canvas read
+          freely has no "under", and drawing every claim the models hold there would be a tangle, not
+          a map. Kept off too while the spine is one connection kind: that tree is built from
+          `Relationship` records alone, and pulled-in records would only crowd its unconnected area.
         */
-        relations: { $: `${TREE_ON} ? { children: true } : false` },
+        relations: {
+          $: `${TREE_ON} && (!local.spine || startsWith(local.spine, 'rel:')) ? { children: true } : false`,
+        },
         /*
           What each card weighs, whenever the tree is shown or the order is a reaction — see `TREE_WEIGH`
           in `WorkshopTree` for why both.

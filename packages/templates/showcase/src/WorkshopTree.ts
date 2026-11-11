@@ -561,11 +561,14 @@ export const TREE_EDGE_RULES: SchemaProp = {
     `{ style: { sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true } },` +
     /*
       The field the dimming checks is the one the picked spine reads — `data.relation` for a model
-      relation, `data.relationshipTypeId` for a connection kind. A line that carries neither is
-      dimmed either way, which is the point: what is not the spine is background.
+      relation, `data.relationshipTypeId` for a connection kind, and the edge's `type` for all model
+      relations at once (`rel:*` names no single relation, so `data.relation` would match none and
+      dim the whole spine). A line that carries neither is dimmed either way, which is the point:
+      what is not the spine is background.
     */
-    ` { when: (startsWith(local.spine, 'rel:') ? { 'data.relation': { not: split(local.spine, ':')[1] } }` +
-    ` : { 'data.relationshipTypeId': { not: local.spine } }),` +
+    ` { when: (local.spine == 'rel:*' ? { type: { not: 'relation' } }` +
+    ` : (startsWith(local.spine, 'rel:') ? { 'data.relation': { not: split(local.spine, ':')[1] } }` +
+    ` : { 'data.relationshipTypeId': { not: local.spine } })),` +
     ` style: { opacity: 0.25, dashed: true, arrow: 'none' } }] : []`,
 };
 
