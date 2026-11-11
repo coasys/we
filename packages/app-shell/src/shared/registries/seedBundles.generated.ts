@@ -28062,7 +28062,9 @@ export const seedBundles: Bundle[] = [
                                           variant: 'ghost',
                                           size: 'sm',
                                           square: true,
-                                          label: 'Export the transcript',
+                                          label: {
+                                            $: "'Export the transcript of ' + (call.title ? call.title : 'Call')",
+                                          },
                                           onClick: {
                                             $invoke: 'spaceStore.exportCallTranscript',
                                             args: [{ $: 'call.id' }],

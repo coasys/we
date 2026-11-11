@@ -37,8 +37,10 @@ export const countPill = (expr: string, tone?: SchemaProp): SchemaNode => ({
  * reads the shared record and writes to the reader's own device, so there is nobody else's account
  * involved. `callId` is an expression for the call's record id. `md` stands the height of the bar's
  * Page / Canvas switch; a card takes `sm`, so it does not make the card taller or take its title's room.
+ * `title`, an expression for the call's name, goes into the accessible label where several calls'
+ * buttons stand side by side, so a screen reader can tell them apart; the tooltip stays short.
  */
-export const exportTranscriptButton = (callId: string, size: 'sm' | 'md' = 'md'): SchemaNode => ({
+export const exportTranscriptButton = (callId: string, size: 'sm' | 'md' = 'md', title?: string): SchemaNode => ({
   type: 'we-tooltip',
   props: { content: 'Export the transcript', placement: 'bottom' },
   children: [
@@ -48,7 +50,7 @@ export const exportTranscriptButton = (callId: string, size: 'sm' | 'md' = 'md')
         variant: 'ghost',
         size,
         square: true,
-        label: 'Export the transcript',
+        label: title ? { $: `'Export the transcript of ' + (${title})` } : 'Export the transcript',
         onClick: { $invoke: 'spaceStore.exportCallTranscript', args: [{ $: callId }] },
       },
       children: [{ type: 'we-icon', props: { name: 'download-simple' } }],

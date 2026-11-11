@@ -209,7 +209,7 @@ const callsPage = groupPage({
             },
           },
           onClick: { $invoke: 'routeStore.navigate', args: [{ $: callPath('call.id') }] },
-          action: exportTranscriptButton('call.id', 'sm'),
+          action: exportTranscriptButton('call.id', 'sm', "call.title ? call.title : 'Call'"),
         }),
       ],
     },

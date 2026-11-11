@@ -12,14 +12,19 @@ export const widths = [900];
 
 const LABEL = 'Export the transcript';
 const TITLES = ['Design review', 'Standup', 'Release planning for the next AD4M version'];
+// Each card's export names its call, so a screen reader can tell the row of them apart.
+const LABELS = TITLES.map((title) => `${LABEL} of ${title}`);
 const IDS = ['call-3', 'call-2', 'call-1'];
 
 export async function check({ evaluate, count, hover, screenshot }) {
   const problems = [];
   await screenshot('coasys-calls-page');
 
-  const buttons = await count(`button[aria-label="${LABEL}"]`);
+  const buttons = await count(`button[aria-label^="${LABEL}"]`);
   if (buttons !== TITLES.length) problems.push(`${buttons} export buttons for ${TITLES.length} calls`);
+  for (const label of LABELS) {
+    if ((await count(`button[aria-label="${label}"]`)) !== 1) problems.push(`no export labelled "${label}"`);
+  }
 
   // A button inside a button is invalid HTML, and the inner press would also open the call.
   const nested = await evaluate(() =>
@@ -34,8 +39,8 @@ export async function check({ evaluate, count, hover, screenshot }) {
         const r = el.getBoundingClientRect();
         return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, mid: r.top + r.height / 2 };
       };
-      const exports = [...document.querySelectorAll('we-button')].filter(
-        (b) => (b.getAttribute('label') ?? b.label) === label,
+      const exports = [...document.querySelectorAll('we-button')].filter((b) =>
+        (b.getAttribute('label') ?? b.label ?? '').startsWith(label),
       );
       return titles.map((title) => {
         const text = [...document.querySelectorAll('we-text')].find((t) => (t.textContent ?? '').trim() === title);
@@ -82,7 +87,7 @@ export async function check({ evaluate, count, hover, screenshot }) {
 
   // The export lit under the pointer, for the picture; the card does not light with it.
   if (buttons) {
-    await hover(`button[aria-label="${LABEL}"]`, 0);
+    await hover(`button[aria-label^="${LABEL}"]`, 0);
     await screenshot('coasys-calls-page-hover');
   }
 
@@ -92,8 +97,8 @@ export async function check({ evaluate, count, hover, screenshot }) {
       async ([label, nth]) => {
         globalThis.__exported = undefined;
         globalThis.__navigated = undefined;
-        const b = [...document.querySelectorAll('we-button')].filter(
-          (e) => (e.getAttribute('label') ?? e.label) === label,
+        const b = [...document.querySelectorAll('we-button')].filter((e) =>
+          (e.getAttribute('label') ?? e.label ?? '').startsWith(label),
         )[nth];
         if (!b) return { exported: 'no button' };
         b.shadowRoot?.querySelector('button')?.click() ?? b.click();
