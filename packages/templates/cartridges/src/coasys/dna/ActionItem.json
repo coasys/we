@@ -1,5 +1,6 @@
 {
   "target_class": "delivery://ActionItem",
+  "auto_accept": "never",
   "interpretation_hint": "Work a named person will do after the call: 'I'll ...', 'can you ...', 'X could ...', 'let's ask X to ...'. Not things already done during the call. Write it in `title`.",
   "properties": [
     {

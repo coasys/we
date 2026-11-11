@@ -1,5 +1,6 @@
 {
   "target_class": "conv://Question",
+  "auto_accept": "always",
   "interpretation_hint": "A question the group raises and leaves open: something they say they do not know yet or must decide later. Not rhetorical questions and not questions answered a few turns later. Write it in the field `text`.",
   "properties": [
     {

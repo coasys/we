@@ -16,6 +16,35 @@ transcript.
 | `Position.json`        | `conv://Position`        | A view one person states on a topic: `statement`, `holder`, `stance` and the topic it is `about` |
 | `Question.json`        | `conv://Question`        | A question the group leaves open: `text`, `askedBy` and the topic it is `about`                  |
 | `ActionItem.json`      | `delivery://ActionItem`  | Work a named person will do after the call: `title`, `owner` and the topic it came out of        |
+| `AgendaItem.json`      | `conv://AgendaItem`      | One line of the call's agenda: `title`, `order`, `source` (stated or detected) and `status`      |
+
+## The tree
+
+The classes grow one tree per call instead of a flat list:
+
+```
+AgendaItem                      a part of the call, given as agenda or detected
+└─ DiscussionTopic              `agendaItem` points at its AgendaItem
+   ├─ DiscussionTopic           `subTopicOf` points at the broader topic; one level only
+   └─ Position, Question, ActionItem   `about` points at their topic
+```
+
+`AgendaItem.status` (`upcoming`, `current`, `done`) tells every later pass where the call is, so a new
+topic lands under the part of the call it was raised in. Two items can be `current` together.
+
+## Accept policy
+
+Each class carries `auto_accept`, the DNA's answer to "does an extracted item of this class need a
+person to accept it?":
+
+| Value         | Means                                                               | Classes                                  |
+| ------------- | ------------------------------------------------------------------- | ---------------------------------------- |
+| `always`      | Accepted as soon as it is extracted                                 | AgendaItem, Position, Question           |
+| `when_placed` | Accepted when it has a parent in the tree, left for a person if not | DiscussionTopic                          |
+| `never`       | Always left for a person                                            | ActionItem (it starts the Delivery flow) |
+
+The executor does not read `auto_accept` yet (0.13.1-staging.9 ignores the field), so today it only
+records the intent.
 
 The topic class is `DiscussionTopic` and not `Topic` because the executor matches an installed class by
 its name: a class named `Topic` would replace WE's own `we://Topic`.
@@ -56,4 +85,6 @@ The flows have no guards. The run these were tested with carried none, so none w
    (`ad4m://self` `ad4m://has_flow` its name, and the name's `ad4m://flow_uri`) come after its states and
    transitions, so the flow is complete before it is found.
 
-Installed into the Coasys, CoAtlys and Coasys internal spaces on 10 and 11 November 2026.
+Installed into the Coasys, CoAtlys and Coasys internal spaces on 10 and 11 November 2026. `AgendaItem`,
+the two parent relations on `DiscussionTopic` and `auto_accept` came after that and are not installed in
+any space; they have only run on a throwaway test executor.

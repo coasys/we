@@ -1,5 +1,6 @@
 {
   "target_class": "conv://Position",
+  "auto_accept": "always",
   "interpretation_hint": "A view one participant states on a topic: a proposal, support, doubt or objection. Write the view in the field `statement` (never `title`). Every participant who says something substantive about a topic gets their own Position, so a topic discussed by three people usually has two to four Positions. Always link it to its DiscussionTopic with `about`.",
   "properties": [
     {
