@@ -8,6 +8,11 @@
  * unfinished one is cancelled in custody, and the main window hears how it ended — never a screen.
  *
  * The window itself is made by `openWindow({ onClosed })` (`main.js`), so this file holds no Electron.
+ *
+ * One step is not custody's: the storage passphrase (`storageUnlock.js`), which the supervisor opens
+ * before custody runs, where there is no keyring to keep the executor's storage secret
+ * ({@link createIdentity}'s `openStorage`). The main window cannot ask for it: it is not an
+ * identity step.
  */
 
 import { relative, resolve, sep } from 'path';
@@ -83,6 +88,9 @@ export function createIdentity({ custody, openWindow }) {
   /** The cancels still unanswered. The next step asks custody nothing until they are, so none ends it. */
   let ending = null;
 
+  /** The storage passphrase's driver while the open window runs it, else null. */
+  const storageOf = (of) => of?.storage ?? null;
+
   const service = () => {
     const client = custody();
     if (!client) throw new Error('the custody service is not running');
@@ -102,6 +110,11 @@ export function createIdentity({ custody, openWindow }) {
   const ask = async (of, method, params) => {
     while (ending) await ending;
     if (of !== run) throw new Error('the identity window was closed');
+    const storage = storageOf(of);
+    if (storage) {
+      if (method === 'start') return storage.first;
+      return storage.submit(params.input);
+    }
     return service().call(method, params);
   };
 
@@ -116,6 +129,24 @@ export function createIdentity({ custody, openWindow }) {
     if (of?.window && !of.window.isDestroyed()) of.window.close();
   };
 
+  /** Opens the window on `opened` and resolves how its step ended once it is gone. */
+  const openOn = (opened) => {
+    run = opened;
+    return new Promise((resolve) => {
+      opened.window = openWindow({
+        onClosed: () => {
+          if (run === opened) run = null;
+          const ended = opened.outcome ?? 'cancelled';
+          if (ended === 'cancelled' && !storageOf(opened)) {
+            const client = custody();
+            if (client) cancelStep(client).catch(() => {});
+          }
+          resolve(ended);
+        },
+      });
+    });
+  };
+
   return {
     /** The identity window, while one is open. */
     window: () => (run?.window && !run.window.isDestroyed() ? run.window : null),
@@ -128,21 +159,24 @@ export function createIdentity({ custody, openWindow }) {
         run.window.focus();
         return 'cancelled';
       }
-      const opened = { step: asked, outcome: null, window: null };
-      run = opened;
-      return new Promise((resolve) => {
-        opened.window = openWindow({
-          onClosed: () => {
-            if (run === opened) run = null;
-            const ended = opened.outcome ?? 'cancelled';
-            if (ended === 'cancelled') {
-              const client = custody();
-              if (client) cancelStep(client).catch(() => {});
-            }
-            resolve(ended);
-          },
-        });
-      });
+      return openOn({ step: asked, outcome: null, window: null, storage: null });
+    },
+
+    /**
+     * The supervisor's storage passphrase step (`storageUnlock.js`'s `passphraseStep`): `first` is the
+     * screen it starts on and `submit(input)` answers each next one; a screen with `outcome: 'done'`
+     * ends it and closes the window. Resolves `'done'`, or `'cancelled'` when the window closed
+     * first. Never reachable from the main window, and needs no custody. A window already open on
+     * another step is closed first: nothing else can run while the data is shut.
+     */
+    async openStorage(storage) {
+      if (run?.window && !run.window.isDestroyed()) {
+        run.window.close();
+        run = null;
+      }
+      const opened = { step: null, outcome: null, window: null, storage };
+      const ended = openOn(opened);
+      return ended;
     },
 
     publicState: async () => service().call('publicState'),
@@ -156,13 +190,16 @@ export function createIdentity({ custody, openWindow }) {
 
     async step(input) {
       const of = run;
-      return shown(of, await ask(of, 'step', { input }));
+      const screen = shown(of, await ask(of, 'step', { input }));
+      // The data is open: nothing is left to do in the window.
+      if (storageOf(of) && of.outcome === 'done') close(of);
+      return screen;
     },
 
     /** Cancels the step and closes the window. */
     async cancel() {
       const of = run;
-      await cancelStep(service());
+      if (!storageOf(of)) await cancelStep(service());
       close(of);
     },
 

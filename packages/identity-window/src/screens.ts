@@ -15,6 +15,11 @@ export type Screen =
   | { screen: 'confirm-words'; positions: [number, number]; error: string | null }
   | { screen: 'set-passphrase'; error: string | null }
   | { screen: 'enter-passphrase'; error: string | null }
+  /** The desktop's data, where there is no keyring to keep its key: a passphrase chosen on the first
+   *  start, typed at each start after. The supervisor's step, never custody's. */
+  | { screen: 'set-storage-passphrase'; error: string | null }
+  | { screen: 'unlock-storage'; error: string | null }
+  | { screen: 'storage-open' }
   | { screen: 'identity-ready'; did: string; keyId: string }
   | { screen: 'offer'; link: string; qrSvg: string; expires: number }
   | { screen: 'match'; code: string; hint: string | null; canKeep: boolean; ownName: boolean }
@@ -228,6 +233,21 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
       return {
         title: 'Unlock your master key',
         lead: 'Type the passphrase this computer keeps your master key behind.',
+      };
+    case 'set-storage-passphrase':
+      return {
+        title: 'Choose a passphrase for your data',
+        lead: `This ${noun} has no keyring to keep the key to your data, so a passphrase opens it instead. You type it each time the app starts. Nobody can open your data here without it, you included: keep it somewhere safe.`,
+      };
+    case 'unlock-storage':
+      return {
+        title: 'Open your data',
+        lead: `Type the passphrase that opens your data on this ${noun}.`,
+      };
+    case 'storage-open':
+      return {
+        title: 'Your data is open',
+        lead: 'The app is starting.',
       };
     case 'identity-ready':
       return {
@@ -483,6 +503,7 @@ export function isLast(screen: Screen): boolean {
     'master-replaced',
     'restored',
     'master-removed',
+    'storage-open',
     'bot-added',
     'failed',
   ].includes(screen.screen);

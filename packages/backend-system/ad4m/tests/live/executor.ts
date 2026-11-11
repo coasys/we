@@ -9,7 +9,8 @@
  * The executor is isolated from anything else on the machine on purpose: a fresh data directory in
  * the temp dir, free ports for the API and for Holochain (whose defaults a desktop executor already
  * running would hold), and no bootstrap, proxy or mDNS, so it never joins a network. One node, no
- * peers — which is all the cases ask about.
+ * peers — which is all the cases ask about. Its storage starts sealed, and is opened with a secret made
+ * for this run alone (`openStorage`) before anything else is asked of it.
  *
  * Which binary: the one `scripts/ad4m-executor.mjs` chooses — `AD4M_EXECUTOR`, else the seed's own
  * `ad4m.executorPath`, else the pinned commit's download (`pnpm ad4m:executor`). To run against an
@@ -17,7 +18,7 @@
  * unlocked — and know that the tests then write their perspectives into that agent.
  */
 import { type ChildProcess, spawn, spawnSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -102,6 +103,79 @@ async function waitUntilAnswering(url: string, token: string, exited: () => stri
       if (Date.now() > deadline) throw new Error('The executor did not answer within two minutes.');
       await new Promise((r) => setTimeout(r, 1_000));
     }
+  }
+}
+
+/** The executor's storage as `runtime.storageStatus` answers it; only the field read here. */
+interface StorageState {
+  state: 'sealed' | 'unlocking' | 'open';
+}
+
+/**
+ * One call on the executor's WebSocket (`/api/v1/ws`) with the admin credential: `{id, type, params}`
+ * out, `{id, result}` or `{id, error}` back. The JS client has no storage calls, and while the storage
+ * is sealed the executor answers nothing else, so these go raw. Rejects on the executor's error, a
+ * socket that does not open or closes, or `ms`.
+ */
+function rawCall<T>(port: number, token: string, method: string, params: object, ms: number): Promise<T> {
+  return new Promise<T>((done, fail) => {
+    const socket = new WebSocket(`ws://127.0.0.1:${port}/api/v1/ws?token=${encodeURIComponent(token)}`);
+    const id = `live-${randomUUID()}`;
+    const finish = (settle: () => void) => {
+      clearTimeout(timer);
+      socket.close();
+      settle();
+    };
+    const timer = setTimeout(() => finish(() => fail(new Error(`no answer to ${method} in ${ms}ms`))), ms);
+    socket.addEventListener('open', () => socket.send(JSON.stringify({ id, type: method, params })));
+    socket.addEventListener('error', () => finish(() => fail(new Error(`the socket for ${method} failed`))));
+    socket.addEventListener('close', () => finish(() => fail(new Error(`the socket for ${method} closed`))));
+    socket.addEventListener('message', (event) => {
+      let answer: { id?: string; result?: T; error?: { code?: number; message?: string } };
+      try {
+        answer = JSON.parse(String(event.data));
+      } catch {
+        return;
+      }
+      if (answer.id !== id) return;
+      if (answer.error) {
+        const { code, message } = answer.error;
+        finish(() => fail(new Error(`${method} refused (${code}): ${message}`)));
+      } else finish(() => done(answer.result as T));
+    });
+  });
+}
+
+/**
+ * Opens the executor's storage, which starts sealed: until it is given its secret it answers nothing
+ * but its storage status. A throwaway executor gets a throwaway secret, 32 random bytes as hex, made
+ * here and never written anywhere; its keyring is made with it on this first unlock. Waits through
+ * `unlocking` until the status says `open`. An executor whose storage is already open is left alone.
+ */
+async function openStorage(port: number, token: string, exited: () => string | null): Promise<void> {
+  const deadline = Date.now() + 120_000;
+  let unlocked = false;
+  let lastError = '';
+  for (;;) {
+    const reason = exited();
+    if (reason) throw new Error(`The executor exited before its storage was open: ${reason}`);
+    let status: StorageState | null = null;
+    try {
+      status = await rawCall<StorageState>(port, token, 'runtime.storageStatus', {}, 3_000);
+    } catch (error) {
+      // Not answering yet: the RPC server comes up last.
+      lastError = (error as Error).message;
+    }
+    if (status?.state === 'open') return;
+    if (status?.state === 'sealed' && !unlocked) {
+      const secret = randomBytes(32).toString('hex');
+      await rawCall(port, token, 'storage.unlock', { secret }, 60_000);
+      unlocked = true;
+      continue;
+    }
+    if (Date.now() > deadline)
+      throw new Error(`The executor's storage did not open within two minutes (${status ? status.state : lastError}).`);
+    await new Promise((r) => setTimeout(r, 500));
   }
 }
 
@@ -201,6 +275,7 @@ export default async function setup(project: TestProject): Promise<() => Promise
 
   const url = `http://127.0.0.1:${port}`;
   try {
+    await openStorage(port, token, () => exit);
     // Closed once the agent exists: an open socket would keep the run alive after the last test.
     const client = await waitUntilAnswering(url, token, () => exit);
     await within(ensureUnlockedAgent(client), 60_000);

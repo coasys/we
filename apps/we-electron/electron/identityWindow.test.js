@@ -251,6 +251,82 @@ describe('the identity window', () => {
   });
 });
 
+describe('the storage passphrase step', () => {
+  /** A `passphraseStep` stand-in: wrong until `right`, then open. */
+  const storageStep = (right) => {
+    const asked = [];
+    return {
+      asked,
+      first: { screen: { screen: 'unlock-storage', error: null }, outcome: null },
+      async submit(input) {
+        asked.push(input);
+        return input.passphrase === right
+          ? { screen: { screen: 'storage-open' }, outcome: 'done' }
+          : { screen: { screen: 'unlock-storage', error: 'wrong' }, outcome: null };
+      },
+    };
+  };
+
+  it('runs on the supervisor’s driver, asks custody nothing, and closes itself once the data is open', async () => {
+    const { identity, calls, windows } = setup();
+    const step = storageStep('right one');
+    const ended = identity.openStorage(step);
+    expect(identity.window()).toBe(windows[0]);
+    expect(await identity.start()).toEqual({ screen: 'unlock-storage', error: null });
+    expect(await identity.step({ kind: 'passphrase', passphrase: 'wrong one' })).toEqual({
+      screen: 'unlock-storage',
+      error: 'wrong',
+    });
+    expect(identity.window()).toBe(windows[0]);
+    expect(await identity.step({ kind: 'passphrase', passphrase: 'right one' })).toEqual({ screen: 'storage-open' });
+    await expect(ended).resolves.toBe('done');
+    expect(identity.window()).toBeNull();
+    expect(step.asked).toHaveLength(2);
+    expect(calls).toEqual([]);
+  });
+
+  it('is cancelled when the window closes first, and sends custody no cancel', async () => {
+    const { identity, calls } = setup({ cancel: null });
+    const ended = identity.openStorage(storageStep('right one'));
+    await identity.start();
+    await identity.cancel();
+    await expect(ended).resolves.toBe('cancelled');
+    expect(calls).toEqual([]);
+  });
+
+  it('needs no custody service', async () => {
+    const windows = [];
+    const identity = createIdentity({
+      custody: () => null,
+      openWindow: ({ onClosed }) => {
+        const win = { isDestroyed: () => false, close: onClosed };
+        windows.push(win);
+        return win;
+      },
+    });
+    identity.openStorage(storageStep('x'));
+    expect(await identity.start()).toEqual({ screen: 'unlock-storage', error: null });
+  });
+
+  it('closes a window open on another step first: nothing else runs while the data is shut', async () => {
+    const { identity, windows } = setup({ start: WORDS, cancel: null });
+    const other = identity.open({ kind: 'create' });
+    identity.openStorage(storageStep('x'));
+    await expect(other).resolves.toBe('cancelled');
+    expect(windows).toHaveLength(2);
+    expect(windows[0].isDestroyed()).toBe(true);
+    expect(identity.window()).toBe(windows[1]);
+    expect(await identity.start()).toEqual({ screen: 'unlock-storage', error: null });
+  });
+
+  it('cannot be opened from the main window', async () => {
+    const { identity, windows } = setup();
+    await expect(identity.open({ kind: 'unlock-storage' })).rejects.toThrow('not an identity step');
+    await expect(identity.open({ kind: 'set-storage-passphrase' })).rejects.toThrow('not an identity step');
+    expect(windows).toHaveLength(0);
+  });
+});
+
 describe('where the identity window may go', () => {
   it('shows its own page and nothing else', () => {
     expect(isIdentityPage(IDENTITY_PAGE)).toBe(true);

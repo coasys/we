@@ -60,6 +60,7 @@ import {
   trustedOrigins,
 } from './navigationPolicy.js';
 import { setupSeedServers } from './seed-servers.js';
+import { isFirstStart, storageKeystore, storageShown, unlockStorage } from './storageUnlock.js';
 import { closeHides, createTray, trayHostPresent } from './tray.js';
 
 // Enable right-click context menu with inspect element in dev mode
@@ -526,6 +527,8 @@ async function startExecutorOnce({ samePort }) {
     }
 
     console.log('AD4M executor ready');
+    // It starts sealed: nothing of it but its storage answers until the secret is handed over.
+    await unlockStorageFor(ad4mPort, ad4mToken, ad4mDataPath);
     mainAgent = null;
     mainAgentFolder = ad4mDataPath;
     mainAgent = await ensureMainAgentFor(ad4mPort, ad4mToken, ad4mDataPath);
@@ -586,6 +589,30 @@ const custodyBinaryHere = () => {
   const binary = custodyBinary();
   return existsSync(binary) ? binary : null;
 };
+
+/**
+ * Opens the executor's storage (`storageUnlock.js`) with the secret this computer's keyring keeps for
+ * `dataPath`, made on the folder's first start, or with the storage passphrase in the identity window
+ * where there is no keyring. Every start waits on it: until it is open the executor answers nothing
+ * else. Throws, in words for the window, where it cannot be opened; the start then fails with "Try
+ * again". Without the custody binary nothing can keep the secret, so a sealed executor fails the start,
+ * and says so; one already open (its secret given it otherwise) needs nothing.
+ */
+async function unlockStorageFor(port, token, dataPath) {
+  const binary = custodyBinaryHere();
+  const rpc = executorRpc({ port, token, timeoutMs: 120_000 });
+  try {
+    const { how } = await unlockStorage({
+      call: rpc.call,
+      keystore: binary ? storageKeystore({ binary, dataFolder: dataPath }) : null,
+      firstStart: isFirstStart(dataPath),
+      askPassphrase: (step) => identity.openStorage(step),
+    });
+    console.log('[main] The executor’s storage is open', how === 'already' ? '(it already was)' : `(${how})`);
+  } finally {
+    rpc.close();
+  }
+}
 
 /**
  * Makes the executor's main agent, or unlocks it, with the passphrase this computer's keyring keeps
@@ -1199,6 +1226,25 @@ handle('executor-state', async () => {
  * `takeAgentPassword`. Only the main window may send it (`handle`).
  */
 handle('executor-agent-password', (_event, password) => takeAgentPassword(password));
+
+/**
+ * How the running executor keeps its data on this computer's disk (`runtime.storageStatus`), for the
+ * device settings page's storage line: `storageShown`'s projection, or null while no executor is up
+ * or it does not answer. Asked with the operator credential here, so the window never holds it, and
+ * stripped of everything but what the line is drawn from.
+ */
+handle('executor-storage-status', async () => {
+  if (executorBooting || executorState.phase !== 'ready' || !ad4mPort || !ad4mToken) return null;
+  const rpc = executorRpc({ port: ad4mPort, token: ad4mToken, timeoutMs: 5_000 });
+  try {
+    return storageShown(await rpc.call('runtime.storageStatus'));
+  } catch (err) {
+    console.error('[main] Could not read the executor’s storage:', err?.message);
+    return null;
+  } finally {
+    rpc.close();
+  }
+});
 
 /**
  * Try again after a start failed. Answers at once; the window hears how it went as `executor-state`.

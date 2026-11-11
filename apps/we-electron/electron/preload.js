@@ -35,6 +35,9 @@ contextBridge.exposeInMainWorld('electron', {
   // Start the executor over (a new port and credential) and reload the window.
   restartExecutor: () => ipcRenderer.invoke('executor-restart'),
   chooseFile: (options) => ipcRenderer.invoke('executor-choose-file', options),
+  // How the executor keeps its data on this computer's disk, for the device settings page; null
+  // while it is not up. Only the state and each store's: the main process asks with the credential.
+  storageStatus: () => ipcRenderer.invoke('executor-storage-status'),
 
   /*
     The executor this app runs, as the app before a session reads it: starting, ready, or failed and

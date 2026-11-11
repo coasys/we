@@ -368,6 +368,25 @@ describe('the identity window', () => {
     for (const open of [offer, { screen: 'bot-scope', error: null } as Screen]) expect(isLast(open)).toBe(false);
   });
 
+  it('asks for the storage passphrase where there is no keyring, and says what forgetting it costs', () => {
+    const set: Screen = { screen: 'set-storage-passphrase', error: null };
+    expect(heading(set).title).toBe('Choose a passphrase for your data');
+    expect(heading(set).lead).toContain('no keyring to keep the key to your data');
+    expect(heading(set).lead).toContain('each time the app starts');
+    expect(heading(set).lead).toContain('Nobody can open your data here without it, you included');
+    const unlock: Screen = { screen: 'unlock-storage', error: "That passphrase does not open this computer's data." };
+    expect(heading(unlock)).toEqual({
+      title: 'Open your data',
+      lead: 'Type the passphrase that opens your data on this computer.',
+    });
+    expect(heading(unlock, 'phone').lead).toContain('on this phone');
+    // Asked again as often as it takes: neither passphrase screen ends the step.
+    for (const asking of [set, unlock]) expect(isLast(asking)).toBe(false);
+    const open: Screen = { screen: 'storage-open' };
+    expect(heading(open).title).toBe('Your data is open');
+    expect(isLast(open)).toBe(true);
+  });
+
   it('names no app: the host titles the window, so a WE build and a Coasys build say their own name', () => {
     for (const source of [windowSource, screensSource]) expect(source).not.toMatch(/Coasys/);
   });

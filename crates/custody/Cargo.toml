@@ -27,11 +27,11 @@ cheap-kdf = []
 # the two agree. For a local ad4m checkout, override with
 #   cargo test --config 'patch."https://github.com/coasys/ad4m".ad4m-identity-client.path="<ad4m>/ad4m-identity-client"' …
 # (and the same for ad4m-identity-core and ad4m-client), as `crates/custody/README.md` says.
-ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "1fc10759c07a9464fc413010e81189a075a4fa86", features = ["ws"] }
-ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "1fc10759c07a9464fc413010e81189a075a4fa86", features = ["build", "words"] }
-ad4m-client = { git = "https://github.com/coasys/ad4m", rev = "1fc10759c07a9464fc413010e81189a075a4fa86" }
+ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "dbde6f6eb13a0ff02e30a096badc664585539548", features = ["ws"] }
+ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "dbde6f6eb13a0ff02e30a096badc664585539548", features = ["build", "words"] }
+ad4m-client = { git = "https://github.com/coasys/ad4m", rev = "dbde6f6eb13a0ff02e30a096badc664585539548" }
 # The request box's types (`DeviceRequest`, `DeviceRequestBody`) the holder answers and a device posts.
-ad4m-ldk = { git = "https://github.com/coasys/ad4m", rev = "1fc10759c07a9464fc413010e81189a075a4fa86" }
+ad4m-ldk = { git = "https://github.com/coasys/ad4m", rev = "dbde6f6eb13a0ff02e30a096badc664585539548" }
 # `io-std` and `io-util`: the sidecar's lines on stdin and stdout.
 tokio = { version = "1", features = ["rt", "sync", "macros", "time", "io-std", "io-util"] }
 serde = { version = "1", features = ["derive"] }
@@ -40,6 +40,8 @@ serde_json = { version = "1", features = ["raw_value"] }
 thiserror = "2"
 zeroize = { version = "1.8", features = ["derive"] }
 argon2 = "0.5"
+# The storage secret's item name: a hash of the data folder's path (`storage_secret::item_name`).
+sha2 = "0.10"
 chacha20poly1305 = "0.10"
 rand_core = { version = "0.6", features = ["getrandom"] }
 unicode-normalization = "0.1"
@@ -68,7 +70,6 @@ tempfile = "3"
 # The fake executor in the service tests implements the client's `ExecutorRpc`.
 async-trait = "0.1"
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
-sha2 = "0.10"
 # The live bot case calls as the bot with a reason (`meta.reason` in the frame), which the client's
 # `WsRpcClient` does not send. The versions ad4m-client already brings in.
 tokio-tungstenite = "0.21"
