@@ -34,7 +34,15 @@
 //! change is a compare-and-swap of the whole note under the folder's lock. Not secret. Like the
 //! epochs and the marks, the file is noted once written and never removed: gone, it is an error,
 //! never "no note" (a release would read as never made). A note cleared leaves the file, on
-//! purpose, so the folder notes the file only, not each identity in it.
+//! purpose, so the folder notes the file only, not each identity in it. A note kept under
+//! `VAULT_NOTE` (`"vault"`, the note of the vault itself, which every app sharing it reads) is
+//! kept like any device key's: the folder never reads key ids.
+//!
+//! And the **vault ids** (`<dir>/vault-ids.json`, [`PendingIncepts::vault_id`]): per identity,
+//! 16 random bytes drawn at its first ask, which every app on this computer answers for that
+//! identity, so the record counts this vault as one copy however many apps keep the key in it.
+//! Not secret. Noted like the epochs, file and identity: a kept id that is gone is an error,
+//! never drawn again.
 //!
 //! Those two are not lists that may empty: what they hold is what a missing one would undo (a
 //! forget at an epoch counted again from nothing, a rolled-back record taken as the first). So
@@ -63,7 +71,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use ad4m_identity_client::{CustodyNote, PendingPush, VaultError};
+use ad4m_identity_client::{CustodyNote, PendingPush, VaultError, VaultId};
 use ad4m_identity_core::Event;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -83,8 +91,11 @@ pub const EPOCHS_FILE_NAME: &str = "custody-epochs.json";
 /// The custody notes' file inside the custody folder.
 pub const NOTES_FILE_NAME: &str = "custody-notes.json";
 
+/// The vault ids' file inside the custody folder ([`PendingIncepts::vault_id`]).
+pub const IDS_FILE_NAME: &str = "vault-ids.json";
+
 /// The file in the custody folder that notes which of the files that must not go missing
-/// (the epochs, the record marks, the custody notes) have been written.
+/// (the epochs, the record marks, the custody notes, the vault ids) have been written.
 pub const METADATA_FILE_NAME: &str = "custody-metadata.json";
 
 /// What [`METADATA_FILE_NAME`] holds.
@@ -220,6 +231,20 @@ struct Notes {
     notes: Vec<Note>,
 }
 
+/// This vault's id for one identity ([`PendingIncepts::vault_id`]).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IdEntry {
+    pub scid: String,
+    pub id: VaultId,
+}
+
+/// The vault ids' file.
+#[derive(Serialize, Deserialize)]
+struct Ids {
+    version: u32,
+    ids: Vec<IdEntry>,
+}
+
 /// The custody epochs as read under the lock, and the identities noted as having one.
 #[derive(Default)]
 struct Counted {
@@ -246,6 +271,7 @@ pub struct Lists {
     seen: Vec<Seen>,
     epochs: Vec<Epoch>,
     notes: Vec<Note>,
+    ids: Vec<IdEntry>,
 }
 
 /// The custody folder's lock, held exclusively until dropped ([`PendingIncepts::exclusive`]).
@@ -394,6 +420,19 @@ fn lost_epoch(scid: &str) -> VaultError {
 
 fn lost_file(file: &str) -> VaultError {
     unavailable(format!("{file} {LOST_FILE}; it is not started again empty"))
+}
+
+fn lost_id(scid: &str) -> VaultError {
+    unavailable(format!(
+        "{scid}'s vault id was kept in this custody folder and is gone; it is not drawn again"
+    ))
+}
+
+/// 16 bytes from the OS's secure random source: a [`VaultId`].
+fn draw_vault_id() -> VaultId {
+    let mut bytes = [0u8; 16];
+    rand_core::RngCore::fill_bytes(&mut rand_core::OsRng, &mut bytes);
+    VaultId(bytes)
 }
 
 /// The lock every process holds while it reads or changes the file.
@@ -634,6 +673,69 @@ impl PendingIncepts {
                     swap_note(&mut lists.notes, scid, key_id, expected.as_ref(), note),
                     Swap::Refused
                 ))
+            }
+        }
+    }
+
+    /// This vault's id for `scid` ([`Vault::vault_id`]): drawn from the OS's random source the
+    /// first time it is asked for, and kept in `<dir>/vault-ids.json`, the draw and the write one
+    /// step under the folder's exclusive lock (the one every app on this computer takes), so two
+    /// first asks at once keep one id. Answers only once the id is durable. The file is noted
+    /// once written and each identity once its id is ([`write_noted`]): a file or an id that was
+    /// kept and is gone is an error, never a fresh id (that one copy would count twice). Never
+    /// removed, by a forget of the master key or anything else.
+    ///
+    /// [`Vault::vault_id`]: ad4m_identity_client::Vault::vault_id
+    pub fn vault_id(&self, scid: &str) -> Result<VaultId, VaultError> {
+        match self {
+            PendingIncepts::File { dir, lock } => {
+                let _held = lock.lock().map_err(|_| unavailable("lock poisoned"))?;
+                let _exclusive = lock_folder(dir, true)?;
+                let (mut ids, noted) = match read_noted::<Ids>(dir, IDS_FILE_NAME)? {
+                    Noted::Read(file, noted) if file.version == FORMAT => (file.ids, noted),
+                    Noted::Read(file, _) => {
+                        return Err(unavailable(format!(
+                            "{IDS_FILE_NAME} in format {}, not {FORMAT}",
+                            file.version
+                        )))
+                    }
+                    Noted::Never => (Vec::new(), Vec::new()),
+                    Noted::Lost(_) => return Err(lost_file(IDS_FILE_NAME)),
+                };
+                if let Some(kept) = ids.iter().find(|e| e.scid == scid) {
+                    return Ok(kept.id);
+                }
+                if noted.iter().any(|s| s == scid) {
+                    return Err(lost_id(scid));
+                }
+                let id = draw_vault_id();
+                ids.push(IdEntry {
+                    scid: scid.to_string(),
+                    id,
+                });
+                let scids: Vec<String> = ids.iter().map(|e| e.scid.clone()).collect();
+                write_noted(
+                    dir,
+                    IDS_FILE_NAME,
+                    &scids,
+                    &Ids {
+                        version: FORMAT,
+                        ids,
+                    },
+                )?;
+                Ok(id)
+            }
+            PendingIncepts::Memory(lists) => {
+                let mut lists = lists.lock().map_err(|_| unavailable("lock poisoned"))?;
+                if let Some(kept) = lists.ids.iter().find(|e| e.scid == scid) {
+                    return Ok(kept.id);
+                }
+                let id = draw_vault_id();
+                lists.ids.push(IdEntry {
+                    scid: scid.to_string(),
+                    id,
+                });
+                Ok(id)
             }
         }
     }
@@ -1438,5 +1540,145 @@ mod tests {
         assert!(folder
             .swap_custody_note("QmA", "d1", None, Some(&receipt(true)))
             .is_err());
+    }
+
+    /// The note of the vault itself (`VAULT_NOTE`, key id `"vault"`) is kept like a device
+    /// key's: its whole stack comes back after reopening, a swap from a stale note is refused,
+    /// and it is its own beside a device key's note of the same identity.
+    #[test]
+    fn the_vault_note_round_trips_whole_with_its_compare_and_swap() {
+        use ad4m_identity_client::VAULT_NOTE;
+        assert_eq!(VAULT_NOTE, "vault");
+        let dir = tempfile::tempdir().unwrap();
+        let kept = stacked(receipt(true));
+        let stale = stacked(receipt(false));
+        let folder = PendingIncepts::file(dir.path());
+        assert_eq!(folder.custody_note("QmA", VAULT_NOTE).unwrap(), None);
+        assert!(folder
+            .swap_custody_note("QmA", VAULT_NOTE, None, Some(&kept))
+            .unwrap());
+        assert!(folder
+            .swap_custody_note("QmA", "d1", None, Some(&receipt(false)))
+            .unwrap());
+        drop(folder);
+
+        let folder = PendingIncepts::file(dir.path());
+        assert_eq!(
+            folder.custody_note("QmA", VAULT_NOTE).unwrap(),
+            Some(kept.clone())
+        );
+        assert_eq!(
+            folder.custody_note("QmA", "d1").unwrap(),
+            Some(receipt(false))
+        );
+        assert!(!folder
+            .swap_custody_note("QmA", VAULT_NOTE, Some(&stale), None)
+            .unwrap());
+        assert!(!folder
+            .swap_custody_note("QmA", VAULT_NOTE, None, Some(&stale))
+            .unwrap());
+        assert_eq!(
+            folder.custody_note("QmA", VAULT_NOTE).unwrap(),
+            Some(kept.clone())
+        );
+        assert!(folder
+            .swap_custody_note("QmA", VAULT_NOTE, Some(&kept), None)
+            .unwrap());
+        assert_eq!(folder.custody_note("QmA", VAULT_NOTE).unwrap(), None);
+        assert_eq!(
+            folder.custody_note("QmA", "d1").unwrap(),
+            Some(receipt(false))
+        );
+    }
+
+    /// The nested note is kept as the client's serde JSON, unchanged: what lands in the file is
+    /// exactly `serde_json::to_value` of the note, and reads back as the same note.
+    #[test]
+    fn a_nested_note_is_kept_as_the_clients_json_and_reads_back_equal() {
+        let dir = tempfile::tempdir().unwrap();
+        let note = stacked(stacked(receipt(true)));
+        let folder = PendingIncepts::file(dir.path());
+        assert!(folder
+            .swap_custody_note("QmA", "d1", None, Some(&note))
+            .unwrap());
+        let file: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(dir.path().join(NOTES_FILE_NAME)).unwrap())
+                .unwrap();
+        assert_eq!(
+            file["notes"][0]["note"],
+            serde_json::to_value(&note).unwrap()
+        );
+        assert_eq!(folder.custody_note("QmA", "d1").unwrap(), Some(note));
+    }
+
+    /// A vault id is drawn once per identity and kept: the same on every ask and after the folder
+    /// is opened again, another for another identity.
+    #[test]
+    fn a_vault_id_is_stable_across_reopening_and_distinct_per_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = PendingIncepts::file(dir.path());
+        let a = folder.vault_id("QmA").unwrap();
+        assert_eq!(folder.vault_id("QmA").unwrap(), a);
+        let b = folder.vault_id("QmB").unwrap();
+        assert_ne!(a, b);
+        drop(folder);
+
+        let folder = PendingIncepts::file(dir.path());
+        assert_eq!(folder.vault_id("QmA").unwrap(), a);
+        assert_eq!(folder.vault_id("QmB").unwrap(), b);
+        // On the wire it is base58btc of 16 bytes.
+        assert_eq!(a.to_string().parse::<VaultId>().unwrap(), a);
+
+        let memory = PendingIncepts::memory();
+        let m = memory.vault_id("QmA").unwrap();
+        assert_eq!(memory.vault_id("QmA").unwrap(), m);
+        assert_ne!(memory.vault_id("QmB").unwrap(), m);
+    }
+
+    /// Two handles on one folder (two apps) asking first at once keep one id: the draw and its
+    /// write are one step under the folder's lock.
+    #[test]
+    fn two_first_asks_at_once_keep_one_vault_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let threads: Vec<_> = (0..4)
+            .map(|_| {
+                let dir = dir.path().to_path_buf();
+                std::thread::spawn(move || PendingIncepts::file(dir).vault_id("QmA").unwrap())
+            })
+            .collect();
+        let ids: Vec<VaultId> = threads.into_iter().map(|t| t.join().unwrap()).collect();
+        assert!(ids.iter().all(|id| *id == ids[0]), "{ids:?}");
+        assert_eq!(
+            PendingIncepts::file(dir.path()).vault_id("QmA").unwrap(),
+            ids[0]
+        );
+    }
+
+    /// A kept id that is gone (its file, or its entry while the file stays) is an error, never a
+    /// fresh id: a fresh one beside a kept key would count that copy twice.
+    #[test]
+    fn a_lost_vault_id_is_an_error_not_a_fresh_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = PendingIncepts::file(dir.path());
+        folder.vault_id("QmA").unwrap();
+        std::fs::remove_file(dir.path().join(IDS_FILE_NAME)).unwrap();
+        assert!(folder.vault_id("QmA").is_err());
+        assert!(folder.vault_id("QmB").is_err());
+
+        let dir = tempfile::tempdir().unwrap();
+        let folder = PendingIncepts::file(dir.path());
+        folder.vault_id("QmA").unwrap();
+        let b = folder.vault_id("QmB").unwrap();
+        std::fs::write(
+            dir.path().join(IDS_FILE_NAME),
+            serde_json::to_vec(&serde_json::json!({
+                "version": FORMAT,
+                "ids": [{ "scid": "QmB", "id": b.to_string() }],
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(folder.vault_id("QmA").is_err());
+        assert_eq!(folder.vault_id("QmB").unwrap(), b);
     }
 }

@@ -31,7 +31,7 @@ use ad4m_identity_client::flows::rotate::{rotate, Rotated};
 use ad4m_identity_client::record::{self, Change};
 use ad4m_identity_client::vault::{MasterUse, Vault};
 use ad4m_identity_client::{
-    ClientError, Clock, ExecutorRpc, OsRandom, Secret, Standing, SystemClock, VaultError,
+    ClientError, Clock, ExecutorRpc, OsRandom, Secret, Standing, SystemClock, VaultError, VaultId,
     ViaExecutor,
 };
 use ad4m_identity_core::link::{DeviceString, OfferKind, CONFIRM_GRACE_S, OFFER_TTL_S};
@@ -1410,7 +1410,9 @@ async fn create_on<R: ExecutorRpc>(
     // incept, the executor's co-signature, the vault keeps master #0 and the incept, publish.
     let unlocking = vault.unlocking(passphrase);
     // The record lists this computer from the start, as the one that holds master #0.
-    let this = this_computer(None, true, Some(0));
+    // The create flow names the vault beside master #0 (`Vault::vault_id`) once the identity has
+    // its scid; nothing is known of it here.
+    let this = this_computer(None, true, None);
     let screen = match flow
         .finish(executor, &unlocking, this, &CLOCK, &RANDOM)
         .await
@@ -1686,6 +1688,7 @@ async fn follow_link<R: ExecutorRpc>(
                     runs_executor: true,
                     holds_master: Holds::No,
                     master_index: None,
+                    vault: None,
                     operator: None,
                 };
                 let linked = match flow.confirm(&claim, entry, keep_master && app).await {
@@ -1739,10 +1742,11 @@ fn given_name(name: Option<String>) -> Option<String> {
 }
 
 /// This computer's entry in the record: the desktop app, holding the master key or not, with the
-/// index of the one it keeps when its item says (`None`: unknown, or none held). Unnamed, it is
+/// index of the one it keeps and the id of the vault it keeps it in when both are known (`None`:
+/// unknown, or none held — a `true` without them proves no copy). Unnamed, it is
 /// [`computer_name`]: the record is read by every device, and "This computer" is only true on this
 /// one, whose own Settings say so beside its row.
-fn this_computer(name: Option<String>, holds: bool, index: Option<u32>) -> DeviceEntry {
+fn this_computer(name: Option<String>, holds: bool, kept: Option<(u32, VaultId)>) -> DeviceEntry {
     DeviceEntry {
         name: name.unwrap_or_else(|| computer_name(std::env::consts::OS).into()),
         kind: DeviceKind::DesktopApp,
@@ -1750,7 +1754,8 @@ fn this_computer(name: Option<String>, holds: bool, index: Option<u32>) -> Devic
         address: None,
         runs_executor: true,
         holds_master: if holds { Holds::Yes } else { Holds::No },
-        master_index: if holds { index } else { None },
+        master_index: kept.filter(|_| holds).map(|(index, _)| index),
+        vault: kept.filter(|_| holds).map(|(_, vault)| vault),
         operator: None,
     }
 }
@@ -1767,9 +1772,14 @@ fn computer_name(os: &str) -> &'static str {
     }
 }
 
-/// The index the vault's master item for `did` carries, when it carries one.
-fn kept_index(vault: &DesktopVault, did: &str) -> Option<u32> {
-    ad4m_identity_core::scid_of(did).and_then(|scid| vault.master_index(scid).ok().flatten())
+/// The index the vault's master item for `did` carries, with this vault's id for `did`, when it
+/// carries one and the id reads: the pair a holding names in the record ([`DeviceEntry::vault`]).
+/// Either unknown is `None`, never a fresh guess.
+fn kept_index(vault: &DesktopVault, did: &str) -> Option<(u32, VaultId)> {
+    let scid = ad4m_identity_core::scid_of(did)?;
+    let index = vault.master_index(scid).ok().flatten()?;
+    let id = vault.vault_id(scid).ok()?;
+    Some((index, id))
 }
 
 /// Pushes again what the retry list keeps for `did`, with `unlocking`. Failures stay on the list
@@ -2667,6 +2677,7 @@ async fn rename_on<R: ExecutorRpc>(
                     runs_executor: true,
                     holds_master: Holds::No,
                     master_index: None,
+                    vault: None,
                     operator: None,
                 },
             }
@@ -2906,6 +2917,7 @@ async fn follow_bot<R: ExecutorRpc>(
                     runs_executor: false,
                     holds_master: Holds::No,
                     master_index: None,
+                    vault: None,
                     operator: None,
                 };
                 let linked = match flow.confirm(&claim, entry, false).await {
@@ -3979,7 +3991,7 @@ mod tests {
             .finish(
                 &executor,
                 &vault.unlocking(pass()),
-                this_computer(None, true, Some(0)),
+                this_computer(None, true, Some((0, VaultId([1; 16])))),
                 &CLOCK,
                 &RANDOM,
             )
@@ -4002,7 +4014,7 @@ mod tests {
             .finish(
                 &executor,
                 &vault.unlocking(pass()),
-                this_computer(None, true, Some(0)),
+                this_computer(None, true, Some((0, VaultId([1; 16])))),
                 &CLOCK,
                 &RANDOM,
             )
@@ -4047,7 +4059,7 @@ mod tests {
             .finish(
                 &executor,
                 &vault.unlocking(pass()),
-                this_computer(None, true, Some(0)),
+                this_computer(None, true, Some((0, VaultId([1; 16])))),
                 &CLOCK,
                 &RANDOM,
             )
@@ -4138,7 +4150,7 @@ mod tests {
         assert_eq!(computer_name("windows"), "Windows PC");
         assert_eq!(computer_name("linux"), "Linux computer");
         assert_eq!(computer_name("freebsd"), "Computer");
-        let entry = this_computer(None, true, Some(0));
+        let entry = this_computer(None, true, Some((0, VaultId([1; 16]))));
         assert_eq!(entry.name, computer_name(std::env::consts::OS));
         assert_ne!(entry.name, "This computer");
         assert_eq!(entry.kind, DeviceKind::DesktopApp);
@@ -4403,7 +4415,7 @@ mod tests {
             .finish(
                 &executor,
                 &vault.unlocking(pass()),
-                this_computer(None, true, Some(0)),
+                this_computer(None, true, Some((0, VaultId([1; 16])))),
                 &CLOCK,
                 &RANDOM,
             )
@@ -4430,7 +4442,7 @@ mod tests {
             .finish(
                 &executor,
                 &vault.unlocking(pass()),
-                this_computer(None, true, Some(0)),
+                this_computer(None, true, Some((0, VaultId([1; 16])))),
                 &CLOCK,
                 &RANDOM,
             )
@@ -4472,7 +4484,7 @@ mod tests {
             .finish(
                 &executor,
                 &vault.unlocking(pass()),
-                this_computer(None, true, Some(0)),
+                this_computer(None, true, Some((0, VaultId([1; 16])))),
                 &CLOCK,
                 &RANDOM,
             )
@@ -5021,6 +5033,7 @@ mod tests {
             runs_executor: true,
             holds_master: Holds::No,
             master_index: None,
+            vault: None,
             operator: None,
         }
     }
@@ -6750,17 +6763,20 @@ mod tests {
         for (staged, left) in [(None, None), (Some(0), None), (Some(1), Some(1))] {
             let (events, _) = crate::keylog::tests::log_with_d2(true);
             let scid = events[0].scid.clone();
+            let vault = memory_vault(crate::store::StoreKind::Keychain);
             let mut record = ad4m_identity_core::record::PrivateRecord::default();
+            let here = vault.vault_id(&scid).unwrap();
             record
                 .devices
-                .insert("d1".into(), this_computer(None, true, Some(0)));
+                .insert("d1".into(), this_computer(None, true, Some((0, here))));
+            // Another vault's copy: a holding names its vault, or it proves none.
             let mut d2 = named("Phone");
             d2.holds_master = Holds::Yes;
             d2.master_index = Some(0);
+            d2.vault = Some(VaultId([2; 16]));
             record.devices.insert("d2".into(), d2);
             let (executor, did) = executor_with(&events, &record);
             executor.rpc().keep_puts(&events);
-            let vault = memory_vault(crate::store::StoreKind::Keychain);
             keep_master(&vault, &scid, 0);
             if let Some(index) = staged {
                 let seed = words::seed(&words::from_entropy(&[41u8; 16]));

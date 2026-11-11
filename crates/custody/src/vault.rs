@@ -23,7 +23,7 @@
 use ad4m_identity_client::vault::KeySigner;
 use ad4m_identity_client::{
     CustodyNote, Forgot, MasterUse, PendingPush, Secret, StageToken, Stored, Unlocked, Vault,
-    VaultError,
+    VaultError, VaultId,
 };
 use ad4m_identity_core::Event;
 use zeroize::Zeroizing;
@@ -307,6 +307,13 @@ impl DesktopVault {
         self.pending.exclusive()?.epoch(scid)
     }
 
+    /// This vault's id for `scid` ([`Vault::vault_id`]): drawn once and kept in the custody
+    /// folder ([`PendingIncepts::vault_id`]), the same for every app on this computer. Not
+    /// secret, so no unlock.
+    pub fn vault_id(&self, scid: &str) -> Result<VaultId, VaultError> {
+        self.pending.vault_id(scid)
+    }
+
     /// Makes `scid`'s custody epoch readable again after it was lost (the epochs' file gone
     /// from the custody folder, or its entry for `scid`), when the person or the operator has
     /// looked and means to go on: a new entry in a fresh incarnation, which an epoch read
@@ -586,6 +593,13 @@ impl Vault for Unlocking<'_> {
         self.vault
             .pending
             .swap_custody_note(scid, key_id, expected, note)
+    }
+
+    /// In the custody folder beside the notes (`vault-ids.json`,
+    /// [`PendingIncepts::vault_id`]): drawn and kept under the custody folder's lock, so every
+    /// app on this computer answers the same id for an identity. Not secret, no passphrase.
+    fn vault_id(&self, scid: &str) -> Result<VaultId, VaultError> {
+        self.vault.vault_id(scid)
     }
 }
 
@@ -2311,6 +2325,30 @@ mod tests {
             PendingIncepts::file(dir),
             CHEAP,
         )
+    }
+
+    /// Through the `Vault` the flows are given: every handle on one custody folder (two apps)
+    /// answers one id per identity, another for another identity, and a forget of the master key
+    /// keeps it.
+    #[test]
+    fn every_handle_on_a_folder_answers_one_vault_id_and_a_forget_keeps_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = file_vault(dir.path());
+        let id = Vault::vault_id(&first.unlocking(None), "QmA").unwrap();
+        assert_eq!(file_vault(dir.path()).vault_id("QmA").unwrap(), id);
+        assert_ne!(first.vault_id("QmB").unwrap(), id);
+        first
+            .unlocking(pass("a passphrase of length"))
+            .store_master("QmA", 0, Secret::new([7u8; 32]))
+            .unwrap();
+        assert_eq!(
+            first.unlocking(None).forget_master("QmA", 0).unwrap(),
+            Forgot::Forgot
+        );
+        assert_eq!(
+            Vault::vault_id(&file_vault(dir.path()).unlocking(None), "QmA").unwrap(),
+            id
+        );
     }
 
     /// Drops `scid`'s entry from the custody epochs' file, whatever shape the file has.
