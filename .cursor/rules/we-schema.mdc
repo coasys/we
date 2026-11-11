@@ -3985,6 +3985,7 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - level — Microphone loudness as the voice detector measures it, 0–1.
   - levelPercent — The microphone level as a CSS width for a meter.
   - listening — True only while actually transcribing — what a record button highlights on.
+  - liveCallRecords — The record of every call somebody is in right now.
   - liveCollectionId — The record the call this agent is in is writing into, or empty when there is none.
   - modelDownloading — A transcription model is installed and its weights are still arriving.
   - modelDownloadText — The download line, ready to show — "Downloading the speech model — 45%".

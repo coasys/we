@@ -3390,3 +3390,99 @@ describe('replies', () => {
     expect(h.store.replyingTo()).toBeNull();
   });
 });
+
+/**
+ * Which call records somebody is in right now — what the transcript's `subscribe` tests its subject
+ * against.
+ *
+ * `callOnScreenLive` answers only for the call `?call=` names. The call page names its call with
+ * `?id=`, so on that page the live transcript was read once and never followed.
+ */
+describe('liveCallRecords', () => {
+  it('lists the record of every call somebody is in, whatever the address names', () => {
+    const h = harness(
+      [
+        peer(THEM, { type: 'call', id: CALL, record: RECORD }),
+        peer('did:key:other', { type: 'call', id: 'call:rec-2', record: 'rec-2' }),
+        // A call with no record yet names nothing to follow.
+        peer('did:key:third', { type: 'call', id: 'call:rec-3' }),
+      ],
+      { callOnScreen: () => null },
+    );
+
+    expect(h.store.liveCallRecords()).toEqual([RECORD, 'rec-2']);
+    // The address names no call, so the old member says nothing about the call page.
+    expect(h.store.callOnScreenLive()).toBe(false);
+  });
+
+  it('is empty when nobody is in a call', () => {
+    expect(harness([]).store.liveCallRecords()).toEqual([]);
+  });
+});
+
+/**
+ * Reading what is staged on one call, asked for by several callers at once.
+ *
+ * A pass settling, a collection being adopted and an extraction finishing all ask, and on opening a
+ * call they ask together. Each read is a SHACL dump and a class lookup on the backend, so three at
+ * once was three of each for one answer.
+ */
+describe('reading staged suggestions while a read is running', () => {
+  it('runs one read and one more after it, and answers every caller from a read made after it asked', async () => {
+    const answers: (() => void)[] = [];
+    let reads = 0;
+    const h = harness([], {
+      interpretation: {
+        available: () => true,
+        proposals: async () => {
+          reads += 1;
+          const label = `read ${reads}`;
+          await new Promise<void>((resolve) => answers.push(resolve));
+          return [{ id: 'p', kind: 'update', values: { title: label } }];
+        },
+        accept: async () => true,
+        reject: async () => true,
+      },
+    });
+    const byId = () => (h.store.proposalsFor() as { get: (key: string) => { summary: string }[] }).get('call-1');
+
+    const first = h.store.refreshProposals('call-1') as Promise<void>;
+    const second = h.store.refreshProposals('call-1') as Promise<void>;
+    const third = h.store.refreshProposals('call-1') as Promise<void>;
+    await Promise.resolve();
+    expect(reads).toBe(1);
+
+    let secondDone = false;
+    void second.then(() => (secondDone = true));
+    answers[0]();
+    await first;
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // The second asked while the first read was running, so the first read cannot answer it.
+    expect(secondDone).toBe(false);
+    expect(reads).toBe(2);
+
+    answers[1]();
+    await Promise.all([second, third]);
+    expect(reads).toBe(2);
+    expect(byId()[0].summary).toBe('title: read 2');
+  });
+
+  it('reads two calls side by side — one call does not wait for another', async () => {
+    let reads = 0;
+    const h = harness([], {
+      interpretation: {
+        available: () => true,
+        proposals: async () => {
+          reads += 1;
+          return [];
+        },
+        accept: async () => true,
+        reject: async () => true,
+      },
+    });
+
+    await Promise.all([h.store.refreshProposals('call-1'), h.store.refreshProposals('call-2')]);
+
+    expect(reads).toBe(2);
+  });
+});

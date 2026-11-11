@@ -1,6 +1,7 @@
 import { activitiesOfType } from '@we/backend-shared';
 import { CORRECTED, SPOKEN, TYPED } from '@we/messages';
 import type { DatasetTarget, ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
+import { coalesceByKey } from '@we/module-shared';
 import { namespace } from '@we/schema-shared';
 
 import { WORKLET_NAME, WORKLET_SOURCE } from './workletSource';
@@ -1065,6 +1066,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     sawRunning = running;
   });
 
+  /** The reads of staged suggestions in flight, by key — see {@link loadProposals}. */
+  const readingProposals = coalesceByKey();
+
   /**
    * Re-read the staged suggestions — this call's, not the whole dataset's.
    *
@@ -1111,6 +1115,21 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     */
     if (!key) return;
     proposalsRequested.add(key);
+    /*
+      One read per key at a time, and one more for everything asked meanwhile.
+
+      A pass settling, a collection being adopted and an extraction finishing all ask, and on
+      opening a call they ask at once. Each read is a SHACL dump and a class lookup on the backend,
+      so three callers were three of each for one answer. A caller that asks while a read runs is
+      answered by the read after it — the running one may have started before what it is asking
+      about was staged.
+    */
+    return readingProposals(key, () => readProposals(key));
+  }
+
+  /** One read of what is staged under `key`, into `proposalsByCall`. See {@link loadProposals}. */
+  async function readProposals(key: string): Promise<void> {
+    if (!interpretation) return;
     try {
       // The call's space, for the same reason the writes use it: a call outlives the space on
       // screen, so "proposals here" was answering about wherever the reader had wandered to. The
@@ -3147,6 +3166,20 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
         ({ activity }) => (activity as { record?: string }).record === record,
       );
     }, 'Somebody is in the call the address names right now.'),
+    /**
+     * The record of every call somebody is in right now, read off presence like `callOnScreenLive`.
+     *
+     * For a surface whose subject is a call record that the address does not name with `?call=` —
+     * the call page names its call with `?id=`. The transcript tests its own subject against this,
+     * so it follows a live call wherever it is placed and still leaves a finished one alone.
+     */
+    liveCallRecords: state(() => {
+      if (!presence) return [];
+      const records = activitiesOfType(presence.peers(), 'call').map(
+        ({ activity }) => (activity as { record?: string }).record,
+      );
+      return [...new Set(records.filter((record): record is string => !!record))];
+    }, 'The record of every call somebody is in right now.'),
     /** Someone in this call is not being transcribed. The gap coverage exists to report. */
     partialCoverage: state(
       onScreen(() => {

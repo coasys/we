@@ -50,6 +50,7 @@ import type {
   RecordQuery,
   ViewKernel,
 } from '@we/module-shared';
+import { coalesceByKey } from '@we/module-shared';
 
 import { clockRegistry } from '../clocks';
 import { addLiveMarks, addLivePointerListener } from '../liveView';
@@ -359,6 +360,9 @@ export function createModuleStoreDeps(framework: {
   // when the publisher changes it.
   const [mediaInput, setMediaInput] = framework.signal<MediaStream | null>(null);
   mediaListeners.add(setMediaInput);
+  // One settled pass per collection at a time, and one more for everything asked meanwhile. See
+  // `passSettled` below.
+  const settling = coalesceByKey();
 
   const kernels: Partial<ModuleKernels> = {
     records: {
@@ -604,18 +608,25 @@ export function createModuleStoreDeps(framework: {
       // What follows a pass, in order: attach what it left unattached, then whatever host policy
       // follows from the collection's new contents. Each half best-effort on its own — a board that
       // could not be made is not a failed extraction.
-      passSettled: async (collectionId) => {
-        try {
-          await services.reconcileCollection?.(collectionId);
-        } catch (error) {
-          console.warn('moduleHostServices: could not reconcile a settled pass', error);
-        }
-        try {
-          await services.ensureBoardFor?.(collectionId);
-        } catch (error) {
-          console.warn('moduleHostServices: could not act on a settled pass', error);
-        }
-      },
+      //
+      // Coalesced per collection: a pass settling, a collection being adopted and an extraction
+      // finishing all ask at once when a call opens, and each reconcile is a link query, a
+      // `has_child` check and full reads of every extracted type. A call made while one runs is
+      // answered by one more run after it, never by the run already going, which may have read the
+      // collection from before the change the caller is reporting.
+      passSettled: (collectionId) =>
+        settling(collectionId, async () => {
+          try {
+            await services.reconcileCollection?.(collectionId);
+          } catch (error) {
+            console.warn('moduleHostServices: could not reconcile a settled pass', error);
+          }
+          try {
+            await services.ensureBoardFor?.(collectionId);
+          } catch (error) {
+            console.warn('moduleHostServices: could not act on a settled pass', error);
+          }
+        }),
       activity: () => services.interpretationActivity?.() ?? [],
       proposalsRevision: () => services.interpretationProposalsRevision?.() ?? 0,
       proposals: async (target, collection) => {
