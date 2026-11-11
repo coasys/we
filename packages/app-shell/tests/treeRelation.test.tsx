@@ -303,6 +303,7 @@ describe('a tree drop on a model relation', () => {
 
   it('refuses a drop whose class the relation does not join, and writes nothing', async () => {
     // `about` only runs Position → DiscussionTopic: a topic cannot hang under a position by it.
+    const info = vi.spyOn(toastService, 'info');
     const store = mount();
     await store.arrangeOnTree(CANVAS, SPINE, {
       recordId: 't2',
@@ -314,6 +315,8 @@ describe('a tree drop on a model relation', () => {
     });
     expect(world.topics.get('t2')?.subTopicOf).toBe('t1');
     expect(aboutOf('pos1')).toBe('t2');
+    // Refused by the declaration, and said — not left to a write that happens to find no record.
+    expect(info).toHaveBeenCalledWith(expect.stringContaining('points at'));
   });
 
   it('refuses a drop that would put a card inside itself', async () => {

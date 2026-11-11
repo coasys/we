@@ -1650,4 +1650,57 @@ describe('canvasSeed — model relations', () => {
     expect(nodes.map((n) => n.id)).toContain(topic('t2'));
     expect(nodes.map((n) => n.id)).not.toContain(position('pos1'));
   });
+
+  it('draws a link both ends declare once — as the child’s own field, the one a reparent writes', async () => {
+    const shapes: EntityShape[] = [
+      ...SHAPES,
+      {
+        name: 'Board',
+        identityProperty: 'title',
+        properties: [{ name: 'title', type: 'string' }],
+        relations: [{ name: 'cards', target: 'Card', cardinality: 'many' }],
+      },
+      {
+        name: 'Card',
+        identityProperty: 'title',
+        properties: [{ name: 'title', type: 'string' }],
+        relations: [{ name: 'board', target: 'Board', cardinality: 'one' }],
+      },
+    ];
+    const { context: base } = context({
+      // The card first, so the board's own statement of the link is the one read last.
+      Placement: [
+        { id: 'p1', node: 'c1', nodeType: 'Card', x: 0, y: 0 },
+        { id: 'p2', node: 'bd1', nodeType: 'Board', x: 0, y: 40 },
+      ],
+      Board: [{ id: 'bd1', title: 'Sprint', cards: ['c1'] }],
+      Card: [{ id: 'c1', title: 'Fix it', board: 'bd1' }],
+    });
+    const ctx = { ...base, models: () => shapes } as ExpanderContext;
+
+    const { edges } = await canvasSeed().seed({ canvas: 'b1', relations: { children: false } }, ctx);
+
+    const relations = edges.filter((e) => e.type === 'relation');
+    expect(relations).toHaveLength(1);
+    expect(relations[0].data).toMatchObject({ relation: 'Card.board', heldByChild: true });
+  });
+
+  it('pulls in only the conversation’s own children when the canvas keeps to one', async () => {
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 }],
+      DiscussionTopic: [
+        { id: 't1', title: 'Roadmap', origin: 'call-1' },
+        { id: 't2', title: 'Q3', subTopicOf: 't1', origin: 'call-1' },
+      ],
+      Position: [{ id: 'pos1', text: 'Elsewhere', about: 't1', origin: 'call-2' }],
+    });
+
+    const { nodes } = await canvasSeed().seed(
+      { canvas: 'b1', relations: { children: true }, origin: 'origin', onlyFrom: 'call-1' },
+      ctx,
+    );
+
+    expect(nodes.map((n) => n.id)).toContain(topic('t2'));
+    expect(nodes.map((n) => n.id)).not.toContain(position('pos1'));
+  });
 });
