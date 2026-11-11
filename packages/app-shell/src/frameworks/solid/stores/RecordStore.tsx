@@ -1860,6 +1860,23 @@ export function RecordStoreProvider(props: ParentProps) {
     return relationPropsOf(entity).filter((p) => p.target && !p.many && !p.reverse && p.writable);
   }
 
+  /**
+   * Whether a relation names the holder's *parent* — the check the canvas seed and the named
+   * spine make, kept identical here so `rel:*` reads direction the same way. A forward to-one
+   * does (`Position.about`); so does a `belongsTo` whose forward is the parent's to-many
+   * (`Comment.respondsTo` ← `Message.responses`). A `belongsTo` inverting a to-one
+   * (`Author.post` ← `Post.author`) reads the other way — the holder is the parent — and an
+   * unpaired one stays on the children side, the seed's own default.
+   */
+  function heldByChild(prop: RelationProp): boolean {
+    if (prop.many) return false;
+    if (!prop.reverse) return true;
+    const forward = prop.forwardName
+      ? relationPropsOf(prop.target).find((p) => p.name === prop.forwardName)
+      : undefined;
+    return forward?.many === true;
+  }
+
   /** A relation's values on a row, as ids — a hydrated record, a bare reference, or a list of either. */
   function relationIdsOf(row: Record<string, unknown> | null, relation: string): string[] {
     const value = row?.[relation];
@@ -2101,16 +2118,13 @@ export function RecordStoreProvider(props: ParentProps) {
       const entity = spine.slice(0, dot);
       const prop = relationPropsOf(entity).find((p) => p.name === spine.slice(dot + 1) && p.target);
       if (!prop) return undefined;
-      const forward = prop.forwardName
-        ? relationPropsOf(prop.target).find((p) => p.name === prop.forwardName)
-        : undefined;
-      const heldByChild = !prop.many && (!prop.reverse || forward?.many === true);
+      const childHeld = heldByChild(prop);
       return {
         entity,
         prop,
-        heldByChild,
-        childEntity: heldByChild ? entity : prop.target,
-        parentEntity: heldByChild ? prop.target : entity,
+        heldByChild: childHeld,
+        childEntity: childHeld ? entity : prop.target,
+        parentEntity: childHeld ? prop.target : entity,
       };
     })();
     if (spine !== '*' && !named) return;
@@ -2149,7 +2163,16 @@ export function RecordStoreProvider(props: ParentProps) {
         }
         return undefined;
       }
-      const props = [...pointerPropsOf(type), ...relationPropsOf(type).filter((p) => p.target && !p.many && p.reverse)];
+      /*
+        `rel:*` walks the to-ones that point *up* — forward pointers first (the writable
+        assertions), then the derived back-pointers of parents' to-manys. The same direction
+        check the seed and the named spine make: a `belongsTo` inverting a to-one reads
+        *down* — the holder is the parent — and is not a way a card hangs under anything.
+      */
+      const props = [
+        ...pointerPropsOf(type),
+        ...relationPropsOf(type).filter((p) => p.target && p.reverse && heldByChild(p)),
+      ];
       if (!props.length) return undefined;
       const record = (await entityClass(type, handle).findOne(handle, { where: { id } } as never)) as Record<
         string,
@@ -2219,7 +2242,14 @@ export function RecordStoreProvider(props: ParentProps) {
         ? writePlanFor(named.entity, named.prop)
         : undefined
       : (() => {
-          const prop = pointerPropsOf(cardType).find((p) => p.target === parentType);
+          /*
+            Which of the card's pointers reaches the parent's class — every to-one that names a
+            parent, forward or derived, under the same direction check. Where several could, the
+            one the card already hangs by wins: a reparent rewrites the link it is on, not the
+            first declared of the right class.
+          */
+          const candidates = relationPropsOf(cardType).filter((p) => p.target === parentType && heldByChild(p));
+          const prop = candidates.find((p) => p.name === held?.prop.name) ?? candidates[0];
           return prop ? writePlanFor(cardType, prop) : undefined;
         })();
     if (!write) {

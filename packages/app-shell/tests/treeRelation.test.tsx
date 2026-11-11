@@ -25,6 +25,18 @@ interface Pos {
   id: string;
   text?: string;
   about?: string;
+  regarding?: string;
+}
+interface Post {
+  id: string;
+  text?: string;
+  author?: string;
+}
+interface Author {
+  id: string;
+  name?: string;
+  /** Derived (`belongsTo` of `Post.author`) — the post pointing at this author, never written here. */
+  post?: string;
 }
 interface Row {
   id: string;
@@ -37,6 +49,8 @@ const { world } = vi.hoisted(() => ({
   world: {
     topics: new Map<string, Topic>(),
     positions: new Map<string, Pos>(),
+    posts: new Map<string, Post>(),
+    authors: new Map<string, Author>(),
     rows: new Map<string, Row>(),
     /** Instances without `set`/`add`/`remove` — how AD4M's `fromSHACL` builds an installed SDNA's to-ones. */
     bare: false,
@@ -47,7 +61,7 @@ const { world } = vi.hoisted(() => ({
  * A model class the way the record contract hands one over: `findAll`/`findOne`/`add`/`remove`/`set`
  * accessors, with the relations living on the instances as plain ids.
  */
-const { TopicModel, PositionModel, AgendaModel } = vi.hoisted(() => {
+const { TopicModel, PositionModel, PostModel, AuthorModel, AgendaModel } = vi.hoisted(() => {
   type AnyRow = Record<string, unknown> & { id: string };
   const live = (table: Map<string, AnyRow>, row: AnyRow, toOnes: string[]) => {
     const instance = { ...row };
@@ -92,7 +106,10 @@ const { TopicModel, PositionModel, AgendaModel } = vi.hoisted(() => {
   });
   return {
     TopicModel: modelOf(world.topics as unknown as Map<string, AnyRow>, ['subTopicOf', 'agendaItem']),
-    PositionModel: modelOf(world.positions as unknown as Map<string, AnyRow>, ['about']),
+    PositionModel: modelOf(world.positions as unknown as Map<string, AnyRow>, ['about', 'regarding']),
+    PostModel: modelOf(world.posts as unknown as Map<string, AnyRow>, ['author']),
+    // `post` is a derived back-pointer — a belongsTo instance never carries a setter for it.
+    AuthorModel: modelOf(world.authors as unknown as Map<string, AnyRow>, []),
     AgendaModel: modelOf(new Map<string, AnyRow>(), []),
   };
 });
@@ -152,6 +169,68 @@ const ENTRIES = [
         writable: true,
         relatedEntity: 'DiscussionTopic',
       },
+      {
+        name: 'regarding',
+        predicate: 'discussion://regarding',
+        type: 'uri',
+        isCollection: false,
+        required: false,
+        writable: true,
+        relatedEntity: 'DiscussionTopic',
+      },
+    ],
+  },
+  {
+    name: 'Post',
+    targetClass: 'discussion://Post',
+    properties: [
+      {
+        name: 'text',
+        predicate: 'discussion://text',
+        type: 'string',
+        isCollection: false,
+        required: false,
+        writable: true,
+      },
+      {
+        name: 'author',
+        predicate: 'discussion://author',
+        type: 'uri',
+        isCollection: false,
+        required: false,
+        writable: true,
+        relatedEntity: 'Author',
+      },
+    ],
+  },
+  {
+    name: 'Author',
+    targetClass: 'discussion://Author',
+    properties: [
+      {
+        name: 'name',
+        predicate: 'discussion://name',
+        type: 'string',
+        isCollection: false,
+        required: false,
+        writable: true,
+      },
+      /*
+        The inverse of a to-one (`Post.author`), declared `belongsTo`: the author is the link's
+        *target* — its parent end, not a card hanging under the post. A `rel:*` walk that
+        treats it as a parent pointer reads the tree upside down.
+      */
+      {
+        name: 'post',
+        predicate: 'discussion://author',
+        type: 'uri',
+        isCollection: false,
+        required: false,
+        writable: false,
+        relatedEntity: 'Post',
+        reverse: true,
+        reverseOf: 'author',
+      },
     ],
   },
   {
@@ -198,9 +277,13 @@ vi.mock('@we/entities', async () => {
         ? TopicModel
         : name === 'Position'
           ? PositionModel
-          : name === 'AgendaItem'
-            ? AgendaModel
-            : Relationship,
+          : name === 'Post'
+            ? PostModel
+            : name === 'Author'
+              ? AuthorModel
+              : name === 'AgendaItem'
+                ? AgendaModel
+                : Relationship,
   };
 });
 
@@ -243,6 +326,8 @@ const aboutOf = (position: string) => world.positions.get(position)?.about;
 beforeEach(() => {
   world.topics.clear();
   world.positions.clear();
+  world.posts.clear();
+  world.authors.clear();
   world.rows.clear();
   world.bare = false;
   world.topics.set('t1', { id: 't1', title: 'Roadmap' });
@@ -397,6 +482,47 @@ describe('a tree drop on a model relation', () => {
     });
     expect(world.topics.get('t3')?.subTopicOf).toBeUndefined();
     expect(world.topics.get('t3')?.agendaItem).toBeUndefined();
+  });
+
+  it('does not read the inverse of a to-one as the author’s way up under the wildcard', async () => {
+    /*
+      `Author.post` is a `belongsTo` inverting a *to-one* (`Post.author`) — the author is the
+      parent end of that link, not a card hanging under the post. Treated as a parent pointer
+      it reads the tree upside down, and a 'loose' drop reaches for a clear there is none of:
+      the field is derived and the card holds no parent to detach from. The direction check the
+      seed and the named spine make keeps it on the children side.
+    */
+    world.posts.set('p1', { id: 'p1', text: 'A take', author: 'a1' });
+    world.authors.set('a1', { id: 'a1', name: 'Ada', post: 'p1' });
+    place('a1');
+    const info = vi.spyOn(toastService, 'info');
+    const store = mount();
+    await store.arrangeOnTree(CANVAS, 'rel:*', { recordId: 'a1', recordType: 'Author', into: 'loose' });
+    // Nothing was cleared, and nothing was said — a card with no parent drops loose silently.
+    expect(info).not.toHaveBeenCalled();
+    expect(world.posts.get('p1')?.author).toBe('a1');
+  });
+
+  it('rewrites the pointer the card hangs by, not the first of the right class', async () => {
+    /*
+      Two pointers at the same class — `about` and `regarding`, both → DiscussionTopic — and a
+      card hanging by the *second*. `rel:*` used to write the first declared (`about`), which
+      hung the card twice: the new parent by one field, the old by another. A reparent rewrites
+      the link it is on.
+    */
+    world.positions.set('pos3', { id: 'pos3', text: 'Later', regarding: 't2' });
+    place('pos3');
+    const store = mount();
+    await store.arrangeOnTree(CANVAS, 'rel:*', {
+      recordId: 'pos3',
+      recordType: 'Position',
+      into: 'child',
+      targetId: 't1',
+      targetType: 'DiscussionTopic',
+      order: ['pos3'],
+    });
+    expect(world.positions.get('pos3')?.regarding).toBe('t1');
+    expect(world.positions.get('pos3')?.about).toBeFalsy();
   });
 
   describe('on an installed SDNA, whose records carry no relation accessors', () => {
