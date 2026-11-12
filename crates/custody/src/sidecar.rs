@@ -9,7 +9,8 @@
 //! - `publicState` → [`crate::CustodyPublic`]
 //! - `start` `{step}` → `{screen, outcome}`: the first [`crate::Screen`] of that step
 //! - `step` `{input}` → `{screen, outcome}`: the next screen
-//! - `cancel` → `null`, the open step ended and wiped
+//! - `cancel` → `null` once the open step ended and was wiped, or `{screen, outcome}` when it could
+//!   not be: the screen to show instead, and the window stays ([`CustodyHandle::cancel`])
 //!
 //! `outcome` is how the step ended ([`crate::StepOutcome`]) once a screen is its last, else `null`:
 //! the host keeps it for the main window, which never sees a screen.
@@ -387,10 +388,7 @@ async fn call(
             let StepParams { input } = params_of(method, params)?;
             serde_json::to_value(Shown::of(custody.step(input).await.map_err(fail)?))
         }
-        "cancel" => {
-            custody.cancel().await;
-            Ok(Value::Null)
-        }
+        "cancel" => serde_json::to_value(custody.cancel().await.map(Shown::of)),
         _ => return Err(format!("unknown method `{method}`")),
     };
     result.map_err(|e| e.to_string())
