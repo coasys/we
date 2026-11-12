@@ -32,17 +32,46 @@ const SCOPED_CAN = ['READ', 'CREATE', 'UPDATE', 'DELETE', 'SUBSCRIBE'];
 /** The reply's ending, read off its row. Anything unrecognised is treated as still going. */
 const STATUSES: readonly AgentReplyStatus[] = ['running', 'done', 'failed', 'cancelled', 'interrupted'];
 
-/**
- * Tools that only read. A name not in this prefix list is a write — the unknown-default-is-write
- * side is deliberate: a new write tool nobody listed still gets its orange mark, while a new read
- * tool marked orange is only a lie about risk.
+/*
+ * Whether a call changed something rather than only looked — the orange mark a reply's steps
+ * carry. The executor knows its own read/write lists and says so on the step row as `writes`
+ * (ad4m #1713); only a row from before that field needs the name to answer.
+ *
+ * The name check reads the *verb*, not the class: dynamic tools name themselves `<class>_<verb>`
+ * (`textblock_query`, `space_get_name`), and a prefix match on the class marked `hashtag_create`
+ * a read and `readmarker_create` beside `listing_create` whichever way the class happened to
+ * start. The unknown-default-is-write side is deliberate: a new write tool nobody listed still
+ * gets its orange mark, while a new read tool marked orange is only a lie about risk.
  */
-const READ_TOOL =
-  /^(list|get|query|describe|read|search|find|count|has|is|instance_query|instance_get|instance_transcript|get_children|template_read|get_documentation)/;
 
-/** Whether a tool call changed something rather than only looked — the mark a reply's steps carry. */
-export function isWriteTool(tool: string): boolean {
-  return !READ_TOOL.test(tool);
+/** Reads that name no class at all — the static tools, exactly. */
+const STATIC_READS = new Set([
+  'flow_state',
+  'flow_actions',
+  'flow_valid_outputs',
+  'auth_status',
+  'language_meta',
+  'instance_get',
+  'instance_query',
+  'instance_transcript',
+  'get_children',
+]);
+
+/** Reads that lead with the verb — `list_perspectives`, `get_links`. */
+const READ_PREFIX = /^(list|get|query|describe)_/;
+
+/** The verbs a dynamic class tool reads with — `textblock_query`, `space_get_name`. */
+const READ_VERBS = new Set(['get', 'query', 'list']);
+
+/**
+ * Whether a tool call wrote — `writes` off the step row where the executor says it, the name's
+ * verb where it does not.
+ */
+export function isWriteTool(tool: string, writes?: boolean): boolean {
+  if (writes !== undefined) return writes;
+  if (STATIC_READS.has(tool) || READ_PREFIX.test(tool)) return false;
+  const verb = tool.split('_')[1] ?? tool;
+  return !READ_VERBS.has(verb);
 }
 
 /** The payload a transcript row carries. */
@@ -53,6 +82,11 @@ interface RowContent {
   target?: string;
   result?: string;
   error?: string;
+  /**
+   * The executor's own read/write call on the tool — present on nodes running ad4m #1713's row
+   * shape, absent on older ones, where the name's verb answers instead.
+   */
+  writes?: boolean;
 }
 
 const content = (row: AISessionMessage): RowContent => row.content ?? {};
@@ -101,7 +135,7 @@ function toStep(row: AISessionMessage, reply: AgentReplyStatus): AgentStep {
     ...(stepTarget(c) ? { target: stepTarget(c) } : {}),
     outcome,
     ...(error ? { error } : {}),
-    ...(isWriteTool(c.name ?? '') && outcome === 'ok' ? { wrote: true } : {}),
+    ...(isWriteTool(c.name ?? '', c.writes) && outcome === 'ok' ? { wrote: true } : {}),
     ...(refused ? { refused: true } : {}),
     ...(summary ? { summary } : {}),
   };

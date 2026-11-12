@@ -122,28 +122,61 @@ describe('conversationOf', () => {
     ]);
     expect(messages[1].steps?.map((s) => s.wrote ?? false)).toEqual([true, true, false]);
   });
+
+  it('marks a write by the row’s own `writes` flag where the executor says it', () => {
+    const messages = conversationOf([
+      row({ role: 'user', content: text('q'), seq: 1 }),
+      row({ role: 'assistant', content: text(''), status: 'running', seq: 2 }),
+      row({ role: 'tool', content: tool('space_get_name', { writes: true }), status: 'done', seq: 3 }),
+      row({ role: 'tool', content: tool('instance_create', { writes: false }), status: 'done', seq: 4 }),
+    ]);
+    expect(messages[1].steps?.map((s) => s.wrote ?? false)).toEqual([true, false]);
+  });
 });
 
 describe('isWriteTool', () => {
-  it('reads read-prefixes as reads and everything else as a write', () => {
+  it('takes the executor’s own call where the step row carries one', () => {
+    // `writes` is ad4m #1713's answer: it decides even against what the name suggests.
+    expect(isWriteTool('space_get_name', true)).toBe(true);
+    expect(isWriteTool('instance_create', false)).toBe(false);
+    expect(isWriteTool('readmarker_create', false)).toBe(false);
+  });
+
+  it('reads the static read tools, exactly', () => {
     for (const read of [
       'list_perspectives',
       'get_links',
       'query_links',
       'describe_perspective',
       'instance_query',
-      'template_read',
+      'instance_transcript',
+      'get_children',
+      'flow_state',
+      'flow_actions',
+      'flow_valid_outputs',
+      'auth_status',
+      'language_meta',
     ]) {
       expect(isWriteTool(read)).toBe(false);
     }
+  });
+
+  it('reads a class tool by the verb after its name, not by the name’s start', () => {
+    // Dynamic tools name themselves `<class>_<verb>` — the class is not the verb.
+    for (const read of ['textblock_query', 'space_get_name', 'channel_list', 'readmarker_query']) {
+      expect(isWriteTool(read)).toBe(false);
+    }
     for (const write of [
-      'instance_create',
-      'instance_update',
-      'instance_remove',
-      'add_link',
-      'remove_link',
-      'template_update',
+      'readmarker_create',
+      'listing_create',
+      'hashtag_create',
+      'textblock_set_title',
+      'channel_add_member',
+      'note_remove_tag',
+      'space_delete',
+      // A name that says nothing is treated as a write — the orange mark errs on the safe side.
       'new_tool_x',
+      'mystery',
     ]) {
       expect(isWriteTool(write)).toBe(true);
     }
