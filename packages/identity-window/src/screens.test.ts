@@ -500,8 +500,9 @@ describe('the identity window', () => {
     expect(failed.slice(0, failed.indexOf('case ', 10))).toContain("step({ kind: 'try-again' })");
   });
 
-  it('names no app: the host titles the window, so a WE build and a Coasys build say their own name', () => {
+  it("names no app of its own: the host's build hands it the app's name, so each build says its own", () => {
     for (const source of [windowSource, screensSource]) expect(source).not.toMatch(/Coasys/);
+    expect(windowSource).toContain("import brand from 'virtual:we-identity-brand'");
   });
 
   it('runs under the strict policy: no remote content, no inline script, no string sinks', () => {
@@ -509,11 +510,13 @@ describe('the identity window', () => {
     expect(IDENTITY_CSP).toContain("script-src 'self'");
     expect(IDENTITY_CSP).not.toMatch(/unsafe-(inline|eval)|https:/);
     expect(IDENTITY_CSP).toContain("require-trusted-types-for 'script'");
+    // The theme's typeface is a file of the window's own, never a `data:` font or a font host.
+    expect(IDENTITY_CSP).toMatch(/font-src 'self';/);
   });
 
   it('imports no code of WE: no template, store or module code reaches the window', () => {
-    // Stylesheets only: the token ramps, and the themes `vite.js` works out at build time.
-    const styles = ['@we/tokens/css/color', 'virtual:we-identity-theme.css'];
+    // Stylesheets and data only: the tokens, and the theme and brand `vite.js` works out at build time.
+    const styles = ['@we/tokens/css', 'virtual:we-identity-theme.css', 'virtual:we-identity-brand'];
     for (const source of [indexSource, windowSource, screensSource]) {
       const imports = [...source.matchAll(/(?:from|import) '([^']+)'/g)].map((m) => m[1]);
       for (const name of imports) expect(name.startsWith('./') || styles.includes(name)).toBe(true);
