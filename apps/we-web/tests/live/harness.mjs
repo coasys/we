@@ -65,10 +65,11 @@ function executorBinary() {
  * A multi-user executor with its main agent made — which a hosted node needs before anyone can
  * sign up, since the main agent signs every user's token.
  */
-export async function startExecutor() {
+export async function startExecutor({ mcp = false } = {}) {
   const binary = executorBinary();
   const dataPath = mkdtempSync(join(tmpdir(), 'we-live-web-'));
   const [port, hcAdminPort, hcAppPort] = [await freePort(), await freePort(), await freePort()];
+  const mcpPort = mcp ? await freePort() : null;
   const adminCredential = randomUUID();
   const output = [];
 
@@ -82,6 +83,7 @@ export async function startExecutor() {
     '--hc-admin-port', String(hcAdminPort), '--hc-app-port', String(hcAppPort),
     '--hc-use-bootstrap', 'false', '--hc-use-proxy', 'false', '--hc-use-local-proxy', 'false',
     '--hc-use-mdns', 'false', '--run-dapp-server', 'false',
+    ...(mcpPort ? ['--enable-mcp', 'true', '--mcp-port', String(mcpPort)] : []),
   ], { stdio: ['ignore', 'pipe', 'pipe'] });
   child.stdout.on('data', (chunk) => output.push(String(chunk)));
   child.stderr.on('data', (chunk) => output.push(String(chunk)));
@@ -126,7 +128,8 @@ export async function startExecutor() {
     }
     const status = await admin.agent.status();
     if (!status.isInitialized) await within(admin.agent.generate('we-live'), 120_000, 'agent.generate');
-    return { url, admin, output, stop };
+    const mcpUrl = mcpPort ? `http://127.0.0.1:${mcpPort}/mcp` : undefined;
+    return { url, admin, output, stop, mcpUrl };
   } catch (error) {
     await stop();
     throw new Error(`${error.message}\n--- executor output ---\n${output.join('').slice(-8_000)}`);
@@ -141,6 +144,21 @@ export async function signUp(executor, email, password = 'test123') {
   const client = new Ad4mClient(executor.url, token);
   const { did } = await client.agent.me();
   return { email, password, token, did, client };
+}
+
+/**
+ * Makes an OpenAI-compatible endpoint the executor's default language model — the one call
+ * extraction runs on. Needs the admin client: the default is the executor's, not one account's.
+ * Resolves with the model's id.
+ */
+export async function registerLlm(admin, { name = 'we-live-llm', baseUrl, apiKey = 'none', model }) {
+  const id = await within(
+    admin.ai.addModel({ name, modelType: 'LLM', api: { baseUrl, apiKey, model, apiType: 'OPEN_AI' } }),
+    60_000,
+    'ai.addModel',
+  );
+  await within(admin.ai.setDefaultModel('LLM', id), 30_000, 'ai.setDefaultModel');
+  return id;
 }
 
 const MIME = {
@@ -197,7 +215,11 @@ function chromePath() {
   return found;
 }
 
-export async function launchBrowser() {
+/**
+ * Chromium with a fake camera and microphone. `fakeAudio` names a WAV file the fake microphone plays
+ * instead of its beep: 16 kHz mono PCM is what transcription hears best.
+ */
+export async function launchBrowser({ fakeAudio } = {}) {
   return chromium.launch({
     executablePath: chromePath(),
     headless: true,
@@ -205,6 +227,7 @@ export async function launchBrowser() {
       '--use-fake-device-for-media-stream',
       '--use-fake-ui-for-media-stream',
       '--autoplay-policy=no-user-gesture-required',
+      ...(fakeAudio ? [`--use-file-for-fake-audio-capture=${fakeAudio}`] : []),
     ],
   });
 }
@@ -285,20 +308,52 @@ export function videoFlow(page, ms = 2_000) {
   }, ms);
 }
 
-/** Polls `read` until `accept` holds for what it returns, or throws with the last value. */
+/**
+ * Polls `read` until `accept` holds for what it returns, or throws with the last value.
+ *
+ * A wait longer than a minute logs one line a minute: what it waits for, and for how long so far.
+ * CI ends a job that writes nothing for a while (CircleCI's no-output timeout), and the real tier's
+ * waits on a model can be longer than that taken together. The line has its own timer, so a read that
+ * is slow to answer does not hold it back; and each read gets only what is left of the deadline, so a
+ * read that never answers cannot extend it.
+ */
 export async function until(read, accept, { timeout = 60_000, interval = 500, what = 'condition' } = {}) {
-  const deadline = Date.now() + timeout;
+  const start = Date.now();
+  const deadline = start + timeout;
+  const s = (ms) => `${Math.round(ms / 1_000)} s`;
+  const heartbeat = setInterval(
+    () => console.log(`[until] still waiting for ${what}: ${s(Date.now() - start)} of ${s(timeout)}`),
+    60_000,
+  );
+  const late = Symbol('late');
   let last;
-  for (;;) {
-    try {
-      last = await read();
-      if (accept(last)) return last;
-    } catch (error) {
-      last = `threw: ${error.message}`;
+  const timedOut = (pending = '') =>
+    new Error(`Timed out waiting for ${what}${pending}. Last: ${JSON.stringify(last, null, 1)?.slice(0, 2_000)}`);
+  try {
+    for (let first = true; ; first = false) {
+      // The first read always happens; a later one only while there is time left for it.
+      if (!first && Date.now() >= deadline) throw timedOut();
+      let timer;
+      let unanswered = false;
+      try {
+        const value = await Promise.race([
+          Promise.resolve().then(read),
+          new Promise((done) => (timer = setTimeout(() => done(late), Math.max(0, deadline - Date.now())))),
+        ]);
+        unanswered = value === late;
+        if (!unanswered) {
+          last = value;
+          if (accept(last)) return last;
+        }
+      } catch (error) {
+        last = `threw: ${error.message}`;
+      } finally {
+        clearTimeout(timer);
+      }
+      if (unanswered) throw timedOut(' (a read was still unanswered at the deadline)');
+      await sleep(Math.max(0, Math.min(interval, deadline - Date.now())));
     }
-    if (Date.now() > deadline) {
-      throw new Error(`Timed out waiting for ${what}. Last: ${JSON.stringify(last, null, 1)?.slice(0, 2_000)}`);
-    }
-    await sleep(interval);
+  } finally {
+    clearInterval(heartbeat);
   }
 }
