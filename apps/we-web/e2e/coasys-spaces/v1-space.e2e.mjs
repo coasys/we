@@ -3,7 +3,7 @@
  */
 import assert from 'node:assert/strict';
 
-import { createSpace } from '../space.mjs';
+import { createSpace } from '../steps/space.mjs';
 import { until, vertical, world } from './context.mjs';
 import { shaclNames, spacePerspective } from './dna.mjs';
 import { joinButton, openSpaceSettings, treeRow } from './steps.mjs';

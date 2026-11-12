@@ -2,7 +2,7 @@
  * One person in a call from several tabs and several devices, in the built web app against a real
  * multi-user executor — the way a person on a hosted node uses it.
  *
- * A browser context is a device and a page in it is a tab (see `harness.mjs`). The account is one
+ * A browser context is a device and a page in it is a tab (see `@we/e2e`'s `browser.mjs`). The account is one
  * agent throughout: what is under test is how the agent's own tabs and devices see each other and
  * share a call, which nothing with two different agents exercises.
  *
@@ -11,14 +11,21 @@
  * The topology is the space's call config (`setSfuConfig`), which is what decides it for a new call.
  *
  * Needs `pnpm build:web` and the pinned executor (`pnpm ad4m:executor`, or `AD4M_EXECUTOR`); Chrome
- * from playwright, `/usr/bin/google-chrome`, or `WE_CHROME`. Run with `pnpm --filter @we/app-web
- * test:live`.
+ * from `WE_CHROME`, playwright or `/usr/bin/google-chrome`. `pnpm e2e calls` does all three and runs
+ * it; `pnpm --filter @we/app-web test:live` only runs it. A failed test leaves a screenshot and an
+ * ARIA snapshot of every open tab, and the executor's log, in `WE_E2E_ARTIFACTS` (else a temp
+ * directory, named in the output).
  */
 import assert from 'node:assert/strict';
+import { dirname, join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
-import * as h from './harness.mjs';
-import { createSpace, dismissNamePrompt, inTheCall, openSpace } from './space.mjs';
+import * as h from '@we/e2e';
+
+import { createSpace, dismissNamePrompt, inTheCall, openSpace } from './steps/space.mjs';
+
+const DIST = join(dirname(fileURLToPath(import.meta.url)), '..', 'dist');
 
 const REPLACED = 'You joined this call from another tab, so it ended here.';
 const JOIN_BUTTON = /^(Open|Join)$/;
@@ -66,9 +73,24 @@ let browser;
 let account;
 const opened = [];
 
+/** Made on the first failure, so a green run leaves nothing behind. */
+let artifacts;
+
+/** `it`, leaving a screenshot and an ARIA snapshot of every open tab and the executor's log when it fails. */
+const step = (title, fn) =>
+  it(
+    title,
+    h.capturing(async (name) => {
+      artifacts ??= h.artifactsDir({ prefix: 'we-calls-' });
+      const pages = opened.flatMap((d) => d.context.pages().map((page, i) => ({ label: `${d.name}-${i}`, page })));
+      await h.captureFailure({ dir: artifacts, name, pages, executor });
+      console.log(`calls: artifacts for "${name}" in ${artifacts}`);
+    }, fn),
+  );
+
 before(async () => {
   executor = await h.startExecutor();
-  app = await h.serveApp();
+  app = await h.serveDist(DIST);
   browser = await h.launchBrowser();
   account = await h.signUp(executor, 'calls@test.com');
   const setup = await h.device(browser, executor, account, { name: 'setup' });
@@ -114,7 +136,7 @@ for (const [topology, mode] of [
       if (process.env.WE_LIVE_VERBOSE) console.log([...laptop.logs, ...phone.logs].join('\n'));
     });
 
-    it('a second tab sees the call the first tab is in', async () => {
+    step('a second tab sees the call the first tab is in', async () => {
       tabB = await laptop.tab('B');
       await openSpace(tabB, app, space);
       await h.until(
@@ -127,7 +149,7 @@ for (const [topology, mode] of [
       );
     });
 
-    it('joining from the second tab moves the call there, and the first lets go', async () => {
+    step('joining from the second tab moves the call there, and the first lets go', async () => {
       await tabB.getByRole('button', { name: JOIN_BUTTON }).first().click({ timeout: 30_000 });
       await waitInCall(tabB, 1, 'tab B in the call');
       await h.until(
@@ -149,7 +171,7 @@ for (const [topology, mode] of [
       );
     });
 
-    it("a second device of the same agent joins beside the first, each showing the other's tile", async () => {
+    step("a second device of the same agent joins beside the first, each showing the other's tile", async () => {
       phoneTab = await phone.tab('C');
       await openSpace(phoneTab, app, space);
       await h.until(
@@ -167,7 +189,7 @@ for (const [topology, mode] of [
       await waitVideos(tabB, 2, 'two tiles with moving video on the first device');
     });
 
-    it('the second device hanging up leaves the first in the call', async () => {
+    step('the second device hanging up leaves the first in the call', async () => {
       await leaveCall(phoneTab);
       await h.until(
         () => inTheCall(phoneTab),

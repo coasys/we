@@ -10,12 +10,12 @@ const ONLY = (process.env.COASYS_SPACES_ONLY ?? '')
   .filter(Boolean);
 
 const VERTICALS = [
-  ['v1', './v1-space.live.mjs'],
-  ['v2', './v2-call-extraction.live.mjs'],
-  ['v3', './v3-social-dna.live.mjs'],
-  ['v4', './v4-decide-flow.live.mjs'],
-  ['v5', './v5-build-agent.live.mjs'],
-  ['v6', './v6-interfaces-feed.live.mjs'],
+  ['v1', './v1-space.e2e.mjs'],
+  ['v2', './v2-call-extraction.e2e.mjs'],
+  ['v3', './v3-social-dna.e2e.mjs'],
+  ['v4', './v4-decide-flow.e2e.mjs'],
+  ['v5', './v5-build-agent.e2e.mjs'],
+  ['v6', './v6-interfaces-feed.e2e.mjs'],
 ];
 
 // A name that is not a vertical would run fewer verticals than asked for, or none, and still pass.

@@ -16,8 +16,8 @@ import { readFileSync } from 'node:fs';
 
 import { LinkQuery, Literal } from '@coasys/ad4m';
 import { getEntityForDataset } from '@we/backend-ad4m';
+import { until } from '@we/e2e/waits';
 
-import { until } from '../harness.mjs';
 import { DNA_PATH } from './context.mjs';
 
 /** The package, parsed, with each class's flag and properties pulled out of its manifest. */

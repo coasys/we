@@ -18,6 +18,8 @@ New to WE? Start here.
 - [Pull Requests](contributing/pull-requests.md) — How a PR is described, reviewed and merged
 - [ad4m and Deploys](contributing/ad4m-and-deploys.md) — Which ad4m each build uses, where it deploys,
   pinning an ad4m change a WE PR needs, bumping the pin, and making a release
+- [End-to-end Tests](testing/e2e.md) — The three kinds of test past jsdom (browser layout, live
+  contract, journeys): where each lives, how to run it with `pnpm e2e`, and where it runs in CI
 
 ## Architecture
 

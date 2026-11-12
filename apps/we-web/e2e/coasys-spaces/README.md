@@ -12,16 +12,16 @@ The suite does not skip a step silently.
 
 ## Coverage
 
-| Vertical              | File                          | Asserted                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Todo                                                                                                                                                    |
-| --------------------- | ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| V1 space              | `v1-space.live.mjs`           | Alice makes a shared space from the starter. The empty state and the tree show. The starter's SHACL shapes are in the perspective. The invite link is in Space settings. Bob joins from it. Both see two members.                                                                                                                                                                                                                                                                                                                      | "+ Invite" in the tree. The agent badge.                                                                                                                |
-| V2 call               | `v2-call-extraction.live.mjs` | The DNA installs through the UI. Its classes are the call's targets. A call starts and shows as live in the tree. Lines land in the transcript. Extraction makes records of the package's classes, linked to the call. They show on the canvas. Accepting one clears its pending mark. Leaving ends the live mark.                                                                                                                                                                                                                     | The "Big picture" graph. The records in the Feed (product bug, see below).                                                                              |
-| V3 social DNA         | `v3-social-dna.live.mjs`      | Install from a file. The shapes are in the space's SHACL. They are listed under Social DNA. They are offered and switched on as call targets. A field added in the shape wizard changes the stored shape.                                                                                                                                                                                                                                                                                                                              | The setup prompt. Suggested shapes. A shape edited by voice.                                                                                            |
-| V4 Decide flow        | `v4-decide-flow.live.mjs`     | Flows install and the Workflows page lists them. Bob joins. A call finds a Question, and Alice accepts it. Alice starts Decide from the inspector and moves it step by step. The gated move waits for a second approval. Bob agrees, and the history has both approvers. Alice's screen follows.                                                                                                                                                                                                                                       | The ring diagram. The timeline. The decision spec.                                                                                                      |
-| V5 Build flow + agent | `v5-build-agent.live.mjs`     | An agent account speaks only MCP. It joins from the neighbourhood link, finds the Task with `instance_query`/`instance_get`, and takes it with `instance_update`. Alice's screen shows the owner. The agent moves the Task through the flow, and Alice's screen follows. Shipped without evidence is refused (`unmet`). The agent makes a `LinkBlock` with `instance_create`, adds it to the Task's responses with `instance_add_to_collection`, asks again, and the move waits. Alice agrees, and the Task ships with both approvers. | The agent asks for a flow move over MCP (no MCP tool proposes one). The agent in the call. CONTEXT for the agent. The decision spec starts Build.       |
-| V6 interfaces         | `v6-interfaces-feed.live.mjs` | A call finds records, and the call is a record of the space. The space reads as a canvas (records, no lines) and as a page again. A personal theme from Space settings → Appearance repaints the page.                                                                                                                                                                                                                                                                                                                                 | The Feed: the call, its lines, what was found, and a line's call button (product bug, see below). A Board for Build. A Vote for Decide. The Graph view. |
+| Vertical              | File                         | Asserted                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | Todo                                                                                                                                                    |
+| --------------------- | ---------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| V1 space              | `v1-space.e2e.mjs`           | Alice makes a shared space from the starter. The empty state and the tree show. The starter's SHACL shapes are in the perspective. The invite link is in Space settings. Bob joins from it. Both see two members.                                                                                                                                                                                                                                                                                                                      | "+ Invite" in the tree. The agent badge.                                                                                                                |
+| V2 call               | `v2-call-extraction.e2e.mjs` | The DNA installs through the UI. Its classes are the call's targets. A call starts and shows as live in the tree. Lines land in the transcript. Extraction makes records of the package's classes, linked to the call. They show on the canvas. Accepting one clears its pending mark. Leaving ends the live mark.                                                                                                                                                                                                                     | The "Big picture" graph. The records in the Feed (product bug, see below).                                                                              |
+| V3 social DNA         | `v3-social-dna.e2e.mjs`      | Install from a file. The shapes are in the space's SHACL. They are listed under Social DNA. They are offered and switched on as call targets. A field added in the shape wizard changes the stored shape.                                                                                                                                                                                                                                                                                                                              | The setup prompt. Suggested shapes. A shape edited by voice.                                                                                            |
+| V4 Decide flow        | `v4-decide-flow.e2e.mjs`     | Flows install and the Workflows page lists them. Bob joins. A call finds a Question, and Alice accepts it. Alice starts Decide from the inspector and moves it step by step. The gated move waits for a second approval. Bob agrees, and the history has both approvers. Alice's screen follows.                                                                                                                                                                                                                                       | The ring diagram. The timeline. The decision spec.                                                                                                      |
+| V5 Build flow + agent | `v5-build-agent.e2e.mjs`     | An agent account speaks only MCP. It joins from the neighbourhood link, finds the Task with `instance_query`/`instance_get`, and takes it with `instance_update`. Alice's screen shows the owner. The agent moves the Task through the flow, and Alice's screen follows. Shipped without evidence is refused (`unmet`). The agent makes a `LinkBlock` with `instance_create`, adds it to the Task's responses with `instance_add_to_collection`, asks again, and the move waits. Alice agrees, and the Task ships with both approvers. | The agent asks for a flow move over MCP (no MCP tool proposes one). The agent in the call. CONTEXT for the agent. The decision spec starts Build.       |
+| V6 interfaces         | `v6-interfaces-feed.e2e.mjs` | A call finds records, and the call is a record of the space. The space reads as a canvas (records, no lines) and as a page again. A personal theme from Space settings → Appearance repaints the page.                                                                                                                                                                                                                                                                                                                                 | The Feed: the call, its lines, what was found, and a line's call button (product bug, see below). A Board for Build. A Vote for Decide. The Graph view. |
 
-The verticals run in order in one process (`all.live.mjs`). They share one executor, one served
+The verticals run in order in one process (`all.e2e.mjs`). They share one executor, one served
 app and one browser (`context.mjs`). Each vertical makes its own accounts and its own space, so one
 vertical's installs do not leak into the next. When a step fails, the later steps of that vertical are
 skipped, and the other verticals still run.
@@ -107,23 +107,25 @@ Linux x64 only, because that is the one platform that ad4m publishes executors f
 ```sh
 unset NODE_ENV
 pnpm install
-WE_SEED=seeds/coasys.seed.json pnpm build:web
-GITHUB_TOKEN=$(gh auth token) pnpm ad4m:executor   # fetches the pinned executor once, into ~/.cache/we
-pnpm --filter @we/app-web test:spaces
+GITHUB_TOKEN=$(gh auth token) pnpm e2e spaces   # --tier stub|real, --only v2,v4, --no-build
 ```
+
+`pnpm e2e spaces` builds the app with the Coasys seed (`WE_SEED=seeds/coasys.seed.json pnpm
+build:web`), fetches the pinned executor once into `~/.cache/we` (`pnpm ad4m:executor`), and runs
+`pnpm --filter @we/app-web test:spaces`. That last command is the suite on its own, for a build and an
+executor you already have.
 
 - `GITHUB_TOKEN` raises GitHub's rate limit for the executor download. Without it, anonymous downloads can
   fail.
-- `COASYS_SPACES_ONLY=v2,v4` runs only the verticals that you name.
+- `--only v2,v4` (`COASYS_SPACES_ONLY`) runs only the verticals that you name.
 - A full stub run is long, because it makes many accounts and spaces and waits for P2P sync. Run it
   detached (for example under `systemd-run --user`) and read the log.
 
 For the real tier:
 
 ```sh
-COASYS_SPACES_TIER=real \
 COASYS_SPACES_LLM_BASE_URL=http://127.0.0.1:8080/v1 COASYS_SPACES_LLM_MODEL=<model> \
-pnpm --filter @we/app-web test:spaces
+pnpm e2e spaces --tier real
 ```
 
 The fake microphone plays `fixtures/call.wav`: the four lines in `stub-llm.mjs` (`LINES`), spoken by
@@ -185,20 +187,21 @@ not get a `Task`, the cause can be model variance and not a product break. To fi
 | `COASYS_SPACES_LLM_BASE_URL`, `_MODEL`, `_API_KEY` | The real tier's OpenAI-compatible model.                                                                   |
 | `COASYS_SPACES_WAV`                                | The real tier's recording, played by the fake microphone (default `fixtures/call.wav`).                    |
 | `COASYS_SPACES_ONLY`                               | A comma list of verticals (`v1`…`v6`).                                                                     |
-| `COASYS_SPACES_ARTIFACTS`                          | The folder for failure artifacts. The default is a new temp folder.                                        |
+| `COASYS_SPACES_ARTIFACTS`                          | The folder for failure artifacts. Else `WE_E2E_ARTIFACTS`, else a new temp folder.                         |
 | `SOCIAL_DNA_PACKAGE`                               | The package to install.                                                                                    |
 | `AD4M_EXECUTOR`                                    | The executor binary. If it is not set, the pinned commit's executor is used (`scripts/ad4m-executor.mjs`). |
-| `WE_CHROME`                                        | The Chromium binary, if Playwright's is not found.                                                         |
+| `WE_CHROME`                                        | The Chromium binary, in place of the one `chromePath()` in `@we/e2e` finds.                                |
 | `WE_LIVE_VERBOSE`                                  | Writes each page's console log when a vertical passes too.                                                 |
 | `WE_LIVE_LOG`                                      | Writes the executor's output to this file.                                                                 |
 | `GITHUB_TOKEN` / `GH_TOKEN`                        | For the executor download.                                                                                 |
 
 ## Artifacts
 
-When a step fails, the suite writes these to `COASYS_SPACES_ARTIFACTS`:
+When a step fails, the suite writes these to `COASYS_SPACES_ARTIFACTS` (else `WE_E2E_ARTIFACTS`),
+with `captureFailure` from `@we/e2e`, named `<vertical>-<step>-<person>-<page>`:
 
-- a full-page screenshot of every page the vertical holds;
-- an ARIA snapshot of every page;
+- a full-page screenshot of every page the vertical holds (`.png`);
+- an ARIA snapshot of every page, its URL on the first line (`.aria.txt`);
 - each page's console log;
 - the vertical's Playwright trace (`npx playwright show-trace <file>.trace.zip`).
 
@@ -214,12 +217,13 @@ things:
 1. It overrides `@coasys/ad4m` and `@coasys/ad4m-connect` with tarballs packed from the ad4m commit under
    test. To do this, it replaces the `pnpm.overrides` entries in the root `package.json` with
    `file:` paths to the `.tgz` files, and then runs `pnpm install` and `pnpm build:web`.
-2. It sets `AD4M_EXECUTOR` to the executor built from that same commit. The harness then runs that
+2. It sets `AD4M_EXECUTOR` to the executor built from that same commit. The suite then runs that
    binary instead of downloading the pinned one.
 
 The client, the app's connect UI and the executor then all come from the same commit. The job gives
 the real tier a model endpoint on its runner (see the PR for the model and its context window). The
-stub tier needs no model; run it locally, or in any job that has no model endpoint.
+stub tier needs no model: it runs locally, and on WE's pin in the `spaces` job of
+`.github/workflows/ad4m-live.yaml`.
 
 ## Selectors
 

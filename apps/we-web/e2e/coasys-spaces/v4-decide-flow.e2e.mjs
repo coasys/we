@@ -5,7 +5,7 @@
  */
 import assert from 'node:assert/strict';
 
-import { createSpace } from '../space.mjs';
+import { createSpace } from '../steps/space.mjs';
 import { CALL_STEP, SLOW, STUB, until, vertical } from './context.mjs';
 import { DNA, installDnaThroughUi, installFlows, spacePerspective } from './dna.mjs';
 import { untilItem } from './flows.mjs';

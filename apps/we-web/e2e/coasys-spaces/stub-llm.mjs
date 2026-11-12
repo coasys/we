@@ -32,7 +32,7 @@
  */
 import { createServer } from 'node:http';
 
-import { freePort } from '../harness.mjs';
+import { freePort } from '@we/e2e/executor';
 
 /** The film's lines, as the suite types them into the call and as `fixtures/call.wav` speaks them. */
 export const LINES = {

@@ -13,9 +13,9 @@
  */
 import { LinkQuery, Literal } from '@coasys/ad4m';
 import { getEntityForDataset } from '@we/backend-ad4m';
+import { until } from '@we/e2e/waits';
 
-import { until } from '../harness.mjs';
-import { inTheCall } from '../space.mjs';
+import { inTheCall } from '../steps/space.mjs';
 
 /** The call this page is in, by the `call` query the app writes into the URL. */
 export function callIdOf(page) {

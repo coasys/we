@@ -1,8 +1,8 @@
 /**
- * What a person does in the web app that more than one live suite needs: answer the first-run name
+ * What a person does in the web app that more than one journey needs: answer the first-run name
  * prompt, make a shared space, open one, and read how many are in its call.
  *
- * Used by `calls.live.mjs` and the `coasys-spaces/` suite. Each step is done through the screen, the
+ * Used by `calls.e2e.mjs` and the `coasys-spaces/` suite. Each step is done through the screen, the
  * way a person does it; only what the screen cannot say (the space's neighbourhood URL) is read back
  * from the account's client.
  */
@@ -10,7 +10,7 @@ import assert from 'node:assert/strict';
 
 import { LinkQuery } from '@coasys/ad4m';
 
-import { until } from './harness.mjs';
+import { until } from '@we/e2e/waits';
 
 /**
  * The "N in the call" count on the call bar, or null when the page is not in a call. Read from the

@@ -6,7 +6,7 @@ import assert from 'node:assert/strict';
 
 import { getEntityForDataset } from '@we/backend-ad4m';
 
-import { createSpace } from '../space.mjs';
+import { createSpace } from '../steps/space.mjs';
 import { until, vertical } from './context.mjs';
 import { DNA, installDnaThroughUi, shaclNames, spacePerspective } from './dna.mjs';
 import { enableTargets, openSpacePath, openSpaceSettings, rowCount } from './steps.mjs';

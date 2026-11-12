@@ -110,6 +110,7 @@ Glossary (these terms pervade stores, models, and \`$query\`/\`perspective\` in 
 | \`@we/app-shell\` | packages/app-shell | App shell, stores, registries, built-in template schemas | Solid |
 | \`@we/identity-window\` | packages/identity-window | The desktop identity window's screens (make an identity, add or revoke a device) over an \`IdentityTransport\`; each desktop app supplies the transport to its custody service (\`crates/custody\`) | Vanilla DOM |
 | \`@we/ai-context\` | packages/ai-context | Generates this reference (CLAUDE.md et al.) from code + fragments | Build tool |
+| \`@we/e2e\` | packages/e2e | What every live test shares: a fresh multi-user executor and its accounts, a build served under the production CSP, Chrome, waits and failure artifacts (docs/testing/e2e.md) | Test tool |
 | \`@we/agent-tools\` | packages/agent-tools | What a model can do with WE: templates and themes as tools for any host, a space's records and WE's conventions for a conversation WE runs itself, and a single-file bundle for agent hosts | **Agnostic** |
 
 Apps (\`apps/we-web\`, \`apps/we-electron\`, \`apps/we-tauri\`) are thin hosts over \`@we/app-shell\`.

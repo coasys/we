@@ -1,0 +1,59 @@
+{
+  "private": true,
+  "name": "@we/e2e",
+  "version": "0.1.0",
+  "description": "What WE's end-to-end tests stand on: the executor, the served app, the browser, waits and failure artifacts",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "test": "node --test src/*.test.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "exports": {
+    ".": {
+      "types": "./src/index.d.mts",
+      "import": "./src/index.mjs"
+    },
+    "./env": {
+      "types": "./src/env.d.mts",
+      "import": "./src/env.mjs"
+    },
+    "./executor": {
+      "types": "./src/executor.d.mts",
+      "import": "./src/executor.mjs"
+    },
+    "./app": {
+      "types": "./src/app.d.mts",
+      "import": "./src/app.mjs"
+    },
+    "./browser": {
+      "types": "./src/browser.d.mts",
+      "import": "./src/browser.mjs"
+    },
+    "./waits": {
+      "types": "./src/waits.d.mts",
+      "import": "./src/waits.mjs"
+    },
+    "./artifacts": {
+      "types": "./src/artifacts.d.mts",
+      "import": "./src/artifacts.mjs"
+    },
+    "./mcp": {
+      "types": "./src/mcp.d.mts",
+      "import": "./src/mcp.mjs"
+    }
+  },
+  "files": [
+    "src"
+  ],
+  "dependencies": {
+    "@coasys/ad4m": "*",
+    "@coasys/ad4m-connect": "*",
+    "@we/csp": "workspace:*",
+    "playwright-core": "^1.64.1"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "typescript": "^6.0.3"
+  }
+}

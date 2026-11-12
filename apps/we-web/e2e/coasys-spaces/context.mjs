@@ -14,30 +14,42 @@
  * - `COASYS_SPACES_LLM_BASE_URL`, `COASYS_SPACES_LLM_MODEL`, `COASYS_SPACES_LLM_API_KEY` — the real
  *   tier's OpenAI-compatible model.
  * - `COASYS_SPACES_WAV` — the real tier's recording the fake microphone plays.
- * - `COASYS_SPACES_ARTIFACTS` — where failure screenshots, traces and the executor log go.
+ * - `COASYS_SPACES_ARTIFACTS` — where failure screenshots, traces and the executor log go; else
+ *   `WE_E2E_ARTIFACTS`, as for every journey; else a new temp directory.
  * - `SOCIAL_DNA_PACKAGE` — the social DNA package to install (see `dna.mjs`).
  */
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { after, before, describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import { createAd4mBackendPorts } from '@we/backend-ad4m';
+import {
+  artifactsDir,
+  captureFailure,
+  device,
+  launchBrowser,
+  registerLlm,
+  saveArtifact,
+  serveDist,
+  signUp,
+  sleep,
+  slug,
+  startExecutor,
+  until,
+} from '@we/e2e';
 
-import { device, launchBrowser, registerLlm, serveApp, signUp, sleep, startExecutor, until } from '../harness.mjs';
-import { dismissNamePrompt } from '../space.mjs';
+import { dismissNamePrompt } from '../steps/space.mjs';
 import { startStubLlm } from './stub-llm.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 
+/** The web build under test: `pnpm build:web`, with `WE_SEED=seeds/coasys.seed.json`. */
+const DIST = join(HERE, '..', '..', 'dist');
+
 export const TIER = process.env.COASYS_SPACES_TIER === 'real' ? 'real' : 'stub';
 export const STUB = TIER === 'stub';
 
-export const ARTIFACTS = process.env.COASYS_SPACES_ARTIFACTS
-  ? resolve(process.env.COASYS_SPACES_ARTIFACTS)
-  : mkdtempSync(join(tmpdir(), 'coasys-spaces-'));
-mkdirSync(ARTIFACTS, { recursive: true });
+export const ARTIFACTS = artifactsDir({ dir: process.env.COASYS_SPACES_ARTIFACTS, prefix: 'coasys-spaces-' });
 
 export const DNA_PATH = resolve(process.env.SOCIAL_DNA_PACKAGE ?? join(HERE, 'fixtures', 'software-team.dna.json'));
 
@@ -113,7 +125,7 @@ export function world() {
         model: llm.model,
       });
       if (!STUB) await loadWhisper(executor.admin);
-      const app = (started.app = await serveApp());
+      const app = (started.app = await serveDist(DIST));
       const browser = (started.browser = await launchBrowser({ fakeAudio: STUB ? undefined : wav }));
       return { executor, app, browser, llm, stub };
     } catch (error) {
@@ -135,7 +147,7 @@ async function stopStarted() {
     await browser?.close().catch(() => {});
     await app?.close().catch(() => {});
     if (executor) {
-      saveArtifact(join(ARTIFACTS, 'executor.log'), executor.output.join(''));
+      saveArtifact(join(ARTIFACTS, 'executor.log'), executor.log());
       try {
         executor.admin.close?.();
       } finally {
@@ -147,15 +159,6 @@ async function stopStarted() {
   }
 }
 
-/** Writes an artifact, best-effort: a write that fails is said, and never stops what comes after it. */
-function saveArtifact(path, content) {
-  try {
-    writeFileSync(path, content);
-  } catch (error) {
-    console.log(`coasys-spaces: could not write ${path}: ${error.message}`);
-  }
-}
-
 /** Closes the world, whether it was made or failed half-way. */
 async function closeWorld() {
   if (!made) return;
@@ -164,12 +167,6 @@ async function closeWorld() {
   console.log(`coasys-spaces: artifacts in ${ARTIFACTS}`);
 }
 after(closeWorld);
-
-const slug = (s) =>
-  String(s)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
 
 /**
  * A vertical: one `describe`, its people, and its failure artifacts. `body(v)` declares the steps with
@@ -265,19 +262,20 @@ export function vertical(name, body) {
   return v;
 }
 
-/** A screenshot and an accessibility snapshot of every page a vertical holds, named for the step. */
-async function snapshotAll(v, title) {
-  for (const who of v.people) {
-    for (const [i, page] of (who.device?.context.pages() ?? []).entries()) {
-      const base = join(ARTIFACTS, `${v.slug}-${slug(who.name)}-${i}-${slug(title).slice(0, 60)}`);
-      await page.screenshot({ path: `${base}.png`, fullPage: true }).catch(() => {});
-      const aria = await page
-        .locator('body')
-        .ariaSnapshot({ timeout: 10_000 })
-        .catch((e) => `no snapshot: ${e.message}`);
-      saveArtifact(`${base}.aria.txt`, `${page.url()}\n\n${aria}`);
-    }
-  }
+/**
+ * A screenshot and an accessibility snapshot of every page a vertical holds, named for the vertical,
+ * the step and the person, and the executor's log so far.
+ */
+function snapshotAll(v, title) {
+  const pages = v.people.flatMap((who) =>
+    (who.device?.context.pages() ?? []).map((page, i) => ({ label: `${slug(who.name)}-${i}`, page })),
+  );
+  return captureFailure({
+    dir: ARTIFACTS,
+    name: `${v.slug}-${slug(title).slice(0, 60)}`,
+    pages,
+    executor: started.executor,
+  });
 }
 
 export { sleep, until };

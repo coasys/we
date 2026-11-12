@@ -11,13 +11,13 @@
 import assert from 'node:assert/strict';
 
 import { createAd4mBackendPorts } from '@we/backend-ad4m';
+import { signUp } from '@we/e2e/executor';
+import { mcpSession } from '@we/e2e/mcp';
 
-import { signUp } from '../harness.mjs';
-import { createSpace } from '../space.mjs';
+import { createSpace } from '../steps/space.mjs';
 import { CALL_STEP, SLOW, STUB, until, vertical, world } from './context.mjs';
 import { DNA, installDnaThroughUi, installFlows, records, spacePerspective } from './dna.mjs';
 import { untilItem } from './flows.mjs';
-import { mcpSession } from './mcp.mjs';
 import {
   callThatFinds,
   enableTargets,

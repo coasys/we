@@ -1,7 +1,7 @@
 /**
  * Reading a record's place in a workflow, through the same port the app's Workflows page reads.
  */
-import { until } from '../harness.mjs';
+import { until } from '@we/e2e/waits';
 
 /**
  * One read of a workflow's records: the port's `watch`, answered once and let go. The watch is let go

@@ -6,9 +6,9 @@ import assert from 'node:assert/strict';
 
 import { LinkQuery } from '@coasys/ad4m';
 import { getEntityForDataset } from '@we/backend-ad4m';
+import { until } from '@we/e2e/waits';
 
-import { until } from '../harness.mjs';
-import { dismissNamePrompt } from '../space.mjs';
+import { dismissNamePrompt } from '../steps/space.mjs';
 import { leaveCall, startCall, stopTranscribing, typeIntoCall, untilHeard, watchCall } from './call.mjs';
 import { SLOW, STUB, world } from './context.mjs';
 import { DNA, records, spacePerspective, valueOf } from './dna.mjs';
