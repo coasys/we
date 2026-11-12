@@ -906,7 +906,7 @@ async fn run_link(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
                 // Waits for the claim, or for the window to cancel meanwhile.
                 let outcome = tokio::select! {
                     claim = flow.wait_for_claim() => Some(claim),
-                    cancelled = wait_cancel(vault, address, rx) => { let _ = cancelled; None }
+                    () = wait_cancel(vault, address, rx) => None,
                 };
                 match outcome {
                     Some(Ok(claim)) => {
