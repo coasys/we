@@ -117,12 +117,14 @@ vi.mock('../src/frameworks/solid/stores/ThemeStore', () => ({
 import { completeResponse } from '@we/entities';
 import { withExtractionDefaults } from '@we/entities';
 
+import { credential } from '../src/frameworks/solid/credential';
 import { BootController } from '../src/frameworks/solid/providers/BootController';
 import { AccountStoreProvider } from '../src/frameworks/solid/stores/AccountStore';
 import { AppStoreProvider } from '../src/frameworks/solid/stores/AppStore';
 import { type DatasetStore, DatasetStoreProvider, useDatasetStore } from '../src/frameworks/solid/stores/DatasetStore';
-import { ProfileStoreProvider } from '../src/frameworks/solid/stores/ProfileStore';
+import { type ProfileStore, ProfileStoreProvider, useProfileStore } from '../src/frameworks/solid/stores/ProfileStore';
 import { type RecordStore, RecordStoreProvider, useRecordStore } from '../src/frameworks/solid/stores/RecordStore';
+import { type RuntimeStore, RuntimeStoreProvider, useRuntimeStore } from '../src/frameworks/solid/stores/RuntimeStore';
 import { type SessionStore, SessionStoreProvider, useSessionStore } from '../src/frameworks/solid/stores/SessionStore';
 import { type ShapeStore, ShapeStoreProvider, useShapeStore } from '../src/frameworks/solid/stores/ShapeStore';
 import { ShellStoreProvider } from '../src/frameworks/solid/stores/ShellStore';
@@ -142,11 +144,15 @@ interface Stores {
   spaces: SpaceStore;
   records: RecordStore;
   shapes: ShapeStore;
+  profiles: ProfileStore;
+  runtime: RuntimeStore;
 }
 
 function mountShell(): Stores {
   const out = {} as Stores;
   function Capture() {
+    out.profiles = useProfileStore();
+    out.runtime = useRuntimeStore();
     out.session = useSessionStore();
     out.datasets = useDatasetStore();
     out.spaces = useSpaceStore();
@@ -160,26 +166,29 @@ function mountShell(): Stores {
           which is what the profile write-through has to tolerate. */}
       <AccountStoreProvider>
         <SessionStoreProvider>
-          <DatasetStoreProvider>
-            {/* SpaceStore reads the extraction candidates off ShapeStore and hands the wizard back
+          {/* Setting up an account asks it whether there is an AI question, as the real order has it. */}
+          <RuntimeStoreProvider>
+            <DatasetStoreProvider>
+              {/* SpaceStore reads the extraction candidates off ShapeStore and hands the wizard back
                 an enroller, so the two mount in the order the real StoreProvider uses. */}
-            <ShapeStoreProvider>
-              {/* SpaceStore hands the record layer the vocabularies this community owns — a task's
+              <ShapeStoreProvider>
+                {/* SpaceStore hands the record layer the vocabularies this community owns — a task's
                   own states — so the two mount in the order the real StoreProvider uses. */}
-              <RecordStoreProvider>
-                <ProfileStoreProvider>
-                  {/* SpaceStore hands the installed-module set down to AppStore, so it must mount
+                <RecordStoreProvider>
+                  <ProfileStoreProvider>
+                    {/* SpaceStore hands the installed-module set down to AppStore, so it must mount
                   inside one — the same nesting the real StoreProvider uses. */}
-                  <AppStoreProvider>
-                    <SpaceStoreProvider>
-                      <BootController />
-                      <Capture />
-                    </SpaceStoreProvider>
-                  </AppStoreProvider>
-                </ProfileStoreProvider>
-              </RecordStoreProvider>
-            </ShapeStoreProvider>
-          </DatasetStoreProvider>
+                    <AppStoreProvider>
+                      <SpaceStoreProvider>
+                        <BootController />
+                        <Capture />
+                      </SpaceStoreProvider>
+                    </AppStoreProvider>
+                  </ProfileStoreProvider>
+                </RecordStoreProvider>
+              </ShapeStoreProvider>
+            </DatasetStoreProvider>
+          </RuntimeStoreProvider>
         </SessionStoreProvider>
       </AccountStoreProvider>
     </ShellStoreProvider>
@@ -432,6 +441,32 @@ describe('first run', () => {
     // A space created by a newly onboarded agent is written like any other.
     await stores.spaces.createSpace('First Space', 'x', 'personal', 'hidden');
     expect(stores.spaces.mySpaces().map((s) => s.name)).toEqual(['First Space']);
+  }, 10000);
+
+  it('holds a first run on the AI step until it is left, and only on a first run', async () => {
+    const stores = mountShell();
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('createAgent'));
+    stores.session.holdForAiSetup();
+    expect(stores.session.signInStep()).toBe('create');
+
+    await stores.session.createAgent('a-strong-passphrase');
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('finishing'));
+    stores.session.holdForAiSetup();
+    expect(stores.session.signInStep()).toBe('setUpAi');
+
+    stores.session.finishSetup();
+    expect(stores.session.signInStep()).toBe('ready');
+  }, 10000);
+
+  it('sets up an account to the app where the backend has no AI to ask about', async () => {
+    const stores = mountShell();
+    await vi.waitFor(() => expect(stores.session.bootState()).toBe('createAgent'));
+    expect(stores.runtime.aiSetupOptions()).toEqual(['skip']);
+
+    credential.set('a-strong-passphrase');
+    credential.setConfirmation('a-strong-passphrase');
+    await stores.profiles.completeAccountSetup('Test Person');
+    expect(stores.session.bootState()).toBe('ready');
   }, 10000);
 
   it('reports a failed creation and stays put, so the screen can be retried', async () => {

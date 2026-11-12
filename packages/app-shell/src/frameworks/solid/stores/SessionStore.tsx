@@ -22,7 +22,16 @@ import {
   trace,
 } from '@we/backend-shared';
 import { DEV_FEATURES, devToolsEnabled, setDevToolsMuted } from '@we/module-shared';
-import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
+import {
+  Accessor,
+  batch,
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  ParentProps,
+  useContext,
+} from 'solid-js';
 
 import type { BackendAccountInfo, BackendHostInfo } from '../../../shared/backend/types';
 import { type SignInStep, signInStep as stepOf } from '../../../shared/signInStep';
@@ -183,6 +192,11 @@ export interface SessionStore {
   clearPasswordError: () => void;
   /** Leave `finishing` for the running app, once the profile has been published (or failed to). */
   finishSetup: () => void;
+  /**
+   * Hold a first run on the AI step (`signInStep` is `setUpAi`) instead of leaving `finishing`.
+   * Decided by the runtime store, which knows whether there is anything to ask; left by `finishSetup`.
+   */
+  holdForAiSetup: () => void;
   logout: () => Promise<void>;
   /**
    * Start the whole boot again, from the failure screen.
@@ -220,6 +234,8 @@ export function SessionStoreProvider(props: ParentProps) {
   const [loginLoading, setLoginLoading] = createSignal(false);
   const [createAgentError, setCreateAgentError] = createSignal('');
   const [createAgentLoading, setCreateAgentLoading] = createSignal(false);
+  /** A first run is holding the app back for the AI step — see `holdForAiSetup`. */
+  const [aiStepHeld, setAiStepHeld] = createSignal(false);
   const accounts = useAccountStore();
   const signInStep = createMemo(() =>
     stepOf({
@@ -227,6 +243,7 @@ export function SessionStoreProvider(props: ParentProps) {
       createAgentLoading: createAgentLoading(),
       switching: !!accounts.switchingTo(),
       creatingAccount: accounts.creating(),
+      settingUpAi: aiStepHeld(),
     }),
   );
 
@@ -503,7 +520,19 @@ export function SessionStoreProvider(props: ParentProps) {
 
   function finishSetup(): void {
     settingUp = false;
-    setBootState('ready');
+    batch(() => {
+      setAiStepHeld(false);
+      setBootState('ready');
+    });
+  }
+
+  /**
+   * Keep the sign-in screen up on the AI step rather than leaving for the app. Only on a first run's
+   * `finishing`, where the session already answers and the app waits behind the screen; the step
+   * leaves through `finishSetup`, like the rest of setting up.
+   */
+  function holdForAiSetup(): void {
+    if (bootState() === 'finishing') setAiStepHeld(true);
   }
 
   /**
@@ -590,6 +619,7 @@ export function SessionStoreProvider(props: ParentProps) {
     createAgent,
     clearPasswordError,
     finishSetup,
+    holdForAiSetup,
     retryBoot: () => window.location.reload(),
     logout,
 
