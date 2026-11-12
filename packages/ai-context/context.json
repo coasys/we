@@ -6335,7 +6335,8 @@
           "type": "boolean"
         }
       },
-      "actions": ["openChat", "closeSheet"]
+      "actions": ["openChat", "closeSheet"],
+      "ambient": ["closeSheet"]
     },
     {
       "name": "clockStore",

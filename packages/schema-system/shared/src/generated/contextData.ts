@@ -2318,6 +2318,7 @@ export const contextData: ContextData = {
       name: 'chatStore',
       state: { sheet: { type: 'object' }, isNarrow: { type: 'boolean' } },
       actions: ['openChat', 'closeSheet'],
+      ambient: ['closeSheet'],
     },
     {
       name: 'clockStore',
