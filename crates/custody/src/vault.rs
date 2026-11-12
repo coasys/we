@@ -197,6 +197,17 @@ impl Vault for Unlocking<'_> {
         log::info!("custody: forget a master-key push");
         self.vault.pending.push_done(push)
     }
+
+    /// In the custody folder beside the pending lists ([`PendingIncepts::record_seen`]): a
+    /// version number per identity, no secret, so not in the secret store.
+    fn record_seen(&self, scid: &str, version: u64) -> Result<Option<u64>, VaultError> {
+        self.vault.pending.record_seen(scid, version)
+    }
+
+    fn record_seen_reset(&self, scid: &str) -> Result<(), VaultError> {
+        log::info!("custody: reset a record's high-water mark");
+        self.vault.pending.record_seen_reset(scid)
+    }
 }
 
 #[cfg(test)]
