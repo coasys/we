@@ -95,6 +95,15 @@ const WeCubeOnDemand = lazy(() => import('../components/3d/WeCube'));
 const EditingBar = lazy(() => import('@we/editor').then((m) => ({ default: m.EditingBar })));
 const TemplateCard = lazy(() => import('@we/editor').then((m) => ({ default: m.TemplateCard })));
 const AiPanel = lazy(() => import('@we/editor/ai').then((m) => ({ default: m.AiPanel })));
+
+/*
+  The AI chat, and the sheet it becomes on a phone. One body (`AgentChat`) behind the global panel,
+  the space's floating window and the sheet — `AgentChatSheet` only hosts it when a narrow window
+  asks. Host-only: a template declares the panels (`chat-global`/`chat-space`), it does not name
+  the body.
+*/
+const AgentChatOnDemand = lazy(() => import('../components/chat/AgentChat'));
+const AgentChatSheetOnDemand = lazy(() => import('../components/chat/AgentChatSheet'));
 /*
   One entry per editor panel, because each is its own dock now.
 
@@ -190,6 +199,13 @@ export const componentRegistry: ComponentRegistry = {
 
   // Shell
   EditingBar,
+  /*
+    The AI chats the executor keeps. Named by the panels an interface declares (`chat-global`,
+    `chat-space`) and by the sheet mounted at the app's root — a template does not reach for the
+    body directly.
+  */
+  AgentChat: AgentChatOnDemand,
+  AgentChatSheet: AgentChatSheetOnDemand,
 
   /*
     Testing.

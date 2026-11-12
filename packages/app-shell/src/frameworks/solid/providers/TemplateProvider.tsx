@@ -47,6 +47,7 @@ import {
   useAccountStore,
   useAppStore,
   useBundleStore,
+  useChatStore,
   useClockStore,
   useDatasetStore,
   useDeviceStore,
@@ -120,6 +121,7 @@ export default function TemplateProvider() {
   const editTarget = useEditTarget();
   const routeStore = useRouteStore();
   const shellStore = useShellStore();
+  const chatStore = useChatStore();
   const presenceStore = usePresenceStore();
   const interpretationStore = useInterpretationStore();
   const clockStore = useClockStore();
@@ -525,6 +527,7 @@ export default function TemplateProvider() {
     templateStore,
     routeStore,
     shellStore,
+    chatStore,
     presenceStore,
     interpretationStore,
     clockStore,

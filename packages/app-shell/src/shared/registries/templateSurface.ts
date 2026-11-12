@@ -1596,6 +1596,20 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     commitEdit: WIRING,
   },
 
+  /*
+    Which chat is up is `view-state`, as every panel is. `openChat` is an `action`, though, not
+    ambient: its `draft` sends a turn the moment the chat opens, and a turn writes wherever the
+    session's capabilities reach. A template that could run that unasked — on mount, on paint —
+    would have an AI acting with nobody involved, which is what the gesture rule exists for. The
+    space tier holds it because the ask lives in the space's own template ("Find or ask").
+  */
+  chatStore: {
+    sheet: state('view-state'),
+    isNarrow: state('view-state'),
+    openChat: action('view-state'),
+    closeSheet: ambient('view-state'),
+  },
+
   /**
    * Record mutations — writing one instance of an entity. Reads need no entry: `$query` goes
    * through the renderer's own bindings, and a template that can render a space's data is the
