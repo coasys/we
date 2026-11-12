@@ -90,6 +90,8 @@ export function custodyCredentialLine(custodyCredential, adminCredential) {
 /** How long a start waits for the executor to answer ready, and how long one probe of it may take. */
 const READY_TIMEOUT_MS = 60_000;
 const PROBE_TIMEOUT_MS = 2_000;
+/** The most of a `/health` body read: the executor's is `{"status":"ok"}`. */
+const HEALTH_BODY_MAX = 4_096;
 
 /**
  * Poll `probe` until it answers true: `'ready'`, or `'gone'` once `gone()` says the process being
@@ -112,7 +114,9 @@ export async function waitUntilReady(
     if (gone()) return 'gone';
     const left = deadline - now();
     if (left <= 0) return 'timeout';
-    if (await probe(left)) return 'ready';
+    // Asked again after the answer: another executor on the port answers while this one exits
+    // (80, the port is taken), and that answer is not this one's.
+    if (await probe(left)) return gone() ? 'gone' : 'ready';
     await wait(Math.min(interval, Math.max(0, deadline - now())));
   }
 }
@@ -123,32 +127,42 @@ export async function waitUntilReady(
  *
  * Only that answer counts. The check this replaced took any HTTP response as ready, so a 404 — from
  * an unrelated server on the port, or from the executor itself for a path it does not serve — passed.
- * A request that gets no answer within `timeoutMs` is not ready, and the caller asks again.
+ * A request that has not answered within `timeoutMs`, by the clock, is not ready, and the caller asks
+ * again. By the clock, not the socket's idle timeout: a body that keeps arriving keeps the socket
+ * busy, and that timeout then never fires. A body past {@link HEALTH_BODY_MAX} is not ready either.
  */
 export function executorHealthy(port, { timeoutMs = PROBE_TIMEOUT_MS } = {}) {
   return new Promise((resolve) => {
-    const req = http.get({ hostname: '127.0.0.1', port, path: '/health', timeout: timeoutMs }, (res) => {
+    let settled = false;
+    const settle = (ready) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      req.destroy();
+      resolve(ready);
+    };
+    const req = http.get({ hostname: '127.0.0.1', port, path: '/health' }, (res) => {
       if (res.statusCode !== 200) {
-        res.resume();
-        resolve(false);
+        settle(false);
         return;
       }
       let body = '';
       res.setEncoding('utf8');
       res.on('data', (chunk) => {
         body += chunk;
+        if (body.length > HEALTH_BODY_MAX) settle(false);
       });
       res.on('end', () => {
         try {
-          resolve(JSON.parse(body)?.status === 'ok');
+          settle(JSON.parse(body)?.status === 'ok');
         } catch {
-          resolve(false);
+          settle(false);
         }
       });
-      res.on('error', () => resolve(false));
+      res.on('error', () => settle(false));
     });
-    req.on('timeout', () => req.destroy());
-    req.on('error', () => resolve(false));
+    const timer = setTimeout(() => settle(false), timeoutMs);
+    req.on('error', () => settle(false));
   });
 }
 
@@ -401,5 +415,22 @@ export function outputTail(max = 20) {
     lines() {
       return partial.trim() ? [...kept, partial].slice(-max) : [...kept];
     },
+  };
+}
+
+/**
+ * Wait for the last of a process's output: call it when the process is spawned, and the function it
+ * returns resolves once the process's stdio has closed (`close`), or after `timeoutMs`.
+ *
+ * `exit` can come before the last output has been read, and an executor that refuses to start (78,
+ * 79) says why in its last line: read at `exit`, the reason could be missing. The wait has a bound
+ * because a process the executor started may hold the pipes open after it has gone.
+ */
+export function outputClosed(proc) {
+  const closed = new Promise((resolve) => proc.once('close', () => resolve(true)));
+  return (timeoutMs = 1_000) => {
+    let timer;
+    const late = new Promise((resolve) => (timer = setTimeout(() => resolve(false), timeoutMs)));
+    return Promise.race([closed, late]).finally(() => clearTimeout(timer));
   };
 }

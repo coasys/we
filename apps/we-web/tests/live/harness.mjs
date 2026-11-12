@@ -8,11 +8,11 @@
  * browser profile — one device. Two pages in one context are two tabs of that device, sharing its
  * `localStorage` (where the device id lives) and its `BroadcastChannel`s.
  *
- * Isolated from anything else on the machine: a fresh data directory, free ports, and no
- * bootstrap, proxy or mDNS, so the executor never joins a network.
+ * Isolated from anything else on the machine: a fresh data directory with a storage secret of its
+ * own, free ports, and no bootstrap, proxy or mDNS, so the executor never joins a network.
  */
 import { spawn, spawnSync } from 'node:child_process';
-import { randomUUID } from 'node:crypto';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { createServer as createNetServer } from 'node:net';
@@ -62,12 +62,26 @@ function executorBinary() {
 }
 
 /**
+ * A storage secret made for one executor and nobody else: 32 random bytes as 64 hex characters, in
+ * a file of its own (mode 0600) that `AD4M_STORAGE_SECRET_FILE` names. Without one the executor
+ * starts sealed and answers nothing but its storage status and `storage.unlock`. It comes from a
+ * file because `run` refuses `AD4M_STORAGE_SECRET`, and the file sits on the data folder's disk,
+ * which the executor refuses too unless `AD4M_ALLOW_SECRET_ON_DATA_DISK` says it is a test.
+ */
+function storageSecretEnv(dir) {
+  const file = join(dir, 'storage-secret');
+  writeFileSync(file, `${randomBytes(32).toString('hex')}\n`, { mode: 0o600 });
+  return { AD4M_STORAGE_SECRET_FILE: file, AD4M_ALLOW_SECRET_ON_DATA_DISK: 'true' };
+}
+
+/**
  * A multi-user executor with its main agent made — which a hosted node needs before anyone can
  * sign up, since the main agent signs every user's token.
  */
 export async function startExecutor({ mcp = false } = {}) {
   const binary = executorBinary();
   const dataPath = mkdtempSync(join(tmpdir(), 'we-live-web-'));
+  const secretPath = mkdtempSync(join(tmpdir(), 'we-live-web-secret-'));
   const [port, hcAdminPort, hcAppPort] = [await freePort(), await freePort(), await freePort()];
   const mcpPort = mcp ? await freePort() : null;
   const adminCredential = randomUUID();
@@ -84,7 +98,7 @@ export async function startExecutor({ mcp = false } = {}) {
     '--hc-use-bootstrap', 'false', '--hc-use-proxy', 'false', '--hc-use-local-proxy', 'false',
     '--hc-use-mdns', 'false', '--run-dapp-server', 'false',
     ...(mcpPort ? ['--enable-mcp', 'true', '--mcp-port', String(mcpPort)] : []),
-  ], { stdio: ['ignore', 'pipe', 'pipe'] });
+  ], { stdio: ['ignore', 'pipe', 'pipe'], env: { ...process.env, ...storageSecretEnv(secretPath) } });
   child.stdout.on('data', (chunk) => output.push(String(chunk)));
   child.stderr.on('data', (chunk) => output.push(String(chunk)));
   let exit = null;
@@ -108,6 +122,7 @@ export async function startExecutor({ mcp = false } = {}) {
     }
     if (process.env.WE_LIVE_LOG) writeFileSync(process.env.WE_LIVE_LOG, output.join(''));
     rmSync(dataPath, { recursive: true, force: true });
+    rmSync(secretPath, { recursive: true, force: true });
   };
 
   try {
