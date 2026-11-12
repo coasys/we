@@ -58,6 +58,8 @@ export function createFeed(deps: FeedDeps) {
   const [rows, setRows] = signal<FeedRow[]>([]);
   const [hasMore, setHasMore] = signal(false);
   const [loaded, setLoaded] = signal(false);
+  /** The last read failed — a signal beside `loaded`, which is how "a read has landed" is told. */
+  const [failed, setFailed] = signal(false);
 
   // Forgotten whenever the dataset changes, so a switch never draws the last space's rows under the
   // new space's name.
@@ -97,7 +99,6 @@ export function createFeed(deps: FeedDeps) {
     once, if something changed while nobody looked, and draws what it has with no read otherwise.
   */
   let dirty = true;
-  let failed = false;
   let wasLooking = false;
   let reading = false;
   let disposed = false;
@@ -111,7 +112,7 @@ export function createFeed(deps: FeedDeps) {
 
   async function read(): Promise<void> {
     dirty = false;
-    failed = false;
+    setFailed(false);
     reading = true;
     const space = root();
     const size = shown();
@@ -141,7 +142,7 @@ export function createFeed(deps: FeedDeps) {
         console.warn('[feed] could not read the feed', error);
         if (same()) {
           setLoaded(true);
-          failed = true;
+          setFailed(true);
         }
       }
     } finally {
@@ -180,7 +181,7 @@ export function createFeed(deps: FeedDeps) {
     const now = looking();
     // A failed read is owed on the next look: the moment looking starts, not any re-run while it
     // lasts (this effect also re-runs on what the read itself reads, and a lasting error would loop).
-    if (now && !wasLooking && failed) dirty = true;
+    if (now && !wasLooking && failed()) dirty = true;
     wasLooking = now;
     if (now) start();
   });
@@ -291,8 +292,13 @@ export function createFeed(deps: FeedDeps) {
   });
 
   return {
-    /** Somebody is looking at the Feed's newest line. The store's own, so not a public member. */
-    followingLive: () => looking() && !fromStart(),
+    /*
+      Somebody looking at the Feed's newest line, and the Feed having actually answered for this
+      space. One still reading, or whose last read failed, shows the reader nothing — and counting
+      it as read anyway is what once held a bot's answer back from the one person who could not
+      see it arrive. The store's own, so not a public member.
+    */
+    followingLive: () => looking() && !fromStart() && loaded() && !failed(),
     feedOpen: state(open, 'Whether the Feed panel is open.'),
     openFeed: action(() => setOpen(true), 'Opens the Feed panel.', { ambient: true }),
     closeFeed: action(() => setOpen(false), 'Closes the Feed panel.', { ambient: true }),
