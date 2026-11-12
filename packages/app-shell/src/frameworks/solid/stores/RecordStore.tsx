@@ -970,6 +970,27 @@ export function RecordStoreProvider(props: ParentProps) {
         vocabularyFor: (vocabulary) => vocabularies.get()?.(vocabulary),
       });
     }
+    /*
+      A class the space already had and offers for extraction (`foreignExtractionCandidates`). No WE
+      model says how to show one, so its scalar properties are listed as its SHACL names them —
+      without this an accepted record of one is an empty card. Display only: `schemaFor` still does
+      not know it, so nothing here makes one creatable or placeable.
+    */
+    const extractable = new Set(shapeStore.extractionCandidates());
+    for (const entry of datasetStore.currentDatasetEntities()) {
+      if (out[entry.name] || !extractable.has(entry.name)) continue;
+      const scalars = entry.properties.filter((p) => p.relatedEntity === undefined);
+      const properties = Object.fromEntries(
+        scalars.map((p) => [p.name, { type: p.type === 'uri' ? ('string' as const) : p.type }]),
+      );
+      out[entry.name] = displayFor({
+        entity: entry.name,
+        label: modelLabel(entry.name),
+        icon: 'cube',
+        schema: { properties, relations: {}, display: { fields: Object.keys(properties) } },
+        authorable: false,
+      });
+    }
     return out;
   });
 

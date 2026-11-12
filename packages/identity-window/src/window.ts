@@ -17,6 +17,8 @@ import {
   BOT_ACTIONS,
   BOT_DAYS_DEFAULT,
   BOT_DAYS_MAX,
+  deviceMatchActions,
+  deviceMatchNote,
   heading,
   isLast,
   refusedField,
@@ -309,14 +311,18 @@ function body(screen: Screen): Child[] {
         screen.expires,
         'Waiting for your other device…',
       );
-    case 'device-match':
-      waitFor({ kind: 'wait-join' });
+    case 'device-match': {
+      const actions = deviceMatchActions(screen);
+      if (actions.wait) waitFor({ kind: 'wait-join' });
+      const note = deviceMatchNote(screen);
+      const accept = actions.accept ? [button('This is my identity', () => step({ kind: 'accept' }), 'primary')] : [];
       return [
         el('div', { className: 'code', textContent: screen.code }),
         el('div', { className: 'link', textContent: screen.did }),
-        el('p', { className: 'note', textContent: 'Waiting for you to confirm on your other device…' }),
-        el('div', { className: 'row' }, button('Cancel', cancel)),
+        ...(note ? [el('p', { className: 'note', textContent: note })] : []),
+        el('div', { className: 'row' }, ...accept, button('Cancel', cancel)),
       ];
+    }
     case 'match': {
       const name = textField('Name the new device', screen.hint ?? '', 'Laptop, Office server…');
       const own = screen.ownName ? textField('Name this computer', '', 'Desktop at home…') : null;

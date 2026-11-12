@@ -1,12 +1,21 @@
 /**
  * The app as a template: which one is drawn, and how WE's chrome becomes its parts.
  */
-import { appTemplateRegistry, DEFAULT_APP_ID, resolveAppTemplate } from '@shared/registries/appTemplates';
+import {
+  appChoiceToKeep,
+  appTemplateRegistry,
+  DEFAULT_APP_ID,
+  resolveAppTemplate,
+} from '@shared/registries/appTemplates';
 import { HOST_PART_SLOTS, HOST_PARTS, hostPartNode } from '@shared/registries/hostParts';
 import { resolveParts } from '@shared/registries/moduleParts';
+import { seedBundleAppId } from '@shared/registries/seedBundles';
 import { registerCoreSlots, slotRegistry } from '@shared/registries/slotRegistry';
 import { HOST_PART_IDS, type SchemaNode, type TemplateSchema } from '@we/schema-shared';
 import { beforeEach, describe, expect, it } from 'vitest';
+
+import weSeed from '../../../we-seed.json';
+import type { WeSeedFile } from '../src/types/seed';
 
 const mine = {
   id: 'my-app',
@@ -29,6 +38,11 @@ describe('which app is drawn', () => {
     expect(resolveAppTemplate({ safe: false, seed: DEFAULT_APP_ID, own: [mine] })).toBe(builtIn);
   });
 
+  it('is Coasys in WE’s own deployment, until somebody chooses', () => {
+    const seed = (weSeed as WeSeedFile).host?.ui?.app || seedBundleAppId;
+    expect(resolveAppTemplate({ safe: false, seed, own: [] }).id).toBe('coasys--app');
+  });
+
   it('is WE’s in safe mode, whatever was chosen', () => {
     expect(resolveAppTemplate({ safe: true, chosen: 'my-app', own: [mine] })).toBe(builtIn);
   });
@@ -38,6 +52,18 @@ describe('which app is drawn', () => {
     const notApp = { ...mine, meta: { ...mine.meta, role: undefined } } as TemplateSchema;
     expect(resolveAppTemplate({ safe: false, chosen: 'my-app', own: [spaces] })).toBe(builtIn);
     expect(resolveAppTemplate({ safe: false, chosen: 'my-app', own: [notApp] })).toBe(builtIn);
+  });
+});
+
+describe('which app choice is kept', () => {
+  it('keeps nothing for the deployment’s own app, so the agent follows it', () => {
+    expect(appChoiceToKeep('coasys--app', 'coasys--app')).toBe('');
+    expect(appChoiceToKeep(DEFAULT_APP_ID, undefined)).toBe('');
+  });
+
+  it('keeps WE’s by its id where the deployment opens in another', () => {
+    expect(appChoiceToKeep(DEFAULT_APP_ID, 'coasys--app')).toBe(DEFAULT_APP_ID);
+    expect(appChoiceToKeep('my-app', 'coasys--app')).toBe('my-app');
   });
 });
 
