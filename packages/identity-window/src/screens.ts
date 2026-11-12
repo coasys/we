@@ -518,3 +518,17 @@ export function isLast(screen: Screen): boolean {
     'failed',
   ].includes(screen.screen);
 }
+
+/**
+ * `call`, never twice at once: asked again while a call is out, it answers that call rather than
+ * making another. Cancel goes through it, so a double click sends one cancel: a second one would
+ * reach a custody service the first had already ended, and close a window that should show its
+ * answer (a new device that had joined).
+ */
+export function oneAtATime<T>(call: () => Promise<T>): () => Promise<T> {
+  let out: Promise<T> | null = null;
+  return () =>
+    (out ??= call().finally(() => {
+      out = null;
+    }));
+}

@@ -743,7 +743,9 @@ export function RuntimeStoreProvider(props: ParentProps) {
     setExecutorRestartPending(false);
     const port = runtime();
     if (configInFile() && port?.restartExecutor) {
-      await run('restartExecutor', () => port.restartExecutor?.());
+      const restarted = await run('restartExecutor', () => port.restartExecutor?.());
+      // Refused: the settings have still not taken effect, so "Restart now" stays.
+      if (!restarted.ok) setExecutorRestartPending(true);
       return;
     }
     await host.restart();
