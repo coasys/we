@@ -13,6 +13,7 @@ import {
   deviceMatchNote,
   heading,
   isLast,
+  oneAtATime,
   refusedField,
   remaining,
   type RevokeTarget,
@@ -185,6 +186,26 @@ describe('the identity window', () => {
     // After the accept, the accept is the wait: the window asks for no second one.
     expect(deviceMatchActions(card(true, true, false))).toEqual({ wait: false, accept: false });
     expect(windowSource).toContain("button('This is my identity', () => step({ kind: 'accept' }), 'primary')");
+  });
+
+  it('sends one cancel for a double click, and answers both clicks with its screen', async () => {
+    const joined = { screen: 'joined' as const, did: 'did:scid:x', keyId: 'd2' };
+    let sent = 0;
+    let answer: (screen: Screen | null) => void = () => {};
+    const cancel = oneAtATime(() => {
+      sent += 1;
+      return new Promise<Screen | null>((resolve) => (answer = resolve));
+    });
+    const first = cancel();
+    const second = cancel();
+    expect(sent).toBe(1);
+    answer(joined);
+    expect(await first).toEqual(joined);
+    expect(await second).toEqual(joined);
+    // Answered, the next click is a cancel of its own.
+    void cancel();
+    expect(sent).toBe(2);
+    expect(windowSource).toContain('const cancel = oneAtATime(');
   });
 
   it('says what the words do: add and remove devices, restore the identity, replace the master key', () => {
