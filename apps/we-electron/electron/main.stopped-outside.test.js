@@ -159,10 +159,12 @@ describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp
       const fake = `#!${process.execPath}\n${readFileSync(join(here, 'fixtures', 'fake-executor.cjs'), 'utf8')}`;
       writeFileSync(join(resources, 'ad4m-executor'), fake);
       chmodSync(join(resources, 'ad4m-executor'), 0o755);
-      // Start 1 serves, then stops as `runtime.quit` would (0).
+      writeFileSync(join(resources, 'ws-lite.cjs'), readFileSync(join(here, 'fixtures', 'ws-lite.cjs')));
+      // Start 1 serves, then stops as `runtime.quit` would (0). Its storage is open (its secret given
+      // it otherwise): no keyring helper is needed.
       writeFileSync(
         join(dataDir(), 'fake-executor.plan.json'),
-        JSON.stringify({ steps: [{ serve: true, thenExit: 0, afterMs: 1_500 }] }),
+        JSON.stringify({ steps: [{ serve: true, thenExit: 0, afterMs: 1_500 }], storage: 'open' }),
       );
 
       process.resourcesPath = resources;
