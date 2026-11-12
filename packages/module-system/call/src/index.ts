@@ -1091,6 +1091,7 @@ function mediaToggle(opts: {
         type: 'we-button',
         props: {
           square: true,
+          label: toggled(opts.tip.on, opts.tip.off),
           variant: toggled('soft', 'ghost'),
           onClick: { $invoke: opts.action },
         },
@@ -2097,7 +2098,13 @@ const bar: SchemaNode = {
                 {
                   // Square like the toggles at the other end, being an icon and nothing else.
                   type: 'we-button',
-                  props: { square: true, variant: 'solid', tone: 'danger', onClick: { $invoke: 'modules.call.leave' } },
+                  props: {
+                    square: true,
+                    label: 'Leave the call',
+                    variant: 'solid',
+                    tone: 'danger',
+                    onClick: { $invoke: 'modules.call.leave' },
+                  },
                   children: [{ type: 'we-icon', props: { name: 'phone-x' } }],
                 },
               ],
