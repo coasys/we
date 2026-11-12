@@ -11,6 +11,8 @@ import indexSource from './index.ts?raw';
 import {
   actionsLine,
   BOT_ACTIONS,
+  deviceMatchActions,
+  deviceMatchNote,
   heading,
   isLast,
   migrationProgress,
@@ -125,7 +127,14 @@ describe('the identity window', () => {
   });
 
   it('says which device joins by what it is: a computer by default, a phone where the phone says so', () => {
-    const match = { screen: 'device-match', code: 'R7K Q2M', did: 'did:scid:coasys:1:abc' } as const;
+    const match = {
+      screen: 'device-match',
+      code: 'R7K Q2M',
+      did: 'did:scid:coasys:1:abc',
+      needsAccept: false,
+      accepted: false,
+      confirmed: false,
+    } as const;
     expect(heading(match).lead).toContain('This computer then joins your identity.');
     expect(heading(match, 'computer').lead).toContain('This computer then joins your identity.');
     const onPhone = heading(match, 'phone').lead;
@@ -149,6 +158,57 @@ describe('the identity window', () => {
     expect(asked).toContain('d2 (key AbCd 1234)');
     expect(asked).toContain('R7K Q2M');
     expect(heading({ screen: 'renamed', keyId: 'd2', name: 'Laptop' }).title).toBe('Named Laptop');
+  });
+
+  it('on a first run, asks whether the identity is yours before this computer joins it', () => {
+    const card = (needsAccept: boolean, accepted: boolean, confirmed: boolean) =>
+      ({
+        screen: 'device-match',
+        code: 'R7K Q2M',
+        did: 'did:scid:coasys:1:Qm',
+        needsAccept,
+        accepted,
+        confirmed,
+      }) satisfies Screen;
+
+    // Not a first run: the other device confirms, and nothing is asked here.
+    expect(heading(card(false, false, false))).toEqual({
+      title: 'Check the code',
+      lead: 'Your other device shows a code too. When they match, confirm there. This computer then joins your identity.',
+    });
+    expect(deviceMatchNote(card(false, false, false))).toBe('Waiting for you to confirm on your other device…');
+
+    const ask = heading(card(true, false, false));
+    expect(ask.title).toBe('Is this your identity?');
+    expect(ask.lead).toBe('Check that the code matches the one on your other device. Then confirm here and there.');
+    expect(deviceMatchNote(card(true, false, false))).toBe('Waiting for you to confirm here and on your other device…');
+
+    // The other device confirmed first: still asked here, and told what is left.
+    const confirmed = heading(card(true, false, true));
+    expect(confirmed.title).toBe('Is this your identity?');
+    expect(confirmed.lead).toContain('Your other device confirmed.');
+    expect(confirmed.lead).toContain('confirm here too');
+    expect(deviceMatchNote(card(true, false, true))).toBeNull();
+
+    // Accepted here: it waits for the other device.
+    const accepted = heading(card(true, true, false));
+    expect(accepted.title).toBe('Confirm on your other device');
+    expect(accepted.lead).toBe(
+      'You confirmed here. This computer joins your identity once your other device confirms too.',
+    );
+    expect(deviceMatchNote(card(true, true, false))).toBe('Waiting for your other device…');
+  });
+
+  it('offers “This is my identity” only while the accept is still asked, and waits once', () => {
+    const card = (needsAccept: boolean, accepted: boolean, confirmed: boolean) =>
+      ({ screen: 'device-match', code: 'R7K Q2M', did: 'did:scid:x', needsAccept, accepted, confirmed }) as const;
+    expect(deviceMatchActions(card(false, false, false))).toEqual({ wait: true, accept: false });
+    expect(deviceMatchActions(card(true, false, false))).toEqual({ wait: true, accept: true });
+    // The other device confirmed (`awaiting-accept`): the button stays.
+    expect(deviceMatchActions(card(true, false, true))).toEqual({ wait: true, accept: true });
+    // After the accept, the accept is the wait: the window asks for no second one.
+    expect(deviceMatchActions(card(true, true, false))).toEqual({ wait: false, accept: false });
+    expect(windowSource).toContain("button('This is my identity', () => step({ kind: 'accept' }), 'primary')");
   });
 
   it('says what the words do: add and remove devices, restore the identity, replace the master key', () => {
@@ -334,7 +394,8 @@ describe('the identity window', () => {
     for (const waiting of [
       { screen: 'code-sent' as const, expires: 0 },
       { screen: 'device-code' as const, code: '', qrSvg: '', expires: 0 },
-      { screen: 'device-match' as const, code: '', did: '' },
+      { screen: 'device-match' as const, code: '', did: '', needsAccept: false, accepted: false, confirmed: false },
+      { screen: 'device-match' as const, code: '', did: '', needsAccept: true, accepted: true, confirmed: false },
       { screen: 'restore-devices' as const, did: '', devices: [], note: null },
       { screen: 'remove-master' as const, error: null },
     ]) {

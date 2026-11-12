@@ -208,27 +208,6 @@ export interface DatasetStore {
   loadDatasets: (known?: AppDataset[] | null) => Promise<void>;
   subscribeToChanges: () => void;
   getDatasetOrder: () => string[];
-  /**
-   * Write down a pass the *standing watch* ran, once it has settled.
-   *
-   * The manual path writes its own, on the way back from a run that returned it everything. A
-   * watched pass has no such moment: it happens inside the executor and is only ever reported, so
-   * the record has to be written by whoever is watching the report — and that is
-   * InterpretationStore, which is the one place subscribed to it.
-   *
-   * Here rather than there because this is where an extraction run is written and where a call's
-   * target list is resolved, and neither is worth a second copy. Called only for this agent's own
-   * passes: every peer sees the same event, and a row per peer would be a history of who was
-   * watching rather than of what ran.
-   */
-  recordWatchPass: (pass: {
-    collection: string;
-    outcome: string;
-    recordCount: number;
-    error?: string;
-    prompt?: string;
-    response?: string;
-  }) => Promise<void>;
   /** SpaceStore supplies "does this space want calls interpreted automatically". Unset reads off. */
   provideAutoInterpretGate: (gate: () => boolean) => () => void;
   /**
@@ -1360,21 +1339,6 @@ export function DatasetStoreProvider(props: ParentProps) {
     loadDatasets,
     subscribeToChanges,
     getDatasetOrder,
-    recordWatchPass: async (pass) => {
-      const dataset = currentDataset();
-      if (!dataset || !pass.collection) return;
-      await recordPass(dataset.handle, pass.collection, {
-        outcome: pass.outcome,
-        recordCount: pass.recordCount,
-        // Resolved here rather than carried on the event: what a call looks for is three layers of
-        // host state, and the executor is told class URIs rather than the model names this stores.
-        targets: targetsForCollection(pass.collection),
-        error: pass.error,
-        trigger: 'auto',
-        prompt: pass.prompt,
-        response: pass.response,
-      });
-    },
     provideAutoInterpretGate: autoInterpretGate.provide,
     watchConversation,
     unwatchConversation,

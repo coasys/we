@@ -216,6 +216,7 @@ fn run(
             runs_executor: true,
             holds_master: HoldsMaster::No,
             master_index: None,
+            vault: None,
             operator: None,
         };
         let linked = flow
