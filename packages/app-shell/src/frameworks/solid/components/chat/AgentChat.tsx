@@ -26,7 +26,7 @@ import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'so
 import { useChatStore } from '../../stores/ChatStore';
 import { useSessionStore } from '../../stores/SessionStore';
 import { useSpaceStore } from '../../stores/SpaceStore';
-import { lastAsk, refusalOf, replyRunning, unfinishedWords } from './chatState';
+import { lastAsk, refusalOf, refusalSentence, replyRunning, unfinishedWords } from './chatState';
 
 /** What an open chat was asked for — `panel.inputs` on desktop, the sheet's on a phone. */
 export interface AgentChatInputs {
@@ -345,7 +345,7 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
           <div ref={messagesEnd} />
         </Column>
 
-        {/* The capability boundary: the real error, and the way to ask with the wider reach. */}
+        {/* The capability boundary: the plain sentence, the real error folded under Details. */}
         <Show when={refusal()}>
           <Column
             gap="200"
@@ -357,8 +357,18 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
             flexShrink="0"
           >
             <we-text fontSize="200" color="warning-text">
-              {refusal()}
+              {refusalSentence(spaceName(active()?.scope ?? spaceChat() ?? ''))}
             </we-text>
+            <details class="agent-chat-refusal-detail">
+              <summary>
+                <we-text variant="footnote" color="text-muted">
+                  Details
+                </we-text>
+              </summary>
+              <we-text variant="footnote" color="text-muted">
+                {refusal()}
+              </we-text>
+            </details>
             <we-button size="sm" onClick={() => chat.openChat({ draft: lastAskText(), at: Date.now() })}>
               Ask in the global chat
             </we-button>

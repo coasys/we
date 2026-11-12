@@ -62,6 +62,8 @@ const SOLID_TESTS = [
   // Mounts the chat twice over real stores — the draft-spent stamp lives in the store's
   // localStorage, and only the browser build's effects reach it.
   'tests/agentChatDraft.test.tsx',
+  // The refusal card rendered — the sentence and the folded error are DOM, not derivations.
+  'tests/agentChatRefusal.test.tsx',
   // A panel drawn once and moved between places: needs the browser build's reactivity, as the lanes do.
   'tests/panelHost.test.tsx',
   // Mounts the real RecordStore over a stand-in data layer to drive a canvas's undo round trip.

@@ -33,6 +33,14 @@ export function refusalOf(messages: AgentConversationMessage[]): string | null {
   return null;
 }
 
+/**
+ * What the refusal card says in plain words. The raw "Capability is not matched" line stays under
+ * the card's details row — the person needs the boundary, the error is for whoever is debugging it.
+ */
+export function refusalSentence(spaceName: string | undefined): string {
+  return `This chat can only use ${spaceName?.trim() || 'this space'}. It was refused access to another space.`;
+}
+
 /** How a reply that did not finish ended, in the words the chat says it. */
 export function unfinishedWords(status: string): string | undefined {
   return (
