@@ -261,6 +261,116 @@ describe('remote models', () => {
     expect(endpointsAdded[1]).toMatchObject({ id: 'e1', apiKey: '' });
   });
 
+  it('keeps an endpoint’s timeout and concurrency through a key change — the update is whole', async () => {
+    // `updateEndpoint` clears every field left out, so a key change that sends only the key used to
+    // silently reset the endpoint's timeout and concurrency to the executor's defaults.
+    const { client, endpointsAdded } = aiClient(
+      [{ id: 'm1', name: 'Claude', modelType: 'LLM', endpointId: 'e1', remoteModel: 'claude-sonnet-5' }],
+      [
+        {
+          id: 'e1',
+          name: 'Anthropic',
+          kind: 'ANTHROPIC',
+          baseUrl: 'https://api.anthropic.com',
+          hasApiKey: true,
+          managed: false,
+          maxNumCtx: 32768,
+          requestTimeoutSecs: 120,
+          maxConcurrent: 4,
+        },
+      ],
+    );
+    const port = createAd4mModelAdmin(client, { capabilities: null });
+
+    await port.update!('m1', {
+      name: 'Claude',
+      kind: 'llm',
+      source: {
+        kind: 'api',
+        protocol: 'anthropic',
+        baseUrl: 'https://api.anthropic.com',
+        apiKey: 'sk-new',
+        model: 'claude-sonnet-5',
+      },
+    });
+
+    expect(endpointsAdded).toHaveLength(1);
+    expect(endpointsAdded[0]).toMatchObject({
+      id: 'e1',
+      apiKey: 'sk-new',
+      maxNumCtx: 32768,
+      requestTimeoutSecs: 120,
+      maxConcurrent: 4,
+    });
+  });
+
+  it('saves a changed context ceiling onto the endpoint the model already has', async () => {
+    // A limit typed over an existing endpoint is an endpoint change like a key is: it used to go
+    // nowhere at all, so the ceiling a user set was never stored.
+    const { client, endpointsAdded } = aiClient(
+      [{ id: 'm1', name: 'Qwen', modelType: 'LLM', endpointId: 'e1', remoteModel: 'qwen3:4b' }],
+      [
+        {
+          id: 'e1',
+          name: 'Ollama',
+          kind: 'OLLAMA',
+          baseUrl: 'http://localhost:11434',
+          hasApiKey: false,
+          managed: false,
+          maxNumCtx: 40960,
+          requestTimeoutSecs: 60,
+        },
+      ],
+    );
+    const port = createAd4mModelAdmin(client, { capabilities: null });
+
+    await port.update!('m1', {
+      name: 'Qwen',
+      kind: 'llm',
+      source: {
+        kind: 'api',
+        protocol: 'ollama',
+        baseUrl: 'http://localhost:11434',
+        model: 'qwen3:4b',
+        maxContext: 8192,
+      },
+    });
+
+    expect(endpointsAdded).toHaveLength(1);
+    expect(endpointsAdded[0]).toMatchObject({ id: 'e1', maxNumCtx: 8192, requestTimeoutSecs: 60 });
+  });
+
+  it('renames a managed model in place — it keeps the endpoint it was given', async () => {
+    // An executor-managed model cannot name an endpoint to repoint at; a rename keeps the one it
+    // already has instead of failing the save outright.
+    const { client, added, endpointsAdded } = aiClient(
+      [
+        {
+          id: 'm1',
+          name: 'Whisper small',
+          modelType: 'TRANSCRIPTION',
+          endpointId: 'e-local',
+          remoteModel: 'whisper_small',
+        },
+      ],
+      [{ id: 'e-local', name: 'Local AI', kind: 'CUSTOM', baseUrl: 'local://', hasApiKey: false, managed: true }],
+    );
+    const port = createAd4mModelAdmin(client, { capabilities: null });
+
+    const [model] = await port.list!();
+    expect(model.source).toEqual({ kind: 'preset', name: 'whisper_small' });
+
+    await port.update!('m1', { name: 'Whisper, renamed', kind: 'transcription', source: model.source });
+
+    expect(endpointsAdded).toEqual([]);
+    expect(added[0]).toMatchObject({
+      name: 'Whisper, renamed',
+      modelType: 'TRANSCRIPTION',
+      endpointId: 'e-local',
+      remoteModel: 'whisper_small',
+    });
+  });
+
   it('keeps an Ollama model’s provider and context ceiling through an edit', async () => {
     // Both live on the endpoint now: a rename must reuse it, not rewrite it without its ceiling.
     const { client, added, endpointsAdded } = aiClient(
@@ -325,6 +435,18 @@ describe('remote models', () => {
       hasApiKey: false,
       model: 'claude-sonnet-5',
     });
+  });
+
+  it('marks a model on an executor that predates the endpoint API, so the blank URL is told apart', async () => {
+    // `ai.endpoints` unknown → "executor too old", not "endpoint unseen": the flag is what lets a
+    // settings row say so instead of showing an empty address.
+    const { client } = aiClient(
+      [{ id: 'm1', name: 'Old', modelType: 'LLM', endpointId: 'e1', remoteModel: 'claude-sonnet-5' }],
+      [],
+      { endpoints: vi.fn(async () => Promise.reject(new Error('Unknown type: ai.endpoints'))) },
+    );
+    const [model] = await createAd4mModelAdmin(client, { capabilities: null }).list!();
+    expect(model.source).toMatchObject({ kind: 'api', baseUrl: '', endpointUnlisted: true });
   });
 
   it('lists an endpoint’s models where the client can ask, in the executor’s spelling', async () => {

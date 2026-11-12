@@ -2741,6 +2741,7 @@ export const contextData: ContextData = {
           ],
         },
         aiPresetOptions: { type: 'array', properties: ['label', 'value'] },
+        aiSourceOptions: { type: 'array', properties: ['label', 'value'] },
         aiFormComplete: { type: 'boolean' },
         aiMaxContextError: { type: 'string' },
         aiApiKeyError: { type: 'string' },

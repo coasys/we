@@ -29,6 +29,13 @@ import { recordMissingMethod } from './missingMethods';
 /** The reach a "this space only" chat asks for: every right, on the one perspective. */
 const SCOPED_CAN = ['READ', 'CREATE', 'UPDATE', 'DELETE', 'SUBSCRIBE'];
 
+/**
+ * The shape a perspective uuid takes — what `perspective.add` hands out. Anything else in a scope
+ * (`'*'`, `''`, a shared-url, a record id) is not a perspective the session may be pinned to: a
+ * `'*'` through would be a grant over every perspective — the exact opposite of the pin asked for.
+ */
+const PLAIN_UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
 /** The reply's ending, read off its row. Anything unrecognised is treated as still going. */
 const STATUSES: readonly AgentReplyStatus[] = ['running', 'done', 'failed', 'cancelled', 'interrupted'];
 
@@ -198,16 +205,22 @@ export function conversationOf(rows: AISessionMessage[]): AgentConversationMessa
 export function scopeOf(
   session: Pick<AISession, 'capabilities' | 'defaultPerspective'>,
 ): AgentConversationScope | undefined {
-  const uuids = new Set<string>();
+  let uuid: string | undefined;
   for (const cap of session.capabilities ?? []) {
     const resource = cap.with;
-    if (!resource) continue;
-    if (resource.domain === '*') return undefined;
-    if (resource.domain !== 'perspective') continue;
-    if (resource.pointers.includes('*')) return undefined;
-    for (const pointer of resource.pointers) uuids.add(pointer);
+    /*
+      One capability outside the space-only grant is enough: a session that also holds `agent:*`
+      reaches the person, not just the space, and wearing the lock would lie about what it can do.
+      Every cap must be exactly the space's own — the perspective domain, that one perspective as
+      its only pointer, and only the verbs a space chat is created with.
+    */
+    if (resource?.domain !== 'perspective') return undefined;
+    if (resource.pointers.length !== 1 || resource.pointers[0] === '*') return undefined;
+    if (!cap.can?.length || cap.can.some((verb) => !SCOPED_CAN.includes(verb))) return undefined;
+    if (uuid === undefined) uuid = resource.pointers[0];
+    else if (uuid !== resource.pointers[0]) return undefined;
   }
-  return uuids.size === 1 ? { perspectiveUuid: [...uuids][0] } : undefined;
+  return uuid ? { perspectiveUuid: uuid } : undefined;
 }
 
 /** Run a call to the executor, answering a node without `ai.session*` as `AgentUnavailableError`. */
@@ -225,9 +238,32 @@ async function onNode<T>(call: () => Promise<T>): Promise<T> {
 export function createAd4mAgentConversations(client: Ad4mClient): AgentConversationsPort {
   const ai = client.ai;
 
+  /** The transcript, whole — `sessionMessages` pages newest-first, 200 rows a read by default. */
+  async function allMessages(sessionId: string, stopped?: () => boolean): Promise<AISessionMessage[]> {
+    const out: AISessionMessage[] = [];
+    let before: number | undefined;
+    for (;;) {
+      if (stopped?.()) return out;
+      const page = await onNode(() =>
+        ai.sessionMessages(sessionId, { limit: 200, ...(before !== undefined ? { before } : {}) }),
+      );
+      out.unshift(...page);
+      if (page.length < 200) return out;
+      before = page[0].seq;
+    }
+  }
+
   const conversations: AgentConversationsPort = {
     async create({ title, model, scope }) {
       const uuid = scope?.perspectiveUuid;
+      /*
+        Refuse an unusable scope outright. A `'*'` sent on would be granted verbatim — a chat asked
+        for one space becoming a chat over all of them — and an empty or wrongly-shaped value is
+        just as unable to name the perspective intended. Not this adapter's to widen or drop.
+      */
+      if (uuid !== undefined && !PLAIN_UUID.test(uuid)) {
+        throw new Error(`a space chat needs a perspective uuid; "${uuid}" is not one`);
+      }
       const session = await onNode(() =>
         ai.sessionCreate({
           title,
@@ -272,8 +308,7 @@ export function createAd4mAgentConversations(client: Ad4mClient): AgentConversat
     },
 
     async messages(session) {
-      const rows = await onNode(() => ai.sessionMessages(session.id));
-      return conversationOf(rows);
+      return conversationOf(await allMessages(session.id));
     },
 
     follow(session, onChange) {
@@ -293,7 +328,7 @@ export function createAd4mAgentConversations(client: Ad4mClient): AgentConversat
         }
       });
 
-      ai.sessionMessages(session.id)
+      allMessages(session.id, () => stopped)
         .then((first) => {
           for (const row of first) {
             const seen = rows.get(row.id);

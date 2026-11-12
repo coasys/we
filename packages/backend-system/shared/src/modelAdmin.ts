@@ -34,8 +34,20 @@ export type AiModelSource =
    * `maxContext` is a ceiling on the context window the backend asks the provider for, in tokens —
    * an upper bound, never a request. It matters where the provider sizes memory from the window at
    * load: a local model advertising a long window otherwise reserves all of it for a short prompt.
+   *
+   * `endpointUnlisted` marks a read where the backend could not say where the model is served at
+   * all — an executor that predates the endpoint API. The URL stays empty and a surface reads the
+   * flag as "executor too old" rather than showing a blank field.
    */
-  | { kind: 'api'; protocol: AiApiProtocol; baseUrl: string; hasApiKey: boolean; model: string; maxContext?: number }
+  | {
+      kind: 'api';
+      protocol: AiApiProtocol;
+      baseUrl: string;
+      hasApiKey: boolean;
+      model: string;
+      maxContext?: number;
+      endpointUnlisted?: boolean;
+    }
   | AiLocalModelSource;
 
 /** The sources whose weights the backend runs itself. Read and written alike: nothing in them is secret. */

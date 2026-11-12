@@ -40,6 +40,8 @@ interface Ad4mAiModel {
   id?: string;
   name?: string;
   modelType?: string;
+  /** The endpoint serving the model — the #1713 shape. Absent on a client that predates it. */
+  endpointId?: string;
 }
 
 /** What a model's loading status says about whether it can run, and how far it has got if not. */
@@ -70,13 +72,27 @@ export function createAd4mTranscriptionPort(
    * installed" instead of showing an empty transcript, and refusing to open a stream because a
    * *diagnostic* call failed would trade a working feature for a better error message.
    */
-  async function readiness(modelId: string): Promise<Readiness> {
+  /**
+   * Whether a model can actually run right now.
+   *
+   * A remote model — one on an endpoint the executor does not manage — has nothing to download:
+   * it counts as ready unless the executor says it failed (`ENDPOINT_DOWN`, `MISSING`, a `PULLING`
+   * in flight on a hosted Ollama). `UNKNOWN` only says no health probe has run yet, which is the
+   * ordinary state of an endpoint nobody has called — it is not a verdict and must not hold a
+   * working model closed. Only a managed endpoint's own model waits for `READY`, because that is
+   * the one that can still be downloading.
+   *
+   * Defaults to ready when the query fails. This flag exists so a caller can say "no model is
+   * installed" instead of showing an empty transcript, and refusing to open a stream because a
+   * *diagnostic* call failed would trade a working feature for a better error message.
+   */
+  async function readiness(modelId: string, remote: boolean): Promise<Readiness> {
     try {
       const status = await client.ai.modelStatus(modelId);
       if (!status) return { ready: true };
-      // `READY` is the one state that takes audio; `PULLING` is the download in flight with its
-      // percentage; `ENDPOINT_DOWN`/`MISSING` cannot be fed and are read as not ready.
-      const ready = status.state === 'READY';
+      const ready = remote
+        ? status.state !== 'ENDPOINT_DOWN' && status.state !== 'MISSING' && status.state !== 'PULLING'
+        : status.state === 'READY';
       // Per file rather than overall: the executor reports the tokenizer, the weights and the config
       // each from 0 to 100. The weights are nearly all of it, so the number is honest where it
       // matters and briefly optimistic at either end.
@@ -88,9 +104,34 @@ export function createAd4mTranscriptionPort(
     }
   }
 
-  async function transcriptionModels(): Promise<Ad4mAiModel[]> {
-    const all = (await client.ai.getModels()) as unknown as Ad4mAiModel[];
-    return all.filter((m) => m.modelType === TRANSCRIPTION_MODEL_TYPE);
+  /**
+   * The transcription models, each marked remote or not.
+   *
+   * "Remote" means *not provably managed*: the endpoint is listed and not `managed`, or the endpoint
+   * cannot be seen at all — the list is operator-only and a guest gets none, this model's row is
+   * absent, or the executor predates the endpoint API and has nothing to list. In every one of
+   * those cases the model is taken at the executor's word (ready unless it reports a failure)
+   * rather than held to a download nobody can see — the same conservatism the failed status call
+   * gets. Only a model on an endpoint listed `managed` waits for `READY`.
+   */
+  async function transcriptionModels(): Promise<{ model: Ad4mAiModel; remote: boolean }[]> {
+    const all = ((await client.ai.getModels()) as unknown as Ad4mAiModel[]).filter(
+      (m) => m.modelType === TRANSCRIPTION_MODEL_TYPE,
+    );
+    let managed: Set<string> | null = null;
+    if (typeof client.ai.endpoints === 'function') {
+      try {
+        managed = new Set((await client.ai.endpoints()).filter((e) => e.managed).map((e) => e.id));
+      } catch {
+        // Unknowable — a guest refused the operator-only list, or the API is not there at all.
+        // Either way the managed set stays empty and every model reads as remote, never held to
+        // a download nobody can see.
+      }
+    }
+    return all.map((model) => ({
+      model,
+      remote: !(model.endpointId && managed?.has(model.endpointId)),
+    }));
   }
 
   const port: TranscriptionPort = {
@@ -104,11 +145,11 @@ export function createAd4mTranscriptionPort(
       try {
         defaultId = String((await client.ai.getDefaultModel(TRANSCRIPTION_MODEL_TYPE))?.id ?? '');
       } catch {
-        defaultId = String(transcription[0]?.id ?? '');
+        defaultId = String(transcription[0]?.model.id ?? '');
       }
 
       return Promise.all(
-        transcription.map(async (m) => {
+        transcription.map(async ({ model: m, remote }) => {
           const id = String(m.id ?? '');
           return {
             id,
@@ -116,7 +157,7 @@ export function createAd4mTranscriptionPort(
             isDefault: id === defaultId,
             // A model still downloading accepts a stream and then never resolves any text, which is
             // indistinguishable from silence at the callback. Surfacing it lets a caller say so.
-            ...(await readiness(id)),
+            ...(await readiness(id, remote)),
           };
         }),
       );
@@ -190,7 +231,12 @@ export function createAd4mTranscriptionPort(
     */
     async installOfferedModel(): Promise<void> {
       // A second press, or two panels, must not install twice.
-      if ((await transcriptionModels()).length > 0) return;
+      if (
+        ((await client.ai.getModels()) as unknown as Ad4mAiModel[]).some(
+          (m) => m.modelType === TRANSCRIPTION_MODEL_TYPE,
+        )
+      )
+        return;
 
       await client.ai.localInstall({ services: ['stt'] });
 

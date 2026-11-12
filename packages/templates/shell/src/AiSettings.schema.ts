@@ -214,12 +214,12 @@ const modelForm: SchemaNode = {
               type: 'we-select',
               props: {
                 value: { $: 'runtimeStore.aiForm.sourceKind' },
-                options: [
-                  { label: 'A model this node downloads', value: 'preset' },
-                  { label: 'A remote API', value: 'api' },
-                  { label: 'A Hugging Face repository', value: 'huggingface' },
-                  { label: 'A file on this machine', value: 'file' },
-                ],
+                /*
+                  Offered, not listed: a source the save cannot perform is a choice that throws.
+                  On the endpoint API that is a remote model alone for a new one; an edit keeps the
+                  source the model was opened with, since a rename saves fine.
+                */
+                options: { $: 'runtimeStore.aiSourceOptions' },
                 onChange: { $invoke: 'runtimeStore.setAiFormField', args: ['sourceKind', { $: 'event.detail' }] },
               },
             },

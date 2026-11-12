@@ -69,7 +69,9 @@ export interface AiModelForm {
 export const EMPTY_FORM: AiModelForm = {
   name: '',
   kind: 'llm',
-  sourceKind: 'preset',
+  // A remote API — the one source a backend on the endpoint API can actually add; every local
+  // source it is asked to create is refused. See `sourceOptions`.
+  sourceKind: 'api',
   presetName: '',
   // The default the launcher offers, and the one endpoint most users will paste a key for.
   apiService: 'openai',
@@ -305,6 +307,20 @@ const SOURCE_LABELS: Record<AiSourceKind, string> = {
   file: 'Local file',
 };
 
+/**
+ * The sources a form may be saved with, for the "where it runs" select.
+ *
+ * What the backend accepts decides it. The endpoint API can only ever add a remote model — every
+ * local source it is asked to create is refused — so a new model is offered that one choice rather
+ * than four where three throw. An edit also keeps the source the model was opened with, because a
+ * rename of a managed or local model saves fine: it keeps the endpoint it already had.
+ */
+export function sourceOptions(form: AiModelForm | null): { label: string; value: string }[] {
+  const remote = { label: 'A remote API', value: 'api' };
+  if (!form?.id || form.sourceKind === 'api') return [remote];
+  return [{ label: SOURCE_LABELS[form.sourceKind], value: form.sourceKind }, remote];
+}
+
 /** A model plus everything its row displays, so the template renders fields rather than deriving them. */
 export interface AiModelView extends AiModel {
   kindLabel: string;
@@ -333,7 +349,12 @@ export function describeModel(model: AiModel, status?: AiModelStatus): AiModelVi
     kindLabel: KIND_LABELS[model.kind],
     sourceLabel: source.kind === 'api' ? API_LABELS[source.protocol] : SOURCE_LABELS[source.kind],
     detail,
-    statusText: source.kind === 'api' ? '' : statusLine(status),
+    statusText:
+      source.kind === 'api'
+        ? source.endpointUnlisted
+          ? 'This node is too old to say where it is served — it predates the endpoint list.'
+          : ''
+        : statusLine(status),
     // A transcription model is ready once downloaded. AD4M only ever marks a language model
     // `loaded` — a Whisper model finishes as downloaded and never loaded — so reading `loaded` alone
     // left every transcription model unready forever, and the settings page polled its status for as

@@ -186,9 +186,10 @@ describe('agent conversations, live', () => {
     }, 320_000);
 
     /*
-      The `writes` flag end to end: one turn only reads (list), the next adds a link. The read
-      turn's steps carry no `wrote`; the add-link step does — the executor's own call on the row,
-      not the adapter's name guess.
+      The `writes` flag end to end — on a tool where the flag and the name disagree. `template_read`
+      is one: the executor declares it a read, but the adapter's own name classification calls any
+      name not in its read lists a write, so a step marked `wrote` here can only come from the flag
+      being ignored. `add_link` then proves the mark lands where a real write happened.
     */
     it('marks the write a turn made, and leaves the read turn unmarked', async () => {
       const ref = await conversations.create({ title: 'write mark', scope: { perspectiveUuid: space.uuid } });
@@ -196,7 +197,10 @@ describe('agent conversations, live', () => {
       const batches: AgentConversationMessage[][] = [];
       const unfollow = conversations.follow(ref, (rows) => batches.push(rows));
       try {
-        await conversations.send(ref, 'List the perspectives you can reach. Just the names, one line each.');
+        await conversations.send(
+          ref,
+          `Call the template_read tool on perspective "${space.uuid}" with base_uri "we://template/nothing". It will report there is no such record — that is expected; repeat what it says.`,
+        );
         await waitFor(batches, (rows) => rows.some((m) => m.role === 'assistant' && m.status === 'done'), 300_000);
         await conversations.send(
           ref,
@@ -216,8 +220,15 @@ describe('agent conversations, live', () => {
             console.log(`[live writes] ${s.tool}: wrote=${s.wrote ?? false} (${s.outcome})`);
           }
         }
-        expect(reads.length).toBeGreaterThan(0);
-        expect(reads.every((s) => !s.wrote)).toBe(true);
+        // The flag the executor put on the row — the thing under test — says read.
+        const raw = await client.ai.sessionMessages(ref.id);
+        const readRow = raw.find((r) => r.role === 'tool' && (r.content as { name?: string }).name === 'template_read');
+        expect(readRow).toBeDefined();
+        expect((readRow!.content as { writes?: boolean }).writes).toBe(false);
+
+        const templateRead = reads.find((s) => s.tool === 'template_read');
+        expect(templateRead?.outcome).toBe('ok'); // the call ran and settled — no refusal
+        expect(templateRead?.wrote ?? false).toBe(false); // unmarked only if `writes` was honoured
         expect(writes.some((s) => s.wrote)).toBe(true);
       } finally {
         unfollow();

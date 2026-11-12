@@ -5723,7 +5723,13 @@ export function SpaceStoreProvider(props: ParentProps) {
     while its space is current. Same shape as the module gate, same reason: `ShellStore` mounts
     above the store that knows.
   */
-  shellStore.provideSpaceGate((perspectiveUuid: string) => currentSpace()?.uuid === perspectiveUuid);
+  /*
+    A chat is bound to the *local* perspective id, not `Space.uuid` — that field is the creator's
+    own local uuid, synced verbatim into every member's copy (see `spaceSelfWhere`). On a joined
+    space it names a perspective this device does not hold, so a gate on it would hide the chat of
+    every member but the creator, and the chat it did open would pin a session to nobody's graph.
+  */
+  shellStore.provideSpaceGate((perspectiveUuid: string) => datasetStore.currentDataset()?.id === perspectiveUuid);
 
   /*
     And the other thing the shell cannot see for itself: the template on screen and a library to

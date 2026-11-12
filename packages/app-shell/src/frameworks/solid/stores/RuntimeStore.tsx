@@ -35,6 +35,7 @@ import {
   formComplete,
   keepsStoredKey,
   maxContextProblem,
+  sourceOptions,
   toDraft,
 } from '@solid/stores/aiModelDraft';
 import { useSessionStore } from '@solid/stores/SessionStore';
@@ -105,6 +106,11 @@ export interface RuntimeStore {
   aiForm: Accessor<AiModelForm | null>;
   /** Model names the backend can fetch itself, for the kind the open form is on. */
   aiPresetOptions: Accessor<{ label: string; value: string }[]>;
+  /**
+   * The sources the open form may be saved with — a remote API alone for a new model, since the
+   * endpoint API refuses every local source it is asked to create.
+   */
+  aiSourceOptions: Accessor<{ label: string; value: string }[]>;
   /** True when the open form has every field its chosen source needs. */
   aiFormComplete: Accessor<boolean>;
   /** Why the open form's context limit cannot be saved, or empty — the words for a disabled Save. */
@@ -318,6 +324,8 @@ export function RuntimeStoreProvider(props: ParentProps) {
     if (!kind) return [];
     return (aiPresets()[kind] ?? []).map((name) => ({ label: name, value: name }));
   });
+
+  const aiSourceOptions = createMemo(() => sourceOptions(aiForm()));
 
   const aiFormComplete = createMemo(() => {
     const form = aiForm();
@@ -867,6 +875,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     aiTasks,
     aiForm,
     aiPresetOptions,
+    aiSourceOptions,
     aiFormComplete,
     aiMaxContextError,
     aiApiKeyError,

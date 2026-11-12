@@ -53,7 +53,11 @@ function StepRow(props: { step: AgentStep }) {
         </Show>
       </Row>
       <we-text variant="footnote" color={wrote() ? WROTE_COLOR : 'text-faint'} truncate>
-        {props.step.error ? `${stepWords(props.step)}: ${props.step.error}` : stepWords(props.step)}
+        {props.step.refused
+          ? `${stepWords(props.step)} — refused: outside what this chat may reach`
+          : props.step.error
+            ? `${stepWords(props.step)}: ${props.step.error}`
+            : stepWords(props.step)}
         {props.step.target ? ` — ${props.step.target}` : ''}
         {props.step.summary ? ` · ${props.step.summary}` : ''}
       </we-text>

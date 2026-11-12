@@ -150,6 +150,7 @@ export const storeEntries: StoreEntry[] = [
       aiApiKeyError: { type: 'string' },
       aiDiscoverNeedsKey: { type: 'boolean' },
       aiFormDirty: { type: 'boolean' },
+      aiSourceOptions: { type: 'array', properties: ['label', 'value'] },
       aiServiceOptions: { type: 'array', properties: ['label', 'value'] },
       canDiscoverAiModels: { type: 'boolean' },
       aiDiscoveredModelOptions: { type: 'array', properties: ['label', 'value'] },
@@ -914,6 +915,8 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         'boolean — the open form keeps a key the backend holds, so "List models" needs the key typed again: the backend never hands a stored key back. Disable that control on it and say why',
       aiFormDirty:
         "boolean — the open form has been edited since it opened. What a discard guard reads; compared against a snapshot taken on open, so looking at a model's settings and closing again asks nothing",
+      aiSourceOptions:
+        "{ label, value }[] — the model sources the open form may offer: a new model lists only the remote API source (the only kind the backend's endpoint API can create); an edit lists the source the model already has plus the remote API. Bind it to the source we-select's options — never offer a local source the save would refuse",
       aiServiceOptions:
         "{ label, value }[] — the remote services a model can be reached through (Anthropic, OpenAI, OpenRouter…) plus 'Custom endpoint', for a we-select bound to aiForm.apiService. Pass the value to setAiService. Show the protocol and base URL fields only while aiForm.apiService == 'custom'",
       canDiscoverAiModels:

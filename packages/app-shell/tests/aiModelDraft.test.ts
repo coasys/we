@@ -19,6 +19,7 @@ import {
   formComplete,
   keepsStoredKey,
   matchingApiPreset,
+  sourceOptions,
   toDraft,
 } from '../src/frameworks/solid/stores/aiModelDraft';
 
@@ -306,5 +307,56 @@ describe('remote API presets', () => {
       }),
     );
     expect(view.sourceLabel).toBe('Anthropic API');
+  });
+});
+
+describe('the sources the form may offer', () => {
+  it('opens a new model on the remote-API source — the one the backend can add', async () => {
+    // "A model this node downloads" used to be the default, and saving it threw: the endpoint API
+    // has no local source to create. A new form is offered and lands on what saves.
+    expect(EMPTY_FORM.sourceKind).toBe('api');
+    const options = sourceOptions({ ...EMPTY_FORM });
+    expect(options.map((o) => o.value)).toEqual(['api']);
+    // And what it offers is what a complete api form writes — the same draft the port accepts.
+    const saved = toDraft({ ...EMPTY_FORM, name: 'GPT', apiModel: 'gpt-4o' });
+    expect(saved.source).toMatchObject({ kind: 'api', protocol: 'openai' });
+  });
+
+  it('offers an edit the source it was opened with, plus the remote API', () => {
+    // A managed model is still a local read — the select must show the truth of it — but it can
+    // only be renamed or repointed, so its own kind and 'api' are the two honest choices.
+    for (const source of [
+      { kind: 'preset', name: 'whisper_small' } as const,
+      { kind: 'huggingface', repo: 'r', revision: 'main', fileName: 'f' } as const,
+      { kind: 'file', fileName: '/m/x.gguf' } as const,
+    ]) {
+      const form = draftFrom(model({ source }));
+      expect(sourceOptions(form).map((o) => o.value)).toEqual([source.kind, 'api']);
+    }
+    // An api model edits as an api model.
+    const api = draftFrom(
+      model({ source: { kind: 'api', protocol: 'openai', baseUrl: 'u', hasApiKey: false, model: 'm' } }),
+    );
+    expect(sourceOptions(api).map((o) => o.value)).toEqual(['api']);
+    // No form open: nothing offered.
+    expect(sourceOptions(null).map((o) => o.value)).toEqual(['api']);
+  });
+});
+
+describe('an executor too old to list endpoints', () => {
+  it('says so on the row instead of leaving a blank URL', () => {
+    const view = describeModel(
+      model({
+        source: {
+          kind: 'api',
+          protocol: 'openai',
+          baseUrl: '',
+          hasApiKey: false,
+          model: 'claude-sonnet-5',
+          endpointUnlisted: true,
+        },
+      }),
+    );
+    expect(view.statusText).toContain('too old');
   });
 });

@@ -30,6 +30,9 @@ vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
     backendPorts: () => ({ agents: { conversations: conversations as unknown as AgentConversationsPort } }),
   }),
 }));
+vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({
+  useDatasetStore: () => ({ datasets: () => [] }),
+}));
 vi.mock('../src/frameworks/solid/stores/SpaceStore', () => ({
   useSpaceStore: () => ({ mySpaces: () => [] }),
 }));

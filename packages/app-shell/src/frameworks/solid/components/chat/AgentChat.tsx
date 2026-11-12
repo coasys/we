@@ -23,7 +23,9 @@ import { AgentSteps, Column, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
+import { isSpaceSelf } from '../../../../shared/spaceSync';
 import { useChatStore } from '../../stores/ChatStore';
+import { useDatasetStore } from '../../stores/DatasetStore';
 import { useSessionStore } from '../../stores/SessionStore';
 import { useSpaceStore } from '../../stores/SpaceStore';
 import { lastAsk, refusalOf, refusalSentence, replyRunning, unfinishedWords } from './chatState';
@@ -50,6 +52,7 @@ function ago(ms: number): string {
 export function AgentChat(props: { inputs?: AgentChatInputs }) {
   const session = useSessionStore();
   const spaceStore = useSpaceStore();
+  const datasetStore = useDatasetStore();
   const chat = useChatStore();
 
   const port = () => session.backendPorts()?.agents?.conversations;
@@ -63,16 +66,36 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
   const [sendFailed, setSendFailed] = createSignal<string | null>(null);
   let stopFollow: (() => void) | undefined;
   let messagesEnd: HTMLDivElement | undefined;
+  /*
+    A space switch hides the panel while a `create` is still in flight: the component is disposed
+    with the instance, and a `follow` subscribed afterwards would listen forever — nothing left to
+    clean it up. `disposed` says what came back too late to be kept.
+  */
+  let disposed = false;
+  let sending = false;
 
   const spaceChat = () => props.inputs?.perspectiveUuid;
 
+  /*
+    A chat's scope is the member's *local* perspective id — for a joined space not the `Space.uuid`
+    synced from its creator. Resolving a name goes through the dataset that id is and `isSpaceSelf`,
+    the same self-record match the space list uses.
+  */
+  const spaceForLocalId = (uuid: string) => {
+    const ds = datasetStore.datasets().find((d) => d.id === uuid);
+    const space = ds ? spaceStore.mySpaces().find((s) => isSpaceSelf(s, ds)) : undefined;
+    return { space, ds };
+  };
+
   /** The space a perspective uuid names, where this device holds it — for badges and step names. */
-  const spaceName = (uuid: string): string =>
-    spaceStore.mySpaces().find((s) => s.uuid === uuid)?.name ?? props.inputs?.spaceName ?? '';
+  const spaceName = (uuid: string): string => {
+    const { space, ds } = spaceForLocalId(uuid);
+    return space?.name || ds?.name || props.inputs?.spaceName || '';
+  };
 
   /** A step's target, named for the reader: the space it went into where we know it. */
   const nameTarget = (target?: string): string | undefined =>
-    target && spaceStore.mySpaces().find((s) => s.uuid === target)?.name;
+    target ? spaceForLocalId(target).space?.name : undefined;
 
   async function refresh() {
     const conversations = port();
@@ -109,7 +132,10 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
     void refresh();
   }
 
-  onCleanup(() => stopFollow?.());
+  onCleanup(() => {
+    disposed = true;
+    stopFollow?.();
+  });
 
   /** A fresh conversation for `text` — scoped to `uuid`, or global when `uuid` is absent. */
   async function ask(text: string, uuid?: string) {
@@ -122,34 +148,50 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
         title: text.trim().slice(0, 60),
         ...(uuid ? { scope: { perspectiveUuid: uuid } } : {}),
       });
+      // A late answer to a closed chat: the session exists, but nobody is listening — starting one
+      // now would leak the subscription, so it is left for the list to find.
+      if (disposed) return;
       setActive({ ref, title: text.trim().slice(0, 60), scope: uuid });
       setMessages([]);
       follow(ref);
       await conversations.send(ref, text.trim());
     } catch (cause) {
       if (cause instanceof AgentUnavailableError) setUnavailable(cause.message);
-      else setSendFailed(cause instanceof Error ? cause.message : String(cause));
+      else {
+        setSendFailed(cause instanceof Error ? cause.message : String(cause));
+        // A question a send could not deliver stays in the composer, held for another try —
+        // including the draft a space asked with, which otherwise disappears with the field.
+        if (!disposed) setDraft(text.trim());
+      }
     }
   }
 
   async function send() {
-    const text = draft().trim();
-    const current = active();
-    if (!text) return;
-    if (!current) {
-      await ask(text, spaceChat());
-      // A chat that started took the question; one that failed to keeps it for another try.
-      if (active()) setDraft('');
-      return;
-    }
-    setSendFailed(null);
+    // Enter and Send can land inside the same tick — one send in flight, never two.
+    if (sending) return;
+    sending = true;
     try {
-      await port()?.send(current.ref, text);
-    } catch (cause) {
-      setSendFailed(cause instanceof Error ? cause.message : String(cause));
-      return;
+      const text = draft().trim();
+      const current = active();
+      if (!text) return;
+      if (!current) {
+        await ask(text, spaceChat());
+        // A chat that asked took the question; one whose create or send failed keeps it for another
+        // try — the words are never thrown away.
+        if (active() && !sendFailed()) setDraft('');
+        return;
+      }
+      setSendFailed(null);
+      try {
+        await port()?.send(current.ref, text);
+      } catch (cause) {
+        setSendFailed(cause instanceof Error ? cause.message : String(cause));
+        return;
+      }
+      setDraft('');
+    } finally {
+      sending = false;
     }
-    setDraft('');
   }
 
   async function remove(ref: AgentConversationRef) {
@@ -187,6 +229,16 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
 
   /** A refusal the last reply ended on — the boundary the scoped chat's reach stops at. */
   const refusal = createMemo(() => refusalOf(messages()));
+
+  /**
+   * The perspective the open conversation is pinned to — from the session's own scope once one is
+   * open, from what this chat was opened with before. An unscoped session inside the space chat is
+   * global, so it must not inherit the space's wording.
+   */
+  const scopeUuid = () => active()?.scope ?? (active() ? undefined : spaceChat());
+
+  /** Whether the open conversation is pinned to a space — decides the refusal card's words. */
+  const scoped = () => !!scopeUuid();
 
   const scopeBadge = (uuid?: string) => (
     <Row ay="center" gap="100" class="agent-chat-scope" flexShrink="0">
@@ -359,7 +411,7 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
             flexShrink="0"
           >
             <we-text fontSize="200" color="warning-text">
-              {refusalSentence(spaceName(active()?.scope ?? spaceChat() ?? ''))}
+              {refusalSentence(spaceName(scopeUuid() ?? ''), scoped())}
             </we-text>
             <details class="agent-chat-refusal-detail">
               <summary>
@@ -371,9 +423,11 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
                 {refusal()}
               </we-text>
             </details>
-            <we-button size="sm" onClick={() => chat.openChat({ draft: lastAskText(), at: Date.now() })}>
-              Ask in the global chat
-            </we-button>
+            <Show when={scoped()}>
+              <we-button size="sm" onClick={() => chat.openChat({ draft: lastAskText(), at: Date.now() })}>
+                Ask in the global chat
+              </we-button>
+            </Show>
           </Column>
         </Show>
       </Show>

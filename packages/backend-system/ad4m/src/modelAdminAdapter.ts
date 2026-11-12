@@ -18,6 +18,7 @@ import type {
 } from '@we/backend-shared';
 
 import { CAP_DOMAIN, CAP_VERB, createCapabilityCheck } from './capabilities';
+import { recordMissingMethod } from './missingMethods';
 import type { Ad4mRuntimeOptions } from './runtimeAdminAdapter';
 
 /**
@@ -66,12 +67,21 @@ function toKind(modelType: ModelType): AiModelKind {
  * reads as a preset nobody has to name.
  *
  * An endpoint the caller cannot see (the list is operator-only) is a source guessed as remote
- * with an empty URL — the honest shape for "a model somebody else's node runs".
+ * with an empty URL — the honest shape for "a model somebody else's node runs". `predates` marks
+ * the harder case: an executor that never had the endpoint API, where the blank reads as "executor
+ * too old" rather than as an unset field.
  */
-function toSource(model: AIModel, endpoints: ReadonlyMap<string, AiEndpoint>): AiModelSource {
+function toSource(model: AIModel, endpoints: ReadonlyMap<string, AiEndpoint>, predates: boolean): AiModelSource {
   const endpoint = endpoints.get(model.endpointId);
   if (!endpoint) {
-    return { kind: 'api', protocol: 'openai', baseUrl: '', hasApiKey: false, model: model.remoteModel };
+    return {
+      kind: 'api',
+      protocol: 'openai',
+      baseUrl: '',
+      hasApiKey: false,
+      model: model.remoteModel,
+      ...(predates ? { endpointUnlisted: true } : {}),
+    };
   }
   if (endpoint.managed) {
     return { kind: 'preset', name: model.remoteModel };
@@ -86,12 +96,21 @@ function toSource(model: AIModel, endpoints: ReadonlyMap<string, AiEndpoint>): A
   };
 }
 
-/** Every endpoint, keyed by id. The list is operator-only: a guest's read resolves to an empty map. */
-async function endpointMap(client: Ad4mClient): Promise<Map<string, AiEndpoint>> {
+/**
+ * Every endpoint, keyed by id — and whether the executor answered at all.
+ *
+ * The list is operator-only: a guest's read resolves to an empty map with `predates` unset, the
+ * same guessable-remote shape as before. An executor without `ai.endpoints` gets `predates`: its
+ * models' blank URLs are then told apart from an unseen list and can say "executor too old".
+ */
+async function endpointMap(client: Ad4mClient): Promise<{ endpoints: Map<string, AiEndpoint>; predates: boolean }> {
   try {
-    return new Map((await client.ai.endpoints()).map((endpoint) => [endpoint.id, endpoint]));
-  } catch {
-    return new Map();
+    return {
+      endpoints: new Map((await client.ai.endpoints()).map((endpoint) => [endpoint.id, endpoint])),
+      predates: false,
+    };
+  } catch (error) {
+    return { endpoints: new Map(), predates: recordMissingMethod(error) };
   }
 }
 
@@ -110,14 +129,23 @@ async function ensureEndpoint(
     (endpoint) => endpoint.baseUrl === source.baseUrl && endpoint.kind === kind,
   );
   if (existing) {
-    // A key handed in for an endpoint the node already knows is a key change, not a duplicate add.
-    if (source.apiKey !== undefined) {
+    /*
+      Anything handed in for an endpoint the node already knows is a change to that row, not a
+      duplicate add — and the update is the whole record. `updateEndpoint` clears every field left
+      out, so timeout and concurrency go back with the change, and the context ceiling the form
+      did not touch keeps what the endpoint already holds.
+    */
+    const contextChanged = source.maxContext !== undefined && source.maxContext !== existing.maxNumCtx;
+    if (source.apiKey !== undefined || contextChanged) {
+      const maxNumCtx = source.maxContext ?? existing.maxNumCtx;
       await client.ai.updateEndpoint(existing.id, {
         name: existing.name,
         kind: existing.kind,
         baseUrl: existing.baseUrl,
-        apiKey: source.apiKey,
-        ...(existing.maxNumCtx ? { maxNumCtx: existing.maxNumCtx } : {}),
+        ...(source.apiKey !== undefined ? { apiKey: source.apiKey } : {}),
+        ...(maxNumCtx ? { maxNumCtx } : {}),
+        ...(existing.requestTimeoutSecs ? { requestTimeoutSecs: existing.requestTimeoutSecs } : {}),
+        ...(existing.maxConcurrent ? { maxConcurrent: existing.maxConcurrent } : {}),
       });
     }
     return existing.id;
@@ -134,7 +162,7 @@ async function ensureEndpoint(
 
 async function toModelInput(client: Ad4mClient, draft: AiModelDraft): Promise<ModelInput> {
   const source = draft.source;
-  if (source.kind !== 'api') {
+  if (source.kind !== 'api' || !source.baseUrl) {
     // Per-model local installs are gone with the `local` block: the executor installs local AI
     // itself, whole, through `ai.localInstall`. Only a remote endpoint takes a model by hand now.
     throw new Error(
@@ -175,7 +203,7 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
      * and no other kind could ever show as default. Three calls answer it for all of them.
      */
     async list() {
-      const [models, endpoints] = await Promise.all([client.ai.getModels(), endpointMap(client)]);
+      const [models, { endpoints, predates }] = await Promise.all([client.ai.getModels(), endpointMap(client)]);
       const defaults = await Promise.all(
         Object.values<ModelType>(KIND_TO_AD4M).map((type) =>
           // A kind with no default set is not an error — it resolves to no id.
@@ -187,7 +215,7 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
         id: model.id,
         name: model.name,
         kind: toKind(model.modelType),
-        source: toSource(model, endpoints),
+        source: toSource(model, endpoints, predates),
         isDefault: defaultIds.has(model.id),
       })) satisfies AiModel[];
     },
@@ -244,7 +272,27 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
     },
 
     async update(id, draft) {
-      await client.ai.updateModel(id, await toModelInput(client, draft));
+      const model = (await client.ai.getModels()).find((m) => m.id === id);
+      if (!model) throw new Error('That model is no longer installed');
+      const source = draft.source;
+      /*
+        A model is a name over an endpoint and a remote id. An `api` source that names a URL
+        resolves the endpoint it describes — registering or updating it — and retargets the model;
+        anything else (a rename, a source whose endpoint it cannot name, an executor-managed row)
+        keeps the ones it already has rather than failing a save that never meant to move it.
+      */
+      let endpointId = model.endpointId;
+      let remoteModel = model.remoteModel;
+      if (source.kind === 'api' && source.baseUrl) {
+        endpointId = await ensureEndpoint(client, source, draft.name);
+        remoteModel = source.model;
+      }
+      await client.ai.updateModel(id, {
+        name: draft.name,
+        modelType: KIND_TO_AD4M[draft.kind],
+        endpointId,
+        remoteModel,
+      });
     },
 
     async remove(id) {

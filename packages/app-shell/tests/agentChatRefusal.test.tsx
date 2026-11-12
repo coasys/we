@@ -29,8 +29,13 @@ vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
     backendPorts: () => ({ agents: { conversations: conversations as unknown as AgentConversationsPort } }),
   }),
 }));
+vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({
+  // The joined-space shape: the member's local perspective id `uuid-9`, the shared address its
+  // Space record answers under — `isSpaceSelf` pairs the two.
+  useDatasetStore: () => ({ datasets: () => [{ id: 'uuid-9', sharedId: 'we://garden' }] }),
+}));
 vi.mock('../src/frameworks/solid/stores/SpaceStore', () => ({
-  useSpaceStore: () => ({ mySpaces: () => [{ uuid: 'uuid-9', name: 'Garden club' }] }),
+  useSpaceStore: () => ({ mySpaces: () => [{ uuid: 'creator-uuid', url: 'we://garden', name: 'Garden club' }] }),
 }));
 vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
   useShellStore: () => ({ openPanel: () => '' }),
@@ -83,5 +88,34 @@ describe('the refusal card', () => {
     // The executor's error is still there — folded, not gone.
     const details = container.querySelector('details');
     expect(details?.textContent).toContain('Capability is not matched: capability domain perspective');
+  });
+
+  it('words it for the account, not a space, in the global chat — and offers no way "out"', async () => {
+    const { container } = render(() => (
+      <ChatStoreProvider>
+        <AgentChat inputs={{ draft: 'reach for that', at: 1 }} />
+      </ChatStoreProvider>
+    ));
+    await vi.waitFor(() => expect(followed).toBeDefined());
+
+    followed!([
+      { id: 'u1', role: 'user', text: 'reach for that', createdAt: 0 },
+      {
+        id: 'a1',
+        role: 'assistant',
+        text: '',
+        createdAt: 1,
+        status: 'done',
+        steps: [{ tool: 'agent_status', outcome: 'error', refused: true, error: 'Capability is not matched: agent' }],
+      },
+    ]);
+
+    // A global chat has no space boundary — the refusal says the account may not reach it, and
+    // there is no "ask globally" to offer from inside the global chat itself.
+    await vi.waitFor(() => {
+      expect(container.textContent).toContain('refused access — it reached for something this account may not use');
+    });
+    expect(container.textContent).not.toContain('Ask in the global chat');
+    expect(container.textContent).not.toContain('this space');
   });
 });

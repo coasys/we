@@ -64,6 +64,12 @@ const SOLID_TESTS = [
   'tests/agentChatDraft.test.tsx',
   // The refusal card rendered — the sentence and the folded error are DOM, not derivations.
   'tests/agentChatRefusal.test.tsx',
+  // Mounts the chat to press Send and Enter into one pending create, and to watch the composer
+  // after a failed first send — real event dispatch and the browser build's reactivity.
+  'tests/agentChatSend.test.tsx',
+  // The subject is the mount itself: the body element must stay the same node while other panel
+  // records come and go — only the browser build tracks the per-id memo finely enough to prove it.
+  'tests/panelBodyRemount.test.tsx',
   // A panel drawn once and moved between places: needs the browser build's reactivity, as the lanes do.
   'tests/panelHost.test.tsx',
   // Mounts the real RecordStore over a stand-in data layer to drive a canvas's undo round trip.

@@ -3339,6 +3339,7 @@ RuntimeStore:
   - aiTasks: AiTask[] — named prompts apps registered against a model (id, name, modelId, systemPrompt)
   - aiForm: AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>. The backend never returns a stored key: apiKey is only a key typed to send (empty keeps the stored one), apiKeyStored says one is held, and apiKeyRemoved set true removes it on save
   - aiPresetOptions: { label, value }[] — model names the backend can fetch itself, for the open form kind
+  - aiSourceOptions: { label, value }[] — the model sources the open form may offer: a new model lists only the remote API source (the only kind the backend's endpoint API can create); an edit lists the source the model already has plus the remote API. Bind it to the source we-select's options — never offer a local source the save would refuse
   - aiFormComplete: boolean — the open form has every field its chosen source needs
   - aiMaxContextError: string — why the open form's context limit (aiForm.apiMaxContext) cannot be saved, or empty. Bind it to that field's error: a limit that does not parse holds Save disabled, and nothing else says which field is doing it
   - aiApiKeyError: string — why the open form's key holds Save, or empty: the base URL moved away from the address the stored key was set for and no new key was typed. Bind it to the key field's error

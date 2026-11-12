@@ -508,7 +508,8 @@ describe('AI models', () => {
 
     store.newAiModel();
     store.setAiFormField('name', 'Fresh');
-    store.setAiFormField('presetName', 'mistral_7b');
+    store.setAiFormField('apiBaseUrl', 'https://api.openai.com/v1');
+    store.setAiFormField('apiModel', 'gpt-mini');
     await store.saveAiModel();
 
     store.editAiModel('m2');
@@ -528,7 +529,7 @@ describe('AI models', () => {
 
     store.newAiModel();
     store.setAiFormField('name', 'Nameless source');
-    // Source is 'preset' by default and no preset has been chosen.
+    // Source is 'api' by default and no endpoint URL or model id has been given.
     expect(store.aiFormComplete()).toBe(false);
     await store.saveAiModel();
 
@@ -547,7 +548,8 @@ describe('AI models', () => {
 
     store.newAiModel();
     store.setAiFormField('name', 'Fresh');
-    store.setAiFormField('presetName', 'llama_8b');
+    store.setAiFormField('apiBaseUrl', 'https://api.openai.com/v1');
+    store.setAiFormField('apiModel', 'gpt-mini');
     await store.saveAiModel();
 
     expect(store.aiForm()?.name).toBe('Fresh');

@@ -1266,7 +1266,7 @@ export const seedBundles: Bundle[] = [
                                   $invoke: 'chatStore.openChat',
                                   args: [
                                     {
-                                      $: '{ perspectiveUuid: spaceStore.currentSpace.uuid, spaceName: spaceStore.currentSpace.name, draft: local.findQuery }',
+                                      $: '{ perspectiveUuid: datasetStore.currentDataset.id, spaceName: spaceStore.currentSpace.name, draft: local.findQuery }',
                                     },
                                   ],
                                 },

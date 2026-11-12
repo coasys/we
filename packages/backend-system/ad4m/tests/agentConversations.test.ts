@@ -34,6 +34,10 @@ const row = (partial: Record<string, unknown>) =>
 const text = (t: string) => ({ text: t });
 const tool = (name: string, extra?: Record<string, unknown>) => ({ name, arguments: {}, ...extra });
 
+/** Perspective-uuid-shaped ids — `create` refuses anything that is not one. */
+const SPACE_A = 'a1a2a3a4-b1b2-c3c4-d5d6-e7e8e9f0a1b2';
+const SPACE_B = 'b1b2b3b4-c1c2-d3d4-e5e6-f7f8f9a0b1c2';
+
 describe('conversationOf', () => {
   it('builds turns from user rows, reply rows and the tool rows that follow them', () => {
     // The executor's order: the user message, the reply row, then the tool rows that reply made.
@@ -203,10 +207,15 @@ describe('scopeOf', () => {
   it('reads the perspective a session is pinned to, and none when it is not', () => {
     expect(
       scopeOf({
-        capabilities: [{ with: { domain: 'perspective', pointers: ['uuid-1'] }, can: ['READ'] }],
-        defaultPerspective: 'uuid-1',
+        capabilities: [
+          {
+            with: { domain: 'perspective', pointers: [SPACE_A] },
+            can: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'SUBSCRIBE'],
+          },
+        ],
+        defaultPerspective: SPACE_A,
       } as never),
-    ).toEqual({ perspectiveUuid: 'uuid-1' });
+    ).toEqual({ perspectiveUuid: SPACE_A });
     expect(scopeOf({ capabilities: [], defaultPerspective: null } as never)).toBeUndefined();
   });
 
@@ -234,10 +243,55 @@ describe('scopeOf', () => {
     expect(
       scopeOf({
         capabilities: [
-          { with: { domain: 'perspective', pointers: ['uuid-1'] }, can: ['READ'] },
-          { with: { domain: 'perspective', pointers: ['uuid-2'] }, can: ['UPDATE'] },
+          { with: { domain: 'perspective', pointers: [SPACE_A] }, can: ['READ'] },
+          { with: { domain: 'perspective', pointers: [SPACE_B] }, can: ['UPDATE'] },
         ],
         defaultPerspective: null,
+      } as never),
+    ).toBeUndefined();
+  });
+
+  it('refuses the lock for a session that also reaches elsewhere — one cap outside is enough', () => {
+    // A session another app made: pinned to the space AND able to act as the person. Only a chat
+    // whose every cap is the space-only grant may wear "this space only" — the wider one is not.
+    expect(
+      scopeOf({
+        capabilities: [
+          {
+            with: { domain: 'perspective', pointers: [SPACE_A] },
+            can: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'SUBSCRIBE'],
+          },
+          { with: { domain: 'agent', pointers: ['*'] }, can: ['READ'] },
+        ],
+        defaultPerspective: SPACE_A,
+      } as never),
+    ).toBeUndefined();
+  });
+
+  it('refuses the lock when a cap is wider than the space-only grant, however it is wider', () => {
+    const scopedCap = () => ({
+      with: { domain: 'perspective', pointers: [SPACE_A] },
+      can: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'SUBSCRIBE'],
+    });
+    // More verbs than a space chat is created with.
+    expect(
+      scopeOf({
+        capabilities: [{ ...scopedCap(), can: [...scopedCap().can, 'ADMIN'] }],
+        defaultPerspective: SPACE_A,
+      } as never),
+    ).toBeUndefined();
+    // More than the one pointer — several spaces is not this space only.
+    expect(
+      scopeOf({
+        capabilities: [{ with: { domain: 'perspective', pointers: [SPACE_A, SPACE_B] }, can: scopedCap().can }],
+        defaultPerspective: SPACE_A,
+      } as never),
+    ).toBeUndefined();
+    // No verbs at all names no space-only grant either.
+    expect(
+      scopeOf({
+        capabilities: [{ with: { domain: 'perspective', pointers: [SPACE_A] }, can: [] }],
+        defaultPerspective: SPACE_A,
       } as never),
     ).toBeUndefined();
   });
@@ -268,8 +322,13 @@ function fakeAi() {
       {
         id: 'space-1',
         title: 'Garden club',
-        capabilities: [{ with: { domain: 'perspective', pointers: ['uuid-9'] }, can: ['READ'] }],
-        defaultPerspective: 'uuid-9',
+        capabilities: [
+          {
+            with: { domain: 'perspective', pointers: [SPACE_A] },
+            can: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'SUBSCRIBE'],
+          },
+        ],
+        defaultPerspective: SPACE_A,
         createdAt: '2026-01-01T00:00:00.000Z',
         updatedAt: '2026-01-02T00:00:00.000Z',
       },
@@ -299,22 +358,36 @@ describe('the AD4M conversations port', () => {
   it('creates a space session pinned to its perspective, and defaults there', async () => {
     const ai = fakeAi();
     const port = createAd4mAgentConversations({ ai } as never);
-    await port.create({ title: 'Garden', scope: { perspectiveUuid: 'uuid-9' } });
+    await port.create({ title: 'Garden', scope: { perspectiveUuid: SPACE_A } });
     const input = ai.sessionCreate.mock.calls[0][0];
     expect(input.capabilities).toEqual([
       {
-        with: { domain: 'perspective', pointers: ['uuid-9'] },
+        with: { domain: 'perspective', pointers: [SPACE_A] },
         can: ['READ', 'CREATE', 'UPDATE', 'DELETE', 'SUBSCRIBE'],
       },
     ]);
-    expect(input.defaultPerspective).toBe('uuid-9');
+    expect(input.defaultPerspective).toBe(SPACE_A);
+  });
+
+  it('refuses a scope that is not a perspective uuid — it never reaches the executor', async () => {
+    // `*` granted verbatim would be a chat over every space — the opposite of the pin asked for.
+    // An empty or wrongly-shaped value is just as unable to name the space; none is widened or
+    // dropped to global.
+    const ai = fakeAi();
+    const port = createAd4mAgentConversations({ ai } as never);
+    for (const bad of ['*', '', 'we://a1a2a3a4', 'uuid-9', 'a space']) {
+      await expect(port.create({ title: 'x', scope: { perspectiveUuid: bad } })).rejects.toThrow(
+        'a space chat needs a perspective uuid',
+      );
+    }
+    expect(ai.sessionCreate).not.toHaveBeenCalled();
   });
 
   it('lists global and space conversations together, scope on the scoped one', async () => {
     const port = createAd4mAgentConversations({ ai: fakeAi() } as never);
     const list = await port.list();
     expect(list.map((s) => s.ref.id)).toEqual(['space-1', 'global-1']); // newest first
-    expect(list[0].scope).toEqual({ perspectiveUuid: 'uuid-9' });
+    expect(list[0].scope).toEqual({ perspectiveUuid: SPACE_A });
     expect(list[1].scope).toBeUndefined();
   });
 
@@ -328,7 +401,27 @@ describe('the AD4M conversations port', () => {
     await port.delete({ id: 's1' });
     expect(ai.sessionDelete).toHaveBeenCalledWith('s1');
     await port.messages({ id: 's1' });
-    expect(ai.sessionMessages).toHaveBeenCalledWith('s1');
+    expect(ai.sessionMessages).toHaveBeenCalledWith('s1', { limit: 200 });
+  });
+
+  it('reads the transcript whole — a full page is followed by the page before it', async () => {
+    // `sessionMessages` answers at most `limit` rows, newest first; a longer conversation used to
+    // lose everything before the latest 200 without a word said.
+    const oldRows = [row({ role: 'user', content: text('first'), seq: 1 })];
+    const page = Array.from({ length: 200 }, (_, i) => row({ role: 'user', content: text(`m${i + 2}`), seq: i + 2 }));
+    const ai = {
+      ...fakeAi(),
+      sessionMessages: vi.fn(async (_id: string, q?: { before?: number }) =>
+        q?.before === undefined ? page : oldRows.filter((r) => r.seq < q.before!),
+      ),
+    };
+    const port = createAd4mAgentConversations({ ai } as never);
+    const messages = await port.messages({ id: 's1' });
+    expect(ai.sessionMessages).toHaveBeenCalledTimes(2);
+    expect(ai.sessionMessages).toHaveBeenNthCalledWith(2, 's1', { limit: 200, before: 2 });
+    expect(messages).toHaveLength(201);
+    expect(messages[0].text).toBe('first');
+    expect(messages[200].text).toBe('m201');
   });
 
   it('pushes the conversation on each change, merging events with the first read', async () => {

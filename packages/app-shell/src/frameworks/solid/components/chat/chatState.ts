@@ -36,8 +36,15 @@ export function refusalOf(messages: AgentConversationMessage[]): string | null {
 /**
  * What the refusal card says in plain words. The raw "Capability is not matched" line stays under
  * the card's details row — the person needs the boundary, the error is for whoever is debugging it.
+ *
+ * `scoped` picks the words: a space chat's refusal is the boundary doing its job, so it names the
+ * space it may not leave. A global chat has no such boundary — a refusal there means the account
+ * itself may not reach what was asked, and space wording would only misreport it.
  */
-export function refusalSentence(spaceName: string | undefined): string {
+export function refusalSentence(spaceName: string | undefined, scoped: boolean): string {
+  if (!scoped) {
+    return 'The chat was refused access — it reached for something this account may not use.';
+  }
   return `This chat can only use ${spaceName?.trim() || 'this space'}. It was refused access to another space.`;
 }
 

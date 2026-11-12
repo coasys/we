@@ -59,6 +59,15 @@ export function TemplatePanelBody(props: { panelId?: string; moduleId?: string; 
   });
 
   /*
+    This body's own record, tracked alone: `panelInstances` is one signal over every open panel, so
+    an indexing read inside `body` tracks the whole map — another panel opening, a space switch
+    hiding a bound instance, or the global chat arriving republished every record and re-rendered
+    every body, remounting each open chat onto its list mid-conversation. A memo per id fires only
+    when *this* record is replaced; records are never edited in place, so identity is the check.
+  */
+  const instance = createMemo(() => (props.instance ? panelInstances()[props.instance] : undefined));
+
+  /*
     A memo rather than a `Show` with a callback: `RenderSchema` is called as a function here — as it
     is everywhere else in this package — and what it returns is the renderer's own output rather
     than a JSX element, which `Show`'s children signature will not take.
@@ -69,8 +78,7 @@ export function TemplatePanelBody(props: { panelId?: string; moduleId?: string; 
     if (!declared || !bag) return null;
     // Read here, so an instance opened again with new inputs draws them — the renderer takes its
     // context once.
-    const instance = props.instance ? panelInstances()[props.instance] : undefined;
-    const context = { panel: { id: props.instance ?? props.panelId ?? '', inputs: instance?.inputs ?? {} } };
+    const context = { panel: { id: props.instance ?? props.panelId ?? '', inputs: instance()?.inputs ?? {} } };
     return RenderSchema({ node: declared, stores: bag, registry, context });
   });
 

@@ -306,6 +306,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     aiApiKeyError: state('runtime-admin'),
     aiDiscoverNeedsKey: state('runtime-admin'),
     aiFormDirty: state('runtime-admin'),
+    aiSourceOptions: state('runtime-admin'),
     aiServiceOptions: state('runtime-admin'),
     canDiscoverAiModels: state('runtime-admin'),
     aiDiscoveredModelOptions: state('runtime-admin'),

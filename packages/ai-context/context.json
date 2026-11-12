@@ -7010,6 +7010,10 @@
           "type": "array",
           "properties": ["label", "value"]
         },
+        "aiSourceOptions": {
+          "type": "array",
+          "properties": ["label", "value"]
+        },
         "aiFormComplete": {
           "type": "boolean"
         },
