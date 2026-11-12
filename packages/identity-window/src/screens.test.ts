@@ -354,7 +354,20 @@ describe('the identity window', () => {
     // A word field at `width: 100%` without it is its padding and border wider than its card, and
     // runs over the next one.
     expect(css).toMatch(/\.word input \{[^}]*box-sizing: border-box;/);
-    expect(css).toMatch(/input\[type='text'\],\s*input\[type='password'\] \{[^}]*box-sizing: border-box;/);
+    expect(css).toMatch(
+      /input\[type='text'\],\s*input\[type='password'\],\s*input\[type='url'\],\s*input\[type='number'\] \{[^}]*box-sizing: border-box;/,
+    );
+  });
+
+  it('draws every kind of field it makes in the theme, never in the browser default', () => {
+    const kinds = new Set(
+      [...windowSource.matchAll(/type(?:: | = )'(\w+)'/g)]
+        .map((m) => m[1])
+        .filter((kind) => kind !== 'button' && kind !== 'checkbox'),
+    );
+    expect([...kinds].sort()).toEqual(['number', 'password', 'text', 'url']);
+    for (const kind of kinds)
+      expect(css).toMatch(new RegExp(`input\\[type='${kind}'\\][,\\s][^{]*\\{[^}]*background: var\\(--sunken\\)`));
   });
 
   it('puts a word field beside its number, so the twelve fit the 640 px window', () => {
