@@ -290,6 +290,7 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
           <For each={messages()}>
             {(message) => (
               <Column
+                data-testid={message.role === 'assistant' ? 'agent-chat-reply' : undefined}
                 r="400"
                 gap="200"
                 p={message.role === 'user' ? '300' : '0'}
@@ -377,6 +378,7 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
       <Show when={!unavailable()}>
         <Row px="300" py="300" gap="200" ay="center" flexShrink="0">
           <we-input
+            data-testid="agent-chat-input"
             style={{ flex: '1' }}
             value={draft()}
             placeholder={spaceChat() ? `Ask ${spaceName(spaceChat()!) || 'this space'}…` : 'Ask about any space…'}
