@@ -62,7 +62,6 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
   const [draft, setDraft] = createSignal('');
   const [sendFailed, setSendFailed] = createSignal<string | null>(null);
   let stopFollow: (() => void) | undefined;
-  let lastDraftAt: number | undefined;
   let messagesEnd: HTMLDivElement | undefined;
 
   const spaceChat = () => props.inputs?.perspectiveUuid;
@@ -161,11 +160,15 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
     }
   }
 
-  /** A draft the open carried is asked once per `at`: a fresh conversation, then the question. */
+  /**
+   * A draft the open carried is asked once per `at` — marked spent in the store before the ask
+   * starts, so a remount or a reload reading the same inputs does not ask it again.
+   */
   createEffect(() => {
-    const { draft: question, at, perspectiveUuid } = props.inputs ?? {};
-    if (!question || at === lastDraftAt) return;
-    lastDraftAt = at;
+    const inputs = props.inputs ?? {};
+    const { draft: question, at, perspectiveUuid } = inputs;
+    if (!question || at === undefined || chat.draftConsumed(inputs)) return;
+    chat.consumeDraft(inputs);
     void ask(question, perspectiveUuid);
   });
 

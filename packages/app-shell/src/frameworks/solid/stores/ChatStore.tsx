@@ -20,7 +20,7 @@
  * chats", "ask this in this space" and "ask this globally instead".
  */
 import { NARROW_VIEWPORT_PX } from '@shared/dockGeometry';
-import { type Accessor, createContext, createSignal, type ParentProps, useContext } from 'solid-js';
+import { type Accessor, createContext, createSignal, type ParentProps, untrack, useContext } from 'solid-js';
 
 import { useShellStore } from './ShellStore';
 
@@ -48,6 +48,17 @@ export interface ChatStore {
    * perspective. `draft` sends itself once the chat is up.
    */
   openChat: (input?: ChatOpen) => void;
+  /**
+   * Whether the draft this request carries was already asked — by `at`, so the same words asked
+   * twice still ask, but a remount or reload reading the same inputs does not.
+   */
+  draftConsumed: (input: ChatOpen) => boolean;
+  /**
+   * Mark an opening draft asked — the chat calls this as its ask starts, whatever the ask goes on
+   * to do. Persisted: the instance inputs keep carrying `draft`/`at`, and only this says they are
+   * spent.
+   */
+  consumeDraft: (input: ChatOpen) => void;
   /** The sheet a narrow window opens instead of a panel — what it was asked for, or null. */
   sheet: Accessor<ChatOpen | null>;
   closeSheet: () => void;
@@ -65,6 +76,35 @@ function keyFor(input: ChatOpen): string {
   return input.perspectiveUuid ?? 'global';
 }
 
+/**
+ * The `at` a window's opening draft was asked under, per window — the spent stamps the inputs
+ * cannot say themselves.
+ *
+ * Persisted beside the panel instances, which is what makes it work: a draft survives in the
+ * instance's inputs across a reload by design, so whether it has run must be remembered somewhere
+ * just as durable — a component-local guard forgets on every remount and asks the question again.
+ */
+const CONSUMED_KEY = 'we-local:chat.consumedDrafts';
+
+function loadConsumed(): Record<string, number> {
+  if (typeof localStorage === 'undefined') return {};
+  try {
+    const parsed = JSON.parse(localStorage.getItem(CONSUMED_KEY) ?? '{}') as unknown;
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+
+function saveConsumed(consumed: Record<string, number>): void {
+  if (typeof localStorage === 'undefined') return;
+  try {
+    localStorage.setItem(CONSUMED_KEY, JSON.stringify(consumed));
+  } catch {
+    // A forgotten stamp re-asks a question on the next remount — a miss, not a loss.
+  }
+}
+
 export function ChatStoreProvider(props: ParentProps) {
   const shellStore = useShellStore();
 
@@ -77,16 +117,29 @@ export function ChatStoreProvider(props: ParentProps) {
   }
 
   const [sheet, setSheet] = createSignal<ChatOpen | null>(null);
+  const [consumed, setConsumed] = createSignal<Record<string, number>>(loadConsumed());
+  /*
+    `at` must move forward even inside one millisecond: two asks stamped the same would read as one
+    ask to `draftConsumed`, and the second question would never go.
+  */
+  let lastAt = 0;
 
   const store: ChatStore = {
     openChat: (input = {}) => {
       // A draft is consumed once per ask — stamped here so the same words asked twice still ask.
-      const request = input.draft ? { ...input, at: Date.now() } : input;
+      const request = input.draft ? { ...input, at: (lastAt = Math.max(Date.now(), lastAt + 1)) } : input;
       if (isNarrow()) {
         setSheet(request);
         return;
       }
       shellStore.openPanel(panelFor(request), request as Record<string, unknown>, { key: keyFor(request) });
+    },
+    draftConsumed: (input) => input.at !== undefined && untrack(consumed)[keyFor(input)] === input.at,
+    consumeDraft: (input) => {
+      if (input.at === undefined) return;
+      const next = { ...consumed(), [keyFor(input)]: input.at };
+      setConsumed(next);
+      saveConsumed(next);
     },
     sheet,
     closeSheet: () => setSheet(null),

@@ -59,6 +59,9 @@ const SOLID_TESTS = [
   'tests/laneSections.test.tsx',
   'tests/edgeLanes.test.tsx',
   'tests/panelInstances.test.tsx',
+  // Mounts the chat twice over real stores — the draft-spent stamp lives in the store's
+  // localStorage, and only the browser build's effects reach it.
+  'tests/agentChatDraft.test.tsx',
   // A panel drawn once and moved between places: needs the browser build's reactivity, as the lanes do.
   'tests/panelHost.test.tsx',
   // Mounts the real RecordStore over a stand-in data layer to drive a canvas's undo round trip.
