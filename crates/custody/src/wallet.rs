@@ -404,6 +404,7 @@ pub(crate) mod login_keychain {
         /// `errSecDuplicateItem` when one is, which is a lost claim.
         fn claim_public(&self, name: &str, bytes: &[u8]) -> Result<bool, VaultError> {
             let (name, bytes) = (name.to_string(), bytes.to_vec());
+            let service = self.service;
             bounded(move || {
                 let pairs: Vec<(CFString, CFType)> = unsafe {
                     vec![
@@ -413,7 +414,7 @@ pub(crate) mod login_keychain {
                         ),
                         (
                             CFString::wrap_under_get_rule(kSecAttrService),
-                            CFString::new(SERVICE).into_CFType(),
+                            CFString::new(service).into_CFType(),
                         ),
                         (
                             CFString::wrap_under_get_rule(kSecAttrAccount),
