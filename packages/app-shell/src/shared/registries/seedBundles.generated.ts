@@ -20829,6 +20829,7 @@ export const seedBundles: Bundle[] = [
               title: 'Space settings',
               home: 'inspector',
               snap: 'right',
+              grow: 1,
               order: 0,
               fixed: true,
               open: false,
