@@ -21,7 +21,8 @@ use ad4m_identity_client::executor::IdentityStatus;
 use ad4m_identity_client::flows::create::{resume, CreateFlow, CreateScreen, Created};
 use ad4m_identity_client::flows::link::{Claimed, LinkFlow};
 use ad4m_identity_client::flows::master::{
-    refresh_master, remove_master, retry_pushes, take_master, Refreshed,
+    complete_pending_mark, refresh_master, remove_master, retry_pushes, take_master, Refreshed,
+    Taken,
 };
 use ad4m_identity_client::flows::requests::{self, Answered};
 use ad4m_identity_client::flows::restore::RestoreFlow;
@@ -959,8 +960,13 @@ async fn public_state_on<R: ExecutorRpc>(
             _ => false,
         };
         if master_waiting && os_unlocks {
-            match take_master(executor, &vault.unlocking(None), &RANDOM).await {
+            let unlocking = vault.unlocking(None);
+            match take_master(executor, &unlocking, &RANDOM).await {
                 Ok(Some(taken)) => {
+                    let taken = complete_take(executor, &unlocking, taken).await;
+                    if let Err(e) = &taken.record {
+                        log::warn!("custody: the record does not mark this computer yet: {e}");
+                    }
                     log::info!("custody: took master #{} of the identity", taken.index);
                     master_waiting = master_waits(executor).await;
                 }
@@ -1082,7 +1088,7 @@ async fn refresh_stale<R: ExecutorRpc>(
         }
     }
     let kept = kept.map_or_else(|| "unknown".to_string(), |k| format!("#{k}"));
-    match refresh_master(executor, &vault.unlocking(None), did, &RANDOM).await {
+    match refresh_master(executor, &vault.unlocking(None), did, &CLOCK, &RANDOM).await {
         Ok(Refreshed::Current) => {}
         Ok(Refreshed::Promoted { index, record }) => {
             log::info!("custody: kept master #{index}, which a rotation here had staged");
@@ -2307,6 +2313,25 @@ async fn new_passphrase(
     }
 }
 
+/// A take whose `holdsMaster` write was refused because the record's recovery key waits for the
+/// new master's attestation ([`Taken::record_pending`]): the master just taken signs the mark
+/// itself, re-attesting the recovery key ([`complete_pending_mark`], one more unlock for
+/// [`MasterUse::Record`]). ad4m keeps no repair queue and a later refresh answers `Current`
+/// without repairing, so the take is completed here or the record keeps its stale recovery key
+/// and never lists this computer holding the key. As `refresh_master` completes its own take;
+/// any other take is answered as it is.
+async fn complete_take<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &dyn Vault,
+    mut taken: Taken,
+) -> Taken {
+    if taken.record_pending {
+        taken.record = complete_pending_mark(executor, vault, &taken.did, &CLOCK, &RANDOM).await;
+        taken.record_pending = taken.record.is_err();
+    }
+    taken
+}
+
 /// Takes the master key waiting in this computer's inbox into the vault, where this computer
 /// keeps a new item: behind the OS unlock, or sealed under a passphrase set here. Where the OS
 /// unlocks it the key is also taken without this step ([`public_state_on`]).
@@ -2387,7 +2412,11 @@ async fn take_master_on<R: ExecutorRpc>(
             };
             unlocking = vault.unlocking(Some(p.into_secret()));
         }
-        let screen = match take_master(executor, &unlocking, &RANDOM).await {
+        let taken = match take_master(executor, &unlocking, &RANDOM).await {
+            Ok(Some(taken)) => Ok(Some(complete_take(executor, &unlocking, taken).await)),
+            other => other,
+        };
+        let screen = match taken {
             Ok(Some(taken)) => Screen::MasterTaken {
                 note: taken.record.err().map(|e| {
                     log::warn!("custody: the record does not mark this computer yet: {e}");
@@ -3688,6 +3717,10 @@ mod tests {
         canned: RefCell<std::collections::HashMap<&'static str, Value>>,
         /// Every call by name, with its params, in order.
         seen: RefCell<Vec<(String, Value)>>,
+        /// The log whose identity's record a `identity.recordPut` keeps: the record put is what
+        /// `identity.record` answers next, with the store's receipt
+        /// ([`FakeExecutor::keep_puts`]). `None`: a put answers 404.
+        keeps_record: RefCell<Option<Vec<Event>>>,
         /// Once the key's method is called, the method named beside it answers its value.
         then: RefCell<std::collections::HashMap<&'static str, (&'static str, Value)>>,
         /// What a method refuses with, by name, ahead of anything it would answer.
@@ -3707,6 +3740,7 @@ mod tests {
                 calls: Cell::new(0),
                 canned: RefCell::new(Default::default()),
                 seen: RefCell::new(Vec::new()),
+                keeps_record: RefCell::new(None),
                 then: RefCell::new(Default::default()),
                 refusals: RefCell::new(Default::default()),
             }
@@ -3715,6 +3749,17 @@ mod tests {
         /// `method` answers `value` from now on.
         fn answer(&self, method: &'static str, value: Value) {
             self.canned.borrow_mut().insert(method, value);
+        }
+
+        /// A `identity.recordPut` of the record of `events`' identity is kept, as the executor
+        /// and the store keep it: an envelope sent with an empty `sig` is signed by `d1`, the
+        /// executor's device key in [`executor_with`]'s log; `identity.record` answers it from
+        /// then on, its receipt signed by [`store_key`] at the log's head; the put answers its
+        /// version. So a flow that writes twice reads its own first write.
+        fn keep_puts(&self, events: &[Event]) {
+            *self.keeps_record.borrow_mut() = Some(events.to_vec());
+            // A record key the client drew opens only with `d1`'s secret, not a fixed answer.
+            self.canned.borrow_mut().remove("identity.unwrapRecordKey");
         }
 
         /// Once `when` is called, `method` answers `value` (an `identity.acceptJoin` that lets the
@@ -3780,6 +3825,41 @@ mod tests {
                     let mut event = Event::from_json(&p["event"]).unwrap();
                     cosign(&mut event, "d1", &self.device).unwrap();
                     Ok(serde_json::to_value(&event).unwrap())
+                }
+                "identity.unwrapRecordKey" if self.keeps_record.borrow().is_some() => {
+                    let events = self.keeps_record.borrow().clone().unwrap();
+                    let secret =
+                        ad4m_identity_core::X25519Secret::from(crate::keylog::tests::D1_ENC_SECRET);
+                    let key = ad4m_identity_core::record::unwrap_key(
+                        p["wrapped"].as_str().unwrap(),
+                        &events[0].scid,
+                        &secret,
+                    )
+                    .unwrap();
+                    Ok(json!({ "key": bs58::encode(*key).into_string() }))
+                }
+                "identity.recordPut" if self.keeps_record.borrow().is_some() => {
+                    let events = self.keeps_record.borrow().clone().unwrap();
+                    let chain = ad4m_identity_core::fold(&events).unwrap();
+                    let mut sealed: ad4m_identity_core::record::SealedRecord =
+                        serde_json::from_value(p["record"].clone()).unwrap();
+                    if sealed.sig.is_empty() {
+                        let d1 = KeySigner::new(&[2u8; 32], 0);
+                        ad4m_identity_core::record::sign_envelope(&chain, &mut sealed, &d1)
+                            .unwrap();
+                    }
+                    let receipt = ad4m_identity_core::record::sign_receipt(
+                        chain.id(),
+                        &sealed,
+                        chain.head().seq,
+                        &store_key(),
+                    )
+                    .unwrap();
+                    self.answer(
+                        "identity.record",
+                        json!({ "record": sealed, "receipt": receipt }),
+                    );
+                    Ok(json!({ "version": sealed.version }))
                 }
                 "identity.publish" => {
                     if let Some((code, message)) = self.refuse_for_good.borrow().clone() {
@@ -5150,6 +5230,11 @@ mod tests {
 
     impl rand_core::CryptoRng for Fixed {}
 
+    /// The store's head key in [`executor_with`]'s log, which signs the record's receipts.
+    fn store_key() -> KeySigner {
+        KeySigner::new(&[9u8; 32], 0)
+    }
+
     /// An executor that is device `d1` of the identity `events` make (a log of
     /// [`crate::keylog::tests::log_with_d2`]), answering its log with the store's signed head and
     /// `record` sealed to the log's readers and signed by `d1`, with the store's receipt, as the
@@ -5167,7 +5252,7 @@ mod tests {
             .collect();
         let chain = ad4m_identity_core::fold(events).unwrap();
         // The store's head key: the reader trusts it for the record's receipt as for the head.
-        let store = KeySigner::new(&[9u8; 32], 0);
+        let store = store_key();
         let seq = chain.head().seq;
         executor.rpc().answer(
             "identity.log",
@@ -5781,6 +5866,58 @@ mod tests {
             Secret::new(key.to_bytes()),
         )
         .unwrap();
+    }
+
+    /// A take whose `holdsMaster` mark is owed ([`Taken::record_pending`]) is completed by the
+    /// master just taken: the executor names this computer's key, the vault opens that master
+    /// for [`MasterUse::Record`], and the write goes on to the log (which this fake does not
+    /// serve, so it answers the executor's refusal). With no master kept, the unlock is what
+    /// refuses. A take whose mark landed is answered as it is, with no call made.
+    #[tokio::test]
+    async fn a_take_whose_record_mark_is_owed_is_completed_by_the_master() {
+        let did = did_of(LINKED_SCID);
+        let owed = || Taken {
+            did: did.clone(),
+            index: 1,
+            record: Err(ClientError::RecoveryNeedsReattest),
+            record_pending: true,
+        };
+
+        let executor = linked_executor();
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let landed = Taken {
+            did: did.clone(),
+            index: 1,
+            record: Ok(7),
+            record_pending: false,
+        };
+        let answered = complete_take(&executor, &vault.unlocking(None), landed).await;
+        assert!(matches!(answered.record, Ok(7)) && !answered.record_pending);
+        assert_eq!(executor.rpc().calls.get(), 0);
+
+        // No master kept: the completion reaches the unlock, which finds none.
+        let completed = complete_take(&executor, &vault.unlocking(None), owed()).await;
+        assert!(
+            matches!(
+                completed.record,
+                Err(ClientError::Vault(VaultError::NotFound))
+            ),
+            "{:?}",
+            completed.record
+        );
+        assert!(completed.record_pending);
+        assert_eq!(executor.rpc().called("identity.status").len(), 1);
+
+        // The master kept: past the unlock, the write asks the executor for the log.
+        keep_master(&vault, LINKED_SCID, 1);
+        let completed = complete_take(&executor, &vault.unlocking(None), owed()).await;
+        assert!(
+            matches!(&completed.record, Err(ClientError::Rpc(e)) if e.code == 404),
+            "{:?}",
+            completed.record
+        );
+        assert!(completed.record_pending);
+        assert_eq!(executor.rpc().called("identity.status").len(), 2);
     }
 
     /// The event each `identity.publish` carried.
@@ -6738,10 +6875,8 @@ mod tests {
             d2.holds_master = Holds::Yes;
             d2.master_index = Some(0);
             record.devices.insert("d2".into(), d2);
-            let (executor, _) = executor_with(&events, &record);
-            executor
-                .rpc()
-                .answer("identity.recordPut", json!({ "version": 2 }));
+            let (executor, did) = executor_with(&events, &record);
+            executor.rpc().keep_puts(&events);
             let vault = memory_vault(crate::store::StoreKind::Keychain);
             keep_master(&vault, &scid, 0);
             if let Some(index) = staged {
@@ -6771,7 +6906,16 @@ mod tests {
                 "staged {staged:?}: {:?}",
                 screens[1]
             );
-            assert_eq!(executor.rpc().called("identity.recordPut").len(), 1);
+            // The write before the forget, then the holder mark from what the vault keeps after
+            // it (ad4m's `remove_master`): both say this computer holds no master key.
+            assert_eq!(executor.rpc().called("identity.recordPut").len(), 2);
+            let opened = record::read(&executor, &vault.unlocking(None), &did)
+                .await
+                .unwrap()
+                .unwrap();
+            assert_eq!(opened.version, 3);
+            assert_eq!(opened.record.devices["d1"].holds_master, Holds::No);
+            assert_eq!(opened.record.devices["d1"].master_index, None);
             assert!(!vault.holds(&scid).unwrap(), "staged {staged:?}");
             assert_eq!(vault.master_index(&scid).unwrap(), None);
             assert_eq!(
@@ -6846,7 +6990,7 @@ mod tests {
         )
         .unwrap();
 
-        let refreshed = refresh_master(&executor, &vault.unlocking(None), &did, &RANDOM)
+        let refreshed = refresh_master(&executor, &vault.unlocking(None), &did, &CLOCK, &RANDOM)
             .await
             .unwrap();
         assert!(matches!(refreshed, Refreshed::Asked(_)), "{refreshed:?}");
@@ -6856,7 +7000,7 @@ mod tests {
 
         // The publish of #2 lands; the flow that staged it never promotes.
         serve_log(&executor, &at_2);
-        let refreshed = refresh_master(&executor, &vault.unlocking(None), &did, &RANDOM)
+        let refreshed = refresh_master(&executor, &vault.unlocking(None), &did, &CLOCK, &RANDOM)
             .await
             .unwrap();
         assert!(

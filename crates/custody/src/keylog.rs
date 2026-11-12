@@ -111,7 +111,13 @@ pub(crate) mod tests {
     use ad4m_identity_client::vault::KeySigner;
     use ad4m_identity_core::build::{add_unsigned, cosign, incept_human, Signer};
     use ad4m_identity_core::link::make_claim;
-    use ad4m_identity_core::{encode_x25519_multikey, fold, DeviceKey};
+    use ad4m_identity_core::{
+        encode_x25519_multikey, fold, x25519_multikey_of, DeviceKey, X25519Secret,
+    };
+
+    /// `d1`'s X25519 secret in [`log_with_d2`]: a test's executor opens the record keys sealed
+    /// to `d1` with it, as the real executor's wallet does.
+    pub(crate) const D1_ENC_SECRET: [u8; 32] = [3u8; 32];
 
     /// A log made by device `d1`, which adds `d2` from a claim that said `can_keep_master`.
     pub(crate) fn log_with_d2(can_keep_master: bool) -> (Vec<Event>, KeySigner) {
@@ -123,7 +129,7 @@ pub(crate) mod tests {
         let d1 = DeviceKey {
             id: "d1".into(),
             sign: Signer::key(&d1_signer),
-            enc: encode_x25519_multikey(&[3u8; 32]),
+            enc: x25519_multikey_of(&X25519Secret::from(D1_ENC_SECRET)),
             life: KeyLife::Standing,
         };
         let mut incept = incept_human(&master, next, vec![d1]).unwrap();
