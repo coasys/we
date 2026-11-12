@@ -69,7 +69,8 @@ core-foundation = "0.10"
 tempfile = "3"
 # The fake executor in the service tests implements the client's `ExecutorRpc`.
 async-trait = "0.1"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+# `test-util`: a cancel the executor never answers is waited out on a paused clock.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }
 # The live bot case calls as the bot with a reason (`meta.reason` in the frame), which the client's
 # `WsRpcClient` does not send. The versions ad4m-client already brings in.
 tokio-tungstenite = "0.21"
