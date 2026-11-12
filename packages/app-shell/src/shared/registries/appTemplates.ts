@@ -1,8 +1,8 @@
 /**
  * The apps this build ships — templates with `meta.role: 'app'`, the chrome around every space.
  *
- * One today, WE's own. A deployment opens in the seed's `host.ui.app`, and an agent may choose one of
- * their own copies instead; safe mode always draws WE's, so an app that hides every way out is never
+ * WE's own, and the apps the seed's bundles bring. A deployment opens in the seed's `host.ui.app`, else
+ * its first bundle's app, and an agent may choose another or one of their own copies instead; safe mode always draws WE's, so an app that hides every way out is never
  * the only way in.
  */
 import type { TemplateSchema } from '@we/schema-shared';
@@ -39,4 +39,13 @@ export function resolveAppTemplate(facts: {
   return (
     appTemplateRegistry[id] ?? facts.own.find((t) => t.id === id && t.meta?.role === 'app' && !t._fromSpace) ?? builtIn
   );
+}
+
+/**
+ * What `AgentSettings.appTemplateId` keeps when the agent chooses `id`: nothing for the deployment's
+ * own app (`deployment`, the seed's `host.ui.app` or its first bundle's app), so the agent follows it
+ * when it changes; any other app by its id, WE's included.
+ */
+export function appChoiceToKeep(id: string, deployment: string | undefined): string {
+  return id === (deployment || DEFAULT_APP_ID) ? '' : id;
 }
