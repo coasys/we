@@ -59,7 +59,16 @@ export function createFeed(deps: FeedDeps) {
   const [hasMore, setHasMore] = signal(false);
   const [loaded, setLoaded] = signal(false);
   /** The last read failed — a signal beside `loaded`, which is how "a read has landed" is told. */
-  const [failed, setFailed] = signal(false);
+  const [failed, setFailedSignal] = signal(false);
+  /*
+    The same fact, readable without subscribing: the looking effect asks it, and reading the signal
+    there would re-run that effect on every read's outcome. The deps have no `untrack`.
+  */
+  let lastReadFailed = false;
+  const setFailed = (value: boolean) => {
+    lastReadFailed = value;
+    setFailedSignal(value);
+  };
 
   // Forgotten whenever the dataset changes, so a switch never draws the last space's rows under the
   // new space's name.
@@ -181,7 +190,7 @@ export function createFeed(deps: FeedDeps) {
     const now = looking();
     // A failed read is owed on the next look: the moment looking starts, not any re-run while it
     // lasts (this effect also re-runs on what the read itself reads, and a lasting error would loop).
-    if (now && !wasLooking && failed()) dirty = true;
+    if (now && !wasLooking && lastReadFailed) dirty = true;
     wasLooking = now;
     if (now) start();
   });
