@@ -3,7 +3,6 @@ import type { Ad4mClient } from '@coasys/ad4m';
 // yet — deep type imports until it does.
 import type { AISession } from '@coasys/ad4m/lib/src/generated/api/AISession';
 import type { AISessionMessage } from '@coasys/ad4m/lib/src/generated/api/AISessionMessage';
-import type { Capability } from '@coasys/ad4m/lib/src/generated/api/Capability';
 import {
   type AgentConversationMessage,
   type AgentConversationScope,
@@ -160,15 +159,28 @@ export function conversationOf(rows: AISessionMessage[]): AgentConversationMessa
   return out;
 }
 
-/** The perspective a session's capabilities pin it to — absent when it is not pinned. */
+/**
+ * The perspective a session's capabilities pin it to — absent when it is not pinned.
+ *
+ * A wildcard is a grant over every perspective, not one: a `'*'` domain (the admin's), or a
+ * perspective cap whose pointers hold `'*'` — which is exactly what the hosted default carries
+ * (`perspective` CREATE plus `perspective_query` over `['*']`). Reading `'*'` as a uuid would put
+ * the global chat's sessions inside a space named `*`, so scoped is only what the capabilities say
+ * plainly: every perspective cap names the same single uuid, and nothing grants wider.
+ */
 export function scopeOf(
   session: Pick<AISession, 'capabilities' | 'defaultPerspective'>,
 ): AgentConversationScope | undefined {
-  const cap = (session.capabilities ?? []).find(
-    (c: Capability) => c.with?.domain === 'perspective' && c.with.pointers.length > 0,
-  );
-  const uuid = cap?.with.pointers[0];
-  return uuid ? { perspectiveUuid: uuid } : undefined;
+  const uuids = new Set<string>();
+  for (const cap of session.capabilities ?? []) {
+    const resource = cap.with;
+    if (!resource) continue;
+    if (resource.domain === '*') return undefined;
+    if (resource.domain !== 'perspective') continue;
+    if (resource.pointers.includes('*')) return undefined;
+    for (const pointer of resource.pointers) uuids.add(pointer);
+  }
+  return uuids.size === 1 ? { perspectiveUuid: [...uuids][0] } : undefined;
 }
 
 /** Run a call to the executor, answering a node without `ai.session*` as `AgentUnavailableError`. */

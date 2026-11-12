@@ -160,6 +160,38 @@ describe('scopeOf', () => {
     ).toEqual({ perspectiveUuid: 'uuid-1' });
     expect(scopeOf({ capabilities: [], defaultPerspective: null } as never)).toBeUndefined();
   });
+
+  it('reads the hosted defaults as global — `*` is a grant over every space, not a space', () => {
+    // The shape a token made from `get_user_default_capabilities` carries.
+    expect(
+      scopeOf({
+        capabilities: [
+          { with: { domain: 'perspective', pointers: ['*'] }, can: ['CREATE'] },
+          { with: { domain: 'perspective', pointers: ['*'] }, can: ['READ'] },
+        ],
+        defaultPerspective: null,
+      } as never),
+    ).toBeUndefined();
+    // And the admin's everything.
+    expect(
+      scopeOf({
+        capabilities: [{ with: { domain: '*', pointers: ['*'] }, can: ['*'] }],
+        defaultPerspective: null,
+      } as never),
+    ).toBeUndefined();
+  });
+
+  it('stays global when two caps pin different perspectives — there is no honest answer', () => {
+    expect(
+      scopeOf({
+        capabilities: [
+          { with: { domain: 'perspective', pointers: ['uuid-1'] }, can: ['READ'] },
+          { with: { domain: 'perspective', pointers: ['uuid-2'] }, can: ['UPDATE'] },
+        ],
+        defaultPerspective: null,
+      } as never),
+    ).toBeUndefined();
+  });
 });
 
 function fakeAi() {
