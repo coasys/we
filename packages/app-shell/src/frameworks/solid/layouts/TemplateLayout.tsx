@@ -275,14 +275,10 @@ export function TemplateLayout(
     const view = stores.spaceStore.spaceViews().find((section) => segments.includes(section.segment))?.schema
       ?.meta?.panels;
     const shell = stores.templateStore.currentTemplate?.meta?.panels ?? [];
-    /*
-      The app's own panels ride under the space's: the app is the chrome every page is inside, so a
-      panel it declares — the AI chats are the first — exists in and out of every space, and a space
-      naming the same id keeps the last word, as it has over a section's.
-    */
-    const shellIds = new Set(shell.map((panel) => panel.id));
-    const app = (stores.templateStore.appTemplate().meta?.panels ?? []).filter((panel) => !shellIds.has(panel.id));
-    return panelsFor([...app, ...shell], view, segments);
+    // The app's own panels ride under the space's — `panelScope` owns the merge so the precedence
+    // is testable without a layout.
+    const app = stores.templateStore.appTemplate().meta?.panels ?? [];
+    return panelsFor(shell, view, segments, app);
   });
 
   createEffect(() => setTemplatePanels(activePanels(), stores.templateStore.currentTemplate?.id ?? ''));

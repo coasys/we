@@ -127,6 +127,26 @@ describe('a panel opened more than once', () => {
     setTemplatePanels(declaration, 'instances-test');
     expect(store.panelInstances().map((instance) => instance.id)).toEqual([ada]);
   });
+
+  it('brings a panel asked for back out of hiding — whether its dock is there yet or not', async () => {
+    const { store, shown } = mount();
+    store.openPanel('inspector', { name: 'Ada' });
+    await vi.waitFor(() => expect(shown()).toEqual(['Ada']));
+
+    store.togglePanelsHidden();
+    expect(store.panelsHidden()).toBe(true);
+
+    // Asking for an instance already open reveals it: its dock exists, so `revealDock` answers.
+    store.openPanel('inspector', { name: 'Ada' });
+    expect(store.panelsHidden()).toBe(false);
+
+    store.togglePanelsHidden();
+    expect(store.panelsHidden()).toBe(true);
+
+    // A brand-new one has no dock registered until an effect runs — the open itself clears it.
+    store.openPanel('inspector', { name: 'Bo' });
+    expect(store.panelsHidden()).toBe(false);
+  });
 });
 
 describe('an instance kept under the app', () => {

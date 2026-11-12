@@ -14,22 +14,29 @@ import type { TemplatePanel } from '@we/schema-shared';
  * @param shell    what the interface declares, in `meta.panels`.
  * @param view     what the section on screen declares, where there is one.
  * @param segments the path, as segments — the same list a route match is made from.
+ * @param app      what the app declares — the chrome every interface renders inside, so its panels
+ *                 ride under the interface's and lose the same collisions to it a section does.
  */
 export function activePanels(
   shell: readonly TemplatePanel[],
   view: readonly TemplatePanel[] | undefined,
   segments: readonly string[],
+  app: readonly TemplatePanel[] = [],
 ): readonly TemplatePanel[] {
   /*
-    The shell wins on a collision of id.
+    The shell wins on a collision of id — over a section's, and over the app's.
 
     A section is portable — it renders inside interfaces it knows nothing about — so what it says
-    about the screen is a suggestion, and the interface that owns the screen overrules it.
+    about the screen is a suggestion, and the interface that owns the screen overrules it. The app
+    is the chrome every page is inside: its panels (the AI chats are the first) exist in and out of
+    every space, and a space naming the same id keeps the last word, as it has over a section's.
   */
   const merged = (() => {
-    if (!view?.length) return shell;
-    const overridden = new Set(shell.map((panel) => panel.id));
-    return [...view.filter((panel) => !overridden.has(panel.id)), ...shell];
+    const shellIds = new Set(shell.map((panel) => panel.id));
+    const below = [...app.filter((panel) => !shellIds.has(panel.id)), ...shell];
+    if (!view?.length) return below;
+    const overridden = new Set(below.map((panel) => panel.id));
+    return [...view.filter((panel) => !overridden.has(panel.id)), ...below];
   })();
 
   /*
