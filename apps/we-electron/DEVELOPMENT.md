@@ -272,6 +272,10 @@ printed at startup (`[main] Executor log: …`).
 - The last five runs are kept: `ad4m.log` is the current one, `ad4m.1.log` the one before, down to `ad4m.4.log`.
 - Lines marked `HOST` come from `electron/main.js` — the path and binary it chose, the stale files it
   cleaned up, the exit code — and sit beside the executor's own output.
+- The app's trace lines (`we:trace …`) are copied in as `HOST` lines too. A development build traces
+  `interpretation` by default: each auto-processor step and each settled watched pass. A production
+  build traces nothing until `localStorage.setItem('we:trace', '<scopes>')` (scopes in
+  `installConsoleTrace.ts`). The Electron host copies them; the Tauri host does not yet.
 - Each file stops at 50 MB and says so. Raise detail with the per-crate log levels in Settings.
 - The executor's own log is in `<data folder>/logs/executor-<n>.log` (see "The executor: how the
   app runs it").
