@@ -75,6 +75,15 @@ export const DNA_LISTS: DnaList[] = [
 export const POLICY = { kind: 'policy', bucket: 'policy', label: SOCIAL_DNA_LABELS.policy, icon: 'scales' } as const;
 export const POLICY_RULES = 'spaceStore.policy.sentences';
 
+/**
+ * Every class the space has, by where it comes from — what the tree lists by default, where the kinds
+ * above are a lens (Categories) over the same space. A class in focus is `class|<name>`, and its page
+ * lists its records.
+ */
+export const CLASSES = { kind: 'class', bucket: 'models', label: 'Classes', icon: 'cube' } as const;
+export const CLASS_GROUPS = 'recordStore.spaceClasses';
+export const CLASS_COUNT = `sum(${CLASS_GROUPS}.map(g, count(g.classes)))`;
+
 /** The focus, as `all` where the address names none — the Social DNA page reached without one. */
 export const DNA_AT = `(${DNA_FOCUS} ? ${DNA_FOCUS} : 'all')`;
 /** The kind in focus (`signal`), and the definition of it (its id, or a rule's words). */
@@ -82,8 +91,8 @@ export const DNA_KIND = `split(${DNA_AT}, '|')[0]`;
 export const DNA_ID = `split(${DNA_AT}, '|')[1]`;
 
 /** An expression reading one field of the kind in focus, from a table by kind. */
-export const byKind = (field: (list: DnaList | typeof POLICY) => string, quote = true): string =>
-  `{ ${[...DNA_LISTS, POLICY].map((list) => `${list.kind}: ${quote ? `'${field(list)}'` : field(list)}`).join(', ')} }[${DNA_KIND}]`;
+export const byKind = (field: (list: DnaList | typeof POLICY | typeof CLASSES) => string, quote = true): string =>
+  `{ ${[...DNA_LISTS, POLICY, CLASSES].map((list) => `${list.kind}: ${quote ? `'${field(list)}'` : field(list)}`).join(', ')} }[${DNA_KIND}]`;
 
 /** The vocabulary map's bucket for the kind in focus. */
 export const BUCKET = byKind((list) => list.bucket);
@@ -106,7 +115,7 @@ export const dnaFocusOf = (node: string): string => {
 };
 
 /** The definition in focus, by name: a rule of the policy is its own words. */
-const DEF_NAME = `${DNA_KIND} == 'policy' ? ${DNA_ID} : ${byKind((list) => ('items' in list ? list.items : '[]'), false)}.find(d, d.id == (${DNA_ID})).name`;
+const DEF_NAME = `${DNA_KIND} == 'policy' ? ${DNA_ID} : ${DNA_KIND} == 'class' ? (recordStore.displays[${DNA_ID}].label ?? ${DNA_ID}) : ${byKind((list) => ('items' in list ? list.items : '[]'), false)}.find(d, d.id == (${DNA_ID})).name`;
 
 /** The crumbs a Social DNA focus shows: Social DNA, then the kind, then the definition — each a way back up. */
 export const dnaCrumbs = (when = 'true'): Crumb[] => [
