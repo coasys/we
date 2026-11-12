@@ -196,11 +196,19 @@ export function createIdentity({ custody, openWindow }) {
       return screen;
     },
 
-    /** Cancels the step and closes the window. */
+    /**
+     * Cancels the step and closes the window, once custody says the step ended (`null`). A step that
+     * could not be ended (a new device that had already joined, a cancel the executor did not
+     * confirm) answers the screen to show instead, and the window stays.
+     */
     async cancel() {
       const of = run;
-      if (!storageOf(of)) await cancelStep(service());
+      if (!storageOf(of)) {
+        const instead = await cancelStep(service());
+        if (instead) return shown(of, instead);
+      }
       close(of);
+      return null;
     },
 
     /** Closes the window after the step's last screen. */
