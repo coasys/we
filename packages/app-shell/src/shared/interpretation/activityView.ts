@@ -6,22 +6,19 @@
  */
 
 /**
- * What a settled automatic pass should be written down as, or nothing.
+ * What a settled automatic pass is logged as, or nothing.
  *
- * A pass somebody pressed for is written by the run that returned — it has the turns, the target
- * list and the outcome in hand when it resolves. A watched pass has no such moment: it runs inside
- * the executor and only ever reports, so the record has to be written by whoever is listening. The
- * point of writing it is that the two kinds then sit in one list, told apart by `trigger` rather
- * than by which surface happens to be on screen.
+ * A pass somebody pressed for is written down by the run that returned — it has the turns, the
+ * target list and the outcome in hand when it resolves. A watched pass runs inside the executor on
+ * every batch and only ever reports, so it gets a log line (the `interpretation` trace scope), not a
+ * record in the space.
  *
- * Four refusals, and each removes a row that should not become a record:
+ * Four refusals, and each removes a row that should not become a line:
  *
- * - **not `auto`** — a one-shot is already written by its own run, and writing it twice would put
- *   every manual pass in the log in duplicate.
- * - **not `mine`** — every peer receives the same events, so a row per peer would make the history
- *   a record of who was watching rather than of what was read.
- * - **no `collection`** — a pass this client neither started nor watches has nothing to hang a
- *   record off; the log is scoped by containment, so an unparented row would be invisible anyway.
+ * - **not `auto`** — a one-shot is already written down by its own run.
+ * - **not `mine`** — every peer receives the same events, so a line per peer would log who was
+ *   watching rather than what was read.
+ * - **no `collection`** — a pass this client neither started nor watches.
  * - **not settled** — a pass in flight has no outcome yet.
  *
  * Takes the **merged** row rather than the event that settled it. The exchange arrives on

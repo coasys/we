@@ -56,7 +56,7 @@ type FakeLink = { author: string; data: { source: string; predicate: string; tar
  * node in one call and answers whether there was anything, as `remove_processor` does — and leaves
  * the processor's `InterpretationRun` nodes, which point AT the node rather than from it.
  */
-function perspective(agent = 'did:me') {
+function perspective(agent = 'did:me', foreign: Record<string, string> = {}) {
   let links: FakeLink[] = [];
   const calls = { get: 0, add: 0, remove: 0, failedRemove: 0, removeProcessor: 0 };
   const order: string[] = [];
@@ -73,7 +73,9 @@ function perspective(agent = 'did:me') {
   const handle = {
     uuid: 'p1',
     on: () => () => {},
-    getShaclNames: async () => ['TaskBlock', 'EventBlock', 'Relationship'],
+    getShaclNames: async () => ['TaskBlock', 'EventBlock', 'Relationship', ...Object.keys(foreign)],
+    // Only the classes another app registered are asked for: WE's own resolve through their models.
+    getShaclTargetClass: async (name: string) => foreign[name],
     get: async (query: { source?: string; predicate?: string }) => {
       calls.get += 1;
       // A real read yields the event loop; so does this one, so concurrent callers interleave.
@@ -247,5 +249,23 @@ describe('stopping a standing watch', () => {
 
     expect(p.calls.removeProcessor).toBe(2);
     expect(p.calls.remove).toBe(0);
+  });
+});
+
+describe('a class the space already had', () => {
+  it('watches it by the target class its SHACL names, with no WE model behind it', async () => {
+    const p = perspective('did:me', { DiscussionTopic: 'conv://DiscussionTopic' });
+    await createAd4mInterpretationPort(() => 'did:me').watch!(
+      p.handle,
+      request(['TaskBlock', 'DiscussionTopic']) as never,
+    );
+    expect(p.classes()).toEqual([`literal:string:${targetOf('TaskBlock')}`, 'literal:string:conv://DiscussionTopic']);
+  });
+
+  it('still refuses a name with neither a model nor a target class', async () => {
+    const p = perspective('did:me', { Broken: '' });
+    await expect(
+      createAd4mInterpretationPort(() => 'did:me').watch!(p.handle, request(['Broken']) as never),
+    ).rejects.toThrow('no target class for "Broken"');
   });
 });
