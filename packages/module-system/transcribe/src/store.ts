@@ -1831,7 +1831,9 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
           }
           // A panel showing "no model" keeps asking too, so a model added in settings clears the note —
           // and hides the connect button — without the panel being closed and opened again.
-          if (modelState() === 'unready' || waiting() || (open() && modelState() === 'none')) pollModels();
+          // Nothing else: a model the server never readies would be asked about for as long as the app
+          // runs. Opening the panel starts the asking again.
+          if (waiting() || (open() && (modelState() === 'unready' || modelState() === 'none'))) pollModels();
         })(),
       MODEL_POLL_MS,
     );
@@ -2755,10 +2757,14 @@ export function createTranscribeStore(deps: ModuleStoreDeps) {
     after a failed attempt, which is the wrong order for a download that size.
   */
   effect?.(() => {
-    if (open() && modelState() === 'unknown') {
+    if (!open()) return;
+    if (modelState() === 'unknown') {
       void readModels().then(() => {
         if (modelState() === 'unready' || modelState() === 'none') pollModels();
       });
+    } else if (modelState() === 'unready' || modelState() === 'none') {
+      // Opened again after the asking stopped with the panel shut.
+      pollModels();
     }
   });
 

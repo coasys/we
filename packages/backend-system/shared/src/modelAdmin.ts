@@ -356,7 +356,7 @@ export interface LocalAiStatus {
   /** An install finished. */
   installed: boolean;
   installing: boolean;
-  /** The servers start with the backend. */
+  /** The installed servers start with the backend. It never installs one: only an install does. */
   autostart: boolean;
   runtimes: LocalAiRuntimeStatus[];
   /** The models installed, with the backend's model each is registered as, once it is. */

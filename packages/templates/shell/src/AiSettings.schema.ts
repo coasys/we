@@ -1000,8 +1000,7 @@ const localActions: SchemaNode = {
           },
         },
         /*
-          Part of the plan installed — the one service the backend installs by itself when an app first
-          asks for its default model, or an install of some kinds — is still `installed`. The rest is one
+          Part of the plan installed — an install of some kinds — is still `installed`. The rest is one
           more install away (an install naming no kinds fetches the whole plan), so it is offered here
           rather than only after a Remove.
         */

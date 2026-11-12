@@ -211,7 +211,9 @@ async function converse(
 
 /**
  * The executor wraps every failure in OpenAI's `{ error: { message } }` envelope, and the message is
- * the part a person can act on — "No default LLM model configured", a provider refusing the key.
+ * the part a person can act on — no default LLM model on the executor and how to get one, a provider
+ * refusing the key. Passed on as it stands, never matched: the executor words its refusals for its
+ * own audience and rewords them between releases.
  */
 async function failureMessage(response: Response): Promise<string> {
   const body = await response.text().catch(() => '');

@@ -3437,9 +3437,10 @@ export const captureStatus: SchemaNode = {
                 One click where a speech server is already running on the node's machine and this
                 connection may connect it — the button names where it is.
 
-                Otherwise settings where there are settings to open, and a sentence where there are
-                not: AI administration is node-scoped, so a guest on somebody else's executor has no
-                AI section, and a button that opens Settings to nothing is worse than no button.
+                Otherwise settings where this connection can change the models, and a sentence where
+                it cannot: AI administration is node-scoped, and a guest granted only AI READ sees a
+                list it can add nothing to — a button that opens Settings to nothing is worse than no
+                button.
               */
               type: '$if',
               props: {
@@ -3461,7 +3462,7 @@ export const captureStatus: SchemaNode = {
                 else: {
                   type: '$if',
                   props: {
-                    condition: { $: 'runtimeStore.canManageAi' },
+                    condition: { $: 'runtimeStore.canConfigureAi' },
                     then: {
                       type: 'Row',
                       props: { gap: '200', ay: 'center', wrap: true },
@@ -3509,7 +3510,8 @@ export const captureStatus: SchemaNode = {
         condition: { $: 'modules.transcribe.modelUnready' },
         then: {
           type: 'Column',
-          props: { gap: '200' },
+          // Start-aligned, as the no-model note above is, so its button is not stretched across the panel.
+          props: { gap: '200', ax: 'start' },
           children: [
             {
               type: 'Row',
@@ -3529,6 +3531,23 @@ export const captureStatus: SchemaNode = {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-faint' },
               children: ['Transcription starts on its own once it can run.'],
+            },
+            // Waiting does not fix every reason: a model the server does not have stays unready, and
+            // replacing it is a settings job, for whoever can do it.
+            {
+              type: '$if',
+              props: {
+                condition: { $: 'runtimeStore.canConfigureAi' },
+                then: {
+                  type: 'we-button',
+                  props: {
+                    size: 'sm',
+                    variant: 'soft',
+                    onClick: { $invoke: 'shellStore.openShellView', args: ['settings', '/ai'] },
+                  },
+                  children: ['Open AI settings'],
+                },
+              },
             },
           ],
         },

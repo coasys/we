@@ -59,21 +59,11 @@ vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
 }));
 
 // Never 'settings', so the on-demand load effect stays dormant and each test drives the store
-// explicitly. The load-on-open behaviour is asserted separately below.
-let activeShellView: string | null = null;
-// Read on every call, so a test that opens and closes the settings while mounted re-runs the effects.
-const [shellViewChanged, setShellViewChanged] = createSignal(0);
-function setShellView(view: string | null): void {
-  activeShellView = view;
-  setShellViewChanged((n) => n + 1);
-}
+// explicitly. The load-on-open behaviour is asserted separately below. A signal, so a test can close
+// the page and see what stops listening.
+const [activeShellView, setActiveShellView] = createSignal<string | null>(null);
 vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
-  useShellStore: () => ({
-    activeShellView: () => {
-      shellViewChanged();
-      return activeShellView;
-    },
-  }),
+  useShellStore: () => ({ activeShellView }),
 }));
 
 // Faked for the same reason as the stores above, and for one more: importing the real provider
@@ -164,7 +154,7 @@ const trustRequest: ConsentRequest = {
 
 beforeEach(() => {
   ports = null;
-  activeShellView = null;
+  setActiveShellView(null);
   executorHost = undefined;
   session.step = 'ready';
   session.held = 0;
@@ -245,7 +235,7 @@ describe('how the backend is started', () => {
       getSettings: async () => ({ mcpEnabled: true, mcpPort: 4321, logLevels: { holochain: 'debug' } }),
     });
     executorHost = host;
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     ports = {};
     const store = mount();
 
@@ -547,11 +537,31 @@ describe('AI models and the servers they run on', () => {
     expect(store.aiForm()?.remoteModel).toBe('nomic-embed-text:latest');
   });
 
+  it('lets go of a model of the wrong kind before the server has said what it has', async () => {
+    // With discovery still out, the language model stayed in an embedding form, and discovery
+    // finishing kept it too, since the field was not empty.
+    let answer!: (models: { id: string; capabilities: AiCapability[] }[]) => void;
+    const ai = aiPort({ discover: () => new Promise((resolve) => (answer = resolve)) });
+    ports = { models: ai.port };
+    const store = mount();
+    await store.loadAiModels();
+
+    store.editAiModel('m1');
+    store.setAiFormField('kind', 'embedding');
+    expect(store.aiForm()?.remoteModel).toBe('');
+
+    answer([
+      { id: 'nomic-embed-text:latest', capabilities: ['embeddings'] },
+      { id: 'llama3.2:3b', capabilities: ['chat'] },
+    ]);
+    await vi.waitFor(() => expect(store.aiForm()?.remoteModel).toBe('nomic-embed-text:latest'));
+  });
+
   it('pulls a model, showing the progress the backend reports', async () => {
     let finish!: () => void;
     const ai = aiPort({ pullModel: () => new Promise<void>((resolve) => (finish = resolve)) });
     ports = { models: ai.port };
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     const store = mount();
     await store.loadAiModels();
     store.newAiModel();
@@ -580,7 +590,7 @@ describe('AI models and the servers they run on', () => {
       pullModel: () => new Promise<void>((_resolve, reject) => (fail = reject)),
     });
     ports = { models: ai.port };
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     const store = mount();
     await store.loadAiModels();
     store.newAiModel();
@@ -605,7 +615,7 @@ describe('AI models and the servers they run on', () => {
       },
     });
     ports = { models: ai.port };
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     const store = mount();
     await store.loadAiModels();
     store.newAiModel();
@@ -623,7 +633,7 @@ describe('AI models and the servers they run on', () => {
       pullModel: () => new Promise<void>((_resolve, reject) => (fail = reject)),
     });
     ports = { models: ai.port };
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     const store = mount();
     await store.loadAiModels();
     store.newAiModel();
@@ -638,6 +648,37 @@ describe('AI models and the servers they run on', () => {
     // The server says how the download ended; a failed one can be tried again.
     ai.status({ endpointId: 'e1', remoteModel: 'qwen3:8b', status: { state: 'missing' } });
     expect(store.aiCanPull()).toBe(true);
+  });
+
+  it('lets a download that ended while settings was closed be tried again', async () => {
+    // The server's "still downloading" was kept until the server said how it ended. With settings
+    // closed nobody heard that, so the Add form's model could not be pulled again until a reload.
+    let fail!: (reason: Error) => void;
+    const ai = aiPort({
+      list: async () => [],
+      pullModel: () => new Promise<void>((_resolve, reject) => (fail = reject)),
+    });
+    ports = { models: ai.port };
+    setActiveShellView('settings');
+    const store = mount();
+    await store.loadAiModels();
+    store.newAiModel();
+    await vi.waitFor(() => expect(store.aiForm()?.remoteModel).toBe('qwen3:8b'));
+
+    const pulling = store.pullAiModel();
+    ai.status({ endpointId: 'e1', remoteModel: 'qwen3:8b', status: { state: 'pulling', progress: 45 } });
+    fail(new Error('pull timed out'));
+    await pulling;
+    expect(store.aiCanPull()).toBe(false);
+
+    setActiveShellView(null);
+    ai.status({ endpointId: 'e1', remoteModel: 'qwen3:8b', status: { state: 'missing' } });
+    setActiveShellView('settings');
+    expect(store.aiCanPull()).toBe(true);
+
+    // A download the server is still running says so again, and is not started twice.
+    ai.status({ endpointId: 'e1', remoteModel: 'qwen3:8b', status: { state: 'pulling', progress: 50 } });
+    expect(store.aiCanPull()).toBe(false);
   });
 
   it('offers an Ollama for every kind it can pull, before it has a model of that kind', async () => {
@@ -668,7 +709,7 @@ describe('AI models and the servers they run on', () => {
   it('re-reads the models when a server’s health changes', async () => {
     const ai = aiPort();
     ports = { models: ai.port };
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     const store = mount();
     await vi.waitFor(() => expect(store.aiEndpoints()).toHaveLength(2));
     const before = ai.listed();
@@ -684,7 +725,7 @@ describe('AI models and the servers they run on', () => {
     // never offered for embeddings, so the download that would give it one could not be reached.
     const ai = aiPort();
     ports = { models: ai.port };
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     const store = mount();
     await vi.waitFor(() => expect(store.aiEndpoints()).toHaveLength(2));
     store.newAiModel();
@@ -699,7 +740,7 @@ describe('AI models and the servers they run on', () => {
   it('keeps a server’s capabilities when its health event carries none', async () => {
     const ai = aiPort();
     ports = { models: ai.port };
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     const store = mount();
     await vi.waitFor(() => expect(store.aiEndpoints()).toHaveLength(2));
 
@@ -795,6 +836,48 @@ describe('AI models and the servers they run on', () => {
     await store.saveAiEndpoint();
     expect(calls).toContain('addEndpoint:OpenAI-compatible 9931:openai-compatible:http://127.0.0.1:9931:-');
     expect(store.aiEndpointForm()).toBeNull();
+  });
+
+  it('leaves a newer server form open when an earlier save finishes', async () => {
+    // The form can be closed while its save waits on the server; the save finishing closed whichever
+    // form was open by then, past its discard guard.
+    let finish!: () => void;
+    const ai = aiPort({
+      addEndpoint: (draft) => new Promise((resolve) => (finish = () => resolve({ ...ollama, ...draft, id: 'e9' }))),
+    });
+    ports = { models: ai.port };
+    const store = mount();
+    await store.loadAiModels();
+
+    store.newAiEndpoint();
+    store.setAiService('llama-server');
+    const saving = store.saveAiEndpoint();
+    store.closeAiEndpointForm();
+    store.editAiEndpoint('e2');
+    store.setAiEndpointField('name', 'Mine');
+
+    finish();
+    await saving;
+    expect(store.aiEndpointForm()?.name).toBe('Mine');
+  });
+
+  it('leaves a newer model form open when an earlier save finishes', async () => {
+    let finish!: () => void;
+    const ai = aiPort({ add: () => new Promise<void>((resolve) => (finish = resolve)) });
+    ports = { models: ai.port };
+    const store = mount();
+    await store.loadAiModels();
+
+    store.newAiModel();
+    await vi.waitFor(() => expect(store.aiForm()?.remoteModel).toBe('qwen3:8b'));
+    const saving = store.saveAiModel();
+    store.closeAiForm();
+    store.editAiModel('m1');
+    store.setAiFormField('name', 'Mine');
+
+    finish();
+    await saving;
+    expect(store.aiForm()?.name).toBe('Mine');
   });
 
   it('says why a context limit it cannot read holds Save', () => {
@@ -993,18 +1076,18 @@ describe('local AI on this device', () => {
   }
 
   it('stops listening to install progress when the settings close', async () => {
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     const local = localPort();
     ports = { models: local.models };
     mount();
     await vi.waitFor(() => expect(local.listening()).toBe(true));
 
-    setShellView(null);
+    setActiveShellView(null);
     expect(local.listening()).toBe(false);
   });
 
   it('tracks an install started elsewhere, and drops its bar once a read says it is over', async () => {
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     const local = localPort();
     ports = { models: local.models };
     const store = mount();
@@ -1023,7 +1106,7 @@ describe('local AI on this device', () => {
   it('still says an install failed after the settings were closed and opened again', async () => {
     // The first-run step says the install carries on; a failure after that was in the shared error
     // only, which the next read clears as it starts.
-    setShellView('settings');
+    setActiveShellView('settings');
     const local = localPort({
       install: async () => {
         throw new Error('disk full');
@@ -1035,15 +1118,15 @@ describe('local AI on this device', () => {
     await store.installLocalAi();
 
     // Opening the settings again starts listening afresh: what was under way is dropped, a failure kept.
-    setShellView(null);
-    setShellView('settings');
+    setActiveShellView(null);
+    setActiveShellView('settings');
     await store.loadLocalAi();
     expect(store.error()).toBe('');
     expect(store.localAi().progress).toMatchObject({ text: 'The install failed — disk full', failed: true });
   });
 
   it('reads the machine and the plan when the settings open, in words', async () => {
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     ports = { models: localPort().models };
     const store = mount();
     await vi.waitFor(() => expect(store.localAi().loaded).toBe(true));
@@ -1064,7 +1147,7 @@ describe('local AI on this device', () => {
   });
 
   it('shows an install’s progress while it runs, then the running state and the managed server', async () => {
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     const local = localPort();
     ports = { models: local.models };
     const store = mount();
@@ -1106,7 +1189,7 @@ describe('local AI on this device', () => {
   });
 
   it('keeps a failed install’s reason on screen', async () => {
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     const local = localPort();
     ports = { models: local.models };
     const store = mount();
@@ -1120,7 +1203,7 @@ describe('local AI on this device', () => {
   });
 
   it('stops, starts and removes, with or without the files', async () => {
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     const local = localPort();
     ports = { models: local.models };
     const store = mount();
@@ -1139,7 +1222,7 @@ describe('local AI on this device', () => {
   });
 
   it('starts a bar over when the settings open again, rather than holding what it heard before', async () => {
-    setShellView('settings');
+    setActiveShellView('settings');
     const local = localPort({ status: async () => ({ ...notInstalled, installing: true }) });
     ports = { models: local.models };
     const store = mount();
@@ -1156,14 +1239,14 @@ describe('local AI on this device', () => {
     expect(store.localAi().progress?.percent).toBe(60);
 
     // Closed while the install ran, so its end went unheard; a retry of the same plan has the same total.
-    setShellView(null);
-    setShellView('settings');
+    setActiveShellView(null);
+    setActiveShellView('settings');
     local.progress(download(0.0254e9));
     expect(store.localAi().progress?.percent).toBe(1);
   });
 
   it('re-reads what an install changed when one it did not start ends', async () => {
-    setShellView('settings');
+    setActiveShellView('settings');
     const local = localPort();
     ports = { models: local.models };
     const store = mount();
@@ -1184,7 +1267,7 @@ describe('local AI on this device', () => {
   });
 
   it('does not edit or remove a managed server as a server', async () => {
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     const local = localPort();
     ports = { models: local.models };
     const store = mount();
@@ -1691,7 +1774,7 @@ describe('loading on demand', () => {
   });
 
   it('loads trust and apps when the settings overlay is open', async () => {
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     const { port, calls } = stubRuntime();
     ports = { runtime: port };
 
@@ -1702,7 +1785,7 @@ describe('loading on demand', () => {
   });
 
   it('asks for nothing the backend cannot answer', async () => {
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     const calls: string[] = [];
     // Trust only — the apps load must not be attempted.
     ports = {
@@ -1721,7 +1804,7 @@ describe('loading on demand', () => {
   // Network metrics stay manual: a diagnostic blob nobody asked for is the same mistake as
   // loading everything at boot, one level down.
   it('never fetches network metrics on open', async () => {
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     const { port, calls } = stubRuntime({
       networkMetrics: async () => {
         calls.push('networkMetrics');

@@ -221,8 +221,9 @@ export interface LocalAiView {
   /** "Install (2.5 GB)", or "Install the rest (2.5 GB)" where part of the plan is installed. */
   installLabel: string;
   /**
-   * Something is installed. Not the whole plan: the backend installs one service by itself the first
-   * time an app asks for its default model, and an install can name kinds — see `incomplete`.
+   * Something is installed. Not necessarily the whole plan: an install can name kinds, and the rest
+   * stays to fetch — see `incomplete`. The backend never installs on its own; an app asking for a
+   * default model nobody installed is refused until somebody here installs it.
    */
   installed: boolean;
   /** Installed, and the plan still has something not downloaded, which an install fetches. */
