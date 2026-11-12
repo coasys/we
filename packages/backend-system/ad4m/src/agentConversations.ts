@@ -1,0 +1,279 @@
+import type { Ad4mClient } from '@coasys/ad4m';
+// The session types exist in the package but its `generated/api` barrel does not re-export them
+// yet — deep type imports until it does.
+import type { AISession } from '@coasys/ad4m/lib/src/generated/api/AISession';
+import type { AISessionMessage } from '@coasys/ad4m/lib/src/generated/api/AISessionMessage';
+import type { Capability } from '@coasys/ad4m/lib/src/generated/api/Capability';
+import {
+  type AgentConversationMessage,
+  type AgentConversationScope,
+  type AgentConversationsPort,
+  type AgentConversationSummary,
+  type AgentReplyStatus,
+  type AgentStep,
+  AgentUnavailableError,
+} from '@we/backend-shared';
+
+import { recordMissingMethod } from './missingMethods';
+
+/**
+ * Conversations the executor keeps and runs, as the neutral conversations port.
+ *
+ * A conversation is an executor `ai.session*` row in the executor's own store — not a record in
+ * any perspective — which is why the refs this file hands out carry only `id`. The transcript is
+ * `ai_messages` rows: the person's turns, the assistant's reply rows (each `running` until it
+ * ends), and `role: 'tool'` rows for every call the turn made, grouped into a turn by the user
+ * message that opened it. This file is the only place that knows those shapes: everything above
+ * it reads neutral turns.
+ */
+
+/** The reach a "this space only" chat asks for: every right, on the one perspective. */
+const SCOPED_CAN = ['READ', 'CREATE', 'UPDATE', 'DELETE', 'SUBSCRIBE'];
+
+/** The reply's ending, read off its row. Anything unrecognised is treated as still going. */
+const STATUSES: readonly AgentReplyStatus[] = ['running', 'done', 'failed', 'cancelled', 'interrupted'];
+
+/**
+ * Tools that only read. A name not in this prefix list is a write — the unknown-default-is-write
+ * side is deliberate: a new write tool nobody listed still gets its orange mark, while a new read
+ * tool marked orange is only a lie about risk.
+ */
+const READ_TOOL =
+  /^(list|get|query|describe|read|search|find|count|has|is|instance_query|instance_get|instance_transcript|get_children|template_read|get_documentation)/;
+
+/** Whether a tool call changed something rather than only looked — the mark a reply's steps carry. */
+export function isWriteTool(tool: string): boolean {
+  return !READ_TOOL.test(tool);
+}
+
+/** The payload a transcript row carries. */
+interface RowContent {
+  text?: string;
+  name?: string;
+  arguments?: Record<string, unknown>;
+  target?: string;
+  result?: string;
+  error?: string;
+}
+
+const content = (row: AISessionMessage): RowContent => (row.content ?? {}) as RowContent;
+
+/**
+ * What a step aimed at. `content.target` first — the executor's own field for it — then the
+ * perspective the call named, so a step shows the space it went into.
+ */
+function stepTarget(row: RowContent): string | undefined {
+  return row.target ?? (typeof row.arguments?.perspective_id === 'string' ? row.arguments.perspective_id : undefined);
+}
+
+/** A short digest of what a step got back: a count for a list, the head of a string. */
+function summarize(result: unknown): string | undefined {
+  if (typeof result !== 'string' || !result) return undefined;
+  try {
+    const parsed: unknown = JSON.parse(result);
+    if (Array.isArray(parsed)) return `${parsed.length} ${parsed.length === 1 ? 'result' : 'results'}`;
+    if (parsed && typeof parsed === 'object') return undefined;
+    return String(parsed).slice(0, 60);
+  } catch {
+    return result.length > 60 ? `${result.slice(0, 57)}…` : result;
+  }
+}
+
+/**
+ * A tool row's outcome under its reply. The executor never writes one for a call the reply's end
+ * cut off (a cancel aborts the task mid-call): that step stays `running` under a reply that is
+ * not, and is reported as `stopped`.
+ */
+function stepOutcome(status: string | null, reply: AgentReplyStatus): AgentStep['outcome'] {
+  if (status === 'done') return 'ok';
+  if (status === 'failed') return 'error';
+  if (status === 'cancelled' || status === 'interrupted') return 'stopped';
+  return reply === 'running' ? 'running' : 'stopped';
+}
+
+function toStep(row: AISessionMessage, reply: AgentReplyStatus): AgentStep {
+  const c = content(row);
+  const outcome = stepOutcome(row.status, reply);
+  const refused = outcome === 'error' && (row.error ?? c.error ?? '').includes('Capability is not matched');
+  const error = row.error ?? c.error;
+  const summary = summarize(c.result);
+  return {
+    tool: c.name ?? 'tool',
+    ...(stepTarget(c) ? { target: stepTarget(c) } : {}),
+    outcome,
+    ...(error ? { error } : {}),
+    ...(isWriteTool(c.name ?? '') && outcome === 'ok' ? { wrote: true } : {}),
+    ...(refused ? { refused: true } : {}),
+    ...(summary ? { summary } : {}),
+  };
+}
+
+const toMs = (iso: string): number => {
+  const ms = Date.parse(iso);
+  return Number.isNaN(ms) ? 0 : ms;
+};
+
+const replyStatus = (status: string | null): AgentReplyStatus =>
+  STATUSES.includes(status as AgentReplyStatus) ? (status as AgentReplyStatus) : 'running';
+
+/**
+ * The transcript as neutral turns, oldest first: a reply row is the agent's turn, with its status
+ * and every tool row that turn made — grouped by the user message that opened the turn, which is
+ * how steps land under the reply they served when rows arrive out of order.
+ */
+export function conversationOf(rows: AISessionMessage[]): AgentConversationMessage[] {
+  const sorted = [...rows].sort((a, b) => a.seq - b.seq);
+  // A turn is everything written between one user message and the next.
+  const turns: { user: AISessionMessage; rest: AISessionMessage[] }[] = [];
+  for (const row of sorted) {
+    if (row.role === 'user' || turns.length === 0) {
+      turns.push({ user: row.role === 'user' ? row : row, rest: [] });
+    } else {
+      turns[turns.length - 1].rest.push(row);
+    }
+  }
+
+  const out: AgentConversationMessage[] = [];
+  for (const { user, rest } of turns) {
+    const tools = rest.filter((row) => row.role === 'tool');
+    const replies = rest.filter((row) => row.role === 'assistant');
+    if (user.role === 'user') {
+      out.push({ id: user.id, role: 'user', text: content(user).text ?? '', createdAt: toMs(user.createdAt) });
+    }
+    for (const reply of replies) {
+      const status = replyStatus(reply.status);
+      const text = content(reply).text ?? '';
+      const error = reply.error ?? undefined;
+      out.push({
+        id: reply.id,
+        role: 'assistant',
+        text,
+        createdAt: toMs(reply.createdAt),
+        status,
+        ...(error ? { error } : {}),
+        steps: tools.map((row) => toStep(row, status)),
+      });
+    }
+    // Tool rows under a turn whose reply row never arrived are dropped with the reply — there is
+    // nothing to hang them on, and the transcript itself is the record.
+  }
+  return out;
+}
+
+/** The perspective a session's capabilities pin it to — absent when it is not pinned. */
+export function scopeOf(
+  session: Pick<AISession, 'capabilities' | 'defaultPerspective'>,
+): AgentConversationScope | undefined {
+  const cap = (session.capabilities ?? []).find(
+    (c: Capability) => c.with?.domain === 'perspective' && c.with.pointers.length > 0,
+  );
+  const uuid = cap?.with.pointers[0];
+  return uuid ? { perspectiveUuid: uuid } : undefined;
+}
+
+/** Run a call to the executor, answering a node without `ai.session*` as `AgentUnavailableError`. */
+async function onNode<T>(call: () => Promise<T>): Promise<T> {
+  try {
+    return await call();
+  } catch (error) {
+    if (recordMissingMethod(error)) {
+      throw new AgentUnavailableError('This node does not keep AI sessions yet.');
+    }
+    throw error;
+  }
+}
+
+export function createAd4mAgentConversations(client: Ad4mClient): AgentConversationsPort {
+  const ai = client.ai;
+
+  const conversations: AgentConversationsPort = {
+    async create({ title, model, scope }) {
+      const uuid = scope?.perspectiveUuid;
+      const session = await onNode(() =>
+        ai.sessionCreate({
+          title,
+          model,
+          defaultPerspective: uuid ?? null,
+          capabilities: uuid ? [{ with: { domain: 'perspective', pointers: [uuid] }, can: SCOPED_CAN }] : undefined,
+        }),
+      );
+      return { id: session.id };
+    },
+
+    async list() {
+      const rows = await onNode(() => ai.sessionList());
+      return rows
+        .map((row): AgentConversationSummary => ({
+          ref: { id: row.id },
+          title: row.title,
+          ...(scopeOf(row) ? { scope: scopeOf(row) } : {}),
+          createdAt: toMs(row.createdAt),
+          updatedAt: toMs(row.updatedAt),
+        }))
+        .sort((a, b) => (b.updatedAt ?? b.createdAt) - (a.updatedAt ?? a.createdAt));
+    },
+
+    async update(session, input) {
+      if (input.title !== undefined) {
+        await onNode(() => ai.sessionUpdate(session.id, { title: input.title }));
+      }
+    },
+
+    async delete(session) {
+      await onNode(() => ai.sessionDelete(session.id));
+    },
+
+    async send(session, text) {
+      const started = await onNode(() => ai.sendMessage(session.id, text));
+      return started.replyId;
+    },
+
+    async cancel(session) {
+      return onNode(() => ai.cancelTurn(session.id));
+    },
+
+    async messages(session) {
+      const rows = await onNode(() => ai.sessionMessages(session.id));
+      return conversationOf(rows);
+    },
+
+    follow(session, onChange) {
+      let stopped = false;
+      const rows = new Map<string, AISessionMessage>();
+      const emit = () => {
+        if (!stopped) onChange(conversationOf([...rows.values()]));
+      };
+
+      // Subscribe before the first read, so a change landing mid-fetch is not lost: events
+      // upsert whole rows, and whatever raced the fetch is already in the map when it lands.
+      const unsubscribe = ai.onSessionChanged((event) => {
+        if (stopped || event.sessionId !== session.id) return;
+        if (event.kind === 'message' && event.message) {
+          rows.set(event.message.id, event.message);
+          emit();
+        }
+      });
+
+      ai.sessionMessages(session.id)
+        .then((first) => {
+          for (const row of first) {
+            const seen = rows.get(row.id);
+            /*
+              Statuses only move forward (running → a settled end), so a snapshot taken before a
+              settle event must not downgrade the row the event already delivered.
+            */
+            if (seen && seen.status !== 'running' && row.status === 'running') continue;
+            rows.set(row.id, row);
+          }
+          emit();
+        })
+        .catch((error: unknown) => console.warn('agent conversations: could not read the conversation', error));
+
+      return () => {
+        stopped = true;
+        unsubscribe();
+      };
+    },
+  };
+  return conversations;
+}
