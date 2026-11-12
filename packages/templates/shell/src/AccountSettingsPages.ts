@@ -414,6 +414,28 @@ export function thisDevicePage(advanced: SchemaNode[]): SchemaNode {
       },
       heading('This device', 'The computer or host serving this session, and what runs on it.'),
       hostSection,
+      /*
+        How this device keeps the data on its disk, in the backend's own terms and nothing more. Absent
+        where the app does not start the backend, and while nothing true can be said yet.
+      */
+      {
+        type: '$if',
+        props: {
+          condition: { $: 'runtimeStore.storageLine' },
+          then: {
+            type: 'Column',
+            props: { gap: '100' },
+            children: [
+              { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Storage'] },
+              {
+                type: 'we-text',
+                props: { variant: 'footnote', color: 'text-muted' },
+                children: [{ $: 'runtimeStore.storageLine' }],
+              },
+            ],
+          },
+        },
+      },
       accountSettings,
       /*
         In view rather than under Advanced: the executor on this device runs it, and connecting an
