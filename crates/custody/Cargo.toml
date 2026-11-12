@@ -66,5 +66,6 @@ core-foundation = "0.10"
 tempfile = "3"
 # The fake executor in the service tests implements the client's `ExecutorRpc`.
 async-trait = "0.1"
-tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
+# `test-util`: a cancel the executor never answers is waited out on a paused clock.
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "test-util"] }
 sha2 = "0.10"

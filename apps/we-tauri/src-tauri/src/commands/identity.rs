@@ -180,15 +180,21 @@ pub async fn identity_flow_step(
     Ok(screen)
 }
 
-/// Cancels the step and closes the window.
+/// Cancels the step and closes the window, once custody says the step ended. A step that could not
+/// be ended (a new device that had already joined, a cancel the executor did not confirm) answers
+/// the screen to show instead, and the window stays.
 #[tauri::command]
 pub async fn identity_flow_cancel(
     window: Window,
     state: State<'_, IdentityState>,
-) -> Result<(), String> {
+) -> Result<Option<Screen>, String> {
     check("identity_flow_cancel", &window)?;
-    state.custody.cancel().await;
-    window.close().map_err(|e| e.to_string())
+    if let Some(screen) = state.custody.cancel().await {
+        remember(&state, &screen);
+        return Ok(Some(screen));
+    }
+    window.close().map_err(|e| e.to_string())?;
+    Ok(None)
 }
 
 /// Closes the window after the step's last screen.
