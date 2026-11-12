@@ -6036,6 +6036,18 @@ checkout run a local build path. `pnpm dev:electron` runs the same command witho
 `[ad4m:executor]` line rather than scrolling past it. Details:
 `docs/contributing/ad4m-and-deploys.md`, "The executor you run locally".
 
+### Live tests (real executor, real browser)
+
+`apps/we-web/tests/live/` drives the built app (`pnpm build:web` first) in Chromium against a fresh
+multi-user executor from the same chooser. `pnpm --filter @we/app-web test:live` runs the call suite;
+`test:spaces` runs the coasys-spaces product suite (space, call and extraction, social DNA, two
+workflows, an agent over MCP, the canvas, the page and a theme) — a stub LLM by default,
+`COASYS_SPACES_TIER=real` for a real model. Its Feed checks are `it.todo`, pending a product bug (the
+Feed does not read a class a bundle declares). Its env vars, its `it.todo` backlog and the ad4m
+nightly job that will run it are in
+`apps/we-web/tests/live/coasys-spaces/README.md`. Selectors are roles and accessible names: when one
+is missing, add a `label` to the product node rather than reaching for a CSS selector.
+
 ### Building the AD4M Executor Binary
 
 Only when changing ad4m (see above). The ad4m repo has two artefacts with confusingly similar names:
