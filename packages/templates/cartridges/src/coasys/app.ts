@@ -1,4 +1,4 @@
-import type { SchemaNode, TemplateSchema } from '@we/schema-shared';
+import type { SchemaNode, TemplatePanel, TemplateSchema } from '@we/schema-shared';
 import { confirmModal, railGroup, railItem, railShell } from '@we/template-kit';
 
 import { coasysFirstRun } from './firstRun.ts';
@@ -110,15 +110,30 @@ const rail: SchemaNode = railShell({
   border: '1px solid border',
   localState: { confirmGuestLogout: { type: 'boolean', initial: false } },
   // The mark where the sign-in screen draws it, and the name beside it while the rail is open.
-  header: lockup({
-    alt: 'Coasys',
-    name: { while: { $: 'local.expanded' } },
-    props: {
-      width: '100%',
-      cursor: 'pointer',
-      onClick: { $invoke: 'shellStore.openShellView', args: ['landing-page'] },
-    },
-  }),
+  header: {
+    type: 'Column',
+    props: { width: '100%' },
+    children: [
+      lockup({
+        alt: 'Coasys',
+        name: { while: { $: 'local.expanded' } },
+        props: {
+          width: '100%',
+          cursor: 'pointer',
+          onClick: { $invoke: 'shellStore.openShellView', args: ['landing-page'] },
+        },
+      }),
+      /*
+        The global chat: a sparkle at the top of the rail opens the one chat that reaches every
+        space — a session with no capabilities listed, so it holds everything the app's token does.
+      */
+      railItem({
+        icon: 'sparkle',
+        label: 'AI chat',
+        onClick: { $invoke: 'chatStore.openChat' },
+      }),
+    ],
+  },
   footer: {
     type: 'Column',
     props: { width: '100%', gap: '200' },
@@ -181,6 +196,35 @@ const rail: SchemaNode = railShell({
   ],
 });
 
+/*
+  The two chats, as panels the app supplies — their content is one body (`AgentChat`), told what
+  it was opened for through the instance's inputs.
+
+  `chat-global` docks at the right; `chat-space` floats over the space, where it can be moved,
+  resized, docked to the right or shrunk the way every window can. Both start closed: the rail's
+  sparkle opens the first, a space's "Find or ask" the second, and on a phone both arrive as the
+  sheet instead (`AgentChatSheet`).
+*/
+const chatPanels: TemplatePanel[] = [
+  {
+    id: 'chat-global',
+    node: { type: 'AgentChat', props: { inputs: { $: 'panel.inputs' } } },
+    title: 'AI chat',
+    snap: 'right',
+    box: { width: 440 },
+    min: { width: 320 },
+    open: false,
+  },
+  {
+    id: 'chat-space',
+    node: { type: 'AgentChat', props: { inputs: { $: 'panel.inputs' } } },
+    title: 'AI chat',
+    box: { width: 420, height: 540 },
+    min: { width: 320, height: 360 },
+    open: false,
+  },
+];
+
 export const coasysApp: TemplateSchema & { id: string } = {
   id: 'coasys-app',
   type: 'Column',
@@ -190,6 +234,7 @@ export const coasysApp: TemplateSchema & { id: string } = {
     icon: 'hexagon',
     role: 'app',
     frame: { left: 72 },
+    panels: chatPanels,
   },
   props: { styles: { display: 'contents' } },
   children: [
@@ -210,6 +255,8 @@ export const coasysApp: TemplateSchema & { id: string } = {
             // Not inside the rail's column: the first run covers the whole window, a maximised panel
             // included, so hiding the rail must not hide the question.
             coasysFirstRun,
+            // The chats on a phone — draws nothing while nothing asks, or while there is room for a panel.
+            { type: 'AgentChatSheet' },
           ],
         },
       },

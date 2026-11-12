@@ -605,12 +605,44 @@ const purpose: SchemaNode = {
 
 /**
  * d12's "Find or ask": one field for finding something in the space and asking the space's assistant.
- * Drawn and not yet answered — what it searches, and how a question becomes one, are still to come.
+ *
+ * Typing finds — the query lives on `local.findQuery` for whatever the list beneath consumes.
+ * Enter asks: the question opens a chat scoped to this one perspective, a window over the space
+ * (a sheet on a phone) whose tools may not reach any other.
  */
 const findOrAsk: SchemaNode = {
   type: 'Column',
   props: { px: INSET, pb: '500' },
-  children: [{ type: 'Search', props: { placeholder: 'Find or ask' } }],
+  $localState: { findQuery: { type: 'string', initial: '' } },
+  children: [
+    {
+      type: 'we-input',
+      props: {
+        placeholder: 'Find or ask',
+        value: { $: 'local.findQuery' },
+        onInput: { $setLocal: 'findQuery', value: { $: 'event.detail' } },
+        onKeyDown: {
+          $if: {
+            condition: { $: "event.detail.key == 'Enter' && trim(local.findQuery)" },
+            then: [
+              {
+                $invoke: 'chatStore.openChat',
+                args: [
+                  {
+                    $: `{ perspectiveUuid: spaceStore.currentSpace.uuid, spaceName: spaceStore.currentSpace.name, draft: local.findQuery }`,
+                  },
+                ],
+              },
+              { $setLocal: 'findQuery', value: '' },
+            ],
+          },
+        },
+      },
+      children: [
+        { type: 'we-icon', slot: 'start', props: { name: 'magnifying-glass', color: 'text-muted', mr: '200' } },
+      ],
+    },
+  ],
 };
 
 /** Start a call here, or join the one running — whichever there is to do. */
