@@ -21,7 +21,7 @@
  */
 import { NARROW_VIEWPORT_PX } from '@shared/dockGeometry';
 import { APP_PANEL_SCOPE } from '@shared/registries/panelInstances';
-import { type Accessor, createContext, createSignal, type ParentProps, untrack, useContext } from 'solid-js';
+import { type Accessor, createContext, createSignal, onCleanup, type ParentProps, untrack, useContext } from 'solid-js';
 
 import { useShellStore } from './ShellStore';
 
@@ -115,6 +115,7 @@ export function ChatStoreProvider(props: ParentProps) {
   if (typeof window !== 'undefined') {
     const onResize = () => setNarrow(window.innerWidth < NARROW_VIEWPORT_PX);
     window.addEventListener('resize', onResize);
+    onCleanup(() => window.removeEventListener('resize', onResize));
   }
 
   const [sheet, setSheet] = createSignal<ChatOpen | null>(null);
