@@ -45,6 +45,9 @@ const SOLID_TESTS = [
   // Imports the shell's own schemas, which reach Solid modules that refuse to load outside a
   // browser environment. Nothing here renders — the DOM is a condition of the import, not the test.
   'tests/tierFit.test.ts',
+  // Asks `deploymentBase` its answer, which imports the base app's Solid components: the DOM is a
+  // condition of the import, as for tierFit.
+  'tests/seedBase.test.ts',
   // Drives a real signal through a real effect, which is the half of the behaviour a comparator
   // alone cannot show. Nothing renders, but the node project resolves solid-js to its SSR build,
   // where `createEffect` does nothing at all — so the test passes there for the wrong reason.

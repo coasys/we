@@ -131,7 +131,8 @@ answers their requests.
   is an error in Settings, never a list of unnamed devices.
 - **The identity page.** `/mobile/identity.html` (`src/identity/`) is the shared identity window
   (`@we/identity-window`, the same screens the desktop opens) over the `DeviceKey` plugin. It is a
-  page of its own, so no template, module or store code runs beside it. WE opens it in two cases:
+  page of its own, so no template, module or store code runs beside it. It wears the Coasys app's
+  theme, name and mark, worked into static CSS when `www/` is built. WE opens it in two cases:
   - on the first boot of a phone with no identity, to join one (`?join=`). "Not now" falls back to
     WE's own sign-in;
   - for each change Settings asks for (`?change=<json>`), through the phone's custody host
