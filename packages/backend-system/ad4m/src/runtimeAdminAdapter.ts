@@ -93,6 +93,7 @@ function readRequestedAuth(addon: string): {
  * is here, so a new key fails that check rather than quietly becoming read-only.
  */
 export const EXECUTOR_CONFIG_KINDS: Readonly<Record<string, ExecutorConfigEntry['kind']>> = {
+  allow_secret_on_data_disk: 'boolean',
   app_data_path: 'text',
   auto_permit_cap_requests: 'boolean',
   hc_admin_port: 'number',

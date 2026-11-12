@@ -81,6 +81,10 @@ impl SecretStore for Refusing {
         *self.writes.lock().unwrap() += 1;
         Err((self.error)())
     }
+    fn claim_public(&self, _: &str, _: &[u8]) -> Result<bool, VaultError> {
+        *self.writes.lock().unwrap() += 1;
+        Err((self.error)())
+    }
     fn get(&self, _: &str) -> Result<Option<Vec<u8>>, VaultError> {
         Err((self.error)())
     }
@@ -176,6 +180,9 @@ impl SecretStore for Holding {
         Ok(StoreKind::SecretService)
     }
     fn put(&self, _: &str, _: &[u8]) -> Result<(), VaultError> {
+        Err((self.error)())
+    }
+    fn claim_public(&self, _: &str, _: &[u8]) -> Result<bool, VaultError> {
         Err((self.error)())
     }
     fn get(&self, _: &str) -> Result<Option<Vec<u8>>, VaultError> {

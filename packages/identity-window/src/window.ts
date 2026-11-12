@@ -17,9 +17,12 @@ import {
   BOT_ACTIONS,
   BOT_DAYS_DEFAULT,
   BOT_DAYS_MAX,
+  deviceMatchActions,
+  deviceMatchNote,
   type DeviceNoun,
   heading,
   isLast,
+  migrationProgress,
   refusedField,
   remaining,
   type Screen,
@@ -310,6 +313,50 @@ function body(screen: Screen): Child[] {
         el('div', { className: 'row' }, button('Unlock', go, 'primary'), button('Cancel', cancel)),
       ];
     }
+    case 'set-storage-passphrase': {
+      const p = secretField('Passphrase — at least 15 characters; spaces count');
+      const again = secretField('Type it again');
+      const go = () =>
+        step({ kind: 'passphrase', passphrase: p.input.value, confirm: again.input.value }, [p.input, again.input]);
+      return [
+        p.label,
+        again.label,
+        ...errorLine(screen.error),
+        el('div', { className: 'row' }, button('Continue', go, 'primary'), button('Cancel', cancel)),
+      ];
+    }
+    case 'unlock-storage': {
+      const p = secretField('Passphrase');
+      const go = () => step({ kind: 'passphrase', passphrase: p.input.value }, [p.input]);
+      return [
+        p.label,
+        ...errorLine(screen.error),
+        el('div', { className: 'row' }, button('Open', go, 'primary'), button('Cancel', cancel)),
+      ];
+    }
+    case 'storage-open':
+      return [];
+    case 'storage-migrating': {
+      // The supervisor answers with the next count, or the data open: wait for it now.
+      waitFor({ kind: 'wait-storage' });
+      const bar = el('progress');
+      // No count yet: an indeterminate bar, which has no value.
+      if (screen.storesTotal > 0) {
+        bar.max = screen.storesTotal;
+        bar.value = Math.min(screen.storesDone, screen.storesTotal);
+      }
+      bar.setAttribute('aria-label', migrationProgress(screen.storesDone, screen.storesTotal));
+      return [bar, el('div', { className: 'row' }, button('Close', cancel))];
+    }
+    case 'storage-migration-failed':
+      return [
+        el(
+          'div',
+          { className: 'row' },
+          button('Try again', () => step({ kind: 'try-again' }), 'primary'),
+          button('Close', cancel),
+        ),
+      ];
     case 'offer':
       // The claim can come at any moment: wait for it now.
       waitFor({ kind: 'wait-claim' });
@@ -377,14 +424,18 @@ function body(screen: Screen): Child[] {
         screen.expires,
         'Waiting for your other device…',
       );
-    case 'device-match':
-      waitFor({ kind: 'wait-join' });
+    case 'device-match': {
+      const actions = deviceMatchActions(screen);
+      if (actions.wait) waitFor({ kind: 'wait-join' });
+      const note = deviceMatchNote(screen);
+      const accept = actions.accept ? [button('This is my identity', () => step({ kind: 'accept' }), 'primary')] : [];
       return [
         el('div', { className: 'code', textContent: screen.code }),
         el('div', { className: 'link', textContent: screen.did }),
-        el('p', { className: 'note', textContent: 'Waiting for you to confirm on your other device…' }),
-        el('div', { className: 'row' }, button('Cancel', cancel)),
+        ...(note ? [el('p', { className: 'note', textContent: note })] : []),
+        el('div', { className: 'row' }, ...accept, button('Cancel', cancel)),
       ];
+    }
     case 'match': {
       const name = textField('Name the new device', screen.hint ?? '', 'Laptop, Office server…');
       const own = screen.ownName ? textField('Name this computer', '', 'Desktop at home…') : null;

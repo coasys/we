@@ -15,6 +15,16 @@ export type Screen =
   | { screen: 'confirm-words'; positions: [number, number]; error: string | null }
   | { screen: 'set-passphrase'; error: string | null }
   | { screen: 'enter-passphrase'; error: string | null }
+  /** The desktop's data, where there is no keyring to keep its key: a passphrase chosen on the first
+   *  start, typed at each start after. The supervisor's step, never custody's. */
+  | { screen: 'set-storage-passphrase'; error: string | null }
+  | { screen: 'unlock-storage'; error: string | null }
+  | { screen: 'storage-open' }
+  /** A data folder kept before it was encrypted, moving under its keys once it was opened: how many of
+   *  its stores are done. The window asks for the next with `wait-storage` until it is open. */
+  | { screen: 'storage-migrating'; storesDone: number; storesTotal: number }
+  /** That move failed: nothing was lost, and Try again hands the data its key again. */
+  | { screen: 'storage-migration-failed' }
   | { screen: 'identity-ready'; did: string; keyId: string }
   | { screen: 'offer'; link: string; qrSvg: string; expires: number }
   | { screen: 'match'; code: string; hint: string | null; canKeep: boolean; ownName: boolean }
@@ -29,7 +39,17 @@ export type Screen =
     }
   | { screen: 'code-sent'; expires: number }
   | { screen: 'device-code'; code: string; qrSvg: string; expires: number }
-  | { screen: 'device-match'; code: string; did: string }
+  | {
+      screen: 'device-match';
+      code: string;
+      did: string;
+      /** This computer joins only once the person accepts the identity here too (a first run). */
+      needsAccept: boolean;
+      /** They did (`accept`); it waits for the other device. */
+      accepted: boolean;
+      /** The other device confirmed; it waits for the accept here. */
+      confirmed: boolean;
+    }
   | { screen: 'joined'; did: string; keyId: string }
   | { screen: 'master-taken'; did: string; note: string | null }
   | {
@@ -164,6 +184,7 @@ export type StepInput =
   | { kind: 'offer'; link: string; host?: string }
   | { kind: 'wait-link' }
   | { kind: 'wait-join' }
+  | { kind: 'accept' }
   | { kind: 'answer'; passphrase?: string }
   | { kind: 'name'; name: string }
   | { kind: 'revoke'; passphrase?: string; rotate?: boolean }
@@ -172,7 +193,9 @@ export type StepInput =
   | { kind: 'remove' }
   | { kind: 'bot-scope'; can: BotAction[]; days: number }
   | { kind: 'discard' }
-  | { kind: 'try-again' };
+  | { kind: 'try-again' }
+  /** The next of the storage's states while its data moves under its keys. The supervisor's, not custody's. */
+  | { kind: 'wait-storage' };
 
 /** "4:52" — how long an offer still works. */
 export function remaining(expires: number, nowSeconds: number): string {
@@ -203,6 +226,13 @@ export function spreadWords(pasted: string, at: number): Array<[number, string]>
 /** What the device the window runs on is called on its screens. */
 export type DeviceNoun = 'computer' | 'phone';
 
+/** "Moving your data under its key: 2 of 5.", or without a count where there is none yet. */
+export function migrationProgress(done: number, total: number): string {
+  if (!Number.isInteger(total) || total <= 0 || !Number.isInteger(done) || done < 0)
+    return 'Moving your data under its key.';
+  return `Moving your data under its key: ${Math.min(done, total)} of ${total}.`;
+}
+
 /**
  * The lead of each screen: its title and the sentence under it. `noun` is what this device is
  * where a screen speaks of it while it joins an identity, which a phone does too.
@@ -228,6 +258,31 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
       return {
         title: 'Unlock your master key',
         lead: 'Type the passphrase this computer keeps your master key behind.',
+      };
+    case 'set-storage-passphrase':
+      return {
+        title: 'Choose a passphrase for your data',
+        lead: `This ${noun} has no keyring to keep the key to your data, so a passphrase opens it instead. You type it each time the app starts. Nobody can open your data here without it, you included: keep it somewhere safe.`,
+      };
+    case 'unlock-storage':
+      return {
+        title: 'Open your data',
+        lead: `Type the passphrase that opens your data on this ${noun}.`,
+      };
+    case 'storage-open':
+      return {
+        title: 'Your data is open',
+        lead: 'The app is starting.',
+      };
+    case 'storage-migrating':
+      return {
+        title: 'Encrypting your data',
+        lead: `${migrationProgress(screen.storesDone, screen.storesTotal)} Your data on this ${noun} was kept before it was encrypted, so it moves under its key once, now. The app starts when it is done; you can close this window meanwhile.`,
+      };
+    case 'storage-migration-failed':
+      return {
+        title: 'Your data could not be moved under its key',
+        lead: 'Nothing was lost: your data stays as it was until the move finishes. Try again; it goes on from where it stopped.',
       };
     case 'identity-ready':
       return {
@@ -274,10 +329,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
         lead: 'On a device of your identity, choose “Scan or paste a code”, then scan this QR code or paste the link. Send it there another way if you need to, such as a message to yourself.',
       };
     case 'device-match':
-      return {
-        title: 'Check the code',
-        lead: `Your other device shows a code too. When they match, confirm there. This ${noun} then joins your identity.`,
-      };
+      return deviceMatch(screen, noun);
     case 'joined':
       return {
         title: 'This device is one of yours now',
@@ -447,6 +499,53 @@ function wordsHeading(purpose: WordsPurpose): { title: string; lead: string } {
 }
 
 /**
+ * The new device's code card. Where this device joins only once the person accepts the identity
+ * here too, it asks whether this is their identity, then waits for the other device.
+ */
+function deviceMatch(
+  screen: Extract<Screen, { screen: 'device-match' }>,
+  noun: DeviceNoun,
+): { title: string; lead: string } {
+  if (!screen.needsAccept) {
+    return {
+      title: 'Check the code',
+      lead: `Your other device shows a code too. When they match, confirm there. This ${noun} then joins your identity.`,
+    };
+  }
+  if (screen.accepted) {
+    return {
+      title: 'Confirm on your other device',
+      lead: `You confirmed here. This ${noun} joins your identity once your other device confirms too.`,
+    };
+  }
+  return {
+    title: 'Is this your identity?',
+    lead: screen.confirmed
+      ? 'Your other device confirmed. Check that the code matches the one it showed, then confirm here too.'
+      : 'Check that the code matches the one on your other device. Then confirm here and there.',
+  };
+}
+
+/** What the code card says under the identity while it waits, if anything. */
+export function deviceMatchNote(screen: Extract<Screen, { screen: 'device-match' }>): string | null {
+  if (!screen.needsAccept) return 'Waiting for you to confirm on your other device…';
+  if (screen.accepted) return 'Waiting for your other device…';
+  return screen.confirmed ? null : 'Waiting for you to confirm here and on your other device…';
+}
+
+/**
+ * What the code card does: whether it waits for the join (`wait-join`) and whether it offers
+ * “This is my identity” (`accept`). After an accept, the accept itself waits for the join: the
+ * custody service answered the wait that was out with the accepted card, so no other is asked for.
+ */
+export function deviceMatchActions(screen: Extract<Screen, { screen: 'device-match' }>): {
+  wait: boolean;
+  accept: boolean;
+} {
+  return { wait: !screen.accepted, accept: screen.needsAccept && !screen.accepted };
+}
+
+/**
  * A revoke request's card: who asks and which keys go, each by the key log's key id and fingerprint,
  * never by the record's names; and which of them may still hold a valid master key, as the log says.
  */
@@ -483,6 +582,7 @@ export function isLast(screen: Screen): boolean {
     'master-replaced',
     'restored',
     'master-removed',
+    'storage-open',
     'bot-added',
     'failed',
   ].includes(screen.screen);
