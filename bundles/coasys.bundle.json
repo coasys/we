@@ -18600,6 +18600,24 @@
                   },
                   {
                     "type": "we-tooltip",
+                    "props": { "content": "Extraction", "placement": "bottom" },
+                    "children": [
+                      {
+                        "type": "we-button",
+                        "props": {
+                          "variant": "ghost",
+                          "size": "md",
+                          "square": true,
+                          "label": "Extraction",
+                          "expanded": { "$": "modules.transcribe.extractionOpen" },
+                          "onClick": { "$invoke": "spaceStore.launchModule", "args": ["transcribe:extraction"] }
+                        },
+                        "children": [{ "type": "we-icon", "props": { "name": "sparkle" } }]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "we-tooltip",
                     "props": { "content": "Export the transcript", "placement": "bottom" },
                     "children": [
                       {

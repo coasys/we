@@ -294,11 +294,16 @@ const CALL_ID = 'routeStore.params.id';
 const MINE = `modules.call.callRecordId == ${CALL_ID}`;
 
 /**
- * The end of a call's bar: Live while it runs, and the transcript to take away.
+ * The end of a call's bar: Live while it runs, the pass log, and the transcript to take away.
  *
  * The badge is `sm` so it stands the height of the Page / Canvas switch beside it rather than over
  * it. The export is offered whether the call is running or over, and to everyone: it reads the
  * shared record and writes to the reader's own device, so there is nobody else's account involved.
+ *
+ * Extraction's button does what its rail entry does in WE — `launchModule` on the panel's dock id,
+ * so a press toggles it and an open-but-hidden one is brought forward rather than closed — because
+ * this interface has no rail for it to live on. Without it the panel could not be got back after a
+ * reload unless a pass happened to start.
  */
 export const callBarAside = (callId: string): SchemaNode[] => [
   {
@@ -307,6 +312,24 @@ export const callBarAside = (callId: string): SchemaNode[] => [
       condition: { $: `find(modules.call.liveCalls, { recordId: ${callId} })` },
       then: { type: 'we-badge', props: { tone: 'success', size: 'sm' }, children: [liveDot, 'Live'] },
     },
+  },
+  {
+    type: 'we-tooltip',
+    props: { content: 'Extraction', placement: 'bottom' },
+    children: [
+      {
+        type: 'we-button',
+        props: {
+          variant: 'ghost',
+          size: 'md',
+          square: true,
+          label: 'Extraction',
+          expanded: { $: 'modules.transcribe.extractionOpen' },
+          onClick: { $invoke: 'spaceStore.launchModule', args: ['transcribe:extraction'] },
+        },
+        children: [{ type: 'we-icon', props: { name: 'sparkle' } }],
+      },
+    ],
   },
   {
     type: 'we-tooltip',
