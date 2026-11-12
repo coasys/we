@@ -1034,7 +1034,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       executorConfigFile:
         'string — the path of the config file the backend started with, where this app may write it (the desktop app’s own executor); empty otherwise. Gate the config rows on it',
       executorConfigRows:
-        '{ id, key, value, kind, checked, editable, note }[] — every key of that file: value ready to show (empty when the file leaves the key to its default, "Default" for a fixed one), kind the control it takes, from the key’s type rather than its value (boolean | number | text, or fixed for one only shown), checked for a switch, editable, and note saying why one is not (a flag of this start sets it) or that it is changed only from this computer',
+        '{ id, key, value, kind, choice, editable, note }[] — every key of that file: value ready to show (empty when the file leaves the key to its default, "Default" for a fixed one), kind the control it takes, from the key’s type rather than its value (boolean | number | text, or fixed for one only shown), choice for a boolean key’s three-way select (default | on | off, default while the file leaves it to the backend), editable, and note saying why one is not (a flag of this start sets it) or that it is changed only from this computer',
       executorLogTail:
         'string — the newest lines of this run’s backend log, oldest first. Empty until loadExecutorLogTail runs',
       canRestartExecutor: 'boolean — the host starts the backend, so a restart can be offered',
