@@ -35,12 +35,13 @@ const text = (t: string) => ({ text: t });
 const tool = (name: string, extra?: Record<string, unknown>) => ({ name, arguments: {}, ...extra });
 
 describe('conversationOf', () => {
-  it('builds turns from user rows, reply rows and the tool rows between them', () => {
+  it('builds turns from user rows, reply rows and the tool rows that follow them', () => {
+    // The executor's order: the user message, the reply row, then the tool rows that reply made.
     const messages = conversationOf([
       row({ role: 'user', content: text('what changed?'), seq: 1 }),
-      row({ role: 'tool', content: tool('describe_perspective'), status: 'done', seq: 2 }),
-      row({ role: 'tool', content: tool('instance_create'), status: 'done', seq: 3 }),
-      row({ role: 'assistant', content: text('A new task.'), status: 'done', seq: 4 }),
+      row({ role: 'assistant', content: text('A new task.'), status: 'done', seq: 2 }),
+      row({ role: 'tool', content: tool('describe_perspective'), status: 'done', seq: 3 }),
+      row({ role: 'tool', content: tool('instance_create'), status: 'done', seq: 4 }),
       row({ role: 'user', content: text('thanks'), seq: 5 }),
       row({ role: 'assistant', content: text('Any time.'), status: 'done', seq: 6 }),
     ]);
@@ -50,8 +51,23 @@ describe('conversationOf', () => {
     expect(reply.status).toBe('done');
     expect(reply.text).toBe('A new task.');
     expect(reply.steps?.map((s) => s.tool)).toEqual(['describe_perspective', 'instance_create']);
-    // Steps land under the reply of the turn that made them — the second reply made none.
+    // Steps land under the reply that made them — the second reply made none.
     expect(messages[3].steps).toEqual([]);
+  });
+
+  it('gives each reply of a turn only the steps that followed it', () => {
+    // A reply that failed and was tried again is two reply rows in one turn; the turn-grouping
+    // that gave every reply every step showed the retry's calls under the failure too.
+    const messages = conversationOf([
+      row({ role: 'user', content: text('q'), seq: 1 }),
+      row({ role: 'assistant', content: text(''), status: 'failed', seq: 2 }),
+      row({ role: 'tool', content: tool('instance_create'), status: 'done', seq: 3 }),
+      row({ role: 'assistant', content: text('done this time'), status: 'done', seq: 4 }),
+      row({ role: 'tool', content: tool('add_link'), status: 'done', seq: 5 }),
+    ]);
+
+    expect(messages[1].steps?.map((s) => s.tool)).toEqual(['instance_create']);
+    expect(messages[2].steps?.map((s) => s.tool)).toEqual(['add_link']);
   });
 
   it('maps reply statuses and carries the error a settled row gives', () => {
@@ -79,8 +95,8 @@ describe('conversationOf', () => {
   it('reports a step still running under a settled reply as stopped', () => {
     const messages = conversationOf([
       row({ role: 'user', content: text('q'), seq: 1 }),
-      row({ role: 'tool', content: tool('query_links'), status: 'running', seq: 2 }),
-      row({ role: 'assistant', content: text('done'), status: 'done', seq: 3 }),
+      row({ role: 'assistant', content: text('done'), status: 'done', seq: 2 }),
+      row({ role: 'tool', content: tool('query_links'), status: 'running', seq: 3 }),
     ]);
     expect(messages[1].steps?.[0].outcome).toBe('stopped');
   });
@@ -88,8 +104,8 @@ describe('conversationOf', () => {
   it('keeps a running step running while the reply is', () => {
     const messages = conversationOf([
       row({ role: 'user', content: text('q'), seq: 1 }),
-      row({ role: 'tool', content: tool('query_links'), status: 'running', seq: 2 }),
-      row({ role: 'assistant', content: text(''), status: 'running', seq: 3 }),
+      row({ role: 'assistant', content: text(''), status: 'running', seq: 2 }),
+      row({ role: 'tool', content: tool('query_links'), status: 'running', seq: 3 }),
     ]);
     expect(messages[1].steps?.[0].outcome).toBe('running');
   });
@@ -97,14 +113,14 @@ describe('conversationOf', () => {
   it('marks a failed step, and a capability refusal by name', () => {
     const messages = conversationOf([
       row({ role: 'user', content: text('q'), seq: 1 }),
+      row({ role: 'assistant', content: text('I cannot.'), status: 'done', seq: 2 }),
       row({
         role: 'tool',
         content: tool('describe_perspective', { perspective_id: 'other-space' }),
         status: 'failed',
         error: 'Capability is not matched',
-        seq: 2,
+        seq: 3,
       }),
-      row({ role: 'assistant', content: text('I cannot.'), status: 'done', seq: 3 }),
     ]);
     const step = messages[1].steps![0];
     expect(step.outcome).toBe('error');
@@ -115,10 +131,10 @@ describe('conversationOf', () => {
   it('flags a call that wrote, so the surface can mark it', () => {
     const messages = conversationOf([
       row({ role: 'user', content: text('q'), seq: 1 }),
-      row({ role: 'tool', content: tool('instance_create'), status: 'done', seq: 2 }),
-      row({ role: 'tool', content: tool('add_link'), status: 'done', seq: 3 }),
-      row({ role: 'tool', content: tool('list_perspectives'), status: 'done', seq: 4 }),
-      row({ role: 'assistant', content: text('made it'), status: 'done', seq: 5 }),
+      row({ role: 'assistant', content: text('made it'), status: 'done', seq: 2 }),
+      row({ role: 'tool', content: tool('instance_create'), status: 'done', seq: 3 }),
+      row({ role: 'tool', content: tool('add_link'), status: 'done', seq: 4 }),
+      row({ role: 'tool', content: tool('list_perspectives'), status: 'done', seq: 5 }),
     ]);
     expect(messages[1].steps?.map((s) => s.wrote ?? false)).toEqual([true, true, false]);
   });

@@ -151,44 +151,37 @@ const replyStatus = (status: string | null): AgentReplyStatus =>
 
 /**
  * The transcript as neutral turns, oldest first: a reply row is the agent's turn, with its status
- * and every tool row that turn made — grouped by the user message that opened the turn, which is
- * how steps land under the reply they served when rows arrive out of order.
+ * and the tool rows it made — which land *after* it, in `seq` order, so each reply keeps only the
+ * steps that followed it. One turn can hold more than one reply row — a reply that failed and was
+ * tried again — and the turn-grouping that gave every reply every step showed one row's calls
+ * under the other.
  */
 export function conversationOf(rows: AISessionMessage[]): AgentConversationMessage[] {
   const sorted = [...rows].sort((a, b) => a.seq - b.seq);
-  // A turn is everything written between one user message and the next.
-  const turns: { user: AISessionMessage; rest: AISessionMessage[] }[] = [];
-  for (const row of sorted) {
-    if (row.role === 'user' || turns.length === 0) {
-      turns.push({ user: row.role === 'user' ? row : row, rest: [] });
-    } else {
-      turns[turns.length - 1].rest.push(row);
-    }
-  }
-
   const out: AgentConversationMessage[] = [];
-  for (const { user, rest } of turns) {
-    const tools = rest.filter((row) => row.role === 'tool');
-    const replies = rest.filter((row) => row.role === 'assistant');
-    if (user.role === 'user') {
-      out.push({ id: user.id, role: 'user', text: content(user).text ?? '', createdAt: toMs(user.createdAt) });
-    }
-    for (const reply of replies) {
-      const status = replyStatus(reply.status);
-      const text = content(reply).text ?? '';
-      const error = reply.error ?? undefined;
-      out.push({
-        id: reply.id,
+  // The reply the next tool row belongs to — reset by a user message, replaced by each reply row.
+  let reply: AgentConversationMessage | undefined;
+  for (const row of sorted) {
+    if (row.role === 'user') {
+      reply = undefined;
+      out.push({ id: row.id, role: 'user', text: content(row).text ?? '', createdAt: toMs(row.createdAt) });
+    } else if (row.role === 'assistant') {
+      const status = replyStatus(row.status);
+      const error = row.error ?? undefined;
+      reply = {
+        id: row.id,
         role: 'assistant',
-        text,
-        createdAt: toMs(reply.createdAt),
+        text: content(row).text ?? '',
+        createdAt: toMs(row.createdAt),
         status,
         ...(error ? { error } : {}),
-        steps: tools.map((row) => toStep(row, status)),
-      });
+        steps: [],
+      };
+      out.push(reply);
+    } else if (row.role === 'tool') {
+      // A tool row before any reply has nothing to hang on — dropped, as before.
+      reply?.steps?.push(toStep(row, reply.status!));
     }
-    // Tool rows under a turn whose reply row never arrived are dropped with the reply — there is
-    // nothing to hang them on, and the transcript itself is the record.
   }
   return out;
 }
