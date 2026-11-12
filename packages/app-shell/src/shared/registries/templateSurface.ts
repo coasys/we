@@ -1178,6 +1178,12 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       and a template able to call it could make every module's panel claim room it is not using.
     */
     provideModuleGate: WIRING,
+    /*
+      Which space a space-bound chat belongs to, injected by `SpaceStore` — the same hand-off as
+      `provideModuleGate` above, and wiring for the same reason: a template able to call it could
+      show a space's chat anywhere, or nowhere.
+    */
+    provideSpaceGate: WIRING,
     provideTemplateSaver: WIRING,
     pendingDestructive: state('host-layout'),
     confirmDestructive: action('host-layout'),
@@ -1607,6 +1613,14 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     sheet: state('view-state'),
     isNarrow: state('view-state'),
     openChat: action('view-state'),
+    /*
+      The draft bookkeeping behind `openChat`'s send-once — read and stamped by the chat panel
+      itself as an ask starts. A template's channel is `openChat`, which hands the question over;
+      marking drafts consumed directly would let one ask the same words again or swallow a pending
+      one.
+    */
+    draftConsumed: WIRING,
+    consumeDraft: WIRING,
     closeSheet: ambient('view-state'),
   },
 
