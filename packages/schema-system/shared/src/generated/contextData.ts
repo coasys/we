@@ -4314,6 +4314,7 @@ export const contextData: ContextData = {
           kind: 'state',
           doc: 'True only while actually transcribing — what a record button highlights on.',
         },
+        { name: 'liveCallRecords', kind: 'state', doc: 'The record of every call somebody is in right now.' },
         {
           name: 'liveCollectionId',
           kind: 'state',

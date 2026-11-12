@@ -36,6 +36,7 @@ import { createComputed, createEffect, createMemo, createSignal, For, type JSX, 
 import { createStore, reconcile } from 'solid-js/store';
 
 import { toEntityShape } from '../../../shared/graphEntityShape';
+import { followRead, idsOf, readKey } from '../../../shared/graphWatch';
 import {
   actAs,
   actingAs,
@@ -492,6 +493,12 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
     );
   });
 
+  /**
+   * The ids each read last returned, by the question it asked — what a watch on the same question
+   * compares its subscription's first answer with. See `followRead`.
+   */
+  const lastReads = new Map<string, string[]>();
+
   const host: GraphViewProps['host'] = {
     nodeContent: { block: BlockCard, record: RecordCard, property: PropertyCard },
     // A card's score for the reaction a tree is ordered by, and the reader's own answer — see `ReactionBadge`.
@@ -598,7 +605,8 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
      *
      * So the engine hands over the read it made and this subscribes to exactly that. The rows are
      * still thrown away; what they are for is the fingerprint, and it now covers the same records
-     * the seed drew. Cost is one subscription per distinct read — four for a board — each paging
+     * the seed drew. The one exception is the first answer, whose ids are compared with that read's
+     * — see `followRead`. Cost is one subscription per distinct read — four for a board — each paging
      * exactly what the seed would have fetched anyway.
      */
     watch(request, onChange) {
@@ -621,44 +629,19 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       if (!options) return () => undefined;
       trace('graph', 'watch', { entity: request.entity, parent: (options as { parent?: { id?: string } }).parent?.id });
 
-      let live = true;
-      /*
-        The first delivery is the current state, not a change.
-
-        `subscribe` resolves with the initial page *and* invokes the callback, so treating every
-        invocation as a change makes the graph refresh once per watched type immediately after
-        loading — re-running every seed query for a state it already has. `pending` covers the
-        genuine race: a write landing before the initial page resolves is a real change, and
-        dropping it would lose exactly the update that arrived while the graph was opening.
-      */
-      let primed = false;
-      let pending = false;
-
-      const subscription = model.query(handle, options);
-      subscription
-        .subscribe(() => {
-          if (!live) return;
-          if (!primed) {
-            pending = true;
-            return;
-          }
-          onChange();
-        })
-        .then(() => {
-          primed = true;
-          if (live && pending) onChange();
-        })
-        .catch((error: unknown) => {
-          // A type this backend will not subscribe to leaves the graph as loaded rather than
-          // taking it down — the same degradation every other read here makes.
+      const key = readKey(request.entity, request.dataset, options);
+      return followRead(model.query(handle, options), {
+        // The read the seed made just before this watch: a first answer that differs from it is a
+        // write that landed between the two, and no callback will ever report it.
+        seen: () => lastReads.get(key),
+        onChange,
+        // A type this backend will not subscribe to leaves the graph as loaded rather than
+        // taking it down — the same degradation every other read here makes.
+        onError: (error) => {
           const entities = Array.isArray(request.entity) ? request.entity.join(', ') : request.entity;
           console.warn(`[graph] cannot watch ${entities}:`, error);
-        });
-
-      return () => {
-        live = false;
-        subscription.dispose();
-      };
+        },
+      });
     },
 
     /*
@@ -726,6 +709,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
       }
 
       const rows = await model.findAll(handle, options);
+      lastReads.set(readKey(entity, dataset, options), idsOf(rows));
       trace('graph', 'read', {
         entity,
         rows: rows.length,
