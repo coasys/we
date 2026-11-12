@@ -2315,6 +2315,11 @@ export const contextData: ContextData = {
       needsArgs: ['installFromFile', 'toggleSpace', 'openSetUp', 'removeBundle'],
     },
     {
+      name: 'chatStore',
+      state: { sheet: { type: 'object' }, isNarrow: { type: 'boolean' } },
+      actions: ['openChat', 'closeSheet'],
+    },
+    {
       name: 'clockStore',
       state: { clocks: { type: 'object' } },
       actions: ['play', 'pause', 'toggle', 'seek', 'seekProgress', 'setSpeed', 'setLoop', 'configure'],
@@ -3716,6 +3721,8 @@ export const contextData: ContextData = {
     { name: 'clipboard', state: {}, actions: ['copy'], needsArgs: ['copy'] },
   ],
   shellComponents: [
+    'AgentChat',
+    'AgentChatSheet',
     'AiPanel',
     'CredentialField',
     'EditingBar',

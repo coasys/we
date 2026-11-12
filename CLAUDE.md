@@ -3057,6 +3057,14 @@ BundleStore:
   - confirmSetUp(): adds the picker’s app’s record types to every ticked space, copies its sections in and switches them on — for everybody in each. Only spaces this agent runs are ever offered
   - removeBundle(bundleId: string): removes an installed app: its app, templates and theme. Never its record types, which hold the records people made with it
 
+ChatStore:
+- State:
+  - sheet: the chat a narrow window is showing as a sheet — what it was asked for ({ perspectiveUuid?, spaceName?, draft? }) or null. Read by AgentChatSheet, not by templates
+  - isNarrow: true below the viewport width where a floating panel stops being usable — the point at which openChat sends a chat to the sheet instead of a panel
+- Actions:
+  - openChat(input?: { perspectiveUuid?: string; spaceName?: string; draft?: string }): opens an AI chat — global with no perspectiveUuid (the session carries no capabilities, so it reaches everything the app's token does), or scoped to that one perspective with 'this space only'. `draft` is a question the chat opens a fresh conversation for and sends at once. A panel on desktop, the bottom sheet on a phone
+  - closeSheet(): puts the phone sheet away
+
 ClockStore:
 - State:
   - clocks: Record<name, { at, atIso, atLabel, ticks, from, fromIso, to, toIso, progress, playing, speed, loop, canPlay }> — the app's clocks by name. A clock is the moment something shows and the playback that moves it: a globe given `clock: "events"` follows the clock of that name, and every control reading or driving "events" moves it too. `at` is milliseconds since 1970, or null until somebody plays or seeks, which shows everything; `from`/`to` are the range, which the globe works out from its layers' data; `atIso` is ready for a we-timestamp, and `atLabel` is the moment already written as precisely as the range calls for (with the time across a day, the month alone across decades); `ticks` are marks along the range, { at, fraction, label }, on round moments at the scale it calls for — hours, days, months or years — to place at `fraction` of a scrubber's width; `progress` is 0–1 through the range, for a we-slider (max 1, step 0.001). Published about five times a second while playing. A name nothing has used yet reads as undefined, so guard a control on it: { $: 'clockStore.clocks.events.canPlay' }
