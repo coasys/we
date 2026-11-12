@@ -10,11 +10,6 @@
     "images": ["https://coasys.org"],
     "media": ["https://coasys.org"]
   },
-  "host": {
-    "ui": {
-      "app": "we-app"
-    }
-  },
   "modules": [
     "call",
     "transcribe",

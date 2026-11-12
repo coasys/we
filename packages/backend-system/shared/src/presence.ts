@@ -342,6 +342,11 @@ export interface HeartbeatOptions {
   clearTimer?: (handle: unknown) => void;
   /** Called whenever the peer map changes, with freshly derived peers. */
   onPeersChanged?: (peers: Peer[]) => void;
+  /**
+   * Which of the agent's clients this source speaks for — see {@link PresenceMessage.client}.
+   * Random per source when omitted, which is what a host wants; tests pin it.
+   */
+  client?: string;
 }
 
 export interface PresenceSource {
@@ -360,6 +365,13 @@ export interface PresenceSource {
    * costs one round trip of answers and cannot leave anything inconsistent.
    */
   announce(): void;
+  /**
+   * Stop speaking for this agent from here, and tell peers to drop what this client said — while
+   * still listening. The other half of {@link announce}: a host that gates publishing calls it when
+   * this client stops being the one that publishes, so the state it last sent does not linger
+   * beside its successor's until it decays.
+   */
+  withdraw(): void;
   /** Merge a patch into this agent's state and publish immediately. */
   update(patch: Partial<Omit<PresenceState, 'agentId' | 'updatedAt'>>): void;
   /** Add or replace an activity, matched on `type` plus `id` when present. */
@@ -393,10 +405,20 @@ export type PublishReason = 'beat' | 'change' | 'hello' | 'solicit' | 'bye';
 interface PresenceMessage {
   v: 1;
   state: PresenceState;
+  /**
+   * Which of the agent's clients sent this — one per presence source, so one per tab.
+   *
+   * One person is routinely several clients: two tabs, a laptop and a phone. Keyed by agent alone,
+   * each client's message overwrote the last, so peers saw the person flip between whatever each
+   * client was doing — in the call, then not, then in it — and a client could not hear its siblings
+   * at all, since a message from its own agent was its own echo. Keyed by agent and client, every
+   * client is held apart and {@link mergeClients} shows the person once.
+   */
+  client?: string;
   /** Set on join. Peers seeing it re-broadcast so the joiner populates in one round trip. */
   hello?: true;
   /**
-   * Set on leave. Peers drop the agent immediately instead of watching it decay.
+   * Set on leave. Peers drop this client rather than watching it decay.
    *
    * Without this, leaving a space is indistinguishable from a crashed laptop: the agent simply stops
    * heartbeating and runs the full ladder, so it lingers for a full `offlineAfter` in a space it left
@@ -412,6 +434,70 @@ function isPresenceMessage(payload: unknown): payload is PresenceMessage {
   if (typeof payload !== 'object' || payload === null) return false;
   const msg = payload as Partial<PresenceMessage>;
   return msg.v === 1 && typeof msg.state === 'object' && msg.state !== null;
+}
+
+/**
+ * A presence message retracting its sender's state. A host gating who publishes lets these through
+ * whoever holds the gate: only the client that said something can take it back, and a retraction
+ * that waits for the gate is the stale state it was meant to clear.
+ */
+export function isPresenceFarewell(payload: unknown): boolean {
+  return isPresenceMessage(payload) && payload.bye === true;
+}
+
+/** Where a client's state is held: its agent, and which of that agent's clients it is. */
+const clientKey = (agentId: string, client: string | undefined) => `${agentId}\u0000${client ?? ''}`;
+
+const activityKeyOf = (activity: Activity) => `${activity.type}\u0000${'id' in activity ? String(activity.id) : ''}`;
+
+/**
+ * One state per agent, from the states of all its clients.
+ *
+ * What the agent is *doing* is the union over its clients: a person in a call on the laptop is in
+ * the call, whatever the phone beside it is showing. What the agent *is* — availability, focus — is
+ * a single value, taken from the freshest client, except that this client's own agent is always
+ * described by this client: the tab a person is looking at is where they are.
+ *
+ * A client already offline contributes nothing: its activities are a claim nobody is standing
+ * behind, and merging them into a live sibling would bring them back to life.
+ */
+export function mergeClients(
+  states: Iterable<PresenceState>,
+  now: number,
+  thresholds: LivenessThresholds = DEFAULT_THRESHOLDS,
+  self?: PresenceState | null,
+): PresenceState[] {
+  const byAgent = new Map<string, PresenceState[]>();
+  for (const state of states) {
+    const group = byAgent.get(state.agentId) ?? [];
+    group.push(state);
+    byAgent.set(state.agentId, group);
+  }
+  const merged: PresenceState[] = [];
+  for (const [agentId, group] of byAgent) {
+    if (group.length === 1) {
+      merged.push(group[0]);
+      continue;
+    }
+    const freshestFirst = [...group].sort((a, b) => b.updatedAt - a.updatedAt);
+    const base = self && self.agentId === agentId ? self : freshestFirst[0];
+    const activities = new Map<string, Activity>();
+    for (const activity of base.activities ?? []) activities.set(activityKeyOf(activity), activity);
+    for (const state of freshestFirst) {
+      if (state === base || now - state.updatedAt >= thresholds.offlineAfter) continue;
+      for (const activity of state.activities ?? []) {
+        const key = activityKeyOf(activity);
+        if (!activities.has(key)) activities.set(key, activity);
+      }
+    }
+    merged.push({
+      ...base,
+      agentId,
+      updatedAt: freshestFirst[0].updatedAt,
+      activities: [...activities.values()],
+    });
+  }
+  return merged;
 }
 
 /**
@@ -436,6 +522,8 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
   const setTimer = options.setTimer ?? ((fn, ms) => setTimeout(fn, ms));
   const clearTimer = options.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>));
 
+  const client = options.client ?? globalThis.crypto?.randomUUID?.() ?? Math.random().toString(36).slice(2);
+  /** Every client heard from, this one included, keyed by {@link clientKey}. */
   const states = new Map<string, PresenceState>();
   let self: PresenceState | null = null;
   let unsubscribe: (() => void) | null = null;
@@ -451,13 +539,20 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
   let running = false;
 
   function notify(): void {
-    const peers = derivePeers(states.values(), now(), thresholds);
+    const peers = currentPeers();
     trace('presence', 'peers', { count: peers.length });
     options.onPeersChanged?.(peers);
   }
 
   /** Have we heard from anybody? `states` always holds our own entry, so one means nobody. */
   const alone = () => states.size <= 1;
+
+  const selfKey = () => (self ? clientKey(self.agentId, client) : null);
+
+  function currentPeers(): Peer[] {
+    const at = now();
+    return derivePeers(mergeClients(states.values(), at, thresholds, self), at, thresholds);
+  }
 
   function cancelHandshake(): void {
     if (handshakeTimer !== null) {
@@ -544,7 +639,7 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
     if (!running || !self) return;
     lastReason = reason;
     self = { ...self, updatedAt: now() };
-    states.set(self.agentId, self);
+    states.set(clientKey(self.agentId, client), self);
     // `invisible` is a hard stop, not a client-side filter. Flux keeps broadcasting full state
     // (including route) when invisible and merely hides it on receipt, so any modified client sees
     // invisible agents and where they are.
@@ -552,7 +647,7 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
     // `bye` is the one exception: an invisible agent has published nothing, so peers hold no state
     // to retract, and sending one would disclose their departure — and therefore their presence.
     if (self.availability !== 'invisible') {
-      const message: PresenceMessage = { v: 1, state: self };
+      const message: PresenceMessage = { v: 1, state: self, client };
       if (reason === 'hello' || reason === 'solicit') message.hello = true;
       if (reason === 'bye') message.bye = true;
       trace('presence', 'send', { reason, activities: self.activities?.length ?? 0 });
@@ -592,10 +687,13 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
       trace('presence', 'recv:drop', { from, reason: running ? 'malformed' : 'stopped' });
       return;
     }
-    if (self && from === self.agentId) {
+    // This client's own echo. Another client of the same agent — a sibling tab, another device — is
+    // a peer like any other, held under its own key and merged into the agent by `mergeClients`.
+    if (self && from === self.agentId && payload.client === client) {
       trace('presence', 'recv:drop', { from, reason: 'self' });
       return;
     }
+    const key = clientKey(from, payload.client);
 
     trace('presence', 'recv', {
       from,
@@ -606,7 +704,7 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
 
     // A departure retracts the agent outright rather than leaving it to decay.
     if (payload.bye) {
-      states.delete(from);
+      states.delete(key);
       notify();
       return;
     }
@@ -614,7 +712,7 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
     // Trust the transport's sender id over the payload's — a peer must not be able to write into
     // another agent's slot. Where `authenticatedSender` is false this is still the best available
     // key, and the capability flag is what warns a consumer not to act on it.
-    states.set(from, { ...payload.state, agentId: from, updatedAt: now() });
+    states.set(key, { ...payload.state, agentId: from, updatedAt: now() });
 
     // Somebody is there, so stop repeating our own introduction.
     cancelHandshake();
@@ -628,7 +726,7 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
   function evictStale(): void {
     const cutoff = now() - thresholds.evictAfter;
     for (const [id, state] of states) {
-      if (state.updatedAt <= cutoff && id !== self?.agentId) states.delete(id);
+      if (state.updatedAt <= cutoff && id !== selfKey()) states.delete(id);
     }
   }
 
@@ -637,7 +735,7 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
       if (running) return;
       running = true;
       self = { ...state, updatedAt: now() };
-      states.set(self.agentId, self);
+      states.set(clientKey(self.agentId, client), self);
       unsubscribe = channel.onMessage(receive);
       unsubscribeResults =
         channel.onPublishResult?.((result) => {
@@ -664,6 +762,18 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
       trace('presence', 'announce');
       handshake();
       schedule(interval);
+    },
+
+    withdraw() {
+      if (!self) return;
+      trace('presence', 'withdraw');
+      cancelHandshake();
+      cancelRetry();
+      if (echoTimer !== null) {
+        clearTimer(echoTimer);
+        echoTimer = null;
+      }
+      send('bye');
     },
 
     update(patch) {
@@ -695,7 +805,7 @@ export function createHeartbeatPresence(channel: PresenceChannel, options: Heart
 
     peers() {
       evictStale();
-      return derivePeers(states.values(), now(), thresholds);
+      return currentPeers();
     },
 
     stop() {
