@@ -4533,8 +4533,21 @@ export function ShellStoreProvider(props: ParentProps) {
           ...(options.title ? { title: options.title } : {}),
         },
       }));
-      // Opened on purpose, so in front of whatever shares its place.
-      raise(id);
+      /*
+        Opened on purpose, so wanted in sight — `revealDock` says that for every panel asked for:
+        back from behind a shell view or a panels-hidden state, out of a strip or a fold, in front.
+        An instance opened before has its dock already registered, so it takes that path whole. One
+        just created does not — the effect registering it runs after this call — and `revealDock`
+        would find no request and return. What it would have said for a dock that has never been laid
+        out (no strip, no fold yet) is exactly this.
+      */
+      if (dockRequests().some((request) => request.id === id)) {
+        store.revealDock(id);
+      } else {
+        if (panelsHiddenByUser()) setPanelsHiddenByUser(false);
+        if (activeShellView()) setActiveShellView(null);
+        raise(id);
+      }
       return id;
     },
 
