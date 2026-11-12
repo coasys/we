@@ -38,8 +38,12 @@ import {
 export interface IdentityTransport {
   start(): Promise<Screen>;
   step(input: StepInput): Promise<Screen>;
-  /** Ends the step and closes the window. */
-  cancel(): Promise<void>;
+  /**
+   * Ends the step and closes the window: `null`. A step that could not be ended (a new device that had
+   * already joined, a cancel the identity service did not confirm) answers the screen to show instead,
+   * and the window stays.
+   */
+  cancel(): Promise<Screen | null>;
   /** Closes the window after the step's last screen. */
   finish(): Promise<void>;
   /**
@@ -106,11 +110,13 @@ const step = (input: StepInput, clear: HTMLInputElement[] = []) => run(() => hos
 /*
   Cancel and Done close the window through the host. Where the host cannot be reached (its custody
   service has stopped), the window says so and closes itself, rather than leaving a button that does
-  nothing and a window the person has to close by hand.
+  nothing and a window the person has to close by hand. A cancel that could not end the step answers
+  the screen to show instead, and the window stays on it.
 */
-async function leave(call: () => Promise<void>) {
+async function leave(call: () => Promise<Screen | null | void>) {
   try {
-    await call();
+    const instead = await call();
+    if (instead) draw(instead);
   } catch (error) {
     draw({ screen: 'failed', message: String(error) });
     window.close();
