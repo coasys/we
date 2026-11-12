@@ -12,7 +12,9 @@
  *    WE's page fails to load (`server.errorPath`). See src/webViewFloor.ts.
  * 3. Builds `www/mobile/identity.html`, the phone's identity page: the shared identity window
  *    (`@we/identity-window`) over the `DeviceKey` plugin, under the window's own policy. WE opens it
- *    to join an identity and for each identity change. See src/identity/.
+ *    to join an identity and for each identity change. See src/identity/. It wears the app's theme,
+ *    name and mark as the app's screens before a session do, from the seed the Coasys app is built
+ *    for (`WE_SEED`, as apps/coasys/vite.config.ts defaults it).
  */
 import { cpSync, existsSync, rmSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -20,6 +22,8 @@ import { fileURLToPath } from 'node:url';
 
 import { identityWindowConfig } from '@we/identity-window/vite';
 import { build } from 'vite';
+
+import { seedBase } from '../../../scripts/seed-vite.mjs';
 
 const app = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const weDist = resolve(app, '../coasys/dist');
@@ -55,7 +59,12 @@ await build({
   },
 });
 
-const identity = identityWindowConfig({ root: join(app, 'src/identity'), outDir: join(www, 'mobile') });
+process.env.WE_SEED ??= 'seeds/coasys.seed.json';
+const identity = identityWindowConfig({
+  root: join(app, 'src/identity'),
+  outDir: join(www, 'mobile'),
+  ...seedBase(),
+});
 await build({
   ...identity,
   configFile: false,
