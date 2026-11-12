@@ -360,6 +360,7 @@ jobs:
       - name: Test against a real Secret Service
         if: runner.os == 'Linux'
         run: |
+          sudo apt-get update >/dev/null
           sudo apt-get install -y --no-install-recommends gnome-keyring dbus-daemon >/dev/null
           export XDG_RUNTIME_DIR="$(mktemp -d)"
           dbus-run-session -- sh -c 'K=$(mktemp -d);
