@@ -146,8 +146,18 @@ pub enum Screen {
         qr_svg: String,
         expires: u64,
     },
-    /// The new device claimed the holder's offer: the code the holder shows too.
-    DeviceMatch { code: String, did: String },
+    /// The new device claimed the holder's offer: the code the holder shows too, and the identity.
+    /// `needs_accept`: the executor records the identity as its operator only once the person
+    /// accepts it here too ([`StepInput::Accept`]), as on a first run. `accepted`: they did;
+    /// `confirmed`: the other device confirmed, and this one waits only for the accept.
+    DeviceMatch {
+        code: String,
+        did: String,
+        #[serde(rename = "needsAccept")]
+        needs_accept: bool,
+        accepted: bool,
+        confirmed: bool,
+    },
     /// The holder confirmed: this computer is a device of `did`.
     Joined {
         did: String,
@@ -288,8 +298,14 @@ pub enum StepInput {
     },
     /// The new device: wait for a holder's offer (resolves with `DeviceMatch`).
     WaitLink,
-    /// The new device: wait for the holder to confirm (resolves with `Joined`).
+    /// The new device: wait for the holder to confirm (resolves with `Joined`, or with
+    /// `DeviceMatch` once the holder confirmed a claim that still waits for [`StepInput::Accept`]).
     WaitJoin,
+    /// The new device, on a `DeviceMatch` with `needsAccept`: the person accepts the identity, and
+    /// the executor may record it as its operator (`identity.acceptJoin`). Sent while a `WaitJoin`
+    /// waits: that one resolves with the accepted `DeviceMatch`, and this one follows the join to
+    /// its end (resolves with `Joined`).
+    Accept,
     /// Yes to the request, with the passphrase where the computer needs one.
     Answer {
         passphrase: Option<String>,
@@ -318,6 +334,7 @@ impl std::fmt::Debug for StepInput {
             StepInput::Code { .. } => "code",
             StepInput::WaitLink => "wait-link",
             StepInput::WaitJoin => "wait-join",
+            StepInput::Accept => "accept",
             StepInput::Answer { .. } => "answer",
             StepInput::Name { .. } => "name",
             StepInput::Revoke { .. } => "revoke",
@@ -1593,13 +1610,16 @@ async fn show_code_on<R: ExecutorRpc>(
         }),
     );
 
-    let mut ticket: Option<String> = None;
+    let mut claim: Option<Claim> = None;
     loop {
         let Some(input) = next_input(vault, address, rx, reply).await else {
+            if let Some(claim) = &claim {
+                cancel_join(executor, &claim.offer_id).await;
+            }
             return;
         };
         match input {
-            StepInput::WaitLink if ticket.is_none() => {
+            StepInput::WaitLink if claim.is_none() => {
                 let wait = Duration::from_secs(expires.saturating_sub(CLOCK.now()));
                 let outcome = tokio::select! {
                     claimed = tokio::time::timeout(wait, next_ticket(&mut events)) => Some(claimed),
@@ -1628,30 +1648,45 @@ async fn show_code_on<R: ExecutorRpc>(
                         )
                     }
                     Some(Ok(Some(claimed))) => {
-                        ticket = Some(claimed.offer_id);
-                        answer(
-                            reply,
-                            Ok(Screen::DeviceMatch {
-                                code: claimed.match_code,
-                                did: claimed.did,
-                            }),
-                        );
+                        let claimed = Claim {
+                            offer_id: claimed.offer_id,
+                            did: claimed.did,
+                            code: claimed.match_code,
+                            needs_accept: claimed.needs_accept,
+                            // The offer lives at most `OFFER_TTL_S` from its claim, and the
+                            // holder's confirm may land in the store's grace after it.
+                            deadline: CLOCK.now() + OFFER_TTL_S + CONFIRM_GRACE_S,
+                            accepted: false,
+                            confirmed: false,
+                        };
+                        answer(reply, Ok(claimed.screen()));
+                        claim = Some(claimed);
                     }
                 }
             }
-            StepInput::WaitJoin if ticket.is_some() => {
-                let offer_id = ticket.take().expect("checked above");
-                // The offer lives at most `OFFER_TTL_S` from its claim, and the holder's confirm
-                // may land in the store's grace after it.
-                let deadline = CLOCK.now() + OFFER_TTL_S + CONFIRM_GRACE_S;
-                let outcome = tokio::select! {
-                    joined = follow_join(executor, &offer_id, deadline) => Some(joined),
-                    () = wait_cancel(vault, address, rx) => None,
-                };
-                let screen = match outcome {
-                    None => return answer(reply, Err(CustodyError::NoStep)),
-                    Some(Ok((did, key_id))) => Screen::Joined { did, key_id },
-                    Some(Err(screen)) => screen,
+            StepInput::WaitJoin if claim.is_some() => {
+                let claim = claim.as_mut().expect("checked above");
+                match follow_claim(executor, claim, vault, address, rx, reply).await {
+                    None => {
+                        cancel_join(executor, &claim.offer_id).await;
+                        return answer(reply, Err(CustodyError::NoStep));
+                    }
+                    // The other device confirmed; the person has yet to accept here.
+                    Some(screen @ Screen::DeviceMatch { .. }) => answer(reply, Ok(screen)),
+                    Some(screen) => return answer(reply, Ok(screen)),
+                }
+            }
+            StepInput::Accept if claim.as_ref().is_some_and(Claim::awaits_accept) => {
+                let claim = claim.as_mut().expect("checked above");
+                if let Err(screen) = accept_join(executor, claim).await {
+                    return answer(reply, Ok(screen));
+                }
+                let screen = match follow_claim(executor, claim, vault, address, rx, reply).await {
+                    None => {
+                        cancel_join(executor, &claim.offer_id).await;
+                        return answer(reply, Err(CustodyError::NoStep));
+                    }
+                    Some(screen) => screen,
                 };
                 return answer(reply, Ok(screen));
             }
@@ -1660,11 +1695,44 @@ async fn show_code_on<R: ExecutorRpc>(
     }
 }
 
-/// A ticket this executor claimed (`link-ticket`).
+/// A ticket this executor claimed (`link-ticket`). `needs_accept`: the executor binds only once the
+/// person accepts the identity here (`needsAccept`, from coasys/ad4m#1635; absent before it).
 struct TicketClaimed {
     did: String,
     offer_id: String,
     match_code: String,
+    needs_accept: bool,
+}
+
+/// The claim the new device follows, from its `link-ticket` to the join.
+struct Claim {
+    offer_id: String,
+    did: String,
+    code: String,
+    needs_accept: bool,
+    /// When the claim can no longer be confirmed.
+    deadline: u64,
+    /// The person accepted the identity here (`identity.acceptJoin`).
+    accepted: bool,
+    /// The holder confirmed (`awaiting-accept`), and the window was told.
+    confirmed: bool,
+}
+
+impl Claim {
+    fn screen(&self) -> Screen {
+        Screen::DeviceMatch {
+            code: self.code.clone(),
+            did: self.did.clone(),
+            needs_accept: self.needs_accept,
+            accepted: self.accepted,
+            confirmed: self.confirmed,
+        }
+    }
+
+    /// The executor waits for the person to accept the identity here.
+    fn awaits_accept(&self) -> bool {
+        self.needs_accept && !self.accepted
+    }
 }
 
 /// The next `link-ticket` event; `None` once the connection closed.
@@ -1679,6 +1747,7 @@ async fn next_ticket(events: &mut broadcast::Receiver<Value>) -> Option<TicketCl
                             did,
                             offer_id,
                             match_code,
+                            needs_accept: event["needsAccept"].as_bool().unwrap_or(false),
                         })
                     }
                     _ => log::warn!("custody: a link-ticket event without its fields"),
@@ -1690,45 +1759,107 @@ async fn next_ticket(events: &mut broadcast::Receiver<Value>) -> Option<TicketCl
     }
 }
 
-/// Follows this executor's claim of `offer_id` (`identity.joinStatus`) every [`JOIN_POLL`] until
-/// the holder confirms it (the identity and this computer's key id), the offer ends, or
-/// `deadline` passes — each call and each wait cut off there.
-async fn follow_join<R: ExecutorRpc>(
+/// Follows this executor's claim (`identity.joinStatus`) every [`JOIN_POLL`] until the holder
+/// confirms it (`Joined`), the offer ends, or the claim's deadline passes — each call and each wait
+/// cut off there. While it waits it answers the window: a cancel ends it (`None`), and an
+/// [`StepInput::Accept`] accepts the identity, answers the waiting request with the accepted
+/// `DeviceMatch` and becomes the request this answers. A claim the holder confirmed but the person
+/// has not accepted (`awaiting-accept`) answers `DeviceMatch` once, so the window asks.
+async fn follow_claim<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
-    offer_id: &str,
-    deadline: u64,
-) -> Result<(String, String), Screen> {
+    claim: &mut Claim,
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) -> Option<Screen> {
     let closed = || Screen::Failed {
         message: "The other device did not confirm in time. Show a new code to try again.".into(),
     };
+    let mut next_poll = tokio::time::Instant::now();
     loop {
-        let left = deadline.saturating_sub(CLOCK.now());
-        if left == 0 {
-            return Err(closed());
+        if claim.deadline <= CLOCK.now() {
+            return Some(closed());
         }
-        let join = tokio::time::timeout(
-            Duration::from_secs(left),
-            executor
-                .rpc()
-                .call("identity.joinStatus", json!({ "offerId": offer_id })),
-        )
-        .await
-        .map_err(|_| closed())?
-        .map_err(|e| failed(&ClientError::Rpc(e)))?;
+        let offer_id = claim.offer_id.clone();
+        let deadline = claim.deadline;
+        let poll = async move {
+            tokio::time::sleep_until(next_poll).await;
+            let left = deadline.saturating_sub(CLOCK.now());
+            tokio::time::timeout(
+                Duration::from_secs(left),
+                executor
+                    .rpc()
+                    .call("identity.joinStatus", json!({ "offerId": offer_id })),
+            )
+            .await
+        };
+        let polled = tokio::select! {
+            join = poll => Some(join),
+            request = rx.recv() => {
+                match request {
+                    None => return None,
+                    Some(Request::Cancel(r)) => {
+                        let _ = r.send(());
+                        return None;
+                    }
+                    Some(Request::Public(r)) => {
+                        let _ = r.send(public_state(vault, address).await);
+                    }
+                    Some(Request::Start(_, r)) => {
+                        let _ = r.send(Err(CustodyError::Busy));
+                    }
+                    Some(Request::Step(StepInput::Accept, r)) if claim.awaits_accept() => {
+                        if let Err(screen) = accept_join(executor, claim).await {
+                            answer(reply, Ok(screen.clone()));
+                            *reply = Some(r);
+                            return Some(screen);
+                        }
+                        answer(reply, Ok(claim.screen()));
+                        *reply = Some(r);
+                        // Asked again at once: the holder may have confirmed already.
+                        next_poll = tokio::time::Instant::now();
+                    }
+                    Some(Request::Step(_, r)) => {
+                        let _ = r.send(Err(CustodyError::Busy));
+                    }
+                }
+                None
+            }
+        };
+        let Some(join) = polled else {
+            continue;
+        };
+        let join = match join {
+            Ok(Ok(join)) => join,
+            Ok(Err(e)) => return Some(failed(&ClientError::Rpc(e))),
+            Err(_) => return Some(closed()),
+        };
         match join["state"].as_str() {
             Some("claimed") => {}
+            // The holder confirmed; the executor binds once the person accepts here.
+            Some("awaiting-accept") => {
+                if !claim.accepted && !claim.confirmed {
+                    claim.needs_accept = true;
+                    claim.confirmed = true;
+                    return Some(claim.screen());
+                }
+            }
             Some("spent") => {
-                return match (join["did"].as_str(), join["keyId"].as_str()) {
-                    (Some(did), Some(key_id)) => Ok((did.to_string(), key_id.to_string())),
-                    _ => Err(Screen::Failed {
+                return Some(match (join["did"].as_str(), join["keyId"].as_str()) {
+                    (Some(did), Some(key_id)) => Screen::Joined {
+                        did: did.to_string(),
+                        key_id: key_id.to_string(),
+                    },
+                    _ => Screen::Failed {
                         message: "The link was confirmed, but the identity's log does not list \
                                   this computer. Show a new code to try again."
                             .into(),
-                    }),
-                }
+                    },
+                })
             }
             other => {
-                return Err(Screen::Failed {
+                return Some(Screen::Failed {
                     message: format!(
                         "The link ended unconfirmed ({}). Show a new code to try again.",
                         other.unwrap_or("unknown")
@@ -1736,8 +1867,48 @@ async fn follow_join<R: ExecutorRpc>(
                 })
             }
         }
-        let left = Duration::from_secs(deadline.saturating_sub(CLOCK.now()));
-        tokio::time::sleep(JOIN_POLL.min(left)).await;
+        next_poll = tokio::time::Instant::now()
+            + JOIN_POLL.min(Duration::from_secs(
+                claim.deadline.saturating_sub(CLOCK.now()),
+            ));
+    }
+}
+
+/// The person accepts the identity of `claim` here: the executor may record it as its operator once
+/// the holder confirms. `identity.acceptJoin` `{ offerId }` → `{ accepted: true }` is new in
+/// coasys/ad4m#1635 and not in the client this crate pins yet, so it is called by name.
+async fn accept_join<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    claim: &mut Claim,
+) -> Result<(), Screen> {
+    match executor
+        .rpc()
+        .call("identity.acceptJoin", json!({ "offerId": claim.offer_id }))
+        .await
+    {
+        Ok(_) => {
+            claim.accepted = true;
+            Ok(())
+        }
+        Err(e) if e.code == 404 => Err(Screen::Failed {
+            message: "This link is no longer open on this computer. Show a new code to try again."
+                .into(),
+        }),
+        Err(e) => Err(failed(&ClientError::Rpc(e))),
+    }
+}
+
+/// Ends this executor's claim of `offer_id` when the person cancels, so a confirm that lands later
+/// does not join this computer. `identity.cancelJoin` `{ offerId }` → `{ cancelled: true }` is new
+/// in coasys/ad4m#1635, called by name until the pinned client has it; an executor without it
+/// keeps the claim until the offer expires, as before.
+async fn cancel_join<R: ExecutorRpc>(executor: &ViaExecutor<R>, offer_id: &str) {
+    if let Err(e) = executor
+        .rpc()
+        .call("identity.cancelJoin", json!({ "offerId": offer_id }))
+        .await
+    {
+        log::warn!("custody: the claim was not cancelled: {e}");
     }
 }
 
@@ -2417,6 +2588,8 @@ mod tests {
         canned: RefCell<std::collections::HashMap<&'static str, Value>>,
         /// Every call by name, with its params, in order.
         seen: RefCell<Vec<(String, Value)>>,
+        /// Once the key's method is called, the method named beside it answers its value.
+        then: RefCell<std::collections::HashMap<&'static str, (&'static str, Value)>>,
     }
 
     impl FakeExecutor {
@@ -2432,12 +2605,19 @@ mod tests {
                 calls: Cell::new(0),
                 canned: RefCell::new(Default::default()),
                 seen: RefCell::new(Vec::new()),
+                then: RefCell::new(Default::default()),
             }
         }
 
         /// `method` answers `value` from now on.
         fn answer(&self, method: &'static str, value: Value) {
             self.canned.borrow_mut().insert(method, value);
+        }
+
+        /// Once `when` is called, `method` answers `value` (an `identity.acceptJoin` that lets the
+        /// executor join, say).
+        fn answer_after(&self, when: &'static str, method: &'static str, value: Value) {
+            self.then.borrow_mut().insert(when, (method, value));
         }
 
         fn called(&self, method: &str) -> Vec<Value> {
@@ -2455,6 +2635,10 @@ mod tests {
         async fn call(&self, method: &str, p: Value) -> Result<Value, RpcError> {
             self.calls.set(self.calls.get() + 1);
             self.seen.borrow_mut().push((method.to_string(), p.clone()));
+            let then = self.then.borrow_mut().remove(method);
+            if let Some((next, value)) = then {
+                self.canned.borrow_mut().insert(next, value);
+            }
             if let Some(value) = self.canned.borrow().get(method) {
                 return Ok(value.clone());
             }
@@ -2729,6 +2913,9 @@ mod tests {
             Screen::DeviceMatch {
                 code: "R7K Q2M".into(),
                 did: "did:scid:x".into(),
+                needs_accept: true,
+                accepted: true,
+                confirmed: false,
             },
         ] {
             assert_eq!(open.outcome(), None, "{open:?}");
@@ -3194,7 +3381,11 @@ mod tests {
         assert!(qr_svg.contains("<svg"));
         assert_eq!(*shown, expires);
         assert!(
-            matches!(&screens[1], Screen::DeviceMatch { code, did: d } if code == "R7K Q2M" && d == did),
+            matches!(
+                &screens[1],
+                Screen::DeviceMatch { code, did: d, needs_accept: false, accepted: false, confirmed: false }
+                    if code == "R7K Q2M" && d == did
+            ),
             "{screens:?}"
         );
         assert!(
@@ -3235,6 +3426,221 @@ mod tests {
             matches!(&last, Screen::Failed { message } if message.contains("ended unconfirmed (expired)")),
             "{last:?}"
         );
+    }
+
+    /// A new device whose executor claims offer `o1` of `did:scid:x` at once, its `link-ticket`
+    /// carrying `needsAccept` when given.
+    fn claiming_device(
+        needs_accept: Option<bool>,
+    ) -> (ViaExecutor<FakeExecutor>, broadcast::Receiver<Value>) {
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        executor.rpc().answer(
+            "identity.prepareDevice",
+            json!({ "device": "coasys:device:1:abc", "expires": CLOCK.now() + 300 }),
+        );
+        let mut ticket = json!({ "type": "link-ticket", "did": "did:scid:x", "offerId": "o1", "matchCode": "AAA BBB" });
+        if let Some(needs) = needs_accept {
+            ticket["needsAccept"] = json!(needs);
+        }
+        let (events_tx, events) = broadcast::channel(8);
+        events_tx.send(ticket).unwrap();
+        (executor, events)
+    }
+
+    fn device_match(needs_accept: bool, accepted: bool, confirmed: bool) -> Screen {
+        Screen::DeviceMatch {
+            code: "AAA BBB".into(),
+            did: "did:scid:x".into(),
+            needs_accept,
+            accepted,
+            confirmed,
+        }
+    }
+
+    /// A first run: the holder confirms before the person accepts here. The window keeps asking
+    /// until they do, and the accept lets this computer join at once.
+    #[tokio::test]
+    async fn a_first_run_device_joins_only_once_the_person_accepts_the_identity() {
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "awaiting-accept" }));
+        executor
+            .rpc()
+            .answer("identity.acceptJoin", json!({ "accepted": true }));
+        executor.rpc().answer_after(
+            "identity.acceptJoin",
+            "identity.joinStatus",
+            json!({ "state": "spent", "did": "did:scid:x", "keyId": "d2", "seq": 1 }),
+        );
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), screens) = tokio::join!(
+            show_code_on(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                let matched = window.step(StepInput::WaitLink).await;
+                // The holder confirmed: the window still asks, and waits again.
+                let confirmed = window.step(StepInput::WaitJoin).await;
+                let (waiting, joined) = tokio::join!(
+                    window.step(StepInput::WaitJoin),
+                    window.step(StepInput::Accept)
+                );
+                vec![matched, confirmed, waiting, joined]
+            }
+        );
+        assert_eq!(screens[0], device_match(true, false, false));
+        assert_eq!(screens[1], device_match(true, false, true));
+        // The wait the window had out answers with the accept; the accept follows to the end.
+        assert_eq!(screens[2], device_match(true, true, true));
+        assert!(
+            matches!(&screens[3], Screen::Joined { did, key_id } if did == "did:scid:x" && key_id == "d2"),
+            "{screens:?}"
+        );
+        assert_eq!(
+            executor.rpc().called("identity.acceptJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+        assert!(executor.rpc().called("identity.cancelJoin").is_empty());
+    }
+
+    /// Accepted before the holder confirms: the accept itself waits for the join.
+    #[tokio::test]
+    async fn an_accept_before_the_holder_confirms_waits_for_the_join() {
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.acceptJoin", json!({ "accepted": true }));
+        executor.rpc().answer(
+            "identity.joinStatus",
+            json!({ "state": "spent", "did": "did:scid:x", "keyId": "d2", "seq": 1 }),
+        );
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), joined) = tokio::join!(
+            show_code_on(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                window.step(StepInput::Accept).await
+            }
+        );
+        assert!(matches!(&joined, Screen::Joined { .. }), "{joined:?}");
+        let calls: Vec<String> = executor
+            .rpc()
+            .seen
+            .borrow()
+            .iter()
+            .map(|(m, _)| m.clone())
+            .filter(|m| m.ends_with("Join") || m.ends_with("joinStatus"))
+            .collect();
+        assert_eq!(calls, ["identity.acceptJoin", "identity.joinStatus"]);
+    }
+
+    /// An executor that waits for an accept the `link-ticket` did not announce: the window asks.
+    #[tokio::test]
+    async fn a_claim_that_awaits_an_accept_asks_for_it_whatever_the_ticket_said() {
+        let (executor, events) = claiming_device(None);
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "awaiting-accept" }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let (_, screens) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(5),
+                show_code_on(&executor, events, &vault, &address, &mut rx, &mut reply)
+            ),
+            async {
+                first.await.unwrap().unwrap();
+                let matched = window.step(StepInput::WaitLink).await;
+                let asked = window.step(StepInput::WaitJoin).await;
+                // Answered without a join: a wait for the step's end is refused.
+                let (tx, refused) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::WaitLink, tx))
+                    .unwrap();
+                let refused = refused.await.unwrap();
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                cancelled.await.unwrap();
+                (matched, asked, refused)
+            }
+        );
+        assert_eq!(screens.0, device_match(false, false, false));
+        assert_eq!(screens.1, device_match(true, false, true));
+        assert!(matches!(screens.2, Err(CustodyError::WrongInput)));
+        // Cancelled between waits: the claim ends with it.
+        assert_eq!(
+            executor.rpc().called("identity.cancelJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+    }
+
+    /// Cancel while the device waits ends the step and the executor's claim.
+    #[tokio::test]
+    async fn cancelling_a_claimed_link_ends_the_claim() {
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "claimed" }));
+        executor
+            .rpc()
+            .answer("identity.cancelJoin", json!({ "cancelled": true }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), waited) = tokio::join!(
+            show_code_on(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                let (tx, waited) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::WaitJoin, tx))
+                    .unwrap();
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                cancelled.await.unwrap();
+                waited.await.unwrap()
+            }
+        );
+        assert!(matches!(waited, Err(CustodyError::NoStep)), "{waited:?}");
+        assert!(executor.rpc().called("identity.acceptJoin").is_empty());
+        assert_eq!(
+            executor.rpc().called("identity.cancelJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+    }
+
+    /// An accept the executor refuses (the offer is gone) ends the step, saying so.
+    #[tokio::test]
+    async fn an_accept_of_an_offer_the_executor_no_longer_knows_says_so() {
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "claimed" }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), (waiting, accepted)) = tokio::join!(
+            show_code_on(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                tokio::join!(
+                    window.step(StepInput::WaitJoin),
+                    window.step(StepInput::Accept)
+                )
+            }
+        );
+        // The fake answers an unknown method 404, as the executor answers an unknown offer.
+        for screen in [&waiting, &accepted] {
+            assert!(
+                matches!(screen, Screen::Failed { message } if message.contains("no longer open")),
+                "{screen:?}"
+            );
+        }
     }
 
     #[tokio::test]
@@ -3838,6 +4244,7 @@ mod tests {
             (r#"{"kind":"code","code":"coasys:device:1:x"}"#, "code"),
             (r#"{"kind":"wait-link"}"#, "wait-link"),
             (r#"{"kind":"wait-join"}"#, "wait-join"),
+            (r#"{"kind":"accept"}"#, "accept"),
             (r#"{"kind":"answer","passphrase":"secret words"}"#, "answer"),
             (r#"{"kind":"name","name":"Desk"}"#, "name"),
         ] {
@@ -3882,6 +4289,21 @@ mod tests {
         assert_eq!(
             (&screen["screen"], &screen["qrSvg"]),
             (&json!("device-code"), &json!("<svg/>"))
+        );
+        let screen = serde_json::to_value(Screen::DeviceMatch {
+            code: "R7K Q2M".into(),
+            did: "did:scid:x".into(),
+            needs_accept: true,
+            accepted: false,
+            confirmed: true,
+        })
+        .unwrap();
+        assert_eq!(
+            screen,
+            json!({
+                "screen": "device-match", "code": "R7K Q2M", "did": "did:scid:x",
+                "needsAccept": true, "accepted": false, "confirmed": true,
+            })
         );
     }
 }

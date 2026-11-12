@@ -824,6 +824,8 @@ async fn a_desktop_executor_takes_its_first_link_as_its_operator() {
     let Screen::DeviceMatch {
         code: device_shows,
         did: joining,
+        needs_accept,
+        ..
     } = device_matched
     else {
         panic!("no device match: {device_matched:?}")
@@ -837,14 +839,20 @@ async fn a_desktop_executor_takes_its_first_link_as_its_operator() {
     // scanned, the holder said No) leaves B free to claim again. Nothing here claims C's offer
     // before the join, so B's own join is the only one in flight.
 
-    // The holder confirms, and B joins the identity — which records it as B's operator.
+    // The holder confirms, and B joins the identity — which records it as B's operator. Where B's
+    // executor binds only once the person accepts the identity there (a first run), B accepts
+    // first, and the accept waits for the join.
     let (linked, joined) = tokio::join!(
         holder.step(StepInput::Confirm {
             name: Some("Desktop B".into()),
             keep_master: false,
             this_name: Some("Desktop A".into()),
         }),
-        device.step(StepInput::WaitJoin)
+        device.step(if needs_accept {
+            StepInput::Accept
+        } else {
+            StepInput::WaitJoin
+        })
     );
     let linked = linked.unwrap();
     assert!(

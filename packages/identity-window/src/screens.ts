@@ -19,7 +19,17 @@ export type Screen =
   | { screen: 'enter-code'; error: string | null }
   | { screen: 'code-sent'; expires: number }
   | { screen: 'device-code'; code: string; qrSvg: string; expires: number }
-  | { screen: 'device-match'; code: string; did: string }
+  | {
+      screen: 'device-match';
+      code: string;
+      did: string;
+      /** This computer joins only once the person accepts the identity here too (a first run). */
+      needsAccept: boolean;
+      /** They did (`accept`); it waits for the other device. */
+      accepted: boolean;
+      /** The other device confirmed; it waits for the accept here. */
+      confirmed: boolean;
+    }
   | { screen: 'joined'; did: string; keyId: string }
   | { screen: 'master-taken'; did: string; note: string | null }
   | {
@@ -88,6 +98,7 @@ export type StepInput =
   | { kind: 'code'; code: string }
   | { kind: 'wait-link' }
   | { kind: 'wait-join' }
+  | { kind: 'accept' }
   | { kind: 'answer'; passphrase?: string }
   | { kind: 'name'; name: string }
   | { kind: 'revoke'; passphrase?: string }
@@ -167,10 +178,7 @@ export function heading(screen: Screen): { title: string; lead: string } {
         lead: 'On a device of your identity, choose “Scan or paste a code”, then scan this QR code or paste the link. Send it there another way if you need to, such as a message to yourself.',
       };
     case 'device-match':
-      return {
-        title: 'Check the code',
-        lead: 'Your other device shows a code too. When they match, confirm there. This computer then joins your identity.',
-      };
+      return deviceMatch(screen);
     case 'joined':
       return {
         title: 'This computer is one of your devices',
@@ -234,6 +242,50 @@ export function heading(screen: Screen): { title: string; lead: string } {
     case 'failed':
       return { title: 'That did not work', lead: screen.message };
   }
+}
+
+/**
+ * The new device's code card. Where this computer joins only once the person accepts the identity
+ * here too, it asks whether this is their identity, then waits for the other device.
+ */
+function deviceMatch(screen: Extract<Screen, { screen: 'device-match' }>): { title: string; lead: string } {
+  if (!screen.needsAccept) {
+    return {
+      title: 'Check the code',
+      lead: 'Your other device shows a code too. When they match, confirm there. This computer then joins your identity.',
+    };
+  }
+  if (screen.accepted) {
+    return {
+      title: 'Confirm on your other device',
+      lead: 'You confirmed here. This computer joins your identity once your other device confirms too.',
+    };
+  }
+  return {
+    title: 'Is this your identity?',
+    lead: screen.confirmed
+      ? 'Your other device confirmed. Check that the code matches the one it showed, then confirm here too.'
+      : 'Check that the code matches the one on your other device. Then confirm here and there.',
+  };
+}
+
+/** What the code card says under the identity while it waits, if anything. */
+export function deviceMatchNote(screen: Extract<Screen, { screen: 'device-match' }>): string | null {
+  if (!screen.needsAccept) return 'Waiting for you to confirm on your other device…';
+  if (screen.accepted) return 'Waiting for your other device…';
+  return screen.confirmed ? null : 'Waiting for you to confirm here and on your other device…';
+}
+
+/**
+ * What the code card does: whether it waits for the join (`wait-join`) and whether it offers
+ * “This is my identity” (`accept`). After an accept, the accept itself waits for the join: the
+ * custody service answered the wait that was out with the accepted card, so no other is asked for.
+ */
+export function deviceMatchActions(screen: Extract<Screen, { screen: 'device-match' }>): {
+  wait: boolean;
+  accept: boolean;
+} {
+  return { wait: !screen.accepted, accept: screen.needsAccept && !screen.accepted };
 }
 
 /**

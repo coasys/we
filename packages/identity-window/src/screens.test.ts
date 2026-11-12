@@ -7,7 +7,17 @@ import { describe, expect, it } from 'vitest';
 // The policy as `vite.js` writes it into the built page.
 import policy from '../csp.txt?raw';
 import indexSource from './index.ts?raw';
-import { heading, isLast, remaining, type RevokeTarget, targetLine, wordNumber } from './screens';
+import {
+  deviceMatchActions,
+  deviceMatchNote,
+  heading,
+  isLast,
+  remaining,
+  type RevokeTarget,
+  type Screen,
+  targetLine,
+  wordNumber,
+} from './screens';
 import screensSource from './screens.ts?raw';
 import windowSource from './window.ts?raw';
 
@@ -119,6 +129,57 @@ describe('the identity window', () => {
     expect(heading({ screen: 'renamed', keyId: 'd2', name: 'Laptop' }).title).toBe('Named Laptop');
   });
 
+  it('on a first run, asks whether the identity is yours before this computer joins it', () => {
+    const card = (needsAccept: boolean, accepted: boolean, confirmed: boolean) =>
+      ({
+        screen: 'device-match',
+        code: 'R7K Q2M',
+        did: 'did:scid:coasys:1:Qm',
+        needsAccept,
+        accepted,
+        confirmed,
+      }) satisfies Screen;
+
+    // Not a first run: the other device confirms, and nothing is asked here.
+    expect(heading(card(false, false, false))).toEqual({
+      title: 'Check the code',
+      lead: 'Your other device shows a code too. When they match, confirm there. This computer then joins your identity.',
+    });
+    expect(deviceMatchNote(card(false, false, false))).toBe('Waiting for you to confirm on your other device…');
+
+    const ask = heading(card(true, false, false));
+    expect(ask.title).toBe('Is this your identity?');
+    expect(ask.lead).toBe('Check that the code matches the one on your other device. Then confirm here and there.');
+    expect(deviceMatchNote(card(true, false, false))).toBe('Waiting for you to confirm here and on your other device…');
+
+    // The other device confirmed first: still asked here, and told what is left.
+    const confirmed = heading(card(true, false, true));
+    expect(confirmed.title).toBe('Is this your identity?');
+    expect(confirmed.lead).toContain('Your other device confirmed.');
+    expect(confirmed.lead).toContain('confirm here too');
+    expect(deviceMatchNote(card(true, false, true))).toBeNull();
+
+    // Accepted here: it waits for the other device.
+    const accepted = heading(card(true, true, false));
+    expect(accepted.title).toBe('Confirm on your other device');
+    expect(accepted.lead).toBe(
+      'You confirmed here. This computer joins your identity once your other device confirms too.',
+    );
+    expect(deviceMatchNote(card(true, true, false))).toBe('Waiting for your other device…');
+  });
+
+  it('offers “This is my identity” only while the accept is still asked, and waits once', () => {
+    const card = (needsAccept: boolean, accepted: boolean, confirmed: boolean) =>
+      ({ screen: 'device-match', code: 'R7K Q2M', did: 'did:scid:x', needsAccept, accepted, confirmed }) as const;
+    expect(deviceMatchActions(card(false, false, false))).toEqual({ wait: true, accept: false });
+    expect(deviceMatchActions(card(true, false, false))).toEqual({ wait: true, accept: true });
+    // The other device confirmed (`awaiting-accept`): the button stays.
+    expect(deviceMatchActions(card(true, false, true))).toEqual({ wait: true, accept: true });
+    // After the accept, the accept is the wait: the window asks for no second one.
+    expect(deviceMatchActions(card(true, true, false))).toEqual({ wait: false, accept: false });
+    expect(windowSource).toContain("button('This is my identity', () => step({ kind: 'accept' }), 'primary')");
+  });
+
   it('says what the words do today, and promises no restore or replacement this app cannot run', () => {
     const lead = heading({ screen: 'show-words', words: [] }).lead;
     expect(lead).toContain('adds and removes your devices');
@@ -154,7 +215,8 @@ describe('the identity window', () => {
     for (const waiting of [
       { screen: 'code-sent' as const, expires: 0 },
       { screen: 'device-code' as const, code: '', qrSvg: '', expires: 0 },
-      { screen: 'device-match' as const, code: '', did: '' },
+      { screen: 'device-match' as const, code: '', did: '', needsAccept: false, accepted: false, confirmed: false },
+      { screen: 'device-match' as const, code: '', did: '', needsAccept: true, accepted: true, confirmed: false },
     ]) {
       expect(isLast(waiting), waiting.screen).toBe(false);
     }
