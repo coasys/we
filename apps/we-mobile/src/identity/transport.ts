@@ -359,6 +359,8 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Ide
       link = null;
       if (open) await plugin.linkCancel({ link: open }).catch(() => undefined);
       deps.leave('cancelled');
+      // A phone joins with its own key and claims nothing: its cancel always ends the step.
+      return null;
     },
     finish() {
       deps.leave(last?.screen === 'failed' ? 'failed' : 'done');
