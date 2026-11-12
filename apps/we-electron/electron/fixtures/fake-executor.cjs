@@ -24,6 +24,16 @@
 // Another credential is refused (401). With `<data>/fake-executor.status-delay` holding a number of
 // milliseconds, the next `agent.status` is read when it arrives and answered that much later, and the
 // file is removed (`<n> agent status delayed`): an answer that is already old when it lands.
+//
+// Its storage starts sealed at every start, as the executor's does: until `storage.unlock` is given
+// the secret (64 hex) it answers `runtime.storageStatus` and `storage.unlock` and refuses every other
+// call 503 `storage-sealed`. The first secret makes `<data>/ad4m/keyring.json` (here, the secret in
+// plain JSON: a fake keyring) and opens it; after that only the same secret opens it (403 otherwise;
+// 400 for one that is not 64 hex). The status is the executor's shape, with a fixed keyring id; open,
+// the database and language storage are encrypted and the links plain. Log lines: `<n> storage
+// unlocked`, `<n> storage unlock refused`. A plan step `{ "serve": true, "storage": "open" }` starts
+// open, as an executor given its secret otherwise does; `"storage": "open"` on the plan itself opens
+// every start.
 const fs = require('fs');
 const http = require('http');
 const path = require('path');
@@ -101,6 +111,33 @@ const serve = () => {
   server.listen(port, '127.0.0.1', () => log('ready'));
 };
 
+const KEYRING_ID = '00112233445566778899aabbccddeeff';
+const keyringFile = path.join(data, 'ad4m', 'keyring.json');
+let storageOpen = plan.storage === 'open' || !!(step && typeof step === 'object' && step.storage === 'open');
+const storageStatus = () => ({
+  state: storageOpen ? 'open' : 'sealed',
+  encryptedAtRest: false,
+  stores: storageOpen ? { database: 'encrypted', languageStorage: 'encrypted', links: 'plain' } : null,
+  keyringId: KEYRING_ID,
+  secretSource: storageOpen ? 'operator' : null,
+  secretOnDataDisk: false,
+  rootGeneration: fs.existsSync(keyringFile) ? 1 : 0,
+  lastError: null,
+});
+const unlockStorage = (secret) => {
+  if (typeof secret !== 'string' || !/^[0-9a-fA-F]{64}$/.test(secret))
+    return { error: { code: 400, message: 'the storage secret is not 64 hex characters' } };
+  const created = !fs.existsSync(keyringFile);
+  if (created) {
+    fs.mkdirSync(path.dirname(keyringFile), { recursive: true });
+    fs.writeFileSync(keyringFile, JSON.stringify({ secret: secret.toLowerCase() }));
+  } else if (JSON.parse(fs.readFileSync(keyringFile, 'utf8')).secret !== secret.toLowerCase()) {
+    return { error: { code: 403, message: 'the storage secret does not open this keyring' } };
+  }
+  storageOpen = true;
+  return { result: { status: storageStatus(), fingerprint: 'fake', created } };
+};
+
 const agentFile = path.join(data, 'fake-executor.agent.json');
 let unlocked = false;
 const agentStatus = () => {
@@ -121,6 +158,13 @@ function agentApi(req, socket) {
   wsLite.readFrames(socket, (text) => {
     const { id, type, params = {} } = JSON.parse(text);
     const fail = (message, code = 500) => send({ id, error: { code, message } });
+    if (type === 'runtime.storageStatus') return send({ id, result: storageStatus() });
+    if (type === 'storage.unlock') {
+      const answer = unlockStorage(params.secret);
+      log(answer.error ? 'storage unlock refused' : 'storage unlocked');
+      return send({ id, ...answer });
+    }
+    if (!storageOpen) return fail('storage-sealed: the storage is sealed until storage.unlock', 503);
     if (type === 'agent.status') {
       const delayFile = path.join(data, 'fake-executor.status-delay');
       if (!fs.existsSync(delayFile)) return send({ id, result: agentStatus() });

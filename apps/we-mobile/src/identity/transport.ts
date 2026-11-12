@@ -158,11 +158,16 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Ide
     return taken ? { screen: 'master-taken', did: taken.did, note: taken.note } : failed(NO_MASTER_WAITING);
   }
 
+  /** The code card. A phone joins with its own key, never as a desktop's first run: nothing to accept here. */
+  function matching(code: string, did: string): Screen {
+    return { screen: 'device-match', code, did, needsAccept: false, accepted: false, confirmed: false };
+  }
+
   async function joinStart(): Promise<Screen> {
     const status = await plugin.status();
     if (status.identity) return failed(`This phone is one of your devices already, as ${status.identity.did}.`);
     if (!status.keys) await plugin.create();
-    if (status.pending) return { screen: 'device-match', code: status.pending.matchCode, did: status.pending.did };
+    if (status.pending) return matching(status.pending.matchCode, status.pending.did);
     return offerScreen(null, deps.keyHost?.read() ?? '');
   }
 
@@ -266,7 +271,7 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Ide
         try {
           const joined = await plugin.join({ link: input.link, ...(deps.hint ? { hint: deps.hint } : {}) });
           if (host) deps.keyHost?.remember(host);
-          return { screen: 'device-match', code: joined.matchCode, did: joined.did };
+          return matching(joined.matchCode, joined.did);
         } catch (error) {
           return offerScreen(reason(error), typedHost);
         }

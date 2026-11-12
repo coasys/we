@@ -6,7 +6,7 @@ executor with renewal. Phase 2b covers the rest of what a device does in an iden
 screens and the camera, the device inbox, taking and holding the master key, asking for it, and
 acting as a holder for other devices.
 
-The references are to the ad4m pin WE uses (`1fc10759c`): `ad4m-identity-core` (the wire formats),
+The references were checked at ad4m `95cefb35a`: `ad4m-identity-core` (the wire formats),
 `ad4m-identity-client` (the flows), `rust-executor/src/api/identity_ws.rs` (the executor's identity
 RPCs and their guards) and `identity-store` (the store's routes). They also cite WE's own
 `crates/custody/src/service.rs`, the desktop's `IdentityStep` machine.
@@ -76,7 +76,7 @@ sealed messages. For each message, Rust in `phone-custody` does the following:
    `{kind: "master", did, index}`.
 
 **Taking the master key.** This is the phone's version of `ad4m-identity-client`'s `take_master`
-(`flows/master.rs:421`). It has the same checks, but over the store instead of `identity.takeMaster`:
+(`flows/master.rs:543`). It has the same checks, but over the store instead of `identity.takeMaster`:
 
 1. The key's public half must be `state.masters[index].sign`, and that master must be current.
 2. The 32-byte master seed is sealed under a **second** Keystore key,
@@ -102,9 +102,14 @@ and wipes the seed. The uses are:
 - answering a request;
 - writing a ticket to another device's inbox.
 
-`Vault` (`ad4m-identity-client/src/vault.rs:190`) is the interface to match. `store_master`,
+`Vault` (`ad4m-identity-client/src/vault.rs:235`) is the interface to match. `store_master`,
 `master_index` and the staging calls that rotation needs map onto the sealed file plus the
-biometric key, and `master_index` reads the authenticated index without a prompt.
+biometric key, and `master_index` reads the authenticated index without a prompt. Each device's
+custody note (`custody_note`, `swap_custody_note`) is kept in the same file as its serde JSON and
+swapped whole, every layer of its stack compared, under the folder's lock; the vault's own note
+(key id `"vault"`, `VAULT_NOTE`) is kept the same way. `vault_id` is 16 random bytes per identity,
+drawn at the first ask and written in the same step under that lock, kept in the same file and
+never dropped: the record names it beside each `holdsMaster: true`, so a vault counts as one copy.
 
 **Asking for the master key.** The phone joins with `canKeepMaster: true` once 2b ships the
 biometric key. 2a claims with `false`, and the holder's `Match` shows `can_keep: false`. A joined

@@ -14,7 +14,11 @@
 //! - [`sidecar`] serves the service over stdin and stdout, as the `we-custody` binary, for the
 //!   Electron app.
 //! - [`wallet`] keeps the executor's wallet passphrase in the keyring for the Electron supervisor
-//!   (`we-custody wallet-passphrase`): a stopgap ahead of AR-06, which replaces it.
+//!   (`we-custody wallet-passphrase`): a stopgap until the executor derives the agent's
+//!   passphrase from its storage secret.
+//! - [`storage_secret`] keeps the executor's storage secret in the keyring, or derives it from a
+//!   storage passphrase where there is no keyring (`we-custody storage-secret`), for the
+//!   supervisor to unlock the executor's storage with at every start.
 //!
 //! No Windows: the desktop app does not ship there. Nothing here links the executor;
 //! `tests/boundary.rs` keeps it so.
@@ -25,6 +29,7 @@ pub mod pending;
 pub mod seal;
 pub mod service;
 pub mod sidecar;
+pub mod storage_secret;
 pub mod store;
 pub mod vault;
 pub mod wallet;

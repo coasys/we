@@ -1,0 +1,208 @@
+{
+  "format": "we-bundle",
+  "formatVersion": 1,
+  "id": "software-team",
+  "version": "1.0.0",
+  "name": "Software team",
+  "description": "How a software team talks: the questions it asks, the tensions it names, what it decides, and the work it takes on.",
+  "icon": "code",
+  "author": { "name": "WE" },
+  "theme": {
+    "id": "software-team",
+    "name": "Software team",
+    "overrides": {}
+  },
+  "recordTypes": [
+    {
+      "name": "Question",
+      "icon": "question",
+      "description": "Something the team asked and has to answer.",
+      "manifest": {
+        "version": "1",
+        "entities": {
+          "Question": {
+            "extends": "WeNode",
+            "flag": { "predicate": "we://flag", "value": "we://shape/software-team/question" },
+            "extractable": true,
+            "relations": {},
+            "interpretationHint": "A question somebody puts to the team that needs an answer or a decision: \"should we…?\", \"do we…?\", \"what if we…?\". Not a rhetorical question, and not a question about the conversation itself.",
+            "properties": {
+              "asks": {
+                "type": "string",
+                "required": true,
+                "identity": true,
+                "predicate": "we://shape/software-team/asks",
+                "interpretationHint": "The question, in a few words, as a question."
+              },
+              "options": {
+                "type": "string",
+                "predicate": "we://shape/software-team/options",
+                "interpretationHint": "The answers said out loud, separated by \" / \". Empty when none were said."
+              },
+              "status": {
+                "type": "string",
+                "options": ["open", "answered"],
+                "default": "open",
+                "predicate": "we://shape/software-team/question_status",
+                "interpretationHint": "Exactly \"open\" or \"answered\". \"answered\" only when the conversation settles it."
+              }
+            },
+            "display": { "title": "asks", "summary": "options" }
+          }
+        }
+      }
+    },
+    {
+      "name": "Tension",
+      "icon": "lightning",
+      "description": "Two things the team wants that pull against each other.",
+      "manifest": {
+        "version": "1",
+        "entities": {
+          "Tension": {
+            "extends": "WeNode",
+            "flag": { "predicate": "we://flag", "value": "we://shape/software-team/tension" },
+            "extractable": true,
+            "relations": {},
+            "interpretationHint": "A conflict somebody names between two goals, plans or constraints: one thing could delay, break or cost another. Not a bug report and not a task.",
+            "properties": {
+              "between": {
+                "type": "string",
+                "required": true,
+                "identity": true,
+                "predicate": "we://shape/software-team/between",
+                "interpretationHint": "The two things in tension, as \"<one> vs <other>\"."
+              },
+              "why": {
+                "type": "string",
+                "predicate": "we://shape/software-team/why",
+                "interpretationHint": "Why they pull against each other, in one sentence."
+              },
+              "raisedBy": {
+                "type": "string",
+                "predicate": "we://shape/software-team/raised_by",
+                "interpretationHint": "The speaker who named it, as the transcript names them."
+              }
+            },
+            "display": { "title": "between", "summary": "why" }
+          }
+        }
+      }
+    },
+    {
+      "name": "Decision",
+      "icon": "gavel",
+      "description": "Something the team agreed.",
+      "manifest": {
+        "version": "1",
+        "entities": {
+          "Decision": {
+            "extends": "WeNode",
+            "flag": { "predicate": "we://flag", "value": "we://shape/software-team/decision" },
+            "extractable": true,
+            "relations": {},
+            "interpretationHint": "Something the speakers agree on or settle: \"okay, X comes first\", \"let's go with Y\", \"we're doing Z\". Not a proposal nobody agreed to.",
+            "properties": {
+              "what": {
+                "type": "string",
+                "required": true,
+                "identity": true,
+                "predicate": "we://shape/software-team/what",
+                "interpretationHint": "What was decided, in one short sentence."
+              },
+              "agreedBy": {
+                "type": "string",
+                "predicate": "we://shape/software-team/agreed_by",
+                "interpretationHint": "The speakers who agreed, comma-separated."
+              },
+              "when": {
+                "type": "string",
+                "predicate": "we://shape/software-team/when",
+                "interpretationHint": "When it applies, as said (\"this quarter\"). Empty when not said."
+              }
+            },
+            "display": { "title": "what", "summary": "when" }
+          }
+        }
+      }
+    },
+    {
+      "name": "Task",
+      "icon": "check-square",
+      "description": "A piece of work somebody took on.",
+      "manifest": {
+        "version": "1",
+        "entities": {
+          "Task": {
+            "extends": "WeNode",
+            "flag": { "predicate": "we://flag", "value": "we://shape/software-team/task" },
+            "extractable": true,
+            "relations": {},
+            "interpretationHint": "A piece of work the speakers say needs doing and is not done yet: \"we need to…\", \"I'll…\", \"someone should…\".",
+            "properties": {
+              "title": {
+                "type": "string",
+                "required": true,
+                "identity": true,
+                "predicate": "we://shape/software-team/title",
+                "interpretationHint": "The work, as a short imperative."
+              },
+              "owner": {
+                "type": "string",
+                "predicate": "we://shape/software-team/owner",
+                "interpretationHint": "Who took it on, as the transcript names them. Empty when nobody did."
+              }
+            },
+            "display": { "title": "title", "summary": "owner" }
+          }
+        }
+      }
+    }
+  ],
+  "flows": [
+    {
+      "name": "Decide",
+      "entities": ["Question"],
+      "hint": "How a question the team raised becomes a decision.",
+      "states": [
+        { "name": "Raised", "hint": "Somebody asked it." },
+        { "name": "Discussed", "hint": "The team has talked it through." },
+        { "name": "Options", "hint": "The answers on the table are written down." },
+        {
+          "name": "Decided",
+          "hint": "Two people agreed on an answer.",
+          "requires": [{ "kind": "approvals", "count": 2 }]
+        }
+      ],
+      "transitions": [
+        { "from": "Raised", "to": "Discussed", "name": "Discuss" },
+        { "from": "Discussed", "to": "Options", "name": "List options" },
+        { "from": "Options", "to": "Decided", "name": "Decide" }
+      ]
+    },
+    {
+      "name": "Build",
+      "entities": ["Task"],
+      "hint": "How a task the team took on gets shipped.",
+      "states": [
+        { "name": "ToDo", "hint": "Taken on, not started." },
+        { "name": "Doing", "hint": "Somebody is working on it." },
+        { "name": "Review", "hint": "Done, and waiting for a second pair of eyes." },
+        {
+          "name": "Shipped",
+          "hint": "Released, with a link to what shipped: whoever asks, and one more person, agree.",
+          "requires": [
+            { "kind": "evidence", "entity": "LinkBlock", "via": { "relation": "responses" } },
+            { "kind": "approvals", "count": 2 }
+          ]
+        }
+      ],
+      "transitions": [
+        { "from": "ToDo", "to": "Doing", "name": "Start" },
+        { "from": "Doing", "to": "Review", "name": "Ask for review" },
+        { "from": "Review", "to": "Shipped", "name": "Ship" },
+        { "from": "Review", "to": "Doing", "name": "Send back" }
+      ]
+    }
+  ]
+}

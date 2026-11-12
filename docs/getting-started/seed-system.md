@@ -222,8 +222,9 @@ gives it: `<bundle>--<template>`, so `coasys--space` for the Coasys bundle's.
 
 A bundle can bring starters of its own. While its app is in use, a new space gets the bundle's first
 starter rather than the seed's, so the Coasys seed has none: its app is Coasys, and every space made in
-it is a Coasys space. A deployment that builds an app in beside WE's own (WE's seed builds Coasys in)
-names `host.ui.app: "we-app"`, or everyone who has not chosen an app would open in the bundle's.
+it is a Coasys space. WE's own seed builds Coasys in and names no `host.ui.app`, so everyone who has
+not chosen an app opens in Coasys. A deployment that builds an app in but keeps WE's as its default
+names `host.ui.app: "we-app"`.
 
 ```json
 "bundles": ["field-guide"]

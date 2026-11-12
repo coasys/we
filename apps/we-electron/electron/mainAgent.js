@@ -358,13 +358,15 @@ const CALL_TIMEOUT_MS = 10 * 60_000;
 
 /**
  * Calls on the executor's WebSocket (`/api/v1/ws`) with the admin credential: `{id, type, params}`
- * out, `{id, result}` or `{id, error: {code, message}}` back; anything without an id (an event) is not
- * an answer. `call` rejects on the executor's error (marked `refused: true`: it answered, and said no,
+ * out, `{id, result}` or `{id, error: {code, message}}` back; anything without an id is an event (`{type, ...payload}`),
+ * handed to `onEvent`'s listeners, never an answer. `call` rejects on the executor's error (marked `refused: true`: it answered, and said no,
  * with its `code`), a closed socket, or `timeoutMs`.
  */
 export function executorRpc({ port, token, timeoutMs = CALL_TIMEOUT_MS }) {
   const socket = new globalThis.WebSocket(`ws://127.0.0.1:${port}/api/v1/ws?token=${encodeURIComponent(token)}`);
   const pending = new Map();
+  /** Who hears the executor's events (`{type, ...payload}`, no id) on this socket. */
+  const listeners = new Set();
   let nextId = 1;
   let closed = null;
   const opened = new Promise((resolve, reject) => {
@@ -383,6 +385,16 @@ export function executorRpc({ port, token, timeoutMs = CALL_TIMEOUT_MS }) {
     try {
       answer = JSON.parse(String(event.data));
     } catch {
+      return;
+    }
+    if (answer && typeof answer === 'object' && answer.id === undefined && typeof answer.type === 'string') {
+      for (const listener of listeners) {
+        try {
+          listener(answer);
+        } catch (err) {
+          console.error('[main] An executor event listener failed:', err?.message);
+        }
+      }
       return;
     }
     const waiting = answer?.id && pending.get(answer.id);
@@ -412,7 +424,16 @@ export function executorRpc({ port, token, timeoutMs = CALL_TIMEOUT_MS }) {
         socket.send(JSON.stringify({ id, type: method, params }));
       });
     },
+    /**
+     * Hears every event the executor sends on this socket; it sends only what `events.watch` asked
+     * for. Answers the unsubscribe.
+     */
+    onEvent(listener) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
     close() {
+      listeners.clear();
       for (const { timer } of pending.values()) clearTimeout(timer);
       socket.close();
     },
