@@ -41,9 +41,21 @@ const [instances, setInstances] = createSignal<Record<string, PanelInstance>>({}
 /** Every instance open in the interface on screen, by dock id. */
 export const panelInstances = instances;
 
-/** Replace the instances on screen — the shell store's to call. */
+/**
+ * Replace the instances on screen — the shell store's to call.
+ *
+ * Nothing is published when the records themselves are unchanged: `openPanel` rewriting one
+ * instance's inputs also republishes the whole map a beat later (the store's memo reacts to its own
+ * write), and a second signal would make `TemplatePanelBody` render the instance's node again —
+ * remounting the chat that just consumed the draft, orphaning the ask it was mid-flight on.
+ * Records are only ever replaced whole (`writeInstances` builds them fresh), never edited in place,
+ * so identity says whether anything a reader sees changed.
+ */
 export const publishPanelInstances = (next: Record<string, PanelInstance>): void => {
-  setInstances(next);
+  setInstances((prev) => {
+    const ids = Object.keys(next);
+    return ids.length === Object.keys(prev).length && ids.every((id) => prev[id] === next[id]) ? prev : next;
+  });
 };
 
 /** The dock an instance of `panel` opened under `key` is. */

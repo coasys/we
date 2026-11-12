@@ -4,14 +4,14 @@
  * store, a template's lane and the panel host.
  */
 import { cleanup, render } from '@solidjs/testing-library';
-import { createSignal } from 'solid-js';
+import { createEffect, createRoot, createSignal } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PanelHost } from '../src/frameworks/solid/components/PanelHost';
 import PanelLane from '../src/frameworks/solid/components/PanelLane';
 import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { ShellStoreProvider, useShellStore } from '../src/frameworks/solid/stores/ShellStore';
-import { APP_PANEL_SCOPE } from '../src/shared/registries/panelInstances';
+import { APP_PANEL_SCOPE, panelInstances, publishPanelInstances } from '../src/shared/registries/panelInstances';
 import { provideChromeBag, provideTemplateBag } from '../src/shared/registries/templateBag';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
 import { buildTemplateBag, CHROME_TIER } from '../src/shared/registries/templateSurface';
@@ -202,5 +202,36 @@ describe('an instance kept under the app', () => {
         .map((instance) => instance.id)
         .sort(),
     ).toEqual([bound, global].sort());
+  });
+});
+
+describe('a republish that changes no record', () => {
+  it('fires nothing — a node drawn off the map is not redrawn for it', () => {
+    const ada = { id: 'a', panel: 'inspector', inputs: { name: 'Ada' }, opened: 1 };
+    const bo = { id: 'b', panel: 'inspector', inputs: { name: 'Bo' }, opened: 2 };
+    let fired = 0;
+    const dispose = createRoot((done) => {
+      createEffect(() => {
+        panelInstances();
+        fired++;
+      });
+      return done;
+    });
+    try {
+      publishPanelInstances({ a: ada, b: bo });
+      const after = fired;
+      // A fresh map carrying the same records — what a store republish looks like — is silent.
+      publishPanelInstances({ a: ada, b: bo });
+      publishPanelInstances({ b: bo, a: ada });
+      expect(fired).toBe(after);
+      // A record replaced fires again, and so does one leaving.
+      publishPanelInstances({ a: { ...ada, inputs: { name: 'Ana' } }, b: bo });
+      expect(fired).toBe(after + 1);
+      publishPanelInstances({ a: ada });
+      expect(fired).toBe(after + 2);
+    } finally {
+      publishPanelInstances({});
+      dispose();
+    }
   });
 });
