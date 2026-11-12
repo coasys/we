@@ -56,7 +56,7 @@ interface RowContent {
   error?: string;
 }
 
-const content = (row: AISessionMessage): RowContent => (row.content ?? {}) as RowContent;
+const content = (row: AISessionMessage): RowContent => row.content ?? {};
 
 /**
  * What a step aimed at. `content.target` first — the executor's own field for it — then the
