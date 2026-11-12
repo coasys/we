@@ -1,4 +1,4 @@
-import type { Ad4mClient, AIModel } from '@coasys/ad4m';
+import type { Ad4mClient, AiEndpoint, AIModel } from '@coasys/ad4m';
 import type {
   ConversationReply,
   ConversationRequest,
@@ -7,7 +7,6 @@ import type {
 } from '@we/backend-shared';
 
 import { readChatStream, toOpenAiMessages, toOpenAiTools } from './openaiChat';
-import { rpcStatus } from './rpcStatus';
 
 /**
  * The AD4M executor's AI service, as the neutral language-model port.
@@ -103,14 +102,13 @@ export function createAd4mLanguageModelPort(
 /**
  * The default LLM, and whether it can answer — without prompting it.
  *
- * A local model reports its own download and load progress. A remote one that needs no key is
- * checked by asking its endpoint which models it serves, through the node, which costs no tokens and
- * fails the ways a completion would: an unreachable host, a model id the service does not offer. One
- * the node holds a key for is `unchecked`: the node never hands the key back, and discovery is asked
- * with what the caller sends. So is a remote model where the client predates model discovery.
+ * The endpoint now owns the URL, the key and the protocol; the model just names it (`endpointId`)
+ * and the id the endpoint serves (`remoteModel`). The endpoint's own health check answers what a
+ * discovery call used to — which models it listed, last time it asked — and it is checked server
+ * side, with the stored key, so it says things a client-side probe could not.
  */
 async function defaultModelStatus(client: Ad4mClient): Promise<LanguageModelStatus> {
-  let model: AIModel | undefined;
+  let model: AIModel | null = null;
   try {
     model = await client.ai.getDefaultModel('LLM');
   } catch {
@@ -119,45 +117,63 @@ async function defaultModelStatus(client: Ad4mClient): Promise<LanguageModelStat
   if (!model) return { state: 'none', name: '', model: '', detail: '' };
 
   const name = model.name;
-  if (!model.api) {
-    const build = model.local?.fileName ?? '';
+  const id = model.remoteModel;
+
+  // The endpoint list is operator-only: a guest's read falls back to the model's own status.
+  let endpoint: AiEndpoint | undefined;
+  try {
+    endpoint = (await client.ai.endpoints()).find((e) => e.id === model.endpointId);
+  } catch {
+    // Refused (403) or an older node: say what the model's own status can.
+  }
+
+  if (!endpoint) {
     try {
-      const loading = await client.ai.modelLoadingStatus(model.id);
-      if (loading.loaded) return { state: 'ready', name, model: build, detail: '' };
-      const detail = loading.downloaded
-        ? loading.status || 'Loading'
-        : `Downloading ${Math.round(loading.progress ?? 0)}%`;
-      return { state: 'loading', name, model: build, detail };
+      const status = await client.ai.modelStatus(model.id);
+      if (status.state === 'READY') return { state: 'ready', name, model: id, detail: '' };
+      if (status.state === 'PULLING') {
+        return { state: 'loading', name, model: id, detail: `Downloading ${Math.round(status.progress ?? 0)}%` };
+      }
+    } catch {
+      // Fall through to the honest answer for a model nothing can check.
+    }
+    return { state: 'unchecked', name, model: id, detail: '' };
+  }
+
+  // A managed endpoint is the executor's own local runtime: the model's status is the truth.
+  if (endpoint.managed) {
+    try {
+      const status = await client.ai.modelStatus(model.id);
+      if (status.state === 'READY') return { state: 'ready', name, model: id, detail: '' };
+      const detail =
+        status.state === 'PULLING'
+          ? `Downloading ${Math.round(status.progress ?? 0)}%`
+          : status.detail || status.state || 'Loading';
+      return { state: 'loading', name, model: id, detail };
     } catch (err) {
-      return { state: 'error', name, model: build, detail: messageOf(err) };
+      return { state: 'error', name, model: id, detail: messageOf(err) };
     }
   }
 
-  const { baseUrl, hasApiKey, model: id, apiType } = model.api;
-  const ai = client.ai as unknown as {
-    discoverModels?: (baseUrl: string, apiKey?: string, apiType?: string) => Promise<string[]>;
-  };
-  if (typeof ai.discoverModels !== 'function') return { state: 'unchecked', name, model: id, detail: '' };
-  // The executor holds the key and never returns it, and discovery asks the endpoint with only what
-  // it is sent. Asking without the key would read a refusal of the missing key as a broken model.
-  if (hasApiKey) return { state: 'unchecked', name, model: id, detail: '' };
-
-  try {
-    const offered = await ai.discoverModels(baseUrl, undefined, String(apiType));
+  // A remote endpoint: its last health check is the answer discovery used to probe for.
+  const health = endpoint.health;
+  if (health.state === 'REACHABLE') {
     // A listing names dated versions (`claude-x-20250929`) that an alias (`claude-x`) resolves to.
-    const listed = offered.some((candidate) => candidate === id || candidate.startsWith(`${id}-`));
-    if (offered.length && !listed) {
+    const listed =
+      !health.servedModels.length ||
+      health.servedModels.some((candidate) => candidate === id || candidate.startsWith(`${id}-`));
+    if (!listed) {
       return { state: 'error', name, model: id, detail: `The service does not list a model called ${id}` };
     }
     return { state: 'ready', name, model: id, detail: '' };
-  } catch (err) {
-    // The executor refused the call itself (403): a guest without the AI CREATE grant, or a user
-    // session on a multi-user node, which may never call `ai.discoverModels`. That says nothing
-    // about the model — so it is unchecked, not broken. Read from the status, not the wording: the
-    // two refusals word themselves differently, and an endpoint's own "Unauthorized" is an error.
-    if (rpcStatus(err) === 403) return { state: 'unchecked', name, model: id, detail: '' };
-    return { state: 'error', name, model: id, detail: messageOf(err) };
   }
+  if (health.state === 'UNAUTHORIZED') {
+    return { state: 'error', name, model: id, detail: health.detail || 'The endpoint refused its key' };
+  }
+  if (health.state === 'UNREACHABLE') {
+    return { state: 'error', name, model: id, detail: health.detail || 'The endpoint cannot be reached' };
+  }
+  return { state: 'unchecked', name, model: id, detail: '' };
 }
 
 function messageOf(err: unknown): string {

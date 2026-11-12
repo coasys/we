@@ -6,13 +6,14 @@
  * ours. The store reads capability off the port's shape, so a member left off is a control that
  * does not appear.
  */
-import type { Ad4mClient, AIModel, ModelInput, ModelType } from '@coasys/ad4m';
+import type { Ad4mClient, AiEndpoint, AIModel, EndpointKind, ModelInput, ModelType } from '@coasys/ad4m';
 import type {
   AiApiProtocol,
   AiModel,
   AiModelDraft,
   AiModelKind,
   AiModelSource,
+  AiModelSourceDraft,
   ModelAdminPort,
 } from '@we/backend-shared';
 
@@ -20,82 +21,24 @@ import { CAP_DOMAIN, CAP_VERB, createCapabilityCheck } from './capabilities';
 import type { Ad4mRuntimeOptions } from './runtimeAdminAdapter';
 
 /**
- * The model names AD4M's local runner knows how to fetch and run.
- *
- * Carried here rather than asked for, because the executor exposes no list of them: the launcher's
- * dropdowns are the only place they are written down. Nothing breaks if this drifts behind a new
- * executor build — a name AD4M added is simply missing from the picker, and the Hugging Face source
- * still reaches it — so it is a convenience list, not a contract.
+ * The executor's name for each wire format — now the *endpoint's* kind: the endpoint owns the URL,
+ * the key and the protocol; a model only names it.
  */
-const PRESETS: Record<AiModelKind, string[]> = {
-  llm: [
-    'deephermes-3-llama-3-8b-Q4',
-    'deephermes-3-llama-3-8b-Q6',
-    'deephermes-3-llama-3-8b-Q8',
-    'Qwen2.5.1-Coder-7B-Instruct',
-    'deepseek_r1_distill_qwen_1_5b',
-    'deepseek_r1_distill_qwen_7b',
-    'deepseek_r1_distill_qwen_14b',
-    'deepseek_r1_distill_llama_8b',
-    'mistral_7b',
-    'mistral_7b_instruct',
-    'mistral_7b_instruct_2',
-    'solar_10_7b',
-    'solar_10_7b_instruct',
-    'llama_7b',
-    'llama_7b_chat',
-    'llama_7b_code',
-    'llama_8b',
-    'llama_8b_chat',
-    'llama_3_1_8b_chat',
-    'llama_13b',
-    'llama_13b_chat',
-    'llama_13b_code',
-    'llama_34b_code',
-    'llama_70b',
-  ],
-  embedding: ['bert'],
-  transcription: [
-    'whisper_tiny',
-    'whisper_tiny_quantized',
-    'whisper_tiny_en',
-    'whisper_tiny_en_quantized',
-    'whisper_base',
-    'whisper_base_en',
-    'whisper_small',
-    'whisper_small_en',
-    'whisper_medium',
-    'whisper_medium_en',
-    'whisper_medium_en_quantized_distil',
-    'whisper_large',
-    'whisper_large_v2',
-    'whisper_distil_medium_en',
-    'whisper_distil_large_v2',
-    'whisper_distil_large_v3',
-    'whisper_distil_large_v3_quantized',
-    'whisper_large_v3_turbo_quantized',
-  ],
-};
-
-/**
- * The executor's name for each wire format. It accepts several spellings on the way in and answers
- * with these on the way out, so these are the ones worth writing.
- */
-const PROTOCOL_TO_AD4M: Record<AiApiProtocol, string> = {
+const PROTOCOL_TO_AD4M: Record<AiApiProtocol, EndpointKind> = {
   openai: 'OPEN_AI',
   anthropic: 'ANTHROPIC',
   ollama: 'OLLAMA',
 };
 
 /**
- * An unrecognised API type reads as OpenAI, which is what every remote model was before there was a
- * choice — and what the executor itself assumes when none is given.
+ * An unrecognised endpoint kind reads as OpenAI, which is what every remote endpoint was before
+ * there was a choice — and what the executor itself assumes when none is given.
  *
- * Every type the executor answers with must be named here. One that was not read as OpenAI, and the
- * next save wrote it back as one: an Ollama model edited in settings lost its own provider.
+ * Every kind the executor answers with must be named here. One that was not read as OpenAI, and the
+ * next save wrote it back as one: an Ollama endpoint edited in settings lost its own provider.
  */
-function toProtocol(apiType: unknown): AiApiProtocol {
-  const type = String(apiType).toUpperCase();
+function toProtocol(kind: unknown): AiApiProtocol {
+  const type = String(kind).toUpperCase();
   if (type === 'ANTHROPIC') return 'anthropic';
   if (type === 'OLLAMA') return 'ollama';
   return 'openai';
@@ -116,77 +59,96 @@ function toKind(modelType: ModelType): AiModelKind {
 /**
  * AD4M's model record, read as a source.
  *
- * The distinctions are implicit in the record: an `api` block means a remote endpoint, a `local`
- * block with a `huggingfaceRepo` means a repo to fetch, and a `local` block without one means
- * either a preset name or a path — which the executor itself tells apart the same way, by whether
- * the name matches a build it knows. Reading it once here is what lets the form ask a single
- * question instead of inferring the answer from which fields are populated.
+ * A model is now a row on an *endpoint*: the endpoint owns the URL, the key, the protocol and the
+ * context ceiling; the model names the endpoint and the id the endpoint serves it under. An
+ * endpoint the executor manages itself (`managed` — installed by `ai.localInstall`) is the
+ * successor to the old `local` block: the executor picks and fetches its own models now, so it
+ * reads as a preset nobody has to name.
+ *
+ * An endpoint the caller cannot see (the list is operator-only) is a source guessed as remote
+ * with an empty URL — the honest shape for "a model somebody else's node runs".
  */
-function toSource(model: AIModel): AiModelSource {
-  if (model.api) {
-    return {
-      kind: 'api',
-      protocol: toProtocol(model.api.apiType),
-      baseUrl: model.api.baseUrl,
-      hasApiKey: model.api.hasApiKey,
-      model: model.api.model,
-      ...(model.api.maxNumCtx ? { maxContext: model.api.maxNumCtx } : {}),
-    };
+function toSource(model: AIModel, endpoints: ReadonlyMap<string, AiEndpoint>): AiModelSource {
+  const endpoint = endpoints.get(model.endpointId);
+  if (!endpoint) {
+    return { kind: 'api', protocol: 'openai', baseUrl: '', hasApiKey: false, model: model.remoteModel };
   }
-  const local = model.local;
-  if (!local) return { kind: 'preset', name: '' };
-  const tokenizer = local.tokenizerSource
-    ? {
-        repo: local.tokenizerSource.repo,
-        revision: local.tokenizerSource.revision,
-        fileName: local.tokenizerSource.fileName,
-      }
-    : undefined;
-  if (local.huggingfaceRepo) {
-    return {
-      kind: 'huggingface',
-      repo: local.huggingfaceRepo,
-      revision: local.revision || 'main',
-      fileName: local.fileName,
-      tokenizer,
-    };
+  if (endpoint.managed) {
+    return { kind: 'preset', name: model.remoteModel };
   }
-  const isPreset = Object.values(PRESETS).some((names) => names.includes(local.fileName));
-  return isPreset ? { kind: 'preset', name: local.fileName } : { kind: 'file', fileName: local.fileName, tokenizer };
+  return {
+    kind: 'api',
+    protocol: toProtocol(endpoint.kind),
+    baseUrl: endpoint.baseUrl,
+    hasApiKey: endpoint.hasApiKey,
+    model: model.remoteModel,
+    ...(endpoint.maxNumCtx ? { maxContext: endpoint.maxNumCtx } : {}),
+  };
 }
 
-function toModelInput(draft: AiModelDraft): ModelInput {
-  const input = { name: draft.name, modelType: KIND_TO_AD4M[draft.kind] } as ModelInput;
-  const source = draft.source;
-  if (source.kind === 'api') {
-    // The protocol used to be dropped on read and written back as OpenAI, so saving any edit to an
-    // Anthropic model silently turned it into an OpenAI one pointed at Anthropic's URL.
-    input.api = {
-      baseUrl: source.baseUrl,
-      // Left out, the executor keeps the key it holds; `''` removes it. It never sends one back, so
-      // there is nothing to echo here — an edit that does not touch the key must not send one.
-      ...(source.apiKey !== undefined ? { apiKey: source.apiKey } : {}),
-      model: source.model,
-      apiType: PROTOCOL_TO_AD4M[source.protocol],
-      // An update replaces the record, so a ceiling left out here is a ceiling removed.
-      ...(source.maxContext ? { maxNumCtx: source.maxContext } : {}),
-    };
-  } else if (source.kind === 'huggingface') {
-    input.local = {
-      fileName: source.fileName,
-      huggingfaceRepo: source.repo,
-      revision: source.revision || 'main',
-      tokenizerSource: source.tokenizer?.fileName ? source.tokenizer : undefined,
-    };
-  } else if (source.kind === 'file') {
-    input.local = {
-      fileName: source.fileName,
-      tokenizerSource: source.tokenizer?.fileName ? source.tokenizer : undefined,
-    };
-  } else {
-    input.local = { fileName: source.name };
+/** Every endpoint, keyed by id. The list is operator-only: a guest's read resolves to an empty map. */
+async function endpointMap(client: Ad4mClient): Promise<Map<string, AiEndpoint>> {
+  try {
+    return new Map((await client.ai.endpoints()).map((endpoint) => [endpoint.id, endpoint]));
+  } catch {
+    return new Map();
   }
-  return input;
+}
+
+/**
+ * The endpoint an `api` source describes, reused when one matches and registered when none does.
+ * Endpoint identity is URL + kind: two models on the same service share the row, and a second
+ * registration of the same URL would duplicate the server and its key.
+ */
+async function ensureEndpoint(
+  client: Ad4mClient,
+  source: Extract<AiModelSourceDraft, { kind: 'api' }>,
+  name: string,
+): Promise<string> {
+  const kind = PROTOCOL_TO_AD4M[source.protocol];
+  const existing = (await client.ai.endpoints()).find(
+    (endpoint) => endpoint.baseUrl === source.baseUrl && endpoint.kind === kind,
+  );
+  if (existing) {
+    // A key handed in for an endpoint the node already knows is a key change, not a duplicate add.
+    if (source.apiKey !== undefined) {
+      await client.ai.updateEndpoint(existing.id, {
+        name: existing.name,
+        kind: existing.kind,
+        baseUrl: existing.baseUrl,
+        apiKey: source.apiKey,
+        ...(existing.maxNumCtx ? { maxNumCtx: existing.maxNumCtx } : {}),
+      });
+    }
+    return existing.id;
+  }
+  const endpoint = await client.ai.addEndpoint({
+    name,
+    kind,
+    baseUrl: source.baseUrl,
+    ...(source.apiKey !== undefined ? { apiKey: source.apiKey } : {}),
+    ...(source.maxContext ? { maxNumCtx: source.maxContext } : {}),
+  });
+  return endpoint.id;
+}
+
+async function toModelInput(client: Ad4mClient, draft: AiModelDraft): Promise<ModelInput> {
+  const source = draft.source;
+  if (source.kind !== 'api') {
+    // Per-model local installs are gone with the `local` block: the executor installs local AI
+    // itself, whole, through `ai.localInstall`. Only a remote endpoint takes a model by hand now.
+    throw new Error(
+      'Local models are installed by the executor itself now — its local AI setup picks and ' +
+        'fetches them. Only a model on a remote endpoint can be added here.',
+    );
+  }
+  const endpointId = await ensureEndpoint(client, source, draft.name);
+  return {
+    name: draft.name,
+    modelType: KIND_TO_AD4M[draft.kind],
+    endpointId,
+    remoteModel: source.model,
+  };
 }
 
 export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntimeOptions = {}): ModelAdminPort {
@@ -213,11 +175,11 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
      * and no other kind could ever show as default. Three calls answer it for all of them.
      */
     async list() {
-      const models = await client.ai.getModels();
+      const [models, endpoints] = await Promise.all([client.ai.getModels(), endpointMap(client)]);
       const defaults = await Promise.all(
         Object.values<ModelType>(KIND_TO_AD4M).map((type) =>
           // A kind with no default set is not an error — it resolves to no id.
-          client.ai.getDefaultModel(type).catch(() => undefined),
+          client.ai.getDefaultModel(type).catch(() => null),
         ),
       );
       const defaultIds = new Set(defaults.filter(Boolean).map((model) => model!.id));
@@ -225,22 +187,27 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
         id: model.id,
         name: model.name,
         kind: toKind(model.modelType),
-        source: toSource(model),
+        source: toSource(model, endpoints),
         isDefault: defaultIds.has(model.id),
       })) satisfies AiModel[];
     },
 
-    presets(kind) {
-      return Promise.resolve(PRESETS[kind] ?? []);
+    presets() {
+      /*
+        The executor picks its own local models now (`ai.localInstall` carries the list), so there
+        are no names left for the launcher to offer — a dropdown of presets nothing can install
+        would promise an add that always refuses.
+      */
+      return Promise.resolve([]);
     },
 
     async status(id) {
-      const status = await client.ai.modelLoadingStatus(id);
+      const status = await client.ai.modelStatus(id);
       return {
-        downloaded: status.downloaded,
-        loaded: status.loaded,
+        downloaded: status.state === 'READY',
+        loaded: status.state === 'READY',
         progress: status.progress ?? 0,
-        status: status.status ?? '',
+        status: status.detail ?? status.state ?? '',
       };
     },
 
@@ -270,14 +237,14 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
      * LLMs and leaves the other kinds unset.
      */
     async add(draft) {
-      const id = await client.ai.addModel(toModelInput(draft));
+      const id = await client.ai.addModel(await toModelInput(client, draft));
       const type = KIND_TO_AD4M[draft.kind];
-      const existing = await client.ai.getDefaultModel(type).catch(() => undefined);
+      const existing = await client.ai.getDefaultModel(type).catch(() => null);
       if (!existing) await client.ai.setDefaultModel(type, id);
     },
 
     async update(id, draft) {
-      await client.ai.updateModel(id, toModelInput(draft));
+      await client.ai.updateModel(id, await toModelInput(client, draft));
     },
 
     async remove(id) {
@@ -307,18 +274,18 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
 }
 
 /**
- * `discover`, where the client can ask for it.
- *
- * `AIClient.discoverModels` arrived with the executor's Anthropic provider, after the SDK this
- * package pins. Checked on the instance rather than assumed, so the settings page offers the model
- * list wherever it works and the typed field everywhere else, instead of a button that throws.
+ * `discover`: probe an unsaved endpoint for the models it lists, by kind, URL and key.
+ * Answered as ids, which is what the port's picker shows.
  */
 function discovery(client: Ad4mClient): Pick<ModelAdminPort, 'discover'> {
-  const ai = client.ai as unknown as
-    { discoverModels?: (baseUrl: string, apiKey?: string, apiType?: string) => Promise<string[]> } | undefined;
-  if (!ai || typeof ai.discoverModels !== 'function') return {};
   return {
-    discover: ({ protocol, baseUrl, apiKey }) =>
-      ai.discoverModels!(baseUrl, apiKey || undefined, PROTOCOL_TO_AD4M[protocol]),
+    discover: async ({ protocol, baseUrl, apiKey }) => {
+      const found = await client.ai.discoverModels({
+        kind: PROTOCOL_TO_AD4M[protocol],
+        baseUrl,
+        ...(apiKey ? { apiKey } : {}),
+      });
+      return found.map((model) => model.id);
+    },
   };
 }

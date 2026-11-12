@@ -29,16 +29,12 @@ const TRANSCRIPTION_MODEL_TYPE = 'TRANSCRIPTION';
  * limit, so a model slower than real time delays every line further than the last. `small` keeps up
  * and is a clear step above `tiny`. Changing the choice is this constant and its size.
  */
-const OFFERED_PRESET = 'whisper_small';
 const OFFERED_MODEL: TranscriptionModelOffer = {
-  name: 'Whisper small',
-  // `openai/whisper-small`'s weights; the tokenizer and config beside them are a rounding error.
+  name: 'Whisper (on-device)',
+  // The executor's stt plan picks the model for the device; ~1 GB is the right order for the
+  // Whisper-class download it installs.
   downloadBytes: 967_000_000,
 };
-
-/** How long {@link installOfferedModel} waits to see the model's row appear before calling it failed. */
-const REGISTER_TIMEOUT_MS = 20_000;
-const REGISTER_POLL_MS = 250;
 
 interface Ad4mAiModel {
   id?: string;
@@ -76,13 +72,11 @@ export function createAd4mTranscriptionPort(
    */
   async function readiness(modelId: string): Promise<Readiness> {
     try {
-      const status = await client.ai.modelLoadingStatus(modelId);
+      const status = await client.ai.modelStatus(modelId);
       if (!status) return { ready: true };
-      // `downloaded`, not `loaded`. `loaded` is only ever set true by the executor's LLM spawn path;
-      // `load_transcriber_model` finishes with `("Loaded", downloaded: true, loaded: false)`, so a
-      // working Whisper model reports `loaded: false` forever. Reading it first marked every
-      // transcription model unready.
-      const ready = Boolean(status.downloaded || status.loaded);
+      // `READY` is the one state that takes audio; `PULLING` is the download in flight with its
+      // percentage; `ENDPOINT_DOWN`/`MISSING` cannot be fed and are read as not ready.
+      const ready = status.state === 'READY';
       // Per file rather than overall: the executor reports the tokenizer, the weights and the config
       // each from 0 to 100. The weights are nearly all of it, so the number is honest where it
       // matters and briefly optimistic at either end.
@@ -135,10 +129,10 @@ export function createAd4mTranscriptionPort(
     ): Promise<TranscriptionStream> {
       if (!modelId) throw new Error('transcription: no model given');
 
-      // `tuning` is forwarded and, today, ignored: the executor applies its own fixed voice-activity
-      // gate and never reads the parameters it is sent. Passed anyway so a caller's intent reaches
-      // an executor that starts honouring it without this adapter having to change.
-      const streamId = await client.ai.openTranscriptionStream(modelId, onText, tuning);
+      // `tuning` is no longer forwarded: the executor applies its own fixed voice-activity gate and
+      // never read the parameters it was sent, so the client dropped the argument entirely.
+      void tuning;
+      const streamId = await client.ai.openTranscriptionStream(modelId, onText);
 
       // Guards every call rather than trusting the caller to stop feeding first. Audio arrives from
       // an audio-thread worklet on its own schedule, so a buffer in flight when the user hangs up is
@@ -186,43 +180,23 @@ export function createAd4mTranscriptionPort(
     offeredModel: () => OFFERED_MODEL,
 
     /*
-      Registers the model, then returns as soon as its row exists.
+      Runs the executor's own local-AI install for the speech-to-text service.
 
-      `ai.addModel` does not answer until the executor has downloaded the weights — and then loaded
-      them, and thrown them away — so on any real download the client's thirty-second RPC timeout
-      fires long before it would. The row is written first and the download carries on regardless,
-      which makes that timeout a lie about the outcome rather than a failure. So the call is left
-      running, and the row is what decides: here means installed, and the download is then
-      `models()`'s to report.
-
-      A rejection that arrives before the row does is a real refusal (no permission, an executor that
-      rejects the input) and is thrown.
+      Per-model local installs are gone with the `local` block: `ai.localInstall` downloads the
+      stt runtime and the model the executor's own plan picks for this device, starts it and
+      registers it as a managed endpoint with its models — and resolves when all of that is done.
+      The offer's name and size are therefore approximate: the plan chooses, which is what the
+      `whisper_small` preset used to approximate anyway.
     */
     async installOfferedModel(): Promise<void> {
-      // A second press, or two panels, must not register the model twice: the executor keeps both.
+      // A second press, or two panels, must not install twice.
       if ((await transcriptionModels()).length > 0) return;
 
-      let refused: unknown = null;
-      client.ai
-        .addModel({
-          name: OFFERED_MODEL.name,
-          local: { fileName: OFFERED_PRESET },
-          modelType: TRANSCRIPTION_MODEL_TYPE,
-        })
-        .catch((cause: unknown) => {
-          refused = cause;
-        });
+      await client.ai.localInstall({ services: ['stt'] });
 
-      const deadline = Date.now() + REGISTER_TIMEOUT_MS;
-      while (Date.now() < deadline) {
-        await new Promise((resolve) => setTimeout(resolve, REGISTER_POLL_MS));
-        if ((await transcriptionModels()).length > 0) return;
-        if (refused)
-          throw refused instanceof Error
-            ? refused
-            : new Error('transcription: the model was refused', { cause: refused });
+      if ((await transcriptionModels()).length === 0) {
+        throw new Error('transcription: the install finished but no speech-to-text model was registered');
       }
-      throw new Error('transcription: the model was not registered');
     },
   };
 }
