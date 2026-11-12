@@ -8,21 +8,24 @@
  *
  * A hidden window with no icon to bring it back would leave a running app nobody can reach. So the
  * window hides only while the icon can be seen: on Linux the icon is a StatusNotifierItem, shown only
- * while a tray host owns `org.kde.StatusNotifierWatcher` on the session bus, and GNOME without an
- * AppIndicator extension has none. Without one, closing the window quits the app, as "Quit" does.
+ * while a tray host has registered with the `org.kde.StatusNotifierWatcher` on the session bus, and
+ * GNOME without an AppIndicator extension has none. A watcher with no host shows nothing, so the
+ * watcher's own `IsStatusNotifierHostRegistered` is what counts, not only that one is there. Without
+ * a host, closing the window quits the app, as "Quit" does.
  */
 import { spawnSync } from 'child_process';
 
 const WATCHER = 'org.kde.StatusNotifierWatcher';
 
-/** Whether `dbus-send … NameHasOwner string:org.kde.StatusNotifierWatcher` answered yes. */
+/** Whether `dbus-send … Get … IsStatusNotifierHostRegistered` answered yes. */
 export function trayHostAnswered(output) {
   return /\bboolean\s+true\b/.test(String(output ?? ''));
 }
 
 /**
  * Whether a tray host is there to show the icon. Asked each time, since a host can come and go.
- * Only Linux needs one; elsewhere the OS always shows a tray icon.
+ * Only Linux needs one; elsewhere the OS always shows a tray icon. Asked of the watcher itself, so
+ * a failed ask — no watcher on the bus, no bus, no `dbus-send` — is no host too.
  */
 export function trayHostPresent(platform = process.platform, run = spawnSync) {
   if (platform !== 'linux') return true;
@@ -30,12 +33,13 @@ export function trayHostPresent(platform = process.platform, run = spawnSync) {
     'dbus-send',
     [
       '--session',
-      '--dest=org.freedesktop.DBus',
+      `--dest=${WATCHER}`,
       '--type=method_call',
       '--print-reply',
-      '/org/freedesktop/DBus',
-      'org.freedesktop.DBus.NameHasOwner',
+      '/StatusNotifierWatcher',
+      'org.freedesktop.DBus.Properties.Get',
       `string:${WATCHER}`,
+      'string:IsStatusNotifierHostRegistered',
     ],
     { encoding: 'utf8', timeout: 2_000 },
   );

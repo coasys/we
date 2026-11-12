@@ -6,6 +6,7 @@
  * executor there now refuses to start beside it (exit 79), which `afterExecutorExit` reports.
  */
 import { spawn } from 'child_process';
+import { EventEmitter } from 'events';
 import http from 'http';
 import { afterEach, describe, expect, it } from 'vitest';
 
@@ -17,6 +18,7 @@ import {
   executorHealthy,
   EXIT,
   initialExecutorConfig,
+  outputClosed,
   outputTail,
   startWithPortRetry,
   stopChild,
@@ -209,6 +211,34 @@ describe('outputTail', () => {
   });
 });
 
+describe('outputClosed', () => {
+  // A refused start says why in its last line, and `exit` can come before that line is read.
+  // Node emits `exit` and `close` in that order, and stdio may still be open at `exit`: a process
+  // that does exactly that, its last line arriving between the two.
+  it('waits for the last of the output after the process exits', async () => {
+    const proc = new EventEmitter();
+    const tail = outputTail(2);
+    const outputDone = outputClosed(proc);
+    let shown = null;
+    proc.once('exit', () => void outputDone().then(() => (shown = tail.lines().at(-1))));
+    tail.push('starting\n');
+    proc.emit('exit', 78, null);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    tail.push('refused: the last line\n');
+    proc.emit('close', 78, null);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(shown).toBe('refused: the last line');
+  });
+
+  // A process the executor started can hold the pipes open after it has gone.
+  it('stops waiting after its time when the output never closes', async () => {
+    const proc = new EventEmitter();
+    const started = Date.now();
+    expect(await outputClosed(proc)(100)).toBe(false);
+    expect(Date.now() - started).toBeLessThan(1_000);
+  });
+});
+
 describe('executorEnv', () => {
   // Nothing the executor reads: `--watch-stdin` is what ends it with this app, not a variable.
   it('adds nothing to the inherited environment', () => {
@@ -304,6 +334,18 @@ describe('waitUntilReady', () => {
     expect(await outcome).toBe('gone');
     expect(asked()).toBe(2);
   });
+
+  // Another executor on the port answers while this one exits 80: the answer is not this one's, and
+  // reading it as ready skipped the try on another port.
+  it('is not ready when the process went while the probe was answered', async () => {
+    const { wait, now } = clock();
+    let exited = false;
+    const probe = async () => {
+      exited = true;
+      return true;
+    };
+    expect(await waitUntilReady(probe, { gone: () => exited, wait, now })).toBe('gone');
+  });
 });
 
 /** A server on a free local port answering every request with `handler`. Resolves with its port. */
@@ -374,6 +416,30 @@ describe('executorHealthy', () => {
     const { server, port } = await serve(reply(200, '{"status":"ok"}'));
     await new Promise((r) => server.close(r));
     expect(await executorHealthy(port)).toBe(false);
+  });
+
+  // A body that keeps arriving keeps the socket busy, so its idle timeout never fired and the probe
+  // — and with it the 60 s the start waits — had no end.
+  it('is false, in its time, for a 200 whose body never ends', async () => {
+    const port = await up((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      const drip = setInterval(() => res.write(' '), 20);
+      res.on('close', () => clearInterval(drip));
+    });
+    const started = Date.now();
+    expect(await executorHealthy(port, { timeoutMs: 300 })).toBe(false);
+    expect(Date.now() - started).toBeLessThan(1_500);
+  });
+
+  it('is false for a body far larger than the executor sends, without reading it all', async () => {
+    const port = await up((_req, res) => {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      const flood = setInterval(() => res.write('x'.repeat(64 * 1024)), 5);
+      res.on('close', () => clearInterval(flood));
+    });
+    const started = Date.now();
+    expect(await executorHealthy(port, { timeoutMs: 5_000 })).toBe(false);
+    expect(Date.now() - started).toBeLessThan(2_000);
   });
 });
 

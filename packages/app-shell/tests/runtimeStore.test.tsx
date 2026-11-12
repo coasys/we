@@ -353,6 +353,24 @@ describe('a backend that keeps its own config file', () => {
     expect(calls).not.toContain('host.restart');
   });
 
+  // A refused restart leaves the settings not taken effect, so "Restart now" must not disappear.
+  it('keeps the restart pending when the backend refuses to restart', async () => {
+    const { runtime, host } = configBackend();
+    runtime.restartExecutor = async () => {
+      throw new Error('restart refused');
+    };
+    executorHost = host;
+    ports = { runtime };
+    const store = mount();
+
+    await store.setMcpEnabled(true);
+    expect(store.executorRestartPending()).toBe(true);
+
+    await store.restartExecutor();
+    expect(store.executorRestartPending()).toBe(true);
+    expect(store.error()).toMatch(/restart refused/);
+  });
+
   it('shows every key as a row, editable unless a flag of this start sets it', async () => {
     const { runtime, host } = configBackend();
     executorHost = host;

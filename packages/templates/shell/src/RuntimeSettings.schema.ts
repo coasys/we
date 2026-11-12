@@ -661,6 +661,8 @@ export const executorSettings: SchemaNode = {
                           // own default may be either (`localhost` is on).
                           type: 'we-select',
                           props: {
+                            // The key beside it is text, not a label: this names the control.
+                            label: { $: 'row.key' },
                             value: { $: 'row.choice' },
                             options: [
                               { label: 'Default', value: 'default' },
@@ -680,6 +682,7 @@ export const executorSettings: SchemaNode = {
                             then: {
                               type: 'we-input',
                               props: {
+                                label: { $: 'row.key' },
                                 size: 'sm',
                                 width: '220px',
                                 type: { $: "row.kind == 'number' ? 'number' : 'text'" },
