@@ -155,7 +155,9 @@ label.check {
 
 /* `border-box`: a field given a width keeps its padding and border inside it, never past its box. */
 input[type='text'],
-input[type='password'] {
+input[type='password'],
+input[type='url'],
+input[type='number'] {
   box-sizing: border-box;
   font: inherit;
   color: var(--text);
@@ -167,7 +169,9 @@ input[type='password'] {
 }
 
 input[type='text']:hover,
-input[type='password']:hover {
+input[type='password']:hover,
+input[type='url']:hover,
+input[type='number']:hover {
   background: var(--we-role-field-hover, var(--sunken));
 }
 
