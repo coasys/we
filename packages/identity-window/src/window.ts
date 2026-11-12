@@ -23,6 +23,7 @@ import {
   heading,
   isLast,
   migrationProgress,
+  oneAtATime,
   refusedField,
   remaining,
   type Screen,
@@ -112,7 +113,8 @@ const step = (input: StepInput, clear: HTMLInputElement[] = []) => run(() => hos
   Cancel and Done close the window through the host. Where the host cannot be reached (its custody
   service has stopped), the window says so and closes itself, rather than leaving a button that does
   nothing and a window the person has to close by hand. A cancel that could not end the step answers
-  the screen to show instead, and the window stays on it.
+  the screen to show instead, and the window stays on it. While a cancel is out the window's buttons
+  are off, and a second click answers the cancel already sent rather than sending another.
 */
 async function leave(call: () => Promise<Screen | null | void>) {
   try {
@@ -123,7 +125,10 @@ async function leave(call: () => Promise<Screen | null | void>) {
     window.close();
   }
 }
-const cancel = () => void leave(() => host.cancel());
+const cancel = oneAtATime(() => {
+  for (const b of Array.from(root.querySelectorAll('button'))) b.disabled = true;
+  return leave(() => host.cancel());
+});
 const finish = () => void leave(() => host.finish());
 
 function textField(label: string, value = '', placeholder = ''): { label: HTMLLabelElement; input: HTMLInputElement } {

@@ -33,6 +33,7 @@ import {
   executorEnv,
   EXIT,
   initialExecutorConfig,
+  outputClosed,
   outputTail,
   startWithPortRetry,
   stopChild,
@@ -467,6 +468,8 @@ async function startExecutorOnce({ samePort }) {
     });
 
     const proc = executorProcess;
+    // The reason a refused start gives can arrive after `exit`: read the tail once it is all in.
+    const outputDone = outputClosed(proc);
     executorProcess.on('exit', (code, signal) => {
       // `stopExecutor` clears `executorProcess` before it stops it, so an executor this app stopped
       // (quit, account switch, settings) is no longer the current one. Not before the window
@@ -497,8 +500,10 @@ async function startExecutorOnce({ samePort }) {
         void restartExecutorAndReload({ samePort: outcome.samePort, delayMs: outcome.delayMs });
         return;
       }
-      if (outcome.action === 'refused' || outcome.action === 'busy' || outcome.action === 'give-up') {
-        showExecutorStopped(outcome.action, tail.lines(), configFile, ad4mDataPath);
+      // `done` too: the app clears `executorProcess` before it stops the executor itself, so an exit 0
+      // that reaches here was asked for elsewhere (`runtime.quit`, a signal), and nothing starts it again.
+      if (['refused', 'busy', 'give-up', 'done'].includes(outcome.action)) {
+        void outputDone().then(() => showExecutorStopped(outcome.action, tail.lines(), configFile, ad4mDataPath));
         setExecutorState({ phase: 'failed', reason: `${stoppedWords(outcome.action)}\n\n${LOG_WORDS}` });
       }
       // Gone for good: the sidecar would only keep restarting against a dead port.
@@ -520,6 +525,7 @@ async function startExecutorOnce({ samePort }) {
       await waitForExecutorReady(ad4mPort, { gone: () => proc.exitCode !== null || proc.signalCode !== null });
       console.log(`The executor on port ${ad4mPort} is ready`);
     } catch (err) {
+      if (proc.exitCode !== null) await outputDone();
       const reason = startRefusal(proc.exitCode, tail.lines(), configFile, ad4mDataPath);
       if (reason) throw Object.assign(new Error(reason), { exitCode: proc.exitCode });
       if (proc.exitCode === EXIT.PORT_TAKEN) err.exitCode = EXIT.PORT_TAKEN;
@@ -556,11 +562,14 @@ function startRefusal(code, lines, configFile, dataPath) {
 /** Tell the person the executor stopped and will not be started again, and why. */
 function showExecutorStopped(action, lines, configFile, dataPath) {
   const code = { refused: EXIT.CONFIG_REFUSED, busy: EXIT.DATA_FOLDER_BUSY }[action];
+  const last = lines.length ? `\n\n${lines.slice(-8).join('\n')}` : '';
+  const why =
+    action === 'done'
+      ? 'It was stopped outside the app, so the app does not start it again.'
+      : 'It keeps stopping, so the app does not start it again.';
   const detail =
     startRefusal(code, lines, configFile, dataPath) ??
-    `It keeps stopping, so the app does not start it again. Quit and start the app to try again.${
-      lines.length ? `\n\n${lines.slice(-8).join('\n')}` : ''
-    }\n\nThe executor's log: ${join(dataPath, 'logs', 'executor-0.log')}`;
+    `${why} Quit and start the app to try again.${last}\n\nThe executor's log: ${join(dataPath, 'logs', 'executor-0.log')}`;
   const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
   void dialog.showMessageBox(parent, { type: 'error', message: 'The AD4M executor stopped', detail });
 }
