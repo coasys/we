@@ -1,5 +1,5 @@
 import type { DesktopServers, ExecutorBridge } from '@we/app-coasys/hosts/desktop';
-import type { Account, BackendConnector, ScreenSource } from '@we/app-shell/shared';
+import type { Account, BackendConnector, ScreenSource, StorageStatus } from '@we/app-shell/shared';
 import { type Ad4mCustodyHost, createLocalAd4mConnector } from '@we/backend-ad4m';
 import weSeed from '@we/seed-file';
 
@@ -25,6 +25,9 @@ declare global {
       applyAccountSelection: () => Promise<void>;
       restartExecutor: () => Promise<void>;
       chooseFile: (options: { save: boolean; defaultName?: string }) => Promise<string | null>;
+      // Absent in an older main process.
+      storageStatus?: () => Promise<StorageStatus | null>;
+      onStorageStatus?: (listener: (status: StorageStatus | null) => void) => () => void;
       saveFile: (file: { name: string; type: string; bytes: Uint8Array }) => Promise<boolean>;
       // The custody sidecar's window and public state; absent where there is no custody service.
       custody?: Ad4mCustodyHost;

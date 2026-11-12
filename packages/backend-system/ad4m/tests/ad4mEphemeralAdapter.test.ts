@@ -167,6 +167,35 @@ describe('createAd4mEphemeralPort', () => {
       expect(seen).toEqual([]);
     });
 
+    it("on an ownClients channel, hears this agent's other clients but not this client's own sends", async () => {
+      // The executor hands a broadcast back to every client of the agent that sent it, this one
+      // included, and the link says nothing about which client sent it.
+      const env = fakePerspective();
+      const scope = createAd4mEphemeralPort(() => 'me')(env.perspective)!;
+      const channel = scope.channel('presence', { ownClients: true });
+      const seen: unknown[] = [];
+      channel.onMessage((from, p) => seen.push([from, p]));
+
+      channel.publish({ beat: 'from this tab' });
+      await flush();
+      env.receive('me', 'we://ephemeral/presence', { beat: 'from this tab' });
+      env.receive('me', 'we://ephemeral/presence', { beat: 'from another tab' });
+
+      expect(seen).toEqual([['me', { beat: 'from another tab' }]]);
+    });
+
+    it('keeps dropping its own agent on a channel that did not ask for its other clients', async () => {
+      const env = fakePerspective();
+      const scope = createAd4mEphemeralPort(() => 'me')(env.perspective)!;
+      scope.channel('presence', { ownClients: true });
+      const seen: unknown[] = [];
+      scope.channel('rtc').onMessage((_f, p) => seen.push(p));
+
+      env.receive('me', 'we://ephemeral/rtc', 'from another tab');
+
+      expect(seen).toEqual([]);
+    });
+
     it('honours addressing on receipt — emulated unicast is a filter, not privacy', () => {
       const env = fakePerspective();
       const scope = createAd4mEphemeralPort(() => 'me')(env.perspective)!;

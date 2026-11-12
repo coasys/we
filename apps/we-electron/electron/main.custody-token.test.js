@@ -169,11 +169,16 @@ function invoke(channel, ...args) {
 
 /**
  * A `we-custody` that reads the first line of its stdin (the credential, as the real one does),
- * writes it with what it was started with, then waits for its stdin to close. Asked for the wallet
+ * writes it with what it was started with, then waits for its stdin to close. Asked for the storage
+ * secret it answers one, the same each time (`storageUnlock.js`). Asked for the wallet
  * passphrase (`mainAgent.js`), it writes what it was started with beside that and answers one.
  */
 const fakeCustody = (file) => `#!${process.execPath}
 const fs = require('fs');
+if (process.argv[2] === 'storage-secret') {
+  process.stdout.write(JSON.stringify({ secret: 'ab'.repeat(32) }) + '\\n');
+  process.exit(0);
+}
 if (process.argv[2] === 'wallet-passphrase') {
   fs.writeFileSync(${JSON.stringify(file)} + '.wallet', JSON.stringify({ argv: process.argv.slice(2), env: process.env }));
   process.stdout.write(JSON.stringify({ passphrase: 'test-wallet-passphrase' }) + '\\n');

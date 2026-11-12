@@ -96,6 +96,7 @@ vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({
     currentDataset: () => ({ id: 'ds', handle: {}, name: 'Space' }),
     datasets: () => [],
     personalDataset: () => null,
+    currentDatasetEntities: () => [],
   }),
 }));
 vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({

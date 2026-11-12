@@ -325,6 +325,24 @@ pub(crate) fn as_phone(entry: &DeviceEntry) -> Option<DeviceEntry> {
     })
 }
 
+/// Whether this phone owes the record its mark for the master key it keeps: its custody note is
+/// a receipt for the index the vault keeps ([`ad4m_identity_client::CustodyNote::landed`]) — a
+/// take kept the key and its record write was cancelled or failed. Reads the log's status and
+/// the vault's note: no prompt.
+async fn receipt_owed(
+    exec: &Executor,
+    vault: &PhoneVault,
+    scid: &str,
+) -> Result<bool, ClientError> {
+    let Some(key_id) = exec.status().await?.key_id else {
+        return Ok(false);
+    };
+    Ok(match vault.custody_note(scid, &key_id)? {
+        Some(note) => note.landed(vault, scid)?,
+        None => false,
+    })
+}
+
 /// The phone's identity: its device keys, the store, and its master-key vault.
 #[derive(uniffi::Object)]
 pub struct PhoneIdentity {
@@ -373,43 +391,66 @@ impl PhoneIdentity {
 
     /// Takes a master key a holder put into this phone's inbox: checks it is the log's current
     /// master, seals it behind the biometric (one prompt), acknowledges the message, and marks
-    /// this phone as holding it in the record, in that order. `None` when no master key waits.
-    /// When that record write waits for the recovery key's re-attestation after a rotation
-    /// ([`master::Taken::record_pending`]), the master just taken signs it itself
-    /// ([`master::complete_pending_mark`], a second prompt): ad4m keeps no repair queue, so a
-    /// take not completed here would leave the record's recovery key stale and the phone unlisted.
+    /// this phone as holding it in the record, in that order. When that record write waits for
+    /// the recovery key's re-attestation after a rotation ([`master::Taken::record_pending`]),
+    /// the master just taken signs it itself ([`master::complete_pending_mark`], a second
+    /// prompt): ad4m keeps no repair queue, so a take not completed here would leave the record's
+    /// recovery key stale and the phone unlisted.
+    ///
+    /// With no master key waiting, the mark this phone still owes for the key it keeps (a take
+    /// whose record write was cancelled or failed, before a restart or not: its custody note is a
+    /// receipt that has landed, [`receipt_owed`]) is made now, the person's tap being the
+    /// consent its prompt needs ([`master::refresh_master`], one prompt when the master signs).
+    /// `None` when neither is there.
+    ///
     /// `WeakProtection` before any prompt when the phone's key store is not secure hardware:
     /// the app asks the person once and calls again with `allow_weak_protection`.
     pub fn take_master(
         &self,
         allow_weak_protection: bool,
     ) -> Result<Option<MasterTaken>, PhoneKeyError> {
-        self.parts.member()?;
+        let (scid, did) = self.parts.member()?;
         self.vault.allow_weak_protection(allow_weak_protection);
         let exec = self.parts.executor(None)?;
         let vault = self.vault.as_ref();
         let taken = block_on(async {
-            let Some(mut taken) = master::take_master(&exec, vault, &OsRandom).await? else {
-                return Ok(None);
-            };
-            if taken.record_pending {
-                taken.record = master::complete_pending_mark(
-                    &exec,
-                    vault,
-                    &taken.did,
-                    &SystemClock,
-                    &OsRandom,
-                )
-                .await;
-                taken.record_pending = taken.record.is_err();
+            if let Some(mut taken) = master::take_master(&exec, vault, &OsRandom).await? {
+                if taken.record_pending {
+                    taken.record = master::complete_pending_mark(
+                        &exec,
+                        vault,
+                        &taken.did,
+                        &SystemClock,
+                        &OsRandom,
+                    )
+                    .await;
+                    taken.record_pending = taken.record.is_err();
+                }
+                return Ok(Some((taken.did, taken.index, taken.record.err())));
             }
-            Ok(Some(taken))
+            if !receipt_owed(&exec, vault, &scid).await? {
+                return Ok(None);
+            }
+            Ok(
+                match master::refresh_master(&exec, vault, &did, &SystemClock, &OsRandom).await? {
+                    master::Refreshed::Repaired { index, record }
+                    | master::Refreshed::Promoted { index, record } => {
+                        Some((did.clone(), index, record.err()))
+                    }
+                    master::Refreshed::Taken(taken) => {
+                        Some((taken.did, taken.index, taken.record.err()))
+                    }
+                    master::Refreshed::Current
+                    | master::Refreshed::Asked(_)
+                    | master::Refreshed::Unknown => None,
+                },
+            )
         })
         .map_err(phone_error)?;
-        Ok(taken.map(|t| MasterTaken {
-            did: t.did,
-            index: t.index,
-            note: t.record.err().map(|e| {
+        Ok(taken.map(|(did, index, error)| MasterTaken {
+            did,
+            index,
+            note: error.map(|e| {
                 format!("The master key is kept here, but the device list was not updated: {e}")
             }),
         }))
@@ -442,17 +483,23 @@ impl PhoneIdentity {
         })
     }
 
-    /// Whether a master key another device sent waits in this phone's inbox, without taking it:
-    /// no prompt, and the message stays for [`Self::take_master`]. Reads the store, so a key put
-    /// there since the last read is seen.
+    /// Whether "Take the master key" has something to do, without doing it: a master key another
+    /// device sent waits in this phone's inbox, or the mark for the key this phone keeps is still
+    /// owed to the record ([`receipt_owed`]), which [`Self::take_master`] makes. No prompt, and a
+    /// waiting message stays for the take. Reads the store, so a key put there since the last
+    /// read is seen.
     pub fn master_waiting(&self) -> Result<bool, PhoneKeyError> {
-        self.parts.member()?;
+        let (scid, _) = self.parts.member()?;
         let exec = self.parts.executor(None)?;
         let listed =
             block_on(exec.rpc().call("identity.inbox", serde_json::json!({}))).map_err(rpc)?;
-        Ok(listed
+        if listed
             .as_array()
-            .is_some_and(|messages| messages.iter().any(|m| m["kind"] == "master")))
+            .is_some_and(|messages| messages.iter().any(|m| m["kind"] == "master"))
+        {
+            return Ok(true);
+        }
+        block_on(receipt_owed(&exec, self.vault.as_ref(), &scid)).map_err(phone_error)
     }
 
     /// The requests of the identity's other devices, newest last.

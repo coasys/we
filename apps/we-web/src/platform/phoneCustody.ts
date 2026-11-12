@@ -97,13 +97,13 @@ export function phoneCustodyHost(plugin: DeviceKeyPlugin, nav: PageNav = browser
       const [devices, requests, waiting] = await Promise.all([
         plugin.devices().then((r) => r.devices),
         plugin.requests().then((r) => r.requests),
-        // Only worth asking where the key is not kept already; an inbox that cannot be read offers nothing.
-        holds
-          ? Promise.resolve(false)
-          : plugin.masterWaiting().then(
-              (r) => r.waiting,
-              () => false,
-            ),
+        // Asked where the key is kept too: a newer master key can wait, and a mark the record is
+        // still owed for the kept one (a take whose record write was cancelled or failed) is made
+        // by the same "Take the master key". A question that cannot be answered offers nothing.
+        plugin.masterWaiting().then(
+          (r) => r.waiting,
+          () => false,
+        ),
       ]);
       return {
         ...base,

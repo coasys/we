@@ -7358,6 +7358,9 @@
         "canRestartExecutor": {
           "type": "boolean"
         },
+        "storageLine": {
+          "type": "string"
+        },
         "pendingConsent": {
           "type": "object",
           "properties": ["kind", "title", "message", "app", "peerId"]

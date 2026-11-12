@@ -11,8 +11,11 @@ import indexSource from './index.ts?raw';
 import {
   actionsLine,
   BOT_ACTIONS,
+  deviceMatchActions,
+  deviceMatchNote,
   heading,
   isLast,
+  migrationProgress,
   refusedField,
   remaining,
   type RevokeTarget,
@@ -124,7 +127,14 @@ describe('the identity window', () => {
   });
 
   it('says which device joins by what it is: a computer by default, a phone where the phone says so', () => {
-    const match = { screen: 'device-match', code: 'R7K Q2M', did: 'did:scid:coasys:1:abc' } as const;
+    const match = {
+      screen: 'device-match',
+      code: 'R7K Q2M',
+      did: 'did:scid:coasys:1:abc',
+      needsAccept: false,
+      accepted: false,
+      confirmed: false,
+    } as const;
     expect(heading(match).lead).toContain('This computer then joins your identity.');
     expect(heading(match, 'computer').lead).toContain('This computer then joins your identity.');
     const onPhone = heading(match, 'phone').lead;
@@ -148,6 +158,57 @@ describe('the identity window', () => {
     expect(asked).toContain('d2 (key AbCd 1234)');
     expect(asked).toContain('R7K Q2M');
     expect(heading({ screen: 'renamed', keyId: 'd2', name: 'Laptop' }).title).toBe('Named Laptop');
+  });
+
+  it('on a first run, asks whether the identity is yours before this computer joins it', () => {
+    const card = (needsAccept: boolean, accepted: boolean, confirmed: boolean) =>
+      ({
+        screen: 'device-match',
+        code: 'R7K Q2M',
+        did: 'did:scid:coasys:1:Qm',
+        needsAccept,
+        accepted,
+        confirmed,
+      }) satisfies Screen;
+
+    // Not a first run: the other device confirms, and nothing is asked here.
+    expect(heading(card(false, false, false))).toEqual({
+      title: 'Check the code',
+      lead: 'Your other device shows a code too. When they match, confirm there. This computer then joins your identity.',
+    });
+    expect(deviceMatchNote(card(false, false, false))).toBe('Waiting for you to confirm on your other device…');
+
+    const ask = heading(card(true, false, false));
+    expect(ask.title).toBe('Is this your identity?');
+    expect(ask.lead).toBe('Check that the code matches the one on your other device. Then confirm here and there.');
+    expect(deviceMatchNote(card(true, false, false))).toBe('Waiting for you to confirm here and on your other device…');
+
+    // The other device confirmed first: still asked here, and told what is left.
+    const confirmed = heading(card(true, false, true));
+    expect(confirmed.title).toBe('Is this your identity?');
+    expect(confirmed.lead).toContain('Your other device confirmed.');
+    expect(confirmed.lead).toContain('confirm here too');
+    expect(deviceMatchNote(card(true, false, true))).toBeNull();
+
+    // Accepted here: it waits for the other device.
+    const accepted = heading(card(true, true, false));
+    expect(accepted.title).toBe('Confirm on your other device');
+    expect(accepted.lead).toBe(
+      'You confirmed here. This computer joins your identity once your other device confirms too.',
+    );
+    expect(deviceMatchNote(card(true, true, false))).toBe('Waiting for your other device…');
+  });
+
+  it('offers “This is my identity” only while the accept is still asked, and waits once', () => {
+    const card = (needsAccept: boolean, accepted: boolean, confirmed: boolean) =>
+      ({ screen: 'device-match', code: 'R7K Q2M', did: 'did:scid:x', needsAccept, accepted, confirmed }) as const;
+    expect(deviceMatchActions(card(false, false, false))).toEqual({ wait: true, accept: false });
+    expect(deviceMatchActions(card(true, false, false))).toEqual({ wait: true, accept: true });
+    // The other device confirmed (`awaiting-accept`): the button stays.
+    expect(deviceMatchActions(card(true, false, true))).toEqual({ wait: true, accept: true });
+    // After the accept, the accept is the wait: the window asks for no second one.
+    expect(deviceMatchActions(card(true, true, false))).toEqual({ wait: false, accept: false });
+    expect(windowSource).toContain("button('This is my identity', () => step({ kind: 'accept' }), 'primary')");
   });
 
   it('says what the words do: add and remove devices, restore the identity, replace the master key', () => {
@@ -333,7 +394,8 @@ describe('the identity window', () => {
     for (const waiting of [
       { screen: 'code-sent' as const, expires: 0 },
       { screen: 'device-code' as const, code: '', qrSvg: '', expires: 0 },
-      { screen: 'device-match' as const, code: '', did: '' },
+      { screen: 'device-match' as const, code: '', did: '', needsAccept: false, accepted: false, confirmed: false },
+      { screen: 'device-match' as const, code: '', did: '', needsAccept: true, accepted: true, confirmed: false },
       { screen: 'restore-devices' as const, did: '', devices: [], note: null },
       { screen: 'remove-master' as const, error: null },
     ]) {
@@ -366,6 +428,55 @@ describe('the identity window', () => {
     expect(heading({ ...added, note: 'Its name was not saved.' }).lead).toContain('Its name was not saved.');
     expect(isLast(added)).toBe(true);
     for (const open of [offer, { screen: 'bot-scope', error: null } as Screen]) expect(isLast(open)).toBe(false);
+  });
+
+  it('asks for the storage passphrase where there is no keyring, and says what forgetting it costs', () => {
+    const set: Screen = { screen: 'set-storage-passphrase', error: null };
+    expect(heading(set).title).toBe('Choose a passphrase for your data');
+    expect(heading(set).lead).toContain('no keyring to keep the key to your data');
+    expect(heading(set).lead).toContain('each time the app starts');
+    expect(heading(set).lead).toContain('Nobody can open your data here without it, you included');
+    const unlock: Screen = { screen: 'unlock-storage', error: "That passphrase does not open this computer's data." };
+    expect(heading(unlock)).toEqual({
+      title: 'Open your data',
+      lead: 'Type the passphrase that opens your data on this computer.',
+    });
+    expect(heading(unlock, 'phone').lead).toContain('on this phone');
+    // Asked again as often as it takes: neither passphrase screen ends the step.
+    for (const asking of [set, unlock]) expect(isLast(asking)).toBe(false);
+    const open: Screen = { screen: 'storage-open' };
+    expect(heading(open).title).toBe('Your data is open');
+    expect(isLast(open)).toBe(true);
+  });
+
+  it('shows how far the move of the data under its key is, and that nothing was lost when it fails', () => {
+    const moving: Screen = { screen: 'storage-migrating', storesDone: 2, storesTotal: 5 };
+    expect(heading(moving).title).toBe('Encrypting your data');
+    expect(heading(moving).lead.startsWith('Moving your data under its key: 2 of 5.')).toBe(true);
+    expect(heading(moving).lead).toContain('on this computer');
+    expect(heading(moving, 'phone').lead).toContain('on this phone');
+    // The window waits for the next count: the move is not a last screen, nor is its failure.
+    expect(isLast(moving)).toBe(false);
+    expect(migrationProgress(0, 3)).toBe('Moving your data under its key: 0 of 3.');
+    expect(migrationProgress(4, 3)).toBe('Moving your data under its key: 3 of 3.');
+    expect(migrationProgress(0, 0)).toBe('Moving your data under its key.');
+    expect(migrationProgress(-1, 3)).toBe('Moving your data under its key.');
+    expect(heading({ screen: 'storage-migrating', storesDone: 0, storesTotal: 0 }).lead).toMatch(
+      /^Moving your data under its key\. /,
+    );
+
+    const failed: Screen = { screen: 'storage-migration-failed' };
+    expect(heading(failed).title).toBe('Your data could not be moved under its key');
+    expect(heading(failed).lead).toContain('Nothing was lost');
+    expect(heading(failed).lead).toContain('Try again');
+    expect(isLast(failed)).toBe(false);
+  });
+
+  it('waits for the next storage state on the move screen, and offers Try again on its failure', () => {
+    const moving = windowSource.slice(windowSource.indexOf("case 'storage-migrating'"));
+    expect(moving.slice(0, moving.indexOf('case ', 10))).toContain("waitFor({ kind: 'wait-storage' })");
+    const failed = windowSource.slice(windowSource.indexOf("case 'storage-migration-failed'"));
+    expect(failed.slice(0, failed.indexOf('case ', 10))).toContain("step({ kind: 'try-again' })");
   });
 
   it('names no app: the host titles the window, so a WE build and a Coasys build say their own name', () => {
