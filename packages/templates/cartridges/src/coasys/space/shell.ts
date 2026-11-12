@@ -81,6 +81,8 @@ export const coasysSpace: TemplateSchema & { id: string } = {
         title: 'Space settings',
         home: 'inspector',
         snap: 'right',
+        // The lane's height, so a long tab scrolls inside it: a section that does not grow is as long as its content.
+        grow: 1,
         order: 0,
         fixed: true,
         open: false,
