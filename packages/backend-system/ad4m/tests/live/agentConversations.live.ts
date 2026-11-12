@@ -8,14 +8,11 @@
  *
  * The turn cases — a step landing live, a reply arriving, a capability refusal — need a model the
  * executor can reach, so they sit behind `LLM_E2E=1`. Ollama answers on plain HTTP only for
- * localhost (the executor refuses an API key over HTTP anywhere else), so the suite opens a small
- * TCP forward: `127.0.0.1:11436` → `marvin.fritz.box:11434`.
+ * localhost (the executor refuses an API key over HTTP anywhere else), so they go through the
+ * TCP forward already running on this box: `127.0.0.1:11436` → `marvin.fritz.box:11434`.
  *
  * Run with `pnpm --filter @we/backend-ad4m test:live`. LLM turn: `LLM_E2E=1 pnpm ... test:live`.
  */
-import type { AddressInfo } from 'node:net';
-import { createConnection, createServer, type Server } from 'node:net';
-
 import { Ad4mClient, type PerspectiveProxy } from '@coasys/ad4m';
 import type { AgentConversationMessage } from '@we/backend-shared';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
@@ -134,29 +131,20 @@ describe('agent conversations, live', () => {
   });
 
   /*
-    A real turn, behind LLM_E2E: registers Marvin's Ollama over a loopback forward, asks the scoped
-    chat to list its perspectives (a step shows, the reply names the one space), then asks for
-    another space and reads the refusal the capability boundary produces.
+    A real turn, behind LLM_E2E: registers Marvin's Ollama over the loopback forward on :11436,
+    asks the scoped chat to list its perspectives (a step shows, the reply names the one space),
+    proves a link add marks its step `wrote` while a read stays unmarked, then asks for another
+    space and reads the refusal the capability boundary produces.
   */
   describe.skipIf(!process.env.LLM_E2E)('a live LLM turn', () => {
-    const OLLAMA = { host: 'marvin.fritz.box', port: 11434 };
-    let forward: Server;
-    let forwardPort: number;
     let endpointId = '';
     let modelId = '';
 
     beforeAll(async () => {
-      forward = createServer((socket) => {
-        const upstream = createConnection(OLLAMA.port, OLLAMA.host);
-        socket.pipe(upstream).pipe(socket);
-      });
-      await new Promise<void>((done) => forward.listen(0, '127.0.0.1', done));
-      forwardPort = (forward.address() as AddressInfo).port;
-
       const endpoint = await client.ai.addEndpoint({
         name: 'marvin-ollama',
         kind: 'OLLAMA',
-        baseUrl: `http://127.0.0.1:${forwardPort}/v1`,
+        baseUrl: 'http://127.0.0.1:11436/v1',
         maxNumCtx: 49_152,
       });
       endpointId = endpoint.id;
@@ -172,7 +160,6 @@ describe('agent conversations, live', () => {
     afterAll(async () => {
       if (modelId) await client.ai.removeModel(modelId).catch(() => undefined);
       if (endpointId) await client.ai.removeEndpoint(endpointId).catch(() => undefined);
-      forward?.close();
     });
 
     it('runs a turn in the scoped chat: a step shows, the reply lands whole', async () => {
@@ -197,6 +184,45 @@ describe('agent conversations, live', () => {
         unfollow();
       }
     }, 320_000);
+
+    /*
+      The `writes` flag end to end: one turn only reads (list), the next adds a link. The read
+      turn's steps carry no `wrote`; the add-link step does — the executor's own call on the row,
+      not the adapter's name guess.
+    */
+    it('marks the write a turn made, and leaves the read turn unmarked', async () => {
+      const ref = await conversations.create({ title: 'write mark', scope: { perspectiveUuid: space.uuid } });
+      made.push(ref.id);
+      const batches: AgentConversationMessage[][] = [];
+      const unfollow = conversations.follow(ref, (rows) => batches.push(rows));
+      try {
+        await conversations.send(ref, 'List the perspectives you can reach. Just the names, one line each.');
+        await waitFor(batches, (rows) => rows.some((m) => m.role === 'assistant' && m.status === 'done'), 300_000);
+        await conversations.send(
+          ref,
+          'Now call the add_link tool on this perspective: source "ad4m://me", predicate "ad4m://hello", target "literal:string:hello".',
+        );
+        const settled = await waitFor(
+          batches,
+          (rows) => rows.filter((m) => m.role === 'assistant' && m.status === 'done').length >= 2,
+          300_000,
+        );
+        const replies = settled.filter((m) => m.role === 'assistant' && m.status === 'done');
+        const reads = replies[0].steps ?? [];
+        const writes = replies[replies.length - 1].steps ?? [];
+        for (const reply of replies) {
+          console.log(`[live writes] reply: ${reply.text.slice(0, 200)}`);
+          for (const s of reply.steps ?? []) {
+            console.log(`[live writes] ${s.tool}: wrote=${s.wrote ?? false} (${s.outcome})`);
+          }
+        }
+        expect(reads.length).toBeGreaterThan(0);
+        expect(reads.every((s) => !s.wrote)).toBe(true);
+        expect(writes.some((s) => s.wrote)).toBe(true);
+      } finally {
+        unfollow();
+      }
+    }, 640_000);
 
     it('refuses a reach past the scope — the error the chat surfaces', async () => {
       /*
