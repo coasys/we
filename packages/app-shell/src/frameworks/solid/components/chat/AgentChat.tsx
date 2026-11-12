@@ -138,6 +138,8 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
     if (!text) return;
     if (!current) {
       await ask(text, spaceChat());
+      // A chat that started took the question; one that failed to keeps it for another try.
+      if (active()) setDraft('');
       return;
     }
     setSendFailed(null);
