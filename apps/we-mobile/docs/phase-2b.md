@@ -6,7 +6,7 @@ executor with renewal. Phase 2b covers the rest of what a device does in an iden
 screens and the camera, the device inbox, taking and holding the master key, asking for it, and
 acting as a holder for other devices.
 
-The references are to the ad4m pin WE uses (`ab0038177`): `ad4m-identity-core` (the wire formats),
+The references were checked at ad4m `95cefb35a`: `ad4m-identity-core` (the wire formats),
 `ad4m-identity-client` (the flows), `rust-executor/src/api/identity_ws.rs` (the executor's identity
 RPCs and their guards) and `identity-store` (the store's routes). They also cite WE's own
 `crates/custody/src/service.rs`, the desktop's `IdentityStep` machine.
