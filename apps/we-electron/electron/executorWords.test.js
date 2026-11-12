@@ -25,6 +25,13 @@ function notADirectory() {
   throw new Error('mkdir under a file succeeded');
 }
 
+describe('stoppedWords', () => {
+  it('says an executor stopped outside the app is not started again', () => {
+    expect(stoppedWords('done')).toContain('stopped outside the app');
+    expect(stoppedWords('give-up')).toContain('kept stopping');
+  });
+});
+
 describe('startFailureWords', () => {
   it("says what the supervisor's verdict was for an executor that refused or found its folder busy", () => {
     expect(startFailureWords(Object.assign(new Error('x'), { exitCode: EXIT.CONFIG_REFUSED }))).toBe(

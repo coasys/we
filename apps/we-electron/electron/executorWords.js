@@ -13,6 +13,8 @@ export function stoppedWords(action) {
     return "The executor refused its settings. Fix the config file (executor-config.json) in this account's data folder, then try again.";
   if (action === 'busy')
     return "Another AD4M executor is using this account's data folder. Quit the app that runs it (the ADAM launcher, another copy of this app), then try again.";
+  if (action === 'done')
+    return 'The executor was stopped outside the app, so the app does not start it again on its own.';
   return 'The executor kept stopping, so the app does not start it again on its own.';
 }
 
