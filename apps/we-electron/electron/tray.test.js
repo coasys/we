@@ -4,8 +4,8 @@ import { closeHides, createTray, trayHostAnswered, trayHostPresent } from './tra
 
 describe('trayHostAnswered', () => {
   it('reads the bus answer', () => {
-    expect(trayHostAnswered('method return time=1 sender=org.freedesktop.DBus\n   boolean true\n')).toBe(true);
-    expect(trayHostAnswered('method return\n   boolean false\n')).toBe(false);
+    expect(trayHostAnswered('method return time=1 sender=:1.20\n   variant       boolean true\n')).toBe(true);
+    expect(trayHostAnswered('method return time=1 sender=:1.20\n   variant       boolean false\n')).toBe(false);
     expect(trayHostAnswered('')).toBe(false);
   });
 });
@@ -15,9 +15,27 @@ describe('trayHostPresent', () => {
     (stdout, status = 0) =>
     () => ({ stdout, status });
 
-  it('asks the session bus on Linux', () => {
-    expect(trayHostPresent('linux', answering('boolean true'))).toBe(true);
-    expect(trayHostPresent('linux', answering('boolean false'))).toBe(false);
+  it('asks the watcher on the session bus whether a host has registered', () => {
+    const asked = [];
+    const run = (command, args) => (asked.push([command, ...args]), { stdout: 'variant boolean true', status: 0 });
+    expect(trayHostPresent('linux', run)).toBe(true);
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toEqual(
+      expect.arrayContaining([
+        'dbus-send',
+        '--session',
+        '--dest=org.kde.StatusNotifierWatcher',
+        '/StatusNotifierWatcher',
+        'org.freedesktop.DBus.Properties.Get',
+        'string:org.kde.StatusNotifierWatcher',
+        'string:IsStatusNotifierHostRegistered',
+      ]),
+    );
+  });
+
+  // A watcher is on the bus but no host has registered with it: the icon shows nowhere.
+  it('reads a watcher with no host as no tray host', () => {
+    expect(trayHostPresent('linux', answering('method return\n   variant       boolean false\n'))).toBe(false);
   });
 
   // No dbus-send, or no session bus: no tray host.
