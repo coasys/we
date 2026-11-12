@@ -92,6 +92,7 @@ import {
 import { HOME_SECTION_ATTR, homeLanes, laneFrames } from '@shared/registries/homeLanes';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
 import {
+  APP_PANEL_SCOPE,
   declaredPanelOf,
   instanceDockId,
   instanceKeyOf,
@@ -348,6 +349,12 @@ export interface ShellStore {
    * is. Wiring: `SpaceStore` provides it, and nothing else should. See `moduleGate`.
    */
   provideModuleGate: (gate: (moduleId: string) => boolean) => void;
+  /**
+   * Tell the shell whether a perspective uuid is the space on screen, so a panel instance bound to
+   * one (the space chats) shows only while its space is — hidden, not closed, elsewhere. Wiring:
+   * `SpaceStore` provides it, and nothing else should. See `moduleGate`.
+   */
+  provideSpaceGate: (gate: (perspectiveUuid: string) => boolean) => void;
   toggleSpaceSettings: () => void;
   /**
    * Open the panel, optionally on a named tab — `'about'`, `'features'`, `'vocabulary'`.
@@ -619,7 +626,11 @@ export interface ShellStore {
    *
    * Only a panel the interface supplies (`node`), whose contents can read inputs.
    */
-  openPanel: (panel: string, inputs?: Record<string, unknown>, options?: { key?: string; title?: string }) => string;
+  openPanel: (
+    panel: string,
+    inputs?: Record<string, unknown>,
+    options?: { key?: string; title?: string; scope?: string },
+  ) => string;
   /** Close an instance `openPanel` opened. Its placement goes with it. */
   closePanel: (instance: string) => void;
   /** The instances open in the interface on screen — which panel each is of, and its inputs. */
@@ -1803,6 +1814,8 @@ export function ShellStoreProvider(props: ParentProps) {
    * unrelated history, not to make every template forget.
    */
   const placementKey = (id: string): string => {
+    // An instance kept under the app keeps its place under the app — across every interface.
+    if (allInstances()[APP_PANEL_SCOPE]?.[id]) return `${APP_PANEL_SCOPE}::${id}`;
     const scope = templatePanelScope();
     return scope && declarationFor()[id] ? `${scope}::${id}` : id;
   };
@@ -1828,26 +1841,50 @@ export function ShellStoreProvider(props: ParentProps) {
 
   /*
     Every interface's panel instances, kept across reloads like the reader's placements — and the
-    ones of the interface on screen, published for the bodies that render them (`panelInstances`).
+    ones on screen, published for the bodies that render them (`panelInstances`).
+
+    Two scopes can own one screen: the interface's own, and the app's (`APP_PANEL_SCOPE`) — where an
+    instance that is not about this interface lives, so it stays open across spaces. The app's
+    instances merge under the interface's here, and the interface's win an id collision the way its
+    declarations do everywhere else.
   */
   const [allInstances, setAllInstances] = createSignal(loadInstances());
+  /**
+   * Which perspective is on screen, asked as "is this the one" — injected by `SpaceStore`, which
+   * mounts below this store, the same reason `moduleGate` is. An instance whose inputs bind it to
+   * a perspective (the space chats) shows only while its space is current: hidden elsewhere, not
+   * closed, so it is still there when you go back.
+   */
+  const [spaceGate, setSpaceGate] = createSignal<(perspectiveUuid: string) => boolean>(() => true);
+  const visibleInstances = (all: Record<string, Record<string, PanelInstance>>) =>
+    Object.fromEntries(
+      Object.entries({
+        ...(all[APP_PANEL_SCOPE] ?? {}),
+        ...(all[templatePanelScope()] ?? {}),
+      }).filter(
+        ([, instance]) =>
+          typeof instance.inputs.perspectiveUuid !== 'string' || spaceGate()(instance.inputs.perspectiveUuid),
+      ),
+    );
   // Following every announcement of a declaration, which is what says the interface on screen has
   // changed — the scope itself is a plain read, and the same declaration can arrive for another one.
   const instancesHere = createMemo(() => {
     panelsVersion();
-    return allInstances()[templatePanelScope()] ?? {};
+    return visibleInstances(allInstances());
   });
   createEffect(() => publishPanelInstances(instancesHere()));
-  const writeInstances = (change: (here: Record<string, PanelInstance>) => Record<string, PanelInstance>) =>
+  const writeInstances = (
+    scope: string,
+    change: (here: Record<string, PanelInstance>) => Record<string, PanelInstance>,
+  ) =>
     setAllInstances((all) => {
-      const scope = templatePanelScope();
       const here = change({ ...(all[scope] ?? {}) });
       const next = { ...all };
       if (Object.keys(here).length) next[scope] = here;
       else delete next[scope];
       saveInstances(next);
       // Published as it is written, so a body drawn in the same breath reads its inputs.
-      publishPanelInstances(here);
+      publishPanelInstances(visibleInstances(next));
       return next;
     });
 
@@ -3276,6 +3313,7 @@ export function ShellStoreProvider(props: ParentProps) {
     spaceSettingsEdge: () => (spaceSettingsOpen() ? 'right' : null),
     // Wrapped, because `setSignal` treats a function argument as an updater.
     provideModuleGate: (gate) => setModuleGate(() => gate),
+    provideSpaceGate: (gate) => setSpaceGate(() => gate),
     provideTemplateSaver: (saver) => setTemplateSaver(() => saver),
 
     saveArrangementAsTemplate: async () => {
@@ -4523,7 +4561,7 @@ export function ShellStoreProvider(props: ParentProps) {
       // Strictly after every instance already open, however quickly they were opened.
       const openedNow = (here: Record<string, PanelInstance>) =>
         Math.max(Date.now(), ...Object.values(here).map((instance) => instance.opened + 1));
-      writeInstances((here) => ({
+      writeInstances(options.scope ?? templatePanelScope(), (here) => ({
         ...here,
         [id]: {
           id,
@@ -4553,8 +4591,9 @@ export function ShellStoreProvider(props: ParentProps) {
 
     closePanel: (instance) => {
       if (!instancesHere()[instance]) return;
+      const scope = allInstances()[APP_PANEL_SCOPE]?.[instance] ? APP_PANEL_SCOPE : templatePanelScope();
       const key = placementKey(instance);
-      writeInstances((here) => {
+      writeInstances(scope, (here) => {
         delete here[instance];
         return here;
       });

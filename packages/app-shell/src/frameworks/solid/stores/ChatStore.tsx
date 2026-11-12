@@ -20,6 +20,7 @@
  * chats", "ask this in this space" and "ask this globally instead".
  */
 import { NARROW_VIEWPORT_PX } from '@shared/dockGeometry';
+import { APP_PANEL_SCOPE } from '@shared/registries/panelInstances';
 import { type Accessor, createContext, createSignal, type ParentProps, untrack, useContext } from 'solid-js';
 
 import { useShellStore } from './ShellStore';
@@ -132,7 +133,12 @@ export function ChatStoreProvider(props: ParentProps) {
         setSheet(request);
         return;
       }
-      shellStore.openPanel(panelFor(request), request as Record<string, unknown>, { key: keyFor(request) });
+      // The app's own scope: a chat is about the app (or the space its inputs name), not about the
+      // interface it happened to open in — so it stays open across spaces.
+      shellStore.openPanel(panelFor(request), request as Record<string, unknown>, {
+        key: keyFor(request),
+        scope: APP_PANEL_SCOPE,
+      });
     },
     draftConsumed: (input) => input.at !== undefined && untrack(consumed)[keyFor(input)] === input.at,
     consumeDraft: (input) => {

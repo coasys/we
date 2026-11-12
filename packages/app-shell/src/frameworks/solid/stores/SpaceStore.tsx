@@ -5719,6 +5719,13 @@ export function SpaceStoreProvider(props: ParentProps) {
   });
 
   /*
+    And which perspective is on screen, for the instances bound to one — a space chat shows only
+    while its space is current. Same shape as the module gate, same reason: `ShellStore` mounts
+    above the store that knows.
+  */
+  shellStore.provideSpaceGate((perspectiveUuid: string) => currentSpace()?.uuid === perspectiveUuid);
+
+  /*
     And the other thing the shell cannot see for itself: the template on screen and a library to
     save into, for "save this arrangement as a template". Same shape as the gate, same reason.
   */

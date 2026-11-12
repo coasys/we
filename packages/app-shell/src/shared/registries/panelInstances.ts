@@ -26,6 +26,16 @@ export interface PanelInstance {
   opened: number;
 }
 
+/**
+ * The scope an instance lives in when it is not the current interface's — the app's own.
+ *
+ * Instances are otherwise kept per interface: an inspector opened in one template is not there in
+ * the next and returns when you go back, because the inputs only make sense where the declaration
+ * is. A chat is different — the global chat belongs to the app, not to the space you happened to
+ * open it from, so `openPanel` takes a scope and the chats pass this one.
+ */
+export const APP_PANEL_SCOPE = 'app';
+
 const [instances, setInstances] = createSignal<Record<string, PanelInstance>>({});
 
 /** Every instance open in the interface on screen, by dock id. */

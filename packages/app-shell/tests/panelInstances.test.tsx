@@ -4,12 +4,14 @@
  * store, a template's lane and the panel host.
  */
 import { cleanup, render } from '@solidjs/testing-library';
+import { createSignal } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { PanelHost } from '../src/frameworks/solid/components/PanelHost';
 import PanelLane from '../src/frameworks/solid/components/PanelLane';
 import type { ShellStore } from '../src/frameworks/solid/stores/ShellStore';
 import { ShellStoreProvider, useShellStore } from '../src/frameworks/solid/stores/ShellStore';
+import { APP_PANEL_SCOPE } from '../src/shared/registries/panelInstances';
 import { provideChromeBag, provideTemplateBag } from '../src/shared/registries/templateBag';
 import { setTemplatePanels } from '../src/shared/registries/templatePanels';
 import { buildTemplateBag, CHROME_TIER } from '../src/shared/registries/templateSurface';
@@ -124,5 +126,61 @@ describe('a panel opened more than once', () => {
 
     setTemplatePanels(declaration, 'instances-test');
     expect(store.panelInstances().map((instance) => instance.id)).toEqual([ada]);
+  });
+});
+
+describe('an instance kept under the app', () => {
+  it('stays open across interfaces, where a template-scoped one would not', async () => {
+    const { store, all } = mount();
+    const declaration = [
+      {
+        id: 'inspector',
+        title: 'Inspector',
+        home: 'side',
+        node: { type: 'span', props: { class: 'inspecting' }, children: [{ $: "panel.inputs.name ?? 'nothing'" }] },
+      },
+    ];
+    const chat = store.openPanel('inspector', { name: 'Ada' }, { scope: APP_PANEL_SCOPE });
+    await vi.waitFor(() => expect(all()).toContain('Ada'));
+
+    setTemplatePanels(declaration, 'another-template');
+    expect(store.panelInstances().map((instance) => instance.id)).toEqual([chat]);
+    await vi.waitFor(() => expect(all()).toContain('Ada'));
+
+    setTemplatePanels(declaration, 'instances-test');
+    expect(store.panelInstances().map((instance) => instance.id)).toEqual([chat]);
+  });
+
+  it('shows a space-bound one only while its space is — hidden, not closed, elsewhere', async () => {
+    const { store, all } = mount();
+    const [here, setHere] = createSignal('uuid-a');
+    store.provideSpaceGate((uuid) => uuid === here());
+
+    const bound = store.openPanel(
+      'inspector',
+      { perspectiveUuid: 'uuid-a', name: 'Ada' },
+      { key: 'uuid-a', scope: APP_PANEL_SCOPE },
+    );
+    const global = store.openPanel('inspector', { name: 'Bo' }, { key: 'global', scope: APP_PANEL_SCOPE });
+    await vi.waitFor(() => expect(all()).toEqual(expect.arrayContaining(['Ada', 'Bo'])));
+
+    setHere('uuid-b');
+    await vi.waitFor(() => expect(all()).not.toContain('Ada'));
+    // The space-bound one is out of the list but still kept — the global one never left.
+    expect(store.panelInstances().map((instance) => instance.id)).toEqual([global]);
+    const kept = JSON.parse(localStorage.getItem('we-local:shell.panelInstances') ?? '{}') as Record<
+      string,
+      Record<string, { id: string }>
+    >;
+    expect(kept[APP_PANEL_SCOPE]?.[bound]?.id).toBe(bound);
+
+    setHere('uuid-a');
+    await vi.waitFor(() => expect(all()).toContain('Ada'));
+    expect(
+      store
+        .panelInstances()
+        .map((instance) => instance.id)
+        .sort(),
+    ).toEqual([bound, global].sort());
   });
 });
