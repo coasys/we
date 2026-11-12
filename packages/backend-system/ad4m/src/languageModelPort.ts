@@ -134,6 +134,19 @@ async function defaultModelStatus(client: Ad4mClient): Promise<LanguageModelStat
       if (status.state === 'PULLING') {
         return { state: 'loading', name, model: id, detail: `Downloading ${Math.round(status.progress ?? 0)}%` };
       }
+      // The model's own status carries the endpoint's answers too — a caller who may not list
+      // endpoints still deserves the error, not a shrug.
+      if (status.state === 'ENDPOINT_DOWN') {
+        return { state: 'error', name, model: id, detail: status.detail || 'The endpoint cannot be reached' };
+      }
+      if (status.state === 'MISSING') {
+        return {
+          state: 'error',
+          name,
+          model: id,
+          detail: status.detail || `The service does not list a model called ${id}`,
+        };
+      }
     } catch {
       // Fall through to the honest answer for a model nothing can check.
     }

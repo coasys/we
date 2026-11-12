@@ -158,11 +158,15 @@ describe('system languages', () => {
 });
 
 describe('remote models', () => {
-  function aiClient(models: unknown[] = [], extra: Record<string, unknown> = {}) {
+  // A model is a row on an endpoint now: the endpoint owns the URL, the key, the protocol and the
+  // context ceiling; the model names the endpoint and the id it serves under.
+  function aiClient(models: unknown[] = [], endpoints: unknown[] = [], extra: Record<string, unknown> = {}) {
     const added: unknown[] = [];
+    const endpointsAdded: unknown[] = [];
     const client = stubClient({
       ai: {
         getModels: vi.fn(async () => models),
+        endpoints: vi.fn(async () => endpoints),
         getDefaultModel: vi.fn(async () => undefined),
         setDefaultModel: vi.fn(async () => true),
         addModel: vi.fn(async (input: unknown) => {
@@ -173,44 +177,63 @@ describe('remote models', () => {
           added.push(input);
           return true;
         }),
+        addEndpoint: vi.fn(async (input: Record<string, unknown>) => {
+          endpointsAdded.push(input);
+          return { id: 'e-new', ...input };
+        }),
+        updateEndpoint: vi.fn(async (id: string, input: Record<string, unknown>) => {
+          endpointsAdded.push({ id, ...input });
+          return { id, ...input };
+        }),
         ...extra,
       },
     });
-    return { client, added };
+    return { client, added, endpointsAdded };
   }
 
   it('reads an Anthropic model back as Anthropic, and writes it back the same way', async () => {
-    // Before, the API type was dropped on read and written as OPEN_AI, so editing an Anthropic
-    // model's name turned it into an OpenAI model pointed at Anthropic's URL.
-    const { client, added } = aiClient([
-      {
-        id: 'm1',
-        name: 'Claude',
-        modelType: 'LLM',
-        api: { baseUrl: 'https://api.anthropic.com', hasApiKey: true, model: 'claude-sonnet-5', apiType: 'ANTHROPIC' },
-      },
-    ]);
+    // The protocol lives on the endpoint: an edit must keep the model on its ANTHROPIC endpoint,
+    // not register it onto an OpenAI one pointed at the same URL.
+    const { client, added, endpointsAdded } = aiClient(
+      [{ id: 'm1', name: 'Claude', modelType: 'LLM', endpointId: 'e1', remoteModel: 'claude-sonnet-5' }],
+      [
+        {
+          id: 'e1',
+          name: 'Anthropic',
+          kind: 'ANTHROPIC',
+          baseUrl: 'https://api.anthropic.com',
+          hasApiKey: true,
+          managed: false,
+        },
+      ],
+    );
     const port = createAd4mModelAdmin(client, { capabilities: null });
 
     const [model] = await port.list!();
     expect(model.source).toMatchObject({ kind: 'api', protocol: 'anthropic' });
 
     await port.update!('m1', { name: 'Claude, renamed', kind: 'llm', source: model.source });
-    expect(added[0]).toMatchObject({ api: { apiType: 'ANTHROPIC' } });
+    expect(added[0]).toMatchObject({ endpointId: 'e1', remoteModel: 'claude-sonnet-5' });
+    expect(endpointsAdded).toEqual([]);
   });
 
   it('reads whether a key is set, and an edit that does not touch it sends none', async () => {
     // The executor answers `hasApiKey` and never the key. An update without `apiKey` keeps the
-    // stored one, so an edit that left the key alone must not send one — not even an empty one,
-    // which would remove it.
-    const { client, added } = aiClient([
-      {
-        id: 'm1',
-        name: 'Claude',
-        modelType: 'LLM',
-        api: { baseUrl: 'https://api.anthropic.com', hasApiKey: true, model: 'claude-sonnet-5', apiType: 'ANTHROPIC' },
-      },
-    ]);
+    // stored one — the endpoint is reused untouched — while a key handed in, even an empty one
+    // (which removes it), is a key change on that endpoint.
+    const { client, endpointsAdded } = aiClient(
+      [{ id: 'm1', name: 'Claude', modelType: 'LLM', endpointId: 'e1', remoteModel: 'claude-sonnet-5' }],
+      [
+        {
+          id: 'e1',
+          name: 'Anthropic',
+          kind: 'ANTHROPIC',
+          baseUrl: 'https://api.anthropic.com',
+          hasApiKey: true,
+          managed: false,
+        },
+      ],
+    );
     const port = createAd4mModelAdmin(client, { capabilities: null });
 
     const [model] = await port.list!();
@@ -232,72 +255,88 @@ describe('remote models', () => {
     await port.update!('m1', { name: 'Claude', kind: 'llm', source: { ...api, apiKey: 'sk-new' } });
     await port.update!('m1', { name: 'Claude', kind: 'llm', source: { ...api, apiKey: '' } });
 
-    const sent = added.map((input) => (input as { api: Record<string, unknown> }).api);
-    expect(sent[0]).not.toHaveProperty('apiKey');
-    expect(sent[1]).toMatchObject({ apiKey: 'sk-new' });
-    expect(sent[2]).toMatchObject({ apiKey: '' });
+    // The first edit never touched the endpoint; the other two sent their key changes to it.
+    expect(endpointsAdded).toHaveLength(2);
+    expect(endpointsAdded[0]).toMatchObject({ id: 'e1', apiKey: 'sk-new' });
+    expect(endpointsAdded[1]).toMatchObject({ id: 'e1', apiKey: '' });
   });
 
   it('keeps an Ollama model’s provider and context ceiling through an edit', async () => {
-    // Both were lost the same way the Anthropic type was: read as OpenAI with no ceiling, and an
-    // update replaces the record, so renaming the model rewrote it onto the wrong provider.
-    const { client, added } = aiClient([
-      {
-        id: 'm1',
-        name: 'Qwen',
-        modelType: 'LLM',
-        api: {
+    // Both live on the endpoint now: a rename must reuse it, not rewrite it without its ceiling.
+    const { client, added, endpointsAdded } = aiClient(
+      [{ id: 'm1', name: 'Qwen', modelType: 'LLM', endpointId: 'e1', remoteModel: 'qwen3:4b' }],
+      [
+        {
+          id: 'e1',
+          name: 'Ollama',
+          kind: 'OLLAMA',
           baseUrl: 'http://localhost:11434',
           hasApiKey: false,
-          model: 'qwen3:4b',
-          apiType: 'OLLAMA',
+          managed: false,
           maxNumCtx: 40960,
         },
-      },
-    ]);
+      ],
+    );
     const port = createAd4mModelAdmin(client, { capabilities: null });
 
     const [model] = await port.list!();
     expect(model.source).toMatchObject({ kind: 'api', protocol: 'ollama', maxContext: 40960 });
 
     await port.update!('m1', { name: 'Qwen, renamed', kind: 'llm', source: model.source });
-    expect(added[0]).toMatchObject({ api: { apiType: 'OLLAMA', maxNumCtx: 40960 } });
+    expect(added[0]).toMatchObject({ endpointId: 'e1' });
+    expect(endpointsAdded).toEqual([]);
   });
 
-  it('sends no ceiling for a model that has none', async () => {
-    const { client, added } = aiClient();
+  it('sends no ceiling for an endpoint that has none', async () => {
+    const { client, added, endpointsAdded } = aiClient();
     const port = createAd4mModelAdmin(client, { capabilities: null });
     await port.add!({
       name: 'Qwen',
       kind: 'llm',
       source: { kind: 'api', protocol: 'ollama', baseUrl: 'http://localhost:11434', apiKey: '', model: 'qwen3:4b' },
     });
-    expect((added[0] as { api: object }).api).not.toHaveProperty('maxNumCtx');
+    // No endpoint matched, so one was registered — without a `maxNumCtx` the source never carried.
+    expect(endpointsAdded[0]).toMatchObject({ kind: 'OLLAMA', baseUrl: 'http://localhost:11434' });
+    expect(endpointsAdded[0]).not.toHaveProperty('maxNumCtx');
+    expect(added[0]).toMatchObject({ endpointId: 'e-new', remoteModel: 'qwen3:4b' });
   });
 
-  it('reads an API type it does not know as OpenAI', async () => {
-    const { client } = aiClient([
-      {
-        id: 'm1',
-        name: 'Old',
-        modelType: 'LLM',
-        api: { baseUrl: 'u', hasApiKey: false, model: 'x', apiType: 'OPEN_AI' },
-      },
-    ]);
+  it('reads an endpoint kind it does not know as OpenAI', async () => {
+    const { client } = aiClient(
+      [{ id: 'm1', name: 'Old', modelType: 'LLM', endpointId: 'e1', remoteModel: 'x' }],
+      [{ id: 'e1', name: 'vLLM', kind: 'VLLM', baseUrl: 'u', hasApiKey: false, managed: false }],
+    );
     const [model] = await createAd4mModelAdmin(client, { capabilities: null }).list!();
     expect(model.source).toMatchObject({ protocol: 'openai' });
   });
 
+  it('reads a model whose endpoint a guest cannot see as an unnamed remote', async () => {
+    // The endpoint list is operator-only: the honest shape is the remote id and nothing more.
+    const { client } = aiClient(
+      [{ id: 'm1', name: 'Shared', modelType: 'LLM', endpointId: 'e1', remoteModel: 'claude-sonnet-5' }],
+      [],
+      { endpoints: vi.fn(async () => Promise.reject(new Error('RPC error 403'))) },
+    );
+    const [model] = await createAd4mModelAdmin(client, { capabilities: null }).list!();
+    expect(model.source).toEqual({
+      kind: 'api',
+      protocol: 'openai',
+      baseUrl: '',
+      hasApiKey: false,
+      model: 'claude-sonnet-5',
+    });
+  });
+
   it('lists an endpoint’s models where the client can ask, in the executor’s spelling', async () => {
-    const discoverModels = vi.fn(async () => ['claude-sonnet-5']);
-    const { client } = aiClient([], { discoverModels });
+    const discoverModels = vi.fn(async () => [{ id: 'claude-sonnet-5', capabilities: [] }]);
+    const { client } = aiClient([], [], { discoverModels });
     const port = createAd4mModelAdmin(client, { capabilities: null });
 
     await expect(
       port.discover!({ protocol: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: '' }),
     ).resolves.toEqual(['claude-sonnet-5']);
     // An empty key is sent as none, which the executor reads as a keyless endpoint.
-    expect(discoverModels).toHaveBeenCalledWith('https://api.anthropic.com', undefined, 'ANTHROPIC');
+    expect(discoverModels).toHaveBeenCalledWith({ kind: 'ANTHROPIC', baseUrl: 'https://api.anthropic.com' });
   });
 
   it('offers no listing on a client that predates it', () => {

@@ -278,6 +278,9 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
  * Answered as ids, which is what the port's picker shows.
  */
 function discovery(client: Ad4mClient): Pick<ModelAdminPort, 'discover'> {
+  // A client that predates the endpoint API has no `discoverModels` to call: offering the member
+  // would put a "list the models" button in settings that throws when pressed.
+  if (typeof client.ai?.discoverModels !== 'function') return {};
   return {
     discover: async ({ protocol, baseUrl, apiKey }) => {
       const found = await client.ai.discoverModels({

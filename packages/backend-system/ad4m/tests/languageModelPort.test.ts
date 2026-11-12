@@ -44,13 +44,23 @@ describe('the AD4M language-model port', () => {
 });
 
 describe('the default model’s status', () => {
-  // Behind a gateway that takes no key: the one kind of remote model the app can check, since the
-  // node never hands a stored key back for discovery to use.
+  // A remote model: the endpoint row owns the URL, the key and the protocol; the model names the
+  // endpoint and the id it serves under.
   const claude = {
     id: 'm1',
     name: 'Claude Sonnet 5',
     modelType: 'LLM',
-    api: { baseUrl: 'https://llm.corp.example', hasApiKey: false, model: 'claude-sonnet-5', apiType: 'ANTHROPIC' },
+    endpointId: 'e1',
+    remoteModel: 'claude-sonnet-5',
+  };
+  const anthropic = {
+    id: 'e1',
+    name: 'Anthropic',
+    kind: 'ANTHROPIC',
+    baseUrl: 'https://api.anthropic.com',
+    hasApiKey: true,
+    managed: false,
+    health: { state: 'REACHABLE', servedModels: ['claude-sonnet-5'], checkedAt: 0 },
   };
 
   function statusClient(ai: Record<string, unknown>) {
@@ -62,7 +72,8 @@ describe('the default model’s status', () => {
     await expect(port.status!()).resolves.toMatchObject({ state: 'none' });
   });
 
-  it('is unchecked for a remote model on a client that cannot ask the endpoint', async () => {
+  it('is unchecked for a model nothing on the client can check', async () => {
+    // An old client has neither `endpoints` nor `modelStatus`: every check throws.
     const port = statusClient({ getDefaultModel: vi.fn(async () => claude) });
     await expect(port.status!()).resolves.toEqual({
       state: 'unchecked',
@@ -72,45 +83,87 @@ describe('the default model’s status', () => {
     });
   });
 
-  it('is ready when the endpoint lists the model, dated versions included', async () => {
-    const discoverModels = vi.fn(async () => ['claude-sonnet-5-20260801', 'claude-opus-5']);
-    const port = statusClient({ getDefaultModel: vi.fn(async () => claude), discoverModels });
-
+  it('is ready when the endpoint’s health check lists the model, dated versions included', async () => {
+    // A listing names dated versions (`claude-x-20260801`) that an alias (`claude-x`) resolves to.
+    const endpoint = {
+      ...anthropic,
+      health: { state: 'REACHABLE', servedModels: ['claude-sonnet-5-20260801', 'claude-opus-5'], checkedAt: 0 },
+    };
+    const port = statusClient({
+      getDefaultModel: vi.fn(async () => claude),
+      endpoints: vi.fn(async () => [endpoint]),
+    });
     await expect(port.status!()).resolves.toMatchObject({ state: 'ready' });
-    expect(discoverModels).toHaveBeenCalledWith('https://llm.corp.example', undefined, 'ANTHROPIC');
   });
 
-  it('is unchecked, and asks nothing, for a model the node holds a key for', async () => {
-    // Discovery is asked with what it is sent, and the node never returns the key: asking without
-    // it would read the endpoint refusing a missing key as the model being broken.
-    const discoverModels = vi.fn(async () => ['claude-sonnet-5']);
-    const keyed = { ...claude, api: { ...claude.api, baseUrl: 'https://api.anthropic.com', hasApiKey: true } };
-    const port = statusClient({ getDefaultModel: vi.fn(async () => keyed), discoverModels });
-
+  it('answers a keyed model through the endpoint’s own check — the node probes with the stored key', async () => {
+    // The old reason a keyed model read `unchecked` is gone: the health check runs server-side,
+    // where the key the client never gets back still reaches.
+    const port = statusClient({
+      getDefaultModel: vi.fn(async () => claude),
+      endpoints: vi.fn(async () => [anthropic]),
+    });
     await expect(port.status!()).resolves.toEqual({
-      state: 'unchecked',
+      state: 'ready',
       name: 'Claude Sonnet 5',
       model: 'claude-sonnet-5',
       detail: '',
     });
-    expect(discoverModels).not.toHaveBeenCalled();
   });
 
-  it('is an error, with the endpoint’s reason, when the endpoint refuses', async () => {
+  it('is an error, with the endpoint’s reason, when the endpoint refused its key', async () => {
+    const endpoint = {
+      ...anthropic,
+      health: { state: 'UNAUTHORIZED', servedModels: [], detail: 'invalid x-api-key', checkedAt: 0 },
+    };
     const port = statusClient({
       getDefaultModel: vi.fn(async () => claude),
-      discoverModels: vi.fn(async () => Promise.reject(new Error('Anthropic API error 401: invalid x-api-key'))),
+      endpoints: vi.fn(async () => [endpoint]),
     });
-    await expect(port.status!()).resolves.toMatchObject({ state: 'error', detail: expect.stringContaining('401') });
+    await expect(port.status!()).resolves.toMatchObject({ state: 'error', detail: 'invalid x-api-key' });
   });
 
-  it('is unchecked when the executor refuses the check itself', async () => {
-    // A user session on a multi-user node may not call `ai.discoverModels`; neither may a guest
-    // without the AI CREATE grant. Each refusal words itself differently, but both are a 403.
-    const refusal = new RpcError(403, 'ai.discoverModels acts on the node itself, so a user session may not call it');
+  it('is an error when the endpoint cannot be reached', async () => {
+    const endpoint = {
+      ...anthropic,
+      health: { state: 'UNREACHABLE', servedModels: [], checkedAt: 0 },
+    };
     const port = statusClient({
       getDefaultModel: vi.fn(async () => claude),
-      discoverModels: vi.fn(async () => Promise.reject(refusal)),
+      endpoints: vi.fn(async () => [endpoint]),
+    });
+    await expect(port.status!()).resolves.toMatchObject({ state: 'error', detail: 'The endpoint cannot be reached' });
+  });
+
+  it('still answers when the caller may not list endpoints — the model’s own status says it', async () => {
+    // `ai.endpoints` is operator-only; `ai.modelStatus` is not. A guest on a healthy model reads
+    // ready, not unchecked.
+    const refusal = new RpcError(403, 'ai.endpoints acts on the node itself, so a user session may not call it');
+    const port = statusClient({
+      getDefaultModel: vi.fn(async () => claude),
+      endpoints: vi.fn(async () => Promise.reject(refusal)),
+      modelStatus: vi.fn(async () => ({ state: 'READY' })),
+    });
+    await expect(port.status!()).resolves.toMatchObject({ state: 'ready' });
+  });
+
+  it('is an error, not a shrug, when the fallback check reports the endpoint down', async () => {
+    const port = statusClient({
+      getDefaultModel: vi.fn(async () => claude),
+      endpoints: vi.fn(async () => Promise.reject(new RpcError(403, 'operator only'))),
+      modelStatus: vi.fn(async () => ({ state: 'ENDPOINT_DOWN', detail: 'connection refused' })),
+    });
+    await expect(port.status!()).resolves.toMatchObject({ state: 'error', detail: 'connection refused' });
+  });
+
+  it('is unchecked when the executor refuses both checks', async () => {
+    // A user session on a multi-user node may not call either: each refusal words itself
+    // differently, but both are a 403, and nothing else can say.
+    const refusal = new RpcError(403, 'a user session may not call it');
+    const port = statusClient({
+      getDefaultModel: vi.fn(async () => claude),
+      endpoints: vi.fn(async () => Promise.reject(refusal)),
+      modelStatus: vi.fn(async () => Promise.reject(refusal)),
     });
     await expect(port.status!()).resolves.toMatchObject({ state: 'unchecked' });
   });
@@ -126,34 +179,28 @@ describe('the default model’s status', () => {
         super(`RPC error ${status}: ${body}`);
       }
     }
-    const refusal = new BundledRpcError(
-      403,
-      'ai.discoverModels acts on the node itself, so a user session may not call it',
-    );
+    const refusal = new BundledRpcError(403, 'a user session may not call it');
     const port = statusClient({
       getDefaultModel: vi.fn(async () => claude),
-      discoverModels: vi.fn(async () => Promise.reject(refusal)),
+      endpoints: vi.fn(async () => Promise.reject(refusal)),
+      modelStatus: vi.fn(async () => Promise.reject(refusal)),
     });
     await expect(port.status!()).resolves.toMatchObject({ state: 'unchecked' });
   });
 
-  it('is an error when the endpoint itself answers Unauthorized', async () => {
+  it('is an error when the service does not offer that model', async () => {
+    const endpoint = {
+      ...anthropic,
+      health: { state: 'REACHABLE', servedModels: ['claude-haiku-4'], checkedAt: 0 },
+    };
     const port = statusClient({
-      getDefaultModel: vi.fn(async () => claude),
-      discoverModels: vi.fn(async () => Promise.reject(new RpcError(500, 'OpenAI API error: 401 Unauthorized'))),
+      getDefaultModel: vi.fn(async () => ({ ...claude, remoteModel: 'claude-sonet-5' })),
+      endpoints: vi.fn(async () => [endpoint]),
     });
     await expect(port.status!()).resolves.toMatchObject({
       state: 'error',
-      detail: expect.stringContaining('Unauthorized'),
+      detail: expect.stringContaining('does not list'),
     });
-  });
-
-  it('is an error when the service does not offer that model', async () => {
-    const port = statusClient({
-      getDefaultModel: vi.fn(async () => ({ ...claude, api: { ...claude.api, model: 'claude-sonet-5' } })),
-      discoverModels: vi.fn(async () => ['claude-sonnet-5']),
-    });
-    await expect(port.status!()).resolves.toMatchObject({ state: 'error' });
   });
 
   it('reports a local model’s download progress', async () => {
@@ -162,9 +209,11 @@ describe('the default model’s status', () => {
         id: 'm2',
         name: 'Llama',
         modelType: 'LLM',
-        local: { fileName: 'llama_8b' },
+        endpointId: 'e2',
+        remoteModel: 'llama_8b',
       })),
-      modelLoadingStatus: vi.fn(async () => ({ downloaded: false, loaded: false, progress: 41.6, status: '' })),
+      endpoints: vi.fn(async () => [{ ...anthropic, id: 'e2', managed: true }]),
+      modelStatus: vi.fn(async () => ({ state: 'PULLING', progress: 41.6 })),
     });
     await expect(port.status!()).resolves.toEqual({
       state: 'loading',
