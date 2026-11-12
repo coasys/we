@@ -2287,7 +2287,7 @@ export function RecordStoreProvider(props: ParentProps) {
           return prop ? writePlanFor(cardType, prop) : undefined;
         })();
     if (!write) {
-      toastService.info(`Nothing on a ${cardType} points at a ${parentType || 'record'} that way.`);
+      toastService.info(`${cardType} has no relation that points at ${parentType || 'that record'}.`);
       return;
     }
 
