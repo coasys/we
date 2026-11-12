@@ -128,6 +128,15 @@ export function ChatStoreProvider(props: ParentProps) {
 
   const store: ChatStore = {
     openChat: (input = {}) => {
+      /*
+        A space's ask that names its perspective but carries no id (the space's local perspective
+        not loaded yet) is not a request for the global chat: opening one would answer a question
+        about one space with a chat that reaches all of them.
+      */
+      if ('perspectiveUuid' in input && !input.perspectiveUuid) {
+        console.warn('ChatStore: a space chat was asked for before its perspective was known; not opened');
+        return;
+      }
       // A draft is consumed once per ask — stamped here so the same words asked twice still ask.
       const request = input.draft ? { ...input, at: (lastAt = Math.max(Date.now(), lastAt + 1)) } : input;
       if (isNarrow()) {

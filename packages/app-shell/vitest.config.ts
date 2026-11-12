@@ -62,6 +62,8 @@ const SOLID_TESTS = [
   // Mounts the chat twice over real stores — the draft-spent stamp lives in the store's
   // localStorage, and only the browser build's effects reach it.
   'tests/agentChatDraft.test.tsx',
+  // A space's ask without its perspective id opens nothing, not the global chat.
+  'tests/chatStoreOpen.test.tsx',
   // The refusal card rendered — the sentence and the folded error are DOM, not derivations.
   'tests/agentChatRefusal.test.tsx',
   // Mounts the chat to press Send and Enter into one pending create, and to watch the composer
