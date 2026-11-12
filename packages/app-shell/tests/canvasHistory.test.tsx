@@ -82,6 +82,7 @@ const datasetStub = {
   currentDataset: () => ({ id: 'ds', handle: {}, name: 'Space' }),
   datasets: () => [],
   personalDataset: () => null,
+  currentDatasetEntities: () => [],
 };
 
 /*

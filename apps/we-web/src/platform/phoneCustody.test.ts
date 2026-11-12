@@ -119,13 +119,20 @@ describe('the phone custody host', () => {
     });
   });
 
-  it('says a master key waits only where the phone does not keep one, and offers none it cannot see', async () => {
+  it('says what the phone answers waits, where it keeps a key too, and offers none it cannot see', async () => {
     const waits = plugin({ waiting: true });
     expect(await phoneCustodyHost(waits).publicState()).toMatchObject({ holdsMaster: null, masterWaiting: true });
 
-    const holds = plugin({ status: status({ masterIndex: 1 }), waiting: true });
-    expect(await phoneCustodyHost(holds).publicState()).toMatchObject({ masterWaiting: false });
-    expect(holds.masterWaiting).not.toHaveBeenCalled();
+    // A phone that keeps a key can still owe the record its mark for it: "Take" makes the mark.
+    const owes = plugin({ status: status({ masterIndex: 1 }), waiting: true });
+    expect(await phoneCustodyHost(owes).publicState()).toMatchObject({
+      holdsMaster: { index: 1 },
+      masterWaiting: true,
+    });
+    expect(owes.masterWaiting).toHaveBeenCalledTimes(1);
+
+    const current = plugin({ status: status({ masterIndex: 1 }), waiting: false });
+    expect(await phoneCustodyHost(current).publicState()).toMatchObject({ masterWaiting: false });
 
     const unread = plugin({ waiting: new Error('store-unavailable') });
     expect(await phoneCustodyHost(unread).publicState()).toMatchObject({ masterWaiting: false });

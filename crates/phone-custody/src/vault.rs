@@ -30,7 +30,13 @@
 //! decide on (the kept key's generation) is checked again inside. Everything decided on is in
 //! the same file: the kept and staged keys, each identity's **custody epoch** and each record's
 //! **high-water mark**, so a change of a kept key and the move of its epoch are one atomic
-//! write, never two. The rules are WE's desktop vault's (`crates/custody/src/vault.rs`): the
+//! write, never two. Each device's **custody note** per identity is there too, as the client's
+//! serde JSON, never read here: a swap compares the whole note (every layer of its stack) with
+//! the one expected and writes the file only when they match; the note of the vault itself
+//! (`VAULT_NOTE`, key id `"vault"`) is kept the same way, since key ids are never read here. And
+//! this vault's **id** per identity ([`Vault::vault_id`]): 16 random bytes drawn at the first ask
+//! and written in the same step, so every handle answers one id, kept beside the master keys and
+//! never dropped. The rules are WE's desktop vault's (`crates/custody/src/vault.rs`): the
 //! kept key never goes back a generation (a store or promote under a higher kept index answers
 //! `AlreadyNewer`), a forget is a compare-and-delete (on the index, or on the epoch), and the
 //! epoch moves on every successful store, promote and forget, a same-index re-store included,
@@ -64,7 +70,8 @@ use std::sync::{Arc, Mutex, MutexGuard};
 
 use ad4m_identity_client::vault::KeySigner;
 use ad4m_identity_client::{
-    Forgot, MasterUse, PendingPush, Secret, StageToken, Stored, Unlocked, Vault, VaultError,
+    CustodyNote, Forgot, MasterUse, PendingPush, Secret, StageToken, Stored, Unlocked, Vault,
+    VaultError, VaultId,
 };
 use ad4m_identity_core::build::Signer;
 use ad4m_identity_core::Event;
@@ -237,6 +244,24 @@ struct MasterFile {
     epochs: Vec<EpochEntry>,
     /// Each identity's record high-water mark.
     seen: Vec<Seen>,
+    /// Each device's custody note per identity ([`Vault::custody_note`]), kept as the
+    /// client's serde JSON: swapped whole under the lock, never read here. Absent in a file
+    /// written before notes were kept, which had none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    notes: Vec<Note>,
+    /// This vault's id per identity ([`Vault::vault_id`]): drawn at the first ask, kept here
+    /// beside the master keys, never dropped. Absent in a file written before ids were kept,
+    /// which had none.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    ids: Vec<IdEntry>,
+}
+
+/// This vault's id for one identity.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct IdEntry {
+    scid: String,
+    id: VaultId,
 }
 
 /// How many times an identity's kept key changed in this file.
@@ -257,8 +282,18 @@ struct Seen {
     version: Option<u64>,
 }
 
+/// One device's custody note for one identity, as the client's [`CustodyNote`] serialised it.
+/// A note cleared is dropped: unlike a mark, its absence is a state the client writes.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Note {
+    scid: String,
+    key_id: String,
+    note: serde_json::Value,
+}
+
 /// What the folder noted the file has held (`custody-metadata.json`): that the file was
-/// written, and the identities an epoch or a record mark was written for. Written after the
+/// written, and the identities an epoch, a record mark or a vault id was written for. Written after the
 /// file that earns the note; a noted identity is never dropped from it.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -273,6 +308,9 @@ struct Marker {
     /// The identities a record mark was written for.
     #[serde(default)]
     seen: Vec<String>,
+    /// The identities a vault id was written for.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    ids: Vec<String>,
 }
 
 impl Marker {
@@ -304,6 +342,12 @@ fn noted(marker: &mut Marker, file: &MasterFile, written: bool) -> bool {
             changed = true;
         }
     }
+    for entry in &file.ids {
+        if !marker.ids.contains(&entry.scid) {
+            marker.ids.push(entry.scid.clone());
+            changed = true;
+        }
+    }
     changed
 }
 
@@ -322,6 +366,20 @@ fn lost_mark(scid: &str) -> VaultError {
         "{scid}'s record mark was written in this folder and is gone; \
          only a reset starts it again"
     ))
+}
+
+fn lost_id(scid: &str) -> VaultError {
+    VaultError::Unavailable(format!(
+        "{scid}'s vault id was written in this folder and is gone; it is not drawn again"
+    ))
+}
+
+/// 16 bytes from the OS's secure random source: a [`VaultId`].
+fn draw_vault_id() -> VaultId {
+    use rand_core::RngCore;
+    let mut bytes = [0u8; 16];
+    rand_core::OsRng.fill_bytes(&mut bytes);
+    VaultId(bytes)
 }
 
 fn lost_file() -> VaultError {
@@ -566,8 +624,18 @@ impl PhoneVault {
     /// not yet noted, which reads as it is and is noted under the lock before the next
     /// operation relies on it ([`PhoneVault::held`]); noting first would read an unwritten
     /// entry as lost. What the note buys is the detection of a loss *after* it exists.
+    ///
+    /// `next` is read back first with the reader [`read`](Self::read) uses, and refused when it
+    /// does not read: serde_json writes a value nested past its recursion limit (128), a custody
+    /// note say, and cannot read it, and written, that file would lose every key and note in it.
     fn save(&self, held: &mut Held<'_>, next: MasterFile) -> Result<(), VaultError> {
         let bytes = serde_json::to_vec_pretty(&next).expect("the master-key file serialises");
+        serde_json::from_slice::<MasterFile>(&bytes).map_err(|e| {
+            unavailable(format!(
+                "{MASTER_FILE_NAME}: a change that cannot be read back was refused, and the file \
+                 left as it was: {e}"
+            ))
+        })?;
         crate::file::write_atomic(&self.dir.join(MASTER_FILE_NAME), &bytes).map_err(io)?;
         if noted(&mut held.marker, &next, true) {
             self.write_marker(&held.marker)?;
@@ -1038,6 +1106,86 @@ impl Vault for PhoneVault {
         }
         self.save(&mut held, next)
     }
+
+    /// From the file, under the lock: not secret, so no prompt. Gone with a lost file (an
+    /// error, as every read of a lost file is), never `None` in its place.
+    fn custody_note(&self, scid: &str, key_id: &str) -> Result<Option<CustodyNote>, VaultError> {
+        let held = self.held(false)?;
+        held.file
+            .notes
+            .iter()
+            .find(|n| n.scid == scid && n.key_id == key_id)
+            .map(|n| {
+                serde_json::from_value(n.note.clone())
+                    .map_err(|e| unavailable(format!("{MASTER_FILE_NAME}: a custody note: {e}")))
+            })
+            .transpose()
+    }
+
+    /// A compare-and-swap under the folder's lock, the one every write here takes: the file is
+    /// read again, the kept note compared with `expected` as whole JSON values (every layer
+    /// below the top included), and the file written whole and durable only when they match
+    /// and the note changes.
+    fn swap_custody_note(
+        &self,
+        scid: &str,
+        key_id: &str,
+        expected: Option<&CustodyNote>,
+        note: Option<&CustodyNote>,
+    ) -> Result<bool, VaultError> {
+        let as_json = |n: &CustodyNote| serde_json::to_value(n).map_err(unavailable);
+        let expected = expected.map(as_json).transpose()?;
+        let note = note.map(as_json).transpose()?;
+        let mut held = self.held(false)?;
+        let at = held
+            .file
+            .notes
+            .iter()
+            .position(|n| n.scid == scid && n.key_id == key_id);
+        if at.map(|i| &held.file.notes[i].note) != expected.as_ref() {
+            return Ok(false);
+        }
+        let mut next = held.file.clone();
+        match (at, note) {
+            (None, None) => return Ok(true),
+            (Some(i), Some(note)) => next.notes[i].note = note,
+            (Some(i), None) => {
+                next.notes.remove(i);
+            }
+            (None, Some(note)) => next.notes.push(Note {
+                scid: scid.to_string(),
+                key_id: key_id.to_string(),
+                note,
+            }),
+        }
+        if next != held.file {
+            self.save(&mut held, next)?;
+        }
+        Ok(true)
+    }
+
+    /// From the file, under the folder's lock; drawn and written in the same step when `scid`
+    /// has none yet, so two handles asking first at once keep one id. In the file beside the
+    /// master keys, so it goes only with them; noted in the folder's metadata like an epoch, so
+    /// an id written and gone (the file, or its entry while the file stays) is an error, never
+    /// drawn again. A forget of the master key keeps it. Not secret, so no prompt.
+    fn vault_id(&self, scid: &str) -> Result<VaultId, VaultError> {
+        let mut held = self.held(false)?;
+        if let Some(kept) = held.file.ids.iter().find(|e| e.scid == scid) {
+            return Ok(kept.id);
+        }
+        if held.marker.ids.iter().any(|s| s == scid) {
+            return Err(lost_id(scid));
+        }
+        let id = draw_vault_id();
+        let mut next = held.file.clone();
+        next.ids.push(IdEntry {
+            scid: scid.to_string(),
+            id,
+        });
+        self.save(&mut held, next)?;
+        Ok(id)
+    }
 }
 
 #[cfg(test)]
@@ -1485,5 +1633,291 @@ mod tests {
         );
         v.push_done(&push).unwrap();
         assert!(vault(dir.path()).pending_pushes().unwrap().is_empty());
+    }
+
+    use ad4m_identity_client::{CustodyNote, NoteToken};
+
+    /// A release over an intent over `deepest`: three layers, so a note that differs from
+    /// another only two layers down can be made.
+    fn stacked(deepest: CustodyNote) -> CustodyNote {
+        CustodyNote::Released {
+            epoch: 9,
+            token: NoteToken([3; 16]),
+            restores: Some(Box::new(CustodyNote::MarkOwed {
+                index: 1,
+                epoch: 8,
+                token: NoteToken([2; 16]),
+                acquired: false,
+                restores: Some(Box::new(deepest)),
+            })),
+        }
+    }
+
+    fn receipt(acquired: bool) -> CustodyNote {
+        CustodyNote::MarkOwed {
+            index: 0,
+            epoch: 1,
+            token: NoteToken([1; 16]),
+            acquired,
+            restores: None,
+        }
+    }
+
+    /// A note is kept per identity and per device key, whole: every layer comes back through
+    /// another handle on the folder (a restart), and another device's or identity's note is
+    /// its own. Cleared, it is gone.
+    #[test]
+    fn a_custody_note_survives_a_restart_whole_and_per_device() {
+        let dir = tempfile::tempdir().unwrap();
+        let note = stacked(receipt(true));
+        let v = vault(dir.path());
+        assert_eq!(v.custody_note("scid1", "d1").unwrap(), None);
+        assert!(v
+            .swap_custody_note("scid1", "d1", None, Some(&note))
+            .unwrap());
+        drop(v);
+
+        let v = vault(dir.path());
+        assert_eq!(v.custody_note("scid1", "d1").unwrap(), Some(note.clone()));
+        assert_eq!(v.custody_note("scid1", "d2").unwrap(), None);
+        assert_eq!(v.custody_note("scid2", "d1").unwrap(), None);
+        assert!(v
+            .swap_custody_note("scid1", "d1", Some(&note), None)
+            .unwrap());
+        assert_eq!(vault(dir.path()).custody_note("scid1", "d1").unwrap(), None);
+    }
+
+    /// The compare is on the whole note: an expected note equal to the kept one at the top,
+    /// and different only in the deepest layer's receipt, is stale and changes nothing.
+    #[test]
+    fn a_swap_from_a_note_that_differs_only_in_a_nested_layer_is_refused() {
+        let dir = tempfile::tempdir().unwrap();
+        let v = vault(dir.path());
+        let kept = stacked(receipt(true));
+        let stale = stacked(receipt(false));
+        assert_eq!(kept.token(), stale.token(), "the same top layer");
+        assert!(v
+            .swap_custody_note("scid1", "d1", None, Some(&kept))
+            .unwrap());
+        assert!(!v
+            .swap_custody_note("scid1", "d1", Some(&stale), None)
+            .unwrap());
+        assert!(!v
+            .swap_custody_note("scid1", "d1", None, Some(&stale))
+            .unwrap());
+        assert_eq!(v.custody_note("scid1", "d1").unwrap(), Some(kept.clone()));
+        assert!(v
+            .swap_custody_note("scid1", "d1", Some(&kept), Some(&receipt(true)))
+            .unwrap());
+        assert_eq!(v.custody_note("scid1", "d1").unwrap(), Some(receipt(true)));
+    }
+
+    /// Handles on one folder (parallel native calls) swapping at once: each swap is one step
+    /// under the folder's lock, so of every pair that read the same note one wins, and none
+    /// is lost.
+    #[test]
+    fn swaps_from_two_handles_on_one_folder_never_lose_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let counter = |n: u64| CustodyNote::Released {
+            epoch: n,
+            token: NoteToken([0; 16]),
+            restores: None,
+        };
+        vault(dir.path())
+            .swap_custody_note("scid1", "d1", None, Some(&counter(0)))
+            .unwrap();
+        let threads: Vec<_> = (0..2)
+            .map(|_| {
+                let dir = dir.path().to_path_buf();
+                std::thread::spawn(move || {
+                    let v = vault(&dir);
+                    let mut won = 0;
+                    while won < 20 {
+                        let Some(CustodyNote::Released { epoch, .. }) =
+                            v.custody_note("scid1", "d1").unwrap()
+                        else {
+                            panic!("the counter's note is gone");
+                        };
+                        if v.swap_custody_note(
+                            "scid1",
+                            "d1",
+                            Some(&counter(epoch)),
+                            Some(&counter(epoch + 1)),
+                        )
+                        .unwrap()
+                        {
+                            won += 1;
+                        }
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        assert_eq!(
+            vault(dir.path()).custody_note("scid1", "d1").unwrap(),
+            Some(counter(40))
+        );
+    }
+
+    /// Notes live in the master-key file, so its loss is theirs: an error, never "no note".
+    #[test]
+    fn a_lost_file_loses_no_note_quietly() {
+        let dir = tempfile::tempdir().unwrap();
+        let v = vault(dir.path());
+        v.swap_custody_note("scid1", "d1", None, Some(&receipt(true)))
+            .unwrap();
+        std::fs::remove_file(dir.path().join(MASTER_FILE_NAME)).unwrap();
+        assert!(v.custody_note("scid1", "d1").is_err());
+        assert!(v
+            .swap_custody_note("scid1", "d1", None, Some(&receipt(true)))
+            .is_err());
+    }
+
+    /// The note of the vault itself (`VAULT_NOTE`, key id `"vault"`) is kept like a device
+    /// key's: its whole stack comes back through another handle, a swap from a stale note is
+    /// refused, and it is its own beside a device key's note of the same identity.
+    #[test]
+    fn the_vault_note_round_trips_whole_with_its_compare_and_swap() {
+        use ad4m_identity_client::VAULT_NOTE;
+        assert_eq!(VAULT_NOTE, "vault");
+        let dir = tempfile::tempdir().unwrap();
+        let kept = stacked(receipt(true));
+        let stale = stacked(receipt(false));
+        let v = vault(dir.path());
+        assert_eq!(v.custody_note("scid1", VAULT_NOTE).unwrap(), None);
+        assert!(v
+            .swap_custody_note("scid1", VAULT_NOTE, None, Some(&kept))
+            .unwrap());
+        assert!(v
+            .swap_custody_note("scid1", "d1", None, Some(&receipt(false)))
+            .unwrap());
+        drop(v);
+
+        let v = vault(dir.path());
+        assert_eq!(
+            v.custody_note("scid1", VAULT_NOTE).unwrap(),
+            Some(kept.clone())
+        );
+        assert!(!v
+            .swap_custody_note("scid1", VAULT_NOTE, Some(&stale), None)
+            .unwrap());
+        assert!(!v
+            .swap_custody_note("scid1", VAULT_NOTE, None, Some(&stale))
+            .unwrap());
+        assert_eq!(
+            v.custody_note("scid1", VAULT_NOTE).unwrap(),
+            Some(kept.clone())
+        );
+        assert!(v
+            .swap_custody_note("scid1", VAULT_NOTE, Some(&kept), None)
+            .unwrap());
+        assert_eq!(v.custody_note("scid1", VAULT_NOTE).unwrap(), None);
+        assert_eq!(v.custody_note("scid1", "d1").unwrap(), Some(receipt(false)));
+    }
+
+    /// The nested note is kept as the client's serde JSON, unchanged: what lands in the file is
+    /// exactly `serde_json::to_value` of the note, and reads back as the same note.
+    #[test]
+    fn a_nested_note_is_kept_as_the_clients_json_and_reads_back_equal() {
+        let dir = tempfile::tempdir().unwrap();
+        let note = stacked(stacked(receipt(true)));
+        let v = vault(dir.path());
+        assert!(v
+            .swap_custody_note("scid1", "d1", None, Some(&note))
+            .unwrap());
+        assert_eq!(
+            read(dir.path())["notes"][0]["note"],
+            serde_json::to_value(&note).unwrap()
+        );
+        assert_eq!(
+            vault(dir.path()).custody_note("scid1", "d1").unwrap(),
+            Some(note)
+        );
+    }
+
+    /// A note nested past serde_json's recursion limit (128) is written by it and cannot be read
+    /// back: the change is refused before `master-keys.json` is replaced, so the file, with the
+    /// sealed keys and every other note in it, still opens after a restart.
+    #[test]
+    fn a_note_nested_past_what_can_be_read_back_is_refused_and_the_file_stays_readable() {
+        let mut deep = receipt(true);
+        for _ in 0..70 {
+            deep = stacked(deep);
+        }
+        let kept = stacked(receipt(true));
+        let dir = tempfile::tempdir().unwrap();
+        let v = vault(dir.path());
+        assert!(v
+            .swap_custody_note("scid2", "d1", None, Some(&kept))
+            .unwrap());
+        assert!(v
+            .swap_custody_note("scid1", "d1", None, Some(&deep))
+            .is_err());
+        assert_eq!(v.custody_note("scid1", "d1").unwrap(), None);
+        drop(v);
+
+        let v = vault(dir.path());
+        assert_eq!(v.custody_note("scid2", "d1").unwrap(), Some(kept));
+        assert_eq!(v.custody_note("scid1", "d1").unwrap(), None);
+    }
+
+    /// A vault id is drawn once per identity and kept: the same on every ask and through another
+    /// handle (a restart), another for another identity, and a forget of the master key keeps it.
+    #[test]
+    fn a_vault_id_is_stable_across_reopening_and_distinct_per_identity() {
+        let dir = tempfile::tempdir().unwrap();
+        let v = vault(dir.path());
+        let a = v.vault_id("scid1").unwrap();
+        assert_eq!(v.vault_id("scid1").unwrap(), a);
+        let b = v.vault_id("scid2").unwrap();
+        assert_ne!(a, b);
+        v.store_master("scid1", 0, Secret::new([7u8; 32])).unwrap();
+        assert_eq!(v.forget_master("scid1", 0).unwrap(), Forgot::Forgot);
+        drop(v);
+
+        let v = vault(dir.path());
+        assert_eq!(v.vault_id("scid1").unwrap(), a);
+        assert_eq!(v.vault_id("scid2").unwrap(), b);
+        assert_eq!(read(dir.path())["ids"][0]["id"], a.to_string());
+    }
+
+    /// Handles on one folder (parallel native calls) asking first at once keep one id: the draw
+    /// and its write are one step under the folder's lock.
+    #[test]
+    fn two_first_asks_at_once_keep_one_vault_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let threads: Vec<_> = (0..4)
+            .map(|_| {
+                let dir = dir.path().to_path_buf();
+                std::thread::spawn(move || vault(&dir).vault_id("scid1").unwrap())
+            })
+            .collect();
+        let ids: Vec<VaultId> = threads.into_iter().map(|t| t.join().unwrap()).collect();
+        assert!(ids.iter().all(|id| *id == ids[0]), "{ids:?}");
+        assert_eq!(vault(dir.path()).vault_id("scid1").unwrap(), ids[0]);
+    }
+
+    /// A kept id that is gone (with the file, or its entry while the file stays) is an error,
+    /// never a fresh id: a fresh one beside a kept key would count that copy twice.
+    #[test]
+    fn a_lost_vault_id_is_an_error_not_a_fresh_id() {
+        let dir = tempfile::tempdir().unwrap();
+        let v = vault(dir.path());
+        v.vault_id("scid1").unwrap();
+        let b = v.vault_id("scid2").unwrap();
+        let mut file = read(dir.path());
+        file["ids"]
+            .as_array_mut()
+            .unwrap()
+            .retain(|e| e["scid"] != "scid1");
+        write(dir.path(), &file);
+        assert!(v.vault_id("scid1").is_err());
+        assert_eq!(v.vault_id("scid2").unwrap(), b);
+
+        std::fs::remove_file(dir.path().join(MASTER_FILE_NAME)).unwrap();
+        assert!(v.vault_id("scid2").is_err());
+        assert!(v.vault_id("scid3").is_err());
     }
 }

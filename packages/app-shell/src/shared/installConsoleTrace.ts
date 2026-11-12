@@ -80,18 +80,33 @@ const STORAGE_KEY = 'we:trace';
  * the published list — with `ready` when the app has it all. Each line says how long its step took
  * and when it ended, since page start, so the step a slow boot waited on is the one with the gap.
  */
-export const TRACE_SCOPES = ['presence', 'ephemeral', 'dataset', 'space', 'graph', 'shapes', 'boot'] as const;
+export const TRACE_SCOPES = [
+  'presence',
+  'ephemeral',
+  'dataset',
+  'space',
+  'graph',
+  'shapes',
+  'boot',
+  'interpretation',
+] as const;
+
+/**
+ * The scopes on while the switch is unset: `interpretation` in a development build, none in a
+ * production build. `interpretation` logs each auto-processor step and each settled watched pass,
+ * which is what a developer looks for when extraction writes nothing. Any value of the switch
+ * replaces the default (`localStorage.setItem('we:trace', 'none')` turns it off).
+ */
+const DEFAULT_SCOPES: readonly string[] = import.meta.env.PROD ? [] : ['interpretation'];
 
 function enabledScopes(): Set<string> | null {
-  if (typeof localStorage === 'undefined') return null;
   let raw: string | null = null;
   try {
-    raw = localStorage.getItem(STORAGE_KEY);
+    raw = typeof localStorage === 'undefined' ? null : localStorage.getItem(STORAGE_KEY);
   } catch {
-    // Private mode. Not being able to read the switch is the same as it being off.
-    return null;
+    // Private mode. Not being able to read the switch is the same as it being unset.
   }
-  if (!raw) return null;
+  if (!raw) return DEFAULT_SCOPES.length ? new Set(DEFAULT_SCOPES) : null;
   const scopes = raw
     .split(',')
     .map((scope) => scope.trim())
@@ -100,7 +115,8 @@ function enabledScopes(): Set<string> | null {
 }
 
 /**
- * Install the console sink if the switch is set. Safe to call at boot on every host.
+ * Install the console sink if the switch is set, or the build has default scopes. Safe to call at
+ * boot on every host.
  *
  * Returns whether tracing was turned on, so a caller can say so — a trace nobody can see they
  * enabled is worse than none.

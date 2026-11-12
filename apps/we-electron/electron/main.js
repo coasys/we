@@ -1017,6 +1017,15 @@ function createWindow() {
   // `<webview>` is a second renderer with its own settings and no reason to exist here.
   mainWindow.webContents.on('will-attach-webview', (event) => event.preventDefault());
 
+  /*
+    The app's trace lines (`we:trace …`, see `installConsoleTrace`) go into the executor log too, so
+    an auto-processor pass reads beside the executor output that ran it. Only those lines: the rest
+    of the renderer's console stays in its devtools.
+  */
+  mainWindow.webContents.on('console-message', ({ message }) => {
+    if (message.startsWith('we:trace ')) executorLog?.host('log', message);
+  });
+
   installContentSecurityPolicy(session);
 
   mainWindow.loadURL(appUrl());

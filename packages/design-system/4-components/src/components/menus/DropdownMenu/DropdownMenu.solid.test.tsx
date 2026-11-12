@@ -158,8 +158,28 @@ describe('a menu about people', () => {
     const trigger = host!.querySelector('we-button[slot="trigger"]') as HTMLElement;
     expect(trigger.querySelector('[data-testid="faces"]')).not.toBeNull();
     expect(trigger.getAttribute('aria-label')).toBe('Who is on this');
+    // `label` is what reaches the inner `<button>`; `aria-label` on the host does not.
+    expect((trigger as HTMLElement & { label?: string }).label).toBe('Who is on this');
     // Its own content brings its own hover; the title is a name, not a second tooltip.
     expect(host!.querySelector('we-tooltip[slot="trigger"]')).toBeNull();
+  });
+
+  it('names an icon-only trigger through the label its inner button reads', () => {
+    mount(() => (
+      <DropdownMenu
+        triggerIcon="flow-arrow"
+        triggerTitle="Start a workflow on this"
+        items={[{ id: 'a', label: 'A' }]}
+      />
+    ));
+    const trigger = host!.querySelector('we-tooltip[slot="trigger"] we-button') as HTMLElement & { label?: string };
+    expect(trigger.label).toBe('Start a workflow on this');
+  });
+
+  it('names an icon-only trigger "Options" when it has no title', () => {
+    mount(() => <DropdownMenu triggerIcon="dots-three" items={[{ id: 'a', label: 'A' }]} />);
+    const trigger = host!.querySelector('we-button[slot="trigger"]') as HTMLElement & { label?: string };
+    expect(trigger.label).toBe('Options');
   });
 
   it('opens a group that started closed on the first press', () => {
