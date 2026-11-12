@@ -8,7 +8,7 @@
  */
 import { lineContent, threadLines } from '@we/messages';
 import type { RecordQuery } from '@we/module-shared';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { type FeedActivity, FeedReadStopped, groupActivity, markPending, nounFor, readFeedWindow } from './feed';
 
@@ -220,6 +220,52 @@ describe('the feed window', () => {
       expect(query).toEqual({ within: ROOT, order: { createdAt: 'desc' }, limit: 10 });
     }
     expect(drawn.find((r) => r.kind === 'activity')).toMatchObject({ origin: 'monday', originTitle: 'Monday sync' });
+  });
+
+  it('drops only the kind that cannot be read, rather than the whole window', async () => {
+    /*
+      A class the space lists as an extraction target can be one this client cannot resolve — a
+      space's own SHACL class before the records kernel learned those, or one the backend fails on.
+      The finds ran in one Promise.all, so one bad class rejected the whole read and the Feed drew
+      nothing at all.
+    */
+    const { find } = store([
+      ...calls,
+      line('m1', 1, 'monday'),
+      { entity: 'TaskBlock', id: 't1', in: ROOT, title: 'Brief', createdAt: t(2), author: 'did:ann' },
+    ]);
+    const failingFind = (entity: string, query: RecordQuery) =>
+      entity === 'Position' ? Promise.reject(new Error('Model "Position" not found in registry')) : find(entity, query);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { rows: drawn } = await readFeedWindow(failingFind, {
+      root: ROOT,
+      shown: 10,
+      fromStart: true,
+      activityTypes: ['TaskBlock', 'Position'],
+    });
+
+    expect(drawn.map((r) => r.id)).toEqual(['m1', 'activity:t1']);
+    expect(warn).toHaveBeenCalledWith('[feed] could not read Position', expect.any(Error));
+    warn.mockRestore();
+  });
+
+  it('still fails the read when the messages or the calls cannot be read', async () => {
+    // The activity finds are the only tolerant ones: a window without its lines is wrong to draw.
+    const { find } = store(rows);
+    const failOn = (bad: string) => (entity: string, query: RecordQuery) =>
+      entity === bad ? Promise.reject(new Error('executor unreachable')) : find(entity, query);
+    await expect(
+      readFeedWindow(failOn('TextBlock'), { root: ROOT, shown: 10, fromStart: true, activityTypes: ['TaskBlock'] }),
+    ).rejects.toThrow('executor unreachable');
+    await expect(
+      readFeedWindow(failOn('CollectionBlock'), {
+        root: ROOT,
+        shown: 10,
+        fromStart: true,
+        activityTypes: ['TaskBlock'],
+      }),
+    ).rejects.toThrow('executor unreachable');
   });
 });
 
