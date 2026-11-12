@@ -305,9 +305,17 @@ pub(crate) mod login_keychain {
     use std::sync::mpsc;
     use std::time::Duration;
 
+    use core_foundation::base::{CFType, TCFType};
+    use core_foundation::data::CFData;
+    use core_foundation::dictionary::CFDictionary;
+    use core_foundation::string::CFString;
     use security_framework::passwords::{
         delete_generic_password, get_generic_password, set_generic_password,
     };
+    use security_framework_sys::item::{
+        kSecAttrAccount, kSecAttrService, kSecClass, kSecClassGenericPassword, kSecValueData,
+    };
+    use security_framework_sys::keychain_item::SecItemAdd;
 
     use super::*;
     use crate::store::{keyring_locked, no_keyring, StoreKind};
@@ -315,6 +323,7 @@ pub(crate) mod login_keychain {
     pub const UNLOCK_WAIT: Duration = Duration::from_secs(90);
     pub const WALLET_SERVICE: &str = "org.coasys.app.wallet";
     const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
+    const ERR_SEC_DUPLICATE_ITEM: i32 = -25299;
     const ERR_SEC_USER_CANCELED: i32 = -128;
     const ERR_SEC_AUTH_FAILED: i32 = -25293;
     const ERR_SEC_INTERACTION_NOT_ALLOWED: i32 = -25308;
@@ -387,6 +396,44 @@ pub(crate) mod login_keychain {
 
         fn contains(&self, name: &str) -> Result<bool, VaultError> {
             Ok(self.get(name)?.is_some())
+        }
+
+        /// One plain `SecItemAdd` in the login keychain, with no delete before it and no update
+        /// after it (as `set_generic_password` would make on `errSecDuplicateItem`): the keychain
+        /// adds the item only when no item of this service and account is kept, and answers
+        /// `errSecDuplicateItem` when one is, which is a lost claim.
+        fn claim_public(&self, name: &str, bytes: &[u8]) -> Result<bool, VaultError> {
+            let (name, bytes) = (name.to_string(), bytes.to_vec());
+            bounded(move || {
+                let pairs: Vec<(CFString, CFType)> = unsafe {
+                    vec![
+                        (
+                            CFString::wrap_under_get_rule(kSecClass),
+                            CFString::wrap_under_get_rule(kSecClassGenericPassword).into_CFType(),
+                        ),
+                        (
+                            CFString::wrap_under_get_rule(kSecAttrService),
+                            CFString::new(SERVICE).into_CFType(),
+                        ),
+                        (
+                            CFString::wrap_under_get_rule(kSecAttrAccount),
+                            CFString::new(&name).into_CFType(),
+                        ),
+                        (
+                            CFString::wrap_under_get_rule(kSecValueData),
+                            CFData::from_buffer(&bytes).into_CFType(),
+                        ),
+                    ]
+                };
+                let attributes = CFDictionary::from_CFType_pairs(&pairs);
+                // No `kSecReturn*` key, so no result is asked for: a null result pointer.
+                match unsafe { SecItemAdd(attributes.as_concrete_TypeRef(), std::ptr::null_mut()) }
+                {
+                    0 => Ok(true),
+                    ERR_SEC_DUPLICATE_ITEM => Ok(false),
+                    code => Err(refused(security_framework::base::Error::from_code(code))),
+                }
+            })
         }
 
         fn delete(&self, name: &str) -> Result<(), VaultError> {

@@ -133,7 +133,14 @@ describe('joining an identity on the phone', () => {
       link: 'https://id.coasys.org/o#coasys:offer:1:x',
       host: 'https://executor.example/',
     });
-    expect(match).toEqual({ screen: 'device-match', code: 'R7K Q2M', did: 'did:scid:coasys:1:abc' });
+    expect(match).toEqual({
+      screen: 'device-match',
+      code: 'R7K Q2M',
+      did: 'did:scid:coasys:1:abc',
+      needsAccept: false,
+      accepted: false,
+      confirmed: false,
+    });
     expect(calls.find(([m]) => m === 'join')?.[1]).toEqual({
       link: 'https://id.coasys.org/o#coasys:offer:1:x',
       hint: 'Phone',
@@ -185,7 +192,14 @@ describe('joining an identity on the phone', () => {
         leave: () => {},
       },
     );
-    expect(await pending.start()).toEqual({ screen: 'device-match', code: 'R7K Q2M', did: 'did:scid:coasys:1:abc' });
+    expect(await pending.start()).toEqual({
+      screen: 'device-match',
+      code: 'R7K Q2M',
+      did: 'did:scid:coasys:1:abc',
+      needsAccept: false,
+      accepted: false,
+      confirmed: false,
+    });
     // The window words its screens for a phone: "This phone then joins your identity".
     expect(pending.deviceNoun).toBe('phone');
 
