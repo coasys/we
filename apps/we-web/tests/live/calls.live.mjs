@@ -18,45 +18,13 @@ import assert from 'node:assert/strict';
 import { after, before, describe, it } from 'node:test';
 
 import * as h from './harness.mjs';
+import { createSpace, dismissNamePrompt, inTheCall, openSpace } from './space.mjs';
 
 const REPLACED = 'You joined this call from another tab, so it ended here.';
 const JOIN_BUTTON = /^(Open|Join)$/;
 
 /** What the page says, shadow roots included. */
 const text = (page) => page.locator('body').innerText();
-
-/**
- * The "N in the call" count on the call bar, or null when the page is not in a call. Read from the
- * number element itself: its digits are in its shadow root, which `innerText` does not reach.
- */
-function inTheCall(page) {
-  return page.evaluate(() => {
-    const find = (root) => {
-      for (const el of root.querySelectorAll('*')) {
-        if (el.tagName === 'WE-NUMBER' && el.closest('we-text')?.textContent?.trim() === 'in the call') {
-          return Number(el.value);
-        }
-        if (el.shadowRoot) {
-          const found = find(el.shadowRoot);
-          if (found !== null) return found;
-        }
-      }
-      return null;
-    };
-    return find(document);
-  });
-}
-
-/** Answers the first-run name prompt, which is per account and covers the page until answered. */
-async function dismissNamePrompt(page) {
-  const name = page.getByRole('textbox', { name: 'Name...' });
-  if (await name.count()) {
-    await name.fill('Dev');
-    await page.getByRole('button', { name: 'Save' }).click();
-  }
-  const later = page.getByRole('button', { name: 'Not now' });
-  if (await later.count()) await later.first().click();
-}
 
 /** The account's app becomes Coasys, so a space created next starts as one. */
 async function useCoasys(page, app) {
@@ -73,36 +41,6 @@ async function useCoasys(page, app) {
   // The chosen app is written to the agent's own data before the chrome swaps over.
   await h.sleep(3_000);
   await page.keyboard.press('Escape');
-}
-
-/** A shared space from the Coasys starter, with the call topology `mode`; returns its neighbourhood URL. */
-async function createSpace(page, account, name, mode) {
-  await page
-    .getByRole('button', { name: /^(Create a space|Add a space)$/ })
-    .first()
-    .click();
-  const menu = page.getByRole('menuitem', { name: 'Create a space' });
-  if (await menu.count()) await menu.click();
-  await page.getByRole('textbox', { name: 'Space name...' }).fill(name);
-  const shared = page.getByRole('switch').first();
-  if (!(await shared.evaluate((el) => el.checked))) await shared.click({ force: true });
-  await page.getByRole('button', { name: 'Create Space' }).click();
-  const perspective = await h.until(
-    async () => (await account.client.perspective.all()).find((p) => p.name === name && p.sharedUrl),
-    Boolean,
-    { timeout: 180_000, what: `space "${name}" to be shared` },
-  );
-  const set = await perspective
-    .getNeighbourhoodProxy()
-    .setSfuConfig(perspective.sharedUrl, { mode, maxMeshParticipants: 6 });
-  assert.equal(set, true, `setting the call topology of "${name}" to ${mode}`);
-  return perspective.sharedUrl;
-}
-
-async function openSpace(page, app, sharedUrl) {
-  await page.goto(`${app.url}/space/${sharedUrl.replace('neighbourhood://', '')}`);
-  await page.getByText('Feed', { exact: true }).first().waitFor({ timeout: 120_000 });
-  await dismissNamePrompt(page);
 }
 
 const waitInCall = (page, n, what) =>
