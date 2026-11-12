@@ -57,6 +57,9 @@ shared with the Electron app, which runs the same crate as a sidecar.
 Only the **identity window** runs a flow. Its page is the shared window (`packages/identity-window`)
 over the `identity_flow_*` commands, built from `identity/` by `vite.identity.config.ts` into
 `dist/identity/` under a strict CSP, with its own capability (`src-tauri/capabilities/identity.json`).
+It wears the deployment's app as the app's screens before a session do — its theme, name and mark,
+read from the seed's bundles (`seedBase` in `scripts/seed-vite.mjs`) and worked into static CSS at
+build time.
 The main window may only open it on a step and read public custody state (`identity_open`,
 `identity_public_state`); `build.rs` declares every command in an app manifest so none is callable
 without a capability. The steps it opens — making the identity, linking a device either way, taking,
