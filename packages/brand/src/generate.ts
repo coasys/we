@@ -339,6 +339,9 @@ function main() {
     else console.log(`ℹ️  ${seedFile.seedLabel()} names no desktop icon — its builds use WE's`);
     return;
   }
+  // `--seed-only` (a development run, `electron:dev`): another seed's icon or nothing. WE's own icons
+  // are checked in, and rendering them again there would only slow every start.
+  if (process.argv.includes('--seed-only')) return;
 
   assertTauriIconOrder();
   const mark = readFileSync(MARK, 'utf8');

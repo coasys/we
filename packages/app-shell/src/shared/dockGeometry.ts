@@ -2581,7 +2581,12 @@ export function resolveDock(
     : // A collapsed card alone is its titlebar tall — the same fold a lane gives it, with no lane.
       placement.collapsed
       ? COLLAPSED_PX
-      : clamp(placement.h, minH, Math.max(minH, region.height - chrome.top - DOCK_GAP_PX * 2));
+      : /*
+        The free band, not the region: bottom chrome (the corner bar, a call in progress) is where
+        the card may not draw, so a height restored taller than that still runs past it — and the
+        y clamp below cannot help, having no room left to move the box into.
+      */
+        clamp(placement.h, minH, Math.max(minH, free.height - free.top - DOCK_GAP_PX * 2));
   const origin = seat
     ? { x: seat.x, y: seat.y }
     : placement.snap

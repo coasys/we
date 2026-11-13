@@ -19,6 +19,14 @@ const config: CapacitorConfig = {
     allowMixedContent: false,
     minWebViewVersion: MIN_WEBVIEW_MAJOR,
   },
+  plugins: {
+    SystemBars: {
+      // MainActivity keeps the WebView between the bars and above the keyboard (SafeArea.kt), on
+      // every WebView. Capacitor's own handling depends on the WebView's version and on whether
+      // the page declares viewport-fit=cover, which this app's pages do and WE's does not.
+      insetsHandling: 'disable',
+    },
+  },
 };
 
 export default config;

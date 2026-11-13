@@ -24,6 +24,11 @@
       "types": "./dist/signals/index.d.ts",
       "development": "./src/components/signals/aggregate.ts",
       "import": "./dist/signals/index.js"
+    },
+    "./step-words": {
+      "types": "./dist/step-words/index.d.ts",
+      "development": "./src/components/feedback/AgentSteps/stepWords.ts",
+      "import": "./dist/step-words/index.js"
     }
   },
   "files": [

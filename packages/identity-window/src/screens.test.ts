@@ -115,9 +115,10 @@ describe('the identity window', () => {
   });
 
   it('says on a linked device what it can and cannot do, and what is still on its way', () => {
-    expect(heading({ screen: 'joined', did: 'did:scid:coasys:1:Qm', keyId: 'd2' }).lead).toContain(
-      'does not hold your master key',
-    );
+    const joined = heading({ screen: 'joined', did: 'did:scid:coasys:1:Qm', keyId: 'd2' }).lead;
+    expect(joined).toContain('does not hold your master key');
+    expect(joined).not.toContain('d2');
+    expect(heading({ screen: 'revoked', keyId: 'd2', seq: 2 }).title).toBe('Device revoked');
     const linked = heading({ screen: 'linked', seq: 3, masterSent: true, note: 'Its name is not saved yet.' }).lead;
     expect(linked).toContain('entry #3');
     expect(linked).toContain('The master key waits for it');
@@ -268,7 +269,7 @@ describe('the identity window', () => {
     const replaced = heading({ screen: 'master-replaced', index: 1, revoked: ['d2'], note: null });
     expect(replaced.title).toBe('Your master key is replaced');
     expect(replaced.lead).toContain('master key #1');
-    expect(replaced.lead).toContain('Revoked in the same step: d2.');
+    expect(replaced.lead).toContain('Revoked in the same step: 1 device.');
     expect(heading({ screen: 'master-replaced', index: 2, revoked: [], note: 'Late.' }).lead).not.toContain('Revoked');
     const restored = heading({
       screen: 'restored',
@@ -279,8 +280,11 @@ describe('the identity window', () => {
       note: null,
     });
     expect(restored.title).toBe('Restored as Laptop');
-    expect(restored.lead).toContain('as d3');
-    expect(restored.lead).toContain('Locked out: d1.');
+    expect(restored.lead).toContain('This computer signs for you and keeps your new master key.');
+    expect(restored.lead).toContain('Locked out: 1 device.');
+    expect(heading({ ...replaced0(), revoked: ['d1', 'd2'] }).lead).toContain('Revoked in the same step: 2 devices.');
+    // A completion screen names no key id: the person has just chosen, and ids mean nothing to them.
+    for (const done of [restored, replaced]) expect(done.lead).not.toMatch(/\bd\d\b/);
     expect(heading({ screen: 'master-removed' }).title).toBe('This computer no longer keeps your master key');
     expect(heading({ screen: 'remove-master', error: null }).lead).toContain('your 12 words, still add and remove');
     const devices = heading({
@@ -305,7 +309,7 @@ describe('the identity window', () => {
     expect(title).toBe('Your master key is replaced, but this computer could not keep the new key');
     expect(lead).toContain('Master key #2 is now your master key');
     expect(lead).toContain('The unlock was cancelled.');
-    expect(lead).toContain('Revoked in the same step: d2.');
+    expect(lead).toContain('Revoked in the same step: 1 device.');
     expect(lead).toContain('Type your 12 words again');
     const notLinked: Screen = {
       screen: 'restore-not-linked',
@@ -314,7 +318,7 @@ describe('the identity window', () => {
       reason: 'Where it keeps keys answered: locked.',
     };
     expect(heading(notLinked).title).toBe('Your identity is restored, but this computer is not linked yet');
-    expect(heading(notLinked).lead).toContain('Locked out: d1.');
+    expect(heading(notLinked).lead).toContain('Locked out: 1 device.');
     expect(heading(notLinked).lead).toContain('Where it keeps keys answered: locked.');
     // After a publish, never "Nothing changed".
     for (const screen of [notKept, notLinked]) {
@@ -457,7 +461,7 @@ describe('the identity window', () => {
     const added: Screen = { screen: 'bot-added', seq: 4, keyId: 'd3', name: 'Test bot', note: null };
     expect(heading(added)).toEqual({
       title: 'Test bot added',
-      lead: 'Your key log records its key d3 as entry #4. It can do nothing yet: give it spaces on the Bots page.',
+      lead: 'Your key log records its key as entry #4. It can do nothing yet: give it spaces on the Bots page.',
     });
     expect(heading({ ...added, note: 'Its name was not saved.' }).lead).toContain('Its name was not saved.');
     expect(isLast(added)).toBe(true);
@@ -537,3 +541,7 @@ describe('the identity window', () => {
     }
   });
 });
+
+function replaced0(): Extract<Screen, { screen: 'master-replaced' }> {
+  return { screen: 'master-replaced', index: 1, revoked: [], note: null };
+}

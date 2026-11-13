@@ -28,7 +28,7 @@ import { holdTemplatePanels, setTemplatePanels } from '@shared/registries/templa
 import { buildTemplateBag, CHROME_TIER } from '@shared/registries/templateSurface';
 import { isValidThemeKey } from '@shared/registries/themeRegistry';
 import { TemplateBoundary } from '@solid/components/TemplateBoundary';
-import { componentRegistry as registry } from '@solid/registries/componentRegistry';
+import { chromeComponentRegistry, componentRegistry as registry } from '@solid/registries/componentRegistry';
 import { ShellRouterRoot, ShellRouteStoreProvider, useShellRouteStore } from '@solid/stores/ShellRouteStore';
 import { THEME_SCOPE_ATTRIBUTE } from '@solid/stores/ThemeStore';
 import type { Stores } from '@solid/types';
@@ -178,7 +178,7 @@ function ShellOverlayInner(props: {
               <RenderSchema
                 node={schema}
                 stores={shellStores}
-                registry={registry}
+                registry={chromeComponentRegistry}
                 context={{ surface: overlaySurface.surface }}
                 children={props.children}
               />
@@ -187,7 +187,7 @@ function ShellOverlayInner(props: {
         </ShellRouterRoot>
       )}
     >
-      {buildRoutes(shellStores, schema.routes ?? [])}
+      {buildRoutes(shellStores, schema.routes ?? [], '', [], chromeComponentRegistry)}
       <Route path="*" component={() => null} />
     </MemoryRouter>
   );
@@ -258,7 +258,11 @@ export function TemplateLayout(
     // are. Everything after that is `panelScope`'s, where it can be tested without a router.
     const view = stores.spaceStore.spaceViews().find((section) => segments.includes(section.segment))?.schema
       ?.meta?.panels;
-    return panelsFor(stores.templateStore.currentTemplate?.meta?.panels ?? [], view, segments);
+    const shell = stores.templateStore.currentTemplate?.meta?.panels ?? [];
+    // The app's own panels ride under the space's — `panelScope` owns the merge so the precedence
+    // is testable without a layout.
+    const app = stores.templateStore.appTemplate().meta?.panels ?? [];
+    return panelsFor(shell, view, segments, app);
   });
 
   createEffect(() => setTemplatePanels(activePanels(), stores.templateStore.currentTemplate?.id ?? ''));
