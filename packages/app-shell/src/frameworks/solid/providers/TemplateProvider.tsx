@@ -42,12 +42,13 @@ interface RecordModel {
 /** An entity's registered class by name; the registry answers untyped, but every class implements these. */
 const recordModel = (entity: string) => getEntity(entity) as unknown as RecordModel;
 
-import { componentRegistry as registry } from '@solid/registries/componentRegistry';
+import { chromeComponentRegistry, componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
   useAccountStore,
   useAppStore,
   useBotStore,
   useBundleStore,
+  useChatStore,
   useClockStore,
   useDatasetStore,
   useDeviceStore,
@@ -121,6 +122,7 @@ export default function TemplateProvider() {
   const editTarget = useEditTarget();
   const routeStore = useRouteStore();
   const shellStore = useShellStore();
+  const chatStore = useChatStore();
   const presenceStore = usePresenceStore();
   const interpretationStore = useInterpretationStore();
   const clockStore = useClockStore();
@@ -527,6 +529,7 @@ export default function TemplateProvider() {
     templateStore,
     routeStore,
     shellStore,
+    chatStore,
     presenceStore,
     interpretationStore,
     clockStore,
@@ -968,7 +971,7 @@ export default function TemplateProvider() {
     onCleanup(
       registerRecordGhost({
         stores: chromeBag,
-        registry,
+        registry: chromeComponentRegistry,
         agent: (did) => {
           const profile = profileStore.profiles().find((p) => p.did === did);
           return profile ? { name: profile.name ?? '', avatar: profile.avatar ?? '' } : undefined;
@@ -1714,9 +1717,9 @@ export default function TemplateProvider() {
                 )
               }
             >
-              <RenderSchema node={appSchema} stores={chromeBag} registry={registry} />
+              <RenderSchema node={appSchema} stores={chromeBag} registry={chromeComponentRegistry} />
             </div>
-            <RenderSchema node={shellSchema} stores={chromeBag} registry={registry} />
+            <RenderSchema node={shellSchema} stores={chromeBag} registry={chromeComponentRegistry} />
             {/* The lanes pushing the content aside at the window's edges. */}
             <EdgeLanes />
             {/* Every panel, drawn once here, inside these providers, and moved to its place. */}
@@ -1765,7 +1768,7 @@ export default function TemplateProvider() {
           {/* The host's safety prompts — see `promptSchema`. Last, so a prompt mounting in the same
            frame as anything above it still enters the top layer after it. */}
           <div ref={promptLayer} data-we-host-prompts style={{ display: 'contents' }}>
-            <RenderSchema node={promptSchema} stores={chromeBag} registry={registry} />
+            <RenderSchema node={promptSchema} stores={chromeBag} registry={chromeComponentRegistry} />
           </div>
         </VisualEditorProvider>
       </BlockDisplayOverrides>

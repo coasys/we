@@ -1,6 +1,6 @@
 import { getAd4mConnect } from '@coasys/ad4m-connect';
 import type { BackendConnector, BackendInitResult } from '@we/app-shell/shared';
-import { capabilitiesFromToken, createAd4mBackendPorts } from '@we/backend-ad4m';
+import { capabilitiesFromToken, createAd4mBackendPorts, holdsOperatorCredential } from '@we/backend-ad4m';
 import weSeed from '@we/seed-file';
 
 import { storedGuestHost } from './storedSession';
@@ -70,6 +70,10 @@ export const ad4mConnector: BackendConnector = {
       // declining to offer node-wide controls, which is a decision it can make locally and should.
       ports: createAd4mBackendPorts(client, ctx, {
         administersNode: administersNode && !isGuest,
+        // Whether the token is the executor's operator credential or a grant. The app token this
+        // connector asks for is a grant, so it is not the operator however much it holds — and the
+        // executor keeps some calls (installing local AI, for one) to the operator alone.
+        operator: holdsOperatorCredential(core.token),
         capabilities,
         linkServerUrl: (weSeed.ad4m as { linkServerUrl?: string }).linkServerUrl,
         // Read on each use: ad4m-connect replaces the token when a session is re-authorised.

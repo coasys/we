@@ -13,27 +13,57 @@
 import { render } from '@solidjs/testing-library';
 import type { ExecutorHost, ExecutorSettings } from '@we/app-shell/shared';
 import type {
+  AiCapability,
+  AiEndpoint,
+  AiEndpointHealth,
   AiModel,
-  AiModelDraft,
+  AiModelStatusEvent,
   BackendPorts,
   ConsentRequest,
+  LocalAiHardware,
+  LocalAiPlan,
+  LocalAiPort,
+  LocalAiProgress,
+  LocalAiStatus,
   ModelAdminPort,
   PeerRecords,
   RuntimeAdminPort,
 } from '@we/backend-shared';
+import { createSignal } from 'solid-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 let ports: Partial<BackendPorts> | null = null;
 
+/** What the AI step reads of the session, and what it asks of it. */
+const session = vi.hoisted(() => ({
+  step: 'ready',
+  held: 0,
+  finished: 0,
+  agent: 'did:test:new-account',
+  url: 'https://node.test' as string | undefined,
+}));
+
 vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({
-  useSessionStore: () => ({ backendPorts: () => ports }),
+  useSessionStore: () => ({
+    backendPorts: () => ports,
+    signInStep: () => session.step,
+    me: () => ({ id: session.agent }),
+    serverUrl: () => session.url,
+    holdForAiSetup: () => {
+      session.held += 1;
+    },
+    finishSetup: () => {
+      session.finished += 1;
+    },
+  }),
 }));
 
 // Never 'settings', so the on-demand load effect stays dormant and each test drives the store
-// explicitly. The load-on-open behaviour is asserted separately below.
-let activeShellView: string | null = null;
+// explicitly. The load-on-open behaviour is asserted separately below. A signal, so a test can close
+// the page and see what stops listening.
+const [activeShellView, setActiveShellView] = createSignal<string | null>(null);
 vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
-  useShellStore: () => ({ activeShellView: () => activeShellView }),
+  useShellStore: () => ({ activeShellView }),
 }));
 
 // Faked for the same reason as the stores above, and for one more: importing the real provider
@@ -125,8 +155,14 @@ const trustRequest: ConsentRequest = {
 
 beforeEach(() => {
   ports = null;
-  activeShellView = null;
+  setActiveShellView(null);
   executorHost = undefined;
+  session.step = 'ready';
+  session.held = 0;
+  session.finished = 0;
+  session.agent = 'did:test:new-account';
+  session.url = 'https://node.test';
+  localStorage.clear();
 });
 
 describe('how the backend is started', () => {
@@ -200,7 +236,7 @@ describe('how the backend is started', () => {
       getSettings: async () => ({ mcpEnabled: true, mcpPort: 4321, logLevels: { holochain: 'debug' } }),
     });
     executorHost = host;
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     ports = {};
     const store = mount();
 
@@ -374,7 +410,7 @@ describe('a backend that keeps its own config file', () => {
   it('shows every key as a row, editable unless a flag of this start sets it', async () => {
     const { runtime, host } = configBackend();
     executorHost = host;
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     ports = { runtime };
     const store = mount();
 
@@ -396,7 +432,7 @@ describe('a backend that keeps its own config file', () => {
   it('offers a key the file does not hold, and keeps its input once it is cleared', async () => {
     const { runtime, host, calls } = configBackend();
     executorHost = host;
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     ports = { runtime };
     const store = mount();
 
@@ -417,7 +453,7 @@ describe('a backend that keeps its own config file', () => {
   it('offers Default, On and Off for a true/false key, and Default unsets it', async () => {
     const { runtime, host, calls } = configBackend();
     executorHost = host;
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     ports = { runtime };
     const store = mount();
 
@@ -506,273 +542,1117 @@ describe('degrading when the backend administers nothing', () => {
   });
 });
 
-describe('AI models', () => {
-  const gpt: AiModel = {
-    id: 'm1',
-    name: 'GPT',
-    kind: 'llm',
-    isDefault: true,
-    source: { kind: 'api', protocol: 'openai', baseUrl: 'https://api.openai.com/v1', hasApiKey: true, model: 'gpt-4o' },
+describe('AI models and the servers they run on', () => {
+  const ollama: AiEndpoint = {
+    id: 'e1',
+    name: 'Ollama 11434',
+    kind: 'ollama',
+    baseUrl: 'http://127.0.0.1:11434',
+    hasApiKey: false,
+    capabilities: ['chat', 'embeddings'],
+    health: { state: 'reachable', detail: '', models: ['nomic-embed-text:latest'] },
+    managed: false,
   };
-  const local: AiModel = {
-    id: 'm2',
-    name: 'Llama',
+  const remote: AiEndpoint = {
+    id: 'e2',
+    name: 'Remote',
+    kind: 'anthropic',
+    baseUrl: 'https://api.example.test',
+    hasApiKey: true,
+    capabilities: ['chat'],
+    health: { state: 'unauthorized', detail: '', models: [] },
+    managed: false,
+  };
+  const qwen: AiModel = {
+    id: 'm1',
+    name: 'Qwen',
     kind: 'llm',
-    isDefault: false,
-    source: { kind: 'preset', name: 'llama_8b' },
+    endpointId: 'e1',
+    remoteModel: 'qwen3:8b',
+    status: { state: 'pulling', progress: 30 },
+    isDefault: true,
   };
 
-  /** A model admin port, recording what it was asked. */
   function aiPort(overrides: Partial<ModelAdminPort> = {}) {
     const calls: string[] = [];
+    let emitStatus: ((event: AiModelStatusEvent) => void) | null = null;
+    let emitHealth: ((endpointId: string, health: AiEndpointHealth, capabilities?: AiCapability[]) => void) | null =
+      null;
+    let listed = 0;
     const port: ModelAdminPort = {
       async list() {
-        calls.push('list');
-        return [gpt, local];
+        listed += 1;
+        return [qwen];
       },
-      async presets() {
-        calls.push('presets');
-        return ['llama_8b', 'mistral_7b'];
+      async endpoints() {
+        return [ollama, remote];
+      },
+      async detectEndpoints() {
+        return [
+          // Already added, under another spelling of the address — not offered again.
+          { kind: 'ollama', baseUrl: 'http://127.0.0.1:11434/', capabilities: ['chat'], models: [] },
+          { kind: 'openai-audio', baseUrl: 'http://127.0.0.1:8000', capabilities: ['transcription'], models: ['w'] },
+        ];
+      },
+      async discover(query) {
+        calls.push(`discover:${'endpointId' in query ? query.endpointId : query.baseUrl}`);
+        return [
+          { id: 'nomic-embed-text:latest', capabilities: ['embeddings'] },
+          { id: 'llama3.2:3b', capabilities: ['chat'] },
+        ];
       },
       async add(draft) {
-        calls.push(`add:${draft.name}`);
+        calls.push(`add:${draft.name}:${draft.endpointId}:${draft.remoteModel}`);
       },
       async update(id, draft) {
         calls.push(`update:${id}:${draft.name}`);
       },
-      async status() {
-        calls.push('status');
-        return { downloaded: false, loaded: false, progress: 30, status: 'fetching' };
+      async addEndpoint(draft) {
+        calls.push(`addEndpoint:${draft.name}:${draft.kind}:${draft.baseUrl}:${draft.apiKey ?? '-'}`);
+        return { ...ollama, ...draft, id: 'e9' };
       },
+      async updateEndpoint(id, draft) {
+        calls.push(`updateEndpoint:${id}:${draft.apiKey ?? 'kept'}`);
+        return { ...remote, ...draft };
+      },
+      async pullModel(endpointId, model) {
+        calls.push(`pull:${endpointId}:${model}`);
+      },
+      onModelStatus(listener) {
+        emitStatus = listener;
+        return () => (emitStatus = null);
+      },
+      onEndpointHealth(listener) {
+        emitHealth = listener;
+        return () => (emitHealth = null);
+      },
+      recommended: () => ({
+        models: [{ kind: 'llm', endpointKind: 'ollama', model: 'qwen3:8b', description: '' }],
+        installLinks: [{ label: 'Ollama', url: 'https://ollama.example.test' }],
+      }),
       ...overrides,
     };
-    return { port, calls };
+    return {
+      port,
+      calls,
+      listed: () => listed,
+      status: (event: AiModelStatusEvent) => emitStatus?.(event),
+      health: (endpointId: string, health: AiEndpointHealth, capabilities?: AiCapability[]) =>
+        emitHealth?.(endpointId, health, capabilities),
+    };
   }
 
-  it('sets protocol and URL from a named service, and keeps them as a starting point for a custom one', () => {
+  it('describes each model by its server, and each server by its health', async () => {
     ports = { models: aiPort().port };
-    const store = mount();
-
-    store.newAiModel();
-    store.setAiFormField('sourceKind', 'api');
-    store.setAiService('anthropic');
-    expect(store.aiForm()).toMatchObject({
-      apiService: 'anthropic',
-      apiProtocol: 'anthropic',
-      apiBaseUrl: 'https://api.anthropic.com',
-    });
-
-    // Custom must stay custom while the fields still hold a preset's values, or choosing it would
-    // hide the very fields it exists to show.
-    store.setAiService('custom');
-    expect(store.aiForm()).toMatchObject({ apiService: 'custom', apiProtocol: 'anthropic' });
-    expect(store.aiServiceOptions().at(-1)).toEqual({ label: 'Custom endpoint', value: 'custom' });
-  });
-
-  it('saves an Ollama model with its context limit, and says why a limit it cannot read holds Save', async () => {
-    const saved: AiModelDraft[] = [];
-    const { port } = aiPort({
-      async add(draft) {
-        saved.push(draft);
-      },
-    });
-    ports = { models: port };
-    const store = mount();
-
-    store.newAiModel();
-    store.setAiFormField('name', 'Qwen');
-    store.setAiFormField('sourceKind', 'api');
-    store.setAiService('ollama');
-    store.setAiFormField('apiModel', 'qwen3:4b');
-    expect(store.aiForm()).toMatchObject({ apiProtocol: 'ollama', apiBaseUrl: 'http://localhost:11434' });
-
-    store.setAiFormField('apiMaxContext', '40k');
-    expect(store.aiFormComplete()).toBe(false);
-    expect(store.aiMaxContextError()).not.toBe('');
-
-    store.setAiFormField('apiMaxContext', '40960');
-    expect(store.aiMaxContextError()).toBe('');
-    await store.saveAiModel();
-    expect(saved[0].source).toMatchObject({ kind: 'api', protocol: 'ollama', maxContext: 40960 });
-  });
-
-  it('offers no model listing where the backend cannot ask', () => {
-    ports = { models: aiPort().port };
-    expect(mount().canDiscoverAiModels()).toBe(false);
-  });
-
-  it('lists the models an endpoint serves, and forgets them when the endpoint changes', async () => {
-    const asked: unknown[] = [];
-    const { port } = aiPort({
-      async discover(query) {
-        asked.push(query);
-        return ['claude-sonnet-5', 'claude-haiku-4-5'];
-      },
-    });
-    ports = { models: port };
-    const store = mount();
-
-    store.newAiModel();
-    store.setAiFormField('sourceKind', 'api');
-    store.setAiService('anthropic');
-    store.setAiFormField('apiKey', 'sk-ant');
-    await store.discoverAiModels();
-
-    expect(asked).toEqual([{ protocol: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: 'sk-ant' }]);
-    expect(store.aiDiscoveredModelOptions().map((o) => o.value)).toEqual(['claude-haiku-4-5', 'claude-sonnet-5']);
-    // An empty model field takes the first answer, so a working endpoint is one click from saveable.
-    expect(store.aiForm()?.apiModel).toBe('claude-haiku-4-5');
-
-    // The list answered for that key; a different key may see different models, or none.
-    store.setAiFormField('apiKey', 'sk-other');
-    expect(store.aiDiscoveredModelOptions()).toEqual([]);
-  });
-
-  it('edits a keyed model without seeing its key, and asks for it again only where it must', async () => {
-    // The backend answers whether a key is set and never the key. So the form opens empty, a save
-    // that touched nothing keeps the key, a move of the address needs it again, and listing models
-    // needs it typed — discovery is asked with what it is sent.
-    const saved: AiModelDraft[] = [];
-    const asked: unknown[] = [];
-    const { port } = aiPort({
-      async update(_id, draft) {
-        saved.push(draft);
-      },
-      async discover(query) {
-        asked.push(query);
-        return ['gpt-4o'];
-      },
-    });
-    ports = { models: port };
     const store = mount();
     await store.loadAiModels();
 
-    store.editAiModel('m1');
-    expect(store.aiForm()).toMatchObject({ apiKey: '', apiKeyStored: true });
-    expect(store.aiDiscoverNeedsKey()).toBe(true);
-    await store.discoverAiModels();
-    expect(asked).toEqual([]);
-
-    store.setAiFormField('apiBaseUrl', 'https://openrouter.ai/api/v1');
-    expect(store.aiApiKeyError()).not.toBe('');
-    expect(store.aiFormComplete()).toBe(false);
-    store.setAiFormField('apiBaseUrl', 'https://api.openai.com/v1');
-    expect(store.aiApiKeyError()).toBe('');
-
-    await store.saveAiModel();
-    expect(saved[0].source).not.toHaveProperty('apiKey');
-
-    store.editAiModel('m1');
-    store.setAiFormField('apiKey', 'sk-new');
-    expect(store.aiDiscoverNeedsKey()).toBe(false);
-    await store.discoverAiModels();
-    expect(asked).toEqual([{ protocol: 'openai', baseUrl: 'https://api.openai.com/v1', apiKey: 'sk-new' }]);
-  });
-
-  it('says why a listing failed, and offers nothing to pick', async () => {
-    const { port } = aiPort({
-      async discover() {
-        throw new Error('Anthropic API error 401: invalid x-api-key');
-      },
+    expect(store.aiModels()[0]).toMatchObject({
+      endpointName: 'Ollama 11434',
+      kindLabel: 'Language model',
+      statusText: 'Downloading 30%',
+      ready: false,
     });
-    ports = { models: port };
-    const store = mount();
-
-    store.newAiModel();
-    store.setAiFormField('sourceKind', 'api');
-    await store.discoverAiModels();
-
-    expect(store.error()).toContain('invalid x-api-key');
-    expect(store.aiDiscoveredModelOptions()).toEqual([]);
+    expect(store.aiEndpoints().map((e) => [e.name, e.healthText, e.healthy, e.modelCount])).toEqual([
+      ['Ollama 11434', 'Answering · 1 model', true, 1],
+      ['Remote', 'The key was refused', false, 0],
+    ]);
   });
 
-  it('polls status only for models the backend hosts', async () => {
-    const { port, calls } = aiPort();
-    ports = { models: port };
-    const store = mount();
-
-    await store.loadAiModels();
-    await vi.waitFor(() => expect(store.aiModels().find((m) => m.id === 'm2')?.statusText).toBe('Downloading 30%'));
-
-    // One status call, for the local model. The remote one has nothing to download, and asking
-    // about it would be a round trip whose answer is already known.
-    expect(calls.filter((c) => c === 'status')).toEqual(['status']);
-    expect(store.aiModels().find((m) => m.id === 'm1')?.statusText).toBe('');
-  });
-
-  it('saves a new model as an add, and an edited one as an update', async () => {
+  it('offers servers found on the node’s machine, but not one already added', async () => {
     const { port, calls } = aiPort();
     ports = { models: port };
     const store = mount();
     await store.loadAiModels();
+    await store.detectAiEndpoints();
+
+    expect(store.aiDetectedEndpoints().map((e) => e.label)).toEqual(['Speech server at localhost:8000']);
+
+    await store.addDetectedEndpoint('http://127.0.0.1:8000');
+    expect(calls).toContain('addEndpoint:Speech server 8000:openai-audio:http://127.0.0.1:8000:-');
+  });
+
+  it('gives a server it found the models it serves for each role nothing fills yet', async () => {
+    const { port, calls } = aiPort();
+    ports = { models: port };
+    const store = mount();
+    await store.loadAiModels();
+    await store.detectAiEndpoints();
+
+    await store.addDetectedEndpoint('http://127.0.0.1:8000');
+    // The node has a language model already (`qwen`), so only the embeddings role is filled.
+    expect(calls).toContain('discover:e9');
+    expect(calls.filter((c) => c.startsWith('add:'))).toEqual([
+      'add:nomic-embed-text:latest:e9:nomic-embed-text:latest',
+    ]);
+  });
+
+  it('says where to get a server', () => {
+    ports = { models: aiPort().port };
+    expect(mount().aiInstallLinks()).toEqual([{ label: 'Ollama', url: 'https://ollama.example.test' }]);
+  });
+
+  it('starts a new model on a server that fits, and fills in the recommended model', async () => {
+    const { port, calls } = aiPort({ list: async () => [{ ...qwen, status: { state: 'missing' } }] });
+    ports = { models: port };
+    const store = mount();
+    await store.loadAiModels();
 
     store.newAiModel();
-    store.setAiFormField('name', 'Fresh');
-    store.setAiFormField('presetName', 'mistral_7b');
+    expect(store.aiForm()?.endpointId).toBe('e1');
+    await vi.waitFor(() => expect(store.aiForm()?.remoteModel).toBe('qwen3:8b'));
+    expect(calls).toContain('discover:e1');
+
+    // The server lists what it has, of the kind asked for; the recommended model is not among them,
+    // so it is offered as a download onto the server.
+    expect(store.aiDiscoveredModelOptions().map((o) => o.value)).toEqual(['llama3.2:3b']);
+    expect(store.aiRecommendedModel()).toBe('qwen3:8b');
+    expect(store.aiCanPull()).toBe(true);
+  });
+
+  it('moves the form to a server that can serve the kind chosen', async () => {
+    ports = { models: aiPort().port };
+    const store = mount();
+    await store.loadAiModels();
+
+    store.newAiModel();
+    store.setAiFormField('endpointId', 'e2');
+    expect(store.aiEndpointOptions().map((o) => o.value)).toEqual(['e1', 'e2']);
+
+    store.setAiFormField('kind', 'embedding');
+    expect(store.aiForm()?.endpointId).toBe('e1');
+    expect(store.aiEndpointOptions().map((o) => o.value)).toEqual(['e1']);
+  });
+
+  it('lets go of a model of the wrong kind when the form changes what it is for', async () => {
+    // The form opened on a language model and filled in the recommended one; switching it to
+    // embeddings kept that, and saved an embedding model pointed at a chat model.
+    ports = { models: aiPort().port };
+    const store = mount();
+    await store.loadAiModels();
+    store.newAiModel();
+    await vi.waitFor(() => expect(store.aiForm()?.remoteModel).toBe('qwen3:8b'));
+
+    store.setAiFormField('kind', 'embedding');
+    expect(store.aiForm()?.remoteModel).toBe('nomic-embed-text:latest');
+  });
+
+  it('lets go of a model of the wrong kind before the server has said what it has', async () => {
+    // With discovery still out, the language model stayed in an embedding form, and discovery
+    // finishing kept it too, since the field was not empty.
+    let answer!: (models: { id: string; capabilities: AiCapability[] }[]) => void;
+    const ai = aiPort({ discover: () => new Promise((resolve) => (answer = resolve)) });
+    ports = { models: ai.port };
+    const store = mount();
+    await store.loadAiModels();
+
+    store.editAiModel('m1');
+    store.setAiFormField('kind', 'embedding');
+    expect(store.aiForm()?.remoteModel).toBe('');
+
+    answer([
+      { id: 'nomic-embed-text:latest', capabilities: ['embeddings'] },
+      { id: 'llama3.2:3b', capabilities: ['chat'] },
+    ]);
+    await vi.waitFor(() => expect(store.aiForm()?.remoteModel).toBe('nomic-embed-text:latest'));
+  });
+
+  it('pulls a model, showing the progress the backend reports', async () => {
+    let finish!: () => void;
+    const ai = aiPort({ pullModel: () => new Promise<void>((resolve) => (finish = resolve)) });
+    ports = { models: ai.port };
+    setActiveShellView('settings');
+    const store = mount();
+    await store.loadAiModels();
+    store.newAiModel();
+    await vi.waitFor(() => expect(store.aiForm()?.remoteModel).toBe('qwen3:8b'));
+
+    const pulling = store.pullAiModel();
+    expect(store.aiPullText()).toBe('Downloading qwen3:8b — 0%');
+    expect(store.aiCanPull()).toBe(false);
+
+    ai.status({ endpointId: 'e1', remoteModel: 'qwen3:8b', status: { state: 'pulling', progress: 45 } });
+    expect(store.aiPullText()).toBe('Downloading qwen3:8b — 45%');
+    // The model row on that server follows the same event.
+    expect(store.aiModels()[0].statusText).toBe('Downloading 45%');
+
+    finish();
+    await pulling;
+    expect(store.aiPullText()).toBe('');
+  });
+
+  it('re-reads the models after a failed pull, and keeps the error on screen', async () => {
+    // A failed or timed-out pull left each row on its last "Downloading N%".
+    let fail!: (reason: Error) => void;
+    let listedStatus: AiModel['status'] = { state: 'missing' };
+    const ai = aiPort({
+      list: async () => [{ ...qwen, status: listedStatus }],
+      pullModel: () => new Promise<void>((_resolve, reject) => (fail = reject)),
+    });
+    ports = { models: ai.port };
+    setActiveShellView('settings');
+    const store = mount();
+    await store.loadAiModels();
+    store.newAiModel();
+    await vi.waitFor(() => expect(store.aiForm()?.remoteModel).toBe('qwen3:8b'));
+
+    const pulling = store.pullAiModel();
+    ai.status({ endpointId: 'e1', remoteModel: 'qwen3:8b', status: { state: 'pulling', progress: 45 } });
+    expect(store.aiModels()[0].statusText).toBe('Downloading 45%');
+
+    fail(new Error('pull timed out'));
+    await pulling;
+    await vi.waitFor(() => expect(store.aiModels()[0].statusText).toBe('The server does not have this model'));
+    expect(store.error()).toBe('pull timed out');
+  });
+
+  it('offers no second pull while the server still downloads the model', async () => {
+    // The call can time out while the server goes on downloading; a second pull would start another.
+    const ai = aiPort({
+      list: async () => [{ ...qwen, status: { state: 'pulling', progress: 60 } }],
+      pullModel: async () => {
+        throw new Error('pull timed out');
+      },
+    });
+    ports = { models: ai.port };
+    setActiveShellView('settings');
+    const store = mount();
+    await store.loadAiModels();
+    store.newAiModel();
+    await vi.waitFor(() => expect(store.aiForm()?.remoteModel).toBe('qwen3:8b'));
+
+    expect(store.aiCanPull()).toBe(false);
+  });
+
+  it('offers no second pull from the Add form while the server still downloads the model', async () => {
+    // The guard read saved models only, so a pull started before saving could start twice after a
+    // timeout: no saved row was there to say the server was still downloading.
+    let fail!: (reason: Error) => void;
+    const ai = aiPort({
+      list: async () => [],
+      pullModel: () => new Promise<void>((_resolve, reject) => (fail = reject)),
+    });
+    ports = { models: ai.port };
+    setActiveShellView('settings');
+    const store = mount();
+    await store.loadAiModels();
+    store.newAiModel();
+    await vi.waitFor(() => expect(store.aiForm()?.remoteModel).toBe('qwen3:8b'));
+
+    const pulling = store.pullAiModel();
+    ai.status({ endpointId: 'e1', remoteModel: 'qwen3:8b', status: { state: 'pulling', progress: 45 } });
+    fail(new Error('pull timed out'));
+    await pulling;
+    expect(store.aiCanPull()).toBe(false);
+
+    // The server says how the download ended; a failed one can be tried again.
+    ai.status({ endpointId: 'e1', remoteModel: 'qwen3:8b', status: { state: 'missing' } });
+    expect(store.aiCanPull()).toBe(true);
+  });
+
+  it('lets a download that ended while settings was closed be tried again', async () => {
+    // The server's "still downloading" was kept until the server said how it ended. With settings
+    // closed nobody heard that, so the Add form's model could not be pulled again until a reload.
+    let fail!: (reason: Error) => void;
+    const ai = aiPort({
+      list: async () => [],
+      pullModel: () => new Promise<void>((_resolve, reject) => (fail = reject)),
+    });
+    ports = { models: ai.port };
+    setActiveShellView('settings');
+    const store = mount();
+    await store.loadAiModels();
+    store.newAiModel();
+    await vi.waitFor(() => expect(store.aiForm()?.remoteModel).toBe('qwen3:8b'));
+
+    const pulling = store.pullAiModel();
+    ai.status({ endpointId: 'e1', remoteModel: 'qwen3:8b', status: { state: 'pulling', progress: 45 } });
+    fail(new Error('pull timed out'));
+    await pulling;
+    expect(store.aiCanPull()).toBe(false);
+
+    setActiveShellView(null);
+    ai.status({ endpointId: 'e1', remoteModel: 'qwen3:8b', status: { state: 'missing' } });
+    setActiveShellView('settings');
+    expect(store.aiCanPull()).toBe(true);
+
+    // A download the server is still running says so again, and is not started twice.
+    ai.status({ endpointId: 'e1', remoteModel: 'qwen3:8b', status: { state: 'pulling', progress: 50 } });
+    expect(store.aiCanPull()).toBe(false);
+  });
+
+  it('offers an Ollama for every kind it can pull, before it has a model of that kind', async () => {
+    // A chat-only Ollama was not offered for embeddings, so the download that would give it an
+    // embedding model could not be reached from the form.
+    const chatOnly: AiEndpoint = { ...ollama, capabilities: ['chat'], health: { ...ollama.health, models: [] } };
+    const ai = aiPort({
+      endpoints: async () => [chatOnly, remote],
+      discover: async () => [{ id: 'llama3.2:3b', capabilities: ['chat'] }],
+    });
+    ports = { models: ai.port };
+    const store = mount();
+    await store.loadAiModels();
+    store.newAiModel();
+
+    store.setAiFormField('kind', 'embedding');
+    expect(store.aiForm()?.endpointId).toBe('e1');
+    expect(store.aiEndpointOptions().map((o) => o.value)).toEqual(['e1']);
+    await vi.waitFor(() => expect(store.aiDiscoveredModelHint()).not.toBe(''));
+    store.setAiFormField('remoteModel', 'nomic-embed-text');
+    expect(store.aiCanPull()).toBe(true);
+
+    // An Ollama cannot transcribe, whatever it pulls.
+    store.setAiFormField('kind', 'transcription');
+    expect(store.aiEndpointOptions()).toEqual([]);
+  });
+
+  it('re-reads the models when a server’s health changes', async () => {
+    const ai = aiPort();
+    ports = { models: ai.port };
+    setActiveShellView('settings');
+    const store = mount();
+    await vi.waitFor(() => expect(store.aiEndpoints()).toHaveLength(2));
+    const before = ai.listed();
+
+    ai.health('e2', { state: 'reachable', detail: '', models: ['m'] });
+
+    expect(store.aiEndpoints()[1].healthText).toBe('Answering · 1 model');
+    await vi.waitFor(() => expect(ai.listed()).toBe(before + 1));
+  });
+
+  it('takes a server’s capabilities from its health event, so a server that gains a kind is offered for it', async () => {
+    // Capabilities were read once, when the server was added: a server with only a chat model was
+    // never offered for embeddings, so the download that would give it one could not be reached.
+    const ai = aiPort();
+    ports = { models: ai.port };
+    setActiveShellView('settings');
+    const store = mount();
+    await vi.waitFor(() => expect(store.aiEndpoints()).toHaveLength(2));
+    store.newAiModel();
+    store.setAiFormField('kind', 'embedding');
+    expect(store.aiEndpointOptions().map((o) => o.value)).toEqual(['e1']);
+
+    ai.health('e2', { state: 'reachable', detail: '', models: ['m'] }, ['chat', 'embeddings']);
+
+    expect(store.aiEndpointOptions().map((o) => o.value)).toEqual(['e1', 'e2']);
+  });
+
+  it('keeps a server’s capabilities when its health event carries none', async () => {
+    const ai = aiPort();
+    ports = { models: ai.port };
+    setActiveShellView('settings');
+    const store = mount();
+    await vi.waitFor(() => expect(store.aiEndpoints()).toHaveLength(2));
+
+    ai.health('e1', { state: 'reachable', detail: '', models: ['m'] });
+
+    store.newAiModel();
+    store.setAiFormField('kind', 'embedding');
+    expect(store.aiEndpointOptions().map((o) => o.value)).toEqual(['e1']);
+  });
+
+  it('lists no model of the wrong kind, and says why the list is empty', async () => {
+    // A server with only chat models offered them all as embedding models.
+    const ai = aiPort({ discover: async () => [{ id: 'llama3.2:3b', capabilities: ['chat'] }] });
+    ports = { models: ai.port };
+    const store = mount();
+    await store.loadAiModels();
+    store.newAiModel();
+    await vi.waitFor(() => expect(store.aiDiscoveredModelOptions().map((o) => o.value)).toEqual(['llama3.2:3b']));
+    expect(store.aiDiscoveredModelHint()).toBe('');
+
+    store.setAiFormField('kind', 'embedding');
+
+    expect(store.aiDiscoveredModelOptions()).toEqual([]);
+    expect(store.aiDiscoveredModelHint()).toBe('None of this server’s models are embedding models');
+  });
+
+  it('saves a new model as an add, named after its id when no name was typed, and an edit as an update', async () => {
+    const { port, calls } = aiPort();
+    ports = { models: port };
+    const store = mount();
+    await store.loadAiModels();
+
+    store.newAiModel();
+    await vi.waitFor(() => expect(store.aiForm()?.remoteModel).toBe('qwen3:8b'));
+    store.setAiFormField('remoteModel', 'llama3.2:3b');
     await store.saveAiModel();
 
-    store.editAiModel('m2');
+    store.editAiModel('m1');
     store.setAiFormField('name', 'Renamed');
     await store.saveAiModel();
 
     expect(calls.filter((c) => c.startsWith('add') || c.startsWith('update'))).toEqual([
-      'add:Fresh',
-      'update:m2:Renamed',
+      'add:llama3.2:3b:e1:llama3.2:3b',
+      'update:m1:Renamed',
     ]);
   });
 
-  it('refuses to save a form that is missing what its source needs', async () => {
-    const { port, calls } = aiPort();
+  it('refuses to save a model with no server to run on', async () => {
+    const { port, calls } = aiPort({ endpoints: async () => [] });
     ports = { models: port };
     const store = mount();
+    await store.loadAiModels();
 
     store.newAiModel();
-    store.setAiFormField('name', 'Nameless source');
-    // Source is 'preset' by default and no preset has been chosen.
+    store.setAiFormField('remoteModel', 'qwen3:8b');
     expect(store.aiFormComplete()).toBe(false);
     await store.saveAiModel();
-
     expect(calls.filter((c) => c.startsWith('add'))).toEqual([]);
-    expect(store.aiForm()).not.toBeNull();
   });
 
   it('keeps the form open when the save fails, so the typing is not lost', async () => {
     const { port } = aiPort({
       async add() {
-        throw new Error('model type not supported');
+        throw new Error('the endpoint cannot serve that type');
       },
     });
     ports = { models: port };
     const store = mount();
+    await store.loadAiModels();
 
     store.newAiModel();
     store.setAiFormField('name', 'Fresh');
-    store.setAiFormField('presetName', 'llama_8b');
+    store.setAiFormField('remoteModel', 'llama3.2:3b');
     await store.saveAiModel();
 
     expect(store.aiForm()?.name).toBe('Fresh');
-    expect(store.error()).toBe('model type not supported');
+    expect(store.error()).toBe('the endpoint cannot serve that type');
   });
 
-  it('offers presets for the kind the form is on, and refetches when it changes', async () => {
-    const asked: string[] = [];
-    const { port } = aiPort({
-      async presets(kind) {
-        asked.push(kind);
-        return kind === 'llm' ? ['llama_8b'] : ['whisper_small'];
-      },
-    });
+  it('sets kind and address from a named service, and saves a server under a name made from them', async () => {
+    const { port, calls } = aiPort();
     ports = { models: port };
     const store = mount();
+    await store.loadAiModels();
+
+    store.newAiEndpoint();
+    store.setAiService('llama-server');
+    expect(store.aiEndpointForm()).toMatchObject({ kind: 'llama-server', baseUrl: 'http://127.0.0.1:9931' });
+    store.setAiService('custom');
+    expect(store.aiEndpointForm()).toMatchObject({ kind: 'openai-compatible', baseUrl: 'http://127.0.0.1:9931' });
+    expect(store.aiServiceOptions().at(-1)?.value).toBe('custom');
+
+    await store.saveAiEndpoint();
+    expect(calls).toContain('addEndpoint:OpenAI-compatible 9931:openai-compatible:http://127.0.0.1:9931:-');
+    expect(store.aiEndpointForm()).toBeNull();
+  });
+
+  it('leaves a newer server form open when an earlier save finishes', async () => {
+    // The form can be closed while its save waits on the server; the save finishing closed whichever
+    // form was open by then, past its discard guard.
+    let finish!: () => void;
+    const ai = aiPort({
+      addEndpoint: (draft) => new Promise((resolve) => (finish = () => resolve({ ...ollama, ...draft, id: 'e9' }))),
+    });
+    ports = { models: ai.port };
+    const store = mount();
+    await store.loadAiModels();
+
+    store.newAiEndpoint();
+    store.setAiService('llama-server');
+    const saving = store.saveAiEndpoint();
+    store.closeAiEndpointForm();
+    store.editAiEndpoint('e2');
+    store.setAiEndpointField('name', 'Mine');
+
+    finish();
+    await saving;
+    expect(store.aiEndpointForm()?.name).toBe('Mine');
+  });
+
+  it('leaves a newer model form open when an earlier save finishes', async () => {
+    let finish!: () => void;
+    const ai = aiPort({ add: () => new Promise<void>((resolve) => (finish = resolve)) });
+    ports = { models: ai.port };
+    const store = mount();
+    await store.loadAiModels();
 
     store.newAiModel();
-    await vi.waitFor(() => expect(store.aiPresetOptions()).toEqual([{ label: 'llama_8b', value: 'llama_8b' }]));
+    await vi.waitFor(() => expect(store.aiForm()?.remoteModel).toBe('qwen3:8b'));
+    const saving = store.saveAiModel();
+    store.closeAiForm();
+    store.editAiModel('m1');
+    store.setAiFormField('name', 'Mine');
 
-    store.setAiFormField('kind', 'transcription');
-    await vi.waitFor(() =>
-      expect(store.aiPresetOptions()).toEqual([{ label: 'whisper_small', value: 'whisper_small' }]),
-    );
-    expect(asked).toEqual(['llm', 'transcription']);
+    finish();
+    await saving;
+    expect(store.aiForm()?.name).toBe('Mine');
+  });
+
+  it('says why a context limit it cannot read holds Save', () => {
+    ports = { models: aiPort().port };
+    const store = mount();
+
+    store.newAiEndpoint();
+    store.setAiEndpointField('maxContext', '40k');
+    expect(store.aiEndpointFormComplete()).toBe(false);
+    expect(store.aiMaxContextError()).not.toBe('');
+    store.setAiEndpointField('maxContext', '40960');
+    expect(store.aiMaxContextError()).toBe('');
+  });
+
+  it('edits a keyed server without seeing its key, and asks for it again only where it must', async () => {
+    const { port, calls } = aiPort();
+    ports = { models: port };
+    const store = mount();
+    await store.loadAiModels();
+
+    store.editAiEndpoint('e2');
+    expect(store.aiEndpointForm()).toMatchObject({ apiKey: '', apiKeyStored: true, service: 'anthropic' });
+    expect(store.aiEndpointFormDirty()).toBe(false);
+
+    store.setAiEndpointField('baseUrl', 'https://other.example.test');
+    expect(store.aiApiKeyError()).not.toBe('');
+    expect(store.aiEndpointFormComplete()).toBe(false);
+    store.setAiEndpointField('baseUrl', 'https://api.example.test');
+    expect(store.aiApiKeyError()).toBe('');
+    await store.saveAiEndpoint();
+
+    store.editAiEndpoint('e2');
+    store.setAiEndpointField('apiKeyRemoved', true);
+    await store.saveAiEndpoint();
+
+    expect(calls.filter((c) => c.startsWith('updateEndpoint'))).toEqual([
+      'updateEndpoint:e2:kept',
+      'updateEndpoint:e2:',
+    ]);
+  });
+
+  it('hides the servers from a connection the backend does not show them to', () => {
+    ports = { models: aiPort({ endpoints: undefined, detectEndpoints: undefined }).port };
+    const store = mount();
+    expect(store.canManageAiEndpoints()).toBe(false);
+    expect(store.canManageAi()).toBe(true);
+  });
+});
+
+describe('local AI on this device', () => {
+  const hardware: LocalAiHardware = {
+    os: 'linux',
+    arch: 'x64',
+    cpu: 'Test CPU',
+    ramBytes: 32e9,
+    gpus: [{ vendor: 'amd', type: 'integrated', name: 'Test GPU', vramBytes: 4e9 }],
+    backends: ['cpu', 'vulkan'],
+    memoryBudgetBytes: 19e9,
+    hardwareClass: 'test-class',
+    notes: [],
+  };
+  const plan: LocalAiPlan = {
+    hardwareClass: 'test-class',
+    runtimes: [
+      {
+        id: 'llama-server',
+        version: 'b1',
+        build: 'linux-x64-vulkan',
+        backend: 'vulkan',
+        sizeBytes: 40e6,
+        installed: false,
+        kinds: ['llm', 'embedding'],
+      },
+    ],
+    models: [
+      {
+        kind: 'llm',
+        model: 'test-chat',
+        sizeBytes: 2.5e9,
+        memoryBytes: 3e9,
+        license: 'MIT',
+        installed: false,
+        basis: 'measured',
+        fromClass: 'test-class',
+      },
+    ],
+    unavailable: [],
+    downloadBytes: 2.54e9,
+    totalBytes: 2.54e9,
+    memoryBytes: 3e9,
+    memoryBudgetBytes: 19e9,
+    fits: true,
+    reasons: [],
+  };
+  const notInstalled: LocalAiStatus = {
+    installed: false,
+    installing: false,
+    autostart: true,
+    runtimes: [],
+    models: [],
+  };
+  const running: LocalAiStatus = {
+    installed: true,
+    installing: false,
+    autostart: true,
+    runtimes: [
+      {
+        id: 'llama-server',
+        version: 'b1',
+        build: 'linux-x64-vulkan',
+        kinds: ['llm'],
+        phase: 'running',
+        port: 40001,
+        restarts: 0,
+        detail: '',
+        endpointId: 'local',
+        onGpu: true,
+        gpuBytes: 3e9,
+      },
+    ],
+    models: [{ kind: 'llm', model: 'test-chat', modelId: 'm-local' }],
+  };
+  const managed: AiEndpoint = {
+    id: 'local',
+    name: 'Local llama-server',
+    kind: 'llama-server',
+    baseUrl: 'http://127.0.0.1:40001',
+    hasApiKey: false,
+    capabilities: ['chat'],
+    health: { state: 'reachable', detail: '', models: ['test-chat'] },
+    managed: true,
+  };
+
+  /** A local port whose install waits until the test lets it finish, emitting progress meanwhile. */
+  function localPort(overrides: Partial<LocalAiPort> = {}) {
+    const calls: string[] = [];
+    let status = notInstalled;
+    let emit: ((progress: LocalAiProgress) => void) | null = null;
+    let finish: (() => void) | null = null;
+    const local: LocalAiPort = {
+      hardware: async () => hardware,
+      plan: async () => (status.installed ? { ...plan, downloadBytes: 0 } : plan),
+      status: async () => status,
+      async install() {
+        calls.push('install');
+        await new Promise<void>((resolve) => (finish = resolve));
+        status = running;
+        return status;
+      },
+      async start() {
+        calls.push('start');
+        status = running;
+        return status;
+      },
+      async stop() {
+        calls.push('stop');
+        // As the executor answers: a stopped server is no longer its own, so it has no phase.
+        status = { ...running, runtimes: [{ ...running.runtimes[0], phase: null, onGpu: null }] };
+        return status;
+      },
+      async remove(deleteFiles) {
+        calls.push(`remove:${deleteFiles}`);
+        status = notInstalled;
+      },
+      onProgress(listener) {
+        emit = listener;
+        return () => (emit = null);
+      },
+      ...overrides,
+    };
+    const endpoints: ModelAdminPort = {
+      list: async () => [],
+      endpoints: async () => (status.installed ? [managed] : []),
+      add: async () => {},
+      removeEndpoint: async (id) => void calls.push(`removeEndpoint:${id}`),
+      updateEndpoint: async () => managed,
+      local,
+    };
+    return {
+      models: endpoints,
+      calls,
+      progress: (event: Partial<LocalAiProgress>) =>
+        emit?.({
+          phase: 'download',
+          item: '',
+          itemDoneBytes: 0,
+          itemTotalBytes: 0,
+          doneBytes: 0,
+          totalBytes: 0,
+          detail: '',
+          ...event,
+        }),
+      finish: () => finish?.(),
+      listening: () => emit !== null,
+    };
+  }
+
+  it('stops listening to install progress when the settings close', async () => {
+    setActiveShellView('settings');
+    const local = localPort();
+    ports = { models: local.models };
+    mount();
+    await vi.waitFor(() => expect(local.listening()).toBe(true));
+
+    setActiveShellView(null);
+    expect(local.listening()).toBe(false);
+  });
+
+  it('tracks an install started elsewhere, and drops its bar once a read says it is over', async () => {
+    setActiveShellView('settings');
+    const local = localPort();
+    ports = { models: local.models };
+    const store = mount();
+    await vi.waitFor(() => expect(store.localAi().loaded).toBe(true));
+
+    // Started from the launcher: only its progress says so.
+    local.progress({ phase: 'download', item: 'test-chat', doneBytes: 1e9, totalBytes: 2.54e9 });
+    expect(store.localAi()).toMatchObject({ installing: true, canInstall: false });
+    expect(store.localAi().progress?.percent).toBe(39);
+
+    // The settings closed before its end was heard; the next read says no install runs.
+    await store.loadLocalAi();
+    expect(store.localAi()).toMatchObject({ installing: false, progress: null });
+  });
+
+  it('still says an install failed after the settings were closed and opened again', async () => {
+    // The first-run step says the install carries on; a failure after that was in the shared error
+    // only, which the next read clears as it starts.
+    setActiveShellView('settings');
+    const local = localPort({
+      install: async () => {
+        throw new Error('disk full');
+      },
+    });
+    ports = { models: local.models };
+    const store = mount();
+    await vi.waitFor(() => expect(store.localAi().loaded).toBe(true));
+    await store.installLocalAi();
+
+    // Opening the settings again starts listening afresh: what was under way is dropped, a failure kept.
+    setActiveShellView(null);
+    setActiveShellView('settings');
+    await store.loadLocalAi();
+    expect(store.error()).toBe('');
+    expect(store.localAi().progress).toMatchObject({ text: 'The install failed — disk full', failed: true });
+  });
+
+  it('reads the machine and the plan when the settings open, in words', async () => {
+    setActiveShellView('settings');
+    ports = { models: localPort().models };
+    const store = mount();
+    await vi.waitFor(() => expect(store.localAi().loaded).toBe(true));
+    expect(store.canUseLocalAi()).toBe(true);
+    expect(store.localAi()).toMatchObject({
+      device: 'Test CPU · 32.0 GB memory',
+      gpus: ['Test GPU · integrated · 4.0 GB'],
+      compute: 'Can run models on the GPU with Vulkan',
+      summary: 'Downloads 2.5 GB · fits this device',
+      installLabel: 'Install (2.5 GB)',
+      installed: false,
+      canInstall: true,
+    });
+    expect(store.localAi().items.map((item) => [item.label, item.name, item.sizeText])).toEqual([
+      ['Language model', 'test-chat', '2.5 GB'],
+      ['Model server', 'llama-server b1 · Vulkan', '40 MB'],
+    ]);
+  });
+
+  it('shows an install’s progress while it runs, then the running state and the managed server', async () => {
+    setActiveShellView('settings');
+    const local = localPort();
+    ports = { models: local.models };
+    const store = mount();
+    await vi.waitFor(() => expect(store.localAi().loaded).toBe(true));
+
+    const installing = store.installLocalAi();
+    expect(store.localAi().installing).toBe(true);
+    expect(store.localAi().canInstall).toBe(false);
+    local.progress({
+      phase: 'download',
+      item: 'test-chat',
+      itemDoneBytes: 1e9,
+      itemTotalBytes: 2.5e9,
+      doneBytes: 1e9,
+      totalBytes: 2.54e9,
+    });
+    expect(store.localAi().progress).toEqual({
+      percent: 39,
+      text: 'Downloading test-chat — 1.0 GB of 2.5 GB',
+      failed: false,
+    });
+    // A late event never moves the bar back within one install.
+    local.progress({ phase: 'download', item: 'test-chat', doneBytes: 0.5e9, totalBytes: 2.54e9 });
+    expect(store.localAi().progress?.percent).toBe(39);
+
+    local.finish();
+    await installing;
+    expect(store.localAi()).toMatchObject({ installed: true, installing: false, running: true, progress: null });
+    expect(store.localAi().runtimes).toEqual([
+      {
+        key: 'llama-server',
+        label: 'Language model · llama-server b1 · Vulkan',
+        stateText: 'Running · on the GPU (3.0 GB)',
+        ok: true,
+        tone: 'success',
+      },
+    ]);
+    expect(store.aiEndpoints()[0]).toMatchObject({ kindLabel: 'This device', editable: false });
+  });
+
+  it('keeps a failed install’s reason on screen', async () => {
+    setActiveShellView('settings');
+    const local = localPort();
+    ports = { models: local.models };
+    const store = mount();
+    await vi.waitFor(() => expect(store.localAi().loaded).toBe(true));
+    local.progress({ phase: 'failed', detail: 'checksum mismatch' });
+    expect(store.localAi().progress).toEqual({
+      percent: 0,
+      text: 'The install failed — checksum mismatch',
+      failed: true,
+    });
+  });
+
+  it('stops, starts and removes, with or without the files', async () => {
+    setActiveShellView('settings');
+    const local = localPort();
+    ports = { models: local.models };
+    const store = mount();
+    await vi.waitFor(() => expect(store.localAi().loaded).toBe(true));
+    await store.startLocalAi();
+    expect(store.localAi().running).toBe(true);
+
+    await store.stopLocalAi();
+    expect(store.localAi()).toMatchObject({ running: false, anyRunning: false });
+    expect(store.localAi().runtimes[0].stateText).toBe('Not running');
+
+    await store.removeLocalAi(true);
+    expect(local.calls).toEqual(['start', 'stop', 'remove:true']);
+    expect(store.localAi().installed).toBe(false);
+    expect(store.aiEndpoints()).toEqual([]);
+  });
+
+  it('starts a bar over when the settings open again, rather than holding what it heard before', async () => {
+    setActiveShellView('settings');
+    const local = localPort({ status: async () => ({ ...notInstalled, installing: true }) });
+    ports = { models: local.models };
+    const store = mount();
+    await vi.waitFor(() => expect(store.localAi().loaded).toBe(true));
+    const download = (doneBytes: number) => ({
+      phase: 'download' as const,
+      item: 'test-chat',
+      itemDoneBytes: doneBytes,
+      itemTotalBytes: 2.5e9,
+      doneBytes,
+      totalBytes: 2.54e9,
+    });
+    local.progress(download(1.524e9));
+    expect(store.localAi().progress?.percent).toBe(60);
+
+    // Closed while the install ran, so its end went unheard; a retry of the same plan has the same total.
+    setActiveShellView(null);
+    setActiveShellView('settings');
+    local.progress(download(0.0254e9));
+    expect(store.localAi().progress?.percent).toBe(1);
+  });
+
+  it('re-reads what an install changed when one it did not start ends', async () => {
+    setActiveShellView('settings');
+    const local = localPort();
+    ports = { models: local.models };
+    const store = mount();
+    await vi.waitFor(() => expect(store.localAi().loaded).toBe(true));
+    // The launcher's install, or the backend's own, ran meanwhile: the backend now has it installed.
+    const port = local.models;
+    const status = vi.spyOn(port.local as LocalAiPort, 'status').mockResolvedValue(running);
+    const plan = vi.spyOn(port.local as LocalAiPort, 'plan');
+    const endpoints = vi.spyOn(port, 'endpoints').mockResolvedValue([managed]);
+    const list = vi.spyOn(port, 'list');
+
+    // Nothing is in flight from here; only its end is heard.
+    local.progress({ phase: 'done', item: '', doneBytes: 0, totalBytes: 0 });
+    await vi.waitFor(() => expect(store.localAi().installed).toBe(true));
+    for (const read of [status, plan, endpoints, list]) expect(read).toHaveBeenCalled();
+    expect(store.localAi()).toMatchObject({ installing: false, running: true });
+    expect(store.aiEndpoints()).toHaveLength(1);
+  });
+
+  it('does not edit or remove a managed server as a server', async () => {
+    setActiveShellView('settings');
+    const local = localPort();
+    ports = { models: local.models };
+    const store = mount();
+    await vi.waitFor(() => expect(store.localAi().loaded).toBe(true));
+    await store.startLocalAi();
+    expect(store.aiEndpoints()).toHaveLength(1);
+
+    store.editAiEndpoint('local');
+    expect(store.aiEndpointForm()).toBeNull();
+    await store.removeAiEndpoint('local');
+    expect(local.calls).not.toContain('removeEndpoint:local');
+  });
+
+  it('offers no install to a connection that may only look', async () => {
+    const local = localPort({ install: undefined, start: undefined, stop: undefined, remove: undefined });
+    ports = { models: local.models };
+    const store = mount();
+    expect(store.canUseLocalAi()).toBe(true);
+    expect(store.canConfigureLocalAi()).toBe(false);
+  });
+
+  it('has no local AI where the backend has none', () => {
+    ports = { models: { list: async () => [] } };
+    const store = mount();
+    expect(store.canUseLocalAi()).toBe(false);
+    expect(store.localAi().loaded).toBe(false);
+  });
+});
+
+describe('a first run’s AI step', () => {
+  const notInstalled: LocalAiStatus = {
+    installed: false,
+    installing: false,
+    autostart: true,
+    runtimes: [],
+    models: [],
+  };
+
+  /** A node as its operator sees it, with whatever models and local AI the test gives it. */
+  function node(options: { models?: AiModel[]; local?: Partial<LocalAiStatus>; operator?: boolean } = {}) {
+    const operator = options.operator ?? true;
+    const local: LocalAiPort = {
+      plan: async () => {
+        throw new Error('not read here');
+      },
+      status: async () => ({ ...notInstalled, ...options.local }),
+      ...(operator ? { install: async () => notInstalled } : {}),
+    };
+    const models: ModelAdminPort = {
+      list: async () => options.models ?? [],
+      ...(operator
+        ? {
+            add: async () => {},
+            endpoints: async () => [],
+            detectEndpoints: async () => [],
+            local,
+          }
+        : {}),
+    };
+    return models;
+  }
+
+  const model: AiModel = {
+    id: 'm1',
+    name: 'Test chat',
+    kind: 'llm',
+    endpointId: 'e1',
+    remoteModel: 'test-chat',
+    status: { state: 'ready' },
+    isDefault: true,
+  };
+
+  it('holds a first run on the step where the node has no AI and its operator can set it up', async () => {
+    ports = { models: node() };
+    const store = mount();
+    expect(store.aiSetupOptions()).toEqual(['local', 'server', 'skip']);
+    expect(await store.openAiStep()).toBe(true);
+    expect(session.held).toBe(1);
+  });
+
+  it('goes straight on where the node has a model already', async () => {
+    ports = { models: node({ models: [model] }) };
+    expect(await mount().openAiStep()).toBe(false);
+    expect(session.held).toBe(0);
+  });
+
+  it('goes straight on where local AI is installed already', async () => {
+    ports = { models: node({ local: { installed: true } }) };
+    expect(await mount().openAiStep()).toBe(false);
+  });
+
+  it('goes straight on for a managed user, who could only skip', async () => {
+    ports = { models: node({ operator: false }) };
+    const store = mount();
+    expect(store.aiSetupOptions()).toEqual(['skip']);
+    expect(await store.openAiStep()).toBe(false);
+    expect(session.held).toBe(0);
+  });
+
+  it('goes straight on where the backend has no AI at all', async () => {
+    ports = {};
+    expect(await mount().openAiStep()).toBe(false);
+  });
+
+  it('finishes setting up on skip, and a second account on that node is not asked again', async () => {
+    ports = { models: node() };
+    const store = mount();
+    expect(await store.openAiStep()).toBe(true);
+    store.skipAiSetup();
+    expect(session.finished).toBe(1);
+
+    // The step runs only for a new agent, so the answer that counts is the node's: the next account
+    // made against it has a new id, and its operator already said no AI for now.
+    session.agent = 'did:test:second-account';
+    expect(await mount().openAiStep()).toBe(false);
+    expect(session.held).toBe(1);
+  });
+
+  it('asks an account on another node, whatever this one answered', async () => {
+    ports = { models: node() };
+    expect(await mount().openAiStep()).toBe(true);
+    mount().skipAiSetup();
+
+    session.agent = 'did:test:second-account';
+    session.url = 'https://other-node.test';
+    expect(await mount().openAiStep()).toBe(true);
+    expect(session.held).toBe(2);
+  });
+
+  it('keeps no answer where the node has no address to keep it under', async () => {
+    session.url = undefined;
+    ports = { models: node() };
+    const store = mount();
+    expect(await store.openAiStep()).toBe(true);
+    store.skipAiSetup();
+    expect(Object.keys(localStorage).filter((key) => key.startsWith('we.aiSetup'))).toEqual([]);
+
+    session.agent = 'did:test:second-account';
+    expect(await mount().openAiStep()).toBe(true);
+  });
+
+  it('clears its time limit once the node has answered', async () => {
+    ports = { models: node() };
+    const store = mount();
+    vi.useFakeTimers();
+    try {
+      const before = vi.getTimerCount();
+      expect(await store.openAiStep()).toBe(true);
+      expect(vi.getTimerCount()).toBe(before);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('keeps a set-up answer too, and closes a form left open', async () => {
+    ports = { models: node() };
+    const store = mount();
+    await store.openAiStep();
+    store.newAiEndpoint();
+    store.finishAiSetup();
+    expect(session.finished).toBe(1);
+    expect(store.aiEndpointForm()).toBeNull();
+    expect(localStorage.getItem('we.aiSetup.answer:https://node.test')).toBe('set-up');
+  });
+
+  it('reads the AI sections while the step is up, as it does while the settings are open', async () => {
+    let listed = 0;
+    let detected = 0;
+    ports = {
+      models: {
+        ...node(),
+        list: async () => {
+          listed += 1;
+          return [];
+        },
+        detectEndpoints: async () => {
+          detected += 1;
+          return [];
+        },
+      },
+    };
+    session.step = 'setUpAi';
+    mount();
+    await vi.waitFor(() => expect(listed).toBeGreaterThan(0));
+    expect(detected).toBe(1);
   });
 });
 
@@ -1094,7 +1974,7 @@ describe('loading on demand', () => {
   });
 
   it('loads trust and apps when the settings overlay is open', async () => {
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     const { port, calls } = stubRuntime();
     ports = { runtime: port };
 
@@ -1105,7 +1985,7 @@ describe('loading on demand', () => {
   });
 
   it('asks for nothing the backend cannot answer', async () => {
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     const calls: string[] = [];
     // Trust only — the apps load must not be attempted.
     ports = {
@@ -1124,7 +2004,7 @@ describe('loading on demand', () => {
   // Network metrics stay manual: a diagnostic blob nobody asked for is the same mistake as
   // loading everything at boot, one level down.
   it('never fetches network metrics on open', async () => {
-    activeShellView = 'settings';
+    setActiveShellView('settings');
     const { port, calls } = stubRuntime({
       networkMetrics: async () => {
         calls.push('networkMetrics');
