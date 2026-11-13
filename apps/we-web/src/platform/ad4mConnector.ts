@@ -1,5 +1,6 @@
 import { getAd4mConnect } from '@coasys/ad4m-connect';
 import type { BackendConnector, BackendInitResult } from '@we/app-shell/shared';
+import { registerHostChromeReserve } from '@we/app-shell/solid';
 import { capabilitiesFromToken, createAd4mBackendPorts, holdsOperatorCredential } from '@we/backend-ad4m';
 import weSeed from '@we/seed-file';
 
@@ -26,6 +27,15 @@ export const ad4mConnector: BackendConnector = {
       hosting: true,
       capabilities: [{ with: { domain: '*', pointers: ['*'] }, can: ['*'] }],
     });
+
+    /*
+      `ad4m-connect` pins its settings button to the window's bottom-right corner — fixed, 34px at
+      10px in — and it is the only thing down there that no template declared. A floating panel
+      knows nothing of it and resolves its bottom edge into the button's band, which is how a
+      composer's send control ended up under the watermark. The corner is this host's own chrome,
+      so the host publishes the reserve: the button's band plus a gap's worth of air around it.
+    */
+    registerHostChromeReserve('ad4m-connect', { bottom: 54 });
 
     // Resolves when the user has connected and authorised WE — the connect UI is up until then, so
     // this is where a web boot waits.
