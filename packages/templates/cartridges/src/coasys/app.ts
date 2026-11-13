@@ -211,7 +211,9 @@ const chatPanels: TemplatePanel[] = [
     node: { type: 'AgentChat', props: { inputs: { $: 'panel.inputs' } } },
     title: 'AI chat',
     snap: 'right',
-    box: { width: 440 },
+    // A chat is tall: header, a scroll of turns and a composer. Width alone seeds a 16:9 card —
+    // 248px at 440 wide — and the list between the fixed rows came out two lines high.
+    box: { width: 440, height: 540 },
     min: { width: 320 },
     open: false,
   },

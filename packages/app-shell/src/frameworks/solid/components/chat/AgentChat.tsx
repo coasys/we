@@ -457,7 +457,13 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
               </we-text>
             </Row>
           </Show>
-          <div ref={messagesEnd} />
+          {/*
+            `scroll-margin-block-end` buys the last line its air: a zero-height sentinel at the
+            list's end scrolls flush to the port's edge, and the scroll container's own bottom
+            padding does not extend scrollable overflow — without the margin the newest line can
+            land with a hairline of glyph under the fold.
+          */}
+          <div ref={messagesEnd} style={{ 'scroll-margin-block-end': 'var(--we-space-300, 12px)' }} />
         </Column>
 
         {/* The capability boundary: the plain sentence, the real error folded under Details. */}
