@@ -22456,7 +22456,7 @@ export const seedBundles: Bundle[] = [
                                                             type: '$if',
                                                             props: {
                                                               condition: {
-                                                                $: 'count(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }))',
+                                                                $: 'count(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.dids }))',
                                                               },
                                                               else: {
                                                                 type: 'we-text',
@@ -22479,7 +22479,7 @@ export const seedBundles: Bundle[] = [
                                                                     type: '$each',
                                                                     props: {
                                                                       items: {
-                                                                        $: 'voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }).map(v, v.did)',
+                                                                        $: 'voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.dids }).map(v, v.did)',
                                                                       },
                                                                       as: 'voiceDid',
                                                                     },
@@ -22501,14 +22501,14 @@ export const seedBundles: Bundle[] = [
                                                                                 props: {
                                                                                   size: 'xs',
                                                                                   image: {
-                                                                                    $: '(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).avatar',
+                                                                                    $: '(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.dids }), { did: voiceDid })).avatar',
                                                                                   },
                                                                                   hash: { $: 'voiceDid' },
                                                                                   initials: {
-                                                                                    $: '(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).name',
+                                                                                    $: '(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.dids }), { did: voiceDid })).name',
                                                                                   },
                                                                                   icon: {
-                                                                                    $: "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).pretend ? 'robot' : ''",
+                                                                                    $: "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.dids }), { did: voiceDid })).pretend ? 'robot' : ''",
                                                                                   },
                                                                                 },
                                                                               },
@@ -22521,7 +22521,7 @@ export const seedBundles: Bundle[] = [
                                                                                     props: { truncate: true },
                                                                                     children: [
                                                                                       {
-                                                                                        $: "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).mine ? (find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).name + ' (you)' : (find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).name",
+                                                                                        $: "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.dids }), { did: voiceDid })).mine ? (find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.dids }), { did: voiceDid })).name + ' (you)' : (find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.dids }), { did: voiceDid })).name",
                                                                                       },
                                                                                     ],
                                                                                   },
@@ -22533,7 +22533,7 @@ export const seedBundles: Bundle[] = [
                                                                                     },
                                                                                     children: [
                                                                                       {
-                                                                                        $: "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).cards + ' ' + plural((find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).cards, 'card', 'cards') + ' · average ' + (find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).mean",
+                                                                                        $: "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.dids }), { did: voiceDid })).cards + ' ' + plural((find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.dids }), { did: voiceDid })).cards, 'card', 'cards') + ' · average ' + (find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.dids }), { did: voiceDid })).mean",
                                                                                       },
                                                                                     ],
                                                                                   },
@@ -22547,7 +22547,7 @@ export const seedBundles: Bundle[] = [
                                                                                 },
                                                                                 children: [
                                                                                   {
-                                                                                    $: "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).share + '%'",
+                                                                                    $: "(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.dids }), { did: voiceDid })).share + '%'",
                                                                                   },
                                                                                 ],
                                                                               },
@@ -22559,7 +22559,7 @@ export const seedBundles: Bundle[] = [
                                                                                   onClick: {
                                                                                     $setLocal: 'voices',
                                                                                     value: {
-                                                                                      $: 'voicesParam({ param: local.voices, only: voiceDid, voices: voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }) })',
+                                                                                      $: 'voicesParam({ param: local.voices, only: voiceDid, voices: voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.dids }) })',
                                                                                     },
                                                                                   },
                                                                                 },
@@ -22576,7 +22576,7 @@ export const seedBundles: Bundle[] = [
                                                                               max: 100,
                                                                               step: 5,
                                                                               value: {
-                                                                                $: '(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.did }), { did: voiceDid })).weight',
+                                                                                $: '(find(voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.dids }), { did: voiceDid })).weight',
                                                                               },
                                                                               onInput: {
                                                                                 $setLocal: 'voices',
