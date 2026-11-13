@@ -1518,7 +1518,8 @@ fn a_make_whose_publish_failed_is_published_on_try_again() {
         panic!("expected a pending identity, got {stopped:?}");
     };
     assert!(reason.contains("not published yet"), "{reason}");
-    assert!(!reason.contains(&words[0]), "the reason never names a word");
+    // The phrase, not one word: a single word ("phone", "again") can be part of the reason's text.
+    assert!(!reason.contains(&words.join(" ")), "the reason never names the words");
     assert_eq!(
         phone.identity.pending_identity().unwrap(),
         Some(did.clone())
