@@ -353,6 +353,17 @@ describe('tile packing', () => {
     expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2 + STAGE_CONTROLS_PX);
   });
 
+  it('reserves the status line and its gap in the height it asks for', () => {
+    /*
+      The controls column is two things, not one: the bar's 56px, and the `call-status` slot above
+      it, which opens a *second* `gap: '300'` the moment anything is contributed — the wheel
+      indicator, a problem line. A reserve that counted only the bar came out ~50px short exactly
+      then, and "fit to content" clipped the controls it was sizing for. The ~2px is the honest
+      remainder: text metrics the layout rounds up.
+    */
+    expect(STAGE_CONTROLS_PX).toBe(STAGE_GAP_PX + 56 + STAGE_GAP_PX + 36 + 2);
+  });
+
   it('fits to the arrangement it is in, rather than solving a new one', () => {
     // With the width fixed, any column count can be made to fit perfectly — so a "fit" that
     // re-solved could rearrange the call under a click that only asked to remove the empty band.

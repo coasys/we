@@ -170,15 +170,20 @@ export const STAGE_PADDING_PX = 12;
 export const STAGE_GAP_PX = 12;
 
 /**
- * How much height the control row takes under the tiles, so "fit to content" counts it.
+ * How much height everything under the tiles takes, so "fit to content" counts all of it.
  *
- * `STAGE_GAP_PX` between the grid and it, plus a row of `md` controls (40px) in a surface padded
- * by `200` a side (8px twice). Derived rather than chosen, for the same reason as the padding
- * above: the aspect `stageBid` carries subtracts it so the height the host lands on fits the
- * pictures *and* the bar beneath them, and it has to follow the schema's own sizes when they
- * change.
+ * `STAGE_GAP_PX` between the grid and the controls column, then the column itself, which is two
+ * things rather than one: the `call-status` slot above the bar — a 36px line when anything is
+ * contributed, plus the *second* `STAGE_GAP_PX` it opens between it and the row — then a row of
+ * `md` controls (40px) in a surface padded by `200` a side (8px twice). The `+ 2` is the honest
+ * remainder: text metrics the layout rounds up, and a reserve short by a fraction clips the
+ * bottom button border.
+ *
+ * Derived rather than chosen, for the same reason as the padding above: the aspect `stageBid`
+ * carries subtracts it so the height the host lands on fits the pictures *and* the bar beneath
+ * them, and it has to follow the schema's own sizes when they change.
  */
-export const STAGE_CONTROLS_PX = STAGE_GAP_PX + 56;
+export const STAGE_CONTROLS_PX = STAGE_GAP_PX + 56 + STAGE_GAP_PX + 36 + 2;
 
 /** The tile aspect the whole stage is laid out from. */
 const TILE_ASPECT = 16 / 9;
