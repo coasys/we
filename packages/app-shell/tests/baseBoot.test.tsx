@@ -8,7 +8,7 @@
  */
 import type { BackendConnector } from '@shared/backend/types';
 import type { BundlePieces } from '@shared/bundles/bundlePieces';
-import type { BaseConnection, BaseHost } from '@shared/platform/baseHost';
+import type { BaseConnection, BaseExecutorState, BaseHost } from '@shared/platform/baseHost';
 import type { PlatformAdapter } from '@shared/platform/types';
 import { render, screen } from '@solidjs/testing-library';
 import type { IdentityCustodyView } from '@we/backend-shared';
@@ -187,6 +187,29 @@ describe('BaseBoot', () => {
     expect(store().stage()).toBe('session');
   });
 
+  it('takes the page back from the app when the executor stops under it, and starts it again', async () => {
+    let listener: ((s: BaseExecutorState) => void) | null = null;
+    const start = vi.fn(async () => {});
+    const { store } = boot({
+      executor: {
+        state: () => ({ phase: 'ready' }),
+        subscribe: (l) => ((listener = l), () => {}),
+        start,
+      },
+    });
+    await until(() => mounted.apps === 1);
+    listener!({ phase: 'failed', reason: 'The executor was stopped outside the app.', stopped: true });
+    await until(() => screen.queryByTestId('we-app') === null);
+    expect(store().stage()).toBe('failed');
+    expect(screen.getByText('The executor was stopped outside the app.')).toBeTruthy();
+    // WE's own base, under the deployment's name: no "Electron", no "Try again" for a stop.
+    expect(screen.getByText(`Start ${store().brand().name} again`)).toBeTruthy();
+    expect(screen.queryByText('Try again')).toBeNull();
+    // The button's action (a synthetic click is refused by the gesture gate, as it should be).
+    await store().retry();
+    expect(start).toHaveBeenCalledTimes(1);
+  });
+
   it("says a failed Make made the identity, in the deployment's own base, rather than that nothing changed", async () => {
     const empty: IdentityCustodyView = {
       did: null,
@@ -291,7 +314,7 @@ describe('BaseBoot', () => {
     render(() => <BaseBoot host={host} platform={PLATFORM} seed={SEED} onStore={(s) => (store = s)} />);
     await until(() => screen.queryByText(/could not read its identity/) !== null, 15_000);
     expect(store.stage()).toBe('connect');
-    expect(screen.getByText('Where is your Coasys?')).toBeTruthy();
+    expect(screen.getByText('Where should Coasys run for you?')).toBeTruthy();
     expect(screen.getByText('Try again').closest('we-button')).toBeTruthy();
     // The press itself needs a trusted event (the base app's gesture gate), which jsdom cannot make:
     // what the drawn control invokes is read from the deployment's own base, and invoked as a press would.

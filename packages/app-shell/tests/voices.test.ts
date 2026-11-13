@@ -20,7 +20,8 @@ describe('voices', () => {
     const rows = voices({ summary, param: 'did:key:ben=50', profiles, me: 'did:key:ana' });
     expect(rows.map((row) => [row.name, row.weight, row.share, row.mine, row.pretend])).toEqual([
       ['Ana', 100, 40, true, false],
-      [expect.stringContaining('did:key:ben'), 50, 20, false, false],
+      // No profile: a person, never their DID.
+      ['Someone', 50, 20, false, false],
       ['Pretend 1', 100, 40, false, true],
     ]);
   });

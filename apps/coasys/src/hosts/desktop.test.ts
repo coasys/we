@@ -281,6 +281,15 @@ describe('bridgedExecutor', () => {
     expect(seen).toEqual([executor.state()]);
   });
 
+  it('keeps that a failed executor ran and stopped, and only a true stopped', async () => {
+    const b = bridge();
+    const executor = bridgedExecutor(b);
+    b.push({ phase: 'failed', reason: 'Stopped outside the app.', stopped: true });
+    expect(executor.state()).toEqual({ phase: 'failed', reason: 'Stopped outside the app.', stopped: true });
+    b.push({ phase: 'failed', reason: 'x', stopped: 'yes' } as never);
+    expect(executor.state()).toEqual({ phase: 'failed', reason: 'x' });
+  });
+
   it('drops an answer that a change it heard first is newer than', async () => {
     const b = bridge();
     const executor = bridgedExecutor(b);

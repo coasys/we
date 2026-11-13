@@ -16,6 +16,26 @@
       "icon": "hexagon",
       "role": "app",
       "frame": { "left": 72 },
+      "panels": [
+        {
+          "id": "chat-global",
+          "node": { "type": "AgentChat", "props": { "inputs": { "$": "panel.inputs" } } },
+          "title": "AI chat",
+          "snap": "right",
+          "box": { "width": 440, "height": 540 },
+          "min": { "width": 320 },
+          "open": false
+        },
+        {
+          "id": "chat-space",
+          "node": { "type": "AgentChat", "props": { "inputs": { "$": "panel.inputs" } } },
+          "title": "AI chat",
+          "snap": "right",
+          "box": { "width": 440, "height": 540 },
+          "min": { "width": 320, "height": 360 },
+          "open": false
+        }
+      ],
       "themeId": "glow",
       "themeIds": ["glow", "theme"]
     },
@@ -60,52 +80,120 @@
                     },
                     "children": [
                       {
-                        "type": "Row",
-                        "props": {
-                          "height": "72px",
-                          "flex": "0 0 auto",
-                          "ay": "center",
-                          "gap": "300",
-                          "pl": "calc((72px - 28px) / 2)",
-                          "minWidth": "0",
-                          "width": "100%",
-                          "cursor": "pointer",
-                          "onClick": { "$invoke": "shellStore.openShellView", "args": ["landing-page"] }
-                        },
+                        "type": "Column",
+                        "props": { "width": "100%" },
                         "children": [
                           {
-                            "type": "we-image",
+                            "type": "Row",
                             "props": {
-                              "src": { "$": "templateStore.brand.mark" },
-                              "alt": "Coasys",
-                              "width": "28px",
-                              "height": "28px",
-                              "flexShrink": 0
-                            }
+                              "height": "72px",
+                              "flex": "0 0 auto",
+                              "ay": "center",
+                              "gap": "300",
+                              "pl": "calc((72px - 28px) / 2)",
+                              "minWidth": "0",
+                              "width": "100%",
+                              "cursor": "pointer",
+                              "onClick": { "$invoke": "shellStore.openShellView", "args": ["landing-page"] }
+                            },
+                            "children": [
+                              {
+                                "type": "we-image",
+                                "props": {
+                                  "src": { "$": "templateStore.brand.mark" },
+                                  "alt": "Coasys",
+                                  "width": "28px",
+                                  "height": "28px",
+                                  "flexShrink": 0
+                                }
+                              },
+                              {
+                                "type": "$if",
+                                "props": {
+                                  "condition": { "$": "local.expanded" },
+                                  "enterTransition": [
+                                    { "type": "reveal", "axis": "inline", "duration": 250 },
+                                    { "type": "fade", "duration": 150 }
+                                  ],
+                                  "exitTransition": [
+                                    { "type": "reveal", "axis": "inline", "duration": 250 },
+                                    { "type": "fade", "duration": 150 }
+                                  ],
+                                  "then": {
+                                    "type": "we-text",
+                                    "props": {
+                                      "variant": "body",
+                                      "fontWeight": "semibold",
+                                      "letterSpacing": "tight",
+                                      "truncate": true
+                                    },
+                                    "children": [{ "$": "templateStore.brand.name" }]
+                                  }
+                                }
+                              }
+                            ]
                           },
                           {
-                            "type": "$if",
+                            "type": "we-button",
                             "props": {
-                              "condition": { "$": "local.expanded" },
-                              "enterTransition": [
-                                { "type": "reveal", "axis": "inline", "duration": 250 },
-                                { "type": "fade", "duration": 150 }
-                              ],
-                              "exitTransition": [
-                                { "type": "reveal", "axis": "inline", "duration": 250 },
-                                { "type": "fade", "duration": 150 }
-                              ],
-                              "then": {
-                                "type": "we-text",
-                                "props": {
-                                  "variant": "body",
-                                  "fontWeight": "semibold",
-                                  "letterSpacing": "tight",
-                                  "truncate": true
-                                },
-                                "children": [{ "$": "templateStore.brand.name" }]
+                              "variant": "ghost",
+                              "size": "lg",
+                              "width": "100%",
+                              "height": "auto",
+                              "ax": "start",
+                              "ay": "center",
+                              "gap": "200",
+                              "py": "300",
+                              "px": { "$": "local.railInset" },
+                              "label": "AI chat",
+                              "onClick": { "$invoke": "chatStore.openChat" },
+                              "bg": { "$": "false ? 'accent-soft' : ''" },
+                              "color": { "$": "false ? 'accent-text' : 'text-muted'" },
+                              "hoverProps": {
+                                "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }"
+                              },
+                              "activeProps": {
+                                "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }"
                               }
-                            }
+                            },
+                            "children": [
+                              {
+                                "type": "Row",
+                                "props": {
+                                  "width": "2rem",
+                                  "height": "2rem",
+                                  "ax": "center",
+                                  "ay": "center",
+                                  "flexShrink": "0"
+                                },
+                                "children": [{ "type": "we-icon", "props": { "name": "sparkle", "size": "sm" } }]
+                              },
+                              {
+                                "type": "$if",
+                                "props": {
+                                  "condition": { "$": "local.expanded" },
+                                  "enterTransition": [
+                                    { "type": "reveal", "axis": "inline", "duration": 250 },
+                                    { "type": "fade", "duration": 150 }
+                                  ],
+                                  "exitTransition": [
+                                    { "type": "reveal", "axis": "inline", "duration": 250 },
+                                    { "type": "fade", "duration": 150 }
+                                  ],
+                                  "then": {
+                                    "type": "Row",
+                                    "props": { "gap": "200", "ay": "center", "minWidth": "0" },
+                                    "children": [
+                                      {
+                                        "type": "we-text",
+                                        "props": { "truncate": true, "fontSize": "300" },
+                                        "children": ["AI chat"]
+                                      }
+                                    ]
+                                  }
+                                }
+                              }
+                            ]
                           }
                         ]
                       },
@@ -1035,7 +1123,8 @@
                     ]
                   }
                 }
-              }
+              },
+              { "type": "AgentChatSheet" }
             ]
           }
         }
@@ -1183,7 +1272,42 @@
                 {
                   "type": "Column",
                   "props": { "px": "300", "pb": "500" },
-                  "children": [{ "type": "Search", "props": { "placeholder": "Find or ask" } }]
+                  "$localState": { "findQuery": { "type": "string", "initial": "" } },
+                  "children": [
+                    {
+                      "type": "we-input",
+                      "props": {
+                        "placeholder": "Find or ask",
+                        "value": { "$": "local.findQuery" },
+                        "onInput": { "$setLocal": "findQuery", "value": { "$": "event.detail" } },
+                        "onKeyDown": {
+                          "$if": {
+                            "condition": {
+                              "$": "event.detail.key == 'Enter' && !event.detail.isComposing && trim(local.findQuery)"
+                            },
+                            "then": [
+                              {
+                                "$invoke": "chatStore.openChat",
+                                "args": [
+                                  {
+                                    "$": "{ perspectiveUuid: datasetStore.currentDataset.id, spaceName: spaceStore.currentSpace.name, draft: local.findQuery }"
+                                  }
+                                ]
+                              },
+                              { "$setLocal": "findQuery", "value": "" }
+                            ]
+                          }
+                        }
+                      },
+                      "children": [
+                        {
+                          "type": "we-icon",
+                          "slot": "start",
+                          "props": { "name": "magnifying-glass", "color": "text-muted", "mr": "200" }
+                        }
+                      ]
+                    }
+                  ]
                 },
                 {
                   "type": "$if",
@@ -18481,6 +18605,7 @@
             "title": "Space settings",
             "home": "inspector",
             "snap": "right",
+            "grow": 1,
             "order": 0,
             "fixed": true,
             "open": false
@@ -29733,7 +29858,7 @@
     "type": "Column",
     "meta": {
       "name": "Coasys before you sign in",
-      "description": "Your identity, and where your Coasys is, before anything is connected.",
+      "description": "Your identity, and where Coasys runs for you, before anything is connected.",
       "icon": "hexagon",
       "role": "base",
       "themeId": "glow"
@@ -29866,13 +29991,17 @@
                       {
                         "type": "we-text",
                         "props": { "variant": "heading-xl", "tag": "h1" },
-                        "children": ["Coasys could not start"]
+                        "children": [
+                          { "$": "baseStore.executorStopped ? 'Coasys has stopped' : 'Coasys could not start'" }
+                        ]
                       },
                       {
                         "type": "we-text",
                         "props": { "color": "text-muted" },
                         "children": [
-                          "The part of Coasys that keeps your spaces on this computer stopped before it was ready."
+                          {
+                            "$": "baseStore.executorStopped ? 'The part of Coasys that keeps your spaces on this computer is not running, so nothing here can be opened until it starts again.' : 'The part of Coasys that keeps your spaces on this computer stopped before it was ready.'"
+                          }
                         ]
                       }
                     ]
@@ -29894,7 +30023,7 @@
                           "loading": { "$": "baseStore.busy" },
                           "onClick": { "$invoke": "baseStore.retry" }
                         },
-                        "children": ["Try again"]
+                        "children": [{ "$": "baseStore.executorStopped ? 'Start Coasys again' : 'Try again'" }]
                       }
                     ]
                   }
@@ -30597,14 +30726,14 @@
                       {
                         "type": "we-text",
                         "props": { "variant": "heading-xl", "tag": "h1" },
-                        "children": ["Where is your Coasys?"]
+                        "children": ["Where should Coasys run for you?"]
                       },
                       {
                         "type": "we-text",
                         "props": { "color": "text-muted" },
                         "children": [
                           {
-                            "$": "baseStore.did != '' ? `Your spaces live where you keep them. This ${baseStore.deviceNoun} speaks for ${baseStore.didShort}.` : 'Your spaces live where you keep them. Choose where to open them from.'"
+                            "$": "baseStore.hostKind == 'phone' ? 'Coasys keeps your spaces on a computer you choose: one of your own, or a host you trust.' : 'Coasys keeps your spaces on a computer you choose: this one, or a host you trust.'"
                           }
                         ]
                       }
@@ -31058,7 +31187,7 @@
                           {
                             "type": "we-text",
                             "props": { "flex": "1", "minWidth": "0" },
-                            "children": [{ "$": "baseStore.didShort != '' ? baseStore.didShort : 'None yet'" }]
+                            "children": [{ "$": "baseStore.did != '' ? 'Set up' : 'None yet'" }]
                           }
                         ]
                       },

@@ -369,7 +369,7 @@ describe('botRows', () => {
       'danger-text',
     );
     expect(botRow({ ...view(), key: { keyId: 'd3', verdict: 'valid', can: ['read'], expires: null } }).keyLine).toBe(
-      'Key d3 valid · may read',
+      'Key valid · may read',
     );
   });
 

@@ -543,7 +543,7 @@ function body(screen: Screen): Child[] {
       const ticks = screen.devices.map((d) => {
         const box = el('input', { type: 'checkbox' });
         box.checked = d.lockOut;
-        return { keyId: d.keyId, box, label: d.name ? `${d.name} (${d.keyId})` : d.keyId };
+        return { keyId: d.keyId, box, label: d.name || d.keyId };
       });
       const name = textField('Name this computer', '', 'Laptop, Desktop at home…');
       const go = () =>
@@ -668,7 +668,8 @@ function body(screen: Screen): Child[] {
       ];
     case 'joined':
     case 'master-taken':
-      return [el('div', { className: 'link', textContent: screen.did })];
+      // The identifier is shown once, when the identity is made; a device joining it needs no copy.
+      return [];
     case 'asked':
       return whoAsks(screen);
     case 'linked':

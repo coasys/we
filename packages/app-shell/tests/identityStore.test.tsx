@@ -415,7 +415,7 @@ describe('deviceStore', () => {
     await flush();
     expect(stores.devices.devices().map((d) => [d.label, d.canRevoke])).toEqual([
       ['This computer', false],
-      ['Device d2', true],
+      ['Unnamed device', true],
     ]);
     expect(stores.devices.canManage()).toBe(false);
 
