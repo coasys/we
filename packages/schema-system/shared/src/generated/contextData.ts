@@ -3797,6 +3797,8 @@ export const contextData: ContextData = {
     { name: 'clipboard', state: {}, actions: ['copy'], needsArgs: ['copy'] },
   ],
   shellComponents: [
+    'AgentChat',
+    'AgentChatSheet',
     'AiPanel',
     'CredentialField',
     'EditingBar',

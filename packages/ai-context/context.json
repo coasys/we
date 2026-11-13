@@ -8552,6 +8552,8 @@
     }
   ],
   "shellComponents": [
+    "AgentChat",
+    "AgentChatSheet",
     "AiPanel",
     "CredentialField",
     "EditingBar",
