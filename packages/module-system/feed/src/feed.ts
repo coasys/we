@@ -26,7 +26,7 @@
  * event (its `createdAt`, its author), and `extractedFrom` is where it came from; nothing extra is
  * written. Records nobody extracted are grouped by author the same way: "Ann added a task".
  */
-import { lineContent, repliesInclude, threadLines } from '@we/messages';
+import { lineContent, repliesInclude, SPOKEN, threadLines } from '@we/messages';
 import type { RecordQuery } from '@we/module-shared';
 
 type Row = Record<string, unknown>;
@@ -93,6 +93,12 @@ export interface FeedWindowOptions {
   shown: number;
   /** Anchored at the oldest end rather than the newest. */
   fromStart: boolean;
+  /**
+   * Whether a call's spoken lines are in the window — this reader's setting. Off, they are dropped
+   * as they are read rather than after the cut: the window is filled with the rows it will draw, so
+   * a call that spoke more lines than it holds does not leave it looking empty and unable to page.
+   */
+  spoken?: boolean;
   /** The kinds of record an activity row can be about. Empty draws messages only. */
   activityTypes: string[];
   /** Records still awaiting a decision, by id. */
@@ -287,7 +293,16 @@ export async function readFeedWindow(
 
   // A source that filled its page may hold more than it answered with.
   let filled = loose.length >= shown;
-  let lines: FeedLine[] = threadLines({ rows: loose, newestFirst: !fromStart }).map((row) => toLine(row, '', ''));
+  /*
+    A spoken line this reader keeps hidden goes here, before the cut — only what the window can
+    draw counts toward filling it (and toward a later call being out of reach). A reply stays: its
+    `typed` or empty source is not `spoken`, and its quote was resolved from the spoken parent on
+    the page just now.
+  */
+  const drawn = (row: FeedLine) => options.spoken !== false || row.source !== SPOKEN;
+  let lines: FeedLine[] = threadLines({ rows: loose, newestFirst: !fromStart })
+    .map((row) => toLine(row, '', ''))
+    .filter(drawn);
   let reachedCalls = 0;
   for (const call of calls) {
     const sorted = [...lines].sort((a, b) => (fromStart ? timeOf(a) - timeOf(b) : timeOf(b) - timeOf(a)));
@@ -304,7 +319,9 @@ export async function readFeedWindow(
     const said = await find('TextBlock', page(callId));
     if (said.length >= shown) filled = true;
     lines = lines.concat(
-      threadLines({ rows: said, newestFirst: !fromStart }).map((row) => toLine(row, callId, titles.get(callId) ?? '')),
+      threadLines({ rows: said, newestFirst: !fromStart })
+        .map((row) => toLine(row, callId, titles.get(callId) ?? ''))
+        .filter(drawn),
     );
   }
 

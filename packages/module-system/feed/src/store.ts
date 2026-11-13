@@ -44,6 +44,11 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     spaceRoot: deps.spaceRoot,
     records,
     interpretation,
+    /*
+      The same choice the list's filter draws — into the read, so lines it hides do not fill the
+      window before it is cut, and flipping the switch reads the window again.
+    */
+    showSpoken: () => settings?.().showCallTranscripts === true,
     write: (collection, text, marks) =>
       writeMessage({ id: collection, relation: 'children', entity: 'CollectionBlock' }, text, marks),
   });
