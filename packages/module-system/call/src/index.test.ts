@@ -434,6 +434,20 @@ describe('where the bar lives', () => {
     // space all over again.
     expect(callModule.contributes?.reserve).toBeUndefined();
   });
+
+  it('wears the host’s surface rather than wrapping itself in a second', () => {
+    /*
+      `dockFrame` already renders every panel inside a `$surface` — it is how the bar reads
+      `surface.tier`, and the duplicate underneath bought nothing but a second container-query
+      box the theme had to style twice. One surface per panel, the host's own.
+    */
+    const stage = stageNode();
+    const surfaces = walk(stage).filter((node) => node.type === '$surface');
+    expect(surfaces, 'a second $surface inside the panel the host already surfaces').toHaveLength(0);
+    // And the bar still reads the tier the host's own surface publishes — that is the one thing
+    // the removed wrapper was load-bearing for.
+    expect(JSON.stringify(stage)).toContain('surface.tier');
+  });
 });
 
 /**
