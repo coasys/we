@@ -1241,6 +1241,22 @@ const moreMenu: SchemaNode = {
         { type: '$slot', props: { anchor: CALL_MENU_ANCHOR } },
         { type: 'we-divider' },
         /*
+          The gear, folded in. Below `base` the row drops it — at 390px a square that is not mute,
+          camera or Leave is a square too many, and its seat is what clipped Leave beside the
+          back-to-call control. The same tier, negated, so exactly one of gear and line exists.
+        */
+        {
+          type: '$if',
+          props: {
+            condition: { $: "surface.tier == 'base'" },
+            then: menuAction({
+              icon: 'gear',
+              label: 'Call settings…',
+              action: 'modules.call.toggleCallSettings',
+            }),
+          },
+        },
+        /*
           Which microphone and camera this agent is sending.
 
           In the menu rather than beside the mute button, and the distinction the bar's own docblock
@@ -1367,10 +1383,17 @@ const callSettingsPopover: SchemaNode = {
     condition: { $: 'modules.call.active' },
     then: {
       type: 'Column',
-      $localState: { open: { type: 'boolean', initial: false }, confirmSwitch: { type: 'boolean', initial: false } },
+      /*
+        Only `confirmSwitch` is local: `open` moved to the store as `settingsOpen`, because the
+        gear is not the popover's only opener any more — below `base` the More menu's "Call
+        settings…" is, and a menu line cannot write a `$localState` declared here.
+      */
+      $localState: { confirmSwitch: { type: 'boolean', initial: false } },
       children: [
-        // Trigger button — gear icon
-        {
+        // Trigger button — gear icon, while the row has room for it. Below `base` it folds into
+        // the More menu, which is where its seat went: at 390px a square that is not mute, camera
+        // or Leave is a square too many.
+        whenRoomy({
           type: 'we-tooltip',
           props: { content: 'Call settings', placement: 'bottom' },
           children: [
@@ -1379,17 +1402,17 @@ const callSettingsPopover: SchemaNode = {
               props: {
                 square: true,
                 variant: 'ghost',
-                onClick: { $setLocal: 'open', value: { $: '!local.open' } },
+                onClick: { $invoke: 'modules.call.toggleCallSettings' },
               },
               children: [{ type: 'we-icon', props: { name: 'gear' } }],
             },
           ],
-        },
+        }),
         // Popover body
         {
           type: '$if',
           props: {
-            condition: { $: 'local.open' },
+            condition: { $: 'modules.call.settingsOpen' },
             then: {
               type: 'Column',
               props: {
@@ -1418,7 +1441,7 @@ const callSettingsPopover: SchemaNode = {
                         square: true,
                         size: 'xs',
                         variant: 'ghost',
-                        onClick: { $setLocal: 'open', value: false },
+                        onClick: { $invoke: 'modules.call.closeCallSettings' },
                       },
                       children: [{ type: 'we-icon', props: { name: 'x' } }],
                     },

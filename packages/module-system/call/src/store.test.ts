@@ -158,6 +158,26 @@ describe('what the call still decides about its own video', () => {
     expect(store.stageOpen()).toBe(false);
   });
 
+  it('opens and closes its settings through the store, so the menu can reach them too', () => {
+    /*
+      The gear folds into the More menu below `base` — and a menu line cannot write a `$localState`
+      declared in a sibling subtree, which is what `local.open` was. The flag lives here now, with
+      the same lifecycle as the rest of the bar's plumbing: `toggleCallSettings` flips it,
+      `closeCallSettings` lowers it, and a call that ends takes it down with it.
+    */
+    const store = makeStore();
+    expect(store.settingsOpen()).toBe(false);
+
+    store.toggleCallSettings();
+    expect(store.settingsOpen()).toBe(true);
+    store.toggleCallSettings();
+    expect(store.settingsOpen()).toBe(false);
+
+    store.toggleCallSettings();
+    store.closeCallSettings();
+    expect(store.settingsOpen()).toBe(false);
+  });
+
   it('re-asks the host for the stage on every way back to it, even while already open', () => {
     /*
       `stageReveal` is the panel declaration's `reveal` key: a counter the host watches, because
@@ -284,6 +304,9 @@ describe('what a template may reach', () => {
       'stageOverflow',
       'tileFaces',
       'localAudio',
+      'settingsOpen',
+      'toggleCallSettings',
+      'closeCallSettings',
     ]) {
       expect(surface[name], name).toBeUndefined();
     }

@@ -260,6 +260,71 @@ describe('the More menu', () => {
 });
 
 /**
+ * The gear, below `base`: a 390px bar has no room for it, but the settings still have to be
+ * reachable — which is the same job the menu already does for screen share, Video and solo.
+ *
+ * "Fold the gear into More below the narrow breakpoint" is also what unclips Leave: at `base` the
+ * row holds mute, camera, the contributed slot, More, the count and Leave and nothing else, so the
+ * back-to-call control of the elsewhere bar fits beside them.
+ */
+describe('the gear below the narrow breakpoint', () => {
+  /** The control row — the one holding the contributed-controls slot as a direct child. */
+  const row = (): SchemaNode =>
+    walk(chrome()).find(
+      (node) =>
+        node.type === 'Row' &&
+        ((node.children ?? []) as SchemaNode[]).some(
+          (child) => child?.type === '$slot' && props(child).anchor === 'call-controls',
+        ),
+    ) as SchemaNode;
+
+  const gear = (): SchemaNode =>
+    walk(row()).find(
+      (node) =>
+        node.type === 'we-button' && walk(node).some((icon) => icon.type === 'we-icon' && props(icon).name === 'gear'),
+    ) as SchemaNode;
+
+  it('leaves the row below `base`, where its seat costs Leave', () => {
+    // The trigger is gated on roomy — not removed, or the settings would open with no way in.
+    const trigger = gear();
+    expect(trigger, 'no gear in the bar at all').toBeDefined();
+    const gate = lineage(row(), trigger)?.find(
+      (node) => node.type === '$if' && JSON.stringify(props(node).condition).includes('surface.tier'),
+    );
+    expect(JSON.stringify(props(gate)?.condition)).toBe(JSON.stringify({ $: "surface.tier != 'base'" }));
+  });
+
+  it('keeps Call settings in the menu at the width that drops it', () => {
+    /*
+      The line exists *because* the gear is gone — so it is gated on the same tier, negated, and
+      reaches the same popover through the store: a menu line cannot write the `local.open` the
+      gear used to hold, which is why the flag moved.
+    */
+    const menu = walk(chrome()).find((node) => node.type === 'we-menu') as SchemaNode;
+    const line = walk(menu).find(
+      (node) =>
+        node.type === 'we-menu-item' &&
+        JSON.stringify(props(node).onSelect).includes('modules.call.toggleCallSettings'),
+    ) as SchemaNode;
+    expect(line, 'no Call settings line in the menu').toBeDefined();
+    const gate = lineage(menu, line)?.find(
+      (node) => node.type === '$if' && JSON.stringify(props(node).condition).includes('surface.tier'),
+    );
+    expect(JSON.stringify(props(gate)?.condition)).toBe(JSON.stringify({ $: "surface.tier == 'base'" }));
+    // And it is a pick-and-dismiss line, like the other actions — not a toggle.
+    expect(props(line).dismiss).toBe(true);
+  });
+
+  it('opens the popover off the store, which the menu can reach', () => {
+    const popover = walk(chrome()).find((node) => JSON.stringify(node).includes('Call settings')) as SchemaNode;
+    expect(JSON.stringify(popover)).toContain('modules.call.settingsOpen');
+    // Nothing in it may still write the local the gear used to own — two flags, one panel, is a
+    // desync waiting for the second press.
+    expect(JSON.stringify(popover)).not.toContain("$setLocal: 'open'");
+  });
+});
+
+/**
  * The readouts the bar dropped.
  *
  * Two icons duplicated what the settings popover already says in words: a broadcast/graph glyph for

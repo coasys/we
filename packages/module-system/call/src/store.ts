@@ -364,6 +364,13 @@ export function createCallStore(deps: ModuleStoreDeps) {
    */
   const [stageReveal, setStageReveal] = signal(0);
   /**
+   * Whether the call-settings popover is up — a store flag because its openers live in two
+   * subtrees: the gear the row draws while it has room, and the menu line that replaces it below
+   * `base`. A `$localState` on the gear's column answered the first of those and could not answer
+   * the second — a menu line cannot write a local declared in a sibling subtree.
+   */
+  const [settingsOpen, setSettingsOpen] = signal(false);
+  /**
    * Every way back to the call ends here: show the stage, and tell the host to show it too.
    *
    * The bump is what makes a second press mean anything — `setVisible(true)` alone is a no-op once
@@ -1436,6 +1443,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     setCallRecord(null);
     setVisible(false);
     setTilesHidden(false);
+    setSettingsOpen(false);
     setFocusedId(null);
     focusIsManual = false;
     sharingPeers = new Set();
@@ -2375,6 +2383,13 @@ export function createCallStore(deps: ModuleStoreDeps) {
      */
     stageReveal,
     /**
+     * Whether the call-settings popover is up — the gear's flag, now the menu line's too.
+     *
+     * Unmarked plumbing like `stageOpen`: a space template has no business reaching into the call's
+     * chrome, and it could not — `modules.call.*` outside the chrome surface is empty.
+     */
+    settingsOpen,
+    /**
      * Show the video. The panel declaration's `show` — a template's `meta.panels` entry naming this
      * module's stage calls it to open it, since the module owns the flag the host would otherwise
      * have set itself. Idempotent, like `goToCall`'s use of the same setter.
@@ -2887,6 +2902,16 @@ export function createCallStore(deps: ModuleStoreDeps) {
     toggleStage: () => setTilesHidden(!tilesHidden()),
     /** Put the video away. The panel declaration's `close`, so the titlebar has a way to dismiss it. */
     closeStage: () => setVisible(false),
+    /**
+     * Open or close the call-settings popover — the gear while the row is roomy, the menu line it
+     * folds into below `base`.
+     *
+     * Unmarked, like the stage plumbing beside it: chrome-tier vocabulary a fragment calls, not
+     * state a template asks for.
+     */
+    toggleCallSettings: () => setSettingsOpen(!settingsOpen()),
+    /** Close the popover outright — the panel's own ×, and teardown's. */
+    closeCallSettings: () => setSettingsOpen(false),
 
     /**
      * Give this participant the stage, or take it back if they already have it.
