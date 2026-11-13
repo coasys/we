@@ -26,7 +26,14 @@ import {
   type SpaceStarter,
   type TemplateSchema,
 } from '@we/schema-shared';
-import type { Fixture, FixtureAgent, FixtureRecord, FixtureShape, FixtureTheme } from '@we/template-fixtures';
+import type {
+  Fixture,
+  FixtureAgent,
+  FixtureRecord,
+  FixtureShape,
+  FixtureSignalType,
+  FixtureTheme,
+} from '@we/template-fixtures';
 
 export interface Cartridge {
   id: string;
@@ -61,8 +68,10 @@ export interface Cartridge {
    */
   starters?: SpaceStarter[];
   sample: {
-    space: { name: string; description: string; avatar?: string };
+    space: Fixture['space'];
     agents: FixtureAgent[];
+    /** The reactions the sample's signals are instances of — the space's own vocabulary. */
+    signalTypes?: FixtureSignalType[];
     records: FixtureRecord[];
     /** Where a preview should land. */
     route: string;
@@ -80,6 +89,7 @@ export function toFixture(cartridge: Cartridge): Fixture {
     templateId: cartridge.shell.id,
     space: { ...cartridge.sample.space, enabledViews: cartridge.sections.map((section) => section.id) },
     agents: cartridge.sample.agents,
+    signalTypes: cartridge.sample.signalTypes,
     content: [],
     shapes: cartridge.shapes,
     records: cartridge.sample.records,
