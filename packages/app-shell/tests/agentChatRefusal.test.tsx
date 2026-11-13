@@ -98,7 +98,8 @@ describe('the refusal card', () => {
             tool: 'note_create',
             outcome: 'error',
             refused: true,
-            error: 'Capability is not matched: capability domain perspective pointer uuid-other is not covered',
+            error:
+              'Capability is not matched: capability domain perspective pointer aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee is not covered',
           },
         ],
       },

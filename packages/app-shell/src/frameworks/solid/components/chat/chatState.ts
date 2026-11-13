@@ -18,19 +18,38 @@ export function lastAsk(messages: AgentConversationMessage[]): string {
   return users[users.length - 1]?.text ?? '';
 }
 
+/** A perspective id where an error names one — the executor spells them out in refusals. */
+const UUID_IN_TEXT = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i;
+
 /**
- * The capability refusal the last settled reply ended on, or null. Read off the reply's own error
- * or a step the backend flagged `refused` — the real "Capability is not matched" line, shown as it
- * arrived.
+ * Whether a refused step reached past the chat's own boundary. In the global chat every refusal is
+ * the account's boundary, so it counts. In a space chat only a refusal naming *another*
+ * perspective does: a step refused for an agent-wide tool (no uuid, or this space's own) is the
+ * boundary being narrower than the tool, not the reply having reached outside the space — and a
+ * reply that went on to answer shows no card for it.
  */
-export function refusalOf(messages: AgentConversationMessage[]): string | null {
+function reachedOutside(error: string | undefined, perspectiveUuid: string | undefined): boolean {
+  if (!perspectiveUuid) return true;
+  const named = error?.match(UUID_IN_TEXT)?.[0];
+  return named !== undefined && named.toLowerCase() !== perspectiveUuid.toLowerCase();
+}
+
+/**
+ * The capability refusal the last settled reply ended on, or null. Read off the reply's own
+ * `refused` mark — the backend's flag that the reply itself was refused — or a step that reached
+ * outside the chat's own perspective. A refused step recovered from inside the space (its reply
+ * answered anyway) names nothing foreign and shows no card.
+ */
+export function refusalOf(messages: AgentConversationMessage[], perspectiveUuid?: string): string | null {
   const reply = [...messages].reverse().find((m) => m.role === 'assistant' && m.status && m.status !== 'running');
   if (!reply) return null;
-  if ((reply.error ?? '').includes(CAPABILITY_REFUSAL)) return reply.error!;
-  if (reply.steps?.some((s) => s.refused)) {
-    return reply.steps.find((s) => s.refused)?.error ?? CAPABILITY_REFUSAL;
+  // The flag is the adapter's word; the error itself is what every adapter wrote before it — read
+  // either as the reply itself refused.
+  if (reply.refused || (reply.error ?? '').includes(CAPABILITY_REFUSAL)) {
+    return reply.error ?? CAPABILITY_REFUSAL;
   }
-  return null;
+  const outside = reply.steps?.find((s) => s.refused && reachedOutside(s.error, perspectiveUuid));
+  return outside ? (outside.error ?? CAPABILITY_REFUSAL) : null;
 }
 
 /**

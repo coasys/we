@@ -463,6 +463,123 @@ describe('the AD4M conversations port', () => {
     expect(pushes.length).toBe(2);
   });
 
+  it('flags a reply the boundary refused outright — a refused step is not the reply failing', async () => {
+    const refused = conversationOf([
+      row({ role: 'assistant', status: 'failed', error: 'Capability is not matched: agent', seq: 1 }),
+    ]);
+    expect(refused[0].refused).toBe(true);
+    const recovered = conversationOf([
+      row({ role: 'assistant', content: text('answered anyway'), status: 'done', seq: 1 }),
+      row({
+        role: 'tool',
+        content: tool('agent_who_am_i'),
+        status: 'failed',
+        error: 'Capability is not matched: agent',
+        seq: 2,
+      }),
+    ]);
+    expect(recovered[0].refused).toBeUndefined();
+    expect(recovered[0].steps?.[0].refused).toBe(true);
+  });
+
+  it('says nothing for events that land before the first read — then says the whole transcript', async () => {
+    let handler: ((event: unknown) => void) | undefined;
+    const ai = {
+      ...fakeAi(),
+      sessionMessages: vi.fn(async () => [
+        row({ id: 'm1', role: 'user', content: text('q'), seq: 1 }),
+        row({ id: 'm2', role: 'assistant', content: text('done'), status: 'done', seq: 2 }),
+      ]),
+      onSessionChanged: vi.fn((h: (e: unknown) => void) => {
+        handler = h;
+        return () => {};
+      }),
+    };
+    const port = createAd4mAgentConversations({ ai } as never);
+    const pushes: string[][] = [];
+    port.follow({ id: 's1' }, (messages) => pushes.push(messages.map((m) => m.id)));
+
+    // An event racing the read used to emit its lone row as if that were the conversation.
+    handler!({
+      sessionId: 's1',
+      kind: 'message',
+      session: null,
+      message: row({ id: 'm3', role: 'user', content: text('late'), seq: 3 }),
+    });
+    expect(pushes).toEqual([]);
+    await vi.waitFor(() => expect(pushes.length).toBe(1));
+    expect(pushes[0]).toEqual(['m1', 'm2', 'm3']);
+  });
+
+  it('answers a deleted event with an empty transcript, once, and listens no more', async () => {
+    let handler: ((event: unknown) => void) | undefined;
+    const ai = {
+      ...fakeAi(),
+      sessionMessages: vi.fn(async () => [row({ id: 'm1', role: 'user', content: text('q'), seq: 1 })]),
+      onSessionChanged: vi.fn((h: (e: unknown) => void) => {
+        handler = h;
+        return () => {};
+      }),
+    };
+    const port = createAd4mAgentConversations({ ai } as never);
+    const pushes: number[] = [];
+    port.follow({ id: 's1' }, (messages) => pushes.push(messages.length));
+    await vi.waitFor(() => expect(pushes).toEqual([1]));
+
+    handler!({ sessionId: 's1', kind: 'deleted', session: null, message: null });
+    expect(pushes).toEqual([1, 0]);
+    handler!({
+      sessionId: 's1',
+      kind: 'message',
+      session: null,
+      message: row({ role: 'user', content: text('x'), seq: 9 }),
+    });
+    expect(pushes).toEqual([1, 0]);
+  });
+
+  it('keeps asking while a reply runs — a settle the socket missed lands on the next read', async () => {
+    vi.useFakeTimers();
+    try {
+      const ai = {
+        ...fakeAi(),
+        // The read fails as long as the socket pretends to be down, then answers the settled row.
+        sessionMessages: vi
+          .fn()
+          .mockImplementationOnce(async () => [
+            row({ id: 'm1', role: 'user', content: text('q'), seq: 1 }),
+            row({ id: 'm2', role: 'assistant', content: text(''), status: 'running', seq: 2 }),
+          ])
+          .mockRejectedValueOnce(new Error('socket down'))
+          .mockImplementation(async () => [
+            row({ id: 'm1', role: 'user', content: text('q'), seq: 1 }),
+            row({ id: 'm2', role: 'assistant', content: text('done!'), status: 'done', seq: 2 }),
+          ]),
+      };
+      const port = createAd4mAgentConversations({ ai } as never);
+      const pushes: (string | undefined)[][] = [];
+      port.follow({ id: 's1' }, (messages) => pushes.push(messages.map((m) => m.status)));
+
+      await vi.advanceTimersByTimeAsync(0);
+      expect(pushes).toEqual([[undefined, 'running']]);
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      // While it still says running, the transcript is read again — the missed settle arrives
+      // on the read after the failed one, not on an event that never came.
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(ai.sessionMessages).toHaveBeenCalledTimes(2);
+      expect(pushes).toEqual([[undefined, 'running']]);
+      await vi.advanceTimersByTimeAsync(3000);
+      expect(pushes.at(-1)).toEqual([undefined, 'done']);
+      const callsAtDone = ai.sessionMessages.mock.calls.length;
+
+      // Nothing left running: the poll is done too.
+      await vi.advanceTimersByTimeAsync(6000);
+      expect(ai.sessionMessages).toHaveBeenCalledTimes(callsAtDone);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('answers a node without ai.session* as unavailable', async () => {
     const ai = fakeAi();
     ai.sessionList = vi.fn(async () => {

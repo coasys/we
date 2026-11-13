@@ -116,6 +116,11 @@ export interface AgentConversationMessage {
   createdAt: number;
   status?: AgentReplyStatus;
   error?: string;
+  /**
+   * The reply itself was refused outright — e.g. a capability the session does not hold —
+   * not merely a step that was refused and recovered from.
+   */
+  refused?: boolean;
   steps?: AgentStep[];
 }
 

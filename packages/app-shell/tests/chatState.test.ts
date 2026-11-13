@@ -66,6 +66,40 @@ describe('refusalOf — the capability boundary, as the real error', () => {
   });
 });
 
+describe('a refused step inside a space chat — foreign reach or boundary doing its job', () => {
+  const SPACE = '11111111-2222-3333-4444-555555555555';
+  const OTHER = 'aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee';
+  const replied = (error: string) => [
+    msg({ role: 'user', text: 'who am I here?' }),
+    msg({
+      role: 'assistant',
+      status: 'done',
+      text: 'You are Ada.',
+      steps: [{ tool: 'agent_who_am_i', outcome: 'error', error, refused: true }],
+    }),
+  ];
+
+  it('shows the card only when the refused step reached past the space on screen', () => {
+    // A step refused for an agent-wide tool names no perspective — the reply answered anyway.
+    expect(refusalOf(replied('Capability is not matched: agent'), SPACE)).toBeNull();
+    // A step refused for the space's own perspective is the boundary in the right place.
+    expect(refusalOf(replied(`capability domain perspective pointer ${SPACE} is not covered`), SPACE)).toBeNull();
+    // Naming another space is the reach the card describes.
+    expect(refusalOf(replied(`capability domain perspective pointer ${OTHER} is not covered`), SPACE)).toBe(
+      `capability domain perspective pointer ${OTHER} is not covered`,
+    );
+  });
+
+  it('shows it for a reply the backend flagged refused, whichever space it sat in', () => {
+    const messages = [
+      msg({ role: 'user', text: 'q' }),
+      msg({ role: 'assistant', status: 'failed', refused: true, error: CAPABILITY_REFUSAL }),
+    ];
+    expect(refusalOf(messages, SPACE)).toBe(CAPABILITY_REFUSAL);
+    expect(refusalOf(messages)).toBe(CAPABILITY_REFUSAL);
+  });
+});
+
 describe('the orange write mark', () => {
   it('is a call that wrote and finished — running and failed writes do not count', () => {
     expect(isWroteStep({ tool: 'instance_create', outcome: 'ok', wrote: true })).toBe(true);

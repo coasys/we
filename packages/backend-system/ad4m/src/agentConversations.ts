@@ -175,6 +175,7 @@ export function conversationOf(rows: AISessionMessage[]): AgentConversationMessa
     } else if (row.role === 'assistant') {
       const status = replyStatus(row.status);
       const error = row.error ?? undefined;
+      const refused = status !== 'running' && (error ?? '').includes('Capability is not matched');
       reply = {
         id: row.id,
         role: 'assistant',
@@ -182,6 +183,7 @@ export function conversationOf(rows: AISessionMessage[]): AgentConversationMessa
         createdAt: toMs(row.createdAt),
         status,
         ...(error ? { error } : {}),
+        ...(refused ? { refused: true } : {}),
         steps: [],
       };
       out.push(reply);
@@ -313,24 +315,55 @@ export function createAd4mAgentConversations(client: Ad4mClient): AgentConversat
 
     follow(session, onChange) {
       let stopped = false;
+      /*
+        Nothing is said until the first read lands: events arriving before it are kept but held,
+        so nobody is shown a transcript the subscription built up piecemeal.
+      */
+      let ready = false;
       const rows = new Map<string, AISessionMessage>();
       const emit = () => {
-        if (!stopped) onChange(conversationOf([...rows.values()]));
+        if (!stopped && ready) onChange(conversationOf([...rows.values()]));
       };
 
-      // Subscribe before the first read, so a change landing mid-fetch is not lost: events
-      // upsert whole rows, and whatever raced the fetch is already in the map when it lands.
       const unsubscribe = ai.onSessionChanged((event) => {
         if (stopped || event.sessionId !== session.id) return;
+        if (event.kind === 'deleted') {
+          // The conversation is gone — that is a complete answer, first read or not.
+          rows.clear();
+          ready = true;
+          emit();
+          stopped = true;
+          unsubscribe();
+          return;
+        }
         if (event.kind === 'message' && event.message) {
           rows.set(event.message.id, event.message);
           emit();
+          schedule();
         }
       });
 
-      allMessages(session.id, () => stopped)
-        .then((first) => {
-          for (const row of first) {
+      /*
+        A reply marked `running` is asked for again every few seconds until it is not — the poll
+        is what reconnect hands back to: events the socket missed never arrive, but the read sees
+        the settle that happened while it was down. A read that itself fails (the socket still
+        down) is not the end: the reply still says running, so the poll stays armed.
+      */
+      const POLL_MS = 3000;
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      const running = () => [...rows.values()].some((row) => row.role === 'assistant' && row.status === 'running');
+      const schedule = () => {
+        if (stopped || timer !== undefined || !running()) return;
+        timer = setTimeout(() => {
+          timer = undefined;
+          void read().then(schedule);
+        }, POLL_MS);
+      };
+
+      async function read() {
+        try {
+          const page = await allMessages(session.id, () => stopped);
+          for (const row of page) {
             const seen = rows.get(row.id);
             /*
               Statuses only move forward (running → a settled end), so a snapshot taken before a
@@ -339,12 +372,20 @@ export function createAd4mAgentConversations(client: Ad4mClient): AgentConversat
             if (seen && seen.status !== 'running' && row.status === 'running') continue;
             rows.set(row.id, row);
           }
+          ready = true;
           emit();
-        })
-        .catch((error: unknown) => console.warn('agent conversations: could not read the conversation', error));
+        } catch (error: unknown) {
+          if (!stopped) {
+            console.warn('agent conversations: could not read the conversation', error);
+          }
+        }
+      }
+
+      void read().then(schedule);
 
       return () => {
         stopped = true;
+        if (timer !== undefined) clearTimeout(timer);
         unsubscribe();
       };
     },

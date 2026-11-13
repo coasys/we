@@ -238,7 +238,7 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
   const lastAskText = createMemo(() => lastAsk(messages()));
 
   /** A refusal the last reply ended on — the boundary the scoped chat's reach stops at. */
-  const refusal = createMemo(() => refusalOf(messages()));
+  const refusal = createMemo(() => refusalOf(messages(), spaceChat()));
 
   /**
    * The perspective the open conversation is pinned to — from the session's own scope once one is
