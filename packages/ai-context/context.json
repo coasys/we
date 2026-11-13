@@ -6326,6 +6326,19 @@
       "needsArgs": ["installFromFile", "toggleSpace", "openSetUp", "removeBundle"]
     },
     {
+      "name": "chatStore",
+      "state": {
+        "sheet": {
+          "type": "object"
+        },
+        "isNarrow": {
+          "type": "boolean"
+        }
+      },
+      "actions": ["openChat", "closeSheet"],
+      "ambient": ["closeSheet"]
+    },
+    {
       "name": "clockStore",
       "state": {
         "clocks": {
@@ -7693,7 +7706,6 @@
         "endDockMove",
         "closeTemplatePanel",
         "openTemplatePanel",
-        "openPanel",
         "closePanel",
         "resetTemplateLayout",
         "toggleLane",
@@ -8540,6 +8552,8 @@
     }
   ],
   "shellComponents": [
+    "AgentChat",
+    "AgentChatSheet",
     "AiPanel",
     "CredentialField",
     "EditingBar",

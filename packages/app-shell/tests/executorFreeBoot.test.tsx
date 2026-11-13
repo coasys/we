@@ -121,6 +121,7 @@ import { credential } from '../src/frameworks/solid/credential';
 import { BootController } from '../src/frameworks/solid/providers/BootController';
 import { AccountStoreProvider } from '../src/frameworks/solid/stores/AccountStore';
 import { AppStoreProvider } from '../src/frameworks/solid/stores/AppStore';
+import { ChatStoreProvider } from '../src/frameworks/solid/stores/ChatStore';
 import { type DatasetStore, DatasetStoreProvider, useDatasetStore } from '../src/frameworks/solid/stores/DatasetStore';
 import { type ProfileStore, ProfileStoreProvider, useProfileStore } from '../src/frameworks/solid/stores/ProfileStore';
 import { type RecordStore, RecordStoreProvider, useRecordStore } from '../src/frameworks/solid/stores/RecordStore';
@@ -162,35 +163,39 @@ function mountShell(): Stores {
   }
   render(() => (
     <ShellStoreProvider>
-      {/* The mocked platform supplies no `accounts`, so this mounts in its web-degraded form —
+      {/* Session hands the signed-in DID down to Chat as well as Shell — the same wiring the real
+          StoreProvider makes, so the chat store mounts where it mounts there. */}
+      <ChatStoreProvider>
+        {/* The mocked platform supplies no `accounts`, so this mounts in its web-degraded form —
           which is what the profile write-through has to tolerate. */}
-      <AccountStoreProvider>
-        <SessionStoreProvider>
-          {/* Setting up an account asks it whether there is an AI question, as the real order has it. */}
-          <RuntimeStoreProvider>
-            <DatasetStoreProvider>
-              {/* SpaceStore reads the extraction candidates off ShapeStore and hands the wizard back
+        <AccountStoreProvider>
+          <SessionStoreProvider>
+            {/* Setting up an account asks it whether there is an AI question, as the real order has it. */}
+            <RuntimeStoreProvider>
+              <DatasetStoreProvider>
+                {/* SpaceStore reads the extraction candidates off ShapeStore and hands the wizard back
                 an enroller, so the two mount in the order the real StoreProvider uses. */}
-              <ShapeStoreProvider>
-                {/* SpaceStore hands the record layer the vocabularies this community owns — a task's
+                <ShapeStoreProvider>
+                  {/* SpaceStore hands the record layer the vocabularies this community owns — a task's
                   own states — so the two mount in the order the real StoreProvider uses. */}
-                <RecordStoreProvider>
-                  <ProfileStoreProvider>
-                    {/* SpaceStore hands the installed-module set down to AppStore, so it must mount
+                  <RecordStoreProvider>
+                    <ProfileStoreProvider>
+                      {/* SpaceStore hands the installed-module set down to AppStore, so it must mount
                   inside one — the same nesting the real StoreProvider uses. */}
-                    <AppStoreProvider>
-                      <SpaceStoreProvider>
-                        <BootController />
-                        <Capture />
-                      </SpaceStoreProvider>
-                    </AppStoreProvider>
-                  </ProfileStoreProvider>
-                </RecordStoreProvider>
-              </ShapeStoreProvider>
-            </DatasetStoreProvider>
-          </RuntimeStoreProvider>
-        </SessionStoreProvider>
-      </AccountStoreProvider>
+                      <AppStoreProvider>
+                        <SpaceStoreProvider>
+                          <BootController />
+                          <Capture />
+                        </SpaceStoreProvider>
+                      </AppStoreProvider>
+                    </ProfileStoreProvider>
+                  </RecordStoreProvider>
+                </ShapeStoreProvider>
+              </DatasetStoreProvider>
+            </RuntimeStoreProvider>
+          </SessionStoreProvider>
+        </AccountStoreProvider>
+      </ChatStoreProvider>
     </ShellStoreProvider>
   ));
   return out;

@@ -707,6 +707,14 @@ export const storeEntries: StoreEntry[] = [
     ],
   },
   {
+    name: 'chatStore',
+    state: {
+      sheet: { type: 'object' },
+      isNarrow: { type: 'boolean' },
+    },
+    actions: ['openChat', 'closeSheet'],
+  },
+  {
     name: 'appStore',
     state: {
       apps: { type: 'array', properties: ['id', 'name', 'image'] },
@@ -832,6 +840,19 @@ export const storeEntries: StoreEntry[] = [
  * {@link actionsNeedingArgs}.
  */
 const descriptions: Record<string, { state: Record<string, string>; actions: Record<string, string> }> = {
+  chatStore: {
+    state: {
+      sheet:
+        'the chat a narrow window is showing as a sheet — what it was asked for ({ perspectiveUuid?, spaceName?, draft? }) or null. Read by AgentChatSheet, not by templates',
+      isNarrow:
+        'true below the viewport width where a floating panel stops being usable — the point at which openChat sends a chat to the sheet instead of a panel',
+    },
+    actions: {
+      openChat:
+        "(input?: { perspectiveUuid?: string; spaceName?: string; draft?: string }): opens an AI chat — global with no perspectiveUuid (the session carries no capabilities, so it reaches everything the app's token does), or scoped to that one perspective with 'this space only'. `draft` is a question the chat opens a fresh conversation for and sends at once. A panel on desktop, the bottom sheet on a phone",
+      closeSheet: '(): puts the phone sheet away',
+    },
+  },
   clipboard: {
     state: {},
     actions: {

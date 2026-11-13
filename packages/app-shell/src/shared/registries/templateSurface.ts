@@ -187,6 +187,23 @@ interface MemberSpec {
    * refuses it regardless is not two safeguards, it is one of them being wrong.
    */
   arity?: number;
+  /**
+   * The first argument is a chat-open request (`chatStore.openChat`), rewritten before the store
+   * sees it.
+   *
+   * A `draft` it carries becomes `prefill` — words in the composer, at every tier: a question a
+   * template supplies is something a person reads and presses Send on, never something that sends
+   * itself. And below `space-admin`, the `perspectiveUuid` it names is replaced by the space on
+   * screen — the same pin `arity` puts on a trailing `spaceUuid`, for the same sentence: a space
+   * template may ask about the space it is in, and may not choose another's chat or the global one.
+   */
+  chatRequest?: true;
+  /**
+   * One argument is a trailing `options` object the host partly owns: keys in `drop` are struck
+   * from what the template passed, keys in `set` are stamped over it — the wrapper writes them
+   * last, so neither can be said from a template's side. `at` is the argument's position.
+   */
+  options?: { at: number; drop?: readonly string[]; set?: Record<string, unknown> };
 }
 
 type Classification = MemberSpec | typeof WIRING;
@@ -1212,6 +1229,18 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       and a template able to call it could make every module's panel claim room it is not using.
     */
     provideModuleGate: WIRING,
+    /*
+      Which space a space-bound chat belongs to, injected by `SpaceStore` — the same hand-off as
+      `provideModuleGate` above, and wiring for the same reason: a template able to call it could
+      show a space's chat anywhere, or nowhere.
+    */
+    provideSpaceGate: WIRING,
+    /*
+      Who the kept panel instances belong to, injected by `SessionStore` — the same hand-off as
+      `provideSpaceGate` above, and wiring for the same reason: a template able to call it could
+      read another agent's records as its own.
+    */
+    provideAgentDid: WIRING,
     provideTemplateSaver: WIRING,
     pendingDestructive: state('host-layout'),
     confirmDestructive: action('host-layout'),
@@ -1369,8 +1398,19 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     */
     closeTemplatePanel: ambient('view-state'),
     openTemplatePanel: ambient('view-state'),
-    // Opening a panel again for another record is the same act as opening it once.
-    openPanel: ambient('view-state'),
+    /*
+      Opening a panel again for another record is the same act as opening it once.
+
+      What it may not do, however it asks: pick where the instance is kept (`scope` is the host's —
+      a template's panels are remembered under its own interface, never `app`) or pull the app's
+      panels out in front unasked (`viaTemplate` marks the call so `openPanel` reveals only while a
+      person is acting — otherwise Settings stays up in front of it). Both are written over the
+      options object here, so they cannot be said from a template's side.
+    */
+    openPanel: {
+      ...ambient('view-state'),
+      options: { at: 2, drop: ['scope'], set: { viaTemplate: true } },
+    },
     closePanel: ambient('view-state'),
     panelInstances: state('view-state'),
   },
@@ -1630,6 +1670,35 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     commitEdit: WIRING,
   },
 
+  /*
+    Which chat is up is `view-state`, as every panel is. `openChat` is an `action`, though, not
+    ambient: its `draft` sends a turn the moment the chat opens, and a turn writes wherever the
+    session's capabilities reach. A template that could run that unasked — on mount, on paint —
+    would have an AI acting with nobody involved, which is what the gesture rule exists for. The
+    space tier holds it because the ask lives in the space's own template ("Find or ask").
+  */
+  chatStore: {
+    sheet: state('view-state'),
+    isNarrow: state('view-state'),
+    /*
+      The rewrite `chatRequest` names: a template's `draft` fills the composer rather than sending
+      — only a person's Send sends a question — and its `perspectiveUuid` is the space on screen
+      unless the bag may name spaces. See {@link MemberSpec.chatRequest}.
+    */
+    openChat: { ...action('view-state'), chatRequest: true },
+    /*
+      The host's half of the nonce flow — the chat body spends the pending question an open was
+      issued for, and remembers which conversation a window had open. A template that could call
+      either could spend a pending question itself or lie about which conversation was open.
+    */
+    takePending: WIRING,
+    rememberConversation: WIRING,
+    rememberedConversation: WIRING,
+    // Who is signed in is the session's to say — see the store's `provideAgentDid`.
+    provideAgentDid: WIRING,
+    closeSheet: ambient('view-state'),
+  },
+
   /**
    * Record mutations — writing one instance of an entity. Reads need no entry: `$query` goes
    * through the renderer's own bindings, and a template that can render a space's data is the
@@ -1853,6 +1922,45 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
         const bound = method;
         const arity = spec.arity;
         method = (...args: unknown[]) => bound(...args.slice(0, arity));
+      }
+
+      /*
+        A chat-open request from a template: its question fills the composer rather than sending —
+        `prefill` is what the store passes on — and its space is the one on screen, unless the bag
+        may name spaces. Below `space-admin` an absent dataset leaves `perspectiveUuid` present and
+        undefined, which `openChat` reads as "not known yet" and opens nothing — never the global
+        chat. See {@link MemberSpec.chatRequest}.
+      */
+      if (spec.chatRequest) {
+        const bound = method;
+        const datasetStore = (stores as Record<string, unknown>).datasetStore as
+          { currentDataset?: () => { id?: string } | null | undefined } | undefined;
+        method = (...args: unknown[]) => {
+          const { draft, ...rest } = (args[0] ?? {}) as Record<string, unknown>;
+          const request: Record<string, unknown> = { ...rest };
+          if (typeof draft === 'string' && draft) request.prefill = draft;
+          if (!mayNameASpace) request.perspectiveUuid = datasetStore?.currentDataset?.()?.id;
+          return bound(request);
+        };
+      }
+
+      /*
+        Options keys the host owns, struck or stamped before the store sees them — `openPanel`'s
+        `scope` and `viaTemplate` today. Written here rather than inside the store so the surface
+        manifest keeps saying what a template may not say. See {@link MemberSpec.options}.
+      */
+      if (spec.options) {
+        const bound = method;
+        const { at, drop = [], set = {} } = spec.options;
+        method = (...args: unknown[]) => {
+          const given = args[at];
+          const options = given && typeof given === 'object' ? { ...(given as Record<string, unknown>) } : {};
+          for (const key of drop) delete options[key];
+          Object.assign(options, set);
+          const next = args.slice();
+          next[at] = options;
+          return bound(...next);
+        };
       }
 
       if (spec.destructive && options.onDestructive) {
