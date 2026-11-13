@@ -126,12 +126,22 @@ const rail: SchemaNode = railShell({
       /*
         The global chat: a sparkle at the top of the rail opens the one chat that reaches every
         space — a session with no capabilities listed, so it holds everything the app's token does.
+
+        A `railItem` measures its `railInset` against the edge padding the rail gives its items and
+        footer columns; the header is placed without it, so the row must carry the edge itself or
+        its glyph sits one inset left of every row below.
       */
-      railItem({
-        icon: 'sparkle',
-        label: 'AI chat',
-        onClick: { $invoke: 'chatStore.openChat' },
-      }),
+      {
+        type: 'Column',
+        props: { px: '200', width: '100%' },
+        children: [
+          railItem({
+            icon: 'sparkle',
+            label: 'AI chat',
+            onClick: { $invoke: 'chatStore.openChat' },
+          }),
+        ],
+      },
     ],
   },
   footer: {
