@@ -460,6 +460,14 @@ export function createCallStore(deps: ModuleStoreDeps) {
     'WE could not turn your camera on. Check that WE has permission to use it, and that no other app has it open.';
 
   /**
+   * The microphone specifically — refused at join while the camera was granted, or refused again on
+   * unmute. Said out loud because, unlike a missing camera, a missing microphone is invisible to the
+   * person it belongs to. Clears when a microphone arrives, on the same terms as `CAMERA_BLOCKED`.
+   */
+  const MIC_BLOCKED =
+    'WE could not turn your microphone on. Check that WE has permission to use it, and that no other app has it open.';
+
+  /**
    * The machine cannot capture a screen — as distinct from the user closing the picker.
    *
    * Worth its own message because the remedy is not "try again": on Linux this is usually a desktop
@@ -1709,6 +1717,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
         const local = controller?.localStream();
         if (problem() === MEDIA_BLOCKED && local) setProblem(null);
         if (problem() === CAMERA_BLOCKED && local?.getVideoTracks().length) setProblem(null);
+        if (problem() === MIC_BLOCKED && local?.getAudioTracks().length) setProblem(null);
         // A lost device that has come back clears its own message, on the same terms as the two
         // above: each on its own condition, so one recovery cannot swallow another's report.
         if (problem() === MIC_LOST && local?.getAudioTracks().length) setProblem(null);
@@ -1899,7 +1908,10 @@ export function createCallStore(deps: ModuleStoreDeps) {
       because a refused camera that fell back to audio is a different outcome from a refused
       *request*, and only the second one leaves nothing at all.
     */
-    if (!started.localStream()) setProblem(MEDIA_BLOCKED);
+    const local = started.localStream();
+    if (!local) setProblem(MEDIA_BLOCKED);
+    // The camera came through and the microphone did not: in the call, and heard by nobody.
+    else if (!local.getAudioTracks().length) setProblem(MIC_BLOCKED);
   }
 
   /*
@@ -2753,10 +2765,12 @@ export function createCallStore(deps: ModuleStoreDeps) {
 
     leave: action(teardown, 'Leave the call, releasing the camera, the microphone and every connection.'),
 
-    toggleAudio: action(
-      () => controller?.setAudioEnabled(!media().audioEnabled),
-      'Mute or unmute this agent’s microphone.',
-    ),
+    toggleAudio: action(async () => {
+      const wanted = !media().audioEnabled;
+      await controller?.setAudioEnabled(wanted);
+      // Asked on the outcome, as `toggleVideo` does: wanting the microphone and not having it.
+      if (wanted && controller && !controller.state().audioEnabled) setProblem(MIC_BLOCKED);
+    }, 'Mute or unmute this agent’s microphone.'),
     /**
      * Turn the camera on or off — and say so when it refuses.
      *

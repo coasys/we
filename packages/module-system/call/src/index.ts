@@ -1336,6 +1336,19 @@ const moreMenu: SchemaNode = {
       { ...menuToggle(SOLO), hidden: { $: "surface.tier != 'base' || !modules.call.focusedId" } },
       {
         /*
+          The call settings, folded with the rest: on a phone the gear, the topology readout and the
+          quality button were the controls that pushed hang-up off the edge. All three live in the
+          settings popover already, so one line here opens it. Its open state is on the bar rather
+          than on the popover, so that this line can reach it.
+        */
+        id: 'call-settings',
+        label: 'Call settings…',
+        icon: 'gear',
+        onAction: { $setLocal: 'settingsOpen', value: true },
+        hidden: ROOMY,
+      },
+      {
+        /*
           Which microphone and camera this agent is sending.
 
           In the menu rather than beside the mute button, and the distinction the bar's own docblock
@@ -1558,10 +1571,11 @@ const callSettingsPopover: SchemaNode = {
     condition: { $: 'modules.call.active' },
     then: {
       type: 'Column',
-      $localState: { open: { type: 'boolean', initial: false }, confirmSwitch: { type: 'boolean', initial: false } },
+      // `settingsOpen` and `confirmSwitch` are declared on the bar, so the More menu can open this
+      // when the gear has folded into it — see `ROOMY`.
       children: [
-        // Trigger button — gear icon
-        {
+        // Trigger button — gear icon, in the row only while the row has room for it.
+        whenRoomy({
           type: 'we-tooltip',
           props: { content: 'Call settings', placement: 'bottom' },
           children: [
@@ -1570,17 +1584,17 @@ const callSettingsPopover: SchemaNode = {
               props: {
                 square: true,
                 variant: 'ghost',
-                onClick: { $setLocal: 'open', value: { $: '!local.open' } },
+                onClick: { $setLocal: 'settingsOpen', value: { $: '!local.settingsOpen' } },
               },
               children: [{ type: 'we-icon', props: { name: 'gear' } }],
             },
           ],
-        },
+        }),
         // Popover body
         {
           type: '$if',
           props: {
-            condition: { $: 'local.open' },
+            condition: { $: 'local.settingsOpen' },
             then: {
               type: 'Column',
               props: {
@@ -1609,7 +1623,7 @@ const callSettingsPopover: SchemaNode = {
                         square: true,
                         size: 'xs',
                         variant: 'ghost',
-                        onClick: { $setLocal: 'open', value: false },
+                        onClick: { $setLocal: 'settingsOpen', value: false },
                       },
                       children: [{ type: 'we-icon', props: { name: 'x' } }],
                     },
@@ -1956,6 +1970,12 @@ const bar: SchemaNode = {
         },
         {
           type: 'Row',
+          // The settings popover's state, here rather than on the popover so the More menu can open
+          // it once the gear has folded into the menu — see `callSettingsPopover`.
+          $localState: {
+            settingsOpen: { type: 'boolean', initial: false },
+            confirmSwitch: { type: 'boolean', initial: false },
+          },
           props: {
             ...BAR_SURFACE,
             r: BAR_RADIUS,
@@ -2034,8 +2054,10 @@ const bar: SchemaNode = {
             */
             moreMenu,
             // Relay state and quality: shipped controls, so they sit before the development group.
-            topologyIndicator,
-            qualitySelector,
+            // Readouts the settings popover repeats, so they leave the row when it is compact and
+            // hang-up stays on screen — see `ROOMY` and the `call-settings` line in `moreMenu`.
+            whenRoomy(topologyIndicator),
+            whenRoomy(qualitySelector),
             callSettingsPopover,
             /*
               Development only, and last, which is the whole arrangement in one line: a shipped bar and

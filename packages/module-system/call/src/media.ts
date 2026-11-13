@@ -78,7 +78,8 @@ export interface MediaController {
    * still running, because the new track is acquired before the old one is let go.
    */
   setDevice(kind: 'audio' | 'video', deviceId: string): Promise<boolean>;
-  setAudioEnabled(enabled: boolean): void;
+  /** Mute or unmute — and, unmuting with no microphone, ask for one, as the camera does. */
+  setAudioEnabled(enabled: boolean): Promise<void>;
   setVideoEnabled(enabled: boolean): Promise<void>;
   /**
    * Begin sharing a screen. Reports which of the three things happened, rather than only failing.
@@ -228,6 +229,27 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
     });
   }
 
+  /**
+   * One kind on its own — the microphone or the camera — or `null` when it is refused or missing.
+   *
+   * The refusal is reported under the same context the rest of this file uses for that device, and
+   * a stream that arrives without a track of the kind asked for is closed rather than kept.
+   */
+  async function acquireAlone(kind: 'audio' | 'video'): Promise<MediaStreamTrack | null> {
+    let alone: MediaStream;
+    try {
+      alone = await devices.getUserMedia(
+        kind === 'audio' ? { audio: constraintsFor('audio') } : { video: constraintsFor('video') },
+      );
+    } catch (error) {
+      options.onError?.(kind === 'audio' ? 'acquiring microphone' : 'acquiring camera', error);
+      return null;
+    }
+    const track = (kind === 'audio' ? alone.getAudioTracks() : alone.getVideoTracks())[0] ?? null;
+    for (const other of alone.getTracks()) if (other !== track) other.stop();
+    return track;
+  }
+
   function stopScreenShare() {
     if (!screenStream) return;
     for (const track of screenStream.getTracks()) track.stop();
@@ -268,19 +290,31 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
         // ordinary path: the choice is made once in settings and every call after it uses it.
         acquired = await devices.getUserMedia({ audio: constraintsFor('audio'), video: constraintsFor('video') });
       } catch (error) {
-        // A refused or missing camera must not stop the call — audio-only is a valid way to be in
-        // one. Retry audio alone before giving up entirely.
+        /*
+          A refused or missing device must not take the other one with it — audio-only and
+          video-only are both valid ways to be in a call. So each kind is asked for alone, and
+          whichever the device grants is kept.
+
+          Only audio used to be retried, so a refused *microphone* lost the camera too: a phone whose
+          app had no microphone permission joined with neither, though its camera was there to be had.
+        */
         options.onError?.('acquiring camera and microphone', error);
         if (mine !== generation) return;
-        try {
-          acquired = await devices.getUserMedia({ audio: constraintsFor('audio') });
-          if (!claim(acquired)) return;
-          state.videoEnabled = false;
-        } catch (audioError) {
+        // One after the other rather than together: two permission prompts at once is a race some
+        // platforms lose. Each is checked against `generation`, since either can sit on a prompt.
+        const mic = await acquireAlone('audio');
+        if (mine !== generation) return void mic?.stop();
+        const camera = await acquireAlone('video');
+        if (mine !== generation) {
+          mic?.stop();
+          camera?.stop();
+          return;
+        }
+        if (!mic && !camera) {
           /*
             Nothing was acquired — and saying so is the whole of this branch.
 
-            Denying the prompt denies the *request*, so the audio-only retry is refused too without
+            Denying the prompt denies the *request*, so the retries are refused too without
             prompting again. This used to return here, leaving `state` claiming `videoEnabled: true`
             and never calling `emitState()`. Both consequences were visible and neither was
             recoverable: the self tile had already been built with "wants a picture, has none" and so
@@ -290,13 +324,15 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
             The state is corrected to what is true — nothing is being sent — and emitted, which is
             what republishes presence and rebuilds the tiles.
           */
-          options.onError?.('acquiring microphone', audioError);
-          if (mine !== generation) return;
           state.videoEnabled = false;
           state.audioEnabled = false;
           emitState();
           return;
         }
+        // Whichever is missing is off, for the same reason: never "on" with nothing behind it.
+        if (!mic) state.audioEnabled = false;
+        if (!camera) state.videoEnabled = false;
+        acquired = new MediaStream([mic, camera].filter((track): track is MediaStreamTrack => !!track));
       }
       if (!claim(acquired)) return;
       stream = acquired;
@@ -380,7 +416,48 @@ export function createMediaController(options: MediaControllerOptions = {}): Med
       return true;
     },
 
-    setAudioEnabled(enabled) {
+    async setAudioEnabled(enabled) {
+      /*
+        Unmuting when there is no microphone means *getting* one — the camera's rule in
+        `setVideoEnabled`, which audio never had. Join with the microphone refused and this only
+        flipped a flag on a track that was not there: the button said unmuted, presence told every
+        peer the same, and nothing ever asked for a microphone again, so audio never came back.
+      */
+      if (enabled && !micTrack()) {
+        const mine = generation;
+        let acquired: MediaStream;
+        try {
+          acquired = await devices.getUserMedia({ audio: constraintsFor('audio') });
+        } catch (error) {
+          options.onError?.('turning the microphone on', error);
+          if (mine !== generation) return;
+          state.audioEnabled = false;
+          emitState();
+          return;
+        }
+
+        const track = acquired.getAudioTracks()[0] ?? null;
+        for (const other of acquired.getTracks()) if (other !== track || mine !== generation) other.stop();
+        if (mine !== generation || !track) {
+          if (mine === generation) {
+            state.audioEnabled = false;
+            emitState();
+          }
+          return;
+        }
+
+        // A new stream rather than `addTrack` on the old one, for `setDevice`'s reason: the
+        // transcriber listens to the stream it was handed and dedupes on identity, so a microphone
+        // added in place would be sent to peers and heard by nothing local.
+        stream = new MediaStream([...(stream?.getTracks() ?? []), track]);
+        track.enabled = true;
+        watchForLoss(track, 'audio');
+        state.audioEnabled = true;
+        publishAudio();
+        emitState();
+        return;
+      }
+
       state.audioEnabled = enabled;
       for (const track of stream?.getAudioTracks() ?? []) track.enabled = enabled;
       emitState();
