@@ -40,9 +40,14 @@ const UUID_IN_TEXT = /[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{1
  * boundary being narrower than the tool, not the reply having reached outside the space — and a
  * reply that went on to answer shows no card for it.
  */
-function reachedOutside(error: string | undefined, perspectiveUuid: string | undefined): boolean {
+function reachedOutside(step: { target?: string; error?: string }, perspectiveUuid: string | undefined): boolean {
   if (!perspectiveUuid) return true;
-  const named = error?.match(UUID_IN_TEXT)?.[0];
+  /*
+    `target` first — the thing the step aimed at. The error text is a trap: the executor's refusal
+    dumps the session's *own* capabilities into it, so the uuid it names is the chat's own
+    perspective, never the one it reached for.
+  */
+  const named = step.target ?? step.error?.match(UUID_IN_TEXT)?.[0];
   return named !== undefined && named.toLowerCase() !== perspectiveUuid.toLowerCase();
 }
 
@@ -60,7 +65,7 @@ export function refusalOf(messages: AgentConversationMessage[], perspectiveUuid?
   if (reply.refused || (reply.error ?? '').includes(CAPABILITY_REFUSAL)) {
     return reply.error ?? CAPABILITY_REFUSAL;
   }
-  const outside = reply.steps?.find((s) => s.refused && reachedOutside(s.error, perspectiveUuid));
+  const outside = reply.steps?.find((s) => s.refused && reachedOutside(s, perspectiveUuid));
   return outside ? (outside.error ?? CAPABILITY_REFUSAL) : null;
 }
 

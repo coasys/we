@@ -90,6 +90,30 @@ describe('a refused step inside a space chat — foreign reach or boundary doing
     );
   });
 
+  it("reads the step's target before its error — the executor dumps the session's own capabilities into the error", () => {
+    // The live refusal: describe_perspective aimed at another space failed, and the error text
+    // only ever named the chat's own perspective. Reading the error alone never showed the card.
+    const messages = [
+      msg({ role: 'user', text: 'look at the other space' }),
+      msg({
+        role: 'assistant',
+        status: 'done',
+        steps: [
+          {
+            tool: 'describe_perspective',
+            outcome: 'error',
+            refused: true,
+            target: OTHER,
+            error: `Capability is not matched, you have capabilities: [domain perspective pointer ${SPACE}]`,
+          },
+        ],
+      }),
+    ];
+    expect(refusalOf(messages, SPACE)).toBe(
+      `Capability is not matched, you have capabilities: [domain perspective pointer ${SPACE}]`,
+    );
+  });
+
   it('shows it for a reply the backend flagged refused, whichever space it sat in', () => {
     const messages = [
       msg({ role: 'user', text: 'q' }),
