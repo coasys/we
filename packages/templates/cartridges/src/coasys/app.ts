@@ -200,7 +200,8 @@ const rail: SchemaNode = railShell({
   The two chats, as panels the app supplies — their content is one body (`AgentChat`), told what
   it was opened for through the instance's inputs.
 
-  `chat-global` docks at the right; `chat-space` floats over the space, where it can be moved,
+  `chat-global` floats at the right; `chat-space` floats on the same edge — sharing the lane means
+  they tile beside each other rather than stacking with one peeking out. Both can be moved,
   resized, docked to the right or shrunk the way every window can. Both start closed: the rail's
   sparkle opens the first, a space's "Find or ask" the second, and on a phone both arrive as the
   sheet instead (`AgentChatSheet`).
@@ -221,7 +222,13 @@ const chatPanels: TemplatePanel[] = [
     id: 'chat-space',
     node: { type: 'AgentChat', props: { inputs: { $: 'panel.inputs' } } },
     title: 'AI chat',
-    box: { width: 420, height: 540 },
+    /*
+      The same edge as the global chat, not a corner of its own: floats on one edge share the
+      floating lane, whose seats tile rather than stack — so a space chat opened while the global
+      one is up sits beside it instead of over it, and neither peeks out from under the other.
+    */
+    snap: 'right',
+    box: { width: 440, height: 540 },
     min: { width: 320, height: 360 },
     open: false,
   },
