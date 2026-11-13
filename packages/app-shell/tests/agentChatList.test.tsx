@@ -44,6 +44,22 @@ afterEach(() => {
 });
 
 describe('the conversation list', () => {
+  it('names itself "Chats" in the header, with "New chat" as the button', async () => {
+    /*
+      The header used to show "New chat" — the action's name — as the list's title while the list
+      itself was up. The title is what the view is; the button beside it is the action.
+    */
+    const { container } = render(() => <AgentChat inputs={{}} />);
+
+    await vi.waitFor(() => {
+      const header = container.querySelector<HTMLElement>('[data-testid="agent-chat"] > *:first-child');
+      expect(header?.textContent).toContain('Chats');
+      expect(header?.textContent).not.toContain('New chat');
+    });
+    const newChat = container.querySelector<HTMLElement>('[aria-label="New chat"]');
+    expect(newChat).not.toBeNull();
+  });
+
   it('opens a conversation from a real button — keyboard reaches it, not only the pointer', async () => {
     const { container } = render(() => <AgentChat inputs={{}} />);
 

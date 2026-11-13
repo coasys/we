@@ -65,6 +65,7 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
   const [sendFailed, setSendFailed] = createSignal<string | null>(null);
   let stopFollow: (() => void) | undefined;
   let messagesEnd: HTMLDivElement | undefined;
+  let inputEl!: HTMLElement;
   /*
     A space switch hides the panel while a `create` is still in flight: the component is disposed
     with the instance, and a `follow` subscribed afterwards would listen forever — nothing left to
@@ -306,12 +307,21 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
             </we-button>
           </Show>
           <we-text fontSize="300" fontWeight="600" truncate>
-            {active()?.title ?? 'New chat'}
+            {/*
+              The list names itself, not the action — "New chat" is the button beside it. Inside a
+              conversation the title is the conversation's own.
+            */}
+            {active()?.title ?? 'Chats'}
           </we-text>
           {scopeBadge(active() ? active()!.scope : spaceChat())}
         </Row>
-        <Show when={active()}>
-          <we-button variant="bare" size="sm" aria-label="New chat" onClick={back}>
+        <Show when={!unavailable()}>
+          <we-button
+            variant="bare"
+            size="sm"
+            aria-label="New chat"
+            onClick={() => (active() ? back() : inputEl?.focus())}
+          >
             <we-icon name="plus" size="sm" />
           </we-button>
         </Show>
@@ -529,6 +539,7 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
         <Row px="300" py="300" gap="200" ay="center" flexShrink="0">
           <we-input
             data-testid="agent-chat-input"
+            ref={inputEl}
             style={{ flex: '1' }}
             value={draft()}
             placeholder={spaceChat() ? `Ask ${spaceName(spaceChat()!) || 'this space'}…` : 'Ask about any space…'}
