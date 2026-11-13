@@ -120,6 +120,46 @@ describe('the Coasys cartridge', () => {
     expect(errors).toEqual([]);
   });
 
+  /*
+    "Find or ask" scopes its chat to the member's *local* perspective id. `Space.uuid` is the
+    creator's own local uuid, synced verbatim into every member's copy — on a joined space it names
+    a perspective this device does not hold, so a chat pinned to it ran against nobody's graph (and
+    on the gate, hid itself for every member but the creator). Evaluated as the renderer does.
+  */
+  it('asks the space chat against the local perspective, never the synced Space.uuid', () => {
+    const input = findNode(
+      treeSection,
+      (n) => (n.props as { placeholder?: unknown } | undefined)?.placeholder === 'Find or ask',
+    )!;
+    const enter = (input.props as { onKeyDown: { $if: { then: { $invoke?: string; args?: { $: string }[] }[] } } })
+      .onKeyDown.$if.then[0];
+    expect(enter.$invoke).toBe('chatStore.openChat');
+    const source = enter.args![0].$;
+    expect(source).toContain('datasetStore.currentDataset.id');
+    expect(source).not.toContain('spaceStore.currentSpace.uuid');
+
+    const asked = evaluateExpression(parseExpression(source), {
+      root: (name) => ({
+        bound: true,
+        value: {
+          // A joined space: the local perspective id is not the uuid the creator's record synced in.
+          datasetStore: { currentDataset: { id: 'local-perspective-uuid', sharedId: 'we://shared-cid' } },
+          spaceStore: { currentSpace: { uuid: 'creator-uuid', name: 'Garden club' } },
+          local: { findQuery: 'what is growing?' },
+        }[name],
+      }),
+      call: (name, args) =>
+        listFunctions()
+          .find((f) => f.name === name)
+          ?.impl(args, { context: {}, stores: {} }),
+    });
+    expect(asked).toEqual({
+      perspectiveUuid: 'local-perspective-uuid',
+      spaceName: 'Garden club',
+      draft: 'what is growing?',
+    });
+  });
+
   it('brings its own name, mark, sign-in screen and theme', () => {
     const bundle = cartridgeBundles().find((b) => b.id === 'coasys')!;
     expect(bundle.brand?.name).toBe('Coasys');
