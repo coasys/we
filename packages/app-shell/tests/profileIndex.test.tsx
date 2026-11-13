@@ -37,6 +37,7 @@ let profilePort: {
 
 vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({ useSessionStore: () => sessionStub }));
 vi.mock('../src/frameworks/solid/stores/AccountStore', () => ({ useAccountStore: () => accountsStub }));
+vi.mock('../src/frameworks/solid/stores/RuntimeStore', () => ({ useRuntimeStore: () => ({}) }));
 
 import { type ProfileStore, ProfileStoreProvider, useProfileStore } from '../src/frameworks/solid/stores/ProfileStore';
 
