@@ -88,6 +88,62 @@ const SHAPES: EntityShape[] = [
     ],
     relations: [{ name: 'node', target: '', cardinality: 'one' }],
   },
+  // A subject-class model the way extracted records arrive: every link is a typed relation on the
+  // instances themselves, and no `Relationship` rows exist for any of it.
+  {
+    name: 'DiscussionTopic',
+    identityProperty: 'title',
+    properties: [{ name: 'title', type: 'string' }],
+    relations: [
+      { name: 'agendaItem', target: 'AgendaItem', cardinality: 'one' },
+      { name: 'subTopicOf', target: 'DiscussionTopic', cardinality: 'one' },
+    ],
+  },
+  {
+    name: 'AgendaItem',
+    identityProperty: 'title',
+    properties: [{ name: 'title', type: 'string' }],
+    relations: [],
+  },
+  {
+    name: 'Position',
+    identityProperty: 'text',
+    properties: [{ name: 'text', type: 'string' }],
+    relations: [{ name: 'about', target: 'DiscussionTopic', cardinality: 'one' }],
+  },
+  // A parent-held list: `Thread.posts` names its children, so the children carry the foreign key
+  // (`__Thread_posts`, the way the backend stores it) and are found through a `scope` read.
+  {
+    name: 'Thread',
+    identityProperty: 'title',
+    properties: [{ name: 'title', type: 'string' }],
+    relations: [{ name: 'posts', target: 'Post', cardinality: 'many' }],
+  },
+  {
+    name: 'Post',
+    identityProperty: 'text',
+    properties: [{ name: 'text', type: 'string' }],
+    relations: [{ name: 'comments', target: 'Comment', cardinality: 'many', predicate: 'discuss://comments' }],
+  },
+  /*
+    A `belongsToOne` declared without naming its forward — the shape installed SDNA arrives as.
+    The back-pointer still shares its forward's predicate: `Comment.post` and `Post.comments`
+    are the one `discuss://comments` link read from the two ends.
+  */
+  {
+    name: 'Comment',
+    identityProperty: 'text',
+    properties: [{ name: 'text', type: 'string' }],
+    relations: [{ name: 'post', target: 'Post', cardinality: 'one', reverse: true, predicate: 'discuss://comments' }],
+  },
+  // A reverse (belongsTo) relation: the inverse side, whose values are the records pointing at the
+  // holder — children, found the same `scope` way as a held list.
+  {
+    name: 'Author',
+    identityProperty: 'name',
+    properties: [{ name: 'name', type: 'string' }],
+    relations: [{ name: 'posts', target: 'Post', cardinality: 'many', reverse: true }],
+  },
 ];
 
 /**
@@ -117,8 +173,11 @@ function answer(
           Array.isArray(expected) ? expected.includes(row[field]) : row[field] === expected,
         ),
       );
-    } else if (request.scope?.anchorId !== canvas) {
-      rows = [];
+    } else if (request.scope && request.scope.anchorId !== canvas) {
+      // A scope read past the canvas is a relation pull: the children the anchor names through
+      // `via`, which the backend keeps as a foreign key on the child's own row.
+      const { anchor, via, anchorId } = request.scope;
+      rows = rows.filter((row) => row[`__${anchor}_${via}`] === anchorId || row[via] === anchorId);
     }
     // A placement's `node` is an untyped to-one, so an include reads it as whatever kind it is.
     if (withCards && entity === 'Placement') rows = rows.map((row) => ({ ...row, node: cardFor(tables, row.node) }));
@@ -1417,5 +1476,433 @@ describe('a canvas over another record’s members', () => {
     const { nodes } = await canvasSeed().seed({ ...options, onlyFrom: 'call-1' }, ctx);
 
     expect(nodes.map((n) => n.label)).toEqual(['Loose']);
+  });
+});
+
+/**
+ * The model-relation half of `relations`: the classes' own typed edges, beside the connections.
+ *
+ * The rule being kept is the template's direction rule — the record that *holds* a to-one pointer
+ * is the child of the record it points at — because that is what makes an extracted call's fields
+ * (`Position.about`, `DiscussionTopic.subTopicOf`) draw as the agenda they describe rather than
+ * upside down.
+ */
+describe('canvasSeed — model relations', () => {
+  const topic = (id: string) => `we-graph://entity/ds/DiscussionTopic/${id}`;
+  const position = (id: string) => `we-graph://entity/ds/Position/${id}`;
+
+  it('draws a forward to-one as parent → child: the record holding the pointer is the child', async () => {
+    const { context: ctx } = context({
+      Placement: [
+        { id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 },
+        { id: 'p2', node: 'pos1', nodeType: 'Position', x: 10, y: 0 },
+      ],
+      DiscussionTopic: [{ id: 't1', title: 'Roadmap' }],
+      Position: [{ id: 'pos1', text: 'Ship it', about: 't1' }],
+    });
+
+    const { edges } = await canvasSeed().seed({ canvas: 'b1', relations: { children: false } }, ctx);
+
+    const edge = edges.find((e) => e.type === 'relation');
+    expect(edge).toBeDefined();
+    expect(edge!.source).toBe(topic('t1'));
+    expect(edge!.target).toBe(position('pos1'));
+    expect(edge!.data).toMatchObject({ relation: 'Position.about', holder: 'pos1', target: 't1', heldByChild: true });
+  });
+
+  it('draws a to-one relation between two topics as the tree the links describe', async () => {
+    const { context: ctx } = context({
+      Placement: [
+        { id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 },
+        { id: 'p2', node: 't2', nodeType: 'DiscussionTopic', x: 0, y: 40 },
+      ],
+      DiscussionTopic: [
+        { id: 't1', title: 'Roadmap' },
+        { id: 't2', title: 'Q3', subTopicOf: 't1' },
+      ],
+    });
+
+    const { edges } = await canvasSeed().seed({ canvas: 'b1', relations: true }, ctx);
+
+    const edge = edges.find((e) => e.type === 'relation');
+    expect(edge).toBeDefined();
+    expect([edge!.source, edge!.target]).toEqual([topic('t1'), topic('t2')]);
+    expect(edge!.data?.relation).toBe('DiscussionTopic.subTopicOf');
+  });
+
+  it('draws nothing extra off — relations is a tree-mode ask, not a freeform one', async () => {
+    const { context: ctx } = context({
+      Placement: [
+        { id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 },
+        { id: 'p2', node: 'pos1', nodeType: 'Position', x: 10, y: 0 },
+      ],
+      DiscussionTopic: [{ id: 't1', title: 'Roadmap' }],
+      Position: [{ id: 'pos1', text: 'Ship it', about: 't1' }],
+    });
+
+    const { edges } = await canvasSeed().seed({ canvas: 'b1' }, ctx);
+
+    expect(edges.filter((e) => e.type === 'relation')).toEqual([]);
+  });
+
+  it('pulls in a child nobody placed, and then whatever points at the child', async () => {
+    // The case the option exists for: the extraction wrote `about`/`subTopicOf` and no placements,
+    // so the topic a person put on the canvas has to bring its whole thread with it.
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 }],
+      DiscussionTopic: [
+        { id: 't1', title: 'Roadmap' },
+        { id: 't2', title: 'Q3', subTopicOf: 't1' },
+      ],
+      Position: [{ id: 'pos1', text: 'Ship it', about: 't2' }],
+    });
+
+    const { nodes, edges } = await canvasSeed().seed({ canvas: 'b1', relations: { children: true } }, ctx);
+
+    expect(nodes.map((n) => n.id)).toEqual(expect.arrayContaining([topic('t1'), topic('t2'), position('pos1')]));
+    // t2 is unplaced: the tree layout positions it, the seed must not invent a coordinate.
+    expect(nodes.find((n) => n.id === topic('t2'))?.data?.x).toBeUndefined();
+    const pairs = edges.filter((e) => e.type === 'relation').map((e) => [e.source, e.target]);
+    expect(pairs).toEqual(
+      expect.arrayContaining([
+        [topic('t1'), topic('t2')],
+        [topic('t2'), position('pos1')],
+      ]),
+    );
+  });
+
+  it('pulls children a parent lists, where the foreign key sits on the child', async () => {
+    // A `hasMany`/`belongsTo` is found by drilling the child table (`scope`) — the parent row's
+    // own field is only a cache of that and not always hydrated.
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'th1', nodeType: 'Thread', x: 0, y: 0 }],
+      Thread: [{ id: 'th1', title: 'Weekly' }],
+      Post: [{ id: 'po1', text: 'notes', __Thread_posts: 'th1' }],
+    });
+
+    const { nodes, edges } = await canvasSeed().seed({ canvas: 'b1', relations: { children: true } }, ctx);
+
+    expect(nodes.map((n) => n.id)).toEqual(
+      expect.arrayContaining(['we-graph://entity/ds/Thread/th1', 'we-graph://entity/ds/Post/po1']),
+    );
+    const edge = edges.find((e) => e.type === 'relation');
+    expect(edge).toBeDefined();
+    expect([edge!.source, edge!.target]).toEqual(['we-graph://entity/ds/Thread/th1', 'we-graph://entity/ds/Post/po1']);
+    expect(edge!.data?.relation).toBe('Thread.posts');
+  });
+
+  it('terminates on a loop in the data rather than walking it forever', async () => {
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 }],
+      DiscussionTopic: [
+        { id: 't1', title: 'One', subTopicOf: 't2' },
+        { id: 't2', title: 'Two', subTopicOf: 't1' },
+      ],
+    });
+
+    const { nodes, edges } = await canvasSeed().seed({ canvas: 'b1', relations: { children: true } }, ctx);
+
+    expect(nodes).toHaveLength(2);
+    expect(edges.filter((e) => e.type === 'relation')).toHaveLength(2);
+  });
+
+  it('stops at the cap and says so, rather than drawing a silent half of the tree', async () => {
+    const { context: ctx, warnings } = context({
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 }],
+      DiscussionTopic: [{ id: 't1', title: 'Roadmap' }],
+      Position: [
+        { id: 'pos1', text: 'a', about: 't1' },
+        { id: 'pos2', text: 'b', about: 't1' },
+        { id: 'pos3', text: 'c', about: 't1' },
+      ],
+    });
+
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', relations: { children: true, max: 2 } }, ctx);
+
+    expect(nodes).toHaveLength(2);
+    expect(warnings.some((m) => m.includes('stopped at 2'))).toBe(true);
+  });
+
+  it('always leaves the same cards standing when the cap cuts the pull short', async () => {
+    /*
+      `pos2` sits ahead of `pos1` in the table, so a pull that took the rows as they came would
+      draw `pos2` and cap out — an order that was never a choice, and one that shifts whenever
+      the reads resolve differently. Drawn in id order the survivor is `pos1` every time: an
+      arbitrary rule, but the same arbitrary rule on every load.
+    */
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 }],
+      DiscussionTopic: [{ id: 't1', title: 'Roadmap' }],
+      Position: [
+        { id: 'pos2', text: 'b', about: 't1' },
+        { id: 'pos1', text: 'a', about: 't1' },
+      ],
+    });
+
+    const { nodes } = await canvasSeed().seed({ canvas: 'b1', relations: { children: true, max: 2 } }, ctx);
+
+    expect(nodes.map((n) => n.id)).toEqual([
+      'we-graph://entity/ds/DiscussionTopic/t1',
+      'we-graph://entity/ds/Position/pos1',
+    ]);
+  });
+
+  it('draws a relation and a connection between the same cards without confusing the two', async () => {
+    const { context: ctx } = context({
+      Placement: [
+        { id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 },
+        { id: 'p2', node: 't2', nodeType: 'DiscussionTopic', x: 0, y: 40 },
+      ],
+      DiscussionTopic: [
+        { id: 't1', title: 'One' },
+        { id: 't2', title: 'Two', subTopicOf: 't1' },
+      ],
+      Relationship: [{ id: 'r1', label: 'depends', source: 't1', target: 't2' }],
+    });
+
+    const { edges } = await canvasSeed().seed({ canvas: 'b1', connections: 'Relationship', relations: true }, ctx);
+
+    expect(edges.find((e) => e.type === 'relation')?.data?.relation).toBe('DiscussionTopic.subTopicOf');
+    expect(edges.find((e) => e.type === 'relates')?.reifiedAs).toContain('Relationship');
+  });
+
+  it('pulls in no record of a kind the reader put away', async () => {
+    // `hiddenTypes` means the kind is never asked for — on the tray, and so here too.
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 }],
+      DiscussionTopic: [
+        { id: 't1', title: 'Roadmap' },
+        { id: 't2', title: 'Q3', subTopicOf: 't1' },
+      ],
+      Position: [{ id: 'pos1', text: 'Ship it', about: 't1' }],
+    });
+
+    const { nodes } = await canvasSeed().seed(
+      { canvas: 'b1', relations: { children: true }, hiddenTypes: ['Position'] },
+      ctx,
+    );
+
+    expect(nodes.map((n) => n.id)).toContain(topic('t2'));
+    expect(nodes.map((n) => n.id)).not.toContain(position('pos1'));
+  });
+
+  it('draws a link both ends declare once — as the child’s own field, the one a reparent writes', async () => {
+    const shapes: EntityShape[] = [
+      ...SHAPES,
+      {
+        name: 'Board',
+        identityProperty: 'title',
+        properties: [{ name: 'title', type: 'string' }],
+        relations: [{ name: 'cards', target: 'Card', cardinality: 'many' }],
+      },
+      {
+        name: 'Card',
+        identityProperty: 'title',
+        properties: [{ name: 'title', type: 'string' }],
+        relations: [{ name: 'board', target: 'Board', cardinality: 'one' }],
+      },
+    ];
+    const { context: base } = context({
+      // The card first, so the board's own statement of the link is the one read last.
+      Placement: [
+        { id: 'p1', node: 'c1', nodeType: 'Card', x: 0, y: 0 },
+        { id: 'p2', node: 'bd1', nodeType: 'Board', x: 0, y: 40 },
+      ],
+      Board: [{ id: 'bd1', title: 'Sprint', cards: ['c1'] }],
+      Card: [{ id: 'c1', title: 'Fix it', board: 'bd1' }],
+    });
+    const ctx = { ...base, models: () => shapes } as ExpanderContext;
+
+    const { edges } = await canvasSeed().seed({ canvas: 'b1', relations: { children: false } }, ctx);
+
+    const relations = edges.filter((e) => e.type === 'relation');
+    expect(relations).toHaveLength(1);
+    expect(relations[0].data).toMatchObject({ relation: 'Card.board', heldByChild: true });
+  });
+
+  it('pulls in only the conversation’s own children when the canvas keeps to one', async () => {
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 }],
+      DiscussionTopic: [
+        { id: 't1', title: 'Roadmap', origin: 'call-1' },
+        { id: 't2', title: 'Q3', subTopicOf: 't1', origin: 'call-1' },
+      ],
+      Position: [{ id: 'pos1', text: 'Elsewhere', about: 't1', origin: 'call-2' }],
+    });
+
+    const { nodes } = await canvasSeed().seed(
+      { canvas: 'b1', relations: { children: true }, origin: 'origin', onlyFrom: 'call-1' },
+      ctx,
+    );
+
+    expect(nodes.map((n) => n.id)).toContain(topic('t2'));
+    expect(nodes.map((n) => n.id)).not.toContain(position('pos1'));
+  });
+
+  it('follows only the space’s declared relations — never the host’s own bookkeeping', async () => {
+    /*
+      `Signal` and `ModelRun` are typed relations every WE card carries. Followed as if they were
+      the community's structure, "any connection" hangs every reaction, model run and transcript
+      line the call produced under each card — the furniture, walked as if it were the tree. A host
+      marks them `bookkeeping`; the seed then follows only what the space's own DNA declares.
+    */
+    const shapes: EntityShape[] = [
+      ...SHAPES,
+      { name: 'Signal', properties: [{ name: 'value', type: 'number' }], relations: [], bookkeeping: true },
+      { name: 'ModelRun', properties: [{ name: 'summary', type: 'string' }], relations: [], bookkeeping: true },
+      {
+        name: 'Minute',
+        identityProperty: 'title',
+        properties: [{ name: 'title', type: 'string' }],
+        relations: [
+          { name: 'signals', target: 'Signal', cardinality: 'many' },
+          { name: 'generatedBy', target: 'ModelRun', cardinality: 'one' },
+          { name: 'runs', target: 'ModelRun', cardinality: 'many' },
+          { name: 'about', target: 'DiscussionTopic', cardinality: 'one' },
+        ],
+      },
+    ];
+    const { context: base, asked } = context({
+      Placement: [
+        { id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 },
+        { id: 'p2', node: 'm1', nodeType: 'Minute', x: 0, y: 40 },
+      ],
+      DiscussionTopic: [{ id: 't1', title: 'Roadmap' }],
+      Minute: [
+        { id: 'm1', title: 'First call', about: 't1', signals: ['s1'], generatedBy: 'run1', runs: ['run1'] },
+        { id: 'm2', title: 'Second call', about: 't1' },
+      ],
+      Signal: [{ id: 's1', value: 5, __Minute_signals: 'm1' }],
+      ModelRun: [{ id: 'run1', summary: 'extracted', __Minute_runs: 'm1' }],
+    });
+    const ctx = { ...base, models: () => shapes } as ExpanderContext;
+
+    const { nodes, edges } = await canvasSeed().seed({ canvas: 'b1', relations: { children: true } }, ctx);
+
+    // The DNA relation is followed: m2 was never placed and still arrives under t1.
+    expect(nodes.map((n) => n.id)).toContain('we-graph://entity/ds/Minute/m2');
+    expect(edges.find((e) => e.type === 'relation')?.data?.relation).toBe('Minute.about');
+    // The bookkeeping links are real — they are just never a spine: not drawn, and not asked for.
+    expect(nodes.some((n) => n.id.includes('/Signal/') || n.id.includes('/ModelRun/'))).toBe(false);
+    expect(asked).not.toContain('Signal');
+    expect(asked).not.toContain('ModelRun');
+  });
+
+  it('enriches a pulled card like every other card — pending, weighed, and from somewhere', async () => {
+    /*
+      A card the relation pull draws used to arrive as bare `rowToNode` output: no `pending` flag
+      for a suggestion still awaiting acceptance (so a drop could write its field as if it were
+      settled), no counts, no weight, no type colour, no origin, no made-by. It is read with the
+      same fields and stamped with the same facts as a card somebody placed.
+    */
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 }],
+      TypeStyle: [{ id: 'ts1', nodeType: 'Position', color: 'hotpink' }],
+      DiscussionTopic: [{ id: 't1', title: 'Roadmap' }],
+      Position: [
+        {
+          id: 'pos1',
+          text: 'Ship it',
+          about: 't1',
+          extractedFrom: 'call-1',
+          generatedBy: 'run-1',
+          signals: [{ signalTypeId: 'rate', value: 5, author: 'did:a', createdAt: '2026-01-01' }],
+          $responsesCount: 3,
+        },
+      ],
+    });
+    const seed = canvasSeed();
+    const fragment = await seed.seed(
+      {
+        canvas: 'b1',
+        relations: { children: true },
+        origin: 'extractedFrom',
+        madeBy: 'generatedBy',
+        counts: ['responses'],
+        pending: ['pos1'],
+        typeStyles: 'TypeStyle',
+        weigh: { signalTypeId: 'rate', mode: 'rating' },
+      },
+      ctx,
+    );
+
+    const pulled = fragment.nodes.find((n) => n.id === position('pos1'));
+    expect(pulled?.data).toMatchObject({
+      pending: true,
+      origin: 'call-1',
+      madeBy: 'run-1',
+      canvasTypeColor: 'hotpink',
+      responsesCount: 3,
+      weightType: 'rate',
+    });
+    // Its real answers, not a 0: the votes a `derive` weighs are the ones the read brought back.
+    expect(JSON.parse(pulled?.data?.weightVotes as string)).toEqual([['did:a', 5]]);
+    const weighed = seed.derive!(fragment, { canvas: 'b1', weigh: { signalTypeId: 'rate', mode: 'rating' } });
+    expect(weighed.nodes.find((n) => n.id === position('pos1'))?.data?.weight).toBe(5);
+  });
+
+  it('draws a named list and its unnamed back-pointer once — one edge, not a two-cycle', async () => {
+    /*
+      `Post.comments` and `Comment.post` are the same link declared from both ends, the second
+      as a `belongsTo` that never names the first — how installed SDNA arrives, `reverseOf`
+      unread. Paired by the predicate they share, the back-pointer knows its forward is a
+      to-many and reads as "the comment's parent": one Post → Comment edge. Unpaired it read
+      the other way and both directions were drawn — the post under its own comment.
+    */
+    const { context: ctx } = context({
+      Placement: [{ id: 'p1', node: 'post1', nodeType: 'Post', x: 0, y: 0 }],
+      Post: [{ id: 'post1', text: 'Ship it' }],
+      // The foreign key both reads speak: `__Post_comments` is the scope answer, `post` the
+      // child's own field once the back-pointer is paired.
+      Comment: [{ id: 'c1', text: 'A take', post: 'post1', __Post_comments: 'post1' }],
+    });
+
+    const { nodes, edges } = await canvasSeed().seed({ canvas: 'b1', relations: { children: true } }, ctx);
+
+    expect(nodes.map((n) => n.id)).toContain('we-graph://entity/ds/Comment/c1');
+    const between = edges.filter((e) => e.type === 'relation');
+    expect(between).toHaveLength(1);
+    expect(between[0].source).toBe('we-graph://entity/ds/Post/post1');
+    expect(between[0].target).toBe('we-graph://entity/ds/Comment/c1');
+    // The child's own field wins the one edge — it is the statement a reparent writes.
+    expect(between[0].data).toMatchObject({ relation: 'Comment.post', heldByChild: true });
+  });
+
+  it('keeps a pulled child under "this call" only when its origin was actually read', async () => {
+    /*
+      `onlyFrom` filters a pulled child by `origin` — which is a *relation*, so AD4M returns it
+      only when the read asks, and then as the record it points at (`{ id }`), not a plain
+      field. The pull's reads never asked, so every pulled child read as from nowhere and the
+      filter dropped them all. The mock here honours the include the way the backend does.
+    */
+    const tables: Record<string, Record<string, unknown>[]> = {
+      Placement: [{ id: 'p1', node: 't1', nodeType: 'DiscussionTopic', x: 0, y: 0 }],
+      DiscussionTopic: [{ id: 't1', title: 'Roadmap', extractedFrom: { id: 'call-1' } }],
+      Position: [{ id: 'pos1', text: 'Ship it', about: 't1', extractedFrom: { id: 'call-1' } }],
+    };
+    const ctx = {
+      query: async (request: ExpanderQuery) => {
+        const include = request.include as Record<string, unknown> | undefined;
+        const askedForOrigin =
+          Boolean(include?.extractedFrom) ||
+          Boolean((include?.node as { include?: Record<string, unknown> } | undefined)?.include?.extractedFrom);
+        const found = answer(tables, request, 'b1');
+        // A relation comes back only when the read asked for it — as a link record, not a field.
+        return askedForOrigin ? found : found.map(({ extractedFrom: _dropped, ...row }) => row);
+      },
+      defaultDataset: () => 'ds',
+      models: () => SHAPES,
+      warn: () => {},
+    } as ExpanderContext;
+
+    const { nodes } = await canvasSeed().seed(
+      { canvas: 'b1', relations: { children: true }, origin: 'extractedFrom', onlyFrom: 'call-1' },
+      ctx,
+    );
+
+    expect(nodes.map((n) => n.id)).toEqual(
+      expect.arrayContaining(['we-graph://entity/ds/DiscussionTopic/t1', 'we-graph://entity/ds/Position/pos1']),
+    );
+    expect(nodes.find((n) => n.id.endsWith('/Position/pos1'))?.data?.origin).toBe('call-1');
   });
 });

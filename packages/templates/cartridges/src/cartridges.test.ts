@@ -677,7 +677,12 @@ describe('the Coasys cartridge', () => {
           is a different graph with a layout of its own.
         */
         expect(graphJson.match(/"layout":/g)).toHaveLength(1);
-        expect(graphJson).toContain("{ type: 'forest', options: { spine: { field: 'data.relationshipTypeId'");
+        // The spine is the Workshop's: `rel:*`, `rel:Class.prop`, or a bare relationship kind id.
+        expect(graphJson).toContain(
+          "{ type: 'forest', options: { spine: (local.spine == 'rel:*' ? { field: 'type', value: 'relation' }",
+        );
+        expect(graphJson).toContain("{ field: 'data.relation', value: split(local.spine, ':')[1] }");
+        expect(graphJson).toContain("{ field: 'data.relationshipTypeId', value: local.spine }");
         // Freeform as it was: manual, parked at the canvas's own card size. Nothing about the
         // positions people arranged is read by the tree, so switching back finds every card.
         expect(graphJson).toContain("{ type: 'manual', options: { size: { width: 200, height: 140 }");
@@ -720,7 +725,8 @@ describe('the Coasys cartridge', () => {
 
       it('offers the spine and the order in the strip', () => {
         expect(pane).toContain('"placeholder":"Any connection"');
-        expect(pane).toContain('local.relationshipKinds.map(k, { label: k.name, value: k.id, icon: k.icon })');
+        // The kinds plus the space's model relations, the same list the Workshop's strip offers.
+        expect(pane).toContain('treeSpines({ kinds: local.relationshipKinds, shapes: shapeStore.spaceShapes');
         expect(pane).toContain('"value":"manual"');
         expect(pane).toContain('"value":"date"');
         expect(pane).toContain('"value":"newest"');

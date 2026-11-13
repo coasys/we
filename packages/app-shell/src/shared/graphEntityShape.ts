@@ -8,6 +8,8 @@
 import { type EntityManifestEntry, nameFromProperties } from '@we/backend-shared';
 import type { EntityShape } from '@we/graph-protocol';
 
+import { WE_PLUMBING_CLASSES } from './shapes/extractionCandidates';
+
 /** Translate a backend model manifest entry into the neutral shape the graph reads. */
 export function toEntityShape(entry: EntityManifestEntry): EntityShape {
   const properties: EntityShape['properties'] = [];
@@ -35,6 +37,14 @@ export function toEntityShape(entry: EntityManifestEntry): EntityShape {
         name: property.name,
         target: property.relatedEntity ?? '',
         cardinality: property.isCollection ? 'many' : 'one',
+        // A `belongsTo`/`reverseOf` reads a link the other end owns — the direction matters to
+        // anything that has to know which side of the edge is the holder, so carry it through,
+        // and the forward property's name with it: that is the field a write of this link goes to.
+        // The predicate travels too: where the declaration never named the forward, it is the one
+        // fact that still pairs a back-pointer with the link it inverts — they share it.
+        ...(property.reverse ? { reverse: true } : {}),
+        ...(property.reverseOf ? { reverseOf: property.reverseOf } : {}),
+        ...(property.predicate ? { predicate: property.predicate } : {}),
       });
     } else {
       properties.push({
@@ -72,5 +82,16 @@ export function toEntityShape(entry: EntityManifestEntry): EntityShape {
         })),
     );
 
-  return { name: entry.name, properties, relations, ...(nameProperty ? { nameProperty } : {}) };
+  /*
+    WE's own structural classes — reactions, model runs, placements — marked so the graph's relation
+    walk can tell a space's declared structure from the furniture the host hangs on every record.
+    The same list the extraction candidates use, so "not the community's content" means one thing.
+  */
+  return {
+    name: entry.name,
+    properties,
+    relations,
+    ...(nameProperty ? { nameProperty } : {}),
+    ...(WE_PLUMBING_CLASSES.includes(entry.name) ? { bookkeeping: true } : {}),
+  };
 }

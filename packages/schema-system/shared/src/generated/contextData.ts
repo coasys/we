@@ -1276,7 +1276,7 @@ export const contextData: ContextData = {
         },
         {
           name: 'onNodeArrange',
-          type: '((payload: { id: string; into: "child" | "sibling" | "loose"; recordId: string; recordType: string; targetId?: string; targetType?: string; before?: boolean; order?: string[]; x: number; y: number; }) => void)',
+          type: '((payload: { id: string; into: "child" | "sibling" | "loose"; recordId: string; recordType: string; pending?: boolean; changed?: boolean; targetId?: string; targetType?: string; before?: boolean; order?: string[]; x: number; y: number; }) => void)',
           optional: true,
         },
         { name: 'resizable', type: 'boolean', optional: true },
@@ -3915,6 +3915,13 @@ export const contextData: ContextData = {
       params: ['options'],
       doc: 'A JSON string indented for reading, or the text unchanged when it will not parse — which is the case worth showing rather than swallowing. Options: text. For displaying a stored blob (an extraction pass’s prompt and response); a schema has no JSON.stringify of its own.',
       example: 'formatJson({ text: pass.prompt })',
+    },
+    {
+      name: 'treeSpines',
+      params: ['options'],
+      doc: 'The choices a tree-mode spine picker offers: the space\'s named connection kinds, then every typed relation the installed models declare, grouped under "Model relations" and spelled rel:Class.prop — plus rel:* for all of them. Pass kinds (a RelationshipType query), shapes (shapeStore.spaceShapes) and foreign (datasetStore.currentDatasetEntities).',
+      example:
+        'treeSpines({ kinds: local.relationshipKinds, shapes: shapeStore.spaceShapes, foreign: datasetStore.currentDatasetEntities })',
     },
     {
       name: 'generatedRun',

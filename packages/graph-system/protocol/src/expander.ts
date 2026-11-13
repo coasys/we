@@ -155,8 +155,31 @@ export interface EntityShape {
   name: string;
   /** Scalar fields, in declaration order. */
   properties: { name: string; type: 'string' | 'number' | 'boolean' | 'uri'; required?: boolean }[];
-  /** Typed relations — the edges of a schema-derived graph. */
-  relations: { name: string; target: string; cardinality: 'one' | 'many' }[];
+  /**
+   * Typed relations — the edges of a schema-derived graph.
+   *
+   * `reverse` marks a `belongsTo`/`reverseOf` relation: the link is owned by the *target* side and
+   * this property reads it back, so the value is the record that holds the pointer. An ordinary
+   * `hasOne`/`hasMany` (or one not marked) stores the link on the instance itself.
+   *
+   * `reverseOf`, where the model names it, is the forward property the other end writes — needed
+   * to say which way round a `reverse` link runs (a child's back-pointer to its parent and a
+   * parent's inverse view of a to-one are both `reverse` to-ones) and to write the link at all,
+   * since a `reverse` read has no setter of its own.
+   */
+  relations: {
+    name: string;
+    target: string;
+    cardinality: 'one' | 'many';
+    reverse?: boolean;
+    reverseOf?: string;
+    /**
+     * The storage binding, where the manifest carries one. A `belongsTo` and the forward link it
+     * inverts are the *same* predicate read from the two ends — so when `reverseOf` is absent this
+     * is what still pairs a reverse with its forward and settles which way it runs.
+     */
+    predicate?: string;
+  }[];
   /**
    * The property that names an instance — what a node is captioned with.
    *
@@ -173,6 +196,13 @@ export interface EntityShape {
    * only after {@link nameProperty} and the conventional names, where it is better than nothing.
    */
   identityProperty?: string;
+  /**
+   * The host's own bookkeeping — reactions, model runs, placements, the space itself — rather than
+   * anything a community's DNA declares. A seed following the models' relations skips a class marked
+   * so: the link is real, but following it fills the tree with furniture. WE marks its plumbing the
+   * same way the extraction candidates do — one list, `WE_PLUMBING_CLASSES` in the app shell.
+   */
+  bookkeeping?: boolean;
   /** Human description of the type, where the backend has one. Shown in legends and tooltips. */
   description?: string;
 }

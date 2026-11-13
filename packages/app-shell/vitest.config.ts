@@ -92,6 +92,8 @@ const SOLID_TESTS = [
   'tests/workflowStoreProvider.test.tsx',
   // The same, for a card dragged to another place in a tree.
   'tests/treeUndo.test.tsx',
+  // And for a drag on a tree whose spine is a model relation rather than a connection kind.
+  'tests/treeRelation.test.tsx',
   // Mounts a card's reaction mark and presses it.
   'tests/reactionBadge.test.tsx',
   // Types into the host's password field through real primitives and watches where the value goes.

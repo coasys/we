@@ -292,12 +292,18 @@ function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): Reco
     );
   }
 
-  // The plain drill-down stays exactly as it was: one anchor, one step outward, and the `{ id,
-  // predicate }` shape every existing query already sends.
+  /*
+    A `reverse` relation (`belongsTo`) reads the links pointing *at* the anchor — the holder is
+    the link's target, so its children arrive over the anchor's incoming links. The plain
+    `{ id, predicate }` form only ever walks the anchor's outgoing ones, which is why a
+    `belongsToMany`'s children answered empty: they have to be asked for on the traverse form,
+    `direction: 'in'`.
+  */
+  const inbound = scope.direction === 'in' || prop.reverse === true;
   const bounded =
     Array.isArray(scope.anchorId) ||
     scope.transitive ||
-    scope.direction === 'in' ||
+    inbound ||
     scope.limitPerAnchor !== undefined ||
     scope.levels !== undefined;
   // A core entry names containment by its neutral key; a foreign one already holds the AD4M spelling.
@@ -311,7 +317,7 @@ function resolveScopeToParent(models: EntityManifestEntry[], scope: Scope): Reco
     ids: Array.isArray(scope.anchorId) ? scope.anchorId : [scope.anchorId],
     predicate,
     ...(scope.transitive ? { transitive: true } : {}),
-    ...(scope.direction === 'in' ? { direction: 'in' } : {}),
+    ...(inbound ? { direction: 'in' } : {}),
     ...(scope.limitPerAnchor !== undefined ? { limitPerAnchor: scope.limitPerAnchor } : {}),
     ...(scope.levels !== undefined ? { levels: scope.levels } : {}),
   };

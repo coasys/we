@@ -412,3 +412,65 @@ describe('forest layout — a card being arranged', () => {
     expect(result.warnings ?? []).toEqual([]);
   });
 });
+
+/**
+ * The model-relation edge type — the `relation` edges a canvas seed emits from the classes' own
+ * fields, beside the `relates` connections somebody drew.
+ *
+ * A `relation` edge's source is already the parent: the seed works out which end of a held link
+ * is which (the record holding a to-one pointer is the child of what it points at; the holder of
+ * a list is the parent of its members). What the layout owes is to treat it like any other link —
+ * rank it, and let the spine pick it out — which is all these tests ask.
+ */
+describe('forest layout — relation edges', () => {
+  const rel = (source: string, target: string, relation: string): GraphEdge => ({
+    id: `rel|${relation}|${source}|${target}`,
+    source,
+    target,
+    type: 'relation',
+    label: relation.split('.')[1],
+    data: { relation },
+  });
+
+  it('ranks a relation edge the way the seed hands it over: source the parent', async () => {
+    // `Position.about` holds the topic — so the topic is the parent and the position its child,
+    // the opposite of the property's own direction.
+    const result = run(
+      [node('topic'), node('pos'), node('sub')],
+      [rel('topic', 'pos', 'Position.about'), rel('topic', 'sub', 'DiscussionTopic.subTopicOf')],
+    );
+
+    expect(yOf(result, 'topic')).toBe(0);
+    expect(yOf(result, 'pos')).toBe(150);
+    expect(yOf(result, 'sub')).toBe(150);
+  });
+
+  it('mixes relation and connection edges in the one tree', async () => {
+    const result = run([node('a'), node('b'), node('c')], [edge('a', 'b'), rel('b', 'c', 'Task.blockedBy')]);
+
+    expect(yOf(result, 'a')).toBe(0);
+    expect(yOf(result, 'b')).toBe(150);
+    expect(yOf(result, 'c')).toBe(300);
+  });
+
+  it('lets the spine name every model relation at once, over the edge type', async () => {
+    const result = run([node('a'), node('b'), node('c')], [edge('a', 'b'), rel('a', 'c', 'Position.about')], {
+      spine: { field: 'type', value: 'relation' },
+    });
+
+    // Only the relation edge counts, so 'b' is unconnected.
+    expect(yOf(result, 'c')).toBe(150);
+    expect(yOf(result, 'b')).not.toBe(150);
+  });
+
+  it('lets the spine name one relation by its Class.property, from the edge data', async () => {
+    const result = run(
+      [node('a'), node('b'), node('c')],
+      [rel('a', 'b', 'Position.about'), rel('a', 'c', 'Question.about')],
+      { spine: { field: 'data.relation', value: 'Position.about' } },
+    );
+
+    expect(yOf(result, 'b')).toBe(150);
+    expect(yOf(result, 'c')).not.toBe(150);
+  });
+});

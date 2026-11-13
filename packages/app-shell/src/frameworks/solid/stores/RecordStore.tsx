@@ -1808,13 +1808,627 @@ export function RecordStoreProvider(props: ParentProps) {
   }
 
   /**
+   * A relation a class declares, as a tree spine reads one — the shape of an answer to "which
+   * property makes a record of this class somebody's child (or parent)".
+   *
+   * Built from the same manifests the graph reads its shapes from: the neutral schema for a core or
+   * space-defined model (`schemaFor`), the flat entries for a foreign one — a community's installed
+   * SDNA arrives only in the second form, and its `hasOne` relations are the extraction case this
+   * whole feature exists for.
+   */
+  interface RelationProp {
+    name: string;
+    /** The class the relation points at — '' for an untyped relation, which is followed by nothing here. */
+    target: string;
+    many: boolean;
+    /** A `belongsTo`/`reverseOf`: the link lives on the *target's* record, under `forwardName`. */
+    reverse: boolean;
+    /** For a `reverse` relation, the name of the forward property the other end owns — when declared. */
+    forwardName?: string;
+    /** Whether the property itself can be written — a `belongsTo` cannot, being derived. */
+    writable: boolean;
+  }
+
+  function relationPropsOf(entity: string): RelationProp[] {
+    const found = schemaFor(entity);
+    if (found) {
+      return Object.entries(found.schema.relations ?? {}).map(([name, spec]) => ({
+        name,
+        target: spec.target ?? '',
+        many: spec.cardinality === 'many',
+        reverse: Boolean(spec.reverseOf),
+        ...(spec.reverseOf ? { forwardName: spec.reverseOf } : {}),
+        writable: !spec.reverseOf,
+      }));
+    }
+    const foreign = datasetStore.currentDatasetEntities().find((entry) => entry.name === entity);
+    if (!foreign) return [];
+    return foreign.properties
+      .filter((p) => p.type === 'uri')
+      .map((p) => ({
+        name: p.name,
+        target: p.relatedEntity ?? '',
+        many: p.isCollection,
+        reverse: Boolean(p.reverse),
+        ...(p.reverseOf ? { forwardName: p.reverseOf } : {}),
+        writable: p.writable !== false && !p.reverse,
+      }));
+  }
+
+  /** The fields through which a record of `entity` *points at* a parent — the child's own to-ones. */
+  function pointerPropsOf(entity: string): RelationProp[] {
+    return relationPropsOf(entity).filter((p) => p.target && !p.many && !p.reverse && p.writable);
+  }
+
+  /**
+   * Whether a relation names the holder's *parent* — the check the canvas seed and the named
+   * spine make, kept identical here so `rel:*` reads direction the same way. A forward to-one
+   * does (`Position.about`); so does a `belongsTo` whose forward is the parent's to-many
+   * (`Comment.respondsTo` ← `Message.responses`). A `belongsTo` inverting a to-one
+   * (`Author.post` ← `Post.author`) reads the other way — the holder is the parent — and an
+   * unpaired one stays on the children side, the seed's own default.
+   */
+  function heldByChild(prop: RelationProp): boolean {
+    if (prop.many) return false;
+    if (!prop.reverse) return true;
+    const forward = prop.forwardName
+      ? relationPropsOf(prop.target).find((p) => p.name === prop.forwardName)
+      : undefined;
+    return forward?.many === true;
+  }
+
+  /** A relation's values on a row, as ids — a hydrated record, a bare reference, or a list of either. */
+  function relationIdsOf(row: Record<string, unknown> | null, relation: string): string[] {
+    const value = row?.[relation];
+    const list = Array.isArray(value) ? value : value === undefined || value === null ? [] : [value];
+    const out: string[] = [];
+    for (const entry of list) {
+      const id = typeof entry === 'string' ? entry : (entry as { id?: unknown } | null)?.id;
+      if (typeof id === 'string' && id) out.push(id);
+    }
+    return out;
+  }
+
+  /**
+   * Write the one link a tree move is: the child's own to-one where it has one, else the parent's
+   * list — the two writable sides a model relation has. `parent` empty means detach.
+   *
+   * To-one goes through the record's own accessors rather than the statics, per the record contract:
+   * a `setRelation` over a to-one is the guess the contract says an implementation refuses.
+   *
+   * A record without those accessors is the common case for an installed SDNA, not an edge one:
+   * AD4M's `fromSHACL` registers a `max_count: 1` relation as a plain property and generates no
+   * `set`/`add`/`remove` for it. Pointing such a field somewhere is then the static `update` of one
+   * field. Clearing one has no spelling there (`update` skips an empty value), so that is reported
+   * rather than pretended. Answers whether the link was written.
+   */
+  async function writeTreeRelation(
+    handle: unknown,
+    via: { side: 'child'; type: string; prop: string } | { side: 'parent'; type: string; prop: string },
+    cardId: string,
+    parent: { id: string; type: string } | null,
+    detachFromId?: string,
+  ): Promise<boolean> {
+    if (via.side === 'child') {
+      const Model = entityClass(via.type, handle);
+      const record = (await Model.findOne(handle, { where: { id: cardId } } as never)) as Record<
+        string,
+        unknown
+      > | null;
+      if (!record) return false;
+      const suffix = via.prop.charAt(0).toUpperCase() + via.prop.slice(1);
+      const set = record[`set${suffix}`] as ((v: unknown) => Promise<unknown>) | undefined;
+      const add = record[`add${suffix}`] as ((v: unknown) => Promise<unknown>) | undefined;
+      const remove = record[`remove${suffix}`] as ((v: unknown) => Promise<unknown>) | undefined;
+      if (parent) {
+        if (typeof set === 'function') await set.call(record, parent.id);
+        else if (typeof add === 'function') await add.call(record, parent.id);
+        else await Model.update(handle, cardId, { [via.prop]: parent.id });
+        return true;
+      }
+      if (typeof remove !== 'function' && typeof set !== 'function') return false;
+      for (const id of relationIdsOf(record, via.prop)) {
+        if (typeof remove === 'function') await remove.call(record, id);
+      }
+      // Nothing held, or no remove accessor: a setter clears it whole where one exists.
+      if (typeof set === 'function') await set.call(record, []);
+      return true;
+    }
+    if (parent) {
+      await entityClass(via.type, handle).addRelation(handle, parent.id, via.prop, cardId);
+      return true;
+    }
+    if (detachFromId) {
+      await entityClass(via.type, handle).removeRelation(handle, detachFromId, via.prop, cardId);
+      return true;
+    }
+    // A detach naming no holder: whichever row of the holding class lists the card — the only
+    // spelling of "who names me" a parent-side relation leaves.
+    const rows = (await entityClass(via.type, handle).findAll(handle, {
+      include: { [via.prop]: true },
+    } as never)) as unknown as Record<string, unknown>[];
+    for (const row of rows) {
+      if (relationIdsOf(row, via.prop).includes(cardId) && typeof row.id === 'string') {
+        await entityClass(via.type, handle).removeRelation(handle, row.id, via.prop, cardId);
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Undo for a model-relation move — the relation half of {@link rememberTreeDrop}.
+   *
+   * The same shape and the same rule: replayed forwards, each half applied only when the link is
+   * still where this entry left it, so a card a peer has moved since is left where they put it.
+   * `write` says which side of the relation the move went through; `oldWrite` the side the link
+   * it replaced went through — the same when a reparent stays on one property, a different
+   * field on a different class when it does not. Both are needed: an undo clears what the move
+   * wrote *and* restores what it cleared.
+   */
+  function rememberRelationDrop(
+    canvas: string,
+    handle: unknown,
+    card: { id: string; type: string },
+    write: { side: 'child'; type: string; prop: string } | { side: 'parent'; type: string; prop: string },
+    oldWrite: { side: 'child'; type: string; prop: string } | { side: 'parent'; type: string; prop: string },
+    from: { id: string; type: string } | null,
+    to: { id: string; type: string } | null,
+    ranks: StyleChange[],
+  ): void {
+    if (!canvas || (!from && !to && !ranks.length)) return;
+    /*
+      Where the card hangs through `via`, re-read rather than assumed — the same "only if still
+      there" check the connection steps make. A parent-side write names the holder of the list; a
+      child-side one reads the card's own field.
+    */
+    const currentParent = async (via: typeof write): Promise<string> => {
+      if (via.side === 'child') {
+        const record = (await entityClass(via.type, handle).findOne(handle, {
+          where: { id: card.id },
+        } as never)) as Record<string, unknown> | null;
+        return relationIdsOf(record, via.prop)[0] ?? '';
+      }
+      const rows = (await entityClass(via.type, handle).findAll(handle, {
+        include: { [via.prop]: true },
+      } as never)) as unknown as Record<string, unknown>[];
+      for (const row of rows) {
+        if (relationIdsOf(row, via.prop).includes(card.id)) return String(row.id);
+      }
+      return '';
+    };
+    /*
+      Out of the link `via` spells — the half an undo/redo has to clear before it writes the
+      other. A to-one's setter would overwrite anyway, but a parent's list does not vacate on
+      add: skip only the detach a re-attach to the same list would undo again anyway.
+    */
+    const detach = async (via: typeof write, stayingUnder?: string): Promise<boolean> => {
+      if (via.side === 'parent') {
+        const currentId = await currentParent(via);
+        if (currentId && currentId !== stayingUnder) {
+          await entityClass(via.type, handle).removeRelation(handle, currentId, via.prop, card.id);
+        }
+        return true;
+      }
+      return writeTreeRelation(handle, via, card.id, null);
+    };
+    // A reorder among the same siblings moved no link, and replaying one would add the card to a
+    // parent's list a second time.
+    const moved = (from?.id ?? '') !== (to?.id ?? '');
+    /*
+      `parent` through `via`, the card off `leaving` first. A move between relations of different
+      classes — `about` for `agendaItem`, say — is two links, and an undo that wrote the old
+      parent through the *new* property would point a field at a class it does not join.
+    */
+    const apply = async (parent: { id: string; type: string } | null, via: typeof write, leaving: typeof write) => {
+      if (moved) {
+        // The same to-one on both ends: the set is its own clear, as on the way out. Cleared first,
+        // an installed SDNA (which cannot spell a clear) would report a failure the set undoes.
+        const selfClearing =
+          parent &&
+          via.side === 'child' &&
+          leaving.side === 'child' &&
+          via.type === leaving.type &&
+          via.prop === leaving.prop;
+        const detached = selfClearing ? true : await detach(leaving, parent?.id);
+        const written = parent ? await writeTreeRelation(handle, via, card.id, parent) : detached;
+        /*
+          A card whose field cannot be spelled — an installed SDNA's to-one, which can be pointed
+          but never cleared — takes nothing back, and a silent no-op reads as the undo having
+          landed. Said instead.
+        */
+        if (!detached || !written) {
+          toastService.info('Could not take that move back — the record cannot be written from here.');
+        }
+      }
+      for (const change of ranks) await stylePlacement(canvas, change.nodeId, change.before, change.after);
+    };
+    history.push({
+      scope: canvas,
+      label: !to ? 'take card out of tree' : 'move card in tree',
+      undo: async () => {
+        if ((await currentParent(write)) !== (to?.id ?? '')) return;
+        await apply(from, oldWrite, write);
+      },
+      redo: async () => {
+        if ((await currentParent(oldWrite)) !== (from?.id ?? '')) return;
+        await apply(to, write, oldWrite);
+      },
+    });
+  }
+
+  /**
+   * Drag a card to another place in a tree whose spine is a *model relation* — `rel:Class.prop` or
+   * `rel:*` — and write what that meant.
+   *
+   * The counterpart of `arrangeOnTree` for the structure the classes already hold: no `Relationship`
+   * is written, the child's own field (or the parent's list) is what changes. The refusals a
+   * connection drop makes by convention are made here by declaration — a card can only hang under a
+   * class its model says it points at.
+   *
+   * ## Which property the write goes through
+   *
+   * A spine naming `Class.prop` writes exactly that: held on the child it is set like a connection's
+   * source; held on the parent — a `hasMany` or a `belongsTo*` — the *child's* forward field is
+   * written when the relation names it (`reverseOf`), and a `hasMany` with no named inverse is moved
+   * on the parent's list itself. `rel:*` asks the child's class which of its to-one pointers leads
+   * to the dropped parent and writes that one; with none it refuses. A `belongsTo` the model never
+   * named a forward for is refused the same way — derived data cannot be pointed at anything.
+   */
+  async function arrangeOnRelationTree(
+    canvas: string,
+    handle: unknown,
+    spine: string,
+    event: {
+      recordId?: string;
+      recordType?: string;
+      pending?: boolean;
+      changed?: boolean;
+      into?: 'child' | 'sibling' | 'loose';
+      targetId?: string;
+      targetType?: string;
+      before?: boolean;
+      order?: string[];
+    },
+  ): Promise<void> {
+    const cardId = event.recordId!;
+    const cardType = event.recordType!;
+
+    /*
+      A card still awaiting acceptance, or carrying a change nobody has saved, is not moved: the
+      drop would write the record's field as if that record were settled, and there is no earlier
+      settled state an undo could return it to.
+      Whether one agent may rewrite *another* agent's record by dragging its card is intentionally
+      not asked here — that is an open product question for Nico and Josh, and this guard waits on
+      it rather than guessing.
+    */
+    if (event.pending || event.changed) {
+      toastService.info(
+        event.pending
+          ? 'That card is still a suggestion — accept or discard it before moving it.'
+          : 'Save or discard that card’s changes before moving it.',
+      );
+      return;
+    }
+
+    /*
+      The write side of a declared relation — which class and property the link is written through,
+      and whether that is the child's own field or a list on the parent.
+
+      A `reverse`/`belongsTo` read has no setter: the write goes through the forward property the
+      *other* end owns (`reverseOf`), which is a to-one on the child for a `belongsTo` (`Author.post`
+      ← `Post.author`) and a to-many on the parent for a named back-pointer (`Book.author` ←
+      `Author.books`). A reverse the model never named a forward for cannot be moved — derived data
+      cannot be pointed at anything.
+    */
+    const writePlanFor = (
+      holderEntity: string,
+      prop: RelationProp,
+    ): { side: 'child' | 'parent'; type: string; prop: string } | undefined => {
+      if (!prop.reverse) {
+        if (!prop.writable) return undefined;
+        return prop.many
+          ? { side: 'parent', type: holderEntity, prop: prop.name }
+          : { side: 'child', type: holderEntity, prop: prop.name };
+      }
+      if (!prop.forwardName) return undefined;
+      const forward = relationPropsOf(prop.target).find((p) => p.name === prop.forwardName);
+      if (!forward || !forward.writable) return undefined;
+      return forward.many
+        ? { side: 'parent', type: prop.target, prop: forward.name }
+        : { side: 'child', type: prop.target, prop: forward.name };
+    };
+
+    /*
+      The declared relation an explicit `X.prop` spine names, with the direction settled the way the
+      seed settles it: a to-one name sits on the child side when it is a forward pointer, or when it
+      is the derived back-pointer of a parent's to-many — a `reverse` whose forward is a to-one
+      (`belongsTo`) names children, and sits on the parent. `childEntity`/`parentEntity` are the two
+      classes a move under this spine can join.
+    */
+    const named = (() => {
+      if (spine === '*') return undefined;
+      const dot = spine.indexOf('.');
+      if (dot < 0) return undefined;
+      const entity = spine.slice(0, dot);
+      const prop = relationPropsOf(entity).find((p) => p.name === spine.slice(dot + 1) && p.target);
+      if (!prop) return undefined;
+      const childHeld = heldByChild(prop);
+      return {
+        entity,
+        prop,
+        heldByChild: childHeld,
+        childEntity: childHeld ? entity : prop.target,
+        parentEntity: childHeld ? prop.target : entity,
+      };
+    })();
+    if (spine !== '*' && !named) return;
+
+    /*
+      The card's parent under this spine, read off the data rather than remembered.
+
+      A child-side name answers the card's own field — forward or derived, the pointer is stored on
+      the card either way. A parent-side name asks which row of the holding class lists the card,
+      hydrated: a scan, bounded, and the only spelling of "who names me" a parent-side relation
+      leaves. `rel:*` walks the card's own to-one fields — forward pointers first (the writable
+      assertions), then derived back-pointers — and takes the first that is set: the same "first
+      wins" the layout settles a multiply-parented card by.
+    */
+    const heldBy = async (
+      id: string,
+      type: string,
+    ): Promise<{ prop: RelationProp; parentId: string; parentType: string } | undefined> => {
+      if (named) {
+        if (type !== named.childEntity) return undefined;
+        if (named.heldByChild) {
+          const record = (await entityClass(type, handle).findOne(handle, { where: { id } } as never)) as Record<
+            string,
+            unknown
+          > | null;
+          const parentId = relationIdsOf(record, named.prop.name)[0];
+          return parentId ? { prop: named.prop, parentId, parentType: named.parentEntity } : undefined;
+        }
+        const rows = (await entityClass(named.entity, handle).findAll(handle, {
+          include: { [named.prop.name]: true },
+        } as never)) as unknown as Record<string, unknown>[];
+        for (const row of rows) {
+          if (relationIdsOf(row, named.prop.name).includes(id) && typeof row.id === 'string') {
+            return { prop: named.prop, parentId: row.id, parentType: named.parentEntity };
+          }
+        }
+        return undefined;
+      }
+      /*
+        `rel:*` walks the to-ones that point *up* — forward pointers first (the writable
+        assertions), then the derived back-pointers of parents' to-manys. The same direction
+        check the seed and the named spine make: a `belongsTo` inverting a to-one reads
+        *down* — the holder is the parent — and is not a way a card hangs under anything.
+      */
+      const props = [
+        ...pointerPropsOf(type),
+        ...relationPropsOf(type).filter((p) => p.target && p.reverse && heldByChild(p)),
+      ];
+      if (!props.length) return undefined;
+      const record = (await entityClass(type, handle).findOne(handle, { where: { id } } as never)) as Record<
+        string,
+        unknown
+      > | null;
+      for (const prop of props) {
+        const parentId = relationIdsOf(record, prop.name)[0];
+        if (parentId) return { prop, parentId, parentType: prop.target };
+      }
+      return undefined;
+    };
+
+    const held = await heldBy(cardId, cardType);
+
+    if (event.into === 'loose') {
+      if (!held) return;
+      /*
+        Clear the link that holds the card — through the property that owns it, wherever that is.
+      */
+      const holderEntity = named ? named.entity : cardType;
+      const write = writePlanFor(holderEntity, held.prop);
+      if (!write) {
+        toastService.info('That relation is derived — remove it from the record itself.');
+        return;
+      }
+      const from = { id: held.parentId, type: held.parentType };
+      if (!(await writeTreeRelation(handle, write, cardId, null))) {
+        toastService.info('That field cannot be cleared from the tree — edit the record itself.');
+        return;
+      }
+      rememberRelationDrop(canvas, handle, { id: cardId, type: cardType }, write, write, from, null, []);
+      return;
+    }
+
+    const targetId = event.targetId!;
+    /*
+      Who the drop lands the card under. `child` names it; `sibling` asks where the sibling hangs
+      under this spine — a card the spine does not hold has no siblings to join.
+    */
+    let parentId = '';
+    let parentType = '';
+    if (event.into === 'child') {
+      parentId = targetId;
+      parentType = event.targetType ?? '';
+    } else {
+      const heldSibling = await heldBy(targetId, event.targetType ?? '');
+      if (!heldSibling) {
+        toastService.info('Drop a card in the unconnected area to take it out of its tree.');
+        return;
+      }
+      parentId = heldSibling.parentId;
+      parentType = heldSibling.parentType;
+    }
+    if (!parentId || parentId === cardId) return;
+
+    /*
+      What this drop writes — and whether it may.
+
+      The child's class has to declare a way for it to hang under the parent's class: under `rel:*`
+      any of its forward pointers at that class answers; under `X.prop` the named relation does —
+      the pair of classes it joins decided by which side holds the link. A model that never declared
+      the needed relation refuses the drop rather than writing one it made up — the same rule a
+      `Relationship` spine keeps by vocabulary, kept here by schema.
+    */
+    const write = named
+      ? cardType === named.childEntity && parentType === named.parentEntity
+        ? writePlanFor(named.entity, named.prop)
+        : undefined
+      : (() => {
+          /*
+            Which of the card's pointers reaches the parent's class — every to-one that names a
+            parent, forward or derived, under the same direction check. Where several could, the
+            one the card already hangs by wins: a reparent rewrites the link it is on, not the
+            first declared of the right class.
+          */
+          const candidates = relationPropsOf(cardType).filter((p) => p.target === parentType && heldByChild(p));
+          const prop = candidates.find((p) => p.name === held?.prop.name) ?? candidates[0];
+          return prop ? writePlanFor(cardType, prop) : undefined;
+        })();
+    if (!write) {
+      toastService.info(`${cardType} has no relation that points at ${parentType || 'that record'}.`);
+      return;
+    }
+
+    // A walk up the spine, so a drop cannot put a card inside itself.
+    const seen = new Set<string>([cardId]);
+    let atId = parentId;
+    let atType = parentType;
+    let loops = false;
+    while (atId && !seen.has(atId)) {
+      seen.add(atId);
+      const up = await heldBy(atId, atType);
+      if (!up) break;
+      atId = up.parentId;
+      atType = up.parentType;
+    }
+    loops = atId === cardId;
+    if (loops) {
+      toastService.info('That would put a card inside itself.');
+      return;
+    }
+
+    const from = held ? { id: held.parentId, type: held.parentType } : null;
+    // A drop beside its own siblings moves nothing but its place in the row — the ranks below still
+    // run, as they do on a connection spine.
+    const stays = from?.id === parentId;
+    /*
+      The write the old link came down by, remembered for undo: the same `write` when a reparent
+      stays on one property — a to-one's set is clear enough — and the old prop's own write plan
+      when the move crosses to a different field, possibly on a different class.
+    */
+    let oldWrite = write;
+    // Off the old parent first — a to-one's set would overwrite it anyway, a parent's list would not.
+    if (from && !stays && !(write.side === 'child' && held!.prop.name === write.prop)) {
+      const clearing = writePlanFor(named ? named.entity : cardType, held!.prop);
+      if (!clearing) {
+        toastService.info('That relation is derived — it cannot be moved.');
+        return;
+      }
+      /*
+        A named `belongsTo`'s clear resolves to the *same* write as the set it precedes — the
+        forward to-one either way — and a set is its own clear. Attempted anyway, an installed
+        SDNA (whose records cannot spell a clear at all) refuses a move it could have made.
+      */
+      const sameWrite = clearing.side === write.side && clearing.type === write.type && clearing.prop === write.prop;
+      if (!(sameWrite && write.side === 'child')) {
+        // Left where it was rather than hung under two parents when the old link cannot be cleared.
+        if (!(await writeTreeRelation(handle, clearing, cardId, null, from.id))) {
+          toastService.info('That field cannot be cleared from the tree — edit the record itself.');
+          return;
+        }
+      }
+      oldWrite = clearing;
+    }
+    if (!stays && !(await writeTreeRelation(handle, write, cardId, { id: parentId, type: parentType }))) return;
+
+    /*
+      Siblings for the rank row — the children the drop lands beside, under this spine.
+
+      The same row logic the connection spine runs, with the children read through the property the
+      write went to: a child's own field asks its class for the rows pointing at the parent, a
+      parent's list is read off the parent, hydrated.
+    */
+    let siblings: string[] = [];
+    if (write.side === 'child') {
+      const rows = (await entityClass(write.type, handle).findAll(handle, {
+        where: { [write.prop]: parentId },
+      } as never)) as unknown as { id?: string }[];
+      siblings = rows.map((row) => row.id).filter((id): id is string => typeof id === 'string');
+    } else {
+      const parent = (await entityClass(write.type, handle).findOne(handle, {
+        where: { id: parentId },
+        include: { [write.prop]: true },
+      } as never)) as Record<string, unknown> | null;
+      siblings = relationIdsOf(parent, write.prop);
+    }
+    siblings = siblings.filter((id) => id !== cardId);
+
+    const placements = (await Placement.findAll(handle, {
+      parent: { id: canvas, relation: 'children', entity: 'CollectionBlock' },
+    })) as unknown as { node?: string; rank?: number }[];
+    const rankOf = new Map<string, number>();
+    /*
+      Which cards have a placement to hold a rank. A model relation's children are mostly pulled in
+      by the seed and never placed, and a rank written at one of those fails with "drag this onto the
+      canvas first" — once per sibling, on every drop. Their order stays the layout's own.
+    */
+    const placed = new Set<string>();
+    for (const row of placements) {
+      const rank = Number(row.rank);
+      if (typeof row.node === 'string') placed.add(row.node);
+      if (typeof row.node === 'string' && isRank(rank)) rankOf.set(row.node, rank);
+    }
+    const byRank = (a: string, b: string) => {
+      const [one, two] = [rankOf.get(a), rankOf.get(b)];
+      if (one !== undefined && two !== undefined) return one - two || a.localeCompare(b);
+      return one !== undefined ? -1 : two !== undefined ? 1 : a.localeCompare(b);
+    };
+    const shown = event.order?.filter((id) => id === cardId || siblings.includes(id));
+    let row: string[];
+    let index: number;
+    if (shown?.includes(cardId)) {
+      const inRow = shown.filter((id) => id !== cardId);
+      row = [...inRow, ...siblings.filter((id) => !inRow.includes(id)).sort(byRank)];
+      index = shown.indexOf(cardId);
+    } else {
+      row = [...siblings].sort(byRank);
+      const beside = row.indexOf(targetId);
+      index = event.into === 'child' || beside < 0 ? row.length : beside + (event.before ? 0 : 1);
+    }
+    const writes = new Map(
+      [
+        ...seatInRow(
+          row.map((id) => ({ id, ...(rankOf.has(id) ? { rank: rankOf.get(id)! } : {}) })),
+          cardId,
+          index,
+        ),
+      ].filter(([id]) => placed.has(id)),
+    );
+    for (const [id, rank] of writes) hold(id, { rank });
+    for (const [id, rank] of writes) await stylePlacement(canvas, id, { rank });
+    rememberRelationDrop(
+      canvas,
+      handle,
+      { id: cardId, type: cardType },
+      write,
+      oldWrite,
+      from,
+      { id: parentId, type: parentType },
+      [...writes].map(([nodeId, rank]) => ({ nodeId, before: { rank: rankOf.get(nodeId) ?? 0 }, after: { rank } })),
+    );
+  }
+
+  /**
    * Drag a card to another place in a tree, and write what that meant.
    *
    * The counterpart of `dragOnCanvas` for a canvas being read as a hierarchy. There the position *is*
    * the data, so a drag writes a coordinate; here the layout derives the position, so a drag writes
    * the structure the layout reads. `relationshipTypeId` says which kind of connection the tree
    * follows, which the store cannot know: what makes a parent a parent is the community's own
-   * vocabulary and the reader's current choice of spine.
+   * vocabulary and the reader's current choice of spine — or a model relation, spelled `rel:` —
+   * which {@link arrangeOnRelationTree} answers.
    *
    * ## Reparenting moves the connection rather than replacing it
    *
@@ -1837,6 +2451,8 @@ export function RecordStoreProvider(props: ParentProps) {
     const event = (payload ?? {}) as {
       recordId?: string;
       recordType?: string;
+      pending?: boolean;
+      changed?: boolean;
       into?: 'child' | 'sibling' | 'loose';
       targetId?: string;
       targetType?: string;
@@ -1860,6 +2476,14 @@ export function RecordStoreProvider(props: ParentProps) {
     const cardId = event.recordId;
 
     try {
+      /*
+        A `rel:` spine follows a model relation rather than a kind of connection, and the write is a
+        field on the data rather than a record — a different path, kept out of the connection logic.
+      */
+      if (relationshipTypeId.startsWith('rel:')) {
+        await arrangeOnRelationTree(canvas, handle, relationshipTypeId.slice(4), event);
+        return;
+      }
       const links = await spineLinks(handle, relationshipTypeId);
       const parentOf = new Map<string, SpineLink>();
       const childrenOf = new Map<string, string[]>();
