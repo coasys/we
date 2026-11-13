@@ -4164,6 +4164,7 @@ Needs: kernels records, interpretation.
   - feedRoot — The space collection the Feed reads, and writes typed messages into.
   - feedRows — The Feed's window: every message in the space and a row per group of things extracted or made, merged by time — newest first while following the live end, oldest first from the start. A row is { kind: 'line', id, at, author, text, marks, source, call, callTitle, replyTo } or { kind: 'activity', id, at, author, origin, originTitle, summary, items, suggested }.
   - replyingTo — The line a reply is being written to — { id, text, author } — or null.
+  - showCallTranscripts — Whether this reader asked the Feed to draw the lines calls spoke — off until they do, in this space only.
   - timelineOrientation — Which way round this reader draws the Feed — 'newestBottom' or 'newestTop'. Their own setting.
 - Actions (`{ "$invoke": "modules.feed.<name>" }`):
   - cancelReply — Puts a reply down without sending it.
@@ -4180,7 +4181,7 @@ Needs: kernels records, interpretation.
   - watchFeed — The Feed is drawn somewhere: keep it live.
 - Parts: `feed.feedView`
 - Panels (`meta.panels[].dock`): `feed` "Feed" (module-owned openness)
-- Settings: `timelineOrder` (enum; agent) — Newest messages; `botNotices` (boolean; agent) — Tell me when a bot answers
+- Settings: `timelineOrder` (enum; agent) — Newest messages; `botNotices` (boolean; agent) — Tell me when a bot answers; `showCallTranscripts` (boolean; agent-in-space) — Show call transcripts
 
 ### Live presence (`live`)
 See each other’s cursors, and follow one person’s screen.
