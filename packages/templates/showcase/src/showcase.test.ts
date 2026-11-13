@@ -640,7 +640,7 @@ describe('the workshop template’s call selection', () => {
     /*
       Parked in slots a card fits, and pinned where it is drawn when kept.
 
-      Inside the layout expression now, because the canvas has a second reading — see `WorkshopTree`.
+      Inside the layout expression now, because the canvas has a second reading — see `canvasTree` in the kit.
       Asserted as the branch rather than as the whole prop: what matters is that the freeform side is
       still `manual` with a card-sized slot, which is what stopped new suggestions arriving overlapping.
     */
