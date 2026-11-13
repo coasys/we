@@ -81,7 +81,12 @@ export {
   runtimeSupportsInterpretation,
   transcriptScopeQuery,
 } from './interpretationAdapter';
-export { type Ad4mCapability, capabilitiesFromToken, createCapabilityCheck } from './capabilities';
+export {
+  type Ad4mCapability,
+  capabilitiesFromToken,
+  createCapabilityCheck,
+  holdsOperatorCredential,
+} from './capabilities';
 export {
   createAd4mCallPort,
   DEFAULT_CALL_CONFIG,

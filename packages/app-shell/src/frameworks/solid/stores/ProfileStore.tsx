@@ -27,6 +27,7 @@ import { createStore, reconcile } from 'solid-js/store';
 import { onePerPerson, profileAsPerson } from '../../../shared/personProfile';
 import { credential } from '../credential';
 import { useAccountStore } from './AccountStore';
+import { useRuntimeStore } from './RuntimeStore';
 import { useSessionStore } from './SessionStore';
 
 export interface ProfileStore {
@@ -145,6 +146,7 @@ const ProfileContext = createContext<ProfileStore>();
 
 export function ProfileStoreProvider(props: ParentProps) {
   const session = useSessionStore();
+  const runtime = useRuntimeStore();
   const accounts = useAccountStore();
 
   const [rawProfiles, setProfiles] = createSignal<AgentProfileSummary[]>([]);
@@ -585,11 +587,15 @@ export function ProfileStoreProvider(props: ParentProps) {
       toastService.error(
         'Your account was created, but your name and picture did not save. You can set them in your profile.',
       );
-    } finally {
-      // Always: the account exists either way, and leaving someone on a spinner because a label
-      // failed to write would be the worst of the available outcomes.
-      session.finishSetup();
     }
+    // Always on: the account exists either way, and leaving someone on a spinner because a label
+    // failed to write would be the worst of the available outcomes. To the AI step when there is
+    // something to ask there (it finishes setting up itself), else straight to the app.
+    const asking = await runtime.openAiStep().catch((err) => {
+      console.error('ProfileStore: could not decide whether to ask about AI', err);
+      return false;
+    });
+    if (!asking) session.finishSetup();
   }
 
   /**

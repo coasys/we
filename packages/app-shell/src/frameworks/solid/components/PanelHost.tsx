@@ -22,7 +22,7 @@ import { resolveParts } from '@shared/registries/moduleParts';
 import { onPanelContentChanged, panelContent } from '@shared/registries/panelContents';
 import { slotRegistry } from '@shared/registries/slotRegistry';
 import { chromeBag } from '@shared/registries/templateBag';
-import { componentRegistry as registry } from '@solid/registries/componentRegistry';
+import { chromeComponentRegistry as registry } from '@solid/registries/componentRegistry';
 import type { SchemaNode } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import {

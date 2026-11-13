@@ -235,7 +235,7 @@ export function createAd4mBackendPorts(
     models: createAd4mModelAdmin(backendClient, options),
     transcription: createAd4mTranscriptionPort(backendClient, options),
     languageModel: createAd4mLanguageModelPort(backendClient, options.connection),
-    agents: createAd4mAgentPort(),
+    agents: createAd4mAgentPort(backendClient as Ad4mClient),
     // Takes no client: interpretation is entirely a per-dataset operation, and every call already
     // carries the dataset handle it needs.
     interpretation: createAd4mInterpretationPort(ctx.selfId),
