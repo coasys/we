@@ -84,6 +84,14 @@ export function AgentChatSheet() {
               'border-top-right-radius': 'var(--we-radius-500, 16px)',
               'box-shadow': '0 -8px 40px rgb(0 0 0 / 0.45)',
               transition: 'height 160ms ease',
+              /*
+                The bottom row clears two things painted over the window's lower edge: the home
+                indicator (`safe-area-inset-bottom`, 0 where there is none) and the connect
+                button's corner bar, which a sheet cannot move and must sit above — 44px is that
+                bar's band (34px button at 10px in). On a phone with a real inset the larger one
+                wins.
+              */
+              'padding-bottom': 'max(env(safe-area-inset-bottom, 0px), 44px)',
             }}
           >
             {/*
