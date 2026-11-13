@@ -1260,7 +1260,9 @@ export const seedBundles: Bundle[] = [
                           onInput: { $setLocal: 'findQuery', value: { $: 'event.detail' } },
                           onKeyDown: {
                             $if: {
-                              condition: { $: "event.detail.key == 'Enter' && trim(local.findQuery)" },
+                              condition: {
+                                $: "event.detail.key == 'Enter' && !event.detail.isComposing && trim(local.findQuery)",
+                              },
                               then: [
                                 {
                                   $invoke: 'chatStore.openChat',
