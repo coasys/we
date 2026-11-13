@@ -39,6 +39,7 @@ import { credential } from '../credential';
 import { useBackend, usePlatform } from '../providers/PlatformProvider';
 import { startAppBridge } from '../services/appBridge';
 import { useAccountStore } from './AccountStore';
+import { useShellStore } from './ShellStore';
 
 /**
  * Where boot has got to.
@@ -226,6 +227,7 @@ const SessionContext = createContext<SessionStore>();
 export function SessionStoreProvider(props: ParentProps) {
   const platform = usePlatform();
   const backend = useBackend();
+  const shellStore = useShellStore();
 
   const [bootState, setBootState] = createSignal<BootState>('initialising');
   const [bootError, setBootError] = createSignal('');
@@ -260,6 +262,10 @@ export function SessionStoreProvider(props: ParentProps) {
   const [identityCapabilities, setIdentityCapabilities] = createSignal(NO_IDENTITY_CAPABILITIES);
   const [host, setHost] = createSignal<BackendHostInfo | undefined>(undefined);
   const [hostAccount, setHostAccount] = createSignal<BackendAccountInfo | undefined>(undefined);
+
+  // Whose kept panel instances the shell reads and writes — follows the signed-in agent, empty
+  // while nobody is, so a logout that does not reload drops the last agent's records from reach.
+  shellStore.provideAgentDid(() => me()?.did);
 
   const [backendPorts, setBackendPorts] = createSignal<BackendPorts | null>(null);
   // Supplied by connectors whose session is the connection rather than an unlocked keystore.

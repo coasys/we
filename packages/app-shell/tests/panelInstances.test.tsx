@@ -47,6 +47,8 @@ function mount() {
   let store!: ShellStore;
   const Grab = () => {
     store = useShellStore();
+    // The store keeps instances under a DID — as SessionStore provides it in the app.
+    store.provideAgentDid(() => 'did:test:me');
     release.push(provideChromeBag(buildTemplateBag({ shellStore: store } as never, { grants: CHROME_TIER }) as never));
     return null;
   };
@@ -191,9 +193,9 @@ describe('an instance kept under the app', () => {
     expect(store.panelInstances().map((instance) => instance.id)).toEqual([global]);
     const kept = JSON.parse(localStorage.getItem('we-local:shell.panelInstances') ?? '{}') as Record<
       string,
-      Record<string, { id: string }>
+      Record<string, Record<string, { id: string }>>
     >;
-    expect(kept[APP_PANEL_SCOPE]?.[bound]?.id).toBe(bound);
+    expect(kept['did:test:me']?.[APP_PANEL_SCOPE]?.[bound]?.id).toBe(bound);
 
     setHere('uuid-a');
     await vi.waitFor(() => expect(all()).toContain('Ada'));
@@ -203,6 +205,30 @@ describe('an instance kept under the app', () => {
         .map((instance) => instance.id)
         .sort(),
     ).toEqual([bound, global].sort());
+  });
+});
+
+describe('a logout that does not reload', () => {
+  it("shows the next agent nothing of the last one's kept panels", async () => {
+    const { store } = mount();
+    const [who, setWho] = createSignal('did:test:me');
+    store.provideAgentDid(who);
+
+    // An app-scope chat open under one agent — the sort whose inputs name a perspective.
+    store.openPanel('inspector', { name: 'Ada', perspectiveUuid: 'uuid-a' }, { scope: APP_PANEL_SCOPE });
+    expect(store.panelInstances()).toHaveLength(1);
+
+    // Out and in as somebody else, no reload: her panels are not there for him.
+    setWho('did:test:other');
+    await vi.waitFor(() => expect(store.panelInstances()).toHaveLength(0));
+
+    // Nothing of hers persisted under his key; her records sit under hers.
+    const kept = JSON.parse(localStorage.getItem('we-local:shell.panelInstances') ?? '{}') as Record<
+      string,
+      Record<string, Record<string, { id: string }>>
+    >;
+    expect(kept['did:test:other']?.[APP_PANEL_SCOPE]).toBeUndefined();
+    expect(Object.keys(kept['did:test:me']?.[APP_PANEL_SCOPE] ?? {})).toHaveLength(1);
   });
 });
 

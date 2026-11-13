@@ -356,6 +356,12 @@ export interface ShellStore {
    * `SpaceStore` provides it, and nothing else should. See `moduleGate`.
    */
   provideSpaceGate: (gate: (perspectiveUuid: string) => boolean) => void;
+  /**
+   * Tell the shell whose instance records these are — the signed-in agent's DID. Wiring:
+   * `SessionStore` provides it, and nothing else should. Kept panel instances read and write
+   * under it, so a logout without a reload shows the next agent nothing of the last one's.
+   */
+  provideAgentDid: (did: () => string | undefined) => void;
   toggleSpaceSettings: () => void;
   /**
    * Open the panel, optionally on a named tab — `'about'`, `'features'`, `'vocabulary'`.
@@ -1072,22 +1078,35 @@ const LANES_KEY = 'we-local:shell.lanes';
 /** Every interface's open panel instances, by interface — see `PanelInstance`. */
 const INSTANCES_KEY = 'we-local:shell.panelInstances';
 
-function loadInstances(): Record<string, Record<string, PanelInstance>> {
+/*
+ * Instances are kept under the agent's DID: an app-scope chat carries a perspective id, and a
+ * logout that does not reload hands the screen to the next agent — unkeyed, they would see the
+ * last one's. `load`/`save` take the DID; it is provided once the session knows who is signed in.
+ */
+function loadInstances(did: string): Record<string, Record<string, PanelInstance>> {
   if (typeof localStorage === 'undefined') return {};
   try {
     const parsed = JSON.parse(localStorage.getItem(INSTANCES_KEY) ?? '{}') as unknown;
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as Record<string, Record<string, PanelInstance>>)
-      : {};
+    const perAgent =
+      parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, Record<string, Record<string, PanelInstance>>>)
+        : {};
+    const mine = perAgent[did];
+    return mine && typeof mine === 'object' && !Array.isArray(mine) ? mine : {};
   } catch {
     return {};
   }
 }
 
-function saveInstances(all: Record<string, Record<string, PanelInstance>>): void {
+function saveInstances(did: string, all: Record<string, Record<string, PanelInstance>>): void {
   if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(INSTANCES_KEY, JSON.stringify(all));
+    const parsed = JSON.parse(localStorage.getItem(INSTANCES_KEY) ?? '{}') as unknown;
+    const perAgent =
+      parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? { ...(parsed as Record<string, unknown>) } : {};
+    if (Object.keys(all).length) perAgent[did] = all;
+    else delete perAgent[did];
+    localStorage.setItem(INSTANCES_KEY, JSON.stringify(perAgent));
   } catch {
     // The instances open now stay open; a reload starts without them.
   }
@@ -1860,7 +1879,19 @@ export function ShellStoreProvider(props: ParentProps) {
     instances merge under the interface's here, and the interface's win an id collision the way its
     declarations do everywhere else.
   */
-  const [allInstances, setAllInstances] = createSignal(loadInstances());
+  /*
+    Whose instance records these are — injected by `SessionStore` once it knows, the way
+    `spaceGate` is. Kept by DID so a logout without a reload never shows the next agent the
+    last one's chats: a change of agent re-reads storage for the one now signed in.
+  */
+  const [didOf, setDidOf] = createSignal<(() => string | undefined) | undefined>(undefined);
+  const agentDid = () => didOf()?.() ?? '';
+  const [allInstances, setAllInstances] = createSignal(loadInstances(agentDid()));
+  createEffect(() => {
+    const next = loadInstances(agentDid());
+    setAllInstances(next);
+    publishPanelInstances(visibleInstances(next));
+  });
   /**
    * Which perspective is on screen, asked as "is this the one" — injected by `SpaceStore`, which
    * mounts below this store, the same reason `moduleGate` is. An instance whose inputs bind it to
@@ -1894,7 +1925,7 @@ export function ShellStoreProvider(props: ParentProps) {
       const next = { ...all };
       if (Object.keys(here).length) next[scope] = here;
       else delete next[scope];
-      saveInstances(next);
+      saveInstances(agentDid(), next);
       // Published as it is written, so a body drawn in the same breath reads its inputs.
       publishPanelInstances(visibleInstances(next));
       return next;
@@ -3326,6 +3357,7 @@ export function ShellStoreProvider(props: ParentProps) {
     // Wrapped, because `setSignal` treats a function argument as an updater.
     provideModuleGate: (gate) => setModuleGate(() => gate),
     provideSpaceGate: (gate) => setSpaceGate(() => gate),
+    provideAgentDid: (did) => setDidOf(() => did),
     provideTemplateSaver: (saver) => setTemplateSaver(() => saver),
 
     saveArrangementAsTemplate: async () => {

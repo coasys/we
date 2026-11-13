@@ -1235,6 +1235,12 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
       show a space's chat anywhere, or nowhere.
     */
     provideSpaceGate: WIRING,
+    /*
+      Who the kept panel instances belong to, injected by `SessionStore` — the same hand-off as
+      `provideSpaceGate` above, and wiring for the same reason: a template able to call it could
+      read another agent's records as its own.
+    */
+    provideAgentDid: WIRING,
     provideTemplateSaver: WIRING,
     pendingDestructive: state('host-layout'),
     confirmDestructive: action('host-layout'),
