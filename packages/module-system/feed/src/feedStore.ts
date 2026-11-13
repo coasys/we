@@ -58,6 +58,23 @@ export function createFeed(deps: FeedDeps) {
   const [rows, setRows] = signal<FeedRow[]>([]);
   const [hasMore, setHasMore] = signal(false);
   const [loaded, setLoaded] = signal(false);
+  /*
+    The last read failed, readable without subscribing: the looking effect asks it to owe a read on
+    the next look, and reading a signal there would re-run that effect on every read's outcome. The
+    deps have no `untrack`.
+  */
+  let lastReadFailed = false;
+  const setFailed = (value: boolean) => {
+    lastReadFailed = value;
+  };
+  /*
+    Whether what is on screen is a read that landed for this space: set by a read that succeeds,
+    cleared by one that fails and by a space switch — never by a read merely starting. The failure
+    flag clears as a read starts, so a retry on the wire after a failure would otherwise count as an
+    answer; and clearing this on every start would count each routine re-read under a reader who is
+    watching the rows as "not following".
+  */
+  const [answered, setAnswered] = signal(false);
 
   // Forgotten whenever the dataset changes, so a switch never draws the last space's rows under the
   // new space's name.
@@ -65,6 +82,7 @@ export function createFeed(deps: FeedDeps) {
     void deps.dataset?.();
     setRows([]);
     setLoaded(false);
+    setAnswered(false);
   });
 
   /*
@@ -97,7 +115,6 @@ export function createFeed(deps: FeedDeps) {
     once, if something changed while nobody looked, and draws what it has with no read otherwise.
   */
   let dirty = true;
-  let failed = false;
   let wasLooking = false;
   let reading = false;
   let disposed = false;
@@ -111,7 +128,7 @@ export function createFeed(deps: FeedDeps) {
 
   async function read(): Promise<void> {
     dirty = false;
-    failed = false;
+    setFailed(false);
     reading = true;
     const space = root();
     const size = shown();
@@ -132,6 +149,7 @@ export function createFeed(deps: FeedDeps) {
         setRows(markPending(result.rows, new Set(unconfirmed())));
         setHasMore(result.hasMore);
         setLoaded(true);
+        setAnswered(true);
       }
     } catch (error) {
       if (error instanceof FeedReadStopped) {
@@ -141,7 +159,8 @@ export function createFeed(deps: FeedDeps) {
         console.warn('[feed] could not read the feed', error);
         if (same()) {
           setLoaded(true);
-          failed = true;
+          setFailed(true);
+          setAnswered(false);
         }
       }
     } finally {
@@ -180,7 +199,7 @@ export function createFeed(deps: FeedDeps) {
     const now = looking();
     // A failed read is owed on the next look: the moment looking starts, not any re-run while it
     // lasts (this effect also re-runs on what the read itself reads, and a lasting error would loop).
-    if (now && !wasLooking && failed) dirty = true;
+    if (now && !wasLooking && lastReadFailed) dirty = true;
     wasLooking = now;
     if (now) start();
   });
@@ -291,8 +310,13 @@ export function createFeed(deps: FeedDeps) {
   });
 
   return {
-    /** Somebody is looking at the Feed's newest line. The store's own, so not a public member. */
-    followingLive: () => looking() && !fromStart(),
+    /*
+      Somebody looking at the Feed's newest line, and the Feed having actually answered for this
+      space. One still reading, or whose last read failed, shows the reader nothing — and counting
+      it as read anyway is what once held a bot's answer back from the one person who could not
+      see it arrive. The store's own, so not a public member.
+    */
+    followingLive: () => looking() && !fromStart() && answered(),
     feedOpen: state(open, 'Whether the Feed panel is open.'),
     openFeed: action(() => setOpen(true), 'Opens the Feed panel.', { ambient: true }),
     closeFeed: action(() => setOpen(false), 'Closes the Feed panel.', { ambient: true }),

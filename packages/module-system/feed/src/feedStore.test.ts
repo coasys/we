@@ -275,6 +275,58 @@ describe('the Feed staying live', () => {
   });
 });
 
+describe('whether the reader counts as on the newest line', () => {
+  it('is false until a read has landed, and again after one fails', async () => {
+    /*
+      `followingLive` is the word the bot notice is held back on — a reader on the newest line is
+      assumed to see the line arrive. A Feed still reading, or one whose last read failed, shows
+      nothing, so counting it as read anyway held the notice back from somebody who saw neither it
+      nor the line.
+    */
+    vi.useFakeTimers();
+    const s = busySpace();
+    const { feed, open, close } = mount(s);
+    const live = () => feed.followingLive();
+
+    // Looking, but the first read is still on the wire.
+    s.hold();
+    open();
+    expect(s.windowReads()).toBe(1);
+    expect(live()).toBe(false);
+    s.release();
+    await vi.runAllTimersAsync();
+    expect(live()).toBe(true);
+
+    // And a read that failed is not an answer either.
+    s.fail(true);
+    s.write('TextBlock', 'root-1');
+    await vi.runAllTimersAsync();
+    expect(live()).toBe(false);
+
+    // Coming back reads again — the failure is owed — but the retry on the wire is not an answer
+    // yet: the failed read's `failed` clears as the retry starts, and that alone must not count.
+    s.fail(false);
+    close();
+    await vi.runAllTimersAsync();
+    s.hold();
+    open();
+    expect(live()).toBe(false);
+    s.release();
+    await vi.runAllTimersAsync();
+    expect(live()).toBe(true);
+
+    // A routine re-read under somebody watching does not stop them following.
+    s.hold();
+    s.write('TextBlock', 'root-1');
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(live()).toBe(true);
+    s.release();
+    await vi.runAllTimersAsync();
+    expect(live()).toBe(true);
+    vi.useRealTimers();
+  });
+});
+
 describe('where the Feed starts from', () => {
   it('takes the space collection from the host and reads no Space of its own', async () => {
     /*
