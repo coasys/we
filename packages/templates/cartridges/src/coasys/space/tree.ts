@@ -697,7 +697,25 @@ const callRunning: SchemaNode = {
             width: '100%',
             ax: 'start',
             gap: '200',
-            onClick: { $invoke: 'modules.call.goToCall' },
+            /*
+              Branched at press time, like the trailing word says it is: "Join" is `goToCall`, and
+              "Open" — for somebody already in it — navigates to the call's own page, the reading
+              the entry had before the two ways in were one and the one the review asked back.
+            */
+            onClick: [
+              {
+                $if: {
+                  condition: { $: IN_IT },
+                  then: [
+                    { $invoke: 'routeStore.navigate', args: [{ $: callPath('modules.call.callRecordId') }] },
+                    // And the stage, for the reason every other way in raises it: "Open" asked
+                    // for the call, not for the page with the call still folded away.
+                    { $invoke: 'modules.call.goToCall' },
+                  ],
+                  else: { $invoke: 'modules.call.goToCall' },
+                },
+              },
+            ],
           },
           children: [
             { ...liveDot, props: { ...liveDot.props, size: 'xs' } },

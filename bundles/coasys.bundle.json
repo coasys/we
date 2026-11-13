@@ -1330,7 +1330,25 @@
                             "width": "100%",
                             "ax": "start",
                             "gap": "200",
-                            "onClick": { "$invoke": "modules.call.goToCall" }
+                            "onClick": [
+                              {
+                                "$if": {
+                                  "condition": { "$": "modules.call.active && !modules.call.elsewhere" },
+                                  "then": [
+                                    {
+                                      "$invoke": "routeStore.navigate",
+                                      "args": [
+                                        {
+                                          "$": "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (modules.call.callRecordId)) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (modules.call.callRecordId), '?') ? '&' : '?') + 'view=canvas' : '')"
+                                        }
+                                      ]
+                                    },
+                                    { "$invoke": "modules.call.goToCall" }
+                                  ],
+                                  "else": { "$invoke": "modules.call.goToCall" }
+                                }
+                              }
+                            ]
                           },
                           "children": [
                             {

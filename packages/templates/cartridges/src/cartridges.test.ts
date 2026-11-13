@@ -274,13 +274,17 @@ describe('the Coasys cartridge', () => {
       const subtree = running();
       const json = JSON.stringify(subtree);
       /*
-        One way in. `goToCall` already carries the branch — it joins the call running here when you
-        are not in it, and brings the call up when you are — so the row needs no destination of its
-        own, and a second one beside the text is the repeat this item removes.
+        One way in, branching at press time like the row's label does: "Join" joins the call
+        running here through `goToCall`, and "Open" — shown to somebody already in it — navigates
+        to the call's own page, which is what it did before the row was unified and what the
+        review asked back. A second destination beside the text is still the repeat it refuses.
       */
       expect(json).toContain('modules.call.goToCall');
-      expect(json).not.toContain('routeStore.navigate');
+      expect(json).toContain('routeStore.navigate');
       expect(json).not.toContain('modules.call.joinCall');
+
+      // The Open branch goes to the call's record page — the address its own view answers.
+      expect(json).toContain('record/CollectionBlock?kind=call&id=');
 
       // The line itself is the entry: "Call running · N in it" lives inside the one button, not
       // next to it, so pressing anywhere on the row does the thing the row reports.
