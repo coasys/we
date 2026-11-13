@@ -40,9 +40,18 @@
     <!-- Permissions -->
 
     <uses-permission android:name="android.permission.INTERNET" />
-    <!-- Scanning a QR code; asked for when the person first scans, and pasting works without it. -->
+    <!-- Scanning a QR code, and a call's camera (getUserMedia video); asked for at first use, and
+         pasting works without it. -->
     <uses-permission android:name="android.permission.CAMERA" />
+    <!-- A call's microphone (getUserMedia audio). Capacitor's WebChromeClient grants a page's
+         audio capture only when this and MODIFY_AUDIO_SETTINGS are both granted; undeclared, the
+         page is refused without a prompt. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- With RECORD_AUDIO, for a call's audio routing (a normal permission: granted at install). -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- The master key's prompt. -->
     <uses-permission android:name="android.permission.USE_BIOMETRIC" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- RECORD_AUDIO would otherwise imply a required microphone; a phone without one still runs WE. -->
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
 </manifest>

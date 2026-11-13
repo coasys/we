@@ -29,6 +29,12 @@ export * from './registries/componentRegistry';
 export * from '../../shared/registries/templateRegistry';
 export * from '../../shared/registries/viewRegistry';
 export * from '../../shared/registries/themeRegistry';
+/*
+  Only the publication function, not the whole dock registry — a host paints fixed chrome (the
+  connect button's corner bar) and needs somewhere to say so, while the rest of the registry is
+  the shell's own machinery. Named rather than `export *` so nothing internal leaks.
+*/
+export { registerHostChromeReserve } from '../../shared/registries/dockRegistry';
 
 // Schemas
 export * from '../../shared/schemas';

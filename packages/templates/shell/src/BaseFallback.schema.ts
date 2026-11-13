@@ -57,7 +57,12 @@ const problem = (id: string, title: string | { $: string }, reason: string): Sch
                 loading: { $: 'baseStore.busy' },
                 onClick: { $invoke: 'baseStore.retry' },
               },
-              children: ['Try again'],
+              // A backend that ran and stopped is started again, under the deployment's name.
+              children: [
+                {
+                  $: "baseStore.stage == 'failed' && baseStore.executorStopped ? `Start ${baseStore.brand.name} again` : 'Try again'",
+                },
+              ],
             },
           ],
         },
@@ -84,7 +89,9 @@ export const baseFallback: TemplateSchema & { id: string } = {
         condition: { $: "baseStore.stage == 'failed'" },
         then: problem(
           'chrome__executor-failed',
-          { $: '`${baseStore.brand.name} could not start`' },
+          {
+            $: 'baseStore.executorStopped ? `${baseStore.brand.name} has stopped` : `${baseStore.brand.name} could not start`',
+          },
           "baseStore.executorReason != '' ? baseStore.executorReason : 'The backend on this computer stopped before it was ready.'",
         ),
       },

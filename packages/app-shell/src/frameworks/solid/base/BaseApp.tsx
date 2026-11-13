@@ -174,7 +174,9 @@ export function BaseBoot(props: BaseBootProps): JSX.Element {
 
   return (
     <Show
-      when={session()}
+      // Only while the base says the session is on: an executor that stops under one takes the window
+      // back to the base (`failed`), which says so and starts it again.
+      when={store.stage() === 'session' ? session() : null}
       keyed
       fallback={<BaseApp store={store} template={base?.template ?? baseFallback} theme={base?.theme} />}
     >

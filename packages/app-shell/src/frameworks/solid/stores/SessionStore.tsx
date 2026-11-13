@@ -23,7 +23,16 @@ import {
   trace,
 } from '@we/backend-shared';
 import { DEV_FEATURES, devToolsEnabled, setDevToolsMuted } from '@we/module-shared';
-import { Accessor, createContext, createEffect, createMemo, createSignal, ParentProps, useContext } from 'solid-js';
+import {
+  Accessor,
+  batch,
+  createContext,
+  createEffect,
+  createMemo,
+  createSignal,
+  ParentProps,
+  useContext,
+} from 'solid-js';
 
 import type { BackendAccountInfo, BackendHostInfo } from '../../../shared/backend/types';
 import { type SignInStep, signInStep as stepOf } from '../../../shared/signInStep';
@@ -31,6 +40,8 @@ import { credential } from '../credential';
 import { useBackend, usePlatform } from '../providers/PlatformProvider';
 import { startAppBridge } from '../services/appBridge';
 import { useAccountStore } from './AccountStore';
+import { useChatStore } from './ChatStore';
+import { useShellStore } from './ShellStore';
 
 /**
  * Where boot has got to.
@@ -187,6 +198,11 @@ export interface SessionStore {
   clearPasswordError: () => void;
   /** Leave `finishing` for the running app, once the profile has been published (or failed to). */
   finishSetup: () => void;
+  /**
+   * Hold a first run on the AI step (`signInStep` is `setUpAi`) instead of leaving `finishing`.
+   * Decided by the runtime store, which knows whether there is anything to ask; left by `finishSetup`.
+   */
+  holdForAiSetup: () => void;
   logout: () => Promise<void>;
   /**
    * Start the whole boot again, from the failure screen.
@@ -216,6 +232,8 @@ const SessionContext = createContext<SessionStore>();
 export function SessionStoreProvider(props: ParentProps) {
   const platform = usePlatform();
   const backend = useBackend();
+  const shellStore = useShellStore();
+  const chatStore = useChatStore();
 
   const [bootState, setBootState] = createSignal<BootState>('initialising');
   const [bootError, setBootError] = createSignal('');
@@ -224,6 +242,8 @@ export function SessionStoreProvider(props: ParentProps) {
   const [loginLoading, setLoginLoading] = createSignal(false);
   const [createAgentError, setCreateAgentError] = createSignal('');
   const [createAgentLoading, setCreateAgentLoading] = createSignal(false);
+  /** A first run is holding the app back for the AI step — see `holdForAiSetup`. */
+  const [aiStepHeld, setAiStepHeld] = createSignal(false);
   const accounts = useAccountStore();
   const signInStep = createMemo(() =>
     stepOf({
@@ -231,6 +251,7 @@ export function SessionStoreProvider(props: ParentProps) {
       createAgentLoading: createAgentLoading(),
       switching: !!accounts.switchingTo(),
       creatingAccount: accounts.creating(),
+      settingUpAi: aiStepHeld(),
     }),
   );
 
@@ -247,6 +268,13 @@ export function SessionStoreProvider(props: ParentProps) {
   const [identityCapabilities, setIdentityCapabilities] = createSignal(NO_IDENTITY_CAPABILITIES);
   const [host, setHost] = createSignal<BackendHostInfo | undefined>(undefined);
   const [hostAccount, setHostAccount] = createSignal<BackendAccountInfo | undefined>(undefined);
+
+  // Whose kept panel instances the shell reads and writes — follows the signed-in agent, empty
+  // while nobody is, so a logout that does not reload drops the last agent's records from reach.
+  shellStore.provideAgentDid(() => me()?.did);
+  // Whose chats the store remembers — same DID, same reason: a remembered conversation or a
+  // pending question is one agent's, not the next sign-in's.
+  chatStore.provideAgentDid(() => me()?.did);
 
   const [backendPorts, setBackendPorts] = createSignal<BackendPorts | null>(null);
   // Supplied by connectors whose session is the connection rather than an unlocked keystore.
@@ -516,7 +544,19 @@ export function SessionStoreProvider(props: ParentProps) {
 
   function finishSetup(): void {
     settingUp = false;
-    setBootState('ready');
+    batch(() => {
+      setAiStepHeld(false);
+      setBootState('ready');
+    });
+  }
+
+  /**
+   * Keep the sign-in screen up on the AI step rather than leaving for the app. Only on a first run's
+   * `finishing`, where the session already answers and the app waits behind the screen; the step
+   * leaves through `finishSetup`, like the rest of setting up.
+   */
+  function holdForAiSetup(): void {
+    if (bootState() === 'finishing') setAiStepHeld(true);
   }
 
   /**
@@ -603,6 +643,7 @@ export function SessionStoreProvider(props: ParentProps) {
     createAgent,
     clearPasswordError,
     finishSetup,
+    holdForAiSetup,
     retryBoot: () => window.location.reload(),
     logout,
 
