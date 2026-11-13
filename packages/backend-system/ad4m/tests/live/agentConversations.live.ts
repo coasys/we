@@ -13,7 +13,7 @@
  *
  * Run with `pnpm --filter @we/backend-ad4m test:live`. LLM turn: `LLM_E2E=1 pnpm ... test:live`.
  */
-import { Ad4mClient, type PerspectiveProxy } from '@coasys/ad4m';
+import { Ad4mClient, Link, type PerspectiveProxy } from '@coasys/ad4m';
 import type { AgentConversationMessage } from '@we/backend-shared';
 import { afterAll, beforeAll, describe, expect, inject, it } from 'vitest';
 
@@ -180,6 +180,43 @@ describe('agent conversations, live', () => {
         for (const m of settled.filter((m) => m.role === 'assistant')) {
           for (const s of m.steps ?? []) console.log(`[live turn] step ${s.outcome}: ${s.tool} ${s.target ?? ''}`);
         }
+      } finally {
+        unfollow();
+      }
+    }, 320_000);
+
+    /*
+      The ask that used to lose the question: "describe this space" makes the model call
+      `describe_perspective`, whose result on a held perspective is large enough that the request
+      the model next saw had no user message in it — Ollama answered 500 `no user query found in
+      messages`, every time. ad4m #1728 caps what a tool result may take of the window and keeps
+      the question, so the turn ends `done` with an answer, not `failed`.
+    */
+    it('answers "describe this space" — the large tool result keeps the question and the reply', async () => {
+      // Enough held links that the description's result is the size that used to cost the question.
+      for (let i = 0; i < 20; i++) {
+        await space.add(
+          new Link({ source: 'ad4m://me', predicate: `ad4m://shot-${i}`, target: `literal:string:item ${i}` }),
+        );
+      }
+      const ref = await conversations.create({ title: 'describe the space', scope: { perspectiveUuid: space.uuid } });
+      made.push(ref.id);
+      const batches: AgentConversationMessage[][] = [];
+      const unfollow = conversations.follow(ref, (rows) => batches.push(rows));
+      try {
+        await conversations.send(ref, 'Describe this space — what does it hold?');
+        const settled = await waitFor(
+          batches,
+          (rows) => rows.some((m) => m.role === 'assistant' && ['done', 'failed'].includes(m.status ?? '')),
+          300_000,
+        );
+        const reply = settled.findLast((m) => m.role === 'assistant' && m.status !== 'running');
+        console.log(`\n[live describe] reply (${reply?.status}): ${reply?.text.slice(0, 300)}`);
+        for (const s of reply?.steps ?? []) {
+          console.log(`[live describe] step ${s.outcome}: ${s.tool} ${s.target ?? ''}`);
+        }
+        expect(reply?.status).toBe('done');
+        expect(reply?.text.trim().length).toBeGreaterThan(0);
       } finally {
         unfollow();
       }
