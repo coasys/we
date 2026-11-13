@@ -243,6 +243,38 @@ describe('the Coasys cartridge', () => {
     have it, so the two lists offer the same things; the tree's list is the ones somebody would switch
     between in this space, not every built-in the deployment carries.
   */
+  describe('a call running in the space', () => {
+    /** The tree's `$if` gated on a live call — the subtree that is the running-call entry. */
+    const running = () =>
+      findNode(
+        treeSection,
+        (n) =>
+          n.type === '$if' &&
+          JSON.stringify((n.props as { condition?: unknown } | undefined)?.condition) ===
+            JSON.stringify({ $: 'count(modules.call.liveCalls)' }),
+      )!;
+
+    it('is a single entry that joins or opens it — not a line beside a second affordance', () => {
+      const subtree = running();
+      const json = JSON.stringify(subtree);
+      /*
+        One way in. `goToCall` already carries the branch — it joins the call running here when you
+        are not in it, and brings the call up when you are — so the row needs no destination of its
+        own, and a second one beside the text is the repeat this item removes.
+      */
+      expect(json).toContain('modules.call.goToCall');
+      expect(json).not.toContain('routeStore.navigate');
+      expect(json).not.toContain('modules.call.joinCall');
+
+      // The line itself is the entry: "Call running · N in it" lives inside the one button, not
+      // next to it, so pressing anywhere on the row does the thing the row reports.
+      const buttons = findAll(subtree, (n) => n.type === 'we-button');
+      expect(buttons, 'the entry is more than one control').toHaveLength(1);
+      const text = findAll(buttons[0], (n) => n.type === 'we-text' && JSON.stringify(n).includes('Call running'));
+      expect(text, 'the call-running line is not inside the entry').toHaveLength(1);
+    });
+  });
+
   describe('templates and themes in the tree', () => {
     const evaluate = (source: string, roots: Record<string, unknown>) =>
       evaluateExpression(parseExpression(source), {
