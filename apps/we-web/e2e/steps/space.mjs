@@ -58,8 +58,12 @@ export async function createSpace(page, account, name, mode) {
   const menu = page.getByRole('menuitem', { name: 'Create a space' });
   if (await menu.count()) await menu.click();
   await page.getByRole('textbox', { name: 'Space name...' }).fill(name);
-  const shared = page.getByRole('switch').first();
-  if (!(await shared.evaluate((el) => el.checked))) await shared.click({ force: true });
+  // Pressed where it is drawn, the `we-switch` itself: its input is visually hidden, so a click aimed
+  // at the input is a click on a pixel, which may belong to something else (`enableTargets` in
+  // coasys-spaces/steps.mjs).
+  const drawn = page.locator('we-switch').first();
+  const shared = drawn.getByRole('switch');
+  if (!(await shared.evaluate((el) => el.checked))) await drawn.click();
   await page.getByRole('button', { name: 'Create Space' }).click();
   const perspective = await until(
     async () => (await account.client.perspective.all()).find((p) => p.name === name && p.sharedUrl),

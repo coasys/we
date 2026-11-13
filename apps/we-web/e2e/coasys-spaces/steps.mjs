@@ -75,8 +75,11 @@ export async function enableTargets(page, names, perspective) {
   for (const name of names) {
     const toggle = page.getByRole('switch', { name, exact: true });
     await toggle.waitFor({ timeout: 60_000 });
-    // Forced: the switch's own track (`part="track"`) lies over its input and takes the pointer.
-    if (!(await toggle.isChecked())) await toggle.click({ force: true });
+    // Pressed where it is drawn, the `we-switch` itself: its input is visually hidden (a clipped 1px
+    // box), so a click aimed at the input lands on whatever is at that pixel. Forced, it landed on the
+    // dock frame and pressed nothing; unforced, a click that something else would take says so.
+    const drawn = page.locator('we-switch').filter({ has: toggle });
+    if (!(await toggle.isChecked())) await drawn.click();
     // Each switch writes the whole list, read from the app's copy of the space
     // (SpaceStore.tsx `setExtractionTarget`). A second click before the first write lands reads the
     // list without the first class and writes it back without it, so each write is waited for.
