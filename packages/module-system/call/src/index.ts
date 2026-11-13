@@ -1096,24 +1096,20 @@ const SCREEN_SHARE: CallToggle = {
 };
 
 /**
- * Show the video, or put it away.
+ * Show the pictures, or put them away.
  *
- * The other half of what one button used to do alone, and the reason that button could not have a
- * clear icon: it was cycling visibility, placement and size together, so a caret pointed in a
- * direction that meant nothing once the panel was docked to the right.
+ * This line used to reflect `stageOpen` — so choosing it hid the stage itself, and with it mute
+ * and Leave, while the call and its microphone ran on. What it governs is `tilesHidden`: the grid
+ * and only the grid, so the panel the menu sits in never leaves with the pictures.
  *
- * One glyph rather than a pair, like screen share above: `secondary` versus `ghost` says whether the
- * video is showing, which is the same answer every other toggle here gives, and the tooltip names
- * the move. It was `arrows-out`/`arrows-in` — the action rather than the subject — on the grounds
- * that the count beside it named what the button was about. The count is its own readout now, so the
- * arrows were left saying "expand" with no stated object, in a bar where two other buttons also open
- * things.
+ * One glyph rather than a pair, like screen share above: the tick says whether the pictures are
+ * showing, which is the same answer every other toggle here gives, and the tooltip names the move.
  */
 const STAGE: CallToggle = {
   on: 'video-conference',
   off: 'video-conference',
   label: 'Video',
-  enabled: 'modules.call.stageOpen',
+  enabled: '!modules.call.tilesHidden',
   action: 'modules.call.toggleStage',
   tip: { on: 'Hide video', off: 'Show video' },
 };
@@ -1861,22 +1857,35 @@ const stage: SchemaNode = {
           },
           children: [
             {
-              type: 'Grid',
+              /*
+                "Video" hides the pictures and only the pictures.
+
+                The gate is here, on the grid, and nowhere above it: `tilesHidden` is the menu
+                line's answer, and wrapping the column or the stage in it would take the controls
+                away with the tiles — the bug the flag was invented to stop. A hidden grid leaves
+                the column holding the bar alone in the panel, which is exactly the readable shape
+                "audio call with the pictures off" wants.
+              */
+              type: '$if',
               props: {
-                width: '100%',
-                /*
+                condition: { $: '!modules.call.tilesHidden' },
+                then: {
+                  type: 'Grid',
+                  props: {
+                    width: '100%',
+                    /*
                   Shares the column with the controls now, so it takes what is left rather than the
                   whole height. `minHeight: 0` is the usual flex concession — without it the grid
                   refuses to shrink below its content and pushes the bar out of the panel.
                 */
-                flex: '1',
-                minHeight: '0',
-                // `300` is 12px — `STAGE_GAP_PX`, which `stageBid`'s aspect subtracts alongside the
-                // wrapper's padding so that "fit to content" lands on a height that fits the pictures
-                // rather than one that squeezes them. The *solver* needs no telling: the grid reads
-                // its own gap.
-                gap: '300',
-                /*
+                    flex: '1',
+                    minHeight: '0',
+                    // `300` is 12px — `STAGE_GAP_PX`, which `stageBid`'s aspect subtracts alongside the
+                    // wrapper's padding so that "fit to content" lands on a height that fits the pictures
+                    // rather than one that squeezes them. The *solver* needs no telling: the grid reads
+                    // its own gap.
+                    gap: '300',
+                    /*
                   Scrolls along the strip's axis, and only when the strip is scrolling — see
                   `stageOverflow`.
 
@@ -1886,49 +1895,51 @@ const stage: SchemaNode = {
                   holding more people than fit at a size worth looking at, which is a list rather
                   than a layout and behaves like one.
                 */
-                styles: { $: 'modules.call.stageOverflow' },
-                /**
-                 * The arrangement, solved against the box rather than guessed from the head count.
-                 *
-                 * This is the whole fix. The columns used to come from how many people were in the
-                 * call and nothing else, so the panel's shape — the one thing the user controls
-                 * directly — was not an input: dragged tall and thin you got two columns of postage
-                 * stamps, dragged wide you got two rows with bands of empty panel above and below.
-                 * `childAspect` measures the box and picks the arrangement that makes 16:9 pictures
-                 * largest, which for two people in a square panel is one column at 523px rather than
-                 * two at 294px.
-                 *
-                 * Only CSS changes when it re-solves. That matters more here than anywhere: the tiles
-                 * are a reference-keyed `$each`, and moving one to a different DOM parent would drop
-                 * its `srcObject` — somebody's video would go black every time the panel crossed a
-                 * threshold.
-                 */
-                childAspect: '16 / 9',
-                /*
+                    styles: { $: 'modules.call.stageOverflow' },
+                    /**
+                     * The arrangement, solved against the box rather than guessed from the head count.
+                     *
+                     * This is the whole fix. The columns used to come from how many people were in the
+                     * call and nothing else, so the panel's shape — the one thing the user controls
+                     * directly — was not an input: dragged tall and thin you got two columns of postage
+                     * stamps, dragged wide you got two rows with bands of empty panel above and below.
+                     * `childAspect` measures the box and picks the arrangement that makes 16:9 pictures
+                     * largest, which for two people in a square panel is one column at 523px rather than
+                     * two at 294px.
+                     *
+                     * Only CSS changes when it re-solves. That matters more here than anywhere: the tiles
+                     * are a reference-keyed `$each`, and moving one to a different DOM parent would drop
+                     * its `srcObject` — somebody's video would go black every time the panel crossed a
+                     * threshold.
+                     */
+                    childAspect: '16 / 9',
+                    /*
                   The spotlight's own tracks, and nothing at all the rest of the time.
 
                   `template` takes precedence over `childAspect`, so this is the whole mode switch:
                   written, the equal-tile solve stands down and the spotlight layout takes over;
                   absent, it comes back. See `stageTemplate` in the store.
                 */
-                template: { $: 'modules.call.stageTemplate' },
-                rows: { $: 'modules.call.stageRows' },
-                // What the stage settled on, back to the store — see `setArrangement`. The host needs
-                // it to answer "fit to content".
-                onArrange: { $invoke: 'modules.call.setArrangement', args: [{ $: 'arg' }] },
-                // The box itself, for the one decision the grid cannot make: which edge the strip
-                // runs along.
-                onMeasure: { $invoke: 'modules.call.setStageBox', args: [{ $: 'arg' }] },
-              },
-              // Placed rather than pasted, so a template that arranges the stage keeps the tile the
-              // module's. The row binds `tile`, which is the name the part declares it needs.
-              children: [
-                {
-                  type: '$each',
-                  props: { items: { $: 'modules.call.tiles' }, as: 'tile' },
-                  children: [{ type: '$part', props: { id: 'call.tile' } }],
+                    template: { $: 'modules.call.stageTemplate' },
+                    rows: { $: 'modules.call.stageRows' },
+                    // What the stage settled on, back to the store — see `setArrangement`. The host needs
+                    // it to answer "fit to content".
+                    onArrange: { $invoke: 'modules.call.setArrangement', args: [{ $: 'arg' }] },
+                    // The box itself, for the one decision the grid cannot make: which edge the strip
+                    // runs along.
+                    onMeasure: { $invoke: 'modules.call.setStageBox', args: [{ $: 'arg' }] },
+                  },
+                  // Placed rather than pasted, so a template that arranges the stage keeps the tile
+                  // the module's. The row binds `tile`, which is the name the part declares it needs.
+                  children: [
+                    {
+                      type: '$each',
+                      props: { items: { $: 'modules.call.tiles' }, as: 'tile' },
+                      children: [{ type: '$part', props: { id: 'call.tile' } }],
+                    },
+                  ],
                 },
-              ],
+              },
             },
             /*
               The controls, under the pictures — the second half of this panel, and the whole point of
@@ -2018,6 +2029,84 @@ const problem: SchemaNode = {
           type: 'we-alert',
           props: { tone: 'warning', dismissible: true, onClose: { $invoke: 'modules.call.dismissProblem' } },
           children: [{ $: 'modules.call.problem' }],
+        },
+      ],
+    }),
+  },
+};
+
+/**
+ * The stage put away mid-call: mute and Leave still have to be findable.
+ *
+ * The titlebar's close is the one way to leave the stage without leaving the call, and it ends
+ * nothing — the audio node above is mounted by `active`, not by `stageOpen`. A call with no panel
+ * on screen is a call with no way to mute, hang up, or get the panel back, so this strip stands in
+ * while — and only while — that is the case. Same strip the bar sat in when it was chrome, so it
+ * centres on the content and clears a panel docked along the edge; and the same gate as the audio,
+ * narrowed by `!stageOpen`, so it is never up while the stage is there to take its place — nothing
+ * reserved, nothing overlapped, and no second set of controls on screen.
+ *
+ * Three buttons rather than the whole bar: the strip's job is reach, not parity — everything the
+ * full bar offers is one press on "Back to the call" away.
+ */
+const stageStrip: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'modules.call.active && !modules.call.stageOpen' },
+    then: contentCentred('bottom', {
+      type: 'Row',
+      props: { ...BAR_SURFACE, r: BAR_RADIUS, p: '200', gap: '200', ay: 'center', pointerEvents: 'auto' },
+      children: [
+        mediaToggle({
+          on: 'microphone',
+          off: 'microphone-slash',
+          enabled: 'modules.call.media.audioEnabled',
+          action: 'modules.call.toggleAudio',
+          tip: { on: 'Mute', off: 'Unmute' },
+        }),
+        {
+          type: 'we-tooltip',
+          props: {
+            content: {
+              $: "modules.call.callSpace.name ? `Back to the call in ${modules.call.callSpace.name}` : 'Back to the call'",
+            },
+            placement: 'top',
+          },
+          children: [
+            {
+              type: 'we-button',
+              /*
+                  `goToCall`, not `openStage`: in a call that is somewhere else it is also the way
+                  there, and in this space both land the same — the stage on screen, raised.
+                */
+              props: { variant: 'soft', gap: '200', onClick: { $invoke: 'modules.call.goToCall' } },
+              children: [
+                { type: 'we-icon', props: { name: 'video-conference' } },
+                {
+                  type: 'we-text',
+                  props: { truncate: true, maxWidth: '96px' },
+                  children: [{ $: "modules.call.callSpace.name ? modules.call.callSpace.name : 'Back to the call'" }],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'we-tooltip',
+          props: { content: 'Leave the call', placement: 'top' },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                square: true,
+                label: 'Leave the call',
+                variant: 'solid',
+                tone: 'danger',
+                onClick: { $invoke: 'modules.call.leave' },
+              },
+              children: [{ type: 'we-icon', props: { name: 'phone-x' } }],
+            },
+          ],
         },
       ],
     }),
@@ -2436,6 +2525,14 @@ export const callModule = defineModule({
       */
       { anchor: 'dock-bottom', node: audioSink, order: 60 },
       /*
+        The stage's stand-in while it is closed mid-call — mute, Leave, and the way back.
+
+        Chrome like the audio, for the same reason: it has to exist precisely when the panel does
+        not. Below the problem alert's `80`, so a message about the call never arrives underneath
+        the row a person reaches for to answer it.
+      */
+      { anchor: 'dock-bottom', node: stageStrip, order: 70 },
+      /*
         The device chooser, as chrome for the same reason the sound is: it is opened from the call
         bar and from a settings page, and neither of those can own a dialog the other also opens.
         Order above the bar so a sheet is never drawn behind the row that raised it.
@@ -2473,6 +2570,12 @@ export const callModule = defineModule({
         open: 'stageOpen',
         show: 'openStage',
         close: 'closeStage',
+        /*
+          And the re-ask: `goToCall` pressed while the stage is open is "bring it here", not
+          "still open" — a folded, stowed or tab-behind stage is the case `stageReveal` exists
+          for, and the host's watcher turns each bump into a reveal.
+        */
+        reveal: 'stageReveal',
       },
     ],
 

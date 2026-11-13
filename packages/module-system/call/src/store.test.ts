@@ -119,16 +119,22 @@ function fakeMicStream() {
 }
 
 describe('what the call still decides about its own video', () => {
-  it('separates whether the video shows from how much of the screen it has', () => {
-    // One button used to cycle visibility, placement and size together, so it could not have a clear
-    // icon and any given state took up to three clicks through states nobody wanted.
+  it('hides only the tiles, and never the panel that holds the controls', () => {
+    // The "Video" line used to toggle the whole stage — which took mute and Leave with it while the
+    // call kept running. The pictures are what is put away; the panel and its controls stay.
     const store = makeStore();
-    expect(store.stageOpen()).toBe(false);
+    store.openStage();
+    expect(store.stageOpen()).toBe(true);
+    expect(store.tilesHidden()).toBe(false);
 
     store.toggleStage();
+    expect(store.tilesHidden()).toBe(true);
+    // The stage, and so the bar inside it, never went anywhere.
     expect(store.stageOpen()).toBe(true);
+
     store.toggleStage();
-    expect(store.stageOpen()).toBe(false);
+    expect(store.tilesHidden()).toBe(false);
+    expect(store.stageOpen()).toBe(true);
   });
 
   it('asks for no room until it is opened', () => {
@@ -150,6 +156,27 @@ describe('what the call still decides about its own video', () => {
     expect(store.stageOpen()).toBe(true);
     store.closeStage();
     expect(store.stageOpen()).toBe(false);
+  });
+
+  it('re-asks the host for the stage on every way back to it, even while already open', () => {
+    /*
+      `stageReveal` is the panel declaration's `reveal` key: a counter the host watches, because
+      "still open" is no change at all and cannot carry "bring it forward". Closing the panel's own
+      flag is the one way that does not ask — it is how you leave the stage, not how you reach it.
+    */
+    const store = makeStore();
+    const before = store.stageReveal() as number;
+
+    store.openStage();
+    expect(store.stageReveal()).toBeGreaterThan(before);
+
+    // Asked for again while open — a folded or out-of-sight stage is the case this exists for.
+    const opened = store.stageReveal() as number;
+    store.openStage();
+    expect(store.stageReveal()).toBeGreaterThan(opened);
+
+    store.closeStage();
+    expect(store.stageReveal() as number).toBe(store.stageReveal() as number);
   });
 
   it('always overlays, and leaves everything else about the panel to the host', () => {
@@ -243,6 +270,8 @@ describe('what a template may reach', () => {
     for (const name of [
       'stageBid',
       'stageOpen',
+      'stageReveal',
+      'tilesHidden',
       'openStage',
       'closeStage',
       'toggleStage',
@@ -2049,6 +2078,38 @@ describe('going to the call', () => {
     expect(store.stageOpen()).toBe(true);
     // None of it at the cost of the call itself.
     expect(store.active()).toBe(true);
+  });
+
+  it('re-asks for the stage every time, so a call already open but out of sight comes forward', async () => {
+    /*
+      "Go to the call" while the stage is folded, stowed or behind another tab used to be a no-op:
+      the flag it set was already true. The `reveal` key is how the re-ask reaches the host — a
+      counter, since the ask is an event rather than a state.
+    */
+    const { store } = railable();
+
+    store.goToCall();
+    await Promise.resolve();
+    const afterFirst = store.stageReveal() as number;
+
+    // Open-but-out-of-sight: the flag stays true while the ask is repeated.
+    store.goToCall();
+    expect(store.stageOpen()).toBe(true);
+    expect(store.stageReveal() as number).toBeGreaterThan(afterFirst);
+  });
+
+  it('leaves the tiles showing for the next call', async () => {
+    // A "Video" pressed in one call must not follow into the next: the pictures come back with the
+    // stage on `join`, and the flag dies with the call it was set in — like the fake peers.
+    const { store } = railable();
+
+    store.goToCall();
+    await Promise.resolve();
+    store.toggleStage();
+    expect(store.tilesHidden()).toBe(true);
+
+    await store.leave();
+    expect(store.tilesHidden()).toBe(false);
   });
 
   it('takes you back to a call happening in another space, rather than starting a second one', async () => {

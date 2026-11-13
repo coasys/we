@@ -244,6 +244,19 @@ describe('the More menu', () => {
       expect(props(toggle).dismiss).toBeUndefined();
     }
   });
+
+  it('lets "Video" hide only the tiles, never the panel the menu itself sits in', () => {
+    /*
+      The line used to reflect `stageOpen`, so choosing it hid the stage — and with it the menu,
+      mute and Leave, while the call and its microphone carried on. What it governs is the
+      pictures: `tilesHidden`, a fact about the tiles rather than about the panel holding them.
+    */
+    const video = items('modules.call.toggleStage');
+    expect(video, 'no Video line in the menu').toHaveLength(1);
+    const json = JSON.stringify(video[0]);
+    expect(json).toContain('modules.call.tilesHidden');
+    expect(json).not.toContain('modules.call.stageOpen');
+  });
 });
 
 /**
@@ -318,11 +331,14 @@ describe('where the bar lives', () => {
     const row = walk(stage).find((node) => node.type === 'Row' && lineage(stage, leave as SchemaNode)?.includes(node));
     expect(grid, 'no tile grid in the stage').toBeDefined();
     expect(row, 'the controls are not a row beside the grid').toBeDefined();
-    expect(lineage(stage, grid!)?.at(-1)?.type).toBe('Column');
+    // The grid sits inside the same column as the controls — through its `tilesHidden` gate now,
+    // which is a node between them rather than a different parent.
+    expect(lineage(stage, grid!)?.some((node) => node.type === 'Column')).toBe(true);
   });
 
-  it('floats nothing across the bottom of the window', () => {
-    // No fixed strip may hold a call control any more — that is the whole complaint.
+  it('floats nothing across the bottom of the window, except the strip standing in for a closed stage', () => {
+    // No fixed strip may hold a call control any more — that is the whole complaint, with one
+    // stated exception: the stage's own stand-in, which exists only while a call outlives its panel.
     const floating = walk(offStage()).filter(
       (node) =>
         props(node).position === 'fixed' &&
@@ -332,7 +348,19 @@ describe('where the bar lives', () => {
             JSON.stringify(props(child).onClick) === JSON.stringify({ $invoke: 'modules.call.toggleAudio' }),
         ),
     );
-    expect(floating).toEqual([]);
+    // Whatever qualifies has to be gated on "in a call and no stage to put the controls in" — any
+    // other floating control is the bug this test was written against.
+    for (const node of floating) {
+      const gated = walk(offStage()).some(
+        (gate) =>
+          gate.type === '$if' &&
+          walk(gate).includes(node) &&
+          JSON.stringify(props(gate).condition) ===
+            JSON.stringify({ $: 'modules.call.active && !modules.call.stageOpen' }),
+      );
+      expect(gated, 'a floating call control outside the stage-closed strip').toBe(true);
+    }
+    expect(floating.length, 'the strip exists at all').toBeGreaterThan(0);
   });
 
   it('reserves no band for a bar that no longer floats', () => {
@@ -340,6 +368,68 @@ describe('where the bar lives', () => {
     // inside the stage there is nothing to clear, and a band still declared is the Feed's blank
     // space all over again.
     expect(callModule.contributes?.reserve).toBeUndefined();
+  });
+});
+
+/**
+ * The panel can be closed while the call is still going.
+ *
+ * The stage's titlebar close is the one way to put the stage away without leaving the call — and it
+ * does not end the call: the microphone, and so audio, lives in chrome mounted by `active`, not by
+ * `stageOpen`. What a closed stage may never take with it is the means to mute or hang up, so a
+ * compact strip stands in at the bottom of the view while, and only while, the call runs and the
+ * stage is not on screen.
+ */
+describe('when the stage is put away mid-call', () => {
+  /**
+   * The strip — the `$if` in chrome gated on `active && !stageOpen`. Nothing else under the chrome
+   * slots reads `stageOpen`, so the gate is its identifying mark.
+   */
+  const strip = (): SchemaNode =>
+    walk(chrome()).find(
+      (node) => node.type === '$if' && JSON.stringify(props(node).condition).includes('modules.call.stageOpen'),
+    ) as SchemaNode;
+
+  it('shows a compact strip only while in a call and the stage is not visible', () => {
+    expect(strip(), 'no stage-closed fallback strip in chrome').toBeDefined();
+    // The same condition, read the other way: while the stage is up the strip must not exist —
+    // nothing reserved, nothing overlapping the stage's own controls.
+    const gate = JSON.stringify(props(strip()).condition);
+    expect(gate).toContain('modules.call.active');
+    expect(gate).toContain('!modules.call.stageOpen');
+  });
+
+  it('keeps mute, hang-up and the way back to the stage on the strip', () => {
+    for (const action of ['modules.call.toggleAudio', 'modules.call.leave', 'modules.call.goToCall']) {
+      expect(
+        walk(strip()).some(
+          (node) =>
+            JSON.stringify(props(node).onClick) === JSON.stringify({ $invoke: action }) ||
+            JSON.stringify(props(node).onSelect) === JSON.stringify({ $invoke: action }),
+        ),
+        `the strip lost ${action}`,
+      ).toBe(true);
+    }
+  });
+
+  it('hides the pictures, not the row that holds the controls', () => {
+    /*
+      `toggleStage` now means "show the tiles or don't" — `tilesHidden` gates the grid and only the
+      grid. The controls' whole ancestry must stay ungated on it, or hiding video takes mute and
+      Leave with it and the bug is back under another name.
+    */
+    const stage = stageNode();
+    const grid = walk(stage).find((node) => node.type === 'Grid') as SchemaNode;
+    const gateOn = (node: SchemaNode | undefined): boolean =>
+      JSON.stringify(props(node as SchemaNode)?.condition ?? null).includes('tilesHidden');
+    expect(lineage(stage, grid)!.concat(grid).some(gateOn), 'the tile grid is not gated on tilesHidden').toBe(true);
+
+    const leave = walk(stage).find(
+      (node) => JSON.stringify(props(node).onClick) === JSON.stringify({ $invoke: 'modules.call.leave' }),
+    ) as SchemaNode;
+    expect(lineage(stage, leave)!.concat(leave).some(gateOn), 'a control ended up inside the tilesHidden gate').toBe(
+      false,
+    );
   });
 });
 
@@ -588,6 +678,17 @@ describe('the declaration', () => {
     const stage = contributes.panels?.find((panel) => panel.name === 'stage');
     expect(stage).toMatchObject({ bid: 'stageBid', open: 'stageOpen', show: 'openStage', close: 'closeStage' });
     expect(stage?.icon).toBeUndefined();
+  });
+
+  it('declares the re-ask, so the host can bring an open-but-hidden stage forward', () => {
+    /*
+      `open` is a flag and `goToCall` sets it — but a stage already open is no change to observe,
+      and a folded, stowed or tab-behind one needs to come forward, not to be set to true again.
+      `reveal` names the store counter the call bumps on every way back: the event the host's
+      `revealDock` answers, alongside `open` which the flag answers.
+    */
+    const stage = contributes.panels?.find((panel) => panel.name === 'stage');
+    expect(stage?.reveal).toBe('stageReveal');
   });
 
   it('keeps its chrome up while a call runs, by a bare store key', () => {

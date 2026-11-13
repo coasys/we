@@ -347,6 +347,35 @@ export function createCallStore(deps: ModuleStoreDeps) {
    */
   const [visible, setVisible] = signal(false);
   /**
+   * Whether the pictures are hidden inside an open stage — what the "Video" menu line reads now.
+   *
+   * A separate flag because putting the tiles away and putting the stage away are different acts:
+   * the first leaves the person still able to mute and leave, the second removes both while the
+   * call runs on. `visible` is the stage's question and this one is the grid's.
+   */
+  const [tilesHidden, setTilesHidden] = signal(false);
+  /**
+   * How many times the stage has been asked for — the panel declaration's `reveal` key.
+   *
+   * A counter rather than the flag itself, because the host's watcher needs an event: "still open"
+   * is no change in `visible`, yet an open-but-folded or tab-behind stage is exactly what
+   * "go to the call" is meant to rescue. The host reads this reactively and reveals the panel when
+   * it moves; what moves it is any way back to the call, gathered into {@link showStage}.
+   */
+  const [stageReveal, setStageReveal] = signal(0);
+  /**
+   * Every way back to the call ends here: show the stage, and tell the host to show it too.
+   *
+   * The bump is what makes a second press mean anything — `setVisible(true)` alone is a no-op once
+   * open, so a stage left folded or behind a tab stayed there while the button looked answered.
+   * Closing is deliberately not routed through this: `closeStage` is how you leave the stage, not
+   * how you reach it.
+   */
+  const showStage = () => {
+    setStageReveal(stageReveal() + 1);
+    setVisible(true);
+  };
+  /**
    * Whose video the stage is giving most of its room to, or `null` for an even grid.
    *
    * A signal of its own rather than a field on {@link CallTile}, for the reason the tile cache
@@ -1406,6 +1435,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     anchor = undefined;
     setCallRecord(null);
     setVisible(false);
+    setTilesHidden(false);
     setFocusedId(null);
     focusIsManual = false;
     sharingPeers = new Set();
@@ -1671,7 +1701,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
       sets this back off, so it means "this call is showing" rather than a preference that outlives
       the call it was made in.
     */
-    setVisible(true);
+    showStage();
 
     /*
       And the address names it — coasys/we#304.
@@ -2331,11 +2361,25 @@ export function createCallStore(deps: ModuleStoreDeps) {
      */
     stageOpen: visible,
     /**
+     * Whether the tiles are hidden inside an open stage — the "Video" menu line's check.
+     *
+     * Unmarked, with `stageOpen`: plumbing a chrome-tier fragment reads, not state a template asks
+     * for — a space template hides a panel it does not own through `meta.panels`, never through
+     * this.
+     */
+    tilesHidden,
+    /**
+     * The panel declaration's `reveal` — bumped by every way back to the call, so the host can
+     * bring an open-but-out-of-sight stage forward. Unmarked, and never read into a schema: a
+     * counter's only reader is the host's watcher, which turns it into a reveal.
+     */
+    stageReveal,
+    /**
      * Show the video. The panel declaration's `show` — a template's `meta.panels` entry naming this
      * module's stage calls it to open it, since the module owns the flag the host would otherwise
      * have set itself. Idempotent, like `goToCall`'s use of the same setter.
      */
-    openStage: () => setVisible(true),
+    openStage: showStage,
 
     // ── How the tiles pack ────────────────────────────────────────────────────
     /**
@@ -2654,12 +2698,12 @@ export function createCallStore(deps: ModuleStoreDeps) {
       // is left alone to be pure navigation — it is the bar's button, and the bar is already in the
       // call, so it has no business deciding whether the video is up.
       if (callIsElsewhere()) {
-        setVisible(true);
+        showStage();
         returnToCall();
         return;
       }
       // In the call, here. Nowhere to travel to, so the whole of "go to it" is having it on screen.
-      setVisible(true);
+      showStage();
     }, 'Go to the call: join the one running here, pick up the one on screen, or start one; in a call already, bring it up.'),
 
     /** Start a new call here, whether or not one is already running. Resolves once it is joined. */
@@ -2830,13 +2874,17 @@ export function createCallStore(deps: ModuleStoreDeps) {
       if ((await controller?.startScreenShare()) === 'failed') setProblem(SCREEN_UNAVAILABLE);
     }, 'Start or stop sharing this agent’s screen; sharing replaces the camera until it stops.'),
     /**
-     * Show the video, or put it away. The other half of what one button used to do alone.
+     * Show the pictures, or put them away. The other half of what one button used to do alone.
+     *
+     * It used to toggle the stage itself — which worked, and also put mute and Leave out of reach
+     * while the call ran on without its controls. The pictures are the only thing that answer:
+     * `tilesHidden` gates the grid and nothing else, so the panel the menu lives in stays up.
      *
      * Unmarked, with `closeStage` and `openStage`: the panel declaration names two of them and the
      * bar's Video toggle calls the third, all at chrome tier. A space template opens the stage by
      * declaring the panel in its `meta.panels`, which is the host's door, not this one.
      */
-    toggleStage: () => setVisible(!visible()),
+    toggleStage: () => setTilesHidden(!tilesHidden()),
     /** Put the video away. The panel declaration's `close`, so the titlebar has a way to dismiss it. */
     closeStage: () => setVisible(false),
 
