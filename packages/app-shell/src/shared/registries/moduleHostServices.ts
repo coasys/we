@@ -536,16 +536,16 @@ export function createModuleStoreDeps(framework: {
     transcription: {
       available: () => services.transcription !== undefined && (services.transcription.available?.() ?? true),
       models: async () => (await services.transcription?.models()) ?? [],
-      open: async (modelId, onText, tuning) => {
+      open: async (modelId, onText) => {
         const port = services.transcription;
         if (!port) throw new Error('transcription: this backend cannot transcribe');
-        return port.open(modelId, onText, tuning);
+        return port.open(modelId, onText);
       },
-      offeredModel: () => services.transcription?.offeredModel?.() ?? null,
-      installOfferedModel: async () => {
+      setup: async () => (await services.transcription?.setup?.()) ?? null,
+      connectFound: async () => {
         const port = services.transcription;
-        if (!port?.installOfferedModel) throw new Error('transcription: this backend cannot install a model');
-        return port.installOfferedModel();
+        if (!port?.connectFound) throw new Error('transcription: this backend cannot set transcription up');
+        return port.connectFound();
       },
     },
 
