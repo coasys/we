@@ -413,6 +413,53 @@ describe('where the Feed starts from', () => {
   6.6–7.2 s of executor time on a real space — so a read is spent only on a change: never on a
   subscription telling the Feed what it already has, one at a time, and never for a Feed nobody sees.
 */
+describe('the transcripts switch', () => {
+  it('re-reads the window when it flips, with the spoken lines no longer filling it', async () => {
+    /*
+      A hidden line no longer counts toward the window, so a call that spoke more than it holds
+      leaves the typed history in view — and flipping the switch reads again: what the window
+      holds changed, which is the one thing a read is spent on.
+    */
+    vi.useFakeTimers();
+    const r = reactive();
+    const [spoken, setSpoken] = r.signal(false);
+    const s = space();
+    s.lines.push({ id: 'msg-1', text: 'typed into the space', author: 'did:ann', createdAt: 1 });
+    s.calls.push({ id: 'call-1', title: 'Call 1', createdAt: 2 });
+    s.said['call-1'] = Array.from({ length: 60 }, (_, i) => ({
+      id: `said-${i}`,
+      text: '…',
+      author: 'did:bo',
+      createdAt: 3 + i,
+      source: 'spoken',
+    }));
+    const feed = createFeed({
+      signal: r.signal,
+      effect: r.effect,
+      state: markState,
+      action: markAction,
+      onDispose: () => {},
+      dataset: () => 'space-1',
+      spaceRoot: () => 'root-1',
+      records: s.records as never,
+      interpretation: undefined,
+      write: async () => null,
+      showSpoken: spoken,
+    });
+    (feed.openFeed as unknown as () => void)();
+    await vi.runAllTimersAsync();
+    const ids = () => (feed.feedRows as unknown as () => { id: string }[])().map((row) => row.id);
+    expect(ids()).toEqual(['msg-1']);
+
+    setSpoken(true);
+    await vi.runAllTimersAsync();
+
+    expect(s.windowReads()).toBe(2);
+    expect(ids()).toContain('said-59');
+    vi.useRealTimers();
+  });
+});
+
 describe('the Feed reading only when something changed', () => {
   it('reads once on mount, though every subscription and the suggestions answer after it', async () => {
     vi.useFakeTimers();
