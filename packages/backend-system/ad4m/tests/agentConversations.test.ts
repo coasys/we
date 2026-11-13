@@ -580,6 +580,83 @@ describe('the AD4M conversations port', () => {
     }
   });
 
+  it('retries a failed first read on its own clock until the transcript lands', async () => {
+    vi.useFakeTimers();
+    try {
+      const ai = {
+        ...fakeAi(),
+        sessionMessages: vi
+          .fn()
+          .mockRejectedValueOnce(new Error('socket down'))
+          .mockImplementation(async () => [row({ id: 'm1', role: 'user', content: text('q'), seq: 1 })]),
+      };
+      const port = createAd4mAgentConversations({ ai } as never);
+      const pushes: string[][] = [];
+      port.follow({ id: 's1' }, (messages) => pushes.push(messages.map((m) => m.id)));
+      vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+      // The first read fails: no reply is known, so the poll has nothing to arm for.
+      await vi.advanceTimersByTimeAsync(0);
+      expect(ai.sessionMessages).toHaveBeenCalledTimes(1);
+      expect(pushes).toEqual([]);
+
+      // The read itself asks again — backing off, not on the poll's cadence.
+      await vi.advanceTimersByTimeAsync(999);
+      expect(ai.sessionMessages).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1);
+      expect(ai.sessionMessages).toHaveBeenCalledTimes(2);
+      expect(pushes).toEqual([['m1']]);
+
+      // Read at last: the retry stops asking too.
+      await vi.advanceTimersByTimeAsync(60000);
+      expect(ai.sessionMessages).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('reads again when the socket reconnects — a turn settled elsewhere arrives', async () => {
+    let reconnect: (() => void) | undefined;
+    const ai = {
+      ...fakeAi(),
+      sessionMessages: vi
+        .fn()
+        .mockImplementationOnce(async () => [
+          row({ id: 'm1', role: 'user', content: text('q'), seq: 1 }),
+          row({ id: 'm2', role: 'assistant', content: text('first'), status: 'done', seq: 2 }),
+        ])
+        .mockImplementation(async () => [
+          row({ id: 'm1', role: 'user', content: text('q'), seq: 1 }),
+          row({ id: 'm2', role: 'assistant', content: text('first'), status: 'done', seq: 2 }),
+          row({ id: 'm3', role: 'user', content: text('again'), seq: 3 }),
+          row({ id: 'm4', role: 'assistant', content: text('second'), status: 'done', seq: 4 }),
+        ]),
+    };
+    const client = {
+      ai,
+      perspective: { onReconnect: vi.fn((cb: () => void) => ((reconnect = cb), () => {})) },
+    };
+    const port = createAd4mAgentConversations(client as never);
+    const pushes: string[][] = [];
+    port.follow({ id: 's1' }, (messages) => pushes.push(messages.map((m) => m.id)));
+
+    await vi.waitFor(() => expect(pushes).toEqual([['m1', 'm2']]));
+
+    /*
+      The socket dropped and came back; meanwhile another tab sent a turn the server settled.
+      No reply here says running — the poll alone would never ask — so the reconnect itself
+      brings the transcript back.
+    */
+    reconnect!();
+    await vi.waitFor(() => expect(ai.sessionMessages).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() =>
+      expect(pushes).toEqual([
+        ['m1', 'm2'],
+        ['m1', 'm2', 'm3', 'm4'],
+      ]),
+    );
+  });
+
   it('answers a node without ai.session* as unavailable', async () => {
     const ai = fakeAi();
     ai.sessionList = vi.fn(async () => {

@@ -344,19 +344,41 @@ export function createAd4mAgentConversations(client: Ad4mClient): AgentConversat
         is what reconnect hands back to: events the socket missed never arrive, but the read sees
         the settle that happened while it was down. A read that itself fails (the socket still
         down) is not the end: the reply still says running, so the poll stays armed.
+
+        A first read that never landed is different: no reply is known, so the poll has nothing
+        to arm for — and the subscription cannot report a transcript it never fetched. That read
+        retries on its own clock, doubling to a half-minute cap, until it succeeds or the follow
+        is disposed.
       */
       const POLL_MS = 3000;
+      const RETRY_CAP_MS = 30000;
+      let retryMs = 1000;
       let timer: ReturnType<typeof setTimeout> | undefined;
       const running = () => [...rows.values()].some((row) => row.role === 'assistant' && row.status === 'running');
-      const schedule = () => {
-        if (stopped || timer !== undefined || !running()) return;
+      const later = (ms: number) => {
+        if (stopped || timer !== undefined) return;
         timer = setTimeout(() => {
           timer = undefined;
-          void read().then(schedule);
-        }, POLL_MS);
+          void read().then(afterRead);
+        }, ms);
+      };
+      const schedule = () => {
+        if (running()) later(POLL_MS);
+      };
+      const afterRead = (ok: boolean) => {
+        if (stopped) return;
+        if (ok) retryMs = 1000;
+        if (!ok && !ready) {
+          // Nothing has ever been read — the poll only runs for a reply known to be running, so
+          // the read itself asks again, slower each time to the cap.
+          later(retryMs);
+          retryMs = Math.min(retryMs * 2, RETRY_CAP_MS);
+          return;
+        }
+        schedule();
       };
 
-      async function read() {
+      async function read(): Promise<boolean> {
         try {
           const page = await allMessages(session.id, () => stopped);
           for (const row of page) {
@@ -370,19 +392,32 @@ export function createAd4mAgentConversations(client: Ad4mClient): AgentConversat
           }
           ready = true;
           emit();
+          return true;
         } catch (error: unknown) {
           if (!stopped) {
             console.warn('agent conversations: could not read the conversation', error);
           }
+          return false;
         }
       }
 
-      void read().then(schedule);
+      /*
+        A reconnect means the subscription missed whatever happened while the socket was down —
+        including a turn sent and settled elsewhere, which no running row here could poll for.
+        Read the transcript again whether or not one is known: events cannot backfill what they
+        never delivered.
+      */
+      const offReconnect = client.perspective?.onReconnect?.(() => {
+        if (!stopped) void read().then(afterRead);
+      });
+
+      void read().then(afterRead);
 
       return () => {
         stopped = true;
         if (timer !== undefined) clearTimeout(timer);
         unsubscribe();
+        offReconnect?.();
       };
     },
   };
