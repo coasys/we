@@ -2382,7 +2382,12 @@ const renameCallButton: SchemaNode = {
 /** A bare "start a call here" trigger, for templates that want one in their own chrome. */
 const startCallButton: SchemaNode = {
   type: 'we-button',
-  props: { variant: 'ghost', size: 'sm', onClick: { $invoke: 'modules.call.startCall', args: [''] } },
+  /*
+    `goToCall`, not `startCall`: the part's own description promises "goes to the one running", and
+    a header wired to `startCall` minted a second call beside the one presence already showed —
+    the split-meeting bug, reachable from any template that places this.
+  */
+  props: { variant: 'ghost', size: 'sm', onClick: { $invoke: 'modules.call.goToCall' } },
   children: [{ type: 'we-icon', props: { name: 'phone-call' } }],
 };
 

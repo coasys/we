@@ -709,6 +709,15 @@ describe('the declaration', () => {
     });
   });
 
+  it('makes the button a template places a "go to" too, so it joins rather than forks a call', () => {
+    // `startCallButton`'s own description has always promised "goes to the one running" — the
+    // action is what lagged. A header wired to it must not mint a second call while presence
+    // already shows one.
+    const json = JSON.stringify(part('startCallButton'));
+    expect(json).toContain('modules.call.goToCall');
+    expect(json).not.toContain('modules.call.startCall');
+  });
+
   it('declares the activity the transcriber reads off its roster', () => {
     // `record` and `continued` were the two fields another module read by convention.
     expect(contributes.activities?.call).toMatchObject({ record: 'string', continued: 'boolean', anchor: 'object' });

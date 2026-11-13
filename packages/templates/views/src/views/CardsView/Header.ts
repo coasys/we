@@ -24,24 +24,36 @@ const startCallButton: SchemaNode = {
     then: {
       type: 'we-button',
       props: {
-        text: { $: "modules.call.active ? 'Go to call' : 'Call'" },
+        /*
+          Three readings of the same press. "Go to call" while you are in one; "Join call · N"
+          while presence shows one running here and you are not — the affordance the review asked
+          for, and the reason the second call it used to mint is gone; "Call" only when nothing is
+          running to join.
+        */
+        text: {
+          $: "modules.call.active ? 'Go to call' : count(modules.call.liveCalls) ? `Join call · ${first(modules.call.liveCalls).count}` : 'Call'",
+        },
         variant: 'solid',
         /*
           A handler array so the branch is taken at click time. Written as a single `$invoke` with a
           `$if` in its args it would resolve when the header painted and freeze whichever answer was
-          true then — the trap named in the schema docs, and the reason the two states are two
-          entries rather than one conditional action.
+          true then — the trap named in the schema docs, and the reason the states are entries
+          rather than one conditional action.
         */
         onClick: [
           {
             $if: {
-              condition: { $: 'modules.call.active' },
+              // In a call, or beside one: `goToCall` joins what is running and opens what you are
+              // in — the two readings collapse into one because neither may start a call.
+              condition: { $: 'modules.call.active || count(modules.call.liveCalls)' },
               then: { $invoke: 'modules.call.goToCall' },
             },
           },
           {
             $if: {
-              condition: { $: '!modules.call.active' },
+              // A start is only ever the answer when there is nothing to join: `liveCalls` empty
+              // and no call of your own. Anything else pressing `startCall` is the fork.
+              condition: { $: '!modules.call.active && !count(modules.call.liveCalls)' },
               then: { $invoke: 'modules.call.startCall', args: [''] },
             },
           },

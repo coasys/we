@@ -1875,7 +1875,7 @@ describe('a call and the space it happens in', () => {
  * launcher names a method as a string and the host calls whatever it finds.
  */
 describe('going to the call', () => {
-  function railable() {
+  function railable(peers: unknown[] = []) {
     const signal = <T>(initial: T): [() => T, (next: T) => void] => {
       let value = initial;
       return [() => value, (next: T) => (value = next)];
@@ -1909,7 +1909,7 @@ describe('going to the call', () => {
       kernels: {
         ephemeral: () => scope,
         presence: {
-          peers: () => [],
+          peers: () => peers,
           setActivity: (activity: Record<string, unknown>) => activities.push(activity),
           clearActivity: () => {},
         },
@@ -2110,6 +2110,29 @@ describe('going to the call', () => {
 
     await store.leave();
     expect(store.tilesHidden()).toBe(false);
+  });
+
+  it('joins the call already running here rather than starting a second beside it', async () => {
+    /*
+      The "second call" bug, at the store: a button wired to `startCall` makes another call even
+      while presence shows one running. `goToCall` takes the live one instead — which is why the
+      header's Call button is allowed to be a Join, and why a second meeting never appears.
+    */
+    const { store, recordsCreated } = railable([
+      {
+        agentId: 'did:test:them',
+        liveness: 'live',
+        activities: [{ type: 'call', id: 'call-theirs', record: 'rec-theirs' }],
+      },
+    ]);
+
+    store.goToCall();
+    await Promise.resolve();
+
+    expect(store.active()).toBe(true);
+    expect(store.callId()).toBe('call-theirs');
+    // And nothing minted: joining a call writes no record of its own.
+    expect(recordsCreated()).toBe(0);
   });
 
   it('takes you back to a call happening in another space, rather than starting a second one', async () => {
