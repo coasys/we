@@ -81,11 +81,11 @@ importers:
   apps/coasys:
     dependencies:
       '@coasys/ad4m':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@b3d9e7002cac6d75ce5bac063cc06cb896c18eda
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@b3d9e7002cac6d75ce5bac063cc06cb896c18eda
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@de7292b37d0854a607259a10ecbe7e9bae7a8d0c
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@de7292b37d0854a607259a10ecbe7e9bae7a8d0c
       '@coasys/ad4m-connect':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@b3d9e7002cac6d75ce5bac063cc06cb896c18eda
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@b3d9e7002cac6d75ce5bac063cc06cb896c18eda
+        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@de7292b37d0854a607259a10ecbe7e9bae7a8d0c
+        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@de7292b37d0854a607259a10ecbe7e9bae7a8d0c
       '@we/app-shell':
         specifier: workspace:*
         version: link:../../packages/app-shell
