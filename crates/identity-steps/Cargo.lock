@@ -5,7 +5,7 @@ version = 4
 [[package]]
 name = "ad4m-hash-chain"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=95cefb35a27d75c6d332ee99e76ed205407d6fd3#95cefb35a27d75c6d332ee99e76ed205407d6fd3"
+source = "git+https://github.com/coasys/ad4m?rev=b3d9e7002cac6d75ce5bac063cc06cb896c18eda#b3d9e7002cac6d75ce5bac063cc06cb896c18eda"
 dependencies = [
  "bs58",
  "ed25519-dalek",
@@ -18,7 +18,7 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-client"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=95cefb35a27d75c6d332ee99e76ed205407d6fd3#95cefb35a27d75c6d332ee99e76ed205407d6fd3"
+source = "git+https://github.com/coasys/ad4m?rev=b3d9e7002cac6d75ce5bac063cc06cb896c18eda#b3d9e7002cac6d75ce5bac063cc06cb896c18eda"
 dependencies = [
  "ad4m-hash-chain",
  "ad4m-identity-core",
@@ -37,7 +37,7 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-core"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=95cefb35a27d75c6d332ee99e76ed205407d6fd3#95cefb35a27d75c6d332ee99e76ed205407d6fd3"
+source = "git+https://github.com/coasys/ad4m?rev=b3d9e7002cac6d75ce5bac063cc06cb896c18eda#b3d9e7002cac6d75ce5bac063cc06cb896c18eda"
 dependencies = [
  "ad4m-hash-chain",
  "base64",
@@ -61,7 +61,7 @@ dependencies = [
 [[package]]
 name = "ad4m-ldk"
 version = "0.13.0-test-1"
-source = "git+https://github.com/coasys/ad4m?rev=95cefb35a27d75c6d332ee99e76ed205407d6fd3#95cefb35a27d75c6d332ee99e76ed205407d6fd3"
+source = "git+https://github.com/coasys/ad4m?rev=b3d9e7002cac6d75ce5bac063cc06cb896c18eda#b3d9e7002cac6d75ce5bac063cc06cb896c18eda"
 dependencies = [
  "futures",
  "js-sys",
