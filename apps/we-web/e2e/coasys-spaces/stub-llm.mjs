@@ -29,6 +29,12 @@
  * the task. Only classes the prompt offers are answered, only fields the prompt lists are filled, and
  * a record whose title the prompt lists as existing is not proposed again — the same discipline a
  * real model is asked for, so the executor's dedup is not what makes the result converge.
+ *
+ * ## Speech to text
+ *
+ * The stub also serves `POST /v1/audio/transcriptions`, for a real-tier run that names no speech
+ * server (`models.mjs`): each utterance gets the next line of {@link TRANSCRIPT}. The stub tier does
+ * not use it, because it types its lines into the call (`call.mjs`).
  */
 import { createServer } from 'node:http';
 
@@ -96,6 +102,14 @@ function titleOf(cls, record) {
   return String(record[required] ?? record.title ?? '');
 }
 
+/**
+ * What the stub's speech-to-text writes, one line per utterance, in the order `fixtures/call.wav`
+ * speaks them. The recording has 1.5 s of silence before, between and after its lines, so each line
+ * is one utterance; the fake microphone plays it in a loop, so the lines come round again. The stub
+ * does not read the audio: the Nth utterance gets the Nth line, whatever the speech gate let through.
+ */
+export const TRANSCRIPT = Object.values(LINES);
+
 /** The records the script finds in one interpretation input. Exported for the suite's own checks. */
 export function answer(input) {
   const said = (input.transcript ?? []).map((t) => String(t.text ?? '').toLowerCase()).join('\n');
@@ -145,16 +159,55 @@ function reply(body) {
 }
 
 /**
- * Starts the stub on a free port. Resolves with its base URL (ending in `/v1`, as an OpenAI client is
- * given one), the model name it answers to, every request it has answered (`calls`), and `close`.
+ * Answers one `POST /v1/audio/transcriptions` as speaches does without `stream`: `{"text": …}`. The
+ * executor sends a multipart upload (`model`, `file`, and `stream=true` on its first try); a JSON
+ * answer tells it this server does not stream, and it reads the text from it.
  */
-export async function startStubLlm({ model = 'coasys-spaces-stub' } = {}) {
+function transcribe(req, res, calls) {
+  if (!String(req.headers['content-type'] ?? '').startsWith('multipart/form-data')) {
+    res.writeHead(400, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ error: { message: 'Expected a multipart/form-data upload' } }));
+    return;
+  }
+  let bytes = 0;
+  req.on('data', (chunk) => (bytes += chunk.length));
+  req.on('end', () => {
+    const heard = calls.filter((c) => c.kind === 'transcription').length;
+    const text = TRANSCRIPT[heard % TRANSCRIPT.length];
+    calls.push({ at: Date.now(), kind: 'transcription', bytes, text });
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ text }));
+  });
+}
+
+/**
+ * Starts the stub on a free port. Resolves with its base URL (ending in `/v1`, as an OpenAI client is
+ * given one), the language model's name (`model`) and the speech-to-text model's (`transcriptionModel`),
+ * every request it has answered (`calls`), and `close`.
+ *
+ * It serves `/v1/chat/completions` from {@link SCRIPT} and `/v1/audio/transcriptions` from
+ * {@link TRANSCRIPT}, and lists both models on `/v1/models`, which is how the executor's health check
+ * finds a model ready.
+ */
+export async function startStubLlm({
+  model = 'coasys-spaces-stub',
+  transcriptionModel = 'coasys-spaces-transcriber',
+} = {}) {
   const calls = [];
   const server = createServer((req, res) => {
     const path = new URL(req.url, 'http://x').pathname.replace(/\/+$/, '');
     if (req.method === 'GET' && (path === '/v1/models' || path === '/models')) {
       res.writeHead(200, { 'content-type': 'application/json' });
-      res.end(JSON.stringify({ object: 'list', data: [{ id: model, object: 'model', created: 0, owned_by: 'we' }] }));
+      res.end(
+        JSON.stringify({
+          object: 'list',
+          data: [model, transcriptionModel].map((id) => ({ id, object: 'model', created: 0, owned_by: 'we' })),
+        }),
+      );
+      return;
+    }
+    if (req.method === 'POST' && (path === '/v1/audio/transcriptions' || path === '/audio/transcriptions')) {
+      transcribe(req, res, calls);
       return;
     }
     if (req.method !== 'POST' || !(path === '/v1/chat/completions' || path === '/chat/completions')) {
@@ -210,6 +263,7 @@ export async function startStubLlm({ model = 'coasys-spaces-stub' } = {}) {
   return {
     baseUrl: `http://127.0.0.1:${port}/v1`,
     model,
+    transcriptionModel,
     calls,
     /** The interpretation passes answered so far. */
     passes: () => calls.filter((c) => c.kind === 'interpretation'),

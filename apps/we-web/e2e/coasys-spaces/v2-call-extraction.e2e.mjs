@@ -62,12 +62,12 @@ vertical('V2 call: transcript, extraction, accept, leave', (v) => {
       return;
     }
     // The stored lines hold a word of each recorded line — words the space's name and the page's
-    // controls do not, so only the transcript can pass this. Whisper's spelling, not the script's.
+    // controls do not, so only the transcript can pass this. The speech model's spelling, not the script's.
     const said = await untilHeard(perspective, callId, HEARD, SLOW);
     // The fake microphone plays its recording in a loop; every line is in, so it stops here, and
     // extraction reads one pass of the recording rather than a transcript that grows without end.
     await stopTranscribing(alice.page);
-    // On the screen: a stored line that holds one of the heard words, exactly as Whisper wrote it.
+    // On the screen: a stored line that holds one of the heard words, exactly as the speech model wrote it.
     const line = said.find((t) => HEARD.some((word) => t.toLowerCase().includes(word)));
     assert.ok(line, `a stored line holds one of ${HEARD.join(', ')} (${JSON.stringify(said)})`);
     await alice.page.getByText(line.trim()).first().waitFor({ timeout: SLOW });

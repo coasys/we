@@ -1,6 +1,7 @@
 /**
  * What every vertical of the coasys-spaces suite stands on: one executor (multi-user, MCP on), one
- * served build of the app, one browser, and a language model — the stub or a real one, by tier.
+ * served build of the app, one browser, and the model servers the executor uses (`models.mjs`): a
+ * language model, the stub or a real one by tier, and in the real tier a speech-to-text model.
  *
  * The world is made once, on the first vertical that asks, and closed once, after the last. Each
  * vertical then makes its own people (fresh accounts, so one vertical's installs and spaces never leak
@@ -12,7 +13,12 @@
  *
  * - `COASYS_SPACES_TIER` — `stub` (default) or `real`.
  * - `COASYS_SPACES_LLM_BASE_URL`, `COASYS_SPACES_LLM_MODEL`, `COASYS_SPACES_LLM_API_KEY` — the real
- *   tier's OpenAI-compatible model.
+ *   tier's OpenAI-compatible language model.
+ * - `COASYS_SPACES_TRANSCRIPTION_BASE_URL` — the real tier's OpenAI-compatible speech server
+ *   (`/v1/audio/transcriptions`, e.g. speaches). Not set: the stub server writes the transcript, and
+ *   the run log says so. `COASYS_SPACES_TRANSCRIPTION_MODEL` (default: the transcription model AD4M
+ *   recommends) and `COASYS_SPACES_TRANSCRIPTION_API_KEY` go with it. The stub tier uses none of
+ *   them: it types its lines into the call.
  * - `COASYS_SPACES_WAV` — the real tier's recording the fake microphone plays.
  * - `COASYS_SPACES_ARTIFACTS` — where failure screenshots, traces and the executor log go; else
  *   `WE_E2E_ARTIFACTS`, as for every journey; else a new temp directory.
@@ -28,7 +34,6 @@ import {
   captureFailure,
   device,
   launchBrowser,
-  registerLlm,
   saveArtifact,
   serveDist,
   signUp,
@@ -39,6 +44,7 @@ import {
 } from '@we/e2e';
 
 import { dismissNamePrompt } from '../steps/space.mjs';
+import { modelsFor, needsStubServer, registerModels } from './models.mjs';
 import { startStubLlm } from './stub-llm.mjs';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -66,40 +72,11 @@ const STEP = SLOW + 120_000;
  */
 export const CALL_STEP = 2 * SLOW + 300_000;
 
-/** How long the real tier waits for Whisper to load: the first run downloads it. */
-const WHISPER_LOAD = 1_800_000;
-
 /**
- * How long making the world may take: the executor, its model, the served app and the browser, and in
- * the real tier Whisper's load on top. Its own budget, so a first download is not cut short by a step's.
+ * How long making the world may take: the executor, its models, the served app and the browser. Its
+ * own budget, apart from a step's. The executor downloads no model: each runs on a server of its own.
  */
-const WORLD = (STUB ? 0 : WHISPER_LOAD) + 600_000;
-
-function realLlm() {
-  const baseUrl = process.env.COASYS_SPACES_LLM_BASE_URL;
-  const model = process.env.COASYS_SPACES_LLM_MODEL;
-  if (!baseUrl || !model) {
-    throw new Error('COASYS_SPACES_TIER=real needs COASYS_SPACES_LLM_BASE_URL and COASYS_SPACES_LLM_MODEL.');
-  }
-  return { baseUrl, model, apiKey: process.env.COASYS_SPACES_LLM_API_KEY ?? 'none', stub: null };
-}
-
-/** Whisper on the executor, loaded: what the real tier's call transcribes with. */
-async function loadWhisper(admin) {
-  const id = await admin.ai.addModel({
-    name: 'Whisper small',
-    local: { fileName: 'whisper_small' },
-    modelType: 'TRANSCRIPTION',
-  });
-  await admin.ai.setDefaultModel('TRANSCRIPTION', id);
-  await until(
-    () => admin.ai.modelLoadingStatus(id),
-    // "Loaded" is the end of a transcription load: the executor reports it with `loaded: false`.
-    (status) => status?.loaded || status?.status === 'Loaded',
-    { timeout: WHISPER_LOAD, interval: 5_000, what: 'Whisper to download and load' },
-  );
-  return id;
-}
+const WORLD = 600_000;
 
 let made = null;
 
@@ -115,19 +92,15 @@ export function world() {
     // The scripted lines, spoken (fixtures/call.wav), unless another recording is named.
     const wav = resolve(process.env.COASYS_SPACES_WAV ?? join(HERE, 'fixtures', 'call.wav'));
     try {
-      const stub = (started.stub = STUB ? await startStubLlm() : null);
-      const llm = stub ? { baseUrl: stub.baseUrl, model: stub.model, apiKey: 'none', stub } : realLlm();
+      // In the real tier the stub server only writes the transcript, and only when no speech server
+      // is named; `stub` below is the stub tier's language model, which steps read the script from.
+      const server = (started.stub = needsStubServer(TIER, process.env) ? await startStubLlm() : null);
+      const { llm, transcriber } = modelsFor({ tier: TIER, env: process.env, stub: server });
       const executor = (started.executor = await startExecutor({ mcp: true }));
-      await registerLlm(executor.admin, {
-        name: 'coasys-spaces',
-        baseUrl: llm.baseUrl,
-        apiKey: llm.apiKey,
-        model: llm.model,
-      });
-      if (!STUB) await loadWhisper(executor.admin);
+      await registerModels(executor.admin, { llm, transcriber });
       const app = (started.app = await serveDist(DIST));
       const browser = (started.browser = await launchBrowser({ fakeAudio: STUB ? undefined : wav }));
-      return { executor, app, browser, llm, stub };
+      return { executor, app, browser, llm, transcriber, stub: STUB ? server : null };
     } catch (error) {
       await stopStarted();
       throw error;

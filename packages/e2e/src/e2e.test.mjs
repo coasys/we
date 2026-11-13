@@ -1,6 +1,7 @@
 /**
  * The parts of `@we/e2e` that need neither an executor nor a browser: the waits, the artifacts
- * directory and its failure hook, the Chrome lookup, and the app server's policy header. The rest is
+ * directory and its failure hook, the Chrome lookup, the app server's policy header, and the model
+ * setup, against a stand-in admin client (`fake-ai.mjs`) that refuses what the executor refuses. The rest is
  * exercised by every journey and live test that stands on it.
  */
 import assert from 'node:assert/strict';
@@ -12,7 +13,8 @@ import { describe, it } from 'node:test';
 import { productionCsp, serveDist } from './app.mjs';
 import { artifactsDir, capturing, captureFailure, slug } from './artifacts.mjs';
 import { chromePath } from './env.mjs';
-import { DATA_PREFIX } from './executor.mjs';
+import { DATA_PREFIX, registerLlm, registerTranscriber } from './executor.mjs';
+import { fakeAiAdmin } from './fake-ai.mjs';
 import { until, within } from './waits.mjs';
 
 describe('until', () => {
@@ -129,6 +131,45 @@ describe('chromePath', () => {
 describe('the executor', () => {
   it('keeps the data directory prefix ad4m CI cleans up by', () => {
     assert.equal(DATA_PREFIX, 'we-live-web-');
+  });
+});
+
+describe('registerLlm', () => {
+  it('registers an endpoint, a model on it, and makes it the default language model', async () => {
+    const admin = fakeAiAdmin();
+    const id = await registerLlm(admin, { name: 'we-e2e', baseUrl: 'http://127.0.0.1:4000/v1', model: 'stub' });
+
+    assert.equal(admin.defaults.get('LLM'), id);
+    const [model] = await admin.ai.getModels();
+    assert.equal(model.name, 'we-e2e');
+    assert.equal(model.modelType, 'LLM');
+    assert.equal(model.remoteModel, 'stub');
+    const endpoint = admin.endpointOf(id);
+    assert.equal(endpoint.kind, 'OPEN_AI_COMPATIBLE');
+    assert.equal(endpoint.baseUrl, 'http://127.0.0.1:4000/v1');
+    // No key given, none sent: the executor refuses a key over plain HTTP to another host.
+    assert.equal(endpoint.apiKey, '');
+    assert.ok(endpoint.capabilities.includes('chat'));
+  });
+
+  it('sends a key only when one is given', async () => {
+    const admin = fakeAiAdmin();
+    const id = await registerLlm(admin, { baseUrl: 'https://models.example/v1', apiKey: 'secret', model: 'm' });
+    assert.equal(admin.endpointOf(id).apiKey, 'secret');
+  });
+});
+
+describe('registerTranscriber', () => {
+  it('registers a speech server and its model as the default transcription model', async () => {
+    const admin = fakeAiAdmin();
+    const id = await registerTranscriber(admin, { baseUrl: 'http://127.0.0.1:8000/v1', model: 'whisper-small' });
+
+    assert.equal(admin.defaults.get('TRANSCRIPTION'), id);
+    const endpoint = admin.endpointOf(id);
+    assert.equal(endpoint.kind, 'OPEN_AI_AUDIO');
+    // `require_transcription`: the executor sends no audio to an endpoint that does not declare it.
+    assert.ok(endpoint.capabilities.includes('transcription'));
+    assert.equal((await admin.ai.getDefaultModel('TRANSCRIPTION')).remoteModel, 'whisper-small');
   });
 });
 

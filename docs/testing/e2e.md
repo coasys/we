@@ -74,7 +74,8 @@ other without `--no-build`.
 
 The spaces suite has two tiers. The **stub** tier uses a scripted model and typed call lines, so its
 results are exact. It is the gate for product breaks. The **real** tier uses a model endpoint and a
-recorded call through Whisper. Its README (`apps/we-web/e2e/coasys-spaces/README.md`) covers both
+recorded call through a speech-to-text server (or, when the run names none, the stub server's fixed
+transcript). Its README (`apps/we-web/e2e/coasys-spaces/README.md`) covers both
 tiers, the verticals, their backlog of `it.todo`, and how to read a red real-tier run.
 
 **The real tier runs in ad4m's nightly**, a CircleCI job in the ad4m repository
@@ -93,11 +94,12 @@ plain ES modules with hand-written types and no build step. Import a piece from 
 | Entry       | Exports                                                                                                                                                             |
 | ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `env`       | `ROOT`; `executorBinary()`: the binary `scripts/ad4m-executor.mjs --path` chooses; `chromePath(env?)` and `chromeCandidates()`                                      |
-| `executor`  | `startExecutor(options?)`, `signUp(executor, email, password?)`, `registerLlm(admin, model)`, `freePort()`, `DATA_PREFIX`                                           |
+| `executor`  | `startExecutor(options?)`, `signUp(executor, email, password?)`, `registerLlm(admin, server)`, `registerTranscriber(admin, server)`, `freePort()`, `DATA_PREFIX`    |
 | `app`       | `serveDist(dir, { seed?, host? })`: a built app served with the production CSP header; `productionCsp()`, `currentSeed()`                                           |
 | `browser`   | `launchBrowser({ fakeAudio?, headless? })`, `device(browser, executor, account, { name?, viewport? })`: a signed-in browser context; `openConnections`, `videoFlow` |
 | `waits`     | `until(read, accept, { timeout?, interval?, what? })`, `within(promise, ms, what?)`, `sleep(ms)`                                                                    |
 | `artifacts` | `artifactsDir({ dir?, prefix? })`, `captureFailure({ dir, name, pages, executor? })`, `capturing(capture, fn)`, `saveArtifact`, `slug`                              |
+| `fake-ai`   | `fakeAiAdmin({ unlisted? })`: a stand-in for an admin client's `ai` calls that refuses them as the executor does, for unit tests of model setup                     |
 | `mcp`       | `mcpSession(url, token)`: an MCP client session with `tools()` and `call(name, args)`                                                                               |
 
 `startExecutor` starts a fresh executor that is **multi-user** by default, the way a hosted node runs.

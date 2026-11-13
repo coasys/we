@@ -57,8 +57,24 @@ export interface Account {
 /** An account on a multi-user executor, signed in. */
 export function signUp(executor: Pick<Executor, 'admin' | 'url'>, email: string, password?: string): Promise<Account>;
 
-/** Makes an OpenAI-compatible endpoint the executor's default LLM; resolves with the model's id. */
-export function registerLlm(
-  admin: Ad4mClient,
-  options: { name?: string; baseUrl: string; apiKey?: string; model: string },
-): Promise<string>;
+/** A model on a server: the endpoint's name, URL and optional key, and the id the server knows the model by. */
+export interface ModelServer {
+  name?: string;
+  /** Ends in `/v1`, as an OpenAI client is given one. */
+  baseUrl: string;
+  /** Left out: no key is sent. */
+  apiKey?: string;
+  model: string;
+}
+
+/**
+ * Registers an `OPEN_AI_COMPATIBLE` endpoint (capability `chat`) and an `LLM` model on it, and makes
+ * that model the executor's default language model. Resolves with the model's id.
+ */
+export function registerLlm(admin: Pick<Ad4mClient, 'ai'>, server: ModelServer): Promise<string>;
+
+/**
+ * Registers an `OPEN_AI_AUDIO` endpoint (capability `transcription`) and a `TRANSCRIPTION` model on
+ * it, and makes that model the executor's default transcription model. Resolves with the model's id.
+ */
+export function registerTranscriber(admin: Pick<Ad4mClient, 'ai'>, server: ModelServer): Promise<string>;

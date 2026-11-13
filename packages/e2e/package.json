@@ -41,6 +41,10 @@
     "./mcp": {
       "types": "./src/mcp.d.mts",
       "import": "./src/mcp.mjs"
+    },
+    "./fake-ai": {
+      "types": "./src/fake-ai.d.mts",
+      "import": "./src/fake-ai.mjs"
     }
   },
   "files": [

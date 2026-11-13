@@ -3,7 +3,8 @@
  *
  * Starting, joining and leaving go through the screen. What is said goes in by tier:
  *
- * - **real** — the fake microphone plays the suite's recording, and the executor's Whisper writes it.
+ * - **real** — the fake microphone plays the suite's recording, and the executor's transcription
+ *   model writes it: a real speech server, or the stub server's fixed transcript (`models.mjs`).
  *   The microphone plays it in a loop, so once every line has landed the suite stops transcribing.
  * - **stub** — typed lines, written from Node as the call's author. The Coasys app places no box to
  *   type into a call (its only composer, the Feed's, writes to the space outside any call), so the

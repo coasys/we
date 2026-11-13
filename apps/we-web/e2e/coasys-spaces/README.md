@@ -43,9 +43,15 @@ skipped, and the other verticals still run.
   - When extraction does not find the records, the error includes what the executor holds for the
     call's watch: the config links, the turns that its scope query reads, and the calls made to the
     stub.
-- **`real`** — a real model and Whisper.
-  - The fake microphone plays a recording, and the executor's Whisper writes it. Whisper's model may
-    download on the first run.
+- **`real`** — a real language model, and a speech-to-text model for the call.
+  - The fake microphone plays a recording, and the executor sends each utterance to its
+    transcription model. The executor runs no model itself: every model is a model on an endpoint,
+    a server that the executor reaches over HTTP.
+  - `COASYS_SPACES_TRANSCRIPTION_BASE_URL` names an OpenAI-compatible speech server (for example
+    speaches). If it is not set, the stub server writes the transcript: it answers each utterance
+    with the next line of the recording (`TRANSCRIPT` in `stub-llm.mjs`). The run log then says
+    `transcription is stubbed`. The audio path (microphone, worklet, executor, upstream) still runs;
+    only the speech-to-text step is fixed.
   - The steps assert the shape of the result (records of the package's classes, linked to the call),
     not exact titles.
 
@@ -125,8 +131,13 @@ For the real tier:
 
 ```sh
 COASYS_SPACES_LLM_BASE_URL=http://127.0.0.1:8080/v1 COASYS_SPACES_LLM_MODEL=<model> \
+COASYS_SPACES_TRANSCRIPTION_BASE_URL=http://127.0.0.1:8000/v1 \
 pnpm e2e spaces --tier real
 ```
+
+Leave out `COASYS_SPACES_TRANSCRIPTION_BASE_URL` to use the stub server's transcript instead of a
+speech server. The speech server must already have the model: the suite waits up to three minutes
+for the executor to report it `READY`, and does not download it.
 
 The fake microphone plays `fixtures/call.wav`: the four lines in `stub-llm.mjs` (`LINES`), spoken by
 a TTS voice with 1.5 s of silence before, between and after them, 16 kHz mono PCM (19.7 s). A
@@ -144,7 +155,7 @@ Change `LINES`, `HEARD` and the recording together. `COASYS_SPACES_WAV` names an
   "Stop transcribing". The call and its extraction watch stay. Extraction then reads one pass of
   the recording, not a transcript that grows every 20 s.
 - The transcript check reads those words from the call's `TextBlock` records. Then it finds on the
-  screen a stored line that holds one of them, as Whisper wrote it. No space name holds these words,
+  screen a stored line that holds one of them, as the speech model wrote it. No space name holds these words,
   so only the transcript can pass the check.
 - V4 waits for a titled `Question` and V5 for a titled `Task`. Each waits for the class that it
   uses, not for the first record of any class.
@@ -184,7 +195,10 @@ not get a `Task`, the cause can be model variance and not a product break. To fi
 | Variable                                           | Use                                                                                                        |
 | -------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | `COASYS_SPACES_TIER`                               | `stub` (default) or `real`.                                                                                |
-| `COASYS_SPACES_LLM_BASE_URL`, `_MODEL`, `_API_KEY` | The real tier's OpenAI-compatible model.                                                                   |
+| `COASYS_SPACES_LLM_BASE_URL`, `_MODEL`, `_API_KEY` | The real tier's OpenAI-compatible language model.                                                          |
+| `COASYS_SPACES_TRANSCRIPTION_BASE_URL`             | The real tier's OpenAI-compatible speech server. If it is not set, the stub server writes the transcript.  |
+| `COASYS_SPACES_TRANSCRIPTION_MODEL`                | The model on that server. The default is the transcription model that AD4M recommends.                     |
+| `COASYS_SPACES_TRANSCRIPTION_API_KEY`              | The key for that server. The default is no key.                                                            |
 | `COASYS_SPACES_WAV`                                | The real tier's recording, played by the fake microphone (default `fixtures/call.wav`).                    |
 | `COASYS_SPACES_ONLY`                               | A comma list of verticals (`v1`…`v6`).                                                                     |
 | `COASYS_SPACES_ARTIFACTS`                          | The folder for failure artifacts. Else `WE_E2E_ARTIFACTS`, else a new temp folder.                         |
@@ -221,8 +235,10 @@ things:
    binary instead of downloading the pinned one.
 
 The client, the app's connect UI and the executor then all come from the same commit. The job gives
-the real tier a model endpoint on its runner (see the PR for the model and its context window). The
-stub tier needs no model: it runs locally, and on WE's pin in the `spaces` job of
+the real tier a model endpoint on its runner (see the PR for the model and its context window).
+The job's `test` step does not pass a speech server, so its transcript comes from the stub server
+unless `COASYS_SPACES_TRANSCRIPTION_BASE_URL` is set in the job's environment. The stub tier needs
+no model: it runs locally, and on WE's pin in the `spaces` job of
 `.github/workflows/ad4m-live.yaml`.
 
 ## Selectors

@@ -162,16 +162,60 @@ export async function signUp(executor, email, password = 'test123') {
 }
 
 /**
- * Makes an OpenAI-compatible endpoint the executor's default language model — the one call
- * extraction runs on. Needs the admin client: the default is the executor's, not one account's.
+ * Registers a model server as an endpoint, then one model on it, and makes that model the executor's
+ * default of its type. The executor knows a model only as a model on an endpoint (ad4m #1616): the
+ * endpoint holds the URL, the key and what it can do; the model names the endpoint and the id the
+ * server knows it by. Needs the admin client: endpoints and defaults are the executor's, not one
+ * account's.
+ *
+ * `capabilities` are given, not probed, so a server that is not up yet still registers as what it
+ * is. With no `apiKey`, no key is sent: the executor refuses a key over plain HTTP to another host.
  * Resolves with the model's id.
  */
-export async function registerLlm(admin, { name = 'we-live-llm', baseUrl, apiKey = 'none', model }) {
+export async function registerModel(admin, { name, kind, capabilities, modelType, baseUrl, apiKey, model }) {
+  const endpoint = await within(
+    admin.ai.addEndpoint({ name, kind, baseUrl, capabilities, ...(apiKey ? { apiKey } : {}) }),
+    60_000,
+    'ai.addEndpoint',
+  );
   const id = await within(
-    admin.ai.addModel({ name, modelType: 'LLM', api: { baseUrl, apiKey, model, apiType: 'OPEN_AI' } }),
+    admin.ai.addModel({ name, modelType, endpointId: endpoint.id, remoteModel: model }),
     60_000,
     'ai.addModel',
   );
-  await within(admin.ai.setDefaultModel('LLM', id), 30_000, 'ai.setDefaultModel');
+  await within(admin.ai.setDefaultModel(modelType, id), 30_000, 'ai.setDefaultModel');
   return id;
+}
+
+/**
+ * Makes a model on an OpenAI-compatible server (`/v1/chat/completions`) the executor's default
+ * language model: the one that call extraction runs on. Resolves with the model's id.
+ */
+export function registerLlm(admin, { name = 'we-live-llm', baseUrl, apiKey, model }) {
+  return registerModel(admin, {
+    name,
+    kind: 'OPEN_AI_COMPATIBLE',
+    capabilities: ['chat'],
+    modelType: 'LLM',
+    baseUrl,
+    apiKey,
+    model,
+  });
+}
+
+/**
+ * Makes a model on an OpenAI-compatible speech server (`/v1/audio/transcriptions`: speaches, a
+ * Whisper or Parakeet wrapper, OpenAI) the executor's default transcription model: the one that
+ * writes a call's transcript. Resolves with the model's id.
+ */
+export function registerTranscriber(admin, { name = 'we-live-transcriber', baseUrl, apiKey, model }) {
+  return registerModel(admin, {
+    name,
+    kind: 'OPEN_AI_AUDIO',
+    capabilities: ['transcription'],
+    modelType: 'TRANSCRIPTION',
+    baseUrl,
+    apiKey,
+    model,
+  });
 }
