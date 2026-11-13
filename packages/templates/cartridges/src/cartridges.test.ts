@@ -709,6 +709,15 @@ describe('the Coasys cartridge', () => {
         expect(graphJson).toContain('"weigh":{"$":"(local.treeMode || local.order == \'signal\') && (');
       });
 
+      it('hides the strip while the Social DNA map covers the canvas', () => {
+        // The strip sits under the `$if` that reads "not on the map".
+        const notOnMap = findNode(canvasPane, (n) => {
+          const condition = (n.props as { condition?: { $?: unknown } } | undefined)?.condition?.$;
+          return n.type === '$if' && condition === "!((routeStore.params.view == 'canvas') && routeStore.params.dna)";
+        });
+        expect(JSON.stringify(notOnMap)).toContain('"$toggleLocal":"treeMode"');
+      });
+
       it('offers the spine and the order in the strip', () => {
         expect(pane).toContain('"placeholder":"Any connection"');
         expect(pane).toContain('local.relationshipKinds.map(k, { label: k.name, value: k.id, icon: k.icon })');

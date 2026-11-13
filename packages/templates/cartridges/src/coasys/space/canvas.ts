@@ -329,8 +329,9 @@ export const canvasPane: SchemaNode = {
           How the canvas is read: the mode, and what the tree is made of. In the canvas's own corner
           rather than a panel, because a panel can be closed and this is the only way out of the
           mode — the viewBar ends above the box this strip is absolute inside, so it wants no `below`.
+          Not over the Social DNA map: the tree reads the canvas, which the map covers.
         */
-        treeStrip(),
+        { type: '$if', props: { condition: { $: `!(${ON_DNA})` }, then: treeStrip() } },
       ],
     },
     recordFormModal({ back: BACK_TO_CHOOSER, entityPicker: false, iconColor: kindGlyph }),
