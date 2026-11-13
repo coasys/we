@@ -24,6 +24,7 @@ export {
 } from './InterpretationStore';
 export { type PresenceStore, type PresentAgent, usePresenceStore, PresenceStoreProvider } from './PresenceStore';
 export { type ShellStore, useShellStore, ShellStoreProvider } from './ShellStore';
+export { type ChatOpen, type ChatStore, useChatStore, ChatStoreProvider } from './ChatStore';
 export { useShellRouteStore, ShellRouteStoreProvider, ShellRouterRoot } from './ShellRouteStore';
 export {
   type BundleStore,

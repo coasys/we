@@ -87,6 +87,22 @@ export function capabilitiesFromToken(token: string | undefined | null): Ad4mCap
 }
 
 /**
+ * Whether a token is the executor's operator credential rather than a grant.
+ *
+ * The executor's own rule: the admin credential is the operator, and so is no token on loopback where
+ * no credential is set. A JWT is a grant, and "a grant never is [the operator], whatever its
+ * capabilities" — an app token holding `*` included, which is what WE web connects with. The
+ * executor keeps a few calls to the operator alone (installing local AI, for one), so a grant holding
+ * every capability still cannot make them.
+ *
+ * Advisory, like everything in this file: it decides what to offer, and the executor decides.
+ */
+export function holdsOperatorCredential(token: string | undefined | null): boolean {
+  if (!token) return true;
+  return token.split('.').length !== 3;
+}
+
+/**
  * A `(domain, verb) => boolean` check over a decoded grant.
  *
  * Mirrors the executor's `check_capability`: a held capability matches when its domain is the

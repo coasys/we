@@ -75,6 +75,7 @@ import {
   widestMin,
   withChromeCovered,
 } from '@shared/dockGeometry';
+import { isAppPanel } from '@shared/panelScope';
 import type { ScreenSource } from '@shared/platform/types';
 import { appEdgeFrames, appFrame } from '@shared/registries/appFrame';
 import {
@@ -93,6 +94,7 @@ import {
 import { HOME_SECTION_ATTR, homeLanes, laneFrames } from '@shared/registries/homeLanes';
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
 import {
+  APP_PANEL_SCOPE,
   declaredPanelOf,
   instanceDockId,
   instanceKeyOf,
@@ -112,6 +114,7 @@ import { usePlatform } from '@solid/providers/PlatformProvider';
 import { DRAGGING_ATTR } from '@we/drag';
 import type { ChromeReserve, DockAspect, DockEdge, DockSize } from '@we/module-shared';
 import type { PanelFrame, SchemaNode, TemplatePanel, TemplateSchema } from '@we/schema-shared';
+import { hasGesture } from '@we/schema-shared';
 import {
   Accessor,
   createContext,
@@ -349,6 +352,18 @@ export interface ShellStore {
    * is. Wiring: `SpaceStore` provides it, and nothing else should. See `moduleGate`.
    */
   provideModuleGate: (gate: (moduleId: string) => boolean) => void;
+  /**
+   * Tell the shell whether a perspective uuid is the space on screen, so a panel instance bound to
+   * one (the space chats) shows only while its space is — hidden, not closed, elsewhere. Wiring:
+   * `SpaceStore` provides it, and nothing else should. See `moduleGate`.
+   */
+  provideSpaceGate: (gate: (perspectiveUuid: string) => boolean) => void;
+  /**
+   * Tell the shell whose instance records these are — the signed-in agent's DID. Wiring:
+   * `SessionStore` provides it, and nothing else should. Kept panel instances read and write
+   * under it, so a logout without a reload shows the next agent nothing of the last one's.
+   */
+  provideAgentDid: (did: () => string | undefined) => void;
   toggleSpaceSettings: () => void;
   /**
    * Open the panel, optionally on a named tab — `'about'`, `'features'`, `'vocabulary'`.
@@ -627,7 +642,22 @@ export interface ShellStore {
    *
    * Only a panel the interface supplies (`node`), whose contents can read inputs.
    */
-  openPanel: (panel: string, inputs?: Record<string, unknown>, options?: { key?: string; title?: string }) => string;
+  openPanel: (
+    panel: string,
+    inputs?: Record<string, unknown>,
+    options?: {
+      key?: string;
+      title?: string;
+      /** The scope the instance is kept under — host code only; a template's is struck by the bag. */
+      scope?: string;
+      /**
+       * Stamped by the bag on every call that came through a template — never set by the caller.
+       * Marked so the reveal below stays quiet without a gesture: a template may open its panels
+       * unasked, but only a person's doing brings them in front of Settings or out of hiding.
+       */
+      viaTemplate?: boolean;
+    },
+  ) => string;
   /** Close an instance `openPanel` opened. Its placement goes with it. */
   closePanel: (instance: string) => void;
   /** The instances open in the interface on screen — which panel each is of, and its inputs. */
@@ -1057,22 +1087,35 @@ const LANES_KEY = 'we-local:shell.lanes';
 /** Every interface's open panel instances, by interface — see `PanelInstance`. */
 const INSTANCES_KEY = 'we-local:shell.panelInstances';
 
-function loadInstances(): Record<string, Record<string, PanelInstance>> {
+/*
+ * Instances are kept under the agent's DID: an app-scope chat carries a perspective id, and a
+ * logout that does not reload hands the screen to the next agent — unkeyed, they would see the
+ * last one's. `load`/`save` take the DID; it is provided once the session knows who is signed in.
+ */
+function loadInstances(did: string): Record<string, Record<string, PanelInstance>> {
   if (typeof localStorage === 'undefined') return {};
   try {
     const parsed = JSON.parse(localStorage.getItem(INSTANCES_KEY) ?? '{}') as unknown;
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
-      ? (parsed as Record<string, Record<string, PanelInstance>>)
-      : {};
+    const perAgent =
+      parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+        ? (parsed as Record<string, Record<string, Record<string, PanelInstance>>>)
+        : {};
+    const mine = perAgent[did];
+    return mine && typeof mine === 'object' && !Array.isArray(mine) ? mine : {};
   } catch {
     return {};
   }
 }
 
-function saveInstances(all: Record<string, Record<string, PanelInstance>>): void {
+function saveInstances(did: string, all: Record<string, Record<string, PanelInstance>>): void {
   if (typeof localStorage === 'undefined') return;
   try {
-    localStorage.setItem(INSTANCES_KEY, JSON.stringify(all));
+    const parsed = JSON.parse(localStorage.getItem(INSTANCES_KEY) ?? '{}') as unknown;
+    const perAgent =
+      parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? { ...(parsed as Record<string, unknown>) } : {};
+    if (Object.keys(all).length) perAgent[did] = all;
+    else delete perAgent[did];
+    localStorage.setItem(INSTANCES_KEY, JSON.stringify(perAgent));
   } catch {
     // The instances open now stay open; a reload starts without them.
   }
@@ -1812,6 +1855,8 @@ export function ShellStoreProvider(props: ParentProps) {
    * unrelated history, not to make every template forget.
    */
   const placementKey = (id: string): string => {
+    // An instance kept under the app keeps its place under the app — across every interface.
+    if (allInstances()[APP_PANEL_SCOPE]?.[id]) return `${APP_PANEL_SCOPE}::${id}`;
     const scope = templatePanelScope();
     return scope && declarationFor()[id] ? `${scope}::${id}` : id;
   };
@@ -1837,26 +1882,62 @@ export function ShellStoreProvider(props: ParentProps) {
 
   /*
     Every interface's panel instances, kept across reloads like the reader's placements — and the
-    ones of the interface on screen, published for the bodies that render them (`panelInstances`).
+    ones on screen, published for the bodies that render them (`panelInstances`).
+
+    Two scopes can own one screen: the interface's own, and the app's (`APP_PANEL_SCOPE`) — where an
+    instance that is not about this interface lives, so it stays open across spaces. The app's
+    instances merge under the interface's here, and the interface's win an id collision the way its
+    declarations do everywhere else.
   */
-  const [allInstances, setAllInstances] = createSignal(loadInstances());
+  /*
+    Whose instance records these are — injected by `SessionStore` once it knows, the way
+    `spaceGate` is. Kept by DID so a logout without a reload never shows the next agent the
+    last one's chats: a change of agent re-reads storage for the one now signed in.
+  */
+  const [didOf, setDidOf] = createSignal<(() => string | undefined) | undefined>(undefined);
+  const agentDid = () => didOf()?.() ?? '';
+  const [allInstances, setAllInstances] = createSignal(loadInstances(agentDid()));
+  createEffect(() => {
+    const next = loadInstances(agentDid());
+    setAllInstances(next);
+    publishPanelInstances(visibleInstances(next));
+  });
+  /**
+   * Which perspective is on screen, asked as "is this the one" — injected by `SpaceStore`, which
+   * mounts below this store, the same reason `moduleGate` is. An instance whose inputs bind it to
+   * a perspective (the space chats) shows only while its space is current: hidden elsewhere, not
+   * closed, so it is still there when you go back.
+   */
+  const [spaceGate, setSpaceGate] = createSignal<(perspectiveUuid: string) => boolean>(() => true);
+  const visibleInstances = (all: Record<string, Record<string, PanelInstance>>) =>
+    Object.fromEntries(
+      Object.entries({
+        ...(all[APP_PANEL_SCOPE] ?? {}),
+        ...(all[templatePanelScope()] ?? {}),
+      }).filter(
+        ([, instance]) =>
+          typeof instance.inputs.perspectiveUuid !== 'string' || spaceGate()(instance.inputs.perspectiveUuid),
+      ),
+    );
   // Following every announcement of a declaration, which is what says the interface on screen has
   // changed — the scope itself is a plain read, and the same declaration can arrive for another one.
   const instancesHere = createMemo(() => {
     panelsVersion();
-    return allInstances()[templatePanelScope()] ?? {};
+    return visibleInstances(allInstances());
   });
   createEffect(() => publishPanelInstances(instancesHere()));
-  const writeInstances = (change: (here: Record<string, PanelInstance>) => Record<string, PanelInstance>) =>
+  const writeInstances = (
+    scope: string,
+    change: (here: Record<string, PanelInstance>) => Record<string, PanelInstance>,
+  ) =>
     setAllInstances((all) => {
-      const scope = templatePanelScope();
       const here = change({ ...(all[scope] ?? {}) });
       const next = { ...all };
       if (Object.keys(here).length) next[scope] = here;
       else delete next[scope];
-      saveInstances(next);
+      saveInstances(agentDid(), next);
       // Published as it is written, so a body drawn in the same breath reads its inputs.
-      publishPanelInstances(here);
+      publishPanelInstances(visibleInstances(next));
       return next;
     });
 
@@ -3285,6 +3366,8 @@ export function ShellStoreProvider(props: ParentProps) {
     spaceSettingsEdge: () => (spaceSettingsOpen() ? 'right' : null),
     // Wrapped, because `setSignal` treats a function argument as an updater.
     provideModuleGate: (gate) => setModuleGate(() => gate),
+    provideSpaceGate: (gate) => setSpaceGate(() => gate),
+    provideAgentDid: (did) => setDidOf(() => did),
     provideTemplateSaver: (saver) => setTemplateSaver(() => saver),
 
     saveArrangementAsTemplate: async () => {
@@ -4529,11 +4612,24 @@ export function ShellStoreProvider(props: ParentProps) {
         console.warn(`[shellStore] openPanel: "${panel}" is not a panel this interface supplies.`);
         return '';
       }
+      /*
+        The app's own panels are not the interface's to open. `chat-global`/`chat-space` arrive
+        merged under it, so the id resolves — and the instance would open a chat on the template's
+        inputs where `chatStore.openChat` is the way a template asks: pinned to a scope it may hold,
+        prefilled rather than sent. The bag marks a template's call `viaTemplate`; host code reaches
+        the same panel without it, which is why the mark and not the panel decides.
+      */
+      if (options.viaTemplate && isAppPanel(declared)) {
+        console.warn(
+          `[shellStore] openPanel: "${panel}" is the app's own — a template opens a chat through chatStore.openChat.`,
+        );
+        return '';
+      }
       const id = instanceDockId(panel, options.key ?? instanceKeyOf(inputs));
       // Strictly after every instance already open, however quickly they were opened.
       const openedNow = (here: Record<string, PanelInstance>) =>
         Math.max(Date.now(), ...Object.values(here).map((instance) => instance.opened + 1));
-      writeInstances((here) => ({
+      writeInstances(options.scope ?? templatePanelScope(), (here) => ({
         ...here,
         [id]: {
           id,
@@ -4543,15 +4639,36 @@ export function ShellStoreProvider(props: ParentProps) {
           ...(options.title ? { title: options.title } : {}),
         },
       }));
-      // Opened on purpose, so in front of whatever shares its place.
-      raise(id);
+      /*
+        Opened on purpose, so wanted in sight — `revealDock` says that for every panel asked for:
+        back from behind a shell view or a panels-hidden state, out of a strip or a fold, in front.
+        An instance opened before has its dock already registered, so it takes that path whole. One
+        just created does not — the effect registering it runs after this call — and `revealDock`
+        would find no request and return. What it would have said for a dock that has never been laid
+        out (no strip, no fold yet) is exactly this.
+
+        Through a template, though, "asked for" is the template's saying rather than a person's —
+        `openPanel` is ambient because a template's panels open unasked, but pulling Settings down
+        or the hidden dock back up is nobody's click. `hasGesture`, not `claimGesture`: the
+        ambient call must not spend the press another action in the same handler may need.
+      */
+      const reveal = !options.viaTemplate || hasGesture();
+      if (!reveal) return id;
+      if (dockRequests().some((request) => request.id === id)) {
+        store.revealDock(id);
+      } else {
+        if (panelsHiddenByUser()) setPanelsHiddenByUser(false);
+        if (activeShellView()) setActiveShellView(null);
+        raise(id);
+      }
       return id;
     },
 
     closePanel: (instance) => {
       if (!instancesHere()[instance]) return;
+      const scope = allInstances()[APP_PANEL_SCOPE]?.[instance] ? APP_PANEL_SCOPE : templatePanelScope();
       const key = placementKey(instance);
-      writeInstances((here) => {
+      writeInstances(scope, (here) => {
         delete here[instance];
         return here;
       });
