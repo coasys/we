@@ -11,6 +11,7 @@
     "ad4m:executor": "node scripts/ad4m-executor.mjs",
     "codemod:invoke": "node scripts/codemod-invoke.mjs",
     "verify:ad4m": "pnpm --filter @we/backend-ad4m test:live",
+    "e2e": "node scripts/e2e.mjs",
     "check:source-consumers": "node scripts/check-source-consumers.mjs",
     "check:we-props": "node scripts/check-we-props.mjs",
     "validate:schemas": "pnpm --filter @we/schema-shared validate",

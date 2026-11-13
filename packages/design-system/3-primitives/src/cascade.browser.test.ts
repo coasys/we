@@ -7,12 +7,13 @@
  * `we-link` never showed its hover underline. Each is a computed style under a real pointer at a
  * real container width, so that is what this checks, on the real primitives bundled from source.
  *
- * Drives the Chrome already installed (`channel: 'chrome'`, as `apps/we-preview` does) so it
- * downloads nothing. `WE_CHROME_PATH` points it at another Chromium build instead.
+ * Drives the Chrome already installed, found by `chromePath()` in `@we/e2e`, so it downloads
+ * nothing. `WE_CHROME` points it at another Chromium build instead.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { chromePath } from '@we/e2e/env';
 import { build } from 'esbuild';
 import { type Browser, chromium, type Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -141,9 +142,7 @@ beforeAll(async () => {
     loader: { '.css': 'text', '.svg': 'text' },
     logLevel: 'error',
   });
-  browser = await chromium.launch(
-    process.env.WE_CHROME_PATH ? { executablePath: process.env.WE_CHROME_PATH } : { channel: 'chrome' },
-  );
+  browser = await chromium.launch({ executablePath: chromePath() });
   page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
   await page.setContent(PAGE);
   await page.addScriptTag({ content: bundle.outputFiles[0].text });

@@ -457,15 +457,15 @@ importers:
       '@we/csp':
         specifier: workspace:*
         version: link:../../packages/csp
+      '@we/e2e':
+        specifier: workspace:*
+        version: link:../../packages/e2e
       '@we/globe-layers':
         specifier: workspace:*
         version: link:../../packages/module-system/globe/layers
       '@we/globe-widget':
         specifier: workspace:*
         version: link:../../packages/module-system/globe/widget
-      playwright-core:
-        specifier: ^1.64.1
-        version: 1.64.1
       typescript:
         specifier: ^6.0.3
         version: 6.0.3
@@ -766,6 +766,9 @@ importers:
       '@we/csp':
         specifier: workspace:*
         version: link:../csp
+      '@we/e2e':
+        specifier: workspace:*
+        version: link:../e2e
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
@@ -818,6 +821,9 @@ importers:
       '@we/cli':
         specifier: workspace:*
         version: link:../../cli
+      '@we/e2e':
+        specifier: workspace:*
+        version: link:../../e2e
       tsup:
         specifier: ^9.0.0
         version: 9.0.0(jiti@2.7.0)(postcss@8.5.32)(tsx@4.23.15)(typescript@6.0.3)(yaml@2.9.1)
@@ -1186,6 +1192,9 @@ importers:
       '@we/design-types':
         specifier: workspace:*
         version: link:../types
+      '@we/e2e':
+        specifier: workspace:*
+        version: link:../../e2e
       axe-core:
         specifier: ^4.14.0
         version: 4.14.0
@@ -1369,6 +1378,28 @@ importers:
       vitest:
         specifier: ^5.0.5
         version: 5.0.5(@types/node@26.6.6)(@vitest/coverage-v8@5.0.5)(happy-dom@21.0.4)(jsdom@30.0.1(@noble/hashes@2.3.0))(vite@8.3.5(@types/node@26.6.6)(esbuild@0.28.2)(jiti@2.7.0)(sass@1.107.1)(tsx@4.23.15)(yaml@2.9.1))
+
+  packages/e2e:
+    dependencies:
+      '@coasys/ad4m':
+        specifier: 0.13.1-staging.10
+        version: 0.13.1-staging.10
+      '@coasys/ad4m-connect':
+        specifier: 0.13.1-staging.10
+        version: 0.13.1-staging.10
+      '@we/csp':
+        specifier: workspace:*
+        version: link:../csp
+      playwright-core:
+        specifier: ^1.64.1
+        version: 1.64.1
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.6
+        version: 26.6.6
+      typescript:
+        specifier: ^6.0.3
+        version: 6.0.3
 
   packages/editor:
     dependencies:

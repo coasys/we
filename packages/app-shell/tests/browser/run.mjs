@@ -15,7 +15,8 @@
  * - `WE_BROWSER_SHOTS=<dir>` — let a case photograph the page (`screenshot(label)`); off otherwise.
  * - `WE_BROWSER_CPU=1` — profile each case and print where the time went.
  * - `WE_BROWSER_CHAIN`, `WE_BROWSER_MEASURE`, `WE_BROWSER_DUMP` — layout diagnostics; see below.
- * - `WE_CHROME`, `WE_BROWSER_PORT` — which browser, and where to serve.
+ * - `WE_CHROME`, `WE_BROWSER_PORT` — which browser (else the one `chromePath()` in `@we/e2e`
+ *   finds), and where to serve.
  *
  * Headless Chrome draws no scrollbars, so nothing here can show a layout moving as one appears.
  */
@@ -28,11 +29,12 @@ import { solidPlugin } from 'esbuild-plugin-solid';
 import { compile } from 'sass';
 import { chromium } from 'playwright-core';
 import { buildContentSecurityPolicy } from '@we/csp';
+import { chromePath } from '@we/e2e/env';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(HERE, '..', '..', '..', '..');
 const PORT = Number(process.env.WE_BROWSER_PORT ?? 8791);
-const CHROME = process.env.WE_CHROME ?? '/usr/bin/google-chrome';
+const CHROME = chromePath();
 
 /** The production web policy, as the harness page's header. See the server below. */
 const PAGE_POLICY = buildContentSecurityPolicy({ host: 'web', dev: false });

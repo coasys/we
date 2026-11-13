@@ -3,16 +3,19 @@
 //! one named as operated by the identity, and the custody service driving them the way the identity
 //! window does — screen by screen.
 //!
-//! Skipped unless `CUSTODY_LIVE=1`. It needs an ad4m checkout at the commit WE pins (`AD4M_REPO`,
-//! default `../ad4m` beside this repository) with:
+//! Skipped unless `CUSTODY_LIVE=1`. The executor is the one every WE live test runs:
+//! `scripts/ad4m-executor.mjs --path` chooses it (`AD4M_EXECUTOR`, else the seed's
+//! `ad4m.executorPath`, else the pinned commit's download from `pnpm ad4m:executor`). The rest comes
+//! from an ad4m checkout at the commit WE pins (`AD4M_REPO`, default `../ad4m` beside this
+//! repository), which nothing else provides: the identity-store binary and the shared language
+//! directories of its `tests/js`.
 //!
 //! ```sh
-//! cargo build --release --bin ad4m-executor
 //! cargo build -p identity-store
 //! cd tests/js && pnpm run prepare-test-local   # publishes the centralized agent language
 //! ```
 //!
-//! Then, from `crates/custody`:
+//! Then, from the repository root, `pnpm e2e custody-live`, or from `crates/custody`:
 //!
 //! ```sh
 //! CUSTODY_LIVE=1 AD4M_REPO=<ad4m> cargo test --features cheap-kdf --test live -- --nocapture
@@ -49,6 +52,29 @@ fn ad4m_repo() -> PathBuf {
     std::env::var("AD4M_REPO")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../../ad4m"))
+}
+
+/// The executor binary, as `scripts/ad4m-executor.mjs --path` chooses it for every WE live test.
+fn ad4m_executor() -> PathBuf {
+    let root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let out = Command::new("node")
+        .arg(root.join("scripts/ad4m-executor.mjs"))
+        .arg("--path")
+        .current_dir(&root)
+        .output()
+        .expect("run node scripts/ad4m-executor.mjs --path");
+    assert!(
+        out.status.success(),
+        "scripts/ad4m-executor.mjs --path failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let path = PathBuf::from(String::from_utf8_lossy(&out.stdout).trim());
+    assert!(
+        path.exists(),
+        "no executor at {}: run `pnpm ad4m:executor`, or set AD4M_EXECUTOR",
+        path.display()
+    );
+    path
 }
 
 fn free_port() -> u16 {
@@ -177,6 +203,7 @@ impl Node {
 
 struct World {
     repo: PathBuf,
+    executor: PathBuf,
     dir: PathBuf,
     seed: PathBuf,
     store_url: String,
@@ -185,7 +212,7 @@ struct World {
 
 impl World {
     fn executor(&self) -> PathBuf {
-        self.repo.join("target/release/ad4m-executor")
+        self.executor.clone()
     }
 
     /// `init` (with `--operator` for B), shared stores as ad4m's suite sets them, `run`, then an agent.
@@ -283,6 +310,7 @@ async fn make_link_and_revoke_through_the_custody_service() {
     }
     assert!(cfg!(feature = "cheap-kdf"), "run with --features cheap-kdf");
     let repo = ad4m_repo();
+    let executor = ad4m_executor();
     let js = repo.join("tests/js");
     let agent_language =
         std::fs::read_to_string(js.join("scripts/centralized-agent-language-hash"))
@@ -319,6 +347,7 @@ async fn make_link_and_revoke_through_the_custody_service() {
     let parts: Vec<&str> = ready.split_whitespace().collect();
     let world = World {
         repo: repo.clone(),
+        executor,
         dir: dir.path().to_path_buf(),
         seed: seed_path,
         store_url: parts[3].to_string(),

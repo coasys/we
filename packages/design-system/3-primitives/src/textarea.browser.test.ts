@@ -7,6 +7,7 @@
  */
 import path from 'node:path';
 
+import { chromePath } from '@we/e2e/env';
 import { build } from 'esbuild';
 import { type Browser, chromium, type Page } from 'playwright-core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -28,9 +29,7 @@ beforeAll(async () => {
     loader: { '.css': 'text', '.svg': 'text' },
     logLevel: 'error',
   });
-  browser = await chromium.launch(
-    process.env.WE_CHROME_PATH ? { executablePath: process.env.WE_CHROME_PATH } : { channel: 'chrome' },
-  );
+  browser = await chromium.launch({ executablePath: chromePath() });
   page = await browser.newPage({ viewport: { width: 800, height: 600 } });
   await page.setContent('<!doctype html><html><body style="margin:0;font:14px sans-serif"></body></html>');
   await page.addScriptTag({ content: bundle.outputFiles[0].text });
