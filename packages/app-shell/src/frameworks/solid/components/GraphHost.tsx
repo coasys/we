@@ -46,7 +46,7 @@ import {
 } from '../../../shared/pretendPeople';
 import { chromeBag } from '../../../shared/registries/templateBag';
 import { CANVAS_RECORD_CARD, type CanvasCard, canvasCard } from '../../../shared/shapes/canvasCard';
-import { componentRegistry } from '../registries/componentRegistry';
+import { chromeComponentRegistry } from '../registries/componentRegistry';
 import { useDatasetStore } from '../stores/DatasetStore';
 import { useProfileStore } from '../stores/ProfileStore';
 import { useRecordStore } from '../stores/RecordStore';
@@ -521,7 +521,7 @@ export function GraphHost(props: Omit<GraphViewProps, 'host'>) {
         // Passed through rather than defaulted here: only the producer knows the gap it is covering,
         // and the graph's own stylesheet owns what a mark that does not say gets.
         easeMs: mark.easeMs,
-        render: () => RenderSchema({ node: mark.node, stores: bag, registry: componentRegistry }),
+        render: () => RenderSchema({ node: mark.node, stores: bag, registry: chromeComponentRegistry }),
       }));
     },
 
