@@ -1,5 +1,13 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+/** Listeners for the tray's "Executor settings…", and whether one came with nobody listening. */
+const openSettingsListeners = new Set();
+let openSettingsPending = false;
+ipcRenderer.on('open-executor-settings', () => {
+  if (openSettingsListeners.size === 0) openSettingsPending = true;
+  for (const listener of openSettingsListeners) listener();
+});
+
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electron', {
@@ -59,6 +67,19 @@ contextBridge.exposeInMainWorld('electron', {
       return () => ipcRenderer.removeListener('executor-state', forward);
     },
     start: () => ipcRenderer.invoke('executor-start'),
+    /*
+      The tray's "Executor settings…": open Settings where the executor's are. An ask that comes
+      before anything listens (the window loading, or the app before a session) is held and given to
+      the first listener, so it is not lost.
+    */
+    onOpenSettings: (listener) => {
+      openSettingsListeners.add(listener);
+      if (openSettingsPending) {
+        openSettingsPending = false;
+        listener();
+      }
+      return () => openSettingsListeners.delete(listener);
+    },
     // The WE password, where no keyring could be used: sent once, from the host's own field.
     password: (password) => ipcRenderer.invoke('executor-agent-password', password),
   },

@@ -75,9 +75,13 @@ export type BaseAgentState = 'unlocked' | 'locked' | 'needs-password' | 'needs-n
 /**
  * The backend this device runs, where it runs one: starting, up, or failed to start and why. Up, it may
  * say how its agent is ({@link BaseAgentState}). Absent where the host does not make the agent itself.
+ * Failed with `stopped`, it ran and then stopped (outside the app, or from the tray) rather than
+ * failing to start: the base takes the window back from a session to say so.
  */
 export type BaseExecutorState =
-  { phase: 'starting' } | { phase: 'ready'; agent?: BaseAgentState } | { phase: 'failed'; reason: string };
+  | { phase: 'starting' }
+  | { phase: 'ready'; agent?: BaseAgentState }
+  | { phase: 'failed'; reason: string; stopped?: boolean };
 
 /**
  * How a WE password given to the host went: `unlocked` (the agent was made or unlocked with it),
