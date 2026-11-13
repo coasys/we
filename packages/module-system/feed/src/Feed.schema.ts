@@ -55,10 +55,20 @@ const FEED_REPLY = 'modules.feed.replyingTo';
 /** A line whose author's own profile says it is a bot — see the store's `botAuthors`. */
 const BOT_LINE = 'row.author in modules.feed.botAuthors';
 
+/*
+  The lines a call spoke, kept out until this reader asks for them in this space — the per-space
+  `showCallTranscripts` setting, off by default. Only `source == 'spoken'` goes: a heard line
+  somebody corrected is no longer verbatim speech, and a line with no source is a bot's or a call's
+  own item — all still drawn.
+*/
+const VISIBLE =
+  'modules.feed.showCallTranscripts ? modules.feed.feedRows : ' +
+  "modules.feed.feedRows.filter(r, !(r.kind == 'line' && r.source == 'spoken'))";
+
 /** What the window draws: everything, only messages, or only bots' messages — the reader's choice. */
 const ROWS =
-  "local.feedShow == 'bots' ? modules.feed.feedRows.filter(r, r.kind == 'line' && r.author in modules.feed.botAuthors) " +
-  ": local.feedShow == 'messages' ? modules.feed.feedRows.filter(r, r.kind == 'line') : modules.feed.feedRows";
+  `local.feedShow == 'bots' ? (${VISIBLE}).filter(r, r.kind == 'line' && r.author in modules.feed.botAuthors) ` +
+  `: local.feedShow == 'messages' ? (${VISIBLE}).filter(r, r.kind == 'line') : (${VISIBLE})`;
 
 /** The words on the "more is coming" line, by which way the window grows. */
 const MORE_WORDS = { $: `${FROM_START} ? 'Later in the space…' : 'Earlier in the space…'` };
@@ -329,6 +339,30 @@ const showButton = (value: string, label: string): SchemaNode => ({
   children: [label],
 });
 
+/*
+  Whether the lines a call spoke are in the stream at all — the same per-space answer the setting
+  keeps, pressed where the list they hide in is.
+*/
+const transcriptsSwitch: SchemaNode = {
+  type: 'Row',
+  props: { gap: '100', ay: 'center', ml: 'auto' },
+  children: [
+    { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: ['Show call transcripts'] },
+    {
+      type: 'we-switch',
+      props: {
+        size: 'sm',
+        label: 'Show call transcripts',
+        checked: { $: 'modules.feed.showCallTranscripts' },
+        onChange: {
+          $invoke: 'spaceStore.setMyModuleSetting',
+          args: ['feed', 'showCallTranscripts', { $: 'event.detail' }],
+        },
+      },
+    },
+  ],
+};
+
 /** What the Feed shows — everything, messages, or bots' messages — and which way round: the reader's own. */
 const feedControls: SchemaNode = {
   type: 'Row',
@@ -338,6 +372,7 @@ const feedControls: SchemaNode = {
     showButton('messages', 'Messages'),
     showButton('bots', 'Bots'),
     timelineOrderButton,
+    transcriptsSwitch,
   ],
 };
 
@@ -365,7 +400,7 @@ export const feedPanel: SchemaNode = {
 
 /**
  * The Feed as a view: the same stream and the same box, for a template to place as a page — a space
- * whose main view is its Feed. The template draws its own header; the reader's two choices sit at the
+ * whose main view is its Feed. The template draws its own header; the reader's choices sit at the
  * top of the stream.
  *
  * Kept live while it is drawn, as the panel is while open: the part declares `whileShown`, and the

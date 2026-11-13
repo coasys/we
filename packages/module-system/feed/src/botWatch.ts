@@ -48,6 +48,8 @@ export interface BotWatchDeps {
   enabled: () => boolean;
   /** Whether the reader is looking at the Feed's newest line, so a notice would tell them nothing. */
   readingLive: () => boolean;
+  /** Whether the Feed keeps spoken lines out of view — a hidden line is not unseen activity. */
+  spokenHidden: () => boolean;
   /** Show the Feed at its newest line: the notice's Open. */
   open: () => void;
 }
@@ -56,6 +58,8 @@ export interface BotWatchDeps {
 interface Heard {
   author: string;
   text: string;
+  /** How it was written — `spoken` for a line a call heard, '' for one WE did not write. */
+  source: string;
 }
 
 /** The first line of `text`, cut to {@link QUOTED} characters. */
@@ -106,6 +110,12 @@ export function watchBotMessages(deps: BotWatchDeps): void {
 
   function heard(line: Heard): void {
     if (!line.author || line.author === deps.selfId?.() || !line.text.trim()) return;
+    /*
+      The Feed keeps a call's spoken lines out of view until this reader asks for them, and a line
+      that cannot be seen is not unseen activity — it is skipped before it can join a burst, so it
+      neither raises a notice nor pads one ("Sent 3 messages" for one that showed).
+    */
+    if (line.source === 'spoken' && deps.spokenHidden()) return;
     // Known not to be a bot: nothing to hold. Not known yet: ask, and judge it when the burst ends.
     const who = identities?.get(line.author);
     if (who && who.kind !== 'bot') return;
@@ -136,6 +146,7 @@ export function watchBotMessages(deps: BotWatchDeps): void {
           heard({
             author: typeof row.author === 'string' ? row.author : '',
             text: typeof row.text === 'string' ? row.text : '',
+            source: typeof row.source === 'string' ? row.source : '',
           });
       }
       first = false;
