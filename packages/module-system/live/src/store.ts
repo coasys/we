@@ -847,6 +847,20 @@ export function createLiveStore(deps: ModuleStoreDeps) {
     bumpCursors();
   };
 
+  /*
+    The call ends and the count goes with it — the same reset the call module gives its fake
+    participants at teardown, and for the same reason.
+
+    `fakeMarks` already stops *drawing* them when presence loses this agent's `call` activity, but
+    the count is remembered across sessions, so a number that outlived its call resurrected the same
+    marks the instant the next one started — on screen again with nobody having asked. The `−  N  +`
+    that raises it lives in the call bar, so zeroing it anywhere the call is not running is only
+    early. Reading `inCall()` rather than `modules.call` keeps the seam it was derived through.
+  */
+  effect?.(() => {
+    if (devCursorsAvailable && !inCall() && fakeCount() > 0) setFakes(0);
+  });
+
   onDispose?.(() => {
     if (fakeTimer) clearInterval(fakeTimer);
     stopPointer?.();
