@@ -14,7 +14,7 @@ import { BOT_BURST_MS, BOT_NOTICE_MS, botNotice, watchBotMessages } from './botW
 
 type Row = Record<string, unknown>;
 
-function harness(options: { reading?: boolean; enabled?: boolean } = {}) {
+function harness(options: { reading?: boolean; enabled?: boolean; spokenHidden?: boolean } = {}) {
   let push: (rows: Row[]) => void = () => {};
   const people = new Map<string, ModuleIdentity>([
     ['did:data', { name: 'Data', avatar: 'data.png', kind: 'bot' }],
@@ -42,10 +42,11 @@ function harness(options: { reading?: boolean; enabled?: boolean } = {}) {
     notify: (tone, message, opts) => void notices.push({ tone, message, options: opts }),
     enabled: () => options.enabled ?? true,
     readingLive: () => options.reading ?? false,
+    spokenHidden: () => options.spokenHidden ?? false,
     open,
   });
   let n = 0;
-  const line = (author: string, text: string): Row => ({ id: `line-${++n}`, author, text });
+  const line = (author: string, text: string, source = ''): Row => ({ id: `line-${++n}`, author, text, source });
   return { push, people, fetched, notices, open, line };
 }
 
@@ -99,6 +100,27 @@ describe('a bot answering in the space', () => {
       vi.advanceTimersByTime(BOT_BURST_MS);
       expect(h.notices, JSON.stringify(options)).toEqual([]);
     }
+  });
+
+  it('does not count a spoken line a hidden transcript already kept from the reader', () => {
+    const h = harness({ spokenHidden: true });
+    h.push([]);
+    h.push([h.line('did:data', 'said in the call', 'spoken')]);
+    vi.advanceTimersByTime(BOT_BURST_MS);
+    expect(h.notices).toEqual([]);
+
+    // A bot's typed line in the same space still raises it — only what is hidden is discounted.
+    h.push([h.line('did:data', 'typed answer', 'typed'), h.line('did:data', 'more words', 'spoken')]);
+    vi.advanceTimersByTime(BOT_BURST_MS);
+    expect(h.notices.map((n) => n.message)).toEqual(['typed answer']);
+  });
+
+  it('weighs a spoken line once transcripts are shown', () => {
+    const h = harness();
+    h.push([]);
+    h.push([h.line('did:data', 'said in the call', 'spoken')]);
+    vi.advanceTimersByTime(BOT_BURST_MS);
+    expect(h.notices.map((n) => n.message)).toEqual(['said in the call']);
   });
 
   it('asks for a profile it does not have, and judges the line when the burst ends', () => {
