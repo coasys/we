@@ -32,6 +32,10 @@ function walk(node: unknown, out: SchemaNode[] = []): SchemaNode[] {
 }
 
 const slotNodes = (): SchemaNode[] => (callModule.contributes?.slots ?? []).map((slot) => slot.node);
+const stageNode = (): SchemaNode =>
+  callModule.contributes?.panels?.find((panel) => panel.name === 'stage')?.node as SchemaNode;
+/** Chrome and the stage — where the bar lives now that it has moved inside it. */
+const chrome = (): SchemaNode[] => [...slotNodes(), stageNode()];
 const part = (name: string) => callModule.contributes?.parts?.[name];
 
 describe('audio', () => {
@@ -147,16 +151,16 @@ describe('the bar keeps to the screen', () => {
 
 describe('the compact bar', () => {
   const ROOMY = { $: "surface.tier != 'base'" };
-  const inCall = (): SchemaNode => walk(slotNodes()).find((node) => node.type === 'DropdownMenu') as SchemaNode;
+  const inCall = (): SchemaNode => walk(chrome()).find((node) => node.type === 'DropdownMenu') as SchemaNode;
 
   /** The `$if` gates above `target` that read the strip's tier, innermost last. */
   const tierGates = (target: SchemaNode): SchemaNode[] =>
-    (lineage(slotNodes(), target) ?? []).filter(
+    (lineage(chrome(), target) ?? []).filter(
       (node) => node.type === '$if' && JSON.stringify(props(node).condition).includes('surface.tier'),
     );
 
   const buttonFor = (action: string): SchemaNode =>
-    walk(slotNodes()).find(
+    walk(chrome()).find(
       (node) =>
         node.type === 'we-button' && JSON.stringify(props(node).onClick) === JSON.stringify({ $invoke: action }),
     ) as SchemaNode;
@@ -237,11 +241,65 @@ describe('the compact bar', () => {
   it('keeps contributed controls in the row at every width', () => {
     // This module cannot fold chrome it does not know the meaning of, and a contributed square may be
     // the loudest thing in the bar precisely because it has to be seen.
-    const slot = walk(slotNodes()).find(
+    const slot = walk(chrome()).find(
       (node) => node.type === '$slot' && props(node).anchor === 'call-controls',
     ) as SchemaNode;
     expect(slot).toBeDefined();
     expect(tierGates(slot)).toEqual([]);
+  });
+});
+
+/**
+ * Where the bar lives: inside the call view, under the video — not floating over every page.
+ *
+ * It used to be `position: fixed` chrome at the bottom of the window, which is where all three of
+ * the reported faults came from: centred on the window rather than on the video, scrolled with the
+ * page underneath it, and covering whatever a view did not pad for — the last row of the space
+ * settings was unreachable and the Feed kept a blank band for it. These pin the new arrangement.
+ */
+describe('where the bar lives', () => {
+  /** Every chrome node that is not the stage — where the bar used to float. */
+  const offStage = (): SchemaNode[] => slotNodes();
+
+  it('holds the controls inside the stage, beneath the tiles', () => {
+    const stage = stageNode();
+    // The buttons that are the bar — hang-up, and the contributed-controls slot beside them.
+    const leave = walk(stage).find(
+      (node) => JSON.stringify(props(node).onClick) === JSON.stringify({ $invoke: 'modules.call.leave' }),
+    );
+    expect(leave, 'no leave button inside the stage').toBeDefined();
+    expect(
+      walk(stage).some((node) => node.type === '$slot' && props(node).anchor === 'call-controls'),
+      'no contributed-controls slot inside the stage',
+    ).toBe(true);
+
+    // Beneath the tiles literally: the grid and the row holding the controls share the stage's column.
+    const grid = walk(stage).find((node) => node.type === 'Grid');
+    const row = walk(stage).find((node) => node.type === 'Row' && lineage(stage, leave as SchemaNode)?.includes(node));
+    expect(grid, 'no tile grid in the stage').toBeDefined();
+    expect(row, 'the controls are not a row beside the grid').toBeDefined();
+    expect(lineage(stage, grid!)?.at(-1)?.type).toBe('Column');
+  });
+
+  it('floats nothing across the bottom of the window', () => {
+    // No fixed strip may hold a call control any more — that is the whole complaint.
+    const floating = walk(offStage()).filter(
+      (node) =>
+        props(node).position === 'fixed' &&
+        walk(node).some(
+          (child) =>
+            JSON.stringify(props(child).onClick) === JSON.stringify({ $invoke: 'modules.call.leave' }) ||
+            JSON.stringify(props(child).onClick) === JSON.stringify({ $invoke: 'modules.call.toggleAudio' }),
+        ),
+    );
+    expect(floating).toEqual([]);
+  });
+
+  it('reserves no band for a bar that no longer floats', () => {
+    // The reserve existed so floating panels and page bottoms kept clear of the bar. With the bar
+    // inside the stage there is nothing to clear, and a band still declared is the Feed's blank
+    // space all over again.
+    expect(callModule.contributes?.reserve).toBeUndefined();
   });
 });
 
@@ -255,7 +313,7 @@ describe('the compact bar', () => {
 describe('how the bar reads left to right', () => {
   /** The control row — the one holding the contributed-controls slot as a direct child. */
   const row = (): SchemaNode =>
-    walk(slotNodes()).find(
+    walk(chrome()).find(
       (node) =>
         node.type === 'Row' &&
         ((node.children ?? []) as SchemaNode[]).some(
@@ -354,7 +412,7 @@ describe('how the bar reads left to right', () => {
       registration and disappears with no error anywhere — which is the failure mode that cost a day
       when `view` was missing from the host's kernels.
     */
-    const drawn = walk(slotNodes()).some((node) => node.type === '$slot' && props(node).anchor === 'call-dev');
+    const drawn = walk(chrome()).some((node) => node.type === '$slot' && props(node).anchor === 'call-dev');
     expect(callModule.contributes?.anchors ?? []).toContain('call-dev');
     expect(drawn).toBe(true);
   });
@@ -488,8 +546,9 @@ describe('the declaration', () => {
     // `holds` and `reserve` are keys into the store, not template paths — the one field that was
     // spelt `modules.call.active` now reads like every other.
     expect(contributes.holds).toBe('active');
-    expect(contributes.reserve).toBe('chromeReserve');
-    for (const key of [contributes.holds, contributes.reserve]) expect(key).not.toContain('.');
+    // No `reserve` any more: the bar floats over nothing now that it lives inside the stage.
+    expect(contributes.reserve).toBeUndefined();
+    expect(contributes.holds).not.toContain('.');
   });
 
   it('has one launcher, and it goes to the call', () => {
@@ -528,7 +587,7 @@ describe('choosing a camera and microphone', () => {
       Never hidden, unlike the two entries that fold when the row is roomy: those fold because the
       row is showing them itself, and this one has no counterpart in the row at any width.
     */
-    const menu = walk(slotNodes()).find((node) => node.type === 'DropdownMenu') as SchemaNode;
+    const menu = walk(chrome()).find((node) => node.type === 'DropdownMenu') as SchemaNode;
     const items = props(menu).items as { id?: string; onAction?: unknown; hidden?: unknown }[];
     const entry = items.find((item) => item.id === 'devices');
 

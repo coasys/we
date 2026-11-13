@@ -119,15 +119,11 @@ describe('call module — contributions', () => {
     expect(store.active()).toBe(false);
   });
 
-  it('reports the band its bar occupies, so panels can keep clear of it', () => {
-    // Declared as `reserve`, so the shell reads a key the module named rather than scanning for one.
-    moduleRegistry.register(callModule, host, storeDeps);
-    const store = moduleStores.call as Record<string, unknown>;
-    const key = callModule.contributes?.reserve;
-    expect(key).toBeTruthy();
-    expect(typeof store[key!]).toBe('function');
-    // Zero with no call running, since the bar is not drawn then.
-    expect((store[key!] as () => { bottom: number })()).toEqual({ bottom: 0 });
+  it('reserves no band, because its bar no longer floats', () => {
+    // The reserve existed to keep floating panels and page bottoms clear of a fixed bar. With the
+    // bar inside the stage panel there is nothing to clear — and a band still declared is the
+    // Feed's blank space at the bottom, again.
+    expect(callModule.contributes?.reserve).toBeUndefined();
   });
 
   it('keeps volatile state off the tile, so a mute cannot remount the video', () => {

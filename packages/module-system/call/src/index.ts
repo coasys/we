@@ -59,35 +59,16 @@ export {
 } from './store';
 
 /**
- * How far the call's chrome sits off the bottom edge.
+ * How far the call's floating chrome sits off the edge it is pinned to.
  *
- * The bottom, and the reason is a property of *panels* rather than a preference about calls: a panel
- * has a titlebar and no footer. Chrome along the top covers the grip, the position menu and the
- * button that un-maximises — the three controls a panel is recovered with — so a bar up there is a
- * bar that can strand a panel. Along the bottom it covers nothing that is pressed, which is what
- * lets a maximised panel take the whole window.
- *
- * The second reason is templates. A page with a sticky header locks it to the top of the *content*,
- * and a bar fixed over that collides with it on every scroll — structurally, not by a few pixels
- * that could be tuned away. Nothing a template can do fixes that: it would have to know a module's
- * bar exists, and its header would jump down the moment somebody started a call. It is also where
- * every other call application puts these controls.
- *
- * It was at the top, and got there by accident — `bottom: '400'` is not a CSS length, so the offset
- * was dropped and `position: fixed` fell back to the static position. The accident read well enough
- * to be adopted deliberately, which held until panels could be maximised and templates grew sticky
- * headers.
- *
- * The stage no longer derives an offset from this. It used to: a second constant here restated the
- * bar's height so the two would stack, which is a relationship nothing enforced. The stage is a
- * *panel* now, and where a panel lands is the host's business — see `contributes.panels` at the
- * bottom of this file.
+ * The bar that used to justify this constant lives inside the stage now; the problem alert is what
+ * still floats, at the top, and a little air off the edge is all it asks for.
  */
 const CALL_BAR_INSET = '10px';
 
 /**
  * A strip across one edge of the content, for chrome that is centred on it rather than pinned to a
- * corner. The bar, the join prompt and the problem alert all sit in one.
+ * corner. The problem alert sits in one; the control bar did until it moved into the stage.
  *
  * ## Why a strip, and not a centred box
  *
@@ -857,125 +838,6 @@ const tile: SchemaNode = {
       ],
     },
   ],
-};
-
-/**
- * The stage — every participant, in the box the host has given the dock.
- *
- * It positions nothing. That is the change: this used to be a `position: fixed` overlay carrying
- * `right: '72px'`, a hardcoded copy of the module rail's width that nothing kept in step, and a
- * `38vh` height that turned out to be a floor rather than a ceiling. Where the panel sits, how big
- * it is, and whether it insets the app or floats over it are all the host's now — this module only
- * says which edge and how much, through the opening bid the panel declaration names (`stageBid`) —
- * see `contributes.panels` below.
- *
- * `overflow: hidden`, not `auto`, and that is a statement rather than a detail: the grid divides a
- * definite box, so content that does not fit is a bug to be seen rather than a scrollbar to be
- * lived with. One participant can never produce one.
- *
- * Colours stay theme-relative, and that matters more than it looks. Dark themes invert the neutral
- * scale (`multiplier: -1`), so `neutral-1000` is black in the light theme and near-white in the dark
- * one — which is exactly how this shipped as a white stage. There is no "always dark" neutral; a
- * surface that must follow the theme has to use the same low-numbered tokens as the rest of the app.
- */
-const stage: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $: 'modules.call.active' },
-    then: {
-      /*
-        A padded box around the tiles, rather than padding on the tiles' own box.
-
-        The two look identical until the strip scrolls, and then they are not: a scrollbar renders at
-        the *padding* edge, so a scrolling grid that carried its own padding put its scrollbar flush
-        against the panel's border — underneath the 8px resize handle, which is wider than the 6px
-        scrollbar and swallowed it whole. Dragging to scroll resized the panel instead.
-
-        Padding the wrapper insets the scroller by that padding, so the scrollbar sits 12px in, clear
-        of the handle, and the inset stays symmetrical — which a gutter added to one side would not.
-      */
-      /*
-        The one panel that does not name itself, and the exception is deliberate.
-
-        Every other panel opens with `panelHeader` — see `@we/schema-kit`. This one draws pictures of
-        people, which need every pixel of the panel they are given, and the height maths is exact:
-        the aspect in `stageBid` subtracts `STAGE_PADDING_PX` and `STAGE_GAP_PX` so that "fit to
-        content" lands on a box the tiles fit rather than one that squeezes them, and a header row
-        is a height no schema here could tell it about. A stage of faces is also the one panel
-        nobody has to be told the name of.
-      */
-      type: 'Column',
-      props: {
-        width: '100%',
-        height: '100%',
-        // `300` is 12px — `STAGE_PADDING_PX`, which `stageBid`'s aspect subtracts so that "fit to
-        // content" lands on a height that fits the pictures rather than one that squeezes them.
-        // Change it here and the constant has to follow.
-        p: '300',
-        overflow: 'hidden',
-      },
-      children: [
-        {
-          type: 'Grid',
-          props: {
-            width: '100%',
-            height: '100%',
-            // `300` is 12px — `STAGE_GAP_PX`, which `stageBid`'s aspect subtracts alongside the
-            // wrapper's padding so that "fit to content" lands on a height that fits the pictures rather
-            // than one that squeezes them. The *solver* needs no telling: the grid reads its own gap.
-            gap: '300',
-            /*
-          Scrolls along the strip's axis, and only when the strip is scrolling — see `stageOverflow`.
-
-          `overflow: hidden` the rest of the time, and that is a statement rather than a detail: the
-          grid divides a definite box, so content that does not fit is a bug to be seen rather than a
-          scrollbar to be lived with. The one exception is a strip holding more people than fit at a
-          size worth looking at, which is a list rather than a layout and behaves like one.
-        */
-            styles: { $: 'modules.call.stageOverflow' },
-            /**
-             * The arrangement, solved against the box rather than guessed from the head count.
-             *
-             * This is the whole fix. The columns used to come from how many people were in the call and
-             * nothing else, so the panel's shape — the one thing the user controls directly — was not an
-             * input: dragged tall and thin you got two columns of postage stamps, dragged wide you got
-             * two rows with bands of empty panel above and below. `childAspect` measures the box and
-             * picks the arrangement that makes 16:9 pictures largest, which for two people in a square
-             * panel is one column at 523px rather than two at 294px.
-             *
-             * Only CSS changes when it re-solves. That matters more here than anywhere: the tiles are a
-             * reference-keyed `$each`, and moving one to a different DOM parent would drop its
-             * `srcObject` — somebody's video would go black every time the panel crossed a threshold.
-             */
-            childAspect: '16 / 9',
-            /*
-          The spotlight's own tracks, and nothing at all the rest of the time.
-
-          `template` takes precedence over `childAspect`, so this is the whole mode switch: written,
-          the equal-tile solve stands down and the spotlight layout takes over; absent, it comes
-          back. See `stageTemplate` in the store.
-        */
-            template: { $: 'modules.call.stageTemplate' },
-            rows: { $: 'modules.call.stageRows' },
-            // What the stage settled on, back to the store — see `setArrangement`. The host needs it to
-            // answer "fit to content".
-            onArrange: { $invoke: 'modules.call.setArrangement', args: [{ $: 'arg' }] },
-            // The box itself, for the one decision the grid cannot make: which edge the strip runs along.
-            onMeasure: { $invoke: 'modules.call.setStageBox', args: [{ $: 'arg' }] },
-          },
-          // Placed rather than pasted, so a template that arranges the stage keeps the tile the
-          // module's. The row binds `tile`, which is the name the part declares it needs.
-          children: [
-            {
-              type: '$each',
-              props: { items: { $: 'modules.call.tiles' }, as: 'tile' },
-              children: [{ type: '$part', props: { id: 'call.tile' } }],
-            },
-          ],
-        },
-      ],
-    },
-  },
 };
 
 /**
@@ -1805,139 +1667,37 @@ const returnToCall: SchemaNode = {
   },
 };
 
-/** The bar, in its two states: a call is running and you are not in it, or you are. */
-const bar: SchemaNode = {
-  type: '$if',
+/**
+ * The bar — under the tiles now, inside the stage it controls.
+ *
+ * It used to be `position: fixed` chrome at the bottom of the window, which is where all three of
+ * its faults came from: centred on the content rather than on the video, gone when the page
+ * scrolled, and covering whatever a view had not padded for — the last row of the space settings
+ * was unreachable, and the Feed kept a blank band for it. As part of the stage it answers to the
+ * panel's own box: always centred under the pictures, scrolled by nothing but the panel itself.
+ *
+ * A column holding the bar, rather than the bar itself.
+ *
+ * The column is what lets `call-status` sit directly above the controls: a second positioned
+ * element would have to compute its own offset from this one's height, which depends on the
+ * controls in it and on whatever a theme does to a button, so it would be a number that is wrong
+ * the first time anything changes.
+ *
+ * `ax: 'center'` because a status row is narrower or wider than the bar and should be centred on
+ * it either way. The column paints nothing and takes no room beyond its children.
+ */
+const controls: SchemaNode = {
+  type: 'Column',
   props: {
-    condition: { $: 'modules.call.active' },
-
-    // ── Not in a call ────────────────────────────────────────────────────────
-    // Shown only when somebody else is in one, offering to join. *Starting* a call is the module
-    // rail's job now — it was a floating pill here, which is what made the launcher inconsistency
-    // visible in the first place.
-    else: {
-      type: '$if',
-      props: {
-        condition: { $: 'count(modules.call.ongoing)' },
-        then: contentCentred('bottom', {
-          type: 'Row',
-          props: {
-            // The same strip the in-call bar sits in — this is the bar that replaces it, in the
-            // same place, and it keeps to the screen by the same rule. It used to position itself,
-            // and made neither of the bar's corrections until the host published the content box.
-            pointerEvents: 'auto',
-            ...BAR_SURFACE,
-            r: BAR_RADIUS,
-            p: '200',
-            gap: '300',
-            ay: 'center',
-            zIndex: 'sticky',
-          },
-          /*
-            One row per call, because a space can now hold several.
-
-            This was a single line — "3 in a call · Join" — which was exactly right while a space had
-            one call and is a lie the moment it has two: the count summed strangers into one number
-            and the button joined whichever the derived id happened to name. A person arriving at a
-            space with two conversations in it is choosing, not confirming, so the prompt has to show
-            them the choice.
-
-            It stays a bar rather than becoming a modal: it is ambient, it must not take the screen
-            away from what somebody came here to do, and one call — still the common case — reads as
-            the same single line it always did.
-          */
-          children: [
-            {
-              type: '$each',
-              props: { items: { $: 'modules.call.liveCalls' }, as: 'live' },
-              children: [
-                {
-                  type: 'Row',
-                  props: { gap: '300', ay: 'center' },
-                  children: [
-                    {
-                      type: 'AvatarStack',
-                      // Faces rather than presence records — see the store. Handing an avatar
-                      // something with no `image` or `hash` gets the generic person glyph, once per
-                      // participant, which is what this used to be.
-                      props: { avatars: { $: 'live.faces' }, size: 'sm', max: 4 },
-                    },
-                    {
-                      type: 'we-text',
-                      // One line, for the same reason the in-call readout keeps one — see
-                      // `participants`. Truncated rather than wrapped: the bar is chrome, and a call
-                      // with six named people in it must not push the button off the screen.
-                      props: { variant: 'label', truncate: true, maxWidth: '18ch' },
-                      children: [{ $: 'live.label' }],
-                    },
-                    {
-                      type: 'we-button',
-                      props: {
-                        size: 'sm',
-                        onClick: { $invoke: 'modules.call.joinCall', args: [{ $: 'live.id' }] },
-                      },
-                      children: ['Join'],
-                    },
-                  ],
-                },
-              ],
-            },
-            {
-              type: 'we-tooltip',
-              props: { content: 'Start another call' },
-              children: [
-                {
-                  // Starting a second call beside one already running is a real thing to want — a
-                  // breakout, a different subject — and the only control that used to exist for it
-                  // joined the call that was already there.
-                  type: 'we-button',
-                  props: {
-                    label: 'Start another call',
-                    variant: 'ghost',
-                    size: 'sm',
-                    onClick: { $invoke: 'modules.call.startCall', args: [''] },
-                  },
-                  children: [{ type: 'we-icon', props: { name: 'plus' } }],
-                },
-              ],
-            },
-          ],
-        }),
-      },
-    },
-
-    // ── In a call ────────────────────────────────────────────────────────────
-    /*
-      A column holding the bar, rather than the bar itself.
-
-      The column is what lets `call-status` sit directly above the controls: a second positioned
-      element would have to compute its own offset from this one's height, which depends on the
-      controls in it and on whatever a theme does to a button, so it would be a number that is wrong
-      the first time anything changes.
-
-      Everything about *where* the column floats has moved out again, into `contentCentred` — the
-      offset, the dock-aware centring, the clamp that keeps it on screen, the transitions. Those
-      belong to the strip because all three of this module's floating pieces want them and the two
-      smaller ones used to each guess separately. What is left here is what the column looks like,
-      plus the one thing the strip cannot decide for it: that it takes clicks again, since the strip
-      spans the whole edge and passes them through.
-
-      `ax: 'center'` because a status row is narrower or wider than the bar and should be centred on
-      it either way. The column paints nothing and takes no room beyond its children.
-    */
-    then: contentCentred('bottom', {
-      type: 'Column',
-      props: {
-        pointerEvents: 'auto',
-        // One step of the spacing scale, which is the nearest thing to the ~10px this wants and is
-        // the only sort of value that follows a theme's density. Wide enough that the status row
-        // reads as a separate object rather than as a second tier of the bar.
-        gap: '300',
-        ax: 'center',
-      },
-      children: [
-        {
-          /*
+    // One step of the spacing scale, which is the nearest thing to the ~10px this wants and is
+    // the only sort of value that follows a theme's density. Wide enough that the status row
+    // reads as a separate object rather than as a second tier of the bar.
+    gap: '300',
+    ax: 'center',
+  },
+  children: [
+    {
+      /*
             Above the bar, not below it — the column runs upward from the bottom edge now.
 
             A status row is a sentence somebody is reading and the bar is a set of targets somebody
@@ -1951,45 +1711,45 @@ const bar: SchemaNode = {
             rather than removed with it. It is a general affordance — anything that takes minutes and
             wants a sentence above the controls belongs here — and an unfilled slot costs nothing.
           */
-          type: '$slot',
-          props: { anchor: CALL_STATUS_ANCHOR },
-        },
+      type: '$slot',
+      props: { anchor: CALL_STATUS_ANCHOR },
+    },
+    {
+      type: 'Row',
+      props: {
+        ...BAR_SURFACE,
+        r: BAR_RADIUS,
+        p: '200',
+        gap: '200',
+        ay: 'center',
+      },
+      children: [
+        returnToCall,
+        mediaToggle({
+          on: 'microphone',
+          off: 'microphone-slash',
+          enabled: 'modules.call.media.audioEnabled',
+          action: 'modules.call.toggleAudio',
+          tip: { on: 'Mute', off: 'Unmute' },
+        }),
+        mediaToggle({
+          on: 'video-camera',
+          off: 'video-camera-slash',
+          enabled: 'modules.call.media.videoEnabled',
+          action: 'modules.call.toggleVideo',
+          tip: { on: 'Turn camera off', off: 'Turn camera on' },
+        }),
+        // From here to the divider, everything but the contributed controls folds into `moreMenu`
+        // when the row is compact — see `ROOMY`. The glyph is explained on `SCREEN_SHARE`.
+        whenRoomy(mediaToggle(SCREEN_SHARE)),
         {
-          type: 'Row',
-          props: {
-            ...BAR_SURFACE,
-            r: BAR_RADIUS,
-            p: '200',
-            gap: '200',
-            ay: 'center',
-          },
-          children: [
-            returnToCall,
-            mediaToggle({
-              on: 'microphone',
-              off: 'microphone-slash',
-              enabled: 'modules.call.media.audioEnabled',
-              action: 'modules.call.toggleAudio',
-              tip: { on: 'Mute', off: 'Unmute' },
-            }),
-            mediaToggle({
-              on: 'video-camera',
-              off: 'video-camera-slash',
-              enabled: 'modules.call.media.videoEnabled',
-              action: 'modules.call.toggleVideo',
-              tip: { on: 'Turn camera off', off: 'Turn camera on' },
-            }),
-            // From here to the divider, everything but the contributed controls folds into `moreMenu`
-            // when the row is compact — see `ROOMY`. The glyph is explained on `SCREEN_SHARE`.
-            whenRoomy(mediaToggle(SCREEN_SHARE)),
-            {
-              // Where other modules put their call controls — see `anchors` below. The marker is replaced
-              // by whatever is contributed, or by nothing at all, so the bar has no gap when no module
-              // has joined it and this module never learns which ones did.
-              type: '$slot',
-              props: { anchor: CALL_CONTROLS_ANCHOR },
-            },
-            /*
+          // Where other modules put their call controls — see `anchors` below. The marker is replaced
+          // by whatever is contributed, or by nothing at all, so the bar has no gap when no module
+          // has joined it and this module never learns which ones did.
+          type: '$slot',
+          props: { anchor: CALL_CONTROLS_ANCHOR },
+        },
+        /*
               Contributed controls stay in the row at every width, and the fold sits after them.
 
               This module cannot put another module's chrome in its menu — it does not know what
@@ -2002,7 +1762,7 @@ const bar: SchemaNode = {
               — see `moreMenu` — and a control that exists only below 640px is a control most people
               never find.
             */
-            /*
+        /*
           Show/hide sits with the devices, not with the call.
 
           It was on the right, beside the participant readout, on the grounds that it is about the
@@ -2011,7 +1771,7 @@ const bar: SchemaNode = {
           microphone, your camera, your screen, your transcript, and whether you are looking at the
           video. Everything right of it is the call itself — who is in it, and how much room it has.
         */
-            /*
+        /*
               Solo — the spotlight with the stage to itself.
 
               Only while something is focused, which is also the affordance: giving somebody the
@@ -2019,12 +1779,12 @@ const bar: SchemaNode = {
               the tile, because a three-state cycle on one gesture cannot say which state it is in —
               see `solo` in the store.
             */
-            whenRoomy({
-              type: '$if',
-              props: { condition: { $: 'modules.call.focusedId' }, then: mediaToggle(SOLO) },
-            }),
-            whenRoomy(mediaToggle(STAGE)),
-            /*
+        whenRoomy({
+          type: '$if',
+          props: { condition: { $: 'modules.call.focusedId' }, then: mediaToggle(SOLO) },
+        }),
+        whenRoomy(mediaToggle(STAGE)),
+        /*
               The fold, after the controls it folds.
 
               It was above the show/hide toggle, which put it between that toggle and the contributed
@@ -2032,12 +1792,12 @@ const bar: SchemaNode = {
               after it means the button occupies the place its own contents just left. The row reads the
               same in either state either way, which was the original point.
             */
-            moreMenu,
-            // Relay state and quality: shipped controls, so they sit before the development group.
-            topologyIndicator,
-            qualitySelector,
-            callSettingsPopover,
-            /*
+        moreMenu,
+        // Relay state and quality: shipped controls, so they sit before the development group.
+        topologyIndicator,
+        qualitySelector,
+        callSettingsPopover,
+        /*
               Development only, and last, which is the whole arrangement in one line: a shipped bar and
               a developer's bar differ by this trailing group and nothing else. Absent rather than inert
               in a production build — see `devPeerControls` and `CALL_DEV_ANCHOR`.
@@ -2051,15 +1811,15 @@ const bar: SchemaNode = {
               triple leads the group and brackets it once. The `$if` covers them as well, so the switch
               puts away every harness in the bar rather than only this module's.
             */
-            ...(devPeersAvailable
-              ? [
-                  {
-                    type: '$if',
-                    props: {
-                      condition: { $: 'sessionStore.devTools' },
-                      then: {
-                        type: 'Row',
-                        /*
+        ...(devPeersAvailable
+          ? [
+              {
+                type: '$if',
+                props: {
+                  condition: { $: 'sessionStore.devTools' },
+                  then: {
+                    type: 'Row',
+                    /*
                           The region owns its separators, rather than each triple drawing its own.
 
                           Two reasons. A contributed fragment cannot know whether it is first, so a rule
@@ -2074,45 +1834,200 @@ const bar: SchemaNode = {
                           with more it is a region of harnesses behind a single rule, which is still the
                           truth about them.
                         */
-                        props: { gap: '200', ay: 'center' },
-                        children: [
-                          { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
-                          devPeerControls,
-                          { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
-                          { type: '$slot', props: { anchor: CALL_DEV_ANCHOR } },
-                        ],
-                      },
-                    },
+                    props: { gap: '200', ay: 'center' },
+                    children: [
+                      { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
+                      devPeerControls,
+                      { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
+                      { type: '$slot', props: { anchor: CALL_DEV_ANCHOR } },
+                    ],
                   },
-                ]
-              : []),
-            // Two thirds of a control's height, so it reads as a separator between groups rather than as
-            // a rule drawn down the whole bar. It moved with the buttons: at 20px against `sm` it was
-            // that already, and left alone against `md` it would have been half.
-            { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
-            participants,
-            {
-              type: 'we-tooltip',
-              props: { content: 'Leave the call', placement: 'bottom' },
-              children: [
-                {
-                  // Square like the toggles at the other end, being an icon and nothing else.
-                  type: 'we-button',
-                  props: {
-                    square: true,
-                    label: 'Leave the call',
-                    variant: 'solid',
-                    tone: 'danger',
-                    onClick: { $invoke: 'modules.call.leave' },
-                  },
-                  children: [{ type: 'we-icon', props: { name: 'phone-x' } }],
                 },
-              ],
+              },
+            ]
+          : []),
+        // Two thirds of a control's height, so it reads as a separator between groups rather than as
+        // a rule drawn down the whole bar. It moved with the buttons: at 20px against `sm` it was
+        // that already, and left alone against `md` it would have been half.
+        { type: 'we-divider', props: { orientation: 'vertical', height: '26px' } },
+        participants,
+        {
+          type: 'we-tooltip',
+          props: { content: 'Leave the call', placement: 'bottom' },
+          children: [
+            {
+              // Square like the toggles at the other end, being an icon and nothing else.
+              type: 'we-button',
+              props: {
+                square: true,
+                label: 'Leave the call',
+                variant: 'solid',
+                tone: 'danger',
+                onClick: { $invoke: 'modules.call.leave' },
+              },
+              children: [{ type: 'we-icon', props: { name: 'phone-x' } }],
             },
           ],
         },
       ],
-    }),
+    },
+  ],
+};
+
+/**
+ * The stage — every participant, and the bar that controls them, in the box the host has given the dock.
+ *
+ * It positions nothing. That is the change: this used to be a `position: fixed` overlay carrying
+ * `right: '72px'`, a hardcoded copy of the module rail's width that nothing kept in step, and a
+ * `38vh` height that turned out to be a floor rather than a ceiling. Where the panel sits, how big
+ * it is, and whether it insets the app or floats over it are all the host's now — this module only
+ * says which edge and how much, through the opening bid the panel declaration names (`stageBid`) —
+ * see `contributes.panels` below.
+ *
+ * `overflow: hidden`, not `auto`, and that is a statement rather than a detail: the grid divides a
+ * definite box, so content that does not fit is a bug to be seen rather than a scrollbar to be
+ * lived with. One participant can never produce one.
+ *
+ * Colours stay theme-relative, and that matters more than it looks. Dark themes invert the neutral
+ * scale (`multiplier: -1`), so `neutral-1000` is black in the light theme and near-white in the dark
+ * one — which is exactly how this shipped as a white stage. There is no "always dark" neutral; a
+ * surface that must follow the theme has to use the same low-numbered tokens as the rest of the app.
+ *
+ * Declared after `controls`, which it nests — a const cannot name one defined later.
+ */
+const stage: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'modules.call.active' },
+    then: {
+      /*
+        The whole stage is one surface, so the controls beneath the tiles can read its width.
+
+        `surface.tier` is how the bar decides it has room for its secondary controls — the same
+        measure the floating strip used to publish for it, now reporting the panel it lives in.
+        A narrow stage folds to the compact bar exactly as a narrow window used to.
+      */
+      type: '$surface',
+      children: [
+        /*
+          A padded box around the tiles, rather than padding on the tiles' own box.
+
+          The two look identical until the strip scrolls, and then they are not: a scrollbar renders at
+          the *padding* edge, so a scrolling grid that carried its own padding put its scrollbar flush
+          against the panel's border — underneath the 8px resize handle, which is wider than the 6px
+          scrollbar and swallowed it whole. Dragging to scroll resized the panel instead.
+
+          Padding the wrapper insets the scroller by that padding, so the scrollbar sits 12px in, clear
+          of the handle, and the inset stays symmetrical — which a gutter added to one side would not.
+        */
+        /*
+          The one panel that does not name itself, and the exception is deliberate.
+
+          Every other panel opens with `panelHeader` — see `@we/schema-kit`. This one draws pictures of
+          people, which need every pixel of the panel they are given, and the height maths is exact:
+          the aspect in `stageBid` subtracts `STAGE_PADDING_PX`, `STAGE_GAP_PX` and
+          `STAGE_CONTROLS_PX` so that "fit to content" lands on a box the tiles *and* the bar fit
+          rather than one that squeezes them, and a header row is a height no schema here could tell
+          it about. A stage of faces is also the one panel nobody has to be told the name of.
+        */
+        {
+          type: 'Column',
+          props: {
+            width: '100%',
+            height: '100%',
+            // `300` is 12px — `STAGE_PADDING_PX`/`STAGE_GAP_PX`, which `stageBid`'s aspect subtracts so
+            // that "fit to content" lands on a height that fits the pictures rather than one that
+            // squeezes them. Change them here and the constants have to follow.
+            p: '300',
+            gap: '300',
+            overflow: 'hidden',
+          },
+          children: [
+            {
+              type: 'Grid',
+              props: {
+                width: '100%',
+                /*
+                  Shares the column with the controls now, so it takes what is left rather than the
+                  whole height. `minHeight: 0` is the usual flex concession — without it the grid
+                  refuses to shrink below its content and pushes the bar out of the panel.
+                */
+                flex: '1',
+                minHeight: '0',
+                // `300` is 12px — `STAGE_GAP_PX`, which `stageBid`'s aspect subtracts alongside the
+                // wrapper's padding so that "fit to content" lands on a height that fits the pictures
+                // rather than one that squeezes them. The *solver* needs no telling: the grid reads
+                // its own gap.
+                gap: '300',
+                /*
+                  Scrolls along the strip's axis, and only when the strip is scrolling — see
+                  `stageOverflow`.
+
+                  `overflow: hidden` the rest of the time, and that is a statement rather than a
+                  detail: the grid divides a definite box, so content that does not fit is a bug to
+                  be seen rather than a scrollbar to be lived with. The one exception is a strip
+                  holding more people than fit at a size worth looking at, which is a list rather
+                  than a layout and behaves like one.
+                */
+                styles: { $: 'modules.call.stageOverflow' },
+                /**
+                 * The arrangement, solved against the box rather than guessed from the head count.
+                 *
+                 * This is the whole fix. The columns used to come from how many people were in the
+                 * call and nothing else, so the panel's shape — the one thing the user controls
+                 * directly — was not an input: dragged tall and thin you got two columns of postage
+                 * stamps, dragged wide you got two rows with bands of empty panel above and below.
+                 * `childAspect` measures the box and picks the arrangement that makes 16:9 pictures
+                 * largest, which for two people in a square panel is one column at 523px rather than
+                 * two at 294px.
+                 *
+                 * Only CSS changes when it re-solves. That matters more here than anywhere: the tiles
+                 * are a reference-keyed `$each`, and moving one to a different DOM parent would drop
+                 * its `srcObject` — somebody's video would go black every time the panel crossed a
+                 * threshold.
+                 */
+                childAspect: '16 / 9',
+                /*
+                  The spotlight's own tracks, and nothing at all the rest of the time.
+
+                  `template` takes precedence over `childAspect`, so this is the whole mode switch:
+                  written, the equal-tile solve stands down and the spotlight layout takes over;
+                  absent, it comes back. See `stageTemplate` in the store.
+                */
+                template: { $: 'modules.call.stageTemplate' },
+                rows: { $: 'modules.call.stageRows' },
+                // What the stage settled on, back to the store — see `setArrangement`. The host needs
+                // it to answer "fit to content".
+                onArrange: { $invoke: 'modules.call.setArrangement', args: [{ $: 'arg' }] },
+                // The box itself, for the one decision the grid cannot make: which edge the strip
+                // runs along.
+                onMeasure: { $invoke: 'modules.call.setStageBox', args: [{ $: 'arg' }] },
+              },
+              // Placed rather than pasted, so a template that arranges the stage keeps the tile the
+              // module's. The row binds `tile`, which is the name the part declares it needs.
+              children: [
+                {
+                  type: '$each',
+                  props: { items: { $: 'modules.call.tiles' }, as: 'tile' },
+                  children: [{ type: '$part', props: { id: 'call.tile' } }],
+                },
+              ],
+            },
+            /*
+              The controls, under the pictures — the second half of this panel, and the whole point of
+              it being one.
+
+              The bar used to float over every page, pinned to the window's bottom edge, which is where
+              its three faults came from: centred on the content rather than the video, gone when the
+              page scrolled, and covering whatever a view had not padded for. Here it answers to the
+              stage's own box instead — always centred under the pictures, scrolled with nothing but
+              the panel it lives in.
+            */
+            controls,
+          ],
+        },
+      ],
+    },
   },
 };
 
@@ -2130,8 +2045,8 @@ const bar: SchemaNode = {
  * quiet — which is a valid thing to want and was the fastest way to break it.
  *
  * A call is audio first. So the audio hangs off `active` and nothing else: it is mounted from the
- * moment you are in a call until you leave, at the same anchor as the control bar, whatever the
- * stage is doing. One `we-audio` per remote participant, playing that peer's stream.
+ * moment you are in a call until you leave, as chrome of its own rather than inside the stage,
+ * whatever the stage is doing. One `we-audio` per remote participant, playing that peer's stream.
  *
  * ## Why not one element for everyone
  *
@@ -2168,17 +2083,15 @@ const problem: SchemaNode = {
   props: {
     condition: { $: 'modules.call.problem' },
     /*
-      The end the call bar is not at — which is the top now that the bar has taken the bottom.
+      Out of the way of the stage, which is where the controls live now.
 
-      Both were pinned to the same offset once, so the alert opened underneath the controls —
-      mostly hidden, and with its dismiss button unreachable, which is a poor showing for the one
-      piece of UI whose entire job is to be read. It has swapped ends with the bar rather than
-      gaining a rule: "the other end from the controls" is the whole of the requirement.
+      The alert floats because it is transient and because a stage the user has already put away
+      should not reopen to deliver it. Both it and the controls were pinned to the same edge once,
+      so the alert opened underneath them — mostly hidden, and with its dismiss button unreachable,
+      which is a poor showing for the one piece of UI whose entire job is to be read.
 
-      In the same kind of strip as the bar, so it clears a panel docked along its edge, centres on
-      the content, and stays on screen when the content is narrower than it. It had none of the
-      three once, on the reasoning that the bar no longer moves so nor does this — true of the bar
-      and irrelevant to the window, which is what both were actually pinned to.
+      In the same kind of strip as the bar sat in, so it clears a panel docked along its edge,
+      centres on the content, and stays on screen when the content is narrower than it.
     */
     then: contentCentred('top', {
       type: 'Row',
@@ -2578,8 +2491,8 @@ export const callModule = defineModule({
 
       Module chrome is otherwise gated on the space you are looking at, which is right for chrome that
       is *about* that space and wrong for this: a call outlives navigating away from where it started,
-      so in a space that has not enabled calls the bar vanished while the call carried on — hang-up
-      button included. Nothing was broken underneath, which is what made it read as a crash.
+      so in a space that has not enabled calls the call's chrome vanished while the call carried on —
+      hang-up button included. Nothing was broken underneath, which is what made it read as a crash.
 
       `active` is false the moment the call ends, which is the condition this has to satisfy: a key
       that stayed true would make the bar permanent. A bare store key, like every other key here —
@@ -2587,15 +2500,13 @@ export const callModule = defineModule({
     */
     holds: 'active',
 
-    // The band the bar occupies, for floating panels to keep clear of — see `chromeReserve` in the
-    // store. Named here rather than found by a magic member name, so the host reads what is declared.
-    reserve: 'chromeReserve',
+    // No `reserve`: the bar lives inside the stage now rather than floating over every page, so
+    // there is no band for the host to keep clear of on this module's account.
 
     slots: [
-      { anchor: 'dock-bottom', node: bar, order: 100 },
       { anchor: 'dock-bottom', node: problem, order: 80 },
       /*
-        The audio, at the same anchor as the bar rather than in the panel.
+        The audio, as chrome rather than in the panel.
 
         Chrome, not a panel: it renders nothing and takes no room, and it has to outlive every state
         the stage can be in — including not existing. A slot contribution is mounted for as long as
@@ -2613,10 +2524,9 @@ export const callModule = defineModule({
     /**
      * The stage, as a panel the host places rather than chrome that places itself.
      *
-     * The distinction the bar above makes clear by contrast. Both are call chrome; only one of them
-     * should take room. You glance at the bar while doing something else, so it overlays — shrinking
-     * the app for a row of buttons would be absurd. You *watch* the stage, usually while reading the
-     * space beside it, and a panel that covers what you are reading is a panel you keep closing.
+     * Pictures and the controls for them in one panel — the bar used to float alone at the bottom of
+     * the window, centred on the content rather than the video and covering whatever a view had not
+     * padded for, until it moved in here under the tiles.
      *
      * One bid and no geometry. The module cannot see the sidebar's width, the module rail's, or the
      * size of the window, and the previous version's `right: '72px'` was a copy of one of those that
