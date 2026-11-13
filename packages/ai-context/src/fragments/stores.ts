@@ -107,52 +107,100 @@ export const storeEntries: StoreEntry[] = [
           'id',
           'name',
           'kind',
-          'source',
+          'endpointId',
+          'remoteModel',
+          'status',
           'isDefault',
           'kindLabel',
-          'sourceLabel',
-          'detail',
+          'endpointName',
           'statusText',
           'ready',
         ],
       },
       aiTasks: { type: 'array', properties: ['id', 'name', 'modelId', 'systemPrompt'] },
-      aiForm: {
-        type: 'object',
+      aiForm: { type: 'object', properties: ['id', 'name', 'kind', 'endpointId', 'remoteModel'] },
+      aiFormComplete: { type: 'boolean' },
+      aiFormDirty: { type: 'boolean' },
+      aiEndpointOptions: { type: 'array', properties: ['label', 'value'] },
+      canDiscoverAiModels: { type: 'boolean' },
+      aiDiscoveredModelOptions: { type: 'array', properties: ['label', 'value'] },
+      aiDiscoveredModelHint: { type: 'string' },
+      aiRecommendedModel: { type: 'string' },
+      aiCanPull: { type: 'boolean' },
+      aiPullText: { type: 'string' },
+      canManageAiEndpoints: { type: 'boolean' },
+      aiEndpoints: {
+        type: 'array',
         properties: [
           'id',
           'name',
           'kind',
-          'sourceKind',
-          'presetName',
-          'apiService',
-          'apiProtocol',
-          'apiBaseUrl',
+          'baseUrl',
+          'hasApiKey',
+          'capabilities',
+          'health',
+          'kindLabel',
+          'healthText',
+          'healthy',
+          'modelCount',
+          'managed',
+          'editable',
+        ],
+      },
+      aiDetectedEndpoints: {
+        type: 'array',
+        properties: ['kind', 'baseUrl', 'capabilities', 'models', 'label', 'detail'],
+      },
+      aiInstallLinks: { type: 'array', properties: ['label', 'url'] },
+      aiEndpointForm: {
+        type: 'object',
+        properties: [
+          'id',
+          'name',
+          'service',
+          'kind',
+          'baseUrl',
           'apiKey',
           'apiKeyStored',
           'apiKeyBaseUrl',
           'apiKeyRemoved',
-          'apiModel',
-          'apiMaxContext',
-          'hfRepo',
-          'hfRevision',
-          'hfFileName',
-          'filePath',
-          'useTokenizer',
-          'tokenizerRepo',
-          'tokenizerRevision',
-          'tokenizerFileName',
+          'maxContext',
         ],
       },
-      aiPresetOptions: { type: 'array', properties: ['label', 'value'] },
-      aiFormComplete: { type: 'boolean' },
+      aiEndpointFormComplete: { type: 'boolean' },
+      aiEndpointFormDirty: { type: 'boolean' },
       aiMaxContextError: { type: 'string' },
       aiApiKeyError: { type: 'string' },
-      aiDiscoverNeedsKey: { type: 'boolean' },
-      aiFormDirty: { type: 'boolean' },
       aiServiceOptions: { type: 'array', properties: ['label', 'value'] },
-      canDiscoverAiModels: { type: 'boolean' },
-      aiDiscoveredModelOptions: { type: 'array', properties: ['label', 'value'] },
+      canUseLocalAi: { type: 'boolean' },
+      canConfigureLocalAi: { type: 'boolean' },
+      localAi: {
+        type: 'object',
+        properties: [
+          'loaded',
+          'device',
+          'gpus',
+          'compute',
+          'budget',
+          'notes',
+          'items',
+          'unavailable',
+          'reasons',
+          'fits',
+          'summary',
+          'installLabel',
+          'installed',
+          'incomplete',
+          'installing',
+          'running',
+          'anyRunning',
+          'canStart',
+          'runtimes',
+          'progress',
+          'canInstall',
+        ],
+      },
+      aiSetupOptions: { type: 'array' },
       languages: { type: 'array', properties: ['address', 'name', 'system'] },
       trustedAgents: { type: 'array' },
       authorizedApps: {
@@ -181,13 +229,29 @@ export const storeEntries: StoreEntry[] = [
       'newAiModel',
       'editAiModel',
       'setAiFormField',
-      'setAiService',
       'discoverAiModels',
+      'pullAiModel',
       'closeAiForm',
       'saveAiModel',
       'removeAiModel',
       'setDefaultAiModel',
       'removeAiTask',
+      'detectAiEndpoints',
+      'addDetectedEndpoint',
+      'newAiEndpoint',
+      'editAiEndpoint',
+      'setAiEndpointField',
+      'setAiService',
+      'closeAiEndpointForm',
+      'saveAiEndpoint',
+      'removeAiEndpoint',
+      'loadLocalAi',
+      'installLocalAi',
+      'startLocalAi',
+      'stopLocalAi',
+      'removeLocalAi',
+      'skipAiSetup',
+      'finishAiSetup',
       'loadLanguages',
       'installLanguage',
       'removeLanguage',
@@ -643,6 +707,14 @@ export const storeEntries: StoreEntry[] = [
     ],
   },
   {
+    name: 'chatStore',
+    state: {
+      sheet: { type: 'object' },
+      isNarrow: { type: 'boolean' },
+    },
+    actions: ['openChat', 'closeSheet'],
+  },
+  {
     name: 'appStore',
     state: {
       apps: { type: 'array', properties: ['id', 'name', 'image'] },
@@ -768,6 +840,19 @@ export const storeEntries: StoreEntry[] = [
  * {@link actionsNeedingArgs}.
  */
 const descriptions: Record<string, { state: Record<string, string>; actions: Record<string, string> }> = {
+  chatStore: {
+    state: {
+      sheet:
+        'the chat a narrow window is showing as a sheet — what it was asked for ({ perspectiveUuid?, spaceName?, draft? }) or null. Read by AgentChatSheet, not by templates',
+      isNarrow:
+        'true below the viewport width where a floating panel stops being usable — the point at which openChat sends a chat to the sheet instead of a panel',
+    },
+    actions: {
+      openChat:
+        "(input?: { perspectiveUuid?: string; spaceName?: string; draft?: string }): opens an AI chat — global with no perspectiveUuid (the session carries no capabilities, so it reaches everything the app's token does), or scoped to that one perspective with 'this space only'. `draft` is a question the chat opens a fresh conversation for and sends at once. A panel on desktop, the bottom sheet on a phone",
+      closeSheet: '(): puts the phone sheet away',
+    },
+  },
   clipboard: {
     state: {},
     actions: {
@@ -780,7 +865,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       me: 'Agent | undefined — the authenticated identity; prefer the $me token in schemas',
       bootState: "string — 'initialising' | 'login' | 'createAgent' | 'finishing' | 'ready' | 'error'",
       signInStep:
-        "string — which step of signing in the screen is on: 'switching' | 'settingUp' | 'starting' | 'preparing' | 'unlock' | 'create' | 'failed' | 'ready'. One answer, in that order of precedence — a sign-in screen draws the step this names rather than working it out from bootState and the account flags",
+        "string — which step of signing in the screen is on: 'switching' | 'setUpAi' | 'settingUp' | 'starting' | 'preparing' | 'unlock' | 'create' | 'failed' | 'ready'. One answer, in that order of precedence — a sign-in screen draws the step this names rather than working it out from bootState and the account flags",
       bootError: "string — why the boot failed, when bootState is 'error'. Empty otherwise",
       passwordError:
         'boolean — true after an unlock the backend refused. Not set when it merely timed out; see loginError',
@@ -879,26 +964,54 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '{ crate, level }[] — per-crate log levels the user has set, sorted. Empty means the backend own defaults are in use',
       backupStatus: 'string — what the last export or import did, for display. Empty until one runs',
       aiModels:
-        'AiModelView[] — installed models, each carrying its display strings (kindLabel, sourceLabel, detail, statusText, ready) alongside id/name/kind/source/isDefault. Empty until loadAiModels() runs',
+        "AiModelView[] — the node's models, each a reference to a model a server (endpoint) serves: id, name, kind ('llm' | 'embedding' | 'transcription' | 'speech'), endpointId, remoteModel (the id the server knows it by), status ({ state: 'ready' | 'missing' | 'pulling' | 'endpoint-down' | 'unknown', progress, detail — the server's reason where it gave one }), isDefault, and its display strings kindLabel, endpointName, statusText, ready. Empty until loadAiModels() runs; statuses follow the backend's events while settings are open",
       aiTasks: 'AiTask[] — named prompts apps registered against a model (id, name, modelId, systemPrompt)',
       aiForm:
-        'AiModelForm | null — the model form while it is open, null when closed. One flat field per input; read with runtimeStore.aiForm.<field>. The backend never returns a stored key: apiKey is only a key typed to send (empty keeps the stored one), apiKeyStored says one is held, and apiKeyRemoved set true removes it on save',
-      aiPresetOptions: '{ label, value }[] — model names the backend can fetch itself, for the open form kind',
-      aiFormComplete: 'boolean — the open form has every field its chosen source needs',
-      aiMaxContextError:
-        "string — why the open form's context limit (aiForm.apiMaxContext) cannot be saved, or empty. Bind it to that field's error: a limit that does not parse holds Save disabled, and nothing else says which field is doing it",
-      aiApiKeyError:
-        "string — why the open form's key holds Save, or empty: the base URL moved away from the address the stored key was set for and no new key was typed. Bind it to the key field's error",
-      aiDiscoverNeedsKey:
-        'boolean — the open form keeps a key the backend holds, so "List models" needs the key typed again: the backend never hands a stored key back. Disable that control on it and say why',
+        "AiModelForm | null — the model form while it is open, null when closed: { id, name, kind, endpointId, remoteModel }. Read with runtimeStore.aiForm.<field>, write with setAiFormField. An empty name saves as the model's id",
+      aiFormComplete: 'boolean — the open model form names a server and a model on it',
       aiFormDirty:
-        "boolean — the open form has been edited since it opened. What a discard guard reads; compared against a snapshot taken on open, so looking at a model's settings and closing again asks nothing",
-      aiServiceOptions:
-        "{ label, value }[] — the remote services a model can be reached through (Anthropic, OpenAI, OpenRouter…) plus 'Custom endpoint', for a we-select bound to aiForm.apiService. Pass the value to setAiService. Show the protocol and base URL fields only while aiForm.apiService == 'custom'",
+        "boolean — the open model form has been edited since it opened. What a discard guard reads; compared against a snapshot taken on open, so looking at a model's settings and closing again asks nothing",
+      aiEndpointOptions:
+        "{ label, value }[] — the servers that can serve the open model form's kind — an Ollama for language and embedding models whether or not it has one yet, since it can download one — for a we-select bound to aiForm.endpointId. Empty means no added server can: say so, and point at adding one",
       canDiscoverAiModels:
-        'boolean — the backend can ask a remote endpoint which models it serves. Gate a "List models" control on it; where it is false, the model id is typed',
+        'boolean — the backend can ask a server which models it serves. Gate a refresh control on it; where it is false, the model id is typed',
       aiDiscoveredModelOptions:
-        "{ label, value }[] — the models the open form's endpoint said it serves, for a we-select. Empty until discoverAiModels() answers, and empty again once the protocol, URL or key changes",
+        "{ label, value }[] — the models the open form's server said it serves, of the form's kind only, for a Combobox (a model the server does not have yet can still be typed). Asked when the form opens and whenever its server changes",
+      aiDiscoveredModelHint:
+        "string — why aiDiscoveredModelOptions is empty when the server answered with models of other kinds only (“None of this server's models are embedding models”), or empty. Show it beside the model field",
+      aiRecommendedModel:
+        "string — the model the backend recommends for the open form's kind on its server's kind (an Ollama, a speech server), or empty. Worth saying beside the model field",
+      aiCanPull:
+        "boolean — the open form's model can be downloaded onto its server: an Ollama that does not list it. Offer pullAiModel on it",
+      aiPullText:
+        'string — a download onto a server in progress, in words ("Downloading qwen3:8b — 45%"), or empty. Moves with the backend’s events',
+      canManageAiEndpoints:
+        'boolean — the backend shows its model servers to this connection: the operator only, since a server carries an address and health. Gate the servers section on it',
+      aiEndpoints:
+        'AiEndpointView[] — the model servers: id, name, kind, baseUrl, hasApiKey (never the key), capabilities, health ({ state, detail, models }), managed, and the display strings kindLabel, healthText, healthy, modelCount, editable. A managed server is the one local AI runs ("This device"): editable is false, it cannot be edited or removed as a server, and it goes with removeLocalAi. Loaded with loadAiModels()',
+      canUseLocalAi:
+        'boolean — the backend can install and run models on its own machine, and shows this connection that machine and what an install would do. The operator only. Gate the "This device" section on it',
+      canConfigureLocalAi:
+        "boolean — local AI can be installed, started, stopped and removed from here: the connection holds the node's operator credential. A grant never does, whatever its capabilities, so WE web's app token reads false. Gate those controls on it",
+      localAi:
+        'LocalAiView — the "This device" section, already in words: device (processor and memory), gpus (string[]), compute (what the models would run on), budget, notes, items ({ key, label, name, sizeText, detail, done }[] — the models and server programs an install brings; detail is the licence and memory of a model, empty for a server program), unavailable and reasons (string[]), planNotes (string[] — how the plan was chosen where not by measurement: the kinds nothing was measured for on this class of device, which take the smallest model, and the backend the settings of the node hold it to), fits, summary ("Downloads 3.1 GB · fits this device"), installLabel ("Install (2.5 GB)", or "Install the rest (2.5 GB)" while incomplete), installed (something is installed, not necessarily the whole plan), incomplete (installed, and the plan still has something not downloaded: offer Install again, which fetches the rest), installing, running (every server runs), anyRunning (a server runs in any state — running, starting, restarting or failed — so there is something to stop), canStart (a server is never started, stopped or failed, so a start has something to start — a failed one is offered both), runtimes ({ key, label, stateText, ok, tone }[] — phase, on the GPU or not, restarts; tone is success, idle (never started or stopped on purpose) or warning), progress ({ percent, text, failed } while an install runs, and after one fails) and canInstall (never true where canConfigureLocalAi is false). loaded is false until the machine and the plan have been read',
+      aiSetupOptions:
+        "('local' | 'server' | 'skip')[] — the ways to get AI this connection can choose between, in order: 'local' where it may install local AI on the node's machine, 'server' where it may add model servers and models, and always 'skip'. Gate each card of a Set up AI choice on it, as 'local' in runtimeStore.aiSetupOptions. Only 'skip' means there is nothing this connection can set up",
+      aiDetectedEndpoints:
+        "{ kind, baseUrl, capabilities, models, label, detail }[] — model servers running on the node's machine that are not added yet, found when settings open or by detectAiEndpoints(). One press from use: addDetectedEndpoint(baseUrl)",
+      aiInstallLinks:
+        "{ label, url }[] — where to get a model server (Ollama, a speech server), for when none runs on the node's machine",
+      aiEndpointForm:
+        'AiEndpointForm | null — the server form while it is open: { id, name, service, kind, baseUrl, apiKey, apiKeyStored, apiKeyBaseUrl, apiKeyRemoved, maxContext }. The backend never returns a stored key: apiKey is only a key typed to send (empty keeps the stored one), apiKeyStored says one is held, and apiKeyRemoved set true removes it on save. An empty name saves as the kind and port',
+      aiEndpointFormComplete: 'boolean — the open server form has an address and nothing holding its save',
+      aiEndpointFormDirty:
+        'boolean — the open server form has been edited since it opened, so a pasted key is not thrown away by a click on the backdrop. What a discard guard reads',
+      aiMaxContextError:
+        "string — why the open server form's context limit (aiEndpointForm.maxContext) cannot be saved, or empty. Bind it to that field's error: a limit that does not parse holds Save disabled, and nothing else says which field is doing it",
+      aiApiKeyError:
+        "string — why the open server form's key holds Save, or empty: the address moved away from the one the stored key was set for and no new key was typed. Bind it to the key field's error",
+      aiServiceOptions:
+        "{ label, value }[] — the kinds of server an endpoint can be (Ollama, llama-server, vLLM, a speech server, Anthropic, OpenAI, OpenRouter…) plus 'custom', for a we-select bound to aiEndpointForm.service. Pass the value to setAiService, which sets the kind and a starting address",
       languages:
         'InstalledLanguage[] — language plugins installed in this backend (address, name, system). Empty until loadLanguages() runs',
       trustedAgents: 'string[] — trusted peer ids. Empty until loadTrustedAgents() runs',
@@ -928,21 +1041,46 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       exportDatabase: '(): asks for a file, then has the backend write everything to it',
       importDatabase: '(): asks for a file, then has the backend read it back in',
       restartExecutor: '(): starts the backend over so written settings take effect. Does not return',
-      loadAiModels: '(): fetches the installed AI models and their load status',
+      loadAiModels: '(): fetches the models and the servers they run on',
       loadAiTasks: '(): fetches the prompts apps registered against a model',
-      newAiModel: '(): opens the model form empty, for a new model',
+      newAiModel: '(): opens the model form empty, on the first server that can serve a language model',
       editAiModel: '(id: string): opens the model form on an existing model',
       setAiFormField:
-        '(field: string, value: string | boolean): sets one field of the open model form. Takes the field name so one action serves every input',
-      setAiService:
-        "(id: string): chooses the open form's service. A named one sets the protocol and base URL; 'custom' keeps what the form holds for editing",
+        '(field: string, value: string): sets one field of the open model form. Takes the field name so one action serves every input. Changing kind moves the form to a server that can serve it; changing endpointId asks that server what it has',
       discoverAiModels:
-        "(): asks the open form's endpoint which models it serves, through the node — also the check that the key works. A refusal lands in error; an empty model field takes the first model. Does nothing while aiDiscoverNeedsKey",
+        "(): asks the open form's server which models it serves. A refusal lands in error; an empty model field takes the recommended model, else the first that fits",
+      pullAiModel:
+        "(): downloads the open form's model onto its Ollama. Resolves when the server has all of it; aiPullText says how far meanwhile",
       closeAiForm: '(): closes the model form, discarding it',
-      saveAiModel: '(): saves the open form — adds or updates depending on whether it has an id',
-      removeAiModel: '(id: string): deletes a model',
+      saveAiModel: '(): saves the open model form — adds or updates depending on whether it has an id',
+      removeAiModel: '(id: string): deletes a model. The model on its server is left alone',
       setDefaultAiModel: '(id: string): makes this the model apps get when they ask for its kind',
       removeAiTask: '(id: string): deletes a registered prompt',
+      detectAiEndpoints: "(): looks for model servers running on the node's machine. Saves nothing",
+      addDetectedEndpoint:
+        '(baseUrl: string): adds a server detectAiEndpoints found, as it was found, and registers on it a model for each role nothing fills yet: the recommended model where the server serves it, else the first it serves for that role. The first model of a role becomes its default',
+      newAiEndpoint: '(): opens the server form empty, on Ollama at its default address',
+      editAiEndpoint: '(id: string): opens the server form on an existing server',
+      setAiEndpointField:
+        '(field: string, value: string | boolean): sets one field of the open server form. Takes the field name so one action serves every input',
+      setAiService:
+        "(id: string): chooses the open server form's service: sets its kind and a starting address, which stays editable. 'custom' is any other OpenAI-compatible server",
+      closeAiEndpointForm: '(): closes the server form, discarding it',
+      saveAiEndpoint:
+        '(): saves the open server form — adds or updates. The backend checks the server once and saves it whatever it answers',
+      removeAiEndpoint:
+        '(id: string): removes a server. Refused while models run on it, and for a managed server (local AI), which goes with removeLocalAi',
+      loadLocalAi: '(): reads the machine, the plan and how local AI runs. Done when the settings open',
+      installLocalAi:
+        '(): downloads, checks, starts and registers what the plan says, making its models the defaults. Gigabytes: resolves when done, with localAi.progress moving meanwhile',
+      startLocalAi: '(): starts the local model servers',
+      stopLocalAi: '(): stops them. Their models stay registered and answer again once started',
+      removeLocalAi:
+        '(deleteFiles: boolean): unregisters and stops local AI; deleteFiles true deletes the downloaded models and programs as well',
+      skipAiSetup:
+        "(): leaves a first run's AI step (sessionStore.signInStep 'setUpAi') with nothing set up, and keeps that answer so the step is not asked again for this account",
+      finishAiSetup:
+        "(): leaves a first run's AI step with what was set up on it, and keeps that answer. Offer it once something is set up: a model, or local AI installing or installed",
       loadLanguages: '(): fetches the installed languages',
       installLanguage: '(address: string): installs a language by content address, then reloads the list',
       removeLanguage: '(address: string): removes an installed language. Refuses the backend own system languages',

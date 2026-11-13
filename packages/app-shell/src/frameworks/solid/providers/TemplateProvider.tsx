@@ -3,6 +3,7 @@ import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { collectionFacts } from '@shared/destructiveFacts';
 import { involvementOptimism } from '@shared/involvementOptimism';
 import { linkNewMentions, type MentionWriter, prepareMentionUpdate } from '@shared/lineMentions';
+import { findEntityRows, subscribeEntityRows } from '@shared/recordsRead';
 import { appFrame, declareAppEdges, declareAppFrame } from '@shared/registries/appFrame';
 import { HOST_PART_SLOTS } from '@shared/registries/hostParts';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
@@ -42,11 +43,12 @@ interface RecordModel {
 /** An entity's registered class by name; the registry answers untyped, but every class implements these. */
 const recordModel = (entity: string) => getEntity(entity) as unknown as RecordModel;
 
-import { componentRegistry as registry } from '@solid/registries/componentRegistry';
+import { chromeComponentRegistry, componentRegistry as registry } from '@solid/registries/componentRegistry';
 import {
   useAccountStore,
   useAppStore,
   useBundleStore,
+  useChatStore,
   useClockStore,
   useDatasetStore,
   useDeviceStore,
@@ -120,6 +122,7 @@ export default function TemplateProvider() {
   const editTarget = useEditTarget();
   const routeStore = useRouteStore();
   const shellStore = useShellStore();
+  const chatStore = useChatStore();
   const presenceStore = usePresenceStore();
   const interpretationStore = useInterpretationStore();
   const clockStore = useClockStore();
@@ -484,28 +487,12 @@ export default function TemplateProvider() {
       findEntities: async (entity, query, options) => {
         const p = moduleTarget(options?.dataset);
         if (!p) return [];
-        const Model = getEntity(entity) as unknown as {
-          findAll: (perspective: unknown, opts: unknown) => Promise<Record<string, unknown>[]>;
-        };
-        return (await Model.findAll(p, withinAsParent(query))) ?? [];
+        return findEntityRows(entity, p, withinAsParent(query));
       },
       subscribeEntities: (entity, query, cb, options) => {
         const p = moduleTarget(options?.dataset);
         if (!p) return () => {};
-        const Model = getEntity(entity) as unknown as {
-          query: (
-            perspective: unknown,
-            opts: unknown,
-          ) => { subscribe: (cb: (rows: Record<string, unknown>[]) => void) => Promise<unknown>; dispose: () => void };
-        };
-        const subscription = Model.query(p, withinAsParent(query));
-        void subscription.subscribe(cb).then(
-          (rows) => cb(rows as Record<string, unknown>[]),
-          (error: unknown) => {
-            console.warn(`module host: subscription to ${entity} failed`, error);
-          },
-        );
-        return () => subscription.dispose();
+        return subscribeEntityRows(entity, p, withinAsParent(query), cb);
       },
     }),
   );
@@ -525,6 +512,7 @@ export default function TemplateProvider() {
     templateStore,
     routeStore,
     shellStore,
+    chatStore,
     presenceStore,
     interpretationStore,
     clockStore,
@@ -965,7 +953,7 @@ export default function TemplateProvider() {
     onCleanup(
       registerRecordGhost({
         stores: chromeBag,
-        registry,
+        registry: chromeComponentRegistry,
         agent: (did) => {
           const profile = profileStore.profiles().find((p) => p.did === did);
           return profile ? { name: profile.name ?? '', avatar: profile.avatar ?? '' } : undefined;
@@ -1711,9 +1699,9 @@ export default function TemplateProvider() {
                 )
               }
             >
-              <RenderSchema node={appSchema} stores={chromeBag} registry={registry} />
+              <RenderSchema node={appSchema} stores={chromeBag} registry={chromeComponentRegistry} />
             </div>
-            <RenderSchema node={shellSchema} stores={chromeBag} registry={registry} />
+            <RenderSchema node={shellSchema} stores={chromeBag} registry={chromeComponentRegistry} />
             {/* The lanes pushing the content aside at the window's edges. */}
             <EdgeLanes />
             {/* Every panel, drawn once here, inside these providers, and moved to its place. */}
@@ -1762,7 +1750,7 @@ export default function TemplateProvider() {
           {/* The host's safety prompts — see `promptSchema`. Last, so a prompt mounting in the same
            frame as anything above it still enters the top layer after it. */}
           <div ref={promptLayer} data-we-host-prompts style={{ display: 'contents' }}>
-            <RenderSchema node={promptSchema} stores={chromeBag} registry={registry} />
+            <RenderSchema node={promptSchema} stores={chromeBag} registry={chromeComponentRegistry} />
           </div>
         </VisualEditorProvider>
       </BlockDisplayOverrides>

@@ -49,7 +49,7 @@ export const HOST_PARTS: Readonly<Record<string, HostPart>> = {
     node: signInForm,
     label: 'Sign-in form',
     description:
-      'Whoever is signing in and the step they are on — unlocking, setting up an account, waiting, or why it failed.',
+      'Whoever is signing in and the step they are on — unlocking, setting up an account and choosing its AI, waiting, or why it failed.',
     inputs: {
       unlockLabel: { description: 'The text of the button that signs in', default: 'Login' },
       passwordLabel: { description: 'A label over the password field; empty for none', default: '' },

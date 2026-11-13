@@ -59,6 +59,31 @@ const SOLID_TESTS = [
   'tests/laneSections.test.tsx',
   'tests/edgeLanes.test.tsx',
   'tests/panelInstances.test.tsx',
+  // Mounts the chat twice over the issued nonce — only the browser build's effects reach the
+  // store's pending map, and a spent nonce must send nothing the second time.
+  'tests/agentChatDraft.test.tsx',
+  // The conversation list opens from a real button — what a keyboard reaches is DOM, not a flag.
+  'tests/agentChatList.test.tsx',
+  // Send-again, the Enter guards, draft restore, refresh clearing, and the remembered conversation
+  // are all reads on the mounted chat — they need the browser build's event dispatch and effects.
+  'tests/agentChatResend.test.tsx',
+  // A space's ask without its perspective id opens nothing, not the global chat.
+  'tests/chatStoreOpen.test.tsx',
+  // The refusal card rendered — the sentence and the folded error are DOM, not derivations.
+  'tests/agentChatRefusal.test.tsx',
+  // Mounts the chat to press Send and Enter into one pending create, and to watch the composer
+  // after a failed first send — real event dispatch and the browser build's reactivity.
+  'tests/agentChatSend.test.tsx',
+  // Mounts trees through the real renderer to say which registry a template may not reach.
+  'tests/chatTrustBoundary.test.tsx',
+  // A template's openPanel aimed at the app's chat panels: the real store, the real declarations,
+  // the real bag, and the real panel host between the call and a mounted AgentChat.
+  'tests/appPanelBoundary.test.tsx',
+  // The sheet is a dialog: focus moves in and is trapped, Escape closes, drag cancels clean.
+  'tests/agentChatSheet.test.tsx',
+  // The subject is the mount itself: the body element must stay the same node while other panel
+  // records come and go — only the browser build tracks the per-id memo finely enough to prove it.
+  'tests/panelBodyRemount.test.tsx',
   // A panel drawn once and moved between places: needs the browser build's reactivity, as the lanes do.
   'tests/panelHost.test.tsx',
   // Mounts the real RecordStore over a stand-in data layer to drive a canvas's undo round trip.
@@ -94,6 +119,8 @@ const SOLID_TESTS = [
   'tests/templateNavigation.test.tsx',
   // Drives the create-space modal's schema through the real renderer: what reaches createSpace.
   'tests/createSpaceServer.test.tsx',
+  // The AI settings schema through the real renderer: what an install's progress re-renders.
+  'tests/localAiProgressRender.test.tsx',
 ];
 
 export default defineConfig({
