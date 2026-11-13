@@ -7706,7 +7706,6 @@
         "endDockMove",
         "closeTemplatePanel",
         "openTemplatePanel",
-        "openPanel",
         "closePanel",
         "resetTemplateLayout",
         "toggleLane",
@@ -8553,8 +8552,6 @@
     }
   ],
   "shellComponents": [
-    "AgentChat",
-    "AgentChatSheet",
     "AiPanel",
     "CredentialField",
     "EditingBar",

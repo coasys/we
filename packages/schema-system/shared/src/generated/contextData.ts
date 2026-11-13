@@ -3198,7 +3198,6 @@ export const contextData: ContextData = {
         'endDockMove',
         'closeTemplatePanel',
         'openTemplatePanel',
-        'openPanel',
         'closePanel',
         'resetTemplateLayout',
         'toggleLane',
@@ -3798,8 +3797,6 @@ export const contextData: ContextData = {
     { name: 'clipboard', state: {}, actions: ['copy'], needsArgs: ['copy'] },
   ],
   shellComponents: [
-    'AgentChat',
-    'AgentChatSheet',
     'AiPanel',
     'CredentialField',
     'EditingBar',
