@@ -10,6 +10,7 @@ import css from './identity.css?raw';
 import indexSource from './index.ts?raw';
 import {
   actionsLine,
+  blankedBefore,
   BOT_ACTIONS,
   deviceMatchActions,
   deviceMatchNote,
@@ -22,6 +23,7 @@ import {
   type Screen,
   spreadWords,
   targetLine,
+  turns,
   wordNumber,
 } from './screens';
 import screensSource from './screens.ts?raw';
@@ -371,12 +373,57 @@ describe('the identity window', () => {
       { screen: 'name-device', name: 'Phone' },
     ] as Screen[])
       expect(isLast(screen)).toBe(false);
+    // Both can solve the store's proof of work on the phone: their Cancel and Close stay live.
     expect(windowSource).toMatch(
-      /case 'make-stopped':[\s\S]*?step\(\{ kind: 'try-again' \}\)[\s\S]*?button\('Close', cancel\)/,
+      /case 'make-stopped':[\s\S]*?const close = button\('Close', cancel\);[\s\S]*?step\(\{ kind: 'try-again' \}, \[\], \[close\]\)/,
     );
     expect(windowSource).toMatch(
-      /case 'name-device':[\s\S]*?step\(\{ kind: 'name-device', name: typed\(name\.input\) \}\)/,
+      /case 'name-device':[\s\S]*?const stop = button\('Cancel', cancel\);[\s\S]*?step\(\{ kind: 'name-device', name: typed\(name\.input\) \}, \[\], \[stop\]\)/,
     );
+    expect(windowSource).toContain('if (!live.includes(b)) b.disabled = true;');
+  });
+
+  it('draws no answer that comes after a cancel', () => {
+    const answers = turns();
+    const solving = answers.take();
+    expect(solving()).toBe(true);
+    // Cancel during the step: its late answer is not the window's any more.
+    answers.end();
+    expect(solving()).toBe(false);
+    // A step after the cancel (one the cancel stayed for) is drawn.
+    const next = answers.take();
+    expect(next()).toBe(true);
+    expect(solving()).toBe(false);
+    // The window takes a turn for each step and wait, checks it before it draws, and a cancel ends it.
+    expect(windowSource.match(/answers\.take\(\)/g)).toHaveLength(2);
+    expect(windowSource).toContain('if (current()) draw(screen);');
+    expect(windowSource).toContain("if (current()) draw({ screen: 'failed', message: String(error) });");
+    expect(windowSource).toContain('(screen) => current() && draw(screen)');
+    expect(windowSource).toMatch(/const cancel = oneAtATime\(\(\) => \{\n  answers\.end\(\);/);
+  });
+
+  it('blanks the screen, and waits for a frame that shows it, before it cancels or finishes', async () => {
+    const order: string[] = [];
+    let frame: () => void = () => {};
+    const left = blankedBefore(
+      () => order.push('blank'),
+      () => new Promise<void>((resolve) => (frame = () => (order.push('painted'), resolve()))),
+      async () => {
+        order.push('cancel');
+        return null;
+      },
+    );
+    await Promise.resolve();
+    // The host is not called (on the phone: the secure mark is not cleared) before the frame.
+    expect(order).toEqual(['blank']);
+    frame();
+    expect(await left).toBeNull();
+    expect(order).toEqual(['blank', 'painted', 'cancel']);
+    // Cancel and Done both leave through it; the blank screen holds no word.
+    expect(windowSource).toContain('const instead = await blankedBefore(blank, painted, call);');
+    expect(windowSource).toContain('return leave(() => host.cancel());');
+    expect(windowSource).toContain('const finish = () => void leave(() => host.finish());');
+    expect(windowSource).toMatch(/function blank\(\) \{[\s\S]*?forgetWords\(\);\n  root\.replaceChildren\(\);/);
   });
 
   it('adds a note to the identity being ready, which a later step left', () => {

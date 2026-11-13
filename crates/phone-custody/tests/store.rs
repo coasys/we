@@ -1763,6 +1763,123 @@ fn the_phone_restores_an_identity_and_locks_out_a_lost_computer() {
     assert_eq!(me.master_index, Some(1));
 }
 
+/// Blocks every write of `phone`'s key file and nothing else: a directory where the write puts
+/// its temporary file. The master-key and checkpoint files beside it are still written.
+fn block_key_file(phone: &Phone) -> std::path::PathBuf {
+    let blocker = phone.dir.path().join("device-keys.json.tmp");
+    std::fs::create_dir(&blocker).unwrap();
+    blocker
+}
+
+fn wait_ended(steps: &IdentitySteps) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !steps.ended() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the flow's thread ends"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+}
+
+/// `phone` as the app opens it again: its key file and vault read afresh from the same folder.
+fn reopened(phone: &Phone) -> (Arc<DeviceKeys>, Arc<PhoneIdentity>) {
+    let keys = DeviceKeys::open(
+        phone.dir.path().to_string_lossy().into(),
+        phone.sealer.clone(),
+    )
+    .unwrap();
+    let identity = open_identity(&keys, &phone.http, &phone.master);
+    (keys, identity)
+}
+
+// A make whose key file is not written after the publish (the write fails, or the app is killed
+// then) leaves the phone in a log its key file does not name, with no incept pending. Opened
+// again on the same key and vault, the phone finds itself in the store's verified log and
+// records that identity: its status reads, and a replace of the master key starts.
+#[test]
+fn a_make_stopped_between_its_publish_and_the_key_file_is_recorded_when_opened_again() {
+    let world = world();
+    let phone = phone(&world, "strongbox");
+    let (steps, _) = made_to_name(&phone);
+    let blocker = block_key_file(&phone);
+    let stopped = steps.step(PhoneInput::NameDevice {
+        name: Some("Pixel".into()),
+    });
+    assert!(
+        matches!(stopped, Err(PhoneKeyError::Io { .. })),
+        "{stopped:?}"
+    );
+    wait_ended(&steps);
+    assert_eq!(phone.http.appends.lock().unwrap().len(), 1, "published");
+    assert_eq!(phone.keys.status().identity, None);
+    std::fs::remove_dir(&blocker).unwrap();
+
+    let (keys, identity) = reopened(&phone);
+    assert_eq!(keys.status().identity, None, "the key file names none");
+    assert_eq!(identity.pending_identity().unwrap(), None, "none pending");
+    assert_eq!(identity.finish_pending().unwrap(), None);
+    let status = identity.status().unwrap();
+    assert_eq!(status.key_id.as_deref(), Some("d1"));
+    assert_eq!(status.master_index, Some(0));
+    assert_eq!(keys.status().identity.unwrap().did, status.did);
+    let rotate = identity.start_rotate(false).unwrap();
+    assert!(matches!(
+        rotate.next().unwrap(),
+        PhoneScreen::EnterWords { purpose, .. } if purpose == "replace"
+    ));
+}
+
+// The same for a restore: its rotation and this phone's enrolment are published, and the key
+// file is not written. Opened again, a make or a restore records the identity the store lists
+// this phone in, then refuses as for any phone in an identity; the phone replaces its master key.
+#[test]
+fn a_restore_stopped_between_its_enrolment_and_the_key_file_is_recorded_when_opened_again() {
+    let world = world();
+    let laptop = computer(&world, 1);
+    let did = create(&world, &laptop, 61);
+    let phone = phone(&world, "strongbox");
+    let steps = phone.identity.start_restore(false).unwrap();
+    steps.next().unwrap();
+    let listed = steps
+        .step(PhoneInput::TwelveWords { words: spelled(61) })
+        .unwrap();
+    assert!(
+        matches!(listed, PhoneScreen::RestoreDevices { .. }),
+        "{listed:?}"
+    );
+    let blocker = block_key_file(&phone);
+    let stopped = steps.step(PhoneInput::LockOut {
+        key_ids: vec!["d1".into()],
+        name: Some("Pixel".into()),
+    });
+    assert!(
+        matches!(stopped, Err(PhoneKeyError::Io { .. })),
+        "{stopped:?}"
+    );
+    wait_ended(&steps);
+    assert_eq!(phone.keys.status().identity, None);
+    std::fs::remove_dir(&blocker).unwrap();
+
+    let (keys, identity) = reopened(&phone);
+    assert_eq!(keys.status().identity, None, "the key file names none");
+    let again = identity.start_restore(false).unwrap();
+    assert!(matches!(
+        again.next(),
+        Err(PhoneKeyError::AlreadyJoined { did: d }) if d == did
+    ));
+    assert_eq!(keys.status().identity.unwrap().did, did, "recorded");
+    let status = identity.status().unwrap();
+    assert_eq!(status.did, did);
+    assert_eq!(status.master_index, Some(1));
+    assert!(status.key_id.is_some() && status.revoked.is_none());
+    let rotate = identity.start_rotate(false).unwrap();
+    assert!(matches!(
+        rotate.next().unwrap(),
+        PhoneScreen::EnterWords { purpose, .. } if purpose == "replace"
+    ));
+}
+
 // The phone replaces its master key with the words it showed at the make: words that are not
 // the identity's change nothing and are asked again; the right ones make master #1, kept here.
 #[test]

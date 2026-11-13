@@ -17,9 +17,16 @@
 //! - the cost is the store's (`GET /v1/pow`), refused above [`MAX_POW_BITS`] so a hostile store
 //!   cannot make the phone spin forever; a store with no brake route, or one asking for 0 bits,
 //!   gets no proof;
-//! - the work runs in rounds of [`ROUND`] tries, the cancel flag read between them;
+//! - the work runs in rounds of [`ROUND`] tries, the cancel flag read between them, and stops
+//!   with an error after [`MAX_SOLVE`]: the bits bound the average cost, and this bounds the
+//!   time of one run;
+//! - the work goes on while the app is in the background, on the flow's own thread, and
+//!   [`MAX_SOLVE`] bounds it there too. When the system ends the app first, the incept stays
+//!   pending in the vault and is published at the next open (`finish_pending`);
 //! - a `403 pow` (the store's bits went up between the read and the append) reads the cost again
 //!   and tries once more.
+
+use std::time::{Duration, Instant};
 
 use ad4m_identity_core::pow;
 use ad4m_identity_core::{Event, Op};
@@ -31,6 +38,10 @@ use crate::ports::{StoreReply, StoreRequest, StoreTransport, TransportError, CAN
 /// The most bits of work the phone spends on one new log: about 2^28 hashes, a minute or two on a
 /// phone. The store's default is 22.
 pub const MAX_POW_BITS: u8 = 28;
+
+/// The longest time one solve runs before it stops with an error. At [`MAX_POW_BITS`] a phone
+/// needs a minute or two on average; this bounds a long run of bad luck on a slow phone.
+pub const MAX_SOLVE: Duration = Duration::from_secs(10 * 60);
 
 /// Tries per round of the solve, between two reads of the cancel flag.
 pub const ROUND: u64 = 1 << 16;
@@ -106,16 +117,35 @@ fn store_bits(inner: &dyn StoreTransport, base: &str) -> Result<Option<u8>, Tran
     Ok((params.bits > 0).then_some(params.bits))
 }
 
-/// A proof for `scid` at `bits`, solved in rounds; `cancelled` is read between them.
+/// A proof for `scid` at `bits`, solved in rounds; `cancelled` is read between them. Stops after
+/// [`MAX_SOLVE`].
 pub fn solve(
     scid: &str,
     bits: u8,
     cancelled: &dyn Fn() -> bool,
 ) -> Result<pow::Pow, TransportError> {
+    solve_within(scid, bits, cancelled, MAX_SOLVE)
+}
+
+/// [`solve`], stopping after `limit`.
+fn solve_within(
+    scid: &str,
+    bits: u8,
+    cancelled: &dyn Fn() -> bool,
+    limit: Duration,
+) -> Result<pow::Pow, TransportError> {
+    let started = Instant::now();
     let mut start = 0u128;
     loop {
         if cancelled() {
             return Err(failed(CANCELLED));
+        }
+        if started.elapsed() >= limit {
+            return Err(failed(format!(
+                "the identity store's proof of work at {bits} bits took longer than this phone \
+                 spends on it ({} minutes)",
+                limit.as_secs() / 60
+            )));
         }
         if let Some(proof) = pow::solve_range(scid, bits, start, ROUND) {
             return Ok(proof);
@@ -395,6 +425,32 @@ mod tests {
         let cancel_after_two = || rounds.fetch_add(1, std::sync::atomic::Ordering::SeqCst) >= 2;
         assert!(solve(&scid, 64, &cancel_after_two).is_err());
         assert_eq!(rounds.load(std::sync::atomic::Ordering::SeqCst), 3);
+    }
+
+    #[test]
+    fn a_solve_stops_at_its_time_limit() {
+        let (scid, _) = incept();
+        // 64 bits would never finish: the limit ends it, with its own reason.
+        let Err(TransportError::Failed { reason }) = solve_within(&scid, 64, NEVER, Duration::ZERO)
+        else {
+            panic!("a solve past its limit stops");
+        };
+        assert!(
+            reason.contains("took longer than this phone spends"),
+            "{reason}"
+        );
+        assert_ne!(reason, CANCELLED);
+        let started = Instant::now();
+        let limit = Duration::from_millis(50);
+        assert!(solve_within(&scid, 64, NEVER, limit).is_err());
+        assert!(started.elapsed() >= limit);
+        // A cancel is still read first.
+        let Err(TransportError::Failed { reason }) =
+            solve_within(&scid, 64, &|| true, Duration::ZERO)
+        else {
+            panic!("a cancelled solve stops");
+        };
+        assert_eq!(reason, CANCELLED);
     }
 
     /// How long one solve at the store's default cost takes on this machine: run with

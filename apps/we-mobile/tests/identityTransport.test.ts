@@ -612,7 +612,8 @@ describe('making an identity on the phone', () => {
       { flow: 'f1', input: { input: 'confirm-words', first: 'ability', second: 'abstract' } },
       { flow: 'f1', input: { input: 'name-device', name: 'My phone' } },
     ]);
-    // Secure from before the words until the screen after them, the wrong answer included.
+    // Secure from before the words through every step: a screen is answered before the window draws
+    // it, so the words are still in the page when the screen after them is answered.
     expect(trail(calls)).toEqual([
       'status',
       'create',
@@ -621,14 +622,14 @@ describe('making an identity on the phone', () => {
       'identityStep',
       'identityStep',
       'identityStep',
-      'secure:off',
       'identityStep',
     ]);
 
     await transport.finish();
     expect(outcomes).toEqual(['done']);
-    // The flow had ended: nothing to cancel.
+    // The flow had ended: nothing to cancel. The mark goes only as the page leaves.
     expect(trail(calls)).not.toContain('identityCancel');
+    expect(trail(calls).slice(-2)).toEqual(['identityStep', 'secure:off']);
   });
 
   it('says a make that stopped, and tries the publish again', async () => {
@@ -751,6 +752,45 @@ describe('making an identity on the phone', () => {
     expect(calls.find(([m]) => m === 'identityCancel')?.[1]).toEqual({ flow: 'f4' });
     expect(trail(calls).slice(-2)).toEqual(['identityCancel', 'secure:off']);
     expect(outcomes).toEqual(['cancelled']);
+  });
+
+  it('clears the secure mark only as the page leaves, after the flow has ended', async () => {
+    for (const leaveBy of ['cancel', 'finish'] as const) {
+      const calls: Calls = [];
+      const { outcomes, leave } = left();
+      const transport = phoneTransport(
+        { kind: 'create' },
+        {
+          plugin: plugin(
+            {
+              status: { ...emptyStatus, keys },
+              setSecure: {},
+              startMake: { flow: 'f9', ended: false, screen: { screen: 'show-words', words: WORDS.split(' ') } },
+              identityStep: [
+                { ended: false, screen: { screen: 'confirm-words', positions: [3, 9], error: null } },
+                { ended: false, screen: { screen: 'name-device' } },
+                { ended: false, screen: { screen: 'make-stopped', reason: 'No answer.', pending: true } },
+              ],
+              identityCancel: {},
+            },
+            calls,
+          ),
+          leave,
+        },
+      );
+      await transport.start();
+      await transport.step({ kind: 'words-written' });
+      // The words were on screen when this was answered: the next screens leave the mark on.
+      await transport.step({ kind: 'words', answers: ['about', 'absurd'] });
+      await transport.step({ kind: 'name-device' });
+      expect(trail(calls)).not.toContain('secure:off');
+
+      await (leaveBy === 'cancel' ? transport.cancel() : transport.finish());
+      const secure = trail(calls).filter((m) => m.startsWith('secure'));
+      expect(secure).toEqual(['secure:on', 'secure:off']);
+      expect(trail(calls).slice(-2)).toEqual(['identityCancel', 'secure:off']);
+      expect(outcomes).toEqual([leaveBy === 'cancel' ? 'cancelled' : 'done']);
+    }
   });
 
   it('keeps the flow open on an input it did not take, and leaves through it', async () => {
@@ -896,17 +936,11 @@ describe('restoring an identity on the phone', () => {
       { flow: 'r1', input: { input: 'twelve-words', words: WORDS } },
       { flow: 'r1', input: { input: 'lock-out', keyIds: ['d1'], name: 'Phone' } },
     ]);
-    // The window is secure while the words are asked, the failed answer included, and not after.
-    expect(trail(calls).filter((m) => m !== 'identityStep')).toEqual([
-      'status',
-      'create',
-      'secure:on',
-      'startRestore',
-      'secure:off',
-    ]);
-    const off = trail(calls).indexOf('secure:off');
-    const before = trail(calls).slice(0, off);
-    expect(before.filter((m) => m === 'identityStep')).toHaveLength(2);
+    // The window is secure while the words are asked, the failed answer included, and stays so to
+    // the end of the flow.
+    expect(trail(calls).filter((m) => m !== 'identityStep')).toEqual(['status', 'create', 'secure:on', 'startRestore']);
+    await transport.finish();
+    expect(trail(calls).at(-1)).toBe('secure:off');
   });
 
   it('says a phone of an identity already restores none', async () => {
@@ -966,6 +1000,8 @@ describe('replacing the master key on the phone', () => {
       revoked: [],
       note: null,
     });
+    expect(trail(calls).filter((m) => m.startsWith('secure'))).toEqual(['secure:on']);
+    await transport.finish();
     expect(trail(calls).filter((m) => m.startsWith('secure'))).toEqual(['secure:on', 'secure:off']);
   });
 

@@ -309,7 +309,10 @@ export interface DeviceKeyPlugin {
    * read; any other refusal ends the flow.
    */
   identityStep(options: { flow: string; input: IdentityInput }): Promise<IdentityFlowStep>;
-  /** Ends the flow; it wipes the words it holds. */
+  /**
+   * Ends the flow; it wipes the words it holds. It may be called while a step runs: a proof of work
+   * that step solves stops at its next round, and the step then refuses.
+   */
   identityCancel(options: { flow: string }): Promise<Record<string, never>>;
   /** An identity made here and not published yet, by its DID; asks no network. */
   pendingIdentity(): Promise<{ did: string | null }>;

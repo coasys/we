@@ -11,10 +11,12 @@
  * the plugin runs as step machines (`startMake`, `startRestore`, `startRotate`, `identityStep`).
  *
  * **The words.** They cross this page twice: shown once by `show-words`, and typed into
- * `confirm-words` and `enter-words`. While one of those screens is up the window is secure
- * (`setSecure`: no screenshots, no recent-apps thumbnail), from before the flow starts until the
- * screen after it, and when the page leaves. The page keeps no copy: the screens pass to the window
- * and are not held here, the inputs go to the plugin in the step that reads them, and nothing is
+ * `confirm-words` and `enter-words`. The window is secure (`setSecure`: no screenshots, no
+ * recent-apps thumbnail) from before the flow starts until the page leaves. The mark is not cleared
+ * when the next screen comes: this side answers a screen before the window draws it, so the words
+ * would still be in the page. It is cleared in `cancel` and `finish` only, which the window calls
+ * after it has blanked its screen (`blankedBefore` in `@we/identity-window`). The page keeps no
+ * copy: the screens pass to the window and are not held here, the inputs go to the plugin in the step that reads them, and nothing is
  * logged, put on the clipboard, in the address or in storage. The window clears its word fields
  * when another screen comes.
  */
@@ -245,6 +247,8 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Ide
     try {
       started = await plugin[FLOWS[kind]]();
     } catch (error) {
+      // The plugin made no word: the mark goes, as it was before the flow.
+      await setSecure(false).catch(() => undefined);
       return failed(flowRefusal(kind, error));
     }
     if (!started.ended) flow = started.flow;
@@ -266,14 +270,16 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Ide
 
   /**
    * Draws `screen` once the window is as secure as it needs: on while it shows or asks for the
-   * words, off otherwise. A window that could not be made secure shows no words: the flow ends.
+   * words. It is never cleared here: the window draws `screen` after this answers, so the words are
+   * still in the page now; `leaving` clears it. A window that could not be made secure shows no
+   * words: the flow ends.
    */
   async function shown(screen: Screen): Promise<Screen> {
     let drawn = screen;
-    try {
-      await setSecure(WORDS_SCREENS.has(screen.screen));
-    } catch {
-      if (WORDS_SCREENS.has(screen.screen)) {
+    if (WORDS_SCREENS.has(screen.screen)) {
+      try {
+        await setSecure(true);
+      } catch {
         await endFlow();
         drawn = failed(NOT_SECURE);
       }
@@ -282,7 +288,10 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Ide
     return drawn;
   }
 
-  /** Leaves the page: no flow left running, and the window no longer secure. */
+  /**
+   * Leaves the page: no flow left running, and the window no longer secure. The window has blanked
+   * its screen before it calls `cancel` or `finish`, so no word is in the page when the mark goes.
+   */
   async function leaving(outcome: PhoneOutcome): Promise<void> {
     await endFlow();
     await setSecure(false).catch(() => undefined);

@@ -57,7 +57,9 @@ use we_identity_steps::{
 };
 use zeroize::Zeroizing;
 
-use crate::identity::{kind_name, phone_error, rpc, vault_error, Executor, Parts, PhoneIdentity};
+use crate::identity::{
+    kind_name, phone_error, rejoin, rpc, vault_error, Executor, Parts, PhoneIdentity,
+};
 use crate::vault::PhoneVault;
 use crate::PhoneKeyError;
 
@@ -84,7 +86,7 @@ pub struct RestoreDeviceView {
 }
 
 /// What the phone's identity screen shows next.
-#[derive(Clone, Debug, PartialEq, Eq, uniffi::Enum)]
+#[derive(Clone, PartialEq, Eq, uniffi::Enum)]
 pub enum PhoneScreen {
     /// The 12 new words, to write down on paper. Shown once: the app marks the window secure
     /// while they are on screen, and drops its copy when it leaves this screen.
@@ -158,6 +160,102 @@ pub enum PhoneScreen {
         reason: String,
         note: Option<String>,
     },
+}
+
+/// Never the words: a screen logged or in a crash report shows how many, not which.
+impl std::fmt::Debug for PhoneScreen {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            PhoneScreen::ShowWords { words } => f
+                .debug_struct("ShowWords")
+                .field("words", &format_args!("<{} redacted>", words.len()))
+                .finish(),
+            PhoneScreen::ConfirmWords { positions, error } => f
+                .debug_struct("ConfirmWords")
+                .field("positions", positions)
+                .field("error", error)
+                .finish(),
+            PhoneScreen::NameDevice => f.write_str("NameDevice"),
+            PhoneScreen::EnterWords {
+                purpose,
+                error,
+                position,
+            } => f
+                .debug_struct("EnterWords")
+                .field("purpose", purpose)
+                .field("error", error)
+                .field("position", position)
+                .finish(),
+            PhoneScreen::RestoreDevices { did, devices, note } => f
+                .debug_struct("RestoreDevices")
+                .field("did", did)
+                .field("devices", devices)
+                .field("note", note)
+                .finish(),
+            PhoneScreen::IdentityReady { did, key_id, note } => f
+                .debug_struct("IdentityReady")
+                .field("did", did)
+                .field("key_id", key_id)
+                .field("note", note)
+                .finish(),
+            PhoneScreen::MakeStopped {
+                did,
+                reason,
+                pending,
+            } => f
+                .debug_struct("MakeStopped")
+                .field("did", did)
+                .field("reason", reason)
+                .field("pending", pending)
+                .finish(),
+            PhoneScreen::Restored {
+                did,
+                name,
+                key_id,
+                revoked,
+                note,
+            } => f
+                .debug_struct("Restored")
+                .field("did", did)
+                .field("name", name)
+                .field("key_id", key_id)
+                .field("revoked", revoked)
+                .field("note", note)
+                .finish(),
+            PhoneScreen::RestoreNotLinked {
+                did,
+                revoked,
+                reason,
+            } => f
+                .debug_struct("RestoreNotLinked")
+                .field("did", did)
+                .field("revoked", revoked)
+                .field("reason", reason)
+                .finish(),
+            PhoneScreen::MasterReplaced {
+                index,
+                revoked,
+                note,
+            } => f
+                .debug_struct("MasterReplaced")
+                .field("index", index)
+                .field("revoked", revoked)
+                .field("note", note)
+                .finish(),
+            PhoneScreen::MasterNotKept {
+                index,
+                revoked,
+                reason,
+                note,
+            } => f
+                .debug_struct("MasterNotKept")
+                .field("index", index)
+                .field("revoked", revoked)
+                .field("reason", reason)
+                .field("note", note)
+                .finish(),
+        }
+    }
 }
 
 /// The person's answer to a screen.
@@ -496,7 +594,9 @@ pub(crate) fn pending_did(
 }
 
 /// A phone of no identity: the key file names none, no claim waits, and the store's key index
-/// puts this phone's key in no log.
+/// puts this phone's key in no log. One the key index puts in a log is recorded as this phone's
+/// ([`rejoin`]) before it is refused: a make or a restore that published and stopped before the
+/// key file recorded it.
 fn no_identity_yet(parts: &Parts, exec: &Executor) -> Result<(), PhoneKeyError> {
     let status = parts.keys.status();
     if status.keys.is_none() {
@@ -513,7 +613,7 @@ fn no_identity_yet(parts: &Parts, exec: &Executor) -> Result<(), PhoneKeyError> 
             ),
         });
     }
-    if let Some(did) = block_on(exec.status()).map_err(rpc)?.did {
+    if let Some(did) = rejoin(parts, exec)? {
         return Err(PhoneKeyError::AlreadyJoined { did });
     }
     Ok(())
@@ -969,6 +1069,11 @@ mod tests {
             second: "abandon".into(),
         };
         assert_eq!(format!("{confirm:?}"), "ConfirmWords");
+        let shown = PhoneScreen::ShowWords {
+            words: vec!["abandon".into(), "zoo".into()],
+        };
+        assert_eq!(format!("{shown:?}"), "ShowWords { words: <2 redacted> }");
+        assert!(!format!("{shown:#?}").contains("zoo"));
     }
 
     #[test]

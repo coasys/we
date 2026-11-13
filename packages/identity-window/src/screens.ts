@@ -595,3 +595,36 @@ export function oneAtATime<T>(call: () => Promise<T>): () => Promise<T> {
       out = null;
     }));
 }
+
+/**
+ * The window's turns: a call's answer is drawn only while its turn is the current one. A cancel ends
+ * the turn, so the late answer of a step it cancelled (a proof of work it stopped, a wait it ended)
+ * is not drawn over the screen the cancel leaves.
+ */
+export function turns(): { take(): () => boolean; end(): void } {
+  let current = 0;
+  return {
+    take() {
+      const mine = current;
+      return () => mine === current;
+    },
+    end() {
+      current += 1;
+    },
+  };
+}
+
+/**
+ * `call`, once the screen is blank and a frame shows it so: `blank` empties the screen, and
+ * `painted` waits for the frame. Cancel and Done go through it. On the phone they clear the mark
+ * that keeps the window out of screenshots, and the words must be off the screen before it goes.
+ */
+export async function blankedBefore<T>(
+  blank: () => void,
+  painted: () => Promise<void>,
+  call: () => Promise<T>,
+): Promise<T> {
+  blank();
+  await painted();
+  return call();
+}
