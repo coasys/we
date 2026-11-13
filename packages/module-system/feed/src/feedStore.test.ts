@@ -275,6 +275,58 @@ describe('the Feed staying live', () => {
   });
 });
 
+describe('whether the reader counts as on the newest line', () => {
+  it('is false until a read has landed, and again after one fails', async () => {
+    /*
+      `followingLive` is the word the bot notice is held back on — a reader on the newest line is
+      assumed to see the line arrive. A Feed still reading, or one whose last read failed, shows
+      nothing, so counting it as read anyway held the notice back from somebody who saw neither it
+      nor the line.
+    */
+    vi.useFakeTimers();
+    const s = busySpace();
+    const { feed, open, close } = mount(s);
+    const live = () => feed.followingLive();
+
+    // Looking, but the first read is still on the wire.
+    s.hold();
+    open();
+    expect(s.windowReads()).toBe(1);
+    expect(live()).toBe(false);
+    s.release();
+    await vi.runAllTimersAsync();
+    expect(live()).toBe(true);
+
+    // And a read that failed is not an answer either.
+    s.fail(true);
+    s.write('TextBlock', 'root-1');
+    await vi.runAllTimersAsync();
+    expect(live()).toBe(false);
+
+    // Coming back reads again — the failure is owed — but the retry on the wire is not an answer
+    // yet: the failed read's `failed` clears as the retry starts, and that alone must not count.
+    s.fail(false);
+    close();
+    await vi.runAllTimersAsync();
+    s.hold();
+    open();
+    expect(live()).toBe(false);
+    s.release();
+    await vi.runAllTimersAsync();
+    expect(live()).toBe(true);
+
+    // A routine re-read under somebody watching does not stop them following.
+    s.hold();
+    s.write('TextBlock', 'root-1');
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(live()).toBe(true);
+    s.release();
+    await vi.runAllTimersAsync();
+    expect(live()).toBe(true);
+    vi.useRealTimers();
+  });
+});
+
 describe('where the Feed starts from', () => {
   it('takes the space collection from the host and reads no Space of its own', async () => {
     /*
@@ -361,6 +413,53 @@ describe('where the Feed starts from', () => {
   6.6–7.2 s of executor time on a real space — so a read is spent only on a change: never on a
   subscription telling the Feed what it already has, one at a time, and never for a Feed nobody sees.
 */
+describe('the transcripts switch', () => {
+  it('re-reads the window when it flips, with the spoken lines no longer filling it', async () => {
+    /*
+      A hidden line no longer counts toward the window, so a call that spoke more than it holds
+      leaves the typed history in view — and flipping the switch reads again: what the window
+      holds changed, which is the one thing a read is spent on.
+    */
+    vi.useFakeTimers();
+    const r = reactive();
+    const [spoken, setSpoken] = r.signal(false);
+    const s = space();
+    s.lines.push({ id: 'msg-1', text: 'typed into the space', author: 'did:ann', createdAt: 1 });
+    s.calls.push({ id: 'call-1', title: 'Call 1', createdAt: 2 });
+    s.said['call-1'] = Array.from({ length: 60 }, (_, i) => ({
+      id: `said-${i}`,
+      text: '…',
+      author: 'did:bo',
+      createdAt: 3 + i,
+      source: 'spoken',
+    }));
+    const feed = createFeed({
+      signal: r.signal,
+      effect: r.effect,
+      state: markState,
+      action: markAction,
+      onDispose: () => {},
+      dataset: () => 'space-1',
+      spaceRoot: () => 'root-1',
+      records: s.records as never,
+      interpretation: undefined,
+      write: async () => null,
+      showSpoken: spoken,
+    });
+    (feed.openFeed as unknown as () => void)();
+    await vi.runAllTimersAsync();
+    const ids = () => (feed.feedRows as unknown as () => { id: string }[])().map((row) => row.id);
+    expect(ids()).toEqual(['msg-1']);
+
+    setSpoken(true);
+    await vi.runAllTimersAsync();
+
+    expect(s.windowReads()).toBe(2);
+    expect(ids()).toContain('said-59');
+    vi.useRealTimers();
+  });
+});
+
 describe('the Feed reading only when something changed', () => {
   it('reads once on mount, though every subscription and the suggestions answer after it', async () => {
     vi.useFakeTimers();
@@ -668,6 +767,52 @@ describe('the Feed grouping by person', () => {
     expect(s.finds.length).toBe(reads);
     // Nobody on screen moved, so the rows drawn are the very same list.
     expect((feed.feedRows as unknown as () => unknown[])()).toBe(drawn);
+    vi.useRealTimers();
+  });
+
+  it('regroups without bringing back the spoken lines this reader keeps hidden', async () => {
+    /*
+      A regroup arranges what the last read found, and that read already left out the spoken lines
+      the transcripts switch hides — so a person arriving merges the two devices and draws no hidden
+      line, with no read.
+    */
+    vi.useFakeTimers();
+    const r = reactive();
+    const s = space();
+    s.found.TaskBlock = [
+      { id: 'task-1', title: 'Book a room', author: LAPTOP, createdAt: 1_000 },
+      { id: 'task-2', title: 'Order lunch', author: DESKTOP, createdAt: 2_000 },
+    ];
+    s.calls.push({ id: 'call-1', title: 'Call 1', createdAt: 500 });
+    s.said['call-1'] = [{ id: 'said-1', text: '…', author: LAPTOP, createdAt: 1_500, source: 'spoken' }];
+    const who = identities(r);
+    const { kernel } = suggestions(r.signal);
+    const feed = createFeed({
+      signal: r.signal,
+      effect: r.effect,
+      state: markState,
+      action: markAction,
+      onDispose: () => {},
+      dataset: () => 'space-1',
+      spaceRoot: () => 'root-1',
+      records: s.records as never,
+      interpretation: kernel as never,
+      identities: who.access,
+      showSpoken: () => false,
+      write: async () => null,
+    });
+    const rows = () => (feed.feedRows as unknown as () => { id: string; kind: string }[])();
+    (feed.openFeed as unknown as () => void)();
+    await vi.runAllTimersAsync();
+    expect(rows().filter((row) => row.kind === 'activity')).toHaveLength(2);
+    const reads = s.finds.length;
+
+    who.resolve({ [LAPTOP]: PERSON, [DESKTOP]: PERSON });
+    await vi.runAllTimersAsync();
+
+    expect(rows().filter((row) => row.kind === 'activity')).toHaveLength(1);
+    expect(rows().map((row) => row.id)).not.toContain('said-1');
+    expect(s.finds.length).toBe(reads);
     vi.useRealTimers();
   });
 
