@@ -527,7 +527,7 @@ describe('a backend that keeps its own config file', () => {
 
     it('works against the server, with no host of its own', async () => {
       const { runtime, calls } = serverBackend();
-      activeShellView = 'settings';
+      setActiveShellView('settings');
       ports = { runtime };
       const store = mount();
 
@@ -544,7 +544,7 @@ describe('a backend that keeps its own config file', () => {
 
     it('shows what only that computer may change, and does not offer it', async () => {
       const { runtime, calls } = serverBackend();
-      activeShellView = 'settings';
+      setActiveShellView('settings');
       ports = { runtime };
       const store = mount();
 
