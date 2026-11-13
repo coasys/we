@@ -262,9 +262,19 @@ export async function readFeedWindow(
       in it: about 18 KB a row, near a megabyte a page, re-read on every refresh.
     */
     ...options.activityTypes.map((entity) =>
-      find(entity, { within: root, order: { createdAt: order }, limit: shown }).then((rows) =>
-        rows.map((row) => ({ row, entity })),
-      ),
+      find(entity, { within: root, order: { createdAt: order }, limit: shown })
+        .then((rows) => rows.map((row) => ({ row, entity })))
+        /*
+          One kind that cannot be read drops only its own rows. A class the space lists as an
+          extraction target can be one this client cannot resolve, and the finds all landing in the
+          same Promise.all used to make one bad class the whole read: the window drew nothing at
+          all. The message and call finds above still fail the read — a Feed without its lines is
+          wrong in a way a missing activity row is not.
+        */
+        .catch((error: unknown) => {
+          console.warn(`[feed] could not read ${entity}`, error);
+          return [];
+        }),
     ),
   ]);
 

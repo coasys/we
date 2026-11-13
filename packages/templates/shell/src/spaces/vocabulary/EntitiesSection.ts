@@ -1264,6 +1264,7 @@ const shapeRow: SchemaNode = {
                 variant: 'ghost',
                 size: 'sm',
                 square: true,
+                label: { $: "'Edit ' + shape.name" },
                 onClick: { $invoke: 'shapeStore.openShapeWizard', args: [{ $: 'shape.id' }] },
               },
               children: [{ type: 'we-icon', props: { name: 'pencil-simple' } }],

@@ -296,7 +296,12 @@ export default class Input extends DesignSystemElement {
   handleKeyDown(e: KeyboardEvent) {
     e.stopPropagation();
     this.dispatchEvent(
-      new CustomEvent('keydown', { detail: { key: e.key, code: e.code }, bubbles: true, composed: true }),
+      new CustomEvent('keydown', {
+        // `isComposing` rides along: an Enter that is still composing is the IME's, not a send.
+        detail: { key: e.key, code: e.code, isComposing: e.isComposing },
+        bubbles: true,
+        composed: true,
+      }),
     );
   }
 
