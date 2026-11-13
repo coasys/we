@@ -1382,11 +1382,11 @@ importers:
   packages/e2e:
     dependencies:
       '@coasys/ad4m':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@c92fd99246b1272c7daf54f00d242a8101dafddb
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m@c92fd99246b1272c7daf54f00d242a8101dafddb
+        specifier: 0.13.1-staging.10
+        version: 0.13.1-staging.10
       '@coasys/ad4m-connect':
-        specifier: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@c92fd99246b1272c7daf54f00d242a8101dafddb
-        version: https://pkg.pr.new/coasys/ad4m/@coasys/ad4m-connect@c92fd99246b1272c7daf54f00d242a8101dafddb
+        specifier: 0.13.1-staging.10
+        version: 0.13.1-staging.10
       '@we/csp':
         specifier: workspace:*
         version: link:../csp
