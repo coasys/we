@@ -1933,8 +1933,8 @@ export function buildTemplateBag<T extends Record<string, unknown>>(stores: T, o
         const bound = method;
         const datasetStore = (stores as Record<string, unknown>).datasetStore as
           { currentDataset?: () => { id?: string } | null | undefined } | undefined;
-        method = (input?: Record<string, unknown>) => {
-          const { draft, ...rest } = (input ?? {}) as Record<string, unknown>;
+        method = (...args: unknown[]) => {
+          const { draft, ...rest } = (args[0] ?? {}) as Record<string, unknown>;
           const request: Record<string, unknown> = { ...rest };
           if (typeof draft === 'string' && draft) request.prefill = draft;
           if (!mayNameASpace) request.perspectiveUuid = datasetStore?.currentDataset?.()?.id;

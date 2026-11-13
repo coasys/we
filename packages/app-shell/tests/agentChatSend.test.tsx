@@ -51,7 +51,7 @@ function enter(container: HTMLElement) {
 const sendButton = (container: HTMLElement) =>
   container.querySelector('we-icon[name="paper-plane-tilt"]')!.closest('we-button')! as HTMLElement;
 
-const openPanel = vi.fn(() => '');
+const openPanel = vi.fn((_panel: string, _inputs?: unknown, _options?: unknown) => '');
 vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
   useShellStore: () => ({ openPanel }),
 }));

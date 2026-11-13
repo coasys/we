@@ -43,7 +43,7 @@ vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({
 vi.mock('../src/frameworks/solid/stores/SpaceStore', () => ({
   useSpaceStore: () => ({ mySpaces: () => [{ uuid: 'creator-uuid', url: 'we://garden', name: 'Garden club' }] }),
 }));
-const mockOpenPanel = vi.fn(() => '');
+const mockOpenPanel = vi.fn((_panel: string, _inputs?: unknown, _options?: unknown) => '');
 vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
   useShellStore: () => ({ openPanel: mockOpenPanel }),
 }));

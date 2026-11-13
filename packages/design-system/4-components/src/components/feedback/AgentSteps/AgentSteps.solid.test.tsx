@@ -35,7 +35,7 @@ describe('a step that wrote', () => {
       false,
     );
     // A settled reply keeps its steps folded — unfold as a reader would.
-    host!.querySelector('we-button')!.click();
+    (host!.querySelector('we-button') as HTMLElement).click();
     expect(host!.textContent).toContain('wrote');
     const rows = host!.querySelectorAll('we-text');
     const wroteRow = [...rows].find((el) => el.textContent?.includes('wrote'))!;
@@ -49,7 +49,7 @@ describe('a step that wrote', () => {
 describe('the steps disclosure', () => {
   it('answers aria-expanded, matching what the caret says', () => {
     mount([{ tool: 'instance_query', outcome: 'ok' }], false);
-    const toggle = host!.querySelector('we-button')!;
+    const toggle = host!.querySelector('we-button') as HTMLElement;
     // Settled and folded: closed until asked for.
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     toggle.click();

@@ -15,7 +15,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChatStore } from '../src/frameworks/solid/stores/ChatStore';
 import { ChatStoreProvider, useChatStore } from '../src/frameworks/solid/stores/ChatStore';
 
-const openPanel = vi.fn(() => '');
+const openPanel = vi.fn((_panel: string, _inputs?: unknown, _options?: unknown) => '');
 
 vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
   useShellStore: () => ({ openPanel }),

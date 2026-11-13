@@ -481,8 +481,8 @@ describe('a template cannot send a chat question or pick its scope', () => {
     dataset?: { id: string } | null;
     gesture?: 'enforce' | 'report';
   }) {
-    const openChat = vi.fn();
-    const openPanel = vi.fn(() => 'i1');
+    const openChat = vi.fn((_input?: unknown) => '');
+    const openPanel = vi.fn((_panel: string, _inputs?: unknown, _options?: unknown) => 'i1');
     const stores = {
       chatStore: { openChat },
       shellStore: { openPanel },
