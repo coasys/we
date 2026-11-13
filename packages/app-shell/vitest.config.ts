@@ -59,9 +59,11 @@ const SOLID_TESTS = [
   'tests/laneSections.test.tsx',
   'tests/edgeLanes.test.tsx',
   'tests/panelInstances.test.tsx',
-  // Mounts the chat twice over real stores — the draft-spent stamp lives in the store's
-  // localStorage, and only the browser build's effects reach it.
+  // Mounts the chat twice over the issued nonce — only the browser build's effects reach the
+  // store's pending map, and a spent nonce must send nothing the second time.
   'tests/agentChatDraft.test.tsx',
+  // The conversation list opens from a real button — what a keyboard reaches is DOM, not a flag.
+  'tests/agentChatList.test.tsx',
   // A space's ask without its perspective id opens nothing, not the global chat.
   'tests/chatStoreOpen.test.tsx',
   // The refusal card rendered — the sentence and the folded error are DOM, not derivations.

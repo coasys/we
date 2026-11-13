@@ -297,40 +297,48 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
           {/* The list: every conversation, newest first; a scoped one wears its lock and space. */}
           <For each={summaries()}>
             {(summary) => (
-              <Row
-                ay="center"
-                gap="200"
-                p="200"
-                r="300"
-                class="agent-chat-row"
-                styles={{ cursor: 'pointer' }}
-                onClick={() => openConversation(summary)}
-              >
-                <Column gap="100" flex="1" minWidth="0">
-                  <we-text fontSize="200" truncate>
-                    {summary.title || 'Chat'}
-                  </we-text>
-                  <Row ay="center" gap="100">
-                    <Show when={summary.scope?.perspectiveUuid}>
-                      <we-icon name="lock" size="xxs" color="accent-text" />
-                    </Show>
-                    <we-text variant="footnote" color="text-faint" truncate>
-                      {summary.scope?.perspectiveUuid
-                        ? spaceName(summary.scope.perspectiveUuid) || 'A space'
-                        : 'Global'}
-                      {` · ${ago(summary.updatedAt ?? summary.createdAt)}`}
-                    </we-text>
-                  </Row>
-                </Column>
-                <we-button
-                  variant="bare"
-                  size="xs"
-                  aria-label="Delete chat"
-                  onClick={(e: Event) => {
-                    e.stopPropagation();
-                    void remove(summary.ref);
+              /*
+                The row is a button: a chat is opened by whatever can press it — pointer, Enter,
+                Space, a switch — and the delete beside it is its own button, not a click nested in
+                a click.
+              */
+              <Row ay="center" gap="100" class="agent-chat-row">
+                <button
+                  type="button"
+                  class="agent-chat-row-open"
+                  style={{
+                    flex: '1',
+                    'min-width': '0',
+                    display: 'flex',
+                    'text-align': 'left',
+                    cursor: 'pointer',
+                    background: 'none',
+                    border: 'none',
+                    padding: 'var(--we-space-200, 8px)',
+                    'border-radius': 'var(--we-radius-300, 8px)',
+                    color: 'inherit',
+                    font: 'inherit',
                   }}
+                  onClick={() => openConversation(summary)}
                 >
+                  <Column gap="100" flex="1" minWidth="0" ax="stretch">
+                    <we-text fontSize="200" truncate>
+                      {summary.title || 'Chat'}
+                    </we-text>
+                    <Row ay="center" gap="100">
+                      <Show when={summary.scope?.perspectiveUuid}>
+                        <we-icon name="lock" size="xxs" color="accent-text" />
+                      </Show>
+                      <we-text variant="footnote" color="text-faint" truncate>
+                        {summary.scope?.perspectiveUuid
+                          ? spaceName(summary.scope.perspectiveUuid) || 'A space'
+                          : 'Global'}
+                        {` · ${ago(summary.updatedAt ?? summary.createdAt)}`}
+                      </we-text>
+                    </Row>
+                  </Column>
+                </button>
+                <we-button variant="bare" size="xs" aria-label="Delete chat" onClick={() => void remove(summary.ref)}>
                   <we-icon name="trash" size="xs" color="text-faint" />
                 </we-button>
               </Row>
