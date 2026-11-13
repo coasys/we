@@ -116,6 +116,49 @@ describe('the refusal card', () => {
     expect(details?.textContent).toContain('Capability is not matched: capability domain perspective');
   });
 
+  it('puts the marker and the label in the one summary line', async () => {
+    const { container } = openedChat({
+      draft: 'write to the other space',
+      perspectiveUuid: 'uuid-9',
+      spaceName: 'Garden club',
+    });
+    await vi.waitFor(() => expect(followed).toBeDefined());
+
+    followed!([
+      { id: 'u1', role: 'user', text: 'write to the other space', createdAt: 0 },
+      {
+        id: 'a1',
+        role: 'assistant',
+        text: '',
+        createdAt: 1,
+        status: 'done',
+        steps: [
+          {
+            tool: 'note_create',
+            outcome: 'error',
+            refused: true,
+            error:
+              'Capability is not matched: capability domain perspective pointer aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee is not covered',
+          },
+        ],
+      },
+    ]);
+
+    /*
+      The native disclosure marker drew on a line of its own above "Details" — a list bullet beside
+      a block element. One summary element holds both now: the marker glyph and the label, laid out
+      as a flex row so the platform's own marker never renders.
+    */
+    const summary = await vi.waitFor(() => {
+      const el = container.querySelector<HTMLElement>('details.agent-chat-refusal-detail summary');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    expect(summary.style.display).toBe('flex');
+    expect(summary.querySelector('.agent-chat-refusal-marker')?.textContent).toBe('▶');
+    expect(summary.textContent).toContain('Details');
+  });
+
   it('words it for the account, not a space, in the global chat — and offers no way "out"', async () => {
     const { container } = openedChat({ draft: 'reach for that' });
     await vi.waitFor(() => expect(followed).toBeDefined());

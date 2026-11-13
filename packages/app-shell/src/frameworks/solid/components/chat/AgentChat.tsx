@@ -464,13 +464,43 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
             <we-text fontSize="200" color="warning-text">
               {refusalSentence(spaceName(scopeUuid() ?? ''), scoped())}
             </we-text>
-            <details class="agent-chat-refusal-detail">
-              <summary>
+            <details
+              class="agent-chat-refusal-detail"
+              onToggle={(e) => {
+                const marker = e.currentTarget.querySelector<HTMLElement>('.agent-chat-refusal-marker');
+                if (marker) marker.style.transform = e.currentTarget.open ? 'rotate(90deg)' : '';
+              }}
+            >
+              {/*
+                `display: flex` on a summary removes the platform's own disclosure marker, which is
+                what lets the marker and the label sit in one line — the native marker renders as a
+                list bullet on its own line beside a block-level we-text.
+              */}
+              <summary
+                style={{
+                  display: 'flex',
+                  'align-items': 'center',
+                  gap: 'var(--we-space-100, 4px)',
+                  cursor: 'pointer',
+                  'list-style': 'none',
+                }}
+              >
+                <span
+                  class="agent-chat-refusal-marker"
+                  aria-hidden="true"
+                  style={{ display: 'inline-block', 'font-size': '0.6em', transition: 'transform 120ms ease' }}
+                >
+                  ▶
+                </span>
                 <we-text variant="footnote" color="text-muted">
                   Details
                 </we-text>
               </summary>
-              <we-text variant="footnote" color="text-muted">
+              <we-text
+                variant="footnote"
+                color="text-muted"
+                style={{ display: 'block', 'margin-top': 'var(--we-space-200, 8px)' }}
+              >
                 {refusal()}
               </we-text>
             </details>
