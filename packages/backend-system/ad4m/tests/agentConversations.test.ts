@@ -391,7 +391,7 @@ describe('the AD4M conversations port', () => {
     expect(list[1].scope).toBeUndefined();
   });
 
-  it('sends, cancels, reads and deletes through the session calls', async () => {
+  it('sends, cancels and deletes through the session calls', async () => {
     const ai = fakeAi();
     const port = createAd4mAgentConversations({ ai } as never);
     await expect(port.send({ id: 's1' }, 'hi')).resolves.toBe('r1');
@@ -400,13 +400,11 @@ describe('the AD4M conversations port', () => {
     expect(ai.cancelTurn).toHaveBeenCalledWith('s1');
     await port.delete({ id: 's1' });
     expect(ai.sessionDelete).toHaveBeenCalledWith('s1');
-    await port.messages({ id: 's1' });
-    expect(ai.sessionMessages).toHaveBeenCalledWith('s1', { limit: 200 });
   });
 
   it('reads the transcript whole — a full page is followed by the page before it', async () => {
     // `sessionMessages` answers at most `limit` rows, newest first; a longer conversation used to
-    // lose everything before the latest 200 without a word said.
+    // lose everything before the latest 200 without a word said. `follow`'s first read pages back.
     const oldRows = [row({ role: 'user', content: text('first'), seq: 1 })];
     const page = Array.from({ length: 200 }, (_, i) => row({ role: 'user', content: text(`m${i + 2}`), seq: i + 2 }));
     const ai = {
@@ -416,12 +414,14 @@ describe('the AD4M conversations port', () => {
       ),
     };
     const port = createAd4mAgentConversations({ ai } as never);
-    const messages = await port.messages({ id: 's1' });
+    const seen: string[][] = [];
+    port.follow({ id: 's1' }, (messages) => seen.push(messages.map((m) => m.text ?? '')));
+    await vi.waitFor(() => expect(seen).toHaveLength(1));
     expect(ai.sessionMessages).toHaveBeenCalledTimes(2);
     expect(ai.sessionMessages).toHaveBeenNthCalledWith(2, 's1', { limit: 200, before: 2 });
-    expect(messages).toHaveLength(201);
-    expect(messages[0].text).toBe('first');
-    expect(messages[200].text).toBe('m201');
+    expect(seen[0]).toHaveLength(201);
+    expect(seen[0][0]).toBe('first');
+    expect(seen[0][200]).toBe('m201');
   });
 
   it('pushes the conversation on each change, merging events with the first read', async () => {

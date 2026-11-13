@@ -309,10 +309,6 @@ export function createAd4mAgentConversations(client: Ad4mClient): AgentConversat
       return onNode(() => ai.cancelTurn(session.id));
     },
 
-    async messages(session) {
-      return conversationOf(await allMessages(session.id));
-    },
-
     follow(session, onChange) {
       let stopped = false;
       /*

@@ -127,8 +127,6 @@ export interface AgentConversationMessage {
 export interface AgentConversationSummary {
   ref: AgentConversationRef;
   title: string;
-  /** The record the conversation is about, by id, where the backend keeps one. */
-  about?: string;
   /** How far the conversation's tools reach — set for a space chat, absent for a global one. */
   scope?: AgentConversationScope;
   createdAt: number;
@@ -141,25 +139,10 @@ export interface AgentConversationsPort {
    * Start a conversation the backend keeps. Its replies' agent works inside `scope` — one
    * perspective, or everything the caller's token reaches when `scope` is absent; the backend
    * keeps that setting with the conversation.
-   *
-   * `keepIn`/`workIn`/`about`/`mayEdit` belong to backends that keep conversations inside a
-   * dataset (see coasys/we#416); a backend that keeps them beside the data ignores them and
-   * reads `scope` instead.
    */
-  create(input: {
-    keepIn?: DatasetHandle;
-    workIn?: DatasetHandle;
-    title?: string;
-    about?: string;
-    mayEdit?: boolean;
-    model?: string;
-    scope?: AgentConversationScope;
-  }): Promise<AgentConversationRef>;
-  /**
-   * Every conversation the caller can see, newest first — those about one record when `about`
-   * is given, those kept in one dataset when `keepIn` is and the backend keeps them there.
-   */
-  list(input?: { keepIn?: DatasetHandle; about?: string }): Promise<AgentConversationSummary[]>;
+  create(input: { title?: string; model?: string; scope?: AgentConversationScope }): Promise<AgentConversationRef>;
+  /** Every conversation the caller can see, newest first. */
+  list(): Promise<AgentConversationSummary[]>;
   /** Rename or re-scope a kept conversation. Absent where the backend keeps no update call. */
   update?(session: AgentConversationRef, input: { title?: string }): Promise<void>;
   /** Delete a conversation, with its messages, stopping a reply that is running. */
@@ -168,17 +151,10 @@ export interface AgentConversationsPort {
    * Write the person's message and start the agent's reply. Resolves once both exist — with the
    * reply's id where the backend assigns one; the reply then runs on its own, and {@link follow}
    * reports it.
-   * `about` is the record the person is looking at, a hint the agent starts from.
    */
-  send(
-    session: AgentConversationRef,
-    text: string,
-    options?: { about?: { entity: string; id: string } },
-  ): Promise<string | void>;
+  send(session: AgentConversationRef, text: string): Promise<string | void>;
   /** Stop the reply that is running. False when none was. */
   cancel(session: AgentConversationRef): Promise<boolean>;
-  /** The conversation, oldest first. */
-  messages(session: AgentConversationRef): Promise<AgentConversationMessage[]>;
   /**
    * Be told the conversation whenever it changes (a message, a reply's status, a step). Called with
    * the whole conversation, oldest first. Returns the way to stop.
