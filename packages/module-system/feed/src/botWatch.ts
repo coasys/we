@@ -24,6 +24,7 @@
  * author's profile time to arrive: a line whose author is not known yet asks for the profile, and is
  * judged when the burst is raised.
  */
+import { SPOKEN } from '@we/messages';
 import type { ModuleIdentityAccess, ModuleStoreDeps, RecordsKernel } from '@we/module-shared';
 
 /** How long lines from one author are gathered into one notice. */
@@ -115,7 +116,7 @@ export function watchBotMessages(deps: BotWatchDeps): void {
       that cannot be seen is not unseen activity — it is skipped before it can join a burst, so it
       neither raises a notice nor pads one ("Sent 3 messages" for one that showed).
     */
-    if (line.source === 'spoken' && deps.spokenHidden()) return;
+    if (line.source === SPOKEN && deps.spokenHidden()) return;
     // Known not to be a bot: nothing to hold. Not known yet: ask, and judge it when the burst ends.
     const who = identities?.get(line.author);
     if (who && who.kind !== 'bot') return;

@@ -10,7 +10,7 @@
  * it scrolls, pages and re-anchors exactly as the transcript does, which way round its reader chose.
  * Two placements of one stream: the module's panel, and a view a template places as a page.
  */
-import { messageLine } from '@we/messages';
+import { messageLine, SPOKEN } from '@we/messages';
 import { lineComposer, panelShell, timeline, timelineMoreAt, timelineOrder } from '@we/schema-kit';
 import type { SchemaNode } from '@we/schema-shared';
 
@@ -63,7 +63,7 @@ const BOT_LINE = 'row.author in modules.feed.botAuthors';
 */
 const VISIBLE =
   'modules.feed.showCallTranscripts ? modules.feed.feedRows : ' +
-  "modules.feed.feedRows.filter(r, !(r.kind == 'line' && r.source == 'spoken'))";
+  `modules.feed.feedRows.filter(r, !(r.kind == 'line' && r.source == '${SPOKEN}'))`;
 
 /** What the window draws: everything, only messages, or only bots' messages — the reader's choice. */
 const ROWS =
