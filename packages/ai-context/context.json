@@ -9463,14 +9463,14 @@
           "ambient": true
         },
         {
+          "name": "canConnectServer",
+          "kind": "state",
+          "doc": "Whether a speech server was found on the node’s machine that this connection may connect in one step."
+        },
+        {
           "name": "canEditProposals",
           "kind": "state",
           "doc": "Whether an edited suggestion can be written back on accept."
-        },
-        {
-          "name": "canInstallModel",
-          "kind": "state",
-          "doc": "Whether this connection may install the model the backend offers."
         },
         {
           "name": "changedIds",
@@ -9498,6 +9498,26 @@
           "name": "confirmTiedDecision",
           "kind": "action",
           "doc": "Carries out the decision waiting in tiedDecision, with everything tied to it."
+        },
+        {
+          "name": "connectError",
+          "kind": "state",
+          "doc": "Why the last one-click setup failed; empty otherwise."
+        },
+        {
+          "name": "connectingServer",
+          "kind": "state",
+          "doc": "A one-click setup is registering the speech server and its model."
+        },
+        {
+          "name": "connectServer",
+          "kind": "action",
+          "doc": "Connects the speech server found on the node’s machine, makes its transcription model the default, and resumes recording that was waiting on one."
+        },
+        {
+          "name": "connectServerLabel",
+          "kind": "state",
+          "doc": "The connect button’s words, naming the server found — \"Use the speech server at localhost:8000\"; empty when none was found."
         },
         {
           "name": "dismissChange",
@@ -9601,26 +9621,6 @@
           "doc": "Whether this agent is in a call right now."
         },
         {
-          "name": "installError",
-          "kind": "state",
-          "doc": "Why the last model install failed; empty otherwise."
-        },
-        {
-          "name": "installingModel",
-          "kind": "state",
-          "doc": "A one-click model install is registering its model."
-        },
-        {
-          "name": "installModel",
-          "kind": "action",
-          "doc": "Installs the model the backend offers and resumes recording that was waiting on one."
-        },
-        {
-          "name": "installModelLabel",
-          "kind": "state",
-          "doc": "The install button’s words, naming the offered model and its size; empty when none is offered."
-        },
-        {
           "name": "invited",
           "kind": "state",
           "doc": "Somebody else in this call is recording and this agent is not, having not opted out."
@@ -9651,19 +9651,19 @@
           "doc": "The record the call this agent is in is writing into, or empty when there is none."
         },
         {
-          "name": "modelDownloading",
-          "kind": "state",
-          "doc": "A transcription model is installed and its weights are still arriving."
-        },
-        {
-          "name": "modelDownloadText",
-          "kind": "state",
-          "doc": "The download line, ready to show — \"Downloading the speech model — 45%\"."
-        },
-        {
           "name": "modelMissing",
           "kind": "state",
           "doc": "No transcription model is installed on this node, as last read."
+        },
+        {
+          "name": "modelUnready",
+          "kind": "state",
+          "doc": "A transcription model is installed and cannot run yet — still downloading, or its server is not answering."
+        },
+        {
+          "name": "modelUnreadyText",
+          "kind": "state",
+          "doc": "Why the model cannot run yet, ready to show — \"Downloading the speech model — 45%\", \"The speech server is not answering\"."
         },
         {
           "name": "open",
@@ -9766,6 +9766,11 @@
           "doc": "The line a reply is being written to — { id, text, author, surface } — or null. `surface` is always 'transcript'."
         },
         {
+          "name": "serverInstallUrl",
+          "kind": "state",
+          "doc": "Where to get a speech server, for when none was found on the node’s machine; empty where this connection may not set one up."
+        },
+        {
           "name": "setProposalField",
           "kind": "action",
           "doc": "Sets one field of the open draft, by property name.",
@@ -9791,7 +9796,7 @@
         {
           "name": "status",
           "kind": "state",
-          "doc": "What the session is doing — idle, no-backend, no-model, no-audio, downloading, starting, listening or error."
+          "doc": "What the session is doing — idle, no-backend, no-model, no-audio, model-unready, starting, listening or error."
         },
         {
           "name": "thresholdPercent",
