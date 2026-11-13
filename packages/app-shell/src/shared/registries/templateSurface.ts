@@ -1694,6 +1694,8 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     takePending: WIRING,
     rememberConversation: WIRING,
     rememberedConversation: WIRING,
+    // Who is signed in is the session's to say — see the store's `provideAgentDid`.
+    provideAgentDid: WIRING,
     closeSheet: ambient('view-state'),
   },
 

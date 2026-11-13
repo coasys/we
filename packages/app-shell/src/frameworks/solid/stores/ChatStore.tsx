@@ -28,7 +28,15 @@
  */
 import { NARROW_VIEWPORT_PX } from '@shared/dockGeometry';
 import { APP_PANEL_SCOPE } from '@shared/registries/panelInstances';
-import { type Accessor, createContext, createSignal, onCleanup, type ParentProps, useContext } from 'solid-js';
+import {
+  type Accessor,
+  createContext,
+  createEffect,
+  createSignal,
+  onCleanup,
+  type ParentProps,
+  useContext,
+} from 'solid-js';
 
 import { useShellStore } from './ShellStore';
 
@@ -108,6 +116,13 @@ export interface ChatStore {
   closeSheet: () => void;
   /** Below the width where a floating panel stops being usable — where `openChat` sends chats. */
   isNarrow: Accessor<boolean>;
+  /**
+   * Tell the store whose chats these are — the signed-in agent's DID. Wiring: `SessionStore`
+   * provides it, and nothing else should. Everything remembered here hangs off it — the
+   * conversation a window returns to, a question waiting on its nonce — and drops when it
+   * changes, so a logout without a reload hands the next agent nothing of the last one's.
+   */
+  provideAgentDid: (did: () => string | undefined) => void;
 }
 
 /** The panel the request lands in, on a window with room for panels. */
@@ -133,14 +148,47 @@ export function ChatStoreProvider(props: ParentProps) {
   }
 
   const [sheet, setSheet] = createSignal<ChatInputs | null>(null);
+
+  /*
+    Whose these records are — the signed-in agent's DID, provided the same way the shell's kept
+    panel instances take theirs. Both maps hang off it: a nonce issued or a conversation kept as
+    one agent is not readable under another, and an inner map's whole contents drop when the DID
+    changes — a logout without a reload, or a switch — rather than waiting for the restart that
+    used to hide the hand-off. See `provideAgentDid`.
+  */
+  const [didOf, setDidOf] = createSignal<(() => string | undefined) | undefined>(undefined);
+  const agentDid = () => didOf()?.() ?? '';
   /*
     Questions an open was issued for, by nonce — host memory, not persisted, so a nonce cannot
     outlive the session that made it or arrive anywhere but the chat that asks for it. Entries
     leave on `takePending` or stay small: one per ask, which is how many a person makes.
   */
-  const pending = new Map<string, PendingQuestion>();
-  // Which conversation each chat window had open — see `rememberConversation`.
-  const open = new Map<string, { ref: { id: string }; title: string; scope?: string }>();
+  const pending = new Map<string, Map<string, PendingQuestion>>();
+  // Which conversation each chat window had open — see `rememberConversation`. Same keying.
+  const open = new Map<string, Map<string, { ref: { id: string }; title: string; scope?: string }>>();
+  const pendingFor = (did: string) => {
+    let mine = pending.get(did);
+    if (!mine) pending.set(did, (mine = new Map<string, PendingQuestion>()));
+    return mine;
+  };
+  const openFor = (did: string) => {
+    let mine = open.get(did);
+    if (!mine) open.set(did, (mine = new Map<string, { ref: { id: string }; title: string; scope?: string }>()));
+    return mine;
+  };
+  /*
+    The identity these hang off changed — both records drop, not just the last agent's share:
+    nothing one agent kept is the next's to find, and nothing is kept to find again if the first
+    agent comes back. `was` tracks what the effect already saw so its first run clears nothing.
+  */
+  let was = agentDid();
+  createEffect(() => {
+    const now = agentDid();
+    if (now === was) return;
+    was = now;
+    pending.clear();
+    open.clear();
+  });
 
   const store: ChatStore = {
     openChat: (input = {}) => {
@@ -164,7 +212,7 @@ export function ChatStoreProvider(props: ParentProps) {
       */
       if (typeof input.draft === 'string' && input.draft.trim()) {
         const nonce = crypto.randomUUID();
-        pending.set(nonce, { text: input.draft, perspectiveUuid: input.perspectiveUuid });
+        pendingFor(agentDid()).set(nonce, { text: input.draft, perspectiveUuid: input.perspectiveUuid });
         inputs.nonce = nonce;
       }
       if (isNarrow()) {
@@ -179,18 +227,20 @@ export function ChatStoreProvider(props: ParentProps) {
       });
     },
     takePending: (nonce) => {
-      const found = pending.get(nonce);
-      if (found) pending.delete(nonce);
+      const mine = pending.get(agentDid());
+      const found = mine?.get(nonce);
+      if (found) mine?.delete(nonce);
       return found;
     },
     rememberConversation: (key, conversation) => {
-      if (conversation) open.set(key, conversation);
-      else open.delete(key);
+      if (conversation) openFor(agentDid()).set(key, conversation);
+      else open.get(agentDid())?.delete(key);
     },
-    rememberedConversation: (key) => open.get(key),
+    rememberedConversation: (key) => open.get(agentDid())?.get(key),
     sheet,
     closeSheet: () => setSheet(null),
     isNarrow,
+    provideAgentDid: (did) => setDidOf(() => did),
   };
 
   return <ChatContext.Provider value={store}>{props.children}</ChatContext.Provider>;

@@ -10,6 +10,7 @@
  * anything being sent.
  */
 import { render } from '@solidjs/testing-library';
+import { createSignal } from 'solid-js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ChatStore } from '../src/frameworks/solid/stores/ChatStore';
@@ -89,5 +90,59 @@ describe('opening a chat', () => {
     const store = withStore();
     // The shape a template would forge — there is no map entry for it to find.
     expect(store.takePending('forged')).toBeUndefined();
+  });
+});
+
+/*
+  Whose records these are changes with the signed-in agent — `SessionStore` hands the store the
+  DID the way it hands the shell's kept instances one, and everything kept hangs off it. A logout
+  without a reload used to leave the last agent's remembered conversation and pending questions
+  where the next sign-in could find them.
+*/
+describe('an identity change', () => {
+  function withDidStore() {
+    const [did, setDid] = createSignal<string | undefined>('did:test:agent-a');
+    let store: ChatStore | undefined;
+    render(() => (
+      <ChatStoreProvider>
+        {(() => {
+          store = useChatStore();
+          store.provideAgentDid(() => did());
+          return null;
+        })()}
+      </ChatStoreProvider>
+    ));
+    return { store: store!, setDid };
+  }
+
+  it('drops the remembered conversation and the pending question with the DID', () => {
+    const { store, setDid } = withDidStore();
+
+    // A is in mid-conversation, with a question still waiting on its nonce.
+    store.rememberConversation('global', { ref: { id: 'conv-a' }, title: 'A’s chat' });
+    store.openChat({ draft: 'a question only A asked' });
+    const nonce = (openPanel.mock.calls.at(-1)![1] as Record<string, unknown>).nonce as string;
+    expect(nonce).toBeTruthy();
+    expect(store.rememberedConversation('global')).toEqual({ ref: { id: 'conv-a' }, title: 'A’s chat' });
+
+    // Sign-out and another agent in, without the reload that used to hide the hand-off.
+    setDid(undefined);
+    setDid('did:test:agent-b');
+
+    // B's chat opens on its list — nothing of A's remembered, and A's nonce answers nothing.
+    expect(store.rememberedConversation('global')).toBeUndefined();
+    expect(store.takePending(nonce)).toBeUndefined();
+
+    // B's own record works — the maps did not die with A's.
+    store.rememberConversation('global', { ref: { id: 'conv-b' }, title: 'B’s chat' });
+    store.openChat({ draft: 'b’s question' });
+    const bNonce = (openPanel.mock.calls.at(-1)![1] as Record<string, unknown>).nonce as string;
+    expect(store.rememberedConversation('global')).toEqual({ ref: { id: 'conv-b' }, title: 'B’s chat' });
+    expect(store.takePending(bNonce)).toEqual({ text: 'b’s question', perspectiveUuid: undefined });
+
+    // Nor does A's state come back if A signs in again — it was dropped, not hidden.
+    setDid('did:test:agent-a');
+    expect(store.rememberedConversation('global')).toBeUndefined();
+    expect(store.takePending(nonce)).toBeUndefined();
   });
 });
