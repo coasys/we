@@ -800,9 +800,10 @@ export function createCallStore(deps: ModuleStoreDeps) {
   /*
     How many synthetic participants the call bar's dev controls have asked for — see `devPeers`.
 
-    A signal rather than a read of `localStorage` per rebuild, so pressing `+` re-solves the stage on
-    the click instead of waiting for whatever roster event happens next. Seeded from storage, which
-    is what makes the count survive the reloads a developer does while iterating.
+    A signal rather than a read per rebuild, so pressing `+` re-solves the stage on the click
+    instead of waiting for whatever roster event happens next. It belongs to the call it is
+    raised in — `teardown` zeroes it, because a count that outlives its call is a fake
+    participant joining the next one unasked.
   */
   const [fakePeerCount, setFakePeerCountSignal] = signal(readDevPeerCount());
 
@@ -1409,6 +1410,14 @@ export function createCallStore(deps: ModuleStoreDeps) {
     focusIsManual = false;
     sharingPeers = new Set();
     setTiles([]);
+    /*
+      Synthetic participants die with the call they were asked in — a fake participant is off
+      unless asked, and "asked" means asked *here*, never inherited from a call that is over or a
+      space that was visited before. `devPeers` holds the count in memory for the session, so the
+      same `+` press is the only way the next call gets one.
+    */
+    stopDevPeers();
+    setFakePeerCountSignal(writeDevPeerCount(0));
   }
 
   /**

@@ -825,6 +825,28 @@ describe('transport and device lifetime', () => {
     expect(store.callId()).toBeNull();
     expect(scopeDisposals()).toBe(1);
   });
+
+  it('starts the next call without the last call’s synthetic participants', async () => {
+    /*
+      The count used to persist — storage first, then a signal that outlived its call — so peers
+      summoned to look at one stage walked into the next call, in whatever space that call was in.
+      A fake participant is off unless asked, in an existing space and in a new one, which means the
+      count belongs to the call it was asked in and dies with it.
+    */
+    const { store } = callable();
+
+    await store.startCall();
+    await Promise.resolve();
+    // `addFakePeer` is absent rather than inert in a production build — see the conditional spread
+    // in the store — so the type is right to doubt it, and a test build has developer features.
+    store.addFakePeer!();
+    store.addFakePeer!();
+    expect(store.fakePeerCount!()).toBe(2);
+
+    store.leave();
+    await Promise.resolve();
+    expect(store.fakePeerCount!(), 'the count outlived its call').toBe(0);
+  });
   describe('where a call looks for NAT traversal', () => {
     /**
      * The ceiling this removes is real and was invisible: with STUN alone, two peers behind

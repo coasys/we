@@ -21,6 +21,7 @@ import {
   devCursorAnchors,
   devCursorMarks,
   devCursorsAvailable,
+  devCursorsVisible,
   readDevCursorCount,
   writeDevCursorCount,
 } from './devCursors';
@@ -555,7 +556,9 @@ export function createLiveStore(deps: ModuleStoreDeps) {
    * the timer below for why they move at all.
    */
   function fakeMarks(): LiveDecoration[] {
-    if (!devCursorsAvailable) return [];
+    // `devCursorsVisible` rather than only `devCursorsAvailable`: the switch muted mid-session
+    // must take the marks with the controls, or they are left on screen with no way to remove them.
+    if (!devCursorsAvailable || !devCursorsVisible()) return [];
     const count = fakeCount();
     if (count <= 0) return [];
     /*
