@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 
 import type { SchemaNode, TemplatePanel } from '@we/schema-shared';
 import { evaluateExpression, listFunctions, parseExpression } from '@we/schema-shared';
-import { KIND_CARD_RULES, kindGlyph, STATE_FILLS, stateIcon } from '@we/template-kit';
+import { KIND_CARD_RULES, kindGlyph, STATE_FILLS, stateIcon, TREE_EDGE_RULES, treeLayout } from '@we/template-kit';
 import { describe, expect, it } from 'vitest';
 
 import * as showcase from './index.ts';
@@ -51,7 +51,6 @@ import {
   toggleKindShown,
   toggleLens,
 } from './WorkshopKey.ts';
-import { TREE_EDGE_RULES, TREE_LAYOUT } from './WorkshopTree.ts';
 
 /** The workshop's own name for the call on screen — see `CALL_EXPR` in its schema. */
 const CALL_EXPR = 'routeStore.params.call ? routeStore.params.call : modules.call.callRecordId';
@@ -2439,7 +2438,7 @@ describe('the tree’s spine over model relations', () => {
 
   it('selects in the layout the same lines it keeps strong', () => {
     const spine = (value: string) =>
-      (run((TREE_LAYOUT as { $: string }).$, { treeMode: true, spine: value }) as { options: { spine: unknown } })
+      (run((treeLayout() as { $: string }).$, { treeMode: true, spine: value }) as { options: { spine: unknown } })
         .options.spine;
     expect(spine('rel:*')).toEqual({ field: 'type', value: 'relation' });
     expect(spine('rel:Note.about')).toEqual({ field: 'data.relation', value: 'Note.about' });
