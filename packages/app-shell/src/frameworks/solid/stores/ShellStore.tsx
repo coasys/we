@@ -74,6 +74,7 @@ import {
   widestMin,
   withChromeCovered,
 } from '@shared/dockGeometry';
+import { isAppPanel } from '@shared/panelScope';
 import type { ScreenSource } from '@shared/platform/types';
 import { appEdgeFrames, appFrame } from '@shared/registries/appFrame';
 import {
@@ -4599,6 +4600,19 @@ export function ShellStoreProvider(props: ParentProps) {
       const declared = declaredPanels().find((entry) => entry.id === panel && entry.node && !entry.module);
       if (!declared) {
         console.warn(`[shellStore] openPanel: "${panel}" is not a panel this interface supplies.`);
+        return '';
+      }
+      /*
+        The app's own panels are not the interface's to open. `chat-global`/`chat-space` arrive
+        merged under it, so the id resolves — and the instance would open a chat on the template's
+        inputs where `chatStore.openChat` is the way a template asks: pinned to a scope it may hold,
+        prefilled rather than sent. The bag marks a template's call `viaTemplate`; host code reaches
+        the same panel without it, which is why the mark and not the panel decides.
+      */
+      if (options.viaTemplate && isAppPanel(declared)) {
+        console.warn(
+          `[shellStore] openPanel: "${panel}" is the app's own — a template opens a chat through chatStore.openChat.`,
+        );
         return '';
       }
       const id = instanceDockId(panel, options.key ?? instanceKeyOf(inputs));

@@ -76,6 +76,9 @@ const SOLID_TESTS = [
   'tests/agentChatSend.test.tsx',
   // Mounts trees through the real renderer to say which registry a template may not reach.
   'tests/chatTrustBoundary.test.tsx',
+  // A template's openPanel aimed at the app's chat panels: the real store, the real declarations,
+  // the real bag, and the real panel host between the call and a mounted AgentChat.
+  'tests/appPanelBoundary.test.tsx',
   // The sheet is a dialog: focus moves in and is trapped, Escape closes, drag cancels clean.
   'tests/agentChatSheet.test.tsx',
   // The subject is the mount itself: the body element must stay the same node while other panel
