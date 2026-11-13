@@ -4723,6 +4723,11 @@ export const contextData: ContextData = {
           kind: 'action',
           doc: 'Writes a message straight into the space, outside any call — with its marks, when the composer gave any.',
         },
+        {
+          name: 'showCallTranscripts',
+          kind: 'state',
+          doc: 'Whether this reader asked the Feed to draw the lines calls spoke — off until they do, in this space only.',
+        },
         { name: 'showMoreFeed', kind: 'action', doc: 'Grows the Feed’s window by a page.', ambient: true },
         {
           name: 'startReply',
@@ -4755,6 +4760,13 @@ export const contextData: ContextData = {
           description: 'A notice when a bot writes in the space while you are not reading the Feed.',
           type: 'boolean',
           levels: ['agent'],
+        },
+        {
+          key: 'showCallTranscripts',
+          label: 'Show call transcripts',
+          description: 'Draw the lines calls spoke in this space’s Feed, among the written ones.',
+          type: 'boolean',
+          levels: ['agent-in-space'],
         },
       ],
       activities: {},
