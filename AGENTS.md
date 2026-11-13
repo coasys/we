@@ -4109,10 +4109,13 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - callAgents — Everyone in this call, recording or not — the denominator of coverage; empty outside a call.
   - callId — The record extraction decisions for this call are written against — the call’s own record from its first second.
   - callOnScreenLive — Somebody is in the call the address names right now.
+  - canConnectServer — Whether a speech server was found on the node’s machine that this connection may connect in one step.
   - canEditProposals — Whether an edited suggestion can be written back on accept.
-  - canInstallModel — Whether this connection may install the model the backend offers.
   - changedIds — Agreed records carrying a suggested change, by id.
   - collectionId — The record this call’s transcript lives in, or null until something has been said.
+  - connectError — Why the last one-click setup failed; empty otherwise.
+  - connectingServer — A one-click setup is registering the speech server and its model.
+  - connectServerLabel — The connect button’s words, naming the server found — "Use the speech server at localhost:8000"; empty when none was found.
   - editingProposal — The suggestion open for editing, or empty when none is.
   - enabled — Whether this agent is recording their own microphone into the call.
   - error — Why the session stopped, when status is error; empty otherwise.
@@ -4127,18 +4130,15 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - extractTurns — How many transcript turns the last pass read.
   - heard — Something has been said that the record does not hold yet — buffered, being written or still with the model.
   - inCall — Whether this agent is in a call right now.
-  - installError — Why the last model install failed; empty otherwise.
-  - installingModel — A one-click model install is registering its model.
-  - installModelLabel — The install button’s words, naming the offered model and its size; empty when none is offered.
   - invited — Somebody else in this call is recording and this agent is not, having not opted out.
   - invitedBy — The agent id of the first peer recording this call, or empty when none is.
   - level — Microphone loudness as the voice detector measures it, 0–1.
   - levelPercent — The microphone level as a CSS width for a meter.
   - listening — True only while actually transcribing — what a record button highlights on.
   - liveCollectionId — The record the call this agent is in is writing into, or empty when there is none.
-  - modelDownloading — A transcription model is installed and its weights are still arriving.
-  - modelDownloadText — The download line, ready to show — "Downloading the speech model — 45%".
   - modelMissing — No transcription model is installed on this node, as last read.
+  - modelUnready — A transcription model is installed and cannot run yet — still downloading, or its server is not answering.
+  - modelUnreadyText — Why the model cannot run yet, ready to show — "Downloading the speech model — 45%", "The speech server is not answering".
   - open — Whether the transcript panel is open.
   - partialCoverage — Someone in this call is not being transcribed.
   - passRunning — Whether any extraction pass is running right now, this node’s or a peer’s.
@@ -4151,8 +4151,9 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - reconnecting — The link to the speech model dropped and is being re-established; what is said meanwhile is held.
   - recordingCall — This agent’s recording of the call it is in, wherever the call is — { enabled, listening, available }. For the call bar; the other members answer for the space on screen.
   - replyingTo — The line a reply is being written to — { id, text, author, surface } — or null. `surface` is always 'transcript'.
+  - serverInstallUrl — Where to get a speech server, for when none was found on the node’s machine; empty where this connection may not set one up.
   - speaking — Whether the microphone level currently counts as speech.
-  - status — What the session is doing — idle, no-backend, no-model, no-audio, downloading, starting, listening or error.
+  - status — What the session is doing — idle, no-backend, no-model, no-audio, model-unready, starting, listening or error.
   - thresholdPercent — The speech-onset threshold as a CSS width, to mark on the same meter.
   - tiedBusy — Whether a confirmed tied decision is still being written.
   - tiedDecision — A decision waiting on confirmation because it decides others too — { kind, title, body, detail, confirmLabel } — or null.
@@ -4173,13 +4174,13 @@ Needs: kernels records, presence, media, transcription, interpretation; permissi
   - closeExtractionPanel — Closes the extraction panel.
   - closePanel — Closes the transcript panel.
   - confirmTiedDecision — Carries out the decision waiting in tiedDecision, with everything tied to it.
+  - connectServer — Connects the speech server found on the node’s machine, makes its transcription model the default, and resumes recording that was waiting on one.
   - dismissChange — Dismisses one suggested change, leaving the record as it was.
   - editProposal — Opens one suggestion for editing, seeded with what the model proposed.
   - editUtterance — Corrects the words on a line of the transcript, marking a spoken line as corrected.
   - extract — Runs one extraction pass over the call this agent is transcribing.
   - extractCollection — Runs one extraction pass over any call’s record, by id.
   - flushNow — Writes what has been heard so far without waiting for the buffer to fill.
-  - installModel — Installs the model the backend offers and resumes recording that was waiting on one.
   - openExtractionPanel — Opens the extraction panel.
   - openPanel — Opens the transcript panel.
   - readTranscriptFromStart — Shows the beginning of the transcript, to be read forwards.
