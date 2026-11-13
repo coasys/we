@@ -910,7 +910,7 @@ const peerExchangeModal: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $: 'runtimeStore.error && !count(runtimeStore.pending)' },
+                condition: { $: 'runtimeStore.error' },
                 then: { type: 'we-alert', props: { tone: 'danger' }, children: [{ $: 'runtimeStore.error' }] },
               },
             },

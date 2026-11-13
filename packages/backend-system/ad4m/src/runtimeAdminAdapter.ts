@@ -158,6 +158,18 @@ export interface Ad4mRuntimeOptions {
   administersNode?: boolean;
 
   /**
+   * Whether this connection holds the executor's operator credential (the admin credential, or no
+   * token on loopback) rather than a grant. Defaults to true, as {@link administersNode} does: the
+   * desktop hosts connect with the credential of the executor they start.
+   *
+   * Narrower than both other questions. The executor keeps some calls to the operator alone, and a
+   * grant never passes that guard, whatever its capabilities — so a connection that administers its
+   * node through an app token holding `*` (WE web against a local executor) is still refused them.
+   * See `holdsOperatorCredential`.
+   */
+  operator?: boolean;
+
+  /**
    * The capability list this connection's token carries, or omitted when it cannot be read.
    *
    * Omitted means *unknown*, and is treated as "assume permitted" — a desktop host authenticating

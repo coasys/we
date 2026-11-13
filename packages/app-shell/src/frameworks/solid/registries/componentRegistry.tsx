@@ -95,6 +95,15 @@ const WeCubeOnDemand = lazy(() => import('../components/3d/WeCube'));
 const EditingBar = lazy(() => import('@we/editor').then((m) => ({ default: m.EditingBar })));
 const TemplateCard = lazy(() => import('@we/editor').then((m) => ({ default: m.TemplateCard })));
 const AiPanel = lazy(() => import('@we/editor/ai').then((m) => ({ default: m.AiPanel })));
+
+/*
+  The AI chat, and the sheet it becomes on a phone. One body (`AgentChat`) behind the global panel,
+  the space's floating window and the sheet — `AgentChatSheet` only hosts it when a narrow window
+  asks. Host-only: a template declares the panels (`chat-global`/`chat-space`), it does not name
+  the body.
+*/
+const AgentChatOnDemand = lazy(() => import('../components/chat/AgentChat'));
+const AgentChatSheetOnDemand = lazy(() => import('../components/chat/AgentChatSheet'));
 /*
   One entry per editor panel, because each is its own dock now.
 
@@ -210,6 +219,27 @@ export const componentRegistry: ComponentRegistry = {
 };
 
 /**
+ * The registry host-authored schema renders against — the template's, plus the pieces a template
+ * must never mount itself.
+ *
+ * The AI chats are the reason this exists. `AgentChat` reaches the executor's sessions and sends
+ * real questions, so it may be named only where the host controls the tree — the app's own schema,
+ * shell overlays and panel frames — never inside a space template's, where a synced interface
+ * could put it anywhere and drive it through `panel.inputs` it chooses. A template renders against
+ * `componentRegistry`, which simply does not know the name: it is absent rather than refused, the
+ * same answer every unregistered component gets.
+ *
+ * Panels declared by the *app* template do render `AgentChat` — they are how the chats exist at
+ * all. `TemplatePanelBody` picks this registry for those declarations alone, by whether the panel
+ * object is one of the app's own rather than by anything the interface can say about itself.
+ */
+export const chromeComponentRegistry: ComponentRegistry = {
+  ...componentRegistry,
+  AgentChat: AgentChatOnDemand,
+  AgentChatSheet: AgentChatSheetOnDemand,
+};
+
+/**
  * Add what the registered modules contribute to the registry a template renders against.
  *
  * Called once at boot, after the seed's modules have registered and before anything renders. The
@@ -220,10 +250,16 @@ export const componentRegistry: ComponentRegistry = {
  */
 export function registerModuleComponents(contributed: Record<string, unknown>): void {
   for (const [name, component] of Object.entries(contributed)) {
-    if (name in componentRegistry && componentRegistry[name] !== component) {
+    /*
+      Checked against the chrome registry — the superset — so a module cannot name `AgentChat`
+      either: that is the host's component, and shadowing it there would make the template
+      registry's absence of it meaningless.
+    */
+    if (name in chromeComponentRegistry && chromeComponentRegistry[name] !== component) {
       console.warn(`module component "${name}" would shadow a host component and was not registered`);
       continue;
     }
     (componentRegistry as Record<string, unknown>)[name] = component;
+    (chromeComponentRegistry as Record<string, unknown>)[name] = component;
   }
 }
