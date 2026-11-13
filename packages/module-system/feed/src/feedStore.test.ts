@@ -303,11 +303,24 @@ describe('whether the reader counts as on the newest line', () => {
     await vi.runAllTimersAsync();
     expect(live()).toBe(false);
 
-    // Coming back reads again — the failure is owed — and a landed read counts.
+    // Coming back reads again — the failure is owed — but the retry on the wire is not an answer
+    // yet: the failed read's `failed` clears as the retry starts, and that alone must not count.
     s.fail(false);
     close();
     await vi.runAllTimersAsync();
+    s.hold();
     open();
+    expect(live()).toBe(false);
+    s.release();
+    await vi.runAllTimersAsync();
+    expect(live()).toBe(true);
+
+    // A routine re-read under somebody watching does not stop them following.
+    s.hold();
+    s.write('TextBlock', 'root-1');
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(live()).toBe(true);
+    s.release();
     await vi.runAllTimersAsync();
     expect(live()).toBe(true);
     vi.useRealTimers();
