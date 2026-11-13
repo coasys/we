@@ -78,9 +78,15 @@ describe('agent conversations, live', () => {
 
     const session = await client.ai.session(ref.id);
     expect(session.defaultPerspective).toBe(space.uuid);
-    expect(session.capabilities).toEqual([
-      { with: { domain: 'perspective', pointers: [space.uuid] }, can: SCOPED_CAN },
-    ]);
+    // The executor may hand the grant back as one capability per action (a multi-user executor
+    // does), so compare the grants the capabilities give, not how they are grouped.
+    const grants = (caps: { with: { domain: string; pointers: string[] }; can: string[] }[]) =>
+      caps
+        .flatMap((c) => c.can.map((can) => `${c.with.domain}|${[...c.with.pointers].sort().join(',')}|${can}`))
+        .sort();
+    expect(grants(session.capabilities)).toEqual(
+      grants([{ with: { domain: 'perspective', pointers: [space.uuid] }, can: SCOPED_CAN }]),
+    );
   });
 
   it('lists both, the scoped one wearing its scope', async () => {
