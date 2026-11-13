@@ -166,18 +166,31 @@ export type {
   UploadFile,
 } from './backendPorts';
 export type {
-  AiApiProtocol,
-  AiLocalModelSource,
+  AiCapability,
+  AiDetectedEndpoint,
+  AiDiscoveredModel,
+  AiEndpoint,
+  AiEndpointDraft,
+  AiEndpointHealth,
+  AiEndpointKind,
   AiModel,
-  AiModelDiscoveryQuery,
   AiModelDraft,
   AiModelKind,
-  AiModelSource,
-  AiModelSourceDraft,
   AiModelStatus,
+  AiModelStatusEvent,
+  AiRecommendedModel,
+  AiServerInstallLink,
   AiTask,
+  LocalAiGpu,
+  LocalAiHardware,
+  LocalAiPlan,
+  LocalAiPlannedModel,
+  LocalAiPlannedRuntime,
+  LocalAiPort,
+  LocalAiProgress,
+  LocalAiRuntimeStatus,
+  LocalAiStatus,
   ModelAdminPort,
-  TokenizerSource,
 } from './modelAdmin';
 export type {
   AuthorizedApp,
@@ -305,13 +318,7 @@ export type {
   KeyLogStoreBehind,
   KeyLogView,
 } from './identity';
-export type {
-  TranscriptionModelOffer,
-  TranscriptionRecord,
-  TranscriptionPort,
-  TranscriptionStream,
-  TranscriptionTuning,
-} from './transcription';
+export type { TranscriptionRecord, TranscriptionPort, TranscriptionSetup, TranscriptionStream } from './transcription';
 export type {
   InterpretationPort,
   InterpretationProposal,

@@ -1,18 +1,18 @@
 /**
  * `TranscriptionPort` over AD4M's AI client.
  *
- * Thin by design: the executor already runs Whisper and already segments what it is fed, so this is
- * a translation between two vocabularies rather than an implementation of anything. What it does add
- * is the guarantees the port promises and the client does not — that feeding a closed stream is
- * harmless, and that opening an unusable model fails loudly rather than producing silence.
+ * Thin by design: the executor forwards what it is fed to the speech server a transcription model
+ * runs on and publishes the text, so this is a translation between two vocabularies rather than an
+ * implementation of anything. What it does add is the guarantees the port promises and the client
+ * does not — that feeding a closed stream is harmless, and that opening an unusable model fails
+ * loudly rather than producing silence.
  */
-import type { Ad4mClient } from '@coasys/ad4m';
+import { type Ad4mClient, AI_RECOMMENDED_MODELS, AI_SERVER_INSTALL_LINKS, type AIModel } from '@coasys/ad4m';
 import type {
-  TranscriptionModelOffer,
   TranscriptionPort,
   TranscriptionRecord,
+  TranscriptionSetup,
   TranscriptionStream,
-  TranscriptionTuning,
 } from '@we/backend-shared';
 
 import { CAP_DOMAIN, CAP_VERB, createCapabilityCheck } from './capabilities';
@@ -21,33 +21,39 @@ import type { Ad4mRuntimeOptions } from './runtimeAdminAdapter';
 /** The executor's own name for what the port calls a transcription model. */
 const TRANSCRIPTION_MODEL_TYPE = 'TRANSCRIPTION';
 
-/**
- * The model the transcribe panel offers to install.
- *
- * `whisper_small` because the executor runs Whisper on the CPU unless it was built with a GPU feature
- * explicitly, and on a CPU the larger models fall behind speech — the executor queues audio without
- * limit, so a model slower than real time delays every line further than the last. `small` keeps up
- * and is a clear step above `tiny`. Changing the choice is this constant and its size.
- */
-const OFFERED_MODEL: TranscriptionModelOffer = {
-  name: 'Whisper (on-device)',
-  // The executor's stt plan picks the model for the device; ~1 GB is the right order for the
-  // Whisper-class download it installs.
-  downloadBytes: 967_000_000,
-};
+/** The model a speech server is asked for first: the one AD4M recommends, when the server has it. */
+const RECOMMENDED_MODEL = AI_RECOMMENDED_MODELS.find((m) => m.modelType === TRANSCRIPTION_MODEL_TYPE)?.openAiAudio;
 
-interface Ad4mAiModel {
-  id?: string;
-  name?: string;
-  modelType?: string;
-  /** The endpoint serving the model — the #1713 shape. Absent on a client that predates it. */
-  endpointId?: string;
+/** A model's readiness, in the port's words, from the status its endpoint last reported. */
+function readiness(model: AIModel): Pick<TranscriptionRecord, 'ready' | 'progress' | 'detail'> {
+  const status = model.status;
+  switch (status?.state) {
+    case 'READY':
+      return { ready: true };
+    case 'PULLING':
+      return {
+        ready: false,
+        progress: Math.max(0, Math.min(100, Math.round(status.progress ?? 0))),
+        detail: 'The speech model is downloading',
+      };
+    case 'MISSING':
+      return { ready: false, detail: `The speech server does not have ${model.remoteModel}` };
+    case 'ENDPOINT_DOWN':
+      return { ready: false, detail: 'The speech server is not answering' };
+    default:
+      return { ready: false, detail: 'Waiting for the speech server to be checked' };
+  }
 }
 
-/** What a model's loading status says about whether it can run, and how far it has got if not. */
-interface Readiness {
-  ready: boolean;
-  progress?: number;
+/** `localhost:8000` from `http://127.0.0.1:8000`, for a sentence. */
+function hostOf(baseUrl: string): string {
+  try {
+    const url = new URL(baseUrl);
+    const loopback = ['127.0.0.1', '[::1]', 'localhost'].includes(url.hostname);
+    return `${loopback ? 'localhost' : url.hostname}${url.port ? `:${url.port}` : ''}`;
+  } catch {
+    return baseUrl;
+  }
 }
 
 export function createAd4mTranscriptionPort(
@@ -56,123 +62,48 @@ export function createAd4mTranscriptionPort(
 ): TranscriptionPort {
   const client = backendClient as Ad4mClient;
   const granted = createCapabilityCheck(options.capabilities ?? null);
-  // The same two halves `createAd4mRuntimeAdmin` requires before offering "Add a model": the grant,
-  // and the node being ours. A guest's grant includes AI CREATE; a guest adding a gigabyte to a node
+  // The same two halves `createAd4mModelAdmin` requires before offering "Add a model": the grant,
+  // and the node being ours. A guest's grant includes AI CREATE; a guest wiring a server into a node
   // other people share is still not a button to offer.
-  const canInstall = (options.administersNode ?? true) && granted(CAP_DOMAIN.ai, CAP_VERB.create);
+  const canSetUp = (options.administersNode ?? true) && granted(CAP_DOMAIN.ai, CAP_VERB.create);
 
-  /**
-   * Whether a model can actually run right now.
-   *
-   * A separate call per model, because readiness is not on `Model` — the executor keeps it in
-   * `modelLoadingStatus`, which is a different query. Cheap in practice: a deployment has one
-   * transcription model, rarely two.
-   *
-   * Defaults to ready when the query fails. This flag exists so a caller can say "no model is
-   * installed" instead of showing an empty transcript, and refusing to open a stream because a
-   * *diagnostic* call failed would trade a working feature for a better error message.
-   */
-  /**
-   * Whether a model can actually run right now.
-   *
-   * A remote model — one on an endpoint the executor does not manage — has nothing to download:
-   * it counts as ready unless the executor says it failed (`ENDPOINT_DOWN`, `MISSING`, a `PULLING`
-   * in flight on a hosted Ollama). `UNKNOWN` only says no health probe has run yet, which is the
-   * ordinary state of an endpoint nobody has called — it is not a verdict and must not hold a
-   * working model closed. Only a managed endpoint's own model waits for `READY`, because that is
-   * the one that can still be downloading.
-   *
-   * Defaults to ready when the query fails. This flag exists so a caller can say "no model is
-   * installed" instead of showing an empty transcript, and refusing to open a stream because a
-   * *diagnostic* call failed would trade a working feature for a better error message.
-   */
-  async function readiness(modelId: string, remote: boolean): Promise<Readiness> {
-    try {
-      const status = await client.ai.modelStatus(modelId);
-      if (!status) return { ready: true };
-      const ready = remote
-        ? status.state !== 'ENDPOINT_DOWN' && status.state !== 'MISSING' && status.state !== 'PULLING'
-        : status.state === 'READY';
-      // Per file rather than overall: the executor reports the tokenizer, the weights and the config
-      // each from 0 to 100. The weights are nearly all of it, so the number is honest where it
-      // matters and briefly optimistic at either end.
-      return ready ? { ready } : { ready, progress: Math.max(0, Math.min(100, Math.round(status.progress ?? 0))) };
-    } catch {
-      // No row yet — the executor raises EntityNotFound rather than returning an empty status, and an
-      // API-backed model has nothing to download so may never get one.
-      return { ready: true };
-    }
+  async function transcriptionModels(): Promise<AIModel[]> {
+    return (await client.ai.getModels()).filter((m) => m.modelType === TRANSCRIPTION_MODEL_TYPE);
   }
 
-  /**
-   * The transcription models, each marked remote or not.
-   *
-   * "Remote" means *not provably managed*: the endpoint is listed and not `managed`, or the endpoint
-   * cannot be seen at all — the list is operator-only and a guest gets none, this model's row is
-   * absent, or the executor predates the endpoint API and has nothing to list. In every one of
-   * those cases the model is taken at the executor's word (ready unless it reports a failure)
-   * rather than held to a download nobody can see — the same conservatism the failed status call
-   * gets. Only a model on an endpoint listed `managed` waits for `READY`.
-   */
-  async function transcriptionModels(): Promise<{ model: Ad4mAiModel; remote: boolean }[]> {
-    const all = ((await client.ai.getModels()) as unknown as Ad4mAiModel[]).filter(
-      (m) => m.modelType === TRANSCRIPTION_MODEL_TYPE,
-    );
-    let managed: Set<string> | null = null;
-    if (typeof client.ai.endpoints === 'function') {
-      try {
-        managed = new Set((await client.ai.endpoints()).filter((e) => e.managed).map((e) => e.id));
-      } catch {
-        // Unknowable — a guest refused the operator-only list, or the API is not there at all.
-        // Either way the managed set stays empty and every model reads as remote, never held to
-        // a download nobody can see.
-      }
-    }
-    return all.map((model) => ({
-      model,
-      remote: !(model.endpointId && managed?.has(model.endpointId)),
-    }));
+  /** A server on the executor's machine that says it transcribes — a speech server before anything else. */
+  async function findSpeechServer() {
+    const found = (await client.ai.detectEndpoints()).filter((e) => e.capabilities.includes('transcription'));
+    return found.find((e) => e.kind === 'OPEN_AI_AUDIO') ?? found[0] ?? null;
   }
 
   const port: TranscriptionPort = {
     async models(): Promise<TranscriptionRecord[]> {
       const transcription = await transcriptionModels();
 
-      // Asked for rather than guessed at. It throws when the user has never chosen one, which is
-      // ordinary on a fresh install — the first model then stands in, so `isDefault` still names
-      // something a caller can open.
+      // No default is ordinary on a fresh node — the first model then stands in, so `isDefault`
+      // still names something a caller can open.
       let defaultId = '';
       try {
-        defaultId = String((await client.ai.getDefaultModel(TRANSCRIPTION_MODEL_TYPE))?.id ?? '');
+        defaultId = (await client.ai.getDefaultModel(TRANSCRIPTION_MODEL_TYPE))?.id ?? '';
       } catch {
-        defaultId = String(transcription[0]?.model.id ?? '');
+        // An older refusal for "none set" — the same answer.
       }
+      if (!defaultId) defaultId = transcription[0]?.id ?? '';
 
-      return Promise.all(
-        transcription.map(async ({ model: m, remote }) => {
-          const id = String(m.id ?? '');
-          return {
-            id,
-            name: m.name ?? id,
-            isDefault: id === defaultId,
-            // A model still downloading accepts a stream and then never resolves any text, which is
-            // indistinguishable from silence at the callback. Surfacing it lets a caller say so.
-            ...(await readiness(id, remote)),
-          };
-        }),
-      );
+      return transcription.map((m) => ({
+        id: m.id,
+        name: m.name || m.id,
+        isDefault: m.id === defaultId,
+        // A model its server cannot run accepts a stream and then never resolves any text, which is
+        // indistinguishable from silence at the callback. Surfacing it lets a caller say so.
+        ...readiness(m),
+      }));
     },
 
-    async open(
-      modelId: string,
-      onText: (text: string) => void,
-      tuning?: TranscriptionTuning,
-    ): Promise<TranscriptionStream> {
+    async open(modelId: string, onText: (text: string) => void): Promise<TranscriptionStream> {
       if (!modelId) throw new Error('transcription: no model given');
 
-      // `tuning` is no longer forwarded: the executor applies its own fixed voice-activity gate and
-      // never read the parameters it was sent, so the client dropped the argument entirely.
-      void tuning;
       const streamId = await client.ai.openTranscriptionStream(modelId, onText);
 
       // Guards every call rather than trusting the caller to stop feeding first. Audio arrives from
@@ -184,11 +115,12 @@ export function createAd4mTranscriptionPort(
         async feed(audio: Float32Array): Promise<void> {
           if (!open || audio.length === 0) return;
           /*
-            Rejects whenever the utterance did not land, and the reasons are not all about the
-            stream: this is an HTTP POST of raw audio, so a node reached over the network refuses one
-            for a dropped connection or a timeout as readily as for a stream it no longer has. None
-            of those is a closed stream from the caller's side, so none is swallowed — the caller
-            holds the utterance and re-establishes the stream.
+            Resolves once the speech server has answered for this utterance and its text is
+            published, and rejects whenever the utterance did not land. The reasons are not all about
+            the stream: this is an HTTP POST of raw audio, so a node reached over the network refuses
+            one for a dropped connection or a timeout as readily as for a stream it no longer has, and
+            the speech server can fail it too. None of those is a closed stream from the caller's
+            side, so none is swallowed — the caller holds the utterance and re-establishes the stream.
 
             **How big an utterance may be is not this executor's answer to give.** It accepts 10 MB;
             the reverse proxy in front of a hosted node typically accepts 1 MB, and refuses the rest
@@ -196,11 +128,8 @@ export function createAd4mTranscriptionPort(
             status never reaches this code. There is nothing to branch on here, which is why the
             worklet's utterance cap is the thing that keeps a body under it.
 
-            Note the executor is *supposed* to reap a stream nobody has fed for thirty seconds, and
-            does not: its cleanup task is shut down moments after the node starts, so an abandoned
-            stream lives until the process ends. Worth knowing in both directions — a long pause in a
-            call is not what ends a stream today, and a node that has been up a while is carrying
-            every stream every client ever abandoned.
+            The executor reaps a stream nobody has fed for a while, so a long pause in a call can end
+            one; the caller's re-establishing covers that the same way.
           */
           await client.ai.feedTranscriptionStream(streamId, audio);
         },
@@ -213,35 +142,57 @@ export function createAd4mTranscriptionPort(
     },
   };
 
-  if (!canInstall) return port;
+  if (!canSetUp) return port;
 
   return {
     ...port,
 
-    offeredModel: () => OFFERED_MODEL,
+    /** Looks on the executor's machine for a speech server. A failed look is "nothing found". */
+    async setup(): Promise<TranscriptionSetup> {
+      const server = await findSpeechServer().catch(() => null);
+      return {
+        found: server ? `Use the speech server at ${hostOf(server.baseUrl)}` : '',
+        installUrl: AI_SERVER_INSTALL_LINKS.speaches,
+      };
+    },
 
     /*
-      Runs the executor's own local-AI install for the speech-to-text service.
-
-      Per-model local installs are gone with the `local` block: `ai.localInstall` downloads the
-      stt runtime and the model the executor's own plan picks for this device, starts it and
-      registers it as a managed endpoint with its models — and resolves when all of that is done.
-      The offer's name and size are therefore approximate: the plan chooses, which is what the
-      `whisper_small` preset used to approximate anyway.
+      Registers the server as an endpoint — or reuses the one already registered at that address —
+      then the model on it, and makes it the default when there is none. `ai.addModel` answers once
+      the row is written, so there is nothing to wait out here; whether it can run is `models()`'s to
+      report.
     */
-    async installOfferedModel(): Promise<void> {
-      // A second press, or two panels, must not install twice.
-      if (
-        ((await client.ai.getModels()) as unknown as Ad4mAiModel[]).some(
-          (m) => m.modelType === TRANSCRIPTION_MODEL_TYPE,
-        )
-      )
-        return;
+    async connectFound(): Promise<void> {
+      // A second press, or two panels, must not register the model twice: the executor keeps both.
+      if ((await transcriptionModels()).length > 0) return;
 
-      await client.ai.localInstall({ services: ['stt'] });
+      const server = await findSpeechServer();
+      if (!server) throw new Error('No speech server is running on the node’s machine');
 
-      if ((await transcriptionModels()).length === 0) {
-        throw new Error('transcription: the install finished but no speech-to-text model was registered');
+      const offered = (await client.ai.discoverModels({ kind: server.kind, baseUrl: server.baseUrl })).filter((m) =>
+        m.capabilities.includes('transcription'),
+      );
+      const remoteModel = (offered.find((m) => m.id === RECOMMENDED_MODEL) ?? offered[0])?.id;
+      if (!remoteModel) throw new Error(`The speech server at ${hostOf(server.baseUrl)} has no transcription model`);
+
+      const endpoint =
+        (await client.ai.endpoints()).find(
+          (e) => e.baseUrl.replace(/\/+$/, '') === server.baseUrl.replace(/\/+$/, ''),
+        ) ??
+        (await client.ai.addEndpoint({
+          name: `Speech server (${hostOf(server.baseUrl)})`,
+          kind: server.kind,
+          baseUrl: server.baseUrl,
+        }));
+
+      const id = await client.ai.addModel({
+        name: remoteModel,
+        modelType: TRANSCRIPTION_MODEL_TYPE,
+        endpointId: endpoint.id,
+        remoteModel,
+      });
+      if (!(await client.ai.getDefaultModel(TRANSCRIPTION_MODEL_TYPE).catch(() => null))) {
+        await client.ai.setDefaultModel(TRANSCRIPTION_MODEL_TYPE, id);
       }
     },
   };

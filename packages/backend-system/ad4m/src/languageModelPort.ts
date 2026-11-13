@@ -1,4 +1,4 @@
-import type { Ad4mClient, AiEndpoint, AIModel } from '@coasys/ad4m';
+import type { Ad4mClient, AIModel } from '@coasys/ad4m';
 import type {
   ConversationReply,
   ConversationRequest,
@@ -7,6 +7,7 @@ import type {
 } from '@we/backend-shared';
 
 import { readChatStream, toOpenAiMessages, toOpenAiTools } from './openaiChat';
+import { rpcStatus } from './rpcStatus';
 
 /**
  * The AD4M executor's AI service, as the neutral language-model port.
@@ -102,91 +103,46 @@ export function createAd4mLanguageModelPort(
 /**
  * The default LLM, and whether it can answer — without prompting it.
  *
- * The endpoint now owns the URL, the key and the protocol; the model just names it (`endpointId`)
- * and the id the endpoint serves (`remoteModel`). The endpoint's own health check answers what a
- * discovery call used to — which models it listed, last time it asked — and it is checked server
- * side, with the stored key, so it says things a client-side probe could not.
+ * The executor knows: a model is a reference to one an endpoint serves, and `ai.modelStatus` answers
+ * from the endpoint's last health check — whether the server answers, and whether it lists the model.
+ * That costs no tokens and fails the ways a completion would. `UNKNOWN` (not checked yet) is
+ * `unchecked`, not ready: saying so would be a guess dressed as a check.
  */
 async function defaultModelStatus(client: Ad4mClient): Promise<LanguageModelStatus> {
   let model: AIModel | null = null;
   try {
     model = await client.ai.getDefaultModel('LLM');
   } catch {
-    // No default set reads as an error from the executor; to a status line it is simply none.
+    // An executor without the AI service has no default either; to a status line it is simply none.
   }
   if (!model) return { state: 'none', name: '', model: '', detail: '' };
 
-  const name = model.name;
-  const id = model.remoteModel;
-
-  // The endpoint list is operator-only: a guest's read falls back to the model's own status.
-  let endpoint: AiEndpoint | undefined;
+  const { name, remoteModel } = model;
+  let status = model.status;
   try {
-    endpoint = (await client.ai.endpoints()).find((e) => e.id === model.endpointId);
-  } catch {
-    // Refused (403) or an older node: say what the model's own status can.
+    status = await client.ai.modelStatus(model.id);
+  } catch (err) {
+    // A session refused the call outright (403) learns nothing about the model from it.
+    if (rpcStatus(err) !== 403) return { state: 'error', name, model: remoteModel, detail: messageOf(err) };
   }
 
-  if (!endpoint) {
-    try {
-      const status = await client.ai.modelStatus(model.id);
-      if (status.state === 'READY') return { state: 'ready', name, model: id, detail: '' };
-      if (status.state === 'PULLING') {
-        return { state: 'loading', name, model: id, detail: `Downloading ${Math.round(status.progress ?? 0)}%` };
-      }
-      // The model's own status carries the endpoint's answers too — a caller who may not list
-      // endpoints still deserves the error, not a shrug.
-      if (status.state === 'ENDPOINT_DOWN') {
-        return { state: 'error', name, model: id, detail: status.detail || 'The endpoint cannot be reached' };
-      }
-      if (status.state === 'MISSING') {
-        return {
-          state: 'error',
-          name,
-          model: id,
-          detail: status.detail || `The service does not list a model called ${id}`,
-        };
-      }
-    } catch {
-      // Fall through to the honest answer for a model nothing can check.
-    }
-    return { state: 'unchecked', name, model: id, detail: '' };
+  switch (status?.state) {
+    case 'READY':
+      return { state: 'ready', name, model: remoteModel, detail: '' };
+    case 'PULLING':
+      return { state: 'loading', name, model: remoteModel, detail: `Downloading ${Math.round(status.progress ?? 0)}%` };
+    case 'MISSING':
+      return {
+        state: 'error',
+        name,
+        model: remoteModel,
+        detail: `The server does not list a model called ${remoteModel}`,
+      };
+    case 'ENDPOINT_DOWN':
+      return { state: 'error', name, model: remoteModel, detail: 'The server this model runs on is not answering' };
+    default:
+      return { state: 'unchecked', name, model: remoteModel, detail: '' };
   }
-
-  // A managed endpoint is the executor's own local runtime: the model's status is the truth.
-  if (endpoint.managed) {
-    try {
-      const status = await client.ai.modelStatus(model.id);
-      if (status.state === 'READY') return { state: 'ready', name, model: id, detail: '' };
-      const detail =
-        status.state === 'PULLING'
-          ? `Downloading ${Math.round(status.progress ?? 0)}%`
-          : status.detail || status.state || 'Loading';
-      return { state: 'loading', name, model: id, detail };
-    } catch (err) {
-      return { state: 'error', name, model: id, detail: messageOf(err) };
-    }
-  }
-
-  // A remote endpoint: its last health check is the answer discovery used to probe for.
-  const health = endpoint.health;
-  if (health.state === 'REACHABLE') {
-    // A listing names dated versions (`claude-x-20250929`) that an alias (`claude-x`) resolves to.
-    const listed =
-      !health.servedModels.length ||
-      health.servedModels.some((candidate) => candidate === id || candidate.startsWith(`${id}-`));
-    if (!listed) {
-      return { state: 'error', name, model: id, detail: `The service does not list a model called ${id}` };
-    }
-    return { state: 'ready', name, model: id, detail: '' };
-  }
-  if (health.state === 'UNAUTHORIZED') {
-    return { state: 'error', name, model: id, detail: health.detail || 'The endpoint refused its key' };
-  }
-  if (health.state === 'UNREACHABLE') {
-    return { state: 'error', name, model: id, detail: health.detail || 'The endpoint cannot be reached' };
-  }
-  return { state: 'unchecked', name, model: id, detail: '' };
 }
 
 function messageOf(err: unknown): string {
@@ -255,7 +211,9 @@ async function converse(
 
 /**
  * The executor wraps every failure in OpenAI's `{ error: { message } }` envelope, and the message is
- * the part a person can act on — "No default LLM model configured", a provider refusing the key.
+ * the part a person can act on — no default LLM model on the executor and how to get one, a provider
+ * refusing the key. Passed on as it stands, never matched: the executor words its refusals for its
+ * own audience and rewords them between releases.
  */
 async function failureMessage(response: Response): Promise<string> {
   const body = await response.text().catch(() => '');

@@ -1,10 +1,9 @@
 /**
- * The transcription port's install and progress, over a stand-in AI client.
+ * The transcription port's readiness, streams and one-step setup, over a stand-in AI client.
  *
- * Local installs are the executor's own now — `ai.localInstall` picks the model, fetches it, and
- * resolves when done — so the ways this can go wrong are all quiet: a second install on top of a
- * working one, an install that finishes having registered nothing, or a guest offered a button the
- * node should not have.
+ * Worth testing because every way it goes wrong is quiet: a model whose server is down read as
+ * ready (a stream that never produces text), a second registration of the same model, a server
+ * registered twice, or a guest offered a button the node should not have.
  */
 import { describe, expect, it } from 'vitest';
 
@@ -14,193 +13,152 @@ interface Row {
   id: string;
   name: string;
   modelType: string;
-  endpointId?: string;
+  endpointId: string;
+  remoteModel: string;
+  status: { state: string; progress?: number };
 }
 
-interface EndpointRow {
-  id: string;
-  managed: boolean;
+const speaches = {
+  kind: 'OPEN_AI_AUDIO',
+  baseUrl: 'http://127.0.0.1:8000',
+  capabilities: ['transcription', 'speech'],
+  servedModels: ['speaches-ai/Kokoro-82M', 'Systran/faster-whisper-small'],
+};
+
+function row(status: Row['status'], id = 'm'): Row {
+  return { id, name: 'Whisper', modelType: 'TRANSCRIPTION', endpointId: 'e', remoteModel: 'whisper', status };
 }
 
-/** An AI client whose `localInstall` registers a transcription row — like a finished download. */
+/** An AI client with a speech server on loopback, which records what is registered. */
 function client({
   rows = [] as Row[],
-  installsNothing = false,
-  refuse = false,
-  status = {} as Record<string, unknown>,
-  endpoints = undefined as EndpointRow[] | undefined | (() => Promise<EndpointRow[]>),
+  detected = [speaches] as unknown[],
+  endpoints = [] as { id: string; baseUrl: string }[],
+  served = [
+    { id: 'speaches-ai/Kokoro-82M', capabilities: ['speech'] },
+    { id: 'Systran/faster-whisper-small', capabilities: ['transcription'] },
+  ],
+  defaultModel = null as { id: string } | null,
 } = {}) {
-  const installs: unknown[] = [];
-  let liveRows = rows;
+  const calls: { method: string; args: unknown[] }[] = [];
+  const record = (method: string, ...args: unknown[]) => calls.push({ method, args });
   return {
-    installs,
+    calls,
     ai: {
-      getModels: async () => liveRows,
-      getDefaultModel: async () => null,
-      modelStatus: async () => status,
-      // Absent by default: the pre-endpoint API shape, where every model was the executor's own.
-      ...(endpoints !== undefined
-        ? { endpoints: typeof endpoints === 'function' ? endpoints : async () => endpoints }
-        : {}),
-      localInstall: async (input: unknown) => {
-        installs.push(input);
-        if (refuse) throw new Error('capability denied');
-        if (!installsNothing) {
-          liveRows = [...liveRows, { id: 'new', name: 'Whisper small', modelType: 'TRANSCRIPTION' }];
-        }
-      },
+      getModels: async () => rows,
+      getDefaultModel: async () => defaultModel,
+      detectEndpoints: async () => detected,
+      endpoints: async () => endpoints,
+      discoverModels: async (params: unknown) => (record('discoverModels', params), served),
+      addEndpoint: async (input: { baseUrl: string }) => (record('addEndpoint', input), { id: 'e-new', ...input }),
+      addModel: async (input: unknown) => (record('addModel', input), 'new'),
+      setDefaultModel: async (...args: unknown[]) => record('setDefaultModel', ...args),
+      openTranscriptionStream: async (...args: unknown[]) => (record('open', ...args), 'stream'),
     },
   };
 }
 
-describe('offeredModel', () => {
-  it('offers the executor’s own speech model, with its size, where this connection runs the node', () => {
-    const port = createAd4mTranscriptionPort(client());
-    expect(port.offeredModel?.()).toEqual({ name: 'Whisper (on-device)', downloadBytes: 967_000_000 });
+describe('models', () => {
+  it('is ready only when its server says so', async () => {
+    const [ready] = await createAd4mTranscriptionPort(client({ rows: [row({ state: 'READY' })] })).models();
+    expect(ready).toMatchObject({ id: 'm', ready: true, isDefault: true });
+    expect(ready).not.toHaveProperty('progress');
+  });
+
+  it('says why a model cannot run', async () => {
+    const port = createAd4mTranscriptionPort(
+      client({
+        rows: [row({ state: 'ENDPOINT_DOWN' }, 'a'), row({ state: 'MISSING' }, 'b'), row({ state: 'UNKNOWN' }, 'c')],
+      }),
+    );
+    const [down, missing, unknown] = await port.models();
+    expect(down).toMatchObject({ ready: false, detail: 'The speech server is not answering' });
+    expect(missing).toMatchObject({ ready: false, detail: 'The speech server does not have whisper' });
+    expect(unknown.ready).toBe(false);
+  });
+
+  it('reports how far a pull has got', async () => {
+    const [model] = await createAd4mTranscriptionPort(
+      client({ rows: [row({ state: 'PULLING', progress: 41.6 })] }),
+    ).models();
+    expect(model).toMatchObject({ ready: false, progress: 42 });
+  });
+});
+
+describe('open', () => {
+  it('opens a stream with the model and the callback alone', async () => {
+    const c = client();
+    const onText = () => {};
+    await createAd4mTranscriptionPort(c).open('m', onText);
+    expect(c.calls).toEqual([{ method: 'open', args: ['m', onText] }]);
+  });
+});
+
+describe('setup', () => {
+  it('names a speech server running on the node’s machine', async () => {
+    const setup = await createAd4mTranscriptionPort(client()).setup?.();
+    expect(setup?.found).toBe('Use the speech server at localhost:8000');
+    expect(setup?.installUrl).toMatch(/^https:\/\//);
+  });
+
+  it('finds nothing where no server transcribes, and still says where to get one', async () => {
+    const setup = await createAd4mTranscriptionPort(
+      client({ detected: [{ ...speaches, kind: 'OLLAMA', capabilities: ['chat'] }] }),
+    ).setup?.();
+    expect(setup?.found).toBe('');
+    expect(setup?.installUrl).toBeTruthy();
   });
 
   it('offers nothing to a guest on somebody else’s node', () => {
     const port = createAd4mTranscriptionPort(client(), { administersNode: false });
-    expect(port.offeredModel).toBeUndefined();
-    expect(port.installOfferedModel).toBeUndefined();
+    expect(port.setup).toBeUndefined();
+    expect(port.connectFound).toBeUndefined();
   });
 
   it('offers nothing where the grant does not include adding a model', () => {
     const port = createAd4mTranscriptionPort(client(), {
       capabilities: [{ with: { domain: 'artificial intelligence', pointers: ['*'] }, can: ['READ'] }],
     });
-    expect(port.offeredModel).toBeUndefined();
+    expect(port.setup).toBeUndefined();
   });
 });
 
-describe('installOfferedModel', () => {
-  it('runs the executor’s own install for speech-to-text, and registers nothing itself', async () => {
+describe('connectFound', () => {
+  it('registers the server, its recommended transcription model, and makes it the default', async () => {
     const c = client();
-    const port = createAd4mTranscriptionPort(c);
-
-    await port.installOfferedModel?.();
-
-    expect(c.installs).toEqual([{ services: ['stt'] }]);
-  });
-
-  it('does not install a second model when one is already there', async () => {
-    const c = client({ rows: [{ id: 'm', name: 'Whisper', modelType: 'TRANSCRIPTION' }] });
-    const port = createAd4mTranscriptionPort(c);
-
-    await port.installOfferedModel?.();
-
-    expect(c.installs).toEqual([]);
-  });
-
-  it('throws the install’s refusal', async () => {
-    const port = createAd4mTranscriptionPort(client({ refuse: true }));
-
-    await expect(port.installOfferedModel?.()).rejects.toThrow('capability denied');
-  });
-
-  it('throws when the install finishes with no speech model registered', async () => {
-    const port = createAd4mTranscriptionPort(client({ installsNothing: true }));
-
-    await expect(port.installOfferedModel?.()).rejects.toThrow('no speech-to-text model');
-  });
-});
-
-describe('models', () => {
-  it('reports how far a download has got while the model is not ready', async () => {
-    const c = client({
-      rows: [{ id: 'm', name: 'Whisper small', modelType: 'TRANSCRIPTION' }],
-      status: { state: 'PULLING', progress: 41.6 },
+    await createAd4mTranscriptionPort(c).connectFound?.();
+    expect(c.calls.map((call) => call.method)).toEqual([
+      'discoverModels',
+      'addEndpoint',
+      'addModel',
+      'setDefaultModel',
+    ]);
+    expect(c.calls[1].args[0]).toMatchObject({ kind: 'OPEN_AI_AUDIO', baseUrl: 'http://127.0.0.1:8000' });
+    expect(c.calls[2].args[0]).toEqual({
+      name: 'Systran/faster-whisper-small',
+      modelType: 'TRANSCRIPTION',
+      endpointId: 'e-new',
+      remoteModel: 'Systran/faster-whisper-small',
     });
-
-    const [model] = await createAd4mTranscriptionPort(c).models();
-
-    expect(model).toMatchObject({ id: 'm', ready: false, progress: 42 });
+    expect(c.calls[3].args).toEqual(['TRANSCRIPTION', 'new']);
   });
 
-  it('leaves progress out once the model is ready', async () => {
-    const c = client({
-      rows: [{ id: 'm', name: 'Whisper small', modelType: 'TRANSCRIPTION' }],
-      status: { state: 'READY', progress: 100 },
-    });
-
-    const [model] = await createAd4mTranscriptionPort(c).models();
-
-    expect(model.ready).toBe(true);
-    expect(model).not.toHaveProperty('progress');
+  it('reuses an endpoint already registered at that address', async () => {
+    const c = client({ endpoints: [{ id: 'e-old', baseUrl: 'http://127.0.0.1:8000/' }] });
+    await createAd4mTranscriptionPort(c).connectFound?.();
+    expect(c.calls.map((call) => call.method)).not.toContain('addEndpoint');
+    expect(c.calls.find((call) => call.method === 'addModel')?.args[0]).toMatchObject({ endpointId: 'e-old' });
   });
 
-  it('reads a model whose status check fails as ready — the diagnostic must not hide a working one', async () => {
-    const c = client({ rows: [{ id: 'm', name: 'Whisper small', modelType: 'TRANSCRIPTION' }] });
-    c.ai.modelStatus = async () => {
-      throw new Error('EntityNotFound');
-    };
-
-    const [model] = await createAd4mTranscriptionPort(c).models();
-
-    expect(model.ready).toBe(true);
+  it('does not register a second model when one is already there', async () => {
+    const c = client({ rows: [row({ state: 'READY' })] });
+    await createAd4mTranscriptionPort(c).connectFound?.();
+    expect(c.calls).toEqual([]);
   });
 
-  it('counts a remote model ready unless the executor says it failed', async () => {
-    // A remote transcription endpoint often has no model listing at all, so its status stays
-    // `UNKNOWN` — no verdict, not a failure. Reading anything but `READY` as "downloading" marked
-    // every working remote speech model unready forever.
-    const c = client({
-      rows: [{ id: 'm', name: 'Remote whisper', modelType: 'TRANSCRIPTION', endpointId: 'ep-remote' }],
-      endpoints: [{ id: 'ep-remote', managed: false }],
-      status: { state: 'UNKNOWN' },
-    });
-
-    const [model] = await createAd4mTranscriptionPort(c).models();
-
-    expect(model.ready).toBe(true);
-  });
-
-  it('honours the executor’s no on a remote model — a failed endpoint is not ready', async () => {
-    for (const state of ['ENDPOINT_DOWN', 'MISSING', 'PULLING']) {
-      const c = client({
-        rows: [{ id: 'm', name: 'Remote whisper', modelType: 'TRANSCRIPTION', endpointId: 'ep-remote' }],
-        endpoints: [{ id: 'ep-remote', managed: false }],
-        status: { state },
-      });
-      const [model] = await createAd4mTranscriptionPort(c).models();
-      expect(model.ready).toBe(false);
-    }
-  });
-
-  it('waits for READY only on the executor’s own model — a managed endpoint can still be pulling', async () => {
-    const c = client({
-      rows: [{ id: 'm', name: 'Local whisper', modelType: 'TRANSCRIPTION', endpointId: 'ep-local' }],
-      endpoints: [{ id: 'ep-local', managed: true }],
-      status: { state: 'UNKNOWN' },
-    });
-
-    const [model] = await createAd4mTranscriptionPort(c).models();
-
-    expect(model.ready).toBe(false);
-  });
-
-  it('takes an executor without the endpoint API as remote — nothing to wait a download on', async () => {
-    // `ai.endpoints` missing entirely: a pre-endpoints client or executor. No endpoint can be
-    // proven managed, so the model is taken at the status call's word — `UNKNOWN` is no verdict.
-    const c = client({
-      rows: [{ id: 'm', name: 'Old-node whisper', modelType: 'TRANSCRIPTION', endpointId: 'ep-x' }],
-      status: { state: 'UNKNOWN' },
-    });
-    const [model] = await createAd4mTranscriptionPort(c).models();
-    expect(model.ready).toBe(true);
-  });
-
-  it('takes a guest’s unseen endpoint list as remote — the model is not this node’s download', async () => {
-    const c = client({
-      rows: [{ id: 'm', name: 'Hosted whisper', modelType: 'TRANSCRIPTION', endpointId: 'ep-x' }],
-      endpoints: async () => {
-        throw new Error('Forbidden');
-      },
-      status: { state: 'UNKNOWN' },
-    });
-
-    const [model] = await createAd4mTranscriptionPort(c).models();
-
-    expect(model.ready).toBe(true);
+  it('refuses a server with no transcription model rather than registering a speech one', async () => {
+    const c = client({ served: [{ id: 'speaches-ai/Kokoro-82M', capabilities: ['speech'] }] });
+    await expect(createAd4mTranscriptionPort(c).connectFound?.()).rejects.toThrow('has no transcription model');
+    expect(c.calls.map((call) => call.method)).toEqual(['discoverModels']);
   });
 });

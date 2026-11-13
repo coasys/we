@@ -1,182 +1,321 @@
 /**
- * The models an AD4M executor runs, as the neutral `ModelAdminPort`.
+ * The models an AD4M executor uses, as the neutral `ModelAdminPort`.
+ *
+ * The executor runs no model itself: every model is a reference to one an **endpoint** serves (an
+ * Ollama, a llama-server, vLLM, a speech server, OpenAI, Anthropic), and the endpoint holds the
+ * address, the key and the health. So this adapter administers both, and translates AD4M's
+ * `SCREAMING_CASE` vocabulary into the port's.
  *
  * Gated by the same two questions as runtime administration (see `Ad4mRuntimeOptions`): reading
  * wherever the token's grant allows, changing only where the grant allows it *and* the node is
  * ours. The store reads capability off the port's shape, so a member left off is a control that
  * does not appear.
  */
-import type { Ad4mClient, AiEndpoint, AIModel, EndpointKind, ModelInput, ModelType } from '@coasys/ad4m';
+import {
+  type Ad4mClient,
+  AI_RECOMMENDED_MODELS,
+  AI_SERVER_INSTALL_LINKS,
+  type AiCapability as Ad4mCapability,
+  type AiEndpoint as Ad4mEndpoint,
+  type AIModel,
+  type EndpointHealth,
+  type EndpointKind,
+  type LocalAiHardware as Ad4mLocalHardware,
+  type LocalAiPlan as Ad4mLocalPlan,
+  type LocalAiProgress as Ad4mLocalProgress,
+  type LocalAiService,
+  type LocalAiStatus as Ad4mLocalStatus,
+  type ModelInput,
+  type ModelStatus,
+  type ModelType,
+} from '@coasys/ad4m';
 import type {
-  AiApiProtocol,
+  AiCapability,
+  AiEndpoint,
+  AiEndpointDraft,
+  AiEndpointHealth,
+  AiEndpointKind,
   AiModel,
   AiModelDraft,
   AiModelKind,
-  AiModelSource,
-  AiModelSourceDraft,
+  AiModelStatus,
+  AiRecommendedModel,
+  LocalAiHardware,
+  LocalAiPlan,
+  LocalAiPort,
+  LocalAiProgress,
+  LocalAiStatus,
   ModelAdminPort,
 } from '@we/backend-shared';
 
 import { CAP_DOMAIN, CAP_VERB, createCapabilityCheck } from './capabilities';
-import { recordMissingMethod } from './missingMethods';
 import type { Ad4mRuntimeOptions } from './runtimeAdminAdapter';
-
-/**
- * The executor's name for each wire format — now the *endpoint's* kind: the endpoint owns the URL,
- * the key and the protocol; a model only names it.
- */
-const PROTOCOL_TO_AD4M: Record<AiApiProtocol, EndpointKind> = {
-  openai: 'OPEN_AI',
-  anthropic: 'ANTHROPIC',
-  ollama: 'OLLAMA',
-};
-
-/**
- * An unrecognised endpoint kind reads as OpenAI, which is what every remote endpoint was before
- * there was a choice — and what the executor itself assumes when none is given.
- *
- * Every kind the executor answers with must be named here. One that was not read as OpenAI, and the
- * next save wrote it back as one: an Ollama endpoint edited in settings lost its own provider.
- */
-function toProtocol(kind: unknown): AiApiProtocol {
-  const type = String(kind).toUpperCase();
-  if (type === 'ANTHROPIC') return 'anthropic';
-  if (type === 'OLLAMA') return 'ollama';
-  return 'openai';
-}
 
 const KIND_TO_AD4M: Record<AiModelKind, ModelType> = {
   llm: 'LLM',
   embedding: 'EMBEDDING',
   transcription: 'TRANSCRIPTION',
+  speech: 'SPEECH',
 };
 
-function toKind(modelType: ModelType): AiModelKind {
-  if (modelType === 'EMBEDDING') return 'embedding';
-  if (modelType === 'TRANSCRIPTION') return 'transcription';
-  return 'llm';
+const KIND_FROM_AD4M: Record<ModelType, AiModelKind> = {
+  LLM: 'llm',
+  EMBEDDING: 'embedding',
+  TRANSCRIPTION: 'transcription',
+  SPEECH: 'speech',
+};
+
+const ENDPOINT_KIND_TO_AD4M: Record<AiEndpointKind, EndpointKind> = {
+  ollama: 'OLLAMA',
+  'llama-server': 'LLAMA_SERVER',
+  vllm: 'VLLM',
+  openai: 'OPEN_AI',
+  anthropic: 'ANTHROPIC',
+  'openai-audio': 'OPEN_AI_AUDIO',
+  'openai-compatible': 'OPEN_AI_COMPATIBLE',
+};
+
+const ENDPOINT_KIND_FROM_AD4M = Object.fromEntries(
+  Object.entries(ENDPOINT_KIND_TO_AD4M).map(([ours, theirs]) => [theirs, ours]),
+) as Record<EndpointKind, AiEndpointKind>;
+
+/** The model type each capability serves, so a capability list can be read as kinds. */
+const CAPABILITY_FROM_AD4M: Record<Ad4mCapability, AiCapability> = {
+  chat: 'chat',
+  embeddings: 'embeddings',
+  transcription: 'transcription',
+  speech: 'speech',
+};
+
+export function toModelStatus(status: ModelStatus | null | undefined): AiModelStatus {
+  const detail = status?.detail ? { detail: status.detail } : {};
+  switch (status?.state) {
+    case 'READY':
+      return { state: 'ready' };
+    case 'MISSING':
+      return { state: 'missing', ...detail };
+    case 'ENDPOINT_DOWN':
+      return { state: 'endpoint-down', ...detail };
+    case 'PULLING':
+      return { state: 'pulling', progress: Math.max(0, Math.min(100, Math.round(status.progress ?? 0))) };
+    default:
+      return { state: 'unknown', ...detail };
+  }
 }
 
-/**
- * AD4M's model record, read as a source.
- *
- * A model is now a row on an *endpoint*: the endpoint owns the URL, the key, the protocol and the
- * context ceiling; the model names the endpoint and the id the endpoint serves it under. An
- * endpoint the executor manages itself (`managed` — installed by `ai.localInstall`) is the
- * successor to the old `local` block: the executor picks and fetches its own models now, so it
- * reads as a preset nobody has to name.
- *
- * An endpoint the caller cannot see (the list is operator-only) is a source guessed as remote
- * with an empty URL — the honest shape for "a model somebody else's node runs". `predates` marks
- * the harder case: an executor that never had the endpoint API, where the blank reads as "executor
- * too old" rather than as an unset field.
- */
-function toSource(model: AIModel, endpoints: ReadonlyMap<string, AiEndpoint>, predates: boolean): AiModelSource {
-  const endpoint = endpoints.get(model.endpointId);
-  if (!endpoint) {
-    return {
-      kind: 'api',
-      protocol: 'openai',
-      baseUrl: '',
-      hasApiKey: false,
-      model: model.remoteModel,
-      ...(predates ? { endpointUnlisted: true } : {}),
-    };
-  }
-  if (endpoint.managed) {
-    return { kind: 'preset', name: model.remoteModel };
-  }
+function toHealth(health: EndpointHealth): AiEndpointHealth {
+  const state = health.state === 'UNKNOWN' ? 'unknown' : (health.state.toLowerCase() as AiEndpointHealth['state']);
+  return { state, detail: health.detail ?? '', models: health.servedModels ?? [] };
+}
+
+function toCapabilities(capabilities: Ad4mCapability[] | undefined): AiCapability[] {
+  return (capabilities ?? []).map((capability) => CAPABILITY_FROM_AD4M[capability]).filter(Boolean);
+}
+
+function toEndpoint(endpoint: Ad4mEndpoint): AiEndpoint {
   return {
-    kind: 'api',
-    protocol: toProtocol(endpoint.kind),
+    id: endpoint.id,
+    name: endpoint.name,
+    kind: ENDPOINT_KIND_FROM_AD4M[endpoint.kind] ?? 'openai-compatible',
     baseUrl: endpoint.baseUrl,
     hasApiKey: endpoint.hasApiKey,
-    model: model.remoteModel,
+    capabilities: toCapabilities(endpoint.capabilities),
     ...(endpoint.maxNumCtx ? { maxContext: endpoint.maxNumCtx } : {}),
+    ...(endpoint.requestTimeoutSecs ? { requestTimeoutSecs: endpoint.requestTimeoutSecs } : {}),
+    ...(endpoint.maxConcurrent ? { maxConcurrent: endpoint.maxConcurrent } : {}),
+    health: toHealth(endpoint.health),
+    managed: endpoint.managed === true,
+  };
+}
+
+// ── Local AI ──────────────────────────────────────────────────────────────────
+
+/** AD4M names what a local runtime serves by service; the port by the kind of model. */
+const SERVICE_TO_KIND: Record<LocalAiService, AiModelKind> = {
+  llm: 'llm',
+  embeddings: 'embedding',
+  stt: 'transcription',
+  tts: 'speech',
+};
+
+const KIND_TO_SERVICE = Object.fromEntries(
+  Object.entries(SERVICE_TO_KIND).map(([service, kind]) => [kind, service]),
+) as Record<AiModelKind, LocalAiService>;
+
+const toKinds = (services: LocalAiService[]): AiModelKind[] => services.map((service) => SERVICE_TO_KIND[service]);
+
+/** `null` and `undefined` both read as absent, so an optional field is never present and empty. */
+function optional<K extends string>(key: K, value: number | null | undefined): Partial<Record<K, number>> {
+  return typeof value === 'number' ? ({ [key]: value } as Record<K, number>) : {};
+}
+
+export function toLocalHardware(hardware: Ad4mLocalHardware): LocalAiHardware {
+  return {
+    os: hardware.os,
+    arch: hardware.arch,
+    cpu: hardware.cpu.brand,
+    ramBytes: hardware.ramBytes,
+    gpus: hardware.gpus.map((gpu) => ({
+      vendor: gpu.vendor,
+      type: gpu.type,
+      name: gpu.name,
+      ...optional('vramBytes', gpu.vramBytes),
+      ...optional('sharedBytes', gpu.sharedBytes),
+    })),
+    backends: [...hardware.backends],
+    memoryBudgetBytes: hardware.memoryBudgetBytes,
+    ...optional('diskFreeBytes', hardware.diskFreeBytes),
+    hardwareClass: hardware.hardwareClass,
+    notes: [...hardware.notes],
+  };
+}
+
+export function toLocalPlan(plan: Ad4mLocalPlan): LocalAiPlan {
+  return {
+    hardwareClass: plan.hardwareClass,
+    runtimes: plan.runtimes.map((runtime) => ({
+      id: runtime.runtimeId,
+      version: runtime.version,
+      build: runtime.build,
+      backend: runtime.backend,
+      sizeBytes: runtime.sizeBytes,
+      installed: runtime.installed,
+      kinds: toKinds(runtime.services),
+    })),
+    models: plan.models.map((model) => ({
+      kind: SERVICE_TO_KIND[model.service],
+      model: model.modelId,
+      sizeBytes: model.sizeBytes,
+      memoryBytes: model.memoryBytes,
+      license: model.license,
+      installed: model.installed,
+      basis: model.basis,
+      fromClass: model.fromClass,
+    })),
+    unavailable: plan.unavailable.map(({ service, reason }) => ({ kind: SERVICE_TO_KIND[service], reason })),
+    downloadBytes: plan.downloadBytes,
+    totalBytes: plan.totalBytes,
+    memoryBytes: plan.memoryBytes,
+    memoryBudgetBytes: plan.memoryBudgetBytes,
+    ...optional('diskFreeBytes', plan.diskFreeBytes),
+    fits: plan.fits,
+    reasons: [...plan.reasons],
+    ...(plan.device ? { device: plan.device } : {}),
+  };
+}
+
+const PROGRESS_PHASES = new Set<LocalAiProgress['phase']>(['plan', 'download', 'start', 'register', 'done', 'failed']);
+
+export function toLocalProgress(progress: Ad4mLocalProgress): LocalAiProgress {
+  // The executor documents six phases as a string; one it adds later reads as the step before done.
+  const phase = PROGRESS_PHASES.has(progress.phase as LocalAiProgress['phase'])
+    ? (progress.phase as LocalAiProgress['phase'])
+    : 'register';
+  return {
+    phase,
+    item: progress.item ?? '',
+    itemDoneBytes: progress.itemDoneBytes,
+    itemTotalBytes: progress.itemTotalBytes,
+    doneBytes: progress.doneBytes,
+    totalBytes: progress.totalBytes,
+    detail: progress.detail ?? '',
+  };
+}
+
+export function toLocalStatus(status: Ad4mLocalStatus): LocalAiStatus {
+  return {
+    installed: status.installed,
+    installing: status.installing,
+    autostart: status.autostart,
+    runtimes: status.runtimes.map((runtime) => ({
+      id: runtime.runtimeId,
+      version: runtime.version,
+      build: runtime.build,
+      kinds: toKinds(runtime.services),
+      phase: runtime.phase,
+      ...optional('port', runtime.port),
+      restarts: runtime.restarts,
+      detail: runtime.detail ?? '',
+      ...(runtime.endpointId ? { endpointId: runtime.endpointId } : {}),
+      onGpu: runtime.onGpu,
+      ...optional('gpuBytes', runtime.gpuBytes),
+    })),
+    models: status.models.map((model) => ({
+      kind: SERVICE_TO_KIND[model.service],
+      model: model.modelId,
+      ...(model.model ? { modelId: model.model } : {}),
+    })),
   };
 }
 
 /**
- * Every endpoint, keyed by id — and whether the executor answered at all.
- *
- * The list is operator-only: a guest's read resolves to an empty map with `predates` unset, the
- * same guessable-remote shape as before. An executor without `ai.endpoints` gets `predates`: its
- * models' blank URLs are then told apart from an unseen list and can say "executor too old".
+ * An update replaces the endpoint's settings, so everything the draft carries goes, and a setting
+ * left out is a setting removed — except the key, where absent keeps the stored one. Capabilities
+ * are never sent: left out, the executor probes them from what the server lists.
  */
-async function endpointMap(client: Ad4mClient): Promise<{ endpoints: Map<string, AiEndpoint>; predates: boolean }> {
-  try {
-    return {
-      endpoints: new Map((await client.ai.endpoints()).map((endpoint) => [endpoint.id, endpoint])),
-      predates: false,
-    };
-  } catch (error) {
-    return { endpoints: new Map(), predates: recordMissingMethod(error) };
-  }
+function toEndpointInput(draft: AiEndpointDraft) {
+  return {
+    name: draft.name,
+    kind: ENDPOINT_KIND_TO_AD4M[draft.kind],
+    baseUrl: draft.baseUrl,
+    ...(draft.apiKey !== undefined ? { apiKey: draft.apiKey } : {}),
+    ...(draft.maxContext ? { maxNumCtx: draft.maxContext } : {}),
+    ...(draft.requestTimeoutSecs ? { requestTimeoutSecs: draft.requestTimeoutSecs } : {}),
+    ...(draft.maxConcurrent ? { maxConcurrent: draft.maxConcurrent } : {}),
+  };
 }
 
-/**
- * The endpoint an `api` source describes, reused when one matches and registered when none does.
- * Endpoint identity is URL + kind: two models on the same service share the row, and a second
- * registration of the same URL would duplicate the server and its key.
- */
-async function ensureEndpoint(
-  client: Ad4mClient,
-  source: Extract<AiModelSourceDraft, { kind: 'api' }>,
-  name: string,
-): Promise<string> {
-  const kind = PROTOCOL_TO_AD4M[source.protocol];
-  const existing = (await client.ai.endpoints()).find(
-    (endpoint) => endpoint.baseUrl === source.baseUrl && endpoint.kind === kind,
-  );
-  if (existing) {
-    /*
-      Anything handed in for an endpoint the node already knows is a change to that row, not a
-      duplicate add — and the update is the whole record. `updateEndpoint` clears every field left
-      out, so timeout and concurrency go back with the change, and the context ceiling the form
-      did not touch keeps what the endpoint already holds.
-    */
-    const contextChanged = source.maxContext !== undefined && source.maxContext !== existing.maxNumCtx;
-    if (source.apiKey !== undefined || contextChanged) {
-      const maxNumCtx = source.maxContext ?? existing.maxNumCtx;
-      await client.ai.updateEndpoint(existing.id, {
-        name: existing.name,
-        kind: existing.kind,
-        baseUrl: existing.baseUrl,
-        ...(source.apiKey !== undefined ? { apiKey: source.apiKey } : {}),
-        ...(maxNumCtx ? { maxNumCtx } : {}),
-        ...(existing.requestTimeoutSecs ? { requestTimeoutSecs: existing.requestTimeoutSecs } : {}),
-        ...(existing.maxConcurrent ? { maxConcurrent: existing.maxConcurrent } : {}),
-      });
-    }
-    return existing.id;
-  }
-  const endpoint = await client.ai.addEndpoint({
-    name,
-    kind,
-    baseUrl: source.baseUrl,
-    ...(source.apiKey !== undefined ? { apiKey: source.apiKey } : {}),
-    ...(source.maxContext ? { maxNumCtx: source.maxContext } : {}),
-  });
-  return endpoint.id;
-}
-
-async function toModelInput(client: Ad4mClient, draft: AiModelDraft): Promise<ModelInput> {
-  const source = draft.source;
-  if (source.kind !== 'api' || !source.baseUrl) {
-    // Per-model local installs are gone with the `local` block: the executor installs local AI
-    // itself, whole, through `ai.localInstall`. Only a remote endpoint takes a model by hand now.
-    throw new Error(
-      'Local models are installed by the executor itself now — its local AI setup picks and ' +
-        'fetches them. Only a model on a remote endpoint can be added here.',
-    );
-  }
-  const endpointId = await ensureEndpoint(client, source, draft.name);
+function toModelInput(draft: AiModelDraft): ModelInput {
   return {
     name: draft.name,
     modelType: KIND_TO_AD4M[draft.kind],
-    endpointId,
-    remoteModel: source.model,
+    endpointId: draft.endpointId,
+    remoteModel: draft.remoteModel,
+    // An update replaces the record, so a choice made elsewhere must be sent back to survive.
+    ...(draft.nativeTools !== undefined ? { nativeTools: draft.nativeTools } : {}),
   };
+}
+
+function toModel(model: AIModel, defaultIds: Set<string>): AiModel {
+  return {
+    id: model.id,
+    name: model.name,
+    kind: KIND_FROM_AD4M[model.modelType] ?? 'llm',
+    endpointId: model.endpointId,
+    remoteModel: model.remoteModel,
+    ...(typeof model.nativeTools === 'boolean' ? { nativeTools: model.nativeTools } : {}),
+    status: toModelStatus(model.status),
+    isDefault: defaultIds.has(model.id),
+  };
+}
+
+/** The SDK's recommendations, in the port's words. Data, not a contract: a name AD4M changes simply follows. */
+function recommended(): ReturnType<NonNullable<ModelAdminPort['recommended']>> {
+  return {
+    models: AI_RECOMMENDED_MODELS.flatMap((model): AiRecommendedModel[] => {
+      const kind = KIND_FROM_AD4M[model.modelType];
+      const { description } = model;
+      if (model.ollama) return [{ kind, endpointKind: 'ollama', model: model.ollama, description }];
+      if (model.openAiAudio) return [{ kind, endpointKind: 'openai-audio', model: model.openAiAudio, description }];
+      return [];
+    }),
+    installLinks: [
+      { label: 'Ollama', url: AI_SERVER_INSTALL_LINKS.ollama },
+      { label: 'speaches', url: AI_SERVER_INSTALL_LINKS.speaches },
+    ],
+  };
+}
+
+/**
+ * The executor's refusals name the RPC to call next ("run ai.localInstall again"), which is right for
+ * an SDK caller and nothing a person can do. They are shown as the error, so they say the act instead.
+ */
+function inPeoplesWords(error: unknown): unknown {
+  if (!(error instanceof Error)) return error;
+  const message = error.message
+    .replace('run ai.localInstall again', 'install local AI again')
+    .replace('call ai.localInstall', 'install it first');
+  return message === error.message ? error : new Error(message, { cause: error });
 }
 
 export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntimeOptions = {}): ModelAdminPort {
@@ -199,44 +338,22 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
   const read: ModelAdminPort = {
     /**
      * Defaults are read per kind rather than carried on the record. AD4M keeps one default per
-     * model type and `getEntities` does not say which, so the launcher asked for the LLM default only
-     * and no other kind could ever show as default. Three calls answer it for all of them.
+     * model type and `ai.models` does not say which, so one call per kind answers it.
      */
     async list() {
-      const [models, { endpoints, predates }] = await Promise.all([client.ai.getModels(), endpointMap(client)]);
+      const models = await client.ai.getModels();
       const defaults = await Promise.all(
         Object.values<ModelType>(KIND_TO_AD4M).map((type) =>
-          // A kind with no default set is not an error — it resolves to no id.
+          // A kind with no default answers null, and an older refusal is no default either.
           client.ai.getDefaultModel(type).catch(() => null),
         ),
       );
-      const defaultIds = new Set(defaults.filter(Boolean).map((model) => model!.id));
-      return models.map((model) => ({
-        id: model.id,
-        name: model.name,
-        kind: toKind(model.modelType),
-        source: toSource(model, endpoints, predates),
-        isDefault: defaultIds.has(model.id),
-      })) satisfies AiModel[];
-    },
-
-    presets() {
-      /*
-        The executor picks its own local models now (`ai.localInstall` carries the list), so there
-        are no names left for the launcher to offer — a dropdown of presets nothing can install
-        would promise an add that always refuses.
-      */
-      return Promise.resolve([]);
+      const defaultIds = new Set(defaults.flatMap((model) => (model ? [model.id] : [])));
+      return models.map((model) => toModel(model, defaultIds));
     },
 
     async status(id) {
-      const status = await client.ai.modelStatus(id);
-      return {
-        downloaded: status.state === 'READY',
-        loaded: status.state === 'READY',
-        progress: status.progress ?? 0,
-        status: status.detail ?? status.state ?? '',
-      };
+      return toModelStatus(await client.ai.modelStatus(id));
     },
 
     async tasks() {
@@ -248,10 +365,46 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
         systemPrompt: task.systemPrompt,
       }));
     },
+
+    onModelStatus(listener) {
+      return client.on('model-status', ({ endpointId, remoteModel, status }) =>
+        listener({ endpointId, remoteModel, status: toModelStatus(status) }),
+      );
+    },
+
+    recommended,
   };
 
   /**
-   * Changing which models the node runs — administration, and refused to a guest.
+   * The endpoints themselves, which the executor shows only to its operator: a managed user's
+   * session is refused `ai.endpoints`, and the health events go to the main agent alone. So they are
+   * the node's, like changing anything is.
+   */
+  const endpoints: ModelAdminPort = {
+    async endpoints() {
+      return (await client.ai.endpoints()).map(toEndpoint);
+    },
+
+    async detectEndpoints() {
+      return (await client.ai.detectEndpoints()).map((found) => ({
+        kind: ENDPOINT_KIND_FROM_AD4M[found.kind] ?? 'openai-compatible',
+        baseUrl: found.baseUrl,
+        capabilities: toCapabilities(found.capabilities),
+        models: found.servedModels,
+      }));
+    },
+
+    onEndpointHealth(listener) {
+      // The executor sends this when a server's health or its capabilities change — a pull can give
+      // an Ollama a kind of model it did not have.
+      return client.on('ai-endpoint-status', ({ endpointId, health, capabilities }) =>
+        listener(endpointId, toHealth(health), capabilities ? toCapabilities(capabilities) : undefined),
+      );
+    },
+  };
+
+  /**
+   * Changing which models the node uses — administration, and refused to a guest.
    *
    * AD4M is explicit about the boundary: `get_user_default_capabilities` grants a hosted user
    * `AI READ/CREATE/PROMPT/TRANSCRIBE` and pointedly excludes `UPDATE` and `DELETE` as "admin
@@ -261,38 +414,17 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
   const write: ModelAdminPort = {
     /**
      * A first model of its kind becomes that kind's default. Otherwise it is added and does
-     * nothing, which reads to the user as the button having failed — the launcher does the same for
-     * LLMs and leaves the other kinds unset.
+     * nothing, which reads to the user as the button having failed.
      */
     async add(draft) {
-      const id = await client.ai.addModel(await toModelInput(client, draft));
+      const id = await client.ai.addModel(toModelInput(draft));
       const type = KIND_TO_AD4M[draft.kind];
       const existing = await client.ai.getDefaultModel(type).catch(() => null);
       if (!existing) await client.ai.setDefaultModel(type, id);
     },
 
     async update(id, draft) {
-      const model = (await client.ai.getModels()).find((m) => m.id === id);
-      if (!model) throw new Error('That model is no longer installed');
-      const source = draft.source;
-      /*
-        A model is a name over an endpoint and a remote id. An `api` source that names a URL
-        resolves the endpoint it describes — registering or updating it — and retargets the model;
-        anything else (a rename, a source whose endpoint it cannot name, an executor-managed row)
-        keeps the ones it already has rather than failing a save that never meant to move it.
-      */
-      let endpointId = model.endpointId;
-      let remoteModel = model.remoteModel;
-      if (source.kind === 'api' && source.baseUrl) {
-        endpointId = await ensureEndpoint(client, source, draft.name);
-        remoteModel = source.model;
-      }
-      await client.ai.updateModel(id, {
-        name: draft.name,
-        modelType: KIND_TO_AD4M[draft.kind],
-        endpointId,
-        remoteModel,
-      });
+      await client.ai.updateModel(id, toModelInput(draft));
     },
 
     async remove(id) {
@@ -312,31 +444,102 @@ export function createAd4mModelAdmin(backendClient: unknown, options: Ad4mRuntim
     },
 
     // Discovery needs `AI CREATE` on the executor, the same grant as adding the model it is for.
-    ...discovery(client),
+    async discover(query) {
+      const params =
+        'endpointId' in query
+          ? { endpointId: query.endpointId }
+          : {
+              kind: ENDPOINT_KIND_TO_AD4M[query.kind],
+              baseUrl: query.baseUrl,
+              ...(query.apiKey ? { apiKey: query.apiKey } : {}),
+            };
+      return (await client.ai.discoverModels(params)).map((model) => ({
+        id: model.id,
+        capabilities: toCapabilities(model.capabilities),
+      }));
+    },
+
+    async addEndpoint(draft) {
+      return toEndpoint(await client.ai.addEndpoint(toEndpointInput(draft)));
+    },
+
+    async updateEndpoint(id, draft) {
+      return toEndpoint(await client.ai.updateEndpoint(id, toEndpointInput(draft)));
+    },
+
+    async removeEndpoint(id) {
+      await client.ai.removeEndpoint(id);
+    },
+
+    /**
+     * Resolves when the server has the whole model, which for gigabytes is minutes: the call is the
+     * executor's long kind, and progress arrives through `onModelStatus` meanwhile.
+     */
+    async pullModel(endpointId, remoteModel) {
+      await client.ai.pullModel(endpointId, remoteModel);
+    },
   };
 
+  /**
+   * Local AI reads the node's own machine — its processor, its memory, its disk — so it is the
+   * operator's, like the endpoints: a guest on somebody else's node has no use for that machine's
+   * hardware and should not be shown it.
+   */
+  const localRead: LocalAiPort = {
+    async hardware() {
+      return toLocalHardware(await client.ai.localHardware());
+    },
+    async plan() {
+      return toLocalPlan(await client.ai.localPlan());
+    },
+    async status() {
+      return toLocalStatus(await client.ai.localStatus());
+    },
+  };
+
+  /**
+   * Installing, starting, stopping and removing are the executor's operator-only calls, and it sends
+   * the install's progress events to operator sessions alone: a grant would listen to nothing.
+   */
+  const localWrite: LocalAiPort = {
+    onProgress(listener) {
+      return client.on('ai-local-progress', (progress) => listener(toLocalProgress(progress)));
+    },
+    /**
+     * Gigabytes: the SDK waits hours by default rather than the usual request timeout. Progress is
+     * heard through `onProgress`, so an install started from the launcher shows here too.
+     */
+    async install(options) {
+      const services = options?.kinds?.map((kind) => KIND_TO_SERVICE[kind]);
+      return toLocalStatus(await client.ai.localInstall(services ? { services } : {}));
+    },
+    async start() {
+      try {
+        return toLocalStatus(await client.ai.localStart());
+      } catch (error) {
+        throw inPeoplesWords(error);
+      }
+    },
+    async stop() {
+      return toLocalStatus(await client.ai.localStop());
+    },
+    async remove(deleteFiles) {
+      await client.ai.localRemove(deleteFiles);
+    },
+  };
+
+  const operates = administersNode && granted(CAP_DOMAIN.ai, CAP_VERB.read);
+  const configures = administersNode && granted(CAP_DOMAIN.ai, CAP_VERB.create);
+  /*
+    The executor guards the local AI writes with the operator credential, not a capability: a grant
+    is refused them whatever it holds. So the grant rule above is not enough — WE web's app token
+    holds `*` and would be offered an Install that always answers 403.
+  */
+  const installs = configures && (options.operator ?? true);
   return {
     ...(granted(CAP_DOMAIN.ai, CAP_VERB.read) ? read : {}),
-    ...(administersNode && granted(CAP_DOMAIN.ai, CAP_VERB.create) ? write : {}),
-  };
-}
-
-/**
- * `discover`: probe an unsaved endpoint for the models it lists, by kind, URL and key.
- * Answered as ids, which is what the port's picker shows.
- */
-function discovery(client: Ad4mClient): Pick<ModelAdminPort, 'discover'> {
-  // A client that predates the endpoint API has no `discoverModels` to call: offering the member
-  // would put a "list the models" button in settings that throws when pressed.
-  if (typeof client.ai?.discoverModels !== 'function') return {};
-  return {
-    discover: async ({ protocol, baseUrl, apiKey }) => {
-      const found = await client.ai.discoverModels({
-        kind: PROTOCOL_TO_AD4M[protocol],
-        baseUrl,
-        ...(apiKey ? { apiKey } : {}),
-      });
-      return found.map((model) => model.id);
-    },
+    ...(operates ? endpoints : {}),
+    ...(configures ? write : {}),
+    ...(operates ? { local: { ...localRead, ...(installs ? localWrite : {}) } } : {}),
   };
 }
