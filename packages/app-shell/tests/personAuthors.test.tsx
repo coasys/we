@@ -45,6 +45,7 @@ vi.mock('../src/frameworks/solid/stores/SessionStore', () => ({ useSessionStore:
 vi.mock('../src/frameworks/solid/stores/AccountStore', () => ({
   useAccountStore: () => ({ syncDisplay: async () => {} }),
 }));
+vi.mock('../src/frameworks/solid/stores/RuntimeStore', () => ({ useRuntimeStore: () => ({}) }));
 
 import { type ProfileStore, ProfileStoreProvider, useProfileStore } from '../src/frameworks/solid/stores/ProfileStore';
 
