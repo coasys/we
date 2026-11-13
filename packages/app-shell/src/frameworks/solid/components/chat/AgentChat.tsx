@@ -37,6 +37,55 @@ import { askBefore, lastAsk, refusalOf, refusalSentence, replyRunning, unfinishe
 /** What an open chat was asked for — `panel.inputs` on desktop, the sheet's on a phone. */
 export type AgentChatInputs = ChatInputs;
 
+/**
+ * A raw diagnostic under a folded Details — the plain words carry the meaning, this is for
+ * whoever is debugging it. The refusal card and a refused reply's own row share it.
+ */
+function RefusalDetails(props: { text: string }) {
+  return (
+    <details
+      class="agent-chat-refusal-detail"
+      onToggle={(e) => {
+        const marker = e.currentTarget.querySelector<HTMLElement>('.agent-chat-refusal-marker');
+        if (marker) marker.style.transform = e.currentTarget.open ? 'rotate(90deg)' : '';
+      }}
+    >
+      {/*
+        `display: flex` on a summary removes the platform's own disclosure marker, which is
+        what lets the marker and the label sit in one line — the native marker renders as a
+        list bullet on its own line beside a block-level we-text.
+      */}
+      <summary
+        style={{
+          display: 'flex',
+          'align-items': 'center',
+          gap: 'var(--we-space-100, 4px)',
+          cursor: 'pointer',
+          'list-style': 'none',
+        }}
+      >
+        <span
+          class="agent-chat-refusal-marker"
+          aria-hidden="true"
+          style={{ display: 'inline-block', 'font-size': '0.6em', transition: 'transform 120ms ease' }}
+        >
+          ▶
+        </span>
+        <we-text variant="footnote" color="text-muted">
+          Details
+        </we-text>
+      </summary>
+      <we-text
+        variant="footnote"
+        color="text-muted"
+        style={{ display: 'block', 'margin-top': 'var(--we-space-200, 8px)' }}
+      >
+        {props.text}
+      </we-text>
+    </details>
+  );
+}
+
 /** "2m ago" for the list — a chat is read as recent or not, not as a timestamp. */
 function ago(ms: number): string {
   const s = Math.max(0, Math.floor((Date.now() - ms) / 1000));
@@ -431,7 +480,11 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
                 <Show when={message.status && message.status !== 'done' && message.status !== 'running'}>
                   <Row ay="center" gap="200" wrap>
                     <we-text variant="footnote" color={message.status === 'failed' ? 'danger-text' : 'text-muted'}>
-                      {message.error
+                      {/*
+                        A refused reply says the plain words — "Capability is not matched" is the
+                        diagnostic, kept folded below like the card keeps it, not the sentence.
+                      */}
+                      {message.error && !message.refused
                         ? `${unfinishedWords(message.status!)}: ${message.error}`
                         : unfinishedWords(message.status!)}
                     </we-text>
@@ -445,6 +498,9 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
                       </we-button>
                     </Show>
                   </Row>
+                  <Show when={message.refused && message.error}>
+                    <RefusalDetails text={message.error!} />
+                  </Show>
                 </Show>
               </Column>
             )}
@@ -480,46 +536,7 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
             <we-text fontSize="200" color="warning-text">
               {refusalSentence(spaceName(scopeUuid() ?? ''), scoped())}
             </we-text>
-            <details
-              class="agent-chat-refusal-detail"
-              onToggle={(e) => {
-                const marker = e.currentTarget.querySelector<HTMLElement>('.agent-chat-refusal-marker');
-                if (marker) marker.style.transform = e.currentTarget.open ? 'rotate(90deg)' : '';
-              }}
-            >
-              {/*
-                `display: flex` on a summary removes the platform's own disclosure marker, which is
-                what lets the marker and the label sit in one line — the native marker renders as a
-                list bullet on its own line beside a block-level we-text.
-              */}
-              <summary
-                style={{
-                  display: 'flex',
-                  'align-items': 'center',
-                  gap: 'var(--we-space-100, 4px)',
-                  cursor: 'pointer',
-                  'list-style': 'none',
-                }}
-              >
-                <span
-                  class="agent-chat-refusal-marker"
-                  aria-hidden="true"
-                  style={{ display: 'inline-block', 'font-size': '0.6em', transition: 'transform 120ms ease' }}
-                >
-                  ▶
-                </span>
-                <we-text variant="footnote" color="text-muted">
-                  Details
-                </we-text>
-              </summary>
-              <we-text
-                variant="footnote"
-                color="text-muted"
-                style={{ display: 'block', 'margin-top': 'var(--we-space-200, 8px)' }}
-              >
-                {refusal()}
-              </we-text>
-            </details>
+            <RefusalDetails text={refusal()!} />
             <Show when={scoped()}>
               <we-button size="sm" onClick={() => chat.openChat({ draft: lastAskText() })}>
                 Ask in the global chat

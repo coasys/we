@@ -183,4 +183,35 @@ describe('the refusal card', () => {
     expect(container.textContent).not.toContain('Ask in the global chat');
     expect(container.textContent).not.toContain('this space');
   });
+
+  it('says a refused reply in the plain words — the raw error folds, it is not the sentence', async () => {
+    const { container } = openedChat({ draft: 'reach for that' });
+    await vi.waitFor(() => expect(followed).toBeDefined());
+
+    followed!([
+      { id: 'u1', role: 'user', text: 'reach for that', createdAt: 0 },
+      {
+        id: 'a1',
+        role: 'assistant',
+        text: '',
+        createdAt: 1,
+        status: 'failed',
+        refused: true,
+        error: 'Capability is not matched: agent',
+        steps: [],
+      },
+    ]);
+
+    const reply = await vi.waitFor(() => {
+      const el = container.querySelector('[data-testid="agent-chat-reply"]');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    // The line says what happened; "Capability is not matched" is not part of it.
+    const line = [...reply.querySelectorAll('we-text')].find((el) => el.textContent?.includes('The reply failed'));
+    expect(line).toBeDefined();
+    expect(line!.textContent).not.toContain('Capability is not matched');
+    // The diagnostic survives — folded under Details, as the card already folds it.
+    expect(reply.querySelector('details')?.textContent).toContain('Capability is not matched: agent');
+  });
 });
