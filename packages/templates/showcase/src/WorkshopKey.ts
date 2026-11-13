@@ -56,6 +56,7 @@ import {
   panelHeader,
   panelScroll,
   sectionLabel,
+  SIGNAL_IN_FORCE,
   stateFill,
   stateIcon,
   SUGGESTIONS_HIDDEN,
@@ -324,6 +325,42 @@ export const HEAT_HIGH_FILL = `(${heatHighChosen} ? ${heatHighChosen} : '${HEAT_
  * either way, so an unanswered card never reads as the lowest answer.
  */
 export const HEAT_NONE_FILL = `(${heatNoneChosen} ? ${heatNoneChosen} : ${CARD_FILL})`;
+
+/**
+ * The heat map: every card shaded by what the tree is ordered by, while the key's order lens is on.
+ *
+ * The same number the order reads — a reaction's score, or when the card was made — normalised across
+ * the cards on the canvas and blended between the key's two colours, so a card's shade says where in
+ * the range it sits, which its place in a row cannot: three cards in a row say which is first, not
+ * whether the middle one is nearer the top or the bottom.
+ *
+ * A rating or a slider is scaled against its own range rather than the canvas's: the ends of a five-star
+ * scale mean something absolutely, and one card at two stars among worse ones must not look like the
+ * best there is. A card with no score is left out of the scale and drawn in the key's colour for "no
+ * answers yet" — the rule before the scale, which the graph falls through to where a metric has nothing
+ * to say about a card. That is exactly the claim "nobody has answered" should make.
+ *
+ * Applies on the freeform canvas as well as the tree: the order is in the address either way, and a
+ * heat map across cards somebody placed by hand is as useful as one along a row. Nothing while the
+ * order is as arranged, where a card's place is its order already.
+ *
+ * Here rather than in the shared tree module because both halves of the rule are this key's: the lens
+ * that turns it on is `colour=order` in the address, and the fills it blends between are the `@heat*`
+ * rows this panel writes and reads. The tree's own machinery — the mode, the order, the reaction in
+ * force — is the kit's `canvasTree`.
+ */
+const HEAT_TYPE = `find(local.treeSignalTypes, { id: ${SIGNAL_IN_FORCE} })`;
+const HEAT_FIELD =
+  `(local.order == 'signal' ? ((${HEAT_TYPE}.mode == 'rating' || ${HEAT_TYPE}.mode == 'slider')` +
+  ` ? { from: 'weight', min: ${HEAT_TYPE}.rangeMin, max: ${HEAT_TYPE}.rangeMax } : { from: 'weight' })` +
+  ` : { from: 'createdAt' })`;
+
+export const TREE_HEAT_RULES: SchemaProp = {
+  $:
+    `${BY_ORDER} && local.order != 'manual' && (local.order != 'signal' || ${SIGNAL_IN_FORCE})` +
+    ` ? [{ style: { color: ${HEAT_NONE_FILL} } }, { style: { color: { metric: 'field', options: ${HEAT_FIELD},` +
+    ` scale: { from: ${HEAT_LOW_FILL}, to: ${HEAT_HIGH_FILL} } } } }] : []`,
+};
 
 /*
  * `stateFill` and `stateIcon` were here, each a chain over `semantic` written out by hand — and each
