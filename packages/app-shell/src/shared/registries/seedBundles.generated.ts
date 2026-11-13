@@ -21774,7 +21774,7 @@ export const seedBundles: Bundle[] = [
                                 },
                               },
                               layout: {
-                                $: "local.treeMode ? { type: 'forest', options: { spine: { field: 'data.relationshipTypeId', value: local.spine }, sortBy: (local.order == 'manual' ? 'canvasRank' : ((local.order == 'signal' && (local.signalType ? local.signalType : first(local.treeSignalTypes).id)) ? 'weight' : 'createdAt')), sortDirection: (((local.order == 'signal' && (local.signalType ? local.signalType : first(local.treeSignalTypes).id)) || local.order == 'newest') ? 'desc' : 'asc'), card: (local.cardSize == 'sm' ? { width: 120, height: 90 } : (local.cardSize == 'lg' ? { width: 260, height: 195 } : { width: 180, height: 135 })), unattachedLabel: 'Unconnected' } } : { type: 'manual', options: { size: { width: 200, height: 140 }, kindSizes: { property: { width: 170, height: 44 } }, widthField: 'canvasWidth', heightField: 'canvasHeight' } }",
+                                $: "local.treeMode ? { type: 'forest', options: { spine: (local.spine == 'rel:*' ? { field: 'type', value: 'relation' } : (startsWith(local.spine, 'rel:') ? { field: 'data.relation', value: split(local.spine, ':')[1] } : { field: 'data.relationshipTypeId', value: local.spine })), sortBy: (local.order == 'manual' ? 'canvasRank' : ((local.order == 'signal' && (local.signalType ? local.signalType : first(local.treeSignalTypes).id)) ? 'weight' : 'createdAt')), sortDirection: (((local.order == 'signal' && (local.signalType ? local.signalType : first(local.treeSignalTypes).id)) || local.order == 'newest') ? 'desc' : 'asc'), card: (local.cardSize == 'sm' ? { width: 120, height: 90 } : (local.cardSize == 'lg' ? { width: 260, height: 195 } : { width: 180, height: 135 })), unattachedLabel: 'Unconnected' } } : { type: 'manual', options: { size: { width: 200, height: 140 }, kindSizes: { property: { width: 170, height: 44 } }, widthField: 'canvasWidth', heightField: 'canvasHeight' } }",
                               },
                               reframeOn: { $: "local.treeMode ? local.cardSize : ''" },
                               backdrop: { pattern: 'dots', gap: 24 },
@@ -21841,7 +21841,7 @@ export const seedBundles: Bundle[] = [
                               ],
                               edgeStyle: [
                                 {
-                                  $: "local.treeMode ? [{ style: { sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true } }, { when: { 'data.relationshipTypeId': { not: local.spine } }, style: { opacity: 0.25, dashed: true, arrow: 'none' } }] : []",
+                                  $: "local.treeMode ? [{ style: { sourceAnchor: 's', targetAnchor: 'n', ignoreRoute: true } }, { when: (local.spine == 'rel:*' ? { type: { not: 'relation' } } : (startsWith(local.spine, 'rel:') ? { 'data.relation': { not: split(local.spine, ':')[1] } } : { 'data.relationshipTypeId': { not: local.spine } })), style: { opacity: 0.25, dashed: true, arrow: 'none' } }] : []",
                                 },
                               ],
                               behaviours: {
@@ -22332,7 +22332,7 @@ export const seedBundles: Bundle[] = [
                                               placeholder: 'Any connection',
                                               value: { $: 'local.spine' },
                                               options: {
-                                                $: 'local.relationshipKinds.map(k, { label: k.name, value: k.id, icon: k.icon })',
+                                                $: 'treeSpines({ kinds: local.relationshipKinds, shapes: shapeStore.spaceShapes, foreign: datasetStore.currentDatasetEntities })',
                                               },
                                               onChange: { $setLocal: 'spine', value: { $: 'event.detail' } },
                                             },
