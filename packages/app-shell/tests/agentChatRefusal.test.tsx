@@ -214,4 +214,48 @@ describe('the refusal card', () => {
     // The diagnostic survives — folded under Details, as the card already folds it.
     expect(reply.querySelector('details')?.textContent).toContain('Capability is not matched: agent');
   });
+
+  it('reads a global conversation inside a space panel as global — the card agrees with the badge', async () => {
+    // A space chat's list shows every conversation the node keeps — the global one among them.
+    conversations.list.mockResolvedValueOnce([
+      { ref: { id: 'g1' }, title: 'Global chat', createdAt: 0, updatedAt: 0 },
+    ] as never);
+    const { container } = render(() => (
+      <ChatStoreProvider>
+        <AgentChat inputs={{ perspectiveUuid: 'uuid-9', spaceName: 'Garden club' }} />
+      </ChatStoreProvider>
+    ));
+
+    const rowEl = await vi.waitFor(() => {
+      const el = container.querySelector<HTMLElement>('.agent-chat-row-open');
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    rowEl.click();
+    await vi.waitFor(() => expect(followed).toBeDefined());
+
+    followed!([
+      { id: 'u1', role: 'user', text: 'reach for that', createdAt: 0 },
+      {
+        id: 'a1',
+        role: 'assistant',
+        text: '',
+        createdAt: 1,
+        status: 'done',
+        steps: [{ tool: 'agent_status', outcome: 'error', refused: true, error: 'Capability is not matched: agent' }],
+      },
+    ]);
+
+    /*
+      The badge already reads the open conversation's scope — globe, "All your spaces". Read off
+      the panel's scope instead, the refusal answered "not outside this space" and showed nothing
+      at all: the conversation is global, so its boundary is the account's, and the card says so.
+    */
+    await vi.waitFor(() => {
+      expect(container.textContent).toContain('All your spaces');
+      expect(container.textContent).toContain('refused access — it reached for something this account may not use');
+    });
+    expect(container.textContent).not.toContain('This chat can only use Garden club');
+    expect(container.textContent).not.toContain('Ask in the global chat');
+  });
 });

@@ -323,15 +323,19 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
   /** The text the last turn asked with — what "Ask in the global chat" and "Send again" resend. */
   const lastAskText = createMemo(() => lastAsk(messages()));
 
-  /** A refusal the last reply ended on — the boundary the scoped chat's reach stops at. */
-  const refusal = createMemo(() => refusalOf(messages(), spaceChat()));
-
   /**
    * The perspective the open conversation is pinned to — from the session's own scope once one is
    * open, from what this chat was opened with before. An unscoped session inside the space chat is
    * global, so it must not inherit the space's wording.
    */
   const scopeUuid = () => active()?.scope ?? (active() ? undefined : spaceChat());
+
+  /*
+    A refusal the last reply ended on — the boundary the open conversation's reach stops at. The
+    conversation's scope decides, as the badge already does: a global conversation inside a space
+    panel has no space boundary, and a step refused there is not the panel's lock at work.
+  */
+  const refusal = createMemo(() => refusalOf(messages(), scopeUuid()));
 
   /** Whether the open conversation is pinned to a space — decides the refusal card's words. */
   const scoped = () => !!scopeUuid();
