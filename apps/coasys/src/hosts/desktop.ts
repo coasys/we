@@ -49,6 +49,8 @@ export interface ExecutorBridge {
   start(): Promise<unknown>;
   /** Sends the agent its WE password, where no keyring could be used; answers how it went. */
   password?(password: string): Promise<unknown>;
+  /** The tray's "Executor settings…": open Settings where the executor's are. Hands back its unsubscribe. */
+  onOpenSettings?(listener: () => void): () => void;
 }
 
 const AGENT_STATES: readonly BaseAgentState[] = ['unlocked', 'locked', 'needs-password', 'needs-new-password'];
@@ -59,13 +61,17 @@ const PASSWORD_ANSWERS: readonly BaseAgentPasswordAnswer[] = ['unlocked', 'wrong
  * how its agent is, where the shell says (Electron's supervisor, which makes it: `mainAgent.js`).
  */
 function asState(value: unknown): BaseExecutorState {
-  const v = value as { phase?: unknown; reason?: unknown; agent?: unknown } | null;
+  const v = value as { phase?: unknown; reason?: unknown; agent?: unknown; stopped?: unknown } | null;
   if (v?.phase === 'starting') return { phase: 'starting' };
   if (v?.phase === 'ready') {
     const agent = AGENT_STATES.find((known) => known === v.agent);
     return agent ? { phase: 'ready', agent } : { phase: 'ready' };
   }
-  if (v?.phase === 'failed') return { phase: 'failed', reason: typeof v.reason === 'string' ? v.reason : '' };
+  if (v?.phase === 'failed') {
+    const reason = typeof v.reason === 'string' ? v.reason : '';
+    // Stopped after it ran, rather than failing to start: the base takes the window back for it.
+    return v.stopped === true ? { phase: 'failed', reason, stopped: true } : { phase: 'failed', reason };
+  }
   return { phase: 'failed', reason: 'The app did not say how its executor is.' };
 }
 

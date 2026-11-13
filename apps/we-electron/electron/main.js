@@ -61,7 +61,7 @@ import {
   trustedOrigins,
 } from './navigationPolicy.js';
 import { setupSeedServers } from './seed-servers.js';
-import { closeHides, createTray, trayHostPresent } from './tray.js';
+import { closeHides, createTray, setTrayMenu, trayHostPresent } from './tray.js';
 
 // Enable right-click context menu with inspect element in dev mode
 contextMenu({
@@ -127,6 +127,8 @@ let executorBooting = null;
 
 function setExecutorState(next) {
   executorState = next;
+  // The tray says how the executor is, and offers what can be done from there.
+  if (tray) setTrayMenu(tray, Menu, trayOptions());
   if (!mainWindow || mainWindow.isDestroyed()) return;
   mainWindow.webContents.send('executor-state', next);
 }
@@ -503,7 +505,13 @@ async function startExecutorOnce({ samePort }) {
       // that reaches here was asked for elsewhere (`runtime.quit`, a signal), and nothing starts it again.
       if (['refused', 'busy', 'give-up', 'done'].includes(outcome.action)) {
         void outputDone().then(() => showExecutorStopped(outcome.action, tail.lines(), configFile, ad4mDataPath));
-        setExecutorState({ phase: 'failed', reason: `${stoppedWords(outcome.action)}\n\n${LOG_WORDS}` });
+        // `stopped`: it was running and stopped, rather than failing to start; the window says so
+        // over whatever it showed, with a button that starts it again.
+        setExecutorState({
+          phase: 'failed',
+          reason: `${stoppedWords(outcome.action)}\n\n${LOG_WORDS}`,
+          stopped: true,
+        });
       }
       // Gone for good: the sidecar would only keep restarting against a dead port.
       if (outcome.action !== 'stopped' && outcome.action !== 'leave') void stopCustody();
@@ -566,9 +574,9 @@ function showExecutorStopped(action, lines, configFile, dataPath) {
       : 'It keeps stopping, so the app does not start it again.';
   const detail =
     startRefusal(code, lines, configFile, dataPath) ??
-    `${why} Quit and start the app to try again.${last}\n\nThe executor's log: ${join(dataPath, 'logs', 'executor-0.log')}`;
+    `${why} Start it again from its window or its tray menu.${last}\n\nThe executor's log: ${join(dataPath, 'logs', 'executor-0.log')}`;
   const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
-  void dialog.showMessageBox(parent, { type: 'error', message: 'The AD4M executor stopped', detail });
+  void dialog.showMessageBox(parent, { type: 'error', message: `${app.getName()} has stopped`, detail });
 }
 
 /** The renderer bundle: copied beside the app when packaged, built into `dist` otherwise. */
@@ -1223,12 +1231,32 @@ handle('executor-agent-password', (_event, password) => takeAgentPassword(passwo
  * Only a failed executor is started: one starting or running is left alone, so a second click, or a
  * page that asks twice, starts nothing. Once the app has been up, the same restart as Settings'.
  */
-handle('executor-start', () => {
+handle('executor-start', () => startExecutorAgain());
+
+/** Start a failed or stopped executor again: the window's "Try again" and the tray's Start. */
+function startExecutorAgain() {
   if (executorState.phase !== 'failed') return executorState;
   if (executorUp) void restartExecutorAndReload();
   else void bootExecutor();
   return { phase: 'starting' };
-});
+}
+
+/**
+ * Stop the executor, from the tray, until it is started again. Queued behind any restart, and after a
+ * start under way, so it stops what that start made. Stopped first and then said: `stopExecutor`
+ * clears the process before it ends it, so its exit starts nothing again.
+ */
+function stopExecutorByHand() {
+  restartChain = restartChain
+    .catch(() => {})
+    .then(async () => {
+      await executorBooting;
+      if (executorStoppedForQuit || executorState.phase === 'failed') return;
+      await stopExecutor();
+      setExecutorState({ phase: 'failed', reason: stoppedWords('by-hand'), stopped: true });
+    });
+  return restartChain;
+}
 
 /**
  * A path on this machine, for the backend to write to or read from.
@@ -1467,6 +1495,10 @@ app.whenReady().then(async () => {
   // The window first: it draws the app before a session (identity, connection choice, settings)
   // while the executor starts, and says so in the window if it does not (`bootExecutor`).
   installApplicationMenu();
+  // macOS draws the Dock and app-switcher icon from the app bundle, which unpackaged is Electron's
+  // own: a development run shows the deployment's icon only when it is set here. Packaged, the
+  // bundle's icon is the deployment's already.
+  if (process.platform === 'darwin' && !app.isPackaged) app.dock?.setIcon(windowIcon());
   installTray();
   createWindow();
   if (!executorUp) void bootExecutor();
@@ -1581,6 +1613,38 @@ function hideOnClose(window) {
   });
 }
 
+/**
+ * Settings → this device, where the executor's settings are, in the main window. The window holds
+ * the ask until it can open Settings (`onOpenExecutorSettings` in the preload), so one sent while it
+ * loads, or before a session, is not lost.
+ */
+function openExecutorSettings() {
+  openMainWindow();
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const contents = mainWindow.webContents;
+  if (contents.isLoading()) contents.once('did-finish-load', () => contents.send('open-executor-settings'));
+  else contents.send('open-executor-settings');
+}
+
+/** What the tray's menu is drawn from: the product's name, the executor's phase, and what to do. */
+function trayOptions() {
+  return {
+    name: app.getName(),
+    phase: executorState.phase,
+    onOpen: openMainWindow,
+    onQuit: () => app.quit(),
+    // An executor this app does not run (`WE_EXTERNAL_AD4M_PORT`) is not this app's to start or stop.
+    executor: process.env.WE_EXTERNAL_AD4M_PORT
+      ? undefined
+      : {
+          start: () => startExecutorAgain(),
+          restart: () => void restartExecutorAndReload(),
+          stop: () => void stopExecutorByHand(),
+          settings: openExecutorSettings,
+        },
+  };
+}
+
 function installTray() {
   if (process.platform === 'linux' && !trayHostPresent()) {
     console.warn(
@@ -1595,8 +1659,6 @@ function installTray() {
       process.platform === 'linux'
         ? windowIcon()
         : nativeImage.createFromPath(windowIcon()).resize({ width: 16, height: 16 }),
-    name: app.getName(),
-    onOpen: openMainWindow,
-    onQuit: () => app.quit(),
+    ...trayOptions(),
   });
 }

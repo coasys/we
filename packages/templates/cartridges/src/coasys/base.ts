@@ -334,13 +334,16 @@ const connect = screen('base__connect', [
     type: 'Column',
     props: { gap: '200' },
     children: [
-      { type: 'we-text', props: { variant: 'heading-xl', tag: 'h1' }, children: ['Where is your Coasys?'] },
+      // Read as the list grows: today this computer, later a server of your own or a host you trust.
+      // No "you can change this later": a place once chosen is taken again at each start, and only an
+      // unreachable one brings this choice back.
+      { type: 'we-text', props: { variant: 'heading-xl', tag: 'h1' }, children: ['Where should Coasys run for you?'] },
       {
         type: 'we-text',
         props: { color: 'text-muted' },
         children: [
           {
-            $: "baseStore.did != '' ? `Your spaces live where you keep them. This ${baseStore.deviceNoun} speaks for ${baseStore.didShort}.` : 'Your spaces live where you keep them. Choose where to open them from.'",
+            $: "baseStore.hostKind == 'phone' ? 'Coasys keeps your spaces on a computer you choose: one of your own, or a host you trust.' : 'Coasys keeps your spaces on a computer you choose: this one, or a host you trust.'",
           },
         ],
       },
@@ -426,11 +429,21 @@ const failed = screen('chrome__executor-failed', [
     type: 'Column',
     props: { gap: '200' },
     children: [
-      { type: 'we-text', props: { variant: 'heading-xl', tag: 'h1' }, children: ['Coasys could not start'] },
+      // Stopped after it ran (outside the app, from the tray) or failed to start: the same screen, in
+      // the words for each.
+      {
+        type: 'we-text',
+        props: { variant: 'heading-xl', tag: 'h1' },
+        children: [{ $: "baseStore.executorStopped ? 'Coasys has stopped' : 'Coasys could not start'" }],
+      },
       {
         type: 'we-text',
         props: { color: 'text-muted' },
-        children: ['The part of Coasys that keeps your spaces on this computer stopped before it was ready.'],
+        children: [
+          {
+            $: "baseStore.executorStopped ? 'The part of Coasys that keeps your spaces on this computer is not running, so nothing here can be opened until it starts again.' : 'The part of Coasys that keeps your spaces on this computer stopped before it was ready.'",
+          },
+        ],
       },
     ],
   },
@@ -445,7 +458,7 @@ const failed = screen('chrome__executor-failed', [
       {
         type: 'we-button',
         props: { variant: 'primary', loading: { $: 'baseStore.busy' }, onClick: { $invoke: 'baseStore.retry' } },
-        children: ['Try again'],
+        children: [{ $: "baseStore.executorStopped ? 'Start Coasys again' : 'Try again'" }],
       },
     ],
   },
@@ -620,7 +633,8 @@ const devicesPage = page('devices', 'Devices', [
 
 const securityPage = page('security', 'Security', [
   card([
-    fact('Your identity', { $: "baseStore.didShort != '' ? baseStore.didShort : 'None yet'" }),
+    // Whether there is one, never its identifier: that is for Settings' advanced places.
+    fact('Your identity', { $: "baseStore.did != '' ? 'Set up' : 'None yet'" }),
     fact('Master key', { $: 'baseStore.keepsLine' }),
     {
       type: '$if',
@@ -643,7 +657,7 @@ export const coasysBase: TemplateSchema & { id: string } = {
   type: 'Column',
   meta: {
     name: 'Coasys before you sign in',
-    description: 'Your identity, and where your Coasys is, before anything is connected.',
+    description: 'Your identity, and where Coasys runs for you, before anything is connected.',
     icon: 'hexagon',
     role: 'base',
   },

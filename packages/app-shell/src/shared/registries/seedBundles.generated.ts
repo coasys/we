@@ -31759,7 +31759,7 @@ export const seedBundles: Bundle[] = [
       type: 'Column',
       meta: {
         name: 'Coasys before you sign in',
-        description: 'Your identity, and where your Coasys is, before anything is connected.',
+        description: 'Your identity, and where Coasys runs for you, before anything is connected.',
         icon: 'hexagon',
         role: 'base',
         themeId: 'glow',
@@ -31885,13 +31885,17 @@ export const seedBundles: Bundle[] = [
                         {
                           type: 'we-text',
                           props: { variant: 'heading-xl', tag: 'h1' },
-                          children: ['Coasys could not start'],
+                          children: [
+                            { $: "baseStore.executorStopped ? 'Coasys has stopped' : 'Coasys could not start'" },
+                          ],
                         },
                         {
                           type: 'we-text',
                           props: { color: 'text-muted' },
                           children: [
-                            'The part of Coasys that keeps your spaces on this computer stopped before it was ready.',
+                            {
+                              $: "baseStore.executorStopped ? 'The part of Coasys that keeps your spaces on this computer is not running, so nothing here can be opened until it starts again.' : 'The part of Coasys that keeps your spaces on this computer stopped before it was ready.'",
+                            },
                           ],
                         },
                       ],
@@ -31913,7 +31917,7 @@ export const seedBundles: Bundle[] = [
                             loading: { $: 'baseStore.busy' },
                             onClick: { $invoke: 'baseStore.retry' },
                           },
-                          children: ['Try again'],
+                          children: [{ $: "baseStore.executorStopped ? 'Start Coasys again' : 'Try again'" }],
                         },
                       ],
                     },
@@ -32587,14 +32591,14 @@ export const seedBundles: Bundle[] = [
                         {
                           type: 'we-text',
                           props: { variant: 'heading-xl', tag: 'h1' },
-                          children: ['Where is your Coasys?'],
+                          children: ['Where should Coasys run for you?'],
                         },
                         {
                           type: 'we-text',
                           props: { color: 'text-muted' },
                           children: [
                             {
-                              $: "baseStore.did != '' ? `Your spaces live where you keep them. This ${baseStore.deviceNoun} speaks for ${baseStore.didShort}.` : 'Your spaces live where you keep them. Choose where to open them from.'",
+                              $: "baseStore.hostKind == 'phone' ? 'Coasys keeps your spaces on a computer you choose: one of your own, or a host you trust.' : 'Coasys keeps your spaces on a computer you choose: this one, or a host you trust.'",
                             },
                           ],
                         },
@@ -33020,7 +33024,7 @@ export const seedBundles: Bundle[] = [
                             {
                               type: 'we-text',
                               props: { flex: '1', minWidth: '0' },
-                              children: [{ $: "baseStore.didShort != '' ? baseStore.didShort : 'None yet'" }],
+                              children: [{ $: "baseStore.did != '' ? 'Set up' : 'None yet'" }],
                             },
                           ],
                         },

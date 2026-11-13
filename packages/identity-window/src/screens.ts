@@ -214,6 +214,11 @@ export function spreadWords(pasted: string, at: number): Array<[number, string]>
 /** What the device the window runs on is called on its screens. */
 export type DeviceNoun = 'computer' | 'phone';
 
+/** How many devices a lock-out took, said without their key ids: the person ticked them a moment ago. */
+function devices(count: number): string {
+  return count === 1 ? '1 device' : `${count} devices`;
+}
+
 /**
  * The lead of each screen: its title and the sentence under it. `noun` is what this device is
  * where a screen speaks of it while it joins an identity, which a phone does too.
@@ -289,7 +294,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
     case 'joined':
       return {
         title: 'This device is one of yours now',
-        lead: `It signs for you as ${screen.keyId}. It does not hold your master key, so it cannot add or remove devices.`,
+        lead: `It signs for you now. It does not hold your master key, so it cannot add or remove devices.`,
       };
     case 'master-taken':
       return {
@@ -354,7 +359,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
         title: 'Your master key is replaced',
         lead: [
           `This computer keeps master key #${screen.index}. Copies of the one before it no longer add or remove devices, on any device.`,
-          ...(screen.revoked.length ? [`Revoked in the same step: ${screen.revoked.join(', ')}.`] : []),
+          ...(screen.revoked.length ? [`Revoked in the same step: ${devices(screen.revoked.length)}.`] : []),
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
       };
@@ -363,7 +368,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
         title: 'Your master key is replaced, but this computer could not keep the new key',
         lead: [
           `Master key #${screen.index} is now your master key, and copies of the one before it no longer add or remove devices. ${screen.reason}`,
-          ...(screen.revoked.length ? [`Revoked in the same step: ${screen.revoked.join(', ')}.`] : []),
+          ...(screen.revoked.length ? [`Revoked in the same step: ${devices(screen.revoked.length)}.`] : []),
           ...(screen.note ? [screen.note] : []),
           'Type your 12 words again to replace it once more with a key this computer keeps.',
         ].join(' '),
@@ -373,7 +378,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
         title: 'Your identity is restored, but this computer is not linked yet',
         lead: [
           `Your master key is replaced. ${screen.reason}`,
-          ...(screen.revoked.length ? [`Locked out: ${screen.revoked.join(', ')}.`] : []),
+          ...(screen.revoked.length ? [`Locked out: ${devices(screen.revoked.length)}.`] : []),
           'Try again to add this computer as one of your devices; your 12 words are not needed for that.',
         ].join(' '),
       };
@@ -381,8 +386,8 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
       return {
         title: `Restored as ${screen.name}`,
         lead: [
-          `This computer signs for you as ${screen.keyId} and keeps your new master key.`,
-          ...(screen.revoked.length ? [`Locked out: ${screen.revoked.join(', ')}.`] : []),
+          'This computer signs for you and keeps your new master key.',
+          ...(screen.revoked.length ? [`Locked out: ${devices(screen.revoked.length)}.`] : []),
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
       };
@@ -415,12 +420,12 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
       return {
         title: `${screen.name} added`,
         lead: [
-          `Your key log records its key ${screen.keyId} as entry #${screen.seq}. It can do nothing yet: give it spaces on the Bots page.`,
+          `Your key log records its key as entry #${screen.seq}. It can do nothing yet: give it spaces on the Bots page.`,
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
       };
     case 'revoked':
-      return { title: `${screen.keyId} revoked`, lead: `Your key log records it as entry #${screen.seq}.` };
+      return { title: 'Device revoked', lead: `Your key log records it as entry #${screen.seq}.` };
     case 'pending-refused':
       return {
         title: 'Your identity could not be published',

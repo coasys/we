@@ -6316,6 +6316,9 @@
         "executorReason": {
           "type": "string"
         },
+        "executorStopped": {
+          "type": "boolean"
+        },
         "hasIdentity": {
           "type": "boolean"
         },

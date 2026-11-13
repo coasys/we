@@ -3057,10 +3057,11 @@ BaseStore:
   - brand: { name, mark } — the deployment’s name and mark (an image URL) for the header; templateStore is not there before a session
   - executorPhase: 'none' | 'starting' | 'ready' | 'failed' — this device’s own backend: 'none' where it runs none (a browser, a phone)
   - executorReason: string — why it failed to start, ready to show; empty otherwise. Offer retry beside it
+  - executorStopped: boolean — the failure is a backend that ran and then stopped (outside the app, from the tray), not one that never started: say it stopped, and offer to start it again with retry
   - hasIdentity: boolean — this device keeps an identity of its own (a computer’s custody service, a phone’s key); false in a browser, which goes straight to the connection choice
   - identityKnown: boolean — the identity source answered, so did / holdsMaster are facts, not defaults
-  - did: string — the identity this device speaks for, or empty. Draw didShort; never the whole identifier in a screenshot-sized space
-  - didShort: string — the same, shortened for the eye
+  - did: string — the identity this device speaks for, or empty. Test it (did != '') to know whether there is one; never draw it on an ordinary screen
+  - didShort: string — the same, shortened. Only for an advanced or diagnostic place a person opens on purpose; ordinary screens say "your identity", never an identifier
   - unpublished: string — an identity a step made on this device whose publish has not gone through yet (its DID), or empty. Its master key is kept here and it is published again on the next attempt, so after `lastOutcome == 'failed'` say it was made, not that nothing changed. When it is empty a failed step still may have changed something: say it did not finish, never that nothing changed
   - holdsMaster: boolean — this device keeps a master key of it
   - keepsLine: string — 'This computer keeps your master key behind its own sign-in' / '… behind your passphrase' / 'This phone keeps no master key', ready to show

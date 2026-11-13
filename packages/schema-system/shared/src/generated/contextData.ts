@@ -2301,6 +2301,7 @@ export const contextData: ContextData = {
         brand: { type: 'object' },
         executorPhase: { type: 'string' },
         executorReason: { type: 'string' },
+        executorStopped: { type: 'boolean' },
         hasIdentity: { type: 'boolean' },
         identityKnown: { type: 'boolean' },
         did: { type: 'string' },

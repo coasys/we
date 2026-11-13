@@ -1650,15 +1650,15 @@ export default function TemplateProvider() {
         Every member, not only those whose profile has arrived: `members` drops anybody without a
         cached profile, and an agent — a bot like Data — often has none, so it could never be picked
         and a mention of it could only ever be a name in the text. A member with no profile is offered
-        under a shortened DID until its profile lands.
+        as "Someone" until its profile lands: an identifier is never a name a person reads.
       */
       mentions={() => {
         const profiles = new Map(spaceStore.members().map((m) => [m.did, m]));
         return spaceStore.memberDids().map((did) => {
           const m = profiles.get(did);
           return m
-            ? { did, name: m.name || m.handle || did, avatar: m.avatar || undefined }
-            : { did, name: did.length > 20 ? `${did.slice(0, 12)}…${did.slice(-4)}` : did };
+            ? { did, name: m.name || m.handle || 'Someone', avatar: m.avatar || undefined }
+            : { did, name: 'Someone' };
         });
       }}
       // A live co-editing session rides the ephemeral port of the space on screen — null in a

@@ -26,7 +26,7 @@
  * Chrome tier only (`keys`, `devices` and `session` in `templateSurface.ts`): a space template never
  * learns what this device is, which identity it keeps or where it connects.
  */
-import { custodyDevice, DEVICE_ICONS, shortDid, THIS_COMPUTER, THIS_PHONE } from '@shared/identityRows';
+import { custodyDevice, DEVICE_ICONS, shortDid, THIS_COMPUTER, THIS_PHONE, UNNAMED_DEVICE } from '@shared/identityRows';
 import type {
   BaseAgentPasswordAnswer,
   BaseConnection,
@@ -62,6 +62,11 @@ export interface BaseStore {
   executorPhase: Accessor<'none' | BaseExecutorState['phase']>;
   /** Why it failed to start, in words a person reads; empty otherwise. */
   executorReason: Accessor<string>;
+  /**
+   * It was running and stopped (outside the app, from the tray, or it kept failing) rather than
+   * failing to start: the failed screen says "stopped" and offers to start it again.
+   */
+  executorStopped: Accessor<boolean>;
   /** This device keeps an identity source (the desktop's custody service, the phone's device key). */
   hasIdentity: Accessor<boolean>;
   /** The source answered: what follows about the identity is known, not assumed. */
@@ -481,6 +486,15 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
       */
       const sameReady =
         next.phase === 'ready' && before?.phase === 'ready' && stage() !== 'password' && !asksPassword(next);
+      /*
+        Except one that has gone: the executor stopped under it (outside the app, from the tray, or
+        it kept failing). The session has nothing left to follow, so the base takes the window back
+        to say so, with the button that starts it again.
+      */
+      if (stage() === 'session' && next.phase === 'failed') {
+        setStage('failed');
+        return;
+      }
       if (stage() === 'session' || sameReady) return;
       void evaluate();
     });
@@ -507,8 +521,9 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
         keyId: d.keyId,
         label: thisDevice
           ? (here?.label ?? (host.kind === 'phone' ? THIS_PHONE : THIS_COMPUTER))
-          : d.name || `Device ${d.keyId}`,
-        subtitle: [d.keyId, kind].filter(Boolean).join(' · '),
+          : d.name || UNNAMED_DEVICE,
+        // What it is, never its key id: that is for the key log and the identity window's checks.
+        subtitle: kind,
         icon: DEVICE_ICONS[d.kind] ?? 'key',
         thisDevice,
         master:
@@ -531,6 +546,10 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
     executorReason: () => {
       const state = executor();
       return state?.phase === 'failed' ? state.reason : '';
+    },
+    executorStopped: () => {
+      const state = executor();
+      return state?.phase === 'failed' && state.stopped === true;
     },
     hasIdentity: () => !!host.identity,
     identityKnown: () => custody() !== null,

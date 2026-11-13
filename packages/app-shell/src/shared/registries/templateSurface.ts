@@ -1474,6 +1474,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     brand: state('session'),
     executorPhase: state('session'),
     executorReason: state('session'),
+    executorStopped: state('session'),
     hasIdentity: state('keys'),
     identityKnown: state('keys'),
     did: state('keys'),

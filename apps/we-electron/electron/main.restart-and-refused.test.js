@@ -197,7 +197,7 @@ describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp
       // 78: not started again; one box with the executor's last lines and the config file.
       expect(state.messageBoxes).toHaveLength(1);
       const [, box] = state.messageBoxes[0];
-      expect(box.message).toBe('The AD4M executor stopped');
+      expect(box.message).toMatch(/ has stopped$/);
       expect(box.detail).toMatch(/executor-config\.json/);
       expect(box.detail).toMatch(/exits 78/);
       // The window reloaded once per restart: after the first 75 onto the new executor, and after
