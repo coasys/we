@@ -4,10 +4,16 @@
  */
 import { cleanup, render } from '@solidjs/testing-library';
 import type { AgentConversationMessage, AgentConversationsPort } from '@we/backend-shared';
+import { createSignal, Show } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import AgentChat from '../src/frameworks/solid/components/chat/AgentChat';
-import { ChatStoreProvider } from '../src/frameworks/solid/stores/ChatStore';
+import {
+  type ChatInputs,
+  type ChatStore,
+  ChatStoreProvider,
+  useChatStore,
+} from '../src/frameworks/solid/stores/ChatStore';
 
 let followed: ((next: AgentConversationMessage[]) => void) | undefined;
 
@@ -37,9 +43,30 @@ vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({
 vi.mock('../src/frameworks/solid/stores/SpaceStore', () => ({
   useSpaceStore: () => ({ mySpaces: () => [{ uuid: 'creator-uuid', url: 'we://garden', name: 'Garden club' }] }),
 }));
+const mockOpenPanel = vi.fn(() => '');
 vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
-  useShellStore: () => ({ openPanel: () => '' }),
+  useShellStore: () => ({ openPanel: mockOpenPanel }),
 }));
+
+/** Mount the chat as `openChat` opened it — the nonce, not the question, in the inputs. */
+function openedChat(open: Parameters<ChatStore['openChat']>[0]) {
+  const [inputs, setInputs] = createSignal<ChatInputs>({});
+  let store!: ChatStore;
+  const result = render(() => (
+    <ChatStoreProvider>
+      {(() => {
+        store = useChatStore();
+        return null;
+      })()}
+      <Show when={inputs().nonce}>
+        <AgentChat inputs={inputs()} />
+      </Show>
+    </ChatStoreProvider>
+  ));
+  store.openChat(open);
+  setInputs(mockOpenPanel.mock.calls.at(-1)![1] as ChatInputs);
+  return result;
+}
 
 describe('the refusal card', () => {
   beforeEach(() => {
@@ -51,13 +78,11 @@ describe('the refusal card', () => {
   afterEach(cleanup);
 
   it('says the boundary in plain words and keeps the raw error under Details', async () => {
-    const { container } = render(() => (
-      <ChatStoreProvider>
-        <AgentChat
-          inputs={{ draft: 'write to the other space', at: 1, perspectiveUuid: 'uuid-9', spaceName: 'Garden club' }}
-        />
-      </ChatStoreProvider>
-    ));
+    const { container } = openedChat({
+      draft: 'write to the other space',
+      perspectiveUuid: 'uuid-9',
+      spaceName: 'Garden club',
+    });
     await vi.waitFor(() => expect(followed).toBeDefined());
 
     followed!([
@@ -91,11 +116,7 @@ describe('the refusal card', () => {
   });
 
   it('words it for the account, not a space, in the global chat — and offers no way "out"', async () => {
-    const { container } = render(() => (
-      <ChatStoreProvider>
-        <AgentChat inputs={{ draft: 'reach for that', at: 1 }} />
-      </ChatStoreProvider>
-    ));
+    const { container } = openedChat({ draft: 'reach for that' });
     await vi.waitFor(() => expect(followed).toBeDefined());
 
     followed!([

@@ -4,6 +4,7 @@
  * store, a template's lane and the panel host.
  */
 import { cleanup, render } from '@solidjs/testing-library';
+import { runWithGesture } from '@we/schema-shared';
 import { createEffect, createRoot, createSignal } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -202,6 +203,33 @@ describe('an instance kept under the app', () => {
         .map((instance) => instance.id)
         .sort(),
     ).toEqual([bound, global].sort());
+  });
+});
+
+describe('a template opening a panel unasked', () => {
+  /*
+    `openPanel` is ambient — a template's panels open without a press — but pulling Settings down
+    or the hidden dock back up is nobody's click. The bag stamps `viaTemplate` on the call, and
+    the store reveals only while a person is acting.
+  */
+  it('still opens, but leaves Settings in front and the dock hidden', () => {
+    const { store } = mount();
+    store.togglePanelsHidden();
+    store.openShellView('settings');
+
+    store.openPanel('inspector', { name: 'Ada' }, { viaTemplate: true });
+
+    // The instance opened — ambient means ambient — and nothing moved for it.
+    expect(store.panelInstances()).toHaveLength(1);
+    expect(store.activeShellView()).toBe('settings');
+    expect(store.panelsHidden()).toBe(true);
+
+    // The same call with a person's press behind it brings the panel forward as it always did.
+    runWithGesture({ at: {} as Event } as never, () =>
+      store.openPanel('inspector', { name: 'Bo' }, { viaTemplate: true }),
+    );
+    expect(store.activeShellView()).toBe(null);
+    expect(store.panelsHidden()).toBe(false);
   });
 });
 

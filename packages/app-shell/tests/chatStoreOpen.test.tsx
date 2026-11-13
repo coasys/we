@@ -4,6 +4,10 @@
  * "Find or ask" passes the space's local perspective id. Before the space's dataset has loaded that
  * id is undefined, and a store that read "no id" as "global" would answer a question about one
  * space with a chat that reaches every space.
+ *
+ * And a question never travels in the inputs: `openChat` keeps it behind a nonce it issues, which
+ * the chat body spends once — the inputs stay data a template may read, replay or forge without
+ * anything being sent.
  */
 import { render } from '@solidjs/testing-library';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -63,5 +67,27 @@ describe('opening a chat', () => {
       expect.anything(),
       expect.objectContaining({ key: 'global' }),
     );
+  });
+
+  it('travels a question as a nonce, never as inputs — spent once, gone after', () => {
+    const store = withStore();
+    store.openChat({ perspectiveUuid: 'uuid-9', draft: 'what is here?' });
+
+    // What the panel is told: the nonce, and nothing a reader could send itself.
+    const inputs = openPanel.mock.calls[0][1] as Record<string, unknown>;
+    expect(inputs.draft).toBeUndefined();
+    expect(inputs.at).toBeUndefined();
+    const nonce = inputs.nonce as string;
+    expect(nonce).toBeTruthy();
+
+    // The question waits in the store, bound to the scope it was asked in — spent once.
+    expect(store.takePending(nonce)).toEqual({ text: 'what is here?', perspectiveUuid: 'uuid-9' });
+    expect(store.takePending(nonce)).toBeUndefined();
+  });
+
+  it('answers nothing for a nonce nobody issued', () => {
+    const store = withStore();
+    // The shape a template would forge — there is no map entry for it to find.
+    expect(store.takePending('forged')).toBeUndefined();
   });
 });

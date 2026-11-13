@@ -15,17 +15,24 @@
  * take the screen. `sheet` is what `AgentChatSheet` reads to know it is wanted; a phone opening
  * never touches the panel system.
  *
- * What the opened chat then shows — which conversation, a draft question waiting to be sent —
- * travels as the panel instance's inputs (or the sheet's), so the same `openChat` serves "open the
- * chats", "ask this in this space" and "ask this globally instead".
+ * ## A question never travels in the inputs
+ *
+ * What the opened chat shows travels as the panel instance's inputs — and those are *data*:
+ * persisted in localStorage, published on `panelInstances`, readable and replayable by any
+ * template. A question put there would be sent by whatever rendered the inputs, however it got
+ * them — which is how `{ draft, at }` in a template's own `openPanel` used to send. Instead
+ * `openChat` keeps the question itself, in host memory, behind a nonce it issues; the inputs carry
+ * only the nonce, and the chat body spends it once against `takePending`. A nonce a template
+ * invents answers nothing — the map only holds what a real `openChat` wrote — and a `draft` it
+ * forges is just an input nothing reads.
  */
 import { NARROW_VIEWPORT_PX } from '@shared/dockGeometry';
 import { APP_PANEL_SCOPE } from '@shared/registries/panelInstances';
-import { type Accessor, createContext, createSignal, onCleanup, type ParentProps, untrack, useContext } from 'solid-js';
+import { type Accessor, createContext, createSignal, onCleanup, type ParentProps, useContext } from 'solid-js';
 
 import { useShellStore } from './ShellStore';
 
-/** What `openChat` carries: the panel it wants, and the inputs to open it with. */
+/** What `openChat` carries: where the chat is scoped, and what it was asked to say. */
 export interface ChatOpen {
   /**
    * The perspective the chat is scoped to — set by a space's ask, absent for the global chat.
@@ -34,34 +41,70 @@ export interface ChatOpen {
   perspectiveUuid?: string;
   /** The space's own name, for the badge the scoped chat wears. */
   spaceName?: string;
-  /** A question waiting to be asked — the chat creates a fresh conversation and sends it. */
+  /**
+   * A question the chat asks once it is open. Host code only: this is the call the gesture gate
+   * stands in front of, and the question is held in the store until the chat body spends the
+   * nonce it was issued — never written into the persisted, template-readable panel inputs.
+   */
   draft?: string;
   /**
-   * When `draft` was stamped, so asking the same words twice still asks twice — the chat consumes a
-   * draft by this key rather than by its text.
+   * Words to put in the composer without sending — what a template's ask is rewritten to. The
+   * person reads them, edits them, and presses Send themselves: a template may fill the field,
+   * never send the question.
    */
-  at?: number;
+  prefill?: string;
+}
+
+/**
+ * What an opened chat is told — the panel's inputs, or the sheet's request. Plain data, kept by
+ * the panel system: deliberately *not* a question, which is why a forged `{ draft, at }` here
+ * sends nothing.
+ */
+export interface ChatInputs {
+  perspectiveUuid?: string;
+  spaceName?: string;
+  /** Words in the composer, not sent — see {@link ChatOpen.prefill}. */
+  prefill?: string;
+  /**
+   * The one-time key for the question this open asked for, where it carried one. Spends the entry
+   * `openChat` wrote — a value nobody issued answers nothing.
+   */
+  nonce?: string;
+}
+
+/** The question an issued nonce answers — kept in the store, spent once. */
+export interface PendingQuestion {
+  text: string;
+  /** The scope it was asked in — bound at issue, so a stolen nonce cannot redirect it. */
+  perspectiveUuid?: string;
 }
 
 export interface ChatStore {
   /**
    * Open a chat. No `perspectiveUuid` is the global chat; with one, the chat scoped to that
-   * perspective. `draft` sends itself once the chat is up.
+   * perspective. `draft` asks once the chat is up; `prefill` only fills its composer.
    */
   openChat: (input?: ChatOpen) => void;
   /**
-   * Whether the draft this request carries was already asked — by `at`, so the same words asked
-   * twice still ask, but a remount or reload reading the same inputs does not.
+   * The question an open was issued for, by nonce — spending it: a second read answers nothing.
+   * WIRING so no template can call it: the chat body reads it, nothing else may.
    */
-  draftConsumed: (input: ChatOpen) => boolean;
+  takePending: (nonce: string) => PendingQuestion | undefined;
   /**
-   * Mark an opening draft asked — the chat calls this as its ask starts, whatever the ask goes on
-   * to do. Persisted: the instance inputs keep carrying `draft`/`at`, and only this says they are
-   * spent.
+   * The conversation open in a chat window, remembered per scope while the app runs.
+   *
+   * A space switch hides the panel, which unmounts the body and loses `active` with it — so the
+   * chat kept coming back to its list instead of the conversation it was in. Kept here, a plain
+   * map for the session's lifetime: reopening the space's chat finds the conversation it had.
    */
-  consumeDraft: (input: ChatOpen) => void;
+  rememberConversation: (
+    key: string,
+    conversation: { ref: { id: string }; title: string; scope?: string } | null,
+  ) => void;
+  /** What {@link rememberConversation} kept for a chat window — undefined for the list. */
+  rememberedConversation: (key: string) => { ref: { id: string }; title: string; scope?: string } | undefined;
   /** The sheet a narrow window opens instead of a panel — what it was asked for, or null. */
-  sheet: Accessor<ChatOpen | null>;
+  sheet: Accessor<ChatInputs | null>;
   closeSheet: () => void;
   /** Below the width where a floating panel stops being usable — where `openChat` sends chats. */
   isNarrow: Accessor<boolean>;
@@ -77,35 +120,6 @@ function keyFor(input: ChatOpen): string {
   return input.perspectiveUuid ?? 'global';
 }
 
-/**
- * The `at` a window's opening draft was asked under, per window — the spent stamps the inputs
- * cannot say themselves.
- *
- * Persisted beside the panel instances, which is what makes it work: a draft survives in the
- * instance's inputs across a reload by design, so whether it has run must be remembered somewhere
- * just as durable — a component-local guard forgets on every remount and asks the question again.
- */
-const CONSUMED_KEY = 'we-local:chat.consumedDrafts';
-
-function loadConsumed(): Record<string, number> {
-  if (typeof localStorage === 'undefined') return {};
-  try {
-    const parsed = JSON.parse(localStorage.getItem(CONSUMED_KEY) ?? '{}') as unknown;
-    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? (parsed as Record<string, number>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function saveConsumed(consumed: Record<string, number>): void {
-  if (typeof localStorage === 'undefined') return;
-  try {
-    localStorage.setItem(CONSUMED_KEY, JSON.stringify(consumed));
-  } catch {
-    // A forgotten stamp re-asks a question on the next remount — a miss, not a loss.
-  }
-}
-
 export function ChatStoreProvider(props: ParentProps) {
   const shellStore = useShellStore();
 
@@ -118,13 +132,15 @@ export function ChatStoreProvider(props: ParentProps) {
     onCleanup(() => window.removeEventListener('resize', onResize));
   }
 
-  const [sheet, setSheet] = createSignal<ChatOpen | null>(null);
-  const [consumed, setConsumed] = createSignal<Record<string, number>>(loadConsumed());
+  const [sheet, setSheet] = createSignal<ChatInputs | null>(null);
   /*
-    `at` must move forward even inside one millisecond: two asks stamped the same would read as one
-    ask to `draftConsumed`, and the second question would never go.
+    Questions an open was issued for, by nonce — host memory, not persisted, so a nonce cannot
+    outlive the session that made it or arrive anywhere but the chat that asks for it. Entries
+    leave on `takePending` or stay small: one per ask, which is how many a person makes.
   */
-  let lastAt = 0;
+  const pending = new Map<string, PendingQuestion>();
+  // Which conversation each chat window had open — see `rememberConversation`.
+  const open = new Map<string, { ref: { id: string }; title: string; scope?: string }>();
 
   const store: ChatStore = {
     openChat: (input = {}) => {
@@ -137,26 +153,41 @@ export function ChatStoreProvider(props: ParentProps) {
         console.warn('ChatStore: a space chat was asked for before its perspective was known; not opened');
         return;
       }
-      // A draft is consumed once per ask — stamped here so the same words asked twice still ask.
-      const request = input.draft ? { ...input, at: (lastAt = Math.max(Date.now(), lastAt + 1)) } : input;
+      const inputs: ChatInputs = {};
+      if (input.perspectiveUuid) inputs.perspectiveUuid = input.perspectiveUuid;
+      if (input.spaceName) inputs.spaceName = input.spaceName;
+      if (input.prefill) inputs.prefill = input.prefill;
+      /*
+        A question to send travels as a nonce only: the inputs stay data — safe to persist, to
+        publish, and for a template to read or replay — while the question itself waits here.
+        Unguessable, so a template reading the inputs cannot forge one for a question it made up.
+      */
+      if (typeof input.draft === 'string' && input.draft.trim()) {
+        const nonce = crypto.randomUUID();
+        pending.set(nonce, { text: input.draft, perspectiveUuid: input.perspectiveUuid });
+        inputs.nonce = nonce;
+      }
       if (isNarrow()) {
-        setSheet(request);
+        setSheet(inputs);
         return;
       }
       // The app's own scope: a chat is about the app (or the space its inputs name), not about the
       // interface it happened to open in — so it stays open across spaces.
-      shellStore.openPanel(panelFor(request), request as Record<string, unknown>, {
-        key: keyFor(request),
+      shellStore.openPanel(panelFor(input), inputs as Record<string, unknown>, {
+        key: keyFor(input),
         scope: APP_PANEL_SCOPE,
       });
     },
-    draftConsumed: (input) => input.at !== undefined && untrack(consumed)[keyFor(input)] === input.at,
-    consumeDraft: (input) => {
-      if (input.at === undefined) return;
-      const next = { ...consumed(), [keyFor(input)]: input.at };
-      setConsumed(next);
-      saveConsumed(next);
+    takePending: (nonce) => {
+      const found = pending.get(nonce);
+      if (found) pending.delete(nonce);
+      return found;
     },
+    rememberConversation: (key, conversation) => {
+      if (conversation) open.set(key, conversation);
+      else open.delete(key);
+    },
+    rememberedConversation: (key) => open.get(key),
     sheet,
     closeSheet: () => setSheet(null),
     isNarrow,

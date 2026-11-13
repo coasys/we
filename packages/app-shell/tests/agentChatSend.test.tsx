@@ -5,10 +5,16 @@
  */
 import { cleanup, render } from '@solidjs/testing-library';
 import type { AgentConversationMessage, AgentConversationsPort } from '@we/backend-shared';
+import { createSignal, Show } from 'solid-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import AgentChat from '../src/frameworks/solid/components/chat/AgentChat';
-import { ChatStoreProvider } from '../src/frameworks/solid/stores/ChatStore';
+import {
+  type ChatInputs,
+  type ChatStore,
+  ChatStoreProvider,
+  useChatStore,
+} from '../src/frameworks/solid/stores/ChatStore';
 
 const conversations = {
   create: vi.fn(async () => ({ id: 's1' })),
@@ -31,9 +37,6 @@ vi.mock('../src/frameworks/solid/stores/DatasetStore', () => ({
 vi.mock('../src/frameworks/solid/stores/SpaceStore', () => ({
   useSpaceStore: () => ({ mySpaces: () => [] }),
 }));
-vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
-  useShellStore: () => ({ openPanel: () => '' }),
-}));
 
 const input = (container: HTMLElement) => container.querySelector('we-input')!;
 
@@ -47,6 +50,34 @@ function enter(container: HTMLElement) {
 
 const sendButton = (container: HTMLElement) =>
   container.querySelector('we-icon[name="paper-plane-tilt"]')!.closest('we-button')! as HTMLElement;
+
+const openPanel = vi.fn(() => '');
+vi.mock('../src/frameworks/solid/stores/ShellStore', () => ({
+  useShellStore: () => ({ openPanel }),
+}));
+
+/**
+ * Mount the chat as it would have been opened — `openChat` holds the question, the nonce it
+ * issued is all the inputs carry. One provider, so the store that issued it is the one spent.
+ */
+function openedChat(draft: string) {
+  const [inputs, setInputs] = createSignal<ChatInputs>({});
+  let store!: ChatStore;
+  const result = render(() => (
+    <ChatStoreProvider>
+      {(() => {
+        store = useChatStore();
+        return null;
+      })()}
+      <Show when={inputs().nonce}>
+        <AgentChat inputs={inputs()} />
+      </Show>
+    </ChatStoreProvider>
+  ));
+  store.openChat({ draft });
+  setInputs(openPanel.mock.calls.at(-1)![1] as ChatInputs);
+  return result;
+}
 
 describe('the send path', () => {
   beforeEach(() => {
@@ -84,11 +115,7 @@ describe('the send path', () => {
 
   it('keeps the question in the composer when the create landed but the send failed', async () => {
     conversations.send.mockRejectedValueOnce(new Error('endpoint down'));
-    const { container } = render(() => (
-      <ChatStoreProvider>
-        <AgentChat inputs={{ draft: 'keep me', at: 1 }} />
-      </ChatStoreProvider>
-    ));
+    const { container } = openedChat('keep me');
     await vi.waitFor(() => expect(conversations.send).toHaveBeenCalledTimes(1));
 
     // The composer still holds it, and Enter sends the same words again — never silently gone.
@@ -128,11 +155,7 @@ describe('the send path', () => {
           resolveCreate = done;
         }),
     );
-    const { unmount } = render(() => (
-      <ChatStoreProvider>
-        <AgentChat inputs={{ draft: 'too late', at: 1 }} />
-      </ChatStoreProvider>
-    ));
+    const { unmount } = openedChat('too late');
     await vi.waitFor(() => expect(conversations.create).toHaveBeenCalled());
 
     unmount();

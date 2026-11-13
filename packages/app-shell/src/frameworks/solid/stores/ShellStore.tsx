@@ -112,6 +112,7 @@ import { usePlatform } from '@solid/providers/PlatformProvider';
 import { DRAGGING_ATTR } from '@we/drag';
 import type { ChromeReserve, DockAspect, DockEdge, DockSize } from '@we/module-shared';
 import type { PanelFrame, SchemaNode, TemplatePanel, TemplateSchema } from '@we/schema-shared';
+import { hasGesture } from '@we/schema-shared';
 import {
   Accessor,
   createContext,
@@ -629,7 +630,18 @@ export interface ShellStore {
   openPanel: (
     panel: string,
     inputs?: Record<string, unknown>,
-    options?: { key?: string; title?: string; scope?: string },
+    options?: {
+      key?: string;
+      title?: string;
+      /** The scope the instance is kept under — host code only; a template's is struck by the bag. */
+      scope?: string;
+      /**
+       * Stamped by the bag on every call that came through a template — never set by the caller.
+       * Marked so the reveal below stays quiet without a gesture: a template may open its panels
+       * unasked, but only a person's doing brings them in front of Settings or out of hiding.
+       */
+      viaTemplate?: boolean;
+    },
   ) => string;
   /** Close an instance `openPanel` opened. Its placement goes with it. */
   closePanel: (instance: string) => void;
@@ -4578,7 +4590,14 @@ export function ShellStoreProvider(props: ParentProps) {
         just created does not — the effect registering it runs after this call — and `revealDock`
         would find no request and return. What it would have said for a dock that has never been laid
         out (no strip, no fold yet) is exactly this.
+
+        Through a template, though, "asked for" is the template's saying rather than a person's —
+        `openPanel` is ambient because a template's panels open unasked, but pulling Settings down
+        or the hidden dock back up is nobody's click. `hasGesture`, not `claimGesture`: the
+        ambient call must not spend the press another action in the same handler may need.
       */
+      const reveal = !options.viaTemplate || hasGesture();
+      if (!reveal) return id;
       if (dockRequests().some((request) => request.id === id)) {
         store.revealDock(id);
       } else {

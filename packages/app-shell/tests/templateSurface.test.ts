@@ -467,3 +467,82 @@ describe('the gesture gate', () => {
     expect(calls).toEqual(['record.create']);
   });
 });
+
+describe('a template cannot send a chat question or pick its scope', () => {
+  /*
+    The two rewrites `chatRequest` and `options` stand for: what reaches the real store is never
+    what the template passed. A question becomes words in the composer; a space is the one on
+    screen; `scope` is struck and `viaTemplate` stamped — all before the store's own rules run.
+  */
+  const asked = <T>(fn: () => T): T => runWithGesture({ at: {} as Event }, fn);
+
+  function chatBag(options: {
+    grants: readonly CapabilityGroup[];
+    dataset?: { id: string } | null;
+    gesture?: 'enforce' | 'report';
+  }) {
+    const openChat = vi.fn();
+    const openPanel = vi.fn(() => 'i1');
+    const stores = {
+      chatStore: { openChat },
+      shellStore: { openPanel },
+      datasetStore: { currentDataset: () => options.dataset },
+    };
+    const bag = buildTemplateBag(stores, { grants: options.grants, gesture: options.gesture }) as unknown as {
+      chatStore: { openChat: (input?: Record<string, unknown>) => unknown };
+      shellStore: {
+        openPanel: (panel: string, inputs?: Record<string, unknown>, opts?: Record<string, unknown>) => unknown;
+      };
+    };
+    return { bag, openChat, openPanel };
+  }
+
+  it('fills the composer rather than sending — a question from a template is a prefill', () => {
+    const { bag, openChat } = chatBag({ grants: SPACE_TIER, dataset: { id: 'uuid-here' }, gesture: 'enforce' });
+    asked(() => bag.chatStore.openChat({ draft: 'ask this for me' }));
+    const request = openChat.mock.calls[0][0] as Record<string, unknown>;
+    expect(request.draft).toBeUndefined();
+    expect(request.prefill).toBe('ask this for me');
+  });
+
+  it('pins the chat to the space on screen — another uuid, or none, cannot widen it', () => {
+    const { bag, openChat } = chatBag({ grants: SPACE_TIER, dataset: { id: 'uuid-here' }, gesture: 'enforce' });
+    asked(() => bag.chatStore.openChat({ perspectiveUuid: 'uuid-other' }));
+    expect(openChat).toHaveBeenCalledWith({ perspectiveUuid: 'uuid-here' });
+
+    // No dataset loaded yet: the uuid arrives present-but-empty — openChat opens nothing,
+    // never the global chat.
+    const { bag: bag2, openChat: open2 } = chatBag({ grants: SPACE_TIER, dataset: null, gesture: 'enforce' });
+    asked(() => bag2.chatStore.openChat({ perspectiveUuid: 'uuid-other' }));
+    const request2 = open2.mock.calls[0][0] as Record<string, unknown>;
+    expect('perspectiveUuid' in request2).toBe(true);
+    expect(request2.perspectiveUuid).toBeUndefined();
+  });
+
+  it('still asks the gesture first — no press, no call at all', () => {
+    const { bag, openChat } = chatBag({ grants: SPACE_TIER, dataset: { id: 'uuid-here' }, gesture: 'enforce' });
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    bag.chatStore.openChat({ draft: 'unasked' });
+    expect(openChat).not.toHaveBeenCalled();
+  });
+
+  it('leaves a chrome-tier call alone — the host names its own scope and question', () => {
+    const { bag, openChat } = chatBag({ grants: CHROME_TIER, dataset: null });
+    bag.chatStore.openChat({ draft: 'host asks' });
+    // Chrome is schema too: its question also fills the composer — only app code sends. Its
+    // perspective, though, is its own to name (unpinned).
+    const request = openChat.mock.calls[0][0] as Record<string, unknown>;
+    expect(request.prefill).toBe('host asks');
+    expect('perspectiveUuid' in request).toBe(false);
+  });
+
+  it('cannot write into another scope or claim a person asked — openPanel options are struck', () => {
+    const { bag, openPanel } = chatBag({ grants: SPACE_TIER, dataset: { id: 'uuid-here' }, gesture: 'enforce' });
+    bag.shellStore.openPanel('chat-global', { draft: 'x', at: 2 }, { scope: 'app', viaTemplate: false });
+    const [, inputs, opts] = openPanel.mock.calls[0] as [string, Record<string, unknown>, Record<string, unknown>];
+    expect('scope' in opts).toBe(false);
+    expect(opts.viaTemplate).toBe(true);
+    // And the inputs passed through as data — a forgeable `{ draft, at }` is what finding 2 removed.
+    expect(inputs.draft).toBe('x');
+  });
+});

@@ -7,8 +7,12 @@
  * sheet's on a phone:
  * - `perspectiveUuid` + `spaceName`: the space chat, scoped to that one perspective. Its badge
  *   says "this space only" and a switch offers the global chat.
- * - `draft` + `at`: a question waiting — the chat opens a fresh conversation and sends it, once
- *   per `at`, so the same words asked twice still ask twice.
+ * - `prefill`: words in the composer — what a template's ask fills and a person's Send sends.
+ * - `nonce`: the one-time key for a question `openChat` is holding — the chat asks it, once.
+ *
+ * No question is ever an input: inputs are persisted, template-readable panel state, so a question
+ * travels as a nonce against `chatStore`'s own memory instead (see ChatStore). A forged
+ * `{ draft, at }` here is just an input nothing reads.
  *
  * No streaming: a reply lands whole when its row settles. While it runs the steps show live and a
  * Stop button stands in for send.
@@ -24,19 +28,14 @@ import { tokenVar } from '@we/design-utils';
 import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
 
 import { isSpaceSelf } from '../../../../shared/spaceSync';
-import { useChatStore } from '../../stores/ChatStore';
+import { type ChatInputs, useChatStore } from '../../stores/ChatStore';
 import { useDatasetStore } from '../../stores/DatasetStore';
 import { useSessionStore } from '../../stores/SessionStore';
 import { useSpaceStore } from '../../stores/SpaceStore';
 import { lastAsk, refusalOf, refusalSentence, replyRunning, unfinishedWords } from './chatState';
 
 /** What an open chat was asked for — `panel.inputs` on desktop, the sheet's on a phone. */
-export interface AgentChatInputs {
-  perspectiveUuid?: string;
-  spaceName?: string;
-  draft?: string;
-  at?: number;
-}
+export type AgentChatInputs = ChatInputs;
 
 /** "2m ago" for the list — a chat is read as recent or not, not as a timestamp. */
 function ago(ms: number): string {
@@ -205,15 +204,26 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
   }
 
   /**
-   * A draft the open carried is asked once per `at` — marked spent in the store before the ask
-   * starts, so a remount or a reload reading the same inputs does not ask it again.
+   * The composer a template's ask filled — words waiting, never sent. Once on mount: what the
+   * person types afterwards is theirs.
    */
+  let prefilled = false;
+  createEffect(() => {
+    if (prefilled || !props.inputs?.prefill) return;
+    prefilled = true;
+    setDraft(props.inputs.prefill);
+  });
+
+  /*
+    A question the open was issued for arrives as a nonce, spent once against the store's own
+    memory — remounts and replays find it gone, and a nonce nobody issued answers nothing. Its
+    scope is the pending entry's, bound when the question was issued, so pairing a stolen nonce
+    with other inputs still asks it where it was meant.
+  */
   createEffect(() => {
     const inputs = props.inputs ?? {};
-    const { draft: question, at, perspectiveUuid } = inputs;
-    if (!question || at === undefined || chat.draftConsumed(inputs)) return;
-    chat.consumeDraft(inputs);
-    void ask(question, perspectiveUuid);
+    const pending = inputs.nonce ? chat.takePending(inputs.nonce) : undefined;
+    if (pending) void ask(pending.text, pending.perspectiveUuid ?? inputs.perspectiveUuid);
   });
 
   createEffect(() => {
@@ -424,7 +434,7 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
               </we-text>
             </details>
             <Show when={scoped()}>
-              <we-button size="sm" onClick={() => chat.openChat({ draft: lastAskText(), at: Date.now() })}>
+              <we-button size="sm" onClick={() => chat.openChat({ draft: lastAskText() })}>
                 Ask in the global chat
               </we-button>
             </Show>
