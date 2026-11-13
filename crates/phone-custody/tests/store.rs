@@ -36,9 +36,9 @@ use serde_json::{json, Value};
 use tokio::runtime::Runtime;
 use tower::ServiceExt;
 use we_phone_custody::{
-    ClaimProgress, DeviceKeys, Header, LinkStep, MasterSealError, MasterSealer, PhoneIdentity,
-    PhoneKeyError, SealError, Sealer, StoreConfig, StoreReply, StoreRequest, StoreTransport,
-    TransportError,
+    ClaimProgress, DeviceKeys, Header, IdentitySteps, LinkStep, MasterSealError, MasterSealer,
+    PhoneIdentity, PhoneInput, PhoneKeyError, PhoneScreen, RestoreDeviceView, SealError, Sealer,
+    StoreConfig, StoreReply, StoreRequest, StoreTransport, TransportError,
 };
 
 const STORE_URL: &str = "http://store.test";
@@ -132,12 +132,16 @@ impl HttpClient for RouterHttp {
     }
 }
 
-/// The phone's transport: blocking, as the app's is. `offline` answers no request.
+/// The phone's transport: blocking, as the app's is. `offline` answers no request;
+/// `refuse_publish` answers no publish of a log's events, as a connection lost at that moment.
+/// `appends` keeps the body of each publish that went out.
 struct PhoneHttp {
     rt: Arc<Runtime>,
     router: Router,
     offline: AtomicBool,
+    refuse_publish: AtomicBool,
     sent: AtomicUsize,
+    appends: Mutex<Vec<Value>>,
 }
 
 impl StoreTransport for PhoneHttp {
@@ -146,6 +150,18 @@ impl StoreTransport for PhoneHttp {
             return Err(TransportError::Failed {
                 reason: "Unable to resolve host \"store.test\"".into(),
             });
+        }
+        let append = request.method == "POST" && request.url.ends_with("/events");
+        if append && self.refuse_publish.load(Ordering::SeqCst) {
+            return Err(TransportError::Failed {
+                reason: "Software caused connection abort".into(),
+            });
+        }
+        if append {
+            self.appends
+                .lock()
+                .unwrap()
+                .push(serde_json::from_slice(&request.body).unwrap_or(Value::Null));
         }
         self.sent.fetch_add(1, Ordering::SeqCst);
         let request = HttpRequest {
@@ -315,7 +331,9 @@ fn phone(world: &World, protection: &str) -> Phone {
         rt: world.rt.clone(),
         router: world.router.clone(),
         offline: AtomicBool::new(false),
+        refuse_publish: AtomicBool::new(false),
         sent: AtomicUsize::new(0),
+        appends: Mutex::new(Vec::new()),
     });
     let master = MasterKeystore::new(protection);
     let identity = open_identity(&keys, &http, &master);
@@ -1257,4 +1275,544 @@ fn a_device_code_of_another_store_is_refused() {
         phone.identity.scan_device("coasys:offer:1:nope".into()),
         Err(PhoneKeyError::Invalid { .. })
     ));
+}
+
+// ─── make, restore and replace on the phone ─────────────────────────────────────────────
+
+/// The words a make showed, and the two asked back.
+fn answers(words: &[String], positions: &[u32]) -> PhoneInput {
+    PhoneInput::ConfirmWords {
+        first: words[positions[0] as usize - 1].clone(),
+        second: words[positions[1] as usize - 1].clone(),
+    }
+}
+
+/// A make on `phone` through to its name, the words written and confirmed: the steps (the next
+/// answer is the make's end) and the words it showed.
+fn made_to_name(phone: &Phone) -> (Arc<IdentitySteps>, Vec<String>) {
+    let steps = phone.identity.start_make(false).unwrap();
+    let PhoneScreen::ShowWords { words } = steps.next().unwrap() else {
+        panic!("a make starts with its words");
+    };
+    let PhoneScreen::ConfirmWords { positions, .. } = steps.step(PhoneInput::WordsWritten).unwrap()
+    else {
+        panic!("then asks two of them back");
+    };
+    assert_eq!(
+        steps.step(answers(&words, &positions)).unwrap(),
+        PhoneScreen::NameDevice
+    );
+    (steps, words)
+}
+
+/// A new identity made on `phone`: its did and the words.
+fn made(phone: &Phone) -> (String, Vec<String>) {
+    let (steps, words) = made_to_name(phone);
+    let PhoneScreen::IdentityReady { did, .. } = steps
+        .step(PhoneInput::NameDevice {
+            name: Some("Pixel".into()),
+        })
+        .unwrap()
+    else {
+        panic!("the make ends with the identity");
+    };
+    (did, words)
+}
+
+fn spelled(entropy: u8) -> String {
+    words::from_entropy(&[entropy; 16])
+        .words()
+        .iter()
+        .map(|w| w.to_string())
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+// The phone makes an identity with no computer: 12 new words shown once, two of them asked back
+// (a wrong one asked again), the phone named, master #0 kept behind the prompt and the incept
+// published straight to the store with the store's proof of work. The key file records the
+// identity, and the record lists the phone as a phone app holding master #0.
+#[test]
+fn the_phone_makes_an_identity_from_new_words() {
+    let world = world();
+    let phone = phone(&world, "strongbox");
+    let steps = phone.identity.start_make(false).unwrap();
+    let PhoneScreen::ShowWords { words } = steps.next().unwrap() else {
+        panic!("a make starts with its words");
+    };
+    assert_eq!(words.len(), 12);
+    // An input that does not answer the screen leaves the flow where it was.
+    assert!(matches!(
+        steps.step(PhoneInput::TryAgain),
+        Err(PhoneKeyError::WrongInput)
+    ));
+    let PhoneScreen::ConfirmWords { positions, error } =
+        steps.step(PhoneInput::WordsWritten).unwrap()
+    else {
+        panic!("two words asked back");
+    };
+    assert_eq!(error, None);
+    assert!(positions[0] < positions[1] && positions[1] <= 12);
+    let wrong = if words[positions[0] as usize - 1] == "zoo" {
+        "abandon"
+    } else {
+        "zoo"
+    };
+    let again = steps
+        .step(PhoneInput::ConfirmWords {
+            first: wrong.into(),
+            second: words[positions[1] as usize - 1].clone(),
+        })
+        .unwrap();
+    assert_eq!(
+        again,
+        PhoneScreen::ConfirmWords {
+            positions: positions.clone(),
+            error: Some(we_identity_steps::WRONG_CONFIRM.into()),
+        }
+    );
+    // Case and the spaces around a word do not count.
+    let first = format!(" {} ", words[positions[0] as usize - 1].to_uppercase());
+    let named = steps
+        .step(PhoneInput::ConfirmWords {
+            first,
+            second: words[positions[1] as usize - 1].clone(),
+        })
+        .unwrap();
+    assert_eq!(named, PhoneScreen::NameDevice);
+    assert!(
+        phone.master.prompts().is_empty(),
+        "no prompt before the name"
+    );
+    let ready = steps
+        .step(PhoneInput::NameDevice {
+            name: Some(" Pixel ".into()),
+        })
+        .unwrap();
+    let PhoneScreen::IdentityReady { did, key_id, note } = ready else {
+        panic!("expected the identity, got {ready:?}");
+    };
+    assert_eq!(key_id, "d1");
+    assert_eq!(note, None);
+    assert!(steps.ended(), "ended is set before the last screen is sent");
+    assert!(matches!(steps.next(), Err(PhoneKeyError::Ended { .. })));
+    assert!(matches!(
+        steps.step(PhoneInput::TryAgain),
+        Err(PhoneKeyError::Ended { .. })
+    ));
+
+    // One prompt: master #0 kept.
+    assert_eq!(
+        phone.master.prompts(),
+        vec!["Keep your master key on this phone".to_string()]
+    );
+    // The incept went out with a proof at the store's bits, and only the incept.
+    let appends = phone.http.appends.lock().unwrap().clone();
+    assert_eq!(appends.len(), 1, "{appends:?}");
+    assert_eq!(appends[0]["pow"]["bits"], 8);
+    assert_eq!(appends[0]["events"][0]["seq"], 0);
+
+    let member = phone
+        .keys
+        .status()
+        .identity
+        .expect("the key file records it");
+    assert_eq!(member.did, did);
+    assert_eq!(member.seq, Some(0));
+    let status = phone.identity.status().unwrap();
+    assert_eq!(status.master_index, Some(0));
+    assert_eq!(status.key_id.as_deref(), Some("d1"));
+    let devices = phone.identity.devices().unwrap();
+    assert_eq!(devices.len(), 1);
+    assert_eq!(devices[0].name, "Pixel");
+    assert_eq!(devices[0].kind.as_deref(), Some("phone-app"));
+    assert_eq!(devices[0].holds_master, "yes");
+    assert!(devices[0].this_device);
+    assert_eq!(phone.identity.pending_identity().unwrap(), None);
+
+    // A phone in an identity makes no other, and restores none.
+    let again = phone.identity.start_make(false).unwrap();
+    assert!(matches!(
+        again.next(),
+        Err(PhoneKeyError::AlreadyJoined { did: d }) if d == did
+    ));
+    let restore = phone.identity.start_restore(false).unwrap();
+    assert!(matches!(
+        restore.next(),
+        Err(PhoneKeyError::AlreadyJoined { .. })
+    ));
+
+    // The words the phone showed are the identity's: a computer restores from them.
+    let laptop = computer(&world, 3);
+    let flow = world
+        .on(ad4m_identity_client::flows::restore::RestoreFlow::start(
+            &laptop.exec,
+            &laptop.vault,
+            &words.join(" "),
+            &SystemClock,
+            &OsRandom,
+        ))
+        .unwrap();
+    assert_eq!(flow.did(), did);
+}
+
+// A key store that is not secure hardware keeps no master key until the person agrees: refused
+// before any word is made. A replace needs an identity.
+#[test]
+fn a_make_on_a_software_keystore_waits_for_the_person_to_agree() {
+    let world = world();
+    let phone = phone(&world, "software");
+    assert!(matches!(
+        phone.identity.start_make(false),
+        Err(PhoneKeyError::WeakProtection { protection }) if protection == "software"
+    ));
+    assert!(matches!(
+        phone.identity.start_restore(false),
+        Err(PhoneKeyError::WeakProtection { .. })
+    ));
+    assert!(matches!(
+        phone.identity.start_rotate(true),
+        Err(PhoneKeyError::NoIdentity)
+    ));
+    let (did, _) = made_with(&phone, true);
+    assert_eq!(phone.identity.status().unwrap().did, did);
+}
+
+fn made_with(phone: &Phone, allow_weak: bool) -> (String, Vec<String>) {
+    let steps = phone.identity.start_make(allow_weak).unwrap();
+    let PhoneScreen::ShowWords { words } = steps.next().unwrap() else {
+        panic!("a make starts with its words");
+    };
+    let PhoneScreen::ConfirmWords { positions, .. } = steps.step(PhoneInput::WordsWritten).unwrap()
+    else {
+        panic!("then asks two back");
+    };
+    steps.step(answers(&words, &positions)).unwrap();
+    let PhoneScreen::IdentityReady { did, .. } =
+        steps.step(PhoneInput::NameDevice { name: None }).unwrap()
+    else {
+        panic!("the make ends with the identity");
+    };
+    (did, words)
+}
+
+// A make whose publish does not land keeps the identity pending: the phone keeps master #0 and
+// the incept, says so, and Try again publishes the same identity, not a new one.
+#[test]
+fn a_make_whose_publish_failed_is_published_on_try_again() {
+    let world = world();
+    let phone = phone(&world, "strongbox");
+    let (steps, words) = made_to_name(&phone);
+    phone.http.refuse_publish.store(true, Ordering::SeqCst);
+    let stopped = steps
+        .step(PhoneInput::NameDevice {
+            name: Some("Pixel".into()),
+        })
+        .unwrap();
+    let PhoneScreen::MakeStopped {
+        did: Some(did),
+        reason,
+        pending: true,
+    } = stopped
+    else {
+        panic!("expected a pending identity, got {stopped:?}");
+    };
+    assert!(reason.contains("not published yet"), "{reason}");
+    assert!(!reason.contains(&words[0]), "the reason never names a word");
+    assert_eq!(
+        phone.identity.pending_identity().unwrap(),
+        Some(did.clone())
+    );
+    assert_eq!(
+        phone.keys.status().identity,
+        None,
+        "not recorded before it is published"
+    );
+
+    // Still offline: the same screen again.
+    assert!(matches!(
+        steps.step(PhoneInput::TryAgain).unwrap(),
+        PhoneScreen::MakeStopped { pending: true, .. }
+    ));
+    phone.http.refuse_publish.store(false, Ordering::SeqCst);
+    let ready = steps.step(PhoneInput::TryAgain).unwrap();
+    assert!(
+        matches!(&ready, PhoneScreen::IdentityReady { did: d, .. } if *d == did),
+        "{ready:?}"
+    );
+    // Master #0 was kept once, on the first try.
+    assert_eq!(
+        phone.master.prompts().len(),
+        1,
+        "{:?}",
+        phone.master.prompts()
+    );
+    assert_eq!(phone.keys.status().identity.unwrap().did, did);
+    assert_eq!(phone.identity.pending_identity().unwrap(), None);
+    assert_eq!(phone.identity.status().unwrap().master_index, Some(0));
+}
+
+// A make cancelled after the publish failed leaves the identity pending, with no words held:
+// `finish_pending` publishes it with no prompt once the store answers (and says Unavailable
+// while it does not), and a make started meanwhile publishes it rather than make another.
+#[test]
+fn a_pending_identity_is_published_after_the_flow_is_gone() {
+    let world = world();
+    let phone = phone(&world, "strongbox");
+    let (steps, _) = made_to_name(&phone);
+    phone.http.refuse_publish.store(true, Ordering::SeqCst);
+    let PhoneScreen::MakeStopped { did: Some(did), .. } =
+        steps.step(PhoneInput::NameDevice { name: None }).unwrap()
+    else {
+        panic!("expected the make stopped");
+    };
+    steps.cancel();
+    assert!(matches!(
+        steps.step(PhoneInput::TryAgain),
+        Err(PhoneKeyError::Ended { .. })
+    ));
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !steps.ended() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the flow's thread ends"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    let prompts = phone.master.prompts().len();
+    assert!(matches!(
+        phone.identity.finish_pending(),
+        Err(PhoneKeyError::Unavailable { .. })
+    ));
+    assert_eq!(
+        phone.identity.pending_identity().unwrap(),
+        Some(did.clone())
+    );
+
+    phone.http.refuse_publish.store(false, Ordering::SeqCst);
+    // A make started now publishes the identity kept, as its first screen.
+    let again = phone.identity.start_make(false).unwrap();
+    let ready = again.next().unwrap();
+    assert!(
+        matches!(&ready, PhoneScreen::IdentityReady { did: d, note: Some(_), .. } if *d == did),
+        "{ready:?}"
+    );
+    assert_eq!(
+        phone.master.prompts().len(),
+        prompts,
+        "no prompt to publish"
+    );
+    assert_eq!(phone.keys.status().identity.unwrap().did, did);
+    assert_eq!(phone.identity.finish_pending().unwrap(), None);
+    assert_eq!(phone.identity.status().unwrap().master_index, Some(0));
+}
+
+// A make cancelled while its words are shown ends: no more input is taken, nothing was kept or
+// published, and the next make shows new words.
+#[test]
+fn a_cancelled_make_ends_and_keeps_nothing() {
+    let world = world();
+    let phone = phone(&world, "strongbox");
+    let steps = phone.identity.start_make(false).unwrap();
+    let PhoneScreen::ShowWords { words } = steps.next().unwrap() else {
+        panic!("a make starts with its words");
+    };
+    steps.cancel();
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while !steps.ended() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the flow's thread ends"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    assert!(matches!(
+        steps.step(PhoneInput::WordsWritten),
+        Err(PhoneKeyError::Ended { .. })
+    ));
+    assert!(phone.master.prompts().is_empty());
+    assert!(phone.http.appends.lock().unwrap().is_empty());
+    assert_eq!(phone.identity.pending_identity().unwrap(), None);
+    // A dropped handle ends its flow too.
+    let other = phone.identity.start_make(false).unwrap();
+    let PhoneScreen::ShowWords { words: next } = other.next().unwrap() else {
+        panic!("new words");
+    };
+    assert_ne!(next, words);
+    drop(other);
+}
+
+// The phone restores an identity a computer made, from its 12 words: typed words that are not
+// 12, or not the identity's, are asked again; the computer is listed and ticked; one rotation
+// locks it out and keeps the new master key on the phone, which joins as a device.
+#[test]
+fn the_phone_restores_an_identity_and_locks_out_a_lost_computer() {
+    let world = world();
+    let laptop = computer(&world, 1);
+    let did = create(&world, &laptop, 61);
+    let phone = phone(&world, "strongbox");
+
+    let steps = phone.identity.start_restore(false).unwrap();
+    assert_eq!(
+        steps.next().unwrap(),
+        PhoneScreen::EnterWords {
+            purpose: "restore".into(),
+            error: None,
+            position: None,
+        }
+    );
+    let short = steps
+        .step(PhoneInput::TwelveWords {
+            words: "abandon ability".into(),
+        })
+        .unwrap();
+    assert!(
+        matches!(&short, PhoneScreen::EnterWords { error: Some(e), .. } if e.starts_with("That is 2 words")),
+        "{short:?}"
+    );
+    let mut typo: Vec<String> = spelled(61).split(' ').map(String::from).collect();
+    typo[3] = "zzzzq".into();
+    let typo = steps
+        .step(PhoneInput::TwelveWords {
+            words: typo.join(" "),
+        })
+        .unwrap();
+    let PhoneScreen::EnterWords {
+        error: Some(error),
+        position: Some(4),
+        ..
+    } = typo
+    else {
+        panic!("a word not on the list is named by its place, got {typo:?}");
+    };
+    assert!(!error.contains("zzzzq"));
+    let other = steps
+        .step(PhoneInput::TwelveWords { words: spelled(62) })
+        .unwrap();
+    assert_eq!(
+        other,
+        PhoneScreen::EnterWords {
+            purpose: "restore".into(),
+            error: Some(we_identity_steps::NOT_THESE_WORDS.into()),
+            position: None,
+        }
+    );
+    let listed = steps
+        .step(PhoneInput::TwelveWords {
+            words: format!("  {}  ", spelled(61).to_uppercase()),
+        })
+        .unwrap();
+    let PhoneScreen::RestoreDevices {
+        did: found,
+        devices,
+        note,
+    } = listed
+    else {
+        panic!("expected the devices, got {listed:?}");
+    };
+    assert_eq!(found, did);
+    assert_eq!(note, None);
+    assert_eq!(
+        devices,
+        vec![RestoreDeviceView {
+            key_id: "d1".into(),
+            name: Some("Laptop".into()),
+            kind: Some("desktop-app".into()),
+            lock_out: true,
+        }]
+    );
+    assert!(matches!(
+        steps.step(PhoneInput::LockOut {
+            key_ids: vec!["d9".into()],
+            name: None,
+        }),
+        Err(PhoneKeyError::WrongInput)
+    ));
+    let restored = steps
+        .step(PhoneInput::LockOut {
+            key_ids: vec!["d1".into()],
+            name: Some("Pixel".into()),
+        })
+        .unwrap();
+    let PhoneScreen::Restored {
+        did: restored_did,
+        name,
+        key_id,
+        revoked,
+        note,
+    } = restored
+    else {
+        panic!("expected restored, got {restored:?}");
+    };
+    assert_eq!(restored_did, did);
+    assert_eq!(name, "Pixel");
+    assert_eq!(revoked, vec!["d1".to_string()]);
+    assert_eq!(note, None);
+    assert!(steps.ended());
+
+    assert_eq!(phone.keys.status().identity.unwrap().did, did);
+    let status = phone.identity.status().unwrap();
+    assert_eq!(status.master_index, Some(1));
+    assert_eq!(status.key_id.as_deref(), Some(key_id.as_str()));
+    let devices = phone.identity.devices().unwrap();
+    let laptop_now = devices.iter().find(|d| d.key_id == "d1").unwrap();
+    assert!(laptop_now.revoked_seq.is_some(), "the laptop is locked out");
+    let me = devices.iter().find(|d| d.this_device).unwrap();
+    assert_eq!(me.kind.as_deref(), Some("phone-app"));
+    assert_eq!(me.holds_master, "yes");
+    assert_eq!(me.master_index, Some(1));
+}
+
+// The phone replaces its master key with the words it showed at the make: words that are not
+// the identity's change nothing and are asked again; the right ones make master #1, kept here.
+#[test]
+fn the_phone_replaces_its_master_key_with_the_words() {
+    let world = world();
+    let phone = phone(&world, "strongbox");
+    let (did, words) = made(&phone);
+    let prompts = phone.master.prompts().len();
+
+    let steps = phone.identity.start_rotate(false).unwrap();
+    assert_eq!(
+        steps.next().unwrap(),
+        PhoneScreen::EnterWords {
+            purpose: "replace".into(),
+            error: None,
+            position: None,
+        }
+    );
+    let refused = steps
+        .step(PhoneInput::TwelveWords { words: spelled(77) })
+        .unwrap();
+    assert!(
+        matches!(&refused, PhoneScreen::EnterWords { error: Some(e), .. } if e == we_identity_steps::NOT_THESE_WORDS),
+        "{refused:?}"
+    );
+    assert_eq!(
+        phone.master.prompts().len(),
+        prompts,
+        "nothing kept for wrong words"
+    );
+    assert_eq!(phone.identity.status().unwrap().master_index, Some(0));
+    let replaced = steps
+        .step(PhoneInput::TwelveWords {
+            words: words.join(" "),
+        })
+        .unwrap();
+    assert_eq!(
+        replaced,
+        PhoneScreen::MasterReplaced {
+            index: 1,
+            revoked: Vec::new(),
+            note: None,
+        }
+    );
+    let status = phone.identity.status().unwrap();
+    assert_eq!(status.did, did);
+    assert_eq!(status.master_index, Some(1));
+    assert_eq!(
+        phone.identity.retry_master_pushes().unwrap(),
+        None,
+        "no other app keeps the master key"
+    );
 }

@@ -1,5 +1,5 @@
 /**
- * The phone's host: its identity read from the device key plugin, the one door it opens, and the
+ * The phone's host: its identity read from the device key plugin, the three doors it opens, and the
  * places it offers — the executor its key logs in to, and AD4M Connect.
  */
 import type { BackendConnector } from '@we/app-shell/shared';
@@ -9,13 +9,7 @@ import { KeyLoginUnreachable } from '@we/app-web/platform/deviceKeyConnector';
 import type { PageNav } from '@we/app-web/platform/phoneCustody';
 import { describe, expect, it, vi } from 'vitest';
 
-import {
-  keyHostConnection,
-  MAKE_ON_A_COMPUTER,
-  phoneBaseHost,
-  phoneIdentitySource,
-  WORDS_ON_A_COMPUTER,
-} from './phone';
+import { keyHostConnection, phoneBaseHost, phoneIdentitySource } from './phone';
 import { CONNECT, ConnectUnreachable } from './web';
 
 const DID = 'did:scid:coasys:1:QmTestIdentity';
@@ -45,6 +39,7 @@ function plugin(answer: PhoneIdentityView | Error = status()): DeviceKeyPlugin {
     devices: vi.fn(async () => ({ devices: [] })),
     requests: vi.fn(async () => ({ requests: [] })),
     masterWaiting: vi.fn(async () => ({ waiting: false })),
+    pendingIdentity: vi.fn(async () => ({ did: null })),
   } as unknown as DeviceKeyPlugin;
 }
 
@@ -76,11 +71,25 @@ describe('the phone identity source', () => {
     );
   });
 
-  it("opens only the link door, and says why the other two are a computer's", () => {
+  it('opens all three doors: make, link and the 12 words', () => {
     const { doors } = phoneIdentitySource(plugin(), nav());
-    expect(doors.link).toEqual({ step: { kind: 'join' } });
-    expect(doors.make).toEqual({ step: null, note: MAKE_ON_A_COMPUTER });
-    expect(doors.words).toEqual({ step: null, note: WORDS_ON_A_COMPUTER });
+    expect(doors).toEqual({
+      make: { step: { kind: 'create' } },
+      link: { step: { kind: 'join' } },
+      words: { step: { kind: 'restore' } },
+    });
+  });
+
+  it("makes and restores on the phone's identity page, as the change it was given", async () => {
+    for (const kind of ['create', 'restore'] as const) {
+      const pages = nav('/');
+      void phoneIdentitySource(plugin(), pages).open({ kind });
+      await new Promise((r) => setTimeout(r, 0));
+      const url = new URL(pages.went[0], 'https://phone.invalid');
+      expect(url.pathname).toBe('/mobile/identity.html');
+      expect(JSON.parse(url.searchParams.get('change')!)).toEqual({ kind });
+      expect(url.searchParams.get('back')).toBe('/');
+    }
   });
 
   it("joins on the phone's identity page, coming back to where the app was, and never settles here", async () => {

@@ -7,6 +7,11 @@
  * the master key from this computer, and adding a bot. The words typed are never sent back: no screen after the words
  * entry carries them, and a refused word is named by its place only.
  *
+ * The phone draws the same screens over its own flows (`apps/we-mobile/src/identity`), with two of its
+ * own: naming the phone once its words are confirmed (`name-device`), and a make that stopped before
+ * the identity was published (`make-stopped`). `noun` words each screen for the device it runs on. An
+ * identity's DID shows on one screen only, `identity-ready`, where it is made.
+ *
  * Pure, so the wording is tested without a window (`screens.test.ts`). `window.ts` draws them.
  */
 
@@ -15,7 +20,16 @@ export type Screen =
   | { screen: 'confirm-words'; positions: [number, number]; error: string | null }
   | { screen: 'set-passphrase'; error: string | null }
   | { screen: 'enter-passphrase'; error: string | null }
-  | { screen: 'identity-ready'; did: string; keyId: string }
+  /** The identity is made: the one screen that shows its DID. `note`: a later step that did not pass. */
+  | { screen: 'identity-ready'; did: string; keyId: string; note?: string | null }
+  /** The phone's make: the words are confirmed, and the person names this device (`name-device`). */
+  | { screen: 'name-device'; name: string }
+  /**
+   * The phone's make stopped before the identity was published: `reason` says why. `pending`: the
+   * device keeps the identity and its master key already, and Try again publishes it; otherwise Try
+   * again makes it from the same words. Not a last screen.
+   */
+  | { screen: 'make-stopped'; reason: string; pending: boolean }
   | { screen: 'offer'; link: string; qrSvg: string; expires: number }
   | { screen: 'match'; code: string; hint: string | null; canKeep: boolean; ownName: boolean }
   | { screen: 'linked'; seq: number; masterSent: boolean; note: string | null }
@@ -177,6 +191,8 @@ export type StepInput =
   | { kind: 'accept' }
   | { kind: 'answer'; passphrase?: string }
   | { kind: 'name'; name: string }
+  /** To `name-device`: blank for the device's default name. */
+  | { kind: 'name-device'; name?: string }
   | { kind: 'revoke'; passphrase?: string; rotate?: boolean }
   | { kind: 'twelve-words'; words: string }
   | { kind: 'lock-out'; keyIds: string[]; name?: string }
@@ -228,7 +244,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
     case 'show-words':
       return {
         title: 'Your 12 words',
-        lead: 'These words make your master key: it adds and removes your devices. Write them on paper and keep them: with them you can restore your identity on a new computer, and replace your master key when a device that keeps it is lost. You see them only during this setup, and nobody but you ever sees them.',
+        lead: `These words make your master key: it adds and removes your devices. Write them on paper and keep them: with them you can restore your identity on a new ${noun}, and replace your master key when a device that keeps it is lost. You see them only during this setup, and nobody but you ever sees them.`,
       };
     case 'confirm-words':
       return {
@@ -248,8 +264,26 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
     case 'identity-ready':
       return {
         title: 'Your identity exists now',
-        lead: 'It belongs to you, and it runs where you say. Your 12 words make your master key. The devices that serve you sign for you, and never change your keys.',
+        lead: [
+          'It belongs to you, and it runs where you say. Your 12 words make your master key. The devices that serve you sign for you, and never change your keys.',
+          ...(screen.note ? [screen.note] : []),
+        ].join(' '),
       };
+    case 'name-device':
+      return {
+        title: `Name this ${noun}`,
+        lead: `Your devices list this ${noun} by this name. Only your own devices read it.`,
+      };
+    case 'make-stopped':
+      return screen.pending
+        ? {
+            title: 'Your identity is not published yet',
+            lead: `${screen.reason} This ${noun} keeps your identity and its master key already. Try again to publish it: your 12 words are not needed for that. If you close, it is published the next time the app opens.`,
+          }
+        : {
+            title: 'Your identity was not made',
+            lead: `${screen.reason} Nothing was published. Try again to make it from the same 12 words.`,
+          };
     case 'offer':
       return {
         title: 'Send this link to your device',
@@ -345,12 +379,12 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
         ].join(' '),
       };
     case 'enter-words':
-      return wordsHeading(screen.purpose);
+      return wordsHeading(screen.purpose, noun);
     case 'restore-devices':
       return {
         title: 'Lock out lost devices',
         lead: [
-          'These are the devices of your identity. Tick each one you lost or no longer use: it is revoked, and your master key is replaced, so a copy it kept stops working. This computer becomes one of your devices and keeps the new master key.',
+          `These are the devices of your identity. Tick each one you lost or no longer use: it is revoked, and your master key is replaced, so a copy it kept stops working. This ${noun} becomes one of your devices and keeps the new master key.`,
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
       };
@@ -358,35 +392,35 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
       return {
         title: 'Your master key is replaced',
         lead: [
-          `This computer keeps master key #${screen.index}. Copies of the one before it no longer add or remove devices, on any device.`,
+          `This ${noun} keeps master key #${screen.index}. Copies of the one before it no longer add or remove devices, on any device.`,
           ...(screen.revoked.length ? [`Revoked in the same step: ${devices(screen.revoked.length)}.`] : []),
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
       };
     case 'master-not-kept':
       return {
-        title: 'Your master key is replaced, but this computer could not keep the new key',
+        title: `Your master key is replaced, but this ${noun} could not keep the new key`,
         lead: [
           `Master key #${screen.index} is now your master key, and copies of the one before it no longer add or remove devices. ${screen.reason}`,
           ...(screen.revoked.length ? [`Revoked in the same step: ${devices(screen.revoked.length)}.`] : []),
           ...(screen.note ? [screen.note] : []),
-          'Type your 12 words again to replace it once more with a key this computer keeps.',
+          `Type your 12 words again to replace it once more with a key this ${noun} keeps.`,
         ].join(' '),
       };
     case 'restore-not-linked':
       return {
-        title: 'Your identity is restored, but this computer is not linked yet',
+        title: `Your identity is restored, but this ${noun} is not linked yet`,
         lead: [
           `Your master key is replaced. ${screen.reason}`,
           ...(screen.revoked.length ? [`Locked out: ${devices(screen.revoked.length)}.`] : []),
-          'Try again to add this computer as one of your devices; your 12 words are not needed for that.',
+          `Try again to add this ${noun} as one of your devices; your 12 words are not needed for that.`,
         ].join(' '),
       };
     case 'restored':
       return {
         title: `Restored as ${screen.name}`,
         lead: [
-          'This computer signs for you and keeps your new master key.',
+          `This ${noun} signs for you and keeps your new master key.`,
           ...(screen.revoked.length ? [`Locked out: ${devices(screen.revoked.length)}.`] : []),
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
@@ -437,18 +471,18 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
 }
 
 /** The words entry's lead, by what the words are for. */
-function wordsHeading(purpose: WordsPurpose): { title: string; lead: string } {
+function wordsHeading(purpose: WordsPurpose, noun: DeviceNoun): { title: string; lead: string } {
   const type = 'Type your 12 words from your paper, in order.';
   switch (purpose) {
     case 'replace':
       return {
         title: 'Replace my master key',
-        lead: `${type} They make your next master key, which this computer keeps. Copies of the one you have now stop working, on every device that keeps one.`,
+        lead: `${type} They make your next master key, which this ${noun} keeps. Copies of the one you have now stop working, on every device that keeps one.`,
       };
     case 'restore':
       return {
         title: 'Use my 12 words',
-        lead: `${type} This computer finds the identity they make, and becomes one of its devices.`,
+        lead: `${type} This ${noun} finds the identity they make, and becomes one of its devices.`,
       };
     case 'revoke':
     case 'answer':

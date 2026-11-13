@@ -8,8 +8,10 @@
  * opens), so `open` leaves for that page with the change and where to come back to; WE boots again
  * when it returns, and Settings reads the state afresh.
  *
- * The phone takes no 12 words ({@link Ad4mCustodyHost.takesWords} `false`): replacing the master key
- * and restoring are a computer's.
+ * The phone takes the 12 words as a computer does: making an identity, restoring one and replacing
+ * the master key run on the identity page too. An identity made here whose publish did not go through
+ * is published again each time the state is read (`finishPending`), as the desktop's custody service
+ * does; until it is, the state names it as `pending`.
  */
 import type { Ad4mCustodyHost, Ad4mCustodyState } from '@we/backend-ad4m';
 
@@ -56,9 +58,28 @@ export const PHONE_KIND = 'phone-app';
 
 /** The custody service over the phone's plugin. */
 export function phoneCustodyHost(plugin: DeviceKeyPlugin, nav: PageNav = browserNav): Ad4mCustodyHost {
-  return {
-    takesWords: false,
+  /**
+   * An identity made here and not published yet is published now: `published` when it went through
+   * (the store lists the phone now, so the state is read again), its DID when it is still pending,
+   * `null` when there is none.
+   */
+  async function finishMade(): Promise<'published' | string | null> {
+    // A plugin that cannot say has nothing to publish this read: the phone is in no identity.
+    const { did } = await plugin.pendingIdentity().catch(() => ({ did: null }));
+    if (did === null) return null;
+    try {
+      return (await plugin.finishPending()).did === null ? null : 'published';
+    } catch {
+      // The store did not answer: it stays pending, and is published again at the next read.
+      return did;
+    }
+  }
 
+  // Read again once a made identity is published: the store lists the phone now. A second read finds
+  // nothing pending, so this runs once.
+  const publishedState = () => host.publicState();
+
+  const host: Ad4mCustodyHost = {
     open(change) {
       nav.assign(identityPageUrl(change, nav.here()));
       // The page is left: WE boots again when the identity page sends the person back.
@@ -73,7 +94,11 @@ export function phoneCustodyHost(plugin: DeviceKeyPlugin, nav: PageNav = browser
         status = await plugin.identityStatus();
       } catch (error) {
         const thisDevice = { keyId: null, kind: PHONE_KIND };
-        if ((error as DeviceKeyError).code === 'NoIdentity' || (error as DeviceKeyError).code === 'NoKeys') {
+        const code = (error as DeviceKeyError).code;
+        const made = code === 'NoIdentity' ? await finishMade() : null;
+        if (made === 'published') return publishedState();
+        if (made !== null) return { did: null, pending: made, holdsMaster: null, unlock: null, thisDevice };
+        if (code === 'NoIdentity' || code === 'NoKeys') {
           return { did: null, holdsMaster: null, unlock: null, thisDevice };
         }
         return {
@@ -124,4 +149,5 @@ export function phoneCustodyHost(plugin: DeviceKeyPlugin, nav: PageNav = browser
       };
     },
   };
+  return host;
 }

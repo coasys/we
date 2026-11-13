@@ -334,6 +334,69 @@ describe('the identity window', () => {
     );
   });
 
+  it('words the make, restore and replace for the phone they run on, and never for a computer', () => {
+    const screens: Screen[] = [
+      { screen: 'show-words', words: Array.from({ length: 12 }, () => 'word') },
+      { screen: 'name-device', name: 'Phone' },
+      { screen: 'enter-words', purpose: 'restore', error: null, position: null },
+      { screen: 'enter-words', purpose: 'replace', error: null, position: null },
+      { screen: 'restore-devices', did: 'did:scid:coasys:1:Qm', devices: [], note: null },
+      { screen: 'restored', did: 'did:scid:coasys:1:Qm', name: 'Phone', keyId: 'd3', revoked: [], note: null },
+      { screen: 'restore-not-linked', did: 'did:scid:coasys:1:Qm', revoked: [], reason: 'Offline.' },
+      { screen: 'master-replaced', index: 1, revoked: [], note: null },
+      { screen: 'master-not-kept', index: 1, revoked: [], reason: 'Cancelled.', note: null },
+      { screen: 'make-stopped', reason: 'The store did not answer.', pending: true },
+      { screen: 'make-stopped', reason: 'The store did not answer.', pending: false },
+    ];
+    for (const screen of screens) {
+      const { title, lead } = heading(screen, 'phone');
+      expect(`${title} ${lead}`, screen.screen).not.toMatch(/computer/);
+    }
+    expect(heading({ screen: 'name-device', name: 'Phone' }, 'phone').title).toBe('Name this phone');
+    expect(heading(screens[5], 'phone').lead).toContain('This phone signs for you and keeps your new master key.');
+    expect(heading(screens[7], 'phone').lead).toContain('This phone keeps master key #1.');
+  });
+
+  it('says whether a stopped make kept the identity, and offers to try again', () => {
+    const pending = heading({ screen: 'make-stopped', reason: 'The store did not answer.', pending: true }, 'phone');
+    expect(pending.title).toBe('Your identity is not published yet');
+    expect(pending.lead).toContain('The store did not answer.');
+    expect(pending.lead).toContain('This phone keeps your identity and its master key already.');
+    expect(pending.lead).toContain('your 12 words are not needed');
+    const unmade = heading({ screen: 'make-stopped', reason: 'Offline.', pending: false }, 'phone');
+    expect(unmade.title).toBe('Your identity was not made');
+    expect(unmade.lead).toContain('Nothing was published.');
+    for (const screen of [
+      { screen: 'make-stopped', reason: '', pending: true },
+      { screen: 'name-device', name: 'Phone' },
+    ] as Screen[])
+      expect(isLast(screen)).toBe(false);
+    expect(windowSource).toMatch(
+      /case 'make-stopped':[\s\S]*?step\(\{ kind: 'try-again' \}\)[\s\S]*?button\('Close', cancel\)/,
+    );
+    expect(windowSource).toMatch(
+      /case 'name-device':[\s\S]*?step\(\{ kind: 'name-device', name: typed\(name\.input\) \}\)/,
+    );
+  });
+
+  it('adds a note to the identity being ready, which a later step left', () => {
+    const ready: Screen = { screen: 'identity-ready', did: 'did:scid:coasys:1:Qm', keyId: 'd1', note: 'Late.' };
+    expect(heading(ready).lead).toMatch(/ Late\.$/);
+    expect(heading({ ...ready, note: null }).lead).not.toContain('null');
+  });
+
+  it('draws a DID only where the identity is made', () => {
+    // Each `textContent: screen.did` in the window, by the case that draws it.
+    const cases = [...windowSource.matchAll(/case '([a-z-]+)':(?:(?!case ')[\s\S])*?textContent: screen\.did/g)].map(
+      (m) => m[1],
+    );
+    expect(cases).toContain('identity-ready');
+    expect(cases.filter((c) => !['identity-ready', 'device-match', 'pending-refused'].includes(c))).toEqual([]);
+    for (const restoreScreen of ['restore-devices', 'restore-not-linked', 'restored']) {
+      expect(cases).not.toContain(restoreScreen);
+    }
+  });
+
   it('marks only the refused word field invalid, with a token value, and draws it', () => {
     expect(Array.from({ length: 12 }, (_, i) => refusedField(3, i))).toEqual(
       Array.from({ length: 12 }, (_, i) => i === 2),

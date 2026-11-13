@@ -25,6 +25,15 @@ const METHODS = [
   'linkConfirm',
   'linkCancel',
   'scanCode',
+  'startMake',
+  'startRestore',
+  'startRotate',
+  'identityStep',
+  'identityCancel',
+  'pendingIdentity',
+  'finishPending',
+  'retryMasterPushes',
+  'setSecure',
 ] as const satisfies readonly (keyof DeviceKeyPlugin)[];
 
 // Every method of the plugin is named above, so one added to the plugin and not here fails to compile.

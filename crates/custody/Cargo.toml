@@ -32,6 +32,9 @@ ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "95cefb35a2
 ad4m-client = { git = "https://github.com/coasys/ad4m", rev = "95cefb35a27d75c6d332ee99e76ed205407d6fd3" }
 # The request box's types (`DeviceRequest`, `DeviceRequestBody`) the holder answers and a device posts.
 ad4m-ldk = { git = "https://github.com/coasys/ad4m", rev = "95cefb35a27d75c6d332ee99e76ed205407d6fd3" }
+# Make, restore and rotate-with-words, the steps the phone (`crates/phone-custody`) runs too. At
+# the same ad4m rev as above (its `tests/boundary.rs` checks), so the ad4m types are one.
+we-identity-steps = { path = "../identity-steps" }
 # `io-std` and `io-util`: the sidecar's lines on stdin and stdout.
 tokio = { version = "1", features = ["rt", "sync", "macros", "time", "io-std", "io-util"] }
 serde = { version = "1", features = ["derive"] }

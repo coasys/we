@@ -3,8 +3,7 @@
  * anywhere. Each case acts as a person does — reads the words on screen, presses a control by them —
  * and checks what the page shows next.
  *
- * - The phone: the first run's three doors, "Link to my identity" leaving for the phone's identity
- *   page, "Start now" → where to connect → the hand-off to WE's app; and offline → "Try again".
+ * - The phone: the first run's three doors, each leaving for the phone's identity page, "Start now" → where to connect → the hand-off to WE's app; and offline → "Try again".
  * - The browser: where to connect → the hand-off.
  *
  * The phone's native layer is the one stand-in. A Playwright init script answers as the phone app's
@@ -79,6 +78,7 @@ function phoneBridge() {
       if (method === 'devices') return Promise.resolve({ devices: [] });
       if (method === 'requests') return Promise.resolve({ requests: [] });
       if (method === 'masterWaiting') return Promise.resolve({ waiting: false });
+      if (method === 'pendingIdentity') return Promise.resolve({ did: null });
       return refuse('NoIdentity');
     },
   };
@@ -134,14 +134,16 @@ async function handedOff(page) {
 }
 
 describe('the phone, with no identity and no executor', () => {
-  it('opens on the first run, with the one door a phone opens', async () => {
+  it('opens on the first run, with its three doors open', async () => {
     const { context, page } = await open({ phone: true });
-    await sees(page, 'Join your identity');
+    await sees(page, 'Welcome to Coasys');
+    await sees(page, 'Choose how this phone comes in.');
     await shot(page, 'phone-first-run');
     assert.equal(await closed(control(page, 'Link to my identity')), false);
-    assert.equal(await closed(control(page, 'Make my identity here')), true);
-    assert.equal(await closed(control(page, 'Use my 12 words')), true);
-    await sees(page, 'make it on your computer');
+    assert.equal(await closed(control(page, 'Make my identity here')), false);
+    assert.equal(await closed(control(page, 'Use my 12 words')), false);
+    await sees(page, 'This phone keeps your master key');
+    await sees(page, 'Bring your identity back to this phone');
     // A phone is the one scanned or handed an offer, never the one showing a code to scan.
     await sees(page, 'scan or paste the offer it makes for this phone');
     assert.equal(await page.getByText('it scans this code').count(), 0);
@@ -150,7 +152,7 @@ describe('the phone, with no identity and no executor', () => {
 
   it("leaves for the phone's identity page to join, coming back to the app", async () => {
     const { context, page } = await open({ phone: true });
-    await sees(page, 'Join your identity');
+    await sees(page, 'Welcome to Coasys');
     await Promise.all([
       page.waitForURL(/\/mobile\/identity\.html\?/, { timeout: STEP_MS }),
       control(page, 'Link to my identity').click(),
@@ -161,9 +163,27 @@ describe('the phone, with no identity and no executor', () => {
     await context.close();
   });
 
+  for (const [door, kind] of [
+    ['Make my identity here', 'create'],
+    ['Use my 12 words', 'restore'],
+  ]) {
+    it(`leaves for the phone's identity page on "${door}"`, async () => {
+      const { context, page } = await open({ phone: true });
+      await sees(page, 'Welcome to Coasys');
+      await Promise.all([
+        page.waitForURL(/\/mobile\/identity\.html\?/, { timeout: STEP_MS }),
+        control(page, door).click(),
+      ]);
+      const url = new URL(page.url());
+      assert.deepEqual(JSON.parse(url.searchParams.get('change')), { kind });
+      assert.equal(url.searchParams.get('back'), '/');
+      await context.close();
+    });
+  }
+
   it("starts now, offers where to connect, and hands the page to WE's app", async () => {
     const { context, page } = await open({ phone: true });
-    await sees(page, 'Join your identity');
+    await sees(page, 'Welcome to Coasys');
     await control(page, 'Start now').click();
     await sees(page, 'Where should Coasys run for you?');
     await sees(page, '127.0.0.1:9');

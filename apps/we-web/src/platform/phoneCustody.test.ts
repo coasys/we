@@ -57,11 +57,25 @@ function plugin(answers: {
   devices?: PhoneDeviceView[];
   requests?: DeviceRequestView[];
   waiting?: boolean | Error;
+  /** The identity's status in order: one per `identityStatus` call, the last one repeated. */
+  statuses?: Array<PhoneIdentityView | Error>;
+  /** An identity made here and not published yet. */
+  pending?: string | null;
+  /** What `finishPending` answers. */
+  finish?: string | null | Error;
 }) {
+  const statuses = [...(answers.statuses ?? [])];
   const p = {
     identityStatus: vi.fn(async () => {
-      if (answers.status instanceof Error) throw answers.status;
-      return answers.status ?? status();
+      const next = statuses.length > 1 ? statuses.shift() : statuses[0];
+      const answer = next ?? answers.status;
+      if (answer instanceof Error) throw answer;
+      return answer ?? status();
+    }),
+    pendingIdentity: vi.fn(async () => ({ did: answers.pending ?? null })),
+    finishPending: vi.fn(async () => {
+      if (answers.finish instanceof Error) throw answers.finish;
+      return { did: answers.finish ?? null };
     }),
     devices: vi.fn(async () => ({ devices: answers.devices ?? [] })),
     requests: vi.fn(async () => ({ requests: answers.requests ?? [] })),
@@ -76,8 +90,47 @@ function plugin(answers: {
 const refusal = (code: string, message = code) => Object.assign(new Error(message), { code });
 
 describe('the phone custody host', () => {
-  it('takes no words', () => {
-    expect(phoneCustodyHost(plugin({})).takesWords).toBe(false);
+  it('takes the 12 words, as a computer does', () => {
+    // Absent means it does: Settings offers replacing the master key and restoring here.
+    expect(phoneCustodyHost(plugin({})).takesWords).toBeUndefined();
+  });
+
+  it('publishes an identity made here and not published yet, then reads it as this phone’s', async () => {
+    const p = plugin({ statuses: [refusal('NoIdentity'), status({ masterIndex: 0 })], pending: DID, finish: DID });
+    expect(await phoneCustodyHost(p).publicState()).toMatchObject({
+      did: DID,
+      holdsMaster: { index: 0 },
+      thisDevice: { keyId: 'd2', kind: 'phone-app' },
+    });
+    expect(p.finishPending).toHaveBeenCalledTimes(1);
+    expect(p.identityStatus).toHaveBeenCalledTimes(2);
+  });
+
+  it('names an identity it could not publish yet as pending, and tries again at the next read', async () => {
+    const p = plugin({ status: refusal('NoIdentity'), pending: DID, finish: refusal('Unavailable', 'store down') });
+    const host = phoneCustodyHost(p);
+    expect(await host.publicState()).toEqual({
+      did: null,
+      pending: DID,
+      holdsMaster: null,
+      unlock: null,
+      thisDevice: { keyId: null, kind: 'phone-app' },
+    });
+    await host.publicState();
+    expect(p.finishPending).toHaveBeenCalledTimes(2);
+  });
+
+  it('asks nothing of the store when no identity was made here', async () => {
+    const p = plugin({ status: refusal('NoIdentity') });
+    expect(await phoneCustodyHost(p).publicState()).toMatchObject({ did: null });
+    expect(p.pendingIdentity).toHaveBeenCalledTimes(1);
+    expect(p.finishPending).not.toHaveBeenCalled();
+
+    // A plugin that cannot say whether one waits: no identity this read, not a read that failed.
+    const unsaid = plugin({ status: refusal('NoIdentity') });
+    unsaid.pendingIdentity.mockRejectedValueOnce(refusal('Rpc'));
+    expect(await phoneCustodyHost(unsaid).publicState()).toMatchObject({ did: null });
+    expect(unsaid.finishPending).not.toHaveBeenCalled();
   });
 
   it('reads the devices, who keeps the master key, and the requests the phone can answer', async () => {

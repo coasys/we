@@ -265,14 +265,15 @@ class PhoneIdentityJvmTest {
 
   /**
    * The app's master sealer without the Keystore and the prompt: the same sealed form, a list of
-   * the prompts it would have shown, and a refusal to answer with.
+   * the prompts it would have shown, and a refusal to answer with. [protection] is the word the
+   * Keystore would report (`tee`, `strongbox`, or `software` for an emulator's).
    */
-  private class SoftMaster : MasterSealer {
+  internal class SoftMaster(private val protection: String = "tee") : MasterSealer {
     private val key = DeviceKeysJvmTest.aesKey()
     val prompts = Collections.synchronizedList(mutableListOf<String>())
     @Volatile var refuse: MasterSealException? = null
 
-    override fun protection(): String = "tee"
+    override fun protection(): String = protection
 
     override fun seal(label: String, plaintext: ByteArray, prompt: String): ByteArray {
       prompts.add(prompt)

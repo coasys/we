@@ -30199,16 +30199,14 @@
                       {
                         "type": "we-text",
                         "props": { "variant": "heading-xl", "tag": "h1" },
-                        "children": [
-                          { "$": "baseStore.hostKind == 'phone' ? 'Join your identity' : 'Welcome to Coasys'" }
-                        ]
+                        "children": ["Welcome to Coasys"]
                       },
                       {
                         "type": "we-text",
                         "props": { "color": "text-muted" },
                         "children": [
                           {
-                            "$": "baseStore.hostKind == 'phone' ? 'This phone acts as you once a computer that keeps your master key adds it.' : 'Your identity is yours: no email, no account with anybody. Choose how this computer comes in.'"
+                            "$": "`Your identity is yours: no email, no account with anybody. Choose how this ${baseStore.deviceNoun} comes in.`"
                           }
                         ]
                       }
@@ -30265,7 +30263,7 @@
                                     "props": { "variant": "footnote", "color": "text-muted" },
                                     "children": [
                                       {
-                                        "$": "baseStore.doors.make.open ? 'Your 12 words, no email needed. This computer keeps your master key' : baseStore.doors.make.note"
+                                        "$": "baseStore.doors.make.open ? (baseStore.hostKind == 'phone' ? 'Your 12 words, no email needed. This phone keeps your master key' : 'Your 12 words, no email needed. This computer keeps your master key') : baseStore.doors.make.note"
                                       }
                                     ]
                                   }
@@ -30323,7 +30321,7 @@
                                     "props": { "variant": "footnote", "color": "text-muted" },
                                     "children": [
                                       {
-                                        "$": "baseStore.doors.link.open ? (baseStore.hostKind == 'phone' ? 'From a computer that keeps your master key: scan or paste the offer it makes for this phone' : 'From a device that keeps your master key: it scans this code') : baseStore.doors.link.note"
+                                        "$": "baseStore.doors.link.open ? (baseStore.hostKind == 'phone' ? 'From a device that keeps your master key: scan or paste the offer it makes for this phone' : 'From a device that keeps your master key: it scans this code') : baseStore.doors.link.note"
                                       }
                                     ]
                                   }
@@ -30379,7 +30377,7 @@
                                     "props": { "variant": "footnote", "color": "text-muted" },
                                     "children": [
                                       {
-                                        "$": "baseStore.doors.words.open ? 'Bring your identity back to this computer' : baseStore.doors.words.note"
+                                        "$": "baseStore.doors.words.open ? (baseStore.hostKind == 'phone' ? 'Bring your identity back to this phone' : 'Bring your identity back to this computer') : baseStore.doors.words.note"
                                       }
                                     ]
                                   }

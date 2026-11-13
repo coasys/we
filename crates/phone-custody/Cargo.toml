@@ -7,7 +7,10 @@
 # it. It does not depend on `we-custody`, which keeps master keys on a computer. Phase 2b's phone
 # keeps a master key too, behind a second, biometric-gated Keystore key, and runs
 # `ad4m-identity-client`'s flows against the identity store directly through `ViaStore` (the phone
-# has no executor of its own): see `README.md` and `apps/we-mobile/docs/phase-2b.md`.
+# has no executor of its own): see `README.md` and `apps/we-mobile/docs/phase-2b.md`. With no
+# computer at all, it makes an identity from new words, restores one from its 12 words and replaces
+# the master key with them (`src/steps.rs`, over the steps `crates/identity-steps` shares with the
+# desktop), and spends the store's proof of work on a new log's incept (`src/brake.rs`).
 [package]
 name = "we-phone-custody"
 version = "0.1.0"
@@ -39,14 +42,19 @@ uniffi = "0.32"
 # override with
 #   cargo test --config 'patch."https://github.com/coasys/ad4m".ad4m-identity-client.path="<ad4m>/ad4m-identity-client"' …
 # (and the same for each crate below), as `crates/custody/README.md` says.
-ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "ab0038177fc3115418c141ae93a2053dd83b12c1", features = ["store"] }
+ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "95cefb35a27d75c6d332ee99e76ed205407d6fd3", features = ["store"] }
 # The claim on an offer (`link::make_claim`, `OfferString`, `match_code`), `signing_bytes`, the
-# device string and the record's types.
-ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "ab0038177fc3115418c141ae93a2053dd83b12c1", features = ["build"] }
+# device string and the record's types; `words`: the 12 words a make shows and a restore or a
+# rotation reads; `pow`'s solver is in the default features.
+ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "95cefb35a27d75c6d332ee99e76ed205407d6fd3", features = ["build", "words"] }
+# Make, restore and rotate-with-words, the steps the desktop's custody service (`crates/custody`)
+# runs too, so the phone says and decides what the desktop does. At the same ad4m rev as above:
+# its `tests/boundary.rs` checks.
+we-identity-steps = { path = "../identity-steps" }
 # `encode_proof_value` (a signature as `z` + base58btc) and the Ed25519 multikey.
-ad4m-hash-chain = { git = "https://github.com/coasys/ad4m", rev = "ab0038177fc3115418c141ae93a2053dd83b12c1" }
+ad4m-hash-chain = { git = "https://github.com/coasys/ad4m", rev = "95cefb35a27d75c6d332ee99e76ed205407d6fd3" }
 # The request box's types (`DeviceRequest`, `DeviceRequestBody`).
-ad4m-ldk = { git = "https://github.com/coasys/ad4m", rev = "ab0038177fc3115418c141ae93a2053dd83b12c1" }
+ad4m-ldk = { git = "https://github.com/coasys/ad4m", rev = "95cefb35a27d75c6d332ee99e76ed205407d6fd3" }
 # `HttpClient` is an `async_trait(?Send)`; the flows are driven on the calling thread by
 # `futures-executor`'s `block_on` (a current-thread executor, no tokio runtime on the phone).
 async-trait = "0.1"
@@ -59,6 +67,9 @@ bs58 = "0.5"
 zeroize = "1.8"
 rand_core = { version = "0.6", features = ["getrandom"] }
 thiserror = "2"
+# What the identity steps (`steps.rs`) did and why a step stopped, never a word or a key. The
+# facade only: the app installs no logger, so nothing is written unless one is.
+log = "0.4"
 
 [target.'cfg(unix)'.dependencies]
 # `flock(2)` for the vault's folder lock: `std::fs::File::lock` has no implementation for
@@ -69,9 +80,9 @@ libc = "0.2"
 tempfile = "3"
 # The tests run the flows against a real identity store, its router in process (as
 # `ad4m-identity-client/tests/store.rs` does), with a holder whose master key is in a `MemoryVault`.
-ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "ab0038177fc3115418c141ae93a2053dd83b12c1", features = ["store", "test-vault"] }
-ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "ab0038177fc3115418c141ae93a2053dd83b12c1", features = ["build", "words"] }
-identity-store = { git = "https://github.com/coasys/ad4m", rev = "ab0038177fc3115418c141ae93a2053dd83b12c1" }
+ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "95cefb35a27d75c6d332ee99e76ed205407d6fd3", features = ["store", "test-vault"] }
+ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "95cefb35a27d75c6d332ee99e76ed205407d6fd3", features = ["build", "words"] }
+identity-store = { git = "https://github.com/coasys/ad4m", rev = "95cefb35a27d75c6d332ee99e76ed205407d6fd3" }
 axum = "0.8"
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"

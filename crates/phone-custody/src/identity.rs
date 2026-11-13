@@ -156,7 +156,7 @@ pub(crate) fn vault_error(e: VaultError) -> PhoneKeyError {
     }
 }
 
-fn rpc(e: RpcError) -> PhoneKeyError {
+pub(crate) fn rpc(e: RpcError) -> PhoneKeyError {
     phone_error(ClientError::Rpc(e))
 }
 
@@ -302,7 +302,7 @@ fn request_kind(body: &DeviceRequestBody) -> &'static str {
     }
 }
 
-fn kind_name(kind: DeviceKind) -> String {
+pub(crate) fn kind_name(kind: DeviceKind) -> String {
     serde_json::to_value(kind)
         .ok()
         .and_then(|v| v.as_str().map(String::from))
@@ -348,6 +348,13 @@ async fn receipt_owed(
 pub struct PhoneIdentity {
     parts: Parts,
     vault: Arc<PhoneVault>,
+}
+
+impl PhoneIdentity {
+    /// What a flow's thread takes with it: a copy of the parts and the vault.
+    pub(crate) fn inner(&self) -> (Parts, Arc<PhoneVault>) {
+        (self.parts.clone(), self.vault.clone())
+    }
 }
 
 #[uniffi::export]

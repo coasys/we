@@ -2,7 +2,8 @@
 # the phone's web directory from it, checks it against the phone's WebView floor, and builds the
 # Android debug APK, with the DeviceKey plugin's Rust half (crates/phone-custody) built for the
 # phone and tested on the runner, and its Kotlin half's JVM tests over that same Rust. See
-# apps/we-mobile/README.md.
+# apps/we-mobile/README.md. The identity steps the phone runs (crates/identity-steps, a path
+# dependency of the phone's crate) are linted and tested here too, as the phone builds them.
 #
 # Android only. The iOS project is kept in the tree and `cap sync ios` works, but building it needs a
 # macOS runner and signing to say anything a reader can rely on, so it is not claimed here.
@@ -17,6 +18,7 @@ on:
     paths:
       - apps/we-mobile/**
       - crates/phone-custody/**
+      - crates/identity-steps/**
       - apps/we-web/**
       - apps/coasys/**
       - seeds/coasys.seed.json
@@ -28,6 +30,7 @@ on:
     paths:
       - apps/we-mobile/**
       - crates/phone-custody/**
+      - crates/identity-steps/**
       - apps/we-web/**
       - apps/coasys/**
       - seeds/coasys.seed.json
@@ -100,6 +103,13 @@ jobs:
 
       - name: Test the crate
         working-directory: crates/phone-custody
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+
+      - name: Test the identity steps
+        working-directory: crates/identity-steps
         run: |
           cargo fmt --check
           cargo clippy --locked --all-targets -- -D warnings

@@ -1,0 +1,28 @@
+# The identity steps that do not depend on where they run: make an identity from new words,
+# restore one from its 12 words, and replace its master key with them. The desktop's custody
+# service (`crates/custody`, over the executor's RPC) and the phone (`crates/phone-custody`, over
+# the identity store's HTTPS through `ViaStore`) both run these, so the two say the same things
+# and take the same decisions.
+#
+# Generic over `ExecutorRpc`: nothing here names a transport, the executor or Android. The
+# boundary test (`tests/boundary.rs`) keeps it so.
+#
+# Standalone, like `crates/custody`: its own `Cargo.lock` and toolchain. The ad4m rev is the one
+# WE pins (`node scripts/ad4m-pin.mjs --commit`, moved by `scripts/bump-ad4m.mjs`); a crate that
+# depends on this one must name the same rev, or the ad4m types would not be the same types.
+[package]
+name = "we-identity-steps"
+version = "0.1.0"
+edition = "2021"
+description = "Make, restore and rotate-with-words: the identity steps the desktop and the phone share"
+publish = false
+
+[dependencies]
+ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "95cefb35a27d75c6d332ee99e76ed205407d6fd3" }
+ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "95cefb35a27d75c6d332ee99e76ed205407d6fd3", features = ["build", "words"] }
+serde = { version = "1", features = ["derive"] }
+zeroize = "1.8"
+log = "0.4"
+
+[dev-dependencies]
+serde_json = "1"

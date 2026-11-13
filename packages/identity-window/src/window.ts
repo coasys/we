@@ -500,15 +500,15 @@ function body(screen: Screen): Child[] {
         box.checked = d.lockOut;
         return { keyId: d.keyId, box, label: d.name || d.keyId };
       });
-      const name = textField('Name this computer', '', 'Laptop, Desktop at home…');
+      const name = textField(`Name this ${host.deviceNoun ?? 'computer'}`, '', 'Laptop, Desktop at home…');
       const go = () =>
         step({
           kind: 'lock-out',
           keyIds: ticks.filter((t) => t.box.checked).map((t) => t.keyId),
           name: typed(name.input),
         });
+      // No DID here: the person knows the identity by its devices, and sees a DID only where it is made.
       return [
-        el('div', { className: 'link', textContent: screen.did }),
         ...ticks.map((t) => el('label', { className: 'check' }, t.box, `Lock out ${t.label}`)),
         name.label,
         el('div', { className: 'row' }, button('Restore', go, 'primary'), button('Cancel', cancel)),
@@ -593,7 +593,21 @@ function body(screen: Screen): Child[] {
       ];
     case 'restore-not-linked':
       return [
-        el('div', { className: 'link', textContent: screen.did }),
+        el(
+          'div',
+          { className: 'row' },
+          button('Try again', () => step({ kind: 'try-again' }), 'primary'),
+          button('Close', cancel),
+        ),
+      ];
+    case 'name-device': {
+      const name = textField('Name', screen.name);
+      const go = () => step({ kind: 'name-device', name: typed(name.input) });
+      return [name.label, el('div', { className: 'row' }, button('Continue', go, 'primary'), button('Cancel', cancel))];
+    }
+    case 'make-stopped':
+      // Closing leaves a pending identity pending: it is published when the app next opens.
+      return [
         el(
           'div',
           { className: 'row' },
@@ -602,7 +616,6 @@ function body(screen: Screen): Child[] {
         ),
       ];
     case 'restored':
-      return [el('div', { className: 'link', textContent: screen.did })];
     case 'master-replaced':
     case 'master-removed':
       return [];
@@ -619,7 +632,10 @@ function body(screen: Screen): Child[] {
     case 'identity-ready':
       return [
         el('div', { className: 'link', textContent: screen.did }),
-        el('p', { className: 'note', textContent: `This computer is ${screen.keyId} in your key log.` }),
+        el('p', {
+          className: 'note',
+          textContent: `This ${host.deviceNoun ?? 'computer'} is ${screen.keyId} in your key log.`,
+        }),
       ];
     case 'joined':
     case 'master-taken':

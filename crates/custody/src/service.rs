@@ -18,7 +18,7 @@ use std::time::Duration;
 
 use ad4m_client::ws_rpc::WsRpcClient;
 use ad4m_identity_client::executor::IdentityStatus;
-use ad4m_identity_client::flows::create::{resume, CreateFlow, CreateScreen, Created};
+use ad4m_identity_client::flows::create::{resume, Created};
 use ad4m_identity_client::flows::link::{Claimed, LinkFlow};
 use ad4m_identity_client::flows::master::{
     complete_pending_mark, refresh_master, remove_master, retry_pushes, take_master, Refreshed,
@@ -27,7 +27,7 @@ use ad4m_identity_client::flows::master::{
 use ad4m_identity_client::flows::requests::{self, Answered};
 use ad4m_identity_client::flows::restore::RestoreFlow;
 use ad4m_identity_client::flows::revoke::{revoke, revoke_and_rotate};
-use ad4m_identity_client::flows::rotate::{rotate, Rotated};
+use ad4m_identity_client::flows::rotate::Rotated;
 use ad4m_identity_client::record::{self, Change};
 use ad4m_identity_client::vault::{MasterUse, Vault};
 use ad4m_identity_client::{
@@ -46,6 +46,12 @@ use zeroize::Zeroizing;
 
 use crate::seal::{self, PassphraseProblem};
 use crate::vault::{DesktopVault, Unlocking};
+// The steps the phone runs too (`crates/identity-steps`): make, restore, rotate with the words.
+pub use we_identity_steps::RestoreDevice;
+use we_identity_steps::{
+    enrol_again, finish_restore, joined, listed, lock_out_of, record_note,
+    rotate_with_words as rotate_words, words_refused, MakeWords, NOT_THESE_WORDS, WRONG_CONFIRM,
+};
 
 static CLOCK: SystemClock = SystemClock;
 static RANDOM: OsRandom = OsRandom;
@@ -583,17 +589,6 @@ pub struct RequestView {
     pub expires: u64,
 }
 
-/// One device on the restore's lock-out list.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RestoreDevice {
-    pub key_id: String,
-    /// The record's name; `None` when the record does not name it or could not be read.
-    pub name: Option<String>,
-    pub kind: Option<DeviceKind>,
-    pub lock_out: bool,
-}
-
 /// Where the executor's RPC is, and the admin credential for it. Nothing else of the executor: the
 /// identity store it uses, and whether it trusts it, are asked of it (`identity.status`).
 #[derive(Clone)]
@@ -732,13 +727,9 @@ fn names_no_store(e: &ClientError) -> bool {
     matches!(e, ClientError::Rpc(e) if e.code == 503 && e.message.starts_with("no-store-keys"))
 }
 
-/// Words that are all on the list and pass the checksum, yet make no master key of the identity.
-const NOT_THESE_WORDS: &str = "These words do not make your identity's master key. Check each \
-     word against your paper, in order. Nothing was changed.";
-
 /// A step stopped because this computer lost its count of the changes to the master key it keeps
 /// (`custody-epochs.json`, or an identity's entry in it, gone from the custody folder). The way
-/// back is the words-gated recovery ([`recover_lost_epoch`]): in "Replace my master key"
+/// back is the words-gated recovery (`we_identity_steps::recover_lost_epoch`): in "Replace my master key"
 /// ([`rotate_with_words`]) on a linked computer, in "Use my 12 words" ([`restore_on`]) on one
 /// not linked yet.
 const LOST_EPOCH: &str = "This computer has lost its count of the changes to the master key it \
@@ -759,32 +750,6 @@ const KEYRING_LOCKED_WORDS: &str = "Your keyring is locked, so this computer cou
 const ONLY_COPY: &str = "This computer keeps the only copy of your master key: no other \
      computer or phone of yours keeps one. Removing it would leave only your 12 words to add or \
      remove devices. Send it to another device first. Your master key stays on this computer.";
-
-/// Why the 12 words typed were refused, and the word it names (from 1). Names a word by its
-/// place only: the word typed, or the list word nearest it, may be one of the 12.
-fn words_refused(e: &ad4m_identity_core::words::WordsError) -> (String, Option<usize>) {
-    use ad4m_identity_core::words::WordsError;
-    match e {
-        WordsError::Count(n) => {
-            let noun = if *n == 1 { "word" } else { "words" };
-            (format!("That is {n} {noun}. Type all 12, in order."), None)
-        }
-        WordsError::UnknownWord { position, .. } => (
-            format!("Word {position} is not one of the words a recovery phrase uses. Check it on your paper."),
-            Some(*position),
-        ),
-        WordsError::Checksum => (
-            "One of the words is wrong: they do not fit together. Check each word against your \
-             paper, in order."
-                .into(),
-            None,
-        ),
-        WordsError::Index(_) => (
-            "Your master key cannot be replaced again from these words.".into(),
-            None,
-        ),
-    }
-}
 
 /// Words a person reads, for each way a flow stops.
 fn failed(e: &ClientError) -> Screen {
@@ -1428,8 +1393,8 @@ async fn create_on<R: ExecutorRpc>(
         Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
         Ok(status) => status.device_key,
     };
-    let (mut flow, first) = CreateFlow::start(&RANDOM);
-    let CreateScreen::ShowWords(words) = first else {
+    let mut flow = MakeWords::start(&RANDOM);
+    let Some(words) = flow.words() else {
         return answer(
             reply,
             Ok(Screen::Failed {
@@ -1437,8 +1402,8 @@ async fn create_on<R: ExecutorRpc>(
             }),
         );
     };
-    // The client hands the words over as a `Secret`, wiped when `words` drops below; the screen is
-    // the one place they leave it, to be drawn in the identity window.
+    // The words are handed over as a `Secret`, wiped when `words` drops below; the screen is the
+    // one place they leave it, to be drawn in the identity window.
     answer(
         reply,
         Ok(Screen::ShowWords {
@@ -1454,7 +1419,7 @@ async fn create_on<R: ExecutorRpc>(
         };
         match input {
             StepInput::WordsWritten if positions == [0, 0] => match flow.words_written(&RANDOM) {
-                Ok(CreateScreen::ConfirmWords { positions: p }) => {
+                Ok(p) => {
                     positions = p;
                     answer(
                         reply,
@@ -1464,7 +1429,6 @@ async fn create_on<R: ExecutorRpc>(
                         }),
                     );
                 }
-                Ok(_) => answer(reply, Err(CustodyError::WrongInput)),
                 Err(e) => return answer(reply, Ok(failed(&e))),
             },
             StepInput::Words { answers } if positions != [0, 0] => {
@@ -1476,9 +1440,7 @@ async fn create_on<R: ExecutorRpc>(
                         reply,
                         Ok(Screen::ConfirmWords {
                             positions,
-                            error: Some(
-                                "Those are not the words at those places. Check your paper.".into(),
-                            ),
+                            error: Some(WRONG_CONFIRM.into()),
                         }),
                     ),
                     Err(e) => return answer(reply, Ok(failed(&e))),
@@ -3656,14 +3618,6 @@ fn replaced(rotated: Rotated, extra: Option<String>) -> Screen {
     }
 }
 
-/// Two notes as one, either or both absent.
-fn joined(first: Option<String>, second: Option<String>) -> Option<String> {
-    match (first, second) {
-        (Some(a), Some(b)) => Some(format!("{a} {b}")),
-        (a, b) => a.or(b),
-    }
-}
-
 /// Why a part of a step after its publish did not happen, in words a person reads. Never says that
 /// nothing changed, as [`failed`] does for a step that stopped before its publish: the publish
 /// stands.
@@ -3723,72 +3677,13 @@ async fn rotate_with_words<R: ExecutorRpc>(
                     .1
             }
         };
-        let rotated = match recover_lost_epoch(executor, vault, did, &words).await {
-            Ok(()) => rotate(executor, unlocking, did, &words, &[], &CLOCK, &RANDOM).await,
-            Err(e) => Err(e),
-        };
+        let rotated = rotate_words(executor, unlocking, vault, did, &words, &CLOCK, &RANDOM).await;
         match rotated {
             Ok(rotated) => return Some(Ok(replaced(rotated, None))),
             Err(ClientError::NotTheseWords(_)) => error = Some((NOT_THESE_WORDS.into(), None)),
             Err(e) => return Some(Err(e)),
         }
     }
-}
-
-/// The way back from a lost custody epoch ([`LOST_EPOCH`]), taken by "Replace my master key"
-/// before it rotates, and by "Use my 12 words" on a computer not linked yet before its rotation
-/// stages and before each try at linking after it ([`restore_on`]). Only when the epoch of `did`'s key here is lost, and only once `words` are
-/// checked to make the identity's current master — the check `rotate` makes before it publishes
-/// ([`words_make_current_master`]) — is the epoch recovered
-/// ([`DesktopVault::recover_custody_epoch`], a fresh incarnation). Words that are not the
-/// identity's recover nothing ([`ClientError::NotTheseWords`]); the rotation that follows moves
-/// the recovered epoch as any change of the kept key does.
-async fn recover_lost_epoch<R: ExecutorRpc>(
-    executor: &ViaExecutor<R>,
-    vault: &DesktopVault,
-    did: &str,
-    words: &Words,
-) -> Result<(), ClientError> {
-    let Some(scid) = ad4m_identity_core::scid_of(did) else {
-        return Ok(());
-    };
-    match vault.custody_epoch(scid) {
-        Ok(_) => return Ok(()),
-        Err(e) if crate::pending::is_lost_epoch(&e) => {}
-        Err(e) => return Err(e.into()),
-    }
-    words_make_current_master(executor, did, words).await?;
-    log::info!("custody: the words make the current master key; recover its custody epoch");
-    vault.recover_custody_epoch(scid)?;
-    Ok(())
-}
-
-/// Whether `words` make `did`'s current master key, as the key log the executor serves says it
-/// (the rule of `ad4m_identity_client::flows::rotate`, whose `current_index` is not public):
-/// master *n* of the words, *n* the current master's index, signs as the log's current master.
-/// [`ClientError::NotTheseWords`] when they do not.
-async fn words_make_current_master<R: ExecutorRpc>(
-    executor: &ViaExecutor<R>,
-    did: &str,
-    words: &Words,
-) -> Result<(), ClientError> {
-    let events = executor.events(did).await?;
-    let chain =
-        ad4m_identity_core::fold(&events).map_err(|e| ClientError::Protocol(e.to_string()))?;
-    let state = chain.state();
-    let current = state
-        .current_master()
-        .ok_or_else(|| ClientError::Protocol("the identity has ended".into()))?;
-    let index = u32::try_from(state.masters.len() - 1)
-        .map_err(|_| ClientError::Protocol("the log lists too many masters".into()))?;
-    let key =
-        ad4m_identity_core::words::master_key(&ad4m_identity_core::words::seed(words), index)?;
-    if ad4m_identity_core::build::Signer::key(&key) != current.sign {
-        return Err(ClientError::NotTheseWords(
-            "they do not derive the current master key".into(),
-        ));
-    }
-    Ok(())
 }
 
 /// Answers the screen a published rotation ended on, after the retry list is pushed again. On
@@ -3844,33 +3739,11 @@ fn handed_over(
     pushes: &[(ad4m_identity_core::KeyId, Result<String, ClientError>)],
     record: &Result<u64, ClientError>,
 ) -> Option<String> {
-    let mut note = Vec::new();
-    let late: Vec<&str> = pushes
-        .iter()
-        .filter(|(_, pushed)| pushed.is_err())
-        .map(|(key_id, _)| key_id.as_str())
-        .collect();
-    for (key_id, pushed) in pushes {
-        if let Err(e) = pushed {
-            log::warn!("custody: the new master key did not reach {key_id} yet: {e}");
-        }
-    }
-    if !late.is_empty() {
-        note.push(format!(
-            "The new master key has not reached {} yet: this computer sends it again each time \
-             it unlocks.",
-            late.join(", ")
-        ));
-    }
-    if let Err(e) = record {
-        log::warn!("custody: the record was not written after the rotation: {e}");
-        note.push(
-            "Your device list does not show it yet: it is updated the next time a device \
-             changes it."
-                .into(),
-        );
-    }
-    (!note.is_empty()).then(|| note.join(" "))
+    we_identity_steps::handed_over(
+        pushes,
+        record,
+        "this computer sends it again each time it unlocks.",
+    )
 }
 
 /// The executor's identity, or the screen saying it has none.
@@ -4078,20 +3951,8 @@ async fn restore_on<R: ExecutorRpc>(
             );
         }
     }
-    let devices: Vec<RestoreDevice> = flow
-        .devices()
-        .iter()
-        .map(|d| RestoreDevice {
-            key_id: d.key_id.as_str().to_string(),
-            name: d.name.clone(),
-            kind: d.kind,
-            lock_out: d.lock_out,
-        })
-        .collect();
-    let note = flow.record_error().map(|e| {
-        log::warn!("custody: the record could not be read for the restore: {e}");
-        "Your device list could not be read, so your devices show by their keys.".to_string()
-    });
+    let devices: Vec<RestoreDevice> = listed(&flow);
+    let note = record_note(&flow);
     answer(
         reply,
         Ok(Screen::RestoreDevices {
@@ -4105,31 +3966,22 @@ async fn restore_on<R: ExecutorRpc>(
             return;
         };
         match input {
-            StepInput::LockOut { key_ids, name }
-                if key_ids
-                    .iter()
-                    .all(|k| devices.iter().any(|d| &d.key_id == k)) =>
-            {
-                break (key_ids, name)
-            }
+            StepInput::LockOut { key_ids, name } => match lock_out_of(&devices, &key_ids) {
+                Some(lock_out) => break (lock_out, name),
+                None => answer(reply, Err(CustodyError::WrongInput)),
+            },
             _ => answer(reply, Err(CustodyError::WrongInput)),
         }
     };
     // The vault's item carries the index; the record's comes from the hand-over that keeps it.
     let entry = this_computer(given_name(name), true, None);
     let name = entry.name.clone();
-    let lock_out: Vec<ad4m_identity_core::KeyId> = lock_out
-        .iter()
-        .map(|k| ad4m_identity_core::KeyId::from(k.as_str()))
-        .collect();
     // Before the stage the rotation makes: a custody epoch of this identity this computer lost
     // (a first restore stopped, a file of the custody folder gone) is recovered here, the words
     // checked first to make the identity's current master. "Replace my master key", the way back
     // on a linked computer, refuses this one: it is not linked yet.
-    let finished = match recover_lost_epoch(executor, vault, &did, &words).await {
-        Ok(()) => flow.finish(&lock_out, entry.clone()).await,
-        Err(e) => Err(e),
-    };
+    let finished =
+        finish_restore(&mut flow, executor, vault, &words, &lock_out, entry.clone()).await;
     let restored = match finished {
         Ok(restored) => restored,
         Err(e) => return answer(reply, Ok(failed(&e))),
@@ -4178,10 +4030,7 @@ async fn restore_on<R: ExecutorRpc>(
             }
         }
         // The same words, checked again, recover an epoch lost since the rotation.
-        enrolled = match recover_lost_epoch(executor, vault, &did, &words).await {
-            Ok(()) => flow.enrol(entry.clone()).await,
-            Err(e) => Err(e),
-        };
+        enrolled = enrol_again(&flow, executor, vault, &words, entry.clone()).await;
     }
 }
 
@@ -4266,6 +4115,7 @@ mod tests {
     use super::*;
     use std::cell::{Cell, RefCell};
 
+    use ad4m_identity_client::flows::create::{CreateFlow, CreateScreen};
     use ad4m_identity_client::vault::KeySigner;
     use ad4m_identity_client::{RpcError, Vault};
     use ad4m_identity_core::build::{cosign, Signer};
