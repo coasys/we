@@ -178,6 +178,34 @@ export interface ExecutorHost {
    * take a path on *its* filesystem, so a browser File, which carries no path, cannot serve them.
    */
   chooseFile?(options: { save: boolean; defaultName?: string }): Promise<string | null>;
+  /**
+   * How the backend this host started keeps its data on this device's disk, as the backend reports
+   * it; null while it is not running. Where the host does not start one, absent.
+   */
+  storageStatus?(): Promise<StorageStatus | null>;
+  /**
+   * Hears each change of that status the moment the backend reports it (null once it stops). Answers
+   * the unsubscribe. Absent where the host cannot follow it: `storageStatus` is then read when asked.
+   */
+  onStorageStatus?(listener: (status: StorageStatus | null) => void): () => void;
+}
+
+/** One store's state on disk: under its key, still being moved under it, or not. */
+export type StoreAtRest = 'plain' | 'migrating' | 'encrypted';
+
+/**
+ * The backend's storage as its host reads it: `sealed` until the host gives it its secret,
+ * `unlocking` while it opens, `migrating` while data it kept before it was encrypted moves under its
+ * keys, `open` once it serves. `stores` is null until it is open. Only what a person is told; nothing
+ * of where the secret came from.
+ */
+export interface StorageStatus {
+  state: 'sealed' | 'unlocking' | 'migrating' | 'open';
+  /** Every store is under its key, and the secret is not on the data's disk. */
+  encryptedAtRest: boolean;
+  stores: { database: StoreAtRest; languageStorage: StoreAtRest; links: StoreAtRest } | null;
+  /** While `migrating`: how many of the stores are under their keys so far. Absent or null otherwise. */
+  migration?: { storesDone: number; storesTotal: number } | null;
 }
 
 /**

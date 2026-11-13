@@ -20,6 +20,7 @@
     "preelectron:build": "node scripts/generate-seed-config.cjs && node ../../scripts/ad4m-executor.mjs",
     "electron:build": "vite build && vite build -c vite.identity.config.ts && node scripts/build-custody.mjs && electron-builder --config electron-builder.config.js",
     "test": "vitest run",
+    "acceptance:storage": "node --test acceptance/storage.acceptance.mjs",
     "typecheck": "tsc --noEmit"
   },
   "main": "electron/main.js",

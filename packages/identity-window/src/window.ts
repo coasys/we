@@ -24,6 +24,7 @@ import {
   type DeviceNoun,
   heading,
   isLast,
+  migrationProgress,
   oneAtATime,
   refusedField,
   remaining,
@@ -325,6 +326,50 @@ function body(screen: Screen): Child[] {
         el('div', { className: 'row' }, button('Unlock', go, 'primary'), button('Cancel', cancel)),
       ];
     }
+    case 'set-storage-passphrase': {
+      const p = secretField('Passphrase — at least 15 characters; spaces count');
+      const again = secretField('Type it again');
+      const go = () =>
+        step({ kind: 'passphrase', passphrase: p.input.value, confirm: again.input.value }, [p.input, again.input]);
+      return [
+        p.label,
+        again.label,
+        ...errorLine(screen.error),
+        el('div', { className: 'row' }, button('Continue', go, 'primary'), button('Cancel', cancel)),
+      ];
+    }
+    case 'unlock-storage': {
+      const p = secretField('Passphrase');
+      const go = () => step({ kind: 'passphrase', passphrase: p.input.value }, [p.input]);
+      return [
+        p.label,
+        ...errorLine(screen.error),
+        el('div', { className: 'row' }, button('Open', go, 'primary'), button('Cancel', cancel)),
+      ];
+    }
+    case 'storage-open':
+      return [];
+    case 'storage-migrating': {
+      // The supervisor answers with the next count, or the data open: wait for it now.
+      waitFor({ kind: 'wait-storage' });
+      const bar = el('progress');
+      // No count yet: an indeterminate bar, which has no value.
+      if (screen.storesTotal > 0) {
+        bar.max = screen.storesTotal;
+        bar.value = Math.min(screen.storesDone, screen.storesTotal);
+      }
+      bar.setAttribute('aria-label', migrationProgress(screen.storesDone, screen.storesTotal));
+      return [bar, el('div', { className: 'row' }, button('Close', cancel))];
+    }
+    case 'storage-migration-failed':
+      return [
+        el(
+          'div',
+          { className: 'row' },
+          button('Try again', () => step({ kind: 'try-again' }), 'primary'),
+          button('Close', cancel),
+        ),
+      ];
     case 'offer':
       // The claim can come at any moment: wait for it now.
       waitFor({ kind: 'wait-claim' });

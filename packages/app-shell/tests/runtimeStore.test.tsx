@@ -11,7 +11,7 @@
  * (`backendPorts`), so driving that directly is both the smaller harness and the more direct test.
  */
 import { render } from '@solidjs/testing-library';
-import type { ExecutorHost, ExecutorSettings } from '@we/app-shell/shared';
+import type { ExecutorHost, ExecutorSettings, StorageStatus } from '@we/app-shell/shared';
 import type {
   AiCapability,
   AiEndpoint,
@@ -81,6 +81,7 @@ import {
   RuntimeStoreProvider,
   useRuntimeStore,
 } from '../src/frameworks/solid/stores/RuntimeStore';
+import { LINKS_PLAIN_LINE } from '../src/shared/storageLine';
 
 function mount(): RuntimeStore {
   let store!: RuntimeStore;
@@ -243,6 +244,47 @@ describe('how the backend is started', () => {
     await vi.waitFor(() => expect(store.mcpPort()).toBe(4321));
     expect(store.mcpEnabled()).toBe(true);
     expect(store.logLevels()).toEqual([{ crate: 'holochain', level: 'debug' }]);
+  });
+
+  it('follows the storage the host hears change, without the settings page asking', async () => {
+    let tell: ((status: StorageStatus | null) => void) | null = null;
+    let unsubscribed = 0;
+    const { host } = stubExecutor({
+      onStorageStatus(listener) {
+        tell = listener;
+        return () => {
+          unsubscribed += 1;
+        };
+      },
+    });
+    executorHost = host;
+    ports = {};
+    let dispose!: () => void;
+    let store!: RuntimeStore;
+    function Capture() {
+      store = useRuntimeStore();
+      return null;
+    }
+    ({ unmount: dispose } = render(() => (
+      <RuntimeStoreProvider>
+        <Capture />
+      </RuntimeStoreProvider>
+    )));
+
+    expect(store.storageLine()).toBe('');
+    tell!({ state: 'migrating', encryptedAtRest: false, stores: null, migration: { storesDone: 2, storesTotal: 5 } });
+    expect(store.storageLine()).toBe('Moving your data under its key: 2 of 5.');
+    tell!({
+      state: 'open',
+      encryptedAtRest: false,
+      stores: { database: 'encrypted', languageStorage: 'encrypted', links: 'plain' },
+    });
+    expect(store.storageLine()).toBe(LINKS_PLAIN_LINE);
+    // The executor stopped: nothing true is left to say.
+    tell!(null);
+    expect(store.storageLine()).toBe('');
+    dispose();
+    expect(unsubscribed).toBe(1);
   });
 
   it('adds and edits a log level through one action, and drops an override on removal', async () => {

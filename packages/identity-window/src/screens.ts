@@ -15,6 +15,16 @@ export type Screen =
   | { screen: 'confirm-words'; positions: [number, number]; error: string | null }
   | { screen: 'set-passphrase'; error: string | null }
   | { screen: 'enter-passphrase'; error: string | null }
+  /** The desktop's data, where there is no keyring to keep its key: a passphrase chosen on the first
+   *  start, typed at each start after. The supervisor's step, never custody's. */
+  | { screen: 'set-storage-passphrase'; error: string | null }
+  | { screen: 'unlock-storage'; error: string | null }
+  | { screen: 'storage-open' }
+  /** A data folder kept before it was encrypted, moving under its keys once it was opened: how many of
+   *  its stores are done. The window asks for the next with `wait-storage` until it is open. */
+  | { screen: 'storage-migrating'; storesDone: number; storesTotal: number }
+  /** That move failed: nothing was lost, and Try again hands the data its key again. */
+  | { screen: 'storage-migration-failed' }
   | { screen: 'identity-ready'; did: string; keyId: string }
   | { screen: 'offer'; link: string; qrSvg: string; expires: number }
   | { screen: 'match'; code: string; hint: string | null; canKeep: boolean; ownName: boolean }
@@ -183,7 +193,9 @@ export type StepInput =
   | { kind: 'remove' }
   | { kind: 'bot-scope'; can: BotAction[]; days: number }
   | { kind: 'discard' }
-  | { kind: 'try-again' };
+  | { kind: 'try-again' }
+  /** The next of the storage's states while its data moves under its keys. The supervisor's, not custody's. */
+  | { kind: 'wait-storage' };
 
 /** "4:52" — how long an offer still works. */
 export function remaining(expires: number, nowSeconds: number): string {
@@ -213,6 +225,13 @@ export function spreadWords(pasted: string, at: number): Array<[number, string]>
 
 /** What the device the window runs on is called on its screens. */
 export type DeviceNoun = 'computer' | 'phone';
+
+/** "Moving your data under its key: 2 of 5.", or without a count where there is none yet. */
+export function migrationProgress(done: number, total: number): string {
+  if (!Number.isInteger(total) || total <= 0 || !Number.isInteger(done) || done < 0)
+    return 'Moving your data under its key.';
+  return `Moving your data under its key: ${Math.min(done, total)} of ${total}.`;
+}
 
 /** How many devices a lock-out took, said without their key ids: the person ticked them a moment ago. */
 function devices(count: number): string {
@@ -244,6 +263,31 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
       return {
         title: 'Unlock your master key',
         lead: 'Type the passphrase this computer keeps your master key behind.',
+      };
+    case 'set-storage-passphrase':
+      return {
+        title: 'Choose a passphrase for your data',
+        lead: `This ${noun} has no keyring to keep the key to your data, so a passphrase opens it instead. You type it each time the app starts. Nobody can open your data here without it, you included: keep it somewhere safe.`,
+      };
+    case 'unlock-storage':
+      return {
+        title: 'Open your data',
+        lead: `Type the passphrase that opens your data on this ${noun}.`,
+      };
+    case 'storage-open':
+      return {
+        title: 'Your data is open',
+        lead: 'The app is starting.',
+      };
+    case 'storage-migrating':
+      return {
+        title: 'Encrypting your data',
+        lead: `${migrationProgress(screen.storesDone, screen.storesTotal)} Your data on this ${noun} was kept before it was encrypted, so it moves under its key once, now. The app starts when it is done; you can close this window meanwhile.`,
+      };
+    case 'storage-migration-failed':
+      return {
+        title: 'Your data could not be moved under its key',
+        lead: 'Nothing was lost: your data stays as it was until the move finishes. Try again; it goes on from where it stopped.',
       };
     case 'identity-ready':
       return {
@@ -543,6 +587,7 @@ export function isLast(screen: Screen): boolean {
     'master-replaced',
     'restored',
     'master-removed',
+    'storage-open',
     'bot-added',
     'failed',
   ].includes(screen.screen);

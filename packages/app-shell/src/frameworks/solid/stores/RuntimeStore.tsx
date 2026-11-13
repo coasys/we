@@ -28,7 +28,8 @@ import {
   readAiSetupAnswer,
   recordAiSetupAnswer,
 } from '@shared/aiSetupStep';
-import type { ExecutorSettings } from '@shared/platform/types';
+import type { ExecutorSettings, StorageStatus } from '@shared/platform/types';
+import { storageLine as storageLineFor } from '@shared/storageLine';
 import { copyText } from '@shared/utils';
 import { usePlatform } from '@solid/providers/PlatformProvider';
 import {
@@ -257,6 +258,12 @@ export interface RuntimeStore {
   executorLogTail: Accessor<string>;
   /** Restart can be offered: the host starts the backend. */
   canRestartExecutor: Accessor<boolean>;
+  /**
+   * One sentence on how this device keeps the data on its disk, drawn only from the backend's own
+   * storage status, which the host reads when settings opens. Empty where the host does not start the
+   * backend, or no sentence is true for long enough to say (storage not open, a store being moved).
+   */
+  storageLine: Accessor<string>;
   /** The consent request awaiting a decision, if any. Schemas render a modal on this. */
   pendingConsent: Accessor<ConsentRequest | null>;
   /** A secret returned by an approval that must be relayed to the asker by hand. */
@@ -444,6 +451,8 @@ export function RuntimeStoreProvider(props: ParentProps) {
   const [backupStatus, setBackupStatus] = createSignal('');
   const [executorConfig, setExecutorConfig] = createSignal<ExecutorConfig | null>(null);
   const [executorLogTail, setExecutorLogTail] = createSignal('');
+  const [storageStatus, setStorageStatus] = createSignal<StorageStatus | null>(null);
+  const storageLine = createMemo(() => storageLineFor(storageStatus()) ?? '');
   const configRows = createMemo(() => executorConfigRows(executorConfig()));
   const executorConfigFile = createMemo(() => executorConfig()?.file ?? '');
 
@@ -504,6 +513,14 @@ export function RuntimeStoreProvider(props: ParentProps) {
     // A backend that reports gaps but cannot say when a new one appears is still worth showing;
     // it is simply a snapshot, which is what an absent subscription honestly is.
     const stop = port?.onUnsupported?.(() => setUnsupportedCapabilities(port.unsupported?.() ?? []));
+    if (stop) onCleanup(stop);
+  });
+
+  // The storage line follows the backend's storage as the host hears it change, so a move under its
+  // keys or a store that opens shows at once; a host that cannot follow it is read when settings opens.
+  createEffect(() => {
+    const host = executorHost();
+    const stop = host?.onStorageStatus?.((status) => setStorageStatus(status ?? null));
     if (stop) onCleanup(stop);
   });
 
@@ -794,7 +811,10 @@ export function RuntimeStoreProvider(props: ParentProps) {
     if (canManageApps()) void loadAuthorizedApps();
     if (canManageLanguages()) void loadLanguages();
     if (canManageAi()) void loadAiTasks();
-    if (canConfigureExecutor()) void loadExecutorSettings();
+    if (canConfigureExecutor()) {
+      void loadExecutorSettings();
+      void loadStorageStatus();
+    }
   });
 
   // The AI sections are on the settings page and on a first run's AI step, which share them.
@@ -954,6 +974,18 @@ export function RuntimeStoreProvider(props: ParentProps) {
   async function loadExecutorLogTail(): Promise<void> {
     const tail = await run('loadExecutorLogTail', () => runtime()?.executorLogTail?.(200));
     if (tail.ok) setExecutorLogTail((tail.value ?? []).join('\n'));
+  }
+
+  /** Ask the host how the backend keeps the data on disk. A host that cannot answer leaves no line. */
+  async function loadStorageStatus(): Promise<void> {
+    const host = executorHost();
+    if (!host?.storageStatus) return void setStorageStatus(null);
+    try {
+      setStorageStatus((await host.storageStatus()) ?? null);
+    } catch (err) {
+      console.error('RuntimeStore: could not read how the backend keeps its data', err);
+      setStorageStatus(null);
+    }
   }
 
   async function loadExecutorSettings(): Promise<void> {
@@ -1611,6 +1643,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     executorConfigRows: configRows,
     executorLogTail,
     canRestartExecutor,
+    storageLine,
     aiModels,
     aiTasks,
     aiForm,

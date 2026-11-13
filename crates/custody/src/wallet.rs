@@ -253,7 +253,9 @@ pub fn keyring() -> Result<Box<dyn SecretStore>, VaultError> {
     }
     #[cfg(target_os = "macos")]
     {
-        Ok(Box::new(login_keychain::LoginKeychain::new()))
+        Ok(Box::new(login_keychain::LoginKeychain::new(
+            login_keychain::WALLET_SERVICE,
+        )))
     }
     #[cfg(not(any(target_os = "linux", target_os = "macos")))]
     {
@@ -291,14 +293,15 @@ pub fn main(args: impl IntoIterator<Item = String>) -> std::process::ExitCode {
     std::process::ExitCode::SUCCESS
 }
 
-/// macOS: a generic password in the login keychain, service `org.coasys.app.wallet`, account the
-/// item name. Not the data-protection keychain custody keeps master keys in: that one needs a
+/// macOS: a generic password in the login keychain, under the service it is made with
+/// (`org.coasys.app.wallet` for the wallet item; the storage secret's is its own), account the item
+/// name. Not the data-protection keychain custody keeps master keys in: that one needs a
 /// signed build's entitlement, and its items ask for the person's presence at every read, where
 /// this item is read at every start with no prompt. Every call waits at most
 /// [`UNLOCK_WAIT`](login_keychain::UNLOCK_WAIT), as the Secret Service's do, so a locked keychain's
 /// prompt nobody answers is answered as locked.
 #[cfg(target_os = "macos")]
-mod login_keychain {
+pub(crate) mod login_keychain {
     use std::sync::mpsc;
     use std::time::Duration;
 
@@ -318,7 +321,7 @@ mod login_keychain {
     use crate::store::{keyring_locked, no_keyring, StoreKind};
 
     pub const UNLOCK_WAIT: Duration = Duration::from_secs(90);
-    const SERVICE: &str = "org.coasys.app.wallet";
+    pub const WALLET_SERVICE: &str = "org.coasys.app.wallet";
     const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
     const ERR_SEC_DUPLICATE_ITEM: i32 = -25299;
     const ERR_SEC_USER_CANCELED: i32 = -128;
@@ -328,11 +331,13 @@ mod login_keychain {
     const ERR_SEC_NO_DEFAULT_KEYCHAIN: i32 = -25307;
     const ERR_SEC_NO_SUCH_KEYCHAIN: i32 = -25294;
 
-    pub struct LoginKeychain;
+    pub struct LoginKeychain {
+        service: &'static str,
+    }
 
     impl LoginKeychain {
-        pub fn new() -> Self {
-            LoginKeychain
+        pub fn new(service: &'static str) -> Self {
+            LoginKeychain { service }
         }
     }
 
@@ -375,12 +380,14 @@ mod login_keychain {
 
         fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
             let (name, bytes) = (name.to_string(), Zeroizing::new(bytes.to_vec()));
-            bounded(move || set_generic_password(SERVICE, &name, &bytes).map_err(refused))
+            let service = self.service;
+            bounded(move || set_generic_password(service, &name, &bytes).map_err(refused))
         }
 
         fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
             let name = name.to_string();
-            bounded(move || match get_generic_password(SERVICE, &name) {
+            let service = self.service;
+            bounded(move || match get_generic_password(service, &name) {
                 Ok(bytes) => Ok(Some(bytes)),
                 Err(e) if e.code() == ERR_SEC_ITEM_NOT_FOUND => Ok(None),
                 Err(e) => Err(refused(e)),
@@ -397,6 +404,7 @@ mod login_keychain {
         /// `errSecDuplicateItem` when one is, which is a lost claim.
         fn claim_public(&self, name: &str, bytes: &[u8]) -> Result<bool, VaultError> {
             let (name, bytes) = (name.to_string(), bytes.to_vec());
+            let service = self.service;
             bounded(move || {
                 let pairs: Vec<(CFString, CFType)> = unsafe {
                     vec![
@@ -406,7 +414,7 @@ mod login_keychain {
                         ),
                         (
                             CFString::wrap_under_get_rule(kSecAttrService),
-                            CFString::new(SERVICE).into_CFType(),
+                            CFString::new(service).into_CFType(),
                         ),
                         (
                             CFString::wrap_under_get_rule(kSecAttrAccount),
@@ -431,7 +439,8 @@ mod login_keychain {
 
         fn delete(&self, name: &str) -> Result<(), VaultError> {
             let name = name.to_string();
-            bounded(move || match delete_generic_password(SERVICE, &name) {
+            let service = self.service;
+            bounded(move || match delete_generic_password(service, &name) {
                 Err(e) if e.code() != ERR_SEC_ITEM_NOT_FOUND => Err(refused(e)),
                 _ => Ok(()),
             })

@@ -189,6 +189,34 @@ fn write_settings(data: &Path, address: &str, storage: &Path) {
     .unwrap();
 }
 
+/// A storage secret for one executor: 32 random bytes as 64 hex characters, in a file of mode 0600
+/// at `path`. Without one the executor starts sealed and answers nothing but its storage status and
+/// `storage.unlock`. `run` takes it only from a file (`AD4M_STORAGE_SECRET_FILE`; it refuses
+/// `AD4M_STORAGE_SECRET`), and one on the data folder's disk only with
+/// `AD4M_ALLOW_SECRET_ON_DATA_DISK`, which a test's temp folder needs.
+fn write_storage_secret(path: &Path) {
+    use rand_core::RngCore;
+    use std::fmt::Write as _;
+    let mut bytes = [0u8; 32];
+    rand_core::OsRng.fill_bytes(&mut bytes);
+    let mut text = bytes.iter().fold(String::new(), |mut hex, b| {
+        let _ = write!(hex, "{b:02x}");
+        hex
+    });
+    text.push('\n');
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    options
+        .open(path)
+        .and_then(|mut file| file.write_all(text.as_bytes()))
+        .unwrap();
+}
+
 struct Node {
     port: u16,
     token: String,
@@ -272,6 +300,9 @@ impl World {
             write_settings(&data, address, &shared.join("agent-profiles"));
         }
 
+        let secret = self.dir.join(format!("{name}-storage-secret"));
+        write_storage_secret(&secret);
+
         let port = free_port();
         let mut run = Command::new(self.executor());
         run.current_dir(&js)
@@ -288,7 +319,9 @@ impl World {
                 "false",
             ])
             .env("AD4M_IDENTITY_STORE_URL", &self.store_url)
-            .env("AD4M_IDENTITY_STORE_KEYS", &self.store_key);
+            .env("AD4M_IDENTITY_STORE_KEYS", &self.store_key)
+            .env("AD4M_STORAGE_SECRET_FILE", &secret)
+            .env("AD4M_ALLOW_SECRET_ON_DATA_DISK", "true");
         match credential {
             // The admin credential in the environment, as the desktop shell passes it.
             Some(c) => {

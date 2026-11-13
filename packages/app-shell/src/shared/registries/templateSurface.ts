@@ -368,6 +368,7 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     executorConfigRows: state('runtime-admin'),
     executorLogTail: state('runtime-admin'),
     canRestartExecutor: state('runtime-admin'),
+    storageLine: state('runtime-admin'),
     pendingConsent: state('runtime-admin'),
     consentSecret: state('runtime-admin'),
     loadAiModels: ambient('runtime-admin'),
