@@ -69,6 +69,10 @@ const SOLID_TESTS = [
   // Mounts the chat to press Send and Enter into one pending create, and to watch the composer
   // after a failed first send — real event dispatch and the browser build's reactivity.
   'tests/agentChatSend.test.tsx',
+  // Mounts trees through the real renderer to say which registry a template may not reach.
+  'tests/chatTrustBoundary.test.tsx',
+  // The sheet is a dialog: focus moves in and is trapped, Escape closes, drag cancels clean.
+  'tests/agentChatSheet.test.tsx',
   // The subject is the mount itself: the body element must stay the same node while other panel
   // records come and go — only the browser build tracks the per-id memo finely enough to prove it.
   'tests/panelBodyRemount.test.tsx',

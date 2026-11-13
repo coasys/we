@@ -17,6 +17,25 @@ import type { TemplatePanel } from '@we/schema-shared';
  * @param app      what the app declares — the chrome every interface renders inside, so its panels
  *                 ride under the interface's and lose the same collisions to it a section does.
  */
+/*
+  The app's own entries in the merge, by identity.
+
+  Which panels the app supplied is knowable only here, where the lists meet — the merged
+  declaration carries no marker, and anything a panel could say about itself (an id it shares, a
+  scope it wrote) is something an interface could also write. `TemplatePanelBody` asks this set to
+  decide whether a body renders against the chrome registry — the one holding `AgentChat` — or the
+  template's, where that name is absent: the app's own declarations are host-authored, and a synced
+  template's are not.
+
+  Weak because the entries belong to the app template: when it is replaced its objects leave with it.
+*/
+const appEntries = new WeakSet<object>();
+
+/** Whether the declaration entry is one the app supplied — see {@link appEntries}. */
+export function isAppPanel(entry: TemplatePanel): boolean {
+  return appEntries.has(entry);
+}
+
 export function activePanels(
   shell: readonly TemplatePanel[],
   view: readonly TemplatePanel[] | undefined,
@@ -31,6 +50,7 @@ export function activePanels(
     is the chrome every page is inside: its panels (the AI chats are the first) exist in and out of
     every space, and a space naming the same id keeps the last word, as it has over a section's.
   */
+  for (const entry of app) appEntries.add(entry);
   const merged = (() => {
     const shellIds = new Set(shell.map((panel) => panel.id));
     const below = [...app.filter((panel) => !shellIds.has(panel.id)), ...shell];

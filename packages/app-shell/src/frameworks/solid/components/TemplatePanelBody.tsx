@@ -16,11 +16,12 @@
  * the inputs empty for the declared panel itself and whatever `shellStore.openPanel` was given for an
  * instance of it (`instance`). See `panelInstances.ts`.
  */
+import { isAppPanel } from '@shared/panelScope';
 import { resolveParts } from '@shared/registries/moduleParts';
 import { panelInstances } from '@shared/registries/panelInstances';
 import { templateBag } from '@shared/registries/templateBag';
 import { onTemplatePanelsChanged, templatePanels } from '@shared/registries/templatePanels';
-import { componentRegistry as registry } from '@solid/registries/componentRegistry';
+import { chromeComponentRegistry, componentRegistry } from '@solid/registries/componentRegistry';
 import { EDIT_SURFACE_ATTR } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { createMemo, createSignal, onCleanup } from 'solid-js';
@@ -36,7 +37,7 @@ export function TemplatePanelBody(props: { panelId?: string; moduleId?: string; 
     the *contents* of a module's panel. Two ways in because the two are addressed differently: the
     first has a frame of its own, the second is inside the module's.
   */
-  const node = createMemo(() => {
+  const panel = createMemo(() => {
     version();
     /*
       By dock rather than by module, where the frame gave one.
@@ -46,17 +47,33 @@ export function TemplatePanelBody(props: { panelId?: string; moduleId?: string; 
       silently. The frame knows which dock it is, so it says so, and the entry that names that dock
       is the only one that answers.
     */
-    const panel = templatePanels().find((entry) => {
+    return templatePanels().find((entry) => {
       if (!props.moduleId) return entry.id === props.panelId;
       if (!entry.node || entry.module !== props.moduleId) return false;
       return props.dock ? entry.dock === props.dock : true;
     });
-    if (!panel?.node) return undefined;
+  });
+  const node = createMemo(() => {
+    const found = panel();
+    if (!found?.node) return undefined;
     // `$part` is expanded here rather than by the renderer, the same way `$slot` is — see
     // `moduleParts.ts`. A panel is the first place an interface reaches for a module's pieces.
-    const expanded = resolveParts(panel.node);
+    const expanded = resolveParts(found.node);
     return Array.isArray(expanded) ? expanded[0] : expanded;
   });
+
+  /*
+    The registry this body's node is trusted with.
+
+    The *app's* panels — the AI chats are the only ones today — are host vocabulary: `AgentChat` is
+    not a component a template may name, so their bodies render against the chrome registry that
+    holds it. Every other declaration renders against the template registry, where the name is
+    absent rather than refused — a synced interface cannot mount a chat itself.
+
+    Which is decided by identity (`isAppPanel`), not by id or scope — anything a template could
+    say about its panel is something a template could also write.
+  */
+  const registryFor = () => (panel() && isAppPanel(panel()!) ? chromeComponentRegistry : componentRegistry);
 
   /*
     This body's own record, tracked alone: `panelInstances` is one signal over every open panel, so
@@ -79,7 +96,7 @@ export function TemplatePanelBody(props: { panelId?: string; moduleId?: string; 
     // Read here, so an instance opened again with new inputs draws them — the renderer takes its
     // context once.
     const context = { panel: { id: props.instance ?? props.panelId ?? '', inputs: instance()?.inputs ?? {} } };
-    return RenderSchema({ node: declared, stores: bag, registry, context });
+    return RenderSchema({ node: declared, stores: bag, registry: registryFor(), context });
   });
 
   /*
