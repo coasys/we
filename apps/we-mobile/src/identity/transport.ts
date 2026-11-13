@@ -14,8 +14,9 @@
  * `confirm-words` and `enter-words`. The window is secure (`setSecure`: no screenshots, no
  * recent-apps thumbnail) from before the flow starts until the page leaves. The mark is not cleared
  * when the next screen comes: this side answers a screen before the window draws it, so the words
- * would still be in the page. It is cleared in `cancel` and `finish` only, which the window calls
- * after it has blanked its screen (`blankedBefore` in `@we/identity-window`). The page keeps no
+ * would still be in the page. It is cleared in `cancel` and `finish`, which the window calls
+ * after it has blanked its screen (`blankedBefore` in `@we/identity-window`), and in `gone`, which
+ * the page calls on `pagehide` after it has emptied itself. The page keeps no
  * copy: the screens pass to the window and are not held here, the inputs go to the plugin in the step that reads them, and nothing is
  * logged, put on the clipboard, in the address or in storage. The window clears its word fields
  * when another screen comes.
@@ -189,7 +190,16 @@ export function revokeTargets(request: DeviceRequestView, devices: PhoneDeviceVi
   });
 }
 
-export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): IdentityTransport {
+/** The transport, and what the page calls when it goes without Cancel or Done. */
+export interface PhoneTransport extends IdentityTransport {
+  /**
+   * The page goes another way (back, or the app leaves it): the flow and the link end, and the mark
+   * goes. The page is emptied before this is called, so no word is in it when the mark goes.
+   */
+  gone(): Promise<void>;
+}
+
+export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): PhoneTransport {
   const { plugin } = deps;
   /** The holder link `scan-device` runs, while it runs. */
   let link: string | null = null;
@@ -218,6 +228,14 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Ide
     const open = flow;
     flow = null;
     if (open) await plugin.identityCancel({ flow: open }).catch(() => undefined);
+  }
+
+  /** Ends the holder link that runs, if one does. */
+  async function endLink(): Promise<void> {
+    cancelled = true;
+    const open = link;
+    link = null;
+    if (open) await plugin.linkCancel({ link: open }).catch(() => undefined);
   }
 
   /** The window's screen for the plugin's. No DID but on `identity-ready`, where it is made. */
@@ -520,16 +538,18 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Ide
     start: () => guarded(begin),
     step: (input) => guarded(() => advance(input)),
     async cancel() {
-      cancelled = true;
-      const open = link;
-      link = null;
-      if (open) await plugin.linkCancel({ link: open }).catch(() => undefined);
+      await endLink();
       await leaving('cancelled');
       // A phone joins with its own key and claims nothing: its cancel always ends the step.
       return null;
     },
     finish() {
       return leaving(last === 'failed' ? 'failed' : 'done');
+    },
+    async gone() {
+      await endLink();
+      await endFlow();
+      await setSecure(false).catch(() => undefined);
     },
     async scan(prefix) {
       try {

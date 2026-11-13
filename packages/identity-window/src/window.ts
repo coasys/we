@@ -26,6 +26,8 @@ import {
   heading,
   isLast,
   oneAtATime,
+  type PageFrames,
+  painted,
   refusedField,
   remaining,
   type Screen,
@@ -140,23 +142,24 @@ function blank() {
   root.replaceChildren();
 }
 
-/** Resolves once a frame after this one is drawn, or after 100 ms where no frame comes (a hidden page). */
-function painted(): Promise<void> {
-  return new Promise((resolve) => {
-    const late = window.setTimeout(resolve, 100);
-    // The second callback runs in the frame after the one that drew the blank screen.
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        window.clearTimeout(late);
-        resolve();
-      }),
-    );
-  });
-}
+/** The page's frames, for [`painted`]: a blank screen counts as shown only while the page is. */
+const page: PageFrames = {
+  hidden: () => document.visibilityState === 'hidden',
+  shown(then) {
+    const seen = () => {
+      if (document.visibilityState === 'hidden') return;
+      document.removeEventListener('visibilitychange', seen);
+      then();
+    };
+    document.addEventListener('visibilitychange', seen);
+  },
+  frame: (then) => void requestAnimationFrame(() => then()),
+  after: (ms, then) => void window.setTimeout(then, ms),
+};
 
 async function leave(call: () => Promise<Screen | null | void>) {
   try {
-    const instead = await blankedBefore(blank, painted, call);
+    const instead = await blankedBefore(blank, () => painted(page), call);
     if (instead) draw(instead);
   } catch (error) {
     draw({ screen: 'failed', message: String(error) });

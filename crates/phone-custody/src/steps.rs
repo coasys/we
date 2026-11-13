@@ -596,7 +596,8 @@ pub(crate) fn pending_did(
 /// A phone of no identity: the key file names none, no claim waits, and the store's key index
 /// puts this phone's key in no log. One the key index puts in a log is recorded as this phone's
 /// ([`rejoin`]) before it is refused: a make or a restore that published and stopped before the
-/// key file recorded it.
+/// key file recorded it. One whose log lists the key as revoked refuses as [`rejoin`] does: the
+/// store's key index still puts the key in that log, which a make refuses (`identity-exists`).
 fn no_identity_yet(parts: &Parts, exec: &Executor) -> Result<(), PhoneKeyError> {
     let status = parts.keys.status();
     if status.keys.is_none() {

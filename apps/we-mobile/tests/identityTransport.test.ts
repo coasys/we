@@ -793,6 +793,39 @@ describe('making an identity on the phone', () => {
     }
   });
 
+  it('ends the flow and clears the mark when the page goes without Cancel or Done', async () => {
+    const calls: Calls = [];
+    const { outcomes, leave } = left();
+    const transport = phoneTransport(
+      { kind: 'create' },
+      {
+        plugin: plugin(
+          {
+            status: { ...emptyStatus, keys },
+            setSecure: {},
+            startMake: { flow: 'f5', ended: false, screen: { screen: 'show-words', words: WORDS.split(' ') } },
+            identityCancel: {},
+          },
+          calls,
+        ),
+        leave,
+      },
+    );
+    await transport.start();
+    await transport.gone();
+    expect(calls.find(([m]) => m === 'identityCancel')?.[1]).toEqual({ flow: 'f5' });
+    expect(trail(calls).slice(-2)).toEqual(['identityCancel', 'secure:off']);
+    // The page is going already: nothing is sent back to WE.
+    expect(outcomes).toEqual([]);
+    // After Cancel or Done it finds nothing to end.
+    await transport.gone();
+    expect(trail(calls).filter((m) => m === 'identityCancel' || m === 'secure:off')).toHaveLength(2);
+    // The page empties itself before it asks, on `pagehide`.
+    expect(mainSource).toMatch(
+      /addEventListener\('pagehide', \(\) => \{\n {4}document\.body\.replaceChildren\(\);\n {4}void transport\.gone\(\);/,
+    );
+  });
+
   it('keeps the flow open on an input it did not take, and leaves through it', async () => {
     const calls: Calls = [];
     const transport = phoneTransport(

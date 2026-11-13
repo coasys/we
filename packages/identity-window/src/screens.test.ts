@@ -17,6 +17,8 @@ import {
   heading,
   isLast,
   oneAtATime,
+  type PageFrames,
+  painted,
   refusedField,
   remaining,
   type RevokeTarget,
@@ -420,10 +422,68 @@ describe('the identity window', () => {
     expect(await left).toBeNull();
     expect(order).toEqual(['blank', 'painted', 'cancel']);
     // Cancel and Done both leave through it; the blank screen holds no word.
-    expect(windowSource).toContain('const instead = await blankedBefore(blank, painted, call);');
+    expect(windowSource).toContain('const instead = await blankedBefore(blank, () => painted(page), call);');
     expect(windowSource).toContain('return leave(() => host.cancel());');
     expect(windowSource).toContain('const finish = () => void leave(() => host.finish());');
     expect(windowSource).toMatch(/function blank\(\) \{[\s\S]*?forgetWords\(\);\n  root\.replaceChildren\(\);/);
+  });
+
+  it('counts the blank screen as shown only once a frame of a page that is not hidden drew it', async () => {
+    let hidden = false;
+    let frames: (() => void)[] = [];
+    let timers: (() => void)[] = [];
+    let shown: (() => void)[] = [];
+    const page: PageFrames = {
+      hidden: () => hidden,
+      shown: (then) => void shown.push(then),
+      frame: (then) => void frames.push(then),
+      after: (_ms, then) => void timers.push(then),
+    };
+    const run = (queue: (() => void)[]) => queue.splice(0).forEach((f) => f());
+    const settled = (p: Promise<void>) => {
+      let done = false;
+      void p.then(() => (done = true));
+      return Promise.resolve().then(() => done);
+    };
+
+    // Shown: two frames, or the timer where none comes.
+    const twoFrames = painted(page);
+    run(frames);
+    expect(await settled(twoFrames)).toBe(false);
+    run(frames);
+    expect(await settled(twoFrames)).toBe(true);
+    timers = [];
+    const slow = painted(page);
+    run(timers);
+    expect(await settled(slow)).toBe(true);
+    frames = [];
+
+    // Hidden: no timer runs, and nothing passes until the page is shown and two frames draw.
+    hidden = true;
+    const away = painted(page);
+    expect(timers).toEqual([]);
+    expect(frames).toEqual([]);
+    hidden = false;
+    run(shown);
+    run(frames);
+    expect(await settled(away)).toBe(false);
+    run(frames);
+    expect(await settled(away)).toBe(true);
+    timers = [];
+
+    // Hidden after it started: the timer that fires then waits for the page to be shown again.
+    const hiddenLater = painted(page);
+    hidden = true;
+    run(timers);
+    expect(await settled(hiddenLater)).toBe(false);
+    run(frames);
+    run(frames);
+    expect(await settled(hiddenLater)).toBe(false);
+    hidden = false;
+    run(shown);
+    run(frames);
+    run(frames);
+    expect(await settled(hiddenLater)).toBe(true);
   });
 
   it('adds a note to the identity being ready, which a later step left', () => {

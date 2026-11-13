@@ -236,14 +236,30 @@ class PhoneIdentityJvmTest {
     assertEquals(before, seen.size)
   }
 
+  /**
+   * A key file that names no identity asks the store's key index which log lists this phone's key
+   * (a make or a restore that published and stopped before the key file was written). The index
+   * puts it in none: no identity, and nothing was sent but that read, unsigned.
+   */
   @Test
   fun aPhoneInNoIdentityHasNoIdentityToShow() {
+    answer = { Triple(404, emptyMap(), "{\"error\":\"not-found\"}".toByteArray()) }
     val keys = DeviceKeys.open(dir.absolutePath, AesGcmSealer { key })
     keys.create()
     val identity = PhoneIdentity(keys, StoreHttp.Transport, SoftMaster(), StoreConfig(store, emptyList()))
     assertThrows(PhoneKeyException.NoIdentity::class.java) { identity.status() }
     assertThrows(PhoneKeyException.NoIdentity::class.java) { identity.askForMaster() }
-    assertTrue(seen.isEmpty())
+    assertTrue(seen.isNotEmpty())
+    for (got in seen) {
+      assertEquals("GET", got.method)
+      assertTrue(got.path, got.path.startsWith("/v1/keys/"))
+      assertTrue(got.path, got.headers.keys.none { it.startsWith("x-coasys-") })
+      assertEquals(0, got.body.size)
+    }
+
+    // A store that does not answer leaves it in no identity too, as the key file says.
+    answer = { Triple(503, emptyMap(), "{\"error\":\"busy\"}".toByteArray()) }
+    assertThrows(PhoneKeyException.NoIdentity::class.java) { identity.status() }
   }
 
   /** A phone with a device key, joined to an identity at [store] by the 2a claim. */

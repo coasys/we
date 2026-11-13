@@ -628,3 +628,37 @@ export async function blankedBefore<T>(
   await painted();
   return call();
 }
+
+/** What [`painted`] reads of the page: whether it is hidden, its frames and a timer. */
+export interface PageFrames {
+  hidden(): boolean;
+  /** Calls `then` once, when the page is shown again. */
+  shown(then: () => void): void;
+  frame(then: () => void): void;
+  after(ms: number, then: () => void): void;
+}
+
+/**
+ * Resolves once a frame after this one is drawn, or after `wait` ms where no frame comes (a slow
+ * page). Never while the page is hidden: a hidden page draws no frame, so the blank screen may not
+ * have been shown. It waits until the page is shown and starts again.
+ */
+export function painted(page: PageFrames, wait = 100): Promise<void> {
+  return new Promise((resolve) => {
+    let done = false;
+    const start = () => {
+      if (done) return;
+      if (page.hidden()) return page.shown(start);
+      page.after(wait, end);
+      // The second callback runs in the frame after the one that drew the blank screen.
+      page.frame(() => page.frame(end));
+    };
+    const end = () => {
+      if (done) return;
+      if (page.hidden()) return page.shown(start);
+      done = true;
+      resolve();
+    };
+    start();
+  });
+}

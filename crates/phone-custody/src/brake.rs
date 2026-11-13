@@ -41,6 +41,11 @@ pub const MAX_POW_BITS: u8 = 28;
 
 /// The longest time one solve runs before it stops with an error. At [`MAX_POW_BITS`] a phone
 /// needs a minute or two on average; this bounds a long run of bad luck on a slow phone.
+///
+/// It is also the only bound on one solve that has no Cancel: a make publishes an incept left
+/// pending before its first screen (`finish_pending` in `steps.rs`), and the app has no flow id to
+/// cancel until that first screen comes. A progress screen with a Cancel would close this; there
+/// is none yet.
 pub const MAX_SOLVE: Duration = Duration::from_secs(10 * 60);
 
 /// Tries per round of the solve, between two reads of the cancel flag.

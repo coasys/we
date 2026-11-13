@@ -1880,6 +1880,70 @@ fn a_restore_stopped_between_its_enrolment_and_the_key_file_is_recorded_when_ope
     ));
 }
 
+// A restore stopped before its key file, as above, and then another device removes this phone:
+// a second phone restores the same words and locks it out. Opened again, the phone does not
+// record the identity that revoked it: its status, a make and a restore say it was removed.
+#[test]
+fn a_phone_revoked_before_its_key_file_was_written_is_not_recorded_when_opened_again() {
+    let world = world();
+    let laptop = computer(&world, 1);
+    let did = create(&world, &laptop, 61);
+    let phone = phone(&world, "strongbox");
+    let steps = phone.identity.start_restore(false).unwrap();
+    steps.next().unwrap();
+    steps
+        .step(PhoneInput::TwelveWords { words: spelled(61) })
+        .unwrap();
+    let blocker = block_key_file(&phone);
+    let stopped = steps.step(PhoneInput::LockOut {
+        key_ids: vec!["d1".into()],
+        name: Some("Pixel".into()),
+    });
+    assert!(
+        matches!(stopped, Err(PhoneKeyError::Io { .. })),
+        "{stopped:?}"
+    );
+    wait_ended(&steps);
+    std::fs::remove_dir(&blocker).unwrap();
+
+    let other = self::phone(&world, "strongbox");
+    let steps = other.identity.start_restore(false).unwrap();
+    steps.next().unwrap();
+    let PhoneScreen::RestoreDevices { devices, .. } = steps
+        .step(PhoneInput::TwelveWords { words: spelled(61) })
+        .unwrap()
+    else {
+        panic!("expected the devices");
+    };
+    let pixel = devices
+        .iter()
+        .find(|d| d.name.as_deref() == Some("Pixel"))
+        .expect("the first phone is listed")
+        .key_id
+        .clone();
+    let restored = steps
+        .step(PhoneInput::LockOut {
+            key_ids: vec![pixel],
+            name: Some("Tablet".into()),
+        })
+        .unwrap();
+    assert!(
+        matches!(&restored, PhoneScreen::Restored { did: d, .. } if *d == did),
+        "{restored:?}"
+    );
+
+    let (keys, identity) = reopened(&phone);
+    let removed = |e: &PhoneKeyError| matches!(e, PhoneKeyError::Refused { reason } if reason == we_phone_custody::REMOVED);
+    let status = identity.status();
+    assert!(status.as_ref().is_err_and(removed), "{status:?}");
+    assert_eq!(keys.status().identity, None, "not recorded");
+    let again = identity.start_restore(false).unwrap().next();
+    assert!(again.as_ref().is_err_and(removed), "{again:?}");
+    let make = identity.start_make(false).unwrap().next();
+    assert!(make.as_ref().is_err_and(removed), "{make:?}");
+    assert_eq!(keys.status().identity, None, "still not recorded");
+}
+
 // The phone replaces its master key with the words it showed at the make: words that are not
 // the identity's change nothing and are asked again; the right ones make master #1, kept here.
 #[test]

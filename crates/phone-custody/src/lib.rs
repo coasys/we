@@ -44,7 +44,7 @@ pub use claim::{ClaimProgress, PreparedClaim};
 pub use holder::{HolderLink, LinkStep};
 pub use identity::{
     AnswerView, AskedView, DeviceView, IdentityView, MasterTaken, PhoneIdentity, RequestView,
-    StoreConfig,
+    StoreConfig, REMOVED,
 };
 pub use ports::{Header, StoreReply, StoreRequest, StoreTransport, TransportError};
 pub use session::{SessionPurpose, SessionRequest};
