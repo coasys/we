@@ -32,11 +32,27 @@
 import { defineModule, type ModuleDefinition, type ModuleHost } from '@we/module-shared';
 
 import { devCursorsAvailable } from './devCursors';
-import { cursorToggle, driverStrip, fakeCursorControls, problemStrip, wheelButton } from './Live.schema';
+import {
+  cursorMenuItem,
+  cursorToggle,
+  driverStrip,
+  fakeCursorControls,
+  problemStrip,
+  wheelButton,
+  wheelMenuItem,
+} from './Live.schema';
 import { createLiveStore } from './store';
 
 export { CURSOR_TTL_MS, cursorIntervalMs, LIVE_PROTOCOL_VERSION, parseLiveMessage, VIEW_REPEAT_MS } from './protocol';
-export { cursorToggle, driverStrip, fakeCursorControls, problemStrip, wheelButton } from './Live.schema';
+export {
+  cursorMenuItem,
+  cursorToggle,
+  driverStrip,
+  fakeCursorControls,
+  problemStrip,
+  wheelButton,
+  wheelMenuItem,
+} from './Live.schema';
 export { createLiveStore, type LiveFace, type LiveStore } from './store';
 
 export const liveModule: ModuleDefinition = defineModule({
@@ -89,8 +105,15 @@ export const liveModule: ModuleDefinition = defineModule({
      * matched here. The rail launcher below is what makes the module reachable when no call is running.
      */
     slots: [
-      { anchor: 'call-controls', node: cursorToggle, order: 20 },
-      { anchor: 'call-controls', node: wheelButton, order: 21 },
+      /*
+        Lines in the bar's More menu rather than squares in its row — `call-menu`, not
+        `call-controls`. Sharing a pointer and taking the wheel are set-and-leave controls, which is
+        the split the call module draws between the two anchors, and a menu can only hold what a
+        menu holds: `we-menu-item`s, contributed as such rather than asking the call to translate a
+        button it cannot read.
+      */
+      { anchor: 'call-menu', node: cursorMenuItem, order: 20 },
+      { anchor: 'call-menu', node: wheelMenuItem, order: 21 },
       { anchor: 'call-status', node: driverStrip, order: 10 },
       { anchor: 'call-status', node: problemStrip, order: 11 },
       /*

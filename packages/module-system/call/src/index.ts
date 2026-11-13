@@ -239,6 +239,18 @@ const BAR_SURFACE = { bg: 'page', border: '1px solid border', shadow: 'md' } as 
 export const CALL_CONTROLS_ANCHOR = 'call-controls';
 
 /**
+ * The bar's *other* extension point: lines inside its More menu rather than squares in the row.
+ *
+ * A contributed button stays in the row — this module cannot fold chrome it cannot read, and a
+ * square may be the loudest thing in the bar precisely because it has to be seen. But a
+ * contribution that is itself a line of text and an icon is better placed in the menu with the
+ * rest of the less-used controls, and "share your pointer" is exactly that. Contributing one to
+ * `CALL_CONTROLS_ANCHOR` would draw a bare square nobody reads as a menu entry and a `we-menu` could
+ * not keyboard to, so the menu carries a region of its own.
+ */
+export const CALL_MENU_ANCHOR = 'call-menu';
+
+/**
  * Where development-only controls go: a region at the END of the bar, after everything shipped.
  *
  * A separate region from `CALL_CONTROLS_ANCHOR` rather than a high `order` within it, because the two
@@ -1133,70 +1145,105 @@ const SOLO: CallToggle = {
  * The icon is the "on" glyph in both states, which is exact rather than a shortcut: it is the
  * subject, and only the tick is allowed to say whether the subject is switched on.
  */
-function menuToggle(opts: CallToggle) {
+function menuToggle(opts: CallToggle): SchemaNode {
   return {
-    id: opts.enabled,
-    type: 'toggle',
-    label: opts.label,
-    icon: opts.on,
-    checked: { $: opts.enabled },
-    onToggle: { $invoke: opts.action },
+    type: 'we-menu-item',
+    props: {
+      selected: { $: opts.enabled },
+      onSelect: { $invoke: opts.action },
+      // The `sm` metrics from the design system's own dropdown, so this reads as one of its menus.
+      px: '300',
+      py: '100',
+      gap: '200',
+      fontSize: '200',
+    },
+    children: [
+      { type: 'we-icon', props: { name: opts.on, size: 'sm' } },
+      { type: 'we-text', props: { fontSize: '200' }, children: [opts.label] },
+      {
+        type: '$if',
+        props: {
+          condition: { $: opts.enabled },
+          then: { type: 'we-icon', props: { name: 'check', size: 'xs', weight: 'bold', color: 'accent' } },
+        },
+      },
+    ],
   };
 }
 
 /**
- * The bar's secondary controls: what the row folds away when it is compact — see `ROOMY` — and what
- * belongs in a menu at any width.
+ * A menu line that is done once chosen — `dismiss` asks the popover to go with it.
  *
- * The design system's `DropdownMenu`, which this could not use until recently: it drew a filled pill
- * for a trigger with no way to say otherwise, and this has to sit in a row of ghost squares as one
- * of them. A hand-rolled `we-popover` around a ghost square stood in, repeating the dropdown's own
- * item metrics and its check glyph by hand — three numbers and a colour that had to be kept in
- * agreement with a component nothing linked them to. `triggerVariant` is the whole of what was
- * missing, and `itemSize` says the rest: `sm` rows, which is what those hand-copied metrics were.
+ * `args` rather than a bare invoke where the store signature allows an argument: a handler with
+ * none forwards the click, and `startCall` takes an optional anchor id, so it would be handed a
+ * PointerEvent and the write refused. `''` is how the store spells "about the space rather than
+ * about some node in it".
+ */
+function menuAction(opts: { icon: string; label: string; action: string; args?: unknown[] }): SchemaNode {
+  return {
+    type: 'we-menu-item',
+    props: {
+      dismiss: true,
+      onSelect: { $invoke: opts.action, ...(opts.args ? { args: opts.args } : {}) },
+      px: '300',
+      py: '100',
+      gap: '200',
+      fontSize: '200',
+    },
+    children: [
+      { type: 'we-icon', props: { name: opts.icon, size: 'sm' } },
+      { type: 'we-text', props: { fontSize: '200' }, children: [opts.label] },
+    ],
+  };
+}
+
+/**
+ * The bar's secondary controls: everything that is not a device the call cannot run without.
+ *
+ * A `we-popover` around a ghost square rather than the design system's `DropdownMenu`, and this
+ * time the reason is not the trigger — `triggerVariant` answered that — but the content: a
+ * `DropdownMenu` takes its lines as a prop, and a prop cannot hold another module's contribution.
+ * The pointer share and the wheel arrive through `call-menu` (see `CALL_MENU_ANCHOR`) as the same
+ * `we-menu-item`s the lines beside them are, which is how less-used controls can live here without
+ * this module learning who owns them.
  *
  * Opens upward: the bar is on the bottom edge and there is nothing below it.
  *
- * What folds in here is exactly what `whenRoomy` takes out of the row, and it is built from the same
- * three specs, so a toggle cannot be lost in the fold or appear twice. Mute, camera and hang-up
- * never fold: they are the call, and a menu between a person and their microphone is a step too
- * many at the moment they need it.
- *
- * A line that comes and goes says so on itself, with `hidden`, rather than being wrapped in
- * anything: the items are a *prop*, and an entry carries a handler, which no value expression can
- * hold — so there is nowhere outside an entry to put the condition. That is what makes a conditional
- * line expressible here at all, and it was the second reason this was hand-rolled. Solo uses it for
- * "only while something is focused"; the three folding toggles use it for the fold.
- *
- * ## It is always in the row now, not only when the row is compact
- *
- * The menu used to be `whenCompact(moreMenu)` — present only below `base`, because folding was the
- * only reason it existed. That made it the wrong home for anything that is not a fold, and the bar
- * needed one: starting a second call is a real thing to want mid-call (see the join bar's `+`, which
- * offers exactly that to somebody who is *not* in one) and there was nowhere in the in-call bar to
- * put it. On a wide screen the control simply did not exist, so a breakout meant hanging up first.
- *
- * So the menu stands at every width and the fold is expressed on the entries instead, with `hidden`
- * — which keeps the invariant the paragraph above states, since the same three specs still build
- * them. What is left in a roomy bar is the one entry that never folds.
+ * What lives here is what the row no longer shows at any width — screen share, show/hide, solo —
+ * plus the two lines that never had a square: choosing a device, and starting a second call from
+ * inside one. Mute, camera and hang-up are not here and never were: they are the call, and a menu
+ * between a person and their microphone is a step too many at the moment they need it.
  */
 const moreMenu: SchemaNode = {
-  type: 'DropdownMenu',
-  props: {
-    triggerIcon: 'dots-three',
-    triggerVariant: 'ghost',
-    triggerTitle: 'More controls',
-    placement: 'top',
-    itemSize: 'sm',
-    items: [
-      // Folded away while the row is roomy, because the row is showing them itself — the other half
-      // of `whenRoomy`, said on the entry now that the menu outlives the fold.
-      { ...menuToggle(SCREEN_SHARE), hidden: ROOMY },
-      { ...menuToggle(STAGE), hidden: ROOMY },
-      // Solo is only offered while something is focused. On the entry rather than around it: an
-      // entry carries a handler, which no value expression can hold — see `hidden` on the menu.
-      { ...menuToggle(SOLO), hidden: { $: "surface.tier != 'base' || !modules.call.focusedId" } },
-      {
+  type: 'we-popover',
+  props: { placement: 'top' },
+  children: [
+    {
+      type: 'we-tooltip',
+      slot: 'trigger',
+      props: { content: 'More controls', placement: 'bottom' },
+      children: [
+        {
+          type: 'we-button',
+          // Named for a screen reader, having no visible word to do it.
+          props: { square: true, variant: 'ghost', label: 'More controls' },
+          children: [{ type: 'we-icon', props: { name: 'dots-three' } }],
+        },
+      ],
+    },
+    {
+      type: 'we-menu',
+      slot: 'content',
+      children: [
+        menuToggle(SCREEN_SHARE),
+        menuToggle(STAGE),
+        // Solo is only offered while something is focused — which is also the affordance: giving
+        // somebody the stage reveals the option to give them all of it.
+        { type: '$if', props: { condition: { $: 'modules.call.focusedId' }, then: menuToggle(SOLO) } },
+        // Another module's menu lines — the pointer share and the wheel — land between this
+        // module's toggles and its actions, inside the same `we-menu` they are written for.
+        { type: '$slot', props: { anchor: CALL_MENU_ANCHOR } },
+        { type: 'we-divider' },
         /*
           Which microphone and camera this agent is sending.
 
@@ -1205,36 +1252,29 @@ const moreMenu: SchemaNode = {
           microphone is a step too many". Choosing a *device* is not that — it is a thing done once
           and then forgotten, usually before anybody notices it was wrong, and it costs a press to
           reach rather than a press to use.
-
-          Never hidden. The two entries above fold away when the row is roomy because the row is
-          showing them itself; this one has no counterpart in the bar at any width.
         */
-        id: 'devices',
-        label: 'Camera and microphone…',
-        icon: 'sliders-horizontal',
-        onAction: { $invoke: 'modules.call.openDeviceSettings' },
-      },
-      {
+        menuAction({
+          icon: 'sliders-horizontal',
+          label: 'Camera and microphone…',
+          action: 'modules.call.openDeviceSettings',
+        }),
         /*
           Start a second call from inside one — a breakout, a different subject.
 
-          The counterpart of the `+` in the join bar, which only somebody *not* in a call ever sees.
           In a menu rather than as a button in the row, and spelt out rather than called "New call",
           because of what it actually does: this agent can be in one call at a time, so `join` tears
           the current one down before the new one starts — see the store. Everyone else stays where
           they are; what ends is your part in it.
-
-          `args: ['']` rather than no args: a handler with none forwards the click, and `startCall`
-          takes an optional anchor id, so it would be handed a PointerEvent and the write refused.
-          `''` is how the store already spells "about the space rather than about some node in it".
         */
-        id: 'start-another',
-        label: 'Leave and start a new call',
-        icon: 'plus',
-        onAction: { $invoke: 'modules.call.startCall', args: [''] },
-      },
-    ],
-  },
+        menuAction({
+          icon: 'plus',
+          label: 'Leave and start a new call',
+          action: 'modules.call.startCall',
+          args: [''],
+        }),
+      ],
+    },
+  ],
 };
 
 /**
@@ -1411,8 +1451,10 @@ const topologySwitch: SchemaNode = {
  * one ({@link topologySwitch}), and offers a proper three-option quality selector (replacing the
  * cycling button with a deliberate choice).  Participants and connection summary fill the rest.
  *
- * Uses `$localState` for open/close, same pattern as `moreMenu`.  The popover anchors to its
- * trigger button, so it floats above the call bar without taking layout space.
+ * Uses `$localState` for open/close rather than `we-popover`, which `moreMenu` shows the alternative
+ * to: this one hosts a whole settings form with its own dismissals, not a list of one-press lines.
+ * The popover anchors to its trigger button, so it floats above the call bar without taking layout
+ * space.
  */
 const callSettingsPopover: SchemaNode = {
   type: '$if',
@@ -1739,9 +1781,6 @@ const controls: SchemaNode = {
           action: 'modules.call.toggleVideo',
           tip: { on: 'Turn camera off', off: 'Turn camera on' },
         }),
-        // From here to the divider, everything but the contributed controls folds into `moreMenu`
-        // when the row is compact — see `ROOMY`. The glyph is explained on `SCREEN_SHARE`.
-        whenRoomy(mediaToggle(SCREEN_SHARE)),
         {
           // Where other modules put their call controls — see `anchors` below. The marker is replaced
           // by whatever is contributed, or by nothing at all, so the bar has no gap when no module
@@ -1750,47 +1789,14 @@ const controls: SchemaNode = {
           props: { anchor: CALL_CONTROLS_ANCHOR },
         },
         /*
-              Contributed controls stay in the row at every width, and the fold sits after them.
+              Contributed controls stay in the row at every width, and the menu sits after them.
 
               This module cannot put another module's chrome in its menu — it does not know what
               that chrome is, and a contributed square may be the loudest thing in the bar (a red
-              "recording" button, say) precisely because it has to be seen. So the menu holds only
-              what this module owns, and sits where the folded buttons were, so the row reads the
-              same in either state: your devices, then the rest.
-
-              Unconditional now, where it was `whenCompact`. It carries one entry that is not a fold
-              — see `moreMenu` — and a control that exists only below 640px is a control most people
-              never find.
-            */
-        /*
-          Show/hide sits with the devices, not with the call.
-
-          It was on the right, beside the participant readout, on the grounds that it is about the
-          video — but so is the camera button, and what actually separates the two groups is *whose*
-          they are. Everything left of the divider is something you do to your own machine: your
-          microphone, your camera, your screen, your transcript, and whether you are looking at the
-          video. Everything right of it is the call itself — who is in it, and how much room it has.
-        */
-        /*
-              Solo — the spotlight with the stage to itself.
-
-              Only while something is focused, which is also the affordance: giving somebody the
-              stage reveals the option to give them all of it. A toggle rather than a third click on
-              the tile, because a three-state cycle on one gesture cannot say which state it is in —
-              see `solo` in the store.
-            */
-        whenRoomy({
-          type: '$if',
-          props: { condition: { $: 'modules.call.focusedId' }, then: mediaToggle(SOLO) },
-        }),
-        whenRoomy(mediaToggle(STAGE)),
-        /*
-              The fold, after the controls it folds.
-
-              It was above the show/hide toggle, which put it between that toggle and the contributed
-              controls; since `STAGE` is one of the things it swallows when the row is compact, sitting
-              after it means the button occupies the place its own contents just left. The row reads the
-              same in either state either way, which was the original point.
+              "recording" button, say) precisely because it has to be seen. So the row ends at the
+              contributed region and the menu comes next, carrying what the row no longer shows at
+              any width — see `moreMenu`. A contribution that *is* a menu line goes there instead,
+              through `call-menu`.
             */
         moreMenu,
         // Relay state and quality: shipped controls, so they sit before the development group.
@@ -2453,7 +2459,12 @@ export const callModule = defineModule({
 
     // Opens the control bar to other modules. Declared so the registry can report chrome aimed at an
     // anchor nobody provides, which otherwise renders nowhere and looks like a module switched off.
-    anchors: [CALL_CONTROLS_ANCHOR, CALL_STATUS_ANCHOR, ...(devPeersAvailable ? [CALL_DEV_ANCHOR] : [])],
+    anchors: [
+      CALL_CONTROLS_ANCHOR,
+      CALL_MENU_ANCHOR,
+      CALL_STATUS_ANCHOR,
+      ...(devPeersAvailable ? [CALL_DEV_ANCHOR] : []),
+    ],
 
     /*
       Drawn by the host's module rail. A launcher of its own rather than a panel's button, because

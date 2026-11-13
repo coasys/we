@@ -1,4 +1,4 @@
-import type { DesignSystemProps } from '@we/design-types';
+import { type DesignSystemProps, POPOVER_DISMISS } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
 import { FOCUS_RING_INSET } from '@we/tokens';
 import { css, html } from 'lit';
@@ -77,6 +77,13 @@ export default class MenuItem extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) active = false;
   /** Shown but not choosable — faded by the shared disabled rule, skipped by the keyboard. */
   @property({ type: Boolean, reflect: true }) disabled = false;
+  /*
+    An action line is done once chosen, so it asks the popover holding its menu to close — the same
+    `POPOVER_DISMISS` the popover's own contract listens for. A toggle says nothing of the sort on
+    purpose: it is a control somebody may want to flip twice, and the menu stays open for the second
+    press.
+  */
+  @property({ type: Boolean }) dismiss = false;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {
@@ -123,6 +130,7 @@ export default class MenuItem extends DesignSystemElement {
     this.dispatchEvent(
       new CustomEvent('select', { detail: { value: this.value, label: this.label }, bubbles: true, composed: true }),
     );
+    if (this.dismiss) this.dispatchEvent(new CustomEvent(POPOVER_DISMISS, { bubbles: true, composed: true }));
   }
 
   private _handleKeyDown(e: KeyboardEvent) {
