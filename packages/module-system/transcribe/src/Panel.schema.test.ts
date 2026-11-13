@@ -2255,3 +2255,29 @@ describe('records a conversation recognised', () => {
     expect(panelJson).toContain('"where":{"extracted":{"some":{"id":{"$":"item.id"}}}}');
   });
 });
+
+describe('the way to AI settings', () => {
+  const opensAiSettings = '{"$invoke":"shellStore.openShellView","args":["settings","/ai"]}';
+  const statusJson = JSON.stringify(captureStatus);
+
+  it('is offered only to a connection that can change the models', () => {
+    // A guest granted AI READ alone can list models and add none; the button sent them to a page
+    // with nothing on it they could do.
+    const offers = statusJson.split(opensAiSettings).length - 1;
+    expect(offers).toBeGreaterThan(0);
+    expect(statusJson).not.toContain('runtimeStore.canManageAi');
+    expect(statusJson.split('{"$":"runtimeStore.canConfigureAi"}').length - 1).toBe(offers);
+  });
+
+  it('is offered beside a model that cannot run, which waiting may never fix', () => {
+    // A model the server does not have stays unready however long the panel waits.
+    const unready = findNode(
+      captureStatus,
+      (node) =>
+        node.type === '$if' &&
+        JSON.stringify((node.props as { condition?: unknown } | undefined)?.condition) ===
+          '{"$":"modules.transcribe.modelUnready"}',
+    );
+    expect(JSON.stringify(unready)).toContain(opensAiSettings);
+  });
+});

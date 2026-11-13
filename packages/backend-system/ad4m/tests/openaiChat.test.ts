@@ -178,13 +178,19 @@ describe('the port', () => {
       'fetch',
       vi.fn(
         async () =>
-          new Response(JSON.stringify({ error: { message: 'No default LLM model configured on this executor' } }), {
-            status: 404,
-          }),
+          new Response(
+            JSON.stringify({
+              error: {
+                message:
+                  'No default LLM model on this executor: set up local AI (ai.localInstall) or register a model on an endpoint',
+              },
+            }),
+            { status: 400 },
+          ),
       ),
     );
 
     const port = createAd4mLanguageModelPort({}, () => ({ url: 'http://node', token: '' }));
-    await expect(port.converse!({ system: 's', turns: [] })).rejects.toThrow('No default LLM model configured');
+    await expect(port.converse!({ system: 's', turns: [] })).rejects.toThrow('No default LLM model on this executor');
   });
 });

@@ -126,7 +126,8 @@ const sees = (page, words) => page.getByText(words, { exact: false }).first().wa
 async function handedOff(page) {
   await page.waitForFunction(
     () =>
-      !document.querySelector('[data-node-id^="base__"]') && !/Where is your Coasys\?/.test(document.body.innerText),
+      !document.querySelector('[data-node-id^="base__"]') &&
+      !/Where should Coasys run for you\?/.test(document.body.innerText),
     null,
     { timeout: STEP_MS },
   );
@@ -164,7 +165,7 @@ describe('the phone, with no identity and no executor', () => {
     const { context, page } = await open({ phone: true });
     await sees(page, 'Join your identity');
     await control(page, 'Start now').click();
-    await sees(page, 'Where is your Coasys?');
+    await sees(page, 'Where should Coasys run for you?');
     await sees(page, '127.0.0.1:9');
     await sees(page, 'AD4M Connect');
     await sees(page, 'None is offered yet.');
@@ -181,7 +182,7 @@ describe('the phone, with no identity and no executor', () => {
   it('shows the device offline, stays there on "Try again" with no network, and goes on once it is back', async () => {
     const { context, page } = await open({ phone: true });
     await control(page, 'Start now').click();
-    await sees(page, 'Where is your Coasys?');
+    await sees(page, 'Where should Coasys run for you?');
     await context.setOffline(true);
     await control(page, 'AD4M Connect').click();
     await sees(page, 'You are offline');
@@ -223,7 +224,7 @@ describe('the phone, with no identity and no executor', () => {
 describe('the browser, with no executor', () => {
   it('asks no first-run question, offers AD4M Connect, and hands off', async () => {
     const { context, page } = await open();
-    await sees(page, 'Where is your Coasys?');
+    await sees(page, 'Where should Coasys run for you?');
     assert.equal(await page.getByText('Make my identity here').count(), 0);
     await shot(page, 'web-connection-choice');
     await control(page, 'AD4M Connect').click();

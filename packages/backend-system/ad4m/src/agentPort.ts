@@ -1,6 +1,7 @@
-import type { PerspectiveProxy } from '@coasys/ad4m';
+import type { Ad4mClient, PerspectiveProxy } from '@coasys/ad4m';
 import { type AgentPort, AgentUnavailableError } from '@we/backend-shared';
 
+import { createAd4mAgentConversations } from './agentConversations';
 import { recordMissingMethod } from './missingMethods';
 
 /**
@@ -18,8 +19,9 @@ const EDIT_TOOLS = ['template_update'];
  */
 const RUN_TIMEOUT_MS = 16 * 60_000;
 
-export function createAd4mAgentPort(): AgentPort {
+export function createAd4mAgentPort(client?: Ad4mClient): AgentPort {
   return {
+    ...(client ? { conversations: createAd4mAgentConversations(client) } : {}),
     async run({ dataset, turns, about, mayEdit, model, signal }) {
       try {
         const reply = await (dataset as PerspectiveProxy).runAgent(

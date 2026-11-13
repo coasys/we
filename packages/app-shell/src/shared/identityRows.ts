@@ -124,6 +124,12 @@ export function deviceNoun(here: CustodyDevice | null): 'phone' | 'computer' {
   return here?.label === THIS_PHONE ? 'phone' : 'computer';
 }
 
+/**
+ * A device nobody has named yet. Never its key id: an identifier is for the key log and the identity
+ * window's checks, not for the rows a person reads every day.
+ */
+export const UNNAMED_DEVICE = 'Unnamed device';
+
 /** "QmZkabc…xyz7rWd" → "QmZk…7rWd". */
 export function shortHash(hash: string | null | undefined): string {
   if (!hash) return '';
@@ -275,17 +281,14 @@ export function deviceRows(
             : revokedHolders.includes(device.keyId)
               ? REVOKED_MASTER_WORDS.may
               : '';
-      const fallback = device.thisDevice ? thisLabel : `Device ${device.keyId}`;
+      const fallback = device.thisDevice ? thisLabel : UNNAMED_DEVICE;
       return {
         keyId: device.keyId,
         addedSeq: device.addedSeq,
         revokedSeq: device.revokedSeq,
         label: name || fallback,
-        subtitle: [
-          ...(name && device.thisDevice ? [thisLabel] : []),
-          device.keyId,
-          `added at #${device.addedSeq}`,
-        ].join(' · '),
+        // Where it is in the key log, not its key id (the key log lists that).
+        subtitle: [...(name && device.thisDevice ? [thisLabel] : []), `added at #${device.addedSeq}`].join(' · '),
         icon: (record && DEVICE_ICONS[record.kind]) || (device.thisDevice ? thisIcon : 'key'),
         thisDevice: device.thisDevice,
         revoked,

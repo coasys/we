@@ -30,6 +30,12 @@ describe('stoppedWords', () => {
     expect(stoppedWords('done')).toContain('stopped outside the app');
     expect(stoppedWords('give-up')).toContain('kept stopping');
   });
+
+  it('says an executor stopped from the tray stays stopped until started again', () => {
+    expect(stoppedWords('by-hand')).toBe(
+      'The executor was stopped from the tray menu. It stays stopped until it is started again.',
+    );
+  });
 });
 
 describe('startFailureWords', () => {

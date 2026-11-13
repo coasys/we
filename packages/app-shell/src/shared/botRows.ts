@@ -86,14 +86,15 @@ function keyLine(key: BotKeyView | null): { line: string; tone: BotRow['keyTone'
   const until = key.expires === null ? '' : ` until ${dateOf(key.expires)}`;
   switch (key.verdict) {
     case 'valid':
-      return { line: `Key ${key.keyId} valid${until} · may ${key.can.join(', ') || 'nothing'}`, tone: 'text-muted' };
+      // "Its key", never the key id: that is for the key log.
+      return { line: `Key valid${until} · may ${key.can.join(', ') || 'nothing'}`, tone: 'text-muted' };
     case 'expired':
       return {
-        line: `Key ${key.keyId} expired${key.expires === null ? '' : ` on ${dateOf(key.expires)}`}`,
+        line: `Key expired${key.expires === null ? '' : ` on ${dateOf(key.expires)}`}`,
         tone: 'danger-text',
       };
     case 'revoked':
-      return { line: `Key ${key.keyId} revoked in your key log`, tone: 'danger-text' };
+      return { line: 'Key revoked in your key log', tone: 'danger-text' };
     case 'not-in-log':
       return {
         line: 'Key not in your key log yet: confirm the match code in the identity window',

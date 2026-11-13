@@ -432,6 +432,40 @@ describe('baseStore, the connection', () => {
     expect(store.busy()).toBe(false);
   });
 
+  // The executor stopped under a session (outside the app, from the tray): the base takes the window
+  // back to say so, and its button starts it again through the host.
+  it('takes the window back from a session whose executor stopped, and starts it again', async () => {
+    const own = fakeExecutor({ phase: 'ready' });
+    const { store } = make(host({ executor: own.executor }), { takeFirst: true });
+    await until(() => store.stage() === 'session');
+    expect(store.executorStopped()).toBe(false);
+
+    // A restart under a session is the session's own business.
+    own.move({ phase: 'starting' });
+    await flush();
+    expect(store.stage()).toBe('session');
+
+    own.move({ phase: 'failed', reason: 'The executor was stopped outside the app.', stopped: true });
+    await flush();
+    expect(store.stage()).toBe('failed');
+    expect(store.executorStopped()).toBe(true);
+    expect(store.executorReason()).toBe('The executor was stopped outside the app.');
+
+    await store.retry();
+    expect(own.starts).toHaveLength(1);
+    expect(store.stage()).toBe('starting');
+    own.move({ phase: 'ready' });
+    await until(() => store.stage() === 'session');
+    expect(store.executorStopped()).toBe(false);
+  });
+
+  it('says a start that failed did not stop: executorStopped is for one that ran', async () => {
+    const own = fakeExecutor({ phase: 'failed', reason: 'The executor refused its settings.' });
+    const { store } = make(host({ executor: own.executor }));
+    await until(() => store.stage() === 'failed');
+    expect(store.executorStopped()).toBe(false);
+  });
+
   /*
     Lal's review of #438: the desktop's executor says how its agent is at each start, and WE's sign-in
     unlocks a locked one after that. Coming back to the base app — the offline state, "Choose another
@@ -514,13 +548,13 @@ describe('baseStore, the connection', () => {
       expect.objectContaining({
         keyId: 'd1',
         label: 'Test laptop',
-        subtitle: 'd1 · Computer',
+        subtitle: 'Computer',
         master: 'Holds the master key',
       }),
       expect.objectContaining({
         keyId: 'd2',
-        label: 'Device d2',
-        subtitle: 'd2 · Phone',
+        label: 'Unnamed device',
+        subtitle: 'Phone',
         master: 'Master key offered, not yet taken',
       }),
     ]);
