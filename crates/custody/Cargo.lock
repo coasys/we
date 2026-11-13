@@ -25,6 +25,19 @@ dependencies = [
 [[package]]
 name = "ad4m-hash-chain"
 version = "0.1.0"
+source = "git+https://github.com/coasys/ad4m?rev=95cefb35a27d75c6d332ee99e76ed205407d6fd3#95cefb35a27d75c6d332ee99e76ed205407d6fd3"
+dependencies = [
+ "bs58",
+ "ed25519-dalek",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.21",
+]
+
+[[package]]
+name = "ad4m-hash-chain"
+version = "0.1.0"
 source = "git+https://github.com/coasys/ad4m?rev=b3d9e7002cac6d75ce5bac063cc06cb896c18eda#b3d9e7002cac6d75ce5bac063cc06cb896c18eda"
 dependencies = [
  "bs58",
@@ -38,12 +51,31 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-client"
 version = "0.1.0"
+source = "git+https://github.com/coasys/ad4m?rev=95cefb35a27d75c6d332ee99e76ed205407d6fd3#95cefb35a27d75c6d332ee99e76ed205407d6fd3"
+dependencies = [
+ "ad4m-hash-chain 0.1.0 (git+https://github.com/coasys/ad4m?rev=95cefb35a27d75c6d332ee99e76ed205407d6fd3)",
+ "ad4m-identity-core 0.1.0 (git+https://github.com/coasys/ad4m?rev=95cefb35a27d75c6d332ee99e76ed205407d6fd3)",
+ "ad4m-ldk 0.13.0-test-1 (git+https://github.com/coasys/ad4m?rev=95cefb35a27d75c6d332ee99e76ed205407d6fd3)",
+ "async-trait",
+ "bs58",
+ "ed25519-dalek",
+ "getrandom 0.2.17",
+ "rand_core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "zeroize",
+]
+
+[[package]]
+name = "ad4m-identity-client"
+version = "0.1.0"
 source = "git+https://github.com/coasys/ad4m?rev=b3d9e7002cac6d75ce5bac063cc06cb896c18eda#b3d9e7002cac6d75ce5bac063cc06cb896c18eda"
 dependencies = [
  "ad4m-client",
- "ad4m-hash-chain",
- "ad4m-identity-core",
- "ad4m-ldk",
+ "ad4m-hash-chain 0.1.0 (git+https://github.com/coasys/ad4m?rev=b3d9e7002cac6d75ce5bac063cc06cb896c18eda)",
+ "ad4m-identity-core 0.1.0 (git+https://github.com/coasys/ad4m?rev=b3d9e7002cac6d75ce5bac063cc06cb896c18eda)",
+ "ad4m-ldk 0.13.0-test-1 (git+https://github.com/coasys/ad4m?rev=b3d9e7002cac6d75ce5bac063cc06cb896c18eda)",
  "async-trait",
  "bs58",
  "ed25519-dalek",
@@ -58,9 +90,9 @@ dependencies = [
 [[package]]
 name = "ad4m-identity-core"
 version = "0.1.0"
-source = "git+https://github.com/coasys/ad4m?rev=b3d9e7002cac6d75ce5bac063cc06cb896c18eda#b3d9e7002cac6d75ce5bac063cc06cb896c18eda"
+source = "git+https://github.com/coasys/ad4m?rev=95cefb35a27d75c6d332ee99e76ed205407d6fd3#95cefb35a27d75c6d332ee99e76ed205407d6fd3"
 dependencies = [
- "ad4m-hash-chain",
+ "ad4m-hash-chain 0.1.0 (git+https://github.com/coasys/ad4m?rev=95cefb35a27d75c6d332ee99e76ed205407d6fd3)",
  "base64",
  "bip39",
  "bs58",
@@ -77,6 +109,44 @@ dependencies = [
  "thiserror 2.0.21",
  "x25519-dalek",
  "zeroize",
+]
+
+[[package]]
+name = "ad4m-identity-core"
+version = "0.1.0"
+source = "git+https://github.com/coasys/ad4m?rev=b3d9e7002cac6d75ce5bac063cc06cb896c18eda#b3d9e7002cac6d75ce5bac063cc06cb896c18eda"
+dependencies = [
+ "ad4m-hash-chain 0.1.0 (git+https://github.com/coasys/ad4m?rev=b3d9e7002cac6d75ce5bac063cc06cb896c18eda)",
+ "base64",
+ "bip39",
+ "bs58",
+ "chacha20poly1305",
+ "ed25519-dalek",
+ "getrandom 0.2.17",
+ "hkdf",
+ "hmac",
+ "hpke",
+ "rand_core",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.21",
+ "x25519-dalek",
+ "zeroize",
+]
+
+[[package]]
+name = "ad4m-ldk"
+version = "0.13.0-test-1"
+source = "git+https://github.com/coasys/ad4m?rev=95cefb35a27d75c6d332ee99e76ed205407d6fd3#95cefb35a27d75c6d332ee99e76ed205407d6fd3"
+dependencies = [
+ "futures",
+ "js-sys",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
 ]
 
 [[package]]
@@ -796,7 +866,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
 dependencies = [
  "libc",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -1776,7 +1846,7 @@ dependencies = [
  "errno",
  "libc",
  "linux-raw-sys",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2059,7 +2129,7 @@ dependencies = [
  "getrandom 0.4.3",
  "once_cell",
  "rustix",
- "windows-sys 0.52.0",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
@@ -2415,9 +2485,9 @@ name = "we-custody"
 version = "0.1.0"
 dependencies = [
  "ad4m-client",
- "ad4m-identity-client",
- "ad4m-identity-core",
- "ad4m-ldk",
+ "ad4m-identity-client 0.1.0 (git+https://github.com/coasys/ad4m?rev=b3d9e7002cac6d75ce5bac063cc06cb896c18eda)",
+ "ad4m-identity-core 0.1.0 (git+https://github.com/coasys/ad4m?rev=b3d9e7002cac6d75ce5bac063cc06cb896c18eda)",
+ "ad4m-ldk 0.13.0-test-1 (git+https://github.com/coasys/ad4m?rev=b3d9e7002cac6d75ce5bac063cc06cb896c18eda)",
  "argon2",
  "async-trait",
  "bs58",
@@ -2447,8 +2517,8 @@ dependencies = [
 name = "we-identity-steps"
 version = "0.1.0"
 dependencies = [
- "ad4m-identity-client",
- "ad4m-identity-core",
+ "ad4m-identity-client 0.1.0 (git+https://github.com/coasys/ad4m?rev=95cefb35a27d75c6d332ee99e76ed205407d6fd3)",
+ "ad4m-identity-core 0.1.0 (git+https://github.com/coasys/ad4m?rev=95cefb35a27d75c6d332ee99e76ed205407d6fd3)",
  "log",
  "serde",
  "zeroize",
