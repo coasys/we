@@ -257,7 +257,7 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
   {
     const remembered = chat.rememberedConversation(untrack(() => props.inputs?.perspectiveUuid ?? 'global'));
     if (remembered) {
-      setActive(remembered as { ref: AgentConversationRef; title: string; scope?: string });
+      setActive(remembered);
       follow(remembered.ref);
     }
   }
