@@ -1278,97 +1278,6 @@ const moreMenu: SchemaNode = {
 };
 
 /**
- * Which topology this call runs on — peer-to-peer mesh or SFU relay.
- *
- * A non-interactive indicator between the divider and the participant count: one icon, with a
- * tooltip that names the mode. Mesh calls show a network glyph; SFU calls show a broadcast glyph.
- * Hidden when no backend manages the call (mesh-only without a Session).
- *
- * `text-muted` in both modes. It is a readout, so a step below the buttons beside it, which draw in
- * `text` — and one role for both, because the glyph already says which mode this is. Mesh was
- * `text-faint`, the role for disabled and placeholder, which made a working mesh call look switched
- * off.
- *
- * Placed on the "call" side of the divider — it describes the call rather than the user's device —
- * and before the participant count, which it explains (a count of six on a mesh means six direct
- * connections; on an SFU it means six streams through a relay).
- */
-const topologyIndicator: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $: 'modules.call.hasSessionBackend' },
-    then: {
-      type: '$if',
-      props: {
-        condition: { $: "modules.call.topology == 'sfu'" },
-        then: {
-          type: 'we-tooltip',
-          props: { content: 'Routed through relay server (SFU)', placement: 'bottom' },
-          children: [
-            {
-              type: 'we-icon',
-              props: { name: 'broadcast', size: 'sm', color: 'text-muted' },
-            },
-          ],
-        },
-        else: {
-          type: 'we-tooltip',
-          props: { content: 'Peer-to-peer mesh', placement: 'bottom' },
-          children: [
-            {
-              type: 'we-icon',
-              props: { name: 'graph', size: 'sm', color: 'text-muted' },
-            },
-          ],
-        },
-      },
-    },
-  },
-};
-
-/**
- * SFU quality preference — a cycling button that walks through high → medium → low.
- *
- * Only shown when the call runs through the SFU relay, because the quality preference controls
- * which simulcast layer the relay forwards — a mesh call has no simulcast layers to select.
- *
- * The icon changes with the preference: a full signal for high, two bars for medium, one for low.
- * The variant flips to `soft` on non-high settings so the user sees that quality has been
- * reduced, same visual language as the other toggles.
- */
-const qualitySelector: SchemaNode = {
-  type: '$if',
-  props: {
-    condition: { $: "modules.call.topology == 'sfu'" },
-    then: {
-      type: 'we-tooltip',
-      props: {
-        content: expr`"Quality: " + ${{ $: 'modules.call.qualityPreference' }}`,
-        placement: 'bottom',
-      },
-      children: [
-        {
-          type: 'we-button',
-          props: {
-            square: true,
-            variant: expr`${{ $: 'modules.call.qualityPreference' }} == "high" ? "ghost" : "soft"`,
-            onClick: { $invoke: 'modules.call.cycleQuality' },
-          },
-          children: [
-            {
-              type: 'we-icon',
-              props: {
-                name: expr`${{ $: 'modules.call.qualityPreference' }} == "high" ? "cell-signal-full" : ${{ $: 'modules.call.qualityPreference' }} == "medium" ? "cell-signal-medium" : "cell-signal-low"`,
-              },
-            },
-          ],
-        },
-      ],
-    },
-  },
-};
-
-/**
  * Switch this call between mesh and SFU — for everyone in it, for this call only.
  *
  * A switch drops every participant's audio and video until the new connections come up, so it is
@@ -1799,9 +1708,11 @@ const controls: SchemaNode = {
               through `call-menu`.
             */
         moreMenu,
-        // Relay state and quality: shipped controls, so they sit before the development group.
-        topologyIndicator,
-        qualitySelector,
+        /*
+          Call settings — the gear — where the route and the quality live as words rather than as a
+          broadcast glyph and a signal-strength glyph nobody could press. The two icons duplicated
+          this popover's own text, and a glyph with a tooltip is a sentence hiding behind a hover.
+        */
         callSettingsPopover,
         /*
               Development only, and last, which is the whole arrangement in one line: a shipped bar and

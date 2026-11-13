@@ -247,6 +247,49 @@ describe('the More menu', () => {
 });
 
 /**
+ * The readouts the bar dropped.
+ *
+ * Two icons duplicated what the settings popover already says in words: a broadcast/graph glyph for
+ * the route, and a signal-strength glyph for the quality preference. A glyph with a tooltip is a
+ * sentence hiding behind a hover, and these were the bar's only controls that were never pressed —
+ * removing them loses nothing a reader could act on, which is the whole reason they could go.
+ */
+describe('the readouts the bar dropped', () => {
+  /** The control row — the one holding the contributed-controls slot as a direct child. */
+  const row = (): SchemaNode =>
+    walk(chrome()).find(
+      (node) =>
+        node.type === 'Row' &&
+        ((node.children ?? []) as SchemaNode[]).some(
+          (child) => child?.type === '$slot' && props(child).anchor === 'call-controls',
+        ),
+    ) as SchemaNode;
+
+  it('shows no topology or quality control in the row', () => {
+    // The settings popover is the one row child allowed to mention either path — it is where the
+    // readouts live now, behind the gear. Everything else in the row stays silent on the subject.
+    const children = ((row().children ?? []) as SchemaNode[]).filter(
+      (child) => !JSON.stringify(child).includes('Call settings'),
+    );
+    for (const child of children) {
+      const json = JSON.stringify(child);
+      expect(json).not.toContain('modules.call.topology');
+      expect(json).not.toContain('modules.call.qualityPreference');
+      expect(json).not.toContain('cycleQuality');
+    }
+  });
+
+  it('keeps the route and the quality as words inside call settings', () => {
+    // "Keep that relay information available inside call settings (or the quality section) as text."
+    const settings = walk(chrome()).find((node) => JSON.stringify(node).includes('Call settings')) as SchemaNode;
+    const json = JSON.stringify(settings);
+    expect(json).toContain('SFU relay');
+    expect(json).toContain('Peer-to-peer mesh');
+    expect(json).toContain('Quality preference');
+  });
+});
+
+/**
  * Where the bar lives: inside the call view, under the video — not floating over every page.
  *
  * It used to be `position: fixed` chrome at the bottom of the window, which is where all three of
