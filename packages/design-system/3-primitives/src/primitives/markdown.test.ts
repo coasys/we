@@ -4,7 +4,7 @@
  * Markdown is not a safe subset of HTML — it is a superset of it. Every implementation passes raw
  * tags through by design, which is a feature when the author is you and a hole when the author is
  * whoever wrote the post, bio or space description that is being rendered. `we-markdown` is used in
- * exactly those places, and its output goes through `unsafeHTML`.
+ * exactly those places, and its output goes straight into the DOM as nodes.
  *
  * Driven through the element rather than through `marked` + DOMPurify separately, because the thing
  * that must hold is a property of the element: everything it renders has been sanitised. A test of
@@ -77,5 +77,21 @@ describe('the markdown it is there to render', () => {
 
     expect(base.querySelector('em')?.textContent).toBe('emphasis');
     expect(base.querySelector('br')).not.toBeNull();
+  });
+
+  it('wraps a table in the scrolling band its CSS works against', async () => {
+    /*
+      A table can be wider than the chat it lands in; unsqueezed it pushed the whole reply sideways,
+      squeezed it broke "Name" into "Nam/e". The band is what `overflow-x: auto` and the cell rules
+      hang on — this asserts the structure they apply to.
+    */
+    const base = await render('| Name | ID |\n| --- | --- |\n| Garden club | `a1b2c3` |');
+
+    const band = base.querySelector('.we-md-table');
+    expect(band).not.toBeNull();
+    const table = band!.querySelector('table');
+    expect(table).not.toBeNull();
+    expect(table!.querySelector('th')?.textContent).toBe('Name');
+    expect(table!.querySelector('td code')?.textContent).toBe('a1b2c3');
   });
 });
