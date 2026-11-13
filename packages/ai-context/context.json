@@ -6440,6 +6440,19 @@
       "needsArgs": ["installFromFile", "toggleSpace", "openSetUp", "removeBundle"]
     },
     {
+      "name": "chatStore",
+      "state": {
+        "sheet": {
+          "type": "object"
+        },
+        "isNarrow": {
+          "type": "boolean"
+        }
+      },
+      "actions": ["openChat", "closeSheet"],
+      "ambient": ["closeSheet"]
+    },
+    {
       "name": "clockStore",
       "state": {
         "clocks": {
@@ -7123,11 +7136,12 @@
             "id",
             "name",
             "kind",
-            "source",
+            "endpointId",
+            "remoteModel",
+            "status",
             "isDefault",
             "kindLabel",
-            "sourceLabel",
-            "detail",
+            "endpointName",
             "statusText",
             "ready"
           ]
@@ -7138,48 +7152,15 @@
         },
         "aiForm": {
           "type": "object",
-          "properties": [
-            "id",
-            "name",
-            "kind",
-            "sourceKind",
-            "presetName",
-            "apiService",
-            "apiProtocol",
-            "apiBaseUrl",
-            "apiKey",
-            "apiKeyStored",
-            "apiKeyBaseUrl",
-            "apiKeyRemoved",
-            "apiModel",
-            "apiMaxContext",
-            "hfRepo",
-            "hfRevision",
-            "hfFileName",
-            "filePath",
-            "useTokenizer",
-            "tokenizerRepo",
-            "tokenizerRevision",
-            "tokenizerFileName"
-          ]
-        },
-        "aiPresetOptions": {
-          "type": "array",
-          "properties": ["label", "value"]
+          "properties": ["id", "name", "kind", "endpointId", "remoteModel"]
         },
         "aiFormComplete": {
           "type": "boolean"
         },
-        "aiMaxContextError": {
-          "type": "string"
-        },
-        "aiApiKeyError": {
-          "type": "string"
-        },
-        "aiDiscoverNeedsKey": {
+        "aiFormDirty": {
           "type": "boolean"
         },
-        "aiServiceOptions": {
+        "aiEndpointOptions": {
           "type": "array",
           "properties": ["label", "value"]
         },
@@ -7190,8 +7171,112 @@
           "type": "array",
           "properties": ["label", "value"]
         },
-        "aiFormDirty": {
+        "aiDiscoveredModelHint": {
+          "type": "string"
+        },
+        "aiRecommendedModel": {
+          "type": "string"
+        },
+        "aiCanPull": {
           "type": "boolean"
+        },
+        "aiPullText": {
+          "type": "string"
+        },
+        "canManageAiEndpoints": {
+          "type": "boolean"
+        },
+        "aiEndpoints": {
+          "type": "array",
+          "properties": [
+            "id",
+            "name",
+            "kind",
+            "baseUrl",
+            "hasApiKey",
+            "capabilities",
+            "health",
+            "kindLabel",
+            "healthText",
+            "healthy",
+            "modelCount",
+            "managed",
+            "editable"
+          ]
+        },
+        "aiDetectedEndpoints": {
+          "type": "array",
+          "properties": ["kind", "baseUrl", "capabilities", "models", "label", "detail"]
+        },
+        "aiInstallLinks": {
+          "type": "array",
+          "properties": ["label", "url"]
+        },
+        "aiEndpointForm": {
+          "type": "object",
+          "properties": [
+            "id",
+            "name",
+            "service",
+            "kind",
+            "baseUrl",
+            "apiKey",
+            "apiKeyStored",
+            "apiKeyBaseUrl",
+            "apiKeyRemoved",
+            "maxContext"
+          ]
+        },
+        "aiEndpointFormComplete": {
+          "type": "boolean"
+        },
+        "aiEndpointFormDirty": {
+          "type": "boolean"
+        },
+        "aiMaxContextError": {
+          "type": "string"
+        },
+        "aiApiKeyError": {
+          "type": "string"
+        },
+        "aiServiceOptions": {
+          "type": "array",
+          "properties": ["label", "value"]
+        },
+        "canUseLocalAi": {
+          "type": "boolean"
+        },
+        "canConfigureLocalAi": {
+          "type": "boolean"
+        },
+        "localAi": {
+          "type": "object",
+          "properties": [
+            "loaded",
+            "device",
+            "gpus",
+            "compute",
+            "budget",
+            "notes",
+            "items",
+            "unavailable",
+            "reasons",
+            "fits",
+            "summary",
+            "installLabel",
+            "installed",
+            "incomplete",
+            "installing",
+            "running",
+            "anyRunning",
+            "canStart",
+            "runtimes",
+            "progress",
+            "canInstall"
+          ]
+        },
+        "aiSetupOptions": {
+          "type": "array"
         },
         "languages": {
           "type": "array",
@@ -7268,13 +7353,29 @@
         "newAiModel",
         "editAiModel",
         "setAiFormField",
-        "setAiService",
         "discoverAiModels",
+        "pullAiModel",
         "closeAiForm",
         "saveAiModel",
         "removeAiModel",
         "setDefaultAiModel",
         "removeAiTask",
+        "detectAiEndpoints",
+        "addDetectedEndpoint",
+        "newAiEndpoint",
+        "editAiEndpoint",
+        "setAiEndpointField",
+        "setAiService",
+        "closeAiEndpointForm",
+        "saveAiEndpoint",
+        "removeAiEndpoint",
+        "loadLocalAi",
+        "installLocalAi",
+        "startLocalAi",
+        "stopLocalAi",
+        "removeLocalAi",
+        "skipAiSetup",
+        "finishAiSetup",
         "loadLanguages",
         "installLanguage",
         "removeLanguage",
@@ -7309,8 +7410,13 @@
         "newAiModel",
         "editAiModel",
         "setAiFormField",
-        "setAiService",
         "closeAiForm",
+        "newAiEndpoint",
+        "editAiEndpoint",
+        "setAiEndpointField",
+        "setAiService",
+        "closeAiEndpointForm",
+        "loadLocalAi",
         "loadLanguages",
         "loadTrustedAgents",
         "loadAuthorizedApps",
@@ -7322,6 +7428,8 @@
       "destructive": [
         "removeAiModel",
         "removeAiTask",
+        "removeAiEndpoint",
+        "removeLocalAi",
         "removeLanguage",
         "trustAgent",
         "untrustAgent",
@@ -7335,10 +7443,15 @@
       "needsArgs": [
         "editAiModel",
         "setAiFormField",
-        "setAiService",
         "removeAiModel",
         "setDefaultAiModel",
         "removeAiTask",
+        "addDetectedEndpoint",
+        "editAiEndpoint",
+        "setAiEndpointField",
+        "setAiService",
+        "removeAiEndpoint",
+        "removeLocalAi",
         "installLanguage",
         "removeLanguage",
         "trustAgent",
@@ -7783,7 +7896,6 @@
         "endDockMove",
         "closeTemplatePanel",
         "openTemplatePanel",
-        "openPanel",
         "closePanel",
         "resetTemplateLayout",
         "toggleLane",
@@ -8630,6 +8742,8 @@
     }
   ],
   "shellComponents": [
+    "AgentChat",
+    "AgentChatSheet",
     "AiPanel",
     "CredentialField",
     "EditingBar",
