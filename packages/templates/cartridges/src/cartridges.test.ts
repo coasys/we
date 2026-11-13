@@ -646,6 +646,77 @@ describe('the Coasys cartridge', () => {
         ['settings', 'shell', 0, false],
       ]);
     });
+
+    /*
+      Reading the canvas as a tree — the workshop's second mode, shared through the kit. The same
+      failures worth guarding: a mode nothing on screen can turn off, an order the picker names and
+      the layout does not obey, a switch that remounts the graph and loses every placement.
+    */
+    describe('the canvas’s tree', () => {
+      const pane = JSON.stringify(canvasPane);
+      const graph = findNode(canvasPane, (n) => n.type === 'GraphView')!;
+      const graphJson = JSON.stringify(graph);
+
+      it('keeps the mode, the spine and the order in the address, so a link carries the reading', () => {
+        expect(pane).toContain('"treeMode":{"type":"boolean","initial":false,"syncParam":{"name":"tree","push":true}}');
+        expect(pane).toContain('"spine":{"type":"string","initial":"","syncParam":"spine"}');
+        expect(pane).toContain('"order":{"type":"string","initial":"manual","syncParam":"order"}');
+      });
+
+      it('puts the only way out of the mode on screen rather than in a panel', () => {
+        // A panel can be closed; a state the layout obeys has to be visible and reversible.
+        expect(pane).toContain('"$toggleLocal":"treeMode"');
+        expect(pane).toContain('"position":"absolute"');
+      });
+
+      it('swaps the layout rather than the graph, so a switch cannot cost a placement', () => {
+        /*
+          One `layout` prop holding both readings: two GraphViews would unmount one and mount the
+          other, throwing away the selection, the camera and every card's identity — and with them
+          the placements, which the freeform reading is the keeper of. The vocabulary map beside it
+          is a different graph with a layout of its own.
+        */
+        expect(graphJson.match(/"layout":/g)).toHaveLength(1);
+        expect(graphJson).toContain("{ type: 'forest', options: { spine: { field: 'data.relationshipTypeId'");
+        // Freeform as it was: manual, parked at the canvas's own card size. Nothing about the
+        // positions people arranged is read by the tree, so switching back finds every card.
+        expect(graphJson).toContain("{ type: 'manual', options: { size: { width: 200, height: 140 }");
+      });
+
+      it('swaps the gesture rather than listing both, and keeps writing coordinates only freeform', () => {
+        expect(graphJson).toContain("type: 'arrange-nodes'");
+        expect(graphJson).toContain("{ type: 'drag-node', options: { pin: true } }");
+        // `select` ahead of both: it does not claim the press, and needs to see it.
+        expect(graphJson).toContain("'select', { type: 'arrange-nodes'");
+        // A drag in the tree writes the structure the layout reads, not a position it then erases.
+        expect(graphJson).toContain('"onNodeArrange":{"$invoke":"recordStore.arrangeOnTree"');
+        expect(graphJson).toContain('{"$":"local.spine"}');
+        expect(graphJson).toContain('"onNodeDragEnd":{"$invoke":"recordStore.dragOnCanvas"');
+      });
+
+      it('gives every card one box in the tree, and its own on the canvas', () => {
+        expect(graphJson).toContain("local.treeMode ? ((local.cardSize == 'sm'");
+        expect(graphJson).toContain("{ from: 'data.canvasWidth' }");
+      });
+
+      it('draws the connections it is not following, faintly', () => {
+        expect(graphJson).toContain("{ 'data.relationshipTypeId': { not: local.spine } }");
+        expect(graphJson).toContain('opacity: 0.25');
+        expect(graphJson).toContain("sourceAnchor: 's', targetAnchor: 'n'");
+      });
+
+      it('fetches the reactions whenever the tree is up, so ordering by one is a re-sort and not a reload', () => {
+        expect(graphJson).toContain('"weigh":{"$":"(local.treeMode || local.order == \'signal\') && (');
+      });
+
+      it('offers the spine and the order in the strip', () => {
+        expect(pane).toContain('"placeholder":"Any connection"');
+        expect(pane).toContain('local.relationshipKinds.map(k, { label: k.name, value: k.id, icon: k.icon })');
+        expect(pane).toContain('"value":"manual"');
+        expect(pane).toContain('"value":"date"');
+        expect(pane).toContain('"value":"newest"');
+      });
+    });
   });
 });
 
