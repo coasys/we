@@ -8,6 +8,11 @@
  * second surface: switching must not cost the arrangement, and it does not — the placements are
  * untouched, so coming back finds every card exactly where it was left.
  *
+ * Shared by the workshop and the Coasys space, as `canvas.ts` is: the tree was the workshop's first,
+ * and the Coasys canvas reads the same way rather than growing a second spelling of it. What stays a
+ * template's own is what its readers decide *with* — the workshop's heat map, for one, which is the
+ * order lens of its key and lives beside the colours it blends between.
+ *
  * ## Four controls, and why each exists
  *
  * - **The mode.** In the address (`?tree=1`), so a link carries the reading. A reader who sends
@@ -36,8 +41,6 @@
  * said, where this is the only control for a state nothing else can change.
  */
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-
-import { BY_ORDER, HEAT_HIGH_FILL, HEAT_LOW_FILL, HEAT_NONE_FILL } from './WorkshopKey.ts';
 
 /** The box a card is given in each reading size, in world units. Post-it proportions throughout. */
 const CARD_SIZES: Record<string, { width: number; height: number }> = {
@@ -100,7 +103,6 @@ export const TREE_ON = 'local.treeMode';
 /** The spine, as the `forest` layout names one: one field of a line, and the value it must hold. */
 const SPINE_SELECTOR = `{ field: 'data.relationshipTypeId', value: local.spine }`;
 
-/** Whether the order in force is one a reaction decides — which is also when a weight is worth fetching. */
 /**
  * Which reaction the order is reading, whether or not anybody has picked one.
  *
@@ -113,7 +115,7 @@ const SPINE_SELECTOR = `{ field: 'data.relationshipTypeId', value: local.spine }
  * weight the seed fetches. A local cannot be seeded from a subscription — `initial` is static and the
  * types arrive later — so the fallback has to live in the expression rather than in the declaration.
  */
-const SIGNAL_IN_FORCE = `(local.signalType ? local.signalType : first(local.treeSignalTypes).id)`;
+export const SIGNAL_IN_FORCE = `(local.signalType ? local.signalType : first(local.treeSignalTypes).id)`;
 
 export const BY_SIGNAL = `(local.order == 'signal' && ${SIGNAL_IN_FORCE})`;
 
@@ -182,37 +184,6 @@ export const TREE_WEIGH: SchemaProp = {
     ` rangeMax: find(local.treeSignalTypes, { id: ${SIGNAL_IN_FORCE} }).rangeMax,` +
     ` step: find(local.treeSignalTypes, { id: ${SIGNAL_IN_FORCE} }).step,` +
     ` excludeAuthors: spaceStore.mutedDids, me: me.did } : null`,
-};
-
-/**
- * The heat map: every card shaded by what the tree is ordered by, while the key's order lens is on.
- *
- * The same number the order reads — a reaction's score, or when the card was made — normalised across
- * the cards on the canvas and blended between the key's two colours, so a card's shade says where in
- * the range it sits, which its place in a row cannot: three cards in a row say which is first, not
- * whether the middle one is nearer the top or the bottom.
- *
- * A rating or a slider is scaled against its own range rather than the canvas's: the ends of a five-star
- * scale mean something absolutely, and one card at two stars among worse ones must not look like the
- * best there is. A card with no score is left out of the scale and drawn in the key's colour for "no
- * answers yet" — the rule before the scale, which the graph falls through to where a metric has nothing
- * to say about a card. That is exactly the claim "nobody has answered" should make.
- *
- * Applies on the freeform canvas as well as the tree: the order is in the address either way, and a
- * heat map across cards somebody placed by hand is as useful as one along a row. Nothing while the
- * order is as arranged, where a card's place is its order already.
- */
-const HEAT_TYPE = `find(local.treeSignalTypes, { id: ${SIGNAL_IN_FORCE} })`;
-const HEAT_FIELD =
-  `(local.order == 'signal' ? ((${HEAT_TYPE}.mode == 'rating' || ${HEAT_TYPE}.mode == 'slider')` +
-  ` ? { from: 'weight', min: ${HEAT_TYPE}.rangeMin, max: ${HEAT_TYPE}.rangeMax } : { from: 'weight' })` +
-  ` : { from: 'createdAt' })`;
-
-export const TREE_HEAT_RULES: SchemaProp = {
-  $:
-    `${BY_ORDER} && local.order != 'manual' && (local.order != 'signal' || ${SIGNAL_IN_FORCE})` +
-    ` ? [{ style: { color: ${HEAT_NONE_FILL} } }, { style: { color: { metric: 'field', options: ${HEAT_FIELD},` +
-    ` scale: { from: ${HEAT_LOW_FILL}, to: ${HEAT_HIGH_FILL} } } } }] : []`,
 };
 
 /**
@@ -424,14 +395,21 @@ const voicesControl: SchemaNode = {
  * change and travels the cards to their new places, so the switch is one movement over one set of
  * cards — where two `GraphView`s would unmount one and mount the other, throwing away the selection,
  * the camera and every card's identity in the process.
+ *
+ * `card` is the box the freeform canvas parks an unplaced card in — the caller's own card size, so a
+ * suggestion lands in a slot it fits. Everything else is the same reading: the tree, the fields an
+ * opened card is given (`kindSizes`), and the placement fields a card's own size is stored in.
  */
-export const TREE_LAYOUT: SchemaProp = {
-  $:
-    `${TREE_ON} ? { type: 'forest', options: { spine: ${SPINE_SELECTOR}, sortBy: ${SORT_FIELD},` +
-    ` sortDirection: ${SORT_DIRECTION}, card: ${CARD_BOX}, unattachedLabel: 'Unconnected' } }` +
-    ` : { type: 'manual', options: { size: ${box(CANVAS_CARD)}, kindSizes: { property: ${box(FIELD_BOX)} },` +
-    ` widthField: 'canvasWidth', heightField: 'canvasHeight' } }`,
-};
+export function treeLayout(opts: { card?: { width: number; height: number } } = {}): SchemaProp {
+  const card = opts.card ?? CANVAS_CARD;
+  return {
+    $:
+      `${TREE_ON} ? { type: 'forest', options: { spine: ${SPINE_SELECTOR}, sortBy: ${SORT_FIELD},` +
+      ` sortDirection: ${SORT_DIRECTION}, card: ${CARD_BOX}, unattachedLabel: 'Unconnected' } }` +
+      ` : { type: 'manual', options: { size: ${box(card)}, kindSizes: { property: ${box(FIELD_BOX)} },` +
+      ` widthField: 'canvasWidth', heightField: 'canvasHeight' } }`,
+  };
+}
 
 /**
  * When the tree is brought back into view: whenever its cards change size.
@@ -479,6 +457,23 @@ export const TREE_BEHAVIOURS: SchemaProp = {
     ` : [{ type: 'connect-nodes', options: { button: 'secondary' } }, 'node-double-click', 'canvas-double-click', 'marquee-select', 'select',` +
     ` { type: 'drag-node', options: { pin: true } }, 'pan-zoom']`,
 };
+
+/**
+ * The same gesture in the tree, where what a drag means is different — the `onNodeArrange` prop.
+ *
+ * On the canvas a drag writes a coordinate, because the position IS the data. In the tree the
+ * layout derives the position, so a drag writes the structure the layout reads: a card dropped on
+ * another becomes its child, dropped beside one it is reordered there, dropped in the unconnected
+ * zone it comes out of its tree. The behaviour reports which of the three, and the store decides
+ * what each means — including the refusals, since only something that knows which connection is
+ * the spine can tell that a drop would put a card inside itself.
+ *
+ * The spine goes with it, and has to: what makes a parent a parent is this community's own
+ * vocabulary and this reader's current choice, neither of which a store can know.
+ */
+export function treeArrange(canvas: SchemaProp): SchemaProp {
+  return { $invoke: 'recordStore.arrangeOnTree', args: [canvas, { $: 'local.spine' }, { $: 'event' }] };
+}
 
 /**
  * A card's box: uniform in a tree, its own on the canvas.

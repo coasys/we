@@ -44,6 +44,11 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     spaceRoot: deps.spaceRoot,
     records,
     interpretation,
+    /*
+      The same choice the list's filter draws — into the read, so lines it hides do not fill the
+      window before it is cut, and flipping the switch reads the window again.
+    */
+    showSpoken: () => settings?.().showCallTranscripts === true,
     write: (collection, text, marks) =>
       writeMessage({ id: collection, relation: 'children', entity: 'CollectionBlock' }, text, marks),
   });
@@ -62,6 +67,11 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     notify: deps.notify,
     enabled: () => settings?.().botNotices !== false,
     readingLive: followingLive,
+    /*
+      A spoken line a hidden transcript already keeps from the reader is not unseen activity to
+      raise a notice about — the same call the list's filter makes, made here.
+    */
+    spokenHidden: () => settings?.().showCallTranscripts !== true,
     open: () => {
       feed.openFeed();
       feed.readFeedLive();
@@ -140,6 +150,10 @@ export function createFeedStore(deps: ModuleStoreDeps) {
     timelineOrientation: state(
       () => (settings?.().timelineOrder === 'newestTop' ? 'newestTop' : 'newestBottom'),
       "Which way round this reader draws the Feed — 'newestBottom' or 'newestTop'. Their own setting.",
+    ),
+    showCallTranscripts: state(
+      () => settings?.().showCallTranscripts === true,
+      'Whether this reader asked the Feed to draw the lines calls spoke — off until they do, in this space only.',
     ),
   };
 }
