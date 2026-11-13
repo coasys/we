@@ -12,10 +12,22 @@ export function replyRunning(messages: AgentConversationMessage[]): boolean {
   return messages.some((m) => m.role === 'assistant' && m.status === 'running');
 }
 
-/** What the last turn asked with — the text "Send again" and "Ask in the global chat" resend. */
+/** What the last turn asked with — the text "Ask in the global chat" resends. */
 export function lastAsk(messages: AgentConversationMessage[]): string {
   const users = messages.filter((m) => m.role === 'user');
   return users[users.length - 1]?.text ?? '';
+}
+
+/**
+ * The question a reply answered — the user message before it in the transcript. "Send again" sits
+ * under one reply and resends *its* question, never the last question the window happened to ask.
+ */
+export function askBefore(messages: AgentConversationMessage[], replyId: string): string {
+  const at = messages.findIndex((m) => m.id === replyId);
+  for (let i = at - 1; i >= 0; i--) {
+    if (messages[i].role === 'user') return messages[i].text;
+  }
+  return '';
 }
 
 /** A perspective id where an error names one — the executor spells them out in refusals. */

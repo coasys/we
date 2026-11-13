@@ -58,6 +58,8 @@ function StepRow(props: { step: AgentStep }) {
           : props.step.error
             ? `${stepWords(props.step)}: ${props.step.error}`
             : stepWords(props.step)}
+        {/* The orange mark in words: "wrote" says outright what the tint only hinted at. */}
+        {wrote() ? ' · wrote' : ''}
         {props.step.target ? ` — ${props.step.target}` : ''}
         {props.step.summary ? ` · ${props.step.summary}` : ''}
       </we-text>
@@ -72,7 +74,13 @@ export function AgentSteps(props: AgentStepsProps) {
   return (
     <Column gap="100" data-testid="agent-steps">
       <Show when={!props.running}>
-        <we-button variant="bare" size="xs" alignSelf="flex-start" onClick={() => setUnfolded(!open())}>
+        <we-button
+          variant="bare"
+          size="xs"
+          alignSelf="flex-start"
+          aria-expanded={open()}
+          onClick={() => setUnfolded(!open())}
+        >
           <Row ay="center" gap="100">
             <we-icon name={open() ? 'caret-down' : 'caret-right'} size="xs" color="text-muted" />
             <we-text variant="footnote" color="text-muted">

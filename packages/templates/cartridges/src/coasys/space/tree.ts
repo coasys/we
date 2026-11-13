@@ -623,7 +623,9 @@ const findOrAsk: SchemaNode = {
         onInput: { $setLocal: 'findQuery', value: { $: 'event.detail' } },
         onKeyDown: {
           $if: {
-            condition: { $: "event.detail.key == 'Enter' && trim(local.findQuery)" },
+            // `isComposing` rides the detail now (we-input forwards it): an Enter still in an IME
+            // composition is the IME's, not an ask.
+            condition: { $: "event.detail.key == 'Enter' && !event.detail.isComposing && trim(local.findQuery)" },
             then: [
               {
                 $invoke: 'chatStore.openChat',

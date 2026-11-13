@@ -25,14 +25,14 @@ import {
 } from '@we/backend-shared';
 import { AgentSteps, Column, Row } from '@we/components/solid';
 import { tokenVar } from '@we/design-utils';
-import { createEffect, createMemo, createSignal, For, onCleanup, Show } from 'solid-js';
+import { createEffect, createMemo, createSignal, For, onCleanup, Show, untrack } from 'solid-js';
 
 import { isSpaceSelf } from '../../../../shared/spaceSync';
 import { type ChatInputs, useChatStore } from '../../stores/ChatStore';
 import { useDatasetStore } from '../../stores/DatasetStore';
 import { useSessionStore } from '../../stores/SessionStore';
 import { useSpaceStore } from '../../stores/SpaceStore';
-import { lastAsk, refusalOf, refusalSentence, replyRunning, unfinishedWords } from './chatState';
+import { askBefore, lastAsk, refusalOf, refusalSentence, replyRunning, unfinishedWords } from './chatState';
 
 /** What an open chat was asked for — `panel.inputs` on desktop, the sheet's on a phone. */
 export type AgentChatInputs = ChatInputs;
@@ -102,6 +102,8 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
     try {
       setSummaries(await conversations.list());
       setUnavailable(null);
+      // A read that lands clears the error a failed one left — stale trouble is still trouble.
+      setError(null);
     } catch (cause) {
       if (cause instanceof AgentUnavailableError) setUnavailable(cause.message);
       else setError(cause instanceof Error ? cause.message : String(cause));
@@ -166,28 +168,48 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
   }
 
   async function send() {
-    // Enter and Send can land inside the same tick — one send in flight, never two.
-    if (sending) return;
+    // Enter and Send can land inside the same tick — one send in flight, never two; and nothing
+    // sends while a reply still runs (Enter's early return is here, not only in the handler).
+    if (sending || running()) return;
     sending = true;
     try {
       const text = draft().trim();
       const current = active();
       if (!text) return;
+      setSendFailed(null);
+      /*
+        The words leave the field before the send — what is on its way is not sitting there to be
+        asked twice. A failure puts them back, in `ask` for a first turn and here after.
+      */
+      setDraft('');
       if (!current) {
         await ask(text, spaceChat());
-        // A chat that asked took the question; one whose create or send failed keeps it for another
-        // try — the words are never thrown away.
-        if (active() && !sendFailed()) setDraft('');
         return;
       }
-      setSendFailed(null);
       try {
         await port()?.send(current.ref, text);
       } catch (cause) {
         setSendFailed(cause instanceof Error ? cause.message : String(cause));
-        return;
+        setDraft(text);
       }
-      setDraft('');
+    } finally {
+      sending = false;
+    }
+  }
+
+  /**
+   * "Send again" under one reply — the question *that* reply answered, sent through the same
+   * guard the composer uses so a tap during an in-flight send cannot double it.
+   */
+  async function resend(question: string) {
+    const current = active();
+    if (sending || running() || !current || !question.trim()) return;
+    sending = true;
+    try {
+      setSendFailed(null);
+      await port()?.send(current.ref, question);
+    } catch (cause) {
+      setSendFailed(cause instanceof Error ? cause.message : String(cause));
     } finally {
       sending = false;
     }
@@ -225,6 +247,20 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
     const pending = inputs.nonce ? chat.takePending(inputs.nonce) : undefined;
     if (pending) void ask(pending.text, pending.perspectiveUuid ?? inputs.perspectiveUuid);
   });
+
+  /*
+    A space switch hides this window rather than closing it — the conversation it had open is
+    remembered in the store (see `rememberConversation`), so coming back to the space finds the
+    turn it left, not the list. `inputs` is fixed for a mounted chat — read once, at mount.
+  */
+  {
+    const remembered = chat.rememberedConversation(untrack(() => props.inputs?.perspectiveUuid ?? 'global'));
+    if (remembered) {
+      setActive(remembered as { ref: AgentConversationRef; title: string; scope?: string });
+      follow(remembered.ref);
+    }
+  }
+  createEffect(() => chat.rememberConversation(props.inputs?.perspectiveUuid ?? 'global', active()));
 
   createEffect(() => {
     port();
@@ -389,14 +425,11 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
                         ? `${unfinishedWords(message.status!)}: ${message.error}`
                         : unfinishedWords(message.status!)}
                     </we-text>
-                    <Show when={lastAskText()}>
+                    <Show when={askBefore(messages(), message.id)}>
                       <we-button
                         variant="ghost"
                         size="xs"
-                        onClick={() => {
-                          const current = active();
-                          if (current) void port()?.send(current.ref, lastAskText());
-                        }}
+                        onClick={() => void resend(askBefore(messages(), message.id))}
                       >
                         Send again
                       </we-button>
@@ -470,8 +503,9 @@ export function AgentChat(props: { inputs?: AgentChatInputs }) {
             value={draft()}
             placeholder={spaceChat() ? `Ask ${spaceName(spaceChat()!) || 'this space'}…` : 'Ask about any space…'}
             on:input={(e: CustomEvent<string>) => setDraft(e.detail)}
-            on:keydown={(e: CustomEvent<{ key: string }>) => {
-              if (e.detail?.key === 'Enter') void send();
+            on:keydown={(e: CustomEvent<{ key: string; isComposing?: boolean }>) => {
+              // An Enter while a reply runs, or inside an IME composition, is not a send.
+              if (e.detail?.key === 'Enter' && !e.detail.isComposing && !running()) void send();
             }}
           />
           <Show
