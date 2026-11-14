@@ -2,6 +2,7 @@
 //! views, the space-settings dock, panels, lanes, dialogs. Deliberately no
 //! address (rule 10): overlays live in a separate in-memory router, so Back
 //! does not close them and a reload does not reopen them.
+use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, HashMap};
 
 use crate::Changed;
@@ -199,15 +200,27 @@ impl ShellState {
         changed
     }
 
-    /// `closeTemplatePanel(id)`.
+    /// `closeTemplatePanel(id)` — records the closed marker unconditionally
+    /// (`ShellStore.tsx:4594`): where the map held no override, `open: false`
+    /// *is* the override — absence is what restores the declaration, so a
+    /// new marker is a change and a dirty layout. Only a panel already
+    /// marked closed is a no-op.
     pub fn close_template_panel(&mut self, id: &str) -> Changed {
-        let panel = self.panels.entry(id.to_string()).or_default();
-        if panel.open {
-            panel.open = false;
-            self.layout_dirty = true;
-            Changed::Yes
-        } else {
-            Changed::No
+        match self.panels.entry(id.to_string()) {
+            Entry::Vacant(v) => {
+                v.insert(PanelState::default());
+                self.layout_dirty = true;
+                Changed::Yes
+            }
+            Entry::Occupied(mut o) => {
+                if o.get().open {
+                    o.get_mut().open = false;
+                    self.layout_dirty = true;
+                    Changed::Yes
+                } else {
+                    Changed::No
+                }
+            }
         }
     }
 
@@ -227,10 +240,10 @@ impl ShellState {
     /// open and closed markers alike, so a panel opened over a `open:
     /// false` declaration re-closes — not only the ones that differ.
     pub fn reset_template_layout(&mut self) -> Changed {
-        if !self.layout_dirty
-            && self.panels.values().all(|p| p == &PanelState::default())
-            && self.lanes.is_empty()
-        {
+        // Nothing to delete means nothing to do: these maps are overrides,
+        // so a `PanelState::default()` entry is a closed marker, not
+        // absence — empty, not all-default, is the no-op criterion.
+        if !self.layout_dirty && self.panels.is_empty() && self.lanes.is_empty() {
             return Changed::No;
         }
         self.panels.clear();

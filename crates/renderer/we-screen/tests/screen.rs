@@ -209,6 +209,53 @@ fn reset_template_layout_clears_the_layout_overrides() {
 }
 
 #[test]
+fn close_then_reset_restores_the_declaration() {
+    // `closeTemplatePanel` records a closed marker even where the override
+    // map held none (`ShellStore.tsx:4594` writes `closedPanels[key] = true`
+    // unconditionally), and `resetTemplateLayout` deletes it — a
+    // declaration-open panel (coasys's `tree`) returns to its declaration.
+    let mut s = screen(json!({ "params": {} }), "/space/abc/board");
+    assert_eq!(
+        s.apply(ScreenOp::CloseTemplatePanel {
+            id: "tree".to_string()
+        }),
+        Changed::Yes,
+        "recording a new closed marker is a change"
+    );
+    assert!(s.shell.layout_dirty);
+    // Closing an already-closed override changes nothing further.
+    assert_eq!(
+        s.apply(ScreenOp::CloseTemplatePanel {
+            id: "tree".to_string()
+        }),
+        Changed::No
+    );
+    assert_eq!(s.apply(ScreenOp::ResetTemplateLayout), Changed::Yes);
+    assert!(
+        s.shell.panels.is_empty() && !s.shell.layout_dirty,
+        "the closed marker is an override — reset deletes it: {:?}",
+        s.shell.panels
+    );
+    // And the affordance is really off again: a second reset is a no-op.
+    assert_eq!(s.apply(ScreenOp::ResetTemplateLayout), Changed::No);
+}
+
+#[test]
+fn reset_template_layout_clears_a_default_valued_marker() {
+    // A host/persisted closed override whose dirty flag was never set: the
+    // maps are overrides (absent = the declaration rules), so a
+    // `PanelState::default()` entry is still something to delete — the no-op
+    // criterion is empty maps, not "all entries happen to read default".
+    let mut s = screen(json!({ "params": {} }), "/space/abc/board");
+    s.shell
+        .panels
+        .insert("tree".to_string(), we_screen::PanelState::default());
+    assert!(!s.shell.layout_dirty);
+    assert_eq!(s.apply(ScreenOp::ResetTemplateLayout), Changed::Yes);
+    assert!(s.shell.panels.is_empty());
+}
+
+#[test]
 fn space_settings_tab_defaults_to_about() {
     let mut s = screen(json!({ "params": {} }), "/space/abc/board");
     s.apply(ScreenOp::OpenSpaceSettings {
