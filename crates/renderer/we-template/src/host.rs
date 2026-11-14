@@ -11,7 +11,8 @@
 //!
 //! Core mints the [`CallId`]s. A completion for an unknown or already
 //! settled call is ignored and counted ([`crate::Stats::completions_ignored`]);
-//! one whose node left the tree runs nothing and is counted
+//! one whose node left the tree — in any frame since the call, even if the
+//! same id has mounted again — runs nothing and is counted
 //! ([`crate::Stats::completions_dropped`]).
 use std::any::Any;
 use std::collections::VecDeque;

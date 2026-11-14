@@ -338,3 +338,77 @@ fn offline_static_host_answers_from_invokes_table() {
     s.resolve();
     assert_eq!(local(&s, &root.id, "got"), "v");
 }
+
+/// Review P2: an unmount permanently invalidates the calls its nodes made,
+/// even when the same structural id is mounted again before the old
+/// completion arrives. A call made by the remounted node still settles.
+#[test]
+fn completion_after_unmount_and_same_id_remount_runs_nothing() {
+    let (mut s, log) = session(
+        json!({
+            "type": "Column",
+            "$localState": {
+                "show": { "type": "boolean", "initial": true },
+                "got": { "type": "string", "initial": "" },
+                "fin": { "type": "string", "initial": "" }
+            },
+            "props": {
+                "onHide": { "$setLocal": "show", "value": false },
+                "onShow": { "$setLocal": "show", "value": true }
+            },
+            "children": [{
+                "type": "$if",
+                "props": {
+                    "condition": { "$": "local.show" },
+                    "then": {
+                        "type": "we-button",
+                        "props": { "onTap": { "$invoke": "storeX.call",
+                            "onSuccess": [{ "$setLocal": "got", "value": { "$": "local.got + result" } }],
+                            "onFinally": [{ "$setLocal": "fin", "value": { "$": "local.fin + 'f'" } }] } }
+                    }
+                }
+            }]
+        }),
+        true,
+    );
+    let root = s.resolve();
+    let button = first_child(&root)
+        .expect("the button is mounted")
+        .id
+        .clone();
+    s.dispatch(&button, "onTap", Value::Null);
+    s.dispatch(&root.id, "onHide", Value::Null);
+    let root = s.resolve();
+    assert!(first_child(&root).is_none(), "the button left the tree");
+    s.dispatch(&root.id, "onShow", Value::Null);
+    let root = s.resolve();
+    let remounted = first_child(&root).expect("the button is back").id.clone();
+    assert_eq!(remounted, button, "the remount reuses the structural id");
+
+    completer(&log, 0).complete(Ok(Value::Str("old".into())));
+    s.resolve();
+    assert_eq!(
+        local(&s, &root.id, "got"),
+        "",
+        "the old call's onSuccess must not run on the remounted node"
+    );
+    assert_eq!(local(&s, &root.id, "fin"), "", "nor its onFinally");
+    assert_eq!(s.stats().completions_dropped, 1, "it is counted as dropped");
+    assert_eq!(s.stats().completions, 0);
+
+    s.dispatch(&remounted, "onTap", Value::Null);
+    assert_eq!(
+        log.borrow().requests.len(),
+        2,
+        "the new call reached the host"
+    );
+    completer(&log, 1).complete(Ok(Value::Str("new".into())));
+    s.resolve();
+    assert_eq!(
+        local(&s, &root.id, "got"),
+        "new",
+        "a call made after the remount still settles"
+    );
+    assert_eq!(local(&s, &root.id, "fin"), "f");
+    assert_eq!(s.stats().completions, 1);
+}
