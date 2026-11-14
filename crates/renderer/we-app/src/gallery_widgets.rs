@@ -202,6 +202,11 @@ pub fn widgets_ui(
 ) {
     let reg = Registry::with_builtins();
     let cx = MeasureCx::new(ui.ctx());
+    // The page surface covers the whole viewport — the tree itself only
+    // paints its widgets, and without this an open modal's backdrop dims
+    // a patchwork of transparent and opaque regions.
+    ui.painter()
+        .rect_filled(ui.ctx().content_rect(), 0.0, ui.visuals().panel_fill);
     let rect = ui.available_rect_before_wrap();
     let lay = layout(&cx, &reg, tree, rect);
     paint(ui, &reg, tree, &lay, events, edit, now);
