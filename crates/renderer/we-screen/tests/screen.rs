@@ -452,10 +452,7 @@ fn fragment_navigation_keeps_the_query() {
 
 #[test]
 fn fragment_navigation_replaces_the_old_fragment() {
-    let mut s = screen(
-        json!({ "params": {} }),
-        "/space/abc/board?sort=top#old",
-    );
+    let mut s = screen(json!({ "params": {} }), "/space/abc/board?sort=top#old");
     s.apply(ScreenOp::Navigate {
         to: "#new".to_string(),
         query: None,
@@ -475,10 +472,8 @@ fn interior_dot_segments_resolve_at_the_url_boundary() {
         "/space/abc/board?id=ad4m://obj/x",
     );
     assert_eq!(
-        s.nav.resolve(
-            "a/../b",
-            we_screen::PathBase { depth: 3, root: 2 }
-        ),
+        s.nav
+            .resolve("a/../b", we_screen::PathBase { depth: 3, root: 2 }),
         "/space/abc/board/a/../b"
     );
     s.apply(ScreenOp::Navigate {

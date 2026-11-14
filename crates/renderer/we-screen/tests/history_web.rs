@@ -50,13 +50,15 @@ async fn back_reports_the_first_href() {
 /// Rust `Closure` was dropped misbehaves on every move (a dead binding
 /// throws, or runs on stale state); a correctly unwired one stays silent.
 /// The listener comes back so the test can unwire it.
-fn window_errors() -> (Rc<RefCell<Vec<String>>>, Closure<dyn FnMut(web_sys::ErrorEvent)>) {
+fn window_errors() -> (
+    Rc<RefCell<Vec<String>>>,
+    Closure<dyn FnMut(web_sys::ErrorEvent)>,
+) {
     let errors = Rc::new(RefCell::new(Vec::<String>::new()));
     let errors_in = errors.clone();
     let listener = Closure::wrap(Box::new(move |e: web_sys::ErrorEvent| {
         errors_in.borrow_mut().push(e.message());
-    })
-        as Box<dyn FnMut(web_sys::ErrorEvent)>);
+    }) as Box<dyn FnMut(web_sys::ErrorEvent)>);
     web_sys::window()
         .unwrap()
         .add_event_listener_with_callback("error", listener.as_ref().unchecked_ref())
@@ -68,11 +70,9 @@ fn window_errors() -> (Rc<RefCell<Vec<String>>>, Closure<dyn FnMut(web_sys::Erro
 /// a guessed timeout.
 async fn wait_event(name: &str) {
     let promise = js_sys::Promise::new(&mut |resolve, _| {
-        let cb = Closure::wrap(
-            Box::new(move || {
-                let _ = resolve.call0(&JsValue::NULL);
-            }) as Box<dyn FnMut()>,
-        );
+        let cb = Closure::wrap(Box::new(move || {
+            let _ = resolve.call0(&JsValue::NULL);
+        }) as Box<dyn FnMut()>);
         web_sys::window()
             .unwrap()
             .add_event_listener_with_callback(name, cb.as_ref().unchecked_ref())

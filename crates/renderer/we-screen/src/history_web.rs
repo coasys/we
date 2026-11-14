@@ -59,10 +59,9 @@ impl BrowserHistory {
     /// pointing at a dead callback.
     fn remove_popstate(&mut self) {
         if let Some(closure) = self.popstate.take() {
-            let _ = self.window.remove_event_listener_with_callback(
-                "popstate",
-                closure.as_ref().unchecked_ref(),
-            );
+            let _ = self
+                .window
+                .remove_event_listener_with_callback("popstate", closure.as_ref().unchecked_ref());
         }
     }
 
