@@ -584,6 +584,51 @@ fn a_query_reads_a_sibling_query_whichever_order() {
 }
 
 #[test]
+fn inline_query_tokens_flow_through_the_pool() {
+    // B11: `{items: {$query: ...}}` on `$each` and `{$query: ...}` as a prop
+    // value compile into the pool like a named query — TS's
+    // `hasToken($query)` prop path and `$each` branch share it. Two sites
+    // asking the same thing share one cell.
+    struct Tasks;
+    impl we_template::QuerySource for Tasks {
+        fn rows(&self, _key: &we_template::QueryKey, _ir: &we_template::QueryIr) -> we_template::QueryState {
+            we_template::QueryState::Rows(Arc::new(vec![
+                Value::from_json(&json!({ "id": "t1", "name": "one" })),
+                Value::from_json(&json!({ "id": "t2", "name": "two" })),
+            ]))
+        }
+    }
+    let node = schema(json!({ "type": "Column", "children": [
+        { "type": "$each",
+          "props": { "items": { "$query": { "entity": "Task" } } },
+          "children": [{ "type": "TaskRow", "props": { "t": { "$": "item.name" } } }] },
+        { "type": "List", "props": { "rows": { "$query": { "entity": "Task" } } } }
+    ]}));
+    let locals = LocalState::new();
+    let bag = Arc::new(StoreBag::new());
+    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone())
+        .with_sources(Some(Arc::new(Tasks)), Arc::new(we_template::NoParts));
+    let mut host = StaticHost::new(bag, locals);
+    let screen = screen("/");
+
+    let root = rt.frame(&mut host, &screen).clone();
+    let mut rows = Vec::new();
+    find_all_ty(&root, "TaskRow", &mut rows);
+    assert_eq!(rows.len(), 2, "the $each drew one row per query row");
+    let list = find_ty(&root, "List").unwrap();
+    let rows_prop = list.props.get("rows").expect("the rows prop resolved");
+    match rows_prop {
+        Value::List(items) => assert_eq!(items.len(), 2, "the prop is the query's rows"),
+        other => panic!("rows prop must be a list, got {other:?}"),
+    }
+    assert_eq!(
+        rt.pool().len(),
+        1,
+        "the prop and the $each asked the same thing — one cell"
+    );
+}
+
+#[test]
 fn pool_dedups_only_identical_queries() {
     // Two nodes, same entity, different `where` → two cells. The sabotage
     // this guards: keying on the entity name alone would collide the reads.

@@ -21,7 +21,7 @@ use we_screen::{local_persist_key, local_sync_spec, resolve_local_initial, Scree
 
 use crate::handler::HandlerToken;
 use crate::node::{JsonMap, RouteNode, SchemaChild, SchemaNode};
-use crate::query::{compile_query, QueryPool};
+use crate::query::{compile_query, QueryPool, QueryState};
 use crate::resolved::{HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope, Transition};
 use crate::scope::{FieldMeta, LocalDecl, LocalNs, LocalScope, ScopeEnv, StoreBag};
 use crate::{Host, LocalState};
@@ -182,6 +182,26 @@ pub(crate) fn eval_json(
         )),
         primitive => Value::from_json(primitive),
     }
+}
+
+/// A prop value with the inline `{"$query": descriptor}` form — the path
+/// TS's prop loop and `$each.items` share (`hasToken($query)` →
+/// `createQuerySignal`). The descriptor compiles into the pool like a
+/// named query, and the prop reads the cell's rows — `[]` while Loading
+/// or when the gate turns it off, the same answer `local.<name>` gives.
+fn eval_prop(json: &Json, scope: &Scope, cx: &mut ResolveCx) -> Value {
+    if let Json::Object(map) = json {
+        if let Some(descriptor) = map.get("$query") {
+            return match compile_query(descriptor, scope, cx.bag, cx.cache, cx.warnings) {
+                Some(compiled) => match cx.pool.cell(compiled.key, compiled.ir).state() {
+                    QueryState::Rows(rows) => Value::List(rows),
+                    QueryState::Loading => Value::List(Arc::new(Vec::new())),
+                },
+                None => Value::List(Arc::new(Vec::new())),
+            };
+        }
+    }
+    eval_json(json, scope, cx.bag, cx.cache, cx.warnings)
 }
 
 /// The tokens of a handler prop — one object, or a list of them — kept raw;
@@ -536,7 +556,7 @@ fn resolve_node(
         Some("$each") => {
             let items = props
                 .and_then(|p| p.get("items"))
-                .map(|i| eval_json(i, scope, cx.bag, cx.cache, cx.warnings))
+                .map(|i| eval_prop(i, scope, cx))
                 .unwrap_or(Value::Undefined);
             let Value::List(rows) = items else {
                 // `$each` over a non-list draws nothing (the TS `<For>` over []).
@@ -714,10 +734,8 @@ fn resolve_node(
                             },
                         );
                     } else {
-                        resolved_props.insert(
-                            key.as_str().into(),
-                            eval_json(value, &node_scope, cx.bag, cx.cache, cx.warnings),
-                        );
+                        resolved_props
+                            .insert(key.as_str().into(), eval_prop(value, &node_scope, cx));
                     }
                 }
             }
@@ -778,10 +796,8 @@ fn resolve_node(
                             },
                         );
                     } else {
-                        resolved_props.insert(
-                            key.as_str().into(),
-                            eval_json(value, &node_scope, cx.bag, cx.cache, cx.warnings),
-                        );
+                        resolved_props
+                            .insert(key.as_str().into(), eval_prop(value, &node_scope, cx));
                     }
                 }
             }
