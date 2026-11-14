@@ -333,6 +333,61 @@ fn block_composer_decodes_a_stored_editor_state() {
 }
 
 #[test]
+fn base64_editor_state_matches_browser_atob() {
+    // utils.ts decodeBase64Utf8 goes through browser `atob`: ASCII
+    // whitespace is ignored and omitted padding is tolerated — the
+    // standard alphabet only; URL-safe input is a decode error, not a
+    // document.
+    use base64::Engine as _;
+    let doc = r#"[{"_type":"block","text":"héllo!!"}]"#;
+    let padded = base64::engine::general_purpose::STANDARD.encode(doc);
+    assert!(padded.ends_with('=')); // the fixture exercises real padding
+    let unpadded = padded.trim_end_matches('=');
+    let half = padded.len() / 2;
+    let wrapped = format!("{} \r\n {}", &padded[..half], &padded[half..]);
+    let uri = |b64: &str| format!("data:application/json;base64,{b64}");
+    for b64 in [&padded, unpadded, &wrapped] {
+        let n = node("BlockComposer", &[("editorState", Value::from(uri(b64)))]);
+        assert_eq!(fallback(&n), "héllo!!", "payload: {b64:?}");
+    }
+    // …and a `{data_base64}` file object decodes with the same tolerance.
+    let n = node(
+        "BlockComposer",
+        &[(
+            "editorState",
+            obj(&[("data_base64", Value::from(unpadded))]),
+        )],
+    );
+    assert_eq!(fallback(&n), "héllo!!");
+
+    // URL-safe characters are not the standard alphabet — atob throws.
+    let n = node(
+        "BlockComposer",
+        &[("editorState", Value::from(uri("-___")))],
+    );
+    assert_eq!(fallback(&n), "");
+}
+
+#[test]
+fn base64_editor_state_decodes_utf8_lossy() {
+    // TextDecoder is not fatal: undecodable bytes become U+FFFD and the
+    // document is retained — strict `from_utf8` would drop it
+    // (utils.ts:8-15).
+    use base64::Engine as _;
+    let mut bytes = br#"[{"_type":"block","text":"h"#.to_vec();
+    bytes.push(0xFF);
+    bytes.extend_from_slice(br#"llo"}]"#);
+    let b64 = base64::engine::general_purpose::STANDARD.encode(bytes);
+    for state in [
+        Value::from(format!("data:application/json;base64,{b64}")),
+        obj(&[("data_base64", Value::from(b64))]),
+    ] {
+        let n = node("BlockComposer", &[("editorState", state)]);
+        assert_eq!(fallback(&n), "h\u{FFFD}llo");
+    }
+}
+
+#[test]
 fn graph_outlines_named_nodes_and_edges() {
     let n = node(
         "GraphView",

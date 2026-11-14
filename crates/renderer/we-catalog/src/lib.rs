@@ -964,7 +964,8 @@ fn content_blocks(value: &Value) -> Option<Vec<Value>> {
         Value::Obj(o) => {
             // `{data_base64, file_type}` — the unresolved file object.
             if let Some(Value::Str(b64)) = o.get("data_base64") {
-                let s = String::from_utf8(b64_decode(b64)?).ok()?;
+                let bytes = b64_decode(b64)?;
+                let s = String::from_utf8_lossy(&bytes);
                 return json_value(&s).and_then(|v| content_blocks(&v));
             }
             let inner = if matches!(o.get("_type"), Some(Value::Str(t)) if t.as_ref() == "document")
@@ -983,7 +984,7 @@ fn content_blocks(value: &Value) -> Option<Vec<Value>> {
             // parse raw — a bad parse is `null`, not a composition.
             let json = if s.starts_with("data:") && s.contains(";base64,") {
                 let (_, b64) = s.split_once(";base64,")?;
-                String::from_utf8(b64_decode(b64)?).ok()?
+                String::from_utf8_lossy(&b64_decode(b64)?).into_owned()
             } else {
                 s.to_string()
             };
@@ -1004,9 +1005,30 @@ fn json_value(s: &str) -> Option<Value> {
         .map(|v| Value::from_json(&v))
 }
 
+/// Base64 the way browser `atob` accepts it (utils.ts `decodeBase64Utf8`):
+/// ASCII whitespace is ignored and padding may be omitted — the standard
+/// alphabet only; the URL-safe one stays a decode error. The UTF-8 decode
+/// at the call sites is lossy, matching `TextDecoder` (U+FFFD, not null).
 fn b64_decode(s: &str) -> Option<Vec<u8>> {
-    use base64::Engine as _;
-    base64::engine::general_purpose::STANDARD.decode(s).ok()
+    use base64::{
+        alphabet,
+        engine::{
+            general_purpose::{GeneralPurpose, GeneralPurposeConfig},
+            DecodePaddingMode,
+        },
+        Engine as _,
+    };
+    const ENGINE: GeneralPurpose = GeneralPurpose::new(
+        &alphabet::STANDARD,
+        GeneralPurposeConfig::new().with_decode_padding_mode(DecodePaddingMode::Indifferent),
+    );
+    ENGINE
+        .decode(
+            s.chars()
+                .filter(|c| !c.is_ascii_whitespace())
+                .collect::<String>(),
+        )
+        .ok()
 }
 
 /// One block: a text block's `text` (or its span children's text joined),
