@@ -693,3 +693,44 @@ fn n2_accessor_return_is_read_before_property_and_index() {
         json!({"$undefined": true})
     );
 }
+
+/// `??` is a value boundary on its right side too: `left ?? settle(right)`
+/// in evaluate.ts. A namespace the right operand evaluates to settles to
+/// `undefined` before the member read — unlike the conditional, which
+/// deliberately returns its selected arm raw.
+#[test]
+fn n3_nullish_settles_the_selected_operand() {
+    let env = MapEnv::new().with_function("lookup", |_| {
+        Value::namespace(MapNamespace::new(IndexMap::from([("x".into(), 42.into())])))
+    });
+    // With a nullish left the right result is settled — a namespace is
+    // undefined before `.x` is ever read.
+    assert_eq!(
+        eval(&parse("(null ?? lookup()).x").unwrap(), &env).to_json(),
+        json!({"$undefined": true})
+    );
+    assert_eq!(
+        eval(&parse("null ?? lookup()").unwrap(), &env).to_json(),
+        json!({"$undefined": true})
+    );
+    // Control: the conditional operator returns its arm RAW — the
+    // namespace is still traversable. Settling every selected branch would
+    // be wrong.
+    assert_eq!(
+        eval(&parse("(true ? lookup() : null).x").unwrap(), &env).to_json(),
+        json!(42)
+    );
+    assert_eq!(
+        eval(&parse("(false ? null : lookup()).x").unwrap(), &env).to_json(),
+        json!(42)
+    );
+    // Short circuiting is retained: a defined left answers with itself.
+    assert_eq!(
+        eval(&parse("1 ?? lookup()").unwrap(), &env).to_json(),
+        json!(1)
+    );
+    assert_eq!(
+        eval(&parse("0 ?? lookup()").unwrap(), &env).to_json(),
+        json!(0)
+    );
+}

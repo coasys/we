@@ -223,6 +223,9 @@ pub(crate) fn eval_node(node: &Node, env: &dyn Env) -> Value {
                     }
                     LogicalOp::Nullish => {
                         if matches!(left, Value::Undefined | Value::Null) {
+                            // `left ?? settle(right)` — a value boundary,
+                            // unlike `?:`, which returns its arm raw.
+                            tasks.push(Task::Settle);
                             tasks.push(Task::Eval(right));
                         } else {
                             values.push(left);
