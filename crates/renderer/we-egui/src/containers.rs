@@ -7,7 +7,7 @@ use we_expr::Value;
 use we_style::Style;
 use we_template::ResolvedNode;
 
-use crate::defaults::{view_of, FONT_PX, ROOT_PX};
+use crate::defaults::view_of;
 use crate::props;
 use crate::{MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
 
@@ -20,9 +20,7 @@ pub(crate) fn paint_container(cx: &mut PaintCx, node: &ResolvedNode, style: &Sty
         rect,
         style,
         props::text_color(style, cx.ui),
-        FONT_PX,
-        ROOT_PX,
-        view.viewport,
+        view,
     );
     let name = props::prop_text(node, "label")
         .or_else(|| props::prop_text(node, "data-we-id"))

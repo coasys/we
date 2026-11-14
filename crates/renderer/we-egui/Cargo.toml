@@ -16,6 +16,7 @@ we-template.workspace = true
 we-layout.workspace = true
 we-style.workspace = true
 we-expr.workspace = true
+wuff = "=0.2.9"
 
 [dev-dependencies]
 we-catalog.workspace = true

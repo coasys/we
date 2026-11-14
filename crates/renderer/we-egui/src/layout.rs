@@ -8,7 +8,7 @@ use std::sync::Arc;
 use we_style::Style;
 use we_template::{NodeId, ResolvedChild, ResolvedNode};
 
-use crate::defaults::{store_view, StyleCx, FONT_PX, ROOT_PX};
+use crate::defaults::{font_px, root_px, store_view, StyleCx};
 use crate::{MeasureCx, Rect, Registry, Size};
 
 /// `(node, part)` → rect — a widget's virtual chrome.
@@ -101,7 +101,14 @@ impl<'a> we_layout::Measure for EguiMeasure<'a> {
             crate::props::transform_text(style, text, crate::props::prop_bool(owner, "uppercase"));
         let truncate = crate::props::prop_bool(owner, "truncate");
         let lines = crate::props::prop_num(owner, "lines").map(|n| n.max(1.0) as usize);
-        let font = crate::props::font_id(style, FONT_PX, ROOT_PX, self.scx.viewport);
+        let font = crate::props::font_id(
+            style,
+            self.cx.ctx,
+            self.scx.tokens.get("--we-font-family"),
+            font_px(self.scx),
+            root_px(self.scx),
+            self.scx.viewport,
+        );
         if avail.x <= 0.0 {
             // MinContent: CSS's automatic minimum — the longest unbreakable
             // run, or the ellipsis when the owner truncates.
@@ -154,6 +161,35 @@ pub fn layout_shrink(
     run(cx, scx, registry, root, rect, true, parent)
 }
 
+/// Register every font chain the tree will be measured in before the
+/// first text is — the theme's base stack and each node's own resolved
+/// `font-family` — so no several-name stack is measured or painted in a
+/// provisional chain on the frame it appears (`fonts::prepare`). A stack
+/// that only an ancestor's scoped `var()` produces is not seen here; it
+/// still registers on first `resolve` and lands a pass later.
+fn prepare_fonts(ctx: &egui::Context, scx: &StyleCx, root: &ResolvedNode) {
+    fn walk(node: &ResolvedNode, scx: &StyleCx, out: &mut Vec<(String, Option<f32>)>) {
+        let st = crate::defaults::style_of(node, scx);
+        if let Some(f) = st.text.font_family.as_deref() {
+            let entry = (f.to_string(), st.text.font_weight);
+            if !out.contains(&entry) {
+                out.push(entry);
+            }
+        }
+        for child in &node.children {
+            if let we_template::ResolvedChild::Node(n) = child {
+                walk(n, scx, out);
+            }
+        }
+    }
+    let mut stacks: Vec<(String, Option<f32>)> = Vec::new();
+    if let Some(base) = scx.tokens.get("--we-font-family") {
+        stacks.push((base.to_string(), None));
+    }
+    walk(root, scx, &mut stacks);
+    crate::fonts::prepare(ctx, stacks.iter().map(|(s, w)| (s.as_str(), *w)));
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run(
     cx: &MeasureCx,
@@ -165,6 +201,7 @@ fn run(
     parent: Option<&Style>,
 ) -> Layout {
     store_view(cx.ctx, scx);
+    prepare_fonts(cx.ctx, scx, root);
     let m = EguiMeasure { cx, scx, registry };
     let rect = we_layout::Rect::from_min_size(
         we_layout::Pos2::new(rect.min.x, rect.min.y),

@@ -12,6 +12,7 @@
 pub mod defaults;
 mod geom;
 pub mod props;
+pub mod theme_css;
 mod tree;
 
 pub use geom::{Pos2, Rect, Size, Vec2};
