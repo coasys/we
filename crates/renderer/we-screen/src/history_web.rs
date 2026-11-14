@@ -33,6 +33,7 @@ impl BrowserHistory {
     /// search + hash` whenever the browser moves (a Back button, a
     /// `history.back()` answer). Replaces any previous listener.
     pub fn on_popstate(&mut self, f: impl Fn(String) + 'static) {
+        self.remove_popstate();
         let window = self.window.clone();
         let closure = Closure::wrap(Box::new(move || {
             if let Some(loc) = window.location().pathname().ok().map(|pathname| {
@@ -51,6 +52,17 @@ impl BrowserHistory {
             .window
             .add_event_listener_with_callback("popstate", closure.as_ref().unchecked_ref());
         self.popstate = Some(closure);
+    }
+
+    /// Unwire the registered listener, if there is one — the DOM keeps the
+    /// `Closure`'s function, so dropping it alone leaves a live listener
+    /// pointing at a dead callback.
+    fn remove_popstate(&mut self) {
+        if let Some(closure) = self.popstate.take() {
+            let _ = self
+                .window
+                .remove_event_listener_with_callback("popstate", closure.as_ref().unchecked_ref());
+        }
     }
 
     fn href_now(&self) -> String {
@@ -102,5 +114,11 @@ impl HistoryBackend for BrowserHistory {
     /// sits; callers that need a position use `MemoryHistory`.
     fn index(&self) -> usize {
         self.depth().saturating_sub(1)
+    }
+}
+
+impl Drop for BrowserHistory {
+    fn drop(&mut self) {
+        self.remove_popstate();
     }
 }
