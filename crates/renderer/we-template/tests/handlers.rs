@@ -41,6 +41,89 @@ fn root_id(root: &ResolvedNode) -> NodeId {
 }
 
 #[test]
+fn reset_local_removes_the_persisted_key_and_url_param() {
+    // B9: `meta.reset()` sets the initial, removes `localStorage[persistKey]`
+    // and clears the URL param — it does NOT write the initial through the
+    // setter mirror. A removed key lets the next mount fall to the new
+    // declared initial instead of restoring the stale persisted one.
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": {
+            "shade": { "type": "string", "initial": "light",
+                       "persist": "shade", "syncParam": "shade" }
+        },
+        "props": {
+            "onEdit": { "$setLocal": "shade", "value": "dark" },
+            "onReset": { "$resetLocal": "$scope" }
+        }
+    }));
+    let (mut rt, mut host, locals, mut screen) = rig(node, StoreBag::new(), "/");
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root_id(&root);
+
+    rt.dispatch(&mut host, &mut screen, &owner, "onEdit", Value::Null);
+    assert!(screen.prefs.get("we-local:shade").is_some());
+    assert_eq!(screen.nav.param("shade"), Some("dark"));
+
+    rt.dispatch(&mut host, &mut screen, &owner, "onReset", Value::Null);
+    assert!(
+        locals.get(&owner, "shade").strict_eq(&Value::from("light")),
+        "reset restores the declared initial"
+    );
+    assert!(
+        screen.prefs.get("we-local:shade").is_none(),
+        "reset REMOVES the persisted key, it does not persist the initial"
+    );
+    assert_eq!(
+        screen.nav.param("shade"),
+        None,
+        "reset clears the URL param (routeParams.set(name, null))"
+    );
+}
+
+#[test]
+fn reset_local_through_a_query_only_node_hits_the_state_scope() {
+    // B9: `$localScopeFields` changes only at a `$localState` node — a
+    // `$queries`-only node must not shrink the reset to zero fields.
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "name": { "type": "string", "initial": "A" } },
+        "props": { "onEdit": { "$setLocal": "name", "value": "edited" } },
+        "children": [{
+            "type": "Row",
+            "$queries": { "q": { "entity": "E" } },
+            "children": [{ "type": "Box",
+                "props": { "onReset": { "$resetLocal": "$scope" } } }]
+        }]
+    }));
+    let (mut rt, mut host, locals, mut screen) = rig(node, StoreBag::new(), "/");
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root_id(&root);
+    let deep = {
+        fn find<'a>(n: &'a ResolvedNode, ty: &str) -> Option<&'a ResolvedNode> {
+            if n.ty.as_ref() == ty {
+                return Some(n);
+            }
+            n.children.iter().find_map(|c| match c {
+                we_template::ResolvedChild::Node(m) => find(m, ty),
+                _ => None,
+            })
+        }
+        find(&root, "Box").unwrap().id.clone()
+    };
+
+    rt.dispatch(&mut host, &mut screen, &owner, "onEdit", Value::Null);
+    assert!(locals.get(&owner, "name").strict_eq(&Value::from("edited")));
+
+    rt.dispatch(&mut host, &mut screen, &deep, "onReset", Value::Null);
+    assert!(
+        locals.get(&owner, "name").strict_eq(&Value::from("A")),
+        "reset through a query-only scope still reaches the enclosing $localState fields; got {:?}",
+        locals.get(&owner, "name")
+    );
+}
+
+#[test]
 fn a_screen_write_is_visible_to_later_tokens_in_the_chain() {
     // B8: `routeStore.setParam` mutates ScreenState; the next token's
     // `routeStore.params.x` read must see it — TS store accessors see the

@@ -16,7 +16,10 @@ use std::sync::Arc;
 
 use serde_json::Value as Json;
 use we_expr::{ParseCache, Value};
-use we_screen::{local_write_mirror, template_root_depth, ScreenOp, ScreenState};
+use we_screen::{
+    local_persist_key, local_sync_spec, local_write_mirror, template_root_depth, ScreenOp,
+    ScreenState,
+};
 
 use crate::handler::{CallId, HandlerToken};
 use crate::resolve::{eval_json, handler_tokens};
@@ -137,6 +140,43 @@ fn write_local(scope: &Scope, owner: &NodeId, field: &str, value: Value, cx: &mu
                 name: param.name,
                 value: param.text,
                 push: Some(param.push),
+            })
+            .changed();
+    }
+    if moved {
+        crate::scope::bind_screen(cx.bag, cx.screen);
+    }
+}
+
+/// `meta.reset()` — the field back to its initial with the mirror REMOVED,
+/// not written through the setter: `localStorage.removeItem(persistKey)` and
+/// `routeParams.set(name, null)`. Writing the initial into the store would
+/// pin it — the next mount restores it even after the template's declared
+/// initial moved on.
+fn reset_local(scope: &Scope, owner: &NodeId, field: &str, value: Value, cx: &mut HandlerCx) {
+    cx.host.set_local(owner, field, value);
+    cx.locals.untouch(owner, field);
+    let Some((ty, persist, sync_param, _)) = local_decl(scope, field) else {
+        return;
+    };
+    let persist_name = match &persist {
+        Value::Str(s) => Some(s.to_string()),
+        _ => None,
+    };
+    let mut moved = false;
+    if let Some(key) = local_persist_key(&ty, persist_name.as_deref()) {
+        moved |= cx
+            .screen
+            .apply(ScreenOp::SetPref { key, value: None })
+            .changed();
+    }
+    if let Some((name, _)) = local_sync_spec(&ty, &sync_param) {
+        moved |= cx
+            .screen
+            .apply(ScreenOp::SetParam {
+                name,
+                value: None,
+                push: None,
             })
             .changed();
     }
@@ -355,8 +395,9 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
         }
         HandlerToken::ResetLocal { .. } => {
             // Every field of the innermost declaring scope back to `initial`
-            // (`resolveResetLocalProp` walks `$localScopeFields`), touched
-            // cleared with it — `meta.reset()` in the validation layer.
+            // (`resolveResetLocalProp` walks `$localScopeFields`) with its
+            // persist/URL mirror REMOVED — `meta.reset()` in the validation
+            // layer.
             for name in scope_fields(scope) {
                 let Some(owner) = local_owner(scope, &name) else {
                     continue;
@@ -364,8 +405,7 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
                 let initial = local_decl(scope, &name)
                     .map(|(_, _, _, initial)| initial)
                     .unwrap_or(Value::Undefined);
-                write_local(scope, &owner, &name, initial, cx);
-                cx.locals.untouch(&owner, &name);
+                reset_local(scope, &owner, &name, initial, cx);
             }
         }
         HandlerToken::Invoke {

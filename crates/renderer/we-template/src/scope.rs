@@ -97,17 +97,29 @@ impl LocalNs {
     }
 
     /// The `State` fields the innermost `$localState` declared — the scope a
-    /// `$resetLocal`/`$touch "$all"` acts on.
+    /// `$resetLocal`/`$touch "$all"` acts on. A `$queries`-only node extends
+    /// `local` without moving `$localScopeFields`, so the search walks back
+    /// to the nearest scope that declared state (WE's `scopeFields` array
+    /// is only assigned inside the `$localState` block).
     fn scope_fields(&self) -> Vec<Value> {
-        let Some(inner) = self.decls.last() else {
-            return Vec::new();
-        };
-        inner
-            .fields
+        self.decls
             .iter()
-            .filter(|(_, d)| matches!(d, LocalDecl::State(_)))
-            .map(|(name, _)| Value::Str(name.clone()))
-            .collect()
+            .rev()
+            .find(|inner| {
+                inner
+                    .fields
+                    .values()
+                    .any(|d| matches!(d, LocalDecl::State(_)))
+            })
+            .map(|inner| {
+                inner
+                    .fields
+                    .iter()
+                    .filter(|(_, d)| matches!(d, LocalDecl::State(_)))
+                    .map(|(name, _)| Value::Str(name.clone()))
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 }
 
