@@ -4,7 +4,7 @@
 //! children under it. A click outside or Escape closes; an `open` prop
 //! overrides the internal flag entirely.
 use we_style::Style;
-use we_template::ResolvedNode;
+use we_template::{ResolvedChild, ResolvedNode};
 
 use crate::props;
 use crate::{
@@ -22,11 +22,23 @@ impl Widget for Popover {
         WidgetKind::Overlay
     }
 
-    fn parts_spec(&self, _node: &ResolvedNode) -> Option<PartsSpec> {
-        // `trigger` is the anchor child; everything else floats.
+    fn parts_spec(&self, node: &ResolvedNode) -> Option<PartsSpec> {
+        // popover.ts: `<slot name="trigger">` anchors — the bundle's popovers
+        // all carry `slot="trigger"`/`slot="content"`. With no named
+        // trigger, unslotted children anchor as before (the old API);
+        // anything unpicked floats into the panel.
+        let named = node
+            .children
+            .iter()
+            .any(|c| matches!(c, ResolvedChild::Node(n) if n.slot.as_deref() == Some("trigger")));
+        let pick = if named {
+            Pick::Named("trigger".into())
+        } else {
+            Pick::Default
+        };
         Some(PartsSpec {
             direction: Direction::Column,
-            parts: vec![PartSpec::group("trigger", Pick::Default, Direction::Column)],
+            parts: vec![PartSpec::group("trigger", pick, Direction::Column)],
         })
     }
 

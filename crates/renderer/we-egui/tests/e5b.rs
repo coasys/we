@@ -636,6 +636,36 @@ fn popover_opens_on_trigger_and_closes_outside() {
     assert!(!r.edit.borrow().is_open(&NodeId::from("pop")));
 }
 
+/// B2 — the authored bundle shape: popover children carry NAMED slots
+/// (`slot="trigger"`/`slot="content"`, popover.ts:160–165). The named
+/// trigger must anchor (in-flow rect, painted at rest); the named content
+/// floats and only shows while open.
+#[test]
+fn popover_named_trigger_anchors_and_named_content_floats() {
+    let mut pop = node("we-popover", "pop", props(&[]));
+    let mut trig = node("we-button", "pop/t", props(&[("label", s("Open pop"))]));
+    trig.slot = Some(Arc::from("trigger"));
+    let mut body = node("we-button", "pop/b", props(&[("label", s("Pop body"))]));
+    body.slot = Some(Arc::from("content"));
+    body.handlers = handlers(&["onClick"]);
+    pop.children = vec![
+        ResolvedChild::Node(Box::new(trig)),
+        ResolvedChild::Node(Box::new(body)),
+    ];
+    let (mut h, r) = rig(pop);
+    h.run();
+    assert!(h.query_by_label("Pop body").is_none());
+    h.get_by_label("Open pop").click();
+    h.run();
+    assert!(h.query_by_label("Pop body").is_some());
+    assert!(r.edit.borrow().is_open(&NodeId::from("pop")));
+    h.drag_at(egui::pos2(390.0, 390.0));
+    h.step();
+    h.drop_at(egui::pos2(390.0, 390.0));
+    h.run();
+    assert!(!r.edit.borrow().is_open(&NodeId::from("pop")));
+}
+
 #[test]
 fn dropdown_menu_item_fires_once_and_closes() {
     let mut menu = node(
