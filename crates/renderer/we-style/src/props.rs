@@ -1317,9 +1317,11 @@ pub fn eval_clip_path(text: &str) -> Option<ClipPath> {
     ) {
         args.remove(0);
     }
-    if args.len() < 3 {
+    if args.is_empty() {
         return None;
     }
+    // Under three points the polygon is degenerate — it parses (CSS keeps
+    // it) but clips the element's whole output; the painter decides.
     args.iter()
         .map(|point| match top_level_parts(point).as_slice() {
             [x, y] => Some((eval_dimension(x)?, eval_dimension(y)?)),

@@ -457,6 +457,20 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
         }
     };
     let parts = w.parts_buf.as_ref().unwrap_or(&w.base_parts);
+    // `clip-path: polygon(…)` clips the element's whole painted output —
+    // chrome, children, spans — to `polygon ∩ border box`. egui clips to
+    // rectangles only, so the walk marks where the node's paint starts and
+    // rewrites the queued shapes when the subtree completes.
+    let clip = crate::props::clip_region(style, rect, crate::defaults::view_of(w.ui.ctx()));
+    let clip_mark = if matches!(clip, crate::props::ClipRegion::None) {
+        None
+    } else {
+        Some(w.ui.ctx().graphics(|g| {
+            g.get(w.ui.layer_id())
+                .map(|list| list.next_idx().0)
+                .unwrap_or(0)
+        }))
+    };
     {
         let mut cx = PaintCx {
             ui: w.ui,
@@ -526,6 +540,11 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
                 }
             }
         }
+    }
+
+    // The subtree's output is queued — cut it to the clip polygon.
+    if let Some(start) = clip_mark {
+        crate::props::apply_clip(w.ui.ctx(), w.ui.layer_id(), start, &clip, rect);
     }
 
     // DOM bubble: an authored `onClick` fires child-first — after every

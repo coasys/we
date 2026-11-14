@@ -290,14 +290,9 @@ pub(crate) fn paint_box(
         viewport,
     );
 
-    // A `clip-path: polygon(…)` replaces the whole chrome path — CSS
-    // clips the element's entire painted output (bg, borders, shadows,
-    // radius), so the polygon IS the box: fill it, stroke its edges, and
-    // paint nothing else (the shadows the clip would cut anyway).
-    if let Some(points) = clip_points(style, rect, view) {
-        paint_clipped(painter, rect, &points, style, current_color, view);
-        return;
-    }
+    // `clip-path: polygon(…)` changes nothing here — the element paints
+    // normally (radius, borders, shadows) and the paint walk clips the
+    // whole subtree's output afterwards; see [`apply_clip`].
 
     // Shadows under the box: egui has shadows only as widgets; paint a soft
     // offset rect per layer (inset layers paint over the bg below).
@@ -507,6 +502,8 @@ fn paint_inset_layer(
 /// for `clip-path: none`/no clip. Per CSS the reference box is the
 /// element's border box: x percentages resolve against its width, y
 /// against its height (`calc(…)` mixes go through [`Dimension::resolve`]).
+/// The result may be degenerate — under three distinct points or zero
+/// area — which the caller reads as "clip everything", not "no clip".
 fn clip_points(
     style: &Style,
     rect: egui::Rect,
@@ -549,126 +546,273 @@ fn clip_points(
     if deduped.len() > 1 && deduped[0].distance(*deduped.last().unwrap()) <= 0.01 {
         deduped.pop();
     }
-    (deduped.len() >= 3).then_some(deduped)
+    Some(deduped)
 }
 
-/// Paint the clipped box: the polygon IS the painted shape. The fill is an
-/// ear-clipped mesh (epaint's own path fill only fans convex polygons; the
-/// cyberpunk notches are concave), and each border side strokes the
-/// polygon edge(s) nearest its box edge, inset by half the width so the
-/// stroke lands inside the clip like CSS `border` under `clip-path`.
-fn paint_clipped(
-    painter: &egui::Painter,
-    rect: egui::Rect,
-    points: &[egui::Pos2],
+/// What the node's `clip-path` does to its painted output.
+pub(crate) enum ClipRegion {
+    /// No `clip-path` — output passes through untouched.
+    None,
+    /// A degenerate polygon (under three distinct points, or zero area)
+    /// removes the element's output entirely — it is not "no clip".
+    All,
+    /// Polygon points resolved against the border box.
+    Polygon(Vec<egui::Pos2>),
+}
+
+/// The node's clip region under `style.paint.clip` — [`clip_points`]
+/// resolves the polygon against `rect` (the border box); fewer than three
+/// distinct points or a zero-area result clip everything.
+pub(crate) fn clip_region(
     style: &Style,
-    current_color: egui::Color32,
+    rect: egui::Rect,
     view: crate::defaults::ViewportCx,
-) {
-    let opacity = style.paint.opacity.unwrap_or(1.0).clamp(0.0, 1.0);
-    let fade = |c: egui::Color32| c.gamma_multiply(opacity);
-    if let Some(bg) = style.paint.bg {
-        let mut mesh = egui::epaint::Mesh::default();
-        let color = fade(color32(bg));
-        mesh.vertices = points
+) -> ClipRegion {
+    if !matches!(style.paint.clip, Some(we_style::ClipPath::Polygon(_))) {
+        return ClipRegion::None;
+    }
+    match clip_points(style, rect, view) {
+        Some(pts) if pts.len() >= 3 && signed_area(&pts).abs() > 0.5 => ClipRegion::Polygon(pts),
+        _ => ClipRegion::All,
+    }
+}
+
+/// The polygon's signed area (shoelace) — sign is the winding.
+fn signed_area(pts: &[egui::Pos2]) -> f32 {
+    let n = pts.len();
+    (0..n)
+        .map(|i| {
+            let (a, b) = (pts[i], pts[(i + 1) % n]);
+            a.x * b.y - b.x * a.y
+        })
+        .sum::<f32>()
+        * 0.5
+}
+
+/// A vertex carried through clipping: position plus the attributes a
+/// tessellated mesh interpolates across its faces.
+#[derive(Clone, Copy)]
+struct ClipVert {
+    pos: egui::Pos2,
+    uv: egui::Pos2,
+    color: egui::Color32,
+}
+
+impl ClipVert {
+    fn lerp(a: Self, b: Self, t: f32) -> Self {
+        let t = t.clamp(0.0, 1.0);
+        let c = |x: u8, y: u8| (x as f32 + (y as f32 - x as f32) * t).round() as u8;
+        Self {
+            pos: egui::pos2(
+                a.pos.x + (b.pos.x - a.pos.x) * t,
+                a.pos.y + (b.pos.y - a.pos.y) * t,
+            ),
+            uv: egui::pos2(
+                a.uv.x + (b.uv.x - a.uv.x) * t,
+                a.uv.y + (b.uv.y - a.uv.y) * t,
+            ),
+            color: egui::Color32::from_rgba_unmultiplied(
+                c(a.color.r(), b.color.r()),
+                c(a.color.g(), b.color.g()),
+                c(a.color.b(), b.color.b()),
+                c(a.color.a(), b.color.a()),
+            ),
+        }
+    }
+}
+
+/// An inward half-plane: `origin` + unit normal pointing inside.
+type Plane = (egui::Pos2, egui::Vec2);
+
+/// Sutherland–Hodgman: clip the vertex list to every half-plane. Vertices
+/// beyond a small epsilon count as inside — rasterization, not geometry
+/// proofs, is the oracle.
+fn clip_planes(poly: &[ClipVert], planes: &[Plane]) -> Vec<ClipVert> {
+    const EPS: f32 = 0.01;
+    let mut out = poly.to_vec();
+    for &(origin, n) in planes {
+        if out.is_empty() {
+            break;
+        }
+        let d = |p: egui::Pos2| (p - origin).dot(n);
+        let mut next = Vec::with_capacity(out.len());
+        for i in 0..out.len() {
+            let a = out[i];
+            let b = out[(i + 1) % out.len()];
+            let (da, db) = (d(a.pos), d(b.pos));
+            if da >= -EPS {
+                next.push(a);
+            }
+            if (da >= -EPS) != (db >= -EPS) {
+                next.push(ClipVert::lerp(a, b, da / (da - db)));
+            }
+        }
+        out = next;
+    }
+    out
+}
+
+/// The ear's three inward half-planes — `sign` is the polygon's winding.
+fn ear_planes(ear: &[egui::Pos2; 3], sign: f32) -> [Plane; 3] {
+    let mut planes = [(egui::pos2(0.0, 0.0), egui::vec2(0.0, 0.0)); 3];
+    for i in 0..3 {
+        let (a, b) = (ear[i], ear[(i + 1) % 3]);
+        let d = b - a;
+        let n = if sign >= 0.0 {
+            egui::vec2(-d.y, d.x)
+        } else {
+            egui::vec2(d.y, -d.x)
+        };
+        planes[i] = (a, n.normalized());
+    }
+    planes
+}
+
+/// Fan-triangulate a convex clip result into `out` (vertex + index lists).
+fn emit_fan(poly: &[ClipVert], out: &mut egui::epaint::Mesh) {
+    if poly.len() < 3 {
+        return;
+    }
+    let base = out.vertices.len() as u32;
+    out.vertices
+        .extend(poly.iter().map(|v| egui::epaint::Vertex {
+            pos: v.pos,
+            uv: v.uv,
+            color: v.color,
+        }));
+    for i in 1..poly.len() - 1 {
+        out.indices
+            .extend([base, base + i as u32, base + i as u32 + 1]);
+    }
+}
+
+/// `mesh ∩ poly ∩ rect` as a new mesh — `ears` are the polygon's
+/// triangulation, `rect_planes` the border box's inward half-planes.
+fn clip_mesh(
+    mesh: &egui::epaint::Mesh,
+    ears: &[[egui::Pos2; 3]],
+    sign: f32,
+    rect_planes: &[Plane; 4],
+) -> egui::epaint::Mesh {
+    let mut out = egui::epaint::Mesh {
+        texture_id: mesh.texture_id,
+        ..Default::default()
+    };
+    for tri in mesh.indices.chunks_exact(3) {
+        let t: Vec<ClipVert> = tri
             .iter()
-            .map(|&pos| egui::epaint::Vertex {
-                pos,
-                uv: egui::epaint::WHITE_UV,
-                color,
+            .map(|&i| {
+                let v = mesh.vertices[i as usize];
+                ClipVert {
+                    pos: v.pos,
+                    uv: v.uv,
+                    color: v.color,
+                }
             })
             .collect();
-        mesh.indices = triangulate(points);
-        painter.add(egui::Shape::mesh(mesh));
+        for ear in ears {
+            let piece = clip_planes(&clip_planes(&t, &ear_planes(ear, sign)), rect_planes);
+            emit_fan(&piece, &mut out);
+        }
     }
+    out
+}
 
-    // [top, right, bottom, left] border styles per edge index.
-    let sides = [
-        &style.paint.borders.top,
-        &style.paint.borders.right,
-        &style.paint.borders.bottom,
-        &style.paint.borders.left,
-    ];
-    let side_px = |side: &Option<we_style::BorderSide>| -> f32 {
-        side.as_ref()
-            .and_then(|s| s.width)
-            .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
-            .unwrap_or(3.0)
-    };
-    // The box edge a polygon vertex belongs to — nearest by perpendicular
-    // distance (a vertex on the corner counts for either; the edge match
-    // below uses the *edge's* dominant direction to break the tie).
-    let nearest = |p: egui::Pos2| -> usize {
-        [
-            (p.y - rect.min.y).abs(),
-            (rect.max.x - p.x).abs(),
-            (rect.max.y - p.y).abs(),
-            (p.x - rect.min.x).abs(),
-        ]
-        .into_iter()
-        .enumerate()
-        .min_by(|(_, a), (_, b)| a.total_cmp(b))
-        .map(|(i, _)| i)
-        .unwrap()
-    };
-    let center = egui::pos2(
-        points.iter().map(|p| p.x).sum::<f32>() / points.len() as f32,
-        points.iter().map(|p| p.y).sum::<f32>() / points.len() as f32,
-    );
-    for i in 0..points.len() {
-        let a = points[i];
-        let b = points[(i + 1) % points.len()];
-        if a.distance(b) < 0.01 {
-            continue; // repeated corner (declared polygons sometimes do)
-        }
-        let (sa, sb) = (nearest(a), nearest(b));
-        let pick = if sa == sb {
-            sa
-        } else {
-            // An edge spanning two box edges (a clipped corner's diagonal)
-            // strokes with the wider of the two sides; equal widths pick
-            // the side matching the edge's dominant direction so e.g. a
-            // horizontal top-notch cut paints with the top border.
-            let (wa, wb) = (side_px(sides[sa]), side_px(sides[sb]));
-            if (wa - wb).abs() > 0.5 {
-                if wa > wb {
-                    sa
-                } else {
-                    sb
+/// Apply the node's [`ClipRegion`] to every shape the node's subtree
+/// queued on `layer` from index `start` on — the paint walk calls this
+/// after `paint_node` finishes the subtree. egui clips to rectangles
+/// only, so the polygon is applied to geometry: each queued shape is
+/// tessellated with the frame's own settings and every triangle is cut
+/// against the polygon's ears and the border box, then written back in
+/// place (a `Shape::Vec` keeps painting order when a shape becomes
+/// several meshes — e.g. chrome on the atlas texture plus glyphs on the
+/// font texture). `PaintCallback` primitives cannot be cut; they pass
+/// through with their rectangular clip like CSS's fixed-position escape.
+pub(crate) fn apply_clip(
+    ctx: &egui::Context,
+    layer: egui::LayerId,
+    start: usize,
+    region: &ClipRegion,
+    rect: egui::Rect,
+) {
+    let pts = match region {
+        ClipRegion::None => return,
+        ClipRegion::All => {
+            ctx.graphics_mut(|g| {
+                if let Some(list) = g.get_mut(layer) {
+                    let end = list.next_idx().0;
+                    for i in start..end {
+                        list.mutate_shape(egui::layers::ShapeIdx(i), |cs| {
+                            cs.shape = egui::Shape::Noop;
+                        });
+                    }
                 }
-            } else {
-                let horizontal = (b.x - a.x).abs() >= (b.y - a.y).abs();
-                [sa, sb]
-                    .into_iter()
-                    .find(|s| horizontal == (s % 2 == 0))
-                    .unwrap_or(sa)
-            }
-        };
-        let Some(side) = sides[pick].as_ref() else {
-            continue;
-        };
-        if matches!(
-            side.kind,
-            we_style::BorderKind::None | we_style::BorderKind::Hidden
-        ) {
-            continue;
+            });
+            return;
         }
-        let width = side
-            .width
-            .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
-            .unwrap_or(3.0);
-        if width <= 0.0 {
-            continue;
-        }
-        let color = side.color.map(color32).unwrap_or(current_color);
-        let d = (b - a).normalized();
-        let mut n = egui::vec2(d.y, -d.x);
-        if (center - a).dot(n) < 0.0 {
-            n = -n;
-        }
-        let off = n * (width * 0.5);
-        painter.line_segment([a + off, b + off], egui::Stroke::new(width, fade(color)));
+        ClipRegion::Polygon(pts) => pts,
+    };
+    let ear_idx = triangulate(pts);
+    if ear_idx.is_empty() {
+        return;
     }
+    let ears: Vec<[egui::Pos2; 3]> = ear_idx
+        .chunks_exact(3)
+        .map(|t| [pts[t[0] as usize], pts[t[1] as usize], pts[t[2] as usize]])
+        .collect();
+    let sign = if signed_area(pts) >= 0.0 { 1.0 } else { -1.0 };
+    let rect_planes: [Plane; 4] = [
+        (egui::pos2(rect.min.x, 0.0), egui::vec2(1.0, 0.0)),
+        (egui::pos2(rect.max.x, 0.0), egui::vec2(-1.0, 0.0)),
+        (egui::pos2(0.0, rect.min.y), egui::vec2(0.0, 1.0)),
+        (egui::pos2(0.0, rect.max.y), egui::vec2(0.0, -1.0)),
+    ];
+    let ppp = ctx.pixels_per_point();
+    let options = ctx.tessellation_options(|o| *o);
+    let tex_size = ctx.fonts(|f| f.font_image_size());
+    let mut tess = egui::epaint::Tessellator::new(ppp, options, tex_size, Vec::new());
+    ctx.graphics_mut(|g| {
+        let Some(list) = g.get_mut(layer) else {
+            return;
+        };
+        let end = list.next_idx().0;
+        for i in start..end {
+            list.mutate_shape(egui::layers::ShapeIdx(i), |cs| {
+                let taken = std::mem::replace(&mut cs.shape, egui::Shape::Noop);
+                let transform = cs.transform_after_tessellation;
+                let mut prims = Vec::new();
+                tess.tessellate_clipped_shape(
+                    egui::epaint::ClippedShape {
+                        clip_rect: cs.clip_rect,
+                        shape: taken,
+                        transform_after_tessellation: transform,
+                    },
+                    &mut prims,
+                );
+                let mut shapes = Vec::new();
+                for cp in prims {
+                    if let egui::epaint::Primitive::Mesh(m) = cp.primitive {
+                        let mut m = m;
+                        if transform != egui::emath::TSTransform::IDENTITY {
+                            for v in &mut m.vertices {
+                                v.pos = transform.mul_pos(v.pos);
+                            }
+                        }
+                        let m = clip_mesh(&m, &ears, sign, &rect_planes);
+                        if !m.indices.is_empty() {
+                            shapes.push(egui::Shape::mesh(m));
+                        }
+                    }
+                }
+                cs.transform_after_tessellation = egui::emath::TSTransform::IDENTITY;
+                cs.shape = match shapes.len() {
+                    0 => egui::Shape::Noop,
+                    1 => shapes.pop().unwrap(),
+                    _ => egui::Shape::Vec(shapes),
+                };
+            });
+        }
+    });
 }
 
 /// Ear-clipping triangulation of a simple polygon — index triples into
