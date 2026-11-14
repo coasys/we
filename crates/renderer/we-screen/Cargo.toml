@@ -22,6 +22,8 @@ web-sys = { version = "0.3", features = [
     "Location",
     "History",
     "Storage",
+    "Event",
+    "ErrorEvent",
     "EventTarget",
     "PopStateEvent",
 ] }

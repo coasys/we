@@ -263,11 +263,10 @@ impl Value {
             }
             Value::Num(n) => *n,
             Value::Str(s) => js_number_str(s),
-            Value::List(l) => match l.len() {
-                0 => 0.0,
-                1 => l[0].js_number(),
-                _ => f64::NAN,
-            },
+            // `Number(list)` is `Number` of the joined text — `String([x])`,
+            // not `Number(x)`: `[true]` is `NaN` ('true'), `[undefined]` and
+            // `[null]` are `0` (''), `[[1]]` is `1` ('1').
+            Value::List(_) => js_number_str(&self.js_string()),
             Value::Obj(_) | Value::Namespace(_) | Value::Callable(_) => f64::NAN,
         }
     }
@@ -508,6 +507,14 @@ fn marker(key: &str, value: serde_json::Value) -> serde_json::Value {
     serde_json::Value::Object(map)
 }
 
+/// A canonical array-index string — the only spelling a JS array answers to
+/// for `'0' in a`/`a['0']`: the digits of a usize and nothing else, so `'00'`,
+/// `'+0'`, `' 0'` and `'1.5'` are not indices.
+pub(crate) fn canonical_index(key: &str) -> Option<usize> {
+    let index = key.parse::<usize>().ok()?;
+    (index.to_string() == key).then_some(index)
+}
+
 /// `Number(string)` — the spellings JavaScript accepts that Rust's `f64`
 /// parser does not (`"0x…"` hex, `"0b…"`/`"0o…"`, a BigInt `"…n"` which reads
 /// `NaN`, `"+Infinity"`), and the spellings Rust accepts that JavaScript does
@@ -529,6 +536,17 @@ pub(crate) fn js_number_str(s: &str) -> f64 {
     if digits == "inf" || digits == "infinity" || digits == "nan" {
         return f64::NAN;
     }
+    // Radix literals are *unsigned* in JavaScript — `Number('+0x1')` and
+    // `Number('-0b1')` are `NaN` — so the prefix check runs on the whole
+    // trimmed string, before the sign is split off.
+    if let Some(hex) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
+        return radix_digits(hex, 16);
+    }
+    for (prefix, base) in [("0b", 2), ("0o", 8), ("0B", 2), ("0O", 8)] {
+        if let Some(digits) = t.strip_prefix(prefix) {
+            return radix_digits(digits, base);
+        }
+    }
     let (sign, rest) = match t.strip_prefix('-') {
         Some(rest) => (-1.0, rest),
         None => (1.0, t.strip_prefix('+').unwrap_or(t)),
@@ -537,34 +555,28 @@ pub(crate) fn js_number_str(s: &str) -> f64 {
     if rest.starts_with(['+', '-']) {
         return f64::NAN;
     }
-    if let Some(hex) = rest.strip_prefix("0x").or_else(|| rest.strip_prefix("0X")) {
-        // Accumulate in f64 so huge hex saturates to Infinity, as JS does.
-        let mut n = 0.0;
-        for c in hex.chars() {
-            match c.to_digit(16) {
-                Some(d) => n = n * 16.0 + d as f64,
-                None => return f64::NAN,
-            }
-        }
-        return sign * n;
-    }
-    for (prefix, base) in [("0b", 2), ("0o", 8), ("0B", 2), ("0O", 8)] {
-        if let Some(digits) = rest.strip_prefix(prefix) {
-            let mut n = 0.0;
-            for c in digits.chars() {
-                match c.to_digit(base) {
-                    Some(d) => n = n * base as f64 + d as f64,
-                    None => return f64::NAN,
-                }
-            }
-            return sign * n;
-        }
-    }
     // A BigInt literal is not a number.
     if rest.ends_with('n') {
         return f64::NAN;
     }
     rest.parse::<f64>().map(|n| sign * n).unwrap_or(f64::NAN)
+}
+
+/// The digits of a `0x`/`0b`/`0o` literal — `NaN` when empty or carrying a
+/// digit outside the base (`Number('0x')` is `NaN`, not `0`). Accumulates in
+/// f64 so a huge literal saturates to Infinity, as JS does.
+fn radix_digits(digits: &str, base: u32) -> f64 {
+    if digits.is_empty() {
+        return f64::NAN;
+    }
+    let mut n = 0.0;
+    for c in digits.chars() {
+        match c.to_digit(base) {
+            Some(d) => n = n * base as f64 + d as f64,
+            None => return f64::NAN,
+        }
+    }
+    n
 }
 
 /// A number as JavaScript's `String` prints it: `NaN`, `Infinity`, integers
@@ -592,9 +604,8 @@ pub(crate) fn js_num_text(n: f64) -> String {
         }
         return s;
     }
-    if n.fract() == 0.0 {
-        return format!("{n:.0}");
-    }
+    // `{}` is shortest round-trip decimal — `{n:.0}` would print the exact
+    // binary integer (`1000000000000000128` where JS gives `…00100`).
     format!("{n}")
 }
 

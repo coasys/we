@@ -101,3 +101,30 @@ fn space_template_resolve_perf() {
     }
     let _ = root;
 }
+
+/// `we-app dump` resolves through `Runtime::app`, which must take the same
+/// `$`-type gate `RendererApp::new`/`we-cli` set — else a `$lane` node the
+/// registry knows dumps as a `$todo:` placeholder instead of the widget.
+#[test]
+fn dump_keeps_registered_dollar_types() {
+    let manifest = env!("CARGO_MANIFEST_DIR");
+    let bundle = format!("{manifest}/tests/data/lane.bundle.json");
+    let out = std::process::Command::new(env!("CARGO_BIN_EXE_we-app"))
+        .args(["dump", "--bundle", &bundle, "--route", "/space/demo"])
+        .output()
+        .expect("we-app dump runs");
+    assert!(
+        out.status.success(),
+        "we-app dump failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains(r#""$lane""#),
+        "expected the $lane widget in the dump:\n{stdout}"
+    );
+    assert!(
+        !stdout.contains("$todo:$lane"),
+        "$lane must not degrade to a $todo: placeholder:\n{stdout}"
+    );
+}

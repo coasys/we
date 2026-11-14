@@ -163,9 +163,9 @@ fn math_channel(s: &str, pct_scale: f32) -> Option<f32> {
         return p.trim().parse::<f32>().ok().map(|v| v * pct_scale);
     }
     let v = eval_math(s)?;
-    Some(match v.unit {
-        MathUnit::Unitless => v.value as f32,
-        MathUnit::Percent => (v.value as f32) * pct_scale,
+    Some(match v.single()? {
+        (n, MathUnit::Unitless) => n as f32,
+        (n, MathUnit::Percent) => (n as f32) * pct_scale,
         _ => return None,
     })
 }
@@ -182,10 +182,20 @@ fn alpha_channel(s: &str) -> Option<f32> {
 /// `rgb(199, 201, 220)`, `rgba(199,201,220,.08)` and `rgb(199 201 220 / .08)`.
 fn parse_rgb(args: &str) -> Option<Color> {
     let parts: Vec<f32> = if args.contains(',') {
-        split_top_commas(args)
+        let p = split_top_commas(args);
+        if p.len() < 3 || p.len() > 4 {
+            return None;
+        }
+        let mut v: Vec<f32> = p[..3]
             .iter()
-            .map(|p| rgb_channel(p))
-            .collect::<Option<_>>()?
+            .map(|c| rgb_channel(c))
+            .collect::<Option<_>>()?;
+        // The 4th comma argument is an `<alpha-value>` — `50%` is 0.5, not
+        // an RGB channel's 127.5.
+        if let Some(a) = p.get(3) {
+            v.push(alpha_channel(a)?);
+        }
+        v
     } else {
         let slash = split_slash(args);
         let head: Vec<f32> = top_level_parts(slash[0])
@@ -227,8 +237,8 @@ fn hue_degrees(s: &str) -> Option<f32> {
         }
     }
     // `calc(288 - 30)` — a hue may arrive as unitless math.
-    match eval_math(s)? {
-        v if v.unit == MathUnit::Unitless => Some(v.value as f32),
+    match eval_math(s)?.single() {
+        Some((n, MathUnit::Unitless)) => Some(n as f32),
         _ => None,
     }
 }
@@ -279,8 +289,8 @@ fn pct(s: &str) -> Option<f32> {
         return p.trim().parse::<f32>().ok().map(|v| v / 100.0);
     }
     // `calc(50%)` and friends — s/l channels are percentages only.
-    match eval_math(s)? {
-        v if v.unit == MathUnit::Percent => Some((v.value / 100.0) as f32),
+    match eval_math(s)?.single() {
+        Some((n, MathUnit::Percent)) => Some((n / 100.0) as f32),
         _ => None,
     }
 }
@@ -386,12 +396,11 @@ fn parse_color_mix(args: &str) -> Option<Color> {
     }
     if sum < 1.0 {
         alpha_mul = sum;
-    } else {
-        w1 /= sum;
-        w2 /= sum;
     }
+    w1 /= sum;
+    w2 /= sum;
     let mixed = match space.as_str() {
-        "srgb" | "srgb-linear" => {
+        "srgb" => {
             let [r1, g1, b1, a1] = c1.premultiplied();
             let [r2, g2, b2, a2] = c2.premultiplied();
             Color::from_premultiplied([
@@ -401,19 +410,68 @@ fn parse_color_mix(args: &str) -> Option<Color> {
                 a1 * w1 + a2 * w2,
             ])
         }
+        "srgb-linear" => {
+            // interpolate the linear-light channels, premultiplied
+            let lin = |c: Color| {
+                [
+                    srgb_to_linear(c.r) * c.a,
+                    srgb_to_linear(c.g) * c.a,
+                    srgb_to_linear(c.b) * c.a,
+                    c.a,
+                ]
+            };
+            let (l1, l2) = (lin(c1), lin(c2));
+            let m = Color::from_premultiplied([
+                l1[0] * w1 + l2[0] * w2,
+                l1[1] * w1 + l2[1] * w2,
+                l1[2] * w1 + l2[2] * w2,
+                l1[3] * w1 + l2[3] * w2,
+            ]);
+            Color::new(
+                linear_to_srgb(m.r),
+                linear_to_srgb(m.g),
+                linear_to_srgb(m.b),
+                m.a,
+            )
+        }
         "oklab" | "oklch" => {
             let polar = space == "oklch";
-            let (a1, b1, c1l) = oklab_axes(c1, polar);
-            let (a2, b2, c2l) = oklab_axes(c2, polar);
-            let (ar, br, lr) = (a1 * w1 + a2 * w2, b1 * w1 + b2 * w2, c1l * w1 + c2l * w2);
-            let (la, aa, ba) = if polar {
-                // back from polar: a = C cos h, b = C sin h
-                (lr, ar * br.cos(), ar * br.sin())
+            // (a, b, L) or (C, h°, L)
+            let (x1, y1, l1) = oklab_axes(c1, polar);
+            let (x2, y2, l2) = oklab_axes(c2, polar);
+            let am = c1.a * w1 + c2.a * w2;
+            // premultiplied interpolation — every component except hue scales
+            // by the colour's alpha
+            let lw = l1 * c1.a * w1 + l2 * c2.a * w2;
+            let xw = x1 * c1.a * w1 + x2 * c2.a * w2;
+            let (l, a, b) = if am > 0.0 {
+                let (l, x) = (lw / am, xw / am);
+                if polar {
+                    // CSS Color 4 powerless components: a hue whose chroma
+                    // is ~zero is missing, and a missing component takes
+                    // the other endpoint's value — an achromatic colour's
+                    // arbitrary h must not drag the mix off the chromatic
+                    // endpoint's hue. The spec's OKLCH powerless-chroma
+                    // epsilon is 0.000004 — low-but-nonzero chroma keeps
+                    // its hue. (x1/x2 are the endpoint chromas.)
+                    const POWERLESS: f32 = 0.000004;
+                    let dh = (((y2 - y1) % 360.0) + 540.0) % 360.0 - 180.0;
+                    let h = match (x1 < POWERLESS, x2 < POWERLESS) {
+                        (true, true) => 0.0,
+                        (true, false) => y2,
+                        (false, true) => y1,
+                        (false, false) => y1 + dh * w2,
+                    };
+                    let h = h.to_radians();
+                    (l, x * h.cos(), x * h.sin())
+                } else {
+                    (l, x, (y1 * c1.a * w1 + y2 * c2.a * w2) / am)
+                }
             } else {
-                (lr, ar, br)
+                (0.0, 0.0, 0.0)
             };
-            let (r, g, b) = oklab_to_srgb(la, aa, ba);
-            Color::new(r, g, b, c1.a * w1 + c2.a * w2)
+            let (r, g, b) = oklab_to_srgb(l, a, b);
+            Color::new(r, g, b, am)
         }
         _ => return None,
     };
@@ -460,9 +518,9 @@ fn mix_stop(text: &str) -> Option<(Color, Option<f32>)> {
     let p = if let Some(p) = rest.strip_suffix('%') {
         p.trim().parse::<f32>().ok()? / 100.0
     } else {
-        match eval_math(rest)? {
-            v if v.unit == MathUnit::Percent => (v.value / 100.0) as f32,
-            v if v.unit == MathUnit::Unitless => v.value as f32,
+        match eval_math(rest)?.single() {
+            Some((n, MathUnit::Percent)) => (n / 100.0) as f32,
+            Some((n, MathUnit::Unitless)) => n as f32,
             _ => return None,
         }
     };

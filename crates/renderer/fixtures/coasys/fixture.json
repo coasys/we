@@ -1,0 +1,977 @@
+{
+  "id": "coasys",
+  "createdAt": "2025-10-01T00:00:00.000Z",
+  "templateId": "coasys--space",
+  "themeId": "coasys--glow",
+  "route": "/space/preview-coasys",
+  "modules": ["feed", "call", "transcribe", "graph"],
+  "space": {
+    "name": "Meridian Commons",
+    "description": "A neighbourhood space for the Meridian community — conversations, calls and the work that comes out of them.",
+    "root": "coasys-root",
+    "typeStyles": [
+      { "nodeType": "TaskBlock", "color": "var(--we-color-primary-500)" },
+      { "nodeType": "CollectionBlock", "color": "var(--we-color-secondary-500)" }
+    ]
+  },
+  "agents": [
+    {
+      "did": "did:agent:mara",
+      "firstName": "Mara",
+      "lastName": "Ellison",
+      "handle": "mara",
+      "bio": "Community steward. I keep the calendar and lose at chess."
+    },
+    {
+      "did": "did:agent:devon",
+      "firstName": "Devon",
+      "lastName": "Ashworth",
+      "handle": "devon",
+      "bio": "Builds the things, breaks the things."
+    },
+    {
+      "did": "did:agent:juni",
+      "firstName": "Juni",
+      "lastName": "Okafor",
+      "handle": "juni",
+      "bio": "Designer. Ask me about the new theme."
+    },
+    {
+      "did": "did:agent:theo",
+      "firstName": "Theo",
+      "lastName": "Brandt",
+      "handle": "theo",
+      "bio": "Research and notes."
+    },
+    {
+      "did": "did:agent:priya",
+      "firstName": "Priya",
+      "lastName": "Nair",
+      "handle": "priya",
+      "bio": "Operations and pilots."
+    },
+    { "did": "did:agent:sana", "firstName": "Sana", "lastName": "Vega", "handle": "sana", "bio": "New here — hello!" }
+  ],
+  "signalTypes": [
+    { "name": "Agree", "slug": "agree", "icon": "thumbs-up", "description": "Same page." },
+    { "name": "Like", "slug": "like", "icon": "heart", "description": "Warm feelings." },
+    { "name": "Insightful", "slug": "insight", "icon": "lightbulb", "description": "Made somebody think." }
+  ],
+  "content": [
+    {
+      "kind": "post",
+      "id": "coasys-post-welcome",
+      "title": "Welcome to Meridian Commons",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-28T14:10:00.000Z",
+      "body": [
+        "This is where the Meridian community keeps its conversations, calls and tasks.",
+        "Channels are on the left; General is everything that is not in a call. The October pilot has its own workflow — check Workflows for where each piece stands.",
+        "If you are new, say hello in Announcements and grab a task from the board."
+      ]
+    }
+  ],
+  "records": [
+    {
+      "id": "coasys-landmark-canvas",
+      "entity": "SpaceLandmark",
+      "fields": { "name": "canvas" },
+      "relations": { "node": "coasys-canvas" }
+    },
+    {
+      "id": "coasys-landmark-board",
+      "entity": "SpaceLandmark",
+      "fields": { "name": "board" },
+      "relations": { "node": "coasys-board" }
+    },
+    {
+      "id": "coasys-root",
+      "entity": "CollectionBlock",
+      "fields": { "kind": "channel", "mode": "feed", "title": "", "autoExtract": true },
+      "relations": {
+        "children": [
+          "coasys-canvas",
+          "coasys-board",
+          "coasys-chan-design",
+          "coasys-chan-field-notes",
+          "coasys-chan-announce",
+          "coasys-call-weekly-sync",
+          "coasys-call-design-review",
+          "coasys-call-pilot-kickoff",
+          "coasys-post-welcome",
+          "coasys-card-schedule",
+          "coasys-card-pilot",
+          "coasys-card-venue",
+          "coasys-card-survey",
+          "coasys-task-brief",
+          "coasys-task-venue",
+          "coasys-task-invites",
+          "coasys-task-survey",
+          "coasys-task-theme",
+          "coasys-line-001",
+          "coasys-line-002",
+          "coasys-line-003",
+          "coasys-line-004",
+          "coasys-line-005"
+        ]
+      }
+    },
+    {
+      "id": "coasys-canvas",
+      "entity": "CollectionBlock",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-28T14:02:00.000Z",
+      "fields": { "kind": "canvas", "mode": "feed", "title": "Space canvas" },
+      "relations": {
+        "children": ["coasys-place-schedule", "coasys-place-pilot", "coasys-place-venue", "coasys-place-survey"]
+      }
+    },
+    {
+      "id": "coasys-board",
+      "entity": "CollectionBlock",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-28T14:04:00.000Z",
+      "fields": { "kind": "board", "mode": "feed", "title": "Everything" },
+      "relations": {
+        "children": ["coasys-col-todo", "coasys-col-doing", "coasys-col-done"],
+        "gathers": "coasys-root"
+      }
+    },
+    {
+      "id": "coasys-col-todo",
+      "entity": "CollectionBlock",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-28T14:05:00.000Z",
+      "fields": { "kind": "column", "mode": "feed", "title": "To do", "slug": "todo" },
+      "relations": { "arranges": ["coasys-task-brief", "coasys-task-survey"] }
+    },
+    {
+      "id": "coasys-col-doing",
+      "entity": "CollectionBlock",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-28T14:05:30.000Z",
+      "fields": { "kind": "column", "mode": "feed", "title": "Doing", "slug": "doing" },
+      "relations": { "arranges": ["coasys-task-venue"] }
+    },
+    {
+      "id": "coasys-col-done",
+      "entity": "CollectionBlock",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-28T14:06:00.000Z",
+      "fields": { "kind": "column", "mode": "feed", "title": "Done", "slug": "done" },
+      "relations": { "arranges": ["coasys-task-invites", "coasys-task-theme"] }
+    },
+
+    {
+      "id": "coasys-chan-design",
+      "entity": "CollectionBlock",
+      "author": "did:agent:juni",
+      "createdAt": "2025-09-29T09:12:00.000Z",
+      "fields": {
+        "kind": "channel",
+        "mode": "feed",
+        "title": "Design",
+        "description": "Theme work, layouts and anything that looks off."
+      },
+      "relations": {
+        "children": [
+          "coasys-dmsg-001",
+          "coasys-dmsg-002",
+          "coasys-dmsg-003",
+          "coasys-dmsg-004",
+          "coasys-dmsg-005",
+          "coasys-dmsg-006"
+        ]
+      }
+    },
+    {
+      "id": "coasys-chan-field-notes",
+      "entity": "CollectionBlock",
+      "author": "did:agent:theo",
+      "createdAt": "2025-09-29T09:20:00.000Z",
+      "fields": {
+        "kind": "channel",
+        "mode": "feed",
+        "title": "Field notes",
+        "description": "What the pilot interviews surfaced."
+      },
+      "relations": {
+        "children": ["coasys-fmsg-001", "coasys-fmsg-002", "coasys-fmsg-003", "coasys-fmsg-004"]
+      }
+    },
+    {
+      "id": "coasys-chan-announce",
+      "entity": "CollectionBlock",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-29T09:25:00.000Z",
+      "fields": {
+        "kind": "channel",
+        "mode": "feed",
+        "title": "Announcements",
+        "description": "Read-only for most of us."
+      },
+      "relations": {
+        "children": ["coasys-amsg-001", "coasys-amsg-002"]
+      }
+    },
+
+    {
+      "id": "coasys-dmsg-001",
+      "entity": "TextBlock",
+      "author": "did:agent:juni",
+      "createdAt": "2025-10-01T08:14:00.000Z",
+      "fields": {
+        "text": "First pass on the glow theme is in — screenshots in the post pinned to the canvas.",
+        "source": "typed"
+      },
+      "relations": { "signals": ["coasys-sig-003"] }
+    },
+    {
+      "id": "coasys-dmsg-002",
+      "entity": "TextBlock",
+      "author": "did:agent:devon",
+      "createdAt": "2025-10-01T08:21:00.000Z",
+      "fields": { "text": "The accent gradient reads a bit cold on the calls list. Warmer?", "source": "typed" }
+    },
+    {
+      "id": "coasys-dmsg-003",
+      "entity": "TextBlock",
+      "author": "did:agent:juni",
+      "createdAt": "2025-10-01T08:24:00.000Z",
+      "fields": {
+        "text": "Agreed — I shifted the mid tone two steps and it sits better against the dark surfaces.",
+        "source": "typed"
+      }
+    },
+    {
+      "id": "coasys-dmsg-004",
+      "entity": "TextBlock",
+      "author": "did:agent:mara",
+      "createdAt": "2025-10-02T16:03:00.000Z",
+      "fields": { "text": "Nico approved the new palette for the pilot — ship it.", "source": "typed" }
+    },
+    {
+      "id": "coasys-dmsg-005",
+      "entity": "TextBlock",
+      "author": "did:agent:juni",
+      "createdAt": "2025-10-03T10:40:00.000Z",
+      "fields": {
+        "text": "Glow is now the default theme for the space. Anything that looks wrong, drop a note here.",
+        "source": "typed"
+      },
+      "relations": { "signals": ["coasys-sig-001", "coasys-sig-002"] }
+    },
+    {
+      "id": "coasys-dmsg-006",
+      "entity": "TextBlock",
+      "author": "did:agent:sana",
+      "createdAt": "2025-10-03T11:02:00.000Z",
+      "fields": { "text": "Looks great! The call cards especially.", "source": "typed" }
+    },
+
+    {
+      "id": "coasys-fmsg-001",
+      "entity": "TextBlock",
+      "author": "did:agent:theo",
+      "createdAt": "2025-10-02T09:30:00.000Z",
+      "fields": {
+        "text": "Interview three done — Riverside wants the workshop moved to their annex building.",
+        "source": "typed"
+      }
+    },
+    {
+      "id": "coasys-fmsg-002",
+      "entity": "TextBlock",
+      "author": "did:agent:priya",
+      "createdAt": "2025-10-02T09:44:00.000Z",
+      "fields": {
+        "text": "Noted. The annex has capacity for twelve, so we can drop the room-hold at the hall.",
+        "source": "typed"
+      }
+    },
+    {
+      "id": "coasys-fmsg-003",
+      "entity": "TextBlock",
+      "author": "did:agent:theo",
+      "createdAt": "2025-10-02T10:15:00.000Z",
+      "fields": {
+        "text": "Also: two more households asked to join the survey. I added them to the invite list.",
+        "source": "typed"
+      }
+    },
+    {
+      "id": "coasys-fmsg-004",
+      "entity": "TextBlock",
+      "author": "did:agent:mara",
+      "createdAt": "2025-10-04T17:22:00.000Z",
+      "fields": { "text": "Summary of all three interviews is on the canvas now — the survey card.", "source": "typed" }
+    },
+
+    {
+      "id": "coasys-amsg-001",
+      "entity": "TextBlock",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-29T10:00:00.000Z",
+      "fields": { "text": "Welcome to Meridian Commons — the October pilot kicks off on the 14th.", "source": "typed" }
+    },
+    {
+      "id": "coasys-amsg-002",
+      "entity": "TextBlock",
+      "author": "did:agent:mara",
+      "createdAt": "2025-10-06T12:00:00.000Z",
+      "fields": { "text": "Design review moved to Thursday; weekly sync stays where it is.", "source": "typed" }
+    },
+
+    {
+      "id": "coasys-line-001",
+      "entity": "TextBlock",
+      "author": "did:agent:mara",
+      "createdAt": "2025-10-06T08:55:00.000Z",
+      "fields": {
+        "text": "Kicking off the week — pilot brief is due Friday, everything else is in the workflows list.",
+        "source": "typed"
+      }
+    },
+    {
+      "id": "coasys-line-002",
+      "entity": "TextBlock",
+      "author": "did:agent:devon",
+      "createdAt": "2025-10-06T09:10:00.000Z",
+      "fields": { "text": "I can take the venue booking once Riverside confirms the annex.", "source": "typed" }
+    },
+    {
+      "id": "coasys-line-003",
+      "entity": "TextBlock",
+      "author": "did:agent:theo",
+      "createdAt": "2025-10-06T09:31:00.000Z",
+      "fields": { "text": "Field notes are tidied — three interviews, all recorded in the channel.", "source": "typed" }
+    },
+    {
+      "id": "coasys-line-004",
+      "entity": "TextBlock",
+      "author": "did:agent:priya",
+      "createdAt": "2025-10-06T10:05:00.000Z",
+      "fields": { "text": "Reminder: survey draft needs a second pair of eyes before it goes out.", "source": "typed" }
+    },
+    {
+      "id": "coasys-line-005",
+      "entity": "TextBlock",
+      "author": "did:agent:sana",
+      "createdAt": "2025-10-06T10:42:00.000Z",
+      "fields": { "text": "Happy to proofread it — send it over when ready.", "source": "typed" }
+    },
+
+    {
+      "id": "coasys-call-weekly-sync",
+      "entity": "CollectionBlock",
+      "author": "did:agent:mara",
+      "createdAt": "2025-10-06T15:00:00.000Z",
+      "fields": { "kind": "call", "mode": "feed", "title": "Weekly sync" },
+      "relations": {
+        "children": [
+          "coasys-utt-101",
+          "coasys-utt-102",
+          "coasys-utt-103",
+          "coasys-utt-104",
+          "coasys-utt-105",
+          "coasys-utt-106"
+        ]
+      }
+    },
+    {
+      "id": "coasys-utt-101",
+      "entity": "TextBlock",
+      "author": "did:agent:mara",
+      "createdAt": "2025-10-06T15:00:40.000Z",
+      "fields": {
+        "text": "Let's start — brief is the only thing blocking the pilot at this point.",
+        "source": "spoken"
+      }
+    },
+    {
+      "id": "coasys-utt-102",
+      "entity": "TextBlock",
+      "author": "did:agent:devon",
+      "createdAt": "2025-10-06T15:01:15.000Z",
+      "fields": { "text": "Agreed. Venue is close, Riverside's annex is the right size.", "source": "spoken" }
+    },
+    {
+      "id": "coasys-utt-103",
+      "entity": "TextBlock",
+      "author": "did:agent:juni",
+      "createdAt": "2025-10-06T15:02:30.000Z",
+      "fields": { "text": "The theme is settled too — glow went out Friday and nobody complained.", "source": "spoken" }
+    },
+    {
+      "id": "coasys-utt-104",
+      "entity": "TextBlock",
+      "author": "did:agent:theo",
+      "createdAt": "2025-10-06T15:04:10.000Z",
+      "fields": { "text": "From the interviews: people want the workshop earlier in the day.", "source": "spoken" }
+    },
+    {
+      "id": "coasys-utt-105",
+      "entity": "TextBlock",
+      "author": "did:agent:mara",
+      "createdAt": "2025-10-06T15:05:00.000Z",
+      "fields": { "text": "Ten o'clock then — I'll put it in the brief.", "source": "spoken" }
+    },
+    {
+      "id": "coasys-utt-106",
+      "entity": "TextBlock",
+      "author": "did:agent:priya",
+      "createdAt": "2025-10-06T15:06:20.000Z",
+      "fields": { "text": "Survey goes out tomorrow morning, pending Sana's proofread.", "source": "spoken" },
+      "relations": { "signals": ["coasys-sig-004"] }
+    },
+
+    {
+      "id": "coasys-call-design-review",
+      "entity": "CollectionBlock",
+      "author": "did:agent:juni",
+      "createdAt": "2025-10-02T14:00:00.000Z",
+      "fields": { "kind": "call", "mode": "feed", "title": "Design review" },
+      "relations": {
+        "children": ["coasys-utt-201", "coasys-utt-202", "coasys-utt-203", "coasys-utt-204"]
+      }
+    },
+    {
+      "id": "coasys-utt-201",
+      "entity": "TextBlock",
+      "author": "did:agent:juni",
+      "createdAt": "2025-10-02T14:01:00.000Z",
+      "fields": {
+        "text": "Walking through the palette — the accent needs to survive both light and black themes.",
+        "source": "spoken"
+      }
+    },
+    {
+      "id": "coasys-utt-202",
+      "entity": "TextBlock",
+      "author": "did:agent:devon",
+      "createdAt": "2025-10-02T14:03:45.000Z",
+      "fields": {
+        "text": "Contrast on the active states is fine now; muted text is still a touch dim.",
+        "source": "spoken"
+      }
+    },
+    {
+      "id": "coasys-utt-203",
+      "entity": "TextBlock",
+      "author": "did:agent:juni",
+      "createdAt": "2025-10-02T14:05:12.000Z",
+      "fields": {
+        "text": "I'll lift muted a step and keep faint as is. Good enough for the pilot.",
+        "source": "spoken"
+      }
+    },
+    {
+      "id": "coasys-utt-204",
+      "entity": "TextBlock",
+      "author": "did:agent:mara",
+      "createdAt": "2025-10-02T14:06:30.000Z",
+      "fields": { "text": "Ship it — and thank you both for the quick turnaround.", "source": "spoken" }
+    },
+
+    {
+      "id": "coasys-call-pilot-kickoff",
+      "entity": "CollectionBlock",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-29T17:00:00.000Z",
+      "fields": { "kind": "call", "mode": "feed", "title": "Pilot kickoff" },
+      "relations": {
+        "children": ["coasys-utt-301", "coasys-utt-302", "coasys-utt-303"]
+      }
+    },
+    {
+      "id": "coasys-utt-301",
+      "entity": "TextBlock",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-29T17:01:10.000Z",
+      "fields": {
+        "text": "Thanks for coming — goal today is a shared picture of what October looks like.",
+        "source": "spoken"
+      }
+    },
+    {
+      "id": "coasys-utt-302",
+      "entity": "TextBlock",
+      "author": "did:agent:priya",
+      "createdAt": "2025-09-29T17:04:00.000Z",
+      "fields": { "text": "On the logistics side, the annex is ours for the 14th and the 21st.", "source": "spoken" }
+    },
+    {
+      "id": "coasys-utt-303",
+      "entity": "TextBlock",
+      "author": "did:agent:theo",
+      "createdAt": "2025-09-29T17:07:30.000Z",
+      "fields": { "text": "I'll start the interviews this week and keep notes in the channel.", "source": "spoken" }
+    },
+
+    {
+      "id": "coasys-card-schedule",
+      "entity": "CollectionBlock",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-30T11:00:00.000Z",
+      "fields": {
+        "kind": "card",
+        "mode": "document",
+        "title": "Pilot schedule",
+        "description": "October 14 and 21 at the Riverside annex",
+        "textContent": "Pilot schedule October 14 and 21 at the Riverside annex"
+      }
+    },
+    {
+      "id": "coasys-card-pilot",
+      "entity": "CollectionBlock",
+      "author": "did:agent:priya",
+      "createdAt": "2025-09-30T11:20:00.000Z",
+      "fields": {
+        "kind": "card",
+        "mode": "document",
+        "title": "October pilot",
+        "description": "Two workshops, twelve households, one survey",
+        "textContent": "October pilot Two workshops, twelve households, one survey"
+      }
+    },
+    {
+      "id": "coasys-card-venue",
+      "entity": "CollectionBlock",
+      "author": "did:agent:devon",
+      "createdAt": "2025-09-30T11:35:00.000Z",
+      "fields": {
+        "kind": "card",
+        "mode": "document",
+        "title": "Riverside annex",
+        "description": "Capacity twelve, accessible entrance on the east side",
+        "textContent": "Riverside annex Capacity twelve, accessible entrance on the east side"
+      }
+    },
+    {
+      "id": "coasys-card-survey",
+      "entity": "CollectionBlock",
+      "author": "did:agent:theo",
+      "createdAt": "2025-10-04T17:30:00.000Z",
+      "fields": {
+        "kind": "card",
+        "mode": "document",
+        "title": "Interview summary",
+        "description": "What three households told us about mornings",
+        "textContent": "Interview summary What three households told us about mornings"
+      },
+      "relations": { "signals": ["coasys-sig-005"] }
+    },
+
+    {
+      "id": "coasys-place-schedule",
+      "entity": "Placement",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-30T11:05:00.000Z",
+      "fields": { "nodeType": "CollectionBlock", "x": 60, "y": 40, "width": 300, "height": 190, "rank": 1 },
+      "relations": { "node": "coasys-card-schedule" }
+    },
+    {
+      "id": "coasys-place-pilot",
+      "entity": "Placement",
+      "author": "did:agent:priya",
+      "createdAt": "2025-09-30T11:25:00.000Z",
+      "fields": { "nodeType": "CollectionBlock", "x": 420, "y": 60, "width": 320, "height": 210, "rank": 2 },
+      "relations": { "node": "coasys-card-pilot" }
+    },
+    {
+      "id": "coasys-place-venue",
+      "entity": "Placement",
+      "author": "did:agent:devon",
+      "createdAt": "2025-09-30T11:40:00.000Z",
+      "fields": { "nodeType": "CollectionBlock", "x": 130, "y": 300, "width": 280, "height": 180, "rank": 3 },
+      "relations": { "node": "coasys-card-venue" }
+    },
+    {
+      "id": "coasys-place-survey",
+      "entity": "Placement",
+      "author": "did:agent:theo",
+      "createdAt": "2025-10-04T17:35:00.000Z",
+      "fields": { "nodeType": "CollectionBlock", "x": 480, "y": 330, "width": 300, "height": 200, "rank": 4 },
+      "relations": { "node": "coasys-card-survey" }
+    },
+
+    {
+      "id": "coasys-task-brief",
+      "entity": "TaskBlock",
+      "author": "did:agent:mara",
+      "createdAt": "2025-10-01T09:00:00.000Z",
+      "fields": {
+        "title": "Write the pilot brief",
+        "description": "One page for the funders — goals, dates, the annex, who is doing what.",
+        "status": "todo",
+        "assignee": "did:agent:mara",
+        "dueDate": "2025-10-10"
+      }
+    },
+    {
+      "id": "coasys-task-venue",
+      "entity": "TaskBlock",
+      "author": "did:agent:devon",
+      "createdAt": "2025-10-01T09:10:00.000Z",
+      "fields": {
+        "title": "Confirm the Riverside annex",
+        "description": "Booking confirmation for the 14th and the 21st, ten o'clock start.",
+        "status": "doing",
+        "assignee": "did:agent:devon"
+      }
+    },
+    {
+      "id": "coasys-task-invites",
+      "entity": "TaskBlock",
+      "author": "did:agent:priya",
+      "createdAt": "2025-10-01T09:20:00.000Z",
+      "fields": {
+        "title": "Send the invites",
+        "description": "All twelve households, plus the two that asked to join late.",
+        "status": "done",
+        "assignee": "did:agent:priya"
+      }
+    },
+    {
+      "id": "coasys-task-survey",
+      "entity": "TaskBlock",
+      "author": "did:agent:theo",
+      "createdAt": "2025-10-02T13:00:00.000Z",
+      "fields": {
+        "title": "Finalise the survey",
+        "description": "Trim to ten questions; Sana proofreads before it ships.",
+        "status": "todo",
+        "assignee": "did:agent:sana"
+      }
+    },
+    {
+      "id": "coasys-task-theme",
+      "entity": "TaskBlock",
+      "author": "did:agent:juni",
+      "createdAt": "2025-10-01T09:30:00.000Z",
+      "fields": {
+        "title": "Set glow as the space theme",
+        "description": "Flip the default once Nico signs off on the palette.",
+        "status": "done",
+        "assignee": "did:agent:juni"
+      }
+    },
+
+    {
+      "id": "coasys-sig-001",
+      "entity": "Signal",
+      "author": "did:agent:devon",
+      "createdAt": "2025-10-03T11:10:00.000Z",
+      "fields": { "signalTypeId": "coasys-signal-agree", "value": 1 }
+    },
+    {
+      "id": "coasys-sig-002",
+      "entity": "Signal",
+      "author": "did:agent:sana",
+      "createdAt": "2025-10-03T11:12:00.000Z",
+      "fields": { "signalTypeId": "coasys-signal-agree", "value": 1 }
+    },
+    {
+      "id": "coasys-sig-003",
+      "entity": "Signal",
+      "author": "did:agent:mara",
+      "createdAt": "2025-10-03T11:15:00.000Z",
+      "fields": { "signalTypeId": "coasys-signal-insight", "value": 1 }
+    },
+    {
+      "id": "coasys-sig-004",
+      "entity": "Signal",
+      "author": "did:agent:sana",
+      "createdAt": "2025-10-06T15:07:00.000Z",
+      "fields": { "signalTypeId": "coasys-signal-like", "value": 1 }
+    },
+    {
+      "id": "coasys-sig-005",
+      "entity": "Signal",
+      "author": "did:agent:mara",
+      "createdAt": "2025-10-04T17:40:00.000Z",
+      "fields": { "signalTypeId": "coasys-signal-insight", "value": 1 }
+    },
+
+    {
+      "id": "coasys-rel-001",
+      "entity": "Relationship",
+      "author": "did:agent:mara",
+      "createdAt": "2025-10-01T09:05:00.000Z",
+      "fields": {
+        "connection": "coasys-reltype-leads-to",
+        "relationshipTypeId": "coasys-reltype-leads-to",
+        "sourceType": "TaskBlock",
+        "targetType": "CollectionBlock"
+      },
+      "relations": { "source": "coasys-task-brief", "target": "coasys-card-pilot" }
+    },
+    {
+      "id": "coasys-rel-002",
+      "entity": "Relationship",
+      "author": "did:agent:devon",
+      "createdAt": "2025-10-01T09:15:00.000Z",
+      "fields": {
+        "connection": "coasys-reltype-blocks",
+        "relationshipTypeId": "coasys-reltype-blocks",
+        "sourceType": "TaskBlock",
+        "targetType": "TaskBlock"
+      },
+      "relations": { "source": "coasys-task-venue", "target": "coasys-task-brief" }
+    },
+    {
+      "id": "coasys-rel-003",
+      "entity": "Relationship",
+      "author": "did:agent:theo",
+      "createdAt": "2025-10-04T17:45:00.000Z",
+      "fields": {
+        "connection": "coasys-reltype-relates",
+        "relationshipTypeId": "coasys-reltype-relates",
+        "sourceType": "CollectionBlock",
+        "targetType": "TaskBlock"
+      },
+      "relations": { "source": "coasys-card-survey", "target": "coasys-task-survey" }
+    },
+
+    {
+      "id": "coasys-inv-001",
+      "entity": "Involvement",
+      "author": "did:agent:mara",
+      "createdAt": "2025-10-01T09:02:00.000Z",
+      "fields": { "agent": "did:agent:mara", "kind": "assigned" },
+      "relations": { "node": "coasys-task-brief" }
+    },
+    {
+      "id": "coasys-inv-002",
+      "entity": "Involvement",
+      "author": "did:agent:mara",
+      "createdAt": "2025-10-01T09:12:00.000Z",
+      "fields": { "agent": "did:agent:devon", "kind": "assigned" },
+      "relations": { "node": "coasys-task-venue" }
+    },
+    {
+      "id": "coasys-inv-003",
+      "entity": "Involvement",
+      "author": "did:agent:priya",
+      "createdAt": "2025-10-02T13:05:00.000Z",
+      "fields": { "agent": "did:agent:sana", "kind": "reviewing" },
+      "relations": { "node": "coasys-task-survey" }
+    },
+
+    {
+      "id": "coasys-reltype-leads-to",
+      "entity": "RelationshipType",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-28T14:30:00.000Z",
+      "fields": {
+        "name": "leads to",
+        "slug": "leads-to",
+        "description": "Work that produces or enables the target.",
+        "inverseName": "comes from",
+        "directed": true
+      }
+    },
+    {
+      "id": "coasys-reltype-blocks",
+      "entity": "RelationshipType",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-28T14:31:00.000Z",
+      "fields": {
+        "name": "blocks",
+        "slug": "blocks",
+        "description": "The source cannot finish until the target does.",
+        "inverseName": "blocked by",
+        "directed": true
+      }
+    },
+    {
+      "id": "coasys-reltype-relates",
+      "entity": "RelationshipType",
+      "author": "did:agent:theo",
+      "createdAt": "2025-09-28T14:32:00.000Z",
+      "fields": {
+        "name": "relates to",
+        "slug": "relates-to",
+        "description": "Loosely connected — worth knowing about, nothing implied.",
+        "inverseName": "relates to",
+        "directed": false
+      }
+    },
+
+    {
+      "id": "coasys-topic-onboarding",
+      "entity": "Topic",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-28T14:40:00.000Z",
+      "fields": {
+        "name": "onboarding",
+        "description": "Getting new people into the space.",
+        "icon": "hand-waving",
+        "color": "accent"
+      }
+    },
+    {
+      "id": "coasys-topic-pilot",
+      "entity": "Topic",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-28T14:41:00.000Z",
+      "fields": {
+        "name": "october-pilot",
+        "description": "The October pilot with the Riverside team.",
+        "icon": "rocket",
+        "color": "warning"
+      }
+    },
+    {
+      "id": "coasys-topic-venue",
+      "entity": "Topic",
+      "author": "did:agent:devon",
+      "createdAt": "2025-09-28T14:42:00.000Z",
+      "fields": {
+        "name": "venue",
+        "description": "Rooms, bookings and the annex.",
+        "icon": "map-pin",
+        "color": "success"
+      }
+    },
+
+    {
+      "id": "coasys-taskstate-todo",
+      "entity": "TaskState",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-28T14:20:00.000Z",
+      "fields": { "name": "To do", "slug": "todo", "semantic": "todo", "color": "neutral" }
+    },
+    {
+      "id": "coasys-taskstate-doing",
+      "entity": "TaskState",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-28T14:21:00.000Z",
+      "fields": { "name": "Doing", "slug": "doing", "semantic": "doing", "color": "info" }
+    },
+    {
+      "id": "coasys-taskstate-done",
+      "entity": "TaskState",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-28T14:22:00.000Z",
+      "fields": { "name": "Done", "slug": "done", "semantic": "done", "color": "success" }
+    },
+
+    {
+      "id": "coasys-invtype-assigned",
+      "entity": "InvolvementType",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-28T14:23:00.000Z",
+      "fields": {
+        "name": "Assigned",
+        "slug": "assigned",
+        "semantic": "assignee",
+        "appliesTo": ["TaskBlock"],
+        "color": "info"
+      }
+    },
+    {
+      "id": "coasys-invtype-reviewing",
+      "entity": "InvolvementType",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-28T14:24:00.000Z",
+      "fields": {
+        "name": "Reviewing",
+        "slug": "reviewing",
+        "semantic": "review",
+        "appliesTo": ["TaskBlock", "CollectionBlock"],
+        "color": "warning"
+      }
+    },
+    {
+      "id": "coasys-invtype-going",
+      "entity": "InvolvementType",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-28T14:25:00.000Z",
+      "fields": {
+        "name": "Going",
+        "slug": "going",
+        "semantic": "going",
+        "appliesTo": ["EventBlock"],
+        "color": "success"
+      }
+    },
+    {
+      "id": "coasys-invtype-maybe",
+      "entity": "InvolvementType",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-28T14:26:00.000Z",
+      "fields": {
+        "name": "Maybe",
+        "slug": "maybe",
+        "semantic": "maybe",
+        "appliesTo": ["EventBlock"],
+        "color": "warning"
+      }
+    },
+    {
+      "id": "coasys-invtype-not-going",
+      "entity": "InvolvementType",
+      "author": "did:agent:mara",
+      "createdAt": "2025-09-28T14:27:00.000Z",
+      "fields": {
+        "name": "Not going",
+        "slug": "not-going",
+        "semantic": "not-going",
+        "appliesTo": ["EventBlock"],
+        "color": "neutral"
+      }
+    }
+  ],
+
+  "presence": [
+    { "did": "did:agent:devon", "path": "/space/preview-coasys/channels" },
+    { "did": "did:agent:juni", "path": "/space/preview-coasys/dna" }
+  ],
+
+  "workflows": [
+    {
+      "definition": {
+        "name": "pilot",
+        "entities": ["TaskBlock"],
+        "hint": "The October pilot pipeline — a task moves draft, active, shipped.",
+        "states": [
+          { "name": "draft", "hint": "Being written; not yet ready to act on." },
+          { "name": "active", "hint": "Somebody is doing this now." },
+          { "name": "shipped", "hint": "Done and delivered." }
+        ],
+        "transitions": [
+          { "from": "draft", "to": "active", "name": "Start" },
+          { "from": "active", "to": "shipped", "name": "Ship it" },
+          { "from": "active", "to": "draft", "name": "Send back" }
+        ]
+      },
+      "runs": [
+        { "record": "coasys-task-brief", "at": "draft" },
+        { "record": "coasys-task-venue", "at": "active" },
+        { "record": "coasys-task-invites", "at": "shipped" }
+      ]
+    },
+    {
+      "definition": {
+        "name": "review",
+        "entities": [],
+        "hint": "A lightweight look-over for anything in the space.",
+        "states": [
+          { "name": "queued", "hint": "Waiting for a reviewer." },
+          { "name": "inreview", "hint": "Somebody is looking at it now." },
+          { "name": "cleared", "hint": "Reviewed and cleared." }
+        ],
+        "transitions": [
+          { "from": "queued", "to": "inreview", "name": "Pick up" },
+          { "from": "inreview", "to": "cleared", "name": "Clear" },
+          { "from": "inreview", "to": "queued", "name": "Hand back" }
+        ]
+      },
+      "runs": [
+        { "record": "coasys-task-survey", "at": "inreview" },
+        { "record": "coasys-post-welcome", "at": "cleared" }
+      ]
+    }
+  ]
+}

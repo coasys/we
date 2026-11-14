@@ -38,11 +38,24 @@ struct ExpressionCase {
     id: String,
     source: String,
     env: Option<String>,
+    // A present JSON `null` is an expectation (evaluating `null`), not an
+    // absent field — plain Option maps both to None and the case would be
+    // skipped, so presence is deserialized explicitly.
+    #[serde(default, deserialize_with = "present_json")]
     result: Option<serde_json::Value>,
     error: Option<String>,
     message: Option<String>,
     span: Option<(usize, usize)>,
     print: Option<String>,
+}
+
+/// `Some` for a present value — including `null` — `None` only when the key
+/// is missing entirely (`#[serde(default)]` covers that).
+fn present_json<'de, D>(d: D) -> Result<Option<serde_json::Value>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    serde_json::Value::deserialize(d).map(Some)
 }
 
 #[derive(Deserialize)]
@@ -1335,4 +1348,22 @@ fn push_unique(list: &mut Vec<Value>, v: Value) {
     if !list.iter().any(|e| e.strict_eq(&v)) {
         list.push(v);
     }
+}
+
+/// A `{"result": null}` case is an expectation — `null` evaluates — not a
+/// missing field. Before `present_json`, `Option<serde_json::Value>` mapped
+/// both to `None` and the eval check never ran (Lal E1 review, P3-13).
+#[test]
+fn result_null_is_checked_not_skipped() {
+    let case: ExpressionCase =
+        serde_json::from_str(r#"{"id":"x","source":"null","result":null}"#).unwrap();
+    assert_eq!(case.result, Some(serde_json::Value::Null));
+    let case: ExpressionCase = serde_json::from_str(r#"{"id":"x","source":"null"}"#).unwrap();
+    assert_eq!(case.result, None);
+    // And the value the harness would compare against is JSON null itself.
+    let env = MapEnv::new();
+    assert_eq!(
+        eval(&parse("null").unwrap(), &env).to_json(),
+        serde_json::Value::Null
+    );
 }

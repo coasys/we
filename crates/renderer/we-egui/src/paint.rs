@@ -386,10 +386,14 @@ fn text_span(layout: &Layout, node: &NodeId, text: &str) -> Option<egui::Rect> {
         .map(|s| s.rect)
 }
 
+/// Paint `node` and its children. Its containing-block width — the base
+/// percent edges and `calc()` terms resolve against — comes off
+/// [`Layout::bases`], the same value layout used.
 fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
     let Some(raw) = w.layout.rects.get(&node.id).copied() else {
         return;
     };
+    let cb_w = w.layout.bases.get(&node.id).and_then(|b| b.cb.0);
     let rect = raw.translate(-w.offset);
     if !rect.is_finite() {
         return;
@@ -423,7 +427,20 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
     }
     w.ui.set_clip_rect(w.clip.unwrap_or(w.base_clip));
 
-    let style = effective(w.inh.as_ref(), crate::defaults::style_of(node, w.scx));
+    // The style the layout walk resolved — effective: a descendant's
+    // `var()`s already saw its ancestors' `tone`/`styles` custom
+    // properties, and the parent's inherited typography and opacity
+    // product are folded in once. Re-resolving here would lose the scope
+    // or compose opacity twice.
+    let layout = w.layout;
+    let fallback;
+    let style = match layout.styles.get(&node.id) {
+        Some(s) => s,
+        None => {
+            fallback = effective(w.inh.as_ref(), crate::defaults::style_of(node, w.scx));
+            &fallback
+        }
+    };
     let parts = w.parts_buf.as_ref().unwrap_or(&w.base_parts);
     {
         let mut cx = PaintCx {
@@ -432,11 +449,12 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
             parts,
             edit: w.edit,
             now: w.now,
+            cb_w,
             ancestors: &w.ancestors[..w.ancestors.len() - 1],
             hits: &mut w.hits,
             clicks: &mut w.clicks,
         };
-        widget.paint(&mut cx, node, &style, rect);
+        widget.paint(&mut cx, node, style, rect);
     }
 
     // Scroll container: children translate by the stored offset and clip on
@@ -474,17 +492,16 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
                     // The same galley layout measured: wrapped at the span's
                     // width, the owner's transform and `truncate`/`lines`
                     // clamps applied — never a raw overflow line.
-                    let text =
-                        props::transform_text(&style, t, props::prop_bool(node, "uppercase"));
+                    let text = props::transform_text(style, t, props::prop_bool(node, "uppercase"));
                     let g = crate::text::text_job(
                         &text,
-                        &style,
+                        style,
                         w.ui.ctx(),
                         span.width().max(1.0),
                         props::prop_bool(node, "truncate"),
                         props::prop_num(node, "lines").map(|n| n.max(1.0) as usize),
                     );
-                    crate::text::paint_galley(&p, span.translate(-w.offset).min, g, &style);
+                    crate::text::paint_galley(&p, span.translate(-w.offset).min, g, style);
                 }
             }
         }
@@ -723,6 +740,7 @@ fn translate_layout(sub: &Layout, delta: egui::Vec2) -> Layout {
                 text: t.text.clone(),
             })
             .collect(),
+        styles: sub.styles.clone(),
         scroll: sub.scroll.clone(),
         scroll_content: sub
             .scroll_content
@@ -730,6 +748,8 @@ fn translate_layout(sub: &Layout, delta: egui::Vec2) -> Layout {
             .map(|(k, r)| (k.clone(), r.translate(delta)))
             .collect(),
         clip: sub.clip.clone(),
+        bases: sub.bases.clone(),
+        unconverged: sub.unconverged,
     }
 }
 
@@ -896,6 +916,38 @@ pub(crate) fn close_handler(node: &ResolvedNode) -> Option<&'static str> {
     }
 }
 
+/// The overlay node's own style as the outer walk resolved it — its
+/// custom-property scope included, so a `tone` on a modal reaches its
+/// floating contents.
+fn overlay_style<'a>(layout: &'a Layout, node: &ResolvedNode) -> &'a we_style::Style {
+    layout
+        .styles
+        .get(&node.id)
+        .expect("an overlay node resolved a style in the outer walk")
+}
+
+/// The overlay node's effective style — what its floating children inherit
+/// and what the scratch root is seeded with. The outer walk resolved it
+/// with scope and inheritance; `parent_inh` (the context recorded at the
+/// encounter) only serves a node that walk never laid out.
+fn overlay_eff(w: &Walk<'_>, node: &ResolvedNode, parent_inh: &Option<Style>) -> Style {
+    w.layout
+        .styles
+        .get(&node.id)
+        .cloned()
+        .unwrap_or_else(|| effective(parent_inh.as_ref(), crate::style_of(node, w.scx)))
+}
+
+/// The overlay's floating children resolve inside the overlay node's scope —
+/// in the DOM they are its descendants, so a `tone`/`styles` on the overlay
+/// element scopes their `var()`s.
+fn overlay_scx<'a>(layout: &'a Layout, scx: &StyleCx<'a>, node: &ResolvedNode) -> StyleCx<'a> {
+    StyleCx {
+        scope: &overlay_style(layout, node).scope,
+        ..*scx
+    }
+}
+
 /// The inner painting an overlay does inside its egui layer: the widget's
 /// second `paint` (marked by an `"overlay"` part rect), then the host's
 /// children at the scratch layout's rects, then anything they deferred.
@@ -916,7 +968,7 @@ fn overlay_contents(
     // the synthetic host column must not break the cascade: the node's own
     // computed style (merged over the recorded parent context) is what
     // they inherit.
-    let style = effective(parent_inh.as_ref(), crate::style_of(node, w.scx));
+    let style = overlay_eff(w, node, parent_inh);
     let mut base_parts = scratch.parts.clone();
     for (id, rect) in &scratch.rects {
         base_parts.insert((id.clone(), "rect"), *rect);
@@ -955,6 +1007,11 @@ fn overlay_contents(
         hits: crate::HitLog::default(),
         clicks: std::mem::take(&mut w.clicks),
     };
+    // The floating children's containing block is the synthetic host
+    // column's content box — the seeded sub-layout already recorded it on
+    // each child's `bases`, which `paint_node` reads. The overlay node's
+    // own base stays the outer walk's, where it was laid out.
+    let outer_cb_w = w.layout.bases.get(&node.id).and_then(|b| b.cb.0);
     inner.ancestors.push(node.id.clone());
     {
         let ancestors = inner.ancestors[..inner.ancestors.len() - 1].to_vec();
@@ -964,6 +1021,7 @@ fn overlay_contents(
             parts: &inner.base_parts,
             edit: inner.edit,
             now: inner.now,
+            cb_w: outer_cb_w,
             ancestors: &ancestors,
             hits: &mut inner.hits,
             clicks: &mut inner.clicks,
@@ -1089,11 +1147,13 @@ fn modal_overlay(
     // Not the page root — the host's `auto` height is the content's, so
     // `sub.size` stays the dialog's real box (a `100vh` floor here made the
     // dialog fill the viewport). The floating children are DOM descendants
-    // of the node: seed the scratch root with the effective style
+    // of the node: the scratch layout resolves inside the node's scope
+    // (`overlay_scx`) and its root inherits the effective style
     // `overlay_contents` paints under, or the dialog measures at default
     // typography while painting the inherited one.
-    let eff = effective(parent_inh.as_ref(), crate::style_of(node, w.scx));
-    let sub = crate::layout_shrink(&mcx, w.scx, w.registry, &host, screen, Some(&eff));
+    let eff = overlay_eff(w, node, &parent_inh);
+    let oscx = overlay_scx(w.layout, w.scx, node);
+    let sub = crate::layout_shrink(&mcx, &oscx, w.registry, &host, screen, Some(&eff));
     // The dialog is sized by its content: `sub.size` is the padded host
     // column — width, plus `pt` (pad + title strip) + children + `pb`.
     // WE caps it at `maxHeight: calc(100dvh - 64px)`.
@@ -1138,7 +1198,7 @@ fn modal_overlay(
             .chain(corners)
             .collect();
         let host2 = modal_host(node, width, flow2, &mcx);
-        let sub2 = crate::layout_shrink(&mcx, w.scx, w.registry, &host2, screen, Some(&eff));
+        let sub2 = crate::layout_shrink(&mcx, &oscx, w.registry, &host2, screen, Some(&eff));
         (host2, sub2)
     } else {
         (host, sub)
@@ -1218,11 +1278,19 @@ fn anchored_overlay(
     let host = overlay_host(node, width, floating);
     let mcx = MeasureCx::new(ctx);
     // Same floating-host rule as the modal: `auto` height is the content's,
-    // not floored to the anchor's rect. The scratch root inherits what the
-    // inner walk inherits — the node's effective style — so measured
-    // typography matches painted typography.
-    let eff = effective(parent_inh.as_ref(), crate::style_of(node, w.scx));
-    let sub = crate::layout_shrink(&mcx, w.scx, w.registry, &host, anchor, Some(&eff));
+    // not floored to the anchor's rect. The scratch layout resolves in the
+    // node's scope and its root inherits what the inner walk inherits — the
+    // node's effective style — so measured typography matches painted
+    // typography.
+    let eff = overlay_eff(w, node, &parent_inh);
+    let sub = crate::layout_shrink(
+        &mcx,
+        &overlay_scx(w.layout, w.scx, node),
+        w.registry,
+        &host,
+        anchor,
+        Some(&eff),
+    );
     let size = sub
         .size
         .max(egui::vec2(width, 4.0))

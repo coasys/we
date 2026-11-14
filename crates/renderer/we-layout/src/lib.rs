@@ -16,6 +16,6 @@ mod tree;
 
 pub use geom::{Pos2, Rect, Size, Vec2};
 pub use tree::{
-    layout, layout_shrink, Direction, Layout, Measure, PartSpec, Parts, PartsSpec, Pick,
+    layout, layout_shrink, Bases, Direction, Layout, Measure, PartSpec, Parts, PartsSpec, Pick,
     TextChildren, TextSpan, TreeCfg,
 };

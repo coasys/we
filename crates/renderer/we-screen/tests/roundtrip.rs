@@ -39,6 +39,7 @@ fn location_strategy() -> impl Strategy<Value = Location> {
                 params.insert(k, v);
             }
             Location {
+                pathname: format!("/{}", segments.join("/")),
                 segments,
                 params,
                 fragment: None,

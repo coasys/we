@@ -1,0 +1,23 @@
+{
+  "format": "we-bundle",
+  "formatVersion": 1,
+  "id": "lane-dump-test",
+  "version": "0.0.0",
+  "name": "Lane dump test",
+  "templates": [
+    {
+      "id": "lane-template",
+      "meta": {},
+      "type": "Column",
+      "children": [
+        {
+          "type": "$lane",
+          "props": { "lane": "main" },
+          "children": [
+            { "type": "we-text", "props": { "text": "inside the lane" } }
+          ]
+        }
+      ]
+    }
+  ]
+}

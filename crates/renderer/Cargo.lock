@@ -4579,7 +4579,9 @@ dependencies = [
 name = "we-catalog"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "indexmap",
+ "serde_json",
  "we-expr",
  "we-template",
 ]
@@ -4646,6 +4648,7 @@ name = "we-layout"
 version = "0.1.0"
 dependencies = [
  "indexmap",
+ "log",
  "taffy",
  "we-expr",
  "we-style",

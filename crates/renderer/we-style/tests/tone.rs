@@ -106,3 +106,32 @@ fn number_on_a_length_prop_is_px() {
     let style = resolve(&bag(&[("maxWidth", Value::Num(300.0))]), &input);
     assert_eq!(style.layout.max_width, Some(Dimension::Px(300.0)));
 }
+
+#[test]
+fn styles_custom_props_overlay_the_theme() {
+    let tokens = tokens();
+    let input = StyleInput::new(&tokens, Direction::Row);
+    // The `styles` hatch writes custom properties verbatim; one that re-points
+    // a role scopes the element's own declarations, exactly as an inline
+    // `style="--we-role-accent: …"` does in the browser.
+    let style = resolve(
+        &bag(&[
+            ("bg", s("accent")),
+            (
+                "styles",
+                Value::Obj(Arc::new(
+                    [("--we-role-accent", s("#ff0000"))]
+                        .into_iter()
+                        .map(|(k, v)| (Arc::from(k), v))
+                        .collect(),
+                )),
+            ),
+        ]),
+        &input,
+    );
+    assert_eq!(
+        style.paint.bg,
+        eval_color("#ff0000"),
+        "a `styles` --we-* override must scope bg: accent"
+    );
+}
