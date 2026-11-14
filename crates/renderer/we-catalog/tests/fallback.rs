@@ -3,8 +3,9 @@
 use std::sync::Arc;
 
 use indexmap::IndexMap;
+use we_catalog::{ControlState, Semantics};
 use we_expr::Value;
-use we_template::{NodeId, ResolvedNode};
+use we_template::{NodeId, ResolvedChild, ResolvedNode};
 
 fn node(ty: &str, props: &[(&str, Value)]) -> ResolvedNode {
     ResolvedNode {
@@ -21,11 +22,27 @@ fn node(ty: &str, props: &[(&str, Value)]) -> ResolvedNode {
     }
 }
 
+fn obj(fields: &[(&str, Value)]) -> Value {
+    Value::Obj(Arc::new(
+        fields
+            .iter()
+            .map(|(k, v)| (Arc::from(*k), v.clone()))
+            .collect::<IndexMap<Arc<str>, Value>>(),
+    ))
+}
+
+fn list(items: Vec<Value>) -> Value {
+    Value::List(Arc::new(items))
+}
+
+fn fallback(n: &ResolvedNode) -> String {
+    we_catalog::text_fallback(n)
+}
+
 #[test]
 fn video_falls_back_to_a_link() {
     let n = node("we-video", &[("src", Value::from("https://x/v.mp4"))]);
-    let e = we_catalog::entry("we-video").unwrap();
-    assert_eq!(we_catalog::text_fallback(e, &n), "video: https://x/v.mp4");
+    assert_eq!(fallback(&n), "video: https://x/v.mp4");
 }
 
 #[test]
@@ -34,21 +51,16 @@ fn colour_picker_lists_tokens() {
         "we-color-picker",
         &[(
             "tokens",
-            Value::List(Arc::new(vec![
-                Value::from("surface"),
-                Value::from("accent"),
-            ])),
+            list(vec![Value::from("surface"), Value::from("accent")]),
         )],
     );
-    let e = we_catalog::entry("we-color-picker").unwrap();
-    assert_eq!(we_catalog::text_fallback(e, &n), "colours: surface, accent");
+    assert_eq!(fallback(&n), "colours: surface, accent");
 }
 
 #[test]
 fn rich_text_gives_its_plain_text() {
     let n = node("we-text", &[("text", Value::from("hello world"))]);
-    let e = we_catalog::entry("we-text").unwrap();
-    assert_eq!(we_catalog::text_fallback(e, &n), "hello world");
+    assert_eq!(fallback(&n), "hello world");
 }
 
 #[test]
@@ -60,6 +72,281 @@ fn input_gives_its_value() {
             ("placeholder", Value::from("ph")),
         ],
     );
-    let e = we_catalog::entry("we-input").unwrap();
-    assert_eq!(we_catalog::text_fallback(e, &n), "typed text");
+    assert_eq!(fallback(&n), "typed text");
+}
+
+// --- S5: actual control state and structured content ---
+
+#[test]
+fn switch_reports_checked_state() {
+    let on = node(
+        "we-switch",
+        &[
+            ("label", Value::from("Mute")),
+            ("checked", Value::Bool(true)),
+        ],
+    );
+    let off = node(
+        "we-switch",
+        &[
+            ("label", Value::from("Mute")),
+            ("checked", Value::Bool(false)),
+        ],
+    );
+    assert_eq!(fallback(&on), "Mute: on");
+    assert_eq!(fallback(&off), "Mute: off");
+    // The typed state is in the descriptor, not just the string.
+    let Semantics { state, .. } = we_catalog::describe(&on);
+    assert_eq!(state, Some(ControlState::Flag(true)));
+}
+
+#[test]
+fn slider_and_number_input_emit_numeric_values() {
+    let s = node(
+        "we-slider",
+        &[
+            ("label", Value::from("Volume")),
+            ("value", Value::Num(7.0)),
+            ("min", Value::Num(0.0)),
+            ("max", Value::Num(100.0)),
+        ],
+    );
+    assert_eq!(fallback(&s), "Volume: 7");
+    assert_eq!(
+        we_catalog::describe(&s).state,
+        Some(ControlState::Number(7.0))
+    );
+
+    let n = node(
+        "we-number-input",
+        &[
+            ("label", Value::from("Port")),
+            ("value", Value::Num(8080.0)),
+        ],
+    );
+    assert_eq!(fallback(&n), "Port: 8080");
+}
+
+#[test]
+fn select_shows_the_chosen_option_label() {
+    let n = node(
+        "we-select",
+        &[
+            ("label", Value::from("Fruit")),
+            (
+                "options",
+                list(vec![
+                    obj(&[("value", Value::from("a")), ("label", Value::from("Apple"))]),
+                    obj(&[
+                        ("value", Value::from("b")),
+                        ("label", Value::from("Banana")),
+                    ]),
+                ]),
+            ),
+            ("value", Value::from("b")),
+        ],
+    );
+    assert_eq!(fallback(&n), "Fruit: Banana");
+}
+
+#[test]
+fn block_composer_flattens_its_document() {
+    let n = node(
+        "BlockComposer",
+        &[(
+            "blocks",
+            list(vec![
+                obj(&[
+                    ("_type", Value::from("block")),
+                    ("text", Value::from("Hello world")),
+                    (
+                        "marks",
+                        list(vec![obj(&[
+                            ("type", Value::from("strong")),
+                            ("start", Value::Num(0.0)),
+                            ("end", Value::Num(5.0)),
+                        ])]),
+                    ),
+                ]),
+                obj(&[
+                    ("_type", Value::from("block")),
+                    (
+                        "children",
+                        list(vec![
+                            obj(&[
+                                ("_type", Value::from("span")),
+                                ("text", Value::from("Second ")),
+                            ]),
+                            obj(&[
+                                ("_type", Value::from("span")),
+                                ("text", Value::from("para")),
+                                ("marks", list(vec![Value::from("em")])),
+                            ]),
+                        ]),
+                    ),
+                ]),
+                obj(&[
+                    ("_type", Value::from("collection")),
+                    (
+                        "children",
+                        list(vec![obj(&[
+                            ("_type", Value::from("block")),
+                            ("text", Value::from("Nested item")),
+                        ])]),
+                    ),
+                ]),
+                obj(&[
+                    ("_type", Value::from("image")),
+                    ("alt", Value::from("a diagram")),
+                ]),
+            ]),
+        )],
+    );
+    assert_eq!(
+        fallback(&n),
+        "Hello world\nSecond para\n  Nested item\n[image] a diagram"
+    );
+}
+
+#[test]
+fn graph_outlines_named_nodes_and_edges() {
+    let n = node(
+        "GraphView",
+        &[
+            (
+                "nodes",
+                list(vec![
+                    obj(&[
+                        ("id", Value::from("a")),
+                        ("type", Value::from("step")),
+                        ("label", Value::from("Draft")),
+                    ]),
+                    obj(&[
+                        ("id", Value::from("b")),
+                        ("type", Value::from("step")),
+                        ("label", Value::from("Review")),
+                    ]),
+                    obj(&[
+                        ("id", Value::from("c")),
+                        ("type", Value::from("step")),
+                        ("label", Value::from("Publish")),
+                    ]),
+                ]),
+            ),
+            (
+                "edges",
+                list(vec![
+                    obj(&[
+                        ("id", Value::from("a-b")),
+                        ("source", Value::from("a")),
+                        ("target", Value::from("b")),
+                        ("type", Value::from("next")),
+                    ]),
+                    obj(&[
+                        ("id", Value::from("b-c")),
+                        ("source", Value::from("b")),
+                        ("target", Value::from("c")),
+                        ("type", Value::from("next")),
+                    ]),
+                ]),
+            ),
+        ],
+    );
+    assert_eq!(
+        fallback(&n),
+        "3 nodes\n  Draft\n  Review\n  Publish\n2 edges\n  Draft → Review (next)\n  Review → Publish (next)"
+    );
+}
+
+#[test]
+fn graph_reads_a_literal_seed() {
+    // The TS widget's `seeds: { literal: true, nodes, edges }` shape.
+    let n = node(
+        "GraphView",
+        &[(
+            "seeds",
+            obj(&[
+                ("literal", Value::Bool(true)),
+                (
+                    "nodes",
+                    list(vec![obj(&[
+                        ("id", Value::from("a")),
+                        ("label", Value::from("Only")),
+                    ])]),
+                ),
+                ("edges", list(vec![])),
+            ]),
+        )],
+    );
+    assert_eq!(fallback(&n), "1 nodes\n  Only");
+}
+
+#[test]
+fn select_falls_back_to_placeholder_when_nothing_matches() {
+    let n = node(
+        "we-select",
+        &[
+            (
+                "options",
+                list(vec![obj(&[
+                    ("value", Value::from("a")),
+                    ("label", Value::from("Apple")),
+                ])]),
+            ),
+            ("value", Value::from("b")),
+            ("placeholder", Value::from("pick one")),
+        ],
+    );
+    assert_eq!(fallback(&n), "pick one");
+}
+
+#[test]
+fn tree_item_reports_expanded_state() {
+    let n = node(
+        "we-tree-item",
+        &[
+            ("label", Value::from("Channels")),
+            ("open", Value::Bool(true)),
+        ],
+    );
+    assert_eq!(fallback(&n), "Channels: expanded");
+    let closed = node(
+        "we-tree-item",
+        &[
+            ("label", Value::from("Channels")),
+            ("open", Value::Bool(false)),
+        ],
+    );
+    assert_eq!(fallback(&closed), "Channels: collapsed");
+}
+
+#[test]
+fn unknown_type_still_describes_itself() {
+    // No catalog entry — the generic descriptor keeps the label/value
+    // content; the caller still prints the `ty` marker itself.
+    let n = node("we-widget-9000", &[("label", Value::from("Strange fruit"))]);
+    let sem = we_catalog::describe(&n);
+    assert_eq!(sem.name.as_deref(), Some("Strange fruit"));
+    assert_eq!(fallback(&n), "Strange fruit");
+
+    // A bare `value` announces too (any JSON type, not just strings).
+    let n = node("we-mystery", &[("value", Value::Num(42.0))]);
+    assert_eq!(fallback(&n), "42");
+}
+
+#[test]
+fn containers_announce_only_their_name() {
+    // Traversal is the frontend's: a Column does not swallow its children
+    // into a flat string — its own announcement is its name (none here).
+    let mut n = node("Column", &[]);
+    n.children = vec![
+        ResolvedChild::Text("orphan text".into()),
+        ResolvedChild::Node(Box::new(node("we-text", &[("text", Value::from("child"))]))),
+    ];
+    assert_eq!(fallback(&n), "");
+
+    // A Card announces its title — children still belong to the traversal.
+    let mut c = node("Card", &[("title", Value::from("Details"))]);
+    c.children = vec![ResolvedChild::Text("body".into())];
+    assert_eq!(fallback(&c), "Details");
 }

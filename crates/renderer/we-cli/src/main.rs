@@ -51,9 +51,7 @@ fn tree_schema(bundle: &Bundle) -> SchemaNode {
 /// One resolved child → an indented line (nodes recurse; text children
 /// print inline).
 fn outline(node: &ResolvedNode, depth: usize, out: &mut String) {
-    let label = we_catalog::entry(node.ty.as_ref())
-        .map(|e| we_catalog::text_fallback(e, node))
-        .unwrap_or_default();
+    let label = we_catalog::text_fallback(node);
     let label = label.lines().next().unwrap_or("");
     out.push_str(&"  ".repeat(depth));
     out.push_str(node.ty.as_ref());
