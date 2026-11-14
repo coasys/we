@@ -542,6 +542,67 @@ fn p2_7_where_matcher_reference_shape() {
     );
 }
 
+/// `rangeCompare` orders strings as JS does — by UTF-16 code units, not by
+/// scalar value. A supplementary-plane character starts with a surrogate
+/// below U+E000, so `'\u{10000}' < '\u{e000}'` is true in JS even though
+/// U+10000 > U+E000 as scalars.
+#[test]
+fn n4_where_range_orders_utf16_code_units() {
+    let env = MapEnv::new();
+    let rows = || list(&[obj(&[("v", "\u{10000}".into())])]);
+    for op in ["lt", "lte"] {
+        assert_eq!(
+            call_json(
+                "filter",
+                &[rows(), obj(&[("v", obj(&[(op, "\u{e000}".into())]))])],
+                &env
+            ),
+            json!([{"v": "\u{10000}"}]),
+            "U+10000 {op} U+E000 — the leading surrogate is D800 < E000"
+        );
+    }
+    for op in ["gt", "gte"] {
+        assert_eq!(
+            call_json(
+                "filter",
+                &[rows(), obj(&[("v", obj(&[(op, "\u{e000}".into())]))])],
+                &env
+            ),
+            json!([]),
+            "U+10000 {op} U+E000 is false under UTF-16 order"
+        );
+    }
+    // Longer string still ordered by its first unit.
+    let rows = list(&[obj(&[("v", "\u{10000}z".into())])]);
+    assert_eq!(
+        call_json(
+            "filter",
+            &[rows, obj(&[("v", obj(&[("gt", "\u{e000}".into())]))])],
+            &env
+        ),
+        json!([])
+    );
+    // Controls: BMP and intra-supplementary-plane orders are unaffected.
+    let rows = list(&[obj(&[("v", "a".into())])]);
+    assert_eq!(
+        call_json(
+            "filter",
+            &[rows, obj(&[("v", obj(&[("lt", "z".into())]))])],
+            &env
+        ),
+        json!([{"v": "a"}])
+    );
+    let rows = list(&[obj(&[("v", "\u{10000}".into())])]);
+    assert_eq!(
+        call_json(
+            "filter",
+            &[rows, obj(&[("v", obj(&[("lt", "\u{10001}".into())]))])],
+            &env
+        ),
+        json!([{"v": "\u{10000}"}])
+    );
+}
+
 /// `evaluate.ts` has no eval-depth cap. Flat left-associative chains spend
 /// none of the parser's 40-level nesting budget, so a ≤4000-unit source can
 /// hold an AST far deeper — and TS evaluates all of it. Verified live: TS

@@ -142,11 +142,14 @@ fn range_op(actual: &Value, op: &str, bound: &Value) -> bool {
     }
 }
 
-/// Number/number or string/string — mixed types have no ordering.
+/// Number/number or string/string — mixed types have no ordering. Strings
+/// order as JavaScript's `<`: by UTF-16 code units, so a supplementary
+/// plane character (leading surrogate D800–DBFF) precedes the BMP's high
+/// end — `str::cmp` would order it *after*, by scalar value.
 fn range_compare(a: &Value, b: &Value) -> Option<std::cmp::Ordering> {
     match (a, b) {
         (Value::Num(x), Value::Num(y)) => x.partial_cmp(y),
-        (Value::Str(x), Value::Str(y)) => Some(x.cmp(y)),
+        (Value::Str(x), Value::Str(y)) => Some(x.encode_utf16().cmp(y.encode_utf16())),
         _ => None,
     }
 }
