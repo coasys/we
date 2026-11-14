@@ -588,7 +588,10 @@ fn grid_row_recipe_skips_hidden_children() {
     let mut grid = node(
         "Grid",
         "grid",
-        &[("columns", Value::from(1.0)), ("height", Value::from("400px"))],
+        &[
+            ("columns", Value::from(1.0)),
+            ("height", Value::from("400px")),
+        ],
     );
     grid.children = vec![
         ResolvedChild::Node(Box::new(node(

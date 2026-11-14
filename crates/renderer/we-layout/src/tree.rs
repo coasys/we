@@ -651,14 +651,12 @@ fn grid_axes(node: &ResolvedNode, s: &taffy::Style, n_items: usize) -> GridAxes 
             count: n_items.div_ceil(*count as usize).max(1) as u32,
             gap,
         }),
-        Some(GridAxis::AutoFill { min, gap: gap_x }) => {
-            gap_y.map(|gap_y| GridAxis::AutoRows {
-                min: *min,
-                gap_x: *gap_x,
-                gap_y,
-                items: n_items.max(1),
-            })
-        }
+        Some(GridAxis::AutoFill { min, gap: gap_x }) => gap_y.map(|gap_y| GridAxis::AutoRows {
+            min: *min,
+            gap_x: *gap_x,
+            gap_y,
+            items: n_items.max(1),
+        }),
         _ => None,
     };
     GridAxes { x, y }
