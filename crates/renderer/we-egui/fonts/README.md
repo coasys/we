@@ -17,17 +17,17 @@ family names. A binary that embeds these fonts (`include_bytes!`) has to carry `
 
 Repository: <https://github.com/notofonts/symbols>, GitHub release assets.
 
-| Subset | Release tag | Tag object → commit | Archive (SHA-256) |
-|---|---|---|---|
-| `NotoSansSymbols.subset.ttf` | `NotoSansSymbols-v2.003` | `11e0c98f…` → `b61fa7f86fb7d4163ee11d46d0977393f98d4f7a` | `NotoSansSymbols-v2.003.zip` (`0c113cdcf6c31d050b80dac39fba2d804a6985281012e76e9220c0a00da007f3`) |
+| Subset                        | Release tag               | Tag object → commit                                      | Archive (SHA-256)                                                                                  |
+| ----------------------------- | ------------------------- | -------------------------------------------------------- | -------------------------------------------------------------------------------------------------- |
+| `NotoSansSymbols.subset.ttf`  | `NotoSansSymbols-v2.003`  | `11e0c98f…` → `b61fa7f86fb7d4163ee11d46d0977393f98d4f7a` | `NotoSansSymbols-v2.003.zip` (`0c113cdcf6c31d050b80dac39fba2d804a6985281012e76e9220c0a00da007f3`)  |
 | `NotoSansSymbols2.subset.ttf` | `NotoSansSymbols2-v2.008` | `a7148cbc…` → `25b00f0d3f40873a005287514ba2a48558655314` | `NotoSansSymbols2-v2.008.zip` (`346c930bbe8eb946701a05c54e9c11a2094dee1d93c387bf1771c0a3e335688f`) |
 
 The source file inside each archive:
 
-| Archive path | Version (`name` 5) | SHA-256 |
-|---|---|---|
-| `NotoSansSymbols/hinted/ttf/NotoSansSymbols-Regular.ttf` | `Version 2.003; ttfautohint (v1.8.4.7-5d5b)` | `d0e98e9a2c046594c5021437273943be7e79e0fd980fde125279e22302212595` |
-| `NotoSansSymbols2/hinted/ttf/NotoSansSymbols2-Regular.ttf` | `Version 2.008` | `c4a0a80f0041ce4be81e2478faad22776d23edb98ae3f0d19bd37044820ecf9d` |
+| Archive path                                               | Version (`name` 5)                           | SHA-256                                                            |
+| ---------------------------------------------------------- | -------------------------------------------- | ------------------------------------------------------------------ |
+| `NotoSansSymbols/hinted/ttf/NotoSansSymbols-Regular.ttf`   | `Version 2.003; ttfautohint (v1.8.4.7-5d5b)` | `d0e98e9a2c046594c5021437273943be7e79e0fd980fde125279e22302212595` |
+| `NotoSansSymbols2/hinted/ttf/NotoSansSymbols2-Regular.ttf` | `Version 2.008`                              | `c4a0a80f0041ce4be81e2478faad22776d23edb98ae3f0d19bd37044820ecf9d` |
 
 (In the Symbols 2 archive, `unhinted/ttf/` holds the same bytes as `hinted/ttf/`.)
 
@@ -50,9 +50,9 @@ pyftsubset NotoSansSymbols2/hinted/ttf/NotoSansSymbols2-Regular.ttf \
 Both commands reproduce the committed files byte for byte with that fontTools version (checked
 2026-11-14). A different fontTools version may produce different bytes with the same glyphs.
 
-| Committed file | Size | SHA-256 |
-|---|---|---|
-| `NotoSansSymbols.subset.ttf` | 40,388 | `bb037cc6f0d7e48c642afb09af476fcc73d6ee44fdefe4b4327cc2028c5cf04f` |
+| Committed file                | Size   | SHA-256                                                            |
+| ----------------------------- | ------ | ------------------------------------------------------------------ |
+| `NotoSansSymbols.subset.ttf`  | 40,388 | `bb037cc6f0d7e48c642afb09af476fcc73d6ee44fdefe4b4327cc2028c5cf04f` |
 | `NotoSansSymbols2.subset.ttf` | 86,520 | `f906dc558bc492f3efd27d958e1db08712bc1690a79c4764663f08a292b8d31e` |
 
 ## What each subset holds
