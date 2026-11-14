@@ -65,7 +65,10 @@ impl log::Log for CountingLogger {
         true
     }
     fn log(&self, record: &log::Record<'_>) {
-        if record.args().to_string().contains("\"tree\"") {
+        // A param name no other test in this binary declares — a shared
+        // counter would otherwise count their warnings too (the tests run
+        // in parallel).
+        if record.args().to_string().contains("\"wtree\"") {
             TREE_WARNS.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
         }
     }
@@ -79,12 +82,12 @@ fn bad_declared_value_warns_once_not_per_read() {
     log::set_max_level(log::LevelFilter::Warn);
     let before = TREE_WARNS.load(std::sync::atomic::Ordering::Relaxed);
     let s = screen(
-        json!({ "params": { "tree": { "type": "boolean" } } }),
-        "/space/abc/board?tree=yes",
+        json!({ "params": { "wtree": { "type": "boolean" } } }),
+        "/space/abc/board?wtree=yes",
     );
-    assert_eq!(s.nav.param_typed("tree"), None);
-    assert_eq!(s.nav.param_typed("tree"), None);
-    assert_eq!(s.nav.param_typed("tree"), None);
+    assert_eq!(s.nav.param_typed("wtree"), None);
+    assert_eq!(s.nav.param_typed("wtree"), None);
+    assert_eq!(s.nav.param_typed("wtree"), None);
     assert_eq!(
         TREE_WARNS.load(std::sync::atomic::Ordering::Relaxed) - before,
         1,
