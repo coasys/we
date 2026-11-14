@@ -94,7 +94,7 @@ function keyLine(key: BotKeyView | null): { line: string; tone: BotRow['keyTone'
         tone: 'danger-text',
       };
     case 'revoked':
-      return { line: 'Key revoked in your key log', tone: 'danger-text' };
+      return { line: 'Key removed', tone: 'danger-text' };
     case 'not-in-log':
       return {
         line: 'Key not in your key log yet: confirm the match code in the identity window',

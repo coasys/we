@@ -183,6 +183,6 @@ describe('choosing a new password', () => {
     const { container } = render(() => <CredentialField purpose="new" />);
     credential.touch();
     const [password] = container.querySelectorAll('we-form-field');
-    expect((password as unknown as { error: string }).error).toBe('Password is required');
+    expect((password as unknown as { error: string }).error).toBe('Enter a password');
   });
 });

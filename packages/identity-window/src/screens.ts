@@ -294,7 +294,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
     case 'joined':
       return {
         title: 'This device is one of yours now',
-        lead: `It signs for you now. It does not hold your master key, so it cannot add or remove devices.`,
+        lead: 'To add or remove devices, use a device that has your master key.',
       };
     case 'master-taken':
       return {
@@ -359,7 +359,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
         title: 'Your master key is replaced',
         lead: [
           `This computer keeps master key #${screen.index}. Copies of the one before it no longer add or remove devices, on any device.`,
-          ...(screen.revoked.length ? [`Revoked in the same step: ${devices(screen.revoked.length)}.`] : []),
+          ...(screen.revoked.length ? [`Also removed: ${devices(screen.revoked.length)}.`] : []),
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
       };
@@ -368,7 +368,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
         title: 'Your master key is replaced, but this computer could not keep the new key',
         lead: [
           `Master key #${screen.index} is now your master key, and copies of the one before it no longer add or remove devices. ${screen.reason}`,
-          ...(screen.revoked.length ? [`Revoked in the same step: ${devices(screen.revoked.length)}.`] : []),
+          ...(screen.revoked.length ? [`Also removed: ${devices(screen.revoked.length)}.`] : []),
           ...(screen.note ? [screen.note] : []),
           'Type your 12 words again to replace it once more with a key this computer keeps.',
         ].join(' '),
@@ -378,7 +378,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
         title: 'Your identity is restored, but this computer is not linked yet',
         lead: [
           `Your master key is replaced. ${screen.reason}`,
-          ...(screen.revoked.length ? [`Locked out: ${devices(screen.revoked.length)}.`] : []),
+          ...(screen.revoked.length ? [`Removed: ${devices(screen.revoked.length)}.`] : []),
           'Try again to add this computer as one of your devices; your 12 words are not needed for that.',
         ].join(' '),
       };
@@ -386,8 +386,8 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
       return {
         title: `Restored as ${screen.name}`,
         lead: [
-          'This computer signs for you and keeps your new master key.',
-          ...(screen.revoked.length ? [`Locked out: ${devices(screen.revoked.length)}.`] : []),
+          'This computer has your new master key.',
+          ...(screen.revoked.length ? [`Removed: ${devices(screen.revoked.length)}.`] : []),
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
       };
@@ -420,12 +420,12 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
       return {
         title: `${screen.name} added`,
         lead: [
-          `Your key log records its key as entry #${screen.seq}. It can do nothing yet: give it spaces on the Bots page.`,
+          `Added at #${screen.seq}. Choose what it can do on the Bots page.`,
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
       };
     case 'revoked':
-      return { title: 'Device revoked', lead: `Your key log records it as entry #${screen.seq}.` };
+      return { title: 'Device removed', lead: `Removed at #${screen.seq}.` };
     case 'pending-refused':
       return {
         title: 'Your identity could not be published',

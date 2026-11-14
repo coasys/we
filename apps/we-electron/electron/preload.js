@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-/** Listeners for the tray's "Executor settings…", and whether one came with nobody listening. */
+/** Listeners for the tray's "Startup settings…", and whether one came with nobody listening. */
 const openSettingsListeners = new Set();
 let openSettingsPending = false;
 ipcRenderer.on('open-executor-settings', () => {
@@ -58,7 +58,7 @@ contextBridge.exposeInMainWorld('electron', {
     },
     start: () => ipcRenderer.invoke('executor-start'),
     /*
-      The tray's "Executor settings…": open Settings where the executor's are. An ask that comes
+      The tray's "Startup settings…": open Settings where the executor's are. An ask that comes
       before anything listens (the window loading, or the app before a session) is held and given to
       the first listener, so it is not lost.
     */

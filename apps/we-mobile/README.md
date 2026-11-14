@@ -21,7 +21,7 @@ tree, and `cap sync ios` works, but nothing builds it.
 ## How the phone connects (phase 1)
 
 Through ad4m-connect, as the web app does (`apps/we-web/src/platform/ad4mConnector.ts`), once
-"AD4M Connect" is chosen on the connection choice. On a
+"A host" is chosen on the connection choice. On a
 phone-sized screen it offers only **Remote Node**: pick a listed host or type a URL, then sign in or
 register with email and password on that executor (a multi-user executor: a host or Coasys cloud).
 The executor must be reachable over `https`/`wss` with a certificate the phone trusts. The release

@@ -37,7 +37,8 @@ export interface BaseIdentitySource {
    */
   state(): Promise<IdentityCustodyView>;
   /**
-   * "Make my identity here", "Link to my identity" and "Use my 12 words", as this host offers each.
+   * "Create new identity", "Link to another device" and "Restore with recovery phrase", as this host
+   * offers each.
    * Read again whenever the host's own backend ({@link BaseHost.executor}) changes, so a host's doors
    * may follow it: the desktop's stay closed until its executor's agent is unlocked.
    */

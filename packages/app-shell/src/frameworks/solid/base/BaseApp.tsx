@@ -36,7 +36,7 @@ import type { WeSeedFile } from '../../../types/seed';
 import App from '../App';
 import { PlatformProvider } from '../providers/PlatformProvider';
 import { componentRegistry } from '../registries/componentRegistry';
-import { type BaseBrand, type BaseStore, createBaseStore } from '../stores/BaseStore';
+import { type BaseBrand, type BaseStore, createBaseStore, unreachableWords } from '../stores/BaseStore';
 
 /** The theme a base template is drawn in: the bundle's first, as it is the app's default. */
 export interface BaseTheme {
@@ -117,8 +117,6 @@ export interface BaseBootProps {
   onStore?: (store: BaseStore) => void;
 }
 
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
 /**
  * The connector the app is given: the host's, with one difference — a failure to reach the place
  * goes back to the base app instead of to the session's error screen.
@@ -128,6 +126,8 @@ export function handBackOnUnreachable(
   host: BaseHost,
   connection: BaseConnection,
   handBack: (reason: string) => void,
+  /** The app's name, for words about this device's own backend. */
+  appName: string = WE_PRODUCT_NAME,
 ): BackendConnector {
   return {
     ...connector,
@@ -136,7 +136,7 @@ export function handBackOnUnreachable(
         return await connector.initialize(ctx);
       } catch (e) {
         if (host.isUnreachable?.(e)) {
-          handBack(`${connection.label} could not be reached: ${message(e)}`);
+          handBack(unreachableWords(connection, e, appName));
           // The app is unmounted by the hand-back; nothing waits on this any more.
           return new Promise<never>(() => {});
         }
@@ -158,11 +158,12 @@ export function BaseBoot(props: BaseBootProps): JSX.Element {
     what cannot wait for a session is drawn, by WE's own fallback: this device's backend starting or
     failing to, and a place that could not be reached.
   */
+  const brand = base?.brand ?? { name: WE_PRODUCT_NAME, mark: '' };
   const store = createBaseStore(base ? host : { ...host, identity: undefined }, {
-    brand: base?.brand ?? { name: WE_PRODUCT_NAME, mark: '' },
+    brand,
     onHandOff: async (connection, how) => {
       const connector = await host.connector(connection, how);
-      setSession(() => handBackOnUnreachable(connector, host, connection, back));
+      setSession(() => handBackOnUnreachable(connector, host, connection, back, brand.name));
     },
     takeFirst: !base,
   });

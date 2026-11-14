@@ -15,8 +15,8 @@ import { COLLAPSED } from './lockup.ts';
  *   here instead, asked for in the host's own field and never held by this template. On a first start
  *   it is typed twice, which only catches a typo, and has a floor of 8 characters; a password an agent
  *   was already made with has none.
- * - **first-run** — this device speaks for nobody yet: "Make my identity here", "Link to my identity",
- *   "Use my 12 words", and "Start now". On a phone it is the join: a phone links to an identity a
+ * - **first-run** — this device speaks for nobody yet: "Create new identity", "Link to another device",
+ *   "Restore with recovery phrase", and "Skip for now". On a phone it is the join: a phone links to an identity a
  *   computer keeps, and the doors it cannot open say why. Every door opens the host's own identity
  *   window — the only place the 12 words are ever shown or typed.
  * - **connect** — where this device gets its session: this computer, the servers added on it (listed,
@@ -237,44 +237,36 @@ const firstRun = screen('base__first-run', [
       {
         type: 'we-text',
         props: { variant: 'heading-xl', tag: 'h1' },
-        children: [{ $: "baseStore.hostKind == 'phone' ? 'Join your identity' : 'Welcome to Coasys'" }],
+        children: [{ $: "baseStore.hostKind == 'phone' ? 'Link this phone' : 'Set up Coasys'" }],
       },
       {
         type: 'we-text',
         props: { color: 'text-muted' },
         children: [
           {
-            $: "baseStore.hostKind == 'phone' ? 'This phone acts as you once a computer that keeps your master key adds it.' : 'Your identity is yours: no email, no account with anybody. Choose how this computer comes in.'",
+            $: "baseStore.hostKind == 'phone' ? 'You need a computer that has your master key.' : 'No email or password needed.'",
           },
         ],
       },
     ],
   },
   card([
-    door(
-      'make',
-      'sparkle',
-      'Make my identity here',
-      'Your 12 words, no email needed. This computer keeps your master key',
-      'makeIdentity',
-    ),
+    door('make', 'sparkle', 'Create new identity', 'Your master key stays on this computer.', 'makeIdentity'),
     door(
       'link',
       'qr-code',
-      'Link to my identity',
+      'Link to another device',
       {
-        computer: 'From a device that keeps your master key: it scans this code',
-        phone: 'From a computer that keeps your master key: scan or paste the offer it makes for this phone',
+        computer: 'Show a code to scan on a device that has your master key.',
+        phone: 'Enter the code from a computer that has your master key.',
       },
       'linkIdentity',
     ),
-    door('words', 'key', 'Use my 12 words', 'Bring your identity back to this computer', 'useWords'),
+    door('words', 'key', 'Restore with recovery phrase', 'Enter your 12 words.', 'useWords'),
     row({
       icon: 'lightning',
-      title: 'Start now',
-      detail: {
-        $: '`Use Coasys on this ${baseStore.deviceNoun} alone. Make or link your identity later, from Settings`',
-      },
+      title: 'Skip for now',
+      detail: 'Set up your identity later in Settings.',
       onClick: { $invoke: 'baseStore.startNow' },
     }),
   ]),
@@ -288,9 +280,7 @@ const firstRun = screen('base__first-run', [
         type: 'we-alert',
         props: { tone: 'warning' },
         children: [
-          {
-            $: '`Your identity was made on this ${baseStore.deviceNoun} and its master key is kept here, but it is not published yet. Coasys publishes it again each time it starts. To finish it now, choose Make my identity here: it finishes the same identity, with no new words.`',
-          },
+          'Couldn’t publish your identity. Coasys tries again each time it starts. To try now, choose Create new identity. Your recovery phrase stays the same.',
         ],
       },
     },
@@ -299,7 +289,7 @@ const firstRun = screen('base__first-run', [
   // cannot say it kept the key either), so it says only that the step did not finish.
   failedAlert(
     "baseStore.lastOutcome == 'failed' && baseStore.unpublished == ''",
-    "baseStore.error != '' ? baseStore.error : 'That did not finish; try again.'",
+    "baseStore.error != '' ? baseStore.error : 'Something went wrong. Try again.'",
   ),
   failedAlert(
     "baseStore.lastOutcome == 'failed' && baseStore.unpublished != '' && baseStore.error != ''",
@@ -337,16 +327,7 @@ const connect = screen('base__connect', [
       // Read as the list grows: today this computer, later a server of your own or a host you trust.
       // No "you can change this later": a place once chosen is taken again at each start, and only an
       // unreachable one brings this choice back.
-      { type: 'we-text', props: { variant: 'heading-xl', tag: 'h1' }, children: ['Where should Coasys run for you?'] },
-      {
-        type: 'we-text',
-        props: { color: 'text-muted' },
-        children: [
-          {
-            $: "baseStore.hostKind == 'phone' ? 'Coasys keeps your spaces on a computer you choose: one of your own, or a host you trust.' : 'Coasys keeps your spaces on a computer you choose: this one, or a host you trust.'",
-          },
-        ],
-      },
+      { type: 'we-text', props: { variant: 'heading-xl', tag: 'h1' }, children: ['Where to keep your spaces'] },
     ],
   },
   card([connectionRow]),
@@ -362,13 +343,13 @@ const connect = screen('base__connect', [
         children: [
           { type: 'we-icon', props: { name: 'cloud', color: 'text-muted' } },
           { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Coasys cloud and community hosts'] },
-          { type: 'we-tag', props: { tone: 'neutral' }, children: ['Later release'] },
+          { type: 'we-tag', props: { tone: 'neutral' }, children: ['Coming soon'] },
         ],
       },
       {
         type: 'we-text',
         props: { variant: 'footnote', color: 'text-muted' },
-        children: ['Hosted Coasys, and an index of hosts communities run, will be listed here. None is offered yet.'],
+        children: ['Hosts run by Coasys and by communities will appear here.'],
       },
     ],
   },
@@ -398,7 +379,7 @@ const offline = screen('chrome__offline', [
     type: 'Column',
     props: { gap: '200' },
     children: [
-      { type: 'we-text', props: { variant: 'heading-xl', tag: 'h1' }, children: ['You are offline'] },
+      { type: 'we-text', props: { variant: 'heading-xl', tag: 'h1' }, children: ['Can’t connect'] },
       { type: 'we-text', props: { color: 'text-muted' }, children: [{ $: 'baseStore.offlineReason' }] },
     ],
   },
@@ -418,7 +399,7 @@ const offline = screen('chrome__offline', [
           disabled: { $: 'baseStore.busy' },
           onClick: { $invoke: 'baseStore.showConnections' },
         },
-        children: ['Choose another place'],
+        children: ['Choose another'],
       },
     ],
   },
@@ -434,23 +415,21 @@ const failed = screen('chrome__executor-failed', [
       {
         type: 'we-text',
         props: { variant: 'heading-xl', tag: 'h1' },
-        children: [{ $: "baseStore.executorStopped ? 'Coasys has stopped' : 'Coasys could not start'" }],
+        children: [{ $: "baseStore.executorStopped ? 'Coasys stopped' : 'Coasys couldn’t start'" }],
       },
       {
-        type: 'we-text',
-        props: { color: 'text-muted' },
-        children: [
-          {
-            $: "baseStore.executorStopped ? 'The part of Coasys that keeps your spaces on this computer is not running, so nothing here can be opened until it starts again.' : 'The part of Coasys that keeps your spaces on this computer stopped before it was ready.'",
-          },
-        ],
+        type: '$if',
+        props: {
+          condition: { $: 'baseStore.executorStopped' },
+          then: { type: 'we-text', props: { color: 'text-muted' }, children: ['Start it to open your spaces.'] },
+        },
       },
     ],
   },
   {
     type: 'we-alert',
     props: { tone: 'danger' },
-    children: [{ $: "baseStore.executorReason != '' ? baseStore.executorReason : 'No reason was given.'" }],
+    children: [{ $: "baseStore.executorReason != '' ? baseStore.executorReason : 'Something went wrong.'" }],
   },
   {
     type: 'Row',
@@ -458,7 +437,7 @@ const failed = screen('chrome__executor-failed', [
       {
         type: 'we-button',
         props: { variant: 'primary', loading: { $: 'baseStore.busy' }, onClick: { $invoke: 'baseStore.retry' } },
-        children: [{ $: "baseStore.executorStopped ? 'Start Coasys again' : 'Try again'" }],
+        children: [{ $: "baseStore.executorStopped ? 'Start Coasys' : 'Try again'" }],
       },
     ],
   },
@@ -476,14 +455,12 @@ const password = screen('base__password', [
       {
         type: 'we-text',
         props: { variant: 'heading-xl', tag: 'h1' },
-        children: [{ $: "baseStore.passwordIsNew ? 'Choose your WE password' : 'Enter your WE password'" }],
+        children: [{ $: "baseStore.passwordIsNew ? 'Create a password' : 'Enter your password'" }],
       },
       {
         type: 'we-text',
         props: { color: 'text-muted' },
-        children: [
-          'This computer’s keyring is not available, so your WE password protects your agent on this computer.',
-        ],
+        children: ['This computer’s keyring isn’t available, so Coasys uses a password instead.'],
       },
     ],
   },
@@ -494,13 +471,13 @@ const password = screen('base__password', [
       // A new one's floor, as baseStore.passwordConfirmed holds it; one an agent was made with has none.
       minLength: 8,
       width: '100%',
-      placeholder: 'Password...',
-      confirmPlaceholder: 'Password again...',
+      placeholder: 'Password',
+      confirmPlaceholder: 'Confirm password',
       onEdit: { $invoke: 'baseStore.clearPasswordWrong' },
       onSubmit: { $invoke: 'baseStore.submitPassword' },
     },
   },
-  failedAlert('baseStore.passwordWrong', "'That password did not unlock your agent. Try again.'"),
+  failedAlert('baseStore.passwordWrong', "'Wrong password. Try again.'"),
   failedAlert("baseStore.error != ''", 'baseStore.error'),
   {
     type: 'Row',
@@ -573,7 +550,7 @@ function page(name: 'devices' | 'security', title: string, content: SchemaNode[]
               {
                 type: 'we-text',
                 props: { variant: 'footnote', color: 'text-muted' },
-                children: ['Change these in Settings once you are connected, where your master key is asked for.'],
+                children: ['To make changes, open Settings after you connect.'],
               },
             ],
           },
@@ -583,7 +560,7 @@ function page(name: 'devices' | 'security', title: string, content: SchemaNode[]
   };
 }
 
-const devicesPage = page('devices', 'Devices', [
+const devicesPage = page('devices', 'Your devices', [
   card([
     {
       type: '$each',
@@ -624,7 +601,7 @@ const devicesPage = page('devices', 'Devices', [
         then: {
           type: 'we-text',
           props: { color: 'text-muted', px: '400', py: '400' },
-          children: ['No device is named yet. Name them in Settings → Devices once you are connected.'],
+          children: ['No devices yet.'],
         },
       },
     },
@@ -634,7 +611,7 @@ const devicesPage = page('devices', 'Devices', [
 const securityPage = page('security', 'Security', [
   card([
     // Whether there is one, never its identifier: that is for Settings' advanced places.
-    fact('Your identity', { $: "baseStore.did != '' ? 'Set up' : 'None yet'" }),
+    fact('Identity', { $: "baseStore.did != '' ? 'Set up' : 'Not set up'" }),
     fact('Master key', { $: 'baseStore.keepsLine' }),
     {
       type: '$if',
@@ -656,20 +633,20 @@ export const coasysBase: TemplateSchema & { id: string } = {
   id: 'coasys-base',
   type: 'Column',
   meta: {
-    name: 'Coasys before you sign in',
-    description: 'Your identity, and where Coasys runs for you, before anything is connected.',
+    name: 'Before sign-in',
+    description: 'Setup, sign-in and connection screens.',
     icon: 'hexagon',
     role: 'base',
   },
   props: { styles: { display: 'contents' } },
   children: [
-    stage("baseStore.stage == 'starting'", waiting('base__starting', 'Starting Coasys on this computer…')),
+    stage("baseStore.stage == 'starting'", waiting('base__starting', 'Starting Coasys…')),
     stage("baseStore.stage == 'failed'", failed),
     stage("baseStore.stage == 'password'", password),
     stage(
       "baseStore.stage == 'loading' || baseStore.stage == 'handing-off'",
       waiting('base__connecting', {
-        $: "baseStore.stage == 'loading' ? 'Reading your identity…' : 'Opening your spaces…'",
+        $: "baseStore.stage == 'loading' ? 'Loading…' : 'Opening your spaces…'",
       }),
     ),
     stage("baseStore.stage == 'first-run'", firstRun),

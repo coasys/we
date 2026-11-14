@@ -20,36 +20,36 @@ describe('trayMenu', () => {
       .map((i) => [i.label, i.enabled !== false]);
 
   it('says how the executor is, in a line nobody can press', () => {
-    expect(trayStatus('Coasys', 'ready')).toBe('Coasys: running');
-    expect(trayStatus('Coasys', 'starting')).toBe('Coasys: starting…');
-    expect(trayStatus('Coasys', 'failed')).toBe('Coasys: stopped');
+    expect(trayStatus('Coasys', 'ready')).toBe('Coasys is running');
+    expect(trayStatus('Coasys', 'starting')).toBe('Starting Coasys…');
+    expect(trayStatus('Coasys', 'failed')).toBe('Coasys stopped');
     expect(trayMenu({ name: 'Coasys', phase: 'ready', onOpen, onQuit, executor })[0]).toEqual({
-      label: 'Coasys: running',
+      label: 'Coasys is running',
       enabled: false,
     });
   });
 
   it('restarts and stops a running executor, and opens its settings', () => {
     expect(items('ready')).toEqual([
-      ['Coasys: running', false],
+      ['Coasys is running', false],
       ['Restart Coasys', true],
       ['Stop Coasys', true],
-      ['Executor settings…', true],
+      ['Startup settings…', true],
       ['Open Coasys', true],
       ['Quit Coasys', true],
     ]);
     const menu = trayMenu({ name: 'Coasys', phase: 'ready', onOpen, onQuit, executor });
     expect(menu.find((i) => i.label === 'Restart Coasys').click).toBe(executor.restart);
     expect(menu.find((i) => i.label === 'Stop Coasys').click).toBe(executor.stop);
-    expect(menu.find((i) => i.label === 'Executor settings…').click).toBe(executor.settings);
+    expect(menu.find((i) => i.label === 'Startup settings…').click).toBe(executor.settings);
   });
 
   it('starts a stopped one, which cannot be stopped again', () => {
     expect(items('failed')).toEqual([
-      ['Coasys: stopped', false],
+      ['Coasys stopped', false],
       ['Start Coasys', true],
       ['Stop Coasys', false],
-      ['Executor settings…', true],
+      ['Startup settings…', true],
       ['Open Coasys', true],
       ['Quit Coasys', true],
     ]);
@@ -59,7 +59,7 @@ describe('trayMenu', () => {
 
   it('offers no start while one is under way', () => {
     expect(items('starting').slice(0, 3)).toEqual([
-      ['Coasys: starting…', false],
+      ['Starting Coasys…', false],
       ['Start Coasys', false],
       ['Stop Coasys', true],
     ]);
@@ -152,7 +152,7 @@ describe('createTray', () => {
     expect(createTray({ Tray, Menu, icon: 'i.png', name: 'Coasys', onOpen, onQuit })).toBeInstanceOf(Tray);
     // No executor to manage (an external one): its status, Open and Quit.
     expect(menu.filter((i) => i.label).map((i) => [i.label, i.click])).toEqual([
-      ['Coasys: starting…', undefined],
+      ['Starting Coasys…', undefined],
       ['Open Coasys', onOpen],
       ['Quit Coasys', onQuit],
     ]);
@@ -162,7 +162,7 @@ describe('createTray', () => {
     const menus = [];
     const tray = { setContextMenu: (m) => menus.push(m) };
     setTrayMenu(tray, Menu, { name: 'Coasys', phase: 'ready', onOpen() {}, onQuit() {} });
-    expect(menus[0][0]).toEqual({ label: 'Coasys: running', enabled: false });
+    expect(menus[0][0]).toEqual({ label: 'Coasys is running', enabled: false });
   });
 
   it('answers null, with a warning, when the platform refuses an icon', () => {

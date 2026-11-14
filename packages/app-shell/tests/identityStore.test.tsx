@@ -376,7 +376,7 @@ describe('identityStore', () => {
     expect(identity.needsFirstRun()).toBe(true);
   });
 
-  it('takes "Start now" given before any account, in the app before a session, as this account\'s too', async () => {
+  it('takes "Skip for now" given before any account, in the app before a session, as this account\'s too', async () => {
     localStorage.setItem(START_NOW_HERE_KEY, '1');
     try {
       setPorts({ identity: custody(backend({ did: null, events: [], devices: [] }).port, () => {}).identity });

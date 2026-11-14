@@ -4,7 +4,7 @@
  * Connect like a browser.
  *
  * A phone joins an identity; it does not make one, and it takes no 12 words — the master key and its
- * words stay with a computer. So of the first run's three doors only "Link to my identity" opens here,
+ * words stay with a computer. So of the first run's three doors only "Link to another device" opens here,
  * on the phone's join page, and the other two say why they are a computer's. Every step leaves for the
  * phone's identity page (`apps/we-mobile/src/identity`), the only place a secret is shown, and the app
  * boots again when that page sends the person back.
@@ -35,10 +35,8 @@ export interface PhoneHostDeps extends Pick<ReachDeps, 'remembered' | 'reach'> {
   keyConnector?: (deps: DeviceKeyConnectorDeps) => BackendConnector;
 }
 
-export const MAKE_ON_A_COMPUTER =
-  'A phone joins an identity rather than making one: make it on your computer, then link this phone to it.';
-export const WORDS_ON_A_COMPUTER =
-  'The 12 words bring an identity back on a computer, which keeps its master key. Then link this phone to it.';
+export const MAKE_ON_A_COMPUTER = 'Create it on a computer, then link this phone.';
+export const WORDS_ON_A_COMPUTER = 'Restore on a computer, then link this phone.';
 
 /** The phone's identity, read from its plugin, with the join as the one door it opens. */
 export function phoneIdentitySource(
@@ -68,7 +66,7 @@ export function phoneIdentitySource(
       }
       return custody.open(step);
     },
-    // "Not now" on the phone's own join page is the same answer as "Start now" here.
+    // "Not now" on the phone's own join page is the same answer as "Skip for now" here.
     skipped: declined,
   };
 }
@@ -85,7 +83,7 @@ export function keyHostConnection(url: string): BaseConnection {
     id: 'key-host',
     kind: 'key-host',
     label: host,
-    detail: "Signs in with this phone's device key, asking you for nothing",
+    detail: 'Signs in automatically',
   };
 }
 

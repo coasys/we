@@ -142,7 +142,7 @@ const advancedIdentifier: SchemaNode = {
             {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-muted' },
-              children: ['Your identifier, to copy where something asks for it.'],
+              children: ['Show your identifier so you can copy it.'],
             },
           ],
         },

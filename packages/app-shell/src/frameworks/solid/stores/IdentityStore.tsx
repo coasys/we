@@ -105,7 +105,7 @@ const IdentityStoreContext = createContext<IdentityStore>();
 export const startNowKey = (deviceKey: string) => `we.identity.startNow:${deviceKey}`;
 
 /**
- * Where "Start now" is remembered for this whole device, before any account: the base app asks the
+ * Where the base app's "Skip for now" is remembered for this whole device, before any account: the base app asks the
  * first-run question once for the computer (its custody service is the computer's, not an account's),
  * and an answer given there is not asked again inside each session.
  */

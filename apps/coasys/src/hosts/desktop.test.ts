@@ -151,7 +151,7 @@ describe('the desktop host', () => {
     password or one whose kept passphrase this computer lost, and the app cannot tell which. The
     words cover both, and say what to do in each.
   */
-  it('says, for a locked agent, to sign in with the WE password, or else to restore with the 12 words', () => {
+  it('says, for a locked agent, to sign in, or else to restore with the recovery phrase', () => {
     const executor = {
       state: () => ({ phase: 'ready', agent: 'locked' }) as const,
       subscribe: () => () => {},
@@ -161,9 +161,9 @@ describe('the desktop host', () => {
     for (const door of [doors?.make, doors?.link, doors?.words]) {
       expect(door).toEqual({ step: null, note: WORDS_AGENT_LOCKED });
     }
-    expect(WORDS_AGENT_LOCKED).toMatch(/sign in with your WE password/);
-    expect(WORDS_AGENT_LOCKED).toMatch(/never set one/);
-    expect(WORDS_AGENT_LOCKED).toMatch(/12 words/);
+    expect(WORDS_AGENT_LOCKED).toMatch(/sign in/);
+    expect(WORDS_AGENT_LOCKED).toMatch(/never set a password/);
+    expect(WORDS_AGENT_LOCKED).toMatch(/recovery phrase/);
   });
 
   it('has an identity only with a custody service, and an executor only where the shell reports one', () => {
@@ -217,9 +217,7 @@ describe('the desktop host', () => {
     const [, server] = await host.connections();
     const refused = await host.connector(server).catch((e: unknown) => e);
     expect(refused).toBeInstanceOf(ServerNotConnectable);
-    expect((refused as Error).message).toBe(
-      'Test server cannot be opened from this app yet: only this computer can. Choose This computer.',
-    );
+    expect((refused as Error).message).toBe("Can't open Test server from this app yet. Choose This computer.");
     // A refusal, not a place out of reach: the connection choice says it, not the offline state.
     expect(host.isUnreachable?.(refused)).toBe(false);
     expect(kept.chosen).toEqual([]);
@@ -275,17 +273,17 @@ describe('bridgedExecutor', () => {
     const seen: BaseExecutorState[] = [];
     executor.subscribe((s) => seen.push(s));
     expect(executor.state()).toEqual({ phase: 'starting' });
-    b.answer({ phase: 'failed', reason: 'The executor refused its settings.' });
+    b.answer({ phase: 'failed', reason: "Couldn't read the startup settings." });
     await tick();
-    expect(executor.state()).toEqual({ phase: 'failed', reason: 'The executor refused its settings.' });
+    expect(executor.state()).toEqual({ phase: 'failed', reason: "Couldn't read the startup settings." });
     expect(seen).toEqual([executor.state()]);
   });
 
   it('keeps that a failed executor ran and stopped, and only a true stopped', async () => {
     const b = bridge();
     const executor = bridgedExecutor(b);
-    b.push({ phase: 'failed', reason: 'Stopped outside the app.', stopped: true });
-    expect(executor.state()).toEqual({ phase: 'failed', reason: 'Stopped outside the app.', stopped: true });
+    b.push({ phase: 'failed', reason: 'It was stopped outside the app.', stopped: true });
+    expect(executor.state()).toEqual({ phase: 'failed', reason: 'It was stopped outside the app.', stopped: true });
     b.push({ phase: 'failed', reason: 'x', stopped: 'yes' } as never);
     expect(executor.state()).toEqual({ phase: 'failed', reason: 'x' });
   });
@@ -304,7 +302,7 @@ describe('bridgedExecutor', () => {
     const a = bridgedExecutor(odd);
     odd.answer({ phase: 'sleeping' });
     await tick();
-    expect(a.state()).toEqual({ phase: 'failed', reason: 'The app did not say how its executor is.' });
+    expect(a.state()).toEqual({ phase: 'failed', reason: 'Something went wrong.' });
 
     const broken = bridge();
     const b = bridgedExecutor(broken);

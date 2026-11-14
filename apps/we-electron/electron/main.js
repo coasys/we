@@ -574,9 +574,9 @@ function showExecutorStopped(action, lines, configFile, dataPath) {
       : 'It keeps stopping, so the app does not start it again.';
   const detail =
     startRefusal(code, lines, configFile, dataPath) ??
-    `${why} Start it again from its window or its tray menu.${last}\n\nThe executor's log: ${join(dataPath, 'logs', 'executor-0.log')}`;
+    `${why} Start it again from the window or the tray menu.${last}\n\nLog file: ${join(dataPath, 'logs', 'executor-0.log')}`;
   const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
-  void dialog.showMessageBox(parent, { type: 'error', message: `${app.getName()} has stopped`, detail });
+  void dialog.showMessageBox(parent, { type: 'error', message: `${app.getName()} stopped`, detail });
 }
 
 /** The renderer bundle: copied beside the app when packaged, built into `dist` otherwise. */
@@ -707,8 +707,7 @@ async function takeAgentPassword(password) {
   }
 }
 
-const AGENT_PASSWORD_FAILED =
-  "The app could not make or unlock your agent with your password. Try again; if it keeps happening, the executor's log says why.";
+const AGENT_PASSWORD_FAILED = `Something went wrong. Try again.\n\n${LOG_WORDS}`;
 
 /** Starts the sidecar against the executor on `port`, whose custody credential is `credential`. */
 function startCustodyFor(port, credential) {

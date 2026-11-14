@@ -100,7 +100,7 @@ describe('handBackOnUnreachable', () => {
     );
     void lost.initialize({} as never);
     await until(() => back.mock.calls.length === 1);
-    expect(back).toHaveBeenCalledWith('This computer could not be reached: Failed to fetch');
+    expect(back).toHaveBeenCalledWith("WE isn't responding.");
 
     const refused = handBackOnUnreachable(
       connector(async () => Promise.reject(new Error('Wrong token'))),
@@ -174,12 +174,12 @@ describe('BaseBoot', () => {
     let listener: ((s: { phase: 'ready' }) => void) | null = null;
     const { store } = boot({
       executor: {
-        state: () => ({ phase: 'failed', reason: 'The executor refused its settings.' }),
+        state: () => ({ phase: 'failed', reason: "Couldn't read the startup settings." }),
         subscribe: (l) => ((listener = l as never), () => {}),
         start: async () => {},
       },
     });
-    await until(() => screen.queryByText('The executor refused its settings.') !== null);
+    await until(() => screen.queryByText("Couldn't read the startup settings.") !== null);
     expect(screen.getByText('Try again')).toBeTruthy();
     expect(mounted.apps).toBe(0);
     listener!({ phase: 'ready' });
@@ -198,12 +198,12 @@ describe('BaseBoot', () => {
       },
     });
     await until(() => mounted.apps === 1);
-    listener!({ phase: 'failed', reason: 'The executor was stopped outside the app.', stopped: true });
+    listener!({ phase: 'failed', reason: 'It was stopped outside the app.', stopped: true });
     await until(() => screen.queryByTestId('we-app') === null);
     expect(store().stage()).toBe('failed');
-    expect(screen.getByText('The executor was stopped outside the app.')).toBeTruthy();
+    expect(screen.getByText('It was stopped outside the app.')).toBeTruthy();
     // WE's own base, under the deployment's name: no "Electron", no "Try again" for a stop.
-    expect(screen.getByText(`Start ${store().brand().name} again`)).toBeTruthy();
+    expect(screen.getByText(`Start ${store().brand().name}`)).toBeTruthy();
     expect(screen.queryByText('Try again')).toBeNull();
     // The button's action (a synthetic click is refused by the gesture gate, as it should be).
     await store().retry();
@@ -241,9 +241,9 @@ describe('BaseBoot', () => {
     const base = deploymentBase(SEED);
     expect(base?.template.meta?.role).toBe('base');
     render(() => <BaseBoot host={host} platform={PLATFORM} seed={SEED} onStore={(s) => (store = s)} />);
-    await until(() => screen.queryByText(/Make my identity here/) !== null);
+    await until(() => screen.queryByText(/Create new identity/) !== null);
     expect(await store.makeIdentity()).toBe('failed');
-    await until(() => screen.queryByText(/is not published yet/) !== null);
+    await until(() => screen.queryByText(/Couldn’t publish your identity/) !== null);
     expect(screen.queryByText(/Nothing was changed/)).toBeNull();
   });
 
@@ -280,9 +280,9 @@ describe('BaseBoot', () => {
       },
     };
     render(() => <BaseBoot host={host} platform={PLATFORM} seed={SEED} onStore={(s) => (store = s)} />);
-    await until(() => screen.queryByText(/Make my identity here/) !== null);
+    await until(() => screen.queryByText(/Create new identity/) !== null);
     expect(await store.makeIdentity()).toBe('failed');
-    await until(() => screen.queryByText('That did not finish; try again.') !== null);
+    await until(() => screen.queryByText('Something went wrong. Try again.') !== null);
     expect(screen.queryByText(/Nothing was changed/)).toBeNull();
   });
 
@@ -312,9 +312,9 @@ describe('BaseBoot', () => {
       },
     };
     render(() => <BaseBoot host={host} platform={PLATFORM} seed={SEED} onStore={(s) => (store = s)} />);
-    await until(() => screen.queryByText(/could not read its identity/) !== null, 15_000);
+    await until(() => screen.queryByText(/Couldn't read your identity/) !== null, 15_000);
     expect(store.stage()).toBe('connect');
-    expect(screen.getByText('Where should Coasys run for you?')).toBeTruthy();
+    expect(screen.getByText('Where to keep your spaces')).toBeTruthy();
     expect(screen.getByText('Try again').closest('we-button')).toBeTruthy();
     // The press itself needs a trusted event (the base app's gesture gate), which jsdom cannot make:
     // what the drawn control invokes is read from the deployment's own base, and invoked as a press would.
@@ -375,8 +375,8 @@ describe('BaseBoot', () => {
 
     it('asks a first start for a new password twice, and gives it to the host', async () => {
       const { store, given } = noKeyring('needs-new-password', 'unlocked');
-      await until(() => screen.queryByText('Choose your WE password') !== null);
-      expect(screen.getByText(/keyring is not available, so your WE password protects your agent/)).toBeTruthy();
+      await until(() => screen.queryByText('Create a password') !== null);
+      expect(screen.getByText(/keyring isn’t available, so Coasys uses a password instead/)).toBeTruthy();
       expect(fields()).toHaveLength(2);
       const [first, again] = fields();
       // Under the floor: not given, and the drawn field says why. Typed twice only catches a typo.
@@ -405,12 +405,12 @@ describe('BaseBoot', () => {
 
     it('asks for the password of an agent made with one in one field, and says when it is wrong', async () => {
       const { store, given } = noKeyring('needs-password', 'wrong');
-      await until(() => screen.queryByText('Enter your WE password') !== null);
+      await until(() => screen.queryByText('Enter your password') !== null);
       expect(fields()).toHaveLength(1);
       type(fields()[0], 'not-the-password');
       await store().submitPassword();
       expect(given).toEqual(['not-the-password']);
-      await until(() => screen.queryByText('That password did not unlock your agent. Try again.') !== null);
+      await until(() => screen.queryByText('Wrong password. Try again.') !== null);
       expect(store().stage()).toBe('password');
     });
   });
@@ -423,8 +423,8 @@ describe('BaseBoot', () => {
     // The app's boot reaches the backend; here, the test plays that part.
     void mounted.backends[0].initialize({} as never);
     await until(() => store().stage() === 'offline');
-    await until(() => screen.queryByText('You are offline') !== null);
+    await until(() => screen.queryByText('Can’t connect') !== null);
     expect(screen.queryByTestId('we-app')).toBeNull();
-    expect(screen.getByText('This computer could not be reached: Failed to fetch')).toBeTruthy();
+    expect(screen.getByText(`${store().brand().name} isn't responding.`)).toBeTruthy();
   });
 });
