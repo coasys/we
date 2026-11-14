@@ -13,9 +13,15 @@
 #![forbid(unsafe_code)]
 
 mod basic;
-mod edit;
+mod dnd;
+mod edit_state;
+pub mod event;
+mod inputs;
 mod layout;
+mod overlays;
 mod paint;
+mod pickers;
+pub mod props;
 mod registry;
 mod tree;
 mod unknown;
@@ -27,9 +33,14 @@ use we_style::Style;
 use we_template::{NodeId, ResolvedNode};
 
 pub use basic::{AnimatedIcon, Avatar, Badge, Button, Column, Icon, Row, Text, Timestamp, Tooltip};
-pub use edit::EditState;
+pub use dnd::Sortable;
+pub use edit_state::EditState;
+pub use event as events;
+pub use inputs::{FormField, Input, NumberInput, Select, Slider, Switch, Textarea};
 pub use layout::{layout, style_of, Direction, Layout, PartSpec, Parts, PartsSpec, Pick, TextSpan};
+pub use overlays::{DropdownMenu, Modal, Popover};
 pub use paint::paint;
+pub use pickers::{ColorPicker, DatePicker, IconPicker};
 pub use registry::Registry;
 pub use tree::{Tree, TreeItem};
 pub use unknown::UnknownWidget;

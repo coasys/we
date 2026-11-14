@@ -62,10 +62,7 @@ pub(crate) fn is_event_prop(key: &str) -> bool {
 /// [`HandlerToken::Other`] and stay props.
 fn is_callback_prop(json: &Json) -> bool {
     let tokens = handler_tokens(json);
-    !tokens.is_empty()
-        && tokens
-            .iter()
-            .all(|t| !matches!(t, HandlerToken::Other(_)))
+    !tokens.is_empty() && tokens.iter().all(|t| !matches!(t, HandlerToken::Other(_)))
 }
 
 /// `true` for any object carrying a `$`-keyed token (`hasAnyToken` in the

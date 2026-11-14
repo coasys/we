@@ -55,6 +55,24 @@ impl Registry {
             .with(crate::Tooltip)
             .with(crate::AnimatedIcon)
             .with(crate::Timestamp)
+            // E5b — inputs
+            .with(crate::Input)
+            .with(crate::Textarea)
+            .with(crate::Select)
+            .with(crate::Switch)
+            .with(crate::Slider)
+            .with(crate::NumberInput)
+            .with(crate::FormField)
+            // E5b — overlays
+            .with(crate::Modal)
+            .with(crate::Popover)
+            .with(crate::DropdownMenu)
+            // E5b — pickers
+            .with(crate::DatePicker)
+            .with(crate::ColorPicker)
+            .with(crate::IconPicker)
+            // E5b — drag & drop
+            .with(crate::Sortable)
     }
 
     /// `ty` → widget impl, or the unknown box for a `ty` it does not know.
