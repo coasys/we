@@ -199,6 +199,63 @@ fn the_route_executor_answers_by_request_and_space() {
     .is_err());
 }
 
+/// One `SignalType` request recorded in two datasets, with different rows.
+fn two_dataset_doc(default: Option<&str>) -> serde_json::Value {
+    let mut meta = json!({ "format": "we-snapshot@2" });
+    if let Some(ds) = default {
+        meta["dataset"] = json!(ds);
+    }
+    json!({
+        "meta": meta,
+        "routes": {
+            "dna": {
+                "queries": [
+                    { "name": "signalTypes", "scope": "a", "dataset": "demo",
+                      "request": { "entity": "SignalType" }, "rows": [{ "id": "demo-like" }] },
+                    { "name": "signalTypes", "scope": "b", "dataset": "other",
+                      "request": { "entity": "SignalType" }, "rows": [{ "id": "other-like" }] }
+                ]
+            }
+        }
+    })
+}
+
+fn ask(exec: &we_data::FakeExecutor, space: &str) -> Option<serde_json::Value> {
+    let (_, ir) = key(json!({ "entity": "SignalType" }));
+    pollster::block_on(exec.model_query(
+        &SpaceId::new(space),
+        ClassSel::One("SignalType".into()),
+        &ir,
+    ))
+    .ok()
+    .map(|v| v.to_json())
+}
+
+#[test]
+fn a_snapshot_with_no_default_space_answers_the_bound_space() {
+    // Lal, E3c-3 P2: no default space, captures naming `dataset: "demo"`,
+    // the factory executor bound with `for_space` as its unbound-snapshot
+    // API requires — the recorded request answers with demo's rows.
+    let data = OfflineData::from_route(&two_dataset_doc(None), "dna", None).expect("route loads");
+    assert_eq!(data.space(), None);
+    let demo = data.executor().for_space(SpaceId::new("demo"));
+    assert_eq!(ask(&demo, "demo"), Some(json!([{ "id": "demo-like" }])));
+    let other = data.executor().for_space(SpaceId::new("other"));
+    assert_eq!(ask(&other, "other"), Some(json!([{ "id": "other-like" }])));
+}
+
+#[test]
+fn the_same_request_in_two_datasets_answers_each_its_own_rows() {
+    // The collection's default is `demo`; a call in `other` must get
+    // other's rows, never the default's.
+    let data =
+        OfflineData::from_route(&two_dataset_doc(Some("demo")), "dna", None).expect("route loads");
+    let demo = data.executor();
+    assert_eq!(ask(&demo, "demo"), Some(json!([{ "id": "demo-like" }])));
+    let other = data.executor().for_space(SpaceId::new("other"));
+    assert_eq!(ask(&other, "other"), Some(json!([{ "id": "other-like" }])));
+}
+
 #[test]
 fn a_reserved_dataset_in_the_ir_is_refused_against_captures() {
     // Capture identity strips `dataset`, so without the executor's

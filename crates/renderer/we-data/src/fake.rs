@@ -231,7 +231,7 @@ impl FakeExecutor {
             )));
         }
         if let Some(captures) = self.captures.read().unwrap().clone() {
-            return match captures.rows_for_request(class, q) {
+            return match captures.rows_for_request(space, class, q) {
                 Some(rows) => Ok(Value::List(rows)),
                 None => {
                     self.dropped(&what());
