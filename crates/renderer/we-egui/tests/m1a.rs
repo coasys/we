@@ -88,3 +88,94 @@ fn missing_glyphs_never_panic_and_common_symbols_draw() {
         "a fallback font must supply → (U+2192)"
     );
 }
+
+/// Layout + paint `root`; returns the layout and every shape painted on
+/// every layer — `drain` spans the overlay layers `g.get(layer)` misses.
+fn all_shapes(root: &ResolvedNode, width: f32) -> (we_egui::Layout, Vec<egui::Shape>) {
+    let registry = Registry::with_builtins();
+    let tokens = tokens();
+    let scx = StyleCx {
+        tokens: &tokens,
+        ..StyleCx::empty()
+    };
+    let out = std::cell::RefCell::new(None);
+    let mut harness = egui_kittest::Harness::builder()
+        .allow_missing_glyphs()
+        .with_context_setup(we_egui::install_media)
+        .build_ui(|ui| {
+            let ctx = ui.ctx().clone();
+            let cx = MeasureCx::new(&ctx);
+            let lay = layout(
+                &cx,
+                &scx,
+                &registry,
+                root,
+                egui::Rect::from_min_size(ui.cursor().min, egui::vec2(width, 800.0)),
+            );
+            let mut events = Vec::new();
+            let mut edit = EditState::default();
+            paint(ui, &registry, &scx, root, &lay, &mut events, &mut edit, 0.0);
+            let shapes = ctx.graphics_mut(|g| {
+                g.drain(&[], &Default::default())
+                    .into_iter()
+                    .map(|cs| cs.shape)
+                    .collect::<Vec<_>>()
+            });
+            *out.borrow_mut() = Some((lay, shapes));
+        });
+    harness.run();
+    let out = out.borrow_mut().take().expect("rendered");
+    out
+}
+
+/// The web draws nothing for a closed `AgentChatSheet`: the host element
+/// has no box and its contents live behind `open`. The placeholder must
+/// match — zero in-flow footprint, zero paint — while `open` still shows
+/// what the sheet holds (stage 5 owns the real panel).
+#[test]
+fn closed_sheet_takes_no_space_and_paints_nothing() {
+    let mut col = node("Column", "c", &[]);
+    child(&mut col, node("AgentChatSheet", "c/s", &[]));
+    child(&mut col, node("we-text", "c/t", &[("text", s("below"))]));
+    let (lay, shapes) = all_shapes(&col, 400.0);
+    let sheet = lay.rects.get(&NodeId::from("c/s")).copied().unwrap();
+    assert!(
+        sheet.height() < 0.5,
+        "a closed sheet has no vertical box (stretch leaves it a 0h bar): {sheet:?}"
+    );
+    let text = lay.rects.get(&NodeId::from("c/t")).copied().unwrap();
+    assert!(
+        text.min.y <= sheet.max.y + 1.0,
+        "the sibling lands on the sheet's zero-height edge — no 64px bar: {text:?}"
+    );
+    assert!(
+        !shapes
+            .iter()
+            .any(|shape| matches!(shape, egui::Shape::Text(t)
+            if t.galley.text().contains("AgentChatSheet"))),
+        "a closed sheet paints no label: {shapes:?}"
+    );
+}
+
+#[test]
+fn open_sheet_paints_its_card_on_the_overlay() {
+    let mut col = node("Column", "c", &[]);
+    let mut sheet = node(
+        "AgentChatSheet",
+        "c/s",
+        &[("open", we_expr::Value::Bool(true))],
+    );
+    child(
+        &mut sheet,
+        node("we-text", "c/s/b", &[("text", s("sheet body"))]),
+    );
+    child(&mut col, sheet);
+    let (_lay, shapes) = all_shapes(&col, 400.0);
+    assert!(
+        shapes
+            .iter()
+            .any(|shape| matches!(shape, egui::Shape::Text(t)
+            if t.galley.text().contains("sheet body"))),
+        "an open sheet paints its contents on the overlay layer: {shapes:?}"
+    );
+}
