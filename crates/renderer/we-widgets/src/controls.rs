@@ -96,30 +96,18 @@ impl Widget for Button {
         } else {
             0.0
         };
-        let content_w = (rect.width()
-            - props::px(
-                eff.layout.padding.left.as_ref(),
-                FONT_PX,
-                ROOT_PX,
-                view.viewport,
-            )
-            .unwrap_or(0.0)
-            - props::px(
-                eff.layout.padding.right.as_ref(),
-                FONT_PX,
-                ROOT_PX,
-                view.viewport,
-            )
-            .unwrap_or(0.0))
-        .max(1.0);
+        // The label and spinner live in the content box — inside the
+        // padding the measure left outside them (and any painted border).
+        let content = props::content_rect(rect, &eff, FONT_PX, ROOT_PX, view);
+        let content_w = content.width().max(1.0);
         let g = show_label
             .then(|| crate::text::text_job(&label, &eff, cx.ui.ctx(), content_w, true, None));
         let mut x =
-            rect.center().x - (spin_w + g.as_ref().map(|g| g.size().x).unwrap_or(0.0)) / 2.0;
+            content.center().x - (spin_w + g.as_ref().map(|g| g.size().x).unwrap_or(0.0)) / 2.0;
         if loading {
             let t = (cx.now * std::f64::consts::TAU * 1.6) as f32;
             let r = SPINNER * 0.32;
-            let c = egui::pos2(x + SPINNER / 2.0, rect.center().y);
+            let c = egui::pos2(x + SPINNER / 2.0, content.center().y);
             let mut pts = Vec::with_capacity(13);
             for i in 0..12 {
                 let a = t + i as f32 * (std::f32::consts::TAU / 12.0);
@@ -140,7 +128,7 @@ impl Widget for Button {
         }
         if let Some(g) = g {
             cx.ui.painter().galley(
-                egui::pos2(x, rect.center().y - g.size().y / 2.0),
+                egui::pos2(x, content.center().y - g.size().y / 2.0),
                 g,
                 props::text_color(&eff, cx.ui.ctx()),
             );

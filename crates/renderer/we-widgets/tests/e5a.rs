@@ -7,7 +7,7 @@ use std::sync::Arc;
 use indexmap::IndexMap;
 use we_expr::Value;
 use we_template::{NodeId, ResolvedChild, ResolvedNode};
-use we_widgets::{layout, Layout, MeasureCx, Registry, StyleCx};
+use we_widgets::{layout, paint, EditState, Layout, MeasureCx, Registry, StyleCx};
 
 fn node(ty: &str, id: &str, props: &[(&str, Value)]) -> ResolvedNode {
     ResolvedNode {
@@ -241,6 +241,88 @@ fn lines_clamp_holds_two_rows() {
     assert!(
         t.height() > 30.0 && t.height() < 60.0,
         "lines: 2 must wrap and clamp at two rows: {t:?}"
+    );
+}
+
+/// Layout + paint `root` in a kittest harness; returns the layout and the
+/// position every painted galley landed at (`Shape::Text.pos`).
+fn painted_galleys(root: &ResolvedNode, width: f32) -> (Layout, Vec<egui::Pos2>) {
+    let registry = Registry::with_builtins();
+    let tokens = tokens();
+    let scx = StyleCx {
+        tokens: &tokens,
+        ..StyleCx::empty()
+    };
+    let out = std::cell::RefCell::new(None);
+    let mut harness = egui_kittest::Harness::new_ui(|ui| {
+        let ctx = ui.ctx().clone();
+        let cx = MeasureCx::new(&ctx);
+        let lay = layout(
+            &cx,
+            &scx,
+            &registry,
+            root,
+            egui::Rect::from_min_size(ui.cursor().min, egui::vec2(width, 800.0)),
+        );
+        let mut events = Vec::new();
+        let mut edit = EditState::default();
+        paint(ui, &registry, &scx, root, &lay, &mut events, &mut edit, 0.0);
+        let layer = ui.layer_id();
+        let galleys: Vec<egui::Pos2> = ctx.graphics(|g| {
+            g.get(layer)
+                .map(|list| {
+                    list.all_entries()
+                        .filter_map(|cs| match &cs.shape {
+                            egui::Shape::Text(t) => Some(t.pos),
+                            _ => None,
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        });
+        *out.borrow_mut() = Some((lay, galleys));
+    });
+    harness.run();
+    let out = out.borrow_mut().take().expect("rendered");
+    out
+}
+
+#[test]
+fn padded_text_measures_and_paints_the_content_box() {
+    // The browser's answer for a stretched, padded leaf: the border box
+    // fills the 120px column, but the glyphs live inside the padding —
+    // measure wraps them at the 80px content box (the padded text is
+    // TALLER), and paint draws them at `rect.min + 20`. Round-3's
+    // heights-match assertion locked the border-box bug in.
+    let mut col = node("Column", "c", &[("width", s("120px"))]);
+    let text = s("a much longer line than the card allows");
+    child(&mut col, node("we-text", "c/a", &[("text", text.clone())]));
+    child(
+        &mut col,
+        node("we-text", "c/b", &[("text", text), ("px", s("20px"))]),
+    );
+    let (layout, galleys) = painted_galleys(&col, 400.0);
+    let a = layout.rects.get(&NodeId::from("c/a")).copied().unwrap();
+    let b = layout.rects.get(&NodeId::from("c/b")).copied().unwrap();
+    assert!(
+        (b.width() - 120.0).abs() < 0.5,
+        "the padded text still stretches to the column width: {b:?}"
+    );
+    assert!(
+        b.height() > a.height() + 1.0,
+        "padded text wraps at the 80px content box — taller than unpadded: {a:?} {b:?}"
+    );
+    // The painted galley's left edge sits at the content edge, 20px in.
+    let pos = galleys
+        .iter()
+        .find(|p| (p.y - b.min.y).abs() < 0.5)
+        .copied();
+    let Some(pos) = pos else {
+        panic!("no galley painted at {b:?}: {galleys:?}")
+    };
+    assert!(
+        pos.x >= b.min.x + 19.5,
+        "the galley's left edge is inside the 20px padding: {pos:?} vs {b:?}"
     );
 }
 

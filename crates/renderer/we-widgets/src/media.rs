@@ -148,7 +148,7 @@ impl Widget for Icon {
             .map(props::color32)
             .unwrap_or_else(|| props::text_color(style, cx.ui.ctx()));
         cx.ui.painter().text(
-            rect.center(),
+            props::content_rect(rect, style, FONT_PX, ROOT_PX, view).center(),
             egui::Align2::CENTER_CENTER,
             icon_names::phosphor_glyph(name).unwrap_or("?"),
             egui::FontId::new(size, Self::family(node)),
@@ -198,10 +198,12 @@ impl Widget for Image {
         let src = props::prop_text(node, "src").unwrap_or("");
         let alt = props::prop_text(node, "alt").unwrap_or(src);
         let r = props::radius_px(&style.paint.radius, rect, FONT_PX, ROOT_PX, view.viewport);
+        // The image is the element's content — it paints inside the padding.
+        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view);
         if src.is_empty() {
             // A broken img: bordered slot + alt text, as the browser draws.
             cx.ui.painter().rect_stroke(
-                rect,
+                content,
                 r,
                 egui::Stroke::new(1.0, cx.ui.visuals().weak_text_color()),
                 egui::StrokeKind::Inside,
@@ -213,16 +215,16 @@ impl Widget for Image {
         img = match Self::fit_mode(node) {
             // `cover` rides fit_to_exact_size + the slot's clip (egui has no
             // uv-crop on an unloaded image) — noted as the E5a approximation.
-            "cover" | "fill" => img.fit_to_exact_size(rect.size()),
-            "none" | "scale-down" => img.fit_to_original_size(1.0).max_size(rect.size()),
+            "cover" | "fill" => img.fit_to_exact_size(content.size()),
+            "none" | "scale-down" => img.fit_to_original_size(1.0).max_size(content.size()),
             _ => img
-                .fit_to_exact_size(rect.size())
+                .fit_to_exact_size(content.size())
                 .maintain_aspect_ratio(true), // contain
         };
         // `corner_radius` does `r`'s clip for us — a clipped child ui painted
         // nothing anyway (`UiBuilder::invisible` fades the painter out).
         img = img.corner_radius(egui::CornerRadius::same(r.round() as u8));
-        img.paint_at(cx.ui, rect);
+        img.paint_at(cx.ui, content);
         cx.label(rect, alt);
     }
 }
@@ -329,7 +331,8 @@ impl Widget for Avatar {
             cx.ui,
             node,
             style,
-            rect,
+            // The avatar is the element's content — inside the padding.
+            props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx())),
             props::prop_text(node, "url"),
             &Self::initials(node),
             ring,
@@ -407,7 +410,8 @@ impl Widget for AvatarStack {
         Size::new(w, size)
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
-        let size = rect.height();
+        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()));
+        let size = content.height();
         let max = props::prop_num(node, "max").unwrap_or(5.0) as usize;
         let overlap = props::prop_num(node, "overlap").unwrap_or(0.35) as f32;
         let ring = props::prop_num(node, "ringWidth").unwrap_or(2.0) as f32;
@@ -416,11 +420,11 @@ impl Widget for AvatarStack {
         let extra = entries.len().saturating_sub(max);
         let slots = entries.len().min(max) + usize::from(extra > 0);
         let end_edge = props::prop_str(node, "edge") == Some("end");
-        // Slots run from `rect.min.x`; `edge="end"` packs them at the right.
+        // Slots run from `content.min.x`; `edge="end"` packs them at the right.
         let x0 = if end_edge {
-            rect.max.x - size - (slots.saturating_sub(1)) as f32 * step
+            content.max.x - size - (slots.saturating_sub(1)) as f32 * step
         } else {
-            rect.min.x
+            content.min.x
         };
         // The slot glyph is the label's initials — the full name stays the
         // AccessKit label and the click payload.
@@ -434,7 +438,7 @@ impl Widget for AvatarStack {
         };
         for (i, (id, label, url)) in entries.iter().take(max).enumerate() {
             let slot = Rect::from_min_size(
-                egui::pos2(x0 + i as f32 * step, rect.min.y),
+                egui::pos2(x0 + i as f32 * step, content.min.y),
                 egui::vec2(size, size),
             );
             let resp = cx.ui.interact(
@@ -464,7 +468,7 @@ impl Widget for AvatarStack {
         }
         if extra > 0 {
             let x = x0 + entries.len().min(max) as f32 * step;
-            let slot = Rect::from_min_size(egui::pos2(x, rect.min.y), egui::vec2(size, size));
+            let slot = Rect::from_min_size(egui::pos2(x, content.min.y), egui::vec2(size, size));
             let p = cx.ui.painter();
             p.circle_filled(
                 slot.center(),
@@ -509,7 +513,8 @@ impl Widget for AnimatedIcon {
         Size::new(s, s)
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
-        let size = rect.height().min(rect.width());
+        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()));
+        let size = content.height().min(content.width());
         let src = props::prop_text(node, "src").unwrap_or("");
         let name = props::prop_str(node, "name").unwrap_or("");
         if !src.is_empty() {
@@ -518,7 +523,7 @@ impl Widget for AnimatedIcon {
                 .show_loading_spinner(false)
                 .paint_at(
                     cx.ui,
-                    egui::Rect::from_center_size(rect.center(), egui::vec2(size, size)),
+                    egui::Rect::from_center_size(content.center(), egui::vec2(size, size)),
                 );
         } else {
             // Pulse alpha at ~1.4Hz on the frame clock.
@@ -526,7 +531,7 @@ impl Widget for AnimatedIcon {
             let alpha = (0.6 + 0.4 * (t.sin() as f32 * 0.5 + 0.5)).clamp(0.0, 1.0);
             let color = props::text_color(style, cx.ui.ctx()).gamma_multiply(alpha);
             cx.ui.painter().text(
-                rect.center(),
+                content.center(),
                 egui::Align2::CENTER_CENTER,
                 icon_names::phosphor_glyph(if name.is_empty() {
                     "circle-notch"

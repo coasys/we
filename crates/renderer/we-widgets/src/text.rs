@@ -338,19 +338,25 @@ impl Widget for Text {
         )
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
+        let view = view_of(cx.ui.ctx());
+        // The galley lives in the content box — inside `rect`'s padding and
+        // border (the same box `measure` wrapped it at).
+        let content_rect = props::content_rect(rect, style, FONT_PX, ROOT_PX, view);
         let content = Self::content(node, style);
         let g = text_job(
             &content,
             style,
             cx.ui.ctx(),
-            rect.width(),
+            content_rect.width(),
             props::prop_bool(node, "truncate"),
             props::prop_num(node, "lines").map(|n| n.max(1.0) as usize),
         );
-        cx.ui
-            .painter()
-            .add(egui::Shape::galley(rect.min, g, egui::Color32::PLACEHOLDER));
-        underline(cx, style, rect);
+        cx.ui.painter().add(egui::Shape::galley(
+            content_rect.min,
+            g,
+            egui::Color32::PLACEHOLDER,
+        ));
+        underline(cx, style, content_rect);
         cx.label(rect, &content);
     }
 }
@@ -397,11 +403,15 @@ impl Widget for Link {
             }
         }
         if !label.is_empty() {
-            let g = text_job(&label, &eff, cx.ui.ctx(), rect.width(), false, None);
-            cx.ui
-                .painter()
-                .add(egui::Shape::galley(rect.min, g, egui::Color32::PLACEHOLDER));
-            underline(cx, &eff, rect);
+            let content_rect =
+                props::content_rect(rect, &eff, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()));
+            let g = text_job(&label, &eff, cx.ui.ctx(), content_rect.width(), false, None);
+            cx.ui.painter().add(egui::Shape::galley(
+                content_rect.min,
+                g,
+                egui::Color32::PLACEHOLDER,
+            ));
+            underline(cx, &eff, content_rect);
         }
         if response.hovered() && !disabled {
             cx.ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -460,9 +470,10 @@ impl Widget for Timestamp {
             .map(|d| d.as_secs_f64())
             .unwrap_or(0.0);
         let text = Self::text(node, now_secs);
-        let g = text_job(&text, style, cx.ui.ctx(), rect.width(), false, None);
+        let content_rect = props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()));
+        let g = text_job(&text, style, cx.ui.ctx(), content_rect.width(), false, None);
         cx.ui.painter().add(egui::Shape::galley(
-            rect.min,
+            content_rect.min,
             g,
             props::text_color(style, cx.ui.ctx()),
         ));
@@ -578,10 +589,18 @@ impl Widget for Typewriter {
             .unwrap_or_default();
         let cycled: String = phrase.chars().take(n).collect();
 
-        let g_fixed = text_job(&fixed, style, cx.ui.ctx(), rect.width(), false, None);
+        let content_rect = props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()));
+        let g_fixed = text_job(
+            &fixed,
+            style,
+            cx.ui.ctx(),
+            content_rect.width(),
+            false,
+            None,
+        );
         let x_after = g_fixed.size().x;
         cx.ui.painter().add(egui::Shape::galley(
-            rect.min,
+            content_rect.min,
             g_fixed,
             egui::Color32::PLACEHOLDER,
         ));
@@ -595,18 +614,18 @@ impl Widget for Typewriter {
             &cycled,
             &phrase_style,
             cx.ui.ctx(),
-            rect.width() - x_after,
+            content_rect.width() - x_after,
             false,
             None,
         );
         let w_rest = g_rest.size().x;
         cx.ui.painter().add(egui::Shape::galley(
-            rect.min + egui::vec2(x_after, 0.0),
+            content_rect.min + egui::vec2(x_after, 0.0),
             g_rest,
             egui::Color32::PLACEHOLDER,
         ));
         if props::prop_bool(node, "cursor") || !cycled.is_empty() {
-            let p = rect.min + egui::vec2(x_after + w_rest + 1.0, 0.0);
+            let p = content_rect.min + egui::vec2(x_after + w_rest + 1.0, 0.0);
             cx.ui.painter().rect_filled(
                 egui::Rect::from_min_size(p, egui::vec2(6.0, 12.0)),
                 1.0,

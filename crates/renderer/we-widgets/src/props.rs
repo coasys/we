@@ -148,6 +148,73 @@ fn patched<'a>(style: &'a Style, patch: &StylePatch) -> std::borrow::Cow<'a, Sty
     std::borrow::Cow::Owned(out)
 }
 
+/// One border side's painted width in px — the inset it adds inside the
+/// border box. `none`/`hidden`/absent sides inset 0; a painting side with
+/// no width is CSS `medium` (3px — `paint_box`'s rule).
+pub(crate) fn border_side_px(
+    side: &Option<we_style::BorderSide>,
+    font_px: f32,
+    root_px: f32,
+    viewport: Size,
+) -> f32 {
+    let Some(side) = side else { return 0.0 };
+    if matches!(
+        side.kind,
+        we_style::BorderKind::None | we_style::BorderKind::Hidden
+    ) {
+        return 0.0;
+    }
+    side.width
+        .as_ref()
+        .and_then(|d| d.to_px(font_px, root_px, viewport))
+        .unwrap_or(3.0)
+}
+
+/// An inset edge (`padding`/`border` width) in px — `Percent` resolves
+/// against the container width (CSS's containing-block inline size); `ch`/
+/// `ex`/`lh` take `layout::dim_px`'s font-metric approximations so paint
+/// agrees with the space taffy offered measure.
+fn inset_px(
+    d: &Option<Dimension>,
+    font_px: f32,
+    root_px: f32,
+    view: crate::defaults::ViewportCx,
+) -> f32 {
+    match d.as_ref() {
+        Some(Dimension::Percent(p)) => p * view.container_width,
+        Some(Dimension::Ch(v)) | Some(Dimension::Ex(v)) => v * 0.5 * font_px,
+        Some(Dimension::Lh(v)) => v * 1.4 * font_px,
+        Some(d) => d.to_px(font_px, root_px, view.viewport).unwrap_or(0.0),
+        None => 0.0,
+    }
+}
+
+/// The content box: `rect` (the border box) shrunk by the resolved padding
+/// and border widths — where CSS puts a node's content, and the same box
+/// taffy offers `widget.measure` (it pre-subtracts this inset). Leaf
+/// widgets paint their glyphs/images/icons inside it; `paint_box` chrome —
+/// bg, borders, shadows — stays on `rect`. Interaction keeps `rect`.
+pub(crate) fn content_rect(
+    rect: egui::Rect,
+    style: &Style,
+    font_px: f32,
+    root_px: f32,
+    view: crate::defaults::ViewportCx,
+) -> egui::Rect {
+    let pad = &style.layout.padding;
+    let bor = &style.paint.borders;
+    let p = |d: &Option<Dimension>| inset_px(d, font_px, root_px, view);
+    let bw = |s: &Option<we_style::BorderSide>| border_side_px(s, font_px, root_px, view.viewport);
+    let min = rect.min + egui::vec2(p(&pad.left) + bw(&bor.left), p(&pad.top) + bw(&bor.top));
+    let max = rect.max
+        - egui::vec2(
+            p(&pad.right) + bw(&bor.right),
+            p(&pad.bottom) + bw(&bor.bottom),
+        );
+    // Padding can exceed the box — the content box floors at zero-size.
+    egui::Rect::from_min_max(min, egui::pos2(max.x.max(min.x), max.y.max(min.y)))
+}
+
 /// `we_style::Color` → `egui::Color32` (premultiplied, as egui wants).
 pub(crate) fn color32(c: Color) -> egui::Color32 {
     let [r, g, b, a] = c.to_premultiplied();

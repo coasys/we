@@ -106,10 +106,11 @@ impl Widget for Badge {
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         crate::containers::paint_container(cx, node, style, rect);
+        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()));
         let text = Self::text(node);
-        let g = crate::text::text_job(&text, style, cx.ui.ctx(), rect.width(), true, None);
-        // The galley centers in the pill.
-        let pos = rect.center() - g.size() / 2.0;
+        let g = crate::text::text_job(&text, style, cx.ui.ctx(), content.width(), true, None);
+        // The galley centers in the pill's content box.
+        let pos = content.center() - g.size() / 2.0;
         cx.ui
             .painter()
             .add(egui::Shape::galley(pos, g, egui::Color32::PLACEHOLDER));
@@ -150,12 +151,13 @@ impl Widget for Tag {
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         crate::containers::paint_container(cx, node, style, rect);
+        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()));
         let text = Self::text(node);
-        let g = crate::text::text_job(&text, style, cx.ui.ctx(), rect.width(), true, None);
+        let g = crate::text::text_job(&text, style, cx.ui.ctx(), content.width(), true, None);
         let dismissible = props::prop_bool(node, "dismissible");
-        // Text + optional × centered as a pair.
-        let left = rect.center().x - (g.size().x + if dismissible { 14.0 } else { 0.0 }) / 2.0;
-        let gy = rect.center().y - g.size().y / 2.0;
+        // Text + optional × centered as a pair inside the content box.
+        let left = content.center().x - (g.size().x + if dismissible { 14.0 } else { 0.0 }) / 2.0;
+        let gy = content.center().y - g.size().y / 2.0;
         let gw = g.size().x;
         cx.ui.painter().add(egui::Shape::galley(
             egui::pos2(left, gy),
@@ -164,7 +166,7 @@ impl Widget for Tag {
         ));
         if dismissible {
             let x_rect = Rect::from_center_size(
-                egui::pos2(left + gw + 8.0 + 5.0, rect.center().y),
+                egui::pos2(left + gw + 8.0 + 5.0, content.center().y),
                 egui::vec2(12.0, 12.0),
             );
             let resp = cx.ui.interact(
@@ -264,25 +266,14 @@ impl Widget for Alert {
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         let view = view_of(cx.ui.ctx());
         crate::containers::paint_container(cx, node, style, rect);
-        // The tone icon at the text's left inset — children flow after it
-        // (the DS defaults pad-left for it).
+        // The tone icon and the text sit inside the content box — the same
+        // inset layout keeps outside the measured content — with the icon's
+        // 6px floor; children flow after it.
         let icon_size = 16.0;
-        let pad = props::px(
-            style.layout.padding.left.as_ref(),
-            FONT_PX,
-            ROOT_PX,
-            view.viewport,
-        )
-        .unwrap_or(8.0);
-        let vpad = props::px(
-            style.layout.padding.top.as_ref(),
-            FONT_PX,
-            ROOT_PX,
-            view.viewport,
-        )
-        .unwrap_or(8.0);
+        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view);
+        let pad = (content.min.x - rect.min.x).max(6.0);
         let icon_rect = Rect::from_min_size(
-            rect.min + egui::vec2(pad.max(6.0), vpad),
+            egui::pos2(rect.min.x + pad, content.min.y),
             egui::vec2(icon_size, icon_size),
         );
         // `soft` tints the icon like the text; `edge` paints it in the
@@ -309,25 +300,16 @@ impl Widget for Alert {
         if !has_children {
             if let Some(text) = props::prop_text(node, "text") {
                 let gap = icon_rect.max.x + Self::gap(style, view.viewport);
-                let right = rect.max.x
-                    - pad
+                let right = content.max.x
                     - if props::prop_bool(node, "dismissible") {
                         18.0
                     } else {
                         0.0
                     };
-                let tx =
-                    Rect::from_min_max(egui::pos2(gap, rect.min.y), egui::pos2(right, rect.max.y));
-                let g = crate::text::text_job(
-                    text,
-                    style,
-                    cx.ui.ctx(),
-                    tx.width().max(1.0),
-                    false,
-                    None,
-                );
+                let wrap_w = (right - gap).max(1.0);
+                let g = crate::text::text_job(text, style, cx.ui.ctx(), wrap_w, false, None);
                 cx.ui.painter().galley(
-                    egui::pos2(tx.min.x, tx.min.y + vpad),
+                    egui::pos2(gap, content.min.y),
                     g,
                     props::text_color(style, cx.ui.ctx()),
                 );
@@ -493,15 +475,17 @@ impl Widget for Divider {
             .and_then(|d| d.to_px(FONT_PX, ROOT_PX, view.viewport))
             .unwrap_or(1.0);
         let vertical = props::prop_str(node, "orientation") == Some("vertical");
+        // The line is the element's content — it sits inside the padding.
+        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view);
         let (a, b) = if vertical {
             (
-                egui::pos2(rect.center().x, rect.min.y),
-                egui::pos2(rect.center().x, rect.max.y),
+                egui::pos2(content.center().x, content.min.y),
+                egui::pos2(content.center().x, content.max.y),
             )
         } else {
             (
-                egui::pos2(rect.min.x, rect.center().y),
-                egui::pos2(rect.max.x, rect.center().y),
+                egui::pos2(content.min.x, content.center().y),
+                egui::pos2(content.max.x, content.center().y),
             )
         };
         match props::prop_str(node, "variant").unwrap_or("solid") {

@@ -49,7 +49,7 @@ impl Widget for Placeholder {
             &detail
         };
         cx.ui.painter().text(
-            rect.center(),
+            props::content_rect(rect, style, FONT_PX, ROOT_PX, view).center(),
             egui::Align2::CENTER_CENTER,
             format!("{ty} · {detail}", ty = self.ty),
             egui::FontId::proportional(11.0),
@@ -75,18 +75,19 @@ impl Widget for Video {
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         crate::containers::paint_container(cx, node, style, rect);
+        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()));
         if let Some(poster) = props::prop_text(node, "poster").filter(|p| !p.is_empty()) {
             egui::Image::new(egui::ImageSource::Uri(poster.to_string().into()))
-                .fit_to_exact_size(rect.size())
-                .paint_at(cx.ui, rect);
+                .fit_to_exact_size(content.size())
+                .paint_at(cx.ui, content);
         } else {
             let p = cx.ui.painter();
-            p.rect_filled(rect, 2.0, egui::Color32::BLACK.gamma_multiply(0.85));
+            p.rect_filled(content, 2.0, egui::Color32::BLACK.gamma_multiply(0.85));
             p.text(
-                rect.center(),
+                content.center(),
                 egui::Align2::CENTER_CENTER,
                 crate::media::phosphor("play").unwrap_or(">"),
-                egui::FontId::new(rect.height() * 0.2, egui::FontFamily::Proportional),
+                egui::FontId::new(content.height() * 0.2, egui::FontFamily::Proportional),
                 egui::Color32::WHITE,
             );
         }

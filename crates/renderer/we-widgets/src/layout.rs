@@ -3,7 +3,7 @@
 //! Every node's [`we_style::Style`] comes from [`style_of`] — the E4
 //! resolution of props + defaults + theme — and this file maps
 //! `Style.layout` onto taffy: direction, wrap, `ax`/`ay`, two-value `gap`,
-//! padding, margin, sizes, flex, `align-self`, `position`+insets, `overflow`
+//! padding, border widths, margin, sizes, flex, `align-self`, `position`+insets, `overflow`
 //! (auto/scroll → scroll containers, hidden/clip → paint-time clipping),
 //! `aspect-ratio`, `display: none`, and `Grid`'s `columns`/`minChildWidth`
 //! as real grid tracks.
@@ -359,6 +359,14 @@ fn node_style(node: &ResolvedNode, style: &Style, scx: &StyleCx) -> taffy::Style
             top: lp(l.padding.top.as_ref(), scx),
             bottom: lp(l.padding.bottom.as_ref(), scx),
         },
+        // Border widths are real inset: children and measured content sit
+        // inside them, and the border box grows by them (CSS border-box).
+        border: taffy::Rect {
+            left: border_lp(&style.paint.borders.left, scx),
+            right: border_lp(&style.paint.borders.right, scx),
+            top: border_lp(&style.paint.borders.top, scx),
+            bottom: border_lp(&style.paint.borders.bottom, scx),
+        },
         margin: edges(&l.margin, scx, lpa_margin),
         inset: edges(&l.inset, scx, lpa),
         position: match l.position {
@@ -454,6 +462,19 @@ fn parse_template(tpl: &str) -> Option<Vec<taffy::GridTemplateComponent<String>>
     )])
 }
 
+/// A resolved border side → the taffy `border` edge: the same px
+/// `props::content_rect` subtracts at paint, so the inset taffy keeps
+/// outside measured content agrees with the inset paint keeps outside
+/// painted content.
+fn border_lp(side: &Option<we_style::BorderSide>, scx: &StyleCx) -> LengthPercentage {
+    LengthPercentage::length(crate::props::border_side_px(
+        side,
+        FONT_PX,
+        ROOT_PX,
+        scx.viewport,
+    ))
+}
+
 /// A part spec → taffy style.
 fn part_style(spec: &PartSpec) -> taffy::Style {
     taffy::Style {
@@ -503,13 +524,14 @@ enum Ctx {
     Text(NodeId, Arc<str>),
 }
 
-/// The width/height `widget.measure` gets: taffy's `known` first (a stretch
-/// or final box already decided it), then the offered space — `MinContent`
-/// wraps as hard as possible, `MaxContent`/unset means the natural size.
-fn offered(known: Option<f32>, space: taffy::AvailableSpace) -> f32 {
-    if let Some(k) = known {
-        return k;
-    }
+/// The width/height `widget.measure` gets: taffy's `AvailableSpace`, the
+/// content box. `compute_leaf_layout` merges `known_dimensions` into it
+/// before offering — when `known` is set, `space` is already
+/// `Definite(known − padding − border)` — and adds the inset back onto the
+/// measured size. Answering `known` (the border box) instead would wrap a
+/// padded leaf's text over its own padding: `MinContent` still wraps as
+/// hard as possible, `MaxContent`/unset still means the natural size.
+fn offered(space: taffy::AvailableSpace) -> f32 {
     match space {
         taffy::AvailableSpace::Definite(w) => w,
         taffy::AvailableSpace::MinContent => 0.0,
@@ -857,11 +879,8 @@ pub fn layout(
                 inputs,
                 style,
                 |_, _| 0.0,
-                |known, space| {
-                    let avail = Size::new(
-                        offered(known.width, space.width),
-                        offered(known.height, space.height),
-                    );
+                |_known, space| {
+                    let avail = Size::new(offered(space.width), offered(space.height));
                     let s = widget.measure(cx, node, &wstyle, avail);
                     taffy::Size {
                         width: finite(s.x),
