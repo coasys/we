@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 use egui_kittest::kittest::Queryable;
 use indexmap::IndexMap;
-use we_egui::{layout, paint, EditState, Layout, MeasureCx, Registry, StyleCx};
+use we_egui::{layout, paint, EditState, Layout, MeasureCx, Registry, StyleCx, WidgetEvent};
 use we_expr::Value;
 use we_template::{NodeId, ResolvedChild, ResolvedNode};
 
@@ -855,6 +855,7 @@ struct PaintRig {
     layout: Layout,
     edit: EditState,
     texts: Vec<(egui::Pos2, String)>,
+    events: Vec<WidgetEvent>,
 }
 
 /// Paint `root` inside the harness, then drain every layer's galley texts.
@@ -872,6 +873,7 @@ fn paint_rig(
     let tokens = tokens();
     let out = std::cell::RefCell::new(None);
     let texts = std::cell::RefCell::new(Vec::new());
+    let events_cell = std::cell::RefCell::new(Vec::new());
     let lay_cell = std::cell::RefCell::new(None);
     let mut harness = harness_ui(|ui| {
         let ctx = ui.ctx().clone();
@@ -887,7 +889,7 @@ fn paint_rig(
             &root,
             egui::Rect::from_min_size(ui.cursor().min, egui::vec2(400.0, 800.0)),
         );
-        let mut events = Vec::new();
+        let mut events = events_cell.borrow().clone();
         let mut edit = out.borrow_mut().take().unwrap_or_default();
         paint(
             ui,
@@ -900,6 +902,7 @@ fn paint_rig(
             0.0,
         );
         *out.borrow_mut() = Some(edit);
+        *events_cell.borrow_mut() = events;
         *lay_cell.borrow_mut() = Some(lay);
         texts.borrow_mut().clear();
         ctx.graphics_mut(|g| {
@@ -925,6 +928,7 @@ fn paint_rig(
         layout: lay_cell.borrow_mut().take().unwrap(),
         edit: out.borrow_mut().take().unwrap_or_default(),
         texts: texts.borrow().clone(),
+        events: events_cell.borrow().clone(),
     };
     rig
 }
@@ -1135,6 +1139,89 @@ fn button_child_flow_is_a_row() {
     assert!(
         span.min.x > icon.min.x,
         "the label sits right of the icon: icon {icon:?} label {span:?}"
+    );
+}
+
+// ---------- A6: authored handlers on layout containers ------------------
+
+fn click_at(harness: &mut egui_kittest::Harness<'_>, pos: egui::Pos2) {
+    for pressed in [true, false] {
+        harness.event(egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        });
+        harness.run();
+    }
+}
+
+fn emitted(rig: &PaintRig, node: &str, handler: &str) -> bool {
+    rig.events
+        .iter()
+        .any(|e| e.node == NodeId::from(node) && e.handler.as_ref() == handler)
+}
+
+/// A6 — createLayoutComponent forwards onClick/onMouseEnter/onMouseLeave
+/// to the element: a Row with an authored handler must emit it.
+#[test]
+fn container_emits_authored_pointer_handlers() {
+    let mut row = node(
+        "Row",
+        "r",
+        &[("height", Value::Num(60.0)), ("width", Value::Num(200.0))],
+    );
+    row.handlers = handlers_list(&["onClick", "onMouseEnter", "onMouseLeave"]);
+    child(
+        &mut row,
+        node("Column", "r/in", &[("height", Value::Num(20.0))]),
+    );
+    let rig = paint_rig(row, |harness, lay, _| {
+        let r = lay.rects.get(&NodeId::from("r")).copied().unwrap();
+        harness.hover_at(r.center());
+        harness.run();
+        click_at(harness, r.center());
+        harness.hover_at(egui::pos2(r.min.x - 8.0, r.center().y));
+        harness.run();
+    });
+    assert!(
+        emitted(&rig, "r", "onClick"),
+        "click on the row box emits onClick: {:?}",
+        rig.events
+    );
+    assert!(
+        emitted(&rig, "r", "onMouseEnter"),
+        "entering the box emits onMouseEnter"
+    );
+    assert!(
+        emitted(&rig, "r", "onMouseLeave"),
+        "leaving the box emits onMouseLeave"
+    );
+}
+
+/// A6 — DOM bubbling: a click landing on a child button still reaches the
+/// container's onClick (the child fires too — that is propagation, not
+/// double dispatch).
+#[test]
+fn container_onclick_bubbles_from_a_child() {
+    let mut row = node(
+        "Row",
+        "r",
+        &[("height", Value::Num(60.0)), ("width", Value::Num(200.0))],
+    );
+    row.handlers = handlers_list(&["onClick"]);
+    let mut btn = node("we-button", "r/b", &[("text", s("inside"))]);
+    btn.handlers = handlers_list(&["onClick"]);
+    child(&mut row, btn);
+    let rig = paint_rig(row, |harness, lay, _| {
+        let b = lay.rects.get(&NodeId::from("r/b")).copied().unwrap();
+        click_at(harness, b.center());
+    });
+    assert!(emitted(&rig, "r/b", "onClick"), "the button itself emits");
+    assert!(
+        emitted(&rig, "r", "onClick"),
+        "the click bubbles to the row's onClick: {:?}",
+        rig.events
     );
 }
 
