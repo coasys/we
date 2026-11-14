@@ -91,9 +91,9 @@ fn count(args: &[Value], _env: &dyn Env) -> Value {
 
 /// `filter(list, where?, limit?)` — items matching the where-object; a
 /// non-object `where` filters nothing. `limit` keeps the first N, but only
-/// when it is a real `number >= 0` (`typeof limit === 'number' && limit
-/// >= 0` in `functions.ts`) — an `undefined`, negative, string or NaN limit
-/// leaves the whole matched list.
+/// when it is a real `number >= 0` (`typeof limit === 'number' &&
+/// limit >= 0` in `functions.ts`) — an `undefined`, negative, string or
+/// NaN limit leaves the whole matched list.
 fn filter(args: &[Value], _env: &dyn Env) -> Value {
     let list = arg(args, 0);
     let Some(items) = as_list(&list) else {
