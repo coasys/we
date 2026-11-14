@@ -59,6 +59,7 @@ const EXPR_NOTES: [RegExp, string][] = [
   [/^print\./, 'the printer: parse(source) → printExpression reproduces this string'],
   [/^op\./, 'an operator or grammar rule, pinned against a stub env'],
   [/^eval\./, 'evaluation over the named env'],
+  [/^env\./, 'a buildEnvironment root rule, under a callback context'],
   [/^bundle\./, 'an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env'],
 ];
 const noteFor = (id: string, table: [RegExp, string][], fallback: string) =>

@@ -16,6 +16,7 @@
  * | `{"$number": "Infinity"}`  | `Infinity` (`"-Infinity"` for the negative)          |
  * | `{"$number": "-0"}`        | `-0` — JSON prints it `0`, but `1/-0` is `-Infinity` |
  * | `{"$callable": "<name>"}`  | a function (the name is informative; decoding stubs) |
+ * | `{"$accessor": <v>}`       | `markReactive(() => v)` — a signal (input only)       |
  * | `{"$namespace": {...}}`    | `namespace(prop => members[prop])`                    |
  * | `{"$namespace": true}`     | an opaque namespace (used only in output position)   |
  *
@@ -24,7 +25,7 @@
  * deliberately not folded into each other — `null` is a value, `undefined` is an absence, and the
  * where-language treats them differently.
  */
-import { NAMESPACE, namespace } from '../../shared/src/index.ts';
+import { markReactive, NAMESPACE, namespace } from '../../shared/src/index.ts';
 
 export type EncodedValue = null | boolean | number | string | EncodedValue[] | { [key: string]: EncodedValue };
 
@@ -89,6 +90,12 @@ export function decodeValue(value: EncodedValue): unknown {
       const stub = () => undefined;
       Object.defineProperty(stub, 'name', { value: (value as { $callable: string }).$callable });
       return stub;
+    }
+    if (has(value, '$accessor')) {
+      // A reactive accessor — what a $local field or a signal-reading host global looks like.
+      // Encoding side has no marker of its own: a function leaving the evaluator is `$callable`.
+      const held = decodeValue((value as { $accessor: EncodedValue }).$accessor);
+      return markReactive(() => held);
     }
     if (has(value, '$namespace')) {
       const members = (value as { $namespace: unknown }).$namespace;
