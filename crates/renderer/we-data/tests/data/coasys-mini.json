@@ -1,0 +1,223 @@
+{
+  "stores": {
+    "sessionStore": {
+      "bootState": "ready",
+      "signInStep": "ready",
+      "isGuest": false,
+      "did": "did:key:z6MkAda",
+      "me": { "did": "did:key:z6MkAda" }
+    },
+    "profileStore": {
+      "profiles": [
+        { "did": "did:key:z6MkAda", "name": "Ada", "avatar": "avatar://ada" },
+        { "did": "did:key:z6MkBo", "name": "Bo", "avatar": "" },
+        { "did": "did:key:z6MkCyd", "name": "Cyd", "avatar": "avatar://cyd" }
+      ]
+    },
+    "spaceStore": {
+      "root": "demo",
+      "spacePath": "/space/demo",
+      "canAdministerCurrentSpace": true,
+      "spaceDefaultTemplateId": "tpl-default",
+      "spaceDefaultThemeId": "theme-default",
+      "spaceThemePinned": true,
+      "currentSpace": {
+        "name": "Demo Space",
+        "description": "The offline fixture's space"
+      },
+      "members": [
+        { "did": "did:key:z6MkAda", "name": "Ada", "avatar": "avatar://ada" },
+        { "did": "did:key:z6MkBo", "name": "Bo", "avatar": "" },
+        { "did": "did:key:z6MkCyd", "name": "Cyd", "avatar": "avatar://cyd" }
+      ],
+      "mutedAgents": [{ "did": "did:key:z6MkMuted" }],
+      "landmarks": [
+        { "id": "lm-home", "kind": "channel", "name": "general" },
+        { "id": "lm-calls", "kind": "calls", "name": "calls" }
+      ],
+      "taskStates": [
+        { "id": "state-todo", "name": "To do" },
+        { "id": "state-doing", "name": "Doing" },
+        { "id": "state-done", "name": "Done" }
+      ],
+      "involvementTypes": [
+        {
+          "id": "inv-owner",
+          "slug": "owner",
+          "name": "Owner",
+          "semantic": "responsible",
+          "reflexive": true,
+          "icon": "crown",
+          "appliesTo": []
+        },
+        {
+          "id": "inv-helper",
+          "slug": "helper",
+          "name": "Helper",
+          "semantic": "interested",
+          "reflexive": false,
+          "icon": "hand",
+          "appliesTo": []
+        },
+        {
+          "id": "inv-old",
+          "slug": "old",
+          "name": "Old role",
+          "semantic": "interested",
+          "reflexive": false,
+          "retired": true,
+          "appliesTo": []
+        }
+      ],
+      "orderedSidebarItems": ["lm-home", "lm-calls"],
+      "policy": {
+        "sentences": ["everyone can read", "members can write"]
+      }
+    },
+    "recordStore": {
+      "creatableEntities": [
+        { "value": "note", "label": "Note", "icon": "note", "description": "A note" },
+        { "value": "task", "label": "Task", "icon": "check-square", "description": "A task" }
+      ],
+      "kinds": ["note", "task"],
+      "displays": {
+        "CollectionBlock": {
+          "title": "name",
+          "summary": "description",
+          "icon": "note",
+          "label": "Note",
+          "fields": [
+            { "name": "name", "kind": "text", "role": "title" },
+            { "name": "description", "kind": "text", "role": "detail" },
+            { "name": "assignee", "kind": "text", "role": "detail" }
+          ]
+        },
+        "SignalType": {
+          "title": "name",
+          "icon": "bolt",
+          "label": "Signal",
+          "fields": [{ "name": "name", "kind": "text", "role": "title" }]
+        }
+      },
+      "recordDraft": {}
+    },
+    "workflowStore": {
+      "available": true,
+      "workflows": [
+        { "id": "wf-1", "name": "standup", "archived": false, "records": 3 },
+        { "id": "wf-2", "name": "retro", "archived": false, "records": 0 }
+      ]
+    },
+    "templateStore": {
+      "brand": { "name": "WE" },
+      "currentSwitcherId": "tpl-default",
+      "switcherGroups": [
+        {
+          "label": "Built-in",
+          "templates": [
+            { "id": "tpl-default", "name": "Default", "editable": false },
+            { "id": "tpl-min", "name": "Minimal", "editable": true }
+          ]
+        }
+      ]
+    },
+    "themeStore": {
+      "currentThemeId": "theme-default",
+      "builtInThemes": [
+        { "id": "theme-default", "name": "Default", "origin": "built-in" },
+        { "id": "theme-dark", "name": "Dark", "origin": "built-in" }
+      ]
+    },
+    "modules": {
+      "call": {
+        "liveCalls": [],
+        "canCall": false,
+        "elsewhere": []
+      },
+      "transcribe": {
+        "changedIds": [],
+        "pendingProposals": [],
+        "unconfirmedIds": []
+      }
+    },
+    "shellStore": { "layoutDirty": false },
+    "chatStore": {},
+    "editorStore": {}
+  },
+  "queries": {
+    "calls": [
+      {
+        "id": "call-1",
+        "kind": "call",
+        "name": "Daily sync",
+        "createdAt": "2026-05-01T10:00:00Z",
+        "signals": [
+          { "author": "did:key:z6MkBo", "signalTypeId": "sig-like", "value": 1 },
+          { "author": "did:key:z6MkAda", "signalTypeId": "sig-like", "value": 1 }
+        ]
+      },
+      {
+        "id": "call-2",
+        "kind": "call",
+        "name": "Design review",
+        "createdAt": "2026-05-02T14:00:00Z",
+        "signals": []
+      }
+    ],
+    "anyCall": [
+      {
+        "id": "call-1",
+        "kind": "call",
+        "name": "Daily sync",
+        "createdAt": "2026-05-01T10:00:00Z"
+      }
+    ],
+    "signalTypes": [
+      { "id": "sig-like", "name": "Like", "mode": "toggle", "aggregate": "count" },
+      { "id": "sig-pin", "name": "Pin", "mode": "toggle", "aggregate": "count" }
+    ],
+    "relationshipTypes": [{ "id": "rel-reply", "name": "Reply" }],
+    "relationshipKinds": [{ "id": "rel-reply", "name": "Reply" }],
+    "topics": [{ "id": "topic-general", "name": "General" }],
+    "card": [
+      {
+        "id": "call-1",
+        "kind": "call",
+        "name": "Daily sync",
+        "createdAt": "2026-05-01T10:00:00Z",
+        "signals": [
+          { "author": "did:key:z6MkBo", "signalTypeId": "sig-like", "value": 1 },
+          { "author": "did:key:z6MkAda", "signalTypeId": "sig-like", "value": 1 }
+        ],
+        "assignee": "did:key:z6MkBo",
+        "pendingSignals": [
+          {
+            "record": "call-1",
+            "type": "sig-like",
+            "author": "did:key:z6MkAda",
+            "value": 1,
+            "pending": true
+          }
+        ]
+      }
+    ],
+    "connections": [],
+    "involvements": [
+      {
+        "id": "invl-1",
+        "node": "call-1",
+        "agent": "did:key:z6MkAda",
+        "kind": "owner"
+      },
+      {
+        "id": "invl-2",
+        "node": "call-1",
+        "agent": "did:key:z6MkBo",
+        "kind": "helper"
+      }
+    ]
+  },
+  "invokes": {
+    "spaceStore.ping": { "ok": true }
+  }
+}

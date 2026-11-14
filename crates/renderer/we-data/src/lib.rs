@@ -5,6 +5,14 @@
 //! answers from memory for tests and the offline stage. Nothing above
 //! `we-ad4m` knows about WebSockets.
 //!
+//! E6 adds the offline stage itself: [`OfflineData::from_snapshot`] turns a
+//! recorded snapshot — plus an optional [`StoreMap`] saying which members a
+//! native answers — into the `Arc<StoreBag>` a `Session` resolves against and
+//! the [`Provenance`] recording who served each member. The nine host
+//! functions the Coasys bundle calls are registered on the bag
+//! (`we_data::natives` is `pub` only so the conformance test can reach one
+//! function by name — the real surface is the bag).
+//!
 //! No egui, no I/O, no tokio: this crate builds for `wasm32-unknown-unknown`.
 //! `StoreMap::load` is the only filesystem helper and it is compiled out on
 //! wasm — file reads live in tests and examples.
@@ -13,6 +21,7 @@
 mod executor;
 mod fake;
 mod natives;
+mod offline;
 mod provenance;
 mod query_source;
 mod storemap;
@@ -23,6 +32,7 @@ pub use executor::{
 };
 pub use fake::FakeExecutor;
 pub use natives::run_host_function;
+pub use offline::OfflineData;
 pub use provenance::{Provenance, ProvenanceReport};
 pub use query_source::SnapshotQuerySource;
 pub use storemap::{MemberKind, MemberRow, StoreMap};
