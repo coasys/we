@@ -399,12 +399,8 @@ impl RouteCaptures {
             Ok(Json::Object(ir)) => request_rest(&ir),
             _ => Json::Object(JsonMap::new()),
         };
-        self.lookup(
-            &entities,
-            matches!(class, ClassSel::Many(_)),
-            q.dataset.clone(),
-            &rest,
-        )
+        // The IR names no dataset: the call's space answers it.
+        self.lookup(&entities, matches!(class, ClassSel::Many(_)), None, &rest)
     }
 
     fn lookup(
