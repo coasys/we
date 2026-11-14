@@ -18,7 +18,7 @@ fn gallery_snapshots_per_theme() {
     for theme in set.iter() {
         let theme = theme.clone();
         let mut harness = Harness::builder()
-            .with_size(egui::Vec2::new(760.0, 940.0))
+            .with_size(egui::Vec2::new(760.0, 1440.0))
             .build_ui(|ui| {
                 gallery_ui(ui, &theme);
             });

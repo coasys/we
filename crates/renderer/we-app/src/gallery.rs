@@ -71,6 +71,15 @@ fn resolve1(input: &StyleInput, key: &str, value: &str) -> Style {
     we_style::resolve(&bag1(key, value), input)
 }
 
+/// `Dimension::to_px` plus the one symbolic unit the gallery can answer:
+/// `Percent` against the box it is drawn in (`radius: 50%` rounds a rect).
+fn dim_px(d: we_style::Dimension, input: &StyleInput, percent_of: f32) -> Option<f32> {
+    match d {
+        we_style::Dimension::Percent(p) => Some(p * percent_of),
+        other => other.to_px(input.font_px, input.root_px, input.viewport),
+    }
+}
+
 /// A swatch: the resolved colour as a filled rect, or a hollow box for a
 /// value the table left unevaluated — the honest "paints nothing" state.
 fn swatch(ui: &mut Ui, label: &str, color: Option<Color32>, detail: &str) {
@@ -139,12 +148,24 @@ const ROLES: &[&str] = &[
     "info",
 ];
 
-const SPACES: &[&str] = &["0", "100", "200", "300", "400", "500", "600", "800", "900"];
+const SPACES: &[&str] = &[
+    "0", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000",
+];
 const RADII: &[&str] = &[
     "0", "100", "200", "300", "400", "500", "600", "control", "surface", "card", "input", "avatar",
     "media", "pill", "full",
 ];
 const SHADOWS: &[&str] = &["sm", "md", "lg", "xl", "2xl", "glow"];
+const FONT_SIZES: &[&str] = &[
+    "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000",
+];
+const FONT_WEIGHTS: &[&str] = &["300", "400", "500", "600", "700", "semibold", "bold"];
+const LINE_HEIGHTS: &[&str] = &["none", "tight", "snug", "normal", "relaxed", "loose"];
+const LETTER_SPACINGS: &[&str] = &["tighter", "tight", "normal", "wide", "wider", "widest"];
+const TRANSITION_TOKENS: &[&str] = &["0", "100", "200", "300", "400", "500"];
+const Z_LAYERS: &[&str] = &[
+    "dropdown", "sticky", "chrome", "modal", "popover", "toast", "tooltip",
+];
 
 /// The showcase: roles as swatches, space as bars, radii as rounded corners,
 /// shadows as lifted rects. Values the theme's table leaves unevaluated draw
@@ -204,24 +225,38 @@ pub fn gallery_ui(ui: &mut Ui, theme: &Theme) {
         ui.add_space(8.0);
 
         ui.heading("radius tokens");
-        ui.horizontal_wrapped(|ui| {
-            for t in RADII {
-                let style = resolve1(input, "r", t);
-                let px = style
-                    .paint
-                    .radius
-                    .top
-                    .and_then(|d| d.to_px(input.font_px, input.root_px, input.viewport))
-                    .unwrap_or(0.0);
-                ui.vertical(|ui| {
-                    let (rect, _) =
-                        ui.allocate_exact_size(Vec2::new(44.0, 30.0), egui::Sense::hover());
-                    ui.painter()
-                        .rect_filled(rect, px.min(15.0), Color32::from_rgb(120, 144, 200));
-                    ui.monospace(*t);
-                });
-            }
-        });
+        for row in RADII.chunks(8) {
+            ui.horizontal_wrapped(|ui| {
+                for t in row {
+                    let style = resolve1(input, "r", t);
+                    let px = style
+                        .paint
+                        .radius
+                        .top
+                        .and_then(|d| dim_px(d, input, 30.0))
+                        .unwrap_or(0.0);
+                    ui.vertical(|ui| {
+                        let (rect, _) =
+                            ui.allocate_exact_size(Vec2::new(44.0, 30.0), egui::Sense::hover());
+                        ui.painter()
+                            .rect_filled(rect, px.min(15.0), Color32::from_rgb(120, 144, 200));
+                        ui.monospace(*t);
+                        // `r: "0"` emits no border-radius declaration at all —
+                        // the browser keeps its default 0. That is faithful,
+                        // not a gap.
+                        let detail = if *t == "0" {
+                            "no decl".to_string()
+                        } else {
+                            match style.paint.radius.top {
+                                Some(d) => format!("{d:?}"),
+                                None => "unresolved".to_string(),
+                            }
+                        };
+                        ui.weak(detail);
+                    });
+                }
+            });
+        }
         ui.add_space(8.0);
 
         ui.heading("shadows");
@@ -262,6 +297,110 @@ pub fn gallery_ui(ui: &mut Ui, theme: &Theme) {
                     );
                     ui.monospace(*t);
                 });
+            }
+        });
+        ui.add_space(8.0);
+
+        ui.heading("type");
+        ui.horizontal_wrapped(|ui| {
+            for t in FONT_SIZES {
+                let style = resolve1(input, "fontSize", t);
+                match style
+                    .text
+                    .font_size
+                    .and_then(|d| dim_px(d, input, 30.0))
+                {
+                    Some(px) => {
+                        ui.label(
+                            egui::RichText::new(format!("{t} "))
+                                .size(px.clamp(8.0, 64.0))
+                                .monospace(),
+                        );
+                    }
+                    None => {
+                        ui.weak(format!("{t}: unresolved"));
+                    }
+                }
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            for t in FONT_WEIGHTS {
+                let style = resolve1(input, "fontWeight", t);
+                match style.text.font_weight {
+                    Some(w) => {
+                        ui.monospace(format!("{t}={w:.0}"));
+                    }
+                    None => {
+                        ui.weak(format!("{t}: unresolved"));
+                    }
+                }
+                ui.add_space(6.0);
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            for t in LINE_HEIGHTS {
+                let style = resolve1(input, "lineHeight", t);
+                match style.text.line_height {
+                    Some(lh) => {
+                        ui.monospace(format!("{t}={lh:?}"));
+                    }
+                    None => {
+                        ui.weak(format!("{t}: unresolved"));
+                    }
+                }
+                ui.add_space(6.0);
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            for t in LETTER_SPACINGS {
+                let style = resolve1(input, "letterSpacing", t);
+                match style.text.letter_spacing {
+                    Some(d) => {
+                        ui.monospace(format!("{t}={d:?}"));
+                    }
+                    None => {
+                        ui.weak(format!("{t}: unresolved"));
+                    }
+                }
+                ui.add_space(6.0);
+            }
+        });
+        ui.add_space(8.0);
+
+        ui.heading("motion & layers");
+        ui.horizontal_wrapped(|ui| {
+            for t in TRANSITION_TOKENS {
+                let style = resolve1(input, "transition", &format!("opacity {t} ease-out"));
+                match style.transitions.first() {
+                    Some(tr) => {
+                        ui.monospace(format!(
+                            "{t}: {}ms {:?}",
+                            tr.duration_ms.unwrap_or(f32::NAN),
+                            tr.easing
+                        ));
+                    }
+                    None => {
+                        ui.weak(format!("{t}: unresolved"));
+                    }
+                }
+                ui.add_space(8.0);
+            }
+        });
+        ui.horizontal_wrapped(|ui| {
+            for t in Z_LAYERS {
+                let style = resolve1(input, "zIndex", t);
+                match style.paint.z_index {
+                    Some(we_style::ZIndex::Value(z)) => {
+                        ui.monospace(format!("{t}={z}"));
+                    }
+                    Some(we_style::ZIndex::Auto) => {
+                        ui.monospace(format!("{t}=auto"));
+                    }
+                    None => {
+                        ui.weak(format!("{t}: unresolved"));
+                    }
+                }
+                ui.add_space(8.0);
             }
         });
         ui.add_space(8.0);
