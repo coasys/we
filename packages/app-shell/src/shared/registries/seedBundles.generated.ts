@@ -1017,7 +1017,7 @@ export const seedBundles: Bundle[] = [
                                               props: { variant: 'footnote', color: 'text-muted' },
                                               children: [
                                                 {
-                                                  $: "identityStore.changeBlocked ? identityStore.changeBlocked : identityStore.custody.unlock == 'os' ? 'Your 12 words, no email needed. This computer keeps your master key behind its own sign-in' : 'Your 12 words, no email needed. This computer keeps your master key behind your passphrase'",
+                                                  $: "identityStore.changeBlocked ? identityStore.changeBlocked : identityStore.custody.unlock == 'os' ? 'A recovery phrase, no email needed. This computer keeps your master key behind its own sign-in' : 'A recovery phrase, no email needed. This computer keeps your master key behind your passphrase'",
                                                 },
                                               ],
                                             },
@@ -1218,7 +1218,7 @@ export const seedBundles: Bundle[] = [
                                         {
                                           type: 'Column',
                                           props: { gap: '100', flex: '1', minWidth: '0', textAlign: 'left' },
-                                          children: [{ type: 'we-text', children: ['Use my 12 words'] }],
+                                          children: [{ type: 'we-text', children: ['Use my recovery phrase'] }],
                                         },
                                         { type: 'we-tag', props: { tone: 'neutral' }, children: ['Coming soon'] },
                                       ],

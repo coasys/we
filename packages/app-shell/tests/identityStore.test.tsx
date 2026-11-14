@@ -166,7 +166,7 @@ describe('identityStore', () => {
     await flush();
     expect(identity.did()).toBe(DID);
     expect(identity.keyId()).toBe('d1');
-    expect(identity.keyLog().map((r) => r.title)).toEqual(['Added d2', 'Created your identity']);
+    expect(identity.keyLog().map((r) => r.title)).toEqual(['Added d2', 'Created identity']);
     expect(identity.keyLog()[1].detail).toBe('with d1 · This computer');
     expect(identity.keyLog()[1].thisComputer).toBe(true);
     expect(b.calls).toContain(`log:${DID}`);
@@ -224,7 +224,7 @@ describe('identityStore', () => {
     expect(c.changes).toEqual([{ kind: 'create' }]);
     expect(identity.did()).toBe(DID);
     expect(identity.needsFirstRun()).toBe(false);
-    expect(identity.keyLog().map((r) => r.title)).toEqual(['Created your identity']);
+    expect(identity.keyLog().map((r) => r.title)).toEqual(['Created identity']);
     expect(identity.custody()?.holdsMaster).toBe(true);
     expect(deviceStore.devices().map((d) => d.label)).toEqual(['This computer']);
   });
@@ -447,8 +447,8 @@ describe('deviceStore', () => {
       ['d1', 'Desktop', 'laptop', false, true],
     ]);
     expect(identity.keyLog().map((r) => [r.title, r.detail])).toEqual([
-      ['Added This phone', 'd2 · This phone'],
-      ['Created your identity', 'with d1'],
+      ['Added this phone', 'd2 · This phone'],
+      ['Created identity', 'with d1'],
     ]);
     expect(deviceStore.requests()[0].title).toBe('Desktop asks to remove This phone');
   });

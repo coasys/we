@@ -72,6 +72,7 @@ const DEFAULT_AD4M_DATA_PATH = '~/.ad4m';
  */
 function writeRuntimeConfig(seed) {
   const dataPath = seed.ad4m?.dataPath || DEFAULT_AD4M_DATA_PATH;
+  const { formerIdentifier } = require('../../../scripts/seed.cjs').tauriOf(seed);
 
   if (!fs.existsSync(OUTPUT_DIR)) {
     fs.mkdirSync(OUTPUT_DIR, { recursive: true });
@@ -86,6 +87,10 @@ function writeRuntimeConfig(seed) {
 /// Where the executor keeps its data, as written in the seed. \`~\` is expanded at run time,
 /// and \`WE_AD4M_DATA_PATH\` overrides this entirely. See \`resolve_ad4m_data_path\` in lib.rs.
 pub const AD4M_DATA_PATH: &str = ${JSON.stringify(dataPath)};
+
+/// The identifier this app had before the seed's \`desktop.tauriId\` replaced it, or none. The
+/// webview's data folder is moved from it once; see \`data_folder.rs\`.
+pub const FORMER_IDENTIFIER: Option<&str> = ${formerIdentifier ? `Some(${JSON.stringify(formerIdentifier)})` : 'None'};
 `,
     'utf8',
   );
@@ -93,7 +98,7 @@ pub const AD4M_DATA_PATH: &str = ${JSON.stringify(dataPath)};
   console.log(`   AD4M data path: ${dataPath}`);
 }
 
-function main() {
+async function main() {
   console.log('🔧 Generating Tauri seed configuration...\n');
 
   // Read seed file
@@ -104,8 +109,8 @@ function main() {
 
   const seed = JSON.parse(fs.readFileSync(SEED_FILE, 'utf8'));
 
-  // The product's name, identifier and icon, whichever path below runs.
-  writeSeedTauriConfig(seed);
+  // The product's name, identifier, icon and content security policy, whichever path below runs.
+  writeSeedTauriConfig(seed, await mainWindowPolicy(seed));
 
   if (!seed.apps || seed.apps.length === 0) {
     console.log('ℹ️  No apps defined - native WE app mode (no embedded apps)');
@@ -363,19 +368,18 @@ ${serverSetup}
  * A merge patch replaces arrays whole, so the window list is copied from `tauri.conf.json` with only
  * its titles changed.
  */
-function writeSeedTauriConfig(seed) {
+function writeSeedTauriConfig(seed, policy) {
   const seedFile = require('../../../scripts/seed.cjs');
-  const desktop = seedFile.desktopOf(seed);
+  const tauri = seedFile.tauriOf(seed);
   const base = JSON.parse(fs.readFileSync(TAURI_CONF_FILE, 'utf8'));
-  const machineName = desktop.productName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-|-$/g, '');
   const patch = {
-    productName: desktop.productName,
-    mainBinaryName: machineName,
-    identifier: `${desktop.appId}.tauri`,
-    app: { windows: (base.app?.windows ?? []).map((w) => ({ ...w, title: desktop.productName })) },
+    productName: tauri.productName,
+    mainBinaryName: tauri.mainBinaryName,
+    identifier: tauri.identifier,
+    app: {
+      windows: (base.app?.windows ?? []).map((w) => ({ ...w, title: tauri.productName })),
+      security: policy,
+    },
   };
   // Another seed's icon set is generated beside this app by `@we/brand`, never over WE's.
   const iconDir = seedFile.generatedDir(path.join(__dirname, '..', 'src-tauri'));
@@ -384,7 +388,31 @@ function writeSeedTauriConfig(seed) {
     patch.bundle = { icon: (base.bundle?.icon ?? []).map((f) => rel(path.basename(f))) };
   }
   fs.writeFileSync(SEED_TAURI_CONF_FILE, JSON.stringify(patch, null, 2) + '\n', 'utf8');
-  console.log(`✅ ${path.relative(process.cwd(), SEED_TAURI_CONF_FILE)}: ${desktop.productName} (${patch.identifier})`);
+  console.log(`✅ ${path.relative(process.cwd(), SEED_TAURI_CONF_FILE)}: ${tauri.productName} (${patch.identifier})`);
+}
+
+/**
+ * The content security policy Tauri sends with each page it serves (`app.security` in the Tauri
+ * config), from `@we/csp`: the same policy the Vite build writes into the page as a `<meta>` tag,
+ * for the seed this build is for. `devCsp` is the dev server's form, used only if Tauri serves a
+ * page itself under `tauri dev`.
+ *
+ * Tauri adds a nonce to each `<style>` element of a page when it may change `style-src`, and a
+ * nonce turns off `'unsafe-inline'`, which the design system's run-time styles need. So that one
+ * directive is kept as the policy writes it.
+ *
+ * Imported by its path: `@we/csp` is plain ES modules with no dependencies, so this script still
+ * needs no `pnpm install`.
+ */
+async function mainWindowPolicy(seed) {
+  const { buildContentSecurityPolicy } = await import(
+    require('url').pathToFileURL(path.join(WORKSPACE_ROOT, 'packages/csp/src/index.js')).href
+  );
+  return {
+    csp: buildContentSecurityPolicy({ host: 'tauri', seed }),
+    devCsp: buildContentSecurityPolicy({ host: 'tauri', seed, dev: true }),
+    dangerousDisableAssetCspModification: ['style-src'],
+  };
 }
 
 function updateTauriConfig(bundleResources) {
@@ -403,4 +431,7 @@ function updateTauriConfig(bundleResources) {
 }
 
 // Run
-main();
+main().catch((error) => {
+  console.error(`❌ ${error.message}`);
+  process.exit(1);
+});

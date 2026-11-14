@@ -30,10 +30,10 @@ describe('keyLogRows', () => {
     const rows = keyLogRows(events, 'd1');
     expect(rows.map((r) => [r.position, r.title, r.detail])).toEqual([
       ['#4', 'Scope', ''],
-      ['#3', 'Replaced the master key', 'with your 12 words'],
+      ['#3', 'Replaced the master key', 'with your recovery phrase'],
       ['#2', 'Revoked d2', 'd2'],
       ['#1', 'Added d2', 'd2'],
-      ['#0', 'Created your identity', 'with d1 · This computer'],
+      ['#0', 'Created identity', 'with d1 · This computer'],
     ]);
     expect(rows.find((r) => r.seq === 0)!.thisComputer).toBe(true);
     expect(rows.find((r) => r.seq === 1)!.thisComputer).toBe(false);
@@ -42,7 +42,7 @@ describe('keyLogRows', () => {
 
   it('names this computer and every other key by its id', () => {
     const rows = keyLogRows(events.slice(0, 3), 'd2');
-    expect(rows.map((r) => r.title)).toEqual(['Revoked This computer', 'Added This computer', 'Created your identity']);
+    expect(rows.map((r) => r.title)).toEqual(['Revoked this computer', 'Added this computer', 'Created identity']);
     expect(rows[2].detail).toBe('with d1');
   });
 });
@@ -55,8 +55,8 @@ describe('deviceRows', () => {
       { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, revokedSeq: null },
     ]);
     expect(rows.map((r) => [r.keyId, r.label, r.status, r.canRevoke])).toEqual([
-      ['d1', 'This computer', 'Valid', false],
-      ['d3', 'Unnamed device', 'Valid', true],
+      ['d1', 'This computer', 'Active', false],
+      ['d3', 'Unnamed device', 'Active', true],
       ['d2', 'Unnamed device', 'Removed at #2', false],
     ]);
     // A device row names no key id; the Key log page is where those are read.
@@ -94,8 +94,8 @@ describe('deviceRows', () => {
       NOW,
     );
     expect(rows.map((r) => [r.keyId, r.label, r.status, r.valid])).toEqual([
-      ['d1', 'This computer', 'Valid', true],
-      ['d6', 'Box', 'Valid', true],
+      ['d1', 'This computer', 'Active', true],
+      ['d6', 'Box', 'Active', true],
     ]);
   });
 
@@ -118,7 +118,7 @@ describe('deviceRows', () => {
       ['d2', false, false],
     ]);
     expect(rows[2].status).toMatch(/^Expired on /);
-    expect(rows[1].status).toBe('Valid');
+    expect(rows[1].status).toBe('Active');
     // Ending it for good in the key log is still offered: an end can be the log's to move.
     expect(rows[2].canRevoke).toBe(true);
   });
@@ -168,7 +168,7 @@ describe('deviceRows', () => {
       ['d2'],
     );
     expect(revoked.map((r) => [r.label, r.status, r.master])).toEqual([
-      ['Desktop', 'Valid', 'Has master key'],
+      ['Desktop', 'Active', 'Has master key'],
       ['Unnamed device', 'Removed at #2', REVOKED_MAY_HOLD],
     ]);
 
@@ -298,8 +298,8 @@ describe('this device, on a phone and on a desktop', () => {
     ];
     const phone = keyLogRows(events, 'd2', 'This phone');
     expect(phone.map((r) => [r.title, r.detail, r.thisComputer])).toEqual([
-      ['Added This phone', 'd2 · This phone', true],
-      ['Created your identity', 'with d1', false],
+      ['Added this phone', 'd2 · This phone', true],
+      ['Created identity', 'with d1', false],
     ]);
     // The desktop's words are unchanged.
     expect(keyLogRows(events, 'd1').map((r) => r.detail)).toEqual(['d2', 'with d1 · This computer']);
