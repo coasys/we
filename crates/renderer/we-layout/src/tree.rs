@@ -783,15 +783,6 @@ fn finite(v: f32) -> f32 {
     }
 }
 
-/// Any `padding`/`margin` edge still carrying a percent term — paint
-/// resolves those against the exported `cb.0`, so a deferred one needs a
-/// measured value.
-fn pct_edges(e: &we_style::Edges<Option<Dimension>>) -> bool {
-    e.as_slice().iter().filter_map(|d| d.as_ref()).any(|d| {
-        matches!(d, Dimension::Percent(_)) || matches!(d, Dimension::Calc(c) if c.percent != 0.0)
-    })
-}
-
 struct Builder<'a> {
     tree: TaffyTree<Ctx>,
     m: &'a dyn Measure,
@@ -816,11 +807,6 @@ struct Builder<'a> {
     cb_of: HashMap<NodeId, CbEntry>,
     /// `id` → the bases its style resolved against — `Layout::bases`.
     axes: HashMap<NodeId, Axes>,
-    /// A `calc` hit a deferred base — the measured pass must run.
-    needs_vals: bool,
-    /// A deferred `cb.x` sits under percent-bearing padding — paint needs
-    /// the measured base exported.
-    needs_export: bool,
     scroll: HashMap<NodeId, Vec2>,
     clip: HashMap<NodeId, Vec2>,
 }
@@ -846,13 +832,7 @@ impl<'a> Builder<'a> {
             AxisBase::Indefinite => None,
             AxisBase::Deferred => {
                 self.consumed.insert((b.node.clone(), b.axis));
-                match self.vals.get(&(b.node.clone(), b.axis)) {
-                    Some(v) => Some(*v),
-                    None => {
-                        self.needs_vals = true;
-                        None
-                    }
-                }
+                self.vals.get(&(b.node.clone(), b.axis)).copied()
             }
         }
     }
@@ -1517,11 +1497,6 @@ impl<'a> Builder<'a> {
                 self.deferred.entry(node.id.clone()).or_default().push(axis);
             }
         }
-        // Paint resolves a surviving percent padding edge against `cb.0` —
-        // a deferred one needs the measured value in the export.
-        if matches!(cbx, AxisBase::Deferred) && pct_edges(&l.padding) {
-            self.needs_export = true;
-        }
 
         let mut spec = self.m.parts_spec(node);
         // `caret="end"` on the tree reorders the item's caret part to the row's
@@ -1803,7 +1778,14 @@ fn layout_impl(
         bases: HashMap::new(),
     };
 
-    for pass in 0..MAX_PASSES {
+    for pass in 0..=MAX_PASSES {
+        // The extra slot exists so a cycle detected on the last regular
+        // pass still gets its fallback build; without a forced axis the
+        // cap is the cap — an acyclic chain returns its last build rather
+        // than a misclassified indefinite.
+        if pass == MAX_PASSES && forced.is_empty() {
+            break;
+        }
         let mut b = Builder {
             tree: TaffyTree::new(),
             m,
@@ -1816,8 +1798,6 @@ fn layout_impl(
             deferred: HashMap::new(),
             cb_of: HashMap::new(),
             axes: HashMap::new(),
-            needs_vals: false,
-            needs_export: false,
             scroll: HashMap::new(),
             clip: HashMap::new(),
         };
@@ -1883,8 +1863,6 @@ fn layout_impl(
             deferred,
             cb_of,
             axes,
-            needs_vals,
-            needs_export,
             scroll,
             clip,
             ..
@@ -1932,6 +1910,16 @@ fn layout_impl(
             },
         );
 
+        // The measured bases this pass produced — the movement check
+        // needs the real numbers every pass, so the walk runs whenever
+        // anything deferred exists.
+        let new_vals = if deferred.is_empty() {
+            HashMap::new()
+        } else {
+            let mut boxes = HashMap::new();
+            collect_boxes(&tree, root_id, &mut boxes);
+            derive_deferred(&deferred, &cb_of, &boxes, &rect)
+        };
         let mut next = Layout {
             size: Size::ZERO,
             rects: HashMap::new(),
@@ -1952,28 +1940,22 @@ fn layout_impl(
             next.size = r.size();
         }
         out = next;
-        // Nothing deferred was consumed (and paint needs no export) — a
-        // plain tree still runs exactly one pass.
-        if !(needs_vals || needs_export) || deferred.is_empty() {
-            break;
-        }
-        let mut boxes = HashMap::new();
-        collect_boxes(&tree, root_id, &mut boxes);
-        let new_vals = derive_deferred(&deferred, &cb_of, &boxes, &rect);
-        // A consumed axis that stopped moving has resolved — acyclic
-        // bases settle here. One still moving is not resolved yet: it
-        // settles next build unless the state repeats (the feedback
-        // looped) or the cap lands — either way the CSS cyclic fallback
-        // takes it permanently.
+        // Convergence is on the measured values `calc` consumed — a
+        // deferred key that *exists* but moved is not resolved. The
+        // last build still saves its `out` above.
         let moving: Vec<(NodeId, Axis)> = consumed
             .iter()
             .filter(|k| axis_moved(vals.get(*k), new_vals.get(*k)))
             .cloned()
             .collect();
-        if moving.is_empty() {
+        if moving.is_empty() || pass == MAX_PASSES {
             break;
         }
-        if pass + 1 == MAX_PASSES || history.iter().any(|h| vals_eq(h, &new_vals)) {
+        if history.iter().any(|h| vals_eq(h, &new_vals)) {
+            // The measured state repeated an earlier one — the feedback
+            // looped. Those bases were content-driven all along: force
+            // them `Indefinite` so the extra build lands the CSS cyclic
+            // fallback.
             forced.extend(moving);
             continue;
         }

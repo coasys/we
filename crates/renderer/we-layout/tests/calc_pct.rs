@@ -415,6 +415,70 @@ fn calc_percent_under_flexed_parent_resolves_after_measure() {
     );
 }
 
+/// A deferred base can *exist* and still be wrong: R's resolved width
+/// moves F's measured width, so G's base is stale until the measured
+/// values stop moving. Convergence is on the values `calc` consumed,
+/// not on "every deferred key exists".
+#[test]
+fn calc_deferred_chain_converges_not_first_values() {
+    // 400px Row → two `flex:1` Columns (200px each) → A holds Row R
+    // (`calc(100% - 20px)`) → two `flex:1` Columns F,H → F holds G
+    // (`calc(50% - 5px)`). Right answer: R=180 → F=90 → 0.5·90−5 = 40.
+    // Stopping once values exist returns 45 (0.5·100−5 — the stale F
+    // from the placeholder pass).
+    let mut f = node(
+        "Column",
+        "f",
+        &[("flex", Value::from("1")), ("minWidth", Value::from("0px"))],
+    );
+    f.children = vec![ResolvedChild::Node(Box::new(node(
+        "Column",
+        "g",
+        &[
+            ("width", Value::from("calc(50% - 5px)")),
+            ("height", Value::from("10px")),
+        ],
+    )))];
+    let mut r = node(
+        "Row",
+        "r",
+        &[
+            ("width", Value::from("calc(100% - 20px)")),
+            ("height", Value::from("10px")),
+        ],
+    );
+    r.children = vec![
+        ResolvedChild::Node(Box::new(f)),
+        ResolvedChild::Node(Box::new(node(
+            "Column",
+            "h",
+            &[("flex", Value::from("1")), ("minWidth", Value::from("0px"))],
+        ))),
+    ];
+    let mut a = node(
+        "Column",
+        "a",
+        &[("flex", Value::from("1")), ("minWidth", Value::from("0px"))],
+    );
+    a.children = vec![ResolvedChild::Node(Box::new(r))];
+    let mut root = node("Row", "root", &[]);
+    root.children = vec![
+        ResolvedChild::Node(Box::new(a)),
+        ResolvedChild::Node(Box::new(node(
+            "Column",
+            "b",
+            &[("flex", Value::from("1")), ("minWidth", Value::from("0px"))],
+        ))),
+    ];
+
+    let out = run(&root, 400.0, 200.0);
+    let g = rect(&out, "g");
+    assert!(
+        (g.width() - 40.0).abs() < 0.5,
+        "two-stage deferred chain must converge: R=180 → F=90 → G=0.5·90−5=40, got {g:?}"
+    );
+}
+
 /// An absolutely-positioned child's containing block is its positioned
 /// ancestor's *padding* box: `p: calc(10% + 16px)` inside a `relative`
 /// 400px parent padded 40 resolves against 400 (56px), not the 320px
