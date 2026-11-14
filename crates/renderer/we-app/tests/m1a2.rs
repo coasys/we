@@ -37,3 +37,103 @@ fn a_strict_harness_gets_a_strict_frame() {
         .build_ui_state(|ui, app: &mut RendererApp| app.frame_body(ui), app);
     harness.run_steps(2);
 }
+
+// --- Every C2a route's resolved app tree has unique node ids. ---
+
+const BUNDLE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../bundles/coasys.bundle.json"
+));
+const SNAPSHOT: &str = include_str!("../../fixtures/coasys/snapshot.json");
+const SEED_MAP: &str = include_str!("../../we-data/data/storemap-offline.json");
+
+/// The ten routes C2a recorded — `coasys_shots.rs`'s list.
+const ROUTES: [&str; 10] = [
+    "index",
+    "workflows",
+    "channels",
+    "channel-design",
+    "calls",
+    "call",
+    "people",
+    "dna",
+    "person",
+    "about",
+];
+
+/// The resolved app root for route `id`, built as `coasys_shots.rs` does
+/// (`Runtime::app` over `OfflineData::from_route`) and resolved until its
+/// queries settle.
+fn resolved_route(truth: &serde_json::Value, id: &str) -> we_template::ResolvedNode {
+    use we_data::{OfflineData, StoreMap};
+    use we_template::{AppSpec, Bundle, LocalState, NoParts, Runtime, StaticHost};
+
+    let map = StoreMap::parse(SEED_MAP).unwrap();
+    let data = OfflineData::from_route(truth, id, Some(&map)).unwrap();
+    let bundle = Bundle::parse(BUNDLE).unwrap();
+    let spec = AppSpec {
+        app: bundle.app.clone(),
+        template: bundle.templates.as_deref().and_then(|t| t.first()).cloned(),
+        pages: bundle.pages.clone().unwrap_or_default(),
+        boot: bundle.boot_screen.clone(),
+    };
+    let screen = ScreenState::desktop(
+        ScreenSchema {
+            pages: bundle
+                .pages
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .map(|p| p.id.clone())
+                .collect(),
+            ..ScreenSchema::default()
+        },
+        truth["routes"][id]["rust"].as_str().unwrap(),
+    );
+    let placeholder: SchemaNode =
+        serde_json::from_value(serde_json::json!({ "type": "Column" })).unwrap();
+    let registry = Registry::with_builtins();
+    let types: std::collections::HashSet<&'static str> = registry.type_names().collect();
+    let mut app = RendererApp::new(placeholder, "coasys", data.bag.clone(), screen, registry);
+    let locals = LocalState::new();
+    app.session.runtime = Runtime::app(spec, data.bag.clone(), locals.clone())
+        .with_sources(Some(data.source()), Arc::new(NoParts))
+        .with_dollar_types(move |ty| types.contains(ty));
+    app.session.host = StaticHost::new(data.bag.clone(), locals);
+    for _ in 0..4 {
+        app.session.resolve();
+    }
+    app.session.runtime.resolved().unwrap().as_ref().clone()
+}
+
+fn ids<'a>(n: &'a we_template::ResolvedNode, out: &mut Vec<&'a str>) {
+    out.push(n.id.as_str());
+    for c in &n.children {
+        if let we_template::ResolvedChild::Node(x) = c {
+            ids(x, out);
+        }
+    }
+}
+
+/// Ids key layout rects, paint state and dispatch. The runtime assembles
+/// the app tree from the chrome mount, the space/page mounts and two
+/// synthetic wrappers (`root`, `frame`) — round A found `root` reusing the
+/// chrome's `app:`. Run with `--release` to see this assertion rather than
+/// the runtime's own `debug_assert!`.
+#[test]
+fn every_c2a_route_resolves_an_app_tree_with_unique_ids() {
+    let truth: serde_json::Value = serde_json::from_str(SNAPSHOT).unwrap();
+    for id in ROUTES {
+        let root = resolved_route(&truth, id);
+        let mut all = Vec::new();
+        ids(&root, &mut all);
+        assert!(
+            all.len() > 50,
+            "{id}: the app tree resolved ({} nodes)",
+            all.len()
+        );
+        let mut seen = std::collections::HashSet::new();
+        let dups: Vec<&str> = all.iter().copied().filter(|i| !seen.insert(*i)).collect();
+        assert!(dups.is_empty(), "{id}: duplicate node ids {dups:?}");
+    }
+}

@@ -397,6 +397,16 @@ impl Runtime {
                     transition: None,
                 },
             };
+            // Ids key layout, paint state and event dispatch: the app tree
+            // the runtime assembles from several mounts plus its synthetic
+            // `root`/`frame` wrappers must never repeat one.
+            if matches!(self.spec, RootSpec::App(_)) {
+                debug_assert!(
+                    first_duplicate_id(&root).is_none(),
+                    "duplicate node id {:?} in the resolved app tree",
+                    first_duplicate_id(&root)
+                );
+            }
             self.stats.nodes = count_nodes(&root);
             self.stats.last_resolve = started.elapsed();
             self.stats.resolves += 1;
@@ -637,6 +647,24 @@ fn count_nodes(node: &ResolvedNode) -> usize {
             ResolvedChild::Text(_) => 0,
         })
         .sum::<usize>()
+}
+
+/// The first node id the tree repeats, in walk order — `None` when every
+/// id is unique.
+fn first_duplicate_id(root: &ResolvedNode) -> Option<NodeId> {
+    fn walk<'a>(
+        n: &'a ResolvedNode,
+        seen: &mut std::collections::HashSet<&'a NodeId>,
+    ) -> Option<NodeId> {
+        if !seen.insert(&n.id) {
+            return Some(n.id.clone());
+        }
+        n.children.iter().find_map(|c| match c {
+            ResolvedChild::Node(x) => walk(x, seen),
+            ResolvedChild::Text(_) => None,
+        })
+    }
+    walk(root, &mut std::collections::HashSet::new())
 }
 
 /// The node under `id`, by walk — the resolved tree is small, and dispatch
