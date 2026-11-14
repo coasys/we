@@ -16,11 +16,20 @@ mod icon_names;
 pub(crate) use icon_names::phosphor_glyph as phosphor;
 
 /// Install the fonts and loaders the media widgets need: the three Phosphor
-/// variants (`regular` also rides along as a proportional-text fallback)
+/// variants (`regular` also rides along as a proportional-text fallback),
+/// the vendored Noto symbol subsets as text fallbacks for the non-ASCII the
+/// bundles use (arrows, chevrons, circled digits — OFL in `fonts/OFL.txt`,
+/// source and subset recipe in `fonts/README.md`),
 /// and egui_extras' image loader set (http/https/file/bytes, gif included).
 /// Idempotent — `frame_body` calls it every frame; only the first installs.
 /// `data:` URIs are decoded by `image_source` straight into
 /// `ImageSource::Bytes`, no custom loader needed.
+///
+/// Policy-neutral: this never touches `MissingGlyphPolicy`. Whether a glyph
+/// no installed font has draws as tofu or panics is the host's choice — the
+/// production host selects `Tofu` once at startup, a strict harness keeps
+/// egui_kittest's `Panic`. Setting it here would override a harness every
+/// frame, since `frame_body` calls this before it lays out.
 pub fn install(ctx: &egui::Context) {
     const INSTALLED: &str = "we-egui::media-installed";
     if ctx.data_mut(|d| d.get_temp::<bool>(egui::Id::unique(INSTALLED))) == Some(true) {
@@ -38,6 +47,26 @@ pub fn install(ctx: &egui::Context) {
         "phosphor-fill",
         egui_phosphor::Variant::Fill.font_bytes(),
     );
+    // Symbols and arrows the Ubuntu/Phosphor set lacks → Noto Sans Symbols
+    // subsets, appended last so they only fill gaps.
+    fonts.font_data.insert(
+        "noto-sans-symbols".to_owned(),
+        Arc::new(egui::FontData::from_static(include_bytes!(
+            "../fonts/NotoSansSymbols.subset.ttf"
+        ))),
+    );
+    fonts.font_data.insert(
+        "noto-sans-symbols-2".to_owned(),
+        Arc::new(egui::FontData::from_static(include_bytes!(
+            "../fonts/NotoSansSymbols2.subset.ttf"
+        ))),
+    );
+    for family in [egui::FontFamily::Proportional, egui::FontFamily::Monospace] {
+        fonts.families.entry(family).or_default().extend([
+            "noto-sans-symbols".to_owned(),
+            "noto-sans-symbols-2".to_owned(),
+        ]);
+    }
     ctx.set_fonts(fonts);
     egui_extras::install_image_loaders(ctx);
     ctx.data_mut(|d| d.insert_temp(egui::Id::unique(INSTALLED), true));

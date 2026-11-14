@@ -193,7 +193,8 @@ pub fn widgets_tree(open: bool) -> ResolvedNode {
 }
 
 /// Paint the showcase into `ui` — `edit`/`events` are the gallery's own so
-/// interactions work live (a popover opens for real).
+/// interactions work live (a popover opens for real). Native only, like
+/// the theme tables it reads from disk (`gallery::load_theme_set`).
 #[cfg(not(target_arch = "wasm32"))]
 pub fn widgets_ui(
     ui: &mut egui::Ui,
