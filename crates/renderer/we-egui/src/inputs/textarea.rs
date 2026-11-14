@@ -23,13 +23,14 @@ impl Widget for Textarea {
         WidgetKind::Leaf
     }
 
-    fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, _style: &Style, avail: Size) -> Size {
+    fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, avail: Size) -> Size {
         let rows = props::prop_num(node, "rows").unwrap_or(3.0).max(1.0) as f32;
-        let line = cx.ctx.fonts_mut(|f| f.row_height(&egui::FontId::default()));
+        let font = props::editor_font(style, cx.ctx);
+        let line = cx.ctx.fonts_mut(|f| f.row_height(&font));
         Size::new(avail.x.min(320.0), rows * line + 12.0)
     }
 
-    fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, rect: Rect) {
+    fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         // The DOM `change` event carries the field's text at commit time
         // (input.ts:282–285 reads `e.target.value`): `text` after the
         // editor ran is exactly what the field displays this frame — a
@@ -103,6 +104,7 @@ impl Widget for Textarea {
         let widget = TextEdit::multiline(buffer)
             .id_salt(node.id.as_str())
             .desired_width(rect.width())
+            .font(props::editor_font(style, cx.ui.ctx()))
             .desired_rows(1)
             .interactive(!disabled);
         let widget = match props::prop_string(node, "placeholder") {

@@ -15,8 +15,15 @@ use crate::{events, MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
 pub struct Input;
 
 impl Input {
-    fn line_height(cx: &MeasureCx) -> f32 {
-        cx.ctx.fonts_mut(|f| f.row_height(&egui::FontId::default()))
+    /// The field's font: egui's body size in the theme's family — the
+    /// web input is `font: inherit`, so a themed face reaches the text.
+    fn font(style: &Style, ctx: &egui::Context) -> egui::FontId {
+        props::control_font(style, ctx)
+    }
+
+    fn line_height(cx: &MeasureCx, style: &Style) -> f32 {
+        let font = Self::font(style, cx.ctx);
+        cx.ctx.fonts_mut(|f| f.row_height(&font))
     }
 }
 
@@ -29,12 +36,12 @@ impl Widget for Input {
         WidgetKind::Leaf
     }
 
-    fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, _style: &Style, avail: Size) -> Size {
-        let h = props::control_height(node).max(Self::line_height(cx) + 10.0);
+    fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, avail: Size) -> Size {
+        let h = props::control_height(node).max(Self::line_height(cx, style) + 10.0);
         Size::new(avail.x.min(220.0), h)
     }
 
-    fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, rect: Rect) {
+    fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         // The DOM `change` event carries the field's text at commit time
         // (input.ts:282–285 reads `e.target.value`): `text` after the
         // editor ran is exactly what the field displays this frame — a
@@ -61,8 +68,49 @@ impl Widget for Input {
         let is_password =
             matches!(props::prop(node, "type"), we_expr::Value::Str(s) if s.as_ref() == "password");
 
-        let widget = TextEdit::singleline(buffer)
-            .id_salt(node.id.as_str())
+        // The TextEdit's persistent id, fixed on the widget below — the
+        // chrome paints before `put`, so focus has to be read through it
+        // directly (`:focus-within` styles: cyberpunk's accent border).
+        let wid = cx.ui.make_persistent_id((node.id.as_str(), "we-input"));
+        let chrome_style = if cx.ui.ctx().memory(|m| m.has_focus(wid)) {
+            match &style.focus {
+                Some(p) => props::patched(style, p),
+                None => std::borrow::Cow::Borrowed(style),
+            }
+        } else {
+            std::borrow::Cow::Borrowed(style)
+        };
+        cx.report_state(&chrome_style);
+        let style: &Style = &chrome_style;
+
+        // Chrome that comes from the resolved style — the theme's part
+        // rule (retro's white bevelled well) or authored `styles` —
+        // replaces egui's own TextEdit frame; an unstyled field keeps it.
+        let view = crate::defaults::view_of(cx.ui.ctx());
+        let chrome = style.paint.bg.is_some()
+            || style.paint.shadows.as_ref().is_some_and(|s| !s.is_empty())
+            || style.paint.clip.is_some()
+            || style.paint.borders.as_slice().iter().any(|b| {
+                b.as_ref().is_some_and(|s| {
+                    !matches!(
+                        s.kind,
+                        we_style::BorderKind::None | we_style::BorderKind::Hidden
+                    )
+                })
+            });
+        if chrome {
+            props::paint_box(
+                cx.ui.painter(),
+                rect,
+                style,
+                props::text_color(style, cx.ui.ctx()),
+                view,
+            );
+        }
+
+        let mut widget = TextEdit::singleline(buffer)
+            .id(wid)
+            .font(Self::font(style, cx.ui.ctx()))
             .desired_width(rect.width())
             // Centre the text block in the field — the theme's atom
             // alignment is LEFT_TOP, which parks the text high inside a
@@ -71,6 +119,18 @@ impl Widget for Input {
             .align(egui::Align2::LEFT_CENTER)
             .password(is_password)
             .interactive(!disabled);
+        if chrome {
+            widget = widget.frame(egui::Frame::NONE);
+            // The resolved padding/border insets carry as the TextEdit's
+            // margin, so the text still starts at the content box.
+            let inner = props::content_rect(rect, style, view, cx.cb_w);
+            widget = widget.margin(egui::Margin {
+                left: (inner.min.x - rect.min.x) as i8,
+                top: (inner.min.y - rect.min.y) as i8,
+                right: (rect.max.x - inner.max.x) as i8,
+                bottom: (rect.max.y - inner.max.y) as i8,
+            });
+        }
         let widget = match props::prop_string(node, "placeholder") {
             Some(p) => widget.hint_text(p),
             None => widget,

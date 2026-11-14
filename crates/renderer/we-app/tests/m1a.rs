@@ -58,7 +58,7 @@ fn app_for(truth: &Json, id: &str) -> RendererApp {
     app.session.runtime = Runtime::app(spec, data.bag.clone(), locals.clone())
         .with_sources(Some(data.source()), Arc::new(NoParts))
         .with_dollar_types(move |ty| types.contains(ty));
-    app.session.host = StaticHost::new(data.bag.clone(), locals);
+    app.session.host = Box::new(StaticHost::new(data.bag.clone()));
     app
 }
 

@@ -13,6 +13,7 @@ use we_expr::Value;
 
 use crate::handler::HandlerToken;
 use crate::node::JsonMap;
+use crate::query::SlotRef;
 
 /// A node's stable identity: template id + child path + `$each` keys.
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -113,6 +114,9 @@ struct Bind {
     name: Arc<str>,
     value: Value,
     conduit: bool,
+    /// The query slots the value was read out of — an `$each` row of
+    /// `local.board` reads the board's slot whatever it is called.
+    slots: Arc<[SlotRef]>,
 }
 
 impl Scope {
@@ -131,7 +135,33 @@ impl Scope {
             name: name.into(),
             value,
             conduit: false,
+            slots: Arc::new([]),
         });
+    }
+
+    /// Push a binding whose value came out of the query slots `slots`.
+    pub fn bind_from_slots(
+        &mut self,
+        name: impl Into<Arc<str>>,
+        value: Value,
+        slots: Arc<[SlotRef]>,
+    ) {
+        self.binds.push(Bind {
+            name: name.into(),
+            value,
+            conduit: false,
+            slots,
+        });
+    }
+
+    /// The query slots `name`'s innermost binding was read out of.
+    pub fn slots_of(&self, name: &str) -> &[SlotRef] {
+        self.binds
+            .iter()
+            .rev()
+            .find(|b| b.name.as_ref() == name)
+            .map(|b| &*b.slots)
+            .unwrap_or(&[])
     }
 
     /// A synthesized box — the name reads like any binding; the mark only
@@ -141,6 +171,7 @@ impl Scope {
             name: name.into(),
             value,
             conduit: true,
+            slots: Arc::new([]),
         });
     }
 

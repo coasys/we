@@ -17,7 +17,7 @@ use we_data::{OfflineData, StoreMap};
 use we_screen::{ScreenSchema, ScreenState};
 use we_session::Session;
 use we_template::{
-    AppSpec, Bundle, LocalState, NoParts, Runtime, SchemaNode, StaticHost, StoreBag,
+    AppSpec, Bundle, LocalState, NoParts, RootSpec, Runtime, SchemaNode, StaticHost, StoreBag,
 };
 
 /// The store map the recorded-route path overlays — the same file
@@ -72,10 +72,15 @@ pub fn tree_schema(bundle: &Bundle) -> Result<SchemaNode, String> {
 /// The flat-snapshot session: the tree panel at `route`, as `we-cli`.
 pub fn tree_session(bundle: &Bundle, bag: StoreBag, route: &str) -> Result<Session, String> {
     let screen = ScreenState::desktop(screen_schema(bundle), route);
-    Ok(
-        Session::new(tree_schema(bundle)?, "tree", Arc::new(bag), screen)
-            .with_dollar_types(known_dollar),
+    Ok(Session::offline(
+        RootSpec::Single {
+            node: Box::new(tree_schema(bundle)?),
+            id: "tree".into(),
+        },
+        Arc::new(bag),
+        screen,
     )
+    .with_dollar_types(known_dollar))
 }
 
 /// `route` as a recorded route id: an id (`index`, `people`) as given, or
@@ -116,11 +121,12 @@ pub fn recorded_session(bundle: &Bundle, snapshot: &Json, route: &str) -> Result
         .as_str()
         .ok_or_else(|| format!("routes.{id}.rust is not a path"))?;
     let screen = ScreenState::desktop(screen_schema(bundle), path);
-    let locals = LocalState::new();
-    let runtime = Runtime::app(spec, data.bag.clone(), locals.clone())
+    // Locals belong to the core (E3c-1): the runtime owns them, the host
+    // only answers `$invoke`s — as we-app's recorded-route harness does.
+    let runtime = Runtime::app(spec, data.bag.clone(), LocalState::new())
         .with_sources(Some(data.source()), Arc::new(NoParts))
         .with_dollar_types(known_dollar);
-    let host = StaticHost::new(data.bag.clone(), locals);
+    let host = Box::new(StaticHost::new(data.bag.clone()));
     Ok(Session {
         runtime,
         host,

@@ -202,7 +202,7 @@ fn app_for(truth: &Json, id: &str, theme: &we_style::Theme) -> Result<RendererAp
     app.session.runtime = Runtime::app(spec, data.bag.clone(), locals.clone())
         .with_sources(Some(data.source()), Arc::new(NoParts))
         .with_dollar_types(move |ty| types.contains(ty));
-    app.session.host = StaticHost::new(data.bag.clone(), locals);
+    app.session.host = Box::new(StaticHost::new(data.bag.clone()));
     app.theme = theme.clone();
     // Keep the captures alive for the miss report: `data` drops here, the
     // source it handed out holds its own `Arc`.
@@ -259,7 +259,7 @@ fn missed_captures(truth: &Json, id: &str) -> Vec<String> {
     let locals = LocalState::new();
     let mut rt = Runtime::app(spec, data.bag.clone(), locals.clone())
         .with_sources(Some(data.source()), Arc::new(NoParts));
-    let mut host = StaticHost::new(data.bag.clone(), locals);
+    let mut host = StaticHost::new(data.bag.clone());
     let screen = ScreenState::desktop(
         ScreenSchema {
             pages: bundle

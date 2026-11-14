@@ -18,7 +18,7 @@ use indexmap::IndexMap;
 use we_expr::{CallFn, Env, MapNamespace, Namespace, Value};
 use we_screen::ScreenState;
 
-use crate::query::QuerySlot;
+use crate::query::{note_slot_read, QuerySlot, SlotRef};
 use crate::{LocalState, NodeId, Scope};
 
 /// What a `$localState` field declared, kept for the handler layer: the
@@ -156,11 +156,18 @@ impl Namespace for LocalNs {
         }
         match self.owner(key) {
             Some((node, LocalDecl::State(_))) => self.state.get(node, key),
-            Some((_, LocalDecl::Query(slot))) => match slot.state() {
-                crate::query::QueryState::Rows(rows) => Value::List(rows),
-                crate::query::QueryState::Loading => Value::List(empty_rows()),
-            },
-            Some((_, LocalDecl::QueryLoaded(slot))) => {
+            Some((node, LocalDecl::Query(slot))) => {
+                note_slot_read(&SlotRef::new(node.clone(), key.into(), slot.clone()));
+                match slot.state() {
+                    crate::query::QueryState::Rows(rows) => Value::List(rows),
+                    crate::query::QueryState::Loading => Value::List(empty_rows()),
+                }
+            }
+            Some((node, LocalDecl::QueryLoaded(slot))) => {
+                // The declaration key is `<q>Loaded` (see `resolve`); the
+                // slot it reads is `<q>`'s.
+                let name = key.strip_suffix("Loaded").unwrap_or(key);
+                note_slot_read(&SlotRef::new(node.clone(), name.into(), slot.clone()));
                 Value::Bool(matches!(slot.state(), crate::query::QueryState::Rows(_)))
             }
             Some((_, LocalDecl::Static(value))) => value.clone(),
@@ -263,10 +270,16 @@ pub struct ScopeEnv<'a> {
 
 impl Env for ScopeEnv<'_> {
     fn root(&self, name: &str) -> Option<Value> {
-        self.scope
-            .get(name)
-            .cloned()
-            .or_else(|| self.bag.root(name))
+        match self.scope.get(name) {
+            Some(value) => {
+                // A binding derived from a query slot reads through it.
+                for slot in self.scope.slots_of(name) {
+                    note_slot_read(slot);
+                }
+                Some(value.clone())
+            }
+            None => self.bag.root(name),
+        }
     }
 
     fn call(&self, name: &str, args: &[Value]) -> Value {

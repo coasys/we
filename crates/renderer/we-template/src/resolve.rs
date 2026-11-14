@@ -743,10 +743,15 @@ fn resolve_node(
             }
         }
         Some("$each") => {
-            let items = props
-                .and_then(|p| p.get("items"))
-                .map(|i| eval_prop(i, scope, cx))
-                .unwrap_or(Value::Undefined);
+            // The rows remember the query slots they were read out of, so a
+            // descriptor reading the row alias reads through those slots.
+            let (items, slots) = crate::query::observe_slots(|| {
+                props
+                    .and_then(|p| p.get("items"))
+                    .map(|i| eval_prop(i, scope, cx))
+                    .unwrap_or(Value::Undefined)
+            });
+            let slots: Arc<[crate::query::SlotRef]> = slots.into();
             let Value::List(rows) = items else {
                 // `$each` over a non-list draws nothing (the TS `<For>` over []).
                 return vec![];
@@ -769,15 +774,16 @@ fn resolve_node(
             let mut out = Vec::with_capacity(rows.len());
             for (index, item) in rows.iter().enumerate() {
                 let mut row_scope = scope.clone();
-                row_scope.bind(as_name, item.clone());
+                row_scope.bind_from_slots(as_name, item.clone(), slots.clone());
                 row_scope.bind("index", Value::from(index));
-                row_scope.bind(
+                row_scope.bind_from_slots(
                     "prev",
                     if index > 0 {
                         rows[index - 1].clone()
                     } else {
                         Value::Undefined
                     },
+                    slots.clone(),
                 );
                 let row_path = format!("{path}/{row_step}#{}", keys[index]);
                 out.extend(resolve_node(

@@ -18,7 +18,7 @@ use ratatui::Terminal;
 use serde::Deserialize;
 use we_screen::{ScreenSchema, ScreenState};
 use we_session::Session;
-use we_template::{Bundle, SchemaNode, StoreBag};
+use we_template::{Bundle, RootSpec, SchemaNode, StoreBag};
 use we_tui::draw::FocusKind;
 use we_tui::palette::load_theme_set;
 use we_tui::{buffer_text, KeyResult, TuiApp};
@@ -51,9 +51,11 @@ fn app(route: &str) -> TuiApp {
     )
     .expect("tree panel parses");
     let bag = StoreBag::from_snapshot(&serde_json::from_str(SNAPSHOT).unwrap()).unwrap();
-    let session = Session::new(
-        schema,
-        "tree",
+    let session = Session::offline(
+        RootSpec::Single {
+            node: Box::new(schema),
+            id: "tree".into(),
+        },
         Arc::new(bag),
         ScreenState::desktop(ScreenSchema::default(), route),
     )
@@ -244,9 +246,11 @@ fn unknown_widget_renders_placeholder() {
         ]
     }))
     .unwrap();
-    let session = Session::new(
-        schema,
-        "t",
+    let session = Session::offline(
+        RootSpec::Single {
+            node: Box::new(schema),
+            id: "t".into(),
+        },
         Arc::new(StoreBag::new()),
         ScreenState::desktop(ScreenSchema::default(), "/"),
     )

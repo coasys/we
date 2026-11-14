@@ -11,6 +11,7 @@
 //! The pool ([`QueryPool`]) shares one cell per [`QueryKey`] — the full IR,
 //! not just the entity (the subscription pool's "keyed by what is asked,
 //! never by the object asking").
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
@@ -22,6 +23,7 @@ use we_expr::{ParseCache, Value};
 use crate::resolve::{eval_json, eval_str};
 use crate::resolved::Scope;
 use crate::scope::StoreBag;
+use crate::NodeId;
 
 /// A compiled query — the `$query` descriptor after expressions are resolved
 /// (`QueryDescriptor` in `types.ts`, compiled for the backend's query IR).
@@ -49,14 +51,156 @@ pub struct QueryIr {
     /// `scope`: anchor drill-down (`via` / `anchorId` / transitive / direction).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub scope: Option<Json>,
-    /// Store path to the dataset handle (`dataset` in `QueryToken`).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub dataset: Option<String>,
     /// Every other resolved param — `resolveQueryProp` keeps `params`
     /// wholesale; dropping an unrecognized key would let two different
-    /// reads collide on one pool cell.
+    /// reads collide on one pool cell. Never an authority-bearing name
+    /// ([`RESERVED_IR_KEYS`]): the dataset is [`QueryRequest::dataset`], not
+    /// a field of the IR.
     #[serde(flatten)]
     pub extra: BTreeMap<String, Json>,
+}
+
+/// Param names that could select where a read runs or who it runs as.
+/// `extra` is flattened onto the wire, so a param spelled like one of these
+/// would reach a source beside the typed [`DatasetSel`]. The compiler gates
+/// a query that authors one; a source refuses an IR that carries one
+/// ([`QueryIr::reserved_key`]). `dataset` is the descriptor's own key and
+/// never lands in `params`; it is listed for the wire.
+pub const RESERVED_IR_KEYS: &[&str] = &["dataset", "space", "origin", "authority", "tier"];
+
+impl QueryIr {
+    /// The first authority-bearing name this IR carries in `extra`, if any.
+    /// A source must refuse such a request rather than interpret it.
+    pub fn reserved_key(&self) -> Option<&'static str> {
+        RESERVED_IR_KEYS
+            .iter()
+            .copied()
+            .find(|k| self.extra.contains_key(*k))
+    }
+}
+
+/// The dataset identity a key is made from: today's resolved `dataset`
+/// value as an opaque comparable string. E3c-7 replaces the inside with an
+/// interned handle without changing this API.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct DatasetHandle(Arc<str>);
+
+impl DatasetHandle {
+    pub fn new(id: impl Into<Arc<str>>) -> Self {
+        Self(id.into())
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+/// Which dataset a request reads — the only dataset selector a request has.
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub enum DatasetSel {
+    /// The mount's own space. Until mounts carry a space this keys as the
+    /// pull path always keyed a dataset-less read.
+    Here,
+    /// A dataset the template named (its resolved `dataset`).
+    Named(DatasetHandle),
+}
+
+/// A compiled `$queries` entry: every field a source needs is a field, and
+/// the key is derived from it, never parsed back.
+#[derive(Clone, Debug)]
+pub struct QueryRequest {
+    /// `entityNamesOf`: deduped, blanks dropped.
+    pub classes: Arc<[Arc<str>]>,
+    /// The entity was written as a list: one merged answer.
+    pub union: bool,
+    /// `subscribe` after evaluation; `false` asks once.
+    pub subscribe: bool,
+    pub dataset: DatasetSel,
+    /// where/order/limit/offset/include/select/scope, operands resolved.
+    pub ir: QueryIr,
+    /// The `$queries` field name, when there is one. Not part of the key.
+    pub name_hint: Option<Arc<str>>,
+}
+
+impl QueryRequest {
+    /// The pool key: `{e, u, ds, sub, ir}` in that field order. `Here`
+    /// resolves to `here` (the mount's space) before hashing; with no mount
+    /// space it keys as `null`, exactly as a dataset-less read always keyed,
+    /// so a `Named` dataset can never collide with it whatever it is called.
+    pub fn key(&self, here: Option<&DatasetHandle>) -> QueryKey {
+        let ds = match &self.dataset {
+            DatasetSel::Here => here,
+            DatasetSel::Named(handle) => Some(handle),
+        };
+        let mut key_obj = serde_json::Map::new();
+        key_obj.insert(
+            "e".to_string(),
+            Json::Array(
+                self.classes
+                    .iter()
+                    .map(|e| Json::String(e.to_string()))
+                    .collect(),
+            ),
+        );
+        key_obj.insert("u".to_string(), Json::Bool(self.union));
+        key_obj.insert(
+            "ds".to_string(),
+            ds.map(|h| Json::String(h.as_str().to_string()))
+                .unwrap_or(Json::Null),
+        );
+        key_obj.insert("sub".to_string(), Json::Bool(self.subscribe));
+        key_obj.insert("ir".to_string(), self.ir_json());
+        QueryKey(
+            serde_json::to_string(&Json::Object(key_obj))
+                .unwrap_or_default()
+                .into(),
+        )
+    }
+
+    /// The IR as it goes on the wire.
+    pub fn ir_json(&self) -> Json {
+        serde_json::to_value(&self.ir).unwrap_or(Json::Null)
+    }
+}
+
+/// What compiling one `$queries` entry gives.
+#[derive(Clone, Debug)]
+pub enum Compiled {
+    /// Send it.
+    Ready(QueryRequest),
+    /// Its descriptor read a query slot that has not loaded yet: do not
+    /// send. The slot answers like a gated one.
+    Provisional(QueryRequest),
+    /// `when` false, unresolved entity, unresolved bound, reserved param.
+    Gated,
+}
+
+/// What a compile evaluates against besides the scope.
+pub struct CompileCx<'a> {
+    pub bag: &'a StoreBag,
+    pub cache: &'a mut ParseCache,
+    pub warnings: &'a mut Vec<Arc<str>>,
+}
+
+impl CompileCx<'_> {
+    /// Whether the slot a compile read through has loaded.
+    pub fn slot_loaded(&self, slot: &SlotRef) -> bool {
+        slot.loaded()
+    }
+}
+
+impl<'a> CompileCx<'a> {
+    pub fn new(
+        bag: &'a StoreBag,
+        cache: &'a mut ParseCache,
+        warnings: &'a mut Vec<Arc<str>>,
+    ) -> Self {
+        Self {
+            bag,
+            cache,
+            warnings,
+        }
+    }
 }
 
 /// A query's identity: the entity names, the dataset, `subscribe` and the
@@ -115,6 +259,75 @@ impl QuerySlot {
             .map(|cell| cell.state())
             .unwrap_or(QueryState::Loading)
     }
+}
+
+/// A query slot's identity: the node that declared it and the `$queries`
+/// field name. Every value read out of a slot — `local.<q>` rows,
+/// `local.<q>Loaded` — and every scope binding derived from one carries it,
+/// so "this compile read an unloaded slot" is decided by which slot was read,
+/// whatever name or alias the expression used to reach it. Equality and hash
+/// are the identity; the slot handle answers whether it has loaded.
+#[derive(Clone, Debug)]
+pub struct SlotRef {
+    pub node: NodeId,
+    pub name: Arc<str>,
+    slot: Arc<QuerySlot>,
+}
+
+impl SlotRef {
+    pub fn new(node: NodeId, name: Arc<str>, slot: Arc<QuerySlot>) -> Self {
+        Self { node, name, slot }
+    }
+
+    /// The slot's bound cell holds rows (or an error, reported as loaded).
+    pub fn loaded(&self) -> bool {
+        matches!(self.slot.state(), QueryState::Rows(_))
+    }
+}
+
+impl PartialEq for SlotRef {
+    fn eq(&self, other: &Self) -> bool {
+        self.node == other.node && self.name == other.name
+    }
+}
+impl Eq for SlotRef {}
+impl std::hash::Hash for SlotRef {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.node.hash(state);
+        self.name.hash(state);
+    }
+}
+
+thread_local! {
+    /// The slot reads of the evaluation being observed, innermost observer
+    /// on top. `None` when nothing observes.
+    static SLOT_READS: RefCell<Option<Vec<SlotRef>>> = const { RefCell::new(None) };
+}
+
+/// Record that an evaluation read through `slot`. A no-op unless something
+/// is observing ([`observe_slots`]).
+pub(crate) fn note_slot_read(slot: &SlotRef) {
+    SLOT_READS.with(|reads| {
+        if let Some(reads) = reads.borrow_mut().as_mut() {
+            if !reads.contains(slot) {
+                reads.push(slot.clone());
+            }
+        }
+    });
+}
+
+/// Run `f`, returning what it returned and every query slot it read. An
+/// enclosing observer sees the same reads.
+pub(crate) fn observe_slots<R>(f: impl FnOnce() -> R) -> (R, Vec<SlotRef>) {
+    let outer = SLOT_READS.with(|reads| reads.borrow_mut().replace(Vec::new()));
+    let out = f();
+    let mine = SLOT_READS
+        .with(|reads| std::mem::replace(&mut *reads.borrow_mut(), outer))
+        .unwrap_or_default();
+    for slot in &mine {
+        note_slot_read(slot);
+    }
+    (out, mine)
 }
 
 /// One cell in the pool — shared by every node asking the same question.
@@ -237,7 +450,8 @@ impl QueryPool {
     }
 }
 
-/// The compiled form of one `$queries` entry.
+/// The pull path's form of one `$queries` entry — what a pool cell is made
+/// from. [`compiled_to_cell`] produces it from a [`Compiled`].
 #[derive(Debug, Clone)]
 pub struct CompiledQuery {
     /// Entity names after `entityNamesOf` — deduped, blanks dropped.
@@ -254,6 +468,25 @@ pub struct CompiledQuery {
     pub ir: QueryIr,
     /// What the pool dedups on.
     pub key: QueryKey,
+}
+
+/// The pull adapter: `Ready` is a cell to make; `Provisional` and `Gated`
+/// are no cell (the slot is cleared and answers `[]`/`false`). No mount
+/// space yet, so `Here` keys as a dataset-less read.
+pub fn compiled_to_cell(compiled: Compiled) -> Option<CompiledQuery> {
+    match compiled {
+        Compiled::Ready(request) => {
+            let key = request.key(None);
+            Some(CompiledQuery {
+                entities: request.classes.to_vec(),
+                union: request.union,
+                subscribe: request.subscribe,
+                ir: request.ir,
+                key,
+            })
+        }
+        Compiled::Provisional(_) | Compiled::Gated => None,
+    }
 }
 
 /// Drop where-conditions whose operands did not resolve
@@ -446,10 +679,9 @@ pub fn query_descriptor(
     Some(Json::Object(out))
 }
 
-/// Compile one `$queries` entry against `scope`. `None` → gated: the field
-/// exists, its rows are `[]` and its `Loaded` flag reads `false` — the same
-/// answer a `when`-false, an unresolved entity, or an unresolved bound gives
-/// in WE before the first rows land.
+/// Compile one `$queries` entry against `scope` for the pull path —
+/// [`compile_request`] through [`compiled_to_cell`]. `None` → no cell: the
+/// field exists, its rows are `[]` and its `Loaded` flag reads `false`.
 pub fn compile_query(
     query: &Json,
     scope: &Scope,
@@ -457,6 +689,42 @@ pub fn compile_query(
     cache: &mut ParseCache,
     warnings: &mut Vec<Arc<str>>,
 ) -> Option<CompiledQuery> {
+    compiled_to_cell(compile_request(
+        query,
+        scope,
+        &mut CompileCx::new(bag, cache, warnings),
+    ))
+}
+
+/// Compile one `$queries` entry against `scope` into a typed request.
+/// `Gated` is the answer a `when`-false, an unresolved entity, or an
+/// unresolved bound gives in WE before the first rows land.
+///
+/// `Provisional` when the compile read a query slot that has not loaded —
+/// through `local.<q>`, `local.<q>Loaded`, or any alias bound from them. An
+/// operand left unresolved by such a read would widen the query for a frame
+/// (`pruneUnresolvedWhere`); not sending it is the one declared change from
+/// TS, whose final state is the same. An operand unresolved for any other
+/// reason still widens.
+pub fn compile_request(query: &Json, scope: &Scope, cx: &mut CompileCx) -> Compiled {
+    let (request, reads) =
+        observe_slots(|| compile_inner(query, scope, cx.bag, cx.cache, cx.warnings));
+    match request {
+        Some(request) if reads.iter().any(|slot| !cx.slot_loaded(slot)) => {
+            Compiled::Provisional(request)
+        }
+        Some(request) => Compiled::Ready(request),
+        None => Compiled::Gated,
+    }
+}
+
+fn compile_inner(
+    query: &Json,
+    scope: &Scope,
+    bag: &StoreBag,
+    cache: &mut ParseCache,
+    warnings: &mut Vec<Arc<str>>,
+) -> Option<QueryRequest> {
     let descriptor = query_descriptor(query, scope, bag, cache, warnings)?;
     let Json::Object(map) = &descriptor else {
         return None;
@@ -527,6 +795,17 @@ pub fn compile_query(
                         );
                     }
                 }
+                other if RESERVED_IR_KEYS.contains(&other) => {
+                    let message: Arc<str> = format!(
+                        "$query param `{other}` is reserved — a dataset is chosen \
+                         with `dataset`; the query is not asked"
+                    )
+                    .into();
+                    if !warnings.iter().any(|w| w == &message) {
+                        warnings.push(message);
+                    }
+                    return None;
+                }
                 other => {
                     if let Some(v) = to_ir_json(&resolved) {
                         ir.extra.insert(other.to_string(), v);
@@ -542,6 +821,7 @@ pub fn compile_query(
     if let Some(include) = map.get("include") {
         ir.include = to_ir_json(&eval_json(include, scope, bag, cache, warnings));
     }
+    let mut dataset_sel = DatasetSel::Here;
     if let Some(dataset) = map.get("dataset") {
         let resolved = match dataset {
             Json::Object(d) if d.get("$").and_then(|s| s.as_str()).is_some() => eval_str(
@@ -555,7 +835,7 @@ pub fn compile_query(
             other => Value::from_json(other),
         };
         if !matches!(resolved, Value::Undefined | Value::Null) {
-            ir.dataset = Some(resolved.js_string());
+            dataset_sel = DatasetSel::Named(DatasetHandle::new(resolved.js_string()));
         }
     }
 
@@ -565,39 +845,12 @@ pub fn compile_query(
         Some(other) => eval_json(other, scope, bag, cache, warnings).truthy(),
     };
 
-    // The key: `{e, u, ds, sub, ir}` in a fixed field order — the full IR,
-    // never the entity alone (the sabotage case the pool test guards).
-    let mut key_obj = serde_json::Map::new();
-    key_obj.insert(
-        "e".to_string(),
-        Json::Array(
-            entities
-                .iter()
-                .map(|e| Json::String(e.to_string()))
-                .collect(),
-        ),
-    );
-    key_obj.insert("u".to_string(), Json::Bool(union));
-    key_obj.insert(
-        "ds".to_string(),
-        ir.dataset.clone().map(Json::String).unwrap_or(Json::Null),
-    );
-    key_obj.insert("sub".to_string(), Json::Bool(subscribe));
-    key_obj.insert(
-        "ir".to_string(),
-        serde_json::to_value(&ir).unwrap_or(Json::Null),
-    );
-    let key = QueryKey(
-        serde_json::to_string(&Json::Object(key_obj))
-            .unwrap_or_default()
-            .into(),
-    );
-
-    Some(CompiledQuery {
-        entities,
+    Some(QueryRequest {
+        classes: entities.into(),
         union,
         subscribe,
+        dataset: dataset_sel,
         ir,
-        key,
+        name_hint: None,
     })
 }

@@ -1,7 +1,7 @@
 //! `we-app`'s render loop, as a type tests can drive without a window.
 //!
-//! [`RendererApp`] owns the [`Runtime`], the [`StaticHost`], the
-//! [`ScreenState`], the [`Registry`] and the cached [`Layout`]. One
+//! [`RendererApp`] owns the [`Session`] (runtime, the offline [`StaticHost`], the
+//! [`ScreenState`]), the [`Registry`] and the cached [`Layout`]. One
 //! [`RendererApp::frame_body`] call = one frame: `frame` (re-resolve iff a
 //! revision moved) → apply the ops a route queued → layout (cached on
 //! resolve count + rect) → paint → drain events → `dispatch`. F12 toggles
@@ -24,7 +24,7 @@ use we_egui::{
 };
 use we_screen::ScreenState;
 use we_session::Session;
-use we_template::{ResolvedNode, SchemaNode, StoreBag};
+use we_template::{ResolvedNode, RootSpec, SchemaNode, StaticHost, StoreBag};
 
 /// The production host's one-time context setup, called from eframe's
 /// creation callback: a glyph no installed font has draws as a tofu box —
@@ -67,8 +67,12 @@ impl RendererApp {
         // `$`-types the registry knows (`$lane`) resolve as components —
         // the resolver asks before it stamps a `$todo:` placeholder.
         let types: std::collections::HashSet<&'static str> = registry.type_names().collect();
-        let session = Session::new(schema, template_id, bag, screen)
-            .with_dollar_types(move |ty| types.contains(ty));
+        let spec = RootSpec::Single {
+            node: Box::new(schema),
+            id: template_id.into(),
+        };
+        let session =
+            Session::offline(spec, bag, screen).with_dollar_types(move |ty| types.contains(ty));
         Self {
             session,
             registry,
@@ -109,6 +113,7 @@ impl RendererApp {
                 let rect = Rect::from_min_size(ui.cursor().min, vec2(width, vp.y));
                 let scx = StyleCx {
                     tokens: &self.theme.tokens,
+                    theme: self.theme.id.as_ref(),
                     viewport: we_style::Size::new(vp.x, vp.y),
                     container_width: width,
                     ..StyleCx::empty()
@@ -168,7 +173,9 @@ impl RendererApp {
                             stats.last_resolve,
                             stats.nodes,
                             unknown.len(),
-                            self.session.host.dropped.len(),
+                            self.session
+                                .host_as::<StaticHost>()
+                                .map_or(0, |h| h.dropped.len()),
                         ))
                         .monospace()
                         .size(11.0),

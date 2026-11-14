@@ -2150,6 +2150,8 @@ pub fn paint_frame(
     let empty_scope = indexmap::IndexMap::new();
     let scx = StyleCx {
         tokens: &theme.tokens,
+        // The theme's component stylesheet applies, as in we-app.
+        theme: theme.id.as_ref(),
         // The root's custom-property scope; we-tui resolves every node
         // against it (no per-node `scope` descent yet).
         scope: &empty_scope,

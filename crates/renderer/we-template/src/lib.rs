@@ -19,6 +19,7 @@
 mod bundle;
 mod handler;
 mod handlers;
+mod host;
 mod local;
 mod node;
 mod order;
@@ -32,13 +33,15 @@ pub use bundle::{
     Bundle, BundleAuthor, BundleBrand, BundleDisplay, BundleRecordType, BundleTemplate,
     BundleTheme, DisplaySpaces, BUNDLE_FORMAT, BUNDLE_FORMAT_VERSION,
 };
-pub use handler::{CallId, HandlerToken, Host, Invoked};
+pub use handler::{CallId, HandlerToken};
 pub use handlers::{run as run_handler, HandlerCx, PendingCall, PendingMap};
+pub use host::{Action, ActionRequest, CallBook, Completer, Host, Invoked, MountId, Origin};
 pub use local::LocalState;
 pub use node::{RouteNode, SchemaChild, SchemaNode};
 pub use query::{
-    compile_query, prune_where, query_descriptor, scope_anchored, CompiledQuery, QueryCell,
-    QueryIr, QueryKey, QueryPool, QuerySource, QueryState,
+    compile_query, compile_request, compiled_to_cell, prune_where, query_descriptor,
+    scope_anchored, CompileCx, Compiled, CompiledQuery, DatasetHandle, DatasetSel, QueryCell,
+    QueryIr, QueryKey, QueryPool, QueryRequest, QuerySource, QueryState, SlotRef, RESERVED_IR_KEYS,
 };
 pub use resolve::{resolve, NoParts, PartSource, ResolveCx};
 pub use resolved::{

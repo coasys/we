@@ -78,7 +78,7 @@ fn space_template_resolve_perf() {
         boot: None,
     };
     let mut rt = Runtime::app(spec, bag.clone(), locals.clone());
-    let mut host = StaticHost::new(bag, locals);
+    let mut host = StaticHost::new(bag);
     let screen = ScreenState::desktop(ScreenSchema::default(), "/space/demo?view=canvas");
     let root = rt.frame(&mut host, &screen).clone();
     let stats = rt.stats();

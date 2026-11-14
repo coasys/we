@@ -87,7 +87,7 @@ fn main() -> Result<(), String> {
             Some(source as Arc<dyn we_template::QuerySource>),
             Arc::new(NoParts),
         ),
-        host: StaticHost::new(data.bag.clone(), locals),
+        host: Box::new(StaticHost::new(data.bag.clone())),
         screen: ScreenState::desktop(
             ScreenSchema {
                 pages: bundle
@@ -108,8 +108,12 @@ fn main() -> Result<(), String> {
     noted.note_pool(session.runtime.pool());
     session.resolve();
     // `$invoke` targets nothing answered — into the dropped count.
-    data.provenance
-        .absorb_dropped(std::mem::take(&mut session.host.dropped));
+    data.provenance.absorb_dropped(std::mem::take(
+        &mut session
+            .host_mut_as::<StaticHost>()
+            .expect("the offline host")
+            .dropped,
+    ));
 
     let report = data.provenance.report();
     if args.json {

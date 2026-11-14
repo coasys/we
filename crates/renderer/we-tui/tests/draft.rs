@@ -12,7 +12,7 @@ use ratatui::layout::Rect;
 use ratatui::Terminal;
 use we_screen::{ScreenSchema, ScreenState};
 use we_session::Session;
-use we_template::{SchemaNode, StoreBag};
+use we_template::{RootSpec, SchemaNode, StoreBag};
 use we_tui::draw::FocusKind;
 use we_tui::palette::load_theme_set;
 use we_tui::{buffer_text, TuiApp};
@@ -35,9 +35,11 @@ fn a_draft_shows_where_nothing_writes_value_back() {
         "children": [{ "type": "we-input", "props": { "value": "seed" } }]
     }))
     .unwrap();
-    let session = Session::new(
-        schema,
-        "t",
+    let session = Session::offline(
+        RootSpec::Single {
+            node: Box::new(schema),
+            id: "t".into(),
+        },
         Arc::new(StoreBag::new()),
         ScreenState::desktop(ScreenSchema::default(), "/"),
     )
