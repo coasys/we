@@ -6,6 +6,8 @@
 //! Expected labels come from the recording (a route's `members` and its query
 //! captures) or from what the web screenshots show
 //! (`we-app/tests/coasys_shots.observations.md`) — never from we-tui's output.
+// Native only, as the crate is: on wasm32 we-tui builds empty.
+#![cfg(not(target_arch = "wasm32"))]
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
 use ratatui::backend::TestBackend;
 use ratatui::layout::Rect;

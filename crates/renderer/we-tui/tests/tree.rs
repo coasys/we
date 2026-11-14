@@ -7,6 +7,8 @@
 //! Expected labels come from the snapshot (`spaceStore.currentSpace`,
 //! `queries.*` counts) and the template's literals — never from what the
 //! Rust printer happens to emit.
+// Native only, as the crate is: on wasm32 we-tui builds empty.
+#![cfg(not(target_arch = "wasm32"))]
 use std::sync::Arc;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};

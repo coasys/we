@@ -2,6 +2,8 @@
 //! (nothing writes the typed text back into the tree) must still show what
 //! was typed, before and after a re-resolve. `tree.rs`'s draft test cannot
 //! tell — the find input's `onInput` round-trips the text into `value`.
+// Native only, as the crate is: on wasm32 we-tui builds empty.
+#![cfg(not(target_arch = "wasm32"))]
 use std::sync::Arc;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
