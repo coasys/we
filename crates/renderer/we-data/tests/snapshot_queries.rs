@@ -239,6 +239,68 @@ fn a_request_for_another_space_is_refused() {
     assert!(rows.is_ok(), "the fixture's own space answers");
 }
 
+/// `OfflineData::executor` is the factory — the snapshot claims
+/// `/space/demo`, so the executor it hands out is bound to `demo`
+/// without an explicit `for_space`. Another space must not receive
+/// the demo rows, and a snapshot that names no space yields an
+/// executor that refuses until `for_space` binds one — the
+/// deliberately space-agnostic fake is `FakeExecutor::new`.
+#[test]
+fn the_factory_binds_the_executor_to_the_snapshot_space() {
+    let data = OfflineData::from_snapshot(&mini_json(), None).unwrap();
+    assert_eq!(data.space(), Some(&SpaceId::new("demo")));
+    let executor = data.executor();
+    let pool = QueryPool::new();
+    cell_named(
+        &pool,
+        serde_json::json!({ "entity": "SignalType", "subscribe": false }),
+        "signalTypes",
+        &data.bag,
+    );
+    executor.note_pool(&pool);
+    let cell = pool.cells().into_iter().next().unwrap();
+
+    let wrong_space = pollster::block_on(executor.model_query(
+        &SpaceId::new("other"),
+        ClassSel::one("SignalType"),
+        &cell.ir,
+    ));
+    assert!(
+        wrong_space.is_err(),
+        "the factory bound the snapshot's space — `other` must be refused"
+    );
+
+    let rows = pollster::block_on(executor.model_query(
+        &SpaceId::new("demo"),
+        ClassSel::one("SignalType"),
+        &cell.ir,
+    ));
+    assert!(rows.is_ok(), "the snapshot's own space answers");
+
+    // A snapshot that names no space: every model call refuses until
+    // `for_space` binds the executor — never a silent any-space answer.
+    let anonymous = OfflineData::from_snapshot(
+        &serde_json::json!({ "stores": {}, "queries": { "tasks": [] } }),
+        None,
+    )
+    .unwrap();
+    let executor = anonymous.executor();
+    let unbound = pollster::block_on(executor.model_query(
+        &SpaceId::new("demo"),
+        ClassSel::one("Task"),
+        &QueryIr::default(),
+    ));
+    assert!(unbound.is_err(), "unbound: no space to answer for");
+    let executor = executor.for_space(SpaceId::new("demo"));
+    executor.teach(&ClassSel::one("Task"), false, &QueryIr::default(), "tasks");
+    let bound = pollster::block_on(executor.model_query(
+        &SpaceId::new("demo"),
+        ClassSel::one("Task"),
+        &QueryIr::default(),
+    ));
+    assert!(bound.is_ok(), "for_space is the explicit binding");
+}
+
 #[test]
 fn writes_are_unsupported_and_count_as_dropped() {
     let data = OfflineData::from_snapshot(&mini_json(), None).unwrap();

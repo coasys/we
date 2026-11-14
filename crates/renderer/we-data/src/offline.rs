@@ -31,7 +31,7 @@ use crate::natives::{named_native, register_host_functions};
 use crate::provenance::{member_get, MeNs, MemberImpl, OverlayNs, Provenance, RecordingNs};
 use crate::query_source::SnapshotQuerySource;
 use crate::storemap::{split_member, MemberKind, StoreMap};
-use crate::FakeExecutor;
+use crate::{FakeExecutor, SpaceId};
 
 /// `bag + provenance` — what a `Session` needs to resolve a snapshot offline,
 /// and the record of who served what while it did.
@@ -44,6 +44,10 @@ pub struct OfflineData {
     /// The snapshot's `queries` table, name → raw rows value — the fixture an
     /// [`OfflineData::executor`] answers `model_query`/`model_subscribe` from.
     pub queries: IndexMap<String, Value>,
+    /// The space the snapshot speaks for — `meta.dataset` when the file
+    /// declares it, else the `spaceStore.spacePath` member's `/space/<id>`
+    /// suffix. `None` means the snapshot names no space.
+    space: Option<SpaceId>,
 }
 
 impl OfflineData {
@@ -58,6 +62,7 @@ impl OfflineData {
         let bag = Arc::new(StoreBag::from_snapshot(json)?);
         let provenance = Provenance::new();
         let queries = query_table(json);
+        let space = snapshot_space(json);
 
         // 1. Record reads against every snapshot store root.
         if let Some(stores) = json.get("stores").and_then(|s| s.as_object()) {
@@ -92,7 +97,13 @@ impl OfflineData {
             bag,
             provenance,
             queries,
+            space,
         })
+    }
+
+    /// The space this snapshot's data belongs to, when it names one.
+    pub fn space(&self) -> Option<&SpaceId> {
+        self.space.as_ref()
     }
 
     /// A `SnapshotQuerySource` over this bag — note cells from a pool after
@@ -105,10 +116,19 @@ impl OfflineData {
     /// only requests it has learned — `note`/`note_pool` from pool cells, or
     /// `teach` for a direct binding — and refuses the rest into
     /// `provenance.dropped`, beside writes, commits, flows and shape calls.
+    /// The factory binds the executor to the space the snapshot names;
+    /// a snapshot that names none yields an executor that refuses every
+    /// model call until `for_space` binds one — another space must never
+    /// receive this space's rows by accident.
     pub fn executor(&self) -> FakeExecutor {
-        FakeExecutor::new()
+        let executor = FakeExecutor::new()
             .with_queries(self.queries.clone())
             .with_provenance(self.provenance.clone())
+            .require_binding();
+        match &self.space {
+            Some(space) => executor.for_space(space.clone()),
+            None => executor,
+        }
     }
 
     /// Read `store.member` out of the bag as a plain value — for tests and
@@ -144,6 +164,27 @@ fn validate_snapshot(json: &serde_json::Value) -> Result<(), String> {
         }
     }
     Ok(())
+}
+
+/// The space a snapshot speaks for: `meta.dataset` when the document
+/// declares it (the recorded snapshot's space), else the
+/// `spaceStore.spacePath` member's `/space/<id>` suffix — the claim an
+/// older fixture makes. A snapshot that names neither speaks for no
+/// space.
+fn snapshot_space(json: &serde_json::Value) -> Option<SpaceId> {
+    if let Some(dataset) = json
+        .get("meta")
+        .and_then(|m| m.get("dataset"))
+        .and_then(|d| d.as_str())
+    {
+        return Some(SpaceId::new(dataset));
+    }
+    json.get("stores")
+        .and_then(|s| s.get("spaceStore"))
+        .and_then(|s| s.get("spacePath"))
+        .and_then(|p| p.as_str())
+        .and_then(|p| p.strip_prefix("/space/"))
+        .map(SpaceId::new)
 }
 
 /// The snapshot's `queries` table, decoded — `IndexMap` keeps authored order.

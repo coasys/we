@@ -61,6 +61,11 @@ pub struct FakeExecutor {
     /// The space the fixture speaks for. `None` accepts any space; once
     /// bound, a call routed to another space is refused.
     space: RwLock<Option<SpaceId>>,
+    /// Set by [`OfflineData`](crate::OfflineData)'s factory: an executor
+    /// built for a snapshot answers no model call while unbound — the
+    /// deliberately space-agnostic fake is `FakeExecutor::new`, which
+    /// never carries the flag.
+    require_bound: RwLock<bool>,
     provenance: RwLock<Option<Provenance>>,
 }
 
@@ -87,6 +92,16 @@ impl FakeExecutor {
     /// the `SpaceId` they arrive on — are refused.
     pub fn for_space(self, space: SpaceId) -> Self {
         *self.space.write().unwrap() = Some(space);
+        self
+    }
+
+    /// [`OfflineData`](crate::OfflineData)'s factory marks the executor it
+    /// hands out: bound to the snapshot's space when the snapshot names
+    /// one, refusing model calls until `for_space` binds one when it does
+    /// not. `FakeExecutor::new` never carries the flag — an executor built
+    /// bare is deliberately space-agnostic.
+    pub(crate) fn require_binding(self) -> Self {
+        *self.require_bound.write().unwrap() = true;
         self
     }
 
@@ -173,6 +188,17 @@ impl FakeExecutor {
                 class.names().join(",")
             )
         };
+        // A factory executor must be bound: the snapshot named a space
+        // and `for_space` was applied, or the snapshot named none and
+        // every call is refused until someone binds one.
+        if *self.require_bound.read().unwrap() && self.space.read().unwrap().is_none() {
+            self.dropped(&what());
+            return Err(ExecutorError::Unsupported(format!(
+                "{}: unbound executor — the snapshot names no space; \
+                 bind one with for_space",
+                what()
+            )));
+        }
         // The fixture speaks for one space once `for_space` binds it — a
         // call routed elsewhere is refused rather than served that space's
         // rows.
