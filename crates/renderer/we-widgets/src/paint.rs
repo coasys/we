@@ -375,13 +375,17 @@ fn modal_host(
     children: Vec<ResolvedChild>,
     mcx: &MeasureCx,
 ) -> ResolvedNode {
-    let pad = crate::Modal::pad(node) as f64;
+    let pad = crate::Modal::pad(node);
     let mut host = overlay_host(node, width, children);
+    // Padding props resolve through the space scale — a bare `Num` would
+    // emit `var(--we-space-24)`, so px text is the authored-CSS spelling.
     for key in ["pl", "pr", "pb"] {
-        host.props.insert(key.into(), we_expr::Value::Num(pad));
+        host.props
+            .insert(key.into(), we_expr::Value::Str(format!("{pad}px").into()));
     }
-    let pt = pad + crate::Modal::title_strip(mcx, node).unwrap_or(0.0) as f64;
-    host.props.insert("pt".into(), we_expr::Value::Num(pt));
+    let pt = pad + crate::Modal::title_strip(mcx, node).unwrap_or(0.0);
+    host.props
+        .insert("pt".into(), we_expr::Value::Str(format!("{pt}px").into()));
     host
 }
 
