@@ -237,6 +237,69 @@ fn closed_sheet_takes_no_space_and_paints_nothing() {
     );
 }
 
+/// Layout + paint `root`; returns every text shape painted, with the layer
+/// it landed on. Unlike `all_shapes`, layer identity is kept, so a test can
+/// tell the overlay from the page.
+fn layered_texts(root: &ResolvedNode, width: f32) -> Vec<(egui::LayerId, String)> {
+    let registry = Registry::with_builtins();
+    let tokens = tokens();
+    let scx = StyleCx {
+        tokens: &tokens,
+        ..StyleCx::empty()
+    };
+    let out = std::cell::RefCell::new(None);
+    let mut harness = egui_kittest::Harness::builder()
+        .allow_missing_glyphs()
+        .with_context_setup(we_egui::install_media)
+        .build_ui(|ui| {
+            let ctx = ui.ctx().clone();
+            let cx = MeasureCx::new(&ctx);
+            let lay = layout(
+                &cx,
+                &scx,
+                &registry,
+                root,
+                egui::Rect::from_min_size(ui.cursor().min, egui::vec2(width, 800.0)),
+            );
+            let mut events = Vec::new();
+            let mut edit = EditState::default();
+            paint(ui, &registry, &scx, root, &lay, &mut events, &mut edit, 0.0);
+            let mut layers: Vec<egui::LayerId> = ctx.memory(|m| m.layer_ids().collect());
+            layers.push(egui::LayerId::background());
+            layers.push(ui.layer_id());
+            layers.sort_by_key(|l| (l.order, l.id.value()));
+            layers.dedup();
+            fn texts(shape: &egui::Shape, out: &mut Vec<String>) {
+                match shape {
+                    egui::Shape::Text(t) => out.push(t.galley.text().to_string()),
+                    egui::Shape::Vec(v) => v.iter().for_each(|s| texts(s, out)),
+                    _ => {}
+                }
+            }
+            let found = ctx.graphics(|g| {
+                let mut found = Vec::new();
+                for layer in &layers {
+                    if let Some(list) = g.get(*layer) {
+                        for cs in list.all_entries() {
+                            let mut t = Vec::new();
+                            texts(&cs.shape, &mut t);
+                            found.extend(t.into_iter().map(|t| (*layer, t)));
+                        }
+                    }
+                }
+                found
+            });
+            *out.borrow_mut() = Some(found);
+        });
+    harness.run();
+    let out = out.borrow_mut().take().expect("rendered");
+    out
+}
+
+/// An open sheet floats: its card and its contents paint on a foreground
+/// (modal) layer above the page, and nothing of it paints on the page's
+/// own background layer. Round A's version only checked the body text
+/// existed somewhere, which the old in-flow placeholder also satisfied.
 #[test]
 fn open_sheet_paints_its_card_on_the_overlay() {
     let mut col = node("Column", "c", &[]);
@@ -250,12 +313,31 @@ fn open_sheet_paints_its_card_on_the_overlay() {
         node("we-text", "c/s/b", &[("text", s("sheet body"))]),
     );
     child(&mut col, sheet);
-    let (_lay, shapes) = all_shapes(&col, 400.0);
-    assert!(
-        shapes
+    child(
+        &mut col,
+        node("we-text", "c/t", &[("text", s("page text"))]),
+    );
+    let texts = layered_texts(&col, 400.0);
+    let on = |needle: &str| -> Vec<egui::Order> {
+        texts
             .iter()
-            .any(|shape| matches!(shape, egui::Shape::Text(t)
-            if t.galley.text().contains("sheet body"))),
-        "an open sheet paints its contents on the overlay layer: {shapes:?}"
+            .filter(|(_, t)| t.contains(needle))
+            .map(|(l, _)| l.order)
+            .collect()
+    };
+    assert_eq!(
+        on("page text"),
+        vec![egui::Order::Background],
+        "the page paints on the background layer: {texts:?}"
+    );
+    assert_eq!(
+        on("sheet body"),
+        vec![egui::Order::Foreground],
+        "the sheet's contents paint on the foreground (modal) layer only: {texts:?}"
+    );
+    assert_eq!(
+        on("AgentChatSheet"),
+        vec![egui::Order::Foreground],
+        "the sheet's card paints on the foreground (modal) layer only: {texts:?}"
     );
 }

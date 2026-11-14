@@ -1,8 +1,9 @@
 //! M1a — containing-block resolution: the page root's `min-height: 100vh`
-//! floor, and `absolute`/`fixed` children's percent sizes resolving
-//! against the positioned containing block (the padding box of the
-//! nearest positioned ancestor, the viewport when there is none) rather
-//! than the in-flow parent's taffy box — the app rail's collapse case.
+//! floor (a regression guard — it predates round A), and out-of-flow
+//! children's percent sizes resolving against their containing block
+//! rather than the in-flow parent's taffy box — the app rail's collapse
+//! case. `absolute` takes the nearest positioned ancestor's padding box;
+//! `fixed` takes the viewport (round A2, `m1a2.rs`).
 use std::sync::Arc;
 
 use indexmap::IndexMap;
@@ -53,8 +54,12 @@ fn lay_out(root: &ResolvedNode, w: f32, h: f32) -> we_layout::Layout {
     )
 }
 
+/// Regression guard, not a red test for round A: the page root's
+/// `min-height: 100vh` floor already held at `e123e1607`, before any round A
+/// change. Kept so the floor cannot regress while the app frame wrapper
+/// (`we-app/tests/m1a.rs`) is reworked around it.
 #[test]
-fn root_fills_viewport() {
+fn root_viewport_floor_regression_guard() {
     let mut root = node("Column", "r", &[]);
     child(
         &mut root,
