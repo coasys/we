@@ -12,7 +12,7 @@ export function errorMessage(reason: ErrorPageReason): ErrorMessage {
     return {
       title: 'Update Android System WebView',
       paragraphs: [
-        `Coasys needs Android System WebView ${reason.floor} or newer. This phone has version ${reason.version}.`,
+        `Coasys needs Android System WebView version ${reason.floor} or newer. This phone has version ${reason.version}.`,
         'After the update, open Coasys again.',
       ],
       action: { label: 'Update WebView', href: WEBVIEW_STORE_URL },
