@@ -25,26 +25,52 @@ use we_template::ResolvedNode;
 use crate::props;
 use crate::{EditState, PaintCx};
 
-/// The text a controlled input shows this frame. The DOM rule, not a
-/// "seen prop" rule: the prop writes into the buffer whenever it differs
-/// from it. A keystroke emits `onInput` and leaves a draft; if the handler
-/// accepts, the re-resolved prop equals the draft and the buffer keeps it;
-/// if it rejects — or anything else writes — the prop differs, the draft
-/// dies, and the prop shows. (The same answer the Lit element gives when
-/// `value` differs from the field's text.)
+/// `onInput` wired: the `value` prop is fully controlled — it writes the
+/// buffer whenever it differs, so a rejecting setter reverts the
+/// keystroke. Commit-only (`onChange` without `onInput`): the field keeps
+/// its own text like the DOM element — the draft lives while the prop is
+/// still the one it was typed against (`seen`), and only a write that
+/// moves the prop off `seen` drops it.
+fn live(node: &ResolvedNode) -> bool {
+    node.handlers.contains_key("onInput")
+}
+
+/// The text a controlled input shows this frame. Live inputs follow the
+/// prop-writes-the-buffer rule; commit-only inputs keep their draft
+/// until an external write moves the prop (see [`live`]).
 pub(crate) fn shown_text(edit: &EditState, node: &ResolvedNode) -> String {
-    let prop = props::prop(node, "value").js_string();
+    let prop_v = props::prop(node, "value");
+    let prop = prop_v.js_string();
     match edit.draft(&node.id) {
-        Some(draft) if draft != prop => prop,
-        Some(draft) => draft,
+        Some(draft) if live(node) => {
+            if draft != prop {
+                prop
+            } else {
+                draft
+            }
+        }
+        Some(draft) => {
+            let seen = edit.seen_prop(&node.id);
+            if !seen.is_undefined() && !seen.strict_eq(prop_v) {
+                prop
+            } else {
+                draft
+            }
+        }
         None => prop,
     }
 }
 
 /// Drop a draft the prop has moved past (see [`shown_text`]).
 pub(crate) fn reconcile_draft(edit: &mut EditState, node: &ResolvedNode) {
-    let prop = props::prop(node, "value").js_string();
-    if matches!(edit.draft(&node.id), Some(d) if d != prop) {
+    let prop = props::prop(node, "value");
+    let dead = if live(node) {
+        matches!(edit.draft(&node.id), Some(d) if d != prop.js_string())
+    } else {
+        let seen = edit.seen_prop(&node.id);
+        !seen.is_undefined() && !seen.strict_eq(prop)
+    };
+    if dead {
         edit.clear_draft(&node.id);
     }
 }

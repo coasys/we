@@ -196,6 +196,38 @@ fn controlled_input_prop_wins_over_draft() {
     assert!(r.edit.borrow().draft(&NodeId::from("in")).is_none());
 }
 
+/// B1 — the bundle's record-field shape: `value: row[field]` with ONLY an
+/// onChange setter. No onInput handler means the prop cannot move while
+/// typing, so the draft must live across ordinary repaints — the DOM
+/// field keeps its own text (input.ts:276–285) — and blur/Enter commits
+/// the typed text, not the stale prop.
+#[test]
+fn onchange_only_input_keeps_its_draft_until_commit() {
+    let mut inp = node(
+        "we-input",
+        "in",
+        props(&[("label", s("Name")), ("value", s("keep"))]),
+    );
+    inp.handlers = handlers(&["onChange"]);
+    let (mut h, r) = rig(inp);
+    h.run();
+    let f = h.get_by_label("Name");
+    f.click();
+    f.type_text("x");
+    h.step(); // an ordinary repaint — no handler write
+    h.get_by_label("Name").type_text("y");
+    h.step();
+    assert_eq!(
+        h.get_by_label("Name").value().as_deref(),
+        Some("keepxy"),
+        "the commit-only draft must survive frames without a prop write"
+    );
+    // Enter surrenders focus — the blur/commit path carries the draft.
+    h.key_press(egui::Key::Enter);
+    h.run();
+    assert_detail(&r, "onChange", s("keepxy"));
+}
+
 #[test]
 fn input_keydown_reports_key_code_and_enter_commits_change() {
     let mut inp = node(
