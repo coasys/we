@@ -35,21 +35,63 @@ const out = resolve(here, '../we-data/tests/vectors/locale_compare.json');
 
 // Names the recorded Coasys space holds.
 const coasys = [
-  'Devon Ashworth', 'Juni Okafor', 'Mara Ellison', 'Priya Nair', 'Sana Vega', 'Theo Brandt',
-  'Preview User', 'Devon', 'Juni', 'Mara', 'Priya', 'Sana', 'Theo', 'devon',
+  'Devon Ashworth',
+  'Juni Okafor',
+  'Mara Ellison',
+  'Priya Nair',
+  'Sana Vega',
+  'Theo Brandt',
+  'Preview User',
+  'Devon',
+  'Juni',
+  'Mara',
+  'Priya',
+  'Sana',
+  'Theo',
+  'devon',
 ];
 // What the policy claims, one concern per group.
 const cases = [
   // case-insensitive primary, lowercase first on a tie
-  'alice', 'Alice', 'ALICE', 'Bob', 'bob', 'Zoe', 'zoe',
+  'alice',
+  'Alice',
+  'ALICE',
+  'Bob',
+  'bob',
+  'Zoe',
+  'zoe',
   // accents after base letters, before case
-  'éric', 'Éric', 'eric', 'Eric', 'èric', 'êric', 'ëric', 'Erich',
+  'éric',
+  'Éric',
+  'eric',
+  'Eric',
+  'èric',
+  'êric',
+  'ëric',
+  'Erich',
   // precomposed vs decomposed (canonically equivalent)
-  'José', 'José', 'Zoë', 'Zoë', 'Renée', 'Renée',
+  'José',
+  'José',
+  'Zoë',
+  'Zoë',
+  'Renée',
+  'Renée',
   // a standalone combining mark is an accent on the preceding base, not a letter
-  'éz', 'éa', 'ea', 'ez',
+  'éz',
+  'éa',
+  'ea',
+  'ez',
   // multi-word and length
-  'Ann', 'Anna', 'Ann Lee', 'Anne', 'Ana', 'Ña', 'Nana', 'Çelik', 'Celik', 'Cem',
+  'Ann',
+  'Anna',
+  'Ann Lee',
+  'Anne',
+  'Ana',
+  'Ña',
+  'Nana',
+  'Çelik',
+  'Celik',
+  'Cem',
 ];
 
 const pairsOf = (names) => {
@@ -73,9 +115,7 @@ const sortInputs = [
 ];
 
 const browser = await chromium.launch({
-  ...(process.env.WE_RECORD_CHROME
-    ? { executablePath: process.env.WE_RECORD_CHROME }
-    : { channel: 'chrome' }),
+  ...(process.env.WE_RECORD_CHROME ? { executablePath: process.env.WE_RECORD_CHROME } : { channel: 'chrome' }),
   args: ['--lang=en-US'],
 });
 try {

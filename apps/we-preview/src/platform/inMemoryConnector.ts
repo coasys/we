@@ -141,7 +141,7 @@ export const inMemoryConnector: BackendConnector = {
         the record flag the port answers with them, so `spaceStore.members` photographs a community
         rather than the recorder alone.
       */
-      const originalMembers = ports.lifecycle.members;
+      const originalMembers = ports.lifecycle.members?.bind(ports.lifecycle);
       ports.lifecycle = {
         ...ports.lifecycle,
         members: (id: string) =>

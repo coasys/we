@@ -82,7 +82,7 @@ function serializable(value: unknown, depth = 0): { ok: true; value: unknown } |
     }
     return { ok: true, value: out };
   }
-  const proto = Object.getPrototypeOf(value);
+  const proto: unknown = Object.getPrototypeOf(value);
   if (proto && proto !== Object.prototype) {
     // A model instance / classed object: copy own enumerable props plus `id` (prototype getter on
     // the generated classes — see the `normalise` note in SchemaRenderer's runQuery).
@@ -211,8 +211,8 @@ export function RecorderBridge() {
 
     // The space-tier filtered bag — what the bundle's expressions actually see — and the chrome bag
     // the app shell's own surfaces see (they read members a space template may not).
-    const bag = buildTemplateBag(stores, { grants: SPACE_TIER, gesture: 'enforce' }) as unknown as Json;
-    const chromeBag = buildTemplateBag(stores, { grants: CHROME_TIER, gesture: 'enforce' }) as unknown as Json;
+    const bag = buildTemplateBag(stores, { grants: SPACE_TIER, gesture: 'enforce' });
+    const chromeBag = buildTemplateBag(stores, { grants: CHROME_TIER, gesture: 'enforce' });
 
     /**
      * Evaluate a store path or expression the way a `{ $: … }` prop resolves it — against the
@@ -244,7 +244,7 @@ export function RecorderBridge() {
           let target: unknown = stores;
           for (const part of datasetPath.split('.')) target = (target as Json)?.[part];
           p = typeof target === 'function' ? (target as () => unknown)() : target;
-          if (p && typeof p === 'object' && 'handle' in p) p = (p as { handle: unknown }).handle;
+          if (p && typeof p === 'object' && 'handle' in p) p = p.handle;
         } else {
           const currentDataset = stores.$currentDataset as (() => unknown) | undefined;
           p = typeof currentDataset === 'function' ? currentDataset() : null;
@@ -329,8 +329,8 @@ export function RecorderBridge() {
           ((name: string, d: unknown) => { findAll(d: unknown, o: Json): Promise<Row[]> } | undefined) | undefined;
         if (!getEntity) return { ok: false as const, reason: 'no-get-entity', dataset, request };
         const Model = getEntityForDataset?.(entityName, p) ?? getEntity(entityName);
-        const rows = await Model.findAll(p, routed.options as Json);
-        const normalise = rows.map((row) => ({ id: (row as { id?: unknown }).id, ...(row as Row) }));
+        const rows = await Model.findAll(p, routed.options);
+        const normalise = rows.map((row) => ({ id: (row as { id?: unknown }).id, ...row }));
         const s = serializable(normalise);
         if (!s.ok) return { ok: false as const, reason: `serialize: ${s.reason}`, dataset, request };
         // The full resolved request the answer belongs to — the identity a snapshot keys on,
