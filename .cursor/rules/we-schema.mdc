@@ -3107,10 +3107,10 @@ DatasetStore:
 
 DeviceStore:
 - State:
-  - devices: { keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke }[] — the device keys of the person's key log, valid first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Valid' or 'Revoked at #2'; `canRevoke` is a valid key that is not this computer's
+  - devices: { keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke }[] — the device keys of the person's key log, valid first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Active' or 'Removed at #2'; `canRevoke` is a valid key that is not this computer's
   - devicesLoaded: boolean — the list has been read once
   - validCount: number — how many keys are valid
-  - canManage: boolean — Add a device and Revoke can be offered: this computer keeps the master key of the identity
+  - canManage: boolean — Link a device or Remove can be offered: this computer keeps the master key of the identity
   - error: string — why the last read failed, or empty
   - canSwitch: boolean — a server can be added and chosen to serve this session: the backend logs in to one with this computer's device key
   - servers: { id, name, subtitle, icon, current, canRemove }[] — the devices that can serve this session: 'this-computer' first, then each server added by its address (`subtitle` is the address). `current` marks the one serving now; `canRemove` is a server that is not
@@ -3207,7 +3207,7 @@ IdentityStore:
   - did: string — the person’s identifier, or empty while this device speaks for nobody
   - keyId: string — this device’s id in the key log (`d1`), or empty
   - thisDeviceRevoked: boolean — the key log revoked this device’s key: it no longer speaks for the person
-  - keyLog: { seq, op, keys, position, icon, title, detail, hash, hashShort, thisComputer }[] — the key log, newest first, with what each row says made from `op` and `keys` (reword from those where a template wants other words), already worded: `title` "Created your identity", "Added d2", "Revoked d2"; `detail` the keys it names with this computer’s marked "This computer"; `hashShort` the event’s hash for a monospace column
+  - keyLog: { seq, op, keys, position, icon, title, detail, hash, hashShort, thisComputer }[] — the key log, newest first, with what each row says made from `op` and `keys` (reword from those where a template wants other words), already worded: `title` "Created identity", "Added d2", "Revoked d2"; `detail` the keys it names with this computer’s marked "This computer"; `hashShort` the event’s hash for a monospace column
   - keyLogLoaded: boolean — the log has been read once
   - forked: boolean — the backend found two different logs for this identity
   - fork: { seq, ours, theirs } | null — where they part
