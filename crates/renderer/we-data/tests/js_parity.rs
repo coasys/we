@@ -206,3 +206,33 @@ fn names_order_like_locale_compare() {
         .collect();
     assert_eq!(labels, vec!["Zoe", "alice", "Bob", "éric"]);
 }
+
+/// `parseWeights` runs `Number(share)` on the text (weighing.ts:87) —
+/// `"0x32"`, `"0b110010"`, `"0o62"` are all 50. Rust float parsing turned
+/// them to NaN, dropped the entry, and defaulted the voice to 100%.
+#[test]
+fn weight_text_parses_like_js_number() {
+    let voices_for = |param: &str| -> serde_json::Value {
+        call(
+            "voices",
+            json!({
+                "summary": { "voices": [{ "author": "did:a", "cards": 1, "mean": 1 }] },
+                "profiles": [{ "did": "did:a", "name": "Ada" }],
+                "me": "did:b",
+                "param": param
+            }),
+        )
+    };
+    for param in ["did:a=0x32", "did:a=0b110010", "did:a=0o62"] {
+        assert_eq!(
+            voices_for(param)[0]["weight"],
+            json!(50),
+            "{param} is 50% under Number()"
+        );
+    }
+    // Signed radix spellings are still NaN, as `Number('+0x32')` is — the
+    // entry drops and the weight defaults to 100.
+    assert_eq!(voices_for("did:a=+0x32")[0]["weight"], json!(100));
+    // And plain text still parses.
+    assert_eq!(voices_for("did:a=25")[0]["weight"], json!(25));
+}

@@ -501,7 +501,7 @@ fn parse_weights(weights: &Value) -> IndexMap<String, f64> {
                 // mute somebody over a stray `=`.
                 let share = entry[split + 1..].trim();
                 if split > 0 && !share.is_empty() {
-                    let n = share.parse::<f64>().unwrap_or(f64::NAN);
+                    let n = Value::Str(share.into()).js_number();
                     put(&mut parsed, entry[..split].trim(), n / 100.0);
                 }
             }
