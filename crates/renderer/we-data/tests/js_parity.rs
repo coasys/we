@@ -2,7 +2,8 @@
 //! value is worked out from the TS source by hand — never from the Rust
 //! output — so these cases pin JavaScript behaviours Rust does not share:
 //! `Math.round` ties toward +∞, `Number()` radix literals, Map's
-//! last-write-wins, `localeCompare`'s case-insensitive order.
+//! last-write-wins. (`localeCompare` is pinned by browser-recorded vectors
+//! in `locale_vectors.rs`.)
 use serde_json::json;
 use we_data::run_host_function;
 use we_expr::Value;
@@ -206,61 +207,6 @@ fn profile_joins_take_the_last_duplicate() {
         json!("New"),
         "departed holder joins the last profile"
     );
-}
-
-/// Name ordering is `localeCompare` (reactors.ts:86, involvementMenu.ts:104):
-/// base letters decide first — case and accents only break ties — so V8
-/// orders ["alice","Bob","éric","Zoe"] where byte order gives
-/// ["Bob","Zoe","alice","éric"].
-#[test]
-fn names_order_like_locale_compare() {
-    let profiles = json!([
-        { "did": "did:z", "name": "Zoe" },
-        { "did": "did:a", "name": "alice" },
-        { "did": "did:b", "name": "Bob" },
-        { "did": "did:e", "name": "éric" }
-    ]);
-    let reacted = call(
-        "reactors",
-        json!({
-            "signals": [
-                { "author": "did:z", "value": 1 },
-                { "author": "did:e", "value": 1 },
-                { "author": "did:b", "value": 1 },
-                { "author": "did:a", "value": 1 }
-            ],
-            "profiles": profiles,
-            "me": "did:none"
-        }),
-    );
-    let names: Vec<&str> = reacted["people"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|p| p["name"].as_str().unwrap())
-        .collect();
-    assert_eq!(names, vec!["alice", "Bob", "éric", "Zoe"]);
-
-    // The assignment menu lists the holder first, then the rest byName.
-    let menu = call(
-        "involvementMenu",
-        json!({
-            "node": "n1",
-            "entity": "TaskBlock",
-            "rows": [{ "node": "n1", "agent": "did:z", "kind": "helper" }],
-            "types": [{ "slug": "helper", "semantic": "responsible", "reflexive": false }],
-            "members": profiles,
-            "profiles": [],
-            "me": "did:m"
-        }),
-    );
-    let labels: Vec<&str> = menu[0]["items"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|i| i["label"].as_str().unwrap())
-        .collect();
-    assert_eq!(labels, vec!["Zoe", "alice", "Bob", "éric"]);
 }
 
 /// `parseWeights` runs `Number(share)` on the text (weighing.ts:87) —

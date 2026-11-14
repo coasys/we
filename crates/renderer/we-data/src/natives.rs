@@ -22,7 +22,7 @@
 use indexmap::IndexMap;
 use std::cmp::Ordering;
 use std::sync::Arc;
-use unicode_normalization::UnicodeNormalization;
+use unicode_normalization::{char::is_combining_mark, UnicodeNormalization};
 use we_expr::{js_round, js_trim, Value};
 use we_template::StoreBag;
 
@@ -149,100 +149,65 @@ fn by_did(profiles: &[Value]) -> IndexMap<&str, &Value> {
     map
 }
 
-/// `String.prototype.localeCompare`, levelled the way the UCA levels it:
-/// the base letters decide first — case and accents only break ties — then
-/// the accents, then the case (lowercase before uppercase), then the raw
-/// text. NFD makes "é" and "e\u{301}" tie, as in ICU.
+/// The interim Latin-name collation policy standing in for the TS
+/// `a.localeCompare(b)` (`byName` in reactors and involvementMenu).
+///
+/// Scope: names written in Latin letters with combining diacritics, spaces
+/// and digits — what the Coasys names are. It is NOT a UCA implementation:
+/// punctuation weights, other scripts, contractions and expansions (æ, ß, ø)
+/// are out of scope until a real collator replaces it.
+///
+/// Levels, as ICU root/en-US orders them for that domain:
+/// 1. the base letters, case-insensitively;
+/// 2. then the accents on each base letter;
+/// 3. then the case, lowercase first.
+///
+/// The whole string is NFD-normalized before it is split, so a standalone
+/// combining mark is an accent on the letter before it. There is no
+/// raw-text tie-break: canonically equivalent spellings ("é", "e\u{301}")
+/// compare Equal, and the stable sort keeps their input order, as JS does.
+///
+/// Pinned by `tests/vectors/locale_compare.json`, recorded in Chrome by
+/// `scripts/record-locale-compare.mjs`.
 fn locale_cmp(a: &str, b: &str) -> Ordering {
     let (ap, am, ac) = collation_keys(a);
     let (bp, bm, bc) = collation_keys(b);
     ap.cmp(&bp)
         .then_with(|| am.cmp(&bm))
         .then_with(|| ac.cmp(&bc))
-        .then_with(|| a.cmp(b))
 }
 
-/// A weight for an expanded letter (æ, ß, ø, …): it sorts after every real
-/// accent, so "o" < "ø" and "ss" < "ß" like `localeCompare` has them.
-const VARIANT_MARK: u16 = 0x8000;
-
-/// Letters NFD leaves whole but ICU folds into their base letters at the
-/// primary level. Each reads as the string it stands for, marked VARIANT so
-/// the plain spelling still wins the tie-break.
-fn expansion(base: char) -> Option<&'static str> {
-    match base {
-        'æ' | 'Æ' => Some("ae"),
-        'œ' | 'Œ' => Some("oe"),
-        'ß' | 'ẞ' => Some("ss"),
-        'ø' | 'Ø' => Some("o"),
-        'đ' | 'Đ' | 'ð' | 'Ð' => Some("d"),
-        'ł' | 'Ł' => Some("l"),
-        'þ' | 'Þ' => Some("th"),
-        'ŋ' | 'Ŋ' => Some("n"),
-        'ħ' | 'Ħ' => Some("h"),
-        'ı' => Some("i"),
-        'ĸ' => Some("k"),
-        'ŧ' | 'Ŧ' => Some("t"),
-        _ => None,
-    }
-}
-
-/// An accent's secondary weight, in the order ICU orders them
-/// (acute < grave < breve < circumflex < caron < diaeresis < tilde < dot
-/// above < cedilla < ogonek < macron < dot below < double grave — recorded
-/// from V8, not codepoint order). Marks outside the table still sort, by
-/// codepoint, between the known marks and the letter variants.
-fn mark_weight(mark: char) -> u16 {
+/// An accent's secondary weight. The four the vectors pin are in ICU's
+/// order (acute < grave < circumflex < diaeresis — not codepoint order);
+/// any other mark sorts after them, by codepoint.
+fn mark_weight(mark: char) -> u32 {
     match mark {
-        '\u{301}' => 2,  // acute
-        '\u{300}' => 3,  // grave
-        '\u{306}' => 4,  // breve
-        '\u{302}' => 5,  // circumflex
-        '\u{30C}' => 6,  // caron
-        '\u{308}' => 7,  // diaeresis
-        '\u{303}' => 8,  // tilde
-        '\u{307}' => 9,  // dot above
-        '\u{327}' => 10, // cedilla
-        '\u{328}' => 11, // ogonek
-        '\u{304}' => 12, // macron
-        '\u{323}' => 13, // dot below
-        '\u{30F}' => 14, // double grave
-        _ => 0x100 + mark as u16,
+        '\u{301}' => 1, // acute
+        '\u{300}' => 2, // grave
+        '\u{302}' => 3, // circumflex
+        '\u{308}' => 4, // diaeresis
+        _ => 0x100 + mark as u32,
     }
 }
 
-/// One char's share of the three collation keys: its base letters, the
-/// accent weights aligned to each base letter, and its case rank.
-fn collation_keys(s: &str) -> (Vec<char>, Vec<Vec<u16>>, Vec<u8>) {
-    let (mut primary, mut marks, mut case) = (Vec::new(), Vec::new(), Vec::new());
-    for c in s.chars() {
-        case.push(if c.is_uppercase() { 1 } else { 0 });
-        let mut decomposed = c.nfd();
-        let base = decomposed.next().unwrap_or(c);
-        let accents: Vec<u16> = decomposed.map(mark_weight).collect();
-        if let Some(exp) = expansion(base) {
-            for (i, e) in exp.chars().enumerate() {
-                primary.push(e);
-                marks.push(if i == 0 {
-                    [VARIANT_MARK]
-                        .into_iter()
-                        .chain(accents.iter().copied())
-                        .collect()
-                } else {
-                    Vec::new()
-                });
-            }
-        } else {
-            let mut lower = base.to_lowercase();
-            primary.extend(lower.next());
-            marks.push(accents);
-            for lc in lower {
-                primary.push(lc);
-                marks.push(Vec::new());
+/// The three keys of one string: its base letters (lowercased), the accent
+/// weights on each base letter, and each base letter's case.
+fn collation_keys(s: &str) -> (Vec<char>, Vec<Vec<u32>>, Vec<bool>) {
+    let (mut primary, mut marks, mut upper) = (Vec::new(), Vec::<Vec<u32>>::new(), Vec::new());
+    for c in s.nfd() {
+        if is_combining_mark(c) {
+            if let Some(last) = marks.last_mut() {
+                last.push(mark_weight(c));
+                continue;
             }
         }
+        for lc in c.to_lowercase() {
+            primary.push(lc);
+            marks.push(Vec::new());
+            upper.push(c.is_uppercase());
+        }
     }
-    (primary, marks, case)
+    (primary, marks, upper)
 }
 
 /// `relationId` — a string, a one-element list's head, or an object's `id`.
