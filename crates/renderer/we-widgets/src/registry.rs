@@ -40,21 +40,37 @@ impl Registry {
         }
     }
 
-    /// The E3a builtin set — the tree panel's six. E5a/E5b add theirs here.
+    /// The builtin set — E3a's six plus the E5a batch: layout containers,
+    /// text, media, the button, feedback and the tree pair. E5b registers
+    /// its own on top.
     pub fn with_builtins() -> Self {
-        Self::empty()
+        let mut reg = Self::empty()
             .with(crate::Row)
             .with(crate::Column)
+            .with(crate::Grid)
+            .with(crate::Card)
+            .with(crate::Div)
+            .with(crate::Lane)
             .with(crate::Text)
-            .with(crate::Icon)
-            .with(crate::Button)
-            .with(crate::Tree)
-            .with(crate::TreeItem)
-            .with(crate::Avatar)
-            .with(crate::Badge)
-            .with(crate::Tooltip)
-            .with(crate::AnimatedIcon)
+            .with(crate::Link)
             .with(crate::Timestamp)
+            .with(crate::Typewriter)
+            .with(crate::Icon)
+            .with(crate::Image)
+            .with(crate::Avatar)
+            .with(crate::AvatarStack)
+            .with(crate::AnimatedIcon)
+            .with(crate::Button)
+            .with(crate::Tooltip)
+            .with(crate::Badge)
+            .with(crate::Tag)
+            .with(crate::Alert)
+            .with(crate::Skeleton)
+            .with(crate::Divider)
+            .with(crate::Tree)
+            .with(crate::TreeItem);
+        crate::placeholders::register(&mut reg);
+        reg
     }
 
     /// `ty` → widget impl, or the unknown box for a `ty` it does not know.
@@ -70,6 +86,12 @@ impl Registry {
     pub fn with<W: Widget + 'static>(mut self, widget: W) -> Self {
         self.widgets.insert(widget.type_name(), Arc::new(widget));
         self
+    }
+
+    /// Register a widget in place (`with`'s mutating sibling — placeholder
+    /// tables call it in a loop).
+    pub fn register<W: Widget + 'static>(&mut self, widget: W) {
+        self.widgets.insert(widget.type_name(), Arc::new(widget));
     }
 
     /// Register a shared widget.

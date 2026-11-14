@@ -1,0 +1,170 @@
+{
+  "type": "Column",
+  "props": { "p": "400", "gap": "400", "bg": "page" },
+  "children": [
+    { "type": "we-text", "props": { "text": "E5a widget gallery", "variant": "heading" } },
+    {
+      "type": "Card",
+      "props": { "p": "300", "gap": "200" },
+      "children": [
+        { "type": "we-text", "props": { "text": "text: body + truncate + lines clamp" } },
+        {
+          "type": "we-text",
+          "props": { "text": "a fairly long body line that should wrap inside the card it is measured against" }
+        },
+        {
+          "type": "we-text",
+          "props": { "text": "truncated single line with a very long tail to overflow", "truncate": true }
+        },
+        {
+          "type": "we-text",
+          "props": {
+            "text": "clamped after two lines of wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap",
+            "lines": 2
+          }
+        },
+        { "type": "we-link", "props": { "text": "a link", "href": "https://example.com" } },
+        { "type": "we-timestamp", "props": { "value": "2026-06-24T10:30:00Z" } },
+        { "type": "we-timestamp", "props": { "value": "2026-06-24T10:30:00Z", "relative": true } },
+        {
+          "type": "we-typewriter",
+          "props": { "text": "type: ", "phrases": ["first", "second phrase"], "cursor": true }
+        }
+      ]
+    },
+    {
+      "type": "Card",
+      "props": { "p": "300", "gap": "200" },
+      "children": [
+        { "type": "we-text", "props": { "text": "media: icon image avatar stack animated" } },
+        {
+          "type": "Row",
+          "props": { "gap": "200", "ay": "center" },
+          "children": [
+            { "type": "we-icon", "props": { "name": "rocket", "size": 24 } },
+            { "type": "we-icon", "props": { "name": "bell", "size": 24, "weight": "fill" } },
+            { "type": "we-animated-icon", "props": { "name": "circle-notch", "size": 24 } },
+            { "type": "we-avatar", "props": { "name": "Ada Lovelace", "size": 32 } },
+            { "type": "we-avatar", "props": { "initials": "GH", "size": 32, "ring": true } },
+            {
+              "type": "AvatarStack",
+              "props": {
+                "size": 28,
+                "max": 3,
+                "avatars": [
+                  { "id": "a", "label": "Ada Lovelace" },
+                  { "id": "b", "label": "Grace Hopper" },
+                  { "id": "c", "label": "Edsger Dijkstra" },
+                  { "id": "d", "label": "Alan Turing" },
+                  { "id": "e", "label": "Katherine Johnson" }
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "type": "we-image",
+          "props": { "src": "https://example.com/p.png", "alt": "remote image", "width": 96, "height": 54 }
+        }
+      ]
+    },
+    {
+      "type": "Card",
+      "props": { "p": "300", "gap": "200" },
+      "children": [
+        { "type": "we-text", "props": { "text": "controls + feedback" } },
+        {
+          "type": "Row",
+          "props": { "gap": "200", "ay": "center", "wrap": true },
+          "children": [
+            { "type": "we-button", "props": { "text": "solid" } },
+            { "type": "we-button", "props": { "text": "outline", "variant": "outline" } },
+            { "type": "we-button", "props": { "text": "ghost", "variant": "ghost" } },
+            { "type": "we-button", "props": { "text": "danger", "tone": "danger" } },
+            { "type": "we-button", "props": { "text": "off", "disabled": true } },
+            { "type": "we-button", "props": { "text": "busy", "loading": true } },
+            { "type": "we-button", "props": { "label": "square", "square": true, "icon": "x" } },
+            { "type": "we-badge", "props": { "count": 3 } },
+            { "type": "we-badge", "props": { "count": 120, "max": 99, "variant": "solid" } },
+            { "type": "we-tag", "props": { "text": "a tag" } },
+            { "type": "we-tag", "props": { "text": "dismissible", "dismissible": true } },
+            {
+              "type": "we-tooltip",
+              "props": { "content": "tip text", "placement": "bottom" },
+              "children": [{ "type": "we-text", "props": { "text": "hover me" } }]
+            }
+          ]
+        },
+        { "type": "we-alert", "props": { "text": "an info alert", "tone": "info" } },
+        { "type": "we-alert", "props": { "text": "a danger alert", "tone": "danger", "dismissible": true } },
+        { "type": "we-divider" },
+        { "type": "we-divider", "props": { "variant": "dashed" } },
+        { "type": "we-skeleton", "props": { "variant": "line" } },
+        { "type": "we-skeleton", "props": { "variant": "block", "height": 40 } }
+      ]
+    },
+    {
+      "type": "Card",
+      "props": { "p": "300", "gap": "200" },
+      "children": [
+        { "type": "we-text", "props": { "text": "layout: grid + lane" } },
+        {
+          "type": "Grid",
+          "props": { "columns": 3, "gap": "200" },
+          "children": [
+            { "type": "Card", "props": { "p": "200" }, "children": [{ "type": "we-text", "props": { "text": "g1" } }] },
+            { "type": "Card", "props": { "p": "200" }, "children": [{ "type": "we-text", "props": { "text": "g2" } }] },
+            { "type": "Card", "props": { "p": "200" }, "children": [{ "type": "we-text", "props": { "text": "g3" } }] }
+          ]
+        },
+        {
+          "type": "Row",
+          "props": { "gap": "0", "height": 80 },
+          "children": [
+            {
+              "type": "$lane",
+              "props": { "width": 120, "bg": "surface" },
+              "children": [{ "type": "we-text", "props": { "text": "lane" } }]
+            },
+            {
+              "type": "div",
+              "props": { "p": "200", "bg": "surface-sunken", "width": "1fr" },
+              "children": [{ "type": "we-text", "props": { "text": "main" } }]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Card",
+      "props": { "p": "300" },
+      "children": [
+        {
+          "type": "we-tree",
+          "props": { "selected": "b" },
+          "children": [
+            {
+              "type": "we-tree-item",
+              "props": { "label": "parent", "value": "a", "open": true },
+              "children": [
+                { "type": "we-tree-item", "props": { "label": "child one", "value": "b" }, "slot": "children" },
+                { "type": "we-tree-item", "props": { "label": "child two", "value": "c" }, "slot": "children" }
+              ]
+            },
+            { "type": "we-tree-item", "props": { "label": "sibling", "value": "d" } }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "Card",
+      "props": { "p": "300", "gap": "200" },
+      "children": [
+        { "type": "we-text", "props": { "text": "placeholders (by stage)" } },
+        { "type": "GraphView" },
+        { "type": "we-video", "props": { "height": 60 } },
+        { "type": "EditableImage" }
+      ]
+    }
+  ]
+}

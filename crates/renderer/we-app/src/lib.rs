@@ -18,7 +18,9 @@ use std::sync::Arc;
 
 use egui::{vec2, Color32, Rect, RichText, Vec2};
 use we_template::{ResolvedNode, RouteState, Runtime, SchemaNode, StaticHost, StoreBag};
-use we_widgets::{layout, paint, EditState, Layout, MeasureCx, Registry, WidgetEvent};
+use we_widgets::{
+    install_media, layout, paint, EditState, Layout, MeasureCx, Registry, StyleCx, WidgetEvent,
+};
 
 /// One frame's plumbing: the app wires host ↔ runtime ↔ registry; tests drive
 /// `frame_body` through `egui_kittest::Harness::new_ui`.
@@ -26,6 +28,9 @@ pub struct RendererApp {
     pub runtime: Runtime,
     pub host: StaticHost,
     pub registry: Registry,
+    /// The theme `style_of` resolves against — `main` loads `dark` from the
+    /// recorded tables; tests default to the empty table.
+    pub theme: we_style::Theme,
     edit: EditState,
     layout: Option<Layout>,
     /// (resolve count, width, height) the cached layout was computed for.
@@ -55,6 +60,7 @@ impl RendererApp {
             runtime,
             host,
             registry,
+            theme: we_style::Theme::empty("dark", we_style::Polarity::Dark),
             edit: EditState::default(),
             layout: None,
             layout_key: None,
@@ -69,6 +75,14 @@ impl RendererApp {
             self.debug = !self.debug;
         }
 
+        install_media(ui.ctx());
+        // The theme's polarity drives egui's visuals so untoned spots
+        // (scrollbars, unknown boxes) sit right on a dark theme.
+        ui.ctx().set_visuals(match self.theme.polarity {
+            we_style::Polarity::Dark => egui::Visuals::dark(),
+            we_style::Polarity::Light => egui::Visuals::light(),
+        });
+
         let resolved = self.runtime.frame(&mut self.host).clone();
         let stats = self.runtime.stats().clone();
 
@@ -77,10 +91,16 @@ impl RendererApp {
             .show(ui, |ui| {
                 let width = ui.available_width();
                 let rect = Rect::from_min_size(ui.cursor().min, vec2(width, 0.0));
+                let vp = ui.ctx().content_rect().size();
+                let scx = StyleCx {
+                    tokens: &self.theme.tokens,
+                    viewport: we_style::Size::new(vp.x, vp.y),
+                    container_width: width,
+                };
                 let key = (stats.resolves, width, rect.min.y);
                 if self.layout_key != Some(key) || self.layout.is_none() {
                     let mcx = MeasureCx::new(ui.ctx());
-                    self.layout = Some(layout(&mcx, &self.registry, &resolved, rect));
+                    self.layout = Some(layout(&mcx, &scx, &self.registry, &resolved, rect));
                     self.layout_key = Some(key);
                 }
                 let l = self.layout.as_ref().unwrap();
@@ -89,6 +109,7 @@ impl RendererApp {
                 paint(
                     ui,
                     &self.registry,
+                    &scx,
                     &resolved,
                     l,
                     &mut events,

@@ -12,11 +12,18 @@
 //! without updating `_shared-architecture.md` §3.5.
 #![forbid(unsafe_code)]
 
-mod basic;
+mod containers;
+mod controls;
+pub mod defaults;
 mod edit;
+mod feedback;
 mod layout;
+mod media;
 mod paint;
+mod placeholders;
+mod props;
 mod registry;
+mod text;
 mod tree;
 mod unknown;
 
@@ -26,13 +33,21 @@ use we_expr::Value;
 use we_style::Style;
 use we_template::{NodeId, ResolvedNode};
 
-pub use basic::{AnimatedIcon, Avatar, Badge, Button, Column, Icon, Row, Text, Timestamp, Tooltip};
+pub use containers::{Card, Column, Div, Grid, Lane, Row};
+pub use controls::Button;
+pub use defaults::StyleCx;
 pub use edit::EditState;
-pub use layout::{layout, style_of, Direction, Layout, PartSpec, Parts, PartsSpec, Pick, TextSpan};
+pub use feedback::{Alert, Badge, Divider, Skeleton, Tag, Tooltip};
+pub use layout::{layout, Direction, Layout, PartSpec, Parts, PartsSpec, Pick, TextSpan, TreeCfg};
+pub use media::{install as install_media, AnimatedIcon, Avatar, AvatarStack, Icon, Image};
 pub use paint::paint;
 pub use registry::Registry;
+pub use text::{format_date, format_relative, parse_date, Link, Text, Timestamp, Typewriter};
 pub use tree::{Tree, TreeItem};
 pub use unknown::UnknownWidget;
+
+/// `style_of` for callers (the gallery's swatches, tests).
+pub use defaults::style_of;
 
 /// The room a widget may take during [`Widget::measure`].
 pub type Size = egui::Vec2;

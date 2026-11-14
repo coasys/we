@@ -55,12 +55,22 @@ fn row_with_gap_and_fixed_children() {
         ResolvedChild::Node(Box::new(b)),
     ];
 
+    // gap "300" resolves through the theme's `--we-space-300` token.
+    let mut vars = IndexMap::new();
+    vars.insert(Arc::from("--we-space-300"), Arc::from("12px"));
+    let tokens = we_style::TokenTable::new(vars);
+    let scx = we_widgets::StyleCx {
+        tokens: &tokens,
+        ..we_widgets::StyleCx::empty()
+    };
+
     let registry = Registry::with_builtins();
     let out = std::cell::RefCell::new(None);
     let mut harness = egui_kittest::Harness::new_ui(|ui| {
         let cx = MeasureCx::new(ui.ctx());
         *out.borrow_mut() = Some(layout(
             &cx,
+            &scx,
             &registry,
             &row,
             egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(400.0, 100.0)),

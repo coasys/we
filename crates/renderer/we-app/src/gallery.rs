@@ -424,6 +424,92 @@ pub fn gallery_ui(ui: &mut Ui, theme: &Theme) {
     });
 }
 
+/// The widget gallery's schema — one Column of per-type samples, rendered
+/// through [`crate::RendererApp`] like any real template.
+#[cfg(not(target_arch = "wasm32"))]
+pub const WIDGET_GALLERY_SCHEMA: &str = include_str!("../gallery/widgets.json");
+
+/// `--gallery widgets`: a RendererApp over [`WIDGET_GALLERY_SCHEMA`] under
+/// the picked theme — the same harness shape the snapshot tests drive.
+#[cfg(not(target_arch = "wasm32"))]
+pub struct WidgetsApp {
+    set: ThemeSet,
+    current: String,
+    app: crate::RendererApp,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl Default for WidgetsApp {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl WidgetsApp {
+    pub fn new() -> Self {
+        let set = load_theme_set();
+        let current = set
+            .get("dark")
+            .or_else(|| set.iter().next())
+            .map(|t| t.id.to_string())
+            .unwrap_or_else(|| "dark".to_string());
+        let schema: we_template::SchemaNode =
+            serde_json::from_str(WIDGET_GALLERY_SCHEMA).expect("widget gallery schema parses");
+        let mut app = crate::RendererApp::new(
+            schema,
+            "widget-gallery",
+            Arc::new(we_template::StoreBag::new()),
+            we_template::RouteState::new("/gallery"),
+            we_widgets::Registry::with_builtins(),
+        );
+        let (theme, _) = set.theme(&current);
+        app.theme = theme.clone();
+        Self { set, current, app }
+    }
+
+    /// `theme` → a RendererApp over the gallery schema (tests take this path).
+    pub fn app_for(set: &ThemeSet, theme: &str) -> crate::RendererApp {
+        let schema: we_template::SchemaNode =
+            serde_json::from_str(WIDGET_GALLERY_SCHEMA).expect("widget gallery schema parses");
+        let mut app = crate::RendererApp::new(
+            schema,
+            "widget-gallery",
+            Arc::new(we_template::StoreBag::new()),
+            we_template::RouteState::new("/gallery"),
+            we_widgets::Registry::with_builtins(),
+        );
+        let (theme, _) = set.theme(theme);
+        app.theme = theme.clone();
+        app
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl eframe::App for WidgetsApp {
+    fn ui(&mut self, ui: &mut eframe::egui::Ui, _frame: &mut eframe::Frame) {
+        ui.horizontal(|ui| {
+            ui.label("theme");
+            let mut picked = None;
+            for theme in self.set.iter() {
+                if ui
+                    .selectable_label(self.current == theme.id.as_ref(), theme.id.as_ref())
+                    .clicked()
+                {
+                    picked = Some(theme.id.to_string());
+                }
+            }
+            if let Some(id) = picked {
+                self.current = id;
+                let (theme, _) = self.set.theme(&self.current);
+                self.app.theme = theme.clone();
+            }
+        });
+        ui.separator();
+        self.app.frame_body(ui);
+    }
+}
+
 /// The running app: a debug strip with the theme picker over the gallery.
 /// Switching swaps the `Arc<TokenTable>` — nothing else changes.
 #[cfg(not(target_arch = "wasm32"))]

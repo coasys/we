@@ -28,10 +28,13 @@ serde_json = { version = "1", features = ["preserve_order"] }
 indexmap = { version = "2", features = ["serde"] }
 thiserror = "2"
 async-trait = "0.1"
-egui = "0.37"
+egui = { version = "0.37", features = ["default_fonts"] }
 eframe = "0.37"
 taffy = "0.15"
 egui_kittest = "0.37"
+egui-pop-phosphor = { version = "0.15", default-features = false, features = ["regular", "bold", "fill"] }
+base64 = "0.22"
+egui_extras = { version = "0.37", default-features = false, features = ["image", "http", "webp", "svg"] }
 
 we-expr = { path = "we-expr" }
 we-screen = { path = "we-screen" }

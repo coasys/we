@@ -1,20 +1,22 @@
 //! Layout: one taffy tree over the resolved tree, one [`Layout`] out.
 //!
-//! `direction`, `gap`, `p*`, `width`, `height`, `flex`, `ax`, `ay` are read
-//! off resolved props here — locally, on purpose. E4's style resolution
-//! replaces the [`style_of`] boundary, not the tree walk. WE's numeric
-//! strings are spacing tokens (`"300"` → 12px), JSON numbers are px,
-//! `"N%"`/`"Npx"` are what they say — the same table the DS prop resolvers
-//! apply.
+//! Every node's [`we_style::Style`] comes from [`style_of`] — the E4
+//! resolution of props + defaults + theme — and this file maps
+//! `Style.layout` onto taffy: direction, wrap, `ax`/`ay`, two-value `gap`,
+//! padding, margin, sizes, flex, `align-self`, `position`+insets, `overflow`
+//! (auto/scroll → scroll containers, hidden/clip → paint-time clipping),
+//! `aspect-ratio`, `display: none`, and `Grid`'s `columns`/`minChildWidth`
+//! as real grid tracks.
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use taffy::prelude::*;
 use taffy::NodeId as TaffyId;
 use we_expr::Value;
-use we_style::Style;
+use we_style::{Dimension, Display as WsDisplay, ItemAlign, Overflow, Position, Style, Wrap};
 use we_template::{NodeId, ResolvedChild, ResolvedNode};
 
+use crate::defaults::{direction_of, style_of, StyleCx, FONT_PX, ROOT_PX};
 use crate::{MeasureCx, Rect, Registry, Size};
 
 /// A virtual sub-rectangle layout computed for a widget — the caret, row and
@@ -51,8 +53,12 @@ pub struct PartSpec {
     /// Fixed sizes for decorative boxes (`None` → sized by contents).
     pub width: Option<f32>,
     pub height: Option<f32>,
+    /// Minimum height the part keeps even when empty (the tree row).
+    pub min_height: f32,
     /// Space between this part's left edge and its children (tree indent).
     pub indent: f32,
+    /// Align-items override for a part (e.g. `ay` on the tree row).
+    pub align: Option<ItemAlign>,
     pub parts: Vec<PartSpec>,
 }
 
@@ -65,7 +71,9 @@ impl PartSpec {
             direction: Direction::Column,
             width: Some(width),
             height: Some(height),
+            min_height: 0.0,
             indent: 0.0,
+            align: None,
             parts: vec![],
         }
     }
@@ -78,7 +86,9 @@ impl PartSpec {
             direction,
             width: None,
             height: None,
+            min_height: 0.0,
             indent: 0.0,
+            align: None,
             parts: vec![],
         }
     }
@@ -91,7 +101,9 @@ impl PartSpec {
             direction,
             width: None,
             height: None,
+            min_height: 0.0,
             indent: 0.0,
+            align: None,
             parts,
         }
     }
@@ -99,6 +111,18 @@ impl PartSpec {
     /// Leading space inside the part (the tree's indent).
     pub fn indented(mut self, px: f32) -> Self {
         self.indent = px;
+        self
+    }
+
+    /// Cross-axis alignment for the part's children.
+    pub fn aligned(mut self, align: ItemAlign) -> Self {
+        self.align = Some(align);
+        self
+    }
+
+    /// A floor on the part's height even when it holds nothing.
+    pub fn min_height(mut self, px: f32) -> Self {
+        self.min_height = px;
         self
     }
 }
@@ -112,8 +136,21 @@ pub struct PartsSpec {
     pub parts: Vec<PartSpec>,
 }
 
+/// Tree state passed parent → item: caret side, leading indent, and the
+/// selected marker. Carried through layout (props live on `we-tree`, parts
+/// live on `we-tree-item`).
+#[derive(Debug, Clone, Default)]
+pub struct TreeCfg {
+    pub caret_end: bool,
+    /// Extra left inset (`lead` prop, px).
+    pub lead: f32,
+    /// The tree's `selected` value — items compare it to their `value`.
+    pub selected: Option<Value>,
+}
+
 /// The layout output: every resolved node's rect, every part rect, the text
-/// children (painted by the frame, not a widget), and the tree's size.
+/// children (painted by the frame, not a widget), scroll-container axes, and
+/// the tree's size.
 pub struct Layout {
     pub size: Size,
     pub rects: HashMap<NodeId, Rect>,
@@ -121,6 +158,10 @@ pub struct Layout {
     pub parts: Parts,
     /// Text children in paint order, with the node they belong to.
     pub texts: Vec<TextSpan>,
+    /// Nodes with `overflow: auto|scroll` — which axes scroll at paint.
+    pub scroll: HashMap<NodeId, egui::Vec2>,
+    /// Nodes with `overflow: hidden|clip` — children clip to their rect.
+    pub clip: HashMap<NodeId, egui::Vec2>,
 }
 
 /// A text child and where it landed.
@@ -131,190 +172,286 @@ pub struct TextSpan {
     pub text: Arc<str>,
 }
 
-/// The style boundary E4 replaces: today every node gets `Style::empty()`,
-/// because DS props reach layout through [`node_style`] directly.
-pub fn style_of(_node: &ResolvedNode) -> Style {
-    Style::empty()
+/// A length in px, the way `Dimension::to_px` resolves it — plus the `ch`,
+/// `ex`, `lh` approximations E4 documented (approximate font metrics).
+fn dim_px(d: &Dimension, scx: &StyleCx) -> Option<f32> {
+    match *d {
+        Dimension::Ch(v) => Some(v * 0.5 * FONT_PX),
+        Dimension::Ex(v) => Some(v * 0.5 * FONT_PX),
+        Dimension::Lh(v) => Some(v * 1.4 * FONT_PX),
+        _ => d.to_px(FONT_PX, ROOT_PX, scx.viewport),
+    }
 }
 
-/// WE's spacing scale — `"100"` → 4px through `"1000"` → 96px (the same
-/// token table the TS design-system resolvers apply).
-fn token_px(s: &str) -> Option<f32> {
-    Some(match s {
-        "0" => 0.0,
-        "50" => 2.0,
-        "100" => 4.0,
-        "200" => 8.0,
-        "300" => 12.0,
-        "400" => 16.0,
-        "500" => 24.0,
-        "600" => 32.0,
-        "700" => 48.0,
-        "800" => 64.0,
-        "900" => 80.0,
-        "1000" => 96.0,
+/// `Dimension` → taffy `Dimension` (sizes, flex basis).
+fn dim(d: Option<&Dimension>, scx: &StyleCx) -> taffy::Dimension {
+    match d {
+        Some(Dimension::Percent(p)) => taffy::Dimension::percent(*p),
+        Some(d) => dim_px(d, scx)
+            .map(taffy::Dimension::length)
+            .unwrap_or(taffy::Dimension::auto()),
+        None => taffy::Dimension::auto(),
+    }
+}
+
+/// `Dimension` → taffy `LengthPercentage` (padding, gap).
+fn lp(d: Option<&Dimension>, scx: &StyleCx) -> LengthPercentage {
+    match d {
+        Some(Dimension::Percent(p)) => LengthPercentage::percent(*p),
+        Some(d) => dim_px(d, scx)
+            .map(LengthPercentage::length)
+            .unwrap_or(LengthPercentage::length(0.0)),
+        None => LengthPercentage::length(0.0),
+    }
+}
+
+/// `Dimension` → taffy `LengthPercentageAuto` (insets, min/max) — `auto`
+/// when unset, matching CSS.
+fn lpa(d: Option<&Dimension>, scx: &StyleCx) -> LengthPercentageAuto {
+    match d {
+        Some(Dimension::Percent(p)) => LengthPercentageAuto::percent(*p),
+        Some(d) => dim_px(d, scx)
+            .map(LengthPercentageAuto::length)
+            .unwrap_or(LengthPercentageAuto::auto()),
+        None => LengthPercentageAuto::auto(),
+    }
+}
+
+/// Margins: unset is `0`, not `auto` — `auto` margins absorb free space and
+/// center every child in a flex container.
+fn lpa_margin(d: Option<&Dimension>, scx: &StyleCx) -> LengthPercentageAuto {
+    match d {
+        Some(Dimension::Percent(p)) => LengthPercentageAuto::percent(*p),
+        Some(Dimension::Auto) => LengthPercentageAuto::auto(),
+        Some(d) => dim_px(d, scx)
+            .map(LengthPercentageAuto::length)
+            .unwrap_or(LengthPercentageAuto::length(0.0)),
+        None => LengthPercentageAuto::length(0.0),
+    }
+}
+
+/// `ItemAlign` on the main axis → `justify-content`.
+fn justify(a: Option<&ItemAlign>) -> Option<JustifyContent> {
+    Some(match a? {
+        ItemAlign::Start => JustifyContent::START,
+        ItemAlign::Center => JustifyContent::CENTER,
+        ItemAlign::End => JustifyContent::END,
+        ItemAlign::SpaceBetween => JustifyContent::SPACE_BETWEEN,
+        ItemAlign::SpaceAround => JustifyContent::SPACE_AROUND,
+        ItemAlign::SpaceEvenly => JustifyContent::SPACE_EVENLY,
         _ => return None,
     })
 }
 
-/// A length prop's raw px/percent/auto — token string, `"Npx"`, `"N%"`,
-/// JSON number (px), or `"auto"`.
-enum Len {
-    Px(f32),
-    Pct(f32),
-    Auto,
+/// `ItemAlign` on the cross axis → `align-items` / `align-self`.
+fn align(a: Option<&ItemAlign>) -> Option<AlignItems> {
+    Some(match a? {
+        ItemAlign::Start => AlignItems::START,
+        ItemAlign::Center => AlignItems::CENTER,
+        ItemAlign::End => AlignItems::END,
+        ItemAlign::Stretch => AlignItems::STRETCH,
+        ItemAlign::Baseline => AlignItems::BASELINE,
+        _ => return None,
+    })
 }
 
-fn len(value: Option<&Value>) -> Len {
-    match value {
-        Some(Value::Str(s)) => {
-            let s = s.as_ref();
-            if s == "auto" {
-                Len::Auto
-            } else if let Some(pct) = s.strip_suffix('%') {
-                pct.parse::<f32>()
-                    .map(|p| Len::Pct(p / 100.0))
-                    .unwrap_or(Len::Auto)
-            } else if let Some(px) = s.strip_suffix("px") {
-                px.parse::<f32>().map(Len::Px).unwrap_or(Len::Auto)
-            } else if let Some(px) = token_px(s) {
-                Len::Px(px)
-            } else {
-                s.parse::<f32>().map(Len::Px).unwrap_or(Len::Auto)
-            }
-        }
-        Some(Value::Num(n)) => Len::Px(*n as f32),
-        _ => Len::Auto,
+/// `align-self` is a subset of `ItemAlign`.
+fn align_self(a: Option<&ItemAlign>) -> Option<AlignSelf> {
+    align(a).map(|a| match a {
+        AlignItems::START => AlignSelf::START,
+        AlignItems::CENTER => AlignSelf::CENTER,
+        AlignItems::END => AlignSelf::END,
+        AlignItems::STRETCH => AlignSelf::STRETCH,
+        AlignItems::BASELINE => AlignSelf::BASELINE,
+        _ => AlignSelf::STRETCH,
+    })
+}
+
+/// `Overflow` → taffy's enum + whether it scrolls/clips.
+fn overflow(o: &Overflow) -> (taffy::Overflow, bool, bool) {
+    match o {
+        Overflow::Auto | Overflow::Scroll => (taffy::Overflow::Scroll, true, false),
+        Overflow::Hidden | Overflow::Clip => (taffy::Overflow::Hidden, false, true),
+        _ => (taffy::Overflow::Visible, false, false),
     }
 }
 
-/// `gap`/`p*` → taffy `LengthPercentage`.
-fn lp(value: Option<&Value>) -> LengthPercentage {
-    match len(value) {
-        Len::Px(px) => LengthPercentage::length(px),
-        Len::Pct(p) => LengthPercentage::percent(p),
-        Len::Auto => LengthPercentage::length(0.0),
+/// `Edge<Option<Dimension>>` → a taffy edge rect.
+fn edges(
+    e: &we_style::Edges<Option<Dimension>>,
+    scx: &StyleCx,
+    f: impl Fn(Option<&Dimension>, &StyleCx) -> taffy::prelude::LengthPercentageAuto,
+) -> taffy::Rect<taffy::prelude::LengthPercentageAuto> {
+    taffy::Rect {
+        left: f(e.left.as_ref(), scx),
+        right: f(e.right.as_ref(), scx),
+        top: f(e.top.as_ref(), scx),
+        bottom: f(e.bottom.as_ref(), scx),
     }
 }
 
-/// `min*`/`max*` → taffy `LengthPercentageAuto` (no content keywords there).
-fn lpa(value: Option<&Value>) -> LengthPercentageAuto {
-    match len(value) {
-        Len::Px(px) => LengthPercentageAuto::length(px),
-        Len::Pct(p) => LengthPercentageAuto::percent(p),
-        Len::Auto => LengthPercentageAuto::auto(),
-    }
-}
+/// The taffy style a resolved node carries, translated from its resolved
+/// [`Style`]. `Grid` gets a real grid track list; everything else is flex.
+fn node_style(node: &ResolvedNode, style: &Style, scx: &StyleCx) -> taffy::Style {
+    let l = &style.layout;
+    let (sx, x_scroll, x_clip) = l
+        .overflow_x
+        .as_ref()
+        .or(l.overflow.as_ref())
+        .map(overflow)
+        .unwrap_or((taffy::Overflow::Visible, false, false));
+    let (sy, y_scroll, y_clip) = l
+        .overflow_y
+        .as_ref()
+        .or(l.overflow.as_ref())
+        .map(overflow)
+        .unwrap_or((taffy::Overflow::Visible, false, false));
 
-/// `width`/`height`/`flex-basis` → taffy `Dimension`.
-fn dim(value: Option<&Value>) -> Dimension {
-    match len(value) {
-        Len::Px(px) => Dimension::length(px),
-        Len::Pct(p) => Dimension::percent(p),
-        Len::Auto => match value {
-            Some(Value::Str(s)) => match s.as_ref() {
-                "min-content" => Dimension::min_content(),
-                "max-content" => Dimension::max_content(),
-                _ => Dimension::auto(),
-            },
-            _ => Dimension::auto(),
+    let mut s = taffy::Style {
+        display: match l.display {
+            Some(WsDisplay::None) => Display::None,
+            Some(WsDisplay::Grid) => Display::Grid,
+            _ if node.ty.as_ref() == "Grid" => Display::Grid,
+            _ => Display::Flex,
         },
-    }
-}
-
-/// `ay`/`align` names → taffy align-items.
-fn align(value: Option<&Value>) -> Option<AlignItems> {
-    let Value::Str(s) = value? else { return None };
-    Some(match s.as_ref() {
-        "start" | "top" | "left" => AlignItems::START,
-        "center" => AlignItems::CENTER,
-        "end" | "bottom" | "right" => AlignItems::END,
-        "stretch" => AlignItems::STRETCH,
-        "baseline" => AlignItems::BASELINE,
-        _ => return None,
-    })
-}
-
-/// `ax`/`justify` names → taffy justify-content.
-fn justify(value: Option<&Value>) -> Option<JustifyContent> {
-    let Value::Str(s) = value? else { return None };
-    Some(match s.as_ref() {
-        "start" | "top" | "left" => JustifyContent::START,
-        "center" => JustifyContent::CENTER,
-        "end" | "bottom" | "right" => JustifyContent::END,
-        "space-between" | "between" => JustifyContent::SPACE_BETWEEN,
-        "space-around" => JustifyContent::SPACE_AROUND,
-        "space-evenly" => JustifyContent::SPACE_EVENLY,
-        _ => return None,
-    })
-}
-
-/// A prop lookup: `props[key]` as a resolved value.
-fn prop<'a>(node: &'a ResolvedNode, key: &str) -> Option<&'a Value> {
-    node.props.get(key)
-}
-
-/// `flex: "1"` (or `"1 0 auto"`) → grow.
-fn flex_grow(node: &ResolvedNode) -> f32 {
-    match prop(node, "flex") {
-        Some(Value::Str(s)) => s
-            .split_whitespace()
-            .next()
-            .and_then(|v| v.parse().ok())
-            .unwrap_or(0.0),
-        Some(Value::Num(n)) => *n as f32,
-        _ => 0.0,
-    }
-}
-
-/// The taffy style a resolved node carries — DS props only; E4 keeps this
-/// signature and replaces the table.
-pub(crate) fn node_style(node: &ResolvedNode) -> taffy::Style {
-    let direction = match prop(node, "direction") {
-        Some(Value::Str(s)) if s.as_ref() == "row" => FlexDirection::Row,
-        _ => FlexDirection::Column,
-    };
-    let gap = lp(prop(node, "gap").or_else(|| prop(node, "g")));
-    taffy::Style {
-        display: Display::Flex,
-        flex_direction: direction,
-        gap: taffy::Size {
-            width: gap,
-            height: gap,
+        flex_direction: match l.direction {
+            Some(we_style::FlexDirection::Row) => FlexDirection::Row,
+            Some(we_style::FlexDirection::RowReverse) => FlexDirection::RowReverse,
+            Some(we_style::FlexDirection::ColumnReverse) => FlexDirection::ColumnReverse,
+            _ if direction_of(node) == we_style::Direction::Row => FlexDirection::Row,
+            _ => FlexDirection::Column,
+        },
+        flex_wrap: match l.wrap {
+            Some(Wrap::Wrap) => FlexWrap::Wrap,
+            Some(Wrap::WrapReverse) => FlexWrap::WrapReverse,
+            _ => FlexWrap::NoWrap,
+        },
+        justify_content: justify(l.justify.as_ref()).unwrap_or(JustifyContent::NORMAL),
+        align_items: align(l.align.as_ref()).unwrap_or(AlignItems::NORMAL),
+        align_self: align_self(l.align_self.as_ref()),
+        gap: match &l.gap {
+            // Style's gap is (row, column); taffy's Size is (width=col, height=row).
+            Some((row, col)) => taffy::Size {
+                width: lp(Some(col), scx),
+                height: lp(Some(row), scx),
+            },
+            None => taffy::Size {
+                width: LengthPercentage::length(0.0),
+                height: LengthPercentage::length(0.0),
+            },
         },
         size: taffy::Size {
-            width: dim(prop(node, "width")),
-            height: dim(prop(node, "height")),
+            width: dim(l.width.as_ref(), scx),
+            height: dim(l.height.as_ref(), scx),
         },
         min_size: taffy::Size {
-            width: lpa(prop(node, "minWidth")),
-            height: lpa(prop(node, "minHeight")),
+            width: lpa(l.min_width.as_ref(), scx),
+            height: lpa(l.min_height.as_ref(), scx),
         },
         max_size: taffy::Size {
-            width: lpa(prop(node, "maxWidth")),
-            height: lpa(prop(node, "maxHeight")),
+            width: lpa(l.max_width.as_ref(), scx),
+            height: lpa(l.max_height.as_ref(), scx),
         },
+        aspect_ratio: l.aspect_ratio,
         padding: taffy::Rect {
-            left: lp(prop(node, "pl")
-                .or_else(|| prop(node, "px"))
-                .or_else(|| prop(node, "p"))),
-            right: lp(prop(node, "pr")
-                .or_else(|| prop(node, "px"))
-                .or_else(|| prop(node, "p"))),
-            top: lp(prop(node, "pt")
-                .or_else(|| prop(node, "py"))
-                .or_else(|| prop(node, "p"))),
-            bottom: lp(prop(node, "pb")
-                .or_else(|| prop(node, "py"))
-                .or_else(|| prop(node, "p"))),
+            left: lp(l.padding.left.as_ref(), scx),
+            right: lp(l.padding.right.as_ref(), scx),
+            top: lp(l.padding.top.as_ref(), scx),
+            bottom: lp(l.padding.bottom.as_ref(), scx),
         },
-        // ax is the main axis, ay the cross — WE's DS prop rule.
-        justify_content: justify(prop(node, "ax")).unwrap_or(JustifyContent::NORMAL),
-        align_items: align(prop(node, "ay")).unwrap_or(AlignItems::NORMAL),
-        align_self: align(prop(node, "align")),
-        flex_grow: flex_grow(node),
+        margin: edges(&l.margin, scx, lpa_margin),
+        inset: edges(&l.inset, scx, lpa),
+        position: match l.position {
+            Some(Position::Relative) => taffy::Position::Relative,
+            Some(Position::Absolute) | Some(Position::Fixed) | Some(Position::Sticky) => {
+                // `fixed` and `sticky` behave as absolute in a retained
+                // canvas — noted in NOTES.
+                taffy::Position::Absolute
+            }
+            _ => taffy::Position::Relative,
+        },
+        overflow: taffy::Point { x: sx, y: sy },
+        flex_grow: l.flex.map(|f| f.grow).unwrap_or(0.0),
+        flex_shrink: l
+            .flex_shrink
+            .or_else(|| l.flex.map(|f| f.shrink))
+            .unwrap_or(1.0),
+        flex_basis: l
+            .flex
+            .map(|f| dim(Some(&f.basis), scx))
+            .unwrap_or(taffy::Dimension::auto()),
         ..Default::default()
+    };
+    let _ = (x_scroll, x_clip, y_scroll, y_clip); // scroll/clip recorded on Layout below
+
+    if node.ty.as_ref() == "Grid" {
+        s.display = Display::Grid;
+        s.grid_template_columns = grid_columns(node);
+        s.grid_auto_rows = vec![taffy::TrackSizingFunction::from_fr(1.0)];
+        s.grid_auto_flow = taffy::GridAutoFlow::Row;
     }
+    s
+}
+
+/// `Grid`'s template: `template` wins (a `repeat(N, …)` we can read), else
+/// `minChildWidth` → `repeat(auto-fill, minmax(Npx, 1fr))`, else
+/// `columns` → `repeat(N, 1fr)` — the three forms the bundle uses, matching
+/// `Grid.solid.tsx`'s `finalizeStyle`. Anything else → one column.
+fn grid_columns(node: &ResolvedNode) -> Vec<taffy::GridTemplateComponent<String>> {
+    use taffy::{
+        GridTemplateRepetition, MaxTrackSizingFunction, MinMax, MinTrackSizingFunction,
+        RepetitionCount, TrackSizingFunction,
+    };
+
+    let fr = || TrackSizingFunction::from_fr(1.0);
+    if let Some(tpl) = crate::props::prop_str(node, "template") {
+        if let Some(tracks) = parse_template(tpl) {
+            return tracks;
+        }
+    }
+    if let Some(min) = crate::props::prop_num(node, "minChildWidth") {
+        return vec![taffy::GridTemplateComponent::Repeat(
+            GridTemplateRepetition {
+                count: RepetitionCount::AutoFill,
+                tracks: vec![MinMax {
+                    min: MinTrackSizingFunction::from_length(min),
+                    max: MaxTrackSizingFunction::from_fr(1.0),
+                }],
+                line_names: vec![],
+            },
+        )];
+    }
+    // `childAspect` (the TS solves it against the measured box) is
+    // unsupported in E5a — falls through to `columns`. Listed in NOTES.
+    let n = crate::props::prop_num(node, "columns")
+        .unwrap_or(1.0)
+        .max(1.0) as u16;
+    vec![taffy::GridTemplateComponent::Repeat(
+        GridTemplateRepetition {
+            count: RepetitionCount::Count(n),
+            tracks: vec![fr()],
+            line_names: vec![],
+        },
+    )]
+}
+
+/// `repeat(3, 1fr)`-style templates — the one shape the bundle writes.
+fn parse_template(tpl: &str) -> Option<Vec<taffy::GridTemplateComponent<String>>> {
+    let t = tpl.trim();
+    let inner = t.strip_prefix("repeat(")?.strip_suffix(')')?;
+    let mut it = inner.splitn(2, ',');
+    let count: u16 = it.next()?.trim().parse().ok()?;
+    let track = it.next()?.trim();
+    if track != "1fr" {
+        return None;
+    }
+    Some(vec![taffy::GridTemplateComponent::Repeat(
+        taffy::GridTemplateRepetition {
+            count: taffy::RepetitionCount::Count(count),
+            tracks: vec![taffy::TrackSizingFunction::from_fr(1.0)],
+            line_names: vec![],
+        },
+    )])
 }
 
 /// A part spec → taffy style.
@@ -325,15 +462,28 @@ fn part_style(spec: &PartSpec) -> taffy::Style {
             Direction::Row => FlexDirection::Row,
             Direction::Column => FlexDirection::Column,
         },
+        align_items: spec
+            .align
+            .as_ref()
+            .and_then(|a| align(Some(a)))
+            .unwrap_or(AlignItems::NORMAL),
         size: taffy::Size {
             width: spec
                 .width
-                .map(Dimension::length)
-                .unwrap_or(Dimension::auto()),
+                .map(taffy::Dimension::length)
+                .unwrap_or(taffy::Dimension::auto()),
             height: spec
                 .height
-                .map(Dimension::length)
-                .unwrap_or(Dimension::auto()),
+                .map(taffy::Dimension::length)
+                .unwrap_or(taffy::Dimension::auto()),
+        },
+        min_size: taffy::Size {
+            width: LengthPercentageAuto::auto(),
+            height: if spec.min_height > 0.0 {
+                LengthPercentageAuto::length(spec.min_height)
+            } else {
+                LengthPercentageAuto::auto()
+            },
         },
         padding: taffy::Rect {
             left: LengthPercentage::length(spec.indent),
@@ -341,6 +491,7 @@ fn part_style(spec: &PartSpec) -> taffy::Style {
             top: LengthPercentage::length(0.0),
             bottom: LengthPercentage::length(0.0),
         },
+        flex_shrink: 0.0,
         ..Default::default()
     }
 }
@@ -356,12 +507,23 @@ struct Builder<'a> {
     tree: TaffyTree<Ctx>,
     cx: &'a MeasureCx<'a>,
     registry: &'a Registry,
+    scx: &'a StyleCx<'a>,
+    scroll: HashMap<NodeId, egui::Vec2>,
+    clip: HashMap<NodeId, egui::Vec2>,
 }
 
 impl<'a> Builder<'a> {
     /// A part → a taffy node: `pick` children inside, nested parts inside, or
     /// an empty fixed box.
-    fn part_node(&mut self, owner: &NodeId, spec: &PartSpec, node: &ResolvedNode) -> TaffyId {
+    fn part_node(
+        &mut self,
+        owner: &NodeId,
+        spec: &PartSpec,
+        node: &ResolvedNode,
+        tree: &TreeCfg,
+        parent_h_definite: bool,
+        main_indefinite: bool,
+    ) -> Option<TaffyId> {
         let mut kids = Vec::new();
         if let Some(pick) = &spec.pick {
             for child in node.children.iter().filter(|c| match (pick, c) {
@@ -372,76 +534,197 @@ impl<'a> Builder<'a> {
                 }
                 (Pick::Named(_), ResolvedChild::Text(_)) => false,
             }) {
-                kids.push(self.child_node(owner, child));
+                if let Some(k) =
+                    self.child_node(node, child, tree, parent_h_definite, main_indefinite)
+                {
+                    kids.push(k);
+                }
             }
         }
         for sub in &spec.parts {
-            kids.push(self.part_node(owner, sub, node));
+            if let Some(k) =
+                self.part_node(owner, sub, node, tree, parent_h_definite, main_indefinite)
+            {
+                kids.push(k);
+            }
         }
         let ctx = Ctx::Part(owner.clone(), spec.name);
         if kids.is_empty() {
-            self.tree
-                .new_leaf_with_context(part_style(spec), ctx)
-                .unwrap()
+            Some(
+                self.tree
+                    .new_leaf_with_context(part_style(spec), ctx)
+                    .unwrap(),
+            )
         } else {
             let id = self
                 .tree
                 .new_with_children(part_style(spec), &kids)
                 .unwrap();
             self.tree.set_node_context(id, Some(ctx)).unwrap();
-            id
+            Some(id)
         }
     }
 
     /// A resolved child → a taffy node: nodes recurse, text becomes a leaf
     /// measured by the galley.
-    fn child_node(&mut self, owner: &NodeId, child: &ResolvedChild) -> TaffyId {
+    fn child_node(
+        &mut self,
+        owner: &ResolvedNode,
+        child: &ResolvedChild,
+        tree: &TreeCfg,
+        parent_h_definite: bool,
+        main_indefinite: bool,
+    ) -> Option<TaffyId> {
         match child {
-            ResolvedChild::Node(node) => self.resolved_node(node),
+            ResolvedChild::Node(node) => {
+                self.resolved_node(node, tree, parent_h_definite, main_indefinite)
+            }
             ResolvedChild::Text(text) => {
-                let galley = self.cx.ctx.fonts_mut(|f| {
-                    f.layout_no_wrap(
-                        text.to_string(),
-                        egui::FontId::default(),
-                        egui::Color32::WHITE,
-                    )
-                });
-                self.tree
-                    .new_leaf_with_context(
-                        taffy::Style {
-                            size: taffy::Size {
-                                width: Dimension::length(galley.size().x),
-                                height: Dimension::length(galley.size().y),
+                // Text is measured in its owner's font — `layout_no_wrap`
+                // matches the paint path's single-line spans.
+                let style = style_of(owner, self.scx);
+                let font = crate::props::font_id(&style, FONT_PX, ROOT_PX, self.scx.viewport);
+                let galley = self
+                    .cx
+                    .ctx
+                    .fonts_mut(|f| f.layout_no_wrap(text.to_string(), font, egui::Color32::WHITE));
+                Some(
+                    self.tree
+                        .new_leaf_with_context(
+                            taffy::Style {
+                                size: taffy::Size {
+                                    width: taffy::Dimension::length(galley.size().x),
+                                    height: taffy::Dimension::length(galley.size().y),
+                                },
+                                flex_shrink: 0.0,
+                                ..Default::default()
                             },
-                            ..Default::default()
-                        },
-                        Ctx::Text(owner.clone(), text.clone()),
-                    )
-                    .unwrap()
+                            Ctx::Text(owner.id.clone(), text.clone()),
+                        )
+                        .unwrap(),
+                )
             }
         }
     }
 
     /// A resolved node → a taffy node + its children (or its parts).
-    fn resolved_node(&mut self, node: &ResolvedNode) -> TaffyId {
+    /// `tree` is the nearest `we-tree` ancestor's config, if any.
+    fn resolved_node(
+        &mut self,
+        node: &ResolvedNode,
+        tree: &TreeCfg,
+        parent_h_definite: bool,
+        main_indefinite: bool,
+    ) -> Option<TaffyId> {
         let widget = self.registry.widget_for(&node.ty);
-        let mut style = node_style(node);
-        let kids: Vec<TaffyId> = match widget.parts_spec(node) {
+        let style = style_of(node, self.scx);
+
+        // `display: none` removes the node AND its subtree from layout — no
+        // rect, no parts, nothing painted.
+        if matches!(style.layout.display, Some(WsDisplay::None)) {
+            return None;
+        }
+
+        // Record scroll/clip axes on the layout output.
+        let scrolls =
+            |o: Option<&Overflow>| matches!(o, Some(Overflow::Auto) | Some(Overflow::Scroll));
+        let clips =
+            |o: Option<&Overflow>| matches!(o, Some(Overflow::Hidden) | Some(Overflow::Clip));
+        let l = &style.layout;
+        let sx = scrolls(l.overflow_x.as_ref().or(l.overflow.as_ref()));
+        let sy = scrolls(l.overflow_y.as_ref().or(l.overflow.as_ref()));
+        if sx || sy {
+            self.scroll.insert(
+                node.id.clone(),
+                egui::vec2(if sx { 1.0 } else { 0.0 }, if sy { 1.0 } else { 0.0 }),
+            );
+        }
+        let cx_axis = clips(l.overflow_x.as_ref().or(l.overflow.as_ref()));
+        let cy_axis = clips(l.overflow_y.as_ref().or(l.overflow.as_ref()));
+        if cx_axis || cy_axis {
+            self.clip.insert(
+                node.id.clone(),
+                egui::vec2(
+                    if cx_axis { 1.0 } else { 0.0 },
+                    if cy_axis { 1.0 } else { 0.0 },
+                ),
+            );
+        }
+
+        // The tree config this node hands down: a `we-tree` starts a fresh
+        // config from its props; everything else inherits.
+        let tree = if node.ty.as_ref() == "we-tree" {
+            TreeCfg {
+                caret_end: crate::props::prop_str(node, "caret") == Some("end"),
+                lead: crate::props::prop_num(node, "lead").unwrap_or(0.0) as f32,
+                selected: node.props.get("selected").cloned(),
+            }
+        } else {
+            tree.clone()
+        };
+
+        let mut s = node_style(node, &style, self.scx);
+        // CSS: a percentage `height` against an indefinite containing block
+        // resolves to `auto` — the root is always `MinContent` here, so any
+        // `height: N%` under it shrinks to content instead of collapsing.
+        use taffy::ExpandedDimension as Ed;
+        if matches!(s.size.height.expand(), Ed::Percent(_)) && !parent_h_definite {
+            s.size.height = taffy::Dimension::auto();
+        }
+        // `flex: 1` is `flex-basis: 0` — a zero or % basis on an indefinite
+        // main axis behaves as `content` in CSS; taffy would make it 0 and
+        // collapse the child (the tree panel's `overflowY:auto` column).
+        if main_indefinite && matches!(s.flex_basis.expand(), Ed::Percent(_) | Ed::Length(0.0)) {
+            s.flex_basis = taffy::Dimension::auto();
+        }
+        let h_definite = match s.size.height.expand() {
+            Ed::Length(_) => true,
+            Ed::Percent(_) => parent_h_definite,
+            _ => false,
+        };
+        let mut spec = widget.parts_spec(node);
+        // `caret="end"` on the tree reorders the item's caret part to the row's
+        // end; `lead` pads the row's left edge — part order/insets are
+        // layout's call, and only it can see the ancestor.
+        if node.ty.as_ref() == "we-tree-item" {
+            if let Some(spec) = &mut spec {
+                for part in &mut spec.parts {
+                    if part.name == "row" {
+                        if tree.caret_end {
+                            part.parts.sort_by_key(|p| p.name == "caret");
+                        }
+                        part.indent += tree.lead;
+                    }
+                }
+            }
+        }
+        let kids: Vec<TaffyId> = match spec {
             Some(spec) => {
-                style.flex_direction = match spec.direction {
+                s.flex_direction = match spec.direction {
                     Direction::Row => FlexDirection::Row,
                     Direction::Column => FlexDirection::Column,
                 };
+                let main_indefinite = matches!(
+                    s.flex_direction,
+                    FlexDirection::Column | FlexDirection::ColumnReverse
+                ) && !h_definite;
                 spec.parts
                     .iter()
-                    .map(|part| self.part_node(&node.id, part, node))
+                    .filter_map(|part| {
+                        self.part_node(&node.id, part, node, &tree, h_definite, main_indefinite)
+                    })
                     .collect()
             }
-            None => node
-                .children
-                .iter()
-                .map(|c| self.child_node(&node.id, c))
-                .collect(),
+            None => {
+                let main_indefinite = matches!(
+                    s.flex_direction,
+                    FlexDirection::Column | FlexDirection::ColumnReverse
+                ) && !h_definite;
+                node.children
+                    .iter()
+                    .filter_map(|c| self.child_node(node, c, &tree, h_definite, main_indefinite))
+                    .collect()
+            }
         };
         if kids.is_empty() {
             // A leaf: the widget's measured size fills whatever the props did
@@ -449,37 +732,53 @@ impl<'a> Builder<'a> {
             let want = widget.measure(
                 self.cx,
                 node,
-                &style_of(node),
+                &style,
                 Size::new(f32::INFINITY, f32::INFINITY),
             );
-            if style.size.width == Dimension::auto() {
-                style.size.width = Dimension::length(want.x);
+            // A `want` axis of 0 or non-finite means "no intrinsic size" —
+            // leave `auto` so `align-items` stretches it (divider, skeleton).
+            if s.size.width == taffy::Dimension::auto() && want.x.is_finite() && want.x > 0.0 {
+                s.size.width = taffy::Dimension::length(want.x);
             }
-            if style.size.height == Dimension::auto() {
-                style.size.height = Dimension::length(want.y);
+            if s.size.height == taffy::Dimension::auto() && want.y.is_finite() && want.y > 0.0 {
+                s.size.height = taffy::Dimension::length(want.y);
             }
-            self.tree
-                .new_leaf_with_context(style, Ctx::Node(node.id.clone()))
-                .unwrap()
+            Some(
+                self.tree
+                    .new_leaf_with_context(s, Ctx::Node(node.id.clone()))
+                    .unwrap(),
+            )
         } else {
-            let id = self.tree.new_with_children(style, &kids).unwrap();
+            let id = self.tree.new_with_children(s, &kids).unwrap();
             self.tree
                 .set_node_context(id, Some(Ctx::Node(node.id.clone())))
                 .unwrap();
-            id
+            Some(id)
         }
     }
 }
 
 /// Lay out `root` inside `rect` — the frame calls this when the resolve
 /// revision or the rect changed, and keeps the [`Layout`] until then.
-pub fn layout(cx: &MeasureCx, registry: &Registry, root: &ResolvedNode, rect: Rect) -> Layout {
+pub fn layout(
+    cx: &MeasureCx,
+    scx: &StyleCx,
+    registry: &Registry,
+    root: &ResolvedNode,
+    rect: Rect,
+) -> Layout {
+    crate::defaults::store_view(cx.ctx, scx);
     let mut b = Builder {
         tree: TaffyTree::new(),
         cx,
         registry,
+        scx,
+        scroll: HashMap::new(),
+        clip: HashMap::new(),
     };
-    let root_id = b.resolved_node(root);
+    let root_id = b
+        .resolved_node(root, &TreeCfg::default(), false, true)
+        .expect("root lays out");
     let _ = b.tree.compute_layout(
         root_id,
         taffy::Size {
@@ -495,6 +794,8 @@ pub fn layout(cx: &MeasureCx, registry: &Registry, root: &ResolvedNode, rect: Re
         rects: HashMap::new(),
         parts: Parts::new(),
         texts: Vec::new(),
+        scroll: b.scroll,
+        clip: b.clip,
     };
     collect(&b.tree, root_id, rect.min, &mut out);
     if let Some(r) = out.rects.get(&root.id) {

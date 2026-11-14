@@ -31,11 +31,20 @@ const DEFAULT_BUNDLE: &str = concat!(
 );
 
 #[cfg(not(target_arch = "wasm32"))]
+#[derive(Default, PartialEq)]
+enum Gallery {
+    #[default]
+    None,
+    Style,
+    Widgets,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 struct Args {
     bundle: String,
     snapshot: Option<String>,
     route: String,
-    gallery: bool,
+    gallery: Gallery,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -44,7 +53,7 @@ fn parse_args() -> Args {
         bundle: DEFAULT_BUNDLE.to_string(),
         snapshot: None,
         route: "/".to_string(),
-        gallery: false,
+        gallery: Gallery::None,
     };
     let mut rest = std::env::args().skip(1);
     while let Some(arg) = rest.next() {
@@ -66,8 +75,9 @@ fn parse_args() -> Args {
                     .unwrap_or_else(|| panic!("--route needs a path"));
             }
             "--gallery" => match rest.next().as_deref() {
-                Some("style") => args.gallery = true,
-                other => panic!("--gallery needs a target (only `style` exists): {other:?}"),
+                Some("style") => args.gallery = Gallery::Style,
+                Some("widgets") => args.gallery = Gallery::Widgets,
+                other => panic!("--gallery needs a target (`style` or `widgets`): {other:?}"),
             },
             "--offline" => {}
             "--help" | "-h" => {
@@ -77,7 +87,7 @@ fn parse_args() -> Args {
                      --snapshot <path>  offline data: stores/queries/invokes as JSON\n\
                      --route <href>     initial routeStore path (default /)\n\
                      --offline          run with no executor — the only mode this stage has\n\
-                     --gallery style    design-system showcase: roles, scales, radii, shadows"
+                     --gallery <target>  `style`: tokens showcase · `widgets`: the E5a widget set"
                 );
                 std::process::exit(0);
             }
@@ -135,15 +145,18 @@ fn run_native(args: Args) -> eframe::Result<()> {
         None => StoreBag::new(),
     };
     let route = RouteState::new(&args.route);
-    let shell = Shell {
-        panel: RendererApp::new(
-            schema,
-            "tree",
-            Arc::new(bag),
-            route,
-            Registry::with_builtins(),
-        ),
-    };
+    let mut panel = RendererApp::new(
+        schema,
+        "tree",
+        Arc::new(bag),
+        route,
+        Registry::with_builtins(),
+    );
+    // The recorded tables carry a `dark` theme; the bundle's default is dark.
+    let set = we_app::gallery::load_theme_set();
+    let (theme, _) = set.theme("dark");
+    panel.theme = theme.clone();
+    let shell = Shell { panel };
 
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
@@ -193,11 +206,29 @@ fn run_gallery() -> eframe::Result<()> {
     )
 }
 
+/// `we-app --gallery widgets` — the widget showcase, same theme picker.
+#[cfg(not(target_arch = "wasm32"))]
+fn run_widget_gallery() -> eframe::Result<()> {
+    let options = eframe::NativeOptions {
+        viewport: eframe::egui::ViewportBuilder::default()
+            .with_title("we gallery — widgets")
+            .with_inner_size([900.0, 900.0]),
+        ..Default::default()
+    };
+    eframe::run_native(
+        "we gallery — widgets",
+        options,
+        Box::new(|_cc| Ok(Box::new(we_app::gallery::WidgetsApp::new()))),
+    )
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
     let args = parse_args();
-    if args.gallery {
-        return run_gallery();
+    match args.gallery {
+        Gallery::Style => return run_gallery(),
+        Gallery::Widgets => return run_widget_gallery(),
+        Gallery::None => {}
     }
     run_native(args)
 }

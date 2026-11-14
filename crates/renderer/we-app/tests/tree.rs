@@ -110,20 +110,8 @@ fn node_count_and_resolve_time() {
         app("/space/demo?view=canvas"),
     );
     harness.run();
-    let s = &harness.state().runtime.stats();
-    eprintln!(
-        "STATS resolves={} nodes={} last_resolve={:?} warnings={}",
-        s.resolves,
-        s.nodes,
-        s.last_resolve,
-        s.warnings.len()
-    );
-    for w in s.warnings.iter().take(8) {
-        eprintln!("  warn: {w}");
-    }
     assert!(
-        s.nodes > 100,
-        "tree panel should resolve ~200 nodes: {}",
-        s.nodes
+        harness.state().runtime.stats().nodes > 100,
+        "tree panel should resolve ~200 nodes"
     );
 }
