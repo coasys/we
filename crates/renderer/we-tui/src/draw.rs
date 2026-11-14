@@ -56,9 +56,14 @@ pub enum FocusKind {
     TreeItem { value: Value },
     /// `onOpenChange` with `{detail: {open}}` — fold/unfold a tree item.
     TreeFold { open: bool },
-    /// A text field the keyboard types into (`we-input`, `we-textarea`,
-    /// `we-number-input`).
+    /// A text field the keyboard types into (`we-input`, `we-textarea`):
+    /// typing emits `onInput {detail: text}`, Enter or blur commits
+    /// `onChange {detail: text}`.
     Input,
+    /// `we-number-input`: typing edits a draft only; Enter or blur commits
+    /// `onChange {detail: number}`, clamped to `min`/`max`, and text that
+    /// is not a number is never committed.
+    NumberInput { min: f64, max: f64 },
     /// `onChange` with `{detail: !checked}` — `we-switch`.
     Switch { checked: bool },
     /// `onChange` with `{detail: next}` — `we-select` cycles `options`.
@@ -388,7 +393,11 @@ impl<'a> Painter<'a> {
             Tag::TreeItem => Some(FocusKind::TreeItem {
                 value: prop(node, "value").clone(),
             }),
-            Tag::Input | Tag::NumberInput => Some(FocusKind::Input),
+            Tag::Input => Some(FocusKind::Input),
+            Tag::NumberInput => Some(FocusKind::NumberInput {
+                min: prop_num(node, "min").unwrap_or(f64::NEG_INFINITY),
+                max: prop_num(node, "max").unwrap_or(f64::INFINITY),
+            }),
             Tag::Switch => Some(FocusKind::Switch {
                 checked: prop(node, "checked").truthy(),
             }),
@@ -1765,11 +1774,13 @@ impl<'a> Painter<'a> {
                 x += w + 1;
             }
         }
-        let draft = self.drafts.get(&node.id);
-        let value = draft
-            .map(|s| s.as_str())
-            .or_else(|| prop_str(node, "value"))
-            .unwrap_or("");
+        // The draft, else the `value` prop as text — a number input's
+        // value is a number; a missing or null value is an empty field.
+        let value = match self.drafts.get(&node.id) {
+            Some(d) => d.clone(),
+            None => prop(node, "value").to_text().to_string(),
+        };
+        let value = value.as_str();
         let focused = self.focus.as_ref() == Some(&node.id);
         let mut st = ink.style(self, self.default_fg());
         if let Some(bg) = self

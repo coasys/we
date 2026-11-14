@@ -16,7 +16,7 @@ pub mod icons;
 pub mod load;
 pub mod palette;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 
 use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
@@ -93,6 +93,9 @@ pub struct TuiApp {
     /// Per-input draft text — survives re-resolves so typing never loses
     /// a letter even if the template's `onInput` round-trips nothing.
     pub drafts: HashMap<NodeId, String>,
+    /// Fields typed into since their last commit — Enter or blur sends
+    /// `onChange` only for these, as we-egui's `dirty` field does.
+    dirty: HashSet<NodeId>,
     /// The first visible canvas line.
     pub scroll: u16,
     /// The last frame's content height, for scroll clamping.
@@ -112,6 +115,7 @@ impl TuiApp {
             focus: None,
             focusables: Vec::new(),
             drafts: HashMap::new(),
+            dirty: HashSet::new(),
             scroll: 0,
             content_height: 0,
             view_height: 0,
@@ -223,11 +227,11 @@ impl TuiApp {
     /// Focus `focusables[i]` — wraps.
     fn focus_at(&mut self, i: usize) {
         if self.focusables.is_empty() {
-            self.focus = None;
+            self.set_focus(None);
             return;
         }
         let i = i % self.focusables.len();
-        self.focus = Some(self.focusables[i].id.clone());
+        self.set_focus(Some(self.focusables[i].id.clone()));
     }
 
     /// Focus the next/previous focusable — the shared body of Tab,
@@ -237,7 +241,7 @@ impl TuiApp {
             Some(i) => {
                 let n = self.focusables.len() as i64;
                 if n == 0 {
-                    self.focus = None;
+                    self.set_focus(None);
                 } else {
                     let next = (i as i64 + dir).rem_euclid(n) as usize;
                     self.focus_at(next);
@@ -253,6 +257,74 @@ impl TuiApp {
                     self.focus_at(i);
                 }
             }
+        }
+    }
+
+    /// Move focus to `next`. Focus leaving a field is its blur: a field
+    /// typed into since its last commit commits now.
+    fn set_focus(&mut self, next: Option<NodeId>) {
+        if self.focus != next {
+            if let Some(prev) = self.focus.clone() {
+                self.commit(&prev, true);
+            }
+        }
+        self.focus = next;
+    }
+
+    /// Commit a dirty field's draft as `onChange` — the text for a text
+    /// field, a clamped JSON number for a `we-number-input`. Text that is
+    /// not a number is never committed: on Enter it stays for the user to
+    /// fix, on blur (`blur`) the draft is dropped and the field shows its
+    /// value again.
+    fn commit(&mut self, id: &NodeId, blur: bool) {
+        if !self.dirty.contains(id) {
+            return;
+        }
+        let Some(node) = self.node_at(id) else {
+            self.dirty.remove(id);
+            return;
+        };
+        let text = self.drafts.get(id).cloned().unwrap_or_default();
+        if node.ty.as_ref() == "we-number-input" {
+            match text.trim().parse::<f64>() {
+                Ok(v) if v.is_finite() => {
+                    let min = we_layout::props::prop_num(&node, "min").unwrap_or(f64::NEG_INFINITY);
+                    let max = we_layout::props::prop_num(&node, "max").unwrap_or(f64::INFINITY);
+                    self.dirty.remove(id);
+                    self.emit(id, "onChange", detail(Value::Num(v.max(min).min(max))));
+                }
+                _ => {
+                    if blur {
+                        self.dirty.remove(id);
+                        self.drafts.remove(id);
+                    }
+                }
+            }
+        } else {
+            self.dirty.remove(id);
+            self.emit(id, "onChange", detail(Value::Str(text.into())));
+        }
+    }
+
+    /// Edit the focused field's draft with `edit` — `None` when the field
+    /// is `readonly` (it takes no edits, as the DOM attribute) — and mark
+    /// it dirty. A text field reports the new text as `onInput`; a number
+    /// field only drafts until its commit.
+    fn edit_field(&mut self, id: &NodeId, number: bool, edit: impl FnOnce(&mut String)) {
+        if self
+            .node_at(id)
+            .is_some_and(|n| we_layout::props::prop_bool(&n, "readonly"))
+        {
+            return;
+        }
+        let text = {
+            let d = self.draft_of(id);
+            edit(d);
+            d.clone()
+        };
+        self.dirty.insert(id.clone());
+        if !number {
+            self.emit(id, "onInput", detail(Value::Str(text.into())));
         }
     }
 
@@ -281,7 +353,7 @@ impl TuiApp {
             KeyCode::BackTab => self.focus_step(-1),
             KeyCode::Up => self.focus_step(-1),
             KeyCode::Down => self.focus_step(1),
-            KeyCode::Esc => self.focus = None,
+            KeyCode::Esc => self.set_focus(None),
             KeyCode::PageUp => {
                 self.scroll = self.scroll.saturating_sub(self.view_height.max(1));
             }
@@ -293,29 +365,30 @@ impl TuiApp {
             KeyCode::Left => self.activate_left(),
             KeyCode::Right => self.activate_right(),
             KeyCode::Enter => self.activate(),
-            KeyCode::Char('q') if !matches!(focused, Some((_, FocusKind::Input))) => {
+            KeyCode::Char('q')
+                if !matches!(
+                    focused,
+                    Some((_, FocusKind::Input | FocusKind::NumberInput { .. }))
+                ) =>
+            {
                 return KeyResult::Quit
             }
-            KeyCode::Char(c) => {
-                if let Some((id, FocusKind::Input)) = focused {
-                    let text = {
-                        let d = self.draft_of(&id);
-                        d.push(c);
-                        d.clone()
-                    };
-                    self.emit(&id, "onInput", detail(Value::Str(text.into())));
+            KeyCode::Char(c) => match focused {
+                Some((id, FocusKind::Input)) => self.edit_field(&id, false, |d| d.push(c)),
+                Some((id, FocusKind::NumberInput { .. })) => {
+                    self.edit_field(&id, true, |d| d.push(c))
                 }
-            }
-            KeyCode::Backspace => {
-                if let Some((id, FocusKind::Input)) = focused {
-                    let text = {
-                        let d = self.draft_of(&id);
-                        d.pop();
-                        d.clone()
-                    };
-                    self.emit(&id, "onInput", detail(Value::Str(text.into())));
-                }
-            }
+                _ => {}
+            },
+            KeyCode::Backspace => match focused {
+                Some((id, FocusKind::Input)) => self.edit_field(&id, false, |d| {
+                    d.pop();
+                }),
+                Some((id, FocusKind::NumberInput { .. })) => self.edit_field(&id, true, |d| {
+                    d.pop();
+                }),
+                _ => {}
+            },
             _ => {}
         }
         KeyResult::Continue
@@ -374,8 +447,12 @@ impl TuiApp {
                 self.emit(&id, "onOpenChange", detail_open(!open));
             }
             FocusKind::Input => {
+                // The keydown first, then the commit — the order we-egui
+                // emits them in.
                 self.emit(&id, "onKeyDown", key_down("Enter", "Enter"));
+                self.commit(&id, false);
             }
+            FocusKind::NumberInput { .. } => self.commit(&id, false),
             FocusKind::Switch { checked } => {
                 self.emit(&id, "onChange", detail(Value::Bool(!checked)));
             }
@@ -468,7 +545,7 @@ impl TuiApp {
         let (id, key) = keys[next].clone();
         self.emit(&id, "onTabSelect", detail_value(key.clone()));
         self.emit(tabs, "onChange", detail_value(key));
-        self.focus = Some(id);
+        self.set_focus(Some(id));
     }
 }
 
@@ -492,13 +569,13 @@ fn find_node<'n>(node: &'n ResolvedNode, id: &NodeId) -> Option<&'n ResolvedNode
     })
 }
 
-/// The node's `value`/`text` prop as the input draft seed.
+/// The node's `value`/`text` prop as the input draft seed — what the
+/// field shows: a number as its digits, null or missing as empty.
 fn prop_text(node: &ResolvedNode) -> Option<String> {
-    match node.props.get("value").or_else(|| node.props.get("text")) {
-        Some(Value::Str(s)) => Some(s.to_string()),
-        Some(v) if !v.is_undefined() => Some(v.js_string()),
-        _ => None,
-    }
+    node.props
+        .get("value")
+        .or_else(|| node.props.get("text"))
+        .map(|v| v.to_text().to_string())
 }
 
 /// The buffer's text — a row per line, trailing whitespace trimmed. The
