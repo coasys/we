@@ -265,6 +265,14 @@ fn composite_button(node: &ResolvedNode) -> bool {
         )
 }
 
+/// A `square` `ghost`/`bare` button — an icon with no chrome of its own,
+/// drawn as just its glyph.
+fn bare_icon_button(node: &ResolvedNode) -> bool {
+    node.ty.as_ref() == "we-button"
+        && prop_bool(node, "square")
+        && matches!(prop_str(node, "variant"), Some("ghost" | "bare"))
+}
+
 /// `open` on a tree item — a plain truthy prop read.
 fn tree_open(node: &ResolvedNode) -> bool {
     prop(node, "open").truthy()
@@ -548,6 +556,10 @@ impl<'a> Painter<'a> {
                 Direction::Row => self.measure_row(node, inner_w, inner_h),
                 Direction::Column => self.measure_column(node, inner_w, inner_h),
             },
+            Tag::Button if bare_icon_button(node) => {
+                let label = self.button_label(node);
+                Dim::new(UnicodeWidthStr::width(label.as_str()) as u16, 1)
+            }
             Tag::Button => {
                 let label = self.button_label(node);
                 Dim::new(UnicodeWidthStr::width(label.as_str()) as u16 + 4, 1)
@@ -610,6 +622,13 @@ impl<'a> Painter<'a> {
                 Dim::new(inner_w.min(24), n as u16)
             }
         };
+        // A glyph widget is the size of what it draws: an avatar's `(AB)`,
+        // a chromeless icon button's glyph. Its CSS box (a 64px avatar, a
+        // 40px square) would be eight and five blank cells beside a name
+        // the row then has to cut.
+        if tag(node) == Tag::Avatar || bare_icon_button(node) {
+            return dim;
+        }
         // Explicit width/height override the intrinsic size; min/max clamp.
         let vw = (self.scx.viewport.width / CELL_PX) as u16;
         let vh = (self.scx.viewport.height / CELL_PX) as u16;
@@ -805,6 +824,11 @@ impl<'a> Painter<'a> {
     /// `label`/`value` then text children, per-role shapes for media and
     /// graphs.
     fn node_text(&self, node: &ResolvedNode) -> String {
+        if node.ty.as_ref() == "we-timestamp" {
+            if let Some(day) = prop_str(node, "value").and_then(iso_day) {
+                return day.to_string();
+            }
+        }
         match we_catalog::entry(node.ty.as_ref()) {
             Some(_) => we_catalog::text_fallback(node),
             None => String::new(),
@@ -1642,6 +1666,11 @@ impl<'a> Painter<'a> {
     /// icon glyph.
     fn paint_button(&mut self, node: &ResolvedNode, area: Rect, ink: &Ink) {
         let label = self.button_label(node);
+        if bare_icon_button(node) {
+            let st = ink.style(self, self.default_fg());
+            self.put(area, area.x, area.y, &label, st);
+            return;
+        }
         let variant = prop_str(node, "variant").unwrap_or("solid");
         let mut st = ink.style(self, self.default_fg());
         if prop_bool(node, "disabled") {
@@ -2064,6 +2093,17 @@ impl<'a> Painter<'a> {
         };
         self.paint_children(node, rest, env);
     }
+}
+
+/// The `YYYY-MM-DD` day of an ISO date-time — what a `we-timestamp` shows
+/// here. The raw value is 24 cells, which starves the title beside it in
+/// a sidebar row (a call's); the web's relative form ("1yr ago") needs a
+/// clock and the date formatter we-egui keeps, a follow-up (NOTES).
+fn iso_day(s: &str) -> Option<&str> {
+    let b = s.as_bytes();
+    let digits = |r: std::ops::Range<usize>| b[r].iter().all(u8::is_ascii_digit);
+    (b.len() >= 10 && digits(0..4) && b[4] == b'-' && digits(5..7) && b[7] == b'-' && digits(8..10))
+        .then(|| &s[..10])
 }
 
 /// Split `s` after the last char that fits `w` cells — `(head, rest)`.

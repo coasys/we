@@ -133,9 +133,13 @@ fn tree_panel_labels_order_and_indent() {
         .lines()
         .find(|l| l.contains("Calls"))
         .unwrap_or_else(|| panic!("Calls group in frame:\n{text}"));
+    // The row shows its call's `createdAt` as a day (`YYYY-MM-DD`, the
+    // timestamp's terminal form).
+    let first_call = snap["queries"]["calls"][0]["createdAt"].as_str().unwrap();
+    let day = &first_call[..10];
     let nested_line = text
         .lines()
-        .find(|l| l.contains("2026-05-01T10:00:00Z"))
+        .find(|l| l.contains(day))
         .unwrap_or_else(|| panic!("nested call row in frame:\n{text}"));
     assert!(
         indent(nested_line) > indent(group_line),

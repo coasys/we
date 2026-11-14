@@ -79,8 +79,6 @@ fn index_shows_the_space_tree_from_the_recording() {
     let mut app = app("index");
     let text = frame(&mut app, 160, 60);
     // The Calls group's badge counts the tree panel's recorded calls.
-    // (The call rows' titles are cut to one letter beside a raw ISO
-    // timestamp — a known layout gap, see NOTES.)
     let calls = rows(&t, "index", "calls", "template.meta.panels[tree].node");
     assert!(!calls.is_empty());
     let badge = format!("[{}]", calls.len());
@@ -108,6 +106,38 @@ fn index_shows_the_space_tree_from_the_recording() {
         "/space/preview-coasys",
         "the recorded path, status line",
     );
+}
+
+#[test]
+fn index_at_120x40_names_the_space_and_each_call_on_its_own_row() {
+    let t = truth();
+    let mut app = app("index");
+    let text = frame(&mut app, 120, 40);
+    let lines: Vec<&str> = text.lines().collect();
+    // Each recorded call, by its title, on the row of its own tree item —
+    // the item whose value the bundle builds as `call|<id>`.
+    let calls = rows(&t, "index", "calls", "template.meta.panels[tree].node");
+    assert_eq!(calls.len(), 3);
+    for call in &calls {
+        let title = call["title"].as_str().unwrap();
+        let value = format!("call|{}", call["id"].as_str().unwrap());
+        let item = app
+            .focusables
+            .iter()
+            .find(|f| matches!(&f.kind, FocusKind::TreeItem { value: v } if v.js_string() == value))
+            .unwrap_or_else(|| panic!("{value} is a tree row:\n{text}"));
+        assert!(item.rect.y < 39, "{title} row is on screen:\n{text}");
+        let row = lines[item.rect.y as usize];
+        assert!(
+            row.contains(title),
+            "{title:?} on its own row {row:?}:\n{text}"
+        );
+    }
+    // The space's recorded name, whole.
+    let space = t["routes"]["index"]["members"]["spaceStore"]["currentSpace"]["name"]
+        .as_str()
+        .expect("the recording names the space");
+    assert_shows(&text, space, "the recorded space name, readable");
 }
 
 #[test]
