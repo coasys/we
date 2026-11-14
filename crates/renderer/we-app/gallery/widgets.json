@@ -65,7 +65,9 @@
         {
           "type": "we-image",
           "props": {
-            "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAAA2CAIAAAC3LQuFAAABC0lEQVR4nO2ZwQ2CUBAFxViB5WhrerI2y9EavBgOohnwf95qMnMkHP4ObyHsDqfDbSOf2VYf4NdREKAgQEGAggAFAQoCFAQoCFAQoCBAQcCu+gBPLtf99OL5eM+f5IWh9m/+rZcphaYqW2ymnUV3dqcmQV8XnI9SQYJa4pCPUlpQe4VhR37mgaigXg8/GaKcoL5VxRzZYoCCgJCgNToi02UmCFAQoCBAQYCCAAUBIUFrjCkyow8TBCgIyAnq2xGx0WI0Qb2qSg5ebTEgLaj94Yfn9gUJaqkwv9WoXBwumldU7Q4r30Hzay7crBavnkfczf8rfuYBBQEKAhQEKAhQEKAgQEGAggAFAQoCHhuTPTsKS8PhAAAAAElFTkSuQmCC", "width": 96, "height": 54,
+            "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAAA2CAIAAAC3LQuFAAABC0lEQVR4nO2ZwQ2CUBAFxViB5WhrerI2y9EavBgOohnwf95qMnMkHP4ObyHsDqfDbSOf2VYf4NdREKAgQEGAggAFAQoCFAQoCFAQoCBAQcCu+gBPLtf99OL5eM+f5IWh9m/+rZcphaYqW2ymnUV3dqcmQV8XnI9SQYJa4pCPUlpQe4VhR37mgaigXg8/GaKcoL5VxRzZYoCCgJCgNToi02UmCFAQoCBAQYCCAAUBIUFrjCkyow8TBCgIyAnq2xGx0WI0Qb2qSg5ebTEgLaj94Yfn9gUJaqkwv9WoXBwumldU7Q4r30Hzay7crBavnkfczf8rfuYBBQEKAhQEKAhQEKAgQEGAggAFAQoCHhuTPTsKS8PhAAAAAElFTkSuQmCC",
+            "width": 96,
+            "height": 54,
             "alt": "demo image",
             "width": 96,
             "height": 54
