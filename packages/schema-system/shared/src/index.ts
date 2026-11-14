@@ -177,6 +177,17 @@ export {
   svgProblem,
 } from './bundle';
 export { isRelativePath, type PathBase, resolvePath } from './navigationPaths';
+export {
+  decodeLocalParam,
+  encodeLocalParam,
+  localParamText,
+  localPersistKey,
+  localSyncSpec,
+  type LocalSyncSpec,
+  localWriteMirror,
+  type LocalWriteMirror,
+  resolveLocalInitial,
+} from './localStateSync';
 export { isTemplatePage } from './routeMatching';
 export {
   applyStarterRecords,

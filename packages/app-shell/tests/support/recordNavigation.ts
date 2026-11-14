@@ -13,6 +13,12 @@
  * `setCurrentPath` — the same call TemplateLayout's router effect makes.
  */
 import { render } from '@solidjs/testing-library';
+import {
+  type LocalStateField,
+  localWriteMirror,
+  resolveLocalInitial,
+  type RouteParamsBinding,
+} from '@we/schema-shared';
 import { createComponent } from 'solid-js';
 
 import RouteStoreProvider, { type RouteStore, useRouteStore } from '../../src/frameworks/solid/stores/RouteStore';
@@ -45,6 +51,20 @@ export interface NavigationScript {
 }
 
 const href = () => `${window.location.pathname}${window.location.search}${window.location.hash}`;
+
+/**
+ * Build the `LocalStateField` a `sync_param`/`local_read` op's args describe — the same shape
+ * SchemaRenderer derives from a `$localState` declaration, so the shared rules see the field
+ * exactly as they would in the renderer.
+ */
+function localFieldFromArgs(args: Record<string, unknown>): LocalStateField {
+  return {
+    type: args.type as LocalStateField['type'],
+    initial: args.initial as LocalStateField['initial'],
+    persist: args.persist as string | undefined,
+    syncParam: typeof args.name === 'string' ? { name: args.name, push: args.push === true } : undefined,
+  };
+}
 
 /** Wait one popstate: jsdom dispatches it on a task, not synchronously. */
 function settle(): Promise<void> {
@@ -155,47 +175,34 @@ export async function runNavigationScript(script: NavigationScript): Promise<Nav
           });
           break;
         case 'sync_param': {
-          // The $localState write path: strings raw, everything else JSON, and a value back at the
-          // declared initial clears the param instead of writing it.
-          if (typeof args.persist === 'string') {
+          // The $localState write path runs the same shared rule SchemaRenderer's setter does
+          // (localWriteMirror): persist mirror, JSON for non-strings, back-at-initial clears.
+          const field = localFieldFromArgs(args);
+          const mirror = localWriteMirror(field, args.value, args.initial);
+          if (mirror.store) {
             try {
-              window.localStorage.setItem(`we-local:${args.persist}`, JSON.stringify(args.value));
+              window.localStorage.setItem(mirror.store.key, mirror.store.json);
             } catch {
               /* quota — the in-memory value still applies */
             }
           }
-          const text =
-            JSON.stringify(args.value) === JSON.stringify(args.initial)
-              ? null
-              : args.type === 'string'
-                ? String(args.value)
-                : JSON.stringify(args.value);
-          store.setParam(args.name as string, text ?? null, { push: args.push === true });
+          if (mirror.param) {
+            store.setParam(mirror.param.name, mirror.param.text, { push: mirror.param.push });
+          }
           break;
         }
         case 'local_read': {
-          // The mount-time precedence: URL param > persisted value > declared initial.
-          const type = args.type === 'string' ? 'string' : 'json';
-          const decode = (raw: string) => {
-            if (type === 'string') return raw;
-            try {
-              return JSON.parse(raw);
-            } catch {
-              return raw;
-            }
+          // The mount-time precedence runs SchemaRenderer's shared resolveLocalInitial:
+          // URL param > persisted value > declared initial.
+          const field = localFieldFromArgs(args);
+          const routeParams: RouteParamsBinding = {
+            get: (name) => store.params()[name],
+            set: (name, value, o) => store.setParam(name, value, o),
           };
-          const fromUrl = store.params()[args.name as string];
-          const persistedRaw =
-            typeof args.persist === 'string' ? window.localStorage.getItem(`we-local:${args.persist}`) : null;
-          let persisted: unknown;
-          if (persistedRaw !== null) {
-            try {
-              persisted = JSON.parse(persistedRaw);
-            } catch {
-              persisted = undefined;
-            }
-          }
-          resolved = fromUrl !== undefined ? decode(fromUrl) : persisted !== undefined ? persisted : args.initial;
+          resolved = resolveLocalInitial(field, args.initial, {
+            routeParams,
+            storage: window.localStorage,
+          });
           break;
         }
         case 'back':
