@@ -11,6 +11,7 @@
 
 pub mod draw;
 pub mod icons;
+pub mod load;
 pub mod palette;
 
 use std::collections::HashMap;
@@ -142,7 +143,7 @@ impl TuiApp {
         }
         let frame = paint_frame(
             &root,
-            content.width,
+            (content.width, view_h),
             &self.theme,
             self.palette,
             self.truecolor,

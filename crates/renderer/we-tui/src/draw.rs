@@ -522,7 +522,7 @@ impl<'a> Painter<'a> {
                 dim_cells(
                     style.layout.height.as_ref(),
                     inner_h,
-                    self.scx.viewport.height as u16,
+                    (self.scx.viewport.height / CELL_PX) as u16,
                 )
                 .unwrap_or(1)
                 .max(1),
@@ -555,8 +555,8 @@ impl<'a> Painter<'a> {
             }
         };
         // Explicit width/height override the intrinsic size; min/max clamp.
-        let vw = self.scx.viewport.width as u16;
-        let vh = self.scx.viewport.height as u16;
+        let vw = (self.scx.viewport.width / CELL_PX) as u16;
+        let vh = (self.scx.viewport.height / CELL_PX) as u16;
         if let Some(w) = dim_cells(style.layout.width.as_ref(), avail_w, vw) {
             dim.w = w;
         }
@@ -602,8 +602,8 @@ impl<'a> Painter<'a> {
         avail_w: u16,
         avail_h: u16,
     ) -> (u16, u16, u16, u16) {
-        let vw = self.scx.viewport.width as u16;
-        let vh = self.scx.viewport.height as u16;
+        let vw = (self.scx.viewport.width / CELL_PX) as u16;
+        let vh = (self.scx.viewport.height / CELL_PX) as u16;
         let card = tag(node) == Tag::Card;
         let side = |s: &Option<we_style::BorderSide>| match s {
             Some(s) if !matches!(s.kind, BorderKind::None | BorderKind::Hidden) => 1,
@@ -682,6 +682,12 @@ impl<'a> Painter<'a> {
         node.children
             .iter()
             .map(|c| match c {
+                ResolvedChild::Node(n) if self.out_of_flow(n).is_some() => (Dim::new(0, 0), false),
+                // A collapsed `$lane` is a 4px strip in we-egui — under a
+                // cell, so nothing here.
+                ResolvedChild::Node(n) if n.ty.as_ref() == "$lane" && prop_bool(n, "collapsed") => {
+                    (Dim::new(0, 0), false)
+                }
                 ResolvedChild::Node(n) => {
                     let flex = self.style(n).layout.flex.is_some_and(|f| f.grow > 0.0);
                     (self.measure(n, avail_w, avail_h), flex)
@@ -809,6 +815,7 @@ impl<'a> Painter<'a> {
     /// Paint `node` into `area` — the entry point of the recursive walk.
     pub fn paint(&mut self, node: &ResolvedNode, area: Rect, env: &Env) {
         if area.width == 0 || area.height == 0 {
+            self.paint_out_of_flow(node, area, env);
             return;
         }
         let style = self.style(node);
@@ -840,6 +847,7 @@ impl<'a> Painter<'a> {
             height: area.height.saturating_sub(t + b),
         };
         if inner.width == 0 || inner.height == 0 {
+            self.paint_out_of_flow(node, inner, &env);
             return;
         }
 
@@ -1075,6 +1083,82 @@ impl<'a> Painter<'a> {
             Direction::Column => self.layout_column(node, inner, &style, env),
             Direction::Row => self.layout_row(node, inner, &style, env),
         }
+        self.paint_out_of_flow(node, inner, env);
+    }
+
+    /// `position: fixed|absolute` children left the flow (they measured
+    /// 0×0); paint them over it at their insets — the frame's viewport for
+    /// `fixed`, `inner` for `absolute`. Also called when the parent's own
+    /// box is empty: a fixed shell inside a zero-height wrapper still shows.
+    fn paint_out_of_flow(&mut self, node: &ResolvedNode, inner: Rect, env: &Env) {
+        let empty = inner.width == 0 || inner.height == 0;
+        for c in &node.children {
+            let ResolvedChild::Node(n) = c else { continue };
+            if empty && self.out_of_flow(n).is_none() {
+                // An in-flow child of an empty box is empty too — walk on
+                // for the fixed boxes below it.
+                self.paint(n, Rect::new(inner.x, inner.y, 0, 0), env);
+                continue;
+            }
+            let Some(base) = self.out_of_flow(n).map(|fixed| {
+                if fixed {
+                    Rect::new(
+                        0,
+                        0,
+                        (self.scx.viewport.width / CELL_PX) as u16,
+                        (self.scx.viewport.height / CELL_PX) as u16,
+                    )
+                } else {
+                    inner
+                }
+            }) else {
+                continue;
+            };
+            let rect = self.placed_rect(n, base);
+            self.paint(n, rect, env);
+        }
+    }
+
+    /// `Some(true)` for a `position: fixed` node, `Some(false)` for
+    /// `absolute`, `None` for one in flow.
+    fn out_of_flow(&self, node: &ResolvedNode) -> Option<bool> {
+        match self.style(node).layout.position {
+            Some(we_style::Position::Fixed) => Some(true),
+            Some(we_style::Position::Absolute) => Some(false),
+            _ => None,
+        }
+    }
+
+    /// An out-of-flow box inside `base`: its measured size at `base`'s
+    /// size (an explicit `%` resolves against it), offset by `left`/`top`
+    /// — or pinned by `right`/`bottom` when only those are given; both
+    /// insets on an axis without a size stretch it between them.
+    fn placed_rect(&self, node: &ResolvedNode, base: Rect) -> Rect {
+        let style = self.style(node);
+        let vw = (self.scx.viewport.width / CELL_PX) as u16;
+        let vh = (self.scx.viewport.height / CELL_PX) as u16;
+        let inset = &style.layout.inset;
+        let l = dim_cells(inset.left.as_ref(), base.width, vw);
+        let r = dim_cells(inset.right.as_ref(), base.width, vw);
+        let t = dim_cells(inset.top.as_ref(), base.height, vh);
+        let b = dim_cells(inset.bottom.as_ref(), base.height, vh);
+        let dim = self.measure(node, base.width, base.height);
+        let (x, w) = match (l, r, style.layout.width.is_some()) {
+            (Some(l), Some(r), false) => (l, base.width.saturating_sub(l + r)),
+            (Some(l), _, _) => (l, dim.w),
+            (None, Some(r), _) => (base.width.saturating_sub(r + dim.w), dim.w),
+            (None, None, _) => (0, dim.w),
+        };
+        let (y, h) = match (t, b, style.layout.height.is_some()) {
+            (Some(t), Some(b), false) => (t, base.height.saturating_sub(t + b)),
+            (Some(t), _, _) => (t, dim.h),
+            (None, Some(b), _) => (base.height.saturating_sub(b + dim.h), dim.h),
+            (None, None, _) => (0, dim.h),
+        };
+        let x = base.x.saturating_add(x);
+        let y = base.y.saturating_add(y);
+        let w = w.min((base.x + base.width).saturating_sub(x));
+        Rect::new(x, y, w, h)
     }
 
     /// Vertical stack: children take their measured height, `flex` splits
@@ -1113,6 +1197,9 @@ impl<'a> Painter<'a> {
         for (i, c) in node.children.iter().enumerate() {
             if y >= inner.y + inner.height {
                 break;
+            }
+            if matches!(c, ResolvedChild::Node(n) if self.out_of_flow(n).is_some()) {
+                continue;
             }
             let (dim, flex) = dims[i];
             let h = if flex {
@@ -1172,6 +1259,9 @@ impl<'a> Painter<'a> {
         for (i, c) in node.children.iter().enumerate() {
             if x >= inner.x + inner.width {
                 break;
+            }
+            if matches!(c, ResolvedChild::Node(n) if self.out_of_flow(n).is_some()) {
+                continue;
             }
             let (dim, flex) = dims[i];
             let w = if flex {
@@ -1901,27 +1991,31 @@ pub struct Frame {
 
 /// Paint `root` into a fresh canvas `w` cells wide and full content
 /// height. `scroll` decides which window the caller copies out.
+/// `(w, view_h)` is the canvas width and the terminal's content rows.
 pub fn paint_frame(
     root: &ResolvedNode,
-    w: u16,
+    (w, view_h): (u16, u16),
     theme: &Theme,
     palette: Palette,
     truecolor: bool,
     focus: Option<NodeId>,
     drafts: &std::collections::HashMap<NodeId, String>,
 ) -> Frame {
+    // The viewport is the terminal window: `100vh`, a fixed shell's
+    // height, resolve to the rows on screen; taller content scrolls.
+    let view_h = view_h.clamp(1, MAX_LINES);
     let empty_scope = indexmap::IndexMap::new();
     let scx = StyleCx {
         tokens: &theme.tokens,
         // The root's custom-property scope; we-tui resolves every node
         // against it (no per-node `scope` descent yet).
         scope: &empty_scope,
-        viewport: we_style::Size::new(w as f32 * CELL_PX, MAX_LINES as f32 * CELL_PX),
+        viewport: we_style::Size::new(w as f32 * CELL_PX, view_h as f32 * CELL_PX),
         container_width: w as f32 * CELL_PX,
     };
     let mut probe_buf = Buffer::empty(Rect::new(0, 0, w.max(1), 1));
     let probe = Painter::new(&mut probe_buf, scx, theme, palette, truecolor, drafts);
-    let height = probe.measure(root, w, MAX_LINES).h.clamp(1, MAX_LINES);
+    let height = probe.measure(root, w, view_h).h.clamp(view_h, MAX_LINES);
     let mut buf = Buffer::empty(Rect::new(0, 0, w.max(1), height));
     if let Some(bg) = tui_color(palette.bg(theme), truecolor) {
         buf.set_style(Rect::new(0, 0, w.max(1), height), TStyle::default().bg(bg));

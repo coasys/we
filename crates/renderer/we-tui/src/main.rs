@@ -2,12 +2,11 @@
 //! [`we_session::Session`] exactly like `we-cli`, then paint the resolved
 //! tree as terminal cells with the keyboard driving it.
 //!
-//! usage: we-tui [--bundle <path>] [--snapshot <path>] [--route <href>]
+//! usage: we-tui [--bundle <path>] [--snapshot <path>] [--route <href or recorded route id>]
 //!               [--theme <name>] [--dump] [--size <WxH>]
 #![forbid(unsafe_code)]
 
 use std::io::stdout;
-use std::sync::Arc;
 use std::time::Duration;
 
 use crossterm::event::{self, Event};
@@ -19,10 +18,6 @@ use ratatui::backend::CrosstermBackend;
 use ratatui::buffer::Buffer;
 use ratatui::layout::Rect;
 use ratatui::Terminal;
-use serde::Deserialize;
-use we_screen::{ScreenSchema, ScreenState};
-use we_session::Session;
-use we_template::{Bundle, SchemaNode, StoreBag};
 use we_tui::palette::{load_theme_set, truecolor_env};
 use we_tui::{buffer_text, KeyResult, TuiApp};
 
@@ -60,57 +55,25 @@ fn size_arg() -> (u16, u16) {
     }
 }
 
-/// The bundle's `tree` panel schema — the same node `we-cli` and `we-app`
-/// render.
-fn tree_schema(bundle: &Bundle) -> SchemaNode {
-    bundle
-        .templates
-        .as_deref()
-        .unwrap_or_default()
-        .first()
-        .and_then(|t| t.meta.get("panels"))
-        .and_then(|panels| panels.as_array())
-        .and_then(|panels| {
-            panels
-                .iter()
-                .find(|p| p.get("id").and_then(|i| i.as_str()) == Some("tree"))
-                .or_else(|| panels.first())
-        })
-        .and_then(|panel| SchemaNode::deserialize(panel.get("node").cloned()?).ok())
-        .unwrap_or_else(|| panic!("bundle has no panels to render"))
-}
-
 fn main() {
     let bundle_path = arg("--bundle", Some(DEFAULT_BUNDLE.to_string())).unwrap();
-    let route = arg("--route", Some("/space/demo".to_string())).unwrap();
     let text = std::fs::read_to_string(&bundle_path)
         .unwrap_or_else(|e| panic!("cannot read bundle {bundle_path}: {e}"));
-    let bundle = Bundle::parse(&text).unwrap_or_else(|e| panic!("bundle did not parse: {e}"));
-
-    let bag = match arg("--snapshot", None) {
-        Some(path) => {
-            let text = std::fs::read_to_string(&path)
-                .unwrap_or_else(|e| panic!("cannot read snapshot {path}: {e}"));
-            let json: serde_json::Value =
-                serde_json::from_str(&text).unwrap_or_else(|e| panic!("snapshot parse: {e}"));
-            StoreBag::from_snapshot(&json).unwrap_or_else(|e| panic!("snapshot: {e}"))
-        }
-        None => StoreBag::new(),
-    };
-    let screen_schema = ScreenSchema {
-        pages: bundle
-            .pages
-            .as_deref()
-            .unwrap_or_default()
-            .iter()
-            .map(|p| p.id.clone())
-            .collect(),
-        ..ScreenSchema::default()
-    };
-    let screen = ScreenState::desktop(screen_schema, &route);
-
-    let session = Session::new(tree_schema(&bundle), "tree", Arc::new(bag), screen)
-        .with_dollar_types(|ty| we_catalog::entry(ty).is_some());
+    let snapshot = arg("--snapshot", None).map(|path| {
+        std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("cannot read snapshot {path}: {e}"))
+    });
+    // A we-snapshot@2 recording takes a route id (`index`, `people`) or a
+    // recorded path and defaults to its landing route; a flat snapshot
+    // keeps we-cli's `/space/demo`.
+    let recording = snapshot
+        .as_deref()
+        .and_then(|t| serde_json::from_str::<serde_json::Value>(t).ok())
+        .is_some_and(|j| we_tui::load::is_recording(&j));
+    let default_route = if recording { "index" } else { "/space/demo" };
+    let route = arg("--route", Some(default_route.to_string())).unwrap();
+    let session = we_tui::load::session_from_text(&text, snapshot.as_deref(), &route)
+        .unwrap_or_else(|e| panic!("{e}"));
 
     // `--theme <name>` picks one of the six recorded tables; an unknown
     // name falls back to `dark` — ThemeSet's documented behaviour.
