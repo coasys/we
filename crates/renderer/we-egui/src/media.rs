@@ -559,11 +559,26 @@ impl Avatar {
                 .or_else(|| props::role_color(&ctx, "surface-sunken"))
                 .unwrap_or_else(|| ui.visuals().widgets.noninteractive.bg_fill)
         };
-        // The element's chrome — the theme's part rules or authored
-        // shadows/borders — over the slot, under the face. `bg` is
-        // cleared: each face paints its own disc.
+        // CSS order for the base part: its background (the face's disc —
+        // seeded for initials, sunken for an identicon or icon, none for a
+        // picture: `has-image` drops it), then the theme's chrome over it
+        // (retro's inset bevel, borders), then the content — the letters,
+        // the identicon, the glyph or the picture.
+        let disc = match face {
+            Face::Image(_) => None,
+            Face::Initials(_, seed) => Some(
+                props::seeded_fill(&ctx, seed)
+                    .unwrap_or_else(|| (sunken(), props::text_color(style, &ctx))),
+            ),
+            Face::Hash(_) | Face::Icon(_) => Some((sunken(), props::text_color(style, &ctx))),
+        };
         let mut chrome = style.clone();
-        chrome.paint.bg = None;
+        chrome.paint.bg = disc.map(|(bg, _)| {
+            let [r, g, b, a] = bg.to_normalized_gamma_f32();
+            // Color32 is premultiplied; the style colour is straight.
+            let un = |c: f32| if a > 0.0 { (c / a).min(1.0) } else { 0.0 };
+            we_style::Color::new(un(r), un(g), un(b), a)
+        });
         props::paint_box(
             ui.painter(),
             rect,
@@ -573,7 +588,6 @@ impl Avatar {
         );
         let p = ui.painter().with_clip_rect(rect);
         match face {
-            // `has-image` drops the disc — a picture covers it entirely.
             Face::Image(u) => {
                 egui::Image::new(image_source(u))
                     .fit_to_exact_size(rect.size())
@@ -581,10 +595,8 @@ impl Avatar {
                     .show_loading_spinner(false)
                     .paint_at(ui, rect);
             }
-            Face::Initials(letters, seed) => {
-                let (bg, fg) = props::seeded_fill(&ctx, seed)
-                    .unwrap_or_else(|| (sunken(), props::text_color(style, &ctx)));
-                p.rect_filled(rect, r, bg);
+            Face::Initials(letters, _) => {
+                let fg = disc.map(|(_, fg)| fg).unwrap_or(egui::Color32::PLACEHOLDER);
                 // 0.4× the disc — 0.5× for a lone letter (the optical lift).
                 let fs = rect.height()
                     * if letters.chars().count() == 1 {
@@ -601,11 +613,9 @@ impl Avatar {
                 );
             }
             Face::Hash(h) => {
-                p.rect_filled(rect, r, sunken());
                 paint_identicon(&p, rect, h, &ctx);
             }
             Face::Icon(name) => {
-                p.rect_filled(rect, r, sunken());
                 p.text(
                     rect.center(),
                     egui::Align2::CENTER_CENTER,
