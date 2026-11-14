@@ -149,10 +149,12 @@ pub fn eval_dimension(text: &str) -> Option<Dimension> {
         "%" => Some(Dimension::Percent((num / 100.0) as f32)),
         "rem" => Some(Dimension::Rem(num as f32)),
         "em" => Some(Dimension::Em(num as f32)),
-        "vw" => Some(Dimension::Vw(num as f32)),
-        "vh" => Some(Dimension::Vh(num as f32)),
-        "vmin" => Some(Dimension::Vmin(num as f32)),
-        "vmax" => Some(Dimension::Vmax(num as f32)),
+        // The viewport units — `d`/`s`/`l` qualify small/large/dynamic
+        // browser chrome, which egui does not have: they are the viewport.
+        "vw" | "dvw" | "svw" | "lvw" => Some(Dimension::Vw(num as f32)),
+        "vh" | "dvh" | "svh" | "lvh" => Some(Dimension::Vh(num as f32)),
+        "vmin" | "dvmin" | "svmin" | "lvmin" => Some(Dimension::Vmin(num as f32)),
+        "vmax" | "dvmax" | "svmax" | "lvmax" => Some(Dimension::Vmax(num as f32)),
         "ch" => Some(Dimension::Ch(num as f32)),
         "ex" => Some(Dimension::Ex(num as f32)),
         "lh" => Some(Dimension::Lh(num as f32)),
