@@ -572,7 +572,10 @@ fn modal_overlay(
     let width = modal_width(node, screen.width());
     let mcx = MeasureCx::new(ctx);
     let host = modal_host(node, width, floating, &mcx);
-    let sub = crate::layout(&mcx, w.scx, w.registry, &host, screen);
+    // Not the page root — the host's `auto` height is the content's, so
+    // `sub.size` stays the dialog's real box (a `100vh` floor here made the
+    // dialog fill the viewport).
+    let sub = crate::layout_shrink(&mcx, w.scx, w.registry, &host, screen);
     // The dialog is sized by its content: `sub.size` is the padded host
     // column — width, plus `pt` (pad + title strip) + children + `pb`.
     // WE caps it at `maxHeight: calc(100dvh - 64px)`.
@@ -614,7 +617,9 @@ fn anchored_overlay(
     let width = anchor.width().max(160.0);
     let host = overlay_host(node, width, floating);
     let mcx = MeasureCx::new(ctx);
-    let sub = crate::layout(&mcx, w.scx, w.registry, &host, anchor);
+    // Same floating-host rule as the modal: `auto` height is the content's,
+    // not floored to the anchor's rect.
+    let sub = crate::layout_shrink(&mcx, w.scx, w.registry, &host, anchor);
     let size = sub.size.max(egui::vec2(width, 4.0));
 
     let inner = egui::Popup::new(

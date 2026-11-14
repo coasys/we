@@ -5,7 +5,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use egui_kittest::{Harness, SnapshotResults};
+use egui_kittest::{kittest::Queryable, Harness, SnapshotResults};
 use we_app::gallery_widgets::{widgets_tree, widgets_ui};
 use we_egui::EditState;
 
@@ -34,6 +34,49 @@ fn widgets_gallery_snapshots_dark() {
     snap("rest", false, &mut results);
     snap("open", true, &mut results);
     results.unwrap();
+}
+
+/// The open dialog over the gallery tree is content-sized and centred —
+/// the same `widgets_ui` `--gallery widgets` paints. The snapshot catches
+/// the pixel change; this pins the geometry, so a layout regression fails
+/// a test rather than landing silently in a re-recorded baseline. (The
+/// overlay host column once inherited `layout`'s `min-height: 100vh` page
+/// floor — the dialog filled the viewport and every assertion below except
+/// the height bound still passed.)
+#[test]
+fn widgets_open_modal_sizes_to_content() {
+    let edit = Rc::new(RefCell::new(EditState::default()));
+    let tree = widgets_tree(true);
+    let e = edit.clone();
+    let mut harness = Harness::builder()
+        .with_size(egui::vec2(420.0, 720.0))
+        .with_context_setup(|ctx| {
+            ctx.set_fonts(egui::FontDefinitions::default());
+            ctx.set_theme(egui::ThemePreference::Dark);
+        })
+        .build_ui(move |ui| {
+            let mut events = Vec::new();
+            widgets_ui(ui, &tree, &mut e.borrow_mut(), &mut events, 0.0);
+        });
+    harness.run();
+    let dialog = harness.get_by_label("Example modal").rect();
+    let inside = harness.get_by_label("Inside the modal").rect();
+    // Centred in the 420×720 viewport.
+    assert!(
+        (dialog.center().x - 210.0).abs() < 1.0 && (dialog.center().y - 360.0).abs() < 1.0,
+        "dialog not centred: {dialog:?}"
+    );
+    // Content-sized: title strip + one button + the size-md padding — far
+    // under the `100dvh - 64px` cap, so the bottom edge sits well inside.
+    assert!(
+        dialog.height() < inside.height() + 220.0,
+        "dialog not sized to content: {dialog:?} vs {inside:?}"
+    );
+    assert!(
+        dialog.max.y < 660.0,
+        "dialog reaches the viewport: {dialog:?}"
+    );
+    assert!(dialog.contains_rect(inside));
 }
 
 /// The open-modal backdrop dims the whole viewport — every pixel is

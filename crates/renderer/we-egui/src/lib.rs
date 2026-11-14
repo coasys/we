@@ -46,7 +46,7 @@ pub use edit_state::EditState;
 pub use event as events;
 pub use feedback::{Alert, Badge, Divider, Skeleton, Tag, Tooltip};
 pub use inputs::{FormField, Input, NumberInput, Select, Slider, Switch, Textarea};
-pub use layout::{layout, Layout, Parts, TextSpan};
+pub use layout::{layout, layout_shrink, Layout, Parts, TextSpan};
 pub use media::{install as install_media, AnimatedIcon, Avatar, AvatarStack, Icon, Image};
 pub use overlays::{DropdownMenu, Modal, Popover};
 pub use paint::paint;

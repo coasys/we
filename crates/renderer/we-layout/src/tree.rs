@@ -807,7 +807,31 @@ pub trait Measure {
 
 /// Lay out `root` inside `rect` — the frame calls this when the resolve
 /// revision or the rect changed, and keeps the [`Layout`] until then.
+///
+/// The root's containing block is the viewport: `width: auto` fills it —
+/// block-box behaviour, not a shrink-wrapped flex item. Same downward:
+/// `height: auto` still paints the whole viewport (`min-height: 100vh`),
+/// so a `bg` root covers the empty tail of a short panel.
 pub fn layout(m: &dyn Measure, scx: &StyleCx, root: &ResolvedNode, rect: Rect) -> Layout {
+    layout_impl(m, scx, root, rect, true)
+}
+
+/// The same walk for a subtree that is not the page root — the overlay
+/// pass's synthetic host column is the caller. `width: auto` still fills
+/// `rect` (a block box fills its containing block), but `height: auto`
+/// stays content-sized: the `min-height: 100vh` floor is the page root's
+/// alone, so `sub.size` is the real content box a dialog centres.
+pub fn layout_shrink(m: &dyn Measure, scx: &StyleCx, root: &ResolvedNode, rect: Rect) -> Layout {
+    layout_impl(m, scx, root, rect, false)
+}
+
+fn layout_impl(
+    m: &dyn Measure,
+    scx: &StyleCx,
+    root: &ResolvedNode,
+    rect: Rect,
+    viewport_root: bool,
+) -> Layout {
     let mut b = Builder {
         tree: TaffyTree::new(),
         m,
@@ -823,7 +847,8 @@ pub fn layout(m: &dyn Measure, scx: &StyleCx, root: &ResolvedNode, rect: Rect) -
     // The root's containing block is the viewport: `width: auto` fills it —
     // block-box behaviour, not a shrink-wrapped flex item. Same downward:
     // `height: auto` still paints the whole viewport (`min-height: 100vh`),
-    // so a `bg` root covers the empty tail of a short panel.
+    // so a `bg` root covers the empty tail of a short panel. `viewport_root`
+    // withholds that floor: a floating host's `auto` height is its content.
     let mut root_style = b.tree.style(root_id).unwrap().clone();
     let mut touch = false;
     if matches!(
@@ -833,10 +858,12 @@ pub fn layout(m: &dyn Measure, scx: &StyleCx, root: &ResolvedNode, rect: Rect) -
         root_style.size.width = taffy::Dimension::length(rect.width());
         touch = true;
     }
-    if matches!(
-        root_style.size.height.expand(),
-        taffy::ExpandedDimension::Auto
-    ) {
+    if viewport_root
+        && matches!(
+            root_style.size.height.expand(),
+            taffy::ExpandedDimension::Auto
+        )
+    {
         root_style.min_size.height = taffy::prelude::LengthPercentageAuto::length(rect.height());
         touch = true;
     }
