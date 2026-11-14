@@ -252,7 +252,8 @@ impl Chain {
 /// The egui family a CSS `font-family` stack resolves to — the chain of
 /// its installed WE families then its generic (see [`Chain`]); egui's
 /// generic alone when it names none.
-pub(crate) fn family_named(
+#[cfg(test)]
+fn family_named(
     stack: &str,
     weight: Option<f32>,
     has_face: impl Fn(&str) -> bool,
@@ -322,7 +323,7 @@ pub(crate) fn resolve(ctx: &egui::Context, stack: &str, weight: Option<f32>) -> 
         (chain.first(), Some((key, next)))
     });
     if let Some((key, defs)) = register {
-        let id = egui::Id::new((PENDING, key.as_str()));
+        let id = egui::Id::unique(PENDING).with(key.as_str());
         if ctx.data_mut(|d| d.get_temp::<bool>(id)).is_none() {
             ctx.data_mut(|d| d.insert_temp(id, true));
             ctx.set_fonts(defs);
