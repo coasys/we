@@ -141,9 +141,7 @@ fn a_screen_write_is_visible_to_later_tokens_in_the_chain() {
     let owner = root_id(&root);
     rt.dispatch(&mut host, &mut screen, &owner, "onTap", Value::Null);
     assert!(
-        locals
-            .get(&owner, "seen")
-            .strict_eq(&Value::from("new")),
+        locals.get(&owner, "seen").strict_eq(&Value::from("new")),
         "the second token must read the param the first just wrote; got {:?}",
         locals.get(&owner, "seen")
     );

@@ -270,6 +270,11 @@ fn op_names_table_is_complete() {
             key: String::new(),
             value: None,
         },
+        ScreenOp::SetSurface {
+            id: String::new(),
+            width: 0.0,
+            tier: String::new(),
+        },
     ];
     assert_eq!(ops.len(), OP_NAMES.len());
     for op in &ops {

@@ -703,15 +703,15 @@ fn resolve_node(
                 .and_then(|v| v.as_str())
                 .unwrap_or("surface")
                 .into();
-            let measure = cx
-                .screen
-                .surfaces
-                .get(id.as_str())
-                .cloned()
-                .unwrap_or(we_screen::SurfaceMeasure {
-                    width: 0.0,
-                    tier: "base".into(),
-                });
+            let measure =
+                cx.screen
+                    .surfaces
+                    .get(id.as_str())
+                    .cloned()
+                    .unwrap_or(we_screen::SurfaceMeasure {
+                        width: 0.0,
+                        tier: "base".into(),
+                    });
             let mut surface = IndexMap::new();
             surface.insert("width".into(), Value::Num(measure.width));
             surface.insert("tier".into(), Value::Str(measure.tier.into()));
@@ -1179,7 +1179,15 @@ fn resolve_chain<'a>(
 
     let route_path = format!("{path}/r:{}", head.full.trim_start_matches('/'));
     cx.route_tail.push(tail.to_vec());
-    let out = resolve_node(&head.route.node, &step_scope, parent, root, &route_path, decls, cx);
+    let out = resolve_node(
+        &head.route.node,
+        &step_scope,
+        parent,
+        root,
+        &route_path,
+        decls,
+        cx,
+    );
     cx.route_tail.pop();
     out
 }

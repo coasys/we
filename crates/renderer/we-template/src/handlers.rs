@@ -199,7 +199,12 @@ fn nav_base_depth(scope: &Scope) -> Option<usize> {
 
 /// A `$invoke` target's [`ScreenOp`], when it names one — the store map's
 /// `screen` rows, in the names a template writes. `None` → the host answers.
-fn screen_op(target: &str, args: &[Value], scope: &Scope, screen: &ScreenState) -> Option<ScreenOp> {
+fn screen_op(
+    target: &str,
+    args: &[Value],
+    scope: &Scope,
+    screen: &ScreenState,
+) -> Option<ScreenOp> {
     let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undefined);
     let text = |v: &Value| -> String { v.js_string() };
     match target {
@@ -212,11 +217,7 @@ fn screen_op(target: &str, args: &[Value], scope: &Scope, screen: &ScreenState) 
             let mut base = None;
             if let Value::Obj(opts) = arg(1) {
                 if let Some(Value::Obj(q)) = opts.get("query") {
-                    query = Some(
-                        q.iter()
-                            .map(|(k, v)| (k.to_string(), v.clone()))
-                            .collect(),
-                    );
+                    query = Some(q.iter().map(|(k, v)| (k.to_string(), v.clone())).collect());
                 }
                 if let Some(Value::Obj(b)) = opts.get("base") {
                     if let Some(Value::Num(d)) = b.get("depth") {

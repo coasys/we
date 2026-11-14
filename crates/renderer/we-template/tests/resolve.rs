@@ -203,9 +203,7 @@ fn unkeyed_primitive_rows_keep_state_when_an_earlier_row_leaves() {
             }]
         }]
     }));
-    let list = |v: &[&str]| {
-        Value::List(Arc::new(v.iter().map(|s| Value::from(*s)).collect()))
-    };
+    let list = |v: &[&str]| Value::List(Arc::new(v.iter().map(|s| Value::from(*s)).collect()));
     let bag = Arc::new(StoreBag::new());
     bag.set_root("rows", list(&["a", "b"]));
     let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
@@ -219,7 +217,11 @@ fn unkeyed_primitive_rows_keep_state_when_an_earlier_row_leaves() {
     let second = rt.frame(&mut host, &screen).clone();
     let mut second_ids = Vec::new();
     ids(&second, &mut second_ids);
-    assert_eq!(second_ids.len() - 1, 1, "one row must remain: {second_ids:?}");
+    assert_eq!(
+        second_ids.len() - 1,
+        1,
+        "one row must remain: {second_ids:?}"
+    );
     assert!(
         second_ids.contains(&b_id),
         "row 'b' must keep its identity after 'a' leaves: {second_ids:?}"
@@ -228,7 +230,10 @@ fn unkeyed_primitive_rows_keep_state_when_an_earlier_row_leaves() {
         Some(ResolvedChild::Node(n)) => n.props["text"].to_text().to_string(),
         _ => panic!("row must be a node"),
     };
-    assert_eq!(text, "B!", "row 'b' must keep its own local, not row 'a''s seat");
+    assert_eq!(
+        text, "B!",
+        "row 'b' must keep its own local, not row 'a''s seat"
+    );
 }
 
 #[test]
@@ -351,9 +356,12 @@ fn a_dollar_string_initial_stays_literal() {
         "children": [{ "type": "we-text", "props": { "text": { "$": "local.name" } } }]
     }));
     let bag = StoreBag::new();
-    bag.set_root("store", Value::Obj(Arc::new(
-        [("name".into(), Value::from("A"))].into_iter().collect(),
-    )));
+    bag.set_root(
+        "store",
+        Value::Obj(Arc::new(
+            [("name".into(), Value::from("A"))].into_iter().collect(),
+        )),
+    );
     let (mut rt, mut host, locals, screen) = rig(node, bag);
     let root = rt.frame(&mut host, &screen).clone();
     assert!(locals
@@ -461,7 +469,11 @@ fn declarations_on_structure_nodes_still_bind_local() {
     let root = rt.frame(&mut host, &screen).clone();
     let mut texts = Vec::new();
     collect_texts(&root, &mut texts);
-    assert_eq!(texts, vec!["f", "s", "s", "c"], "every declaring node's local must bind: {texts:?}");
+    assert_eq!(
+        texts,
+        vec!["f", "s", "s", "c"],
+        "every declaring node's local must bind: {texts:?}"
+    );
 }
 
 fn collect_texts(node: &ResolvedNode, out: &mut Vec<String>) {

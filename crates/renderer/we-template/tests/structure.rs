@@ -241,19 +241,27 @@ fn animate_keeps_locals_across_close_and_reopen() {
     let screen = screen("/");
 
     let first = rt.frame(&mut host, &screen).clone();
-    let child = find_ty(&first, "we-text").expect("child must mount").id.clone();
+    let child = find_ty(&first, "we-text")
+        .expect("child must mount")
+        .id
+        .clone();
     locals.set(&child, "draft", Value::from("half-typed"));
 
     bag.set_root("open", Value::Bool(false));
     let closed = rt.frame(&mut host, &screen).clone();
     let closed_child = find_ty(&closed, "we-text").expect("closed child stays mounted");
-    assert_eq!(closed_child.id, child, "the child's identity survives closing");
+    assert_eq!(
+        closed_child.id, child,
+        "the child's identity survives closing"
+    );
     assert_eq!(
         closed_child.transition.as_ref().and_then(|t| t.open),
         Some(false)
     );
     assert!(
-        locals.get(&child, "draft").strict_eq(&Value::from("half-typed")),
+        locals
+            .get(&child, "draft")
+            .strict_eq(&Value::from("half-typed")),
         "locals survive while closed"
     );
 
@@ -287,7 +295,8 @@ fn nested_routes_render_layout_ancestors_and_the_leaf() {
     }))
     .unwrap();
 
-    let (mut rt, mut host, screen) = app_rt(None, Some(tmpl.clone()), "/space/demo/settings/profile");
+    let (mut rt, mut host, screen) =
+        app_rt(None, Some(tmpl.clone()), "/space/demo/settings/profile");
     let root = rt.frame(&mut host, &screen).clone();
     assert!(
         find_ty(&root, "Header").is_some(),
@@ -591,7 +600,11 @@ fn inline_query_tokens_flow_through_the_pool() {
     // asking the same thing share one cell.
     struct Tasks;
     impl we_template::QuerySource for Tasks {
-        fn rows(&self, _key: &we_template::QueryKey, _ir: &we_template::QueryIr) -> we_template::QueryState {
+        fn rows(
+            &self,
+            _key: &we_template::QueryKey,
+            _ir: &we_template::QueryIr,
+        ) -> we_template::QueryState {
             we_template::QueryState::Rows(Arc::new(vec![
                 Value::from_json(&json!({ "id": "t1", "name": "one" })),
                 Value::from_json(&json!({ "id": "t2", "name": "two" })),
