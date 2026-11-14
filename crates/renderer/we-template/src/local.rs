@@ -33,7 +33,7 @@ struct Inner {
     /// the evaluated value plus the `(name → value)` reads the evaluation
     /// made. Fields whose `initial` is a literal never get an entry, so a
     /// static seed never resets.
-    initials: HashMap<(NodeId, Arc<str>), (Value, Vec<(Arc<str>, Value)>)>,
+    initials: HashMap<(NodeId, Arc<str>), (Value, TrackedDeps)>,
     /// `$each` node → its container rows' reference identities — held so a
     /// row's key is the live allocation, never a reusable address.
     each_refs: HashMap<NodeId, RefIds>,
@@ -41,6 +41,14 @@ struct Inner {
     /// three counters that decide whether the next frame re-resolves.
     version: u64,
 }
+
+/// The `(name → value)` reads one tracked evaluation made — a `{"$": …}`
+/// initial's dependency list, the way a memo's reads are its deps.
+pub(crate) type TrackedDeps = Vec<(Arc<str>, Value)>;
+
+/// The per-`$each` memory one row kind holds: data address → the
+/// allocation sequence the row there owns, kept honest by the [`Weak`].
+type RefSeq<T> = HashMap<usize, (usize, Weak<T>)>;
 
 /// Per-`$each` reference memory: the sequence number each row allocation
 /// was first seen at. The map's key is the row's data address; the stored
@@ -50,15 +58,15 @@ struct Inner {
 #[derive(Debug, Default)]
 struct RefIds {
     next: usize,
-    objs: HashMap<usize, (usize, Weak<IndexMap<Arc<str>, Value>>)>,
-    lists: HashMap<usize, (usize, Weak<Vec<Value>>)>,
+    objs: RefSeq<IndexMap<Arc<str>, Value>>,
+    lists: RefSeq<Vec<Value>>,
 }
 
 impl RefIds {
     /// The allocation's sequence — fresh when the address is unknown, and
     /// also fresh when its previous occupant died: the new allocation at
     /// that address is a different row, not the old one back again.
-    fn of<T>(next: &mut usize, map: &mut HashMap<usize, (usize, Weak<T>)>, arc: &Arc<T>) -> usize {
+    fn of<T>(next: &mut usize, map: &mut RefSeq<T>, arc: &Arc<T>) -> usize {
         let ptr = Arc::as_ptr(arc) as usize;
         if let Some((seq, weak)) = map.get(&ptr) {
             if weak.upgrade().is_some() {
@@ -85,7 +93,7 @@ impl RefIds {
 /// scope objects (`$nav`, the surface box) every pass, where TS keeps one
 /// object alive. The consequence of a wrong "unchanged" is a kept user
 /// edit, never a lost one.
-fn deps_moved(prev: &[(Arc<str>, Value)], next: &[(Arc<str>, Value)]) -> bool {
+fn deps_moved(prev: &TrackedDeps, next: &TrackedDeps) -> bool {
     prev.len() != next.len()
         || prev
             .iter()
@@ -173,13 +181,7 @@ impl LocalState {
     ///    same value leaves the field and `touched` alone.
     ///
     /// The first read always emits (the effect runs at mount).
-    pub fn follow_initial(
-        &self,
-        node: &NodeId,
-        field: &str,
-        evaluated: Value,
-        deps: &[(Arc<str>, Value)],
-    ) {
+    pub fn follow_initial(&self, node: &NodeId, field: &str, evaluated: Value, deps: &TrackedDeps) {
         if let Ok(mut inner) = self.inner.write() {
             let key = (node.clone(), field.into());
             if let Some((prev_value, prev_deps)) = inner.initials.get(&key) {

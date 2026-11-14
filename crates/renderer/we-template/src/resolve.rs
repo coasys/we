@@ -20,6 +20,7 @@ use we_expr::{eval, Env, Namespace, ParseCache, Value};
 use we_screen::{local_persist_key, local_sync_spec, resolve_local_initial, ScreenOp, ScreenState};
 
 use crate::handler::HandlerToken;
+use crate::local::TrackedDeps;
 use crate::node::{JsonMap, RouteNode, SchemaChild, SchemaNode};
 use crate::query::{compile_query, QueryPool, QueryState};
 use crate::resolved::{HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope, Transition};
@@ -148,6 +149,10 @@ pub(crate) fn eval_str(
     }
 }
 
+/// The recorded reads one tracked evaluation accumulates — the [`Env`]
+/// side of [`TrackedDeps`], shared into every namespace wrapper.
+type DepLog = Arc<Mutex<Vec<(Arc<str>, Value)>>>;
+
 /// `source` evaluated with its reads recorded — the `(name, value)` pairs
 /// the expression actually consumed, so a later pass can ask whether its
 /// memo's inputs moved rather than whether this pass's value merely
@@ -160,7 +165,7 @@ fn eval_str_tracked(
     bag: &StoreBag,
     cache: &mut ParseCache,
     warnings: &mut Vec<Arc<str>>,
-) -> (Value, Vec<(Arc<str>, Value)>) {
+) -> (Value, TrackedDeps) {
     match cache.parse(source) {
         Ok(expr) => {
             let env = TrackEnv {
@@ -185,7 +190,7 @@ fn eval_str_tracked(
 /// [`ScopeEnv`], with every root read going into `deps`.
 struct TrackEnv<'a> {
     inner: ScopeEnv<'a>,
-    deps: Arc<Mutex<Vec<(Arc<str>, Value)>>>,
+    deps: DepLog,
 }
 
 impl Env for TrackEnv<'_> {
@@ -220,7 +225,7 @@ impl Env for TrackEnv<'_> {
 struct TrackNs {
     path: Arc<str>,
     inner: Value,
-    deps: Arc<Mutex<Vec<(Arc<str>, Value)>>>,
+    deps: DepLog,
 }
 
 impl Namespace for TrackNs {
