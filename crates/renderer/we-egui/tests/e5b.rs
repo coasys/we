@@ -1979,6 +1979,34 @@ fn scrolled_trigger_keeps_its_popup_anchored() {
     );
 }
 
+/// Acceptance set — a dismissed popup returns keyboard focus to its
+/// trigger, the DOM's `trigger.focus()` on light-dismiss/Escape.
+#[test]
+fn popup_close_returns_focus_to_trigger() {
+    let mut pop = node("we-popover", "pop", props(&[]));
+    let trig = node("we-button", "pop/trig", props(&[("label", s("Trig"))]));
+    let mut item = node("we-button", "pop/item", props(&[("label", s("Pop"))]));
+    item.slot = Some(Arc::from("content"));
+    pop.children = vec![
+        ResolvedChild::Node(Box::new(trig)),
+        ResolvedChild::Node(Box::new(item)),
+    ];
+    let (mut h, _r) = rig(pop);
+    h.run();
+    h.get_by_label("Trig").click();
+    h.run();
+    // Focus lands inside the popup (pointer press focuses the widget).
+    h.get_by_label("Pop").focus();
+    h.run();
+    assert!(h.get_by_label("Pop").is_focused());
+    h.key_press(egui::Key::Escape);
+    h.run();
+    assert!(
+        h.get_by_label("Trig").is_focused(),
+        "Escape returns focus to the popup's trigger"
+    );
+}
+
 /// B10 — `open` is element state the prop syncs on change, not a lock:
 /// Escape on a controlled popover still dismisses it (the DOM element
 /// writes `this.open = false`), and a declared `close` handler hears

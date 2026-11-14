@@ -81,6 +81,10 @@ pub fn paint(
     finish_overlays(&mut w);
 }
 
+/// An overlay queued mid-walk: the node, its parent style context, the
+/// overlay ancestor chain, and the painted trigger anchor.
+type PendingOverlay = (ResolvedNode, Option<Style>, Vec<NodeId>, Option<Rect>);
+
 /// The walk's shared state — everything but the node being painted.
 struct Walk<'a> {
     ui: &'a mut egui::Ui,
@@ -109,7 +113,7 @@ struct Walk<'a> {
     /// effective style, the overlay ancestor chain (outermost first) the
     /// dismissal pass shields with, and the trigger anchor as painted —
     /// scroll offsets applied — since `base_parts` forgets them (S1).
-    overlays: Vec<(ResolvedNode, Option<Style>, Vec<NodeId>, Option<Rect>)>,
+    overlays: Vec<PendingOverlay>,
     /// The chain of overlays this walk paints inside — the entry's own id
     /// appended when `overlay_contents` recurses.
     overlay_stack: Vec<NodeId>,
@@ -138,6 +142,9 @@ struct FrameOverlay {
     stack: Vec<NodeId>,
     /// `close`/`onClose` the node declared, resolved once at record time.
     close: Option<&'static str>,
+    /// The trigger's egui widget id — a dismissed popup returns keyboard
+    /// focus to it like the DOM's `trigger.focus()`.
+    trig: Option<egui::Id>,
     /// A modal closes only through its handler (its `open` is always
     /// prop-driven); popups also carry an internal flag.
     modal: bool,
@@ -749,6 +756,9 @@ fn request_close(w: &mut Walk<'_>, entry: &FrameOverlay) {
         return;
     }
     w.edit.set_open(&entry.id, false);
+    if let Some(id) = entry.trig {
+        w.ui.ctx().memory_mut(|m| m.request_focus(id));
+    }
     if let Some(name) = entry.close {
         w.events.push(WidgetEvent {
             node: entry.id.clone(),
@@ -774,6 +784,7 @@ pub(crate) fn close_handler(node: &ResolvedNode) -> Option<&'static str> {
 /// children at the scratch layout's rects, then anything they deferred.
 /// `host` is the synthetic layout root — for the modal it reorders the
 /// floating set into pinned runs and a scroller.
+#[allow(clippy::too_many_arguments)]
 fn overlay_contents(
     w: &mut Walk<'_>,
     ui: &mut egui::Ui,
@@ -1035,6 +1046,7 @@ fn modal_overlay(
             anchor: None,
             stack,
             close: close_handler(node),
+            trig: None,
             modal: true,
             id: node.id.clone(),
         },
@@ -1126,6 +1138,14 @@ fn anchored_overlay(
                 anchor: Some(anchor),
                 stack,
                 close: close_handler(node),
+                // The trigger's interact rect is its part rect — the same
+                // rect the anchor was captured from.
+                trig: w
+                    .hits
+                    .interact
+                    .iter()
+                    .find(|(r, _)| *r == anchor)
+                    .map(|(_, id)| *id),
                 modal: false,
                 id: node.id.clone(),
             },

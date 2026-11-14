@@ -124,6 +124,10 @@ pub struct HitLog {
     /// enclosing scroller reads them to bring a Tab-visited control into
     /// view, the job egui's `ScrollArea` does through `scroll_to_me`.
     pub gained: Vec<Rect>,
+    /// Every `interact_label` region as (rect, egui id) — a popup's close
+    /// finds its trigger's id to return focus, matching the DOM's
+    /// `trigger.focus()` on dismiss.
+    pub interact: Vec<(Rect, egui::Id)>,
 }
 
 impl<'a> PaintCx<'a> {
@@ -185,6 +189,7 @@ impl<'a> PaintCx<'a> {
     /// A disabled region senses hover only: it still shows its state,
     /// can't report `clicked()`, and logs itself as dead surface so a
     /// pointer click on it can't activate an overlay's trigger beneath.
+    #[allow(clippy::too_many_arguments)]
     pub fn interact_label(
         &mut self,
         rect: Rect,
@@ -206,6 +211,7 @@ impl<'a> PaintCx<'a> {
             Some(sel) => egui::WidgetInfo::selected(role, enabled, sel, text.to_string()),
             None => egui::WidgetInfo::labeled(role, enabled, text.to_string()),
         });
+        self.hits.interact.push((rect, response.id));
         if !enabled {
             self.hits.dead.push(rect);
         } else if response.clicked() {
