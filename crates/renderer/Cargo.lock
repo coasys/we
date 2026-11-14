@@ -156,6 +156,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2c754d6c33795a1c324727428e5a7dedb5b06195f9890bdbcba760d3e246563"
 
 [[package]]
+name = "we-ad4m"
+version = "0.1.0"
+dependencies = [
+ "we-store",
+]
+
+[[package]]
 name = "we-expr"
 version = "0.1.0"
 dependencies = [
@@ -163,6 +170,16 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+]
+
+[[package]]
+name = "we-screen"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "serde",
+ "serde_json",
+ "we-expr",
 ]
 
 [[package]]
@@ -174,6 +191,16 @@ dependencies = [
  "serde",
  "serde_json",
  "thiserror",
+ "we-expr",
+]
+
+[[package]]
+name = "we-style"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "serde",
+ "serde_json",
  "we-expr",
 ]
 

@@ -11,8 +11,11 @@
 resolver = "2"
 members = [
     "we-expr",
+    "we-screen",
     "we-template",
     "we-store",
+    "we-style",
+    "we-ad4m",
 ]
 
 [workspace.dependencies]
