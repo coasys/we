@@ -1,0 +1,66 @@
+{
+  "type": "Column",
+  "props": { "gap": "300", "p": "400" },
+  "children": [
+    {
+      "type": "we-input",
+      "props": { "label": "Text input", "value": "", "placeholder": "type here" }
+    },
+    {
+      "type": "we-textarea",
+      "props": { "label": "Textarea", "value": "two\nlines" }
+    },
+    {
+      "type": "we-select",
+      "props": {
+        "label": "Select",
+        "value": "b",
+        "options": [
+          { "value": "a", "label": "Alpha" },
+          { "value": "b", "label": "Beta" }
+        ]
+      }
+    },
+    { "type": "we-switch", "props": { "label": "Switch", "checked": true } },
+    {
+      "type": "we-slider",
+      "props": { "label": "Slider", "value": 35, "showValue": true }
+    },
+    { "type": "we-number-input", "props": { "label": "Number", "value": 3 } },
+    {
+      "type": "we-form-field",
+      "props": { "label": "Display name", "description": "Shown in menus" },
+      "children": [{ "type": "we-input", "props": { "value": "Ada" } }]
+    },
+    { "type": "we-date-picker", "props": { "label": "Date", "value": "2026-01-15" } },
+    { "type": "we-color-picker", "props": { "label": "Color", "value": "#3b82f6" } },
+    { "type": "we-icon-picker", "props": { "label": "Icon", "value": "rocket" } },
+    {
+      "type": "we-sortable",
+      "props": {},
+      "children": [
+        { "type": "we-button", "props": { "weId": "x", "label": "Row x" } },
+        { "type": "we-button", "props": { "weId": "y", "label": "Row y" } },
+        { "type": "we-button", "props": { "weId": "z", "label": "Row z" } }
+      ]
+    },
+    {
+      "type": "we-popover",
+      "props": {},
+      "children": [
+        { "type": "we-button", "props": { "label": "Popover" } },
+        { "type": "we-button", "props": { "label": "Popover body" }, "slot": "content" }
+      ]
+    },
+    {
+      "type": "DropdownMenu",
+      "props": {
+        "items": [
+          { "id": "a", "label": "Alpha" },
+          { "id": "b", "label": "Beta" }
+        ]
+      },
+      "children": [{ "type": "we-button", "props": { "label": "Menu" } }]
+    }
+  ]
+}

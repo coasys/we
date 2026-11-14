@@ -1,0 +1,367 @@
+{
+  "type": "Column",
+  "props": { "p": "400", "gap": "300", "bg": "page" },
+  "children": [
+    { "type": "we-text", "props": { "text": "style gallery", "variant": "heading-lg" } },
+
+    { "type": "we-text", "props": { "text": "roles", "variant": "label" } },
+    {
+      "type": "Grid",
+      "props": { "columns": 7, "gap": "100" },
+      "children": [
+        {
+          "type": "Column",
+          "props": { "gap": "100" },
+          "children": [
+            { "type": "Column", "props": { "bg": "surface", "height": "28px", "r": "200" } },
+            { "type": "we-text", "props": { "text": "surface", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100" },
+          "children": [
+            { "type": "Column", "props": { "bg": "surface-raised", "height": "28px", "r": "200" } },
+            { "type": "we-text", "props": { "text": "raised", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100" },
+          "children": [
+            { "type": "Column", "props": { "bg": "surface-sunken", "height": "28px", "r": "200" } },
+            { "type": "we-text", "props": { "text": "sunken", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100" },
+          "children": [
+            { "type": "Column", "props": { "bg": "field", "height": "28px", "r": "200" } },
+            { "type": "we-text", "props": { "text": "field", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100" },
+          "children": [
+            { "type": "Column", "props": { "bg": "control-surface", "height": "28px", "r": "200" } },
+            { "type": "we-text", "props": { "text": "control", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100" },
+          "children": [
+            { "type": "Column", "props": { "bg": "accent", "height": "28px", "r": "200" } },
+            { "type": "we-text", "props": { "text": "accent", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100" },
+          "children": [
+            { "type": "Column", "props": { "bg": "accent-soft", "height": "28px", "r": "200" } },
+            { "type": "we-text", "props": { "text": "accent-soft", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100" },
+          "children": [
+            { "type": "Column", "props": { "bg": "danger", "height": "28px", "r": "200" } },
+            { "type": "we-text", "props": { "text": "danger", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100" },
+          "children": [
+            { "type": "Column", "props": { "bg": "danger-soft", "height": "28px", "r": "200" } },
+            { "type": "we-text", "props": { "text": "danger-soft", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100" },
+          "children": [
+            { "type": "Column", "props": { "bg": "success", "height": "28px", "r": "200" } },
+            { "type": "we-text", "props": { "text": "success", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100" },
+          "children": [
+            { "type": "Column", "props": { "bg": "warning", "height": "28px", "r": "200" } },
+            { "type": "we-text", "props": { "text": "warning", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100" },
+          "children": [
+            { "type": "Column", "props": { "bg": "selected", "height": "28px", "r": "200" } },
+            { "type": "we-text", "props": { "text": "selected", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100" },
+          "children": [
+            {
+              "type": "Column",
+              "props": { "bg": "page", "height": "28px", "r": "200", "borderWidth": "1px", "borderColor": "border" }
+            },
+            { "type": "we-text", "props": { "text": "border", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100" },
+          "children": [
+            { "type": "Column", "props": { "bg": "border-strong", "height": "28px", "r": "200" } },
+            { "type": "we-text", "props": { "text": "border-strong", "variant": "footnote" } }
+          ]
+        }
+      ]
+    },
+
+    { "type": "we-text", "props": { "text": "radius", "variant": "label" } },
+    {
+      "type": "Row",
+      "props": { "gap": "200", "wrap": true, "ay": "end" },
+      "children": [
+        {
+          "type": "Column",
+          "props": { "gap": "100", "ax": "center" },
+          "children": [
+            { "type": "Column", "props": { "bg": "surface-raised", "width": "44px", "height": "30px", "r": "0" } },
+            { "type": "we-text", "props": { "text": "0", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100", "ax": "center" },
+          "children": [
+            { "type": "Column", "props": { "bg": "surface-raised", "width": "44px", "height": "30px", "r": "100" } },
+            { "type": "we-text", "props": { "text": "100", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100", "ax": "center" },
+          "children": [
+            { "type": "Column", "props": { "bg": "surface-raised", "width": "44px", "height": "30px", "r": "200" } },
+            { "type": "we-text", "props": { "text": "200", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100", "ax": "center" },
+          "children": [
+            { "type": "Column", "props": { "bg": "surface-raised", "width": "44px", "height": "30px", "r": "300" } },
+            { "type": "we-text", "props": { "text": "300", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100", "ax": "center" },
+          "children": [
+            { "type": "Column", "props": { "bg": "surface-raised", "width": "44px", "height": "30px", "r": "400" } },
+            { "type": "we-text", "props": { "text": "400", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100", "ax": "center" },
+          "children": [
+            { "type": "Column", "props": { "bg": "surface-raised", "width": "44px", "height": "30px", "r": "500" } },
+            { "type": "we-text", "props": { "text": "500", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100", "ax": "center" },
+          "children": [
+            {
+              "type": "Column",
+              "props": { "bg": "surface-raised", "width": "44px", "height": "30px", "r": "control" }
+            },
+            { "type": "we-text", "props": { "text": "control", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100", "ax": "center" },
+          "children": [
+            {
+              "type": "Column",
+              "props": { "bg": "surface-raised", "width": "44px", "height": "30px", "r": "surface" }
+            },
+            { "type": "we-text", "props": { "text": "surface", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100", "ax": "center" },
+          "children": [
+            { "type": "Column", "props": { "bg": "surface-raised", "width": "44px", "height": "30px", "r": "card" } },
+            { "type": "we-text", "props": { "text": "card", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100", "ax": "center" },
+          "children": [
+            { "type": "Column", "props": { "bg": "surface-raised", "width": "44px", "height": "30px", "r": "input" } },
+            { "type": "we-text", "props": { "text": "input", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100", "ax": "center" },
+          "children": [
+            { "type": "Column", "props": { "bg": "surface-raised", "width": "44px", "height": "30px", "r": "pill" } },
+            { "type": "we-text", "props": { "text": "pill", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100", "ax": "center" },
+          "children": [
+            { "type": "Column", "props": { "bg": "surface-raised", "width": "44px", "height": "30px", "r": "full" } },
+            { "type": "we-text", "props": { "text": "full", "variant": "footnote" } }
+          ]
+        }
+      ]
+    },
+
+    { "type": "we-text", "props": { "text": "shadow", "variant": "label" } },
+    {
+      "type": "Row",
+      "props": { "gap": "300", "wrap": true },
+      "children": [
+        {
+          "type": "Column",
+          "props": { "gap": "100", "ax": "center" },
+          "children": [
+            {
+              "type": "Column",
+              "props": { "bg": "surface", "width": "56px", "height": "36px", "r": "200", "shadow": "sm" }
+            },
+            { "type": "we-text", "props": { "text": "sm", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100", "ax": "center" },
+          "children": [
+            {
+              "type": "Column",
+              "props": { "bg": "surface", "width": "56px", "height": "36px", "r": "200", "shadow": "md" }
+            },
+            { "type": "we-text", "props": { "text": "md", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100", "ax": "center" },
+          "children": [
+            {
+              "type": "Column",
+              "props": { "bg": "surface", "width": "56px", "height": "36px", "r": "200", "shadow": "lg" }
+            },
+            { "type": "we-text", "props": { "text": "lg", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100", "ax": "center" },
+          "children": [
+            {
+              "type": "Column",
+              "props": { "bg": "surface", "width": "56px", "height": "36px", "r": "200", "shadow": "xl" }
+            },
+            { "type": "we-text", "props": { "text": "xl", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100", "ax": "center" },
+          "children": [
+            {
+              "type": "Column",
+              "props": { "bg": "surface", "width": "56px", "height": "36px", "r": "200", "shadow": "2xl" }
+            },
+            { "type": "we-text", "props": { "text": "2xl", "variant": "footnote" } }
+          ]
+        },
+        {
+          "type": "Column",
+          "props": { "gap": "100", "ax": "center" },
+          "children": [
+            {
+              "type": "Column",
+              "props": { "bg": "surface", "width": "56px", "height": "36px", "r": "200", "shadow": "glow" }
+            },
+            { "type": "we-text", "props": { "text": "glow", "variant": "footnote" } }
+          ]
+        }
+      ]
+    },
+
+    { "type": "we-text", "props": { "text": "type", "variant": "label" } },
+    { "type": "we-text", "props": { "text": "Heading XL", "variant": "heading-xl" } },
+    { "type": "we-text", "props": { "text": "Heading LG", "variant": "heading-lg" } },
+    { "type": "we-text", "props": { "text": "Heading MD", "variant": "heading-md" } },
+    { "type": "we-text", "props": { "text": "Heading SM", "variant": "heading-sm" } },
+    { "type": "we-text", "props": { "text": "Subheading", "variant": "subheading" } },
+    { "type": "we-text", "props": { "text": "Ingress — an intro paragraph line.", "variant": "ingress" } },
+    { "type": "we-text", "props": { "text": "Body — the default reading size.", "variant": "body" } },
+    { "type": "we-text", "props": { "text": "Label", "variant": "label" } },
+    { "type": "we-text", "props": { "text": "Footnote", "variant": "footnote" } },
+    { "type": "we-text", "props": { "text": "Overline", "variant": "overline" } },
+
+    { "type": "we-text", "props": { "text": "components", "variant": "label" } },
+    {
+      "type": "Card",
+      "props": { "p": "300", "gap": "200" },
+      "children": [
+        {
+          "type": "Row",
+          "props": { "gap": "200", "wrap": true, "ay": "center" },
+          "children": [
+            { "type": "we-button", "props": { "text": "solid" } },
+            { "type": "we-button", "props": { "text": "outline", "variant": "outline" } },
+            { "type": "we-button", "props": { "text": "ghost", "variant": "ghost" } },
+            { "type": "we-button", "props": { "text": "danger", "tone": "danger" } },
+            { "type": "we-badge", "props": { "count": 3 } },
+            { "type": "we-tag", "props": { "text": "a tag" } },
+            { "type": "we-switch", "props": { "checked": true } },
+            { "type": "we-avatar", "props": { "name": "Ada Lovelace", "size": 32 } }
+          ]
+        },
+        { "type": "we-alert", "props": { "text": "an info alert", "tone": "accent" } },
+        { "type": "we-alert", "props": { "text": "a danger alert", "tone": "danger" } },
+        { "type": "we-divider" },
+        { "type": "we-input", "props": { "placeholder": "type here", "value": "" } },
+        {
+          "type": "we-tree",
+          "props": { "selected": "b" },
+          "children": [
+            {
+              "type": "we-tree-item",
+              "props": { "label": "parent", "value": "a", "open": true },
+              "children": [
+                { "type": "we-tree-item", "props": { "label": "child one", "value": "b" }, "slot": "children" },
+                { "type": "we-tree-item", "props": { "label": "child two", "value": "c" }, "slot": "children" }
+              ]
+            },
+            { "type": "we-tree-item", "props": { "label": "sibling", "value": "d" } }
+          ]
+        }
+      ]
+    }
+  ]
+}
