@@ -65,7 +65,8 @@ fn events_flow_through_paint_cx() {
         {
             let parts = we_egui::Parts::new();
             let mut edit = we_egui::EditState::default();
-            let mut cx = PaintCx::new(ui, &mut events, &parts, &mut edit, 0.0, &[]);
+            let mut hits = we_egui::HitLog::default();
+            let mut cx = PaintCx::new(ui, &mut events, &parts, &mut edit, 0.0, &[], &mut hits);
             let stub = Stub;
             stub.paint(
                 &mut cx,

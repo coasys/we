@@ -97,6 +97,10 @@ impl<'a> MeasureCx<'a> {
 /// - `ancestors` — the node ids above this one in the resolved tree, root
 ///   first (a tree item asks how deep it is).
 /// - `events` — the sink [`PaintCx::emit`] pushes to; the frame drains it.
+/// - `hits` — the frame's interactive-hit log: which click-sensing rects
+///   activated and which were dead surface. An overlay reads it to learn
+///   that the DOM equivalent of "the trigger element got a click"
+///   happened — a keyboard fake-click on a child button included.
 pub struct PaintCx<'a> {
     pub ui: &'a mut egui::Ui,
     pub parts: &'a Parts,
@@ -104,9 +108,22 @@ pub struct PaintCx<'a> {
     pub now: f64,
     pub(crate) ancestors: &'a [NodeId],
     pub(crate) events: &'a mut Vec<WidgetEvent>,
+    pub(crate) hits: &'a mut HitLog,
+}
+
+/// The click-sensing rects the frame has reported so far: `activated` —
+/// a response that reported `clicked()` (pointer, keyboard fake-click or
+/// a11y activation, all layer/enabled-correct by egui); `dead` — a rect a
+/// disabled control still occupies, which swallows the DOM click rather
+/// than letting it reach whatever is beneath.
+#[derive(Debug, Default)]
+pub struct HitLog {
+    pub activated: Vec<Rect>,
+    pub dead: Vec<Rect>,
 }
 
 impl<'a> PaintCx<'a> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         ui: &'a mut egui::Ui,
         events: &'a mut Vec<WidgetEvent>,
@@ -114,6 +131,7 @@ impl<'a> PaintCx<'a> {
         edit: &'a mut EditState,
         now: f64,
         ancestors: &'a [NodeId],
+        hits: &'a mut HitLog,
     ) -> Self {
         Self {
             ui,
@@ -122,6 +140,7 @@ impl<'a> PaintCx<'a> {
             now,
             ancestors,
             events,
+            hits,
         }
     }
 
@@ -157,7 +176,10 @@ impl<'a> PaintCx<'a> {
 
     /// A clickable, labeled region — the tree-item row, a button. Returns the
     /// [`egui::Response`] so the caller decides what a click emits. The
-    /// AccessKit node gets `role` and `text`, so `get_by_label` finds it.
+    /// AccessKit node gets `role`, `enabled` and `text`, so `get_by_label`
+    /// finds it. A disabled region senses hover only: it still shows its
+    /// state, can't report `clicked()`, and logs itself as dead surface so
+    /// a pointer click on it can't activate an overlay's trigger beneath.
     pub fn interact_label(
         &mut self,
         rect: Rect,
@@ -165,10 +187,21 @@ impl<'a> PaintCx<'a> {
         role: egui::Role,
         node: &NodeId,
         part: &str,
+        enabled: bool,
     ) -> egui::Response {
         let id = self.ui.scope_id().with(("we-click", node.as_str(), part));
-        let response = self.ui.interact(rect, id, egui::Sense::click());
-        response.widget_info(|| egui::WidgetInfo::labeled(role, true, text.to_string()));
+        let sense = if enabled {
+            egui::Sense::click()
+        } else {
+            egui::Sense::hover()
+        };
+        let response = self.ui.interact(rect, id, sense);
+        response.widget_info(|| egui::WidgetInfo::labeled(role, enabled, text.to_string()));
+        if !enabled {
+            self.hits.dead.push(rect);
+        } else if response.clicked() {
+            self.hits.activated.push(rect);
+        }
         response
     }
 }
@@ -227,5 +260,14 @@ pub trait Widget: Send + Sync {
     /// and the paint walk recurses into them.
     fn synthesized_children(&self, _node: &ResolvedNode) -> Vec<ResolvedChild> {
         Vec::new()
+    }
+    /// `true` when an activation inside the `trigger` part toggles open —
+    /// the DOM "click on the trigger" of a popover/menu. A click-sensing
+    /// descendant reporting `clicked()` counts (pointer, keyboard
+    /// fake-click, a11y activation); so does a pointer click in the anchor
+    /// that no disabled surface swallowed. `we-tooltip` opts out — its
+    /// trigger opens on hover, not click.
+    fn trigger_toggles(&self) -> bool {
+        false
     }
 }

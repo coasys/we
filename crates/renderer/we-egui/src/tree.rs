@@ -191,7 +191,7 @@ impl Widget for TreeItem {
             .unwrap_or(rect);
 
         // The row: selected fill under hover fill, click → onSelect.
-        let response = cx.interact_label(row, &label, egui::Role::Button, &node.id, "row");
+        let response = cx.interact_label(row, &label, egui::Role::Button, &node.id, "row", true);
         let visuals = cx.ui.visuals().clone();
         let selected = Self::selected(cx, node);
         if selected {
@@ -229,8 +229,14 @@ impl Widget for TreeItem {
                 } else {
                     "expand"
                 };
-                let caret_response =
-                    cx.interact_label(caret, caret_label, egui::Role::Button, &node.id, "caret");
+                let caret_response = cx.interact_label(
+                    caret,
+                    caret_label,
+                    egui::Role::Button,
+                    &node.id,
+                    "caret",
+                    true,
+                );
                 // A triangle, not a glyph — the kittest font set has no ▸/▾.
                 let c = caret.center();
                 let (w, h) = (3.0, 4.0);

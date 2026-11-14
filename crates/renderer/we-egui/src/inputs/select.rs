@@ -83,7 +83,14 @@ impl Widget for Select {
             .unwrap_or_default();
         let label = access_label(cx, node);
 
-        let response = cx.interact_label(rect, &label, egui::Role::ComboBox, &node.id, "select");
+        let response = cx.interact_label(
+            rect,
+            &label,
+            egui::Role::ComboBox,
+            &node.id,
+            "select",
+            !disabled(node),
+        );
         let visuals = cx.ui.visuals().clone();
         let fill = if response.hovered() {
             visuals.widgets.hovered.bg_fill

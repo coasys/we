@@ -775,6 +775,123 @@ fn childless_dropdown_menu_generates_a_labeled_trigger() {
     assert!(m.get("id").is_some_and(|v| v.strict_eq(&s("go"))));
 }
 
+/// B4 — activation, not pointer coordinates: the DOM click a focused
+/// trigger button gets on Enter opens the menu (a raw `any_click` watch
+/// never sees it — egui reports it as the response's fake primary click).
+#[test]
+fn menu_trigger_opens_on_keyboard_enter() {
+    let mut menu = node(
+        "DropdownMenu",
+        "menu",
+        props(&[(
+            "items",
+            Value::List(Arc::new(vec![Value::Obj(Arc::new(props(&[
+                ("id", s("edit")),
+                ("label", s("Edit")),
+            ])))])),
+        )]),
+    );
+    menu.handlers = handlers(&["onSelect"]);
+    let trig = node("we-button", "menu/trig", props(&[("label", s("Menu"))]));
+    menu.children = vec![ResolvedChild::Node(Box::new(trig))];
+    let (mut h, r) = rig(menu);
+    h.run();
+    h.key_press(egui::Key::Tab);
+    h.key_press(egui::Key::Enter);
+    h.run();
+    assert!(
+        r.edit.borrow().is_open(&NodeId::from("menu")),
+        "Enter on the focused trigger must open the menu"
+    );
+}
+
+/// B4 — a disabled trigger dispatches no click at all in the DOM, not even
+/// to its popover parent: the pointer watch opened it anyway.
+#[test]
+fn disabled_trigger_does_not_open() {
+    let mut menu = node(
+        "DropdownMenu",
+        "menu",
+        props(&[(
+            "items",
+            Value::List(Arc::new(vec![Value::Obj(Arc::new(props(&[
+                ("id", s("edit")),
+                ("label", s("Edit")),
+            ])))])),
+        )]),
+    );
+    menu.handlers = handlers(&["onSelect"]);
+    let trig = node(
+        "we-button",
+        "menu/trig",
+        props(&[("label", s("Menu")), ("disabled", b(true))]),
+    );
+    menu.children = vec![ResolvedChild::Node(Box::new(trig))];
+    let (mut h, r) = rig(menu);
+    h.run();
+    h.get_by_label("Menu").click();
+    h.run();
+    assert!(
+        !r.edit.borrow().is_open(&NodeId::from("menu")),
+        "a click on a disabled trigger must not open the menu"
+    );
+}
+
+/// B4 — a click the modal layer swallows can't reach the trigger beneath:
+/// the raw pointer watch ignored which layer was actually hit.
+#[test]
+fn modal_covered_trigger_does_not_toggle() {
+    let mut menu = node(
+        "DropdownMenu",
+        "menu",
+        props(&[(
+            "items",
+            Value::List(Arc::new(vec![Value::Obj(Arc::new(props(&[
+                ("id", s("edit")),
+                ("label", s("Edit")),
+            ])))])),
+        )]),
+    );
+    menu.handlers = handlers(&["onSelect"]);
+    let trig = node(
+        "we-button",
+        "menu/trig",
+        props(&[
+            ("label", s("Menu")),
+            ("width", n(300.0)),
+            ("height", n(300.0)),
+        ]),
+    );
+    menu.children = vec![ResolvedChild::Node(Box::new(trig))];
+    let mut modal = node(
+        "we-modal",
+        "root/modal",
+        props(&[("open", b(true)), ("title", s("Cover"))]),
+    );
+    modal.children = vec![ResolvedChild::Node(Box::new(node(
+        "we-text",
+        "root/modal/t",
+        props(&[
+            ("text", s("covering")),
+            ("width", n(360.0)),
+            ("height", n(360.0)),
+        ]),
+    )))];
+    let mut root = node("Column", "root", props(&[]));
+    root.children = vec![
+        ResolvedChild::Node(Box::new(menu)),
+        ResolvedChild::Node(Box::new(modal)),
+    ];
+    let (mut h, r) = rig(root);
+    h.run();
+    h.get_by_label("Menu").click();
+    h.run();
+    assert!(
+        !r.edit.borrow().is_open(&NodeId::from("menu")),
+        "the modal's layer must swallow the click"
+    );
+}
+
 // ---------- pickers + sortable -------------------------------------------
 
 #[test]

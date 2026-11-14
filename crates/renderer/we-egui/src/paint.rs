@@ -72,6 +72,7 @@ pub fn paint(
         parts_buf: None,
         overlays: Vec::new(),
         inh: None,
+        hits: crate::HitLog::default(),
     };
     paint_node(&mut w, root);
     paint_overlays(&mut w);
@@ -108,6 +109,9 @@ struct Walk<'a> {
     /// and `opacity` composes (`defaults::effective` merges them; the
     /// builder's measure pass applies the same rule).
     inh: Option<Style>,
+    /// Interactive hit surface reported by widgets so far — an overlay
+    /// trigger's activation is read from it after the subtree paints.
+    hits: crate::HitLog,
 }
 
 /// `rect` clipped on the axes `axes` marks — the other axis unbounded.
@@ -324,6 +328,7 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
             edit: w.edit,
             now: w.now,
             ancestors: &w.ancestors[..w.ancestors.len() - 1],
+            hits: &mut w.hits,
         };
         widget.paint(&mut cx, node, &style, rect);
     }
@@ -370,6 +375,34 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
                     );
                     crate::text::paint_galley(&p, span.translate(-w.offset).min, g, &style);
                 }
+            }
+        }
+    }
+
+    // Trigger activation for click-to-open overlays: a click-sensing
+    // descendant reported `clicked()` inside the anchor (pointer, keyboard
+    // fake-click or a11y activation — already layer- and enabled-correct
+    // by egui), or a pointer click landed in the anchor on this layer and
+    // no disabled surface swallowed it. Read here, after the subtree
+    // painted, because the trigger child's response only exists now.
+    if widget.kind() == WidgetKind::Overlay && widget.trigger_toggles() {
+        let anchor = w
+            .parts_buf
+            .as_ref()
+            .unwrap_or(&w.base_parts)
+            .get(&(node.id.clone(), "trigger"))
+            .copied();
+        if let Some(anchor) = anchor {
+            let pos = w.ui.input(|i| i.pointer.interact_pos());
+            let dead_hit = pos.is_some_and(|p| w.hits.dead.iter().any(|r| r.contains(p)));
+            let pointer_hit = w.ui.input(|i| i.pointer.any_click())
+                && pos.is_some_and(|p| anchor.contains(p))
+                && w.ui.ctx().rect_contains_pointer(w.ui.layer_id(), anchor)
+                && !dead_hit;
+            let activated = w.hits.activated.iter().any(|r| anchor.contains(r.center()));
+            if activated || pointer_hit {
+                let open = w.edit.is_open(&node.id);
+                w.edit.set_open(&node.id, !open);
             }
         }
     }
@@ -593,6 +626,9 @@ fn overlay_contents(
         parts_buf: None,
         overlays: Vec::new(),
         inh: Some(style.clone()),
+        // The overlay layer is its own hit surface: activations inside a
+        // popup serve nested triggers, never the page walk's.
+        hits: crate::HitLog::default(),
     };
     inner.ancestors.push(node.id.clone());
     {
@@ -604,6 +640,7 @@ fn overlay_contents(
             edit: inner.edit,
             now: inner.now,
             ancestors: &ancestors,
+            hits: &mut inner.hits,
         };
         widget.paint(&mut cx, node, &style, content_rect);
     }

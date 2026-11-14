@@ -6,7 +6,6 @@
 use we_style::Style;
 use we_template::{ResolvedChild, ResolvedNode};
 
-use crate::props;
 use crate::{
     Direction, MeasureCx, PaintCx, PartSpec, PartsSpec, Pick, Rect, Size, Widget, WidgetKind,
 };
@@ -48,24 +47,14 @@ impl Widget for Popover {
         Size::new(0.0, 0.0)
     }
 
-    fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, _rect: Rect) {
-        // Only the in-flow pass toggles open — the overlay pass is paint-only.
-        if props::part(cx, node, "overlay").is_some() {
-            return;
-        }
-        let Some(anchor) = props::part(cx, node, "trigger") else {
-            return;
-        };
-        // The trigger child paints over us and wins egui's hit test, so
-        // watch the pointer itself: a click landing in the anchor toggles.
-        let clicked = cx.ui.input(|i| i.pointer.any_click())
-            && cx
-                .ui
-                .input(|i| i.pointer.interact_pos())
-                .is_some_and(|p| anchor.contains(p));
-        if clicked {
-            let open = cx.edit.is_open(&node.id);
-            cx.edit.set_open(&node.id, !open);
-        }
+    /// Activation in the `trigger` part toggles open — the walk applies
+    /// it after the subtree paints (see `paint_node`): a click-sensing
+    /// descendant's `clicked()` (pointer or keyboard fake-click) or a
+    /// pointer hit on the anchor itself that no disabled control
+    /// swallowed and no higher layer covered.
+    fn trigger_toggles(&self) -> bool {
+        true
     }
+
+    fn paint(&self, _cx: &mut PaintCx, _node: &ResolvedNode, _style: &Style, _rect: Rect) {}
 }

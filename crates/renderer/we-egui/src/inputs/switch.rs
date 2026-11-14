@@ -41,6 +41,7 @@ impl Widget for Switch {
             egui::Role::CheckBox,
             &node.id,
             "switch",
+            !disabled(node),
         );
 
         let visuals = cx.ui.visuals().clone();

@@ -559,7 +559,14 @@ impl Widget for Avatar {
                 .unwrap_or_else(|| "avatar".to_string()),
         };
         if props::prop_flag(node, "clickable") == Some(true) {
-            let resp = cx.interact_label(content, &label, egui::Role::Button, &node.id, "avatar");
+            let resp = cx.interact_label(
+                content,
+                &label,
+                egui::Role::Button,
+                &node.id,
+                "avatar",
+                true,
+            );
             if resp.clicked() {
                 cx.emit(&node.id, "onClick", props::detail([]));
             }

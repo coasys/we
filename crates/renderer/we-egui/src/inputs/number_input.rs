@@ -56,8 +56,22 @@ impl Widget for NumberInput {
             egui::pos2(plus.min.x - 2.0, rect.max.y),
         );
 
-        let minus_r = cx.interact_label(minus, "decrement", egui::Role::Button, &node.id, "minus");
-        let plus_r = cx.interact_label(plus, "increment", egui::Role::Button, &node.id, "plus");
+        let minus_r = cx.interact_label(
+            minus,
+            "decrement",
+            egui::Role::Button,
+            &node.id,
+            "minus",
+            true,
+        );
+        let plus_r = cx.interact_label(
+            plus,
+            "increment",
+            egui::Role::Button,
+            &node.id,
+            "plus",
+            true,
+        );
         let visuals = cx.ui.visuals().clone();
         for (r, glyph) in [(minus, "-"), (plus, "+")] {
             cx.ui

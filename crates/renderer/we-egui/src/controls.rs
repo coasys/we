@@ -103,7 +103,14 @@ impl Widget for Button {
             .or_else(|| props::prop_text(node, "text"))
             .map(str::to_string)
             .unwrap_or_else(|| props::text_of(node));
-        let response = cx.interact_label(rect, &label, egui::Role::Button, &node.id, "base");
+        let response = cx.interact_label(
+            rect,
+            &label,
+            egui::Role::Button,
+            &node.id,
+            "base",
+            !disabled,
+        );
         // NOTE: `expanded` has no egui 0.37 WidgetInfo field — the disclosure
         // state reaches tests through the caret/children instead.
         let eff = props::state_style(style, &response, disabled);

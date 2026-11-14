@@ -124,24 +124,18 @@ impl Widget for DropdownMenu {
         }
     }
 
+    /// Activation in the `trigger` part toggles open — the walk applies it
+    /// after the subtree paints (see `paint_node`): a click-sensing
+    /// descendant's `clicked()` (pointer or keyboard fake-click) or a
+    /// pointer hit on the anchor itself that no disabled control swallowed
+    /// and no higher layer covered.
+    fn trigger_toggles(&self) -> bool {
+        true
+    }
+
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, _rect: Rect) {
         let overlay = props::part(cx, node, "overlay");
         if overlay.is_none() {
-            // In-flow call: a pointer click in the trigger toggles the open
-            // flag (the trigger child wins egui's hit test, so we watch the
-            // pointer rather than an interact region).
-            let Some(anchor) = props::part(cx, node, "trigger") else {
-                return;
-            };
-            let clicked = cx.ui.input(|i| i.pointer.any_click())
-                && cx
-                    .ui
-                    .input(|i| i.pointer.interact_pos())
-                    .is_some_and(|p| anchor.contains(p));
-            if clicked {
-                let open = cx.edit.is_open(&node.id);
-                cx.edit.set_open(&node.id, !open);
-            }
             return;
         }
         // Overlay pass: the item rows.
