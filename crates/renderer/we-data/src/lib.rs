@@ -12,6 +12,7 @@
 
 mod executor;
 mod fake;
+mod natives;
 mod provenance;
 mod storemap;
 
@@ -20,6 +21,7 @@ pub use executor::{
     Result, SpaceId, Write, WriteOp,
 };
 pub use fake::FakeExecutor;
+pub use natives::run_host_function;
 pub use provenance::{Provenance, ProvenanceReport};
 pub use storemap::{MemberKind, MemberRow, StoreMap};
 pub use we_template::StoreBag;
