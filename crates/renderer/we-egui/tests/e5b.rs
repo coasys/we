@@ -138,6 +138,13 @@ fn details(rig: &Rig, handler: &str) -> Vec<Value> {
         .collect()
 }
 
+/// A live setter accepting the last keystroke: write the last `onInput`
+/// detail back into the root node's `value`, as the Runtime does.
+fn echo_input(rig: &Rig) {
+    let v = last_detail(rig, "onInput");
+    rig.node.borrow_mut().props.insert("value".into(), v);
+}
+
 /// `assert!(got.strict_eq(&expected))`, spelled for a `handler`'s last
 /// `detail`.
 fn assert_detail(rig: &Rig, handler: &str, expected: Value) {
@@ -455,6 +462,12 @@ fn input_keydown_reports_key_code_and_enter_commits_change() {
     let f = h.get_by_label("Name");
     f.click();
     f.type_text("a");
+    h.step();
+    // Live input: the app's setter echoes `onInput` back into `value`
+    // before the Enter, or the live rule reverts the field to the prop
+    // (and the commit carries what the field displays).
+    echo_input(&r);
+    h.step();
     h.key_press(egui::Key::Enter);
     h.run();
     let kd = details(&r, "onKeyDown");
@@ -488,6 +501,9 @@ fn ime_enter_reports_composing_and_does_not_submit() {
     let f = h.get_by_label("Ask");
     f.click();
     f.type_text("ka");
+    h.step();
+    // Live input: the setter echoes each keystroke (see `echo_input`).
+    echo_input(&r);
     h.step();
     // Composition opens (preedit) and the Enter confirming the candidate
     // arrives inside it — one frame, in order, like winit delivers them.
@@ -524,6 +540,8 @@ fn ime_enter_reports_composing_and_does_not_submit() {
     h.input_mut()
         .events
         .push(egui::Event::Ime(egui::ImeEvent::Commit("か".into())));
+    h.step();
+    echo_input(&r);
     h.step();
     h.key_press(egui::Key::Enter);
     h.run();
@@ -2689,4 +2707,106 @@ fn focus_in_a_sibling_column_does_not_scroll_an_unrelated_scroller() {
         _ => 0.0,
     };
     assert_eq!(y, 0.0, "a sibling's focus must not scroll this scroller");
+}
+
+// ---------- round 3 ------------------------------------------------------
+
+/// The Text+Enter frame both handlers see: one RawInput frame carrying
+/// `text` then Enter.
+fn text_then_enter(h: &mut Harness<'static>, text: &str) {
+    h.input_mut().events.push(egui::Event::Text(text.into()));
+    h.input_mut().events.push(egui::Event::Key {
+        key: egui::Key::Enter,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Default::default(),
+    });
+    h.step();
+}
+
+/// R1 — a live input (onInput AND onChange) whose setter does not echo:
+/// "ab" is typed against value "", the prop stays "", so the live rule
+/// reverts the field. The next frame types "c" and presses Enter: the
+/// field displays "c" and onInput said "c", so the change must carry
+/// "c" — not the retired frame-start draft "ab".
+#[test]
+fn live_input_batched_enter_commits_the_displayed_text() {
+    let mut inp = node(
+        "we-input",
+        "in",
+        props(&[("label", s("Name")), ("value", s(""))]),
+    );
+    inp.handlers = handlers(&["onInput", "onChange"]);
+    let (mut h, r) = rig(inp);
+    h.run();
+    let f = h.get_by_label("Name");
+    f.click();
+    f.type_text("ab");
+    h.step();
+    text_then_enter(&mut h, "c");
+    let shown = h.get_by_label("Name").value();
+    assert_eq!(shown.as_deref(), Some("c"), "the field displays the edit");
+    assert_detail(&r, "onInput", s("c"));
+    assert_detail(&r, "onChange", s("c"));
+}
+
+/// R1 — the same rejected-prop blur on the multiline field: "ab" typed
+/// against "" is reverted by the live rule in the very frame focus
+/// leaves, so the field displays "" — and the change carries "", what
+/// it displays, not the rejected frame-start draft "ab".
+#[test]
+fn live_textarea_rejected_prop_blur_commits_the_displayed_text() {
+    let mut col = node("Column", "col", props(&[]));
+    let mut ta = node(
+        "we-textarea",
+        "col/ta",
+        props(&[("label", s("Body")), ("value", s(""))]),
+    );
+    ta.handlers = handlers(&["onInput", "onChange"]);
+    let btn = node("we-button", "col/b", props(&[("label", s("Next"))]));
+    col.children = vec![
+        ResolvedChild::Node(Box::new(ta)),
+        ResolvedChild::Node(Box::new(btn)),
+    ];
+    let (mut h, r) = rig(col);
+    h.run();
+    let f = h.get_by_label("Body");
+    f.click();
+    f.type_text("ab");
+    h.step();
+    h.get_by_label("Next").focus();
+    h.step();
+    assert_eq!(h.get_by_label("Body").value().as_deref(), Some(""));
+    assert_detail(&r, "onChange", s(""));
+}
+
+/// R1 — a rejected prop and a blur: "x" typed against "old" is reverted
+/// by the live rule (the setter rejected it) in the very frame focus
+/// leaves, so the field displays "old" — and the change carries "old", the displayed
+/// text, not the rejected "oldx".
+#[test]
+fn live_input_rejected_prop_blur_commits_the_displayed_text() {
+    let mut col = node("Column", "col", props(&[]));
+    let mut inp = node(
+        "we-input",
+        "col/in",
+        props(&[("label", s("Name")), ("value", s("old"))]),
+    );
+    inp.handlers = handlers(&["onInput", "onChange"]);
+    let btn = node("we-button", "col/b", props(&[("label", s("Next"))]));
+    col.children = vec![
+        ResolvedChild::Node(Box::new(inp)),
+        ResolvedChild::Node(Box::new(btn)),
+    ];
+    let (mut h, r) = rig(col);
+    h.run();
+    let f = h.get_by_label("Name");
+    f.click();
+    f.type_text("x");
+    h.step();
+    h.get_by_label("Next").focus();
+    h.step();
+    assert_eq!(h.get_by_label("Name").value().as_deref(), Some("old"));
+    assert_detail(&r, "onChange", s("old"));
 }
