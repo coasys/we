@@ -385,7 +385,7 @@ fn read_property(object: &Value, property: &str) -> Value {
         Value::List(l) => {
             if property == "length" {
                 l.len().into()
-            } else if let Ok(index) = property.parse::<usize>() {
+            } else if let Some(index) = crate::value::canonical_index(property) {
                 l.get(index)
                     .map(|v| v.read_value())
                     .unwrap_or(Value::Undefined)

@@ -564,3 +564,21 @@ fn p3_9_big_number_text_is_shortest_round_trip() {
         json!("1000000000000000100")
     );
 }
+
+/// `[7]['00']` is `undefined` in JS — `'00' in [7]` is false: only the
+/// canonical digits of an index are array keys. `'+0'`, `' 0'`, `'0x0'`
+/// likewise.
+#[test]
+fn p3_10_loose_string_indices_do_not_index() {
+    let env = MapEnv::new();
+    for index in ["'00'", "'+0'", "' 0'", "'0x0'"] {
+        let expr = parse(&format!("[7][{index}]")).unwrap();
+        assert_eq!(
+            eval(&expr, &env).to_json(),
+            json!({"$undefined": true}),
+            "index {index} must not read element 0"
+        );
+    }
+    let expr = parse("[7]['0']").unwrap();
+    assert_eq!(eval(&expr, &env).to_json(), json!(7));
+}
