@@ -36,6 +36,7 @@ pub use functions::js_round;
 pub use parse::{parse, Expr, ParseCache, Span, SyntaxError};
 pub use print::print;
 pub use value::{
-    CallFn, CallableKind, CallableRef, MapNamespace, Namespace, Value, DENIED_PROPERTIES,
+    is_js_whitespace, js_trim, CallFn, CallableKind, CallableRef, MapNamespace, Namespace, Value,
+    DENIED_PROPERTIES,
 };
 pub use where_match::{as_text, matches_where};

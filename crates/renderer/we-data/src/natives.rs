@@ -23,7 +23,7 @@ use indexmap::IndexMap;
 use std::cmp::Ordering;
 use std::sync::Arc;
 use unicode_normalization::UnicodeNormalization;
-use we_expr::{js_round, Value};
+use we_expr::{js_round, js_trim, Value};
 use we_template::StoreBag;
 
 use crate::provenance::{member_get, Provenance};
@@ -309,7 +309,7 @@ fn reactors(options: &Value) -> Value {
     let rows = as_list(get(options, "signals"));
     let cache = as_list(get(options, "profiles"));
     let mine = as_str(get(options, "me"));
-    let needle = as_str(get(options, "search")).trim().to_lowercase();
+    let needle = js_trim(as_str(get(options, "search"))).to_lowercase();
 
     let by_did = by_did(cache);
     let mut all: Vec<Value> = Vec::new();
@@ -492,11 +492,12 @@ fn parse_weights(weights: &Value) -> IndexMap<String, f64> {
                     continue;
                 };
                 // An empty share is not a zero — `Number('')` is 0 and would
-                // mute somebody over a stray `=`.
-                let share = entry[split + 1..].trim();
+                // mute somebody over a stray `=`. Both trims are JS's —
+                // the BOM `U+FEFF` cuts, `U+0085` NEL stays.
+                let share = js_trim(&entry[split + 1..]);
                 if split > 0 && !share.is_empty() {
                     let n = Value::Str(share.into()).js_number();
-                    put(&mut parsed, entry[..split].trim(), n / 100.0);
+                    put(&mut parsed, js_trim(&entry[..split]), n / 100.0);
                 }
             }
         }
@@ -921,7 +922,7 @@ fn involvement_menu(options: &Value) -> Value {
     if let Some(doing) = &doing {
         let doing_slug = as_str(get(doing, "slug")).to_string();
         let holders = holders_of(&doing_slug);
-        let said = as_str(get(options, "said")).trim().to_lowercase();
+        let said = js_trim(as_str(get(options, "said"))).to_lowercase();
         let named: Vec<&Value> = if said.is_empty() {
             Vec::new()
         } else {

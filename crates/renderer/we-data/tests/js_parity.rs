@@ -293,6 +293,44 @@ fn weight_text_parses_like_js_number() {
     assert_eq!(voices_for("did:a=25")[0]["weight"], json!(25));
 }
 
+/// `parseWeights` trims like `String.trim()` (weighing.ts:86-87) — the
+/// ECMAScript whitespace set, which includes the BOM `U+FEFF` Rust's
+/// `trim()` leaves and excludes `U+0085` NEL that Rust's `trim()` cuts.
+/// `Number(share)` applies the same set before parsing.
+#[test]
+fn weight_text_trims_like_js() {
+    let voices_for = |param: &str| -> serde_json::Value {
+        call(
+            "voices",
+            json!({
+                "summary": { "voices": [{ "author": "did:a", "cards": 1, "mean": 1 }] },
+                "profiles": [{ "did": "did:a", "name": "Ada" }],
+                "me": "did:b",
+                "param": param
+            }),
+        )
+    };
+    // The BOM is whitespace in JS — trimmed off the share before
+    // `Number()` and off the did by `String.trim()`.
+    assert_eq!(
+        voices_for("did:a=\u{FEFF}50")[0]["weight"],
+        json!(50),
+        "Number('\\uFEFF50') is 50 — the BOM trims"
+    );
+    assert_eq!(
+        voices_for("\u{FEFF} did:a=50")[0]["weight"],
+        json!(50),
+        "the BOM trims off the did too"
+    );
+    // NEL is NOT whitespace in JS — `Number('\u008550')` is NaN, the
+    // entry drops, and the voice defaults to 100.
+    assert_eq!(
+        voices_for("did:a=\u{85}50")[0]["weight"],
+        json!(100),
+        "Number('\\u008550') is NaN — NEL does not trim"
+    );
+}
+
 /// The settled `order` ranks come from `new Map(settled.map((id, at) =>
 /// [id, at]))` (signalTypesByUse.ts:82) — a duplicate id keeps its LAST
 /// index, so `["a","b","a"]` ranks a=2, b=1 and orders [b, a].
