@@ -3,11 +3,21 @@
 //! in (`localStateSync.ts`, `paramText` in `RouteStore.tsx`).
 use we_expr::Value;
 
+/// A canonical integer index: `String(ToUint32(k)) === k`, and not
+/// `4294967295` (`u32::MAX` is excluded from the index range in JS). These
+/// are the keys JS enumerates before every other string key — `"1"`, `"10"`
+/// are indices; `"01"`, `"-1"`, `"1.5"` are not.
+fn integer_index(k: &str) -> Option<u32> {
+    let i: u32 = k.parse().ok()?;
+    (i != u32::MAX && i.to_string() == k).then_some(i)
+}
+
 /// `JSON.stringify(value)` — `None` where JS returns `undefined` (an
 /// `Undefined` value, a callable, a namespace), so callers can tell "nothing
 /// to write" from the text `"null"`. Non-finite numbers write `null`; an
 /// object member whose value stringifies to `undefined` is dropped, in a list
-/// it writes `null`. Object key order is kept, as in JS.
+/// it writes `null`. Object member order is JS's own-property order:
+/// integer indices ascending first, then insertion order.
 pub fn js_json_stringify(value: &Value) -> Option<String> {
     match value {
         Value::Undefined => None,
@@ -28,8 +38,13 @@ pub fn js_json_stringify(value: &Value) -> Option<String> {
                 .join(",")
         )),
         Value::Obj(o) => {
-            let parts: Vec<String> = o
-                .iter()
+            // JS own-property order: canonical integer indices first in
+            // ascending numeric order, the rest in insertion order — a stable
+            // sort, so non-index keys never move relative to each other.
+            let mut members: Vec<_> = o.iter().collect();
+            members.sort_by_key(|(k, _)| integer_index(k).map_or((1u8, 0u32), |i| (0u8, i)));
+            let parts: Vec<String> = members
+                .into_iter()
                 .filter_map(|(k, e)| {
                     js_json_stringify(e).map(|s| {
                         format!(

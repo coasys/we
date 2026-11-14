@@ -516,6 +516,47 @@ fn open_and_traverse_normalize_the_location() {
     assert_eq!(s.nav.href(), "/a/b");
 }
 
+// --- JS semantics: JSON.stringify property order --------------------------
+
+#[test]
+fn js_stringify_orders_integer_index_keys_first() {
+    use indexmap::IndexMap;
+    use std::sync::Arc;
+    use we_expr::Value;
+    // JS own-property order: canonical integer indices ascend first, the
+    // rest keep insertion order — "01" is not an index.
+    let mut o: IndexMap<Arc<str>, Value> = IndexMap::new();
+    for (k, v) in [("2", "b"), ("1", "a"), ("x", "z"), ("10", "j"), ("01", "l")] {
+        o.insert(Arc::from(k), Value::Str(v.into()));
+    }
+    let got = we_screen::js_json_stringify(&Value::Obj(Arc::new(o))).unwrap();
+    assert_eq!(got, r#"{"1":"a","2":"b","10":"j","x":"z","01":"l"}"#);
+}
+
+#[test]
+fn back_at_initial_clears_the_param_despite_member_order() {
+    use indexmap::IndexMap;
+    use std::sync::Arc;
+    use we_expr::Value;
+    // The mirror decides by JSON text — a value written ("2","1") is the
+    // same default as one declared ("1","2") once JS orders the keys.
+    let obj = |pairs: &[(&str, &str)]| {
+        Value::Obj(Arc::new(
+            pairs
+                .iter()
+                .map(|(k, v)| (Arc::from(*k), Value::Str((*v).into())))
+                .collect::<IndexMap<Arc<str>, Value>>(),
+        ))
+    };
+    let value = obj(&[("2", "b"), ("1", "a")]);
+    let initial = obj(&[("1", "a"), ("2", "b")]);
+    assert_eq!(
+        we_screen::local_param_text("object", &value, &initial),
+        None,
+        "JSON.stringify equal — the value is back at its declared initial"
+    );
+}
+
 #[test]
 fn bag_reads_the_template_names_as_strings() {
     use we_expr::{Namespace, Value};
