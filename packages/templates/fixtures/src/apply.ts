@@ -97,12 +97,20 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
   /** Per-kind counter, so a node with no title still gets a stable id from its position. */
   const counters = new Map<string, number>();
 
+  /*
+    A record's three stamps (`createdAt`, `timestamp`, `updatedAt`) all default to the moment of the
+    `create` call. A fixture pins them to its declared time — the node's own `createdAt`, else the
+    fixture-wide epoch — so two boots of the same fixture read byte-identical rows.
+  */
+  const stamp = (at?: string) => (at ? { createdAt: at, timestamp: at, updatedAt: at } : {});
+
   const space = await getEntity('Space').create(dataset, {
     id: `${fixture.id}-space`,
     uuid: datasetId,
     ...(deps.sharedId ? { url: deps.sharedId } : {}),
     name: fixture.space.name,
     description: fixture.space.description,
+    ...stamp(fixture.createdAt),
     ...(fixture.space.avatar ? { avatar: fixture.space.avatar } : {}),
     discovery: 'hidden',
     // What the space opens as. Without these the preview shows whichever template the *agent*
@@ -147,6 +155,7 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
       aggregate: 'count',
       allowChange: true,
       valueType: 'numeric',
+      ...stamp(type.createdAt ?? fixture.createdAt),
     });
     signalTypeIds.set(type.slug, instance.id);
   }
@@ -175,7 +184,7 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
       // diary, and a feed where every row was written this instant sorts arbitrarily and reads
       // "just now" all the way down.
       ...(node.author ? { author: node.author } : {}),
-      ...(node.createdAt ? { createdAt: node.createdAt, timestamp: node.createdAt } : {}),
+      ...stamp(node.createdAt ?? fixture.createdAt),
     });
 
     created.push({ id, kind: node.kind, ...(node.title ? { title: node.title } : {}) });
@@ -193,7 +202,7 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
         style: 'normal',
         text: paragraph,
         ...(node.author ? { author: node.author } : {}),
-        ...(node.createdAt ? { createdAt: node.createdAt, timestamp: node.createdAt } : {}),
+        ...stamp(node.createdAt ?? fixture.createdAt),
       });
       await instance.addChildren?.(block);
     }
@@ -206,7 +215,7 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
         ...(image.width ? { width: image.width } : {}),
         ...(image.height ? { height: image.height } : {}),
         ...(node.author ? { author: node.author } : {}),
-        ...(node.createdAt ? { createdAt: node.createdAt, timestamp: node.createdAt } : {}),
+        ...stamp(node.createdAt ?? fixture.createdAt),
       });
       await instance.addChildren?.(block);
     }
@@ -222,6 +231,7 @@ export async function applyFixture(deps: ApplyDeps, fixture: Fixture): Promise<A
           signalTypeId,
           value: 1,
           author: did,
+          ...stamp(node.createdAt ?? fixture.createdAt),
         });
         await instance.addSignals?.(value);
       }
@@ -274,6 +284,7 @@ async function writeCarried(
   getEntity: (name: string) => EntityClass,
 ): Promise<void> {
   const { dataset } = deps;
+  const stamp = (at?: string) => (at ? { createdAt: at, timestamp: at, updatedAt: at } : {});
 
   for (const template of fixture.templates ?? []) {
     const meta = template.meta as { name?: string; description?: string; icon?: string; role?: string };
@@ -287,6 +298,7 @@ async function writeCarried(
       slug: template.id,
       ...(meta.role ? { role: meta.role } : {}),
       schema: asFile(template),
+      ...stamp(fixture.createdAt),
     });
   }
 
@@ -300,6 +312,7 @@ async function writeCarried(
       version: 1,
       slug: id,
       overrides: asFile(JSON.stringify(overrides)),
+      ...stamp(fixture.createdAt),
     });
   }
 
@@ -321,6 +334,7 @@ async function writeCarried(
       shapeId,
       version: 1,
       definition: asFile(shape.manifest),
+      ...stamp(fixture.createdAt),
     });
     await deps.declareShape(shape.manifest, `shape/${shapeId}`);
   }
@@ -336,7 +350,7 @@ async function writeCarried(
       id: record.id,
       ...(record.fields ?? {}),
       ...(record.author ? { author: record.author } : {}),
-      ...(record.createdAt ? { createdAt: record.createdAt, timestamp: record.createdAt } : {}),
+      ...stamp(record.createdAt ?? fixture.createdAt),
     });
     instances.set(record.id, instance as RecordInstance & Record<string, unknown>);
   }

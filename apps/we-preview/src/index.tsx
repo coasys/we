@@ -26,6 +26,7 @@ import { bareNode, type ExternalTemplate } from './bare';
 import { inMemoryConnector, requestedFixture, startRoute, useExternalFixture } from './platform/inMemoryConnector';
 import { previewPlatform } from './platform/previewPlatform';
 import { PreviewBootstrap } from './PreviewBootstrap';
+import { RecorderBridge } from './RecorderBridge';
 
 const params = new URLSearchParams(window.location.search);
 
@@ -189,6 +190,8 @@ if (bare) {
           <PreviewBootstrap datasetId={datasetIdFor(fixture)} route={startRoute(fixture)} />
           <TemplateProvider />
           <ToastContainer />
+          {/* `?record=1` — the recorder bridge, off in every normal load. See RecorderBridge.tsx. */}
+          {params.get('record') === '1' && <RecorderBridge />}
         </StoreProvider>
       </PlatformProvider>
     ),
