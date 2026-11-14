@@ -207,10 +207,7 @@ fn a_local_state_handler_bumps_exactly_one_counter() {
     }));
     let bag = Arc::new(StoreBag::new());
     let route = RouteState::new("/");
-    let bag_rev = bag.version();
-    let screen_rev = route.version();
     let locals = LocalState::new();
-    let local_rev = locals.version();
     let route_for_rev = route.clone();
     let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone(), move || {
         route_for_rev.version()
@@ -218,6 +215,12 @@ fn a_local_state_handler_bumps_exactly_one_counter() {
     let mut host = StaticHost::new(route, bag, locals.clone());
     let root = rt.frame(&mut host).clone();
     let owner = root.id.clone();
+    // Counters after StaticHost bound routeStore into the bag.
+    let (bag_rev, screen_rev, local_rev) = (
+        host.bag.version(),
+        host.route.version(),
+        locals.version(),
+    );
 
     rt.dispatch(&mut host, &owner, "onFlip", Value::Null);
 
