@@ -233,3 +233,24 @@ fn later_stack_entries_stay_in_the_chain() {
         "VT323, then DM Sans, then the generic: {chain:?}"
     );
 }
+
+/// The vendored Noto symbol subsets (media.rs) are appended to the generic
+/// lists BEFORE `fonts::install` copies them into each named family's
+/// chain — so an arrow, a star and a circled digit render through a
+/// single-name chain and a several-name one alike, not only through plain
+/// `Proportional` text. kittest's panic policy turns a missing glyph into a
+/// failure naming it.
+#[test]
+fn noto_symbols_reach_single_and_several_name_chains() {
+    for stack in ["'VT323', monospace", "'VT323', 'DM Sans', sans-serif"] {
+        for c in ['\u{2192}', '\u{2605}', '\u{2460}'] {
+            let n = node("we-text", "t", &[("text", &format!("A {c} B"))]);
+            let (fam, covered, chain) = coverage(&n, stack, c, false);
+            assert!(covered, "{fam:?} ({stack}) covers {c:?}");
+            assert!(
+                chain.iter().any(|f| f.starts_with("noto-sans-symbols")),
+                "{stack}: the Noto subsets are in its chain {chain:?}"
+            );
+        }
+    }
+}
