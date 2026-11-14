@@ -154,6 +154,13 @@ fn inset_px(
         Some(Dimension::Percent(p)) => p * view.container_width,
         Some(Dimension::Ch(v)) | Some(Dimension::Ex(v)) => v * 0.5 * font_px,
         Some(Dimension::Lh(v)) => v * 1.4 * font_px,
+        // The percent base is known here — the whole sum resolves.
+        Some(Dimension::Calc(c)) => {
+            c.percent * view.container_width
+                + c.known_px(font_px, root_px, view.viewport)
+                + (c.ch + c.ex) * 0.5 * font_px
+                + c.lh * 1.4 * font_px
+        }
         Some(d) => d.to_px(font_px, root_px, view.viewport).unwrap_or(0.0),
         None => 0.0,
     }
@@ -217,6 +224,14 @@ pub(crate) fn radius_px(
         let Some(d) = side else { continue };
         let v = match d {
             Dimension::Percent(p) => p * rect.width().min(rect.height()),
+            // Corners read percent against the box's short side — the base
+            // is known, so a calc sum resolves fully.
+            Dimension::Calc(c) => {
+                c.percent * rect.width().min(rect.height())
+                    + c.known_px(font_px, root_px, viewport)
+                    + (c.ch + c.ex) * 0.5 * font_px
+                    + c.lh * 1.4 * font_px
+            }
             other => other.to_px(font_px, root_px, viewport).unwrap_or(0.0),
         };
         sum += v;

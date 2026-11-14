@@ -163,9 +163,9 @@ fn math_channel(s: &str, pct_scale: f32) -> Option<f32> {
         return p.trim().parse::<f32>().ok().map(|v| v * pct_scale);
     }
     let v = eval_math(s)?;
-    Some(match v.unit {
-        MathUnit::Unitless => v.value as f32,
-        MathUnit::Percent => (v.value as f32) * pct_scale,
+    Some(match v.single()? {
+        (n, MathUnit::Unitless) => n as f32,
+        (n, MathUnit::Percent) => (n as f32) * pct_scale,
         _ => return None,
     })
 }
@@ -227,8 +227,8 @@ fn hue_degrees(s: &str) -> Option<f32> {
         }
     }
     // `calc(288 - 30)` — a hue may arrive as unitless math.
-    match eval_math(s)? {
-        v if v.unit == MathUnit::Unitless => Some(v.value as f32),
+    match eval_math(s)?.single() {
+        Some((n, MathUnit::Unitless)) => Some(n as f32),
         _ => None,
     }
 }
@@ -279,8 +279,8 @@ fn pct(s: &str) -> Option<f32> {
         return p.trim().parse::<f32>().ok().map(|v| v / 100.0);
     }
     // `calc(50%)` and friends — s/l channels are percentages only.
-    match eval_math(s)? {
-        v if v.unit == MathUnit::Percent => Some((v.value / 100.0) as f32),
+    match eval_math(s)?.single() {
+        Some((n, MathUnit::Percent)) => Some((n / 100.0) as f32),
         _ => None,
     }
 }
@@ -460,9 +460,9 @@ fn mix_stop(text: &str) -> Option<(Color, Option<f32>)> {
     let p = if let Some(p) = rest.strip_suffix('%') {
         p.trim().parse::<f32>().ok()? / 100.0
     } else {
-        match eval_math(rest)? {
-            v if v.unit == MathUnit::Percent => (v.value / 100.0) as f32,
-            v if v.unit == MathUnit::Unitless => v.value as f32,
+        match eval_math(rest)?.single() {
+            Some((n, MathUnit::Percent)) => (n / 100.0) as f32,
+            Some((n, MathUnit::Unitless)) => n as f32,
             _ => return None,
         }
     };

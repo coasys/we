@@ -179,14 +179,31 @@ fn dim_px(d: &Dimension, scx: &StyleCx) -> Option<f32> {
         Dimension::Ch(v) => Some(v * 0.5 * FONT_PX),
         Dimension::Ex(v) => Some(v * 0.5 * FONT_PX),
         Dimension::Lh(v) => Some(v * 1.4 * FONT_PX),
+        Dimension::Calc(c) => {
+            if c.percent != 0.0 {
+                None
+            } else {
+                Some(
+                    c.known_px(FONT_PX, ROOT_PX, scx.viewport)
+                        + (c.ch + c.ex) * 0.5 * FONT_PX
+                        + c.lh * 1.4 * FONT_PX,
+                )
+            }
+        }
         _ => d.to_px(FONT_PX, ROOT_PX, scx.viewport),
     }
 }
+
+// A `calc` sum that still carries a percent — taffy has no `calc(50% - 10px)`,
+// so the percent term is the approximation (`100% - 24px` ≈ `100%`: a
+// bounded miss, vs `auto` which drops the whole intent). The `guard`s below
+// route any `Calc` with a percent term there; the rest resolve via `dim_px`.
 
 /// `Dimension` → taffy `Dimension` (sizes, flex basis).
 fn dim(d: Option<&Dimension>, scx: &StyleCx) -> taffy::Dimension {
     match d {
         Some(Dimension::Percent(p)) => taffy::Dimension::percent(*p),
+        Some(Dimension::Calc(c)) if c.percent != 0.0 => taffy::Dimension::percent(c.percent),
         Some(d) => dim_px(d, scx)
             .map(taffy::Dimension::length)
             .unwrap_or(taffy::Dimension::auto()),
@@ -198,6 +215,7 @@ fn dim(d: Option<&Dimension>, scx: &StyleCx) -> taffy::Dimension {
 fn lp(d: Option<&Dimension>, scx: &StyleCx) -> LengthPercentage {
     match d {
         Some(Dimension::Percent(p)) => LengthPercentage::percent(*p),
+        Some(Dimension::Calc(c)) if c.percent != 0.0 => LengthPercentage::percent(c.percent),
         Some(d) => dim_px(d, scx)
             .map(LengthPercentage::length)
             .unwrap_or(LengthPercentage::length(0.0)),
@@ -210,6 +228,7 @@ fn lp(d: Option<&Dimension>, scx: &StyleCx) -> LengthPercentage {
 fn lpa(d: Option<&Dimension>, scx: &StyleCx) -> LengthPercentageAuto {
     match d {
         Some(Dimension::Percent(p)) => LengthPercentageAuto::percent(*p),
+        Some(Dimension::Calc(c)) if c.percent != 0.0 => LengthPercentageAuto::percent(c.percent),
         Some(d) => dim_px(d, scx)
             .map(LengthPercentageAuto::length)
             .unwrap_or(LengthPercentageAuto::auto()),
@@ -223,6 +242,7 @@ fn lpa_margin(d: Option<&Dimension>, scx: &StyleCx) -> LengthPercentageAuto {
     match d {
         Some(Dimension::Percent(p)) => LengthPercentageAuto::percent(*p),
         Some(Dimension::Auto) => LengthPercentageAuto::auto(),
+        Some(Dimension::Calc(c)) if c.percent != 0.0 => LengthPercentageAuto::percent(c.percent),
         Some(d) => dim_px(d, scx)
             .map(LengthPercentageAuto::length)
             .unwrap_or(LengthPercentageAuto::length(0.0)),

@@ -7,11 +7,12 @@
 use std::sync::Arc;
 
 use indexmap::IndexMap;
-use we_style::{eval_color, eval_dimension, Color, Dimension, TokenTable};
+use we_style::{eval_color, eval_dimension, Calc, Color, Dimension, Size, TokenTable};
 
 fn table() -> TokenTable {
     TokenTable::new(
         [
+            ("--we-space-200", "8px"),
             ("--we-space-300", "12px"),
             ("--we-space-500", "20px"),
             ("--we-avatar-size-sm", "40px"),
@@ -78,6 +79,64 @@ fn calc_forms() {
         dim("max(0px, calc(var(--we-space-300) - max(0px, calc(3px - var(--we-scrollbar-thumb-inset))) - var(--we-scrollbar-width)))"),
         px(1.0)
     );
+}
+
+#[test]
+fn calc_mixed_units() {
+    // Metric-resolvable units combine; the terms stay symbolic and `to_px`
+    // folds them against the supplied metrics — `calc(72px - 2rem)` is 40px
+    // at a 16px root.
+    let d = dim("calc(72px - 2rem)").expect("px - rem resolves");
+    assert_eq!(
+        d.to_px(14.0, 16.0, Size::new(0.0, 0.0)),
+        Some(40.0),
+        "{d:?}"
+    );
+    // The bundle's railInset:
+    // calc((72px - 1px - 2rem) / 2 - var(--we-space-200)) = (71-32)/2 - 8 = 11.5
+    let d = dim("calc((72px - 1px - 2rem) / 2 - var(--we-space-200))").expect("railInset resolves");
+    assert_eq!(
+        d.to_px(14.0, 16.0, Size::new(0.0, 0.0)),
+        Some(11.5),
+        "{d:?}"
+    );
+    // `em` folds against font_px, viewport units against the viewport.
+    let d = dim("calc(2em + 4px)").expect("em + px resolves");
+    assert_eq!(d.to_px(14.0, 16.0, Size::new(0.0, 0.0)), Some(32.0));
+    let d = dim("calc(50vw - 10px)").expect("vw - px resolves");
+    assert_eq!(d.to_px(14.0, 16.0, Size::new(200.0, 100.0)), Some(90.0));
+
+    // Percent + length keeps both terms — layout owns the percent's base.
+    let d = dim("calc(100% - 2 * var(--we-space-300))").expect("pct - px resolves");
+    assert_eq!(
+        d,
+        Dimension::Calc(Calc {
+            percent: 1.0,
+            px: -24.0,
+            ..Calc::default()
+        })
+    );
+    // ..and the percent term is the part to_px cannot answer.
+    assert_eq!(d.to_px(14.0, 16.0, Size::new(200.0, 100.0)), None);
+    assert_eq!(
+        dim("calc(50% + 1rem)"),
+        Some(Dimension::Calc(Calc {
+            percent: 0.5,
+            rem: 1.0,
+            ..Calc::default()
+        }))
+    );
+
+    // Single-unit results still collapse to the scalar variants.
+    assert_eq!(dim("calc(2em * 3)"), Some(Dimension::Em(6.0)));
+    assert_eq!(dim("calc(50% * 2)"), Some(Dimension::Percent(1.0)));
+    assert_eq!(dim("calc(100% - 50%)"), Some(Dimension::Percent(0.5)));
+
+    // A number and a length do not mix — invalid in CSS too.
+    assert_eq!(dim("calc(2 + 3px)"), None);
+    // min/max/clamp still require comparable (same-unit) arguments — metrics
+    // cannot order mixed units at eval time.
+    assert_eq!(dim("max(2rem, 30px)"), None);
 }
 
 #[test]

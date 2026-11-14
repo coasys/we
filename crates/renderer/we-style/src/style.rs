@@ -52,12 +52,60 @@ pub enum Dimension {
     Ch(f32),
     Ex(f32),
     Lh(f32),
+    /// A `calc()` sum that did not collapse to one unit — `calc(100% - 24px)`
+    /// keeps a `percent` and a `px` term. Every term a scalar variant carries.
+    Calc(Calc),
+}
+
+/// The terms of a `calc()` linear combination — coefficients per unit;
+/// `percent` is a fraction (`1.0` is `100%`) as in [`Dimension::Percent`].
+/// `calc((72px - 2rem) / 2)` is `{ px: 36.0, rem: -1.0, .. }`.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Calc {
+    pub px: f32,
+    pub percent: f32,
+    pub em: f32,
+    pub rem: f32,
+    pub vw: f32,
+    pub vh: f32,
+    pub vmin: f32,
+    pub vmax: f32,
+    pub ch: f32,
+    pub ex: f32,
+    pub lh: f32,
+}
+
+impl Calc {
+    /// The terms the metrics can fold — px + em + rem + the viewport units,
+    /// exactly as the scalar variants' `to_px` resolves them. `percent` and
+    /// the font-metric units (`ch`/`ex`/`lh`) stay out: the first belongs to
+    /// the container, the rest to the layout engine's approximations.
+    pub fn known_px(&self, font_px: f32, root_px: f32, viewport: Size) -> f32 {
+        self.px
+            + self.em * font_px
+            + self.rem * root_px
+            + self.vw / 100.0 * viewport.width
+            + self.vh / 100.0 * viewport.height
+            + self.vmin / 100.0 * viewport.width.min(viewport.height)
+            + self.vmax / 100.0 * viewport.width.max(viewport.height)
+    }
+
+    /// Pixels, when every term resolves — i.e. no `percent`, `ch`, `ex` or
+    /// `lh` remains.
+    pub fn to_px(&self, font_px: f32, root_px: f32, viewport: Size) -> Option<f32> {
+        if self.percent == 0.0 && self.ch == 0.0 && self.ex == 0.0 && self.lh == 0.0 {
+            Some(self.known_px(font_px, root_px, viewport))
+        } else {
+            None
+        }
+    }
 }
 
 impl Dimension {
     /// Pixels, where the unit allows: `em` against `font_px`, `rem` against
     /// `root_px`, the viewport units against `viewport`. `Auto` and `Percent`
-    /// have no fixed answer — they are `None`.
+    /// have no fixed answer — they are `None`; a [`Calc`] answers only when
+    /// every term it carries does.
     pub fn to_px(&self, font_px: f32, root_px: f32, viewport: Size) -> Option<f32> {
         Some(match *self {
             Dimension::Px(v) => v,
@@ -67,6 +115,7 @@ impl Dimension {
             Dimension::Vh(v) => v / 100.0 * viewport.height,
             Dimension::Vmin(v) => v / 100.0 * viewport.width.min(viewport.height),
             Dimension::Vmax(v) => v / 100.0 * viewport.width.max(viewport.height),
+            Dimension::Calc(c) => return c.to_px(font_px, root_px, viewport),
             Dimension::Auto
             | Dimension::Percent(_)
             | Dimension::Ch(_)

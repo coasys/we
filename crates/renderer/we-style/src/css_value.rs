@@ -5,15 +5,19 @@
 //! variable nothing declared and the whole value fails to `None`.
 //!
 //! Rules, deliberately stricter than CSS:
-//! - `+`/`-` combine only equal units (or unitless + unitless).
+//! - `+`/`-` combine any units — the result is a linear combination that
+//!   keeps every term symbolic (`calc(72px - 2rem)` is `{px:72, rem:-2}`);
+//!   `Dimension::to_px` folds the terms against the metrics it is given.
 //! - `*` scales by a unitless factor; `/` divides by a unitless divisor.
-//! - `max`/`min`/`clamp` compare only same-unit args.
+//! - `max`/`min`/`clamp` compare only single-term same-unit args — ordering
+//!   mixed units needs metrics eval does not carry.
 //! - Bare unitless numbers are numbers, not lengths — `300` is a scale token,
-//!   not a length, so it never reaches here as a dimension.
+//!   not a length, so it never reaches here as a dimension. A number added
+//!   to a length stays invalid (as in CSS).
 
-use crate::style::Dimension;
+use crate::style::{Calc, Dimension};
 
-/// The unit a [`MathValue`] carries.
+/// The unit a single term carries.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum MathUnit {
     Unitless,
@@ -32,35 +36,185 @@ pub enum MathUnit {
     AbsolutePx,
 }
 
-/// A number plus its unit, mid-evaluation.
-#[derive(Debug, Clone, Copy)]
-pub struct MathValue {
-    pub value: f64,
-    pub unit: MathUnit,
+/// A value mid-evaluation: a linear combination of units — `calc(100% - 24px)`
+/// is `{percent:100, px:-24}`. `+`/`-` accumulate per unit; a single surviving
+/// term collapses back to the scalar it always was. `units` is a bitmask of
+/// which units contributed a term — `calc(72px - 72px)` keeps its `px` unit
+/// even though the coefficient cancelled to zero.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct MathSum {
+    pub unitless: f64,
+    pub px: f64,
+    pub percent: f64,
+    pub rem: f64,
+    pub em: f64,
+    pub vw: f64,
+    pub vh: f64,
+    pub vmin: f64,
+    pub vmax: f64,
+    pub ch: f64,
+    pub ex: f64,
+    pub lh: f64,
+    units: u16,
 }
 
-impl MathValue {
-    fn same_unit(self, other: MathValue) -> bool {
-        self.unit == other.unit
+const fn unit_bit(u: MathUnit) -> u16 {
+    match u {
+        MathUnit::Unitless => 1,
+        MathUnit::Px | MathUnit::AbsolutePx => 2,
+        MathUnit::Percent => 4,
+        MathUnit::Rem => 8,
+        MathUnit::Em => 16,
+        MathUnit::Vw => 32,
+        MathUnit::Vh => 64,
+        MathUnit::Vmin => 128,
+        MathUnit::Vmax => 256,
+        MathUnit::Ch => 512,
+        MathUnit::Ex => 1024,
+        MathUnit::Lh => 2048,
+    }
+}
+
+const ALL_UNITS: [MathUnit; 12] = [
+    MathUnit::Unitless,
+    MathUnit::Px,
+    MathUnit::Percent,
+    MathUnit::Rem,
+    MathUnit::Em,
+    MathUnit::Vw,
+    MathUnit::Vh,
+    MathUnit::Vmin,
+    MathUnit::Vmax,
+    MathUnit::Ch,
+    MathUnit::Ex,
+    MathUnit::Lh,
+];
+
+impl MathSum {
+    /// One term's coefficient.
+    fn term(&self, unit: MathUnit) -> f64 {
+        match unit {
+            MathUnit::Unitless => self.unitless,
+            MathUnit::Px | MathUnit::AbsolutePx => self.px,
+            MathUnit::Percent => self.percent,
+            MathUnit::Rem => self.rem,
+            MathUnit::Em => self.em,
+            MathUnit::Vw => self.vw,
+            MathUnit::Vh => self.vh,
+            MathUnit::Vmin => self.vmin,
+            MathUnit::Vmax => self.vmax,
+            MathUnit::Ch => self.ch,
+            MathUnit::Ex => self.ex,
+            MathUnit::Lh => self.lh,
+        }
     }
 
-    /// Into a [`Dimension`], when the unit is a length/percentage at all.
+    fn term_mut(&mut self, unit: MathUnit) -> &mut f64 {
+        match unit {
+            MathUnit::Unitless => &mut self.unitless,
+            MathUnit::Px | MathUnit::AbsolutePx => &mut self.px,
+            MathUnit::Percent => &mut self.percent,
+            MathUnit::Rem => &mut self.rem,
+            MathUnit::Em => &mut self.em,
+            MathUnit::Vw => &mut self.vw,
+            MathUnit::Vh => &mut self.vh,
+            MathUnit::Vmin => &mut self.vmin,
+            MathUnit::Vmax => &mut self.vmax,
+            MathUnit::Ch => &mut self.ch,
+            MathUnit::Ex => &mut self.ex,
+            MathUnit::Lh => &mut self.lh,
+        }
+    }
+
+    /// `value` in `unit` — a one-term sum.
+    fn one(value: f64, unit: MathUnit) -> Self {
+        let mut s = Self::default();
+        *s.term_mut(unit) = value;
+        s.units = unit_bit(unit);
+        s
+    }
+
+    /// `(value, unit)` when a single unit contributed terms — the term may
+    /// be zero (`calc(72px - 72px)` is `(0, px)`); `None` for a multi-unit
+    /// sum (or a sum no term ever reached).
+    pub fn single(&self) -> Option<(f64, MathUnit)> {
+        if self.units.count_ones() != 1 {
+            return None;
+        }
+        ALL_UNITS
+            .iter()
+            .find(|u| self.units & unit_bit(**u) != 0)
+            .map(|u| (self.term(*u), *u))
+    }
+
+    /// Whether both sums are a single term in the same unit — what
+    /// `min`/`max`/`clamp` can order without metrics.
+    fn comparable(&self, other: &MathSum) -> bool {
+        match (self.single(), other.single()) {
+            (Some((_, a)), Some((_, b))) => a == b,
+            _ => false,
+        }
+    }
+
+    /// Into a [`Dimension`]: a single-unit sum collapses to its scalar
+    /// variant; several units become [`Dimension::Calc`]. A `unitless` term
+    /// beside a length is invalid (`calc(2 + 3px)`), as is a bare unitless
+    /// sum.
     fn to_dimension(self) -> Option<Dimension> {
-        let v = self.value as f32;
-        Some(match self.unit {
-            MathUnit::Px | MathUnit::AbsolutePx => Dimension::Px(v),
-            MathUnit::Percent => Dimension::Percent(v / 100.0),
-            MathUnit::Rem => Dimension::Rem(v),
-            MathUnit::Em => Dimension::Em(v),
-            MathUnit::Vw => Dimension::Vw(v),
-            MathUnit::Vh => Dimension::Vh(v),
-            MathUnit::Vmin => Dimension::Vmin(v),
-            MathUnit::Vmax => Dimension::Vmax(v),
-            MathUnit::Ch => Dimension::Ch(v),
-            MathUnit::Ex => Dimension::Ex(v),
-            MathUnit::Lh => Dimension::Lh(v),
-            MathUnit::Unitless => return None,
-        })
+        if let Some((v, u)) = self.single() {
+            let v = v as f32;
+            return Some(match u {
+                MathUnit::Px | MathUnit::AbsolutePx => Dimension::Px(v),
+                MathUnit::Percent => Dimension::Percent(v / 100.0),
+                MathUnit::Rem => Dimension::Rem(v),
+                MathUnit::Em => Dimension::Em(v),
+                MathUnit::Vw => Dimension::Vw(v),
+                MathUnit::Vh => Dimension::Vh(v),
+                MathUnit::Vmin => Dimension::Vmin(v),
+                MathUnit::Vmax => Dimension::Vmax(v),
+                MathUnit::Ch => Dimension::Ch(v),
+                MathUnit::Ex => Dimension::Ex(v),
+                MathUnit::Lh => Dimension::Lh(v),
+                MathUnit::Unitless => return None,
+            });
+        }
+        if self.units & unit_bit(MathUnit::Unitless) != 0 {
+            return None;
+        }
+        let c = Calc {
+            px: self.px as f32,
+            percent: (self.percent / 100.0) as f32,
+            rem: self.rem as f32,
+            em: self.em as f32,
+            vw: self.vw as f32,
+            vh: self.vh as f32,
+            vmin: self.vmin as f32,
+            vmax: self.vmax as f32,
+            ch: self.ch as f32,
+            ex: self.ex as f32,
+            lh: self.lh as f32,
+        };
+        Some(Dimension::Calc(c))
+    }
+
+    /// Scale every term — `*` needs one unitless side (the caller checks).
+    /// The unit mask is kept: `calc(0 * 5px)` is still a `px` zero.
+    fn scaled(self, k: f64) -> Self {
+        Self {
+            units: self.units,
+            unitless: self.unitless * k,
+            px: self.px * k,
+            percent: self.percent * k,
+            rem: self.rem * k,
+            em: self.em * k,
+            vw: self.vw * k,
+            vh: self.vh * k,
+            vmin: self.vmin * k,
+            vmax: self.vmax * k,
+            ch: self.ch * k,
+            ex: self.ex * k,
+            lh: self.lh * k,
+        }
     }
 }
 
@@ -154,7 +308,7 @@ pub fn eval_dimension(text: &str) -> Option<Dimension> {
         || lower.starts_with("max(")
         || lower.starts_with("clamp(")
     {
-        return eval_math(t).and_then(MathValue::to_dimension);
+        return eval_math(t).and_then(MathSum::to_dimension);
     }
     // <number><unit> — the unit decides.
     let (num, unit) = split_number_unit(t)?;
@@ -231,11 +385,11 @@ fn split_number_unit(t: &str) -> Option<(f64, &str)> {
 
 /// Evaluate a `calc()`/`max()`/`min()`/`clamp()` expression — the text must be
 /// one whole function call or a plain `<number><unit>`.
-pub fn eval_math(text: &str) -> Option<MathValue> {
+pub fn eval_math(text: &str) -> Option<MathSum> {
     eval_math_inner(text.trim()).ok()
 }
 
-fn eval_math_inner(t: &str) -> Result<MathValue, ()> {
+fn eval_math_inner(t: &str) -> Result<MathSum, ()> {
     let mut p = Parser { text: t, pos: 0 };
     let v = p.expr()?;
     p.skip_ws();
@@ -275,15 +429,15 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn expr(&mut self) -> Result<MathValue, ()> {
+    fn expr(&mut self) -> Result<MathSum, ()> {
         let mut lhs = self.term()?;
         loop {
             if self.eat(b'+') {
                 let rhs = self.term()?;
-                lhs = lhs.checked_add(rhs)?;
+                lhs = lhs.checked_add(rhs);
             } else if self.eat(b'-') {
                 let rhs = self.term()?;
-                lhs = lhs.checked_sub(rhs)?;
+                lhs = lhs.checked_sub(rhs);
             } else {
                 break;
             }
@@ -291,7 +445,7 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
-    fn term(&mut self) -> Result<MathValue, ()> {
+    fn term(&mut self) -> Result<MathSum, ()> {
         let mut lhs = self.factor()?;
         loop {
             if self.eat(b'*') {
@@ -307,7 +461,7 @@ impl<'a> Parser<'a> {
         Ok(lhs)
     }
 
-    fn factor(&mut self) -> Result<MathValue, ()> {
+    fn factor(&mut self) -> Result<MathSum, ()> {
         let (b, i) = self.skip_ws_peek().ok_or(())?;
         match b {
             b'(' => {
@@ -322,7 +476,7 @@ impl<'a> Parser<'a> {
                 self.pos = i + 1;
                 let mut v = self.factor()?;
                 if b == b'-' {
-                    v.value = -v.value;
+                    v = v.scaled(-1.0);
                 }
                 Ok(v)
             }
@@ -346,12 +500,12 @@ impl<'a> Parser<'a> {
                 // A plain number with optional unit.
                 let (num, unit, len) = number_unit_len(rest).ok_or(())?;
                 self.pos = i + len;
-                Ok(MathValue { value: num, unit })
+                Ok(MathSum::one(num, unit))
             }
         }
     }
 
-    fn fn_value(&mut self, name: &str, inner: &str) -> Result<MathValue, ()> {
+    fn fn_value(&mut self, name: &str, inner: &str) -> Result<MathSum, ()> {
         let lower = name.to_ascii_lowercase();
         match lower.as_str() {
             "calc" => {
@@ -371,13 +525,17 @@ impl<'a> Parser<'a> {
                 if args.is_empty() {
                     return Err(());
                 }
-                let mut best: Option<MathValue> = None;
+                let mut best: Option<MathSum> = None;
                 for a in args {
                     let v = eval_math_inner(a)?;
                     best = Some(match best {
                         None => v,
-                        Some(b) if v.same_unit(b) => {
-                            if (lower == "max") == (v.value > b.value) {
+                        Some(b) if v.comparable(&b) => {
+                            // `comparable` means a single same-unit term —
+                            // the comparison happens on the term itself.
+                            let (v_n, _) = v.single().unwrap();
+                            let (b_n, _) = b.single().unwrap();
+                            if (lower == "max") == (v_n > b_n) {
                                 v
                             } else {
                                 b
@@ -396,16 +554,16 @@ impl<'a> Parser<'a> {
                 let lo = eval_math_inner(args[0])?;
                 let v = eval_math_inner(args[1])?;
                 let hi = eval_math_inner(args[2])?;
-                if !(lo.same_unit(v) && v.same_unit(hi)) {
+                if !(lo.comparable(&v) && v.comparable(&hi)) {
                     return Err(());
                 }
                 // CSS ordering: max(min, min(preferred, max)) — the minimum
                 // wins over a smaller maximum (`clamp(100px, 50px, 0px)` is
                 // 100px). f64::clamp would panic on that valid CSS.
-                Ok(MathValue {
-                    value: lo.value.max(v.value.min(hi.value)),
-                    unit: v.unit,
-                })
+                let (lo_n, _) = lo.single().unwrap();
+                let (v_n, _) = v.single().unwrap();
+                let (hi_n, _) = hi.single().unwrap();
+                Ok(MathSum::one(lo_n.max(v_n.min(hi_n)), v.single().unwrap().1))
             }
             _ => Err(()),
         }
@@ -503,46 +661,36 @@ fn number_unit_len(rest: &str) -> Option<(f64, MathUnit, usize)> {
     Some((value, unit, i))
 }
 
-impl MathValue {
-    fn checked_add(self, rhs: MathValue) -> Result<MathValue, ()> {
-        if self.same_unit(rhs) {
-            Ok(MathValue {
-                value: self.value + rhs.value,
-                unit: self.unit,
-            })
-        } else {
-            Err(())
+impl MathSum {
+    /// `+` — every unit's terms accumulate independently; any pair of units
+    /// combines (the sum keeps them symbolic).
+    fn checked_add(self, rhs: MathSum) -> MathSum {
+        let mut s = self;
+        for u in ALL_UNITS {
+            *s.term_mut(u) += rhs.term(u);
         }
+        s.units |= rhs.units;
+        s
     }
 
-    fn checked_sub(self, rhs: MathValue) -> Result<MathValue, ()> {
-        if self.same_unit(rhs) {
-            Ok(MathValue {
-                value: self.value - rhs.value,
-                unit: self.unit,
-            })
-        } else {
-            Err(())
-        }
+    fn checked_sub(self, rhs: MathSum) -> MathSum {
+        self.checked_add(rhs.scaled(-1.0))
     }
 
-    fn checked_mul(self, rhs: MathValue) -> Result<MathValue, ()> {
-        match (self.unit, rhs.unit) {
-            (MathUnit::Unitless, u) | (u, MathUnit::Unitless) => Ok(MathValue {
-                value: self.value * rhs.value,
-                unit: u,
-            }),
+    /// `*` — one side must be a bare unitless factor (`calc(2 * 3px)`).
+    fn checked_mul(self, rhs: MathSum) -> Result<MathSum, ()> {
+        match (self.single(), rhs.single()) {
+            (Some((k, MathUnit::Unitless)), _) => Ok(rhs.scaled(k)),
+            (_, Some((k, MathUnit::Unitless))) => Ok(self.scaled(k)),
             _ => Err(()),
         }
     }
 
-    fn checked_div(self, rhs: MathValue) -> Result<MathValue, ()> {
-        if rhs.unit != MathUnit::Unitless || rhs.value == 0.0 {
-            return Err(());
+    /// `/` — the divisor must be a nonzero unitless number.
+    fn checked_div(self, rhs: MathSum) -> Result<MathSum, ()> {
+        match rhs.single() {
+            Some((d, MathUnit::Unitless)) if d != 0.0 => Ok(self.scaled(1.0 / d)),
+            _ => Err(()),
         }
-        Ok(MathValue {
-            value: self.value / rhs.value,
-            unit: self.unit,
-        })
     }
 }
