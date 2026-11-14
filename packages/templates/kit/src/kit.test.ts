@@ -1478,3 +1478,21 @@ describe('Back through a discard guard', () => {
     expect(nested(recordFormModal({ back }))).toBe(false);
   });
 });
+
+describe('railShell on a touch screen', () => {
+  const rows = [{ type: 'we-text', children: ['row'] }];
+  const props = (node: unknown) => (node as { props: Record<string, unknown> }).props;
+
+  it('opens under the pointer when nothing says the screen is compact', () => {
+    expect(props(railShell({ children: rows })).onMouseEnter).toEqual({ $setLocal: 'expanded', value: true });
+  });
+
+  it('does not open under the pointer while compact, since a tap is the pointer arriving and never leaving', () => {
+    const shell = props(railShell({ children: rows, compact: { $: 'shellStore.narrowWindow' } }));
+    expect(shell.onMouseEnter).toEqual({
+      $if: { condition: { $: '!shellStore.narrowWindow' }, then: { $setLocal: 'expanded', value: true } },
+    });
+    // Leaving still closes it, so the next tap outside an opened rail puts it away.
+    expect(shell.onMouseLeave).toEqual(props(railShell({ children: rows })).onMouseLeave);
+  });
+});

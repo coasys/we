@@ -335,7 +335,7 @@ const thisDeviceRow: SchemaNode = {
               type: 'Row',
               props: { gap: '300', ay: 'center' },
               children: [
-                { type: 'we-icon', props: { name: 'desktop', size: 'md' } },
+                { type: 'we-icon', props: { name: { $: 'deviceStore.serving.icon' }, size: 'md' } },
                 {
                   type: 'Column',
                   props: { gap: '0' },
@@ -343,12 +343,12 @@ const thisDeviceRow: SchemaNode = {
                     {
                       type: 'we-text',
                       props: { fontWeight: 'semibold' },
-                      children: [{ $: "sessionStore.host ? sessionStore.host.name : 'This computer'" }],
+                      children: [{ $: 'sessionStore.host ? sessionStore.host.name : deviceStore.serving.label' }],
                     },
                     {
                       type: 'we-text',
                       props: { variant: 'footnote', color: 'text-muted' },
-                      children: ['Serves you now'],
+                      children: [{ $: 'deviceStore.serving.subtitle' }],
                     },
                   ],
                 },

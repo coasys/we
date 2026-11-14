@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "strict": true,
+    "noEmit": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    // Vite's: the identity window imports its stylesheets, and its test reads a source `?raw`.
+    "types": ["vite/client"]
+  },
+  "include": [
+    "src",
+    "tests",
+    "capacitor.config.ts",
+    // The identity window's stylesheet imports, which this app typechecks through `src/identity/`.
+    "../../packages/identity-window/src/virtual.d.ts"
+  ]
+}

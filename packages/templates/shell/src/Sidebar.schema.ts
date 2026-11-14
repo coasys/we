@@ -1,4 +1,4 @@
-import type { SchemaNode } from '@we/schema-shared';
+import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 import { confirmModal, railGroup, railItem, railShell } from '@we/template-kit';
 
 import { brandMark } from './brandMark';
@@ -24,6 +24,69 @@ import { brandMark } from './brandMark';
  * that have to agree; this is the one a reader of the sidebar will find.
  */
 const COLLAPSED_WIDTH = '80px';
+
+/**
+ * Closing the rail behind a press on a phone, where it was opened by its menu button.
+ *
+ * Below `NARROW_WINDOW_PX` the rail opens over the page rather than under the pointer (see
+ * `compact` below), and a rail left open after somebody chose where to go covers the place they
+ * chose. On a desktop the pointer leaving closes it, so this does nothing there. On each row rather
+ * than once on the rail, because a press on a group heading folds the group and should leave the
+ * rail open to show the fold.
+ */
+const closeOnPhone = {
+  $if: { condition: { $: 'shellStore.narrowWindow' }, then: { $setLocal: 'expanded', value: false } },
+};
+const andClose = (onClick: SchemaProp): SchemaProp[] => [
+  ...(Array.isArray(onClick) ? onClick : [onClick]),
+  closeOnPhone,
+];
+
+/**
+ * The rail's top square: WE's mark, which opens the About page — or, on a phone, the menu button.
+ *
+ * A phone gets the button because nothing else opens the rail there. The mark gives way rather than
+ * sharing the square: an 80px column has room for one control at the top, and the way to the rest
+ * of the app outranks the way to About, which is in the rail once it is open in any case.
+ */
+const brandSquare: SchemaNode = {
+  // No box of its own — `we-tooltip` is `display: contents`, so the Column below is the flex
+  // child the rail sizes, exactly as it was before the tooltip was wrapped around it.
+  type: 'we-tooltip',
+  props: { content: { $: '`About ${templateStore.brand.name}`' }, placement: 'right' },
+  children: [
+    {
+      type: 'Column',
+      props: {
+        width: COLLAPSED_WIDTH,
+        height: '80px',
+        flex: '0 0 auto',
+        ax: 'center',
+        ay: 'center',
+        cursor: 'pointer',
+        onClick: { $invoke: 'shellStore.openShellView', args: ['landing-page'] },
+      },
+      children: [brandMark({ width: '38px', height: '38px', gradient: 'var(--we-gradient-accent)' })],
+    },
+  ],
+};
+
+const menuSquare: SchemaNode = {
+  type: 'Column',
+  props: { width: COLLAPSED_WIDTH, height: '80px', flex: '0 0 auto', ax: 'center', ay: 'center' },
+  children: [
+    {
+      type: 'we-button',
+      props: {
+        variant: 'ghost',
+        square: true,
+        label: { $: "local.expanded ? 'Close menu' : 'Open menu'" },
+        onClick: { $toggleLocal: 'expanded' },
+      },
+      children: [{ type: 'we-icon', props: { name: { $: "local.expanded ? 'x' : 'list'" } } }],
+    },
+  ],
+};
 
 const rail: SchemaNode = railShell({
   collapsedWidth: COLLAPSED_WIDTH,
@@ -64,26 +127,15 @@ const rail: SchemaNode = railShell({
     and the rail is open with nothing to close it, now on this device for good. `railShell` refuses
     the pair outright; see there.
   */
+  /*
+    On a phone, opened by the menu button in the header rather than under the pointer: a tap is the
+    pointer arriving, so a hover rail opened under the first press and stayed open over the page it
+    led to — over Settings, whose own nav then left its page a few letters wide.
+  */
+  compact: { $: 'shellStore.narrowWindow' },
   header: {
-    // No box of its own — `we-tooltip` is `display: contents`, so the Column below is the flex
-    // child the rail sizes, exactly as it was before the tooltip was wrapped around it.
-    type: 'we-tooltip',
-    props: { content: { $: '`About ${templateStore.brand.name}`' }, placement: 'right' },
-    children: [
-      {
-        type: 'Column',
-        props: {
-          width: COLLAPSED_WIDTH,
-          height: '80px',
-          flex: '0 0 auto',
-          ax: 'center',
-          ay: 'center',
-          cursor: 'pointer',
-          onClick: { $invoke: 'shellStore.openShellView', args: ['landing-page'] },
-        },
-        children: [brandMark({ width: '38px', height: '38px', gradient: 'var(--we-gradient-accent)' })],
-      },
-    ],
+    type: '$if',
+    props: { condition: { $: 'shellStore.narrowWindow' }, then: menuSquare, else: brandSquare },
   },
   footer: {
     type: 'Column',
@@ -108,10 +160,10 @@ const rail: SchemaNode = railShell({
             icon: 'flask',
             label: 'Schema Tests',
             active: { $: "shellStore.activeShellView == 'schema-tests'" },
-            onClick: [
+            onClick: andClose([
               { $invoke: 'appStore.deactivateApp' },
               { $invoke: 'shellStore.openShellView', args: ['schema-tests'] },
-            ],
+            ]),
           }),
         },
       },
@@ -156,13 +208,19 @@ const rail: SchemaNode = railShell({
       icon: 'user',
       label: 'Profile',
       active: { $: "shellStore.activeShellView == 'profile'" },
-      onClick: [{ $invoke: 'appStore.deactivateApp' }, { $invoke: 'shellStore.openShellView', args: ['profile'] }],
+      onClick: andClose([
+        { $invoke: 'appStore.deactivateApp' },
+        { $invoke: 'shellStore.openShellView', args: ['profile'] },
+      ]),
     }),
     railItem({
       icon: 'gear',
       label: 'Settings',
       active: { $: "shellStore.activeShellView == 'settings'" },
-      onClick: [{ $invoke: 'appStore.deactivateApp' }, { $invoke: 'shellStore.openShellView', args: ['settings'] }],
+      onClick: andClose([
+        { $invoke: 'appStore.deactivateApp' },
+        { $invoke: 'shellStore.openShellView', args: ['settings'] },
+      ]),
     }),
     // Only where the seed names a marketplace: without one the overlay is a dead end saying so.
     {
@@ -173,10 +231,10 @@ const rail: SchemaNode = railShell({
           icon: 'storefront',
           label: 'Marketplace',
           active: { $: "shellStore.activeShellView == 'marketplace'" },
-          onClick: [
+          onClick: andClose([
             { $invoke: 'appStore.deactivateApp' },
             { $invoke: 'shellStore.openShellView', args: ['marketplace'] },
-          ],
+          ]),
         }),
       },
     },
@@ -236,6 +294,7 @@ const rail: SchemaNode = railShell({
                 then: { $invoke: 'shellStore.setJoinSpaceOpen', args: [true] },
               },
             },
+            closeOnPhone,
           ],
         },
       },
@@ -251,7 +310,7 @@ const rail: SchemaNode = railShell({
               avatar: { src: { $: 'space.avatar' }, name: { $: 'space.name' }, hash: { $: 'space.uuid' } },
               label: { $: 'space.name' },
               active: { $: 'space.spaceId == routeStore.segments[1]' },
-              onClick: { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] },
+              onClick: andClose({ $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] }),
               /*
                 Which space the call is in — now that a call outlives leaving its space, that is a
                 question the rail has to be able to answer.
@@ -317,7 +376,7 @@ const rail: SchemaNode = railShell({
                   avatar: { src: { $: 'app.image' }, name: { $: 'app.name' }, hash: { $: 'app.id' } },
                   label: { $: 'app.name' },
                   active: { $: "app.id == 'we' ? !appStore.activeAppId : app.id == appStore.activeAppId" },
-                  onClick: {
+                  onClick: andClose({
                     $if: {
                       condition: { $: "app.id == 'we'" },
                       then: [{ $invoke: 'appStore.deactivateApp' }, { $invoke: 'shellStore.closeShellView' }],
@@ -326,7 +385,7 @@ const rail: SchemaNode = railShell({
                         { $invoke: 'appStore.activateApp', args: [{ $: 'app.id' }] },
                       ],
                     },
-                  },
+                  }),
                 }),
               ],
             },
@@ -356,6 +415,7 @@ export const sidebar: SchemaNode = {
     then: {
       type: 'Column',
       props: {
+        id: 'we-sidebar',
         styles: { $: "shellStore.panelMaximised ? { display: 'none' } : null" },
       },
       children: [rail],

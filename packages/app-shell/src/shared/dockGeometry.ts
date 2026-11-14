@@ -55,6 +55,7 @@
  */
 import { DROP_LINE_THICKNESS } from '@we/drag';
 import type { DockEdge, DockSize } from '@we/module-shared';
+import { breakpoint } from '@we/tokens';
 
 /** The collapsed shell sidebar. Mirrors `SHELL_SIDEBAR_WIDTH`, in pixels for arithmetic. */
 export const SIDEBAR_PX = 80;
@@ -166,6 +167,17 @@ export const DOCK_GAP_PX = 8;
  * still whole underneath it.
  */
 export const NARROW_VIEWPORT_PX = 900;
+
+/**
+ * Below this width the window is a phone held upright, and the app's own chrome changes how it opens.
+ *
+ * The `sm` breakpoint, read from the token rather than restated, so the chrome and a template's
+ * `smUpProps` change their minds at the same width. Narrower than `NARROW_VIEWPORT_PX` on purpose:
+ * that one is about whether a panel can afford to push the content aside, which a tablet cannot; this
+ * one is about whether there is a pointer that hovers, which a tablet held sideways usually has room
+ * to pretend to and a phone does not.
+ */
+export const NARROW_WINDOW_PX = parseInt(breakpoint.sm, 10);
 
 /**
  * The band along the bottom that floating chrome occupies, which a panel must not be snapped under.

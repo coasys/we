@@ -49,6 +49,7 @@ pnpm dev:tauri     # Tauri app
 - **[@we/app-web](./apps/we-web)** - Web launcher application (browser-based)
 - **[@we/app-electron](./apps/we-electron)** - Electron desktop launcher (Linux, macOS, Windows)
 - **[@we/app-tauri](./apps/we-tauri)** - Tauri desktop launcher (Rust-based)
+- **[@we/app-mobile](./apps/we-mobile)** - Coasys phone app: the web build in a Capacitor shell (Android; iOS project kept, not built in CI)
 - **[playgrounds](./apps/playgrounds)** - Development playgrounds (graph explorer, render benchmark, portable-UI slice)
 
 ## Features

@@ -65,14 +65,33 @@ describe('a device row', () => {
   it('says a revoked device may hold the master key in a line that wraps, not a badge', () => {
     const [name, end] = [deviceRow().children![1] as Node, deviceRow().children![2] as Node];
     const conditionOf = (n: Node) => (n.props?.condition as { $: string }).$;
-    const warning = name.children!.find((n) => (n as Node).type === '$if') as Node;
-    expect(conditionOf(warning)).toBe("device.revoked && device.master != ''");
-    const line = warning.props!.then as Node;
+    const lines = name.children!.filter((n) => (n as Node).type === '$if') as Node[];
+    const warning = lines.find((n) => conditionOf(n) === "device.revoked && device.master != ''");
+    expect(warning).toBeDefined();
+    const line = warning!.props!.then as Node;
     expect(line.type).toBe('we-text');
     expect(line.props?.overflowWrap).toBe('normal');
     const badge = end.children!.find(
       (n) => (n as Node).type === '$if' && ((n as Node).props?.then as Node).type === 'we-badge',
     ) as Node;
-    expect(conditionOf(badge)).toBe("!device.revoked && device.master != ''");
+    expect(conditionOf(badge)).toBe("!device.revoked && device.holdsMaster == 'yes'");
+  });
+
+  /*
+    "Master key offered, not yet taken" was a warning badge: a sentence in a badge, which at 320px ran
+    out of the card, and a warning for something that is only pending. It is a muted line under the
+    name, like the revoked warning, and only "holds" is still a badge.
+  */
+  it('says an offered master key in a muted line that wraps, not a badge', () => {
+    const name = deviceRow().children![1] as Node;
+    const conditionOf = (n: Node) => (n.props?.condition as { $: string }).$;
+    const offered = (name.children!.filter((n) => (n as Node).type === '$if') as Node[]).find(
+      (n) => conditionOf(n) === "!device.revoked && device.holdsMaster == 'offered'",
+    );
+    expect(offered).toBeDefined();
+    const line = offered!.props!.then as Node;
+    expect(line.type).toBe('we-text');
+    expect(line.props?.color).toBe('text-muted');
+    expect(line.props?.overflowWrap).toBe('normal');
   });
 });

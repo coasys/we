@@ -28,6 +28,19 @@
 //! identity the highest version of its private record this computer opened, so a store serving
 //! back an older version is refused. Public numbers, no secret.
 //!
+//! And the **custody notes** (`<dir>/custody-notes.json`, [`Vault::custody_note`]): per identity
+//! and per device key, that device's account of its custody decisions (an acquisition whose
+//! record mark is owed, a release), kept as the client's serde JSON and never read here. Each
+//! change is a compare-and-swap of the whole note under the folder's lock. Not secret. Like the
+//! epochs and the marks, the file is noted once written and never removed: gone, it is an error,
+//! never "no note" (a release would read as never made). A note cleared leaves the file, on
+//! purpose, so the folder notes the file only, not each identity in it. A note kept under
+//! `VAULT_NOTE` (`"vault"`, the note of the vault itself, which every app sharing it reads) is
+//! kept like any device key's: the folder never reads key ids.
+//!
+//! The **vault ids** are not here: an id is kept beside the master key, in the store that keeps
+//! it (`crate::vault`), so a folder reset cannot lose it while the key stays.
+//!
 //! Those two are not lists that may empty: what they hold is what a missing one would undo (a
 //! forget at an epoch counted again from nothing, a rolled-back record taken as the first). So
 //! neither file is ever removed once written, an identity's entry in it never leaves (a forgotten
@@ -49,12 +62,13 @@
 //! the computer takes the same file).
 //!
 //! [`Vault::record_seen`]: ad4m_identity_client::Vault::record_seen
+//! [`Vault::custody_note`]: ad4m_identity_client::Vault::custody_note
 
 use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use ad4m_identity_client::{PendingPush, VaultError};
+use ad4m_identity_client::{CustodyNote, PendingPush, VaultError};
 use ad4m_identity_core::Event;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -71,8 +85,11 @@ pub const SEEN_FILE_NAME: &str = "record-seen.json";
 /// The custody epochs' file inside the custody folder.
 pub const EPOCHS_FILE_NAME: &str = "custody-epochs.json";
 
+/// The custody notes' file inside the custody folder.
+pub const NOTES_FILE_NAME: &str = "custody-notes.json";
+
 /// The file in the custody folder that notes which of the files that must not go missing
-/// (the epochs, the record marks) have been written.
+/// (the epochs, the record marks, the custody notes) have been written.
 pub const METADATA_FILE_NAME: &str = "custody-metadata.json";
 
 /// What [`METADATA_FILE_NAME`] holds.
@@ -188,6 +205,26 @@ enum Noted<T> {
     Lost(Vec<String>),
 }
 
+/// One device's custody note for one identity ([`Vault::custody_note`]), kept as the serde JSON
+/// the client's [`CustodyNote`] wrote: the folder never reads its layers, and a swap compares
+/// the whole value, every layer below the top included.
+///
+/// [`Vault::custody_note`]: ad4m_identity_client::Vault::custody_note
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Note {
+    pub scid: String,
+    pub key_id: String,
+    pub note: serde_json::Value,
+}
+
+/// The custody notes' file.
+#[derive(Serialize, Deserialize)]
+struct Notes {
+    version: u32,
+    notes: Vec<Note>,
+}
+
 /// The custody epochs as read under the lock, and the identities noted as having one.
 #[derive(Default)]
 struct Counted {
@@ -213,6 +250,7 @@ pub struct Lists {
     pushes: Vec<PendingPush>,
     seen: Vec<Seen>,
     epochs: Vec<Epoch>,
+    notes: Vec<Note>,
 }
 
 /// The custody folder's lock, held exclusively until dropped ([`PendingIncepts::exclusive`]).
@@ -226,6 +264,11 @@ pub struct Exclusive<'a> {
 }
 
 impl Exclusive<'_> {
+    /// The custody folder this lock is on; `None` for a memory store (tests).
+    pub fn folder(&self) -> Option<&std::path::Path> {
+        self.dir
+    }
+
     /// `scid`'s custody epoch: 0 while no entry was ever made for it here (no key of it kept or
     /// staged yet, or kept only by a build before epochs were). An entry this folder made and
     /// has lost is an error, never 0, as is a file of epochs that has gone: the folder notes each
@@ -519,6 +562,89 @@ impl PendingIncepts {
         )
     }
 
+    /// The custody note of device `key_id` for `scid` ([`Vault::custody_note`]); `None` when it
+    /// has none. Read under the folder's lock. A notes' file this folder wrote and lost is an
+    /// error, never `None`: a release would read as never made, a receipt as never owed.
+    ///
+    /// [`Vault::custody_note`]: ad4m_identity_client::Vault::custody_note
+    pub fn custody_note(
+        &self,
+        scid: &str,
+        key_id: &str,
+    ) -> Result<Option<CustodyNote>, VaultError> {
+        let notes = match self {
+            PendingIncepts::File { dir, lock } => {
+                let _held = lock.lock().map_err(|_| unavailable("lock poisoned"))?;
+                let _shared = lock_folder(dir, false)?;
+                read_notes(dir)?
+            }
+            PendingIncepts::Memory(lists) => lists
+                .lock()
+                .map_err(|_| unavailable("lock poisoned"))?
+                .notes
+                .clone(),
+        };
+        notes
+            .into_iter()
+            .find(|n| n.scid == scid && n.key_id == key_id)
+            .map(|n| serde_json::from_value(n.note).map_err(unavailable))
+            .transpose()
+    }
+
+    /// Sets the custody note of device `key_id` for `scid` to `note` (`None` clears it) only
+    /// while the kept one is still `expected` (`None`: none kept), and answers whether it was
+    /// set ([`Vault::swap_custody_note`]). One read-compare-write under the folder's lock, the
+    /// one every app on this computer takes for the vault's writes. The compare is on the whole
+    /// note as JSON values, every layer included. Durable when it answers `true`: the file is
+    /// written whole through a temp file and synced, its rename too.
+    ///
+    /// [`Vault::swap_custody_note`]: ad4m_identity_client::Vault::swap_custody_note
+    pub fn swap_custody_note(
+        &self,
+        scid: &str,
+        key_id: &str,
+        expected: Option<&CustodyNote>,
+        note: Option<&CustodyNote>,
+    ) -> Result<bool, VaultError> {
+        let expected = expected
+            .map(serde_json::to_value)
+            .transpose()
+            .map_err(unavailable)?;
+        let note = note
+            .map(serde_json::to_value)
+            .transpose()
+            .map_err(unavailable)?;
+        match self {
+            PendingIncepts::File { dir, lock } => {
+                let _held = lock.lock().map_err(|_| unavailable("lock poisoned"))?;
+                let _exclusive = lock_folder(dir, true)?;
+                let mut notes = read_notes(dir)?;
+                match swap_note(&mut notes, scid, key_id, expected.as_ref(), note) {
+                    Swap::Refused => Ok(false),
+                    Swap::Unchanged => Ok(true),
+                    Swap::Changed => {
+                        // The file only: the folder never reads per-identity entries of it,
+                        // since a note cleared leaves on purpose.
+                        write_noted(dir, NOTES_FILE_NAME, &[], &readable_notes(notes)?)?;
+                        Ok(true)
+                    }
+                }
+            }
+            PendingIncepts::Memory(lists) => {
+                let mut lists = lists.lock().map_err(|_| unavailable("lock poisoned"))?;
+                let mut notes = lists.notes.clone();
+                match swap_note(&mut notes, scid, key_id, expected.as_ref(), note) {
+                    Swap::Refused => Ok(false),
+                    Swap::Unchanged => Ok(true),
+                    Swap::Changed => {
+                        lists.notes = readable_notes(notes)?.notes;
+                        Ok(true)
+                    }
+                }
+            }
+        }
+    }
+
     /// Holds the custody folder's lock exclusively until the answer drops: across processes on a
     /// folder (the advisory lock on `<dir>/pending-incepts.lock`) and across threads of this one.
     /// The vault takes it around each read-decide-write of a master-key slot. Nothing else of
@@ -616,6 +742,84 @@ impl PendingIncepts {
             }
         }
     }
+}
+
+/// What [`swap_note`] did.
+enum Swap {
+    /// The kept note is not the one expected: nothing changed.
+    Refused,
+    /// Expected, and already the note asked for (none kept, none asked): nothing to write.
+    Unchanged,
+    Changed,
+}
+
+/// The compare-and-swap of [`PendingIncepts::swap_custody_note`] on the notes as read under
+/// the lock: `note` replaces the note of (`scid`, `key_id`) only while it is `expected`.
+fn swap_note(
+    notes: &mut Vec<Note>,
+    scid: &str,
+    key_id: &str,
+    expected: Option<&serde_json::Value>,
+    note: Option<serde_json::Value>,
+) -> Swap {
+    let at = notes
+        .iter()
+        .position(|n| n.scid == scid && n.key_id == key_id);
+    if !same_note(at.map(|i| &notes[i].note), expected) {
+        return Swap::Refused;
+    }
+    match (at, note) {
+        (None, None) => return Swap::Unchanged,
+        (Some(i), Some(note)) => notes[i].note = note,
+        (Some(i), None) => {
+            notes.remove(i);
+        }
+        (None, Some(note)) => notes.push(Note {
+            scid: scid.to_string(),
+            key_id: key_id.to_string(),
+            note,
+        }),
+    }
+    Swap::Changed
+}
+
+/// Whether the kept note is the one expected: the whole JSON value, every layer below the top
+/// included, never the top layer alone (two notes may share their top and differ beneath).
+fn same_note(kept: Option<&serde_json::Value>, expected: Option<&serde_json::Value>) -> bool {
+    kept == expected
+}
+
+/// The custody notes, read under the folder's lock: none when the file was never written; a
+/// file written and gone is an error ([`read_noted`]).
+fn read_notes(dir: &std::path::Path) -> Result<Vec<Note>, VaultError> {
+    match read_noted::<Notes>(dir, NOTES_FILE_NAME)? {
+        Noted::Read(file, _) if file.version == FORMAT => Ok(file.notes),
+        Noted::Read(file, _) => Err(unavailable(format!(
+            "{NOTES_FILE_NAME} in format {}, not {FORMAT}",
+            file.version
+        ))),
+        Noted::Never => Ok(Vec::new()),
+        Noted::Lost(_) => Err(lost_file(NOTES_FILE_NAME)),
+    }
+}
+
+/// The notes' file as it would be written, once read back with the reader [`read_notes`] uses.
+/// A note serde_json writes and cannot read (nested past its recursion limit of 128) is refused
+/// here, before the file is replaced: written, it would make the whole file unreadable, every
+/// identity's notes with it, and a lost note reads as a release never made.
+fn readable_notes(notes: Vec<Note>) -> Result<Notes, VaultError> {
+    let file = Notes {
+        version: FORMAT,
+        notes,
+    };
+    let bytes = serde_json::to_vec(&file).map_err(unavailable)?;
+    serde_json::from_slice::<Notes>(&bytes).map_err(|e| {
+        unavailable(format!(
+            "a custody note that cannot be read back was refused, and {NOTES_FILE_NAME} left as \
+             it was: {e}"
+        ))
+    })?;
+    Ok(file)
 }
 
 /// `file`, one that must not go missing once written: [`Noted::Lost`] when the folder's
@@ -1103,5 +1307,261 @@ mod tests {
             rx.recv_timeout(std::time::Duration::from_secs(10)).unwrap();
         });
         assert_eq!(held.pushes().unwrap().len(), 1);
+    }
+
+    use ad4m_identity_client::{CustodyNote, NoteToken};
+
+    /// A release over an intent over `deepest`: three layers, so a note that differs from
+    /// another only two layers down can be made.
+    fn stacked(deepest: CustodyNote) -> CustodyNote {
+        CustodyNote::Released {
+            epoch: 9,
+            token: NoteToken([3; 16]),
+            restores: Some(Box::new(CustodyNote::MarkOwed {
+                index: 1,
+                epoch: 8,
+                token: NoteToken([2; 16]),
+                acquired: false,
+                restores: Some(Box::new(deepest)),
+            })),
+        }
+    }
+
+    fn receipt(acquired: bool) -> CustodyNote {
+        CustodyNote::MarkOwed {
+            index: 0,
+            epoch: 1,
+            token: NoteToken([1; 16]),
+            acquired,
+            restores: None,
+        }
+    }
+
+    /// A note is kept per identity and per device key, whole: every layer comes back after the
+    /// folder is opened again, and another device's or identity's note is its own.
+    #[test]
+    fn a_custody_note_survives_reopening_whole_and_per_device() {
+        let dir = tempfile::tempdir().unwrap();
+        let note = stacked(receipt(true));
+        let folder = PendingIncepts::file(dir.path());
+        assert_eq!(folder.custody_note("QmA", "d1").unwrap(), None);
+        assert!(folder
+            .swap_custody_note("QmA", "d1", None, Some(&note))
+            .unwrap());
+        drop(folder);
+
+        let folder = PendingIncepts::file(dir.path());
+        assert_eq!(
+            folder.custody_note("QmA", "d1").unwrap(),
+            Some(note.clone())
+        );
+        assert_eq!(folder.custody_note("QmA", "d2").unwrap(), None);
+        assert_eq!(folder.custody_note("QmB", "d1").unwrap(), None);
+        // Cleared only from what is there; then none, and the file stays (its loss is a loss).
+        assert!(folder
+            .swap_custody_note("QmA", "d1", Some(&note), None)
+            .unwrap());
+        assert_eq!(folder.custody_note("QmA", "d1").unwrap(), None);
+        assert!(dir.path().join(NOTES_FILE_NAME).exists());
+    }
+
+    /// The compare is on the whole note: an expected note equal to the kept one at the top, and
+    /// different only in the deepest layer's receipt, is stale and changes nothing.
+    #[test]
+    fn a_swap_from_a_note_that_differs_only_in_a_nested_layer_is_refused() {
+        for folder in [
+            PendingIncepts::memory(),
+            PendingIncepts::file(tempfile::tempdir().unwrap().keep()),
+        ] {
+            let kept = stacked(receipt(true));
+            let stale = stacked(receipt(false));
+            assert_eq!(kept.token(), stale.token(), "the same top layer");
+            assert!(folder
+                .swap_custody_note("QmA", "d1", None, Some(&kept))
+                .unwrap());
+            assert!(!folder
+                .swap_custody_note("QmA", "d1", Some(&stale), None)
+                .unwrap());
+            assert!(!folder
+                .swap_custody_note("QmA", "d1", None, Some(&stale))
+                .unwrap());
+            assert_eq!(
+                folder.custody_note("QmA", "d1").unwrap(),
+                Some(kept.clone())
+            );
+            assert!(folder
+                .swap_custody_note("QmA", "d1", Some(&kept), Some(&receipt(true)))
+                .unwrap());
+            assert_eq!(
+                folder.custody_note("QmA", "d1").unwrap(),
+                Some(receipt(true))
+            );
+        }
+    }
+
+    /// Two handles on one folder (two apps) swapping at once: each swap is one step under the
+    /// folder's lock, so of every pair that read the same note one wins, and none is lost.
+    #[test]
+    fn swaps_from_two_handles_on_one_folder_never_lose_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let counter = |n: u64| CustodyNote::Released {
+            epoch: n,
+            token: NoteToken([0; 16]),
+            restores: None,
+        };
+        PendingIncepts::file(dir.path())
+            .swap_custody_note("QmA", "d1", None, Some(&counter(0)))
+            .unwrap();
+        let threads: Vec<_> = (0..2)
+            .map(|_| {
+                let dir = dir.path().to_path_buf();
+                std::thread::spawn(move || {
+                    let folder = PendingIncepts::file(dir);
+                    let mut won = 0;
+                    while won < 20 {
+                        let Some(CustodyNote::Released { epoch, .. }) =
+                            folder.custody_note("QmA", "d1").unwrap()
+                        else {
+                            panic!("the counter's note is gone");
+                        };
+                        if folder
+                            .swap_custody_note(
+                                "QmA",
+                                "d1",
+                                Some(&counter(epoch)),
+                                Some(&counter(epoch + 1)),
+                            )
+                            .unwrap()
+                        {
+                            won += 1;
+                        }
+                    }
+                })
+            })
+            .collect();
+        for t in threads {
+            t.join().unwrap();
+        }
+        assert_eq!(
+            PendingIncepts::file(dir.path())
+                .custody_note("QmA", "d1")
+                .unwrap(),
+            Some(counter(40))
+        );
+    }
+
+    /// The notes' file, once written, must not go missing: gone, it is an error, never "no
+    /// note" (a release taken back, a receipt forgotten).
+    #[test]
+    fn a_lost_notes_file_is_an_error_not_no_note() {
+        let dir = tempfile::tempdir().unwrap();
+        let folder = PendingIncepts::file(dir.path());
+        folder
+            .swap_custody_note("QmA", "d1", None, Some(&receipt(true)))
+            .unwrap();
+        std::fs::remove_file(dir.path().join(NOTES_FILE_NAME)).unwrap();
+        assert!(folder.custody_note("QmA", "d1").is_err());
+        assert!(folder
+            .swap_custody_note("QmA", "d1", None, Some(&receipt(true)))
+            .is_err());
+    }
+
+    /// The note of the vault itself (`VAULT_NOTE`, key id `"vault"`) is kept like a device
+    /// key's: its whole stack comes back after reopening, a swap from a stale note is refused,
+    /// and it is its own beside a device key's note of the same identity.
+    #[test]
+    fn the_vault_note_round_trips_whole_with_its_compare_and_swap() {
+        use ad4m_identity_client::VAULT_NOTE;
+        assert_eq!(VAULT_NOTE, "vault");
+        let dir = tempfile::tempdir().unwrap();
+        let kept = stacked(receipt(true));
+        let stale = stacked(receipt(false));
+        let folder = PendingIncepts::file(dir.path());
+        assert_eq!(folder.custody_note("QmA", VAULT_NOTE).unwrap(), None);
+        assert!(folder
+            .swap_custody_note("QmA", VAULT_NOTE, None, Some(&kept))
+            .unwrap());
+        assert!(folder
+            .swap_custody_note("QmA", "d1", None, Some(&receipt(false)))
+            .unwrap());
+        drop(folder);
+
+        let folder = PendingIncepts::file(dir.path());
+        assert_eq!(
+            folder.custody_note("QmA", VAULT_NOTE).unwrap(),
+            Some(kept.clone())
+        );
+        assert_eq!(
+            folder.custody_note("QmA", "d1").unwrap(),
+            Some(receipt(false))
+        );
+        assert!(!folder
+            .swap_custody_note("QmA", VAULT_NOTE, Some(&stale), None)
+            .unwrap());
+        assert!(!folder
+            .swap_custody_note("QmA", VAULT_NOTE, None, Some(&stale))
+            .unwrap());
+        assert_eq!(
+            folder.custody_note("QmA", VAULT_NOTE).unwrap(),
+            Some(kept.clone())
+        );
+        assert!(folder
+            .swap_custody_note("QmA", VAULT_NOTE, Some(&kept), None)
+            .unwrap());
+        assert_eq!(folder.custody_note("QmA", VAULT_NOTE).unwrap(), None);
+        assert_eq!(
+            folder.custody_note("QmA", "d1").unwrap(),
+            Some(receipt(false))
+        );
+    }
+
+    /// The nested note is kept as the client's serde JSON, unchanged: what lands in the file is
+    /// exactly `serde_json::to_value` of the note, and reads back as the same note.
+    #[test]
+    fn a_nested_note_is_kept_as_the_clients_json_and_reads_back_equal() {
+        let dir = tempfile::tempdir().unwrap();
+        let note = stacked(stacked(receipt(true)));
+        let folder = PendingIncepts::file(dir.path());
+        assert!(folder
+            .swap_custody_note("QmA", "d1", None, Some(&note))
+            .unwrap());
+        let file: serde_json::Value =
+            serde_json::from_slice(&std::fs::read(dir.path().join(NOTES_FILE_NAME)).unwrap())
+                .unwrap();
+        assert_eq!(
+            file["notes"][0]["note"],
+            serde_json::to_value(&note).unwrap()
+        );
+        assert_eq!(folder.custody_note("QmA", "d1").unwrap(), Some(note));
+    }
+
+    /// A note nested past serde_json's recursion limit (128) is written by it and cannot be read
+    /// back: it is refused before the file is replaced, so the file, and every other note in it,
+    /// stays readable. The memory folder refuses it the same way.
+    #[test]
+    fn a_note_nested_past_what_can_be_read_back_is_refused_and_the_file_stays_readable() {
+        let mut deep = receipt(true);
+        for _ in 0..70 {
+            deep = stacked(deep);
+        }
+        let kept = stacked(receipt(true));
+        let dir = tempfile::tempdir().unwrap();
+        for folder in [PendingIncepts::file(dir.path()), PendingIncepts::memory()] {
+            assert!(folder
+                .swap_custody_note("QmB", "d1", None, Some(&kept))
+                .unwrap());
+            assert!(folder
+                .swap_custody_note("QmA", "d1", None, Some(&deep))
+                .is_err());
+            assert_eq!(folder.custody_note("QmA", "d1").unwrap(), None);
+            assert_eq!(
+                folder.custody_note("QmB", "d1").unwrap(),
+                Some(kept.clone())
+            );
+        }
+        // Opened again, the file reads as it was before the refused write.
+        let folder = PendingIncepts::file(dir.path());
+        assert_eq!(folder.custody_note("QmB", "d1").unwrap(), Some(kept));
+        assert_eq!(folder.custody_note("QmA", "d1").unwrap(), None);
     }
 }

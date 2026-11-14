@@ -1,0 +1,9 @@
+# The pinned std's `File` locks have no Android implementation: they compile for
+# `aarch64-linux-android` and return `Unsupported` at run time, so every vault operation would
+# fail on a phone while host tests pass. Lock with `crate::file::flock_exclusive`.
+disallowed-methods = [
+    { path = "std::fs::File::lock", reason = "unsupported on Android in the pinned std; use crate::file::flock_exclusive" },
+    { path = "std::fs::File::try_lock", reason = "unsupported on Android in the pinned std; use crate::file::flock_exclusive" },
+    { path = "std::fs::File::lock_shared", reason = "unsupported on Android in the pinned std" },
+    { path = "std::fs::File::try_lock_shared", reason = "unsupported on Android in the pinned std" },
+]

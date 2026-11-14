@@ -16,20 +16,79 @@
 //! A staged item carries the staging flow's [`StageToken`] the same way ([`ItemTag`]), so a flow's
 //! discard forgets only the key it staged, never one another app sharing this folder staged since.
 //!
+//! A third slot keeps this vault's id for the identity (`coasys.identity.vault/<scid>`,
+//! [`Vault::vault_id`]), in the store the keys are in, written with no unlock on a read: the id
+//! is lost only with the keys, so a reset of the custody folder never draws a second id for a key
+//! the keychain or the Secret Service still keeps. The id names the custody folder that drew it,
+//! and a platform-store slot named for another folder is refused, so two folders over one store
+//! never keep one identity under two locks and two epochs. The id is written by a claim that
+//! never replaces one ([`SecretStore::claim_public`]), so two folders that both find no id keep
+//! one, and the folder that lost is refused. On Linux the id item has the same trust boundary as
+//! the Secret Service itself: any program of the same user can change it.
+//!
 //! Beside the master keys the vault keeps the incept of an identity `create` made here until its
 //! publish is confirmed, and the retry list of master-key pushes to other devices
 //! ([`PendingIncepts`]): public data, so in files rather than the secret store.
 
 use ad4m_identity_client::vault::KeySigner;
 use ad4m_identity_client::{
-    Forgot, MasterUse, PendingPush, Secret, StageToken, Stored, Unlocked, Vault, VaultError,
+    CustodyNote, Forgot, MasterUse, PendingPush, Secret, StageToken, Stored, Unlocked, Vault,
+    VaultError, VaultId,
 };
 use ad4m_identity_core::Event;
 use zeroize::Zeroizing;
 
 use crate::pending::{Exclusive, PendingIncepts};
 use crate::seal::{self, CustodyItem, Kdf};
-use crate::store::{item_name, staged_name, ItemTag, SecretStore};
+use crate::store::{item_name, staged_name, vault_id_name, ItemTag, SecretStore, StoreKind};
+
+/// The version of a kept vault id's JSON ([`KeptId`]).
+const ID_FORMAT: u32 = 1;
+
+/// This vault's id for one identity, as kept under [`vault_id_name`]: the id, and the custody
+/// folder that owns the slot. Not secret.
+#[derive(serde::Serialize, serde::Deserialize)]
+struct KeptId {
+    version: u32,
+    id: VaultId,
+    /// The custody folder whose lock and epochs guard this identity's slots, canonical; empty
+    /// for a memory folder (tests).
+    folder: String,
+}
+
+/// The custody folder `folder` is the lock of, as a [`KeptId`] names it: its canonical path.
+/// Refused when the path cannot be made canonical, never named by the path as given: one folder
+/// reached by two paths (a symlink, a relative path) would read as two owners, and an id it
+/// kept would refuse it, or one it did not keep would not.
+fn owner_of(folder: &Exclusive<'_>) -> Result<String, VaultError> {
+    let Some(dir) = folder.folder() else {
+        return Ok(String::new());
+    };
+    let canonical = std::fs::canonicalize(dir).map_err(|e| {
+        VaultError::Unavailable(format!(
+            "the custody folder's path cannot be made canonical, so the owner of a vault id \
+             cannot be told: {e}"
+        ))
+    })?;
+    Ok(canonical.to_string_lossy().into_owned())
+}
+
+/// What an identity's id slot holds ([`DesktopVault::id_slot`]).
+enum IdSlot {
+    Kept(VaultId),
+    /// No id, and no key of the identity either: one may be drawn.
+    Empty,
+    /// No id, while a key of the identity is kept or staged: the id went without the key.
+    Lost,
+}
+
+fn another_folder() -> VaultError {
+    VaultError::Unavailable(
+        "this identity's master key slot in the platform store is owned by another custody \
+         folder; one slot is kept by one custody folder only, so its lock and its epochs are one"
+            .into(),
+    )
+}
 
 pub struct DesktopVault {
     store: Box<dyn SecretStore>,
@@ -306,6 +365,100 @@ impl DesktopVault {
         self.pending.exclusive()?.epoch(scid)
     }
 
+    /// This vault's id for `scid` ([`Vault::vault_id`]): drawn once, under the custody folder's
+    /// lock, and kept in the store that keeps the master key ([`vault_id_name`]), the same for
+    /// every app on this computer. Not secret, so no unlock. A key of `scid` kept with no id
+    /// beside it is an error, never a fresh id; so is an id that names another custody folder
+    /// ([`DesktopVault::kept_id`]).
+    pub fn vault_id(&self, scid: &str) -> Result<VaultId, VaultError> {
+        let folder = self.pending.exclusive()?;
+        self.id_for(&folder, scid)
+    }
+
+    /// The id kept for `scid`, read under the folder's lock (`folder`); `None` when none is kept
+    /// and no key of `scid` is either. An error:
+    /// - when a key of `scid` (kept or staged) is here and its id is not: the id went without the
+    ///   key, and a fresh one would count this copy twice;
+    /// - when the id is in the platform store and names another custody folder: two folders over
+    ///   one keychain or Secret Service would each count epochs and take their own lock over the
+    ///   one slot, so the second is refused ([`DesktopVault::check_owner`]).
+    fn kept_id(&self, folder: &Exclusive<'_>, scid: &str) -> Result<Option<VaultId>, VaultError> {
+        match self.id_slot(folder, scid)? {
+            IdSlot::Kept(id) => Ok(Some(id)),
+            IdSlot::Empty => Ok(None),
+            IdSlot::Lost => Err(VaultError::Unavailable(
+                "this identity's master key is kept here and its vault id is gone; it is not \
+                 drawn again"
+                    .into(),
+            )),
+        }
+    }
+
+    /// What the id slot of `scid` holds, under the folder's lock; an id naming another custody
+    /// folder is an error ([`another_folder`]).
+    fn id_slot(&self, folder: &Exclusive<'_>, scid: &str) -> Result<IdSlot, VaultError> {
+        let name = vault_id_name(scid);
+        let Some(bytes) = self.store.get(&name)? else {
+            if self.store.contains(&item_name(scid))? || self.store.contains(&staged_name(scid))? {
+                return Ok(IdSlot::Lost);
+            }
+            return Ok(IdSlot::Empty);
+        };
+        let kept: KeptId = serde_json::from_slice(&bytes).map_err(|e| {
+            VaultError::Unavailable(format!("this identity's vault id cannot be read: {e}"))
+        })?;
+        if kept.version != ID_FORMAT {
+            return Err(VaultError::Unavailable(format!(
+                "this identity's vault id is in format {}, not {ID_FORMAT}",
+                kept.version
+            )));
+        }
+        // An id in the custody folder's own files belongs to that folder, wherever it is.
+        if self.store.kind_of(&name)? != StoreKind::File && kept.folder != owner_of(folder)? {
+            return Err(another_folder());
+        }
+        Ok(IdSlot::Kept(kept.id))
+    }
+
+    /// [`kept_id`](Self::kept_id), or, when there is none, a fresh id drawn and claimed beside
+    /// where the key goes ([`SecretStore::claim_public`]), then read back. The folder's lock makes
+    /// two first asks of one folder keep one id; the claim does the same for two folders over one
+    /// platform store, which have two locks: both can read "no id", and the store keeps the id of
+    /// one claim only, never replacing it. Each claimant then answers with what the store keeps,
+    /// so the one that lost reads the winner's id, names another folder, and is refused
+    /// ([`another_folder`]). Answers only once the store has kept an id.
+    fn id_for(&self, folder: &Exclusive<'_>, scid: &str) -> Result<VaultId, VaultError> {
+        if let Some(id) = self.kept_id(folder, scid)? {
+            return Ok(id);
+        }
+        let mut bytes = [0u8; 16];
+        os_random(&mut bytes);
+        let kept = KeptId {
+            version: ID_FORMAT,
+            id: VaultId(bytes),
+            folder: owner_of(folder)?,
+        };
+        let json = serde_json::to_vec(&kept).map_err(|e| VaultError::Unavailable(e.to_string()))?;
+        log::info!("custody: claim a new vault id");
+        if !self.store.claim_public(&vault_id_name(scid), &json)? {
+            log::info!("custody: another claim kept this vault id first");
+        }
+        self.kept_id(folder, scid)?.ok_or_else(|| {
+            VaultError::Unavailable(
+                "this identity's vault id was claimed at the same time by another custody \
+                 folder, and neither claim was kept; ask again"
+                    .into(),
+            )
+        })
+    }
+
+    /// Refuses a delete over a slot whose id names another custody folder
+    /// ([`kept_id`](Self::kept_id)). An id that is gone does not stop a delete: removing a key
+    /// never counts a copy twice.
+    fn check_owner(&self, folder: &Exclusive<'_>, scid: &str) -> Result<(), VaultError> {
+        self.id_slot(folder, scid).map(|_| ())
+    }
+
     /// Makes `scid`'s custody epoch readable again after it was lost (the epochs' file gone
     /// from the custody folder, or its entry for `scid`), when the person or the operator has
     /// looked and means to go on: a new entry in a fresh incarnation, which an epoch read
@@ -329,6 +482,7 @@ impl DesktopVault {
         unchanged: impl FnOnce(&Exclusive<'_>, u32) -> Result<bool, VaultError>,
     ) -> Result<Forgot, VaultError> {
         let mut folder = self.pending.exclusive()?;
+        self.check_owner(&folder, scid)?;
         let Some(kept) = self.kept_index_held(scid)? else {
             return Ok(Forgot::Forgot);
         };
@@ -376,6 +530,9 @@ impl Vault for Unlocking<'_> {
         let name = item_name(scid);
         let prepared = self.vault.prepare(&name, &item, None, self.passphrase())?;
         let mut folder = self.vault.pending.exclusive()?;
+        // The id first, so a key is never kept without one beside it; the key then goes to the
+        // side the id is on.
+        self.vault.id_for(&folder, scid)?;
         if let Some(kept) = self.vault.kept_index_held(scid)? {
             if kept > index {
                 log::info!("custody: a newer master key is kept; nothing stored");
@@ -424,6 +581,7 @@ impl Vault for Unlocking<'_> {
         // Under the lock, so it never lands between another app's check of the staged slot and
         // its promote or discard.
         let mut folder = self.vault.pending.exclusive()?;
+        self.vault.id_for(&folder, scid)?;
         let prepared = self
             .vault
             .ready(&name, prepared, &item, Some(owner), self.passphrase())?;
@@ -445,6 +603,7 @@ impl Vault for Unlocking<'_> {
     /// not higher; when it is, the staged key can never be kept and is deleted.
     fn promote_master(&self, scid: &str, index: u32) -> Result<Stored, VaultError> {
         let mut folder = self.vault.pending.exclusive()?;
+        self.vault.kept_id(&folder, scid)?;
         if self.vault.index_at(&staged_name(scid))? != Some(index) {
             return Err(VaultError::NotFound);
         }
@@ -475,7 +634,8 @@ impl Vault for Unlocking<'_> {
         index: u32,
         owner: Option<&StageToken>,
     ) -> Result<(), VaultError> {
-        let _folder = self.vault.pending.exclusive()?;
+        let folder = self.vault.pending.exclusive()?;
+        self.vault.check_owner(&folder, scid)?;
         let ours = self.vault.tag_at(&staged_name(scid))?.is_some_and(|tag| {
             tag.index == index && owner.is_none_or(|owner| tag.owner.as_ref() == Some(owner))
         });
@@ -564,6 +724,34 @@ impl Vault for Unlocking<'_> {
     fn record_seen_reset(&self, scid: &str) -> Result<(), VaultError> {
         log::info!("custody: reset a record's high-water mark");
         self.vault.pending.record_seen_reset(scid)
+    }
+
+    /// In the custody folder beside the record marks (`custody-notes.json`,
+    /// [`PendingIncepts::custody_note`]): not secret, so not in the secret store, and needs no
+    /// passphrase.
+    fn custody_note(&self, scid: &str, key_id: &str) -> Result<Option<CustodyNote>, VaultError> {
+        self.vault.pending.custody_note(scid, key_id)
+    }
+
+    /// A compare-and-swap of the whole note under the custody folder's lock, the one every
+    /// write of this vault takes ([`PendingIncepts::swap_custody_note`]).
+    fn swap_custody_note(
+        &self,
+        scid: &str,
+        key_id: &str,
+        expected: Option<&CustodyNote>,
+        note: Option<&CustodyNote>,
+    ) -> Result<bool, VaultError> {
+        self.vault
+            .pending
+            .swap_custody_note(scid, key_id, expected, note)
+    }
+
+    /// Beside the master key, in the store that keeps it ([`DesktopVault::vault_id`]): drawn and
+    /// kept under the custody folder's lock, so every app on this computer answers the same id
+    /// for an identity. Not secret, no passphrase.
+    fn vault_id(&self, scid: &str) -> Result<VaultId, VaultError> {
+        self.vault.vault_id(scid)
     }
 }
 
@@ -718,6 +906,9 @@ mod tests {
             fn put(&self, _: &str, _: &[u8]) -> Result<(), VaultError> {
                 Err(VaultError::Unavailable("cannot write".into()))
             }
+            fn claim_public(&self, _: &str, _: &[u8]) -> Result<bool, VaultError> {
+                Err(VaultError::Unavailable("cannot write".into()))
+            }
             fn get(&self, _: &str) -> Result<Option<Vec<u8>>, VaultError> {
                 Err(VaultError::Unavailable("cannot read".into()))
             }
@@ -846,6 +1037,9 @@ mod tests {
         fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
             (**self).put(n, b)
         }
+        fn claim_public(&self, n: &str, b: &[u8]) -> Result<bool, VaultError> {
+            (**self).claim_public(n, b)
+        }
         fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
             (**self).get(n)
         }
@@ -882,6 +1076,9 @@ mod tests {
             }
             fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
                 self.0.put(n, b)
+            }
+            fn claim_public(&self, n: &str, b: &[u8]) -> Result<bool, VaultError> {
+                self.0.claim_public(n, b)
             }
             fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
                 self.0.get(n)
@@ -946,7 +1143,14 @@ mod tests {
             fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
                 self.0.put(n, b)
             }
-            fn get(&self, _: &str) -> Result<Option<Vec<u8>>, VaultError> {
+            fn claim_public(&self, n: &str, b: &[u8]) -> Result<bool, VaultError> {
+                self.0.claim_public(n, b)
+            }
+            fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
+                // The vault id is not secret, and a store reads it beside the key.
+                if n == crate::store::vault_id_name("QmScid") {
+                    return self.0.get(n);
+                }
                 panic!("holds read the item")
             }
             fn contains(&self, n: &str) -> Result<bool, VaultError> {
@@ -1026,6 +1230,8 @@ mod tests {
             files,
             vec![
                 "QmScid.bin".to_string(),
+                // The vault id, beside the key in the store that keeps it.
+                "QmScid.vault.bin".to_string(),
                 crate::pending::EPOCHS_FILE_NAME.to_string(),
                 crate::pending::METADATA_FILE_NAME.to_string(),
                 crate::pending::LOCK_NAME.to_string(),
@@ -1326,6 +1532,9 @@ mod tests {
         }
         fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
             self.file.put(n, b)
+        }
+        fn claim_public(&self, n: &str, b: &[u8]) -> Result<bool, VaultError> {
+            self.file.claim_public(n, b)
         }
         fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
             let got = self.file.get(n);
@@ -1652,6 +1861,11 @@ mod tests {
         }
         fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
             self.answer(self.items.put(n, b))
+        }
+        fn claim_public(&self, n: &str, b: &[u8]) -> Result<bool, VaultError> {
+            let made = self.items.claim_public(n, b)?;
+            self.answer(Ok(()))?;
+            Ok(made)
         }
         fn put_tagged(&self, n: &str, b: &[u8], tag: &ItemTag) -> Result<(), VaultError> {
             self.answer(self.items.put_tagged(n, b, tag))
@@ -2291,6 +2505,30 @@ mod tests {
         )
     }
 
+    /// Through the `Vault` the flows are given: every handle on one custody folder (two apps)
+    /// answers one id per identity, another for another identity, and a forget of the master key
+    /// keeps it.
+    #[test]
+    fn every_handle_on_a_folder_answers_one_vault_id_and_a_forget_keeps_it() {
+        let dir = tempfile::tempdir().unwrap();
+        let first = file_vault(dir.path());
+        let id = Vault::vault_id(&first.unlocking(None), "QmA").unwrap();
+        assert_eq!(file_vault(dir.path()).vault_id("QmA").unwrap(), id);
+        assert_ne!(first.vault_id("QmB").unwrap(), id);
+        first
+            .unlocking(pass("a passphrase of length"))
+            .store_master("QmA", 0, Secret::new([7u8; 32]))
+            .unwrap();
+        assert_eq!(
+            first.unlocking(None).forget_master("QmA", 0).unwrap(),
+            Forgot::Forgot
+        );
+        assert_eq!(
+            Vault::vault_id(&file_vault(dir.path()).unlocking(None), "QmA").unwrap(),
+            id
+        );
+    }
+
     /// Drops `scid`'s entry from the custody epochs' file, whatever shape the file has.
     fn drop_epoch_entry(dir: &std::path::Path, scid: &str) {
         let path = dir.join(crate::pending::EPOCHS_FILE_NAME);
@@ -2583,6 +2821,9 @@ mod tests {
         fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
             self.inner.put(n, b)
         }
+        fn claim_public(&self, n: &str, b: &[u8]) -> Result<bool, VaultError> {
+            self.inner.claim_public(n, b)
+        }
         fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
             self.inner.get(n)
         }
@@ -2750,6 +2991,9 @@ mod tests {
         }
         fn put(&self, n: &str, b: &[u8]) -> Result<(), VaultError> {
             self.inner.put(n, b)
+        }
+        fn claim_public(&self, n: &str, b: &[u8]) -> Result<bool, VaultError> {
+            self.inner.claim_public(n, b)
         }
         fn get(&self, n: &str) -> Result<Option<Vec<u8>>, VaultError> {
             self.inner.get(n)

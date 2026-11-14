@@ -20,6 +20,13 @@ export type Screen =
   | { screen: 'match'; code: string; hint: string | null; canKeep: boolean; ownName: boolean }
   | { screen: 'linked'; seq: number; masterSent: boolean; note: string | null }
   | { screen: 'enter-code'; error: string | null }
+  /** A device of no identity yet joins one by the offer a device of the identity shows (the phone). */
+  | {
+      screen: 'enter-offer';
+      error: string | null;
+      /** Present when the device also asks which executor it signs in to: the address so far. */
+      host?: string;
+    }
   | { screen: 'code-sent'; expires: number }
   | { screen: 'device-code'; code: string; qrSvg: string; expires: number }
   | {
@@ -167,6 +174,9 @@ export type StepInput =
   | { kind: 'wait-claim' }
   | { kind: 'confirm'; name?: string; keepMaster?: boolean; thisName?: string }
   | { kind: 'code'; code: string }
+  /** The offer link or `coasys:offer:1:` string `enter-offer` was given. Not a custody step: only
+   *  the phone shows `enter-offer`. */
+  | { kind: 'offer'; link: string; host?: string }
   | { kind: 'wait-link' }
   | { kind: 'wait-join' }
   | { kind: 'accept' }
@@ -206,8 +216,14 @@ export function spreadWords(pasted: string, at: number): Array<[number, string]>
   return words.slice(0, 12 - at).map((word, i) => [at + i, word]);
 }
 
-/** The lead of each screen: its title and the sentence under it. */
-export function heading(screen: Screen): { title: string; lead: string } {
+/** What the device the window runs on is called on its screens. */
+export type DeviceNoun = 'computer' | 'phone';
+
+/**
+ * The lead of each screen: its title and the sentence under it. `noun` is what this device is
+ * where a screen speaks of it while it joins an identity, which a phone does too.
+ */
+export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title: string; lead: string } {
   switch (screen.screen) {
     case 'show-words':
       return {
@@ -258,6 +274,11 @@ export function heading(screen: Screen): { title: string; lead: string } {
         title: 'Enter code',
         lead: 'On the new device, choose Show code. Copy the link it shows and paste it here.',
       };
+    case 'enter-offer':
+      return {
+        title: `Link this ${noun}`,
+        lead: 'On your computer, go to Settings > Devices, choose Link a device and scan the code it shows.',
+      };
     case 'code-sent':
       return {
         title: 'Waiting for your device',
@@ -265,19 +286,19 @@ export function heading(screen: Screen): { title: string; lead: string } {
       };
     case 'device-code':
       return {
-        title: 'Link this computer',
+        title: `Link this ${noun}`,
         lead: 'On your other device, go to Settings > Devices, choose Enter code and paste this link.',
       };
     case 'device-match':
-      return deviceMatch(screen);
+      return deviceMatch(screen, noun);
     case 'joined':
       return {
-        title: 'This computer is linked',
+        title: `This ${noun} is linked`,
         lead: "It doesn't have the master key, so it can't add or remove devices.",
       };
     case 'master-taken':
       return {
-        title: 'This computer has the master key',
+        title: `This ${noun} has the master key`,
         lead: ['It can now add and remove devices.', ...(screen.note ? [screen.note] : [])].join(' '),
       };
     case 'request':
@@ -434,10 +455,13 @@ function wordsHeading(purpose: WordsPurpose): { title: string; lead: string } {
 }
 
 /**
- * The new device's code card. Where this computer joins only once the person accepts the identity
+ * The new device's code card. Where this device joins only once the person accepts the identity
  * here too, it asks whether this is their identity, then waits for the other device.
  */
-function deviceMatch(screen: Extract<Screen, { screen: 'device-match' }>): { title: string; lead: string } {
+function deviceMatch(
+  screen: Extract<Screen, { screen: 'device-match' }>,
+  noun: DeviceNoun,
+): { title: string; lead: string } {
   if (!screen.needsAccept) {
     return {
       title: 'Check the code',
@@ -447,7 +471,7 @@ function deviceMatch(screen: Extract<Screen, { screen: 'device-match' }>): { tit
   if (screen.accepted) {
     return {
       title: 'Confirm on your other device',
-      lead: 'This computer is linked once you confirm there too.',
+      lead: `This ${noun} is linked once you confirm there too.`,
     };
   }
   return {

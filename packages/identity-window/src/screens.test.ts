@@ -125,8 +125,33 @@ describe('the identity window', () => {
     );
   });
 
+  it('says which device joins by what it is: a computer by default, a phone where the phone says so', () => {
+    const match = {
+      screen: 'device-match',
+      code: 'R7K Q2M',
+      did: 'did:scid:coasys:1:abc',
+      needsAccept: true,
+      accepted: true,
+      confirmed: false,
+    } as const;
+    expect(heading(match).lead).toContain('This computer is linked once you confirm there too.');
+    expect(heading(match, 'computer').lead).toContain('This computer is linked once you confirm there too.');
+    const onPhone = heading(match, 'phone').lead;
+    expect(onPhone).toContain('This phone is linked once you confirm there too.');
+    expect(onPhone).not.toContain('computer');
+    expect(heading({ screen: 'joined', did: 'did:scid:coasys:1:abc', keyId: 'd2' }, 'phone').title).toBe(
+      'This phone is linked',
+    );
+  });
+
   it('titles the device steps as the Devices page names them', () => {
     expect(heading({ screen: 'enter-code', error: null }).title).toBe('Enter code');
+    // The phone joins by the offer a device of the identity shows; the screen is not a last one.
+    const join = { screen: 'enter-offer', error: null } as const;
+    expect(heading(join).title).toBe('Link this computer');
+    expect(heading(join, 'phone').title).toBe('Link this phone');
+    expect(heading(join).lead).toContain('Link a device');
+    expect(isLast(join)).toBe(false);
     expect(heading({ screen: 'device-code', code: 'coasys:device:1:x', qrSvg: '', expires: 0 }).lead).toContain(
       'choose Enter code',
     );

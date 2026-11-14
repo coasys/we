@@ -29,7 +29,15 @@ import {
   TREE_LEAD,
   treeRow,
 } from '@we/template-kit';
-import { bootScreen, bundlePrompt, createSpaceModal, safeModeBanner } from '@we/template-shell';
+import {
+  bootScreen,
+  bundlePrompt,
+  createSpaceModal,
+  landingPageTemplate,
+  safeModeBanner,
+  settingsTemplate,
+  sidebar,
+} from '@we/template-shell';
 import { CALL_CHROME_BAND, themeLabTemplate, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
 import {
   SHOWCASE_THEME_PRESETS,
@@ -44,6 +52,7 @@ import fieldGuideBundle from '../../../../bundles/field-guide.bundle.json';
 import toolLibraryBundle from '../../../../bundles/tool-library.bundle.json';
 import { viewBar } from '../../../templates/cartridges/src/coasys/space/bar.ts';
 import { callBarAside } from '../../../templates/cartridges/src/coasys/space/views.ts';
+import { devicesPage } from '../../../templates/shell/src/AccountSettingsPages.ts';
 import { botsSection } from '../../../templates/shell/src/BotSettingsPages.ts';
 import {
   activityRow,
@@ -54,6 +63,8 @@ import {
   draftProblem,
   grantSpaces,
 } from '../../src/shared/botRows';
+import { custodyDevice, deviceRows, servingDevice } from '../../src/shared/identityRows';
+import { overlaySurfaceStyle } from '../../src/shared/overlaySurface';
 import { sharingPickerOptions } from '../../src/shared/sharingOptions';
 
 export interface Scenario {
@@ -1906,6 +1917,82 @@ const appRail = (): Scenario => {
 };
 
 /**
+ * WE's own sidebar beside the Settings overlay, on its Devices page, as a window of a given width.
+ *
+ * The real `sidebar` and the real `settingsTemplate`, with only the route outlet filled by a stand-in
+ * page — the page's own rows read stores this harness does not mount, and what is measured here is
+ * the frame around them: whether the rail stays a rail and the page has the room beside it. `scale`
+ * is the window's width, because the sidebar answers to the window (`shellStore.narrowWindow`) while
+ * Settings answers to its own surface, and a case sweeps the two together.
+ */
+const shellSettings = (scale?: number): Scenario => {
+  const windowWidth = scale ?? 1280;
+  const page: SchemaNode = {
+    type: 'Column',
+    props: { gap: '400', id: 'settings-page' },
+    children: [
+      { type: 'we-text', props: { variant: 'heading-md' }, children: ['Devices'] },
+      {
+        type: 'we-text',
+        props: { color: 'text-muted' },
+        children: ['Each device that can sign for you holds a key of its own. Revoke one you no longer use.'],
+      },
+      {
+        type: 'Row',
+        props: { gap: '300', ay: 'center' },
+        children: [
+          { type: 'we-icon', props: { name: 'device-mobile' } },
+          { type: 'we-text', children: ['This phone'] },
+        ],
+      },
+    ],
+  };
+  const fill = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(fill);
+    if (!node || typeof node !== 'object') return node;
+    if ((node as SchemaNode).type === '$routes') return page;
+    return Object.fromEntries(Object.entries(node).map(([k, v]) => [k, fill(v)]));
+  };
+  const {
+    meta: _meta,
+    routes: _routes,
+    ...settings
+  } = settingsTemplate as SchemaNode & { meta?: unknown; routes?: unknown };
+  return {
+    node: {
+      type: 'Column',
+      // The mount is the window: the frame below is placed in it, so a 412px mount is a 412px window.
+      props: { width: '100%', height: '100vh', position: 'relative', overflow: 'hidden' },
+      children: [
+        sidebar,
+        {
+          type: 'Column',
+          props: { id: 'settings-frame', position: 'absolute', top: '0', left: '80px', right: '0', bottom: '0' },
+          children: [
+            {
+              type: '$surface',
+              props: { height: '100%', overflow: 'auto' },
+              children: [fill(settings) as SchemaNode],
+            },
+          ],
+        },
+      ],
+    },
+    tables: {},
+    stores: {
+      sessionStore: { bootState: 'ready', devTools: false, devFeatures: false, isGuest: false },
+      shellStore: { panelMaximised: false, activeShellView: 'settings', narrowWindow: windowWidth < 640 },
+      routeStore: { params: {}, currentPath: '/devices', segments: ['devices'], templateSegments: [] },
+      templateStore: { brand: { name: 'WE' } },
+      runtimeStore: { canManageAi: true, canManageApps: true },
+      datasetStore: { marketplaceConfigured: false },
+      appStore: { apps: [], appsWithWe: [], activeAppId: null },
+      spaceStore: { mutedDids: [], currentSpace: { id: 'space-1' }, members: [], orderedSidebarItems: [] },
+    },
+  };
+};
+
+/**
  * The top of the Coasys tree under Glow: a rounded-square space face, a two-line description, and a
  * tree with one row selected — the pieces whose look is the theme's or the primitive's to get right.
  */
@@ -2017,6 +2104,49 @@ const treeCaretEnd = (): Scenario => {
       ],
     },
     tables: {},
+  };
+};
+
+/**
+ * WE's landing page in the window beside the rail, as Settings is above: the mount is the window, so
+ * a 412px mount is a phone held upright and the headline's viewport units answer to it.
+ */
+const shellLanding = (): Scenario => {
+  const { meta: _meta, ...page } = landingPageTemplate as SchemaNode & { meta?: unknown };
+  // The cube's model is a file the harness's bundler does not load as a URL: a box its size stands
+  // in, so everything under it sits where it does in the app.
+  const cubeless = (node: unknown): unknown => {
+    if (Array.isArray(node)) return node.map(cubeless);
+    if (!node || typeof node !== 'object') return node;
+    if ((node as SchemaNode).type === 'WeCube') {
+      const { width, height } = ((node as SchemaNode).props ?? {}) as { width?: string; height?: string };
+      return { type: 'Column', props: { width, height } };
+    }
+    return Object.fromEntries(Object.entries(node).map(([k, v]) => [k, cubeless(v)]));
+  };
+  const landing = cubeless(page) as SchemaNode;
+  return {
+    node: {
+      type: 'Column',
+      props: { width: '100%', height: '100vh', position: 'relative', overflow: 'hidden' },
+      children: [
+        sidebar,
+        {
+          type: 'Column',
+          props: { id: 'landing-frame', position: 'absolute', top: '0', left: '80px', right: '0', bottom: '0' },
+          children: [{ type: '$surface', props: { height: '100%', overflow: 'auto' }, children: [landing] }],
+        },
+      ],
+    },
+    tables: {},
+    stores: {
+      sessionStore: { bootState: 'ready', devTools: false, devFeatures: false, isGuest: false },
+      shellStore: { panelMaximised: false, activeShellView: 'landing-page', narrowWindow: false },
+      routeStore: { params: {}, currentPath: '/', segments: [], templateSegments: [] },
+      templateStore: { brand: { name: 'WE' } },
+      appStore: { apps: [], appsWithWe: [], activeAppId: null },
+      spaceStore: { mutedDids: [], currentSpace: null, members: [], orderedSidebarItems: [] },
+    },
   };
 };
 
@@ -2543,8 +2673,115 @@ const botDetail = (): Scenario => {
   };
 };
 
+/**
+ * Settings → Devices on a phone held upright (412px): the rail's 80px and Settings' 12px padding
+ * either side leave the page the rest, as in the app. The phone (d2) has been sent the master key
+ * and not taken it yet; its host (d1) holds it; a second computer (d3) holds nothing.
+ */
+const devicesOnPhone = (): Scenario => {
+  const keys = [
+    { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, revokedSeq: null },
+    { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, revokedSeq: null },
+    { keyId: 'd3', sign: 'z', thisDevice: false, addedSeq: 2, revokedSeq: null },
+  ];
+  const names = [
+    { keyId: 'd1', name: 'Linux computer', kind: 'desktop-app', holdsMaster: 'yes' as const },
+    { keyId: 'd2', name: 'Test phone', kind: 'phone-app', holdsMaster: 'offered' as const },
+    { keyId: 'd3', name: 'Test desktop B', kind: 'desktop-app', holdsMaster: 'no' as const },
+  ];
+  const here = custodyDevice({
+    did: 'did:scid:coasys:1:QmTest',
+    holdsMaster: false,
+    unlock: null,
+    blocked: null,
+    devices: [],
+    revokedHolders: [],
+    requests: [],
+    masterWaiting: false,
+    thisDevice: { keyId: 'd2', kind: 'phone-app' },
+  });
+  return {
+    node: {
+      type: 'Row',
+      props: { width: '100%', ay: 'start' },
+      children: [
+        { type: 'Column', props: { width: '80px', flexShrink: '0' } },
+        {
+          type: 'Column',
+          props: { id: 'devices-page', flex: '1', minWidth: '0', p: '300' },
+          children: [devicesPage],
+        },
+      ],
+    },
+    tables: {},
+    stores: {
+      sessionStore: { identityCapabilities: { devices: true }, host: null },
+      identityStore: { did: 'did:scid:coasys:1:QmTest', error: '', busy: false },
+      deviceStore: {
+        devices: deviceRows(keys, names, [], null, 1_800_000_000, here),
+        devicesLoaded: true,
+        serving: servingDevice(keys, names, here),
+        deviceNoun: 'phone',
+        canManage: false,
+        requests: [],
+        error: '',
+      },
+    },
+  };
+};
+
+/**
+ * A shell overlay's box around a page taller than the window, as `TemplateLayout` draws it: the
+ * overlay (absolute, the window's size, clipping) and inside it the surface, in the style the
+ * layout gives it. On a phone, Settings was taller than the screen and could not be scrolled: the
+ * surface is a size container, so what overflowed it was no part of the overlay's scrollable area.
+ */
+const overlayScroll = (): Scenario => ({
+  node: {
+    type: 'Column',
+    props: { id: 'overlay-window', width: '100%', height: '100vh', position: 'relative', overflow: 'hidden' },
+    children: [
+      {
+        type: 'Column',
+        props: {
+          display: 'block',
+          position: 'absolute',
+          top: '0',
+          left: '0',
+          width: '100%',
+          height: '100%',
+          overflow: 'hidden',
+        },
+        children: [
+          {
+            type: 'Column',
+            props: { id: 'overlay-surface', display: 'block', styles: overlaySurfaceStyle() },
+            children: [
+              {
+                type: 'Column',
+                props: { gap: '400', p: '400', minHeight: '100%' },
+                children: [
+                  ...Array.from({ length: 30 }, (_, i) => ({
+                    type: 'we-text',
+                    children: [`Row ${i + 1} of a settings page taller than a phone`],
+                  })),
+                  { type: 'we-badge', props: { id: 'overlay-end', tone: 'accent' }, children: ['The last row'] },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+  },
+  tables: {},
+  stores: {},
+});
+
 export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'bots:detail': botDetail,
+  'overlay:scroll': overlayScroll,
+  'devices:phone': devicesOnPhone,
   'coasys:about': coasysAbout,
   'feed:view': feedViewPage,
   'coasys:bar': coasysBar,
@@ -2557,6 +2794,8 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'profile:pages': profilePages,
   'tree:caret-end': treeCaretEnd,
   'rail:app': appRail,
+  'shell:settings': shellSettings,
+  'shell:landing': shellLanding,
   'coasys:tree-top': coasysTreeTop,
   'bundle:prompt': bundleInstallPrompt,
   'safe-mode:leaving': safeModeLeaving,

@@ -18,6 +18,8 @@
 //! CUSTODY_LIVE=1 AD4M_REPO=<ad4m> cargo test --features cheap-kdf --test live -- --nocapture
 //! ```
 //!
+//! `AD4M_EXECUTOR` and `IDENTITY_STORE_BIN` name the two binaries when they were built elsewhere.
+//!
 //! The executors run in `<ad4m>/tests/js` with its shared language directories, as ad4m's own
 //! identity suite runs them (`tests/js/tests/identity.test.ts`), and without Holochain.
 //!
@@ -229,7 +231,9 @@ struct World {
 
 impl World {
     fn executor(&self) -> PathBuf {
-        self.repo.join("target/release/ad4m-executor")
+        std::env::var("AD4M_EXECUTOR")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| self.repo.join("target/release/ad4m-executor"))
     }
 
     /// `init` (with `--operator` for B), shared stores as ad4m's suite sets them, `run`, then an agent.
@@ -365,7 +369,10 @@ async fn set_up() -> Option<(tokio::sync::MutexGuard<'static, ()>, World)> {
 
     // The identity store, on a temp database, with a cheap proof of work.
     let store_port = free_port();
-    let mut store = Command::new(repo.join("target/debug/identity-store"));
+    let store_bin = std::env::var("IDENTITY_STORE_BIN")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| repo.join("target/debug/identity-store"));
+    let mut store = Command::new(store_bin);
     store
         .arg("serve")
         .env("IDENTITY_STORE_DB", dir.join("store.sqlite"))
@@ -1312,4 +1319,350 @@ async fn log_ops(node: &Node, did: &str) -> Vec<String> {
         .iter()
         .map(|e| e["op"].as_str().unwrap().to_string())
         .collect()
+}
+
+/// The holder's side of the phone app's emulator run (`apps/we-mobile`, phase 2a): an identity made
+/// on executor A, an offer for the phone, and the `add` that lists the phone's device key once its
+/// claim matches. The phone is driven by hand or by script meanwhile; this case only waits.
+///
+/// Skipped unless `CUSTODY_PHONE_DIR` names a folder as well. Into it go `offer.json` (the link,
+/// executor A's URL, the store's URL and the identity) once the offer is open, and `joined.json`
+/// (the match code and the identity's log) once the phone's key is added. Then executor A keeps
+/// running, for the phone's key login, until a file `done` appears there (or 30 minutes pass).
+#[tokio::test(flavor = "multi_thread")]
+async fn a_phone_joins_through_an_offer() {
+    let Ok(out) = std::env::var("CUSTODY_PHONE_DIR").map(PathBuf::from) else {
+        eprintln!("skipped: set CUSTODY_PHONE_DIR (see a_phone_joins_through_an_offer)");
+        return;
+    };
+    let Some((_one, world)) = set_up().await else {
+        return;
+    };
+    std::fs::create_dir_all(&out).unwrap();
+    let credential = "custody-phone-admin-credential";
+    let a = world.start_node("a", None, Some(credential), None).await;
+    let custody = custody_on(a.url(), credential, &world.dir.join("custody"));
+    let did = make_identity(&custody).await;
+    assert_eq!(log_ops(&a, &did).await, ["incept"]);
+
+    let enter = custody.start(IdentityStep::AddDevice).await.unwrap();
+    assert!(matches!(enter, Screen::EnterPassphrase { error: None }));
+    let offer = custody
+        .step(StepInput::Passphrase {
+            passphrase: PASSPHRASE.into(),
+            confirm: None,
+        })
+        .await
+        .unwrap();
+    let Screen::Offer { link, .. } = offer else {
+        panic!("no offer: {offer:?}")
+    };
+    let offer_file = json!({
+        "link": link,
+        "executor": a.url(),
+        "store": world.store_url,
+        "did": did,
+    });
+    std::fs::write(out.join("offer.json"), offer_file.to_string()).unwrap();
+    eprintln!("offer open: {offer_file}");
+
+    let matched = custody.step(StepInput::WaitClaim).await.unwrap();
+    let Screen::Match {
+        code,
+        hint,
+        can_keep,
+        ..
+    } = matched
+    else {
+        panic!("no match: {matched:?}")
+    };
+    eprintln!("match code {code}, hint {hint:?}");
+    // A phone offered no master key in 2a: it says it cannot keep one.
+    assert!(!can_keep);
+    let linked = custody
+        .step(StepInput::Confirm {
+            name: hint.clone(),
+            keep_master: false,
+            this_name: Some("Holder".into()),
+        })
+        .await
+        .unwrap();
+    assert!(
+        matches!(
+            linked,
+            Screen::Linked {
+                master_sent: false,
+                ..
+            }
+        ),
+        "{linked:?}"
+    );
+    assert_eq!(log_ops(&a, &did).await, ["incept", "add"]);
+    let log = a
+        .call(
+            "identity.log",
+            json!({ "did": did, "from": 0, "fresh": true }),
+        )
+        .await;
+    let joined = json!({ "code": code, "hint": hint, "log": log });
+    std::fs::write(out.join("joined.json"), joined.to_string()).unwrap();
+    eprintln!("joined: {joined}");
+
+    let deadline = std::time::Instant::now() + Duration::from_secs(30 * 60);
+    while !out.join("done").exists() && std::time::Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+}
+
+/// Waits up to 30 minutes for the file `name` in `out`, which the person driving the phone (or a
+/// script) writes when the phone has done its part.
+async fn wait_for_file(out: &Path, name: &str) -> bool {
+    let deadline = std::time::Instant::now() + Duration::from_secs(30 * 60);
+    eprintln!("waiting for {name}");
+    while !out.join(name).exists() {
+        if std::time::Instant::now() > deadline {
+            return false;
+        }
+        tokio::time::sleep(Duration::from_secs(1)).await;
+    }
+    true
+}
+
+fn write_step(out: &Path, name: &str, value: Value) {
+    std::fs::write(out.join(name), value.to_string()).unwrap();
+    eprintln!("{name}: {value}");
+}
+
+/// Answers the passphrase screens a step shows on a Linux custody service, until another one.
+async fn through_passphrase(custody: &CustodyHandle, mut screen: Screen) -> Screen {
+    loop {
+        let confirm = match screen {
+            Screen::EnterPassphrase { .. } => None,
+            Screen::SetPassphrase { .. } => Some(PASSPHRASE.into()),
+            other => return other,
+        };
+        screen = custody
+            .step(StepInput::Passphrase {
+                passphrase: PASSPHRASE.into(),
+                confirm,
+            })
+            .await
+            .unwrap();
+    }
+}
+
+/// Polls `custody`'s public state until `found` picks something out of it (30 minutes at most).
+async fn poll_state<T>(
+    custody: &CustodyHandle,
+    what: &str,
+    found: impl Fn(&we_custody::CustodyPublic) -> Option<T>,
+) -> T {
+    let deadline = std::time::Instant::now() + Duration::from_secs(30 * 60);
+    eprintln!("waiting for {what}");
+    loop {
+        if let Ok(state) = custody.public_state().await {
+            if let Some(t) = found(&state) {
+                return t;
+            }
+        }
+        assert!(std::time::Instant::now() < deadline, "no {what}");
+        tokio::time::sleep(Duration::from_secs(2)).await;
+    }
+}
+
+/// The computers' side of the phone app's phase 2b emulator run (`apps/we-mobile/docs/phase-2b.md`).
+/// Executor A, with this computer's custody service as "Desktop A", makes an identity; the phone
+/// joins it by its offer link and asks for the master key, which A sends; the phone takes it
+/// behind its biometric. Then the phone is the holder: it adds desktop B by the code B shows, B
+/// asks it for the master key, and the phone answers behind its biometric again.
+///
+/// Skipped unless `CUSTODY_PHONE_2B_DIR` names a folder. The case writes a file there at each
+/// point the phone takes over and waits for the phone's file after it:
+///
+/// | writes | the phone then | and writes |
+/// |---|---|---|
+/// | `store.json` (the store's URL and key, A's URL) | is built for that store, installed | `ready` |
+/// | `offer.json` (the link) | joins by it, signs in to A, asks for the master key | — |
+/// | `answered.json` (the request's code) | takes the master key | `taken` |
+/// | `device.json` (B's code) | adds B by it, without the master key | — |
+/// | `b-asked.json` (B's request's code) | answers it | — |
+/// | `b-taken.json` | is done | `done` |
+#[tokio::test(flavor = "multi_thread")]
+async fn a_phone_keeps_the_master_key_and_answers_for_it() {
+    let Ok(out) = std::env::var("CUSTODY_PHONE_2B_DIR").map(PathBuf::from) else {
+        eprintln!("skipped: set CUSTODY_PHONE_2B_DIR (see a_phone_keeps_the_master_key_and_answers_for_it)");
+        return;
+    };
+    let Some((_one, world)) = set_up().await else {
+        return;
+    };
+    std::fs::create_dir_all(&out).unwrap();
+    let credential = "custody-phone-2b-admin-credential";
+    let a = world.start_node("a", None, Some(credential), None).await;
+    let custody = custody_on(a.url(), credential, &world.dir.join("custody"));
+    let did = make_identity(&custody).await;
+    write_step(
+        &out,
+        "store.json",
+        json!({ "store": world.store_url, "keys": world.store_key, "executor": a.url(), "did": did }),
+    );
+    assert!(
+        wait_for_file(&out, "ready").await,
+        "the phone was not ready"
+    );
+
+    // The phone joins by the offer link, without the master key.
+    let enter = custody.start(IdentityStep::AddDevice).await.unwrap();
+    let Screen::Offer { link, .. } = through_passphrase(&custody, enter).await else {
+        panic!("no offer")
+    };
+    write_step(&out, "offer.json", json!({ "link": link }));
+    let mut matched = custody.step(StepInput::WaitClaim).await.unwrap();
+    while matches!(matched, Screen::Offer { .. }) {
+        matched = custody.step(StepInput::WaitClaim).await.unwrap();
+    }
+    let Screen::Match {
+        code,
+        hint,
+        can_keep,
+        ..
+    } = matched
+    else {
+        panic!("no match: {matched:?}")
+    };
+    eprintln!("phone claimed: code {code}, hint {hint:?}, can keep the master key: {can_keep}");
+    let linked = custody
+        .step(StepInput::Confirm {
+            name: hint.clone(),
+            keep_master: false,
+            this_name: Some("Desktop A".into()),
+        })
+        .await
+        .unwrap();
+    assert!(
+        matches!(
+            linked,
+            Screen::Linked {
+                master_sent: false,
+                ..
+            }
+        ),
+        "{linked:?}"
+    );
+    assert_eq!(log_ops(&a, &did).await, ["incept", "add"]);
+
+    // The phone asks for the master key; this computer answers.
+    let request = poll_state(&custody, "the phone's send-master request", |state| {
+        state
+            .requests
+            .iter()
+            .find(|r| r.kind == "send-master" && r.by == "d2")
+            .map(|r| r.id.clone())
+    })
+    .await;
+    let shown = custody
+        .start(IdentityStep::AnswerRequest { id: request })
+        .await
+        .unwrap();
+    let Screen::Request { code, device, .. } = shown else {
+        panic!("no request: {shown:?}")
+    };
+    let answered = custody
+        .step(StepInput::Answer {
+            passphrase: Some(PASSPHRASE.into()),
+        })
+        .await
+        .unwrap();
+    assert!(
+        matches!(answered, Screen::RequestAnswered { .. }),
+        "{answered:?}"
+    );
+    write_step(
+        &out,
+        "answered.json",
+        json!({ "code": code, "device": device }),
+    );
+    assert!(
+        wait_for_file(&out, "taken").await,
+        "the phone did not take the master key"
+    );
+    poll_state(
+        &custody,
+        "the record saying the phone keeps the master key",
+        |state| {
+            state
+                .devices
+                .iter()
+                .any(|d| {
+                    d.key_id == "d2"
+                        && serde_json::to_value(d.holds_master).ok() == Some(json!(true))
+                })
+                .then_some(())
+        },
+    )
+    .await;
+
+    // The phone is the holder: it adds B by B's code, without the master key.
+    let (b_admin, b_custody) = ("custody-phone-2b-b-admin", "custody-phone-2b-b-custody");
+    let b = world
+        .start_node("b", None, Some(b_admin), Some(b_custody))
+        .await;
+    let device = custody_on(b.url(), b_custody, &world.dir.join("custody-b"));
+    let Screen::DeviceCode {
+        code: device_code, ..
+    } = device.start(IdentityStep::ShowCode).await.unwrap()
+    else {
+        panic!("no device code")
+    };
+    write_step(&out, "device.json", json!({ "code": device_code }));
+    let mut b_matched = device.step(StepInput::WaitLink).await.unwrap();
+    while matches!(b_matched, Screen::DeviceCode { .. }) {
+        b_matched = device.step(StepInput::WaitLink).await.unwrap();
+    }
+    let Screen::DeviceMatch {
+        code: b_code,
+        did: joining,
+        ..
+    } = b_matched
+    else {
+        panic!("no device match: {b_matched:?}")
+    };
+    assert_eq!(joining, did);
+    eprintln!("B shows {b_code}");
+    let mut joined = device.step(StepInput::WaitJoin).await.unwrap();
+    while matches!(joined, Screen::DeviceMatch { .. }) {
+        joined = device.step(StepInput::WaitJoin).await.unwrap();
+    }
+    let Screen::Joined { key_id: b_key, .. } = joined else {
+        panic!("B did not join: {joined:?}")
+    };
+    assert_eq!(log_ops(&a, &did).await, ["incept", "add", "add"]);
+
+    // B asks for the master key; the phone answers.
+    let asked = device.start(IdentityStep::AskMaster).await.unwrap();
+    let Screen::Asked {
+        code: asked_code, ..
+    } = asked
+    else {
+        panic!("B did not ask: {asked:?}")
+    };
+    write_step(
+        &out,
+        "b-asked.json",
+        json!({ "code": asked_code, "keyId": b_key }),
+    );
+    poll_state(&device, "the master key the phone sends B", |state| {
+        state.master_waiting.then_some(())
+    })
+    .await;
+    let started = device.start(IdentityStep::TakeMaster).await.unwrap();
+    let taken = through_passphrase(&device, started).await;
+    assert!(
+        matches!(&taken, Screen::MasterTaken { did: d, .. } if *d == did),
+        "{taken:?}"
+    );
+    write_step(&out, "b-taken.json", json!({ "did": did }));
+
+    // A keeps running for the phone's key login until the person is done.
+    wait_for_file(&out, "done").await;
 }

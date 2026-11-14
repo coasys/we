@@ -299,8 +299,12 @@ function resolve(value: string, theme: ThemeOverrides): Rgba | null {
  */
 // The delta is a literal for the elevation stack and a variable for the interaction states, since
 // which way a state moves depends on polarity and `oklch(from …)` cannot branch on it.
+//
+// The chroma is `c`, or — on a step up the stack — `c` bounded by how much sRGB holds at the
+// lightness the step lands on, `min(c, max(0, calc((1 - l - n) * k)))` (`stepUp` in role.ts). The
+// last group is `k`.
 const RELATIVE =
-  /^oklch\(from\s+var\((--we-(?:role|color)-[a-z0-9-]+)\)\s+calc\(l\s*([+-])\s*(?:([\d.]+)|var\(--we-state-(hover|active)-([a-z]+),\s*var\(--we-state-(?:hover|active)\)\))\)\s+c\s+h\)$/;
+  /^oklch\(from\s+var\((--we-(?:role|color)-[a-z0-9-]+)\)\s+calc\(l\s*([+-])\s*(?:([\d.]+)|var\(--we-state-(hover|active)-([a-z]+),\s*var\(--we-state-(?:hover|active)\)\))\)\s+(?:c|min\(c,\s*max\(0,\s*calc\(\(1\s*-\s*l\s*-\s*[\d.]+\)\s*\*\s*([\d.]+)\)\)\))\s+h\)$/;
 
 /**
  * The same form with the step bounded at both ends — `surfaceInverse`, and so far only it.
@@ -420,7 +424,7 @@ function themeColors(theme: ThemeOverrides): Map<ThemeRole, Rgba> {
     const relative = RELATIVE.exec(value.trim());
     if (!relative) return resolve(value, theme);
 
-    const [, base, sign, amount, stateKey] = relative;
+    const [, base, sign, amount, stateKey, , bound] = relative;
     if (stateKey) return null; // pass 3
     if (seen.has(name)) return null; // a role defined in terms of itself
     /*
@@ -435,8 +439,10 @@ function themeColors(theme: ThemeOverrides): Map<ThemeRole, Rgba> {
       : resolveDeclared(roleOf(base), new Set([...seen, name]));
     if (!from) return null;
     const { l, c, h } = rgbToOklch(from);
-    const moved = Math.min(1, Math.max(0, l + (sign === '-' ? -1 : 1) * parseFloat(amount)));
-    return { ...oklchToRgb(moved, c, h), a: from.a };
+    const stepped = l + (sign === '-' ? -1 : 1) * parseFloat(amount);
+    const moved = Math.min(1, Math.max(0, stepped));
+    const chroma = bound ? Math.min(c, Math.max(0, (1 - stepped) * parseFloat(bound))) : c;
+    return { ...oklchToRgb(moved, chroma, h), a: from.a };
   };
 
   // ── 1. Declared values ────────────────────────────────────────────────────────────────────────

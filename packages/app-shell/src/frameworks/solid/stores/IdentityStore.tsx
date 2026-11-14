@@ -17,7 +17,7 @@
  * asked to make an identity here — or to start without one, which `startWithoutIdentity` remembers
  * for that account on this computer.
  */
-import { type KeyLogRow, keyLogRows } from '@shared/identityRows';
+import { custodyDevice, type KeyLogRow, keyLogRows } from '@shared/identityRows';
 import type {
   IdentityChange,
   IdentityChangeOutcome,
@@ -272,7 +272,11 @@ export function IdentityStoreProvider(props: ParentProps) {
     did,
     keyId,
     thisDeviceRevoked: () => status()?.revoked != null,
-    keyLog: createMemo(() => keyLogRows(events(), keyId() || null)),
+    keyLog: createMemo(() => {
+      // A phone's custody service answers for the phone: its key is the one the log marks as here.
+      const here = custodyDevice(custody());
+      return here ? keyLogRows(events(), here.keyId, here.label) : keyLogRows(events(), keyId() || null);
+    }),
     keyLogLoaded,
     forked: () => fork() !== null,
     fork,

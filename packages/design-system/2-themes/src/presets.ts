@@ -418,8 +418,11 @@ export const SHOWCASE_THEME_PRESETS = {
       lightnessFloor: '0%',
       lightnessCeiling: '100%',
       roles: {
-        page: '#ffffff',
         /*
+          No `page` pin: the parametric page is white. It was pinned `#ffffff` while the default
+          carried the neutral's tint up to L 1, which is no sRGB colour (see `stepUp` in
+          `@we/tokens`' role.ts); bounded, the default is the white the pin was saying.
+
           Both surfaces *are* the page. This theme has no card and no elevation — the whole column is
           one sheet, which is what `shadowIntensity: 'flat'` is also saying — so they are stated as
           the page rather than as a second and third `#ffffff`.

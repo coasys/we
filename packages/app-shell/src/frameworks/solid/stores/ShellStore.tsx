@@ -44,6 +44,7 @@ import {
   looseSeats,
   MIN_FLOAT_PX,
   NARROW_VIEWPORT_PX,
+  NARROW_WINDOW_PX,
   nearEdge,
   NO_INSET,
   occupiedFor,
@@ -410,6 +411,13 @@ export interface ShellStore {
    * and the Escape key.
    */
   panelMaximised: Accessor<boolean>;
+  /**
+   * Whether the window is narrower than `NARROW_WINDOW_PX` (the `sm` breakpoint) — a phone held
+   * upright. Read by the app's own chrome, which sits outside every surface and so has no
+   * `surface.tier` to ask: below it the sidebar opens from a menu button rather than under the
+   * pointer, because on a touch screen the pointer arrives with every tap and never leaves.
+   */
+  narrowWindow: Accessor<boolean>;
   /** Remember a dock's current size, so the drag that follows is measured from it. */
   beginDockResize: (id: string) => void;
   /**
@@ -1311,6 +1319,7 @@ export function ShellStoreProvider(props: ParentProps) {
     appFrame();
     return viewportSize();
   };
+  const narrowWindow = createMemo(() => viewportSize().width < NARROW_WINDOW_PX);
 
   /**
    * Where each panel has been put, by dock id. Empty until somebody moves or resizes one.
@@ -3452,6 +3461,7 @@ export function ShellStoreProvider(props: ParentProps) {
     coveredInset: covered,
     dockResizing,
     panelMaximised,
+    narrowWindow,
 
     dockPlacement: () =>
       Object.fromEntries(

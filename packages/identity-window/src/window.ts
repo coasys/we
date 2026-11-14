@@ -19,6 +19,7 @@ import {
   BOT_DAYS_MAX,
   deviceMatchActions,
   deviceMatchNote,
+  type DeviceNoun,
   heading,
   isLast,
   oneAtATime,
@@ -46,6 +47,17 @@ export interface IdentityTransport {
   cancel(): Promise<Screen | null>;
   /** Closes the window after the step's last screen. */
   finish(): Promise<void>;
+  /**
+   * Reads a QR code with the device's camera: the text of one that starts with `prefix`, or `null`
+   * when the person closed the camera. Rejects with why the camera could not be used. Absent where
+   * there is none to use (the desktop): the window then offers only the field to paste into.
+   */
+  scan?(prefix: string): Promise<string | null>;
+  /**
+   * What this device is, in the words a person reads on the screens that speak of it ("This phone
+   * is linked"). Absent means a computer: the desktop windows.
+   */
+  deviceNoun?: DeviceNoun;
 }
 
 let host: IdentityTransport;
@@ -226,6 +238,30 @@ function whoAsks(screen: { keyId: string; fingerprint: string; code: string }): 
   ];
 }
 
+/**
+ * The code field's scan button, where the host has a camera: what it reads goes into `field` and is
+ * sent as if typed. Why the camera could not be used shows under the field, which stays usable.
+ */
+function scanInto(prefix: string, field: HTMLInputElement, go: () => unknown): { buttons: Child[]; problem: Child[] } {
+  const scan = host.scan?.bind(host);
+  if (!scan) return { buttons: [], problem: [] };
+  const problem = el('p', { className: 'error' });
+  problem.hidden = true;
+  const read = async () => {
+    problem.hidden = true;
+    try {
+      const text = await scan(prefix);
+      if (text === null) return;
+      field.value = text;
+      await go();
+    } catch (error) {
+      problem.textContent = error instanceof Error ? error.message : String(error);
+      problem.hidden = false;
+    }
+  };
+  return { buttons: [button('Scan code', read, 'primary')], problem: [problem] };
+}
+
 function body(screen: Screen): Child[] {
   switch (screen.screen) {
     case 'show-words': {
@@ -300,10 +336,41 @@ function body(screen: Screen): Child[] {
     case 'enter-code': {
       const code = textField('Code', '', 'coasys:device:1:…');
       const go = () => step({ kind: 'code', code: code.input.value.trim() }, [code.input]);
+      const scan = scanInto('coasys:device:1:', code.input, go);
       return [
         code.label,
         ...errorLine(screen.error),
-        el('div', { className: 'row' }, button('Continue', go, 'primary'), button('Cancel', cancel)),
+        ...scan.problem,
+        el(
+          'div',
+          { className: 'row' },
+          ...scan.buttons,
+          button('Continue', go, scan.buttons.length ? '' : 'primary'),
+          button('Cancel', cancel),
+        ),
+      ];
+    }
+    case 'enter-offer': {
+      const link = textField('Link', '', 'coasys:offer:1:…');
+      const host = screen.host === undefined ? null : textField('Host address', screen.host, 'https://…');
+      if (host) host.input.type = 'url';
+      const go = () =>
+        step({ kind: 'offer', link: link.input.value.trim(), ...(host ? { host: host.input.value.trim() } : {}) }, [
+          link.input,
+        ]);
+      const scan = scanInto('coasys:offer:1:', link.input, go);
+      return [
+        link.label,
+        ...(host ? [host.label] : []),
+        ...errorLine(screen.error),
+        ...scan.problem,
+        el(
+          'div',
+          { className: 'row' },
+          ...scan.buttons,
+          button('Continue', go, scan.buttons.length ? '' : 'primary'),
+          button('Not now', cancel),
+        ),
       ];
     }
     case 'code-sent':
@@ -318,7 +385,7 @@ function body(screen: Screen): Child[] {
       return shareable(
         screen.code,
         screen.qrSvg,
-        'QR code for this computer',
+        `QR code for this ${host.deviceNoun ?? 'computer'}`,
         screen.expires,
         'Waiting for your other device…',
       );
@@ -569,7 +636,7 @@ function draw(screen: Screen) {
     offerTimer = undefined;
   }
   if (screen.screen !== 'enter-words') forgetWords();
-  const { title, lead } = heading(screen);
+  const { title, lead } = heading(screen, host.deviceNoun);
   const parts: Child[] = [el('h1', { textContent: title }), el('p', { textContent: lead }), ...body(screen)];
   if (isLast(screen)) parts.push(el('div', { className: 'row' }, button('Done', finish, 'primary')));
   root.replaceChildren(...parts);

@@ -12,7 +12,17 @@
  * Chrome tier only (`devices` in `templateSurface.ts`): a space template never sees a person's
  * devices.
  */
-import { type DeviceRow, deviceRows, lastRotation, type RequestRow, requestRows } from '@shared/identityRows';
+import {
+  custodyDevice,
+  deviceNoun,
+  type DeviceRow,
+  deviceRows,
+  lastRotation,
+  type RequestRow,
+  requestRows,
+  type ServingDevice,
+  servingDevice,
+} from '@shared/identityRows';
 import type { DeviceKeyView, IdentityChangeOutcome } from '@we/backend-shared';
 import {
   type Accessor,
@@ -32,6 +42,13 @@ export interface DeviceStore {
   /** The device keys, valid first, this computer at the top. */
   devices: Accessor<DeviceRow[]>;
   devicesLoaded: Accessor<boolean>;
+  /**
+   * The device serving this session, for the top of Devices: "This computer" on the desktop; on a
+   * phone, the host it signs in to, by its name in the record or "Your host".
+   */
+  serving: Accessor<ServingDevice>;
+  /** What this device is, for the sentences about it: "phone" on a phone, "computer" on the desktop. */
+  deviceNoun: Accessor<'phone' | 'computer'>;
   /** How many device keys are valid: neither revoked nor ended. A bot's key is not a device's. */
   validCount: Accessor<number>;
   /**
@@ -142,8 +159,17 @@ export function DeviceStoreProvider(props: ParentProps) {
   }
 
   const names = () => identity.custody()?.devices ?? [];
+  // A phone's custody service answers for the phone, not for the executor's computer it reaches.
+  const here = createMemo(() => custodyDevice(identity.custody()));
   const rows = createMemo(() =>
-    deviceRows(raw(), names(), identity.custody()?.revokedHolders ?? [], lastRotation(identity.keyLog())),
+    deviceRows(
+      raw(),
+      names(),
+      identity.custody()?.revokedHolders ?? [],
+      lastRotation(identity.keyLog()),
+      undefined,
+      here(),
+    ),
   );
   // The words go to the custody service, which the `recoveryWords` capability says is here.
   const words = () => session.identityCapabilities().recoveryWords && identity.canChange();
@@ -153,6 +179,8 @@ export function DeviceStoreProvider(props: ParentProps) {
   const store: DeviceStore = {
     devices: rows,
     devicesLoaded,
+    serving: createMemo(() => servingDevice(raw(), names(), here())),
+    deviceNoun: () => deviceNoun(here()),
     validCount: () => rows().filter((d) => d.valid).length,
     canManage,
     canShowCode: () => linking() && identity.statusLoaded() && !identity.did() && !identity.custody()?.holdsMaster,
@@ -168,7 +196,14 @@ export function DeviceStoreProvider(props: ParentProps) {
     canRemoveMaster: () => linking() && !!identity.did() && !!identity.custody()?.holdsMaster,
     masterWaiting,
     requests: createMemo(() =>
-      canManage() ? requestRows(identity.custody()?.requests ?? [], names(), identity.keyId() || null) : [],
+      canManage()
+        ? requestRows(
+            identity.custody()?.requests ?? [],
+            names(),
+            here() ? here()!.keyId : identity.keyId() || null,
+            here()?.label,
+          )
+        : [],
     ),
     error,
     refresh,

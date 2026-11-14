@@ -292,6 +292,19 @@ const deviceRow: SchemaNode = listRow(
   },
   [
     { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [{ $: 'device.subtitle' }] },
+    // A master key sent and not yet taken is a sentence and pending, not a problem: a muted line that
+    // wraps. As a badge it was drawn as a warning and, never wrapping, was cut off on a phone.
+    {
+      type: '$if',
+      props: {
+        condition: { $: "!device.revoked && device.holdsMaster == 'offered'" },
+        then: {
+          type: 'we-text',
+          props: { variant: 'footnote', color: 'text-muted', overflowWrap: 'normal' },
+          children: [{ $: 'device.master' }],
+        },
+      },
+    },
     // A revoked device's copy of the master key is a sentence and a warning, so it is a line that
     // wraps rather than a badge (which never does).
     {
@@ -310,10 +323,10 @@ const deviceRow: SchemaNode = listRow(
     {
       type: '$if',
       props: {
-        condition: { $: "!device.revoked && device.master != ''" },
+        condition: { $: "!device.revoked && device.holdsMaster == 'yes'" },
         then: {
           type: 'we-badge',
-          props: { tone: { $: "device.holdsMaster == 'yes' ? 'accent' : 'warning'" }, size: 'sm' },
+          props: { tone: 'accent', size: 'sm' },
           children: [{ $: 'device.master' }],
         },
       },
@@ -446,8 +459,17 @@ export const restoreButton: SchemaNode = {
   },
 };
 
+/** Words a card shows: as written, or an expression where they name this device. */
+type Words = string | { $: string };
+
+/** "this computer" on the desktop, "this phone" on a phone, inside a sentence's expression. */
+const THIS = "' + deviceStore.deviceNoun + '";
+
+/** A sentence naming this device: `this${THIS}` is "this computer" or "this phone". */
+const naming = (sentence: string): Words => ({ $: `'${sentence}'` });
+
 /** A card with an icon, a title, a sentence and its buttons. */
-const stepCard = (icon: string, title: string, text: string, buttons: SchemaNode[]): SchemaNode => ({
+const stepCard = (icon: string, title: Words, text: Words, buttons: SchemaNode[]): SchemaNode => ({
   type: 'Card',
   props: { bg: 'surface', gap: '300' },
   children: [
@@ -470,7 +492,7 @@ const when = (condition: string, then: SchemaNode): SchemaNode => ({
 });
 
 /**
- * What this computer can do about the master key and joining an identity: show its code to join
+ * What this device can do about the master key and joining an identity: show its code to join
  * one, or bring it back from the 12 words; take the master key sent here, or ask a device that keeps
  * it; replace it from the words.
  */
@@ -480,21 +502,26 @@ export const masterKeyCards: SchemaNode[] = [
     stepCard(
       'qr-code',
       'Link to another device',
-      'Show this computer’s code, then enter it on a device you already use. Lost all your devices? Use your recovery phrase.',
+      naming(
+        `Show this ${THIS}’s code, then enter it on a device you already use. Lost all your devices? Use your recovery phrase.`,
+      ),
       [when('deviceStore.canShowCode', stepButton('Show code', 'deviceStore.showCode')), restoreButton],
     ),
   ),
   when(
     'deviceStore.masterWaiting',
-    stepCard('key', 'Master key sent to this computer', 'Accept it so this computer can add and remove devices.', [
-      stepButton('Accept master key', 'deviceStore.takeMaster'),
-    ]),
+    stepCard(
+      'key',
+      naming(`Master key sent to this ${THIS}`),
+      naming(`Accept it so this ${THIS} can add and remove devices.`),
+      [stepButton('Accept master key', 'deviceStore.takeMaster')],
+    ),
   ),
   when(
     'deviceStore.canAskMaster',
     stepCard(
       'key',
-      'No master key on this computer',
+      naming(`No master key on this ${THIS}`),
       'Ask for it, then send it from a device that has it, in Settings > Devices.',
       [stepButton('Ask for master key', 'deviceStore.askMaster', 'soft')],
     ),
@@ -504,7 +531,9 @@ export const masterKeyCards: SchemaNode[] = [
     stepCard(
       'key',
       'Lost a device with the master key?',
-      'Replace it with your recovery phrase. This computer gets the new master key, and the old one stops working on every device.',
+      naming(
+        `Replace it with your recovery phrase. This ${THIS} gets the new master key, and the old one stops working on every device.`,
+      ),
       [replaceMasterButton],
     ),
   ),

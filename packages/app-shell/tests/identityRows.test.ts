@@ -1,7 +1,17 @@
 /** The key log and device list in Settings' words. */
+import type { IdentityCustodyView } from '@we/backend-shared';
 import { describe, expect, it } from 'vitest';
 
-import { deviceRows, keyLogRows, lastRotation, requestRows, shortDid, shortHash } from '../src/shared/identityRows';
+import {
+  custodyDevice,
+  deviceRows,
+  keyLogRows,
+  lastRotation,
+  requestRows,
+  servingDevice,
+  shortDid,
+  shortHash,
+} from '../src/shared/identityRows';
 
 const REVOKED_HOLDER = 'Still has your master key. Replace it to lock this device out.';
 /** Where only the key log speaks: it let the device keep the master key, and the record is gone. */
@@ -206,6 +216,142 @@ describe('requestRows', () => {
       'Laptop asks for the master key',
       'Laptop asks to remove This computer, d3',
     ]);
+  });
+});
+
+/**
+ * Where this device is: on the desktop the custody service runs beside the executor, which marks its
+ * own key; on a phone the custody service answers for the phone, which reaches a computer's executor.
+ */
+describe('this device, on a phone and on a desktop', () => {
+  const custody = (thisDevice: IdentityCustodyView['thisDevice']): IdentityCustodyView => ({
+    did: 'did:scid:coasys:1:QmIdentity',
+    holdsMaster: true,
+    unlock: 'os',
+    blocked: null,
+    devices: [],
+    revokedHolders: [],
+    requests: [],
+    masterWaiting: false,
+    thisDevice,
+  });
+  // The executor is the laptop's (d1), and marks d1 as its own; the phone is d2.
+  const keys = [
+    { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, revokedSeq: null },
+    { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, revokedSeq: null },
+    { keyId: 'd3', sign: 'z', thisDevice: false, addedSeq: 2, revokedSeq: null },
+  ];
+  const names = [
+    { keyId: 'd1', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'no' as const },
+    { keyId: 'd3', name: 'Box', kind: 'server', holdsMaster: 'no' as const },
+  ];
+  const NOW = 1_800_000_000;
+
+  it('a desktop names nothing of its own, and the executor’s key stays this computer', () => {
+    expect(custodyDevice(custody(null))).toBeNull();
+    expect(custodyDevice(custody(undefined))).toBeNull();
+    expect(custodyDevice(null)).toBeNull();
+    const rows = deviceRows(keys, names, [], null, NOW, custodyDevice(custody(null)));
+    expect(rows.map((r) => [r.keyId, r.label, r.subtitle, r.icon, r.thisDevice, r.canRevoke])).toEqual([
+      ['d1', 'Laptop', 'This computer · d1 · added at #0', 'laptop', true, false],
+      ['d2', 'Device d2', 'd2 · added at #1', 'key', false, true],
+      ['d3', 'Box', 'd3 · added at #2', 'hard-drives', false, true],
+    ]);
+    // And exactly as before there was a custody device at all.
+    expect(rows).toEqual(deviceRows(keys, names, [], null, NOW));
+  });
+
+  it('a phone is this device, and the computer whose executor it reaches is one more device', () => {
+    const here = custodyDevice(custody({ keyId: 'd2', kind: 'phone-app' }));
+    expect(here).toEqual({ keyId: 'd2', label: 'This phone', icon: 'device-mobile' });
+    const rows = deviceRows(keys, names, [], null, NOW, here);
+    expect(rows.map((r) => [r.keyId, r.label, r.subtitle, r.icon, r.thisDevice, r.canRevoke])).toEqual([
+      ['d2', 'This phone', 'd2 · added at #1', 'device-mobile', true, false],
+      // The laptop: its name and kind, and no mark of this device.
+      ['d1', 'Laptop', 'd1 · added at #0', 'laptop', false, true],
+      ['d3', 'Box', 'd3 · added at #2', 'hard-drives', false, true],
+    ]);
+    // A name the record gives the phone stays its label, with "This phone" beside it.
+    const named = deviceRows(
+      keys,
+      [...names, { keyId: 'd2', name: 'Pixel', kind: 'phone-app', holdsMaster: 'yes' as const }],
+      [],
+      null,
+      NOW,
+      here,
+    );
+    expect(named[0]).toMatchObject({ keyId: 'd2', label: 'Pixel', subtitle: 'This phone · d2 · added at #1' });
+  });
+
+  it('a phone the log does not list yet marks no key as this device', () => {
+    const here = custodyDevice(custody({ keyId: null, kind: 'phone-app' }));
+    const rows = deviceRows(keys, names, [], null, NOW, here);
+    expect(rows.every((r) => !r.thisDevice)).toBe(true);
+    expect(rows.map((r) => r.label)).toEqual(['Laptop', 'Device d2', 'Box']);
+  });
+
+  it('the key log and the requests call the phone “This phone”', () => {
+    const events = [
+      { seq: 0, op: 'incept', hash: null, added: [{ id: 'd1', sign: 'z' }], revoked: [] },
+      { seq: 1, op: 'add', hash: null, added: [{ id: 'd2', sign: 'z' }], revoked: [] },
+    ];
+    const phone = keyLogRows(events, 'd2', 'This phone');
+    expect(phone.map((r) => [r.title, r.detail, r.thisComputer])).toEqual([
+      ['Added This phone', 'd2 · This phone', true],
+      ['Created your identity', 'with d1', false],
+    ]);
+    // The desktop's words are unchanged.
+    expect(keyLogRows(events, 'd1').map((r) => r.detail)).toEqual(['d2', 'with d1 · This computer']);
+
+    const asks = [{ id: 'r1', kind: 'confirm-revoke' as const, by: 'd3', keyIds: ['d2', 'd1'], expires: 9 }];
+    expect(requestRows(asks, names, 'd2', 'This phone')[0].title).toBe('Box asks to remove This phone, Laptop');
+    expect(requestRows(asks, [], 'd1')[0].title).toBe('d3 asks to remove d2, This computer');
+  });
+
+  it('the device serving the session is this computer on a desktop, the host on a phone', () => {
+    // The desktop: whatever the record names, the top card is this computer.
+    expect(servingDevice(keys, names, custodyDevice(custody(null)))).toEqual({
+      label: 'This computer',
+      subtitle: 'In use',
+      icon: 'desktop',
+    });
+    expect(servingDevice([], [], null).label).toBe('This computer');
+
+    // A phone: the executor it signs in to marks d1, the laptop, which the record names.
+    const here = custodyDevice(custody({ keyId: 'd2', kind: 'phone-app' }));
+    expect(servingDevice(keys, names, here)).toEqual({
+      label: 'Laptop',
+      subtitle: 'Your host · In use',
+      icon: 'laptop',
+    });
+    // Never "This computer", whether the record names the host or not, or the list is not read yet.
+    expect(servingDevice(keys, [], here)).toEqual({
+      label: 'Your host',
+      subtitle: 'In use',
+      icon: 'hard-drives',
+    });
+    expect(servingDevice([], names, here).label).toBe('Your host');
+  });
+
+  it('a computer the person did not name: its record name everywhere, "This computer" only on itself', () => {
+    // `crates/custody` writes an unnamed computer by what it is ("Linux computer"), never as
+    // "This computer", which every other device would then show as theirs.
+    const unnamed = [{ keyId: 'd1', name: 'Linux computer', kind: 'desktop-app', holdsMaster: 'yes' as const }];
+    const desktop = custodyDevice(custody(null));
+    expect(servingDevice(keys, unnamed, desktop).label).toBe('This computer');
+    expect(deviceRows(keys, unnamed, [], null, NOW, desktop)[0]).toMatchObject({
+      keyId: 'd1',
+      label: 'Linux computer',
+      subtitle: 'This computer · d1 · added at #0',
+    });
+    const phone = custodyDevice(custody({ keyId: 'd2', kind: 'phone-app' }));
+    expect(servingDevice(keys, unnamed, phone)).toEqual({
+      label: 'Linux computer',
+      subtitle: 'Your host · In use',
+      icon: 'laptop',
+    });
+    const host = deviceRows(keys, unnamed, [], null, NOW, phone).find((r) => r.keyId === 'd1');
+    expect(host).toMatchObject({ label: 'Linux computer', subtitle: 'd1 · added at #0' });
   });
 });
 

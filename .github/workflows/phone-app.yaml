@@ -1,0 +1,130 @@
+# The phone app (apps/we-mobile): WE's web build in a Capacitor shell. Builds the web app, assembles
+# the phone's web directory from it, checks it against the phone's WebView floor, and builds the
+# Android debug APK, with the DeviceKey plugin's Rust half (crates/phone-custody) built for the
+# phone and tested on the runner, and its Kotlin half's JVM tests over that same Rust. See
+# apps/we-mobile/README.md.
+#
+# Android only. The iOS project is kept in the tree and `cap sync ios` works, but building it needs a
+# macOS runner and signing to say anything a reader can rely on, so it is not claimed here.
+#
+# The floor check is why WE's packages are in the paths below: a package that starts using syntax
+# newer than the floor breaks the phone without touching apps/we-mobile, and this is where it shows.
+name: Phone app
+
+on:
+  push:
+    branches: [dev]
+    paths:
+      - apps/we-mobile/**
+      - crates/phone-custody/**
+      - apps/we-web/**
+      - packages/**
+      - we-seed.json
+      - pnpm-lock.yaml
+      - .github/workflows/phone-app.yaml
+  pull_request:
+    paths:
+      - apps/we-mobile/**
+      - crates/phone-custody/**
+      - apps/we-web/**
+      - packages/**
+      - we-seed.json
+      - pnpm-lock.yaml
+      - .github/workflows/phone-app.yaml
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  android:
+    name: Android debug APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+
+      # The checked-in Gradle wrapper runs below: check it is Gradle's own (the distribution it
+      # fetches is pinned by distributionSha256Sum in gradle-wrapper.properties).
+      - uses: gradle/actions/wrapper-validation@8da46b539cd8fe6ab27ca75128919a18d757604c # v6.4.1
+
+      # The Ubuntu runner image ships the Android SDK at $ANDROID_HOME; Gradle wants JDK 21.
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      - name: Build WE for the web
+        run: pnpm build:web
+
+      - name: Assemble the phone's web directory
+        working-directory: apps/we-mobile
+        run: pnpm build:web
+
+      - name: Check the WebView floor
+        working-directory: apps/we-mobile
+        run: pnpm check:floor
+
+      - name: Test
+        working-directory: apps/we-mobile
+        run: pnpm test
+
+      # The DeviceKey plugin's crate: its own tests and lints, then the Android libraries and the
+      # Kotlin bindings (scripts/build-android-rust.sh). rustup reads the channel from the crate's
+      # rust-toolchain.toml; the runner image's NDK is at $ANDROID_NDK_HOME.
+      - name: Install the crate's toolchain and cargo-ndk
+        working-directory: crates/phone-custody
+        run: |
+          rustup toolchain install
+          cargo install cargo-ndk --version 4.1.2 --locked
+
+      - name: Restore the cargo cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/phone-custody/target
+          key: phone-custody-${{ runner.os }}-${{ hashFiles('crates/phone-custody/Cargo.lock', 'crates/phone-custody/rust-toolchain.toml') }}
+          restore-keys: phone-custody-${{ runner.os }}-
+
+      - name: Test the crate
+        working-directory: crates/phone-custody
+        run: |
+          cargo fmt --check
+          cargo clippy --locked --all-targets -- -D warnings
+          cargo test --locked
+
+      - name: Build the crate for Android, and its Kotlin bindings
+        working-directory: apps/we-mobile
+        run: scripts/build-android-rust.sh
+
+      - name: Save the cargo cache
+        if: github.ref == 'refs/heads/dev'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            crates/phone-custody/target
+          key: phone-custody-${{ runner.os }}-${{ hashFiles('crates/phone-custody/Cargo.lock', 'crates/phone-custody/rust-toolchain.toml') }}
+
+      - name: Copy the web directory into the Android project
+        working-directory: apps/we-mobile
+        run: pnpm exec cap sync android
+
+      - name: Run the JVM tests and build the APK
+        working-directory: apps/we-mobile/android
+        run: ./gradlew :app:testDebugUnitTest assembleDebug
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coasys-debug-apk
+          path: apps/we-mobile/android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 7
