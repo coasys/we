@@ -18,7 +18,8 @@ pub(crate) use icon_names::phosphor_glyph as phosphor;
 /// Install the fonts and loaders the media widgets need: the three Phosphor
 /// variants (`regular` also rides along as a proportional-text fallback),
 /// the vendored Noto symbol subsets as text fallbacks for the non-ASCII the
-/// bundles use (arrows, chevrons, circled digits — OFL in `fonts/OFL.txt`),
+/// bundles use (arrows, chevrons, circled digits — OFL in `fonts/OFL.txt`,
+/// source and subset recipe in `fonts/README.md`),
 /// and egui_extras' image loader set (http/https/file/bytes, gif included).
 /// Idempotent — `frame_body` calls it every frame; only the first installs.
 /// `data:` URIs are decoded by `image_source` straight into
