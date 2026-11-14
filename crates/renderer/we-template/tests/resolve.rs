@@ -2681,3 +2681,46 @@ fn a_screen_rebind_keeps_an_edit_on_a_space_store_member_initial() {
     );
     assert!(locals.is_touched(&owner, "sel"));
 }
+
+#[test]
+fn a_dollar_named_store_member_is_a_dependency() {
+    // R6-2: only the port's own `local.$*` plumbing is excluded from the
+    // recorded reads. A real store's `$status` accessor is a signal: its
+    // answer moving A→B resets the derived initial even though the store
+    // allocation stays.
+    use std::sync::RwLock;
+    let sig = Arc::new(RwLock::new(Value::from("A")));
+    let sig_read = sig.clone();
+    let store = Value::from(we_expr::MapNamespace::new(
+        [(
+            "$status".into(),
+            Value::Callable(we_expr::CallableRef::accessor("$status", move |_| {
+                sig_read.read().unwrap().clone()
+            })),
+        )]
+        .into_iter()
+        .collect(),
+    ));
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "name": { "type": "string", "initial": { "$": "store['$status']" } } },
+        "children": []
+    }));
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root("store", store.clone());
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let owner = rt.frame(&mut host, &screen).id.clone();
+    assert!(locals.get(&owner, "name").strict_eq(&Value::from("A")));
+
+    locals.set(&owner, "name", Value::from("typed"));
+    locals.touch(&owner, "name");
+    *sig.write().unwrap() = Value::from("B");
+    bag.set_root("store", store); // wake a frame — same allocation
+    let _ = rt.frame(&mut host, &screen).clone();
+    assert!(
+        locals.get(&owner, "name").strict_eq(&Value::from("B")),
+        "a dollar-named store member is a real dependency: {:?}",
+        locals.get(&owner, "name")
+    );
+    assert!(!locals.is_touched(&owner, "name"));
+}

@@ -181,7 +181,7 @@ pub(crate) fn eval_str(
 /// container), and `follow_initial`'s `===` emit check — not the dep list —
 /// is what suppresses the non-emission when the memo's own answer is the
 /// shared child. The reads the port synthesizes are not inputs and are
-/// excluded at the recorder, named: `local.$*` plumbing and a bare
+/// excluded at the recorder, named: `LocalNs`'s `local.$*` plumbing and a bare
 /// conduit-box root (`local`, `surface`, `$nav`, an `$agent` stub, and the
 /// screen-store roots `bind_screen` rewraps on a screen move) — rebuilt
 /// every pass where WE keeps one object alive per mount, so
@@ -209,12 +209,15 @@ fn eval_str_tracked(
                     None => bag.is_screen_conduit(name),
                 };
                 let observe = |path: &str, value: &Value| {
-                    // `$`-members (`local.$fields`, `local.$decl:*`,
-                    // `local.$owner:*`) are the port's own plumbing — they
-                    // rebuild on demand — and a bare conduit-box root is
-                    // the same kind of read: recording either registers a
-                    // dependency that moves every pass without meaning one.
-                    if !path.contains(".$") && (path.contains('.') || !is_conduit_root(path)) {
+                    // `LocalNs`'s own members (`local.$fields`,
+                    // `local.$decl:*`, `local.$owner:*`) are the port's
+                    // plumbing — they rebuild on demand — and a bare
+                    // conduit-box root is the same kind of read: recording
+                    // either registers a dependency that moves every pass
+                    // without meaning one. Only those: a real store's
+                    // `$status` member is a signal like any other.
+                    let plumbing = path.starts_with("local.$") && scope.is_conduit("local");
+                    if !plumbing && (path.contains('.') || !is_conduit_root(path)) {
                         reads.borrow_mut().push((path.into(), value.clone()));
                     }
                 };
