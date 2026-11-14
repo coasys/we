@@ -143,11 +143,12 @@ fn patched<'a>(style: &'a Style, patch: &StylePatch) -> std::borrow::Cow<'a, Sty
 /// An inset edge (`padding`/`border` width) in px — `Percent` (and the
 /// percent term of a `calc()`) resolves against `base`, the containing
 /// block's content width — CSS puts every edge's percentage on the CB
-/// *width*. `base` is `None` when layout found it content-driven (the
-/// CSS cyclic fallback — the term resolves to `0`). `ch`/`ex`/`lh` take
-/// `layout::dim_px`'s font-metric approximations so paint agrees with
-/// the space taffy offered measure — the shared `Dimension::resolve`
-/// policy.
+/// *width*. `base` is `None` when layout found it content-driven: the
+/// CSS cyclic fallback zeroes the *percent term* and keeps the rest —
+/// the same `resolve(Some(0))` answer layout's `lp` gave taffy, not a
+/// dropped value. `ch`/`ex`/`lh` take `layout::dim_px`'s font-metric
+/// approximations so paint agrees with the space taffy offered measure —
+/// the shared `Dimension::resolve` policy.
 fn inset_px(
     d: &Option<Dimension>,
     font_px: f32,
@@ -157,7 +158,7 @@ fn inset_px(
 ) -> f32 {
     match d.as_ref() {
         Some(d) => d
-            .resolve(base, font_px, root_px, view.viewport)
+            .resolve(Some(base.unwrap_or(0.0)), font_px, root_px, view.viewport)
             .unwrap_or(0.0),
         None => 0.0,
     }
@@ -546,4 +547,45 @@ pub(crate) fn we_id(node: &ResolvedNode) -> Option<String> {
 #[allow(dead_code)]
 pub(crate) fn label(cx: &mut PaintCx, rect: egui::Rect, text: &str) {
     cx.label(rect, text);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The CSS cyclic-percentage fallback zeroes a `calc`'s *percent*
+    /// term and keeps the rest — layout's `lp` resolves it against base
+    /// `0`. `Layout::bases` reports a content-driven (indefinite) base
+    /// as `None`; paint must apply the same fallback, not drop the
+    /// whole value.
+    #[test]
+    fn content_rect_indefinite_base_keeps_calc_fixed_terms() {
+        let edge = || {
+            Some(Dimension::Calc(we_style::Calc {
+                percent: 0.1,
+                px: 16.0,
+                ..Default::default()
+            }))
+        };
+        let mut style = Style::default();
+        style.layout.padding = Edges {
+            top: edge(),
+            right: edge(),
+            bottom: edge(),
+            left: edge(),
+        };
+        let r = content_rect(
+            egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(200.0, 100.0)),
+            &style,
+            14.0,
+            16.0,
+            crate::defaults::ViewportCx::default(),
+            None, // a content-driven containing block — the cyclic rule
+        );
+        assert_eq!(
+            r.min.x, 16.0,
+            "cyclic calc padding keeps its 16px term (percent → 0), got {r:?}"
+        );
+        assert_eq!(r.width(), 200.0 - 32.0, "both sides inset 16px");
+    }
 }
