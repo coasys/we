@@ -41,12 +41,9 @@ fn tokens() -> we_style::TokenTable {
     we_style::TokenTable::from_json(&json).unwrap()
 }
 
-
 /// The media fonts + tofu policy the icon/identicon/image paths need —
 /// a missing glyph is a paint detail, not a test failure.
-fn harness_ui<'a>(
-    run: impl FnMut(&mut egui::Ui) + 'a,
-) -> egui_kittest::Harness<'a> {
+fn harness_ui<'a>(run: impl FnMut(&mut egui::Ui) + 'a) -> egui_kittest::Harness<'a> {
     egui_kittest::Harness::builder()
         // The image loader's ⚠ has no glyph in the test fonts — a paint
         // detail, not a failure. install_media supplies the rest.
@@ -414,10 +411,7 @@ fn child_text_matches_the_text_prop_geometry() {
     // The child text is the widget's own galley — no second span leaks into
     // `layout.texts` (that second owner is what double-painted).
     assert!(
-        !layout
-            .texts
-            .iter()
-            .any(|t| t.node == NodeId::from("c/b")),
+        !layout.texts.iter().any(|t| t.node == NodeId::from("c/b")),
         "absorbed child text must not also emit a span: {:?}",
         layout
             .texts
@@ -533,11 +527,7 @@ fn painted_shapes(root: &ResolvedNode, width: f32) -> (Layout, Vec<egui::Shape>)
         let layer = ui.layer_id();
         let shapes: Vec<egui::Shape> = ctx.graphics(|g| {
             g.get(layer)
-                .map(|list| {
-                    list.all_entries()
-                        .map(|cs| cs.shape.clone())
-                        .collect()
-                })
+                .map(|list| list.all_entries().map(|cs| cs.shape.clone()).collect())
                 .unwrap_or_default()
         });
         *out.borrow_mut() = Some((lay, shapes));
@@ -565,7 +555,10 @@ fn avatar_size_tiers_resolve_to_the_ts_scale() {
     ];
     let mut col = node("Column", "c", &[]);
     for (i, (size, _)) in cases.iter().enumerate() {
-        child(&mut col, node("we-avatar", &format!("c/a{i}"), &[("size", size.clone())]));
+        child(
+            &mut col,
+            node("we-avatar", &format!("c/a{i}"), &[("size", size.clone())]),
+        );
     }
     let layout = lay_out(&col, 400.0);
     for (i, (_, want)) in cases.iter().enumerate() {
@@ -659,10 +652,7 @@ fn avatar_falls_back_to_hash_pattern_then_icon() {
         "a hashed avatar draws a pattern, not letters or a glyph: {shapes:?}"
     );
     // icon → a single glyph galley; default is `user`.
-    for props in [
-        vec![("icon", s("camera"))],
-        vec![],
-    ] {
+    for props in [vec![("icon", s("camera"))], vec![]] {
         let av = node("we-avatar", "a", &props);
         let (_layout, galleys) = painted_galley_texts(&av, 400.0);
         let glyph = galleys
@@ -810,9 +800,182 @@ fn clickable_avatar_emits_onclick() {
     harness.get_by_label("NL").click();
     harness.run();
     assert!(
-        events.borrow().iter().any(|e| e.handler.as_ref() == "onClick"),
+        events
+            .borrow()
+            .iter()
+            .any(|e| e.handler.as_ref() == "onClick"),
         "a clickable avatar emits onClick: {:?}",
         events.borrow()
+    );
+}
+
+// ---------- A3: we-tooltip slotted content ------------------------------
+
+/// A `we-tooltip`: `trigger` button child + a `slot="content"` we-text —
+/// the bundle's reaction-tooltip shape (a rich Column, here one line).
+fn tooltip_node(id: &str, extra: &[(&str, Value)]) -> ResolvedNode {
+    let mut tip = node("we-tooltip", id, extra);
+    child(
+        &mut tip,
+        node("we-button", &format!("{id}/b"), &[("text", s("hover me"))]),
+    );
+    let mut content = node("we-text", &format!("{id}/c"), &[("text", s("tip body"))]);
+    content.slot = Some(Arc::from("content"));
+    child(&mut tip, content);
+    tip
+}
+
+/// A3 — `slot="content"` is the bubble, not page content (tooltip.ts:
+/// `<slot name="content">` inside `part="tooltip"`). At rest the slotted
+/// child has no layout rect and paints nowhere.
+#[test]
+fn tooltip_content_slot_never_enters_page_layout() {
+    let tip = tooltip_node("t", &[("content", s("phrase"))]);
+    let layout = lay_out(&tip, 400.0);
+    assert!(
+        layout.rects.get(&NodeId::from("t/c")).is_none(),
+        "content-slot child must not enter page layout: {:?}",
+        layout.rects.keys().collect::<Vec<_>>()
+    );
+    let (_l, galleys) = painted_galley_texts(&tip, 400.0);
+    assert!(
+        !galleys.iter().any(|(_, t)| t.contains("tip body")),
+        "slotted content must not paint while closed: {galleys:?}"
+    );
+    // The trigger stays — its own galley.
+    assert!(
+        galleys.iter().any(|(_, t)| t.contains("hover me")),
+        "the trigger child keeps painting: {galleys:?}"
+    );
+}
+
+/// Galleys + `Layout` + `EditState` across ALL paint layers — the page
+/// helper only reads the widget's own layer; overlays paint on their own.
+struct TooltipRig {
+    layout: Layout,
+    edit: EditState,
+    texts: Vec<(egui::Pos2, String)>,
+}
+
+/// Paint `root` inside the harness, then drain every layer's galley texts.
+/// `interact` runs pointer steps between frames when given.
+fn tooltip_rig(
+    root: ResolvedNode,
+    interact: impl FnOnce(&mut egui_kittest::Harness<'_>, &Layout),
+) -> TooltipRig {
+    let registry = Registry::with_builtins();
+    let tokens = tokens();
+    let out = std::cell::RefCell::new(None);
+    let texts = std::cell::RefCell::new(Vec::new());
+    let lay_cell = std::cell::RefCell::new(None);
+    let mut harness = harness_ui(|ui| {
+        let ctx = ui.ctx().clone();
+        let cx = MeasureCx::new(&ctx);
+        let scx = StyleCx {
+            tokens: &tokens,
+            ..StyleCx::empty()
+        };
+        let lay = layout(
+            &cx,
+            &scx,
+            &registry,
+            &root,
+            egui::Rect::from_min_size(ui.cursor().min, egui::vec2(400.0, 800.0)),
+        );
+        let mut events = Vec::new();
+        let mut edit = out.borrow_mut().take().unwrap_or_default();
+        paint(
+            ui,
+            &registry,
+            &scx,
+            &root,
+            &lay,
+            &mut events,
+            &mut edit,
+            0.0,
+        );
+        *out.borrow_mut() = Some(edit);
+        *lay_cell.borrow_mut() = Some(lay);
+        texts.borrow_mut().clear();
+        ctx.graphics_mut(|g| {
+            for cs in g.drain(&[], &Default::default()) {
+                if let egui::Shape::Text(t) = cs.shape {
+                    texts
+                        .borrow_mut()
+                        .push((t.pos, t.galley.text().to_string()));
+                }
+            }
+        });
+    });
+    harness.run();
+    let lay = lay_cell.borrow();
+    interact(&mut harness, lay.as_ref().expect("layout ran"));
+    drop(lay);
+    harness.run();
+    harness.run();
+    let rig = TooltipRig {
+        layout: lay_cell.borrow_mut().take().unwrap(),
+        edit: out.borrow_mut().take().unwrap_or_default(),
+        texts: texts.borrow().clone(),
+    };
+    rig
+}
+
+/// A3 — `open` is a real prop: with it set, the slotted child paints inside
+/// the floating layer (the overlay pass), not the page.
+#[test]
+fn tooltip_open_prop_shows_the_slotted_content() {
+    let rig = tooltip_rig(tooltip_node("t", &[("open", Value::Bool(true))]), |_, _| {});
+    assert!(
+        rig.texts.iter().any(|(_, t)| t.contains("tip body")),
+        "an open tooltip shows its slotted content: {:?}",
+        rig.texts
+    );
+    // And it painted in the overlay — still no page rect for `t/c`.
+    assert!(rig.layout.rects.get(&NodeId::from("t/c")).is_none());
+}
+
+/// A3 — hovering the trigger opens the tooltip (tooltip.ts `mouseenter →
+/// show` — when there is something to say, which `content`/slotted
+/// children provide).
+#[test]
+fn tooltip_hover_opens_the_bubble() {
+    let rig = tooltip_rig(
+        tooltip_node("t", &[("content", s("phrase"))]),
+        |harness, lay| {
+            let b = lay.rects.get(&NodeId::from("t/b")).copied().unwrap();
+            harness.hover_at(b.center());
+        },
+    );
+    assert!(
+        rig.edit.is_open(&NodeId::from("t")),
+        "hovering the trigger must open the tooltip"
+    );
+    assert!(
+        rig.texts.iter().any(|(_, t)| t.contains("tip body")),
+        "the open bubble shows the slotted content: {:?}",
+        rig.texts
+    );
+}
+
+/// A3 — `content` is the slot's *fallback* (tooltip.ts renders it inside
+/// `<slot name="content">` when nothing is slotted): a prop-only tooltip
+/// still shows its text on hover.
+#[test]
+fn tooltip_content_prop_is_the_slot_fallback() {
+    let mut tip = node("we-tooltip", "t", &[("content", s("just text"))]);
+    child(
+        &mut tip,
+        node("we-button", "t/b", &[("text", s("hover me"))]),
+    );
+    let rig = tooltip_rig(tip, |harness, lay| {
+        let b = lay.rects.get(&NodeId::from("t/b")).copied().unwrap();
+        harness.hover_at(b.center());
+    });
+    assert!(
+        rig.texts.iter().any(|(_, t)| t.contains("just text")),
+        "a prop-only tooltip shows its content text: {:?}",
+        rig.texts
     );
 }
 

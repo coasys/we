@@ -604,22 +604,23 @@ impl<'a> Builder<'a> {
                 }
                 (Pick::Named(_), ResolvedChild::Text(_)) => false,
             }) {
-                if let Some(k) = self.child_node(
-                    node,
-                    child,
-                    tree,
-                    parent_h_definite,
-                    main_indefinite,
-                    tc,
-                ) {
+                if let Some(k) =
+                    self.child_node(node, child, tree, parent_h_definite, main_indefinite, tc)
+                {
                     kids.push(k);
                 }
             }
         }
         for sub in &spec.parts {
-            if let Some(k) =
-                self.part_node(owner, sub, node, tree, parent_h_definite, main_indefinite, tc)
-            {
+            if let Some(k) = self.part_node(
+                owner,
+                sub,
+                node,
+                tree,
+                parent_h_definite,
+                main_indefinite,
+                tc,
+            ) {
                 kids.push(k);
             }
         }
@@ -800,15 +801,7 @@ impl<'a> Builder<'a> {
                 spec.parts
                     .iter()
                     .filter_map(|part| {
-                        self.part_node(
-                            &node.id,
-                            part,
-                            node,
-                            &tree,
-                            h_definite,
-                            main_indefinite,
-                            tc,
-                        )
+                        self.part_node(&node.id, part, node, &tree, h_definite, main_indefinite, tc)
                     })
                     .collect()
             }
@@ -866,8 +859,13 @@ pub trait Measure {
     /// `avail.x <= 0` is the MinContent query — the floor under the
     /// shrinkable span: the longest unbreakable run, or the ellipsis when
     /// the owner truncates.
-    fn measure_text(&self, owner: &ResolvedNode, owner_style: &Style, text: &str, avail: Size)
-        -> Size;
+    fn measure_text(
+        &self,
+        owner: &ResolvedNode,
+        owner_style: &Style,
+        text: &str,
+        avail: Size,
+    ) -> Size;
 }
 
 /// Lay out `root` inside `rect` — the frame calls this when the resolve

@@ -77,11 +77,8 @@ impl<'a> we_layout::Measure for EguiMeasure<'a> {
         text: &str,
         avail: we_layout::Size,
     ) -> we_layout::Size {
-        let text = crate::props::transform_text(
-            style,
-            text,
-            crate::props::prop_bool(owner, "uppercase"),
-        );
+        let text =
+            crate::props::transform_text(style, text, crate::props::prop_bool(owner, "uppercase"));
         let truncate = crate::props::prop_bool(owner, "truncate");
         let lines = crate::props::prop_num(owner, "lines").map(|n| n.max(1.0) as usize);
         let font = crate::props::font_id(style, FONT_PX, ROOT_PX, self.scx.viewport);
@@ -104,14 +101,7 @@ impl<'a> we_layout::Measure for EguiMeasure<'a> {
         }
         // The same galley `paint` draws: wrapped at the offered width, the
         // owner's transform and `truncate`/`lines` clamps applied.
-        let g = crate::text::text_job(
-            &text,
-            style,
-            self.cx.ctx,
-            avail.x,
-            truncate,
-            lines,
-        );
+        let g = crate::text::text_job(&text, style, self.cx.ctx, avail.x, truncate, lines);
         we_layout::Size::new(g.size().x, g.size().y)
     }
 }

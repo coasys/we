@@ -462,15 +462,17 @@ pub(crate) fn token_px(
     let tokens = crate::defaults::tokens_of(ctx)?;
     let raw = tokens.get(name)?;
     let resolved = tokens.substitute(raw);
-    we_style::eval_dimension(&resolved)
-        .and_then(|d| d.to_px(font_px, root_px, viewport))
+    we_style::eval_dimension(&resolved).and_then(|d| d.to_px(font_px, root_px, viewport))
 }
 
 /// The port of `seededHue`/`seededFill` in `shared/seededColor.ts`: FNV-1a
 /// over UTF-16 code units quantized to twelve hues, then the theme's own
 /// 100/700 ramp steps at that hue — the pair `initialsFill` sets. `None`
 /// without a token table (the ramp's lightness/saturation come from it).
-pub(crate) fn seeded_fill(ctx: &egui::Context, seed: &str) -> Option<(egui::Color32, egui::Color32)> {
+pub(crate) fn seeded_fill(
+    ctx: &egui::Context,
+    seed: &str,
+) -> Option<(egui::Color32, egui::Color32)> {
     let tokens = crate::defaults::tokens_of(ctx)?;
     let num = |name: &str, dflt: f32| -> f32 {
         tokens

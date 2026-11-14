@@ -302,11 +302,8 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
                     // The same galley layout measured: wrapped at the span's
                     // width, the owner's transform and `truncate`/`lines`
                     // clamps applied — never a raw overflow line.
-                    let text = props::transform_text(
-                        &style,
-                        t,
-                        props::prop_bool(node, "uppercase"),
-                    );
+                    let text =
+                        props::transform_text(&style, t, props::prop_bool(node, "uppercase"));
                     let g = crate::text::text_job(
                         &text,
                         &style,

@@ -7,65 +7,87 @@ use we_template::ResolvedNode;
 
 use crate::defaults::{view_of, FONT_PX, ROOT_PX};
 use crate::props;
-use crate::{MeasureCx, PaintCx, Rect, Size, TextChildren, Widget, WidgetKind};
+use crate::{
+    Direction, MeasureCx, PaintCx, PartSpec, PartsSpec, Pick, Rect, Size, TextChildren, Widget,
+    WidgetKind,
+};
 
 // ── we-tooltip ───────────────────────────────────────────────────────────
 
-/// `we-tooltip` — a container whose *children* are the trigger; `content` +
-/// `placement` describe the tip. Hovering the trigger's box shows the tip in
-/// an egui tooltip window at the requested edge.
+/// `we-tooltip` — the default slot is the trigger; `slot="content"` children
+/// (or the `content` text prop) are the bubble, painted only on the overlay
+/// layer while the tip is open. `open` is controlled; otherwise hover over
+/// the trigger flips the internal flag (`mouseenter`/`mouseleave`, tooltip.ts).
 #[derive(Debug, Default)]
 pub struct Tooltip;
+
+impl Tooltip {
+    /// `_hasSomethingToSay` — a `content` string or a `slot="content"` child.
+    fn has_something_to_say(node: &ResolvedNode) -> bool {
+        if props::prop_text(node, "content").is_some_and(|c| !c.is_empty()) {
+            return true;
+        }
+        node.children.iter().any(|c| match c {
+            we_template::ResolvedChild::Node(n) => n.slot.as_deref() == Some("content"),
+            we_template::ResolvedChild::Text(_) => false,
+        })
+    }
+}
 
 impl Widget for Tooltip {
     fn type_name(&self) -> &'static str {
         "we-tooltip"
     }
     fn kind(&self) -> WidgetKind {
-        WidgetKind::Container
+        WidgetKind::Overlay
+    }
+    fn parts_spec(&self, _node: &ResolvedNode) -> Option<PartsSpec> {
+        // `trigger` is the anchor; `slot="content"` children float.
+        Some(PartsSpec {
+            direction: Direction::Column,
+            parts: vec![PartSpec::group("trigger", Pick::Default, Direction::Column)],
+        })
     }
     fn measure(&self, _cx: &MeasureCx, _n: &ResolvedNode, _s: &Style, _a: Size) -> Size {
         Size::ZERO
     }
-    fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
-        crate::containers::paint_container(cx, node, style, rect);
-        let content = props::prop_text(node, "content").unwrap_or("");
-        if content.is_empty() {
-            return;
-        }
-        let id = cx.ui.scope_id().with(("we-tooltip", node.id.as_str()));
-        let resp = cx.ui.interact(rect, id, egui::Sense::hover());
-        if !resp.hovered() {
-            return;
-        }
-        // The tip grows away from the edge it anchors to (`placement`).
-        let (pivot, at) = match props::prop_str(node, "placement").unwrap_or("top") {
-            "bottom" => (
-                egui::Align2::CENTER_TOP,
-                rect.center_bottom() + egui::vec2(0.0, 6.0),
-            ),
-            "left" => (
-                egui::Align2::RIGHT_CENTER,
-                rect.left_center() + egui::vec2(-6.0, 0.0),
-            ),
-            "right" => (
-                egui::Align2::LEFT_CENTER,
-                rect.right_center() + egui::vec2(6.0, 0.0),
-            ),
-            _ => (
-                egui::Align2::CENTER_BOTTOM,
-                rect.center_top() + egui::vec2(0.0, -6.0),
-            ),
-        };
-        egui::Area::new(egui::Id::unique(("we-tip", node.id.as_str())))
-            .order(egui::Order::Foreground)
-            .pivot(pivot)
-            .fixed_pos(at)
-            .show(cx.ui.ctx(), |ui| {
-                egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.label(content);
-                });
+    fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, rect: Rect) {
+        // Overlay pass: the popup frame is drawn by `anchored_overlay`; the
+        // `content` prop is the slot's fallback — paint it only when no
+        // `slot="content"` child took over the bubble.
+        if let Some(inner) = props::part(cx, node, "overlay") {
+            let has_slot = node.children.iter().any(|c| match c {
+                we_template::ResolvedChild::Node(n) => n.slot.as_deref() == Some("content"),
+                we_template::ResolvedChild::Text(_) => false,
             });
+            if !has_slot {
+                if let Some(content) = props::prop_text(node, "content") {
+                    cx.ui.painter().text(
+                        inner.center(),
+                        egui::Align2::CENTER_CENTER,
+                        content,
+                        egui::FontId::proportional(FONT_PX),
+                        cx.ui.visuals().text_color(),
+                    );
+                }
+            }
+            return;
+        }
+        // In-flow pass: hover on the trigger opens — but only when there is
+        // something to say (tooltip.ts: `mouseenter` gates on content).
+        if !Self::has_something_to_say(node) {
+            return;
+        }
+        // `mouseenter` = pointer inside the trigger's box. `ui.interact`
+        // would lose the hover to the trigger's own widget (the button on
+        // top is the hovered widget); `rect_contains_pointer` asks the
+        // layer, which is what "enter the trigger" means.
+        let anchor = props::part(cx, node, "trigger").unwrap_or(rect);
+        let hovered = cx.ui.rect_contains_pointer(anchor);
+        let controlled = node.props.get("open").is_some_and(|v| !v.is_undefined());
+        if !controlled {
+            cx.edit.set_open(&node.id, hovered);
+        }
     }
 }
 

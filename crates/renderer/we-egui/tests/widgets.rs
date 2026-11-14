@@ -145,10 +145,7 @@ fn media_widgets_paint() {
         (
             "we-avatar",
             "AL",
-            vec![
-                ("name", s("Ada Lovelace")),
-                ("size", we_expr::Value::from(32.0)),
-            ],
+            vec![("initials", s("Ada Lovelace")), ("size", s("sm"))],
         ),
         (
             "we-animated-icon",

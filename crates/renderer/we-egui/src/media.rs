@@ -326,8 +326,12 @@ impl Rings {
             .and_then(|d| d.to_px(FONT_PX, ROOT_PX, we_style::Size::new(0.0, 0.0)))
             .unwrap_or(dflt);
         Self {
-            edge: edge_raw.and_then(|c| ring_color(ctx, c)).map(|c| (c, edge_w)),
-            ring: ring_raw.and_then(|c| ring_color(ctx, c)).map(|c| (c, ring_w)),
+            edge: edge_raw
+                .and_then(|c| ring_color(ctx, c))
+                .map(|c| (c, edge_w)),
+            ring: ring_raw
+                .and_then(|c| ring_color(ctx, c))
+                .map(|c| (c, ring_w)),
         }
     }
 
@@ -385,7 +389,10 @@ fn paint_identicon(p: &egui::Painter, rect: Rect, hash: &str, ctx: &egui::Contex
                 continue;
             }
             for c in [col, 4 - col] {
-                let r = Rect::from_min_size(top + egui::vec2(c as f32 * cell, row as f32 * cell), egui::vec2(cell, cell));
+                let r = Rect::from_min_size(
+                    top + egui::vec2(c as f32 * cell, row as f32 * cell),
+                    egui::vec2(cell, cell),
+                );
                 p.rect_filled(r, 0.0, fg);
             }
         }
@@ -479,12 +486,16 @@ impl Avatar {
                     .paint_at(ui, rect);
             }
             Face::Initials(letters, seed) => {
-                let (bg, fg) = props::seeded_fill(&ctx, seed).unwrap_or_else(|| {
-                    (sunken(), props::text_color(style, &ctx))
-                });
+                let (bg, fg) = props::seeded_fill(&ctx, seed)
+                    .unwrap_or_else(|| (sunken(), props::text_color(style, &ctx)));
                 p.rect_filled(rect, r, bg);
                 // 0.4× the disc — 0.5× for a lone letter (the optical lift).
-                let fs = rect.height() * if letters.chars().count() == 1 { 0.5 } else { 0.4 };
+                let fs = rect.height()
+                    * if letters.chars().count() == 1 {
+                        0.5
+                    } else {
+                        0.4
+                    };
                 p.text(
                     rect.center(),
                     egui::Align2::CENTER_CENTER,
@@ -548,8 +559,7 @@ impl Widget for Avatar {
                 .unwrap_or_else(|| "avatar".to_string()),
         };
         if props::prop_flag(node, "clickable") == Some(true) {
-            let resp =
-                cx.interact_label(content, &label, egui::Role::Button, &node.id, "avatar");
+            let resp = cx.interact_label(content, &label, egui::Role::Button, &node.id, "avatar");
             if resp.clicked() {
                 cx.emit(&node.id, "onClick", props::detail([]));
             }
@@ -624,7 +634,10 @@ impl StackEntry {
         if !letters.is_empty() {
             return Face::Initials(
                 letters,
-                self.hash.as_deref().or(self.initials.as_deref()).unwrap_or(""),
+                self.hash
+                    .as_deref()
+                    .or(self.initials.as_deref())
+                    .unwrap_or(""),
             );
         }
         if let Some(h) = &self.hash {
