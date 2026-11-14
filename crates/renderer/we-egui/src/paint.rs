@@ -71,7 +71,7 @@ pub fn paint(
         parts_buf: None,
         overlays: Vec::new(),
     };
-    paint_node(&mut w, root);
+    paint_node(&mut w, root, layout.size.x);
     paint_overlays(&mut w);
 }
 
@@ -231,7 +231,10 @@ fn text_span(layout: &Layout, node: &NodeId, text: &str) -> Option<egui::Rect> {
         .map(|s| s.rect)
 }
 
-fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
+/// Paint `node` and its children. `cb_w` is its containing-block width —
+/// the parent's content box — the base CSS puts every percent padding/
+/// margin edge and `calc()` percent term on.
+fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode, cb_w: f32) {
     let Some(raw) = w.layout.rects.get(&node.id).copied() else {
         return;
     };
@@ -276,10 +279,23 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
             parts,
             edit: w.edit,
             now: w.now,
+            cb_w,
             ancestors: &w.ancestors[..w.ancestors.len() - 1],
         };
         widget.paint(&mut cx, node, style, rect);
     }
+
+    // The children's containing block: this node's content box (padding %
+    // already resolved against `cb_w` — the same box taffy laid them into).
+    let child_cb_w = props::content_rect(
+        rect,
+        style,
+        crate::defaults::FONT_PX,
+        crate::defaults::ROOT_PX,
+        crate::defaults::view_of(w.ui.ctx()),
+        cb_w,
+    )
+    .width();
 
     // Scroll container: children translate by the stored offset and clip on
     // the scrolling axes.
@@ -304,7 +320,7 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
 
     for child in &node.children {
         match child {
-            ResolvedChild::Node(n) => paint_node(w, n),
+            ResolvedChild::Node(n) => paint_node(w, n, child_cb_w),
             ResolvedChild::Text(t) => {
                 if let Some(span) = text_span(w.layout, &node.id, t) {
                     let mut p = w.ui.painter().clone();
@@ -531,6 +547,7 @@ fn overlay_contents(
     }
     base_parts.insert((node.id.clone(), "overlay"), content_rect);
     let clip = ui.clip_rect();
+    let view = crate::defaults::view_of(ui.ctx());
     let mut inner = Walk {
         ui,
         registry: w.registry,
@@ -547,6 +564,24 @@ fn overlay_contents(
         parts_buf: None,
         overlays: Vec::new(),
     };
+    // The floating children's containing block is the synthetic host
+    // column's content box — the box the seeded sub-layout gave them.
+    let host_cb_w = scratch
+        .styles
+        .get(&node.id)
+        .map(|s| {
+            let r = scratch.rects.get(&node.id).copied().unwrap_or(content_rect);
+            props::content_rect(
+                r,
+                s,
+                crate::defaults::FONT_PX,
+                crate::defaults::ROOT_PX,
+                view,
+                content_rect.width(),
+            )
+            .width()
+        })
+        .unwrap_or_else(|| content_rect.width());
     inner.ancestors.push(node.id.clone());
     {
         let ancestors = inner.ancestors[..inner.ancestors.len() - 1].to_vec();
@@ -556,6 +591,7 @@ fn overlay_contents(
             parts: &inner.base_parts,
             edit: inner.edit,
             now: inner.now,
+            cb_w: host_cb_w,
             ancestors: &ancestors,
         };
         widget.paint(&mut cx, node, overlay_style(w.layout, node), content_rect);
@@ -583,7 +619,7 @@ fn overlay_contents(
     }
     for child in &node.children {
         if let ResolvedChild::Node(n) = child {
-            paint_node(&mut inner, n);
+            paint_node(&mut inner, n, host_cb_w);
         }
     }
     paint_overlays(&mut inner);

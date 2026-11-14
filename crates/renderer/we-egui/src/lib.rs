@@ -102,6 +102,12 @@ pub struct PaintCx<'a> {
     pub parts: &'a Parts,
     pub edit: &'a mut EditState,
     pub now: f64,
+    /// The containing-block width the node's percent paddings/margins (and
+    /// percent terms inside `calc()`) resolve against — the parent's
+    /// content-box width, threaded down the paint walk the way the DOM
+    /// defines it. `0.0` when there is no containing block (a hand-built
+    /// context in tests).
+    pub cb_w: f32,
     pub(crate) ancestors: &'a [NodeId],
     pub(crate) events: &'a mut Vec<WidgetEvent>,
 }
@@ -120,6 +126,7 @@ impl<'a> PaintCx<'a> {
             parts,
             edit,
             now,
+            cb_w: 0.0,
             ancestors,
             events,
         }

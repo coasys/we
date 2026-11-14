@@ -140,28 +140,23 @@ fn patched<'a>(style: &'a Style, patch: &StylePatch) -> std::borrow::Cow<'a, Sty
     std::borrow::Cow::Owned(out)
 }
 
-/// An inset edge (`padding`/`border` width) in px — `Percent` resolves
-/// against the container width (CSS's containing-block inline size); `ch`/
-/// `ex`/`lh` take `layout::dim_px`'s font-metric approximations so paint
-/// agrees with the space taffy offered measure.
+/// An inset edge (`padding`/`border` width) in px — `Percent` (and the
+/// percent term of a `calc()`) resolves against `base`, the containing
+/// block's content width — CSS puts every edge's percentage on the CB
+/// *width*. `ch`/`ex`/`lh` take `layout::dim_px`'s font-metric
+/// approximations so paint agrees with the space taffy offered measure —
+/// the shared `Dimension::resolve` policy.
 fn inset_px(
     d: &Option<Dimension>,
     font_px: f32,
     root_px: f32,
     view: crate::defaults::ViewportCx,
+    base: f32,
 ) -> f32 {
     match d.as_ref() {
-        Some(Dimension::Percent(p)) => p * view.container_width,
-        Some(Dimension::Ch(v)) | Some(Dimension::Ex(v)) => v * 0.5 * font_px,
-        Some(Dimension::Lh(v)) => v * 1.4 * font_px,
-        // The percent base is known here — the whole sum resolves.
-        Some(Dimension::Calc(c)) => {
-            c.percent * view.container_width
-                + c.known_px(font_px, root_px, view.viewport)
-                + (c.ch + c.ex) * 0.5 * font_px
-                + c.lh * 1.4 * font_px
-        }
-        Some(d) => d.to_px(font_px, root_px, view.viewport).unwrap_or(0.0),
+        Some(d) => d
+            .resolve(Some(base), font_px, root_px, view.viewport)
+            .unwrap_or(0.0),
         None => 0.0,
     }
 }
@@ -171,16 +166,18 @@ fn inset_px(
 /// taffy offers `widget.measure` (it pre-subtracts this inset). Leaf
 /// widgets paint their glyphs/images/icons inside it; `paint_box` chrome —
 /// bg, borders, shadows — stays on `rect`. Interaction keeps `rect`.
+/// `base` is the node's containing-block width (the parent's content box).
 pub(crate) fn content_rect(
     rect: egui::Rect,
     style: &Style,
     font_px: f32,
     root_px: f32,
     view: crate::defaults::ViewportCx,
+    base: f32,
 ) -> egui::Rect {
     let pad = &style.layout.padding;
     let bor = &style.paint.borders;
-    let p = |d: &Option<Dimension>| inset_px(d, font_px, root_px, view);
+    let p = |d: &Option<Dimension>| inset_px(d, font_px, root_px, view, base);
     let bw = |s: &Option<we_style::BorderSide>| border_side_px(s, font_px, root_px, view.viewport);
     let min = rect.min + egui::vec2(p(&pad.left) + bw(&bor.left), p(&pad.top) + bw(&bor.top));
     let max = rect.max
@@ -223,16 +220,16 @@ pub(crate) fn radius_px(
     for side in radius.as_slice() {
         let Some(d) = side else { continue };
         let v = match d {
-            Dimension::Percent(p) => p * rect.width().min(rect.height()),
             // Corners read percent against the box's short side — the base
             // is known, so a calc sum resolves fully.
-            Dimension::Calc(c) => {
-                c.percent * rect.width().min(rect.height())
-                    + c.known_px(font_px, root_px, viewport)
-                    + (c.ch + c.ex) * 0.5 * font_px
-                    + c.lh * 1.4 * font_px
-            }
-            other => other.to_px(font_px, root_px, viewport).unwrap_or(0.0),
+            other => other
+                .resolve(
+                    Some(rect.width().min(rect.height())),
+                    font_px,
+                    root_px,
+                    viewport,
+                )
+                .unwrap_or(0.0),
         };
         sum += v;
         n += 1;

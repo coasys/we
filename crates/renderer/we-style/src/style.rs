@@ -101,6 +101,29 @@ impl Calc {
             None
         }
     }
+
+    /// Pixels given the containing-block base the `percent` term resolves
+    /// against — `None` when a percent term remains but no base was
+    /// supplied (the caller keeps a placeholder rather than guess). The
+    /// `ch`/`ex`/`lh` terms fold with the same approximations the layout
+    /// and paint consumers shared before this policy existed here:
+    /// `0.5 × font_px` for `ch`/`ex`, `1.4 × font_px` for `lh`.
+    pub fn resolve(
+        &self,
+        percent_base: Option<f32>,
+        font_px: f32,
+        root_px: f32,
+        viewport: Size,
+    ) -> Option<f32> {
+        let px = self.known_px(font_px, root_px, viewport)
+            + (self.ch + self.ex) * 0.5 * font_px
+            + self.lh * 1.4 * font_px;
+        if self.percent == 0.0 {
+            Some(px)
+        } else {
+            percent_base.map(|b| px + self.percent * b)
+        }
+    }
 }
 
 impl Dimension {
@@ -123,6 +146,28 @@ impl Dimension {
             | Dimension::Ch(_)
             | Dimension::Ex(_)
             | Dimension::Lh(_) => return None,
+        })
+    }
+
+    /// Pixels given the base a percent resolves against — the
+    /// containing-block content width for box edges (per CSS, every edge's
+    /// `%` resolves against the CB *width*), or the property's axis base
+    /// for sizes. `None` stays `None`; a percent-bearing value with no base
+    /// stays unresolvable so no caller approximates a base silently.
+    pub fn resolve(
+        &self,
+        percent_base: Option<f32>,
+        font_px: f32,
+        root_px: f32,
+        viewport: Size,
+    ) -> Option<f32> {
+        Some(match *self {
+            Dimension::Percent(p) => return percent_base.map(|b| p * b),
+            Dimension::Ch(v) => v * 0.5 * font_px,
+            Dimension::Ex(v) => v * 0.5 * font_px,
+            Dimension::Lh(v) => v * 1.4 * font_px,
+            Dimension::Calc(c) => return c.resolve(percent_base, font_px, root_px, viewport),
+            _ => return self.to_px(font_px, root_px, viewport),
         })
     }
 }
