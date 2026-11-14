@@ -298,3 +298,35 @@ fn duplicate_settled_ids_take_their_last_rank() {
         .collect();
     assert_eq!(ids, vec!["b", "a"], "a's last index is 2, after b's 1");
 }
+
+/// `parseWeights` (weighing.ts:84-88): an empty or all-whitespace share is
+/// skipped (not `Number('') = 0`), a non-finite share fails `put`'s
+/// `Number.isFinite`, and a finite one clamps to 0..1 — so the voice keeps
+/// its default 100 in the first two cases.
+#[test]
+fn weight_shares_skip_empty_and_non_finite_like_parse_weights() {
+    let weight = |param: &str| -> serde_json::Value {
+        call(
+            "voices",
+            json!({
+                "summary": { "voices": [{ "author": "did:a", "cards": 1, "mean": 1 }] },
+                "profiles": [{ "did": "did:a", "name": "Ada" }],
+                "me": "did:b",
+                "param": param
+            }),
+        )[0]["weight"]
+            .clone()
+    };
+    for (param, expected, why) in [
+        ("did:a=", 100, "an empty share is skipped, not 0"),
+        ("did:a=   ", 100, "an all-space share trims to empty"),
+        ("did:a=\u{FEFF}", 100, "a BOM-only share trims to empty"),
+        ("did:a=Infinity", 100, "Infinity / 100 is not finite"),
+        ("did:a=-Infinity", 100, "-Infinity is not finite"),
+        ("did:a=0", 0, "an explicit 0 mutes"),
+        ("did:a=150", 100, "clamped to 1"),
+        ("did:a=-5", 0, "clamped to 0"),
+    ] {
+        assert_eq!(weight(param), json!(expected), "{param:?}: {why}");
+    }
+}
