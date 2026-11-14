@@ -19,7 +19,15 @@ fn coasys_bundle_round_trips() {
     assert_eq!(bundle.name, "Coasys");
 
     let original: serde_json::Value = serde_json::from_str(&text).unwrap();
-    let written: serde_json::Value =
-        serde_json::from_str(&serde_json::to_string(&bundle).unwrap()).unwrap();
+    let written_text = serde_json::to_string(&bundle).unwrap();
+    let written: serde_json::Value = serde_json::from_str(&written_text).unwrap();
     assert_eq!(written, original, "the bundle lost or changed a field");
+    // Order matters to the normal form, and `assert_eq` on two `Value`s
+    // cannot see it — object equality ignores key order. Compare the
+    // serialized forms: same keys, same order.
+    assert_eq!(
+        written_text,
+        serde_json::to_string(&original).unwrap(),
+        "the bundle's keys came back in a different order"
+    );
 }
