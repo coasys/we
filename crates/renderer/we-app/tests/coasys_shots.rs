@@ -285,6 +285,9 @@ fn render(app: RendererApp) -> (RgbaImage, RendererApp) {
     let mut harness = Harness::builder()
         .with_size(Vec2::new(W as f32, H as f32))
         .with_pixels_per_point(1.0)
+        // What the production host does (`we_app::init_host`): a glyph no
+        // font has is tofu, not a panic — these are recorded data.
+        .allow_missing_glyphs()
         .with_context_setup(we_egui::install_media)
         // The accessibility check panics on the first unnamed button; these
         // are pictures, so it is off here (findings are in NOTES-m1.md).

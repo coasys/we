@@ -26,6 +26,17 @@ use we_screen::ScreenState;
 use we_session::Session;
 use we_template::{ResolvedNode, SchemaNode, StoreBag};
 
+/// The production host's one-time context setup, called from eframe's
+/// creation callback: a glyph no installed font has draws as a tofu box —
+/// a paint detail, never a crash in front of a user — and the media fonts
+/// and loaders go in. The glyph policy lives here, at the host boundary,
+/// because `install_media` runs every frame and must stay policy-neutral:
+/// a test harness that asks for `Panic` keeps it.
+pub fn init_host(ctx: &egui::Context) {
+    ctx.set_missing_glyph_policy(egui::MissingGlyphPolicy::Tofu);
+    install_media(ctx);
+}
+
 /// One frame's plumbing: the app wires host ↔ runtime ↔ registry; tests drive
 /// `frame_body` through `egui_kittest::Harness::new_ui`.
 pub struct RendererApp {

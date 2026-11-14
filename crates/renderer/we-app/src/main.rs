@@ -254,7 +254,8 @@ fn run_native(args: Args) -> eframe::Result<()> {
     eframe::run_native(
         &title,
         options,
-        Box::new(move |_cc| {
+        Box::new(move |cc| {
+            we_app::init_host(&cc.egui_ctx);
             Ok(Box::new(App {
                 shell: std::cell::RefCell::new(shell),
             }))
@@ -305,7 +306,14 @@ fn run_gallery(kind: Gallery) -> eframe::Result<()> {
             .with_inner_size(size),
         ..Default::default()
     };
-    eframe::run_native(title, options, Box::new(|_cc| Ok(app)))
+    eframe::run_native(
+        title,
+        options,
+        Box::new(|cc| {
+            we_app::init_host(&cc.egui_ctx);
+            Ok(app)
+        }),
+    )
 }
 
 #[cfg(not(target_arch = "wasm32"))]

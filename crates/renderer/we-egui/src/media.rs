@@ -24,12 +24,12 @@ pub(crate) use icon_names::phosphor_glyph as phosphor;
 /// `data:` URIs are decoded by `image_source` straight into
 /// `ImageSource::Bytes`, no custom loader needed.
 ///
-/// A missing glyph is a paint detail, never a render failure: the tofu box
-/// stands in where no installed font has the character. The policy is set
-/// every call — hosts and harnesses (egui_kittest's `Panic` default) can
-/// reassert their own after this installs.
+/// Policy-neutral: this never touches `MissingGlyphPolicy`. Whether a glyph
+/// no installed font has draws as tofu or panics is the host's choice — the
+/// production host selects `Tofu` once at startup, a strict harness keeps
+/// egui_kittest's `Panic`. Setting it here would override a harness every
+/// frame, since `frame_body` calls this before it lays out.
 pub fn install(ctx: &egui::Context) {
-    ctx.set_missing_glyph_policy(egui::MissingGlyphPolicy::Tofu);
     const INSTALLED: &str = "we-egui::media-installed";
     if ctx.data_mut(|d| d.get_temp::<bool>(egui::Id::unique(INSTALLED))) == Some(true) {
         return;
