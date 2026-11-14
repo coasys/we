@@ -1,6 +1,7 @@
 import {
   AccountStoreProvider,
   AppStoreProvider,
+  BotStoreProvider,
   BundleStoreProvider,
   ChatStoreProvider,
   ClockStoreProvider,
@@ -86,7 +87,10 @@ export default function StoreProvider(props: ParentProps) {
                                           themes, record types, modules, settings — none of which has
                                           to know what a bundle is. */}
                                               <BundleStoreProvider>
-                                                <EditorHostAdapter>{props.children}</EditorHostAdapter>
+                                                {/* Beneath the space store: a grant names the person's spaces. */}
+                                                <BotStoreProvider>
+                                                  <EditorHostAdapter>{props.children}</EditorHostAdapter>
+                                                </BotStoreProvider>
                                               </BundleStoreProvider>
                                             </WorkflowStoreProvider>
                                           </InterpretationStoreProvider>

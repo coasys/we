@@ -14,6 +14,9 @@ import 'virtual:we-identity-theme.css';
 import './identity.css';
 
 import {
+  BOT_ACTIONS,
+  BOT_DAYS_DEFAULT,
+  BOT_DAYS_MAX,
   deviceMatchActions,
   deviceMatchNote,
   heading,
@@ -449,6 +452,63 @@ function body(screen: Screen): Child[] {
           button('Cancel', cancel),
         ),
       ];
+    case 'bot-scope': {
+      const ticks = BOT_ACTIONS.map(({ action, label }) => {
+        const box = el('input', { type: 'checkbox' });
+        box.checked = action === 'read';
+        return { action, box, label };
+      });
+      const days = el('input', { type: 'number', autocomplete: 'off' });
+      days.min = '1';
+      days.max = String(BOT_DAYS_MAX);
+      days.value = String(BOT_DAYS_DEFAULT);
+      const go = () =>
+        step({
+          kind: 'bot-scope',
+          can: ticks.filter((t) => t.box.checked).map((t) => t.action),
+          days: Number(days.value),
+        });
+      return [
+        el('p', { textContent: 'Permissions' }),
+        ...ticks.map((t) => el('label', { className: 'check' }, t.box, t.label)),
+        el('label', {}, `Days (1 to ${BOT_DAYS_MAX})`, days),
+        el('p', {
+          className: 'note',
+          textContent: 'This is the most it can ever do. To change it, add the bot again.',
+        }),
+        ...errorLine(screen.error),
+        el('div', { className: 'row' }, button('Continue', go, 'primary'), button('Cancel', cancel)),
+      ];
+    }
+    case 'bot-offer':
+      // The bot can claim at any moment: wait for it now.
+      waitFor({ kind: 'wait-claim' });
+      return [
+        el('div', { className: 'link', textContent: screen.offer }),
+        el(
+          'div',
+          { className: 'row' },
+          button('Copy code', () => void navigator.clipboard?.writeText(screen.offer), 'primary'),
+          button('Cancel', cancel),
+        ),
+        el('p', {
+          className: 'note',
+          textContent: 'Anyone with this code can create a bot for you. Paste it only where your bot runs.',
+        }),
+        countdown(screen.expires, 'Waiting for the bot…'),
+      ];
+    case 'bot-match': {
+      const name = textField('Name', screen.name ?? '', 'Meeting notes bot');
+      const confirm = () => step({ kind: 'confirm', name: typed(name.input) });
+      return [
+        el('div', { className: 'code', textContent: screen.code }),
+        name.label,
+        el('p', { className: 'note', textContent: 'Only add a bot you run yourself.' }),
+        el('div', { className: 'row' }, button('Add', confirm, 'primary'), button('Cancel', cancel)),
+      ];
+    }
+    case 'bot-added':
+      return [];
     case 'master-not-kept':
       // The rotation stands: closing leaves it, and trying again needs the words once more.
       return [

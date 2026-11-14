@@ -443,6 +443,24 @@ describe('deviceStore', () => {
     expect(identity.keyLog()[0].title).toBe('Revoked d2');
   });
 
+  it('leaves a bot key out of the devices and their count: Bots manages it', async () => {
+    const botKey: DeviceKeyView = {
+      keyId: 'd3',
+      sign: 'z6MkBot',
+      thisDevice: false,
+      addedSeq: 2,
+      revokedSeq: null,
+      bot: { can: ['read', 'write'], expires: 4_000_000_000 },
+      expires: 4_000_000_000,
+    };
+    setPorts({ identity: backend({ did: DID, events: [incept, add], devices: [...devices, botKey] }).port });
+    const { devices: deviceStore } = mount();
+    await flush();
+    await flush();
+    expect(deviceStore.devices().map((d) => d.keyId)).toEqual(['d1', 'd2']);
+    expect(deviceStore.validCount()).toBe(2);
+  });
+
   it('add asks for add-device', async () => {
     const c = custody(backend({ did: DID, events: [incept], devices: [devices[1]] }).port, () => {}, true);
     setPorts({ identity: c.identity });

@@ -277,6 +277,20 @@ export type {
 } from './workflows';
 export type { CallPort, CallSessionOptions } from './call';
 export { NO_IDENTITY_CAPABILITIES } from './identity';
+export { BOT_ACTIONS, BotGrantConflict, isBotGrantConflict } from './bots';
+export type {
+  BotAction,
+  BotActivityView,
+  BotGrantInput,
+  BotGrantState,
+  BotGrantView,
+  BotKeyVerdict,
+  BotKeyView,
+  BotLogPage,
+  BotPort,
+  BotView,
+  CreatedBotView,
+} from './bots';
 export { SELF_PERSONS } from './persons';
 export {
   actionOf,

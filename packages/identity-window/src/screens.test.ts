@@ -9,6 +9,8 @@ import policy from '../csp.txt?raw';
 import css from './identity.css?raw';
 import indexSource from './index.ts?raw';
 import {
+  actionsLine,
+  BOT_ACTIONS,
   deviceMatchActions,
   deviceMatchNote,
   heading,
@@ -401,6 +403,33 @@ describe('the identity window', () => {
     ]) {
       expect(isLast(waiting), waiting.screen).toBe(false);
     }
+  });
+
+  it('adds a bot in four screens: its scope, the offer to paste, the match code, and what is next', () => {
+    expect(heading({ screen: 'bot-scope', error: null }).title).toBe('Add a bot');
+    expect(heading({ screen: 'bot-scope', error: null }).lead).toContain('pause or remove it');
+    expect(BOT_ACTIONS.map((a) => a.action)).toEqual(['read', 'write', 'join']);
+    expect(actionsLine(['read'])).toBe('read');
+    expect(actionsLine(['read', 'write', 'join'])).toBe('read, write and join');
+    const offer: Screen = {
+      screen: 'bot-offer',
+      offer: 'coasys:offer:1:x',
+      can: ['read', 'write'],
+      keyExpires: 1_800_000_000,
+      expires: 1_700_000_300,
+    };
+    expect(heading(offer).lead).toContain('Settings → Bots');
+    expect(heading(offer).lead).toContain('can read and write until');
+    expect(heading({ screen: 'bot-match', code: '123456', name: 'Test bot' }).title).toBe('Add Test bot?');
+    expect(heading({ screen: 'bot-match', code: '123456', name: null }).title).toBe('Add this bot?');
+    const added: Screen = { screen: 'bot-added', seq: 4, keyId: 'd3', name: 'Test bot', note: null };
+    expect(heading(added)).toEqual({
+      title: 'Test bot added',
+      lead: "It can't do anything yet. Choose its spaces in Settings → Bots.",
+    });
+    expect(heading({ ...added, note: 'Its name was not saved.' }).lead).toContain('Its name was not saved.');
+    expect(isLast(added)).toBe(true);
+    for (const open of [offer, { screen: 'bot-scope', error: null } as Screen]) expect(isLast(open)).toBe(false);
   });
 
   it('names no app: the host titles the window, so a WE build and a Coasys build say their own name', () => {

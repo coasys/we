@@ -67,6 +67,7 @@ export const CAPABILITY_GROUPS = {
   clipboard: 'Put text on your clipboard when you ask it to',
   keys: 'See your identity and its key log, and ask to make or change it — you confirm every change yourself',
   devices: 'See the devices that act as you, and ask to add or remove one — you confirm every change yourself',
+  bots: 'See the bots that act for you and what they did, and change, pause or revoke what each may do',
 } as const;
 
 export type CapabilityGroup = keyof typeof CAPABILITY_GROUPS;
@@ -136,6 +137,12 @@ export const CHROME_TIER: readonly CapabilityGroup[] = [
   */
   'keys',
   'devices',
+  /*
+    Chrome only, like devices. Unlike a device change, a grant change is not confirmed again where
+    the master key is kept: the backend that runs the bot holds the grant and takes it from the
+    person's own session. So no space template may name it, and revoking is marked destructive.
+  */
+  'bots',
 ];
 
 /** Host wiring: never in any template bag, at any tier. */
@@ -1549,6 +1556,39 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     replaceMaster: action('devices'),
     restore: action('devices'),
     removeMaster: action('devices'),
+  },
+  botStore: {
+    available: state('bots'),
+    canAdd: state('bots'),
+    bots: state('bots'),
+    loaded: state('bots'),
+    error: state('bots'),
+    created: state('bots'),
+    createError: state('bots'),
+    creating: state('bots'),
+    selected: state('bots'),
+    editor: state('bots'),
+    conflict: state('bots'),
+    saving: state('bots'),
+    activity: state('bots'),
+    activityLoaded: state('bots'),
+    hasOlder: state('bots'),
+    loadingOlder: state('bots'),
+    refresh: ambient('bots'),
+    addBot: action('bots'),
+    create: action('bots'),
+    dismissCreated: ambient('bots'),
+    select: ambient('bots'),
+    close: ambient('bots'),
+    toggleSpace: ambient('bots'),
+    toggleAction: ambient('bots'),
+    setDays: ambient('bots'),
+    resetDraft: ambient('bots'),
+    saveGrant: action('bots'),
+    pause: action('bots'),
+    resume: action('bots'),
+    revoke: destructive('bots'),
+    loadOlder: ambient('bots'),
   },
 
   /*

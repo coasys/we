@@ -4,7 +4,7 @@
  * there is no keychain, linking a device from either side (a code shown, a code scanned or pasted),
  * taking, asking for and sending the master key, naming a device, revoking one, and the 12 words typed
  * back in: replacing the master key, restoring the identity on a computer that has none, and removing
- * the master key from this computer. The words typed are never sent back: no screen after the words
+ * the master key from this computer, and adding a bot. The words typed are never sent back: no screen after the words
  * entry carries them, and a refused word is named by its place only.
  *
  * Pure, so the wording is tested without a window (`screens.test.ts`). `window.ts` draws them.
@@ -82,8 +82,40 @@ export type Screen =
   | { screen: 'remove-master'; error: string | null }
   | { screen: 'master-removed' }
   | { screen: 'revoked'; keyId: string; seq: number }
+  /** Adding a bot: what its key may ever do, and for how many days. */
+  | { screen: 'bot-scope'; error: string | null }
+  /** The bot offer is open: the string to paste where the bot runs. `keyExpires` ends the key,
+   *  `expires` the offer. */
+  | { screen: 'bot-offer'; offer: string; can: BotAction[]; keyExpires: number; expires: number }
+  | { screen: 'bot-match'; code: string; name: string | null }
+  | { screen: 'bot-added'; seq: number; keyId: string; name: string; note: string | null }
   | { screen: 'pending-refused'; did: string; message: string }
   | { screen: 'failed'; message: string };
+
+/** What a bot's key may ever do: its scope, which every grant stays inside. */
+export type BotAction = 'read' | 'write' | 'join';
+
+/** The actions a bot may be given, in the order the window lists them, with what each lets it do. */
+export const BOT_ACTIONS: ReadonlyArray<{ action: BotAction; label: string }> = [
+  { action: 'read', label: 'Allow reading spaces' },
+  { action: 'write', label: 'Allow writing, with a reason each time' },
+  { action: 'join', label: 'Allow joining spaces' },
+];
+
+/** How long a bot's key lives when the person does not choose, and the longest it may. */
+export const BOT_DAYS_DEFAULT = 90;
+export const BOT_DAYS_MAX = 365;
+
+/** "read and write", "read, write and join". */
+export function actionsLine(can: string[]): string {
+  if (can.length < 2) return can[0] ?? 'nothing';
+  return `${can.slice(0, -1).join(', ')} and ${can[can.length - 1]}`;
+}
+
+/** A date as the window shows it, in the person's own locale. */
+export function day(seconds: number): string {
+  return new Date(seconds * 1000).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' });
+}
 
 /** What another device asks of the one holding the master key. */
 export type RequestKind = 'send-master' | 'confirm-revoke';
@@ -144,6 +176,7 @@ export type StepInput =
   | { kind: 'twelve-words'; words: string }
   | { kind: 'lock-out'; keyIds: string[]; name?: string }
   | { kind: 'remove' }
+  | { kind: 'bot-scope'; can: BotAction[]; days: number }
   | { kind: 'discard' }
   | { kind: 'try-again' };
 
@@ -342,6 +375,29 @@ export function heading(screen: Screen): { title: string; lead: string } {
         title: 'Master key removed',
         lead: 'This computer stays linked. To add or remove devices, use a device with the master key or your recovery phrase.',
       };
+    case 'bot-scope':
+      return {
+        title: 'Add a bot',
+        lead: 'Choose what this bot can do and for how long. You choose its spaces later, and can pause or remove it at any time.',
+      };
+    case 'bot-offer':
+      return {
+        title: 'Copy setup code',
+        lead: `Paste it in Settings → Bots on the computer that runs the bot. It can ${actionsLine(screen.can)} until ${day(screen.keyExpires)}.`,
+      };
+    case 'bot-match':
+      return {
+        title: screen.name ? `Add ${screen.name}?` : 'Add this bot?',
+        lead: 'Check the code matches the one in Settings → Bots.',
+      };
+    case 'bot-added':
+      return {
+        title: `${screen.name} added`,
+        lead: [
+          "It can't do anything yet. Choose its spaces in Settings → Bots.",
+          ...(screen.note ? [screen.note] : []),
+        ].join(' '),
+      };
     case 'revoked':
       return { title: `${screen.keyId} revoked`, lead: `Your key log records it as entry #${screen.seq}.` };
     case 'pending-refused':
@@ -452,6 +508,7 @@ export function isLast(screen: Screen): boolean {
     'master-replaced',
     'restored',
     'master-removed',
+    'bot-added',
     'failed',
   ].includes(screen.screen);
 }

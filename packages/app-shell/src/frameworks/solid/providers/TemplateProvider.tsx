@@ -47,6 +47,7 @@ import { chromeComponentRegistry, componentRegistry as registry } from '@solid/r
 import {
   useAccountStore,
   useAppStore,
+  useBotStore,
   useBundleStore,
   useChatStore,
   useClockStore,
@@ -130,6 +131,7 @@ export default function TemplateProvider() {
   const workflowStore = useWorkflowStore();
   const identityStore = useIdentityStore();
   const deviceStore = useDeviceStore();
+  const botStore = useBotStore();
 
   // Set CSS custom properties on :root so position:fixed elements (e.g. CesiumGlobe canvas)
   // can consume the shell's own furniture without hard-coding it.
@@ -520,6 +522,7 @@ export default function TemplateProvider() {
     workflowStore,
     identityStore,
     deviceStore,
+    botStore,
     // Always present, even with no modules registered: a read of `modules.x` resolves through the
     // single-segment path, which indexes the store object without a guard and would throw on a
     // missing `modules` key rather than returning undefined.

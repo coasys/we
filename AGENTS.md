@@ -3040,6 +3040,41 @@ AppStore:
   - activateApp(id: string): activates an app and switches to its view
   - deactivateApp(): deactivates the current app and returns to the template view
 
+BotStore:
+- State:
+  - available: boolean — the backend runs bots. Gate the Bots page on it
+  - canAdd: boolean — "Add a bot" can be offered: this computer keeps the master key, which signs the bot’s key into the key log
+  - bots: { did, name, state, status, statusTone, keyLine, keyTone, grantLine, created, paused, revoked, keyValid }[] — the person's bots, oldest first, worded. `state` is 'active', 'paused' or 'revoked'; `status` and `statusTone` go in a badge; `keyLine` (with `keyTone` as its colour) says what the key log says of the bot's key and until when; `grantLine` what the grant lets it do now
+  - loaded: boolean — the list has been read once
+  - error: string — why the last read or change failed, or empty
+  - created: { name, matchCode, confirmBy, token } | null — the bot just made: the match code the identity window also shows, until when to confirm it there, and the bot's credential. Show the token once, with a copy button and a warning; it is gone after dismissCreated
+  - createError: string — why making the bot failed, or empty
+  - creating: boolean — making the bot is under way
+  - selected: the row of the bot open in the editor (as in `bots`), or null for the list
+  - editor: { spaces: { id, name, checked, known }[], actions: { action, label, checked, allowed }[], days, ends, problem, changed } | null — the grant editor for the selected bot. `known` is false for a space the grant names that is not one of the person's here; `allowed` is false for an action the bot's key may not take; `problem` says why it cannot be saved, or is empty
+  - conflict: string — a grant change was refused because another came first (or the bot is revoked): the grant was read again and is shown as it is now. Empty otherwise
+  - saving: boolean — a grant change is under way
+  - activity: { id, when, allowed, outcome, what, reason }[] — the selected bot's activity, newest first: each call it made, allowed or refused (`outcome` says why), and the reason it gave
+  - activityLoaded: boolean — the activity has been read once
+  - hasOlder: boolean — the last read filled a page: offer "Load older"
+  - loadingOlder: boolean — loadOlder is under way
+- Actions:
+  - refresh(): reads the bots again
+  - addBot(): "Add a bot" — asks where the master key is kept for the bot’s scope (what it may ever do, and for how many days), and shows an offer to paste into create. Resolves with the outcome
+  - create(offer: string, name: string): makes the bot from the offer, named so; sets created. Resolves true when it was made
+  - dismissCreated(): lets the credential go
+  - select(did: string): opens that bot in the grant editor and reads its activity
+  - close(): back to the list
+  - toggleSpace(id: string): adds that space to the draft grant, or takes it out
+  - toggleAction(action: 'read' | 'write' | 'join'): adds that action to the draft grant, or takes it out
+  - setDays(days: string): the draft grant ends that many days from now; empty for no end but the key’s
+  - resetDraft(): puts the editor back to the grant as read
+  - saveGrant(): saves the draft grant with the version it replaces. Resolves false on a conflict, with the grant read again
+  - pause(): pauses the selected bot: it may do nothing until resumed
+  - resume(): resumes the selected bot
+  - revoke(): revokes the selected bot for good — confirm first: a revoked grant never changes again
+  - loadOlder(): reads the next page of older activity
+
 BundleStore:
 - State:
   - pendingInstall: { name, icon, version, author, fileName, updates, unchanged, newInVersion, adds, capabilities, blocked, modulesToTurnOn, modulesNotInBuild, recordTypes, needsSpace, display } | null — the app an install prompt is asking about, everything already in the words a person reads. `author` is what the file claims and nothing attests to it; `updates` is the version already installed, empty for a first install; `unchanged` says the file is the one the installed version came from, by content rather than version, so installing it would change nothing and the prompt offers nothing to press; `newInVersion` ({ capabilities, modules, recordTypes }) is, on an update, what this version asks for that the installed one was never agreed to — each empty when nothing is, and null on a first install or where no agreement was recorded; `needsSpace` says it brings record types or sections, so the prompt lists spaceChoices; `display` is `ours` (every space opens in the app’s template while it is in use) or `theirs`. Host chrome only: an app must never draw the prompt vouching for it
@@ -3107,9 +3142,9 @@ DatasetStore:
 
 DeviceStore:
 - State:
-  - devices: { keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke, name, holdsMaster, master, replaceMaster }[] — the device keys of the person's key log, valid first and this computer on top, named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' or 'Device d2'; `name` the record's name or empty; `status` 'Valid' or 'Revoked at #2'; `canRevoke` is a valid key that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Holds the master key', 'Master key offered, not yet taken', or empty). A revoked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it ('Still holds a valid master key — replace your master key', 'May still hold a valid master key — replace your master key'): a revoke leaves a copy of the master key valid, until the master key is replaced: a rotation at or after the revoke clears the warning. `replaceMaster` is true on a row that warns: offer replaceMaster there, where canReplaceMaster. Draw `master` in a warning tone unless `holdsMaster` is 'yes'
+  - devices: { keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, valid, status, canRevoke, name, holdsMaster, master, replaceMaster }[] — the device keys of the person's key log, valid first and this computer on top (a bot's key, which the key log marks, is not listed: botStore manages it), named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' or 'Device d2'; `name` the record's name or empty; `valid` is neither revoked nor past its end; `status` 'Valid', 'Revoked at #2' or 'Expired on 3 Dec 2026'; `canRevoke` is a key not revoked that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Holds the master key', 'Master key offered, not yet taken', or empty). A revoked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it ('Still holds a valid master key — replace your master key', 'May still hold a valid master key — replace your master key'): a revoke leaves a copy of the master key valid, until the master key is replaced: a rotation at or after the revoke clears the warning. `replaceMaster` is true on a row that warns: offer replaceMaster there, where canReplaceMaster. Draw `master` in a warning tone unless `holdsMaster` is 'yes'
   - devicesLoaded: boolean — the list has been read once
-  - validCount: number — how many keys are valid
+  - validCount: number — how many device keys are valid (neither revoked nor ended); bot keys are not counted
   - canManage: boolean — linking (scanDevice, addDevice), Rename, Revoke and answering requests can be offered: this computer keeps the master key of the identity
   - canShowCode: boolean — "Show code" can be offered: this computer can join an identity and speaks for none yet
   - canAskMaster: boolean — "Ask for the master key" can be offered: a device of the identity that does not keep the master key and has none waiting

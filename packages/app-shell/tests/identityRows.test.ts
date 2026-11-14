@@ -53,6 +53,65 @@ describe('deviceRows', () => {
     expect(rows.map((r) => r.icon)).toEqual(['laptop', 'key', 'key']);
   });
 
+  it('lists no bot key as a device, whatever the private record says, and counts only devices', () => {
+    const NOW = 1_750_000_000;
+    const bot = (keyId: string, expires: number, revokedSeq: number | null = null) => ({
+      keyId,
+      sign: 'z',
+      thisDevice: false,
+      addedSeq: Number(keyId.slice(1)),
+      revokedSeq,
+      bot: { can: ['read'], expires },
+      expires,
+    });
+    const rows = deviceRows(
+      [
+        { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, revokedSeq: null, bot: null, expires: null },
+        // A bot whose key is valid, one whose key has ended, and one revoked: Bots manages each.
+        bot('d2', NOW + 1000),
+        bot('d3', NOW - 1000),
+        bot('d4', NOW + 1000, 5),
+        // The record calls this one a bot; the key log does not, so it is a device.
+        { keyId: 'd6', sign: 'z', thisDevice: false, addedSeq: 6, revokedSeq: null, bot: null, expires: null },
+      ],
+      [
+        { keyId: 'd2', name: 'Helper', kind: 'desktop-app', holdsMaster: 'no' },
+        { keyId: 'd6', name: 'Box', kind: 'bot', holdsMaster: 'no' },
+      ],
+      [],
+      null,
+      NOW,
+    );
+    expect(rows.map((r) => [r.keyId, r.label, r.status, r.valid])).toEqual([
+      ['d1', 'This computer', 'Valid', true],
+      ['d6', 'Box', 'Valid', true],
+    ]);
+  });
+
+  it('says a key whose end has passed is expired, not valid', () => {
+    const NOW = 1_750_000_000;
+    const rows = deviceRows(
+      [
+        { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, revokedSeq: null, bot: null, expires: null },
+        { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, revokedSeq: null, bot: null, expires: NOW - 60 },
+        { keyId: 'd3', sign: 'z', thisDevice: false, addedSeq: 2, revokedSeq: null, bot: null, expires: NOW + 60 },
+      ],
+      [],
+      [],
+      null,
+      NOW,
+    );
+    expect(rows.map((r) => [r.keyId, r.valid, r.revoked])).toEqual([
+      ['d1', true, false],
+      ['d3', true, false],
+      ['d2', false, false],
+    ]);
+    expect(rows[2].status).toMatch(/^Expired on /);
+    expect(rows[1].status).toBe('Valid');
+    // Ending it for good in the key log is still offered: an end can be the log's to move.
+    expect(rows[2].canRevoke).toBe(true);
+  });
+
   it('names each device as the private record does, and says which keep the master key', () => {
     const rows = deviceRows(
       [

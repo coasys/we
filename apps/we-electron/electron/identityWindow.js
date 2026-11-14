@@ -66,6 +66,7 @@ const PLAIN_STEPS = new Set([
   'replace-master',
   'restore',
   'remove-master',
+  'add-bot',
 ]);
 
 /**

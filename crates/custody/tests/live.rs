@@ -27,6 +27,12 @@
 //! when it joins: while bound, an offer of another identity is refused `already-linked`, and once
 //! its key is revoked, `first-link`.
 //!
+//! A third case adds a bot: the holder's custody service opens a bot offer (`add-bot`), a desktop
+//! executor makes the bot agent from it (`bot.createAgent`), and both show the same match code.
+//! With one of two neighbourhoods in its grant, the bot joins and writes there with its reasons and
+//! is refused in the other; paused it is refused, revoked it is refused for good, and its activity
+//! log keeps each call it made, newest first.
+//!
 //! The cases run one at a time: each starts its own store and executors.
 
 use std::io::{BufRead, BufReader, Write};
@@ -929,6 +935,367 @@ async fn a_desktop_executor_takes_its_first_link_as_its_operator() {
     );
     // C's identity never got B's key.
     assert_eq!(log_ops(&c, &other_did).await, ["incept"]);
+}
+
+/// `method` as the bot, on a socket of its own session `token`, with `reason` as the frame's
+/// `meta.reason`: the answer, or the error (or the close) as the executor said it.
+async fn as_bot(
+    node: &Node,
+    token: &str,
+    method: &str,
+    params: Value,
+    reason: Option<&str>,
+) -> Result<Value, String> {
+    use futures_util::{SinkExt, StreamExt};
+    use tokio_tungstenite::tungstenite::Message;
+
+    let token: String = token
+        .bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                (b as char).to_string()
+            }
+            _ => format!("%{b:02X}"),
+        })
+        .collect();
+    let url = format!("ws://127.0.0.1:{}/api/v1/ws?token={token}", node.port);
+    let (mut socket, _) = tokio_tungstenite::connect_async(&url)
+        .await
+        .map_err(|e| format!("connect: {e}"))?;
+    let mut frame = json!({ "id": "bot-1", "type": method, "params": params });
+    if let Some(reason) = reason {
+        frame["meta"] = json!({ "reason": reason });
+    }
+    socket
+        .send(Message::Text(frame.to_string()))
+        .await
+        .map_err(|e| format!("send: {e}"))?;
+    let answer = tokio::time::timeout(Duration::from_secs(120), async {
+        while let Some(message) = socket.next().await {
+            match message {
+                Ok(Message::Text(text)) => {
+                    let parsed: Value = serde_json::from_str(&text).map_err(|e| e.to_string())?;
+                    if parsed["id"] != "bot-1" {
+                        continue;
+                    }
+                    return match parsed.get("error").filter(|e| !e.is_null()) {
+                        Some(error) => Err(error.to_string()),
+                        None => Ok(parsed["result"].clone()),
+                    };
+                }
+                Ok(Message::Close(frame)) => return Err(format!("closed: {frame:?}")),
+                Ok(_) => continue,
+                Err(e) => return Err(format!("read: {e}")),
+            }
+        }
+        Err("closed without an answer".to_string())
+    })
+    .await
+    .map_err(|_| format!("{method}: no answer"))?;
+    let _ = socket.close(None).await;
+    answer
+}
+
+/// A neighbourhood `node`'s agent makes and publishes on the diff-sync link language: its URL.
+async fn publish_space(world: &World, node: &Node, name: &str) -> String {
+    let diff_sync = std::fs::read_to_string(
+        world
+            .repo
+            .join("tests/js/scripts/perspective-diff-sync-hash"),
+    )
+    .expect("run `pnpm run prepare-test-local` in <ad4m>/tests/js first");
+    let perspective = node
+        .call("perspective.create", json!({ "name": name }))
+        .await;
+    // A language of its own: the uid is the temp folder's, unique to this run.
+    let run = world.dir.file_name().unwrap().to_string_lossy();
+    let template = json!({ "uid": format!("{name}-{run}"), "name": name });
+    let language = node
+        .call(
+            "language.applyTemplate",
+            json!({
+                "sourceLanguageHash": diff_sync.trim(),
+                "templateData": template.to_string(),
+            }),
+        )
+        .await;
+    let url = node
+        .call(
+            "neighbourhood.publish",
+            json!({
+                "perspectiveUuid": perspective["uuid"],
+                "linkLanguage": language["address"],
+                "meta": { "links": [] },
+            }),
+        )
+        .await;
+    url.as_str().expect("a neighbourhood URL").to_string()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn add_a_bot_grant_it_one_space_pause_it_and_revoke_it() {
+    let Some((_one, world)) = set_up().await else {
+        return;
+    };
+
+    // A: the computer that keeps the master key. B: a desktop executor, where the bot runs.
+    let a_admin = "custody-live-a-admin";
+    let a = world.start_node("a", None, Some(a_admin), None).await;
+    let holder = custody_on(a.url(), a_admin, &world.dir.join("custody-a"));
+    let did = make_identity(&holder).await;
+    let (b_admin, b_custody) = ("custody-live-b-admin", "custody-live-b-custody");
+    let b = world
+        .start_node("b", None, Some(b_admin), Some(b_custody))
+        .await;
+
+    // The holder chooses what the bot's key may ever do, unlocks, and gets the offer.
+    let mut shown = Shown::default();
+    let scope = shown.record(&holder.start(IdentityStep::AddBot).await.unwrap());
+    assert!(
+        matches!(scope, Screen::BotScope { error: None }),
+        "{scope:?}"
+    );
+    let unlock = holder
+        .step(StepInput::BotScope {
+            can: vec!["read".into(), "write".into(), "join".into()],
+            days: 30,
+        })
+        .await
+        .unwrap();
+    assert!(
+        matches!(unlock, Screen::EnterPassphrase { error: None }),
+        "{unlock:?}"
+    );
+    let offered = shown.record(
+        &holder
+            .step(StepInput::Passphrase {
+                passphrase: PASSPHRASE.into(),
+                confirm: None,
+            })
+            .await
+            .unwrap(),
+    );
+    let Screen::BotOffer {
+        offer,
+        can,
+        key_expires,
+        ..
+    } = offered
+    else {
+        panic!("no bot offer: {offered:?}")
+    };
+    assert_eq!(can, ["read", "write", "join"]);
+
+    // B makes the bot agent from the offer; the holder sees B's claim with the same match code.
+    let waiting = tokio::spawn({
+        let holder = holder.clone();
+        async move { holder.step(StepInput::WaitClaim).await }
+    });
+    let created = b
+        .call(
+            "bot.createAgent",
+            json!({ "offer": offer, "name": "Test bot" }),
+        )
+        .await;
+    let bot = created["did"].as_str().unwrap().to_string();
+    let token = created["token"].as_str().unwrap().to_string();
+    assert!(!token.is_empty());
+    let matched = shown.record(&waiting.await.unwrap().unwrap());
+    let Screen::BotMatch { code, name } = matched else {
+        panic!("no bot match: {matched:?}")
+    };
+    assert_eq!(code, created["matchCode"].as_str().unwrap());
+    assert_eq!(name.as_deref(), Some("Test bot"));
+    let added = shown.record(
+        &holder
+            .step(StepInput::Confirm {
+                name: None,
+                keep_master: false,
+                this_name: None,
+            })
+            .await
+            .unwrap(),
+    );
+    assert!(
+        matches!(&added, Screen::BotAdded { key_id, name, .. } if key_id == "d2" && name == "Test bot"),
+        "{added:?}"
+    );
+    // Nothing the identity window showed carried the bot's session token.
+    assert!(shown.0.iter().all(|s| !s.contains(&token)));
+
+    // The bot's key is in the owner's log with its scope, and its grant is empty at version 1.
+    let view = b.call("bot.grant", json!({ "bot": bot })).await;
+    assert_eq!(view["owner"], json!(did));
+    assert_eq!(view["grant"]["version"], 1, "{view}");
+    assert_eq!(view["grant"]["spaces"], json!([]));
+    assert_eq!(view["key"]["keyId"], "d2", "{view}");
+    assert_eq!(view["key"]["verdict"], "valid", "{view}");
+    assert_eq!(view["key"]["expires"], json!(key_expires));
+
+    // Two spaces of the owner's; the grant names one, to read and write and join.
+    let garden = publish_space(&world, &b, "garden").await;
+    let other = publish_space(&world, &b, "other").await;
+    let granted = b
+        .call(
+            "bot.setGrant",
+            json!({
+                "bot": bot, "spaces": [garden], "can": ["read", "write", "join"],
+                "state": "active", "version": 1,
+            }),
+        )
+        .await;
+    assert_eq!(granted["grant"]["version"], 2, "{granted}");
+    // A grant saved over a version that is gone answers the conflict, and changes nothing.
+    let stale = b
+        .try_call(
+            "bot.setGrant",
+            json!({
+                "bot": bot, "spaces": [], "can": ["read"], "state": "active", "version": 1,
+            }),
+        )
+        .await
+        .expect_err("a grant saved over an old version");
+    assert!(
+        stale.contains("409") && stale.contains("version"),
+        "{stale}"
+    );
+
+    // The bot joins and writes in its space with its reasons; the other space refuses it.
+    let joined = as_bot(
+        &b,
+        &token,
+        "neighbourhood.join",
+        json!({ "url": garden }),
+        Some("tend the garden board"),
+    )
+    .await
+    .unwrap();
+    let space = joined["uuid"].as_str().unwrap().to_string();
+    let link = json!({
+        "source": "ad4m://self", "predicate": "test://note", "target": "literal://string:sown",
+    });
+    as_bot(
+        &b,
+        &token,
+        "perspective.addLink",
+        json!({ "uuid": space, "link": link, "status": "shared" }),
+        Some("log the first sowing"),
+    )
+    .await
+    .unwrap();
+    let refused = as_bot(
+        &b,
+        &token,
+        "neighbourhood.join",
+        json!({ "url": other }),
+        Some("look around"),
+    )
+    .await
+    .expect_err("the bot joined a space not in its grant");
+    assert!(refused.contains("bot-grant"), "{refused}");
+
+    // Paused, it is refused in its own space too.
+    let paused = b
+        .call(
+            "bot.setGrant",
+            json!({
+                "bot": bot, "spaces": [garden], "can": ["read", "write", "join"],
+                "state": "paused", "version": 2,
+            }),
+        )
+        .await;
+    assert_eq!(paused["grant"]["state"], "paused", "{paused}");
+    let refused = as_bot(
+        &b,
+        &token,
+        "perspective.addLink",
+        json!({ "uuid": space, "link": link, "status": "shared" }),
+        Some("one more"),
+    )
+    .await
+    .expect_err("a paused bot wrote");
+    assert!(refused.contains("bot-paused"), "{refused}");
+
+    // Revoked, it is refused, and the grant never changes again.
+    let revoked = b
+        .call(
+            "bot.setGrant",
+            json!({
+                "bot": bot, "spaces": [garden], "can": ["read", "write", "join"],
+                "state": "revoked", "version": 3,
+            }),
+        )
+        .await;
+    assert_eq!(revoked["grant"]["state"], "revoked", "{revoked}");
+    let refused = as_bot(
+        &b,
+        &token,
+        "perspective.queryLinks",
+        json!({ "uuid": space, "query": {} }),
+        None,
+    )
+    .await
+    .expect_err("a revoked bot read");
+    assert!(
+        ["bot-revoked", "revoked", "Unauthorized"]
+            .iter()
+            .any(|code| refused.contains(code)),
+        "{refused}"
+    );
+    let again = b
+        .try_call(
+            "bot.setGrant",
+            json!({
+                "bot": bot, "spaces": [garden], "can": ["read"], "state": "active", "version": 4,
+            }),
+        )
+        .await
+        .expect_err("a revoked bot resumed");
+    assert!(again.contains("bot-revoked"), "{again}");
+
+    // Its activity log, newest first: the allowed calls with their reasons, and each refusal.
+    let log = b.call("bot.log", json!({ "bot": bot })).await;
+    let entries = log.as_array().unwrap();
+    let ats: Vec<i64> = entries.iter().map(|e| e["at"].as_i64().unwrap()).collect();
+    let mut newest_first = ats.clone();
+    newest_first.sort_by(|x, y| y.cmp(x));
+    assert_eq!(ats, newest_first, "{log}");
+    let allowed: Vec<(&str, &str)> = entries
+        .iter()
+        .filter(|e| e["outcome"] == "allowed")
+        .map(|e| {
+            (
+                e["method"].as_str().unwrap(),
+                e["reason"].as_str().unwrap_or(""),
+            )
+        })
+        .collect();
+    assert!(
+        allowed.contains(&("neighbourhood.join", "tend the garden board")),
+        "{log}"
+    );
+    assert!(
+        allowed.contains(&("perspective.addLink", "log the first sowing")),
+        "{log}"
+    );
+    let outcomes: Vec<&str> = entries
+        .iter()
+        .map(|e| e["outcome"].as_str().unwrap())
+        .collect();
+    for code in ["bot-grant", "bot-paused"] {
+        assert!(outcomes.contains(&code), "{code} not logged: {log}");
+    }
+    // Paged by `before`: the entries older than the newest one.
+    let newest = entries[0]["id"].as_i64().unwrap();
+    let older = b
+        .call(
+            "bot.log",
+            json!({ "bot": bot, "before": newest, "limit": 1 }),
+        )
+        .await;
+    let older = older.as_array().unwrap();
+    assert_eq!(older.len(), 1);
+    assert!(older[0]["id"].as_i64().unwrap() < newest);
 }
 
 /// The ops of `did`'s log, fresh from the store, as `node` reads it.

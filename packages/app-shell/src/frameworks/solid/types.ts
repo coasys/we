@@ -1,6 +1,7 @@
 import type {
   AccountStore,
   AppStore,
+  BotStore,
   BundleStore,
   ClockStore,
   DatasetStore,
@@ -80,6 +81,7 @@ export interface Stores extends RendererStores {
   workflowStore: WorkflowStore;
   identityStore: IdentityStore;
   deviceStore: DeviceStore;
+  botStore: BotStore;
   record?: RecordActions;
   /** Neutral identity — the current agent (templates read `$me.did`). Backed by `sessionStore.me`;
    *  typed `unknown` so the seam stays backend-agnostic. Host-specific: not part of the data contract. */
