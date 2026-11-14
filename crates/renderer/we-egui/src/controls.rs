@@ -98,7 +98,7 @@ impl Widget for Button {
         };
         // The label and spinner live in the content box — inside the
         // padding the measure left outside them (and any painted border).
-        let content = props::content_rect(rect, &eff, FONT_PX, ROOT_PX, view);
+        let content = props::content_rect(rect, &eff, FONT_PX, ROOT_PX, view, cx.cb_w);
         let content_w = content.width().max(1.0);
         let g = show_label
             .then(|| crate::text::text_job(&label, &eff, cx.ui.ctx(), content_w, true, None));

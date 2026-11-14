@@ -16,207 +16,335 @@
 use crate::ast::*;
 use crate::{Env, Expr, Value};
 
-/// The deepest the evaluator recurses. A template is nowhere near this; a
-/// pathological AST (parser depth is bounded, but a caller-built tree is not)
-/// is settled rather than blown through the stack.
-const MAX_EVAL_DEPTH: usize = 100;
-
 /// Evaluate `expr` against `env`. Never fails: a missing name is `Undefined`,
 /// arithmetic on a non-number is arithmetic on `0`, and every read that cannot
 /// be honoured is `Undefined`.
 pub fn eval(expr: &Expr, env: &dyn Env) -> Value {
-    eval_node(&expr.root, env, 0, env.read_observer()).settle()
+    eval_node(&expr.root, env).settle()
 }
 
-pub(crate) fn eval_node(
-    node: &Node,
-    env: &dyn Env,
-    depth: usize,
-    obs: Option<&crate::ReadObserver<'_>>,
-) -> Value {
-    if depth > MAX_EVAL_DEPTH {
-        return Value::Undefined;
-    }
-    match node {
-        Node::Literal(lit) => match lit {
-            Literal::Null => Value::Null,
-            Literal::Bool(b) => (*b).into(),
-            Literal::Num(n) => (*n).into(),
-            Literal::Str(s) => s.as_str().into(),
-        },
-        Node::Template(parts) => {
-            let mut out = String::new();
-            for part in parts {
-                match part {
-                    TemplateNode::Text(t) => out.push_str(t),
-                    TemplateNode::Hole(inner) => {
-                        out.push_str(&eval_node(inner, env, depth + 1, obs).settle().to_text());
+/// A step of the evaluator. `Eval` expands a node into child `Eval`s plus the
+/// continuation that combines their values; continuations run after their
+/// inputs are on the value stack. Pushing continuations first and children in
+/// reverse keeps evaluation strictly left-to-right.
+enum Task<'a> {
+    /// Evaluate a node — pushes exactly one value.
+    Eval(&'a Node),
+    /// `settle` the top value.
+    Settle,
+    /// Push a value directly (a template's literal text).
+    Push(Value),
+    /// `eval_binary` over the top two values.
+    Binary(BinaryOp),
+    /// Apply the unary operator to the top value.
+    Unary(UnaryOp),
+    /// The left operand is on the stack: decide if `right` evaluates.
+    LogicalTail { op: LogicalOp, right: &'a Node },
+    /// `Bool(top.truthy())` — the `&&`/`||` right side.
+    LogicalRhs,
+    /// `read_property` on the top value.
+    ReadMember(&'a str),
+    /// `read_index` over object and index on the stack.
+    ReadIndex,
+    /// The test is on the stack; pick an arm to evaluate.
+    CondTail {
+        consequent: &'a Node,
+        alternate: &'a Node,
+    },
+    /// Dispatch `callee` with `argc` stack values as argv (receiver first).
+    CallFinish { callee: &'a str, argc: usize },
+    /// The settled receiver feeds the comprehension.
+    MacroFinish {
+        name: MacroName,
+        variable: &'a str,
+        body: &'a Node,
+    },
+    /// Join `count` values' `to_text`s into a template string.
+    FinishTemplate(usize),
+    /// Collect `count` values into a list.
+    FinishList(usize),
+    /// Collect values into an object with these keys.
+    FinishObject(&'a [(String, Node)]),
+}
+
+/// Evaluate `node` — an explicit task stack, not recursion. A flat chain
+/// (`a+a+…`, `x.y.z…`, `a[0][0]…`) or a stack of nested template holes can
+/// be arbitrarily deep in a ≤4000-unit source, and `evaluate.ts` has no
+/// depth cap — so neither do we: the depth lives on the heap.
+///
+/// The read observer rides the value stack: every slot pairs a value with
+/// the name it was read under, when the read had one — `store`,
+/// `store.items`, `items.0` — so a member or index read through it composes
+/// and reports under the chain's own path (`store.items.0.sig`). A value
+/// pick — `? :`, `??` — carries the selected chain's name with its value:
+/// `(cond ? store.a : store.b).x` reads as `store.b.x`. A call's answer, a
+/// literal, an operator's result have no name: reads through them are the
+/// caller's own inputs and compose no path. With no observer every slot's
+/// name is `None` and no path string is ever built.
+pub(crate) fn eval_node(node: &Node, env: &dyn Env) -> Value {
+    let obs = env.read_observer();
+    let mut tasks: Vec<Task> = vec![Task::Eval(node)];
+    let mut values: Vec<(Value, Option<String>)> = Vec::new();
+    let pop = |values: &mut Vec<(Value, Option<String>)>| {
+        values.pop().unwrap_or((Value::Undefined, None))
+    };
+    while let Some(task) = tasks.pop() {
+        match task {
+            Task::Push(v) => values.push((v, None)),
+            Task::Eval(node) => match node {
+                Node::Literal(lit) => values.push((
+                    match lit {
+                        Literal::Null => Value::Null,
+                        Literal::Bool(b) => (*b).into(),
+                        Literal::Num(n) => (*n).into(),
+                        Literal::Str(s) => s.as_str().into(),
+                    },
+                    None,
+                )),
+                Node::Ident(name) => values.push(eval_ident(name, env, obs)),
+                Node::Template(parts) => {
+                    tasks.push(Task::FinishTemplate(parts.len()));
+                    for part in parts.iter().rev() {
+                        match part {
+                            TemplateNode::Text(t) => tasks.push(Task::Push(t.as_str().into())),
+                            TemplateNode::Hole(inner) => {
+                                tasks.push(Task::Settle);
+                                tasks.push(Task::Eval(inner));
+                            }
+                        }
+                    }
+                }
+                Node::Member { object, property } => {
+                    // The object of a read is NOT a value position — a
+                    // namespace is still a bag here, not `undefined`.
+                    tasks.push(Task::ReadMember(property));
+                    tasks.push(Task::Eval(object));
+                }
+                Node::Index { object, index } => {
+                    tasks.push(Task::ReadIndex);
+                    tasks.push(Task::Settle);
+                    tasks.push(Task::Eval(index));
+                    tasks.push(Task::Eval(object));
+                }
+                Node::Unary { op, operand } => {
+                    tasks.push(Task::Unary(*op));
+                    tasks.push(Task::Settle);
+                    tasks.push(Task::Eval(operand));
+                }
+                Node::Logical { op, left, right } => {
+                    tasks.push(Task::LogicalTail { op: *op, right });
+                    tasks.push(Task::Settle);
+                    tasks.push(Task::Eval(left));
+                }
+                Node::Binary { op, left, right } => {
+                    tasks.push(Task::Binary(*op));
+                    tasks.push(Task::Settle);
+                    tasks.push(Task::Eval(right));
+                    tasks.push(Task::Settle);
+                    tasks.push(Task::Eval(left));
+                }
+                Node::Conditional {
+                    test,
+                    consequent,
+                    alternate,
+                } => {
+                    tasks.push(Task::CondTail {
+                        consequent,
+                        alternate,
+                    });
+                    tasks.push(Task::Settle);
+                    tasks.push(Task::Eval(test));
+                }
+                Node::Call {
+                    callee,
+                    receiver,
+                    args,
+                } => {
+                    tasks.push(Task::CallFinish {
+                        callee,
+                        argc: args.len() + usize::from(receiver.is_some()),
+                    });
+                    for a in args.iter().rev() {
+                        tasks.push(Task::Settle);
+                        tasks.push(Task::Eval(a));
+                    }
+                    if let Some(r) = receiver {
+                        tasks.push(Task::Settle);
+                        tasks.push(Task::Eval(r));
+                    }
+                }
+                Node::Macro {
+                    name,
+                    receiver,
+                    variable,
+                    body,
+                } => {
+                    tasks.push(Task::MacroFinish {
+                        name: *name,
+                        variable,
+                        body,
+                    });
+                    tasks.push(Task::Settle);
+                    tasks.push(Task::Eval(receiver));
+                }
+                Node::List(items) => {
+                    tasks.push(Task::FinishList(items.len()));
+                    for i in items.iter().rev() {
+                        tasks.push(Task::Settle);
+                        tasks.push(Task::Eval(i));
+                    }
+                }
+                Node::Object(props) => {
+                    tasks.push(Task::FinishObject(props.as_slice()));
+                    for (_, v) in props.iter().rev() {
+                        tasks.push(Task::Settle);
+                        tasks.push(Task::Eval(v));
+                    }
+                }
+            },
+            Task::Settle => {
+                let (v, path) = pop(&mut values);
+                values.push((v.settle(), path));
+            }
+            Task::Binary(op) => {
+                let (right, _) = pop(&mut values);
+                let (left, _) = pop(&mut values);
+                values.push((eval_binary(op, &left, &right), None));
+            }
+            Task::Unary(op) => {
+                let (operand, _) = pop(&mut values);
+                values.push((
+                    match op {
+                        UnaryOp::Not => Value::Bool(!operand.truthy()),
+                        UnaryOp::Neg => (-operand.to_number()).into(),
+                    },
+                    None,
+                ));
+            }
+            Task::LogicalTail { op, right } => {
+                let (left, left_path) = pop(&mut values);
+                match op {
+                    // `&&`/`||` answer with a boolean, not an operand as
+                    // JavaScript does — `??` is the value-picker.
+                    LogicalOp::And => {
+                        if left.truthy() {
+                            tasks.push(Task::LogicalRhs);
+                            tasks.push(Task::Settle);
+                            tasks.push(Task::Eval(right));
+                        } else {
+                            values.push((Value::Bool(false), None));
+                        }
+                    }
+                    LogicalOp::Or => {
+                        if left.truthy() {
+                            values.push((Value::Bool(true), None));
+                        } else {
+                            tasks.push(Task::LogicalRhs);
+                            tasks.push(Task::Settle);
+                            tasks.push(Task::Eval(right));
+                        }
+                    }
+                    LogicalOp::Nullish => {
+                        if matches!(left, Value::Undefined | Value::Null) {
+                            // `left ?? settle(right)` — a value boundary,
+                            // unlike `?:`, which returns its arm raw.
+                            tasks.push(Task::Settle);
+                            tasks.push(Task::Eval(right));
+                        } else {
+                            // The picked value keeps the name it was read
+                            // under — a read through it composes onto the
+                            // left chain's own path.
+                            values.push((left, left_path));
+                        }
                     }
                 }
             }
-            out.into()
-        }
-        Node::Ident(name) => eval_ident(name, env, obs),
-        Node::Member { object, property } => {
-            let (base, base_path) = eval_base(object, env, depth + 1, obs);
-            let path = base_path.map(|p| format!("{p}.{property}"));
-            read_property(&base, property, path.as_deref(), obs)
-        }
-        Node::Index { object, index } => {
-            let (base, base_path) = eval_base(object, env, depth + 1, obs);
-            let index = eval_node(index, env, depth + 1, obs).settle();
-            let path = base_path.map(|p| format!("{p}.{}", index.js_string()));
-            read_index(&base, &index, path.as_deref(), obs)
-        }
-        Node::Unary { op, operand } => {
-            let operand = eval_node(operand, env, depth + 1, obs).settle();
-            match op {
-                UnaryOp::Not => Value::Bool(!operand.truthy()),
-                UnaryOp::Neg => (-operand.to_number()).into(),
+            Task::LogicalRhs => {
+                let (v, _) = pop(&mut values);
+                values.push((Value::Bool(v.truthy()), None));
             }
-        }
-        Node::Logical { op, left, right } => {
-            // `&&`/`||` answer with a boolean, not an operand as JavaScript
-            // does — `??` is the value-picker.
-            let left = eval_node(left, env, depth + 1, obs).settle();
-            match op {
-                LogicalOp::And => Value::Bool(
-                    left.truthy() && eval_node(right, env, depth + 1, obs).settle().truthy(),
-                ),
-                LogicalOp::Or => Value::Bool(
-                    left.truthy() || eval_node(right, env, depth + 1, obs).settle().truthy(),
-                ),
-                LogicalOp::Nullish => {
-                    if matches!(left, Value::Undefined | Value::Null) {
-                        eval_node(right, env, depth + 1, obs)
-                    } else {
-                        left
-                    }
+            Task::ReadMember(property) => {
+                let (base, base_path) = pop(&mut values);
+                let path = base_path.map(|p| format!("{p}.{property}"));
+                let value = read_property(&base, property, path.as_deref(), obs);
+                values.push((value, path));
+            }
+            Task::ReadIndex => {
+                let (index, _) = pop(&mut values);
+                let (base, base_path) = pop(&mut values);
+                let path = base_path.map(|p| format!("{p}.{}", index.js_string()));
+                let value = read_index(&base, &index, path.as_deref(), obs);
+                values.push((value, path));
+            }
+            Task::CondTail {
+                consequent,
+                alternate,
+            } => {
+                let (test, _) = pop(&mut values);
+                tasks.push(Task::Eval(if test.truthy() {
+                    consequent
+                } else {
+                    alternate
+                }));
+            }
+            Task::CallFinish { callee, argc } => {
+                let argv: Vec<Value> = values
+                    .split_off(values.len().saturating_sub(argc))
+                    .into_iter()
+                    .map(|(v, _)| v)
+                    .collect();
+                values.push((call_function(callee, &argv, env), None));
+            }
+            Task::MacroFinish {
+                name,
+                variable,
+                body,
+            } => {
+                let (receiver, _) = pop(&mut values);
+                values.push((
+                    crate::macros::eval_macro(name, &receiver, variable, body, env),
+                    None,
+                ));
+            }
+            Task::FinishTemplate(count) => {
+                let parts = values.split_off(values.len().saturating_sub(count));
+                let mut out = String::new();
+                for (part, _) in &parts {
+                    out.push_str(&part.to_text());
                 }
+                values.push((out.into(), None));
             }
-        }
-        Node::Binary { op, left, right } => {
-            let left = eval_node(left, env, depth + 1, obs).settle();
-            let right = eval_node(right, env, depth + 1, obs).settle();
-            eval_binary(*op, &left, &right)
-        }
-        Node::Conditional {
-            test,
-            consequent,
-            alternate,
-        } => {
-            if eval_node(test, env, depth + 1, obs).settle().truthy() {
-                eval_node(consequent, env, depth + 1, obs)
-            } else {
-                eval_node(alternate, env, depth + 1, obs)
+            Task::FinishList(count) => {
+                let items: Vec<Value> = values
+                    .split_off(values.len().saturating_sub(count))
+                    .into_iter()
+                    .map(|(v, _)| v)
+                    .collect();
+                values.push((Value::List(items.into()), None));
             }
-        }
-        Node::Call {
-            callee,
-            receiver,
-            args,
-        } => {
-            let mut argv: Vec<Value> = Vec::with_capacity(args.len() + 1);
-            if let Some(receiver) = receiver {
-                argv.push(eval_node(receiver, env, depth + 1, obs).settle());
+            Task::FinishObject(props) => {
+                let vals = values.split_off(values.len().saturating_sub(props.len()));
+                let mut object = indexmap::IndexMap::new();
+                for ((key, _), (v, _)) in props.iter().zip(vals) {
+                    object.insert(key.as_str().into(), v);
+                }
+                values.push((object.into(), None));
             }
-            for a in args {
-                argv.push(eval_node(a, env, depth + 1, obs).settle());
-            }
-            call_function(callee, &argv, env)
-        }
-        Node::Macro {
-            name,
-            receiver,
-            variable,
-            body,
-        } => crate::macros::eval_macro(*name, receiver, variable, body, env, depth, obs),
-        Node::List(items) => {
-            let items: Vec<Value> = items
-                .iter()
-                .map(|i| eval_node(i, env, depth + 1, obs).settle())
-                .collect();
-            items.into()
-        }
-        Node::Object(props) => {
-            let mut object = indexmap::IndexMap::new();
-            for (key, value) in props {
-                object.insert(
-                    key.as_str().into(),
-                    eval_node(value, env, depth + 1, obs).settle(),
-                );
-            }
-            object.into()
         }
     }
-}
-
-/// The object of a member/index read is NOT a value position — a namespace
-/// is still a bag there, not `undefined` — and when it is itself a named
-/// chain (`store`, `store.items`, `items.0`), the read through it reports
-/// under that chain's own path. A value pick — `? :`, `??` — carries the
-/// chain it selects: `(cond ? store.a : store.b).x` reads as `store.a.x`.
-/// Anything else — a call's answer, a literal — has no name: reads through
-/// it are the caller's own inputs and compose no path.
-fn eval_base(
-    node: &Node,
-    env: &dyn Env,
-    depth: usize,
-    obs: Option<&crate::ReadObserver<'_>>,
-) -> (Value, Option<String>) {
-    if depth > MAX_EVAL_DEPTH {
-        return (Value::Undefined, None);
-    }
-    match node {
-        Node::Ident(name) => (eval_ident(name, env, obs), obs.map(|_| name.clone())),
-        Node::Member { object, property } => {
-            let (base, base_path) = eval_base(object, env, depth + 1, obs);
-            let path = base_path.map(|p| format!("{p}.{property}"));
-            (read_property(&base, property, path.as_deref(), obs), path)
-        }
-        Node::Index { object, index } => {
-            let (base, base_path) = eval_base(object, env, depth + 1, obs);
-            let index = eval_node(index, env, depth + 1, obs).settle();
-            let path = base_path.map(|p| format!("{p}.{}", index.js_string()));
-            (read_index(&base, &index, path.as_deref(), obs), path)
-        }
-        Node::Conditional {
-            test,
-            consequent,
-            alternate,
-        } => {
-            // The selected arm may itself be a named chain — the read
-            // through the pick keeps its name.
-            if eval_node(test, env, depth + 1, obs).settle().truthy() {
-                eval_base(consequent, env, depth + 1, obs)
-            } else {
-                eval_base(alternate, env, depth + 1, obs)
-            }
-        }
-        Node::Logical {
-            op: LogicalOp::Nullish,
-            left,
-            right,
-        } => {
-            // `??` settles its left for the pick (the answer eval_node
-            // gives — a namespace reads as its raw); the selected value
-            // keeps the name it was read under.
-            let (value, path) = eval_base(left, env, depth + 1, obs);
-            let value = value.settle();
-            if matches!(value, Value::Undefined | Value::Null) {
-                eval_base(right, env, depth + 1, obs)
-            } else {
-                (value, path)
-            }
-        }
-        other => (eval_node(other, env, depth, obs), None),
-    }
+    pop(&mut values).0
 }
 
 /// A bare root name: bound, `readValue`'d, and reported under its own name.
-/// An unbound name is `Undefined` and not a read.
-fn eval_ident(name: &str, env: &dyn Env, obs: Option<&crate::ReadObserver<'_>>) -> Value {
-    match env.root(name) {
+/// An unbound name is `Undefined` and not a read — but it still hands its
+/// name to the slot, so a read composed through it (`missing.prop`) reports
+/// under `missing.prop` rather than anonymously.
+fn eval_ident(
+    name: &str,
+    env: &dyn Env,
+    obs: Option<&crate::ReadObserver<'_>>,
+) -> (Value, Option<String>) {
+    let value = match env.root(name) {
         Some(root) => {
             let value = root.read_value();
             if let Some(observe) = obs {
@@ -225,7 +353,8 @@ fn eval_ident(name: &str, env: &dyn Env, obs: Option<&crate::ReadObserver<'_>>) 
             value
         }
         None => Value::Undefined,
-    }
+    };
+    (value, obs.map(|_| name.to_string()))
 }
 
 /// The binary operators, `evaluate.ts` semantics.
@@ -285,21 +414,25 @@ fn same_value_zero(a: &Value, b: &Value) -> bool {
 }
 
 /// The call dispatcher — a built-in first, then the environment's `call`, as
-/// `callFunction` in `evaluate.ts`.
+/// `callFunction` in `evaluate.ts`. The result is NOT settled here: a
+/// namespace a host function returns stays traversable through `.`/`[]` —
+/// settle happens at the value boundaries above, as `evaluate.ts` does.
 fn call_function(callee: &str, args: &[Value], env: &dyn Env) -> Value {
     if let Some(f) = crate::functions::lookup(callee) {
         f(args, env)
     } else {
-        env.call(callee, args).settle()
+        env.call(callee, args)
     }
 }
 
 /// `object[property]` as a template may read it (`readProperty` in
-/// evaluate.ts): the denied names first, then a namespace's `get`, then the
-/// value's own data — a string answering only `length`, a list `length` and
-/// numeric keys, an object its own keys. Anything else is `Undefined`.
-/// `path` is the read's name when the object stood for one — the observer
-/// hears `path → value` once, with the effective answer.
+/// evaluate.ts): the denied names first, then a namespace's `get` — checked
+/// on the object as handed over AND again on what `readValue` reads, since
+/// an accessor can hold a namespace — then the value's own data: a string
+/// answering only `length`, a list `length` and numeric keys, an object its
+/// own keys. Anything else is `Undefined`. `path` is the read's name when
+/// the object stood for one — the observer hears `path → value` once, with
+/// the effective answer.
 fn read_property(
     object: &Value,
     property: &str,
@@ -309,7 +442,10 @@ fn read_property(
     if crate::DENIED_PROPERTIES.contains(&property) {
         return Value::Undefined;
     }
-    let value = match object {
+    if let Value::Namespace(ns) = object {
+        return observe_read(ns.get(property).read_value(), path, obs);
+    }
+    let value = match object.read_value() {
         Value::Namespace(ns) => ns.get(property).read_value(),
         Value::Undefined | Value::Null => Value::Undefined,
         Value::Str(s) => {
@@ -327,7 +463,7 @@ fn read_property(
         Value::List(l) => {
             if property == "length" {
                 l.len().into()
-            } else if let Ok(index) = property.parse::<usize>() {
+            } else if let Some(index) = crate::value::canonical_index(property) {
                 l.get(index)
                     .map(|v| v.read_value())
                     .unwrap_or(Value::Undefined)
@@ -339,21 +475,24 @@ fn read_property(
     observe_read(value, path, obs)
 }
 
-/// `object[index]` (`readIndex` in evaluate.ts). A numeric index reaches only
-/// a list's elements and a string's UTF-16 code units — an object answers its
-/// named keys through a *string* index alone, so `obj[1]` is `Undefined`
-/// while `obj["1"]` can hit.
+/// `object[index]` (`readIndex` in evaluate.ts): the object is `readValue`'d
+/// first — a host call's accessor answer is traversed through its data, and a
+/// namespace still reads through `read_property`. A numeric index reaches
+/// only a list's elements and a string's UTF-16 code units — an object
+/// answers its named keys through a *string* index alone, so `obj[1]` is
+/// `Undefined` while `obj["1"]` can hit.
 fn read_index(
     object: &Value,
     index: &Value,
     path: Option<&str>,
     obs: Option<&crate::ReadObserver<'_>>,
 ) -> Value {
-    if matches!(object, Value::Undefined | Value::Null) {
+    let base = object.read_value();
+    if matches!(base, Value::Undefined | Value::Null) {
         return observe_read(Value::Undefined, path, obs);
     }
     if let Value::Num(n) = index {
-        let value = match object {
+        let value = match base {
             Value::List(l) => {
                 if n.fract() == 0.0 && *n >= 0.0 {
                     l.get(*n as usize)
@@ -373,7 +512,7 @@ fn read_index(
         };
         return observe_read(value, path, obs);
     }
-    read_property(object, &index.js_string(), path, obs)
+    read_property(&base, &index.js_string(), path, obs)
 }
 
 /// A read's exit: when both a path and an observer exist, the observer hears

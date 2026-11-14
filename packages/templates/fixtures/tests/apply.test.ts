@@ -102,6 +102,84 @@ describe('what it writes', () => {
   });
 });
 
+describe('fixture epoch', () => {
+  /*
+    `discordFixture` declares no `createdAt` — it must write exactly what it wrote before the
+    epoch existed. That contract is: a node's own `createdAt` lands as `createdAt`+`timestamp`,
+    and nothing anywhere gains `updatedAt` or inherits time it did not declare — not the space,
+    not the signal types, not the signals.
+  */
+  it('is opt-in — a fixture without `createdAt` writes exactly the old stamps', async () => {
+    const { writes } = await apply(discordFixture);
+
+    // No `updatedAt` anywhere — the pre-epoch policy never wrote one.
+    for (const w of writes) expect(w.data.updatedAt).toBeUndefined();
+
+    // The space, its signal types and its signals carried no time at all.
+    for (const w of writes) {
+      if (w.data.id === 'discord-space' || w.model === 'SignalType' || w.model === 'Signal') {
+        expect(w.data.createdAt).toBeUndefined();
+        expect(w.data.timestamp).toBeUndefined();
+      }
+    }
+    // Signals in particular: the epoch policy stamped them with their parent's time, which is
+    // precisely the drift this test exists to catch.
+    expect(writes.some((w) => w.model === 'Signal')).toBe(true);
+
+    // What a node declares still lands — `createdAt` and `timestamp`, nothing more.
+    const message = writes.find((w) => w.data.id === 'discord-message-1')!.data;
+    expect(message.createdAt).toBe('2026-08-11T09:14:00.000Z');
+    expect(message.timestamp).toBe('2026-08-11T09:14:00.000Z');
+    expect(
+      Object.keys(message)
+        .filter((k) => k.endsWith('At') || k === 'timestamp')
+        .sort(),
+    ).toEqual(['createdAt', 'timestamp']);
+
+    // A TextBlock of the same node: the same pair and no more.
+    const block = writes.find((w) => w.model === 'TextBlock')!.data;
+    expect(block.createdAt).toBe('2026-08-11T09:14:00.000Z');
+    expect(block.timestamp).toBe('2026-08-11T09:14:00.000Z');
+    expect(block.updatedAt).toBeUndefined();
+  });
+
+  it('opts in — `createdAt` stamps all three fields, everywhere it reaches', async () => {
+    const epoch = '2025-01-01T00:00:00.000Z';
+    const { writes } = await apply({ ...discordFixture, createdAt: epoch });
+
+    for (const w of writes) {
+      expect(typeof w.data.createdAt).toBe('string');
+      expect(w.data.timestamp).toBe(w.data.createdAt);
+      expect(w.data.updatedAt).toBe(w.data.createdAt);
+    }
+    // A node's own `createdAt` wins; a record without one inherits the epoch.
+    expect(writes.find((w) => w.data.id === 'discord-message-1')!.data.createdAt).toBe('2026-08-11T09:14:00.000Z');
+    expect(writes.find((w) => w.data.id === 'discord-space')!.data.createdAt).toBe(epoch);
+    expect(writes.find((w) => w.model === 'SignalType')!.data.createdAt).toBe(epoch);
+    // And signals take their parent's time — epoch behaviour, off by default.
+    expect(writes.find((w) => w.model === 'Signal')!.data.createdAt).toBe('2026-08-11T09:14:00.000Z');
+  });
+
+  it('keeps an author-set `updatedAt` on a record over the epoch stamp', async () => {
+    const epoch = '2025-01-01T00:00:00.000Z';
+    const { writes } = await apply({
+      ...discordFixture,
+      createdAt: epoch,
+      records: [
+        {
+          entity: 'TaskState',
+          id: 'state-1',
+          createdAt: '2025-02-02T00:00:00.000Z',
+          fields: { name: 'Parked', updatedAt: '2024-06-01T00:00:00.000Z' },
+        },
+      ],
+    });
+    const record = writes.find((w) => w.model === 'TaskState')!.data;
+    expect(record.createdAt).toBe('2025-02-02T00:00:00.000Z');
+    expect(record.updatedAt).toBe('2024-06-01T00:00:00.000Z');
+  });
+});
+
 describe('editor state', () => {
   it('is a data URL the renderer can decode, in Portable Text shape', () => {
     const url = editorState(['One.', 'Two.'], 'post-1');

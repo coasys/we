@@ -167,7 +167,13 @@ fn run_dump(args: &Args) {
     };
     let locals = LocalState::new();
     let bag = Arc::new(bag);
-    let mut rt = Runtime::app(spec, Arc::clone(&bag), locals.clone());
+    // `$`-types the widget registry knows (`$lane`) resolve as components —
+    // the same gate `RendererApp::new` sets, or a dump full of `$todo:`
+    // placeholders lies about what the app renders.
+    let types: std::collections::HashSet<&'static str> =
+        Registry::with_builtins().type_names().collect();
+    let mut rt = Runtime::app(spec, Arc::clone(&bag), locals.clone())
+        .with_dollar_types(move |ty| types.contains(ty));
     let mut host = StaticHost::new(bag, locals);
     let root = rt.frame(&mut host, &screen).clone();
     let stats = rt.stats();

@@ -69,6 +69,10 @@ pub fn parse(source: &str) -> Result<Expr, SyntaxError> {
     crate::parser::parse_node(source)
 }
 
+/// `CACHE_LIMIT` in `index.ts` — the map clears on the miss that would grow
+/// it past this.
+const CACHE_LIMIT: usize = 4000;
+
 /// Parses a source once and keeps the tree by its text — the same memoisation
 /// the TS side does in `expressions/index.ts`. Errors are cached too: a bad
 /// source stays a shared `Err`.
@@ -83,12 +87,17 @@ impl ParseCache {
     }
 
     /// The parsed `source`, from the cache when it was parsed before —
-    /// including a remembered error.
+    /// including a remembered error. The map is bounded like `parseCached`
+    /// in `index.ts`: at `CACHE_LIMIT` entries it clears rather than grow
+    /// for the life of a session.
     pub fn parse(&mut self, source: &str) -> Result<Arc<Expr>, Arc<SyntaxError>> {
         if let Some(hit) = self.map.get(source) {
             return hit.clone();
         }
         let parsed = parse(source).map(Arc::new).map_err(Arc::new);
+        if self.map.len() >= CACHE_LIMIT {
+            self.map.clear();
+        }
         self.map.insert(source.into(), parsed.clone());
         parsed
     }

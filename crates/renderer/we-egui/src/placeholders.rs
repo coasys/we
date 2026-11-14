@@ -49,7 +49,7 @@ impl Widget for Placeholder {
             &detail
         };
         cx.ui.painter().text(
-            props::content_rect(rect, style, FONT_PX, ROOT_PX, view).center(),
+            props::content_rect(rect, style, FONT_PX, ROOT_PX, view, cx.cb_w).center(),
             egui::Align2::CENTER_CENTER,
             format!("{ty} · {detail}", ty = self.ty),
             egui::FontId::proportional(11.0),
@@ -75,7 +75,8 @@ impl Widget for Video {
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         crate::containers::paint_container(cx, node, style, rect);
-        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()));
+        let content =
+            props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()), cx.cb_w);
         if let Some(poster) = props::prop_text(node, "poster").filter(|p| !p.is_empty()) {
             egui::Image::new(egui::ImageSource::Uri(poster.to_string().into()))
                 .fit_to_exact_size(content.size())
