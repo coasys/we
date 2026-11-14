@@ -83,7 +83,14 @@ impl ScreenBag {
                     .collect(),
             },
             theme: ThemeBag {
-                current_id: state.theme.current.as_str().into(),
+                // An unset theme is no answer — `""` must not shadow the
+                // store's own `currentThemeId`; the merged namespace falls
+                // through to it until `setCurrentTheme` lands.
+                current_id: if state.theme.current.as_str().is_empty() {
+                    Value::Undefined
+                } else {
+                    Value::Str(state.theme.current.as_str().into())
+                },
                 fork: state
                     .theme
                     .editing
@@ -236,14 +243,14 @@ impl Namespace for ShellBag {
 
 #[derive(Debug)]
 struct ThemeBag {
-    current_id: Arc<str>,
+    current_id: Value,
     fork: Value,
 }
 
 impl Namespace for ThemeBag {
     fn get(&self, key: &str) -> Value {
         match key {
-            "currentThemeId" => Value::Str(self.current_id.clone()),
+            "currentThemeId" => self.current_id.clone(),
             "themeFork" => self.fork.clone(),
             _ => Value::Undefined,
         }
