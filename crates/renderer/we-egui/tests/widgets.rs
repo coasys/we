@@ -134,6 +134,57 @@ fn typewriter_types_text() {
     h.get_by_label_contains("pre");
 }
 
+/// The frame's painted shapes — a label-only assertion (A10) must not be
+/// the whole oracle: deleting every glyph fill keeps `cx.label` intact.
+fn painted_shapes(root: &ResolvedNode) -> Vec<egui::Shape> {
+    let registry = Registry::with_builtins();
+    let cell = RefCell::new(Vec::new());
+    let mut harness = egui_kittest::Harness::new_ui(|ui| {
+        let ctx = ui.ctx().clone();
+        we_egui::install_media(&ctx);
+        let scx = StyleCx::empty();
+        let lay = layout(
+            &MeasureCx::new(&ctx),
+            &scx,
+            &registry,
+            root,
+            egui::Rect::from_min_size(ui.cursor().min, egui::vec2(400.0, 600.0)),
+        );
+        let mut events = Vec::new();
+        let mut edit = EditState::default();
+        paint(
+            ui,
+            &registry,
+            &scx,
+            root,
+            &lay,
+            &mut events,
+            &mut edit,
+            1_000.0,
+        );
+        let layer = ui.layer_id();
+        ctx.graphics(|g| {
+            *cell.borrow_mut() = g
+                .get(layer)
+                .map(|list| list.all_entries().map(|cs| cs.shape.clone()).collect())
+                .unwrap_or_default();
+        });
+    });
+    // The animated icon repaints forever — step rather than run-to-settle.
+    harness.run_steps(2);
+    cell.take()
+}
+
+fn galley_texts(shapes: &[egui::Shape]) -> Vec<String> {
+    shapes
+        .iter()
+        .filter_map(|s| match s {
+            egui::Shape::Text(t) => Some(t.galley.text().to_string()),
+            _ => None,
+        })
+        .collect()
+}
+
 #[test]
 fn media_widgets_paint() {
     for (ty, label, props) in [
@@ -158,6 +209,54 @@ fn media_widgets_paint() {
         h.run_steps(2);
         h.get_by_label(label);
     }
+}
+
+/// A10 — the label assertions above pass even if glyph drawing were
+/// removed; prove the paint happens too.
+#[test]
+fn media_widgets_paint_their_glyphs() {
+    // we-icon: a Phosphor glyph paints as a text galley — non-empty and
+    // not the a11y label text.
+    let icon = node(
+        "we-icon",
+        "m",
+        &[("name", s("rocket")), ("size", we_expr::Value::from(24.0))],
+    );
+    let galleys = galley_texts(&painted_shapes(&icon));
+    assert!(
+        galleys
+            .iter()
+            .any(|t| !t.trim().is_empty() && t != "icon rocket"),
+        "the rocket glyph must paint, not just label: {galleys:?}"
+    );
+    // we-avatar: the derived initials paint over the seeded fill — a
+    // filled rect under an "AL" galley.
+    let avatar = node(
+        "we-avatar",
+        "m",
+        &[("initials", s("Ada Lovelace")), ("size", s("sm"))],
+    );
+    let shapes = painted_shapes(&avatar);
+    let galleys = galley_texts(&shapes);
+    assert!(
+        galleys.iter().any(|t| t == "AL"),
+        "the derived initials must paint: {galleys:?}"
+    );
+    assert!(
+        shapes
+            .iter()
+            .any(|s| matches!(s, egui::Shape::Rect(r) if r.fill != egui::Color32::TRANSPARENT)),
+        "the seeded initials fill must paint: {shapes:?}"
+    );
+    // we-animated-icon: the spinner glyph paints.
+    let anim = node("we-animated-icon", "m", &[("name", s("circle-notch"))]);
+    let galleys = galley_texts(&painted_shapes(&anim));
+    assert!(
+        galleys
+            .iter()
+            .any(|t| !t.trim().is_empty() && t != "animated icon circle-notch"),
+        "the animated glyph must paint: {galleys:?}"
+    );
 }
 
 #[test]
