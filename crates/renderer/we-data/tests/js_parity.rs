@@ -52,6 +52,62 @@ fn negative_aggregate_results_round_like_js() {
     assert_eq!(positive, json!(1.3), "mean of 1 and 1.5 — ties up");
 }
 
+/// The aggregates round through `Math.round` (aggregate.ts:97), which
+/// reads the fraction the input actually carries — `0.49999999999999994`
+/// is below half even though `0.49999999999999994 + 0.5` lands exactly on
+/// one. The `(n + 0.5).floor()` shortcut adds first and rounds 1, not 0.
+/// `Math.round(-0.5)` is `-0` — a value to_json marks `{"$number":"-0"}`.
+/// The real `Math.round` lives in we-expr; the natives share it.
+#[test]
+fn math_round_reads_the_true_fraction() {
+    // mean(0.049999999999999994) → Math.round(0.49999999999999994) = 0.
+    let near_half = call(
+        "signalTally",
+        json!({
+            "signals": [{ "value": 0.049999999999999994 }],
+            "type": { "mode": "slider", "aggregate": "mean" }
+        }),
+    );
+    assert_eq!(near_half, json!(0), "just under .5 rounds down");
+
+    // mean(-0.05) → Math.round(-0.5) = -0 — the mark survives /10.
+    let negative_tie = call(
+        "signalTally",
+        json!({
+            "signals": [{ "value": -0.05 }],
+            "type": { "mode": "slider", "aggregate": "mean" }
+        }),
+    );
+    assert_eq!(
+        negative_tie,
+        json!({ "$number": "-0" }),
+        "-0.5 rounds to -0"
+    );
+}
+
+/// `voicesParam`'s `Math.round(Number(weight))` (voices.ts:88) — the same
+/// boundary as a weight: just-under-half is 0%, and Math.round(-0.5) is
+/// -0, which `String()` writes as "0", never "-0".
+#[test]
+fn voices_param_rounds_like_math_round() {
+    let voiced = |weight: serde_json::Value| -> serde_json::Value {
+        call(
+            "voicesParam",
+            json!({ "param": "", "did": "did:a", "weight": weight }),
+        )
+    };
+    assert_eq!(
+        voiced(json!(0.49999999999999994)),
+        json!("did:a=0"),
+        "just under .5 is 0%, not 1%"
+    );
+    assert_eq!(
+        voiced(json!(-0.5)),
+        json!("did:a=0"),
+        "-0.5 weighs 0%, written '0'"
+    );
+}
+
 /// `aggregateFor` (aggregate.ts:74): `!type.aggregate` treats every falsy
 /// aggregate as absent — `""` included — so the mode's default applies.
 /// A toggle with `aggregate: ""` counts heads; it does not average.

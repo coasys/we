@@ -386,7 +386,10 @@ fn round(args: &[Value], _env: &dyn Env) -> Value {
 /// is exact — integral inputs and every |x| ≥ 2^52 give 0 — so a zero result
 /// keeps `x`'s sign (`Math.round(-0.5)` is `-0`), and a non-finite `x` rounds
 /// to itself.
-fn js_round(x: f64) -> f64 {
+///
+/// Exported so the `we-data` natives round like the expression evaluator —
+/// there is only one `Math.round`.
+pub fn js_round(x: f64) -> f64 {
     if !x.is_finite() {
         return x;
     }

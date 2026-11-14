@@ -23,7 +23,7 @@ use indexmap::IndexMap;
 use std::cmp::Ordering;
 use std::sync::Arc;
 use unicode_normalization::UnicodeNormalization;
-use we_expr::Value;
+use we_expr::{js_round, Value};
 use we_template::StoreBag;
 
 use crate::provenance::{member_get, Provenance};
@@ -113,14 +113,6 @@ fn str_or(v: &Value) -> Option<&str> {
         Value::Str(s) => Some(s),
         _ => None,
     }
-}
-
-/// `Math.round` — halves go toward +∞ (`Math.round(-0.5)` is `-0`), unlike
-/// `f64::round`, which takes them away from zero. `(x + 0.5).floor()` is
-/// the JS answer for every finite `x`, and `NaN`/the infinities pass
-/// through both the same way.
-fn js_round(n: f64) -> f64 {
-    (n + 0.5).floor()
 }
 
 /// `Number(x) || 0` — `NaN` and `0` itself collapse to `0`.
@@ -631,7 +623,9 @@ fn voices_param(options: &Value) -> Value {
     }
     weights
         .iter()
-        .map(|(who, share)| format!("{who}={}", js_round(share * 100.0)))
+        // `${who}=${Math.round(share * 100)}` — `String()` writes -0 as
+        // "0", so the number goes through js_string, not Display.
+        .map(|(who, share)| format!("{who}={}", Value::Num(js_round(share * 100.0)).js_string()))
         .collect::<Vec<_>>()
         .join(",")
         .into()
