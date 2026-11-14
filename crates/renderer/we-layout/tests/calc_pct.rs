@@ -858,3 +858,131 @@ fn calc_abs_child_uses_positioned_padding_box() {
         "abs padding = 10% of 400 + 16 = 56 → content 200 - 112 = 88 at x=56, got {c:?}"
     );
 }
+
+/// A deferred chain deeper than the pass cap: the returned build must
+/// *say* it did not converge, and `Layout::bases` must export the base
+/// values that build's `calc`s consumed — not the fresher measurement
+/// the next pass would have used.
+#[test]
+fn calc_deferred_cap_flags_unconverged_and_exports_used_bases() {
+    // 400px Row → two `flex:1` Columns (A = 200). Under A, nine stages:
+    // Row R_i `width: calc(100% - 10px)` holding one `flex:1` Column F_i
+    // which holds the next stage. F_i settles at 200 − 10i — one
+    // subtraction learned per pass — so the 8-pass budget stops F_9 at
+    // 130 (converged answer 110) with consumed bases still moving: an
+    // acyclic chain, not a detected cycle.
+    //   pass 7 (returned): R_9 = F_8·v6 − 10 = 130 → F_9 = 130.
+    //   G's `calc(50% - 5px)` consumed F_9·v6 = 140 → 65.
+    //   leaf's `p: calc(10% + 16px)` consumed 140 → reserves 30/edge.
+    // The fresh measurement (v7) has F_9 = 130; the used base is 140.
+    let g = node(
+        "Column",
+        "g",
+        &[
+            ("width", Value::from("calc(50% - 5px)")),
+            ("height", Value::from("10px")),
+        ],
+    );
+    let mut leaf = node("Column", "leaf", &[("p", Value::from("calc(10% + 16px)"))]);
+    leaf.children = vec![ResolvedChild::Node(Box::new(node(
+        "Column",
+        "lc",
+        &[
+            ("width", Value::from("100%")),
+            ("height", Value::from("10px")),
+        ],
+    )))];
+    let mut f9 = node(
+        "Column",
+        "f9",
+        &[("flex", Value::from("1")), ("minWidth", Value::from("0px"))],
+    );
+    f9.children = vec![
+        ResolvedChild::Node(Box::new(g)),
+        ResolvedChild::Node(Box::new(leaf)),
+    ];
+    // Wrap F_9 in R_9, then F_{i-1} > R_i > F_i down to R_1 under A.
+    let mut cur = f9;
+    for i in (1..=9).rev() {
+        let mut r = node(
+            "Row",
+            &format!("r{i}"),
+            &[
+                ("width", Value::from("calc(100% - 10px)")),
+                ("height", Value::from("10px")),
+            ],
+        );
+        r.children = vec![ResolvedChild::Node(Box::new(cur))];
+        cur = r;
+        if i > 1 {
+            let mut f = node(
+                "Column",
+                &format!("f{}", i - 1),
+                &[("flex", Value::from("1")), ("minWidth", Value::from("0px"))],
+            );
+            f.children = vec![ResolvedChild::Node(Box::new(cur))];
+            cur = f;
+        }
+    }
+    let mut a = node(
+        "Column",
+        "a",
+        &[("flex", Value::from("1")), ("minWidth", Value::from("0px"))],
+    );
+    a.children = vec![ResolvedChild::Node(Box::new(cur))];
+    let mut root = node("Row", "root", &[]);
+    root.children = vec![
+        ResolvedChild::Node(Box::new(a)),
+        ResolvedChild::Node(Box::new(node(
+            "Column",
+            "b",
+            &[("flex", Value::from("1")), ("minWidth", Value::from("0px"))],
+        ))),
+    ];
+
+    let out = run(&root, 400.0, 200.0);
+    // The returned build: F_9 laid out at 130 (R_9 consumed v6 = 140),
+    // G at 0.5·140 − 5 = 65, leaf's padding reserved at 0.1·140 + 16 = 30.
+    let f9 = rect(&out, "f9");
+    assert!(
+        (f9.width() - 130.0).abs() < 0.5,
+        "pass-7 build: F_9 = 200 − 7·10 = 130, got {f9:?}"
+    );
+    let g = rect(&out, "g");
+    assert!(
+        (g.width() - 65.0).abs() < 0.5,
+        "G built from the pass-6 base 140: 0.5·140−5 = 65, got {g:?}"
+    );
+    let lc = rect(&out, "lc");
+    assert!(
+        (lc.min.x - 30.0).abs() < 0.5,
+        "leaf reserved padding 0.1·140+16 = 30 → child at x=30, got {lc:?}"
+    );
+    // The exports must describe the bases the returned geometry used —
+    // 140 — not the fresher 130 the next pass measured.
+    let gb = out
+        .bases
+        .get(&NodeId::from("g"))
+        .copied()
+        .unwrap_or_default();
+    assert_eq!(
+        gb.cb.0,
+        Some(140.0),
+        "G's calc consumed base 140 — paint must inset the same, got {gb:?}"
+    );
+    let lb = out
+        .bases
+        .get(&NodeId::from("leaf"))
+        .copied()
+        .unwrap_or_default();
+    assert_eq!(
+        lb.cb.0,
+        Some(140.0),
+        "leaf's calc consumed base 140 (30px reserved), got {lb:?}"
+    );
+    // …and the result must admit it never converged.
+    assert!(
+        out.unconverged,
+        "nine-stage chain exceeds the pass cap — the layout must say so"
+    );
+}

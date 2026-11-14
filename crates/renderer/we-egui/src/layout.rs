@@ -36,6 +36,9 @@ pub struct Layout {
     /// `cb.0` is the containing-block width paint insets percent padding
     /// against. Paint never rebuilds the base itself.
     pub bases: HashMap<NodeId, we_layout::Bases>,
+    /// `true` when the deferred-base solve hit its pass cap still moving
+    /// — the returned build is honest but not settled.
+    pub unconverged: bool,
 }
 
 /// A text child and where it landed.
@@ -162,5 +165,6 @@ fn run(
             .map(|(k, v)| (k, egui::vec2(v.x, v.y)))
             .collect(),
         bases: out.bases,
+        unconverged: out.unconverged,
     }
 }

@@ -173,6 +173,11 @@ pub struct Layout {
     /// applied) or the source never laid out. Paint resolves its own
     /// insets against these — it never rebuilds a base from a parent rect.
     pub bases: HashMap<NodeId, Bases>,
+    /// `true` when the deferred-base solve hit its pass cap with consumed
+    /// bases still moving — a deep acyclic chain the budget did not
+    /// finish, not a detected cycle. The returned build is honest (its
+    /// `bases` are the values it actually used) but not settled.
+    pub unconverged: bool,
 }
 
 /// The resolved percent bases of one node — what its `calc(…% …)` and
@@ -307,13 +312,31 @@ struct Axes {
 }
 
 impl Axes {
-    /// The resolved bases this build used — deferred axes read the
-    /// measured values; indefinite axes export `None` (paint insets
-    /// against `0` there, matching the cyclic fallback).
-    fn to_bases(self, id: &NodeId, vals: &HashMap<(NodeId, Axis), f32>) -> Bases {
+    /// The resolved bases this build used. A deferred axis a `calc`
+    /// consumed exports the input measurement it resolved against —
+    /// the base the returned geometry was computed with, converged or
+    /// not. Any other deferred axis — a bare percent taffy resolved
+    /// itself this pass, or a consumed base with no prior measurement
+    /// (the percent term stood in) — exports the fresh measured box.
+    /// Indefinite axes export `None` (paint insets against `0` there,
+    /// matching the cyclic fallback).
+    fn to_bases(
+        self,
+        id: &NodeId,
+        consumed: &std::collections::HashSet<(NodeId, Axis)>,
+        used: &HashMap<(NodeId, Axis), f32>,
+        fresh: &HashMap<(NodeId, Axis), f32>,
+    ) -> Bases {
         let v = |axis: Axis, b: AxisBase| match b {
             AxisBase::Definite(v) => Some(v),
-            AxisBase::Deferred => vals.get(&(id.clone(), axis)).copied(),
+            AxisBase::Deferred => {
+                let k = (id.clone(), axis);
+                if consumed.contains(&k) {
+                    used.get(&k).or_else(|| fresh.get(&k)).copied()
+                } else {
+                    fresh.get(&k).copied()
+                }
+            }
             AxisBase::Indefinite => None,
         };
         Bases {
@@ -1844,10 +1867,12 @@ fn vals_eq(a: &HashMap<(NodeId, Axis), f32>, b: &HashMap<(NodeId, Axis), f32>) -
 /// "Percent bases" section above): definite bases resolve `calc` to a
 /// length on the spot, deferred ones keep their percent term and read a
 /// measured value back on the next build. A deep acyclic chain settles
-/// in a handful of passes; a base that keeps moving was content-driven
-/// all along, so it is forced `Indefinite` and takes the CSS cyclic
-/// fallback. A tree with no deferred percent `calc()` runs exactly one
-/// pass, as before.
+/// in a handful of passes; a repeated measured state means the base was
+/// content-driven all along, so it is forced `Indefinite` and takes the
+/// CSS cyclic fallback. A chain still moving at the pass cap is neither:
+/// [`Layout::unconverged`] marks it, and its `bases` stay the values the
+/// returned build consumed. A tree with no deferred percent `calc()`
+/// runs exactly one pass, as before.
 ///
 /// The root's containing block is the viewport: `width: auto` fills it —
 /// block-box behaviour, not a shrink-wrapped flex item. Same downward:
@@ -1873,13 +1898,17 @@ fn layout_impl(
     rect: Rect,
     viewport_root: bool,
 ) -> Layout {
-    /// Deep acyclic chains settle in a handful of passes; the cap only
-    /// bounds pathological cyclic feedback, which lands on the CSS
-    /// cyclic fallback anyway.
+    /// Deep acyclic chains settle in a handful of passes; the cap
+    /// bounds whatever does not — a repeated measured state is cyclic
+    /// and lands on the CSS fallback, while a chain still moving at
+    /// the cap returns its last build flagged `unconverged`.
     const MAX_PASSES: usize = 8;
     let mut vals: HashMap<(NodeId, Axis), f32> = HashMap::new();
     let mut forced: std::collections::HashSet<(NodeId, Axis)> = std::collections::HashSet::new();
     let mut history: Vec<HashMap<(NodeId, Axis), f32>> = Vec::new();
+    // The last pass's still-moving consumed axes — non-empty when the
+    // cap stopped an unfinished solve, i.e. `out.unconverged`.
+    let mut moving: Vec<(NodeId, Axis)> = Vec::new();
     let mut out = Layout {
         size: Size::ZERO,
         rects: HashMap::new(),
@@ -1889,13 +1918,14 @@ fn layout_impl(
         scroll: HashMap::new(),
         clip: HashMap::new(),
         bases: HashMap::new(),
+        unconverged: false,
     };
 
     for pass in 0..=MAX_PASSES {
         // The extra slot exists so a cycle detected on the last regular
         // pass still gets its fallback build; without a forced axis the
-        // cap is the cap — an acyclic chain returns its last build rather
-        // than a misclassified indefinite.
+        // cap is the cap — an acyclic chain returns its last build
+        // flagged `unconverged` rather than a misclassified indefinite.
         if pass == MAX_PASSES && forced.is_empty() {
             break;
         }
@@ -2041,16 +2071,18 @@ fn layout_impl(
             texts: Vec::new(),
             scroll,
             clip,
-            // The bases this build resolved against — deferred axes take
-            // the fresh measured values, the rest their static ones. The
-            // export reads `new_vals` (this pass's measurement), not the
-            // build inputs: a deferred base nobody's `calc` consumed —
-            // bare percent padding is the case paint re-resolves — is
-            // still real, just never a rebuild trigger.
+            // The bases this build resolved against: a deferred axis a
+            // `calc` consumed exports the input measurement it was
+            // resolved with — paint insets against the same value the
+            // geometry used, even when the solve stopped unconverged.
+            // A deferred base nobody's `calc` consumed — bare percent
+            // padding is the case paint re-resolves — exports the fresh
+            // measured box; it is real, just never a rebuild trigger.
             bases: axes
                 .iter()
-                .map(|(id, a)| (id.clone(), a.to_bases(id, &new_vals)))
+                .map(|(id, a)| (id.clone(), a.to_bases(id, &consumed, &vals, &new_vals)))
                 .collect(),
+            unconverged: false,
         };
         collect(&tree, root_id, rect.min, &mut next);
         if let Some(r) = next.rects.get(&root.id) {
@@ -2060,7 +2092,7 @@ fn layout_impl(
         // Convergence is on the measured values `calc` consumed — a
         // deferred key that *exists* but moved is not resolved. The
         // last build still saves its `out` above.
-        let moving: Vec<(NodeId, Axis)> = consumed
+        moving = consumed
             .iter()
             .filter(|k| axis_moved(vals.get(*k), new_vals.get(*k)))
             .cloned()
@@ -2073,10 +2105,20 @@ fn layout_impl(
             // looped. Those bases were content-driven all along: force
             // them `Indefinite` so the extra build lands the CSS cyclic
             // fallback.
-            forced.extend(moving);
+            forced.extend(moving.drain(..));
             continue;
         }
         history.push(std::mem::replace(&mut vals, new_vals));
+    }
+    // Bases still moving when the loop stopped means the cap cut an
+    // unfinished solve — not a detected cycle. The returned build is
+    // honest (`bases` are the values it consumed) but must say so.
+    out.unconverged = !moving.is_empty();
+    if out.unconverged {
+        log::debug!(
+            "we-layout: deferred percent bases still moving at the {MAX_PASSES}-pass cap ({} axes); returning the last build flagged unconverged",
+            moving.len()
+        );
     }
     out
 }

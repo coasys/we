@@ -431,6 +431,7 @@ fn translate_layout(sub: &Layout, delta: egui::Vec2) -> Layout {
         scroll: sub.scroll.clone(),
         clip: sub.clip.clone(),
         bases: sub.bases.clone(),
+        unconverged: sub.unconverged,
     }
 }
 

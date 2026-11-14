@@ -4646,6 +4646,7 @@ name = "we-layout"
 version = "0.1.0"
 dependencies = [
  "indexmap",
+ "log",
  "taffy",
  "we-expr",
  "we-style",

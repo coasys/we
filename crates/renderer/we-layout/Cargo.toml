@@ -11,3 +11,4 @@ we-style.workspace = true
 we-template.workspace = true
 taffy.workspace = true
 indexmap.workspace = true
+log.workspace = true
