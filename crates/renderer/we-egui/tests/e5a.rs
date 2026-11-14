@@ -1292,6 +1292,102 @@ fn container_onclick_bubbles_from_a_child() {
     );
 }
 
+/// F4 — a DOM `click` is the primary button only: a secondary-button
+/// press/release fires contextmenu, never the authored onClick.
+#[test]
+fn container_onclick_ignores_secondary_clicks() {
+    let mut row = node(
+        "Row",
+        "r",
+        &[("height", Value::Num(60.0)), ("width", Value::Num(200.0))],
+    );
+    row.handlers = handlers_list(&["onClick"]);
+    let rig = paint_rig(row, |harness, lay, _| {
+        let r = lay.rects.get(&NodeId::from("r")).copied().unwrap();
+        for pressed in [true, false] {
+            harness.event(egui::Event::PointerButton {
+                pos: r.center(),
+                button: egui::PointerButton::Secondary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            });
+            harness.run();
+        }
+    });
+    assert!(
+        !emitted(&rig, "r", "onClick"),
+        "a secondary click is not a DOM click: {:?}",
+        rig.events
+    );
+}
+
+/// F4 — DOM bubbling is child-first: the inner element's click handler
+/// runs before the outer's. `container_events` used to emit in paint
+/// order — parent action, then child — so a child that sets a selection
+/// and a parent that consumes it saw the stale value.
+#[test]
+fn container_click_bubbles_child_first() {
+    let mut outer = node(
+        "Column",
+        "o",
+        &[("height", Value::Num(120.0)), ("width", Value::Num(200.0))],
+    );
+    outer.handlers = handlers_list(&["onClick"]);
+    let mut inner = node(
+        "Column",
+        "o/i",
+        &[("height", Value::Num(60.0)), ("width", Value::Num(200.0))],
+    );
+    inner.handlers = handlers_list(&["onClick"]);
+    child(&mut outer, inner);
+    let rig = paint_rig(outer, |harness, lay, _| {
+        let r = lay.rects.get(&NodeId::from("o/i")).copied().unwrap();
+        click_at(harness, r.center());
+    });
+    let order: Vec<&str> = rig
+        .events
+        .iter()
+        .filter(|e| e.handler.as_ref() == "onClick")
+        .map(|e| e.node.as_str())
+        .collect();
+    assert_eq!(order, ["o/i", "o"], "the child fires before the parent");
+}
+
+/// F4 — a keyboard activation is a real DOM click: Enter on the focused
+/// button fires the button's click AND bubbles to the container's.
+/// `any_click()` only ever saw the pointer, so the parent's handler was
+/// unreachable without a mouse.
+#[test]
+fn container_keyboard_activation_bubbles() {
+    let mut row = node(
+        "Row",
+        "r",
+        &[("height", Value::Num(60.0)), ("width", Value::Num(200.0))],
+    );
+    row.handlers = handlers_list(&["onClick"]);
+    let mut btn = node("we-button", "r/b", &[("text", s("inside"))]);
+    btn.handlers = handlers_list(&["onClick"]);
+    child(&mut row, btn);
+    let rig = paint_rig(row, |harness, _lay, _| {
+        let b = harness.get_by_label("inside");
+        b.focus();
+        harness.run();
+        harness.key_press(egui::Key::Enter);
+        harness.run();
+    });
+    let order: Vec<&str> = rig
+        .events
+        .iter()
+        .filter(|e| e.handler.as_ref() == "onClick")
+        .map(|e| e.node.as_str())
+        .collect();
+    assert_eq!(
+        order,
+        ["r/b", "r"],
+        "keyboard activation bubbles child-first: {order:?}"
+    );
+}
+
 fn handlers_list(list: &[&str]) -> IndexMap<Arc<str>, we_template::HandlerRef> {
     list.iter()
         .map(|k| {

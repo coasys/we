@@ -39,11 +39,30 @@ pub(crate) fn paint_container(cx: &mut PaintCx, node: &ResolvedNode, style: &Sty
 /// child's handler AND the container's. `mouseenter`/`mouseleave` fire on
 /// the boundary transition (the children inside the box don't re-enter).
 fn container_events(cx: &mut PaintCx, node: &ResolvedNode, rect: Rect) {
+    let inside = cx.ui.rect_contains_pointer(rect);
+    // A primary-button release in the box is a DOM click somewhere in
+    // this subtree: record the propagation path. The frame emits the
+    // authored onClick after the descendants paint — child-first, like
+    // the bubble — and only for the primary button (a secondary click
+    // is contextmenu, never click). Records run even with no handlers:
+    // the path still carries every ancestor for a deeper target.
+    if inside
+        && cx
+            .ui
+            .input(|i| i.pointer.button_clicked(egui::PointerButton::Primary))
+    {
+        cx.clicks.paths.push(
+            cx.ancestors
+                .iter()
+                .cloned()
+                .chain(std::iter::once(node.id.clone()))
+                .collect(),
+        );
+    }
     let wants = |k: &str| node.handlers.contains_key(k);
     if !(wants("onClick") || wants("onMouseEnter") || wants("onMouseLeave")) {
         return;
     }
-    let inside = cx.ui.rect_contains_pointer(rect);
     if wants("onMouseEnter") || wants("onMouseLeave") {
         let was = props::scratch(&cx.edit.data, &node.id, "_hover").is_some_and(|v| v.truthy());
         if inside != was {
@@ -57,9 +76,6 @@ fn container_events(cx: &mut PaintCx, node: &ResolvedNode, rect: Rect) {
                 cx.emit(&node.id, name, props::detail([]));
             }
         }
-    }
-    if wants("onClick") && inside && cx.ui.input(|i| i.pointer.any_click()) {
-        cx.emit(&node.id, "onClick", props::detail([]));
     }
 }
 

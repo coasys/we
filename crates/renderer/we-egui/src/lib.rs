@@ -109,6 +109,7 @@ pub struct PaintCx<'a> {
     pub(crate) ancestors: &'a [NodeId],
     pub(crate) events: &'a mut Vec<WidgetEvent>,
     pub(crate) hits: &'a mut HitLog,
+    pub(crate) clicks: &'a mut ClickLog,
 }
 
 /// The click-sensing rects the frame has reported so far: `activated` —
@@ -130,6 +131,18 @@ pub struct HitLog {
     pub interact: Vec<(Rect, egui::Id)>,
 }
 
+/// The frame's click propagation. Each `paths` entry is a click's DOM
+/// target chain (root → target): a container records it when a
+/// primary-button release lands in its box, a widget when it emits its
+/// own `onClick`. `at_target` marks the nodes that already fired —
+/// the post-children pass emits `onClick` for the remaining path
+/// members, so handlers run child-first like a real DOM bubble.
+#[derive(Debug, Default)]
+pub struct ClickLog {
+    pub paths: Vec<Vec<NodeId>>,
+    pub at_target: std::collections::HashSet<NodeId>,
+}
+
 impl<'a> PaintCx<'a> {
     #[allow(clippy::too_many_arguments)]
     pub fn new(
@@ -140,6 +153,7 @@ impl<'a> PaintCx<'a> {
         now: f64,
         ancestors: &'a [NodeId],
         hits: &'a mut HitLog,
+        clicks: &'a mut ClickLog,
     ) -> Self {
         Self {
             ui,
@@ -149,12 +163,26 @@ impl<'a> PaintCx<'a> {
             ancestors,
             events,
             hits,
+            clicks,
         }
     }
 
     /// Report user input on `node`'s handler — `cx.emit(&node.id, "onClick",
     /// event_value)`. The frame runs the handler on the host.
     pub fn emit(&mut self, node: &NodeId, handler: &str, value: Value) {
+        if handler == "onClick" {
+            // A widget activation is a DOM click: the node's handler is
+            // the at-target phase, and the path records it so the
+            // ancestor chain bubbles after it.
+            self.clicks.at_target.insert(node.clone());
+            self.clicks.paths.push(
+                self.ancestors
+                    .iter()
+                    .cloned()
+                    .chain(std::iter::once(node.clone()))
+                    .collect(),
+            );
+        }
         self.events.push(WidgetEvent {
             node: node.clone(),
             handler: handler.into(),

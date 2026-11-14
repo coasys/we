@@ -75,6 +75,7 @@ pub fn paint(
         frame: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
         inh: None,
         hits: crate::HitLog::default(),
+        clicks: crate::ClickLog::default(),
     };
     paint_node(&mut w, root);
     paint_overlays(&mut w);
@@ -127,6 +128,10 @@ struct Walk<'a> {
     /// Interactive hit surface reported by widgets so far — an overlay
     /// trigger's activation is read from it after the subtree paints.
     hits: crate::HitLog,
+    /// The frame's click propagation — widget activations and
+    /// container-witnessed pointer clicks; the post-children pass emits
+    /// authored `onClick`s child-first from it.
+    clicks: crate::ClickLog,
 }
 
 /// One overlay that painted this frame — what the dismissal pass needs:
@@ -429,6 +434,7 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
             now: w.now,
             ancestors: &w.ancestors[..w.ancestors.len() - 1],
             hits: &mut w.hits,
+            clicks: &mut w.clicks,
         };
         widget.paint(&mut cx, node, &style, rect);
     }
@@ -477,6 +483,24 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
                 }
             }
         }
+    }
+
+    // DOM bubble: an authored `onClick` fires child-first — after every
+    // descendant's handler ran — and a descendant's activation (pointer
+    // or keyboard) propagates up the ancestor chain. The target itself
+    // already emitted (`at_target`), so only the witnesses fire here.
+    if node.handlers.contains_key("onClick")
+        && !w.clicks.at_target.contains(&node.id)
+        && w.clicks
+            .paths
+            .iter()
+            .any(|p| p.iter().any(|id| id == &node.id))
+    {
+        w.events.push(WidgetEvent {
+            node: node.id.clone(),
+            handler: "onClick".into(),
+            value: crate::props::detail([]),
+        });
     }
 
     // Trigger activation for click-to-open overlays: a click-sensing
@@ -832,8 +856,11 @@ fn overlay_contents(
         frame: w.frame.clone(),
         inh: Some(style.clone()),
         // The overlay layer is its own hit surface: activations inside a
-        // popup serve nested triggers, never the page walk's.
+        // popup serve nested triggers, never the page walk's. The click
+        // log is shared — a popup child's activation still bubbles
+        // through the page ancestors the DOM tree gives it.
         hits: crate::HitLog::default(),
+        clicks: std::mem::take(&mut w.clicks),
     };
     inner.ancestors.push(node.id.clone());
     {
@@ -846,6 +873,7 @@ fn overlay_contents(
             now: inner.now,
             ancestors: &ancestors,
             hits: &mut inner.hits,
+            clicks: &mut inner.clicks,
         };
         widget.paint(&mut cx, node, &style, content_rect);
     }
@@ -875,6 +903,11 @@ fn overlay_contents(
         }
     }
     paint_overlays(&mut inner);
+    // Hand the click log back: paths witnessed inside this overlay keep
+    // propagating to later sibling overlays' containers. (A bubble from
+    // overlay content back to the page walk's containers can't run —
+    // the page unwind finished before this layer painted.)
+    w.clicks = std::mem::take(&mut inner.clicks);
 }
 
 /// A child a named slot pulls out of the scroll region — modal.ts puts
