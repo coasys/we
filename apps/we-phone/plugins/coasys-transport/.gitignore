@@ -1,0 +1,6 @@
+# Written by scripts/build-android-rust.sh and scripts/build-ios.sh from the Rust library.
+/android/src/main/java/uniffi/
+/android/build/
+/android/.gradle/
+/ios/Sources/CoasysTransportPlugin/Generated/
+/ios/Frameworks/
