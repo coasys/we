@@ -106,7 +106,8 @@ impl RendererApp {
             value,
         } in events
         {
-            self.runtime.dispatch(&mut self.host, &node, &handler, value);
+            self.runtime
+                .dispatch(&mut self.host, &node, &handler, value);
         }
     }
 

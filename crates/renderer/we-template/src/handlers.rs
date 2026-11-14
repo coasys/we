@@ -46,12 +46,7 @@ fn local_owner(scope: &Scope, field: &str) -> Option<NodeId> {
 }
 
 /// One token's work, with `event` in scope.
-fn run_token(
-    token: &HandlerToken,
-    scope: &Scope,
-    event: &Value,
-    cx: &mut HandlerCx,
-) {
+fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
     match token {
         HandlerToken::SetLocal {
             field,
@@ -60,9 +55,8 @@ fn run_token(
             ..
         } => {
             let Some(owner) = local_owner(scope, field) else {
-                cx.warnings.push(
-                    format!("$setLocal: no $localState in scope for {field:?}").into(),
-                );
+                cx.warnings
+                    .push(format!("$setLocal: no $localState in scope for {field:?}").into());
                 return;
             };
             if let Some(spec) = merge {
@@ -78,7 +72,8 @@ fn run_token(
                         merged.insert(k.clone(), v.clone());
                     }
                 }
-                cx.host.set_local(&owner, field, Value::Obj(Arc::new(merged)));
+                cx.host
+                    .set_local(&owner, field, Value::Obj(Arc::new(merged)));
             } else {
                 let v = value
                     .as_ref()
@@ -89,9 +84,8 @@ fn run_token(
         }
         HandlerToken::ToggleLocal { field, .. } => {
             let Some(owner) = local_owner(scope, field) else {
-                cx.warnings.push(
-                    format!("$toggleLocal: no $localState in scope for {field:?}").into(),
-                );
+                cx.warnings
+                    .push(format!("$toggleLocal: no $localState in scope for {field:?}").into());
                 return;
             };
             let next = !cx.host.get_local(&owner, field).truthy();
@@ -99,9 +93,8 @@ fn run_token(
         }
         HandlerToken::ToggleLocalIn { field, value, .. } => {
             let Some(owner) = local_owner(scope, field) else {
-                cx.warnings.push(
-                    format!("$toggleLocalIn: no $localState in scope for {field:?}").into(),
-                );
+                cx.warnings
+                    .push(format!("$toggleLocalIn: no $localState in scope for {field:?}").into());
                 return;
             };
             let member = value
@@ -125,11 +118,10 @@ fn run_token(
                 }
                 None => list.push(member),
             }
-            cx.host.set_local(&owner, field, Value::List(Arc::new(list)));
+            cx.host
+                .set_local(&owner, field, Value::List(Arc::new(list)));
         }
-        HandlerToken::Invoke {
-            target, args, ..
-        } => {
+        HandlerToken::Invoke { target, args, .. } => {
             // Args evaluate at call time, with `event` in scope — the same
             // rule WE applies to every handler token (`resolveInvokeProp`).
             let evaluated: Vec<Value> = match args {
@@ -143,9 +135,8 @@ fn run_token(
             match cx.host.invoke(target, evaluated) {
                 Invoked::Done(_) => {}
                 Invoked::Pending(_) => {
-                    cx.warnings.push(
-                        format!("$invoke {target:?}: pending calls land in E3b").into(),
-                    );
+                    cx.warnings
+                        .push(format!("$invoke {target:?}: pending calls land in E3b").into());
                 }
             }
         }
@@ -159,14 +150,13 @@ fn run_token(
             let branch = if met.truthy() { then } else { else_ };
             if let Some(branch) = branch {
                 for token in handler_tokens(branch) {
-                    run_token(&token, scope, event, cx);
+                    run_token(&token, scope, cx);
                 }
             }
         }
         other => {
-            cx.warnings.push(
-                format!("handler token not run this stage: {:?}", other.to_json()).into(),
-            );
+            cx.warnings
+                .push(format!("handler token not run this stage: {:?}", other.to_json()).into());
         }
     }
 }
@@ -178,6 +168,6 @@ pub fn run(tokens: &[HandlerToken], scope: &Scope, event: Value, cx: &mut Handle
     call_scope.bind("event", event.clone());
     call_scope.bind("arg", event.clone());
     for token in tokens {
-        run_token(token, &call_scope, &event, cx);
+        run_token(token, &call_scope, cx);
     }
 }

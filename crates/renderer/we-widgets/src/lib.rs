@@ -140,9 +140,7 @@ impl<'a> PaintCx<'a> {
     ) -> egui::Response {
         let id = self.ui.scope_id().with(("we-click", node.as_str(), part));
         let response = self.ui.interact(rect, id, egui::Sense::click());
-        response.widget_info(|| {
-            egui::WidgetInfo::labeled(role, true, text.to_string())
-        });
+        response.widget_info(|| egui::WidgetInfo::labeled(role, true, text.to_string()));
         response
     }
 }

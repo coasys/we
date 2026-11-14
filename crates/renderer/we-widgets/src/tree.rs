@@ -104,8 +104,12 @@ impl Widget for TreeItem {
         let mut parts = vec![PartSpec::nested("row", Direction::Row, row_parts)];
         if Self::open(node) {
             parts.push(
-                PartSpec::group("children", Pick::Named("children".into()), Direction::Column)
-                    .indented(INDENT),
+                PartSpec::group(
+                    "children",
+                    Pick::Named("children".into()),
+                    Direction::Column,
+                )
+                .indented(INDENT),
             );
         }
         Some(PartsSpec {
@@ -133,7 +137,11 @@ impl Widget for TreeItem {
         if Self::has_nested(node) {
             // The caret — ▸ closed / ▾ open; its own click toggles open.
             if let Some(caret) = cx.parts.get(&(node.id.clone(), "caret")).copied() {
-                let caret_label = if Self::open(node) { "collapse" } else { "expand" };
+                let caret_label = if Self::open(node) {
+                    "collapse"
+                } else {
+                    "expand"
+                };
                 let caret_response =
                     cx.interact_label(caret, caret_label, egui::Role::Button, &node.id, "caret");
                 // A triangle, not a glyph — the kittest font set has no ▸/▾.

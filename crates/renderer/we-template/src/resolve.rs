@@ -20,9 +20,7 @@ use we_expr::{eval, ParseCache, Value};
 
 use crate::handler::HandlerToken;
 use crate::node::{JsonMap, SchemaChild, SchemaNode};
-use crate::resolved::{
-    HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope, Transition,
-};
+use crate::resolved::{HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope, Transition};
 use crate::scope::{LocalDecl, LocalNs, LocalScope, ScopeEnv, StoreBag};
 use crate::{Host, LocalState};
 
@@ -174,12 +172,10 @@ fn each_key(items: &[Value], index: usize) -> String {
             _ => None,
         }
     };
-    let keyed = !items.is_empty()
-        && items.iter().all(|item| row_id(item).is_some())
-        && {
-            let mut seen = HashSet::new();
-            items.iter().all(|item| seen.insert(row_id(item).unwrap()))
-        };
+    let keyed = !items.is_empty() && items.iter().all(|item| row_id(item).is_some()) && {
+        let mut seen = HashSet::new();
+        items.iter().all(|item| seen.insert(row_id(item).unwrap()))
+    };
     if keyed {
         row_id(&items[index]).unwrap()
     } else {
@@ -295,8 +291,7 @@ fn resolve_node(
             let id = cx.node_id(path);
             cx.live.insert(id.clone());
             cx.parents.insert(id.clone(), parent.clone());
-            let children =
-                resolve_children(node.children.as_deref(), scope, &id, path, decls, cx);
+            let children = resolve_children(node.children.as_deref(), scope, &id, path, decls, cx);
             vec![ResolvedChild::Node(Box::new(ResolvedNode {
                 id,
                 ty: format!("$todo:{ty}").into(),
@@ -414,7 +409,7 @@ fn resolve_node(
                 handlers,
                 slot: node.slot.as_deref().map(Into::into),
                 children,
-                transition: props.and_then(|p| Transition::from_props(p)),
+                transition: props.and_then(Transition::from_props),
             }))]
         }
         // A fragment — no `type`: its children splice in where it sat.

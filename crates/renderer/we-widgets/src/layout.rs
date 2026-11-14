@@ -172,7 +172,9 @@ fn len(value: Option<&Value>) -> Len {
             if s == "auto" {
                 Len::Auto
             } else if let Some(pct) = s.strip_suffix('%') {
-                pct.parse::<f32>().map(|p| Len::Pct(p / 100.0)).unwrap_or(Len::Auto)
+                pct.parse::<f32>()
+                    .map(|p| Len::Pct(p / 100.0))
+                    .unwrap_or(Len::Auto)
             } else if let Some(px) = s.strip_suffix("px") {
                 px.parse::<f32>().map(Len::Px).unwrap_or(Len::Auto)
             } else if let Some(px) = token_px(s) {
@@ -293,10 +295,18 @@ pub(crate) fn node_style(node: &ResolvedNode) -> taffy::Style {
             height: lpa(prop(node, "maxHeight")),
         },
         padding: taffy::Rect {
-            left: lp(prop(node, "pl").or_else(|| prop(node, "px")).or_else(|| prop(node, "p"))),
-            right: lp(prop(node, "pr").or_else(|| prop(node, "px")).or_else(|| prop(node, "p"))),
-            top: lp(prop(node, "pt").or_else(|| prop(node, "py")).or_else(|| prop(node, "p"))),
-            bottom: lp(prop(node, "pb").or_else(|| prop(node, "py")).or_else(|| prop(node, "p"))),
+            left: lp(prop(node, "pl")
+                .or_else(|| prop(node, "px"))
+                .or_else(|| prop(node, "p"))),
+            right: lp(prop(node, "pr")
+                .or_else(|| prop(node, "px"))
+                .or_else(|| prop(node, "p"))),
+            top: lp(prop(node, "pt")
+                .or_else(|| prop(node, "py"))
+                .or_else(|| prop(node, "p"))),
+            bottom: lp(prop(node, "pb")
+                .or_else(|| prop(node, "py"))
+                .or_else(|| prop(node, "p"))),
         },
         // ax is the main axis, ay the cross — WE's DS prop rule.
         justify_content: justify(prop(node, "ax")).unwrap_or(JustifyContent::NORMAL),
@@ -316,8 +326,14 @@ fn part_style(spec: &PartSpec) -> taffy::Style {
             Direction::Column => FlexDirection::Column,
         },
         size: taffy::Size {
-            width: spec.width.map(Dimension::length).unwrap_or(Dimension::auto()),
-            height: spec.height.map(Dimension::length).unwrap_or(Dimension::auto()),
+            width: spec
+                .width
+                .map(Dimension::length)
+                .unwrap_or(Dimension::auto()),
+            height: spec
+                .height
+                .map(Dimension::length)
+                .unwrap_or(Dimension::auto()),
         },
         padding: taffy::Rect {
             left: LengthPercentage::length(spec.indent),
@@ -364,9 +380,14 @@ impl<'a> Builder<'a> {
         }
         let ctx = Ctx::Part(owner.clone(), spec.name);
         if kids.is_empty() {
-            self.tree.new_leaf_with_context(part_style(spec), ctx).unwrap()
+            self.tree
+                .new_leaf_with_context(part_style(spec), ctx)
+                .unwrap()
         } else {
-            let id = self.tree.new_with_children(part_style(spec), &kids).unwrap();
+            let id = self
+                .tree
+                .new_with_children(part_style(spec), &kids)
+                .unwrap();
             self.tree.set_node_context(id, Some(ctx)).unwrap();
             id
         }
@@ -385,17 +406,18 @@ impl<'a> Builder<'a> {
                         egui::Color32::WHITE,
                     )
                 });
-                self.tree.new_leaf_with_context(
-                    taffy::Style {
-                        size: taffy::Size {
-                            width: Dimension::length(galley.size().x),
-                            height: Dimension::length(galley.size().y),
+                self.tree
+                    .new_leaf_with_context(
+                        taffy::Style {
+                            size: taffy::Size {
+                                width: Dimension::length(galley.size().x),
+                                height: Dimension::length(galley.size().y),
+                            },
+                            ..Default::default()
                         },
-                        ..Default::default()
-                    },
-                    Ctx::Text(owner.clone(), text.clone()),
-                )
-                .unwrap()
+                        Ctx::Text(owner.clone(), text.clone()),
+                    )
+                    .unwrap()
             }
         }
     }
@@ -436,7 +458,9 @@ impl<'a> Builder<'a> {
             if style.size.height == Dimension::auto() {
                 style.size.height = Dimension::length(want.y);
             }
-            self.tree.new_leaf_with_context(style, Ctx::Node(node.id.clone())).unwrap()
+            self.tree
+                .new_leaf_with_context(style, Ctx::Node(node.id.clone()))
+                .unwrap()
         } else {
             let id = self.tree.new_with_children(style, &kids).unwrap();
             self.tree
@@ -449,12 +473,7 @@ impl<'a> Builder<'a> {
 
 /// Lay out `root` inside `rect` — the frame calls this when the resolve
 /// revision or the rect changed, and keeps the [`Layout`] until then.
-pub fn layout(
-    cx: &MeasureCx,
-    registry: &Registry,
-    root: &ResolvedNode,
-    rect: Rect,
-) -> Layout {
+pub fn layout(cx: &MeasureCx, registry: &Registry, root: &ResolvedNode, rect: Rect) -> Layout {
     let mut b = Builder {
         tree: TaffyTree::new(),
         cx,

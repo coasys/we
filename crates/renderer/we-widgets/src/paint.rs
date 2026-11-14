@@ -7,7 +7,6 @@ use crate::{EditState, Layout, PaintCx, Registry, WidgetEvent};
 
 /// Paint `root` at the rects in `layout`, into `ui`. Events a widget emits
 /// land in `events`; the frame drains them into `Runtime::dispatch`.
-#[allow(clippy::too_many_arguments)]
 pub fn paint(
     ui: &mut egui::Ui,
     registry: &Registry,
@@ -28,40 +27,50 @@ pub fn paint(
             ui.visuals().text_color(),
         );
     }
-    let mut ancestors = Vec::new();
-    paint_node(ui, registry, root, layout, events, edit, now, &mut ancestors);
+    let mut w = Walk {
+        ui,
+        registry,
+        layout,
+        events,
+        edit,
+        now,
+        ancestors: Vec::new(),
+    };
+    paint_node(&mut w, root);
 }
 
-fn paint_node(
-    ui: &mut egui::Ui,
-    registry: &Registry,
-    node: &ResolvedNode,
-    layout: &Layout,
-    events: &mut Vec<WidgetEvent>,
-    edit: &mut EditState,
+/// The walk's shared state — everything but the node being painted.
+struct Walk<'a> {
+    ui: &'a mut egui::Ui,
+    registry: &'a Registry,
+    layout: &'a Layout,
+    events: &'a mut Vec<WidgetEvent>,
+    edit: &'a mut EditState,
     now: f64,
-    ancestors: &mut Vec<NodeId>,
-) {
-    let Some(rect) = layout.rects.get(&node.id).copied() else {
+    ancestors: Vec<NodeId>,
+}
+
+fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
+    let Some(rect) = w.layout.rects.get(&node.id).copied() else {
         return;
     };
-    let widget = registry.widget_for(&node.ty);
-    ancestors.push(node.id.clone());
+    let widget = w.registry.widget_for(&node.ty);
+    w.ancestors.push(node.id.clone());
     {
         let mut cx = PaintCx {
-            ui,
-            events,
-            parts: &layout.parts,
-            edit,
-            now,
-            ancestors: &ancestors[..ancestors.len() - 1],
+            ui: w.ui,
+            events: w.events,
+            parts: &w.layout.parts,
+            edit: w.edit,
+            now: w.now,
+            ancestors: &w.ancestors[..w.ancestors.len() - 1],
         };
         widget.paint(&mut cx, node, &crate::style_of(node), rect);
     }
     for child in &node.children {
         if let ResolvedChild::Node(n) = child {
-            paint_node(ui, registry, n, layout, events, edit, now, ancestors);
+            paint_node(w, n);
         }
     }
-    ancestors.pop();
+    w.ancestors.pop();
 }

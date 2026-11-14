@@ -59,10 +59,12 @@ impl LocalNs {
 
     /// The innermost declaration of `field`, if any.
     pub fn owner(&self, field: &str) -> Option<(&NodeId, &LocalDecl)> {
-        self.decls
-            .iter()
-            .rev()
-            .find_map(|scope| scope.fields.get_key_value(field).map(|(_, d)| (&scope.node, d)))
+        self.decls.iter().rev().find_map(|scope| {
+            scope
+                .fields
+                .get_key_value(field)
+                .map(|(_, d)| (&scope.node, d))
+        })
     }
 }
 
@@ -98,7 +100,10 @@ pub struct ScopeEnv<'a> {
 
 impl Env for ScopeEnv<'_> {
     fn root(&self, name: &str) -> Option<Value> {
-        self.scope.get(name).cloned().or_else(|| self.bag.root(name))
+        self.scope
+            .get(name)
+            .cloned()
+            .or_else(|| self.bag.root(name))
     }
 
     fn call(&self, name: &str, args: &[Value]) -> Value {
@@ -285,7 +290,10 @@ impl RouteState {
     }
 
     pub fn path(&self) -> String {
-        self.inner.read().map(|i| i.path.clone()).unwrap_or_default()
+        self.inner
+            .read()
+            .map(|i| i.path.clone())
+            .unwrap_or_default()
     }
 
     /// A param's value — `routeStore.params.<name>`. Absent → `Undefined`.
@@ -356,7 +364,10 @@ impl RouteState {
 
     /// Where `navigate` has been, first to last.
     pub fn history(&self) -> Vec<String> {
-        self.inner.read().map(|i| i.history.clone()).unwrap_or_default()
+        self.inner
+            .read()
+            .map(|i| i.history.clone())
+            .unwrap_or_default()
     }
 
     /// The store object expressions read.

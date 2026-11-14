@@ -35,13 +35,19 @@ fn row_with_gap_and_fixed_children() {
     let a = node(
         "Column",
         "r/a",
-        &[("width", we_expr::Value::from("100px")), ("height", we_expr::Value::from("20px"))],
+        &[
+            ("width", we_expr::Value::from("100px")),
+            ("height", we_expr::Value::from("20px")),
+        ],
     );
 
     let b = node(
         "Column",
         "r/b",
-        &[("width", we_expr::Value::from("40px")), ("height", we_expr::Value::from("20px"))],
+        &[
+            ("width", we_expr::Value::from("40px")),
+            ("height", we_expr::Value::from("20px")),
+        ],
     );
 
     row.children = vec![
@@ -50,7 +56,7 @@ fn row_with_gap_and_fixed_children() {
     ];
 
     let registry = Registry::with_builtins();
-    let mut out = std::cell::RefCell::new(None);
+    let out = std::cell::RefCell::new(None);
     let mut harness = egui_kittest::Harness::new_ui(|ui| {
         let cx = MeasureCx::new(ui.ctx());
         *out.borrow_mut() = Some(layout(

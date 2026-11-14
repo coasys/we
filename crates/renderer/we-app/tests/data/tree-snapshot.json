@@ -17,9 +17,7 @@
         { "id": "state-doing", "name": "Doing" },
         { "id": "state-done", "name": "Done" }
       ],
-      "involvementTypes": [
-        { "id": "inv-owner", "name": "Owner" }
-      ],
+      "involvementTypes": [{ "id": "inv-owner", "name": "Owner" }],
       "policy": { "sentences": ["everyone can read", "members can write"] }
     },
     "modules": {
@@ -40,10 +38,13 @@
     "templateStore": {
       "currentSwitcherId": "tpl-default",
       "switcherGroups": [
-        { "label": "Built-in", "templates": [
-          { "id": "tpl-default", "name": "Default", "editable": false },
-          { "id": "tpl-min", "name": "Minimal", "editable": true }
-        ] }
+        {
+          "label": "Built-in",
+          "templates": [
+            { "id": "tpl-default", "name": "Default", "editable": false },
+            { "id": "tpl-min", "name": "Minimal", "editable": true }
+          ]
+        }
       ]
     },
     "themeStore": {
@@ -66,12 +67,8 @@
       { "id": "sig-like", "name": "Like" },
       { "id": "sig-pin", "name": "Pin" }
     ],
-    "relationshipTypes": [
-      { "id": "rel-reply", "name": "Reply" }
-    ],
-    "topics": [
-      { "id": "topic-general", "name": "General" }
-    ]
+    "relationshipTypes": [{ "id": "rel-reply", "name": "Reply" }],
+    "topics": [{ "id": "topic-general", "name": "General" }]
   },
   "invokes": {}
 }

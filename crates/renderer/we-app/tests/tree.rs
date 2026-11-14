@@ -121,5 +121,9 @@ fn node_count_and_resolve_time() {
     for w in s.warnings.iter().take(8) {
         eprintln!("  warn: {w}");
     }
-    assert!(s.nodes > 100, "tree panel should resolve ~200 nodes: {}", s.nodes);
+    assert!(
+        s.nodes > 100,
+        "tree panel should resolve ~200 nodes: {}",
+        s.nodes
+    );
 }

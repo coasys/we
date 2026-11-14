@@ -155,7 +155,9 @@ impl Runtime {
     /// a DOM event bubbles (`tree-item-select` reaches the `we-tree` above).
     /// The handler's captured scope is its own; `event` binds on top.
     pub fn dispatch(&mut self, host: &mut dyn Host, node: &NodeId, name: &str, event: Value) {
-        let Some(root) = self.resolved.clone() else { return };
+        let Some(root) = self.resolved.clone() else {
+            return;
+        };
         let mut at = Some(node.clone());
         while let Some(id) = at {
             let Some(target) = find_node(&root, &id) else {

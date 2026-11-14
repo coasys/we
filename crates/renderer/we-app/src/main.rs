@@ -48,14 +48,20 @@ fn parse_args() -> Args {
     while let Some(arg) = rest.next() {
         match arg.as_str() {
             "--bundle" => {
-                args.bundle = rest.next().unwrap_or_else(|| panic!("--bundle needs a path"));
+                args.bundle = rest
+                    .next()
+                    .unwrap_or_else(|| panic!("--bundle needs a path"));
             }
             "--snapshot" => {
-                args.snapshot =
-                    Some(rest.next().unwrap_or_else(|| panic!("--snapshot needs a path")));
+                args.snapshot = Some(
+                    rest.next()
+                        .unwrap_or_else(|| panic!("--snapshot needs a path")),
+                );
             }
             "--route" => {
-                args.route = rest.next().unwrap_or_else(|| panic!("--route needs a path"));
+                args.route = rest
+                    .next()
+                    .unwrap_or_else(|| panic!("--route needs a path"));
             }
             "--offline" => {}
             "--help" | "-h" => {
@@ -76,8 +82,8 @@ fn parse_args() -> Args {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn load_bundle(path: &str) -> Bundle {
-    let text = std::fs::read_to_string(path)
-        .unwrap_or_else(|e| panic!("cannot read bundle {path}: {e}"));
+    let text =
+        std::fs::read_to_string(path).unwrap_or_else(|e| panic!("cannot read bundle {path}: {e}"));
     let bundle = Bundle::parse(&text).unwrap_or_else(|e| panic!("bundle did not parse: {e}"));
     if !bundle.is_supported() {
         panic!(
@@ -108,9 +114,7 @@ fn run_native(args: Args) -> eframe::Result<()> {
                 .find(|p| p.get("id").and_then(|i| i.as_str()) == Some("tree"))
                 .or_else(|| panels.first())
         })
-        .and_then(|panel| {
-            we_template::SchemaNode::deserialize(panel.get("node").cloned()?).ok()
-        })
+        .and_then(|panel| we_template::SchemaNode::deserialize(panel.get("node").cloned()?).ok())
         .unwrap_or_else(|| panic!("bundle has no panels to render"));
 
     let bag = match &args.snapshot {
@@ -125,7 +129,13 @@ fn run_native(args: Args) -> eframe::Result<()> {
     };
     let route = RouteState::new(&args.route);
     let shell = Shell {
-        panel: RendererApp::new(schema, "tree", Arc::new(bag), route, Registry::with_builtins()),
+        panel: RendererApp::new(
+            schema,
+            "tree",
+            Arc::new(bag),
+            route,
+            Registry::with_builtins(),
+        ),
     };
 
     let options = eframe::NativeOptions {

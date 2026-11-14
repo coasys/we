@@ -19,10 +19,7 @@ fn rig(node: SchemaNode, bag: StoreBag) -> (Runtime, StaticHost, LocalState) {
 }
 
 /// The same, over a shared bag (tests that mutate it mid-flight).
-fn rig_arc(
-    node: SchemaNode,
-    bag: Arc<StoreBag>,
-) -> (Runtime, StaticHost, LocalState) {
+fn rig_arc(node: SchemaNode, bag: Arc<StoreBag>) -> (Runtime, StaticHost, LocalState) {
     let route = RouteState::new("/");
     let locals = LocalState::new();
     let route_rev = route.clone();
@@ -71,8 +68,14 @@ fn if_false_resolves_the_else_branch() {
     let root = rt.frame(&mut host).clone();
     let mut tys = Vec::new();
     types(&root, &mut tys);
-    assert!(tys.iter().any(|t| t == "ElseNode"), "else must resolve: {tys:?}");
-    assert!(!tys.iter().any(|t| t == "ThenNode"), "then must not: {tys:?}");
+    assert!(
+        tys.iter().any(|t| t == "ElseNode"),
+        "else must resolve: {tys:?}"
+    );
+    assert!(
+        !tys.iter().any(|t| t == "ThenNode"),
+        "then must not: {tys:?}"
+    );
 }
 
 #[test]
@@ -94,7 +97,10 @@ fn if_true_resolves_the_then_branch() {
     let root = rt.frame(&mut host).clone();
     let mut tys = Vec::new();
     types(&root, &mut tys);
-    assert!(tys.iter().any(|t| t == "ThenNode"), "then must resolve: {tys:?}");
+    assert!(
+        tys.iter().any(|t| t == "ThenNode"),
+        "then must resolve: {tys:?}"
+    );
     assert!(!tys.iter().any(|t| t == "ElseNode"));
 }
 
@@ -154,8 +160,14 @@ fn each_rows_keep_key_based_ids_when_a_row_is_inserted_first() {
     let first = rt.frame(&mut host).clone();
     let mut first_ids = Vec::new();
     ids(&first, &mut first_ids);
-    let a = first_ids.iter().find(|i| i.as_str().ends_with("#a")).cloned();
-    let b = first_ids.iter().find(|i| i.as_str().ends_with("#b")).cloned();
+    let a = first_ids
+        .iter()
+        .find(|i| i.as_str().ends_with("#a"))
+        .cloned();
+    let b = first_ids
+        .iter()
+        .find(|i| i.as_str().ends_with("#b"))
+        .cloned();
     let (a, b) = (a.expect("row a must exist"), b.expect("row b must exist"));
 
     bag.set_root("rows", rows(&["z", "a", "b"]));
@@ -216,11 +228,8 @@ fn a_local_state_handler_bumps_exactly_one_counter() {
     let root = rt.frame(&mut host).clone();
     let owner = root.id.clone();
     // Counters after StaticHost bound routeStore into the bag.
-    let (bag_rev, screen_rev, local_rev) = (
-        host.bag.version(),
-        host.route.version(),
-        locals.version(),
-    );
+    let (bag_rev, screen_rev, local_rev) =
+        (host.bag.version(), host.route.version(), locals.version());
 
     rt.dispatch(&mut host, &owner, "onFlip", Value::Null);
 
@@ -290,11 +299,8 @@ fn handler_bubbles_to_an_ancestor() {
                 .collect(),
         )),
     );
-    rt.dispatch(
-        &mut host,
-        &child,
-        "onSelect",
-        Value::Obj(Arc::new(detail)),
-    );
-    assert!(locals.get(&root.id, "sel").strict_eq(&Value::from("group|dna")));
+    rt.dispatch(&mut host, &child, "onSelect", Value::Obj(Arc::new(detail)));
+    assert!(locals
+        .get(&root.id, "sel")
+        .strict_eq(&Value::from("group|dna")));
 }
