@@ -7156,6 +7156,19 @@
         "executorRestartPending": {
           "type": "boolean"
         },
+        "executorConfigFile": {
+          "type": "string"
+        },
+        "executorConfigRows": {
+          "type": "array",
+          "properties": ["id", "key", "value", "kind", "choice", "editable", "note"]
+        },
+        "executorLogTail": {
+          "type": "string"
+        },
+        "canRestartExecutor": {
+          "type": "boolean"
+        },
         "pendingConsent": {
           "type": "object",
           "properties": ["kind", "title", "message", "app", "peerId"]
@@ -7215,6 +7228,8 @@
         "importDatabase",
         "setMcpPort",
         "restartExecutor",
+        "setExecutorConfigValue",
+        "loadExecutorLogTail",
         "approveConsent",
         "denyConsent",
         "dismissConsentSecret"
@@ -7237,6 +7252,7 @@
         "loadAuthorizedApps",
         "loadNetworkMetrics",
         "loadPeerInfos",
+        "loadExecutorLogTail",
         "dismissConsentSecret"
       ],
       "destructive": [
@@ -7276,7 +7292,8 @@
         "setMcpEnabled",
         "setLogLevel",
         "removeLogLevel",
-        "setMcpPort"
+        "setMcpPort",
+        "setExecutorConfigValue"
       ]
     },
     {

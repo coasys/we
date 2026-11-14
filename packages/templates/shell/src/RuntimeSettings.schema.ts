@@ -553,6 +553,211 @@ export const logging: SchemaNode = {
   },
 };
 
+/**
+ * The executor's own settings, as its config file holds them — where the app runs the person's
+ * executor and that executor keeps one (`runtimeStore.executorConfigFile`).
+ *
+ * Every key the executor lets be written is a row: a switch or a field where the value is one,
+ * shown as it is where it is a structure (log levels and MCP have their own sections above) or a
+ * flag of this start sets it. A change takes effect at the next start, which "Restart now" asks the
+ * executor for; the app starts it again with the same arguments. Below them, the newest lines of
+ * this run's log.
+ */
+export const executorSettings: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'runtimeStore.canConfigureExecutor && runtimeStore.executorConfigFile' },
+    then: {
+      type: 'Column',
+      props: { gap: '300' },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '200', ay: 'center' },
+          children: [
+            { type: 'we-icon', props: { name: 'sliders-horizontal', color: 'text-muted' } },
+            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Startup settings'] },
+          ],
+        },
+        {
+          type: 'Column',
+          props: { gap: '0' },
+          children: [
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-muted' },
+              children: [{ $: '`Changes apply when ${templateStore.brand.name} restarts.`' }],
+            },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', fontFamily: 'mono', color: 'text-muted' },
+              children: [{ $: 'runtimeStore.executorConfigFile' }],
+            },
+          ],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'runtimeStore.executorRestartPending && runtimeStore.canRestartExecutor' },
+            then: {
+              type: 'Row',
+              props: { gap: '300', ay: 'center', ax: 'between', bg: 'surface', r: '300', px: '300', py: '200' },
+              children: [
+                {
+                  type: 'we-text',
+                  props: { variant: 'footnote' },
+                  children: ['Saved. Restart to apply.'],
+                },
+                {
+                  type: 'we-button',
+                  props: {
+                    text: 'Restart now',
+                    size: 'sm',
+                    variant: 'soft',
+                    loading: { $: "'restartExecutor' in runtimeStore.pending" },
+                    onClick: { $invoke: 'runtimeStore.restartExecutor' },
+                  },
+                },
+              ],
+            },
+          },
+        },
+        {
+          type: 'Column',
+          props: { gap: '100' },
+          children: [
+            {
+              type: '$each',
+              props: { items: { $: 'runtimeStore.executorConfigRows' }, as: 'row' },
+              children: [
+                {
+                  type: 'Row',
+                  props: { gap: '300', ay: 'center', ax: 'between', py: '100', wrap: true },
+                  children: [
+                    {
+                      type: 'Column',
+                      props: { gap: '0', flex: '1 1 200px', minWidth: '0' },
+                      children: [
+                        {
+                          type: 'we-text',
+                          props: { variant: 'label', fontFamily: 'mono' },
+                          children: [{ $: 'row.key' }],
+                        },
+                        {
+                          type: '$if',
+                          props: {
+                            condition: { $: 'row.note' },
+                            then: {
+                              type: 'we-text',
+                              props: { variant: 'footnote', color: 'text-muted' },
+                              children: [{ $: 'row.note' }],
+                            },
+                          },
+                        },
+                      ],
+                    },
+                    {
+                      type: '$if',
+                      props: {
+                        condition: { $: "row.editable && row.kind == 'boolean'" },
+                        then: {
+                          // Three ways, not a switch: "Default" leaves the key to the executor, whose
+                          // own default may be either (`localhost` is on).
+                          type: 'we-select',
+                          props: {
+                            // The key beside it is text, not a label: this names the control.
+                            label: { $: 'row.key' },
+                            value: { $: 'row.choice' },
+                            options: [
+                              { label: 'Default', value: 'default' },
+                              { label: 'On', value: 'on' },
+                              { label: 'Off', value: 'off' },
+                            ],
+                            onChange: {
+                              $invoke: 'runtimeStore.setExecutorConfigValue',
+                              args: [{ $: 'row.key' }, { $: 'event.detail' }],
+                            },
+                          },
+                        },
+                        else: {
+                          type: '$if',
+                          props: {
+                            condition: { $: 'row.editable' },
+                            then: {
+                              type: 'we-input',
+                              props: {
+                                label: { $: 'row.key' },
+                                size: 'sm',
+                                width: '220px',
+                                type: { $: "row.kind == 'number' ? 'number' : 'text'" },
+                                value: { $: 'row.value' },
+                                placeholder: 'Default',
+                                onChange: {
+                                  $invoke: 'runtimeStore.setExecutorConfigValue',
+                                  args: [{ $: 'row.key' }, { $: 'event.detail' }],
+                                },
+                              },
+                            },
+                            else: {
+                              type: 'we-text',
+                              props: { variant: 'footnote', fontFamily: 'mono', color: 'text-muted', truncate: true },
+                              children: [{ $: 'row.value' }],
+                            },
+                          },
+                        },
+                      },
+                    },
+                  ],
+                },
+              ],
+            },
+          ],
+        },
+        {
+          type: 'Row',
+          props: { gap: '300', ay: 'center' },
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                text: { $: "local.showExecutorLog ? 'Refresh log' : 'Show log'" },
+                size: 'sm',
+                variant: 'soft',
+                loading: { $: "'loadExecutorLogTail' in runtimeStore.pending" },
+                onClick: [
+                  { $setLocal: 'showExecutorLog', value: true },
+                  { $invoke: 'runtimeStore.loadExecutorLogTail' },
+                ],
+              },
+            },
+          ],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'local.showExecutorLog && runtimeStore.executorLogTail' },
+            then: {
+              type: 'CodeEditor',
+              props: {
+                code: { $: 'runtimeStore.executorLogTail' },
+                // A record of what happened, not a setting: nothing typed here could be applied.
+                readOnly: true,
+                maxHeight: '50dvh',
+                styles: { width: '100%' },
+              },
+            },
+          },
+        },
+      ],
+    },
+  },
+};
+
+/** The executor settings section's own state: whether the log is open. */
+export const executorSettingsLocalState = {
+  showExecutorLog: { type: 'boolean' as const, initial: false },
+};
+
 /** Local state for the row that adds one. Declared by the page that renders `logging`. */
 export const loggingLocalState = {
   newLogCrate: { type: 'string', initial: '' },
