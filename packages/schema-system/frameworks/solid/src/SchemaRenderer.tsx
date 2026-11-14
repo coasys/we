@@ -1,6 +1,6 @@
 import type { EntityClass, QueryAdapter, RendererStores } from '@we/backend-shared';
 import { combineEntityRows, entityNamesOf, routeQuery } from '@we/backend-shared';
-import type { LocalFieldMeta, QueryDescriptor, ValidationRule } from '@we/schema-shared';
+import type { LocalFieldMeta, QueryDescriptor, RouteParamsBinding, ValidationRule } from '@we/schema-shared';
 import {
   applyThemeVars,
   deepUnwrap,
@@ -8,6 +8,9 @@ import {
   hasToken,
   isRelativePath,
   isTemplateElement,
+  localPersistKey,
+  localSyncSpec,
+  localWriteMirror,
   markReactive,
   newGestureOwner,
   noMemo,
@@ -15,6 +18,7 @@ import {
   REACTIVE_ACCESSOR,
   refusedProp,
   registerGestureOwner,
+  resolveLocalInitial,
   resolveProp,
   resolveQueryProp,
   runAsOwner,
@@ -680,53 +684,19 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
       // wins over `initial` on mount; writes go through the setter; $resetLocal
       // clears the stored copy (see meta.reset below). Files and functions have
       // no JSON form and are ignored.
-      const persistKey =
-        typeof field.persist === 'string' &&
-        field.type !== 'file' &&
-        field.type !== 'function' &&
-        typeof localStorage !== 'undefined'
-          ? `we-local:${field.persist}`
-          : null;
+      const persistKey = localPersistKey(field);
 
       // URL mirroring: view state (content type, sort, filters) syncs with a query
       // parameter through the host's $routeParams binding, so a shared link
       // reproduces the view. Serialized as plain text for strings, JSON otherwise.
-      const syncSpec =
-        field.syncParam && field.type !== 'file' && field.type !== 'function'
-          ? typeof field.syncParam === 'string'
-            ? { name: field.syncParam, push: false }
-            : { name: field.syncParam.name, push: field.syncParam.push ?? false }
-          : null;
-      const routeParams = stores.$routeParams as
-        | {
-            get(name: string): string | undefined;
-            set(name: string, value: string | null, o?: { push?: boolean }): void;
-          }
-        | undefined;
-      const decodeParam = (raw: string): unknown => {
-        if (field.type === 'string') return raw;
-        try {
-          return JSON.parse(raw);
-        } catch {
-          return raw;
-        }
-      };
-      const encodeParam = (v: unknown): string => (field.type === 'string' ? String(v) : JSON.stringify(v));
+      const syncSpec = localSyncSpec(field);
+      const routeParams = stores.$routeParams as RouteParamsBinding | undefined;
 
       // Precedence: URL param > persisted value > declared initial.
-      let initialValue = resolveInitial(rawInitial);
-      if (persistKey) {
-        try {
-          const storedRaw = localStorage.getItem(persistKey);
-          if (storedRaw !== null) initialValue = JSON.parse(storedRaw);
-        } catch {
-          // Corrupt entry — fall back to the declared initial.
-        }
-      }
-      if (syncSpec && routeParams) {
-        const fromUrl = routeParams.get(syncSpec.name);
-        if (fromUrl !== undefined) initialValue = decodeParam(fromUrl);
-      }
+      const initialValue = resolveLocalInitial(field, resolveInitial(rawInitial), {
+        routeParams,
+        storage: persistKey ? localStorage : undefined,
+      });
 
       const [get, set] = createSignal<unknown>(initialValue);
       accessors[name] = get;
@@ -738,17 +708,17 @@ function RenderNode({ node, stores, registry, context = {}, children }: RenderPr
         persistKey || (syncSpec && routeParams)
           ? (v) => {
               baseSetter(v);
-              if (persistKey) {
+              const mirror = localWriteMirror(field, v, declaredInitial);
+              if (mirror.store) {
                 try {
-                  localStorage.setItem(persistKey, JSON.stringify(v));
+                  localStorage.setItem(mirror.store.key, mirror.store.json);
                 } catch {
                   // Quota/serialization failure — the in-memory value still applies.
                 }
               }
-              if (syncSpec && routeParams) {
-                // Back at the declared initial → drop the param, keeping URLs clean.
-                const atDefault = JSON.stringify(v) === JSON.stringify(declaredInitial);
-                routeParams.set(syncSpec.name, atDefault ? null : encodeParam(v), { push: syncSpec.push });
+              // Back at the declared initial the param text is null → dropped, keeping URLs clean.
+              if (mirror.param && routeParams) {
+                routeParams.set(mirror.param.name, mirror.param.text, { push: mirror.param.push });
               }
             }
           : baseSetter;

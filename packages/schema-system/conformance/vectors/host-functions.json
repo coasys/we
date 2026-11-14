@@ -1,0 +1,976 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "reactors.1",
+      "note": "the reactors host source",
+      "fn": "reactors",
+      "options": {
+        "signals": [
+          {
+            "author": "did:a",
+            "value": "up"
+          },
+          {
+            "author": "did:b",
+            "value": "up"
+          }
+        ],
+        "profiles": [
+          {
+            "did": "did:a",
+            "name": "Ada",
+            "avatar": "a.png"
+          },
+          {
+            "did": "did:b",
+            "name": "Bram"
+          }
+        ],
+        "me": "did:b"
+      },
+      "result": {
+        "people": [
+          {
+            "did": "did:b",
+            "name": "Bram",
+            "avatar": "",
+            "value": 0,
+            "mine": true
+          },
+          {
+            "did": "did:a",
+            "name": "Ada",
+            "avatar": "a.png",
+            "value": 0,
+            "mine": false
+          }
+        ],
+        "total": 2,
+        "unresolved": 0
+      }
+    },
+    {
+      "id": "reactors.2",
+      "note": "the reactors host source",
+      "fn": "reactors",
+      "options": {
+        "signals": [
+          {
+            "author": "did:a",
+            "value": "up"
+          }
+        ],
+        "profiles": [],
+        "me": "did:me"
+      },
+      "result": {
+        "people": [
+          {
+            "did": "did:a",
+            "name": "",
+            "avatar": "",
+            "value": 0,
+            "mine": false
+          }
+        ],
+        "total": 1,
+        "unresolved": 0
+      }
+    },
+    {
+      "id": "reactors.3",
+      "note": "the reactors host source",
+      "fn": "reactors",
+      "options": {
+        "signals": [
+          {
+            "author": "did:a",
+            "value": "up"
+          },
+          {
+            "author": "did:c",
+            "value": "down"
+          }
+        ],
+        "profiles": [
+          {
+            "did": "did:a",
+            "name": "Ada"
+          }
+        ],
+        "me": "did:me",
+        "search": "ad"
+      },
+      "result": {
+        "people": [
+          {
+            "did": "did:a",
+            "name": "Ada",
+            "avatar": "",
+            "value": 0,
+            "mine": false
+          }
+        ],
+        "total": 2,
+        "unresolved": 1
+      }
+    },
+    {
+      "id": "reactors.4",
+      "note": "the reactors host source",
+      "fn": "reactors",
+      "options": {
+        "signals": [],
+        "profiles": [],
+        "me": "did:me"
+      },
+      "result": {
+        "people": [],
+        "total": 0,
+        "unresolved": 0
+      }
+    },
+    {
+      "id": "reactors.5",
+      "note": "the reactors host source",
+      "fn": "reactors",
+      "options": {
+        "$undefined": true
+      },
+      "result": {
+        "people": [],
+        "total": 0,
+        "unresolved": 0
+      }
+    },
+    {
+      "id": "reactions.6",
+      "note": "the reactions host source",
+      "fn": "reactions",
+      "options": {
+        "signals": [
+          {
+            "id": "s:1",
+            "author": "did:a",
+            "value": "up"
+          }
+        ],
+        "record": "r:1",
+        "type": "t:1",
+        "me": "did:me"
+      },
+      "result": [
+        {
+          "id": "s:1",
+          "author": "did:a",
+          "value": "up"
+        }
+      ]
+    },
+    {
+      "id": "reactions.7",
+      "note": "the reactions host source",
+      "fn": "reactions",
+      "options": {
+        "signals": [
+          {
+            "id": "s:1",
+            "author": "did:me",
+            "value": "up",
+            "signalTypeId": "t:1"
+          },
+          {
+            "id": "s:2",
+            "author": "did:a",
+            "value": "down",
+            "signalTypeId": "t:1"
+          }
+        ],
+        "record": "r:1",
+        "type": "t:1",
+        "me": "did:me"
+      },
+      "result": [
+        {
+          "id": "s:1",
+          "author": "did:me",
+          "value": "up",
+          "signalTypeId": "t:1"
+        },
+        {
+          "id": "s:2",
+          "author": "did:a",
+          "value": "down",
+          "signalTypeId": "t:1"
+        }
+      ]
+    },
+    {
+      "id": "reactions.8",
+      "note": "the reactions host source",
+      "fn": "reactions",
+      "options": {
+        "signals": [],
+        "record": "r:1",
+        "type": "t:1",
+        "me": "did:me"
+      },
+      "result": []
+    },
+    {
+      "id": "reactions.9",
+      "note": "the reactions host source",
+      "fn": "reactions",
+      "options": {
+        "signals": [
+          {
+            "author": "did:a",
+            "value": "up"
+          }
+        ]
+      },
+      "result": [
+        {
+          "author": "did:a",
+          "value": "up"
+        }
+      ]
+    },
+    {
+      "id": "reactions.10",
+      "note": "the reactions host source",
+      "fn": "reactions",
+      "options": {
+        "$undefined": true
+      },
+      "result": []
+    },
+    {
+      "id": "signalTally.11",
+      "note": "the signalTally host source",
+      "fn": "signalTally",
+      "options": {
+        "signals": [
+          {
+            "value": "up"
+          },
+          {
+            "value": "up"
+          },
+          {
+            "value": "down"
+          }
+        ]
+      },
+      "result": 0
+    },
+    {
+      "id": "signalTally.12",
+      "note": "the signalTally host source",
+      "fn": "signalTally",
+      "options": {
+        "signals": [
+          {
+            "author": "did:a",
+            "value": "up"
+          },
+          {
+            "author": "did:b",
+            "value": "down"
+          },
+          {
+            "author": "did:c",
+            "value": "up"
+          }
+        ],
+        "type": {
+          "id": "t:1",
+          "mode": "toggle"
+        }
+      },
+      "result": 0
+    },
+    {
+      "id": "signalTally.13",
+      "note": "the signalTally host source",
+      "fn": "signalTally",
+      "options": {
+        "signals": [
+          {
+            "value": 4
+          },
+          {
+            "value": 2
+          }
+        ],
+        "type": {
+          "mode": "average"
+        }
+      },
+      "result": 2
+    },
+    {
+      "id": "signalTally.14",
+      "note": "the signalTally host source",
+      "fn": "signalTally",
+      "options": {
+        "signals": []
+      },
+      "result": 0
+    },
+    {
+      "id": "signalTally.15",
+      "note": "the signalTally host source",
+      "fn": "signalTally",
+      "options": {
+        "$undefined": true
+      },
+      "result": 0
+    },
+    {
+      "id": "signalTypesByUse.16",
+      "note": "the signalTypesByUse host source",
+      "fn": "signalTypesByUse",
+      "options": {
+        "types": [
+          {
+            "id": "t:1",
+            "name": "up"
+          },
+          {
+            "id": "t:2",
+            "name": "star"
+          }
+        ],
+        "signals": [
+          {
+            "signalTypeId": "t:1",
+            "author": "did:a"
+          },
+          {
+            "signalTypeId": "t:1",
+            "author": "did:b"
+          },
+          {
+            "signalTypeId": "t:2",
+            "author": "did:c"
+          }
+        ],
+        "muted": []
+      },
+      "result": [
+        {
+          "id": "t:1",
+          "name": "up"
+        },
+        {
+          "id": "t:2",
+          "name": "star"
+        }
+      ]
+    },
+    {
+      "id": "signalTypesByUse.17",
+      "note": "the signalTypesByUse host source",
+      "fn": "signalTypesByUse",
+      "options": {
+        "of": "r:1",
+        "types": [
+          {
+            "id": "t:1",
+            "name": "up"
+          },
+          {
+            "id": "t:2",
+            "name": "star"
+          },
+          {
+            "id": "t:3",
+            "name": "wow"
+          }
+        ],
+        "signals": [
+          {
+            "signalTypeId": "t:2",
+            "author": "did:a"
+          }
+        ],
+        "muted": [],
+        "limit": 2
+      },
+      "result": [
+        {
+          "id": "t:2",
+          "name": "star"
+        },
+        {
+          "id": "t:1",
+          "name": "up"
+        }
+      ]
+    },
+    {
+      "id": "signalTypesByUse.18",
+      "note": "the signalTypesByUse host source",
+      "fn": "signalTypesByUse",
+      "options": {
+        "types": [
+          {
+            "id": "t:1"
+          }
+        ],
+        "signals": [
+          {
+            "signalTypeId": "t:1",
+            "author": "did:a"
+          },
+          {
+            "signalTypeId": "t:1",
+            "author": "did:muted"
+          }
+        ],
+        "muted": ["did:muted"]
+      },
+      "result": [
+        {
+          "id": "t:1"
+        }
+      ]
+    },
+    {
+      "id": "signalTypesByUse.19",
+      "note": "the signalTypesByUse host source",
+      "fn": "signalTypesByUse",
+      "options": {
+        "types": [],
+        "signals": [],
+        "muted": []
+      },
+      "result": []
+    },
+    {
+      "id": "signalTypesByUse.20",
+      "note": "the signalTypesByUse host source",
+      "fn": "signalTypesByUse",
+      "options": {
+        "$undefined": true
+      },
+      "result": []
+    },
+    {
+      "id": "involvement.21",
+      "note": "the involvement host source",
+      "fn": "involvement",
+      "options": {
+        "rows": [
+          {
+            "id": "i:1",
+            "nodeId": "r:1",
+            "did": "did:a",
+            "kind": "assignee"
+          },
+          {
+            "id": "i:2",
+            "nodeId": "r:1",
+            "did": "did:b",
+            "kind": "reviewer"
+          },
+          {
+            "id": "i:3",
+            "nodeId": "r:2",
+            "did": "did:c",
+            "kind": "interested"
+          }
+        ],
+        "types": [
+          {
+            "id": "it:1",
+            "semantic": "assignee",
+            "icon": "pin",
+            "color": "orange"
+          },
+          {
+            "id": "it:2",
+            "semantic": "reviewer"
+          }
+        ],
+        "me": "did:a"
+      },
+      "result": {
+        "byNode": {},
+        "answers": {},
+        "dids": []
+      }
+    },
+    {
+      "id": "involvement.22",
+      "note": "the involvement host source",
+      "fn": "involvement",
+      "options": {
+        "rows": [
+          {
+            "id": "i:1",
+            "nodeId": "r:1",
+            "did": "did:a",
+            "kind": "going",
+            "answer": "going"
+          },
+          {
+            "id": "i:2",
+            "nodeId": "r:1",
+            "did": "did:b",
+            "kind": "going",
+            "answer": "maybe"
+          }
+        ],
+        "types": [
+          {
+            "id": "it:1",
+            "semantic": "going"
+          }
+        ],
+        "me": "did:a",
+        "nodes": ["r:1"]
+      },
+      "result": {
+        "byNode": {},
+        "answers": {},
+        "dids": []
+      }
+    },
+    {
+      "id": "involvement.23",
+      "note": "the involvement host source",
+      "fn": "involvement",
+      "options": {
+        "rows": [],
+        "types": [],
+        "me": "did:me"
+      },
+      "result": {
+        "byNode": {},
+        "answers": {},
+        "dids": []
+      }
+    },
+    {
+      "id": "involvement.24",
+      "note": "the involvement host source",
+      "fn": "involvement",
+      "options": {
+        "rows": [
+          {
+            "nodeId": "r:1",
+            "did": "did:a",
+            "kind": "declined"
+          }
+        ],
+        "types": []
+      },
+      "result": {
+        "byNode": {},
+        "answers": {},
+        "dids": []
+      }
+    },
+    {
+      "id": "involvement.25",
+      "note": "the involvement host source",
+      "fn": "involvement",
+      "options": {
+        "$undefined": true
+      },
+      "result": {
+        "byNode": {},
+        "answers": {},
+        "dids": []
+      }
+    },
+    {
+      "id": "involvementMenu.26",
+      "note": "the involvementMenu host source",
+      "fn": "involvementMenu",
+      "options": {
+        "node": "r:1",
+        "entity": "TaskBlock",
+        "rows": [
+          {
+            "id": "i:1",
+            "nodeId": "r:1",
+            "did": "did:a",
+            "kind": "assignee"
+          }
+        ],
+        "types": [
+          {
+            "id": "it:1",
+            "semantic": "assignee",
+            "label": "Assignee"
+          }
+        ],
+        "members": [
+          {
+            "did": "did:a",
+            "name": "Ada"
+          },
+          {
+            "did": "did:me",
+            "name": "Me"
+          }
+        ],
+        "profiles": [],
+        "me": "did:me"
+      },
+      "result": []
+    },
+    {
+      "id": "involvementMenu.27",
+      "note": "the involvementMenu host source",
+      "fn": "involvementMenu",
+      "options": {
+        "node": "r:1",
+        "entity": "TaskBlock",
+        "rows": [],
+        "types": [
+          {
+            "id": "it:1",
+            "semantic": "assignee"
+          }
+        ],
+        "members": [
+          {
+            "did": "did:me",
+            "name": "Me"
+          }
+        ],
+        "me": "did:me",
+        "said": "Me"
+      },
+      "result": []
+    },
+    {
+      "id": "involvementMenu.28",
+      "note": "the involvementMenu host source",
+      "fn": "involvementMenu",
+      "options": {
+        "node": "r:1",
+        "entity": "TaskBlock",
+        "rows": [],
+        "types": [],
+        "members": [],
+        "me": "did:me"
+      },
+      "result": []
+    },
+    {
+      "id": "involvementMenu.29",
+      "note": "the involvementMenu host source",
+      "fn": "involvementMenu",
+      "options": {
+        "node": "r:9"
+      },
+      "result": []
+    },
+    {
+      "id": "involvementMenu.30",
+      "note": "the involvementMenu host source",
+      "fn": "involvementMenu",
+      "options": {
+        "$undefined": true
+      },
+      "result": []
+    },
+    {
+      "id": "voices.31",
+      "note": "the voices host source",
+      "fn": "voices",
+      "options": {
+        "summary": {
+          "type": "signals",
+          "voices": [
+            {
+              "author": "did:a",
+              "cards": 5,
+              "mean": 0.8
+            },
+            {
+              "author": "did:b",
+              "cards": 3,
+              "mean": 0.4
+            }
+          ]
+        },
+        "param": "did:b=0",
+        "profiles": [
+          {
+            "did": "did:a",
+            "name": "Ada"
+          },
+          {
+            "did": "did:b",
+            "name": "Bram"
+          }
+        ],
+        "me": "did:a"
+      },
+      "result": [
+        {
+          "did": "did:a",
+          "name": "Ada",
+          "avatar": "",
+          "cards": 5,
+          "mean": 0.8,
+          "weight": 100,
+          "share": 100,
+          "mine": true,
+          "pretend": false
+        },
+        {
+          "did": "did:b",
+          "name": "Bram",
+          "avatar": "",
+          "cards": 3,
+          "mean": 0.4,
+          "weight": 0,
+          "share": 0,
+          "mine": false,
+          "pretend": false
+        }
+      ]
+    },
+    {
+      "id": "voices.32",
+      "note": "the voices host source",
+      "fn": "voices",
+      "options": {
+        "summary": {
+          "voices": [
+            {
+              "author": "did:a",
+              "cards": 2,
+              "mean": 0.5
+            },
+            {
+              "author": "did:b",
+              "cards": 2,
+              "mean": 1
+            }
+          ]
+        },
+        "param": "did:a=30,did:b=40",
+        "profiles": [],
+        "me": "did:b"
+      },
+      "result": [
+        {
+          "did": "did:a",
+          "name": "did:a",
+          "avatar": "",
+          "cards": 2,
+          "mean": 0.5,
+          "weight": 30,
+          "share": 43,
+          "mine": false,
+          "pretend": false
+        },
+        {
+          "did": "did:b",
+          "name": "did:b",
+          "avatar": "",
+          "cards": 2,
+          "mean": 1,
+          "weight": 40,
+          "share": 57,
+          "mine": true,
+          "pretend": false
+        }
+      ]
+    },
+    {
+      "id": "voices.33",
+      "note": "the voices host source",
+      "fn": "voices",
+      "options": {
+        "summary": {
+          "voices": []
+        },
+        "profiles": [],
+        "me": "did:me"
+      },
+      "result": []
+    },
+    {
+      "id": "voices.34",
+      "note": "the voices host source",
+      "fn": "voices",
+      "options": {
+        "summary": {
+          "voices": [
+            {
+              "author": "did:x",
+              "name": "A pretend",
+              "cards": 1,
+              "mean": 1
+            }
+          ]
+        },
+        "param": "",
+        "profiles": [],
+        "me": "did:x"
+      },
+      "result": [
+        {
+          "did": "did:x",
+          "name": "A pretend",
+          "avatar": "",
+          "cards": 1,
+          "mean": 1,
+          "weight": 100,
+          "share": 100,
+          "mine": true,
+          "pretend": true
+        }
+      ]
+    },
+    {
+      "id": "voices.35",
+      "note": "the voices host source",
+      "fn": "voices",
+      "options": {
+        "param": "did:a=50,did:b=0",
+        "profiles": [],
+        "me": "did:me"
+      },
+      "result": []
+    },
+    {
+      "id": "voices.36",
+      "note": "the voices host source",
+      "fn": "voices",
+      "options": {
+        "$undefined": true
+      },
+      "result": []
+    },
+    {
+      "id": "voicesParam.37",
+      "note": "the voicesParam host source",
+      "fn": "voicesParam",
+      "options": {
+        "param": "did:a=50",
+        "did": "did:b",
+        "weight": 25
+      },
+      "result": "did:a=50,did:b=25"
+    },
+    {
+      "id": "voicesParam.38",
+      "note": "the voicesParam host source",
+      "fn": "voicesParam",
+      "options": {
+        "param": "did:a=50",
+        "did": "did:a",
+        "weight": 100
+      },
+      "result": ""
+    },
+    {
+      "id": "voicesParam.39",
+      "note": "the voicesParam host source",
+      "fn": "voicesParam",
+      "options": {
+        "param": "",
+        "did": "did:a",
+        "weight": 0
+      },
+      "result": "did:a=0"
+    },
+    {
+      "id": "voicesParam.40",
+      "note": "the voicesParam host source",
+      "fn": "voicesParam",
+      "options": {
+        "only": "did:a",
+        "voices": [
+          {
+            "did": "did:a"
+          },
+          {
+            "did": "did:b"
+          }
+        ]
+      },
+      "result": "did:b=0"
+    },
+    {
+      "id": "voicesParam.41",
+      "note": "the voicesParam host source",
+      "fn": "voicesParam",
+      "options": {
+        "$undefined": true
+      },
+      "result": ""
+    },
+    {
+      "id": "generatedRun.42",
+      "note": "the generatedRun host source",
+      "fn": "generatedRun",
+      "options": {
+        "record": {
+          "generatedBy": "run:1"
+        }
+      },
+      "result": {
+        "by": "run",
+        "run": "run:1"
+      }
+    },
+    {
+      "id": "generatedRun.43",
+      "note": "the generatedRun host source",
+      "fn": "generatedRun",
+      "options": {
+        "record": {
+          "generatedBy": {
+            "id": "run:2",
+            "kind": "extraction"
+          }
+        }
+      },
+      "result": {
+        "by": "run",
+        "run": "run:2"
+      }
+    },
+    {
+      "id": "generatedRun.44",
+      "note": "the generatedRun host source",
+      "fn": "generatedRun",
+      "options": {
+        "record": {
+          "id": "r:1"
+        }
+      },
+      "result": null
+    },
+    {
+      "id": "generatedRun.45",
+      "note": "the generatedRun host source",
+      "fn": "generatedRun",
+      "options": {
+        "record": {}
+      },
+      "result": null
+    },
+    {
+      "id": "generatedRun.46",
+      "note": "the generatedRun host source",
+      "fn": "generatedRun",
+      "options": {
+        "$undefined": true
+      },
+      "result": null
+    }
+  ]
+}
