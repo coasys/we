@@ -115,7 +115,7 @@ export class TextBlock extends WeNode {
    * round-trip — and one predicate meaning two unrelated things is the mistake `we://location`
    * had to be unpicked from.
    */
-  @Property({ through: 'we://text_source' })
+  @Property({ through: 'we://text_source', options: [{ value: 'spoken' }, { value: 'typed' }, { value: 'corrected' }] })
   source: string = '';
 
   @Property({ through: 'we://version' })
