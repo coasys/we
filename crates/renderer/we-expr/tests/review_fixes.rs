@@ -7,6 +7,18 @@ use indexmap::IndexMap;
 use serde_json::json;
 use we_expr::{eval, parse, CallableRef, Env, MapEnv, Value};
 
+fn obj(entries: &[(&str, Value)]) -> Value {
+    let mut m: IndexMap<Arc<str>, Value> = IndexMap::new();
+    for (k, v) in entries {
+        m.insert(Arc::from(*k), v.clone());
+    }
+    Value::Obj(Arc::new(m))
+}
+
+fn list(items: &[Value]) -> Value {
+    items.to_vec().into()
+}
+
 /// Build a `$localMetaEntry` meta object: `{touched: () => t, errors: () => e}`
 /// — the shape `encode.ts`'s `{"$localMetaEntry": true}` marker decodes to.
 fn meta_entry(touched: bool, errors: &[&str]) -> Value {
@@ -232,4 +244,55 @@ fn p2_3_text_functions_apply_as_text() {
     assert_eq!(call_json("trim", &[12.into()], &env), json!("12"));
     assert_eq!(call_json("lower", &[12.into()], &env), json!("12"));
     assert_eq!(call_json("upper", &[12.into()], &env), json!("12"));
+}
+
+/// `distinct` dedupes a JS `Set` on `entry.id !== undefined ? entry.id :
+/// entry` — identity for containers, not structural equality.
+#[test]
+fn p2_4_distinct_set_identity() {
+    let env = MapEnv::new();
+    // Two empty objects are two Set entries — distinct keeps both.
+    let two_empty = list(&[obj(&[]), obj(&[])]);
+    assert_eq!(
+        call_json("count", &[call("distinct", &[two_empty], &env)], &env),
+        json!(2)
+    );
+    // …so are two objects whose `id` is present-but-undefined (key = entry).
+    let undefined_ids = list(&[
+        obj(&[("id", Value::Undefined)]),
+        obj(&[("id", Value::Undefined)]),
+    ]);
+    assert_eq!(
+        call_json("count", &[call("distinct", &[undefined_ids], &env)], &env),
+        json!(2)
+    );
+    // Two equal lists allocated separately are still two identities.
+    let equal_lists = list(&[list(&[1.into()]), list(&[1.into()])]);
+    assert_eq!(
+        call_json("count", &[call("distinct", &[equal_lists], &env)], &env),
+        json!(2)
+    );
+    // Object `id`s dedupe by identity too — equal id-objects stay distinct.
+    let object_ids = list(&[
+        obj(&[("id", obj(&[("k", 1.into())]))]),
+        obj(&[("id", obj(&[("k", 1.into())]))]),
+    ]);
+    assert_eq!(
+        call_json("count", &[call("distinct", &[object_ids], &env)], &env),
+        json!(2)
+    );
+    // The intended dedupe still holds: same scalar id, and SameValueZero.
+    let same_id = list(&[
+        obj(&[("id", 1.into()), ("v", "x".into())]),
+        obj(&[("id", 1.into()), ("v", "y".into())]),
+    ]);
+    assert_eq!(
+        call_json("count", &[call("distinct", &[same_id], &env)], &env),
+        json!(1)
+    );
+    let nans = list(&[f64::NAN.into(), f64::NAN.into()]);
+    assert_eq!(
+        call_json("count", &[call("distinct", &[nans], &env)], &env),
+        json!(1)
+    );
 }

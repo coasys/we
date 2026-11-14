@@ -125,9 +125,11 @@ fn find(args: &[Value], _env: &dyn Env) -> Value {
 }
 
 /// `distinct(list, list, …)` — the list arguments flattened, first of each
-/// kept. The dedupe key is the item's `id` when it is an object that has one
-/// (`{id:1, v:'x'}` and `{id:1, v:'y'}` are the same record) and the item
-/// itself otherwise (`{id:1}` and `{id:'1'}` stay distinct).
+/// kept. The dedupe key is `entry.id !== undefined ? entry.id : entry`
+/// (`{id:1, v:'x'}` and `{id:1, v:'y'}` are the same record; `{id:undefined}`
+/// keys on the entry), and the `seen` check is a JS `Set` — SameValueZero,
+/// so containers compare by identity: two equal-but-separate objects stay
+/// two entries.
 fn distinct(args: &[Value], _env: &dyn Env) -> Value {
     let mut keys: Vec<Value> = Vec::new();
     let mut out: Vec<Value> = Vec::new();
@@ -135,10 +137,13 @@ fn distinct(args: &[Value], _env: &dyn Env) -> Value {
         if let Value::List(items) = a {
             for item in items.iter() {
                 let key = match item {
-                    Value::Obj(o) => o.get("id").cloned().unwrap_or_else(|| item.clone()),
+                    Value::Obj(o) => match o.get("id") {
+                        Some(id) if !id.is_undefined() => id.clone(),
+                        _ => item.clone(),
+                    },
                     _ => item.clone(),
                 };
-                if !keys.iter().any(|v| deep_eq(v, &key)) {
+                if !keys.iter().any(|v| same_value_zero(v, &key)) {
                     keys.push(key);
                     out.push(item.clone());
                 }
@@ -553,19 +558,11 @@ fn field_errors(entry: &Value) -> Vec<Value> {
     }
 }
 
-/// Structural equality for `distinct`: same shape, same contents; numbers by
-/// value (`NaN` counts equal to itself, as `Set` would).
-fn deep_eq(a: &Value, b: &Value) -> bool {
+/// `Set`/`includes` membership — `SameValueZero`: `===` except `NaN` counts
+/// equal to itself (and `-0`/`+0` are already `==`).
+fn same_value_zero(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Num(x), Value::Num(y)) => x == y || (x.is_nan() && y.is_nan()),
-        (Value::List(x), Value::List(y)) => {
-            x.len() == y.len() && x.iter().zip(y.iter()).all(|(u, v)| deep_eq(u, v))
-        }
-        (Value::Obj(x), Value::Obj(y)) => {
-            x.len() == y.len()
-                && x.iter()
-                    .all(|(k, v)| y.get(k).is_some_and(|w| deep_eq(v, w)))
-        }
         _ => a.strict_eq(b),
     }
 }
