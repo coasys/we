@@ -429,6 +429,14 @@ pub(crate) fn text_color(style: &Style, ctx: &egui::Context) -> egui::Color32 {
         .unwrap_or_else(|| ctx.global_style().visuals.text_color())
 }
 
+/// `style`'s composed `opacity` folded into a colour's alpha — the fold
+/// `text_job` gives galleys, for the glyph/label sites that paint through
+/// `painter().text` directly (`paint.rs` already composed the ancestor
+/// product into `style.paint.opacity`, the CSS group rule).
+pub(crate) fn faded(style: &Style, c: egui::Color32) -> egui::Color32 {
+    c.gamma_multiply(style.paint.opacity.unwrap_or(1.0).clamp(0.0, 1.0))
+}
+
 /// A prop value as a `Dimension` — `we-*` prop syntax: `"12px"`, `"0.5"`, a
 /// bare number. `None` = absent or not a length.
 pub(crate) fn dim_of(v: &Value) -> Option<Dimension> {

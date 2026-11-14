@@ -147,6 +147,8 @@ impl Widget for Icon {
             .and_then(we_style::eval_color)
             .map(props::color32)
             .unwrap_or_else(|| props::text_color(style, cx.ui.ctx()));
+        // `opacity` covers the glyph like any painted content.
+        let color = props::faded(style, color);
         cx.ui.painter().text(
             props::content_rect(rect, style, FONT_PX, ROOT_PX, view).center(),
             egui::Align2::CENTER_CENTER,

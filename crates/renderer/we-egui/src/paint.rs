@@ -1053,8 +1053,12 @@ fn modal_overlay(
     let host = modal_host(node, width, flow, &mcx);
     // Not the page root — the host's `auto` height is the content's, so
     // `sub.size` stays the dialog's real box (a `100vh` floor here made the
-    // dialog fill the viewport).
-    let sub = crate::layout_shrink(&mcx, w.scx, w.registry, &host, screen);
+    // dialog fill the viewport). The floating children are DOM descendants
+    // of the node: seed the scratch root with the effective style
+    // `overlay_contents` paints under, or the dialog measures at default
+    // typography while painting the inherited one.
+    let eff = effective(parent_inh.as_ref(), crate::style_of(node, w.scx));
+    let sub = crate::layout_shrink(&mcx, w.scx, w.registry, &host, screen, Some(&eff));
     // The dialog is sized by its content: `sub.size` is the padded host
     // column — width, plus `pt` (pad + title strip) + children + `pb`.
     // WE caps it at `maxHeight: calc(100dvh - 64px)`.
@@ -1099,7 +1103,7 @@ fn modal_overlay(
             .chain(corners)
             .collect();
         let host2 = modal_host(node, width, flow2, &mcx);
-        let sub2 = crate::layout_shrink(&mcx, w.scx, w.registry, &host2, screen);
+        let sub2 = crate::layout_shrink(&mcx, w.scx, w.registry, &host2, screen, Some(&eff));
         (host2, sub2)
     } else {
         (host, sub)
@@ -1179,8 +1183,11 @@ fn anchored_overlay(
     let host = overlay_host(node, width, floating);
     let mcx = MeasureCx::new(ctx);
     // Same floating-host rule as the modal: `auto` height is the content's,
-    // not floored to the anchor's rect.
-    let sub = crate::layout_shrink(&mcx, w.scx, w.registry, &host, anchor);
+    // not floored to the anchor's rect. The scratch root inherits what the
+    // inner walk inherits — the node's effective style — so measured
+    // typography matches painted typography.
+    let eff = effective(parent_inh.as_ref(), crate::style_of(node, w.scx));
+    let sub = crate::layout_shrink(&mcx, w.scx, w.registry, &host, anchor, Some(&eff));
     let size = sub
         .size
         .max(egui::vec2(width, 4.0))

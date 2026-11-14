@@ -952,7 +952,7 @@ pub trait Measure {
 /// `height: auto` still paints the whole viewport (`min-height: 100vh`),
 /// so a `bg` root covers the empty tail of a short panel.
 pub fn layout(m: &dyn Measure, scx: &StyleCx, root: &ResolvedNode, rect: Rect) -> Layout {
-    layout_impl(m, scx, root, rect, true)
+    layout_impl(m, scx, root, rect, true, None)
 }
 
 /// The same walk for a subtree that is not the page root — the overlay
@@ -960,8 +960,16 @@ pub fn layout(m: &dyn Measure, scx: &StyleCx, root: &ResolvedNode, rect: Rect) -
 /// `rect` (a block box fills its containing block), but `height: auto`
 /// stays content-sized: the `min-height: 100vh` floor is the page root's
 /// alone, so `sub.size` is the real content box a dialog centres.
-pub fn layout_shrink(m: &dyn Measure, scx: &StyleCx, root: &ResolvedNode, rect: Rect) -> Layout {
-    layout_impl(m, scx, root, rect, false)
+/// `parent` is the DOM context the subtree's paint inherits — typography
+/// and opacity measure the way they paint.
+pub fn layout_shrink(
+    m: &dyn Measure,
+    scx: &StyleCx,
+    root: &ResolvedNode,
+    rect: Rect,
+    parent: Option<&Style>,
+) -> Layout {
+    layout_impl(m, scx, root, rect, false, parent)
 }
 
 /// Fill `extra`/`map` with `node`'s synthesized children and recurse into
@@ -990,6 +998,7 @@ fn layout_impl(
     root: &ResolvedNode,
     rect: Rect,
     viewport_root: bool,
+    parent: Option<&Style>,
 ) -> Layout {
     // Synthesized children live in an arena outliving the build: `&'a`
     // borrows into `extra` satisfy `nodes`, so a generated child is
@@ -1023,7 +1032,7 @@ fn layout_impl(
         clip: HashMap::new(),
     };
     let root_id = b
-        .resolved_node(root, &TreeCfg::default(), false, true, None)
+        .resolved_node(root, &TreeCfg::default(), false, true, parent)
         .expect("root lays out");
 
     // The root's containing block is the viewport: `width: auto` fills it —

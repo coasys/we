@@ -1692,6 +1692,124 @@ fn own_text_style_beats_inherited() {
     );
 }
 
+/// A7 round 2 — `opacity` covers what the element draws, not only its
+/// galleys: an icon inside `opacity: 0` is invisible in the DOM, but the
+/// glyph painted through `painter().text` kept its unfaded color while
+/// `text_job` alone multiplied alpha (media.rs used the raw text color).
+#[test]
+fn opacity_fades_icon_glyphs() {
+    let mut col = node("Column", "c", &[("opacity", Value::Num(0.0))]);
+    child(
+        &mut col,
+        node("we-icon", "c/i", &[("name", s("user")), ("size", s("lg"))]),
+    );
+    let (_lay, galleys) = painted_galley_formats(&col, 400.0);
+    let (_, _, f) = galleys
+        .iter()
+        .find(|(_, t, _)| !t.is_empty() && t != "?")
+        .expect("the icon glyph painted");
+    assert_eq!(
+        f.color.a(),
+        0,
+        "a glyph inside opacity:0 paints at alpha 0: {f:?}"
+    );
+}
+
+/// The popup frame rect and the galleys inside it, drained across every
+/// layer — what the overlay-measure assertion needs (the popup sizes to
+/// the inherited font's real height or the text spills past its bottom).
+fn painted_frame_and_text(
+    root: &ResolvedNode,
+    width: f32,
+) -> (Vec<egui::Rect>, Vec<(egui::Rect, String)>) {
+    let registry = Registry::with_builtins();
+    let tokens = tokens();
+    let scx = StyleCx {
+        tokens: &tokens,
+        ..StyleCx::empty()
+    };
+    let fills = std::cell::RefCell::new(Vec::new());
+    let texts = std::cell::RefCell::new(Vec::new());
+    let mut harness = harness_ui(|ui| {
+        let ctx = ui.ctx().clone();
+        let cx = MeasureCx::new(&ctx);
+        let lay = layout(
+            &cx,
+            &scx,
+            &registry,
+            root,
+            egui::Rect::from_min_size(ui.cursor().min, egui::vec2(width, 800.0)),
+        );
+        let mut events = Vec::new();
+        let mut edit = EditState::default();
+        paint(ui, &registry, &scx, root, &lay, &mut events, &mut edit, 0.0);
+        ctx.graphics_mut(|g| {
+            // Popup frames arrive as `Shape::Vec` (shadow + fill), so walk
+            // the shape tree rather than the top level only.
+            fn collect(
+                shape: &egui::Shape,
+                fills: &mut Vec<egui::Rect>,
+                texts: &mut Vec<(egui::Rect, String)>,
+            ) {
+                match shape {
+                    egui::Shape::Vec(v) => {
+                        for s in v {
+                            collect(s, fills, texts);
+                        }
+                    }
+                    egui::Shape::Rect(r) if r.fill.a() > 0 && r.rect.area() > 100.0 => {
+                        fills.push(r.rect);
+                    }
+                    egui::Shape::Text(t) => {
+                        let r = egui::Rect::from_min_size(t.pos, t.galley.size());
+                        texts.push((r, t.galley.text().to_string()));
+                    }
+                    _ => {}
+                }
+            }
+            for cs in g.drain(&[], &Default::default()) {
+                collect(&cs.shape, &mut fills.borrow_mut(), &mut texts.borrow_mut());
+            }
+        });
+    });
+    harness.run();
+    (fills.take(), texts.take())
+}
+
+/// A7 round 2 — the deferred overlay pass must measure with the same
+/// inherited typography it paints with. A popover inside a `fontSize:32`
+/// column paints 32px floating children; a measure seeded from a bare
+/// host style sized the bubble for default text and the text spilled.
+#[test]
+fn overlay_measures_with_inherited_typography() {
+    let mut col = node("Column", "c", &[("fontSize", s("32px"))]);
+    let mut pop = node("we-popover", "c/p", &[("open", Value::Bool(true))]);
+    let trig = node("we-button", "c/p/b", &[("text", s("anchor"))]);
+    let mut body = node("we-text", "c/p/t", &[("text", s("big words"))]);
+    // A named slot is what floats: `Pick::Default` would anchor every
+    // unslotted child next to the trigger.
+    body.slot = Some(Arc::from("content"));
+    child(&mut pop, trig);
+    child(&mut pop, body);
+    child(&mut col, pop);
+    let (fills, texts) = painted_frame_and_text(&col, 400.0);
+    let (galley, _) = texts
+        .iter()
+        .find(|(_, t)| t.contains("big words"))
+        .expect("the floating text painted");
+    let bubble = fills
+        .iter()
+        .filter(|r| r.contains(galley.min))
+        .min_by(|a, b| a.area().total_cmp(&b.area()));
+    let bubble = bubble.expect("a popup frame covers the floating text");
+    assert!(
+        bubble.contains_rect(*galley),
+        "the bubble must enclose its inherited-size text — measure ran with \
+         the default font while paint used the inherited one: \
+         bubble {bubble:?}, galley {galley:?}"
+    );
+}
+
 /// A8 — keyboard focus: TS `button.ts` DEFAULT_PROPS gives EVERY variant —
 /// `bare` included — `focusProps: { ring: FOCUS_RING }` where
 /// `FOCUS_RING = '0 0 0 var(--we-focus-ring-width) var(--we-ring-color)'`:

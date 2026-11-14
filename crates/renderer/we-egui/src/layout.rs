@@ -124,22 +124,26 @@ pub fn layout(
     root: &ResolvedNode,
     rect: Rect,
 ) -> Layout {
-    run(cx, scx, registry, root, rect, false)
+    run(cx, scx, registry, root, rect, false, None)
 }
 
 /// The same, for a subtree that is not the page root — the overlay pass's
 /// synthetic host column, whose `auto` height must be its content's, not
-/// the `min-height: 100vh` floor `layout` gives the page root.
+/// the `min-height: 100vh` floor `layout` gives the page root. `parent` is
+/// the computed style the subtree's paint inherits (the overlay node's
+/// effective style), so the measure sees the same typography.
 pub fn layout_shrink(
     cx: &MeasureCx,
     scx: &StyleCx,
     registry: &Registry,
     root: &ResolvedNode,
     rect: Rect,
+    parent: Option<&Style>,
 ) -> Layout {
-    run(cx, scx, registry, root, rect, true)
+    run(cx, scx, registry, root, rect, true, parent)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run(
     cx: &MeasureCx,
     scx: &StyleCx,
@@ -147,6 +151,7 @@ fn run(
     root: &ResolvedNode,
     rect: Rect,
     shrink: bool,
+    parent: Option<&Style>,
 ) -> Layout {
     store_view(cx.ctx, scx);
     let m = EguiMeasure { cx, scx, registry };
@@ -155,7 +160,7 @@ fn run(
         we_layout::Vec2::new(rect.width(), rect.height()),
     );
     let out = if shrink {
-        we_layout::layout_shrink(&m, scx, root, rect)
+        we_layout::layout_shrink(&m, scx, root, rect, parent)
     } else {
         we_layout::layout(&m, scx, root, rect)
     };
