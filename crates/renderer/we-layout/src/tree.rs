@@ -1600,17 +1600,21 @@ impl<'a> Builder<'a> {
         // updated positioned chain (a positioned node hands abs/fixed
         // descendants its *padding* box), its flex direction for
         // `flex-basis`, its stretch offer, and — for a `Grid` — the cell
-        // recipe.
-        let positioned = if style.layout.position.is_some() {
+        // recipe. `position: static` is the CSS default, not a positioned
+        // box — an explicit one must behave exactly like an unset one.
+        let is_positioned = matches!(
+            style.layout.position,
+            Some(Position::Relative)
+                | Some(Position::Absolute)
+                | Some(Position::Fixed)
+                | Some(Position::Sticky)
+        );
+        let positioned = if is_positioned {
             Some(&node.id)
         } else {
             pf.positioned
         };
-        let pb = if style.layout.position.is_some() {
-            own.padding
-        } else {
-            pf.pb
-        };
+        let pb = if is_positioned { own.padding } else { pf.pb };
         let is_grid = matches!(s.display, Display::Grid);
         // The grid recipe counts items taffy actually lays out — a
         // `display: none` child is skipped below and makes no track;

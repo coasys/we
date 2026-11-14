@@ -705,6 +705,54 @@ fn calc_vertical_percent_margins_use_cb_width() {
     );
 }
 
+/// An explicit `position: static` is the CSS default — it does not
+/// establish a containing block for absolutely-positioned descendants
+/// (CSS2.1 §10.1: the CB is "the padding edge of the nearest positioned
+/// ancestor", and `static` is not positioned).
+#[test]
+fn calc_abs_child_skips_explicit_static_wrapper() {
+    // `relative` 400px ancestor → 200px `static` wrapper → abs child
+    // `calc(50% - 5px)`. The CB is the relative ancestor's padding box
+    // (400 → 195); an explicit `static` counted → the wrapper's 200 → 95.
+    let mut wrapper = node(
+        "Column",
+        "w",
+        &[
+            ("position", Value::from("static")),
+            ("width", Value::from("200px")),
+            ("height", Value::from("100px")),
+        ],
+    );
+    wrapper.children = vec![ResolvedChild::Node(Box::new(node(
+        "Column",
+        "g",
+        &[
+            ("position", Value::from("absolute")),
+            ("width", Value::from("calc(50% - 5px)")),
+            ("height", Value::from("10px")),
+        ],
+    )))];
+    let mut rel = node(
+        "Column",
+        "rel",
+        &[
+            ("position", Value::from("relative")),
+            ("width", Value::from("400px")),
+            ("height", Value::from("300px")),
+        ],
+    );
+    rel.children = vec![ResolvedChild::Node(Box::new(wrapper))];
+    let mut root = node("Column", "r", &[]);
+    root.children = vec![ResolvedChild::Node(Box::new(rel))];
+
+    let out = run(&root, 400.0, 400.0);
+    let g = rect(&out, "g");
+    assert!(
+        (g.width() - 195.0).abs() < 0.5,
+        "abs child resolves against the relative ancestor's 400px padding box — 195, got {g:?}"
+    );
+}
+
 /// An absolutely-positioned child's containing block is its positioned
 /// ancestor's *padding* box: `p: calc(10% + 16px)` inside a `relative`
 /// 400px parent padded 40 resolves against 400 (56px), not the 320px
