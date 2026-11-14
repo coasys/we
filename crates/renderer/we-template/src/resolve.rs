@@ -175,10 +175,18 @@ pub(crate) fn eval_str(
 /// differs. The evaluator's [`Env::read_observer`] reports every link of
 /// every read chain as it happens — no value is wrapped, so what the field
 /// stores, what a host call receives and what `===` compares are the same
-/// allocations the bag answered. [`leaf_deps`] keeps the links the
-/// expression *held* — the chain's terminal reads — and drops the
-/// containers it only walked through. [`LocalState::follow_initial`] is
-/// the consumer.
+/// allocations the bag answered. Every reported read is a dependency —
+/// including the parents: `store.cfg` under `store.cfg.child` is a real
+/// signal read (a `P1→P2` swap re-runs the expression and emits a fresh
+/// container), and `follow_initial`'s `===` emit check — not the dep list —
+/// is what suppresses the non-emission when the memo's own answer is the
+/// shared child. The reads the port synthesizes are not inputs and are
+/// excluded at the recorder, named: `local.$*` plumbing and a bare
+/// conduit-box root (`local`, `surface`, `$nav`, an `$agent` stub) —
+/// rebuilt every pass where WE keeps one object alive per mount, so
+/// recording the box would fake a moved input while the reads through it
+/// (`local.src`, `surface.tier`) stay real. [`LocalState::follow_initial`]
+/// is the consumer.
 fn eval_str_tracked(
     source: &str,
     scope: &Scope,
@@ -191,11 +199,12 @@ fn eval_str_tracked(
             let reads = RefCell::new(TrackedDeps::default());
             let value = {
                 let observe = |path: &str, value: &Value| {
-                    // A `$`-member is the port's own plumbing (`local.$fields`,
-                    // `local.$decl:*`, `local.$owner:*`) — it rebuilds on
-                    // demand, so recording it would register a dependency
-                    // that moves every pass.
-                    if !path.contains(".$") {
+                    // `$`-members (`local.$fields`, `local.$decl:*`,
+                    // `local.$owner:*`) are the port's own plumbing — they
+                    // rebuild on demand — and a bare conduit-box root is
+                    // the same kind of read: recording either registers a
+                    // dependency that moves every pass without meaning one.
+                    if !path.contains(".$") && (path.contains('.') || !scope.is_conduit(path)) {
                         reads.borrow_mut().push((path.into(), value.clone()));
                     }
                 };
@@ -207,7 +216,7 @@ fn eval_str_tracked(
                     },
                 )
             };
-            (value, leaf_deps(reads.into_inner()))
+            (value, reads.into_inner())
         }
         Err(err) => {
             let message: Arc<str> = format!("expression {source:?}: {err}").into();
@@ -217,29 +226,6 @@ fn eval_str_tracked(
             (Value::Undefined, Vec::new())
         }
     }
-}
-
-/// The terminal read of each chain, kept; the links walked through,
-/// dropped. The observer reports every link of every chain in evaluation
-/// order — `store`, `store.cfg`, `store.cfg.child` — and a read the
-/// evaluator only used to reach deeper is always followed by the read it
-/// enabled. So a recorded read is a conduit exactly when the NEXT recorded
-/// read extends its path (`child` is `parent.<more>`); the last link of
-/// each chain is what the expression held. That is what makes a rebuilt
-/// `routeStore.params` conduit free — only `routeStore.params.id` lands —
-/// and a parent swap `P1→P2` sharing child `C` a non-event (`store.cfg`
-/// under `store.cfg.child` was a conduit, never an input).
-fn leaf_deps(reads: TrackedDeps) -> TrackedDeps {
-    reads
-        .iter()
-        .enumerate()
-        .filter(|(i, (path, _))| {
-            !reads
-                .get(i + 1)
-                .is_some_and(|(next, _)| next.as_ref().starts_with(&format!("{path}.")))
-        })
-        .map(|(_, entry)| entry.clone())
-        .collect()
 }
 
 /// The [`Env`] one tracked initial evaluates against: `ScopeEnv` reads,
@@ -466,9 +452,10 @@ fn with_transition(
 }
 
 /// The profile a `$agent` binds: `profileStore.profiles` holds them — an
-/// object keyed by DID, or a list of rows carrying `did`. Unknown → the
-/// `{did}` stub a template can still name (`agent.did` reads it back).
-fn agent_profile(bag: &StoreBag, did: &str) -> Value {
+/// object keyed by DID, or a list of rows carrying `did`. `None` when no
+/// profile resolves — the caller binds the `{did}` stub a template can
+/// still name (`agent.did` reads it back).
+fn agent_profile(bag: &StoreBag, did: &str) -> Option<Value> {
     let profiles = bag
         .root("profileStore")
         .and_then(|root| match &root {
@@ -477,18 +464,14 @@ fn agent_profile(bag: &StoreBag, did: &str) -> Value {
         })
         .unwrap_or(Value::Undefined);
     match &profiles {
-        Value::Obj(map) => match map.get(did) {
-            Some(row) => row.clone(),
-            None => stub(did),
-        },
+        Value::Obj(map) => map.get(did).cloned(),
         Value::List(rows) => rows
             .iter()
             .find(|row| {
                 matches!(row, Value::Obj(o) if matches!(o.get("did"), Some(Value::Str(d)) if d.as_ref() == did))
             })
-            .cloned()
-            .unwrap_or_else(|| stub(did)),
-        _ => stub(did),
+            .cloned(),
+        _ => None,
     }
 }
 
@@ -828,7 +811,12 @@ fn resolve_node(
                 .and_then(|a| a.as_str())
                 .unwrap_or("agent");
             let mut row_scope = scope.clone();
-            row_scope.bind(as_name, agent_profile(cx.bag, &did));
+            match agent_profile(cx.bag, &did) {
+                // A real profile row is live data — its own dependency.
+                Some(row) => row_scope.bind(as_name, row),
+                // The stub is synthesized per read — a conduit like `local`.
+                None => row_scope.bind_conduit(as_name, stub(&did)),
+            }
             resolve_children(
                 node.children.as_deref(),
                 &row_scope,
@@ -914,7 +902,7 @@ fn resolve_node(
             // The same box across resolves until a measure lands — WE's
             // `createSurface` keeps one store alive, and a tracked initial
             // reading `surface` must not see a fresh identity every pass.
-            surface_scope.bind(
+            surface_scope.bind_conduit(
                 as_key.as_ref(),
                 cx.memo_value(
                     format!("$surface:{id}").into(),
@@ -1171,7 +1159,7 @@ fn declare_locals(
             fields,
         });
         node_decls = Arc::new(chain);
-        node_scope.bind(
+        node_scope.bind_conduit(
             "local",
             Value::namespace(LocalNs::new(cx.locals.clone(), node_decls.clone())),
         );
@@ -1427,7 +1415,7 @@ fn resolve_chain<'a>(
     nav.insert("baseDepth".into(), Value::Num(depth as f64));
     let mut step_scope = scope.clone();
     let route_path = format!("{path}/r:{}", head.full.trim_start_matches('/'));
-    step_scope.bind(
+    step_scope.bind_conduit(
         "$nav",
         cx.memo_value(
             format!("$nav:{route_path}").into(),

@@ -1952,6 +1952,72 @@ fn a_parent_swap_sharing_the_child_keeps_the_initial() {
 }
 
 #[test]
+fn a_parent_swap_sharing_the_child_resets_a_fresh_container_initial() {
+    // R5-2: `{"$":"[local.src.child]"}` — the constructed-array counterpart
+    // of the direct-child swap above. `local.src` is a real signal-valued
+    // parent: replacing P1 with P2 re-runs the expression even though the
+    // child C survives, and the memo emits a FRESH `[C]` — `!==` the one
+    // the field holds — so the edit resets and touched clears. The
+    // direct-child case differs because the memo's own output IS the
+    // shared C: `===` suppresses that emit. Dropping `local.src` from the
+    // deps declares "nothing moved" for both, which is only true for one.
+    let child_c = Value::Obj(Arc::new(
+        [("k".into(), Value::from("C"))].into_iter().collect(),
+    ));
+    let parent_of = |tag: &str| {
+        Value::Obj(Arc::new(
+            [
+                ("child".into(), child_c.clone()),
+                ("tag".into(), Value::from(tag)),
+            ]
+            .into_iter()
+            .collect(),
+        ))
+    };
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "src": { "type": "object" } },
+        "children": [{
+            "type": "Row",
+            "$localState": { "sel": { "type": "array", "initial": { "$": "[local.src.child]" } } },
+            "children": []
+        }]
+    }));
+    let (mut rt, mut host, locals, screen) = rig(node, StoreBag::new());
+    let parent = NodeId::new("test:");
+    locals.set(&parent, "src", parent_of("p1"));
+    let _ = rt.frame(&mut host, &screen).clone();
+    let child = NodeId::new("test:/Row0");
+    match locals.get(&child, "sel") {
+        Value::List(items) => assert!(
+            items.first().is_some_and(|v| v.strict_eq(&child_c)),
+            "sel seeds [local.src.child]: {items:?}"
+        ),
+        other => panic!("sel must seed a list: {other:?}"),
+    }
+
+    locals.set(
+        &child,
+        "sel",
+        Value::List(Arc::new(vec![Value::from("typed")])),
+    );
+    locals.touch(&child, "sel");
+    locals.set(&parent, "src", parent_of("p2")); // P1→P2, child still C
+    let _ = rt.frame(&mut host, &screen).clone();
+    match locals.get(&child, "sel") {
+        Value::List(items) => assert!(
+            items.first().is_some_and(|v| v.strict_eq(&child_c)),
+            "a moved parent re-emits a fresh [C] — the edit must not survive: {items:?}"
+        ),
+        other => panic!("sel must reset to [C]: {other:?}"),
+    }
+    assert!(
+        !locals.is_touched(&child, "sel"),
+        "a real reset clears touched"
+    );
+}
+
+#[test]
 fn an_initial_tracks_through_an_accessor_returned_list() {
     // R4-4: `store.items` is an ACCESSOR answering the same list L on
     // every call; L[0].sig is an accessor too. `store.items[0].sig` runs

@@ -196,6 +196,17 @@ fn empty_rows() -> Arc<Vec<Value>> {
 /// while the screen holds — interning needs the same relaxation for
 /// them, or a held conduit read (the initial's value, or one an index
 /// expression's own reads interleave under) moves every pass.
+///
+/// It is NOT general namespace equality. `to_json` compares what a
+/// namespace enumerates, not what it can answer: two live namespaces can
+/// list the same keys and same-named accessors yet return different
+/// effective values (a callable serializes as its name; a non-enumerable
+/// namespace encodes one opaque marker), and equal enumeration says
+/// nothing about `raw()`, hidden keys or future answers. The only
+/// namespaces this compares are the immutable snapshots Canon and
+/// `memo_value` intern — `params`/`panels`/`spacePath` maps and the
+/// `$surface`/`$nav` boxes — bounded, acyclic content. Do not extend it
+/// to arbitrary live stores without a real snapshot contract.
 pub(crate) fn content_eq(a: &Value, b: &Value) -> bool {
     a.strict_eq(b)
         || (matches!(a, Value::Obj(_) | Value::List(_) | Value::Namespace(_))
