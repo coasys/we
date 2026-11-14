@@ -238,6 +238,19 @@ fn dim_cells(d: Option<&Dimension>, avail: u16, viewport: u16) -> Option<u16> {
     }
 }
 
+/// A `we-button` that wraps a layout (a card, a row of avatar + name)
+/// and names no `label`/`text` — the `bare` press target the templates
+/// use for a clickable card. It lays out its children instead of a
+/// one-line label.
+fn composite_button(node: &ResolvedNode) -> bool {
+    node.ty.as_ref() == "we-button"
+        && prop_str(node, "label").is_none_or(str::is_empty)
+        && prop_str(node, "text").is_none_or(str::is_empty)
+        && node.children.iter().any(
+            |c| matches!(c, ResolvedChild::Node(n) if matches!(tag(n), Tag::Container | Tag::Card)),
+        )
+}
+
 /// `open` on a tree item — a plain truthy prop read.
 fn tree_open(node: &ResolvedNode) -> bool {
     prop(node, "open").truthy()
@@ -443,9 +456,27 @@ impl<'a> Painter<'a> {
     /// parent's height for `%` heights (`0` = unknown).
     pub fn measure(&self, node: &ResolvedNode, avail_w: u16, avail_h: u16) -> Dim {
         let style = self.style(node);
+        // CSS: a `%` height against a parent whose height is auto is
+        // auto. `avail_h == 0` is that unknown parent; children only see a
+        // height when this box has a definite one.
+        let pct_unknown =
+            |d: Option<&Dimension>| matches!(d, Some(Dimension::Percent(_))) && avail_h == 0;
+        let height = style
+            .layout
+            .height
+            .as_ref()
+            // A composite button is sized by what it wraps, not by the
+            // control height a `we-button` defaults to.
+            .filter(|d| !pct_unknown(Some(d)) && !composite_button(node));
         let (bw, bh) = self.box_extra(node, &style, avail_w, avail_h);
         let inner_w = avail_w.saturating_sub(bw);
-        let inner_h = avail_h.saturating_sub(bh);
+        let inner_h = if height.is_some() {
+            dim_cells(height, avail_h, (self.scx.viewport.height / CELL_PX) as u16)
+                .unwrap_or(0)
+                .saturating_sub(bh)
+        } else {
+            0
+        };
         let mut dim = match tag(node) {
             Tag::Container | Tag::Card | Tag::Tooltip => match direction_of(node) {
                 Direction::Row => self.measure_row(node, inner_w, inner_h),
@@ -492,6 +523,10 @@ impl<'a> Painter<'a> {
             }
             Tag::Slider => Dim::new(inner_w.min(20), 1),
             Tag::NumberInput => Dim::new(inner_w.min(10), 1),
+            Tag::Button if composite_button(node) => match direction_of(node) {
+                Direction::Row => self.measure_row(node, inner_w, inner_h),
+                Direction::Column => self.measure_column(node, inner_w, inner_h),
+            },
             Tag::Button => {
                 let label = self.button_label(node);
                 Dim::new(UnicodeWidthStr::width(label.as_str()) as u16 + 4, 1)
@@ -560,7 +595,7 @@ impl<'a> Painter<'a> {
         if let Some(w) = dim_cells(style.layout.width.as_ref(), avail_w, vw) {
             dim.w = w;
         }
-        if let Some(h) = dim_cells(style.layout.height.as_ref(), avail_h, vh) {
+        if let Some(h) = dim_cells(height, avail_h, vh) {
             dim.h = h;
         }
         dim.w = dim.w.saturating_add(bw).min(avail_w.max(1));
@@ -571,7 +606,12 @@ impl<'a> Painter<'a> {
         if let Some(mw) = dim_cells(style.layout.max_width.as_ref(), avail_w, vw) {
             dim.w = dim.w.min(mw.max(1));
         }
-        if let Some(mh) = dim_cells(style.layout.min_height.as_ref(), avail_h, vh) {
+        let min_height = style
+            .layout
+            .min_height
+            .as_ref()
+            .filter(|_| !composite_button(node));
+        if let Some(mh) = dim_cells(min_height, avail_h, vh) {
             dim.h = dim.h.max(mh);
         }
         if let Some(mh) = dim_cells(style.layout.max_height.as_ref(), avail_h, vh) {
@@ -912,6 +952,7 @@ impl<'a> Painter<'a> {
             Tag::Select => self.paint_select(node, inner, &ink),
             Tag::Switch => self.paint_switch(node, inner, &ink),
             Tag::Slider => self.paint_slider(node, inner, &ink),
+            Tag::Button if composite_button(node) => self.paint_children(node, inner, &env),
             Tag::Button => self.paint_button(node, inner, &ink),
             Tag::Icon => self.paint_icon(node, inner, &ink),
             Tag::Avatar => self.paint_avatar(node, inner, &ink),
