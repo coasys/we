@@ -92,6 +92,10 @@ pub struct Runtime {
     /// `$part` content.
     parts: Arc<dyn PartSource>,
     pending: PendingMap,
+    /// Pending calls whose node left the tree in some frame. Unmount
+    /// invalidates them for good — a later remount under the same id is a
+    /// different incarnation — and their completion counts as dropped.
+    orphaned: HashSet<CallId>,
     /// Call ids core mints, and the queue completions land in.
     calls: CallBook,
     /// The mount ids the last frame resolved — a node's origin mount.
@@ -146,6 +150,7 @@ impl Runtime {
             source: None,
             parts: Arc::new(NoParts),
             pending: HashMap::new(),
+            orphaned: HashSet::new(),
             calls: CallBook::default(),
             mount_ids: Vec::new(),
             ops: Vec::new(),
@@ -373,6 +378,18 @@ impl Runtime {
             self.locals.retain(&live);
             self.parents = parents;
             self.live = live;
+            // A pending call belongs to the node incarnation that made it:
+            // once its node is absent from a frame, the call is dead even if
+            // the same id mounts again before the completion arrives.
+            let live = &self.live;
+            let orphaned = &mut self.orphaned;
+            self.pending.retain(|call, p| {
+                let keep = live.contains(&p.node);
+                if !keep {
+                    orphaned.insert(*call);
+                }
+                keep
+            });
 
             // The app chrome's `meta.frame` declares the bands it
             // occupies; the space the frame leaves is the content
@@ -523,8 +540,9 @@ impl Runtime {
     /// call core minted as `call_id`):
     /// `Ok` runs `onSuccess` with `result` bound, `Err` runs `onError` with
     /// it, and `onFinally` runs after either — unless the node that asked
-    /// has left the tree, in which case nothing runs and nothing panics
-    /// (the unmount killed the subscription the callbacks belong to).
+    /// has left the tree in any frame since the call, in which case nothing
+    /// runs and nothing panics (the unmount killed the subscription the
+    /// callbacks belong to; a same-id remount does not revive it).
     pub fn complete(
         &mut self,
         host: &mut dyn Host,
@@ -533,7 +551,11 @@ impl Runtime {
         result: Result<Value, Value>,
     ) {
         let Some(pending) = self.pending.remove(&call_id) else {
-            self.stats.completions_ignored += 1;
+            if self.orphaned.remove(&call_id) {
+                self.stats.completions_dropped += 1;
+            } else {
+                self.stats.completions_ignored += 1;
+            }
             return;
         };
         if !self.live.contains(&pending.node) {

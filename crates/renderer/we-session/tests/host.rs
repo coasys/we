@@ -38,10 +38,12 @@ struct Log {
 }
 
 /// Records every request; answers `Pending` (keeping the completer) or
-/// `Done(Ok(null))` while also keeping the completer.
+/// `Done` — `Ok(null)`, or `Err("sync")` when `fail` — while also keeping
+/// the completer.
 struct RecordingHost {
     log: Rc<RefCell<Log>>,
     pending: bool,
+    fail: bool,
 }
 
 impl Host for RecordingHost {
@@ -51,6 +53,8 @@ impl Host for RecordingHost {
         log.completers.push(done);
         if self.pending {
             Invoked::Pending
+        } else if self.fail {
+            Invoked::Done(Err(Value::Str("sync".into())))
         } else {
             Invoked::Done(Ok(Value::Null))
         }
@@ -58,10 +62,19 @@ impl Host for RecordingHost {
 }
 
 fn session(v: serde_json::Value, pending: bool) -> (Session, Rc<RefCell<Log>>) {
+    session_answering(v, pending, false)
+}
+
+fn session_answering(
+    v: serde_json::Value,
+    pending: bool,
+    fail: bool,
+) -> (Session, Rc<RefCell<Log>>) {
     let log = Rc::new(RefCell::new(Log::default()));
     let host = RecordingHost {
         log: log.clone(),
         pending,
+        fail,
     };
     let s = Session::new(spec(v), Arc::new(StoreBag::new()), screen(), Box::new(host));
     (s, log)
@@ -154,7 +167,28 @@ fn pending_error_runs_on_error() {
 
 #[test]
 fn finally_runs_after_either() {
-    let (mut s, log) = session(lifecycle_node(), true);
+    // onSuccess and onError both write `last`; onFinally appends what it
+    // reads there, so it sees the selected callback's write only if it
+    // runs after it (`invoke.ts`: `.finally` follows `.then`/`.catch`).
+    let (mut s, log) = session(
+        json!({
+            "type": "Column",
+            "$localState": {
+                "last": { "type": "string", "initial": "" },
+                "fin": { "type": "string", "initial": "" },
+                "seen": { "type": "string", "initial": "" }
+            },
+            "props": { "onTap": { "$invoke": "storeX.call", "args": [],
+                "onSuccess": [{ "$setLocal": "last", "value": { "$": "result" } }],
+                "onError": [{ "$setLocal": "last", "value": { "$": "result" } }],
+                "onFinally": [
+                    { "$setLocal": "fin", "value": { "$": "local.fin + 'f'" } },
+                    { "$setLocal": "seen", "value": { "$": "local.seen + local.last" } }
+                ] } },
+            "children": []
+        }),
+        true,
+    );
     let root = s.resolve();
     s.dispatch(&root.id, "onTap", Value::Null);
     s.dispatch(&root.id, "onTap", Value::Null);
@@ -162,6 +196,11 @@ fn finally_runs_after_either() {
     completer(&log, 1).complete(Err(Value::Str("boom".into())));
     s.resolve();
     assert_eq!(local(&s, &root.id, "fin"), "ff", "onFinally after both");
+    assert_eq!(
+        local(&s, &root.id, "seen"),
+        "vboom",
+        "each onFinally read the value its onSuccess / onError wrote"
+    );
 }
 
 #[test]
@@ -229,16 +268,27 @@ fn done_then_late_completer_is_ignored() {
 
 #[test]
 fn invoke_done_runs_no_callbacks() {
-    let (mut s, _log) = session(lifecycle_node(), false);
-    let root = s.resolve();
-    s.dispatch(&root.id, "onTap", Value::Null);
-    s.resolve();
-    assert_eq!(local(&s, &root.id, "got"), "");
-    assert_eq!(
-        local(&s, &root.id, "fin"),
-        "",
-        "a sync answer has no lifecycle"
-    );
+    for fail in [false, true] {
+        let (mut s, log) = session_answering(lifecycle_node(), false, fail);
+        let root = s.resolve();
+        s.dispatch(&root.id, "onTap", Value::Null);
+        s.resolve();
+        {
+            let log = log.borrow();
+            assert_eq!(log.requests.len(), 1, "the host received the call");
+            let Action::Invoke { target, .. } = &log.requests[0].action;
+            assert_eq!(target.as_ref(), "storeX.call");
+            assert_eq!(log.requests[0].origin.node, root.id);
+        }
+        let what = if fail { "Done(Err)" } else { "Done(Ok)" };
+        assert_eq!(local(&s, &root.id, "got"), "", "{what}: no onSuccess");
+        assert_eq!(local(&s, &root.id, "err"), "", "{what}: no onError");
+        assert_eq!(
+            local(&s, &root.id, "fin"),
+            "",
+            "{what}: a sync answer has no lifecycle"
+        );
+    }
 }
 
 fn first_child(n: &ResolvedNode) -> Option<&ResolvedNode> {
@@ -296,7 +346,10 @@ fn host_never_sees_local_writes() {
     let (mut s, log) = session(
         json!({
             "type": "Column",
-            "$localState": { "x": { "type": "string", "initial": "" } },
+            "$localState": {
+                "x": { "type": "string", "initial": "" },
+                "flag": { "type": "boolean", "initial": false }
+            },
             "props": { "onTap": [
                 { "$setLocal": "x", "value": "1" },
                 { "$toggleLocal": "flag" },
@@ -308,6 +361,11 @@ fn host_never_sees_local_writes() {
     );
     let root = s.resolve();
     s.dispatch(&root.id, "onTap", Value::Null);
+    assert_eq!(
+        local(&s, &root.id, "flag"),
+        "true",
+        "the toggle wrote the local, in core"
+    );
     let log = log.borrow();
     assert_eq!(log.requests.len(), 1, "only the invoke reached the host");
     let Action::Invoke { target, args } = &log.requests[0].action;
@@ -337,4 +395,78 @@ fn offline_static_host_answers_from_invokes_table() {
     parked.complete(Ok(Value::Str("v".into())));
     s.resolve();
     assert_eq!(local(&s, &root.id, "got"), "v");
+}
+
+/// Review P2: an unmount permanently invalidates the calls its nodes made,
+/// even when the same structural id is mounted again before the old
+/// completion arrives. A call made by the remounted node still settles.
+#[test]
+fn completion_after_unmount_and_same_id_remount_runs_nothing() {
+    let (mut s, log) = session(
+        json!({
+            "type": "Column",
+            "$localState": {
+                "show": { "type": "boolean", "initial": true },
+                "got": { "type": "string", "initial": "" },
+                "fin": { "type": "string", "initial": "" }
+            },
+            "props": {
+                "onHide": { "$setLocal": "show", "value": false },
+                "onShow": { "$setLocal": "show", "value": true }
+            },
+            "children": [{
+                "type": "$if",
+                "props": {
+                    "condition": { "$": "local.show" },
+                    "then": {
+                        "type": "we-button",
+                        "props": { "onTap": { "$invoke": "storeX.call",
+                            "onSuccess": [{ "$setLocal": "got", "value": { "$": "local.got + result" } }],
+                            "onFinally": [{ "$setLocal": "fin", "value": { "$": "local.fin + 'f'" } }] } }
+                    }
+                }
+            }]
+        }),
+        true,
+    );
+    let root = s.resolve();
+    let button = first_child(&root)
+        .expect("the button is mounted")
+        .id
+        .clone();
+    s.dispatch(&button, "onTap", Value::Null);
+    s.dispatch(&root.id, "onHide", Value::Null);
+    let root = s.resolve();
+    assert!(first_child(&root).is_none(), "the button left the tree");
+    s.dispatch(&root.id, "onShow", Value::Null);
+    let root = s.resolve();
+    let remounted = first_child(&root).expect("the button is back").id.clone();
+    assert_eq!(remounted, button, "the remount reuses the structural id");
+
+    completer(&log, 0).complete(Ok(Value::Str("old".into())));
+    s.resolve();
+    assert_eq!(
+        local(&s, &root.id, "got"),
+        "",
+        "the old call's onSuccess must not run on the remounted node"
+    );
+    assert_eq!(local(&s, &root.id, "fin"), "", "nor its onFinally");
+    assert_eq!(s.stats().completions_dropped, 1, "it is counted as dropped");
+    assert_eq!(s.stats().completions, 0);
+
+    s.dispatch(&remounted, "onTap", Value::Null);
+    assert_eq!(
+        log.borrow().requests.len(),
+        2,
+        "the new call reached the host"
+    );
+    completer(&log, 1).complete(Ok(Value::Str("new".into())));
+    s.resolve();
+    assert_eq!(
+        local(&s, &root.id, "got"),
+        "new",
+        "a call made after the remount still settles"
+    );
+    assert_eq!(local(&s, &root.id, "fin"), "f");
+    assert_eq!(s.stats().completions, 1);
 }

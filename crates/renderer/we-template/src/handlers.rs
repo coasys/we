@@ -34,8 +34,9 @@ use crate::{Host, Invoked, LocalState, Scope, StoreBag};
 /// with `result` bound, `onFinally` with the plain scope — unless the node
 /// has left the tree.
 pub struct PendingCall {
-    /// The node whose handler raised the call — checked against the live
-    /// set before the callbacks run.
+    /// The node whose handler raised the call. A frame that resolves
+    /// without it invalidates the call for good (`Runtime` drops it then),
+    /// so a remount under the same id never runs these callbacks.
     pub node: NodeId,
     pub scope: Scope,
     pub on_success: Option<Json>,
@@ -445,7 +446,13 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
                 }
                 return;
             }
-            let done = cx.calls.mint();
+            let Some(done) = cx.calls.mint() else {
+                // Every call id has been used: refuse rather than reuse one
+                // an outstanding call may still hold.
+                cx.warnings
+                    .push(format!("$invoke {target}: call ids exhausted; not run").into());
+                return;
+            };
             let call = done.call_id();
             let request = ActionRequest {
                 origin: Origin {
