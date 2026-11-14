@@ -57,11 +57,14 @@ pub(crate) fn shown_text(edit: &EditState, node: &ResolvedNode) -> String {
             }
         }
         Some(draft) => {
-            let seen = edit.seen_prop(&node.id);
-            if !seen.is_undefined() && !seen.strict_eq(prop_v) {
-                prop
-            } else {
+            // A recorded draft IS the baseline — `Undefined` was itself a
+            // valid prop to type against, so compare `seen`
+            // unconditionally: a write that moved off it wins, sentinel
+            // or not.
+            if edit.seen_prop(&node.id).strict_eq(prop_v) {
                 draft
+            } else {
+                prop
             }
         }
         None => prop,
@@ -98,8 +101,8 @@ pub(crate) fn reconcile_draft(edit: &mut EditState, node: &ResolvedNode) {
     let dead = if live(node) {
         matches!(edit.draft(&node.id), Some(d) if *d != *prop.to_text())
     } else {
-        let seen = edit.seen_prop(&node.id);
-        !seen.is_undefined() && !seen.strict_eq(prop)
+        // Same Undefined-is-a-baseline rule as [`shown_text`].
+        edit.draft(&node.id).is_some() && !edit.seen_prop(&node.id).strict_eq(prop)
     };
     if dead {
         edit.clear_draft(&node.id);
@@ -112,8 +115,8 @@ pub(crate) fn reconcile_draft(edit: &mut EditState, node: &ResolvedNode) {
 /// and an external write (`seen` moved) drops it.
 pub(crate) fn shown_num(edit: &EditState, node: &ResolvedNode) -> String {
     let prop = props::prop(node, "value");
-    let seen = edit.seen_prop(&node.id);
-    if !seen.is_undefined() && !seen.strict_eq(prop) {
+    // Same Undefined-is-a-baseline rule as [`shown_text`].
+    if edit.draft(&node.id).is_some() && !edit.seen_prop(&node.id).strict_eq(prop) {
         return value_text(node);
     }
     edit.draft(&node.id).unwrap_or_else(|| value_text(node))
@@ -121,8 +124,11 @@ pub(crate) fn shown_num(edit: &EditState, node: &ResolvedNode) -> String {
 
 /// Drop a stale number draft when the prop moved (see [`shown_num`]).
 pub(crate) fn reconcile_num(edit: &mut EditState, node: &ResolvedNode) {
-    let seen = edit.seen_prop(&node.id);
-    if !seen.is_undefined() && !seen.strict_eq(props::prop(node, "value")) {
+    if edit.draft(&node.id).is_some()
+        && !edit
+            .seen_prop(&node.id)
+            .strict_eq(props::prop(node, "value"))
+    {
         edit.clear_draft(&node.id);
     }
 }

@@ -347,6 +347,100 @@ fn textarea_blur_commits_the_shown_prop_not_the_dead_draft() {
     assert_detail(&r, "onChange", s("new"));
 }
 
+/// F2 — a draft typed while `value` was Undefined still had a baseline:
+/// `set_draft` recorded the prop it was typed against. `seen.is_undefined()`
+/// skipped reconciliation, so the draft hid a value the record later
+/// loaded — and could overwrite it on commit. input.ts:276–285: an
+/// external write moves `value`, and the buffer follows it.
+#[test]
+fn undefined_baseline_draft_drops_to_the_loaded_prop() {
+    let mut inp = node("we-input", "in", props(&[("label", s("Name"))])); // no `value` → Undefined
+    inp.handlers = handlers(&["onChange"]);
+    let (mut h, r) = rig(inp);
+    h.run();
+    let f = h.get_by_label("Name");
+    f.click();
+    f.type_text("x");
+    h.step();
+    // The record finishes loading: an external write moves the prop off
+    // the Undefined baseline the draft was typed against.
+    r.node
+        .borrow_mut()
+        .props
+        .insert("value".into(), s("loaded"));
+    h.step();
+    assert_eq!(
+        h.get_by_label("Name").value().as_deref(),
+        Some("loaded"),
+        "the loaded prop must replace the stale draft, not hide behind it"
+    );
+    h.key_press(egui::Key::Enter);
+    h.step();
+    assert_detail(&r, "onChange", s("loaded"));
+}
+
+/// F2 sibling case: `null` is a defined baseline — the same write moves
+/// off it. (Null was never confused with the sentinel; this guards the
+/// shared `seen` path staying strict rather than collapsing nullish.)
+#[test]
+fn null_baseline_draft_drops_to_the_loaded_prop() {
+    let mut inp = node(
+        "we-input",
+        "in",
+        props(&[("label", s("Name")), ("value", Value::Null)]),
+    );
+    inp.handlers = handlers(&["onChange"]);
+    let (mut h, r) = rig(inp);
+    h.run();
+    let f = h.get_by_label("Name");
+    f.click();
+    f.type_text("x");
+    h.step();
+    r.node
+        .borrow_mut()
+        .props
+        .insert("value".into(), s("loaded"));
+    h.step();
+    assert_eq!(
+        h.get_by_label("Name").value().as_deref(),
+        Some("loaded"),
+        "the loaded prop must replace the stale draft"
+    );
+    h.key_press(egui::Key::Enter);
+    h.step();
+    assert_detail(&r, "onChange", s("loaded"));
+}
+
+/// F2 on the validated draft: we-number-input keeps invalid text while
+/// typing (`shown_num`/`reconcile_num` share the Undefined-baseline bug),
+/// so the same late-loading write must drop it.
+#[test]
+fn number_input_undefined_baseline_drops_to_the_loaded_prop() {
+    let mut inp = node("we-number-input", "in", props(&[("label", s("Count"))]));
+    inp.handlers = handlers(&["onChange"]);
+    let (mut h, r) = rig(inp);
+    h.run();
+    let f = h.get_by_label("Count");
+    f.click();
+    f.type_text("5");
+    h.step();
+    r.node
+        .borrow_mut()
+        .props
+        .insert("value".into(), Value::Num(10.0));
+    h.step();
+    assert_eq!(
+        h.get_by_label("Count").value().as_deref(),
+        Some("10"),
+        "the loaded number must replace the stale draft"
+    );
+    // Enter surrenders focus — the blur commit must emit the loaded 10,
+    // not parse the discarded "5".
+    h.key_press(egui::Key::Enter);
+    h.step();
+    assert_detail(&r, "onChange", Value::Num(10.0));
+}
+
 #[test]
 fn input_keydown_reports_key_code_and_enter_commits_change() {
     let mut inp = node(
