@@ -53,6 +53,42 @@ export const cursorToggle: SchemaNode = {
 };
 
 /**
+ * The cursor switch as a line in the call bar's More menu rather than a square in its row.
+ *
+ * Sharing a pointer is a thing set once and left alone, which is exactly what a menu is for — the
+ * bar itself explains the split in `CALL_MENU_ANCHOR`. Shaped like the menu's own toggle lines, so
+ * a person who has opened any menu in the app already knows how to read the check.
+ */
+export const cursorMenuItem: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'modules.live.canShareCursors' },
+    then: {
+      type: 'we-menu-item',
+      props: {
+        selected: { $: 'modules.live.cursorsOn' },
+        onSelect: { $invoke: 'modules.live.toggleCursors' },
+        px: '300',
+        py: '100',
+        gap: '200',
+        fontSize: '200',
+      },
+      children: [
+        { type: 'we-icon', props: { name: 'cursor-click', size: 'sm' } },
+        { type: 'we-text', props: { fontSize: '200' }, children: ['Share your pointer'] },
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'modules.live.cursorsOn' },
+            then: { type: 'we-icon', props: { name: 'check', size: 'xs', weight: 'bold', color: 'accent' } },
+          },
+        },
+      ],
+    },
+  },
+};
+
+/**
  * Take the wheel, or give it up.
  *
  * Offered even while somebody else has it: taking over is a real thing to want, and the tie-break is
@@ -87,6 +123,46 @@ export const wheelButton: SchemaNode = {
             onClick: { $invoke: 'modules.live.toggleWheel' },
           },
           children: [{ type: 'we-icon', props: { name: 'signpost' } }],
+        },
+      ],
+    },
+  },
+};
+
+/**
+ * The wheel as a line in the call bar's More menu, beside the pointer line.
+ *
+ * The label names the move that is available, which a button could only do through its tooltip —
+ * one advantage a line has over a square. Selected while this agent is driving, with the same check
+ * the menu's own toggles draw.
+ */
+export const wheelMenuItem: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'modules.live.canDrive' },
+    then: {
+      type: 'we-menu-item',
+      props: {
+        selected: { $: 'modules.live.driving' },
+        onSelect: { $invoke: 'modules.live.toggleWheel' },
+        px: '300',
+        py: '100',
+        gap: '200',
+        fontSize: '200',
+      },
+      children: [
+        { type: 'we-icon', props: { name: 'signpost', size: 'sm' } },
+        {
+          type: 'we-text',
+          props: { fontSize: '200' },
+          children: [{ $: "modules.live.driving ? 'Give up the wheel' : 'Take the wheel'" }],
+        },
+        {
+          type: '$if',
+          props: {
+            condition: { $: 'modules.live.driving' },
+            then: { type: 'we-icon', props: { name: 'check', size: 'xs', weight: 'bold', color: 'accent' } },
+          },
         },
       ],
     },

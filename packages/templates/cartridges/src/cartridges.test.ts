@@ -106,6 +106,22 @@ describe('the Coasys cartridge', () => {
   });
 
   /*
+    The AI chat sparkle sat in the rail's `header`, which `railShell` places without the `px` the
+    items and footer columns get — a railItem's own `railInset` is measured *against* that edge
+    padding, so without it the glyph sat one inset left of every row below. The header keeps its
+    place; the row inside it regains the edge it was counted against.
+  */
+  it('aligns the AI chat row with the rail rows below it', () => {
+    const path = pathTo(coasys.app!, (n) => (n.props as { label?: unknown } | undefined)?.label === 'AI chat')!;
+    expect(path.at(-1), 'no AI chat row in the rail').toBeDefined();
+    const edge = path
+      .slice(0, -1)
+      .reverse()
+      .find((n) => (n.props as { px?: unknown } | undefined)?.px !== undefined);
+    expect((edge?.props as { px?: unknown } | undefined)?.px, 'no ancestor restores the rail edge').toBe('200');
+  });
+
+  /*
     It defines no kinds of record of its own, so there is no gap to record: every template it brings
     must validate as it stands — the app around every space, the space template with its pages, and
     the pages of the app's own.
@@ -243,6 +259,38 @@ describe('the Coasys cartridge', () => {
     have it, so the two lists offer the same things; the tree's list is the ones somebody would switch
     between in this space, not every built-in the deployment carries.
   */
+  describe('a call running in the space', () => {
+    /** The tree's `$if` gated on a live call — the subtree that is the running-call entry. */
+    const running = () =>
+      findNode(
+        treeSection,
+        (n) =>
+          n.type === '$if' &&
+          JSON.stringify((n.props as { condition?: unknown } | undefined)?.condition) ===
+            JSON.stringify({ $: 'count(modules.call.liveCalls)' }),
+      )!;
+
+    it('is a single entry that joins or opens it — not a line beside a second affordance', () => {
+      const subtree = running();
+      const json = JSON.stringify(subtree);
+      /*
+        One way in. `goToCall` already carries the branch — it joins the call running here when you
+        are not in it, and brings the call up when you are — so the row needs no destination of its
+        own, and a second one beside the text is the repeat this item removes.
+      */
+      expect(json).toContain('modules.call.goToCall');
+      expect(json).not.toContain('routeStore.navigate');
+      expect(json).not.toContain('modules.call.joinCall');
+
+      // The line itself is the entry: "Call running · N in it" lives inside the one button, not
+      // next to it, so pressing anywhere on the row does the thing the row reports.
+      const buttons = findAll(subtree, (n) => n.type === 'we-button');
+      expect(buttons, 'the entry is more than one control').toHaveLength(1);
+      const text = findAll(buttons[0], (n) => n.type === 'we-text' && JSON.stringify(n).includes('Call running'));
+      expect(text, 'the call-running line is not inside the entry').toHaveLength(1);
+    });
+  });
+
   describe('templates and themes in the tree', () => {
     const evaluate = (source: string, roots: Record<string, unknown>) =>
       evaluateExpression(parseExpression(source), {
@@ -745,6 +793,28 @@ function findNode(root: unknown, match: (node: { type?: string; props?: unknown 
     for (const value of Object.values(node)) {
       const found = walk(value);
       if (found) return found;
+    }
+    return undefined;
+  };
+  return walk(root);
+}
+
+/** The node `match` accepts plus every ancestor above it, root first — `findNode` with a lineage. */
+function pathTo(root: unknown, match: (node: { type?: string; props?: unknown }) => boolean) {
+  const walk = (node: unknown): { type?: string; props?: unknown }[] | undefined => {
+    if (!node || typeof node !== 'object') return undefined;
+    if (Array.isArray(node)) {
+      for (const child of node) {
+        const found = walk(child);
+        if (found) return found;
+      }
+      return undefined;
+    }
+    const n = node as { type?: string; props?: unknown };
+    if (match(n)) return [n];
+    for (const value of Object.values(node)) {
+      const found = walk(value);
+      if (found) return [n, ...found];
     }
     return undefined;
   };

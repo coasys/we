@@ -52,10 +52,18 @@ const slots = () => liveModule.contributes?.slots ?? [];
 const into = (anchor: string) => slots().filter((slot) => slot.anchor === anchor);
 
 describe('what this module puts in the call bar', () => {
-  it('puts the pointer switch and the wheel among the controls', () => {
-    // Real controls, in the region for real controls, at every width — the bar keeps contributed
-    // chrome in the row rather than folding meanings it cannot read.
-    expect(into('call-controls')).toHaveLength(2);
+  it('puts the pointer switch and the wheel behind the More menu, as menu items', () => {
+    /*
+      They are the less-used actions the bar now keeps out of the row — "share your pointer" and the
+      wheel — so they go where the call module opened for them: `call-menu`, the region inside its
+      More menu. Contributed as `we-menu-item`s rather than buttons, which is what a menu can hold.
+    */
+    const items = into('call-menu');
+    expect(items).toHaveLength(2);
+    for (const { node } of items) {
+      expect(walk(node).some((child) => child.type === 'we-menu-item')).toBe(true);
+    }
+    expect(into('call-controls')).toHaveLength(0);
   });
 
   it('puts the synthetic cursors in the development region instead', () => {

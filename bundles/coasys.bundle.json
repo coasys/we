@@ -134,64 +134,70 @@
                             ]
                           },
                           {
-                            "type": "we-button",
-                            "props": {
-                              "variant": "ghost",
-                              "size": "lg",
-                              "width": "100%",
-                              "height": "auto",
-                              "ax": "start",
-                              "ay": "center",
-                              "gap": "200",
-                              "py": "300",
-                              "px": { "$": "local.railInset" },
-                              "label": "AI chat",
-                              "onClick": { "$invoke": "chatStore.openChat" },
-                              "bg": { "$": "false ? 'accent-soft' : ''" },
-                              "color": { "$": "false ? 'accent-text' : 'text-muted'" },
-                              "hoverProps": {
-                                "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }"
-                              },
-                              "activeProps": {
-                                "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }"
-                              }
-                            },
+                            "type": "Column",
+                            "props": { "px": "200", "width": "100%" },
                             "children": [
                               {
-                                "type": "Row",
+                                "type": "we-button",
                                 "props": {
-                                  "width": "2rem",
-                                  "height": "2rem",
-                                  "ax": "center",
+                                  "variant": "ghost",
+                                  "size": "lg",
+                                  "width": "100%",
+                                  "height": "auto",
+                                  "ax": "start",
                                   "ay": "center",
-                                  "flexShrink": "0"
-                                },
-                                "children": [{ "type": "we-icon", "props": { "name": "sparkle", "size": "sm" } }]
-                              },
-                              {
-                                "type": "$if",
-                                "props": {
-                                  "condition": { "$": "local.expanded" },
-                                  "enterTransition": [
-                                    { "type": "reveal", "axis": "inline", "duration": 250 },
-                                    { "type": "fade", "duration": 150 }
-                                  ],
-                                  "exitTransition": [
-                                    { "type": "reveal", "axis": "inline", "duration": 250 },
-                                    { "type": "fade", "duration": 150 }
-                                  ],
-                                  "then": {
-                                    "type": "Row",
-                                    "props": { "gap": "200", "ay": "center", "minWidth": "0" },
-                                    "children": [
-                                      {
-                                        "type": "we-text",
-                                        "props": { "truncate": true, "fontSize": "300" },
-                                        "children": ["AI chat"]
-                                      }
-                                    ]
+                                  "gap": "200",
+                                  "py": "300",
+                                  "px": { "$": "local.railInset" },
+                                  "label": "AI chat",
+                                  "onClick": { "$invoke": "chatStore.openChat" },
+                                  "bg": { "$": "false ? 'accent-soft' : ''" },
+                                  "color": { "$": "false ? 'accent-text' : 'text-muted'" },
+                                  "hoverProps": {
+                                    "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }"
+                                  },
+                                  "activeProps": {
+                                    "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }"
                                   }
-                                }
+                                },
+                                "children": [
+                                  {
+                                    "type": "Row",
+                                    "props": {
+                                      "width": "2rem",
+                                      "height": "2rem",
+                                      "ax": "center",
+                                      "ay": "center",
+                                      "flexShrink": "0"
+                                    },
+                                    "children": [{ "type": "we-icon", "props": { "name": "sparkle", "size": "sm" } }]
+                                  },
+                                  {
+                                    "type": "$if",
+                                    "props": {
+                                      "condition": { "$": "local.expanded" },
+                                      "enterTransition": [
+                                        { "type": "reveal", "axis": "inline", "duration": 250 },
+                                        { "type": "fade", "duration": 150 }
+                                      ],
+                                      "exitTransition": [
+                                        { "type": "reveal", "axis": "inline", "duration": 250 },
+                                        { "type": "fade", "duration": 150 }
+                                      ],
+                                      "then": {
+                                        "type": "Row",
+                                        "props": { "gap": "200", "ay": "center", "minWidth": "0" },
+                                        "children": [
+                                          {
+                                            "type": "we-text",
+                                            "props": { "truncate": true, "fontSize": "300" },
+                                            "children": ["AI chat"]
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  }
+                                ]
                               }
                             ]
                           }
@@ -1314,44 +1320,41 @@
                   "props": {
                     "condition": { "$": "count(modules.call.liveCalls)" },
                     "then": {
-                      "type": "Row",
-                      "props": { "gap": "200", "ay": "center", "px": "300", "pb": "300" },
+                      "type": "Column",
+                      "props": { "px": "300", "pb": "300" },
                       "children": [
-                        { "type": "we-animated-icon", "props": { "name": "live", "color": "success", "size": "xs" } },
-                        {
-                          "type": "we-text",
-                          "props": {
-                            "variant": "footnote",
-                            "color": "text-muted",
-                            "flex": "1",
-                            "minWidth": "0",
-                            "truncate": true
-                          },
-                          "children": [{ "$": "`Call running · ${first(modules.call.liveCalls).count} in it`" }]
-                        },
                         {
                           "type": "we-button",
                           "props": {
-                            "size": "xs",
-                            "variant": { "$": "modules.call.active && !modules.call.elsewhere ? 'soft' : 'solid'" },
-                            "onClick": [
-                              {
-                                "$if": {
-                                  "condition": { "$": "modules.call.active && !modules.call.elsewhere" },
-                                  "then": {
-                                    "$invoke": "routeStore.navigate",
-                                    "args": [
-                                      {
-                                        "$": "(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (modules.call.callRecordId)) + ((routeStore.params.view == 'canvas') ? (contains(spaceStore.spacePath + '/record/CollectionBlock?kind=call&id=' + (modules.call.callRecordId), '?') ? '&' : '?') + 'view=canvas' : '')"
-                                      }
-                                    ]
-                                  },
-                                  "else": { "$invoke": "modules.call.goToCall" }
-                                }
-                              }
-                            ]
+                            "variant": "ghost",
+                            "width": "100%",
+                            "ax": "start",
+                            "gap": "200",
+                            "onClick": { "$invoke": "modules.call.goToCall" }
                           },
-                          "children": [{ "$": "modules.call.active && !modules.call.elsewhere ? 'Open' : 'Join'" }]
+                          "children": [
+                            {
+                              "type": "we-animated-icon",
+                              "props": { "name": "live", "color": "success", "size": "xs" }
+                            },
+                            {
+                              "type": "we-text",
+                              "props": {
+                                "variant": "footnote",
+                                "color": "text-muted",
+                                "flex": "1",
+                                "minWidth": "0",
+                                "truncate": true,
+                                "ta": "left"
+                              },
+                              "children": [{ "$": "`Call running · ${first(modules.call.liveCalls).count} in it`" }]
+                            },
+                            {
+                              "type": "we-text",
+                              "props": { "variant": "footnote", "color": "accent" },
+                              "children": [{ "$": "modules.call.active && !modules.call.elsewhere ? 'Open' : 'Join'" }]
+                            }
+                          ]
                         }
                       ]
                     }

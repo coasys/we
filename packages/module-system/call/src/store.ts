@@ -169,32 +169,19 @@ export interface CallTileState {
 export const STAGE_PADDING_PX = 12;
 export const STAGE_GAP_PX = 12;
 
+/**
+ * How much height the control row takes under the tiles, so "fit to content" counts it.
+ *
+ * `STAGE_GAP_PX` between the grid and it, plus a row of `md` controls (40px) in a surface padded
+ * by `200` a side (8px twice). Derived rather than chosen, for the same reason as the padding
+ * above: the aspect `stageBid` carries subtracts it so the height the host lands on fits the
+ * pictures *and* the bar beneath them, and it has to follow the schema's own sizes when they
+ * change.
+ */
+export const STAGE_CONTROLS_PX = STAGE_GAP_PX + 56;
+
 /** The tile aspect the whole stage is laid out from. */
 const TILE_ASPECT = 16 / 9;
-
-/**
- * How much of the bottom of the window the call bar occupies, for panels to keep clear of.
- *
- * `CALL_BAR_INSET` (10px) plus a row of `md` controls (40px) in a surface padded by `200` a side
- * (8px twice), plus a little air so a panel snapped above it does not touch. Derived rather than
- * chosen, like `CHROME_RAIL_WIDTH`: change the bar's size or padding and this has to follow, or
- * panels start landing underneath it again.
- *
- * The bottom, since the bar moved there. Lived in the shell as `TOP_CHROME_PX` until the bar
- * stopped being the only thing up there; see `chromeReserve` below.
- */
-export const CALL_BAR_RESERVE_PX = 74;
-
-/**
- * How wide the bar gets, at its widest — what lets the host tell "the module rail has slid left far
- * enough to hit the call controls" from "the rail is nowhere near them".
- *
- * Measured at about 440 with the standard controls and one contributed button, plus room for the
- * participant roster to grow. The bar is content-sized, so this cannot be exact — and the two errors
- * are not symmetrical: too wide moves the rail slightly earlier than it had to, too narrow puts the
- * rail across the controls. So it rounds up.
- */
-export const CALL_BAR_WIDTH_PX = 480;
 
 /** Which edge a stage occupies while it takes room. The host decides; this names the vocabulary. */
 export type CallDockEdge = 'left' | 'right' | 'top' | 'bottom';
@@ -813,9 +800,10 @@ export function createCallStore(deps: ModuleStoreDeps) {
   /*
     How many synthetic participants the call bar's dev controls have asked for — see `devPeers`.
 
-    A signal rather than a read of `localStorage` per rebuild, so pressing `+` re-solves the stage on
-    the click instead of waiting for whatever roster event happens next. Seeded from storage, which
-    is what makes the count survive the reloads a developer does while iterating.
+    A signal rather than a read per rebuild, so pressing `+` re-solves the stage on the click
+    instead of waiting for whatever roster event happens next. It belongs to the call it is
+    raised in — `teardown` zeroes it, because a count that outlives its call is a fake
+    participant joining the next one unasked.
   */
   const [fakePeerCount, setFakePeerCountSignal] = signal(readDevPeerCount());
 
@@ -1422,6 +1410,14 @@ export function createCallStore(deps: ModuleStoreDeps) {
     focusIsManual = false;
     sharingPeers = new Set();
     setTiles([]);
+    /*
+      Synthetic participants die with the call they were asked in — a fake participant is off
+      unless asked, and "asked" means asked *here*, never inherited from a call that is over or a
+      space that was visited before. `devPeers` holds the count in memory for the session, so the
+      same `+` press is the only way the next call gets one.
+    */
+    stopDevPeers();
+    setFakePeerCountSignal(writeDevPeerCount(0));
   }
 
   /**
@@ -2161,11 +2157,12 @@ export function createCallStore(deps: ModuleStoreDeps) {
    * height at which no band of empty panel is left above or below the pictures — the thing
    * hand-resizing can never quite land on. `cols × 16 / (rows × 9)` is that shape.
    *
-   * The insets are the stage's own fixed pixels: `STAGE_PADDING_PX` on each side and
-   * `STAGE_GAP_PX` between tiles. Left out — as they were at first — the host solved on the full
-   * panel width, made the box about twenty pixels too short for its pictures, and the tiles
-   * answered by shrinking to the height and leaving a gap down each side. They are constants at a
-   * given tile count, which is what lets this stay a value rather than a callback taking a width.
+   * The insets are the stage's own fixed pixels: `STAGE_PADDING_PX` on each side,
+   * `STAGE_GAP_PX` between tiles, and `STAGE_CONTROLS_PX` for the control row under them. Left
+   * out — as they were at first — the host solved on the full panel width, made the box about
+   * twenty pixels too short for its pictures, and the tiles answered by shrinking to the height
+   * and leaving a gap down each side. They are constants at a given tile count, which is what
+   * lets this stay a value rather than a callback taking a width.
    *
    * The arrangement is the one the stage is *currently in*, not one solved again here. That is
    * deliberate: with the width fixed, any column count can be made to fit perfectly, so "fit" that
@@ -2185,7 +2182,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
       return {
         ratio: TILE_ASPECT,
         insetX: STAGE_PADDING_PX * 2 + (beside ? band : 0),
-        insetY: STAGE_PADDING_PX * 2 + (!solo() && !strip.side ? band : 0),
+        insetY: STAGE_PADDING_PX * 2 + STAGE_CONTROLS_PX + (!solo() && !strip.side ? band : 0),
       };
     }
 
@@ -2193,7 +2190,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     return {
       ratio: (columns * 16) / (rows * 9),
       insetX: STAGE_PADDING_PX * 2 + (columns - 1) * STAGE_GAP_PX,
-      insetY: STAGE_PADDING_PX * 2 + (rows - 1) * STAGE_GAP_PX,
+      insetY: STAGE_PADDING_PX * 2 + (rows - 1) * STAGE_GAP_PX + STAGE_CONTROLS_PX,
     };
   }
 
@@ -2554,25 +2551,6 @@ export function createCallStore(deps: ModuleStoreDeps) {
     returnToCall: action(returnToCall, 'Go back to the space the call is in; does nothing outside a call.', {
       ambient: true,
     }),
-
-    /**
-     * The band this module's fixed chrome occupies, for panels to keep clear of.
-     *
-     * The bar is `position: fixed` at the top and paints above the panels, so a panel snapped to the
-     * top centre lands underneath it — including the panel's own grip and position menu, which are
-     * the two things it is dragged back out with. The host reserves this on every *floating* panel;
-     * a displacing one is unaffected, since it takes an edge this does not sit on.
-     *
-     * Reported rather than assumed, because the host cannot see whether the bar is up: the same
-     * value used to be a constant in the shell's geometry, reserving the band whether or not a call
-     * was running, and it could not grow when another module contributed into this bar's column.
-     *
-     * Non-zero whenever the bar is drawn at all, which includes the join prompt shown to somebody
-     * who is not in the call yet — that is the same object in the same place, so it takes the same
-     * room. `CALL_BAR_TOP` plus a row of `md` controls in a padded surface.
-     */
-    chromeReserve: () =>
-      callId() !== null || ongoingPeers().length > 0 ? { bottom: CALL_BAR_RESERVE_PX } : { bottom: 0 },
 
     /**
      * The microphone this call is sending, for a module that wants to listen to it.

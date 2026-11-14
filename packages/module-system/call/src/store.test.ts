@@ -12,7 +12,7 @@ import { describe, expect, it } from 'vitest';
 
 import { DEFAULT_ICE_SERVERS } from './mesh';
 import { parseCallMessage } from './protocol';
-import { createCallStore, STAGE_GAP_PX, STAGE_PADDING_PX } from './store';
+import { createCallStore, STAGE_CONTROLS_PX, STAGE_GAP_PX, STAGE_PADDING_PX } from './store';
 
 /**
  * The reactivity a host lends a module, reduced to the smallest thing that satisfies it.
@@ -246,7 +246,6 @@ describe('what a template may reach', () => {
       'openStage',
       'closeStage',
       'toggleStage',
-      'chromeReserve',
       'setStageBox',
       'stageTemplate',
       'stageRows',
@@ -297,7 +296,9 @@ describe('tile packing', () => {
 
     expect(aspect.ratio).toBeCloseTo(16 / 9);
     expect(aspect.insetX).toBe(STAGE_PADDING_PX * 2);
-    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2);
+    // The controls ride inside the panel now, under the tiles — "fit to content" has to cover them
+    // too, or the answer the host lands on squeezes the pictures by the bar's height.
+    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2 + STAGE_CONTROLS_PX);
   });
 
   it('fits to the arrangement it is in, rather than solving a new one', () => {
@@ -309,7 +310,7 @@ describe('tile packing', () => {
 
     expect(aspect.ratio).toBeCloseTo((3 * 16) / (2 * 9));
     expect(aspect.insetX).toBe(STAGE_PADDING_PX * 2 + 2 * STAGE_GAP_PX);
-    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2 + 1 * STAGE_GAP_PX);
+    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2 + 1 * STAGE_GAP_PX + STAGE_CONTROLS_PX);
   });
 });
 
@@ -823,6 +824,28 @@ describe('transport and device lifetime', () => {
 
     expect(store.callId()).toBeNull();
     expect(scopeDisposals()).toBe(1);
+  });
+
+  it('starts the next call without the last call’s synthetic participants', async () => {
+    /*
+      The count used to persist — storage first, then a signal that outlived its call — so peers
+      summoned to look at one stage walked into the next call, in whatever space that call was in.
+      A fake participant is off unless asked, in an existing space and in a new one, which means the
+      count belongs to the call it was asked in and dies with it.
+    */
+    const { store } = callable();
+
+    await store.startCall();
+    await Promise.resolve();
+    // `addFakePeer` is absent rather than inert in a production build — see the conditional spread
+    // in the store — so the type is right to doubt it, and a test build has developer features.
+    store.addFakePeer!();
+    store.addFakePeer!();
+    expect(store.fakePeerCount!()).toBe(2);
+
+    store.leave();
+    await Promise.resolve();
+    expect(store.fakePeerCount!(), 'the count outlived its call').toBe(0);
   });
   describe('where a call looks for NAT traversal', () => {
     /**
@@ -2149,7 +2172,7 @@ describe('the spotlight', () => {
 
     expect(aspect.ratio).toBeCloseTo(16 / 9);
     expect(aspect.insetX).toBe(STAGE_PADDING_PX * 2 + wide.width * 0.25 + STAGE_GAP_PX);
-    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2);
+    expect(aspect.insetY).toBe(STAGE_PADDING_PX * 2 + STAGE_CONTROLS_PX);
   });
 
   it('gives the whole stage to solo, on the axis the strip was on', () => {
