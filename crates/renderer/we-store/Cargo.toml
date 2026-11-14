@@ -1,0 +1,14 @@
+[package]
+name = "we-store"
+version = "0.1.0"
+edition = "2021"
+description = "The executor boundary: the Executor trait, its argument types and FakeExecutor"
+publish = false
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true
+thiserror.workspace = true
+async-trait.workspace = true
+we-expr.workspace = true

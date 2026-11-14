@@ -1,0 +1,13 @@
+[package]
+name = "we-template"
+version = "0.1.0"
+edition = "2021"
+description = "WE bundle and schema serde types, the resolved tree, handler tokens and the Host contract"
+publish = false
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true
+thiserror.workspace = true
+we-expr.workspace = true

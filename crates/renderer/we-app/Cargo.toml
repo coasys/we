@@ -1,0 +1,14 @@
+[package]
+name = "we-app"
+version = "0.1.0"
+edition = "2021"
+description = "The binary: egui/eframe, window, menus, OS integration"
+publish = false
+
+[dependencies]
+eframe.workspace = true
+we-template.workspace = true
+we-widgets.workspace = true
+we-style.workspace = true
+we-store.workspace = true
+we-expr.workspace = true

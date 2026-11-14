@@ -1,0 +1,17 @@
+[package]
+name = "we-widgets"
+version = "0.1.0"
+edition = "2021"
+description = "The Widget contract, the Registry, layout and paint — the only crate that needs egui"
+publish = false
+
+[dependencies]
+egui.workspace = true
+taffy.workspace = true
+indexmap.workspace = true
+we-template.workspace = true
+we-style.workspace = true
+we-expr.workspace = true
+
+[dev-dependencies]
+egui_kittest.workspace = true
