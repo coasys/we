@@ -117,7 +117,7 @@ export async function check(
     await sleep(450);
     const open = await rail(measureAll);
     if (open?.w !== 240) problems.push(`hovering the rail opens it to ${open?.w}px, expected 240px`);
-    if (await measureControl('Open the menu')) problems.push('a desktop rail shows a menu button');
+    if (await measureControl('Open menu')) problems.push('a desktop rail shows a menu button');
     return problems;
   }
 
@@ -135,7 +135,7 @@ export async function check(
   if (touched?.w !== 80) problems.push(`the pointer arriving opens the rail to ${touched?.w}px`);
 
   // The menu button opens it…
-  const menu = await measureControl('Open the menu');
+  const menu = await measureControl('Open menu');
   if (!menu) return [...problems, 'no menu button on a phone-width rail'];
   await pressAt(menu.x + menu.w / 2, menu.y + menu.h / 2);
   await sleep(450);

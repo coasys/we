@@ -70,11 +70,11 @@ export interface DeviceRow {
   /** Whether it keeps the master key: yes, no, or sent and not yet taken. */
   holdsMaster: 'yes' | 'no' | 'offered';
   /**
-   * "Holds the master key", "Master key offered, not yet taken", or empty; for a revoked device that
+   * "Has master key", "Master key sent", or empty; for a revoked device that
    * took (or the key log let take) the master key, a warning that its copy is still valid.
    */
   master: string;
-  /** Whether its row leads to "Replace my master key": a revoked device whose copy is still valid. */
+  /** Whether its row leads to "Replace master key": a revoked device whose copy is still valid. */
   replaceMaster: boolean;
 }
 
@@ -82,7 +82,7 @@ export interface DeviceRow {
 export interface RequestRow {
   id: string;
   kind: DeviceRequestView['kind'];
-  /** "Laptop asks for the master key", "Laptop asks to revoke d3". */
+  /** "Laptop asks for the master key", "Laptop asks to remove d3". */
   title: string;
   /** What answering yes does. */
   detail: string;
@@ -118,7 +118,7 @@ export function custodyDevice(custody: IdentityCustodyView | null | undefined): 
 
 /**
  * What this device is, for the sentences about it: "phone" where the custody service answers for a
- * phone, "computer" on the desktop — "This phone does not keep your master key".
+ * phone, "computer" on the desktop — "No master key on this phone".
  */
 export function deviceNoun(here: CustodyDevice | null): 'phone' | 'computer' {
   return here?.label === THIS_PHONE ? 'phone' : 'computer';
@@ -202,7 +202,7 @@ const DEVICE_ICONS: Record<string, string> = {
   // No `bot`: a key the record calls a bot but the key log does not is drawn as the device it is.
 };
 
-const MASTER_WORDS = { yes: 'Holds the master key', offered: 'Master key offered, not yet taken', no: '' } as const;
+const MASTER_WORDS = { yes: 'Has master key', offered: 'Master key sent', no: '' } as const;
 
 /**
  * A revoked device's copy of the master key: a revoke does not replace the master key, so the copy
@@ -211,8 +211,8 @@ const MASTER_WORDS = { yes: 'Holds the master key', offered: 'Master key offered
  * A rotation at or after the revoke replaced the master key, so the copy no longer counts.
  */
 const REVOKED_MASTER_WORDS = {
-  held: 'Still holds a valid master key — replace your master key',
-  may: 'May still hold a valid master key — replace your master key',
+  held: 'Still has your master key. Replace it to lock this device out.',
+  may: 'May still have your master key. Replace it to lock this device out.',
 } as const;
 
 /** What the private record calls `keyId`, or how the log alone would name it. */
@@ -314,7 +314,7 @@ export interface ServingDevice {
 }
 
 export const YOUR_HOST = 'Your host';
-const SERVES_YOU_NOW = 'Serves you now';
+const IN_USE = 'In use';
 
 /**
  * The device serving this session. On the desktop it is this computer. Where the custody service
@@ -327,13 +327,13 @@ export function servingDevice(
   names: DeviceNameView[] = [],
   here: CustodyDevice | null = null,
 ): ServingDevice {
-  if (!here) return { label: THIS_COMPUTER, subtitle: SERVES_YOU_NOW, icon: 'desktop' };
+  if (!here) return { label: THIS_COMPUTER, subtitle: IN_USE, icon: 'desktop' };
   const host = devices.find((device) => device.thisDevice && !device.bot);
   const record = host ? names.find((n) => n.keyId === host.keyId) : undefined;
   const name = record?.name ?? '';
   return {
     label: name || YOUR_HOST,
-    subtitle: name ? `${YOUR_HOST} · serves you now` : SERVES_YOU_NOW,
+    subtitle: name ? `${YOUR_HOST} · ${IN_USE}` : IN_USE,
     icon: (record && DEVICE_ICONS[record.kind]) || 'hard-drives',
   };
 }
@@ -365,15 +365,15 @@ export function requestRows(
         id: request.id,
         kind: request.kind,
         title: `${device} asks for the master key`,
-        detail: 'With it, that device can add and remove your devices too.',
+        detail: 'It could then add and remove devices.',
       };
     }
     const keys = request.keyIds.map((k) => deviceName(k, names, thisKeyId, thisLabel)).join(', ');
     return {
       id: request.id,
       kind: request.kind,
-      title: `${device} asks to revoke ${keys}`,
-      detail: 'Each revoked device stops acting as you.',
+      title: `${device} asks to remove ${keys}`,
+      detail: 'Removed devices lose access to your identity.',
     };
   });
 }

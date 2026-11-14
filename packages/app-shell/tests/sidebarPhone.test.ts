@@ -56,7 +56,7 @@ describe('the sidebar at phone width', () => {
     expect(header).toBeDefined();
     const menu = walk(props(header!).then).find((n) => n.type === 'we-button');
     expect(props(menu!).onClick).toEqual({ $toggleLocal: 'expanded' });
-    expect(props(menu!).label).toEqual({ $: "local.expanded ? 'Close the menu' : 'Open the menu'" });
+    expect(props(menu!).label).toEqual({ $: "local.expanded ? 'Close menu' : 'Open menu'" });
     // The desktop branch is WE's mark, opening About, as it always was.
     expect(JSON.stringify(props(header!).else)).toContain('landing-page');
   });

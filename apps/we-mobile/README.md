@@ -135,8 +135,8 @@ answers their requests.
 
 - **What the phone can do.**
   - Join by an offer link, scanned or pasted.
-  - Ask for the master key, and take it when it is sent (Settings shows "Your master key was sent
-    here" from the store inbox, `masterWaiting`).
+  - Ask for the master key, and take it when it is sent (Settings shows "Master key sent to this
+    phone" from the store inbox, `masterWaiting`).
   - As the holder: add a device by the `coasys:device:1:` code it shows (scan or paste, a ticket in
     its pre-join inbox, the match code, then the add).
   - Send the master key to a device that asked, and answer a revoke request.

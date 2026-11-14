@@ -80,7 +80,7 @@ const menuSquare: SchemaNode = {
       props: {
         variant: 'ghost',
         square: true,
-        label: { $: "local.expanded ? 'Close the menu' : 'Open the menu'" },
+        label: { $: "local.expanded ? 'Close menu' : 'Open menu'" },
         onClick: { $toggleLocal: 'expanded' },
       },
       children: [{ type: 'we-icon', props: { name: { $: "local.expanded ? 'x' : 'list'" } } }],

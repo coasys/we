@@ -55,7 +55,7 @@ export interface IdentityTransport {
   scan?(prefix: string): Promise<string | null>;
   /**
    * What this device is, in the words a person reads on the screens that speak of it ("This phone
-   * then joins your identity"). Absent means a computer: the desktop windows.
+   * is linked"). Absent means a computer: the desktop windows.
    */
   deviceNoun?: DeviceNoun;
 }
@@ -334,7 +334,7 @@ function body(screen: Screen): Child[] {
         'Waiting for your device…',
       );
     case 'enter-code': {
-      const code = textField('The new device’s code', '', 'coasys:device:1:…');
+      const code = textField('Code', '', 'coasys:device:1:…');
       const go = () => step({ kind: 'code', code: code.input.value.trim() }, [code.input]);
       const scan = scanInto('coasys:device:1:', code.input, go);
       return [
@@ -385,7 +385,7 @@ function body(screen: Screen): Child[] {
       return shareable(
         screen.code,
         screen.qrSvg,
-        `QR code of this ${host.deviceNoun ?? 'computer'}’s code`,
+        `QR code for this ${host.deviceNoun ?? 'computer'}`,
         screen.expires,
         'Waiting for your other device…',
       );
@@ -393,7 +393,7 @@ function body(screen: Screen): Child[] {
       const actions = deviceMatchActions(screen);
       if (actions.wait) waitFor({ kind: 'wait-join' });
       const note = deviceMatchNote(screen);
-      const accept = actions.accept ? [button('This is my identity', () => step({ kind: 'accept' }), 'primary')] : [];
+      const accept = actions.accept ? [button('Confirm', () => step({ kind: 'accept' }), 'primary')] : [];
       return [
         el('div', { className: 'code', textContent: screen.code }),
         el('div', { className: 'link', textContent: screen.did }),
@@ -402,8 +402,8 @@ function body(screen: Screen): Child[] {
       ];
     }
     case 'match': {
-      const name = textField('Name the new device', screen.hint ?? '', 'Laptop, Office server…');
-      const own = screen.ownName ? textField('Name this computer', '', 'Desktop at home…') : null;
+      const name = textField('Device name', screen.hint ?? '', 'Work laptop');
+      const own = screen.ownName ? textField('Name for this computer', '', 'Home desktop') : null;
       const keep = screen.canKeep ? el('input', { type: 'checkbox' }) : null;
       const confirm = () =>
         step({
@@ -418,11 +418,10 @@ function body(screen: Screen): Child[] {
         ...(own ? [own.label] : []),
         ...(keep
           ? [
-              el('label', { className: 'check' }, keep, 'Keep the master key on this device'),
+              el('label', { className: 'check' }, keep, 'Send it the master key'),
               el('p', {
                 className: 'note',
-                textContent:
-                  'Then that device can add and remove your devices too. Choose it only for a device you keep safe.',
+                textContent: 'It can then add and remove devices. Choose this only for a device you keep safe.',
               }),
             ]
           : []),
@@ -440,8 +439,7 @@ function body(screen: Screen): Child[] {
     case 'request': {
       const p = screen.passphrase ? secretField('Passphrase') : null;
       const go = () => step({ kind: 'answer', ...(p ? { passphrase: p.input.value } : {}) }, p ? [p.input] : []);
-      const yes =
-        screen.kind === 'send-master' ? button('Send it', go, 'primary') : button('Revoke them', go, 'danger');
+      const yes = screen.kind === 'send-master' ? button('Send', go, 'primary') : button('Remove', go, 'danger');
       return [
         ...whoAsks(screen),
         ...(screen.kind === 'confirm-revoke'
@@ -449,7 +447,7 @@ function body(screen: Screen): Child[] {
           : []),
         ...(p ? [p.label] : []),
         ...errorLine(screen.error),
-        el('p', { className: 'note', textContent: 'Not now leaves the request waiting until it expires.' }),
+        el('p', { className: 'note', textContent: 'Not now keeps the request open until it expires.' }),
         el('div', { className: 'row' }, yes, button('Not now', cancel)),
       ];
     }
@@ -472,14 +470,14 @@ function body(screen: Screen): Child[] {
           p ? [p.input] : [],
         );
       return [
-        el('label', { className: 'check' }, rotate, 'Also replace my master key'),
+        el('label', { className: 'check' }, rotate, 'Also replace master key'),
         el('p', {
           className: 'note',
-          textContent: 'Then a copy the device kept stops working. You type your 12 words next.',
+          textContent: "Any copy this device has stops working. You'll enter your recovery phrase next.",
         }),
         ...(p ? [p.label] : []),
         ...errorLine(screen.error),
-        el('div', { className: 'row' }, button('Revoke', go, 'danger'), button('Cancel', cancel)),
+        el('div', { className: 'row' }, button('Remove', go, 'danger'), button('Cancel', cancel)),
       ];
     }
     case 'enter-words': {
@@ -497,7 +495,7 @@ function body(screen: Screen): Child[] {
         box.checked = d.lockOut;
         return { keyId: d.keyId, box, label: d.name ? `${d.name} (${d.keyId})` : d.keyId };
       });
-      const name = textField('Name this computer', '', 'Laptop, Desktop at home…');
+      const name = textField('Name for this computer', '', 'Home desktop');
       const go = () =>
         step({
           kind: 'lock-out',
@@ -506,7 +504,7 @@ function body(screen: Screen): Child[] {
         });
       return [
         el('div', { className: 'link', textContent: screen.did }),
-        ...ticks.map((t) => el('label', { className: 'check' }, t.box, `Lock out ${t.label}`)),
+        ...ticks.map((t) => el('label', { className: 'check' }, t.box, `Remove ${t.label}`)),
         name.label,
         el('div', { className: 'row' }, button('Restore', go, 'primary'), button('Cancel', cancel)),
       ];
@@ -517,8 +515,8 @@ function body(screen: Screen): Child[] {
         el(
           'div',
           { className: 'row' },
-          button('Remove it', () => step({ kind: 'remove' }), 'danger'),
-          button('Keep it', cancel),
+          button('Remove', () => step({ kind: 'remove' }), 'danger'),
+          button('Cancel', cancel),
         ),
       ];
     case 'bot-scope': {
@@ -538,12 +536,12 @@ function body(screen: Screen): Child[] {
           days: Number(days.value),
         });
       return [
-        el('p', { textContent: 'Its key may' }),
+        el('p', { textContent: 'Permissions' }),
         ...ticks.map((t) => el('label', { className: 'check' }, t.box, t.label)),
-        el('label', {}, `For how many days (1 to ${BOT_DAYS_MAX})`, days),
+        el('label', {}, `Days (1 to ${BOT_DAYS_MAX})`, days),
         el('p', {
           className: 'note',
-          textContent: 'This is the most it may ever do. A bot that should run longer is added again.',
+          textContent: 'This is the most it can ever do. To change it, add the bot again.',
         }),
         ...errorLine(screen.error),
         el('div', { className: 'row' }, button('Continue', go, 'primary'), button('Cancel', cancel)),
@@ -557,34 +555,34 @@ function body(screen: Screen): Child[] {
         el(
           'div',
           { className: 'row' },
-          button('Copy the offer', () => void navigator.clipboard?.writeText(screen.offer), 'primary'),
+          button('Copy code', () => void navigator.clipboard?.writeText(screen.offer), 'primary'),
           button('Cancel', cancel),
         ),
         el('p', {
           className: 'note',
-          textContent: 'Anyone with this offer can make a bot of yours: give it only to the bot.',
+          textContent: 'Anyone with this code can create a bot for you. Paste it only where your bot runs.',
         }),
         countdown(screen.expires, 'Waiting for the bot…'),
       ];
     case 'bot-match': {
-      const name = textField('Name the bot', screen.name ?? '', 'Meeting notes bot…');
+      const name = textField('Name', screen.name ?? '', 'Meeting notes bot');
       const confirm = () => step({ kind: 'confirm', name: typed(name.input) });
       return [
         el('div', { className: 'code', textContent: screen.code }),
         name.label,
-        el('p', { className: 'note', textContent: 'Add only a bot you made or run yourself.' }),
-        el('div', { className: 'row' }, button('Add it', confirm, 'primary'), button('Deny', cancel)),
+        el('p', { className: 'note', textContent: 'Only add a bot you run yourself.' }),
+        el('div', { className: 'row' }, button('Add', confirm, 'primary'), button('Cancel', cancel)),
       ];
     }
     case 'bot-added':
       return [];
     case 'master-not-kept':
-      // The rotation stands: closing leaves it, and Try again needs the words once more.
+      // The rotation stands: closing leaves it, and trying again needs the words once more.
       return [
         el(
           'div',
           { className: 'row' },
-          button('Type my 12 words again', () => step({ kind: 'try-again' }), 'primary'),
+          button('Enter recovery phrase', () => step({ kind: 'try-again' }), 'primary'),
           button('Close', cancel),
         ),
       ];

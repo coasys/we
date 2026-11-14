@@ -464,7 +464,7 @@ impl DesktopVault {
     /// looked and means to go on: a new entry in a fresh incarnation, which an epoch read
     /// before the loss matches only by a 1 in 2³² draw (improbable, not impossible), so a
     /// removal paused across it keeps the key rather than forgetting it. An epoch that is there
-    /// is left as it is. Answers the epoch. The app takes it in "Replace my master key", once
+    /// is left as it is. Answers the epoch. The app takes it in "Replace master key", once
     /// the words are checked (`crate::service`).
     pub fn recover_custody_epoch(&self, scid: &str) -> Result<u64, VaultError> {
         log::info!("custody: recover a lost custody epoch");
