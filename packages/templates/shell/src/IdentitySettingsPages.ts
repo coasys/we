@@ -352,7 +352,7 @@ const deviceRow: SchemaNode = listRow(
             disabled: { $: 'identityStore.busy' },
             onClick: { $invoke: 'deviceStore.revoke', args: [{ $: 'device.keyId' }] },
           },
-          children: ['Revoke'],
+          children: ['Remove'],
         },
       },
     },
@@ -369,7 +369,7 @@ const deviceRow: SchemaNode = listRow(
             disabled: { $: 'identityStore.busy' },
             onClick: { $invoke: 'deviceStore.replaceMaster' },
           },
-          children: ['Replace my master key'],
+          children: ['Replace master key'],
         },
       },
     },
@@ -421,28 +421,28 @@ export const addDeviceButton: SchemaNode = {
       type: 'Row',
       props: { gap: '200', wrap: true },
       children: [
-        stepButton('Scan or paste a code', 'deviceStore.scanDevice'),
-        stepButton('Add a server by link', 'deviceStore.addDevice', 'soft'),
+        stepButton('Enter code', 'deviceStore.scanDevice'),
+        stepButton('Link a host', 'deviceStore.addDevice', 'soft'),
       ],
     },
   },
 };
 
-/** "Replace my master key": from the 12 words, on any device of the identity that takes them. */
+/** "Replace master key": from the 12 words, on any device of the identity that takes them. */
 export const replaceMasterButton: SchemaNode = {
   type: '$if',
   props: {
     condition: { $: 'deviceStore.canReplaceMaster' },
-    then: stepButton('Replace my master key', 'deviceStore.replaceMaster', 'soft'),
+    then: stepButton('Replace master key', 'deviceStore.replaceMaster', 'soft'),
   },
 };
 
-/** "Use my 12 words": brings the identity back on a computer of none. */
+/** "Restore with recovery phrase": brings the identity back on a computer of none. */
 export const restoreButton: SchemaNode = {
   type: '$if',
   props: {
     condition: { $: 'deviceStore.canRestore' },
-    then: stepButton('Use my 12 words', 'deviceStore.restore', 'soft'),
+    then: stepButton('Restore with recovery phrase', 'deviceStore.restore', 'soft'),
   },
 };
 
@@ -479,35 +479,32 @@ export const masterKeyCards: SchemaNode[] = [
     'deviceStore.canShowCode || deviceStore.canRestore',
     stepCard(
       'qr-code',
-      'Join your identity from another device',
-      'Show this computer’s code, then add it from a device of your identity with “Scan or paste a code”. Lost every device? Use your 12 words.',
-      [when('deviceStore.canShowCode', stepButton('Show my code', 'deviceStore.showCode')), restoreButton],
+      'Link to another device',
+      'Show this computer’s code, then enter it on a device you already use. Lost all your devices? Use your recovery phrase.',
+      [when('deviceStore.canShowCode', stepButton('Show code', 'deviceStore.showCode')), restoreButton],
     ),
   ),
   when(
     'deviceStore.masterWaiting',
-    stepCard(
-      'key',
-      'Your master key was sent here',
-      'Take it, and this computer can add and remove your devices too.',
-      [stepButton('Take the master key', 'deviceStore.takeMaster')],
-    ),
+    stepCard('key', 'Master key sent to this computer', 'Accept it so this computer can add and remove devices.', [
+      stepButton('Accept master key', 'deviceStore.takeMaster'),
+    ]),
   ),
   when(
     'deviceStore.canAskMaster',
     stepCard(
       'key',
-      'This computer does not keep your master key',
-      'Ask for it, then send it from a device that keeps it. Its Devices page shows your request.',
-      [stepButton('Ask for the master key', 'deviceStore.askMaster', 'soft')],
+      'No master key on this computer',
+      'Ask for it, then send it from a device that has it, in Settings > Devices.',
+      [stepButton('Ask for master key', 'deviceStore.askMaster', 'soft')],
     ),
   ),
   when(
     'deviceStore.canReplaceMaster',
     stepCard(
       'key',
-      'Lost a device that keeps your master key?',
-      'Replace your master key with your 12 words. This computer keeps the new one, and every copy kept until now stops adding and removing your devices.',
+      'Lost a device with the master key?',
+      'Replace it with your recovery phrase. This computer gets the new master key, and the old one stops working on every device.',
       [replaceMasterButton],
     ),
   ),
@@ -529,7 +526,7 @@ const requestRow: SchemaNode = listRow(
   },
   { type: 'we-text', children: [{ $: 'request.title' }] },
   { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [{ $: 'request.detail' }] },
-  [stepButton('Answer', 'deviceStore.answerRequest', 'solid', [{ $: 'request.id' }])],
+  [stepButton('Review', 'deviceStore.answerRequest', 'solid', [{ $: 'request.id' }])],
 );
 
 /** What your other devices asked, while this computer keeps the master key. */
@@ -537,7 +534,7 @@ export const requestList: SchemaNode = when('count(deviceStore.requests)', {
   type: 'Column',
   props: { gap: '200' },
   children: [
-    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Waiting for your answer'] },
+    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Requests'] },
     {
       type: 'Column',
       props: { bg: 'surface', r: 'surface', border: '1px solid border', overflow: 'hidden' },
@@ -550,5 +547,5 @@ export const requestList: SchemaNode = when('count(deviceStore.requests)', {
 
 export const deviceListFootnote: SchemaNode = footnote(
   'lock',
-  'Your public key log lists keys, not names: the names are in a record only your devices read. A revoked key stops speaking for you from that event on.',
+  'Only your devices can see device names. Your public key log lists only keys.',
 );

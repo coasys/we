@@ -23,7 +23,7 @@
 //!
 //! A second case starts a desktop executor the way the desktop apps do: `--custody-channel`, the
 //! custody credential as the first line of its stdin, and no `--operator`. Its first link, made
-//! through its own custody service ("Show my code" scanned by the holder), records the operator
+//! through its own custody service ("Show code" entered on the holder), records the operator
 //! when it joins: while bound, an offer of another identity is refused `already-linked`, and once
 //! its key is revoked, `first-link`.
 //!
@@ -736,7 +736,7 @@ async fn make_link_and_revoke_through_the_custody_service() {
 
 /// A desktop executor — `--custody-channel` with the custody credential on stdin, no `--operator`,
 /// so no operator record — joins the identity of the first holder that links it, through its own
-/// custody service as the desktop apps run it ("Show my code" here, "Scan or paste a code" on the
+/// custody service as the desktop apps run it ("Show code" here, "Enter code" on the
 /// holder). Its join records the operator (`FirstRun`; the claim alone records nothing): while
 /// bound an offer of another identity is refused `already-linked`, and after the holder revokes
 /// its key, `first-link` — before anything reaches the store.

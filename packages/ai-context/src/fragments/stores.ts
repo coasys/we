@@ -2230,14 +2230,13 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       validCount: 'number — how many keys are valid',
       canManage:
         'boolean — linking (scanDevice, addDevice), Rename, Revoke and answering requests can be offered: this computer keeps the master key of the identity',
-      canShowCode:
-        'boolean — "Show my code" can be offered: this computer can join an identity and speaks for none yet',
+      canShowCode: 'boolean — "Show code" can be offered: this computer can join an identity and speaks for none yet',
       canAskMaster:
         'boolean — "Ask for the master key" can be offered: a device of the identity that does not keep the master key and has none waiting',
       canReplaceMaster:
-        'boolean — "Replace my master key" can be offered: a valid device of the identity where the 12 words can be typed. It need not keep the master key: replacing it shuts out a lost device that kept one',
+        'boolean — "Replace master key" can be offered: a valid device of the identity where the 12 words can be typed. It need not keep the master key: replacing it shuts out a lost device that kept one',
       canRestore:
-        'boolean — "Use my 12 words" can be offered: this computer can take the words and speaks for no identity yet. Offer it beside "Show my code"',
+        'boolean — "Restore with recovery phrase" can be offered: this computer can take the words and speaks for no identity yet. Offer it beside "Show code"',
       canRemoveMaster:
         'boolean — this computer keeps the master key: on log out, offer "Also remove my master key from this computer"',
       masterWaiting: 'boolean — a master key another device sent waits here: offer "Take the master key"',
@@ -2252,7 +2251,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       scanDevice:
         '(): "Scan or paste a code" — adds a device by the code it shows: the person pastes it, both show a match code, and the confirmation names the device and may let it keep the master key',
       showCode:
-        '(): "Show my code" — on a computer of no identity yet, shows its code (QR and link) until a device of the identity adds it',
+        '(): "Show code" — on a computer of no identity yet, shows its code (QR and link) until a device of the identity adds it',
       takeMaster: '(): "Take the master key" — keeps the master key another device sent here',
       askMaster:
         '(): "Ask for the master key" — asks the devices that keep it to send it here; one answers from its own requests',
@@ -2262,9 +2261,9 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       revoke:
         '(keyId: string): revokes that device key, once the person confirms it where the master key is kept; the confirmation offers "Also replace my master key" (ticked when the device kept a copy), which asks for the 12 words. Resolves with the outcome',
       replaceMaster:
-        '(): "Replace my master key" — asks for the 12 words where the custody service runs and publishes the next master key, which this computer keeps; every copy kept until now stops counting. Resolves with the outcome',
+        '(): "Replace master key" — asks for the 12 words where the custody service runs and publishes the next master key, which this computer keeps; every copy kept until now stops counting. Resolves with the outcome',
       restore:
-        '(): "Use my 12 words" — on a computer of no identity, asks for the words, lists the identity\'s devices to lock out, and makes this computer a device of it that keeps the new master key. Resolves with the outcome',
+        '(): "Restore with recovery phrase" — on a computer of no identity, asks for the words, lists the identity\'s devices to lock out, and makes this computer a device of it that keeps the new master key. Resolves with the outcome',
       removeMaster:
         "(): stops keeping the master key on this computer, once the person confirms it; refused, with the reason, when this computer keeps the only copy. Resolves 'done' only when it was removed",
     },

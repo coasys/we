@@ -289,11 +289,11 @@ export const logOutAction: SchemaNode = {
     confirmModal({
       open: { $: 'local.confirmMasterLogout' },
       close: { $setLocal: 'confirmMasterLogout', value: false },
-      title: 'This computer keeps your master key',
-      body: 'Also remove my master key from this computer? Your other devices that keep a copy, and your 12 words, still add and remove devices.',
-      detail: 'Keep it if this is your computer and you will log in here again.',
+      title: 'Remove master key from this computer?',
+      body: 'Your other devices with the master key, and your recovery phrase, can still add and remove devices.',
+      detail: "Keep it if this is your computer and you'll sign in here again.",
       tone: 'accent',
-      confirmLabel: 'Remove it and log out',
+      confirmLabel: 'Remove and sign out',
       confirm: {
         $invoke: 'deviceStore.removeMaster',
         onSuccess: [
@@ -305,7 +305,7 @@ export const logOutAction: SchemaNode = {
           },
         ],
       },
-      cancelLabel: 'Keep it and log out',
+      cancelLabel: 'Keep and sign out',
       cancel: [{ $setLocal: 'confirmMasterLogout', value: false }, { $invoke: 'sessionStore.logout' }],
     }),
   ],
@@ -385,7 +385,7 @@ export const devicesPage: SchemaNode = {
       icon: 'qr-code',
       title: 'Link a device',
       description:
-        'Sign another computer in as you: scan or paste the code it shows, or give a server a link from this one. You confirm a match code on both.',
+        'Enter the code the new device shows, or send a link to a server. You check a matching code on both.',
       preview: [actions('Link a device')],
       children: [{ type: 'Row', children: [addDeviceButton] }],
     }),
