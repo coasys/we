@@ -103,12 +103,14 @@ fn deps_moved(prev: &TrackedDeps, next: &TrackedDeps) -> bool {
 }
 
 /// The recorded value's equality. A `$call:` entry is an opaque host
-/// computation's settled answer — the port cannot see which reactive
-/// inputs the call read, so the honest proxy for "its inputs moved" is
-/// whether its answer changed CONTENT: a pure function that allocates a
-/// fresh container per call is unmoved while the answer holds (TS sees
-/// the internal signals, which never fired). Every other read is strict
-/// `===`.
+/// computation's settled answer under *output-content tracking* — the
+/// port cannot see which reactive inputs the call read, so the contract
+/// (documented at [`crate::scope::StoreBag::set_function`]) is whether the
+/// answer changed CONTENT: a pure function that allocates a fresh
+/// container per call is unmoved while the answer holds, and an internal
+/// input the answer never reflects cannot move it either (TS sees the
+/// internal signals, which is the documented divergence). Every other
+/// read is strict `===`.
 fn dep_eq(name: &str, a: &Value, b: &Value) -> bool {
     if name.starts_with("$call:") {
         crate::scope::content_eq(a, b)

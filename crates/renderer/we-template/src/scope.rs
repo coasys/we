@@ -361,6 +361,17 @@ impl StoreBag {
     }
 
     /// Register a function (`Env::call` reaches it).
+    ///
+    /// Reactivity contract — **output-content tracking**: a tracked
+    /// `{"$": …}` initial that calls this function records the call's
+    /// settled answer under `$call:<name>` and compares it by *content*
+    /// between passes. The port cannot see which reactive inputs the
+    /// function read while it ran, so "the inputs moved" means "the answer
+    /// changed". A registrant whose answer depends on inputs it does not
+    /// reflect in the result diverges from TS: the Solid memo re-runs when
+    /// an internal signal fires even if the answer's content is identical,
+    /// while here the edit stands. Keep answers a pure function of the
+    /// inputs a caller would expect tracked.
     pub fn set_function(&self, name: &str, f: CallFn) {
         if let Ok(mut functions) = self.functions.write() {
             functions.insert(name.into(), f);

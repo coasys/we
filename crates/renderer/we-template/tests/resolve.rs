@@ -1176,12 +1176,14 @@ fn a_tracked_initial_assigns_the_answer_it_logged() {
 }
 
 #[test]
-fn a_host_computation_initial_tracks_inputs_not_result_allocations() {
-    // N4: `{"$":"compute()"}` — the host function returns a FRESH array on
-    // every call wrapping an unchanged signal. TS's memo subscribed to the
-    // signal the function read while it ran — the result's allocation is
-    // not a dependency. An unchanged input must keep the edit even though
-    // each call allocates anew; a moved input resets.
+fn a_host_computation_initial_tracks_output_content_not_allocations() {
+    // N4/Q2: `{"$":"compute()"}` — the host function returns a FRESH array
+    // on every call. The port tracks output content, not inputs (the
+    // contract at `StoreBag::set_function`): an unchanged answer keeps the
+    // edit however fresh each call's allocation is; an answer whose
+    // content moved resets. Here the input happens to reach the answer,
+    // so moved input ↔ moved content coincide — the divergent edge where
+    // they part is the equal-output test below.
     use std::sync::RwLock;
     let sig = Arc::new(RwLock::new(Value::from("A")));
     let sig_read = sig.clone();
@@ -1233,7 +1235,7 @@ fn a_host_computation_initial_tracks_inputs_not_result_allocations() {
                 .first()
                 .and_then(|v| v.to_json().as_str().map(String::from)),
             Some("B".to_string()),
-            "a moved input resets"
+            "the answer's content moved — a reset follows the output"
         ),
         other => panic!("sel must stay a list: {other:?}"),
     }
