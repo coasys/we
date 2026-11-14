@@ -1,3 +1,5 @@
+import { fileURLToPath } from 'node:url';
+
 import solidPlugin from 'vite-plugin-solid';
 import { defineConfig } from 'vitest/config';
 
@@ -25,6 +27,9 @@ export default defineConfig({
       {
         plugins: [solidPlugin()],
         resolve: {
+          // The vectors pin src, not a built dist: the recorder's mounted RouteStore imports
+          // @we/schema-shared by package name, which would otherwise resolve to dist/index.js.
+          alias: { '@we/schema-shared': fileURLToPath(new URL('../shared/src/index.ts', import.meta.url)) },
           dedupe: ['solid-js', 'solid-js/web', 'solid-js/store'],
           conditions: ['development', 'browser'],
         },
