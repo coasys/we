@@ -14,6 +14,7 @@ import { FILE_STORAGE_LANGUAGE, getEntityPredicates } from '@we/entities';
 import { describe, expect, it } from 'vitest';
 
 import { AD4M_CONTAINMENT_PREDICATE } from '../src/containment';
+import { WeNode } from '../src/entities';
 import { buildEntityFromEntry, compileManifest, CORE_VOCABULARY, manifestToEntries } from '../src/manifestCompiler';
 import { buildEntityManifest } from '../src/perspectiveHelpers';
 import { ROOT_MODELS, SPACE_MODELS } from '../src/sdnaEntities';
@@ -314,5 +315,100 @@ describe('a manifest extending the core vocabulary', () => {
     for (const name of ['partOf', 'respondsTo', 'inThread', 'extractedFrom', 'responses', 'thread', 'signals']) {
       expect(compiled[name], name).toBe(handWritten[name]);
     }
+  });
+});
+
+describe('extends — the parent as a shape the child names', () => {
+  const shapeOf = (cls: unknown) => (cls as Shaped).generateSHACL().shape!;
+
+  const manifest: EntityManifest = {
+    version: '1',
+    entities: {
+      // Declared after its child on purpose: build order must come from `extends`, not order.
+      Sighting: {
+        extends: 'BirdBase',
+        properties: { species: { type: 'string' } },
+        relations: {},
+      },
+      BirdBase: {
+        abstract: true,
+        properties: { wingspan: { type: 'number' } },
+        relations: { sightings: { target: '', cardinality: 'many' } },
+      },
+    },
+  };
+
+  it('marks an abstract entity’s shape abstract', () => {
+    const classes = compileManifest(manifest, { moduleId: 'birds' });
+    expect(shapeOf(classes.BirdBase).isAbstract).toBe(true);
+    expect(shapeOf(classes.Sighting).isAbstract).not.toBe(true);
+  });
+
+  it('declares the abstract parent through `implements` — proved by what fails without it', () => {
+    /*
+      `implements` asserts structure rather than writing a link, so its presence shows only in
+      `checkImplements` refusing a child that lacks a name of the parent's. Flattening is what
+      makes the positive case pass; the negative build below is what proves `implements` was
+      declared at all — without it nothing checks, and nothing throws.
+    */
+    const classes = compileManifest(manifest, { moduleId: 'birds' });
+    const [sighting] = manifestToEntries(manifest, { moduleId: 'birds' });
+    const broken = {
+      ...sighting,
+      properties: sighting.properties.filter((p) => p.name !== 'wingspan'),
+    };
+    expect(() => buildEntityFromEntry(broken, { classResolver: () => classes.BirdBase })).toThrow(
+      /implements BirdBase.*`wingspan`/,
+    );
+  });
+
+  it('keeps the parent’s members flattened onto the child', () => {
+    const classes = compileManifest(manifest, { moduleId: 'birds' });
+    const names = shapeOf(classes.Sighting).properties.map((p) => p.name);
+    expect(names).toContain('species');
+    expect(names).toContain('wingspan');
+    expect(names).toContain('sightings');
+  });
+
+  it('extends a concrete parent in the TypeScript sense, so the shape names it by sh://node', () => {
+    const classes = compileManifest(
+      {
+        version: '1',
+        entities: {
+          Base: { properties: { shared: { type: 'string' } }, relations: {} },
+          Kid: { extends: 'Base', properties: { own: { type: 'string' } }, relations: {} },
+        },
+      },
+      { moduleId: 'kids' },
+    );
+    const kid = shapeOf(classes.Kid);
+    const base = shapeOf(classes.Base);
+    expect(kid.parentShapes).toContain(base.nodeShapeUri);
+    expect(
+      kid
+        .toLinks()
+        .filter((l) => l.predicate === 'sh://node')
+        .map((l) => l.target),
+    ).toContain(base.nodeShapeUri);
+    // Flattening still stands — the link names the parent on top of carrying its members.
+    expect(kid.properties.map((p) => p.name)).toEqual(expect.arrayContaining(['shared', 'own']));
+  });
+
+  it('binds a core parent the manifest does not declare through the resolver, as the generated classes do', () => {
+    // `WeNode` is the case every space shape hits: abstract in the manifest, but its hand-written
+    // class is deliberately not AD4M-abstract — so the child extends it in the TypeScript sense,
+    // which is exactly what every generated class's `extends WeNode` already is.
+    const classes = compileManifest(
+      {
+        version: '1',
+        entities: {
+          Sighting: { extends: 'WeNode', properties: { species: { type: 'string' } }, relations: {} },
+        },
+      },
+      { moduleId: 'shape/abc', resolveExternal: (name) => (name === 'WeNode' ? WeNode : undefined) },
+    );
+    const sighting = shapeOf(classes.Sighting);
+    const weNode = shapeOf(WeNode);
+    expect(sighting.parentShapes).toContain(weNode.nodeShapeUri);
   });
 });
