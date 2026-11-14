@@ -257,7 +257,17 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
     }
     w.ui.set_clip_rect(w.clip.unwrap_or(w.base_clip));
 
-    let style = crate::defaults::style_of(node, w.scx);
+    // The style the layout walk resolved — a descendant's `var()`s already
+    // saw its ancestors' `tone`/`styles` custom properties. Re-resolving
+    // without that scope would lose them (the review's P2-2 residual).
+    let fallback;
+    let style = match w.layout.styles.get(&node.id) {
+        Some(s) => s,
+        None => {
+            fallback = crate::defaults::style_of(node, w.scx);
+            &fallback
+        }
+    };
     let parts = w.parts_buf.as_ref().unwrap_or(&w.base_parts);
     {
         let mut cx = PaintCx {
@@ -268,7 +278,7 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
             now: w.now,
             ancestors: &w.ancestors[..w.ancestors.len() - 1],
         };
-        widget.paint(&mut cx, node, &style, rect);
+        widget.paint(&mut cx, node, style, rect);
     }
 
     // Scroll container: children translate by the stored offset and clip on
@@ -412,6 +422,7 @@ fn translate_layout(sub: &Layout, delta: egui::Vec2) -> Layout {
                 text: t.text.clone(),
             })
             .collect(),
+        styles: sub.styles.clone(),
         scroll: sub.scroll.clone(),
         clip: sub.clip.clone(),
     }
@@ -483,6 +494,26 @@ fn close_handler(node: &ResolvedNode) -> Option<&'static str> {
     }
 }
 
+/// The overlay node's own style as the outer walk resolved it — its
+/// custom-property scope included, so a `tone` on a modal reaches its
+/// floating contents.
+fn overlay_style<'a>(layout: &'a Layout, node: &ResolvedNode) -> &'a we_style::Style {
+    layout
+        .styles
+        .get(&node.id)
+        .expect("an overlay node resolved a style in the outer walk")
+}
+
+/// The overlay's floating children resolve inside the overlay node's scope —
+/// in the DOM they are its descendants, so a `tone`/`styles` on the overlay
+/// element scopes their `var()`s.
+fn overlay_scx<'a>(layout: &'a Layout, scx: &StyleCx<'a>, node: &ResolvedNode) -> StyleCx<'a> {
+    StyleCx {
+        scope: &overlay_style(layout, node).scope,
+        ..*scx
+    }
+}
+
 /// The inner painting an overlay does inside its egui layer: the widget's
 /// second `paint` (marked by an `"overlay"` part rect), then the floating
 /// children at the scratch layout's rects, then anything they deferred.
@@ -527,11 +558,11 @@ fn overlay_contents(
             now: inner.now,
             ancestors: &ancestors,
         };
-        widget.paint(&mut cx, node, &crate::style_of(node, w.scx), content_rect);
+        widget.paint(&mut cx, node, overlay_style(w.layout, node), content_rect);
     }
     // Text spans the synthetic host column owns (direct text children of the
     // overlay's floating set) — child-node spans paint inside `paint_node`.
-    let style = crate::style_of(node, w.scx);
+    let style = overlay_style(w.layout, node);
     for span in &scratch.texts {
         if span.node != node.id {
             continue;
@@ -572,7 +603,13 @@ fn modal_overlay(
     let width = modal_width(node, screen.width());
     let mcx = MeasureCx::new(ctx);
     let host = modal_host(node, width, floating, &mcx);
-    let sub = crate::layout(&mcx, w.scx, w.registry, &host, screen);
+    let sub = crate::layout(
+        &mcx,
+        &overlay_scx(w.layout, w.scx, node),
+        w.registry,
+        &host,
+        screen,
+    );
     // The dialog is sized by its content: `sub.size` is the padded host
     // column — width, plus `pt` (pad + title strip) + children + `pb`.
     // WE caps it at `maxHeight: calc(100dvh - 64px)`.
@@ -614,7 +651,13 @@ fn anchored_overlay(
     let width = anchor.width().max(160.0);
     let host = overlay_host(node, width, floating);
     let mcx = MeasureCx::new(ctx);
-    let sub = crate::layout(&mcx, w.scx, w.registry, &host, anchor);
+    let sub = crate::layout(
+        &mcx,
+        &overlay_scx(w.layout, w.scx, node),
+        w.registry,
+        &host,
+        anchor,
+    );
     let size = sub.size.max(egui::vec2(width, 4.0));
 
     let inner = egui::Popup::new(

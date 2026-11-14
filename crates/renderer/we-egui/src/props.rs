@@ -478,9 +478,6 @@ pub(crate) fn tone_tokens(style: &Style) -> Option<&str> {
 /// danger`). `kind` is `soft`/`solid`/`border`/`text` — the accent suffix,
 /// `solid` naming the bare `--we-role-accent`.
 pub(crate) fn tone_color(style: &Style, kind: &str, fallback: egui::Color32) -> egui::Color32 {
-    let Some(tone) = &style.tone else {
-        return fallback;
-    };
     let owned;
     let key = match kind {
         "solid" => "--we-role-accent",
@@ -489,7 +486,10 @@ pub(crate) fn tone_color(style: &Style, kind: &str, fallback: egui::Color32) -> 
             owned.as_str()
         }
     };
-    if let Some(v) = tone.vars.get(key) {
+    // The element's custom-property scope — its own `tone`'s re-pointings or
+    // an ancestor's, inherited the way the DOM's `var(--we-role-accent)`
+    // would see them.
+    if let Some(v) = style.scope.get(key) {
         if let Some(c) = we_style::eval_color(v) {
             return color32(c);
         }

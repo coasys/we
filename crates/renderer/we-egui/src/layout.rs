@@ -20,6 +20,10 @@ pub type Parts = HashMap<(NodeId, &'static str), Rect>;
 pub struct Layout {
     pub size: Size,
     pub rects: HashMap<NodeId, Rect>,
+    /// Each laid-out node's resolved style — scopes already applied; paint
+    /// reads these so a descendant's `var()` sees its ancestors' `tone`/
+    /// `styles` custom properties.
+    pub styles: HashMap<NodeId, Style>,
     /// `(node, part)` → rect — a widget's virtual chrome.
     pub parts: Parts,
     /// Text children in paint order, with the node they belong to.
@@ -108,6 +112,7 @@ pub fn layout(
     Layout {
         size: Size::new(out.size.x, out.size.y),
         rects: out.rects.into_iter().map(|(k, v)| (k, r(v))).collect(),
+        styles: out.styles,
         parts: out.parts.into_iter().map(|(k, v)| (k, r(v))).collect(),
         texts: out
             .texts

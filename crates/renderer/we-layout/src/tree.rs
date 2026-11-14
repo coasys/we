@@ -149,11 +149,16 @@ pub struct TreeCfg {
 }
 
 /// The layout output: every resolved node's rect, every part rect, the text
-/// children (painted by the frame, not a widget), scroll-container axes, and
-/// the tree's size.
+/// children (painted by the frame, not a widget), scroll-container axes, the
+/// resolved styles (measure and paint read the same answer — scopes already
+/// applied), and the tree's size.
 pub struct Layout {
     pub size: Size,
     pub rects: HashMap<NodeId, Rect>,
+    /// Each laid-out node's resolved [`Style`] — the same values measure saw.
+    /// Paint reads these so a descendant's `var()` resolves in the scope the
+    /// tree walk established, not a scope-less re-resolution.
+    pub styles: HashMap<NodeId, Style>,
     /// `(node, part)` → rect — a widget's virtual chrome.
     pub parts: Parts,
     /// Text children in paint order, with the node they belong to.
@@ -575,13 +580,17 @@ struct Builder<'a> {
     scx: &'a StyleCx<'a>,
     /// `id` → resolved node — the measure function re-finds its widget.
     nodes: HashMap<NodeId, &'a ResolvedNode>,
+    /// `id` → the style the tree walk resolved — measure and the `Layout`
+    /// output read it so every consumer shares the scoped answer.
+    styles: HashMap<NodeId, Style>,
     scroll: HashMap<NodeId, Vec2>,
     clip: HashMap<NodeId, Vec2>,
 }
 
 impl<'a> Builder<'a> {
     /// A part → a taffy node: `pick` children inside, nested parts inside, or
-    /// an empty fixed box.
+    /// an empty fixed box. `scx` is the owner's scope — its `pick` children
+    /// resolve inside it like its ordinary children do.
     fn part_node(
         &mut self,
         owner: &NodeId,
@@ -590,6 +599,7 @@ impl<'a> Builder<'a> {
         tree: &TreeCfg,
         parent_h_definite: bool,
         main_indefinite: bool,
+        scx: &StyleCx,
     ) -> Option<TaffyId> {
         let mut kids = Vec::new();
         if let Some(pick) = &spec.pick {
@@ -602,16 +612,22 @@ impl<'a> Builder<'a> {
                 (Pick::Named(_), ResolvedChild::Text(_)) => false,
             }) {
                 if let Some(k) =
-                    self.child_node(node, child, tree, parent_h_definite, main_indefinite)
+                    self.child_node(node, child, tree, parent_h_definite, main_indefinite, scx)
                 {
                     kids.push(k);
                 }
             }
         }
         for sub in &spec.parts {
-            if let Some(k) =
-                self.part_node(owner, sub, node, tree, parent_h_definite, main_indefinite)
-            {
+            if let Some(k) = self.part_node(
+                owner,
+                sub,
+                node,
+                tree,
+                parent_h_definite,
+                main_indefinite,
+                scx,
+            ) {
                 kids.push(k);
             }
         }
@@ -633,7 +649,7 @@ impl<'a> Builder<'a> {
     }
 
     /// A resolved child → a taffy node: nodes recurse, text becomes a leaf
-    /// measured by the galley.
+    /// measured by the galley. `scx` is the owner's scope.
     fn child_node(
         &mut self,
         owner: &'a ResolvedNode,
@@ -641,15 +657,20 @@ impl<'a> Builder<'a> {
         tree: &TreeCfg,
         parent_h_definite: bool,
         main_indefinite: bool,
+        scx: &StyleCx,
     ) -> Option<TaffyId> {
         match child {
             ResolvedChild::Node(node) => {
-                self.resolved_node(node, tree, parent_h_definite, main_indefinite)
+                self.resolved_node(node, tree, parent_h_definite, main_indefinite, scx)
             }
             ResolvedChild::Text(text) => {
                 // Text is measured in its owner's font — `layout_no_wrap`
                 // matches the paint path's single-line spans.
-                let style = style_of(owner, self.scx);
+                let style = self
+                    .styles
+                    .get(&owner.id)
+                    .cloned()
+                    .unwrap_or_else(|| style_of(owner, scx));
                 let size = self.m.measure_text(owner, &style, text);
                 Some(
                     self.tree
@@ -671,15 +692,18 @@ impl<'a> Builder<'a> {
     }
 
     /// A resolved node → a taffy node + its children (or its parts).
-    /// `tree` is the nearest `we-tree` ancestor's config, if any.
+    /// `tree` is the nearest `we-tree` ancestor's config, if any; `scx`
+    /// carries the ancestors' custom-property scope — this node's children
+    /// resolve inside its own scope.
     fn resolved_node(
         &mut self,
         node: &'a ResolvedNode,
         tree: &TreeCfg,
         parent_h_definite: bool,
         main_indefinite: bool,
+        scx: &StyleCx,
     ) -> Option<TaffyId> {
-        let style = style_of(node, self.scx);
+        let style = style_of(node, scx);
 
         // `display: none` removes the node AND its subtree from layout — no
         // rect, no parts, nothing painted.
@@ -761,6 +785,13 @@ impl<'a> Builder<'a> {
                 }
             }
         }
+        // The children resolve inside this element's custom-property scope —
+        // its `tone`'s re-pointings and `styles`' verbatim `--we-*` decls —
+        // the way CSS inherits custom properties down the DOM.
+        let scoped = StyleCx {
+            scope: &style.scope,
+            ..*scx
+        };
         let kids: Vec<TaffyId> = match spec {
             Some(spec) => {
                 s.flex_direction = match spec.direction {
@@ -774,7 +805,15 @@ impl<'a> Builder<'a> {
                 spec.parts
                     .iter()
                     .filter_map(|part| {
-                        self.part_node(&node.id, part, node, &tree, h_definite, main_indefinite)
+                        self.part_node(
+                            &node.id,
+                            part,
+                            node,
+                            &tree,
+                            h_definite,
+                            main_indefinite,
+                            &scoped,
+                        )
                     })
                     .collect()
             }
@@ -785,10 +824,13 @@ impl<'a> Builder<'a> {
                 ) && !h_definite;
                 node.children
                     .iter()
-                    .filter_map(|c| self.child_node(node, c, &tree, h_definite, main_indefinite))
+                    .filter_map(|c| {
+                        self.child_node(node, c, &tree, h_definite, main_indefinite, &scoped)
+                    })
                     .collect()
             }
         };
+        self.styles.insert(node.id.clone(), style);
         if kids.is_empty() {
             // A leaf: what the props leave `auto`, the widget's `measure`
             // answers at compute time against the space taffy actually
@@ -833,11 +875,12 @@ pub fn layout(m: &dyn Measure, scx: &StyleCx, root: &ResolvedNode, rect: Rect) -
         m,
         scx,
         nodes: HashMap::new(),
+        styles: HashMap::new(),
         scroll: HashMap::new(),
         clip: HashMap::new(),
     };
     let root_id = b
-        .resolved_node(root, &TreeCfg::default(), false, true)
+        .resolved_node(root, &TreeCfg::default(), false, true, scx)
         .expect("root lays out");
 
     // The root's containing block is the viewport: `width: auto` fills it —
@@ -867,6 +910,7 @@ pub fn layout(m: &dyn Measure, scx: &StyleCx, root: &ResolvedNode, rect: Rect) -
     let Builder {
         mut tree,
         nodes,
+        styles,
         scroll,
         clip,
         ..
@@ -894,14 +938,16 @@ pub fn layout(m: &dyn Measure, scx: &StyleCx, root: &ResolvedNode, rect: Rect) -
                     |_, _| taffy::Size::ZERO,
                 );
             };
-            let wstyle = style_of(node, scx);
+            let wstyle = styles
+                .get(&node.id)
+                .expect("a laid-out node resolved a style");
             taffy::compute::compute_leaf_layout(
                 inputs,
                 style,
                 |_, _| 0.0,
                 |_known, space| {
                     let avail = Size::new(offered(space.width), offered(space.height));
-                    let s = m.measure(node, &wstyle, avail);
+                    let s = m.measure(node, wstyle, avail);
                     taffy::Size {
                         width: finite(s.x),
                         height: finite(s.y),
@@ -914,6 +960,7 @@ pub fn layout(m: &dyn Measure, scx: &StyleCx, root: &ResolvedNode, rect: Rect) -
     let mut out = Layout {
         size: Size::ZERO,
         rects: HashMap::new(),
+        styles,
         parts: Parts::new(),
         texts: Vec::new(),
         scroll,

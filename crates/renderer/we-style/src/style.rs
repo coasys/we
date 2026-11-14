@@ -9,6 +9,8 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use indexmap::IndexMap;
+
 use crate::color::Color;
 use crate::transition::Transition;
 
@@ -596,6 +598,11 @@ pub struct Style {
     /// `text` or `variant`) — ignored by design, counted so a caller can show
     /// "resolve() saw N props it does not own".
     pub ignored_props: usize,
+    /// The element's custom-property scope — its ancestors' `--we-*` values
+    /// overlaid by its own (a `tone` writes 13; `styles` can write them
+    /// verbatim), already substituted. What its descendants' `var()`s see —
+    /// CSS custom-property inheritance hands this map down the DOM.
+    pub scope: IndexMap<Arc<str>, Arc<str>>,
 }
 
 impl Style {

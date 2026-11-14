@@ -100,6 +100,7 @@ impl RendererApp {
                     tokens: &self.theme.tokens,
                     viewport: we_style::Size::new(vp.x, vp.y),
                     container_width: width,
+                    ..StyleCx::empty()
                 };
                 let key = (stats.resolves, width, rect.min.y);
                 if self.layout_key != Some(key) || self.layout.is_none() {
