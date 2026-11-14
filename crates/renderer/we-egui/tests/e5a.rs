@@ -5,9 +5,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use indexmap::IndexMap;
+use we_egui::{layout, paint, EditState, Layout, MeasureCx, Registry, StyleCx};
 use we_expr::Value;
 use we_template::{NodeId, ResolvedChild, ResolvedNode};
-use we_widgets::{layout, paint, EditState, Layout, MeasureCx, Registry, StyleCx};
 
 fn node(ty: &str, id: &str, props: &[(&str, Value)]) -> ResolvedNode {
     ResolvedNode {
@@ -190,15 +190,10 @@ fn truncate_ellipsizes_the_galley() {
     let out = std::cell::RefCell::new(None);
     let mut harness = egui_kittest::Harness::new_ui(|ui| {
         let cx = MeasureCx::new(ui.ctx());
-        let style = we_widgets::style_of(&text, &scx);
+        let style = we_egui::style_of(&text, &scx);
         let widget = registry.widget_for(&text.ty);
-        let measured = widget.measure(
-            &cx,
-            &text,
-            &style,
-            we_widgets::Size::new(120.0, f32::INFINITY),
-        );
-        let g = we_widgets::text_job(
+        let measured = widget.measure(&cx, &text, &style, we_egui::Size::new(120.0, f32::INFINITY));
+        let g = we_egui::text_job(
             "a much longer line than the card allows",
             &style,
             ui.ctx(),

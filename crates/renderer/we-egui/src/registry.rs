@@ -12,7 +12,7 @@ use crate::Widget;
 /// builtins and overrides.
 ///
 /// ```
-/// use we_widgets::Registry;
+/// use we_egui::Registry;
 ///
 /// let reg = Registry::empty();
 /// assert_eq!(reg.widget_for("nonsense").type_name(), "__unknown__");

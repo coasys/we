@@ -7,11 +7,11 @@ use std::sync::Arc;
 
 use egui_kittest::kittest::Queryable;
 use indexmap::IndexMap;
-use we_template::{HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope};
-use we_widgets::{
+use we_egui::{
     format_date, format_relative, layout, paint, parse_date, EditState, MeasureCx, Registry,
     StyleCx, WidgetEvent,
 };
+use we_template::{HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope};
 
 type Shared = Rc<RefCell<(Vec<WidgetEvent>, EditState)>>;
 
@@ -62,7 +62,7 @@ fn render(root: ResolvedNode) -> (egui_kittest::Harness<'static>, Shared) {
     let state2 = state.clone();
     let harness = egui_kittest::Harness::new_ui(move |ui| {
         let ctx = ui.ctx().clone();
-        we_widgets::install_media(&ctx);
+        we_egui::install_media(&ctx);
         let scx = StyleCx::empty();
         let lay = layout(
             &MeasureCx::new(&ctx),

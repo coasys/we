@@ -4567,12 +4567,12 @@ dependencies = [
  "serde",
  "serde_json",
  "we-data",
+ "we-egui",
  "we-expr",
  "we-screen",
  "we-session",
  "we-style",
  "we-template",
- "we-widgets",
 ]
 
 [[package]]
@@ -4594,6 +4594,25 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "we-expr",
+ "we-template",
+]
+
+[[package]]
+name = "we-egui"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "egui",
+ "egui-pop-phosphor",
+ "egui_extras",
+ "egui_kittest",
+ "indexmap",
+ "serde_json",
+ "taffy",
+ "we-catalog",
+ "we-expr",
+ "we-layout",
+ "we-style",
  "we-template",
 ]
 
@@ -4668,25 +4687,6 @@ dependencies = [
  "thiserror 2.0.21",
  "we-expr",
  "we-screen",
-]
-
-[[package]]
-name = "we-widgets"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "egui",
- "egui-pop-phosphor",
- "egui_extras",
- "egui_kittest",
- "indexmap",
- "serde_json",
- "taffy",
- "we-catalog",
- "we-expr",
- "we-layout",
- "we-style",
- "we-template",
 ]
 
 [[package]]

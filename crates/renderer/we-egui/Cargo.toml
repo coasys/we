@@ -1,8 +1,8 @@
 [package]
-name = "we-widgets"
+name = "we-egui"
 version = "0.1.0"
 edition = "2021"
-description = "The Widget contract, the Registry, layout and paint — the only crate that needs egui"
+description = "The Widget contract, the Registry, layout and paint — the egui frontend: paint, Measure impl, AccessKit"
 publish = false
 
 [dependencies]

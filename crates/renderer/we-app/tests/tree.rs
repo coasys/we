@@ -5,9 +5,9 @@ use std::sync::Arc;
 
 use egui_kittest::kittest::Queryable;
 use we_app::RendererApp;
+use we_egui::Registry;
 use we_screen::{ScreenSchema, ScreenState};
 use we_template::{Bundle, SchemaNode, StoreBag};
-use we_widgets::Registry;
 
 const BUNDLE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),

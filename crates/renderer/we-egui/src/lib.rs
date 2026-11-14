@@ -1,4 +1,4 @@
-//! `we-widgets`: the [`Widget`] contract, the [`Registry`], layout and paint.
+//! `we-egui`: the [`Widget`] contract, the [`Registry`], layout and paint.
 //! The only crate that needs egui.
 //!
 //! A widget never touches a store: input it reports goes through
@@ -185,7 +185,7 @@ pub enum WidgetKind {
 /// One widget type — `Row`, `we-button`, … — drawn from a [`ResolvedNode`].
 ///
 /// ```
-/// use we_widgets::{MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
+/// use we_egui::{MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
 /// use we_template::ResolvedNode;
 /// use we_style::Style;
 ///

@@ -3,7 +3,7 @@
 # own Cargo.lock; nothing here is published.
 #
 # Dependency direction, never the other way:
-#   we-expr <- we-screen <- we-template <- we-data <- we-layout <- we-widgets <- we-app
+#   we-expr <- we-screen <- we-template <- we-data <- we-layout <- we-egui <- we-app
 #   we-style depends on we-expr only; we-ad4m depends on we-data.
 # we-expr, we-screen, we-template, we-data, we-style and we-layout must build for
 # wasm32-unknown-unknown and must not depend on tokio.
@@ -18,7 +18,7 @@ members = [
     "we-layout",
     "we-catalog",
     "we-session",
-    "we-widgets",
+    "we-egui",
     "we-ad4m",
     "we-app",
 ]
@@ -48,5 +48,5 @@ we-style = { path = "we-style" }
 we-layout = { path = "we-layout" }
 we-catalog = { path = "we-catalog" }
 we-session = { path = "we-session" }
-we-widgets = { path = "we-widgets" }
+we-egui = { path = "we-egui" }
 we-ad4m = { path = "we-ad4m" }

@@ -12,7 +12,7 @@
 //! verbatim in [`Style::unsupported`] rather than guessed.
 //!
 //! No egui, no I/O, no tokio: this crate builds for `wasm32-unknown-unknown`.
-//! Turning a [`Style`] into `taffy::Style` and egui paint ops is `we-widgets`'
+//! Turning a [`Style`] into `taffy::Style` and egui paint ops is `we-egui`'
 //! job.
 
 #![forbid(unsafe_code)]

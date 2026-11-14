@@ -17,11 +17,11 @@ use serde::Deserialize;
 #[cfg(not(target_arch = "wasm32"))]
 use we_app::{RendererApp, Shell};
 #[cfg(not(target_arch = "wasm32"))]
+use we_egui::Registry;
+#[cfg(not(target_arch = "wasm32"))]
 use we_screen::{ScreenSchema, ScreenState};
 #[cfg(not(target_arch = "wasm32"))]
 use we_template::{Bundle, StoreBag};
-#[cfg(not(target_arch = "wasm32"))]
-use we_widgets::Registry;
 
 /// Where the app looks for a bundle when `--bundle` is not given:
 /// `crates/renderer/we-app/../../../bundles/coasys.bundle.json` — the repo's

@@ -3,8 +3,8 @@
 use std::sync::Arc;
 
 use indexmap::IndexMap;
+use we_egui::{MeasureCx, PaintCx, Registry, Size, Widget, WidgetEvent, WidgetKind};
 use we_template::{NodeId, ResolvedChild, ResolvedNode};
-use we_widgets::{MeasureCx, PaintCx, Registry, Size, Widget, WidgetEvent, WidgetKind};
 
 struct Stub;
 
@@ -63,8 +63,8 @@ fn events_flow_through_paint_cx() {
     let mut harness = egui_kittest::Harness::new_ui(move |ui| {
         let mut events: Vec<WidgetEvent> = Vec::new();
         {
-            let parts = we_widgets::Parts::new();
-            let mut edit = we_widgets::EditState::default();
+            let parts = we_egui::Parts::new();
+            let mut edit = we_egui::EditState::default();
             let mut cx = PaintCx::new(ui, &mut events, &parts, &mut edit, 0.0, &[]);
             let stub = Stub;
             stub.paint(

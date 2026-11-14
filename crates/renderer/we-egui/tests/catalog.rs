@@ -1,7 +1,7 @@
 //! Every type the registry can paint must have a catalog entry — a missing
 //! one means a frontend that renders the catalog (a TUI, a screen-reader
 //! fallback) would meet a widget it cannot describe.
-use we_widgets::Registry;
+use we_egui::Registry;
 
 #[test]
 fn every_registered_widget_has_a_catalog_entry() {

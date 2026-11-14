@@ -22,7 +22,7 @@ pub(crate) use icon_names::phosphor_glyph as phosphor;
 /// `data:` URIs are decoded by `image_source` straight into
 /// `ImageSource::Bytes`, no custom loader needed.
 pub fn install(ctx: &egui::Context) {
-    const INSTALLED: &str = "we-widgets::media-installed";
+    const INSTALLED: &str = "we-egui::media-installed";
     if ctx.data_mut(|d| d.get_temp::<bool>(egui::Id::unique(INSTALLED))) == Some(true) {
         return;
     }

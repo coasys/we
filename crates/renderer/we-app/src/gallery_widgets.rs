@@ -4,9 +4,9 @@
 use std::sync::Arc;
 
 use indexmap::IndexMap;
+use we_egui::{layout, paint, EditState, MeasureCx, Registry, StyleCx, WidgetEvent};
 use we_expr::Value;
 use we_template::{NodeId, ResolvedChild, ResolvedNode};
-use we_widgets::{layout, paint, EditState, MeasureCx, Registry, StyleCx, WidgetEvent};
 
 fn props(list: &[(&str, Value)]) -> IndexMap<Arc<str>, Value> {
     list.iter()

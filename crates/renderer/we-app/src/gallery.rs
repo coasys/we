@@ -461,7 +461,7 @@ impl WidgetsApp {
             "widget-gallery",
             Arc::new(we_template::StoreBag::new()),
             we_screen::ScreenState::desktop(we_screen::ScreenSchema::default(), "/gallery"),
-            we_widgets::Registry::with_builtins(),
+            we_egui::Registry::with_builtins(),
         );
         let (theme, _) = set.theme(&current);
         app.theme = theme.clone();
@@ -477,7 +477,7 @@ impl WidgetsApp {
             "widget-gallery",
             Arc::new(we_template::StoreBag::new()),
             we_screen::ScreenState::desktop(we_screen::ScreenSchema::default(), "/gallery"),
-            we_widgets::Registry::with_builtins(),
+            we_egui::Registry::with_builtins(),
         );
         let (theme, _) = set.theme(theme);
         app.theme = theme.clone();

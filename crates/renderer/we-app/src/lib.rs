@@ -19,12 +19,12 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use egui::{vec2, Color32, Rect, RichText, Vec2};
+use we_egui::{
+    install_media, layout, paint, EditState, Layout, MeasureCx, Registry, StyleCx, WidgetEvent,
+};
 use we_screen::ScreenState;
 use we_session::Session;
 use we_template::{ResolvedNode, SchemaNode, StoreBag};
-use we_widgets::{
-    install_media, layout, paint, EditState, Layout, MeasureCx, Registry, StyleCx, WidgetEvent,
-};
 
 /// One frame's plumbing: the app wires host ↔ runtime ↔ registry; tests drive
 /// `frame_body` through `egui_kittest::Harness::new_ui`.

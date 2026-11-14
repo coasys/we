@@ -8,9 +8,9 @@ use std::sync::Arc;
 
 use egui_kittest::{kittest::Queryable, Harness};
 use indexmap::IndexMap;
+use we_egui::{layout, paint, EditState, MeasureCx, Registry, StyleCx, WidgetEvent};
 use we_expr::Value;
 use we_template::{HandlerRef, NodeId, ResolvedChild, ResolvedNode};
-use we_widgets::{layout, paint, EditState, MeasureCx, Registry, StyleCx, WidgetEvent};
 
 type Shared<T> = Rc<RefCell<T>>;
 

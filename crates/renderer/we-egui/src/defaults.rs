@@ -16,7 +16,7 @@ pub(crate) struct ViewportCx {
     pub container_width: f32,
 }
 
-const VIEW_KEY: &str = "we-widgets::viewport";
+const VIEW_KEY: &str = "we-egui::viewport";
 
 /// Stash the frame's style context on the ctx (called by `layout`/`paint`).
 pub(crate) fn store_view(ctx: &egui::Context, scx: &StyleCx) {

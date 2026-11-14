@@ -2,9 +2,9 @@
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use we_app::RendererApp;
+use we_egui::Registry;
 use we_screen::{ScreenSchema, ScreenState};
 use we_template::{Bundle, ResolvedChild, ResolvedNode, SchemaNode, StoreBag};
-use we_widgets::Registry;
 
 const BUNDLE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),

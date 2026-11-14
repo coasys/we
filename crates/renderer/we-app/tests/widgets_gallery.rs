@@ -7,7 +7,7 @@ use std::rc::Rc;
 
 use egui_kittest::{Harness, SnapshotResults};
 use we_app::gallery_widgets::{widgets_tree, widgets_ui};
-use we_widgets::EditState;
+use we_egui::EditState;
 
 fn snap(name: &str, open: bool, results: &mut SnapshotResults) {
     let edit = Rc::new(RefCell::new(EditState::default()));
