@@ -5,7 +5,10 @@ edition = "2021"
 description = "Terminal frontend over we-session — renders a WE bundle's resolved tree as text cells with ratatui"
 publish = false
 
-[dependencies]
+# Native only: crossterm has no wasm32 backend, and a terminal frontend
+# has no browser to run in. On wasm32 the crate builds empty (lib.rs and
+# main.rs are cfg-gated), the way we-app's native-only main is.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
 we-expr.workspace = true
 we-screen.workspace = true
 we-template.workspace = true

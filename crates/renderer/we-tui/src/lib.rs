@@ -8,6 +8,8 @@
 //! focus, Enter activates (handlers run through the session, so navigation
 //! re-resolves the screen), typing edits a focused input, `q`/Ctrl-C quit.
 #![forbid(unsafe_code)]
+// Native only — see Cargo.toml; on wasm32 the library is empty.
+#![cfg(not(target_arch = "wasm32"))]
 
 pub mod draw;
 pub mod icons;
