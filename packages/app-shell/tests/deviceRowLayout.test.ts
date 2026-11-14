@@ -1,8 +1,8 @@
 /**
  * A device row on Settings → Devices keeps its name readable however long its badges are.
  *
- * A revoked device whose key log let it keep the master key carries the badge "May still hold a valid
- * master key — replace your master key". The row was one line that could not wrap, the name column
+ * A revoked device whose key log let it keep the master key carries the badge "May still have your
+ * master key. Replace it to lock this device out.". The row was one line that could not wrap, the name column
  * could shrink to nothing, and typography breaks text anywhere: the name came out one letter per
  * line. jsdom has no layout, so this checks the row's shape — the three things that together keep
  * the name whole.

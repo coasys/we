@@ -41,8 +41,8 @@ describe('the identity window', () => {
       passphrase: false,
       error: null,
     }).lead;
-    expect(lead).toContain('may still hold a valid master key');
-    expect(lead).toContain('replace your master key');
+    expect(lead).toContain('may still have your master key');
+    expect(lead).toContain('Replace your master key');
     // Not a claim about what the device holds: the log says it may, not that it does.
     expect(lead).not.toMatch(/keeps a copy|stays valid/);
   });
@@ -76,10 +76,14 @@ describe('the identity window', () => {
     };
     const send = heading({ ...request, kind: 'send-master', device: 'Phone', targets: [] });
     // The key log's key, not the name any device can write, says who asks.
-    expect(send.title).toBe('Device d2 (key AbCd 1234) asks for the master key — send it?');
-    expect(send.lead).toContain('Phone');
-    expect(send.lead).toContain('R7K Q2M');
-    expect(send.lead).toContain('add and remove your devices');
+    expect(send.title).toBe('Send master key to d2?');
+    expect(send.lead).toContain('Listed as “Phone”');
+    expect(send.lead).toContain('same code and key');
+    expect(send.lead).toContain('add and remove devices');
+    // The code and the log's key and fingerprint are drawn under the heading on both cards.
+    expect(windowSource).toContain("el('div', { className: 'code', textContent: screen.code }),");
+    expect(windowSource).toContain('textContent: `${screen.keyId} · key ${screen.fingerprint}`');
+    expect(windowSource).toMatch(/case 'request': \{[\s\S]*?\.\.\.whoAsks\(screen\)/);
 
     // A record that renamed the target "Old desktop" and said it keeps no master key: the card
     // still says which key goes, by the log's key id and fingerprint, and that it may hold one.
@@ -88,16 +92,14 @@ describe('the identity window', () => {
       { keyId: 'd4', fingerprint: 'QrSt 9012', recordName: null, mayHoldMaster: false },
     ];
     const revoke = heading({ ...request, kind: 'confirm-revoke', device: 'Laptop', targets });
-    expect(revoke.title).toBe('Device d2 (key AbCd 1234) asks to revoke d3 (key WxYz 5678), d4 (key QrSt 9012)');
+    expect(revoke.title).toBe('Remove d3, d4?');
     expect(revoke.title).not.toContain('Old desktop');
-    expect(revoke.lead).toContain('Your record calls the asking device Laptop');
-    expect(revoke.lead).toContain('R7K Q2M');
-    expect(revoke.lead).toContain('d3 may still hold a valid master key');
-    expect(revoke.lead).toContain('replace your master key');
+    expect(revoke.lead).toContain('Asked by d2, listed as “Laptop”');
+    expect(revoke.lead).toContain('same code and key');
+    expect(revoke.lead).toContain('d3 may still have your master key');
+    expect(revoke.lead).toContain('Replace your master key');
     expect(revoke.lead).not.toContain('d4 may');
-    expect(targetLine(targets[0])).toBe(
-      'd3 · key WxYz 5678 · your record calls it Old desktop · may still hold a valid master key',
-    );
+    expect(targetLine(targets[0])).toBe('d3 · key WxYz 5678 · listed as “Old desktop” · may have master key');
     expect(targetLine(targets[1])).toBe('d4 · key QrSt 9012');
 
     const none = heading({ ...request, kind: 'confirm-revoke', device: 'Laptop', targets: [targets[1]] });
@@ -106,11 +108,11 @@ describe('the identity window', () => {
 
   it('says on a linked device what it can and cannot do, and what is still on its way', () => {
     expect(heading({ screen: 'joined', did: 'did:scid:coasys:1:Qm', keyId: 'd2' }).lead).toContain(
-      'does not hold your master key',
+      "doesn't have the master key",
     );
     const linked = heading({ screen: 'linked', seq: 3, masterSent: true, note: 'Its name is not saved yet.' }).lead;
     expect(linked).toContain('entry #3');
-    expect(linked).toContain('The master key waits for it');
+    expect(linked).toContain('It gets the master key the next time it unlocks.');
     expect(linked).toContain('Its name is not saved yet.');
     expect(heading({ screen: 'linked', seq: 3, masterSent: false, note: null }).lead).toBe(
       'Your key log records it as entry #3.',
@@ -118,16 +120,16 @@ describe('the identity window', () => {
   });
 
   it('titles the device steps as the Devices page names them', () => {
-    expect(heading({ screen: 'enter-code', error: null }).title).toBe('Scan or paste a code');
-    expect(heading({ screen: 'device-code', code: 'coasys:device:1:x', qrSvg: '', expires: 0 }).title).toBe(
-      'Show my code',
+    expect(heading({ screen: 'enter-code', error: null }).title).toBe('Enter code');
+    expect(heading({ screen: 'device-code', code: 'coasys:device:1:x', qrSvg: '', expires: 0 }).lead).toContain(
+      'choose Enter code',
     );
     const asked = heading({ screen: 'asked', keyId: 'd2', fingerprint: 'AbCd 1234', code: 'R7K Q2M' }).lead;
-    expect(asked).toContain('Take the master key');
-    // The holder's card shows the same key and code.
-    expect(asked).toContain('d2 (key AbCd 1234)');
-    expect(asked).toContain('R7K Q2M');
-    expect(heading({ screen: 'renamed', keyId: 'd2', name: 'Laptop' }).title).toBe('Named Laptop');
+    expect(asked).toContain('Accept master key');
+    // The holder's card shows the same key and code: this one draws them under its heading.
+    expect(asked).toContain('Check that it shows this code');
+    expect(windowSource).toMatch(/case 'asked':\s+return whoAsks\(screen\);/);
+    expect(heading({ screen: 'renamed', keyId: 'd2', name: 'Laptop' }).title).toBe('Renamed to Laptop');
   });
 
   it('on a first run, asks whether the identity is yours before this computer joins it', () => {
@@ -144,14 +146,14 @@ describe('the identity window', () => {
     // Not a first run: the other device confirms, and nothing is asked here.
     expect(heading(card(false, false, false))).toEqual({
       title: 'Check the code',
-      lead: 'Your other device shows a code too. When they match, confirm there. This computer then joins your identity.',
+      lead: 'If it matches the code on your other device, confirm there.',
     });
-    expect(deviceMatchNote(card(false, false, false))).toBe('Waiting for you to confirm on your other device…');
+    expect(deviceMatchNote(card(false, false, false))).toBe('Waiting for your other device…');
 
     const ask = heading(card(true, false, false));
     expect(ask.title).toBe('Is this your identity?');
-    expect(ask.lead).toBe('Check that the code matches the one on your other device. Then confirm here and there.');
-    expect(deviceMatchNote(card(true, false, false))).toBe('Waiting for you to confirm here and on your other device…');
+    expect(ask.lead).toBe('If the code matches your other device, confirm on both.');
+    expect(deviceMatchNote(card(true, false, false))).toBe('Waiting for both devices…');
 
     // The other device confirmed first: still asked here, and told what is left.
     const confirmed = heading(card(true, false, true));
@@ -163,13 +165,11 @@ describe('the identity window', () => {
     // Accepted here: it waits for the other device.
     const accepted = heading(card(true, true, false));
     expect(accepted.title).toBe('Confirm on your other device');
-    expect(accepted.lead).toBe(
-      'You confirmed here. This computer joins your identity once your other device confirms too.',
-    );
+    expect(accepted.lead).toBe('This computer is linked once you confirm there too.');
     expect(deviceMatchNote(card(true, true, false))).toBe('Waiting for your other device…');
   });
 
-  it('offers “This is my identity” only while the accept is still asked, and waits once', () => {
+  it('offers “Confirm” only while the accept is still asked, and waits once', () => {
     const card = (needsAccept: boolean, accepted: boolean, confirmed: boolean) =>
       ({ screen: 'device-match', code: 'R7K Q2M', did: 'did:scid:x', needsAccept, accepted, confirmed }) as const;
     expect(deviceMatchActions(card(false, false, false))).toEqual({ wait: true, accept: false });
@@ -178,7 +178,7 @@ describe('the identity window', () => {
     expect(deviceMatchActions(card(true, false, true))).toEqual({ wait: true, accept: true });
     // After the accept, the accept is the wait: the window asks for no second one.
     expect(deviceMatchActions(card(true, true, false))).toEqual({ wait: false, accept: false });
-    expect(windowSource).toContain("button('This is my identity', () => step({ kind: 'accept' }), 'primary')");
+    expect(windowSource).toContain("button('Confirm', () => step({ kind: 'accept' }), 'primary')");
   });
 
   it('sends one cancel for a double click, and answers both clicks with its screen', async () => {

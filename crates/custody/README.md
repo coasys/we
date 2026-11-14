@@ -138,19 +138,19 @@ incept only; the master key stays where it rests.
 
 The steps the main window may open (`IdentityStep`) besides `create` and `revoke`:
 
-| Step             | Where                          | What it does                                                                                         |
-| ---------------- | ------------------------------ | ---------------------------------------------------------------------------------------------------- |
-| `add-device`     | a computer with the master key | gives a server an offer link (QR and text), then the match code, then signs the `add`                |
-| `scan-device`    | a computer with the master key | "Scan or paste a code": takes the `coasys:device:1:…` code a new device shows and sends it the offer |
-| `show-code`      | a computer of no identity yet  | "Show my code": its device code as a QR code and a copyable link, until a holder links it            |
-| `take-master`    | a linked device                | "Take the master key": keeps the master key another device sent here                                 |
-| `ask-master`     | a linked device                | "Ask for the master key": posts a `send-master` request for a holder to answer                       |
-| `answer-request` | a computer with the master key | answers another device's `send-master` or `confirm-revoke` request, on the person's yes              |
-| `rename`         | a computer with the master key | names a device in the identity's private record                                                      |
+| Step             | Where                          | What it does                                                                               |
+| ---------------- | ------------------------------ | ------------------------------------------------------------------------------------------ |
+| `add-device`     | a computer with the master key | gives a server an offer link (QR and text), then the match code, then signs the `add`      |
+| `scan-device`    | a computer with the master key | "Enter code": takes the `coasys:device:1:…` code a new device shows and sends it the offer |
+| `show-code`      | a computer of no identity yet  | "Show code": its device code as a QR code and a copyable link, until a holder links it     |
+| `take-master`    | a linked device                | "Accept master key": keeps the master key another device sent here                         |
+| `ask-master`     | a linked device                | "Ask for master key": posts a `send-master` request for a holder to answer                 |
+| `answer-request` | a computer with the master key | answers another device's `send-master` or `confirm-revoke` request, on the person's yes    |
+| `rename`         | a computer with the master key | names a device in the identity's private record                                            |
 
 On the match screen of a link the person names the new device, names this computer too when the
 private record does not list it yet, and — for a device that may keep it (a desktop app, not a
-server) — chooses "Keep the master key on this device". The `add` is published first; the device's
+server) — chooses "Send it the master key". The `add` is published first; the device's
 entry in the private record and, if chosen, the master key sealed to the device's inbox follow it.
 What did not happen yet is said on the last screen (`Linked.note`):
 
@@ -176,7 +176,7 @@ until it expires.
 What a card or a confirmation says about a device comes from the key log, never from the private
 record, which any linked device can write. A request card names who asks by its key id and the
 fingerprint of its signing key; a `confirm-revoke` card names each key it would revoke the same way
-(`targets`), with the record's name only beside it ("your record calls it …"), and refuses a key the
+(`targets`), with the record's name only beside it ("listed as “…”"), and refuses a key the
 log does not list. Whether a device **may still hold a valid master key** — on that card and on the
 `revoke` step's confirmation (`mayHoldMaster`) — is the log's too: it made the identity, or the
 claim it joined with said `canKeepMaster`. A record saying `holdsMaster: false` does not hide that,

@@ -352,7 +352,7 @@ const deviceRow: SchemaNode = listRow(
             disabled: { $: 'identityStore.busy' },
             onClick: { $invoke: 'deviceStore.revoke', args: [{ $: 'device.keyId' }] },
           },
-          children: ['Revoke'],
+          children: ['Remove'],
         },
       },
     },
@@ -404,8 +404,8 @@ export const addDeviceButton: SchemaNode = {
       type: 'Row',
       props: { gap: '200', wrap: true },
       children: [
-        stepButton('Scan or paste a code', 'deviceStore.scanDevice'),
-        stepButton('Add a server by link', 'deviceStore.addDevice', 'soft'),
+        stepButton('Enter code', 'deviceStore.scanDevice'),
+        stepButton('Link a host', 'deviceStore.addDevice', 'soft'),
       ],
     },
   },
@@ -443,27 +443,24 @@ export const masterKeyCards: SchemaNode[] = [
     'deviceStore.canShowCode',
     stepCard(
       'qr-code',
-      'Join your identity from another device',
-      'Show this computer’s code, then add it from a device of your identity with “Scan or paste a code”.',
-      [stepButton('Show my code', 'deviceStore.showCode')],
+      'Link to another device',
+      'Show this computer’s code, then enter it on a device you already use.',
+      [stepButton('Show code', 'deviceStore.showCode')],
     ),
   ),
   when(
     'deviceStore.masterWaiting',
-    stepCard(
-      'key',
-      'Your master key was sent here',
-      'Take it, and this computer can add and remove your devices too.',
-      [stepButton('Take the master key', 'deviceStore.takeMaster')],
-    ),
+    stepCard('key', 'Master key sent to this computer', 'Accept it so this computer can add and remove devices.', [
+      stepButton('Accept master key', 'deviceStore.takeMaster'),
+    ]),
   ),
   when(
     'deviceStore.canAskMaster',
     stepCard(
       'key',
-      'This computer does not keep your master key',
-      'Ask for it, then send it from a device that keeps it. Its Devices page shows your request.',
-      [stepButton('Ask for the master key', 'deviceStore.askMaster', 'soft')],
+      'No master key on this computer',
+      'Ask for it, then send it from a device that has it, in Settings > Devices.',
+      [stepButton('Ask for master key', 'deviceStore.askMaster', 'soft')],
     ),
   ),
 ];
@@ -484,7 +481,7 @@ const requestRow: SchemaNode = listRow(
   },
   { type: 'we-text', children: [{ $: 'request.title' }] },
   { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [{ $: 'request.detail' }] },
-  [stepButton('Answer', 'deviceStore.answerRequest', 'solid', [{ $: 'request.id' }])],
+  [stepButton('Review', 'deviceStore.answerRequest', 'solid', [{ $: 'request.id' }])],
 );
 
 /** What your other devices asked, while this computer keeps the master key. */
@@ -492,7 +489,7 @@ export const requestList: SchemaNode = when('count(deviceStore.requests)', {
   type: 'Column',
   props: { gap: '200' },
   children: [
-    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Waiting for your answer'] },
+    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Requests'] },
     {
       type: 'Column',
       props: { bg: 'surface', r: 'surface', border: '1px solid border', overflow: 'hidden' },
@@ -505,5 +502,5 @@ export const requestList: SchemaNode = when('count(deviceStore.requests)', {
 
 export const deviceListFootnote: SchemaNode = footnote(
   'lock',
-  'Your public key log lists keys, not names: the names are in a record only your devices read. A revoked key stops speaking for you from that event on.',
+  'Only your devices can see device names. Your public key log lists only keys.',
 );

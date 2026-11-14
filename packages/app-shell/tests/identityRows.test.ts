@@ -3,9 +3,9 @@ import { describe, expect, it } from 'vitest';
 
 import { deviceRows, keyLogRows, requestRows, shortDid, shortHash } from '../src/shared/identityRows';
 
-const REVOKED_HOLDER = 'Still holds a valid master key — replace your master key';
+const REVOKED_HOLDER = 'Still has your master key. Replace it to lock this device out.';
 /** Where only the key log speaks: it let the device keep the master key, and the record is gone. */
-const REVOKED_MAY_HOLD = 'May still hold a valid master key — replace your master key';
+const REVOKED_MAY_HOLD = 'May still have your master key. Replace it to lock this device out.';
 
 describe('keyLogRows', () => {
   const events = [
@@ -70,9 +70,9 @@ describe('deviceRows', () => {
       ],
     );
     expect(rows.map((r) => [r.label, r.icon, r.master])).toEqual([
-      ['Desktop', 'laptop', 'Holds the master key'],
+      ['Desktop', 'laptop', 'Has master key'],
       ['Box', 'hard-drives', ''],
-      ['Laptop', 'laptop', 'Master key offered, not yet taken'],
+      ['Laptop', 'laptop', 'Master key sent'],
       ['Old', 'laptop', REVOKED_HOLDER],
     ]);
     expect(rows[0].subtitle).toBe('This computer · d1 · added at #0');
@@ -89,7 +89,7 @@ describe('deviceRows', () => {
       { keyId: 'd1', name: 'Desktop', kind: 'desktop-app', holdsMaster: 'yes' },
       { keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'yes' },
     ]);
-    expect(handedOver[1].master).toBe('Holds the master key');
+    expect(handedOver[1].master).toBe('Has master key');
 
     // The revoke: the record's write drops d2's entry, and the key log says d2 may still hold it.
     const revoked = deviceRows(
@@ -98,7 +98,7 @@ describe('deviceRows', () => {
       ['d2'],
     );
     expect(revoked.map((r) => [r.label, r.status, r.master])).toEqual([
-      ['Desktop', 'Valid', 'Holds the master key'],
+      ['Desktop', 'Valid', 'Has master key'],
       ['Device d2', 'Revoked at #2', REVOKED_MAY_HOLD],
     ]);
 
@@ -121,7 +121,7 @@ describe('requestRows', () => {
     );
     expect(rows.map((r) => r.title)).toEqual([
       'Laptop asks for the master key',
-      'Laptop asks to revoke This computer, d3',
+      'Laptop asks to remove This computer, d3',
     ]);
   });
 });

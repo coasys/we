@@ -346,7 +346,7 @@ export const devicesPage: SchemaNode = {
       icon: 'qr-code',
       title: 'Link a device',
       description:
-        'Sign another computer in as you: scan or paste the code it shows, or give a server a link from this one. You confirm a match code on both.',
+        'Enter the code the new device shows, or send a link to a server. You check a matching code on both.',
       preview: [actions('Link a device')],
       children: [{ type: 'Row', children: [addDeviceButton] }],
     }),

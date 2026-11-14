@@ -478,15 +478,15 @@ describe('deviceStore', () => {
     await flush();
     await flush();
     expect(deviceStore.devices().map((d) => [d.label, d.master])).toEqual([
-      ['Desktop', 'Holds the master key'],
-      ['Laptop', 'Master key offered, not yet taken'],
+      ['Desktop', 'Has master key'],
+      ['Laptop', 'Master key sent'],
     ]);
     expect(deviceStore.requests()).toEqual([
       {
         id: 'r1',
         kind: 'send-master',
         title: 'Laptop asks for the master key',
-        detail: 'With it, that device can add and remove your devices too.',
+        detail: 'It could then add and remove devices.',
       },
     ]);
     expect(deviceStore.canAskMaster()).toBe(false);
@@ -540,7 +540,7 @@ describe('deviceStore', () => {
     expect(deviceStore.requests().map((r) => r.id)).toEqual(['r1']);
   });
 
-  it('offers "Show my code" on a computer of no identity, and reads the identity once it joined', async () => {
+  it('offers "Show code" on a computer of no identity, and reads the identity once it joined', async () => {
     const b = backend({ did: null, events: [], devices: [] });
     const changes: IdentityChange[] = [];
     setPorts({

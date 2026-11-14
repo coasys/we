@@ -51,7 +51,7 @@ pub enum IdentityStep {
     Create,
     /// The holder adds a server by an offer link it gives.
     AddDevice,
-    /// The holder adds a device by the code that device shows ("Scan or paste a code").
+    /// The holder adds a device by the code that device shows ("Enter code").
     ScanDevice,
     /// This computer, a device of no identity yet, shows its code for a holder to scan.
     ShowCode,
@@ -365,7 +365,7 @@ pub struct CustodyPublic {
     pub revoked_holders: Vec<String>,
     /// The requests of other devices waiting in the identity's box.
     pub requests: Vec<RequestView>,
-    /// A master key waits in this computer's inbox ("Take the master key").
+    /// A master key waits in this computer's inbox ("Accept master key").
     pub master_waiting: bool,
 }
 
@@ -558,17 +558,19 @@ fn failed(e: &ClientError) -> Screen {
         ClientError::OfferEnded(state) => {
             format!("The offer ended ({state}) before it was confirmed. Nothing was added.")
         }
-        ClientError::NotAKeeper(_) => "That device cannot keep the master key: only an app on \
-                                       a computer or a phone can. Nothing was sent."
+        ClientError::NotAKeeper(_) => "That device can't have the master key. Only the app on \
+                                       a computer or phone can. Nothing was sent."
             .into(),
         ClientError::Poster(why) => {
-            format!("The request does not check out ({why}). Nothing was done.")
+            log::warn!("custody: the request does not check out: {why}");
+            "This request couldn't be verified. Nothing changed.".into()
         }
-        ClientError::NeedsWords => "This request also asks to replace the master key, which \
-                                    needs your 12 words. This version cannot do that yet."
+        ClientError::NeedsWords => "This request also replaces the master key, which needs \
+                                    your recovery phrase. This version of the app can't do \
+                                    that yet."
             .into(),
         ClientError::RecordBusy => {
-            "Your device list is being changed on another device. Try again in a moment.".into()
+            "Another device is changing your device list. Try again in a moment.".into()
         }
         ClientError::Rpc(e) => format!(
             "The identity service on this computer answered: {}",
@@ -737,7 +739,7 @@ async fn public_state_on<R: ExecutorRpc>(
         // Where the operating system unlocks a new item, the master key waiting is taken as the
         // app starts and whenever the main window asks: the keychain's own unlock guards it, as
         // it guards the key made here. A sealed item needs the passphrase, so the person takes
-        // it in the identity window ("Take the master key").
+        // it in the identity window ("Accept master key").
         let held = ad4m_identity_core::scid_of(did).map(|scid| held_sealed(vault, scid));
         // The same unlock pushes again what the retry list keeps: a master key given to a device
         // whose push the app did not see through. `retry_pushes` unlocks only when a push is left.
@@ -1367,18 +1369,18 @@ async fn follow_link<R: ExecutorRpc>(
                         record::write(executor, unlocking, did, &[change], &RANDOM).await
                     {
                         log::warn!("custody: this computer was not listed in the record: {e}");
-                        notes.push("This computer's name was not saved: rename it on Devices.");
+                        notes.push("This computer's name wasn't saved. Rename it in Settings > Devices.");
                     }
                 }
                 if let Err(e) = &linked.record {
                     log::warn!("custody: the linked device was not listed in the record: {e}");
-                    notes.push("Its name was not saved: rename it on Devices.");
+                    notes.push("Its name wasn't saved. Rename it in Settings > Devices.");
                 }
                 if let Some(Err(e)) = &linked.master {
                     log::warn!("custody: the master key was not put in its inbox: {e}");
                     notes.push(
-                        "The master key did not reach it yet: it is sent again the next time \
-                         this computer unlocks.",
+                        "The master key wasn't sent yet. It's sent again the next time this \
+                         computer unlocks.",
                     );
                 }
                 retry_quietly(executor, unlocking, did).await;
@@ -1533,14 +1535,14 @@ async fn run_scan(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
 /// `store_url`; else what to tell the person.
 fn check_code(code: &str, store_url: &str, now: u64) -> Result<DeviceString, String> {
     let device = DeviceString::parse(code).map_err(|_| {
-        "That is not a device's code. Copy the whole code the new device shows.".to_string()
+        "That isn't a device code. Copy the whole code from the new device.".to_string()
     })?;
     if now >= device.exp {
-        return Err("That code has expired. Show a new one on the new device.".into());
+        return Err("That code expired. Show a new code on the new device.".into());
     }
     if device.store.trim_end_matches('/') != store_url.trim_end_matches('/') {
         return Err(format!(
-            "That device uses another identity store ({}). Both devices must use the same one.",
+            "That device uses a different identity store ({}). Both devices need the same one.",
             device.store
         ));
     }
@@ -1598,14 +1600,13 @@ async fn show_code_on<R: ExecutorRpc>(
     }
     match executor.status().await {
         Ok(status) => {
-            if let Some(did) = status.did {
+            if status.did.is_some() {
                 return answer(
                     reply,
                     Ok(Screen::Failed {
-                        message: format!(
-                            "This computer already speaks for {did}, so it cannot join another \
-                             identity."
-                        ),
+                        message: "This computer already has an identity, so it can't link to \
+                                  another."
+                            .into(),
                     }),
                 );
             }
@@ -1625,7 +1626,7 @@ async fn show_code_on<R: ExecutorRpc>(
         return answer(
             reply,
             Ok(Screen::Failed {
-                message: "This computer's code was not made. Try again.".into(),
+                message: "Couldn't make a code. Try again.".into(),
             }),
         );
     };
@@ -1660,8 +1661,7 @@ async fn show_code_on<R: ExecutorRpc>(
                         return answer(
                             reply,
                             Ok(Screen::Failed {
-                                message: "No device linked this computer before its code \
-                                          expired. Show a new code to try again."
+                                message: "The code expired. Show a new code to try again."
                                     .into(),
                             }),
                         )
@@ -1670,8 +1670,7 @@ async fn show_code_on<R: ExecutorRpc>(
                         return answer(
                             reply,
                             Ok(Screen::Failed {
-                                message: "The identity service on this computer stopped \
-                                          answering. Try again in a moment."
+                                message: "The app stopped responding. Try again in a moment."
                                     .into(),
                             }),
                         )
@@ -1820,7 +1819,7 @@ async fn follow_claim<R: ExecutorRpc>(
     reply: &mut Reply,
 ) -> Result<Screen, Option<CancelReply>> {
     let closed = || Screen::Failed {
-        message: "The other device did not confirm in time. Show a new code to try again.".into(),
+        message: "The other device didn't confirm in time. Show a new code to try again.".into(),
     };
     let mut next_poll = tokio::time::Instant::now();
     loop {
@@ -1896,19 +1895,20 @@ async fn follow_claim<R: ExecutorRpc>(
                         key_id: key_id.to_string(),
                     },
                     _ => Screen::Failed {
-                        message: "The link was confirmed, but the identity's log does not list \
-                                  this computer. Show a new code to try again."
+                        message: "The link was confirmed, but this computer isn't in your key \
+                                  log. Show a new code to try again."
                             .into(),
                     },
                 })
             }
             other => {
+                log::warn!(
+                    "custody: the link ended unconfirmed ({})",
+                    other.unwrap_or("unknown")
+                );
                 return Ok(Screen::Failed {
-                    message: format!(
-                        "The link ended unconfirmed ({}). Show a new code to try again.",
-                        other.unwrap_or("unknown")
-                    ),
-                })
+                    message: "The link wasn't confirmed. Show a new code to try again.".into(),
+                });
             }
         }
         next_poll = tokio::time::Instant::now()
@@ -1936,8 +1936,7 @@ async fn accept_join<R: ExecutorRpc>(
         }
         Err(e) if e.code == 409 && e.message.starts_with("cancelled") => Err(cancelled_here()),
         Err(e) if e.code == 404 => Err(Screen::Failed {
-            message: "This link is no longer open on this computer. Show a new code to try again."
-                .into(),
+            message: "This link has closed. Show a new code to try again.".into(),
         }),
         Err(e) => Err(failed(&ClientError::Rpc(e))),
     }
@@ -2061,8 +2060,7 @@ async fn already_joined<R: ExecutorRpc>(
 
 /// A cancel that reached the executor after this computer joined, when the join's key is unknown.
 const ALREADY_JOINED: &str =
-    "This computer had already joined the identity before the cancel reached it, so it stays \
-     joined.";
+    "This computer was already linked when you cancelled, so it stays linked.";
 
 /// A cancel the executor did not confirm: the claim may stand, and a confirm still join.
 fn cancel_unconfirmed() -> Screen {
@@ -2072,14 +2070,14 @@ fn cancel_unconfirmed() -> Screen {
 }
 
 const CANCEL_UNCONFIRMED: &str =
-    "The identity service on this computer did not confirm the cancel, so this computer may \
-     still join the identity if the other device confirms the link.";
+    "The cancel wasn't confirmed. This computer is still linked if your other device \
+     confirms.";
 
 /// The claim was cancelled on this computer (`identity.acceptJoin` 409 `cancelled`, or a
 /// `cancelled` `identity.joinStatus`).
 fn cancelled_here() -> Screen {
     Screen::Failed {
-        message: "This link was cancelled on this computer. Show a new code to try again.".into(),
+        message: "This link was cancelled. Show a new code to try again.".into(),
     }
 }
 
@@ -2134,8 +2132,8 @@ async fn run_take_master(
     take_master_on(&executor, vault, address, rx, reply).await
 }
 
-const NO_MASTER_WAITING: &str = "No master key is waiting for this computer. Ask for it here, \
-     then say yes on a device that holds it.";
+const NO_MASTER_WAITING: &str = "No master key was sent to this computer. Ask for it, then \
+     send it from a device that has it.";
 
 /// [`run_take_master`] once the executor answers.
 async fn take_master_on<R: ExecutorRpc>(
@@ -2152,7 +2150,7 @@ async fn take_master_on<R: ExecutorRpc>(
                 return answer(
                     reply,
                     Ok(Screen::Failed {
-                        message: "This computer is not linked to an identity yet.".into(),
+                        message: "This computer isn't linked yet.".into(),
                     }),
                 )
             }
@@ -2202,8 +2200,7 @@ async fn take_master_on<R: ExecutorRpc>(
             Ok(Some(taken)) => Screen::MasterTaken {
                 note: taken.record.err().map(|e| {
                     log::warn!("custody: the record does not mark this computer yet: {e}");
-                    "Your device list does not show it yet: it is updated the next time a \
-                     device changes it."
+                    "Your device list shows this after its next change."
                         .to_string()
                 }),
                 did: taken.did,
@@ -2239,17 +2236,17 @@ async fn ask_master_on<R: ExecutorRpc>(executor: &ViaExecutor<R>, vault: &Deskto
     };
     let (Some(did), Some(key_id)) = (status.did, status.key_id) else {
         return Screen::Failed {
-            message: "This computer is not linked to an identity yet.".into(),
+            message: "This computer isn't linked yet.".into(),
         };
     };
     let Some(scid) = ad4m_identity_core::scid_of(&did) else {
         return Screen::Failed {
-            message: "This computer is not linked to an identity yet.".into(),
+            message: "This computer isn't linked yet.".into(),
         };
     };
     if matches!(vault.holds(scid), Ok(true)) {
         return Screen::Failed {
-            message: "This computer already keeps your master key.".into(),
+            message: "This computer already has the master key.".into(),
         };
     }
     match executor
@@ -2308,7 +2305,7 @@ async fn answer_on<R: ExecutorRpc>(
         return answer(
             reply,
             Ok(Screen::Failed {
-                message: "That request is no longer waiting.".into(),
+                message: "This request is no longer open.".into(),
             }),
         );
     };
@@ -2343,7 +2340,7 @@ async fn answer_on<R: ExecutorRpc>(
                         reply,
                         Ok(Screen::Failed {
                             message: format!(
-                                "The request asks to revoke {key_id}, which is not in your key log."
+                                "This request asks to remove {key_id}, which isn't in your key log."
                             ),
                         }),
                     );
@@ -2363,7 +2360,7 @@ async fn answer_on<R: ExecutorRpc>(
         return answer(
             reply,
             Ok(Screen::Failed {
-                message: "The device that asks is not in your key log.".into(),
+                message: "The device asking isn't in your key log.".into(),
             }),
         );
     };
@@ -2373,8 +2370,8 @@ async fn answer_on<R: ExecutorRpc>(
             reply,
             Ok(Screen::Failed {
                 message: format!(
-                    "Device {} (key {fingerprint}) joined as a device that does not keep the \
-                     master key, so it cannot be sent to it.",
+                    "Device {} (key {fingerprint}) was linked as a device that can't have the \
+                     master key. Nothing was sent.",
                     request.by
                 ),
             }),
@@ -2419,8 +2416,7 @@ async fn answer_on<R: ExecutorRpc>(
                         kind,
                         device: device.clone(),
                         note: record.map(|_| {
-                            "Your device list does not show it yet: it is updated the next time \
-                             a device changes it."
+                            "Your device list shows this after its next change."
                                 .to_string()
                         }),
                     }),
@@ -2476,8 +2472,7 @@ async fn rename_on<R: ExecutorRpc>(
         return answer(
             reply,
             Ok(Screen::Failed {
-                message: "Only a device that keeps your master key can rename another device."
-                    .into(),
+                message: "Only a device with the master key can rename other devices.".into(),
             }),
         );
     }
@@ -2507,7 +2502,7 @@ async fn rename_on<R: ExecutorRpc>(
                 Ok(Screen::Rename {
                     key_id: key_id.clone(),
                     name: String::new(),
-                    error: Some("Give the device a name.".into()),
+                    error: Some("Enter a name.".into()),
                 }),
             );
             continue;
@@ -3621,7 +3616,7 @@ mod tests {
             }
         );
         assert!(
-            matches!(&last, Screen::Failed { message } if message.contains("ended unconfirmed (expired)")),
+            matches!(&last, Screen::Failed { message } if message.contains("wasn't confirmed")),
             "{last:?}"
         );
     }
@@ -3841,7 +3836,7 @@ mod tests {
         // The fake answers an unknown method 404, as the executor answers an unknown offer.
         for screen in [&waiting, &accepted] {
             assert!(
-                matches!(screen, Screen::Failed { message } if message.contains("no longer open")),
+                matches!(screen, Screen::Failed { message } if message.contains("has closed")),
                 "{screen:?}"
             );
         }
@@ -4131,7 +4126,7 @@ mod tests {
             }
         );
         assert!(
-            matches!(&last, Screen::Failed { message } if message == "This link was cancelled on this computer. Show a new code to try again."),
+            matches!(&last, Screen::Failed { message } if message == "This link was cancelled. Show a new code to try again."),
             "{last:?}"
         );
     }
@@ -4145,7 +4140,7 @@ mod tests {
         show_code_on(&executor, events, &vault, &address, &mut rx, &mut reply).await;
         let screen = first.await.unwrap().unwrap();
         assert!(
-            matches!(&screen, Screen::Failed { message } if message.contains("already speaks for")),
+            matches!(&screen, Screen::Failed { message } if message.contains("already has an identity")),
             "{screen:?}"
         );
         assert!(executor.rpc().called("identity.prepareDevice").is_empty());
@@ -4271,7 +4266,7 @@ mod tests {
         .await;
         let screen = first.await.unwrap().unwrap();
         assert!(
-            matches!(&screen, Screen::Failed { message } if message.contains("no longer waiting")),
+            matches!(&screen, Screen::Failed { message } if message.contains("no longer open")),
             "{screen:?}"
         );
     }
@@ -4343,7 +4338,7 @@ mod tests {
             } else {
                 assert!(
                     matches!(&screen, Screen::Failed { message }
-                        if message.contains("does not keep the master key")),
+                        if message.contains("can't have the master key")),
                     "{screen:?}"
                 );
             }
@@ -4523,7 +4518,7 @@ mod tests {
         let screen = first_answer_screen(&executor).await;
         assert!(
             matches!(&screen, Screen::Failed { message } if message.contains("d3")
-                && message.contains("not in your key log")),
+                && message.contains("isn't in your key log")),
             "{screen:?}"
         );
     }
@@ -4616,7 +4611,7 @@ mod tests {
         .await;
         let screen = first.await.unwrap().unwrap();
         assert!(
-            matches!(&screen, Screen::Failed { message } if message.contains("Only a device that keeps")),
+            matches!(&screen, Screen::Failed { message } if message.contains("Only a device with the master key")),
             "{screen:?}"
         );
 
@@ -4634,7 +4629,7 @@ mod tests {
         .await;
         let screen = first.await.unwrap().unwrap();
         assert!(
-            !matches!(&screen, Screen::Failed { message } if message.contains("Only a device that keeps")),
+            !matches!(&screen, Screen::Failed { message } if message.contains("Only a device with the master key")),
             "{screen:?}"
         );
     }
@@ -4658,11 +4653,11 @@ mod tests {
             .contains("expired"));
         assert!(check_code(&code, "https://other.example", 999)
             .unwrap_err()
-            .contains("another identity store"));
+            .contains("different identity store"));
         assert!(
             check_code("coasys:offer:1:zzz", "https://store.example", 999)
                 .unwrap_err()
-                .contains("not a device's code")
+                .contains("isn't a device code")
         );
     }
 
