@@ -1220,6 +1220,52 @@ fn a_tracked_call_settles_its_answer_once() {
 }
 
 #[test]
+fn a_tracked_call_keeps_a_namespace_answer_traversable() {
+    // R8-1: a host function answering a store namespace (no raw value) —
+    // directly, or through an accessor. A tracked initial `lookup().x` must
+    // read the member, 42, as an untracked expression does; settling the
+    // call's answer would turn the namespace into `undefined` first.
+    fn ns() -> Value {
+        Value::from(we_expr::MapNamespace::new(
+            [("x".into(), Value::from(42.0))].into_iter().collect(),
+        ))
+    }
+    for (label, accessor) in [
+        ("direct namespace", false),
+        ("accessor returning one", true),
+    ] {
+        let node = schema(json!({
+            "type": "Column",
+            "$localState": {
+                "dot": { "type": "number", "initial": { "$": "lookup().x" } },
+                "idx": { "type": "number", "initial": { "$": "lookup()['x']" } }
+            },
+            "children": []
+        }));
+        let bag = Arc::new(StoreBag::new());
+        bag.set_function(
+            "lookup",
+            Arc::new(move |_| {
+                if accessor {
+                    Value::Callable(we_expr::CallableRef::accessor("lookup", |_| ns()))
+                } else {
+                    ns()
+                }
+            }),
+        );
+        let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+        let root = rt.frame(&mut host, &screen).clone();
+        for field in ["dot", "idx"] {
+            assert!(
+                locals.get(&root.id, field).strict_eq(&Value::from(42.0)),
+                "{label}: tracked `{field}` must read the namespace member: {:?}",
+                locals.get(&root.id, field)
+            );
+        }
+    }
+}
+
+#[test]
 fn a_host_computation_initial_tracks_output_content_not_allocations() {
     // N4/Q2: `{"$":"compute()"}` — the host function returns a FRESH array
     // on every call. The port tracks output content, not inputs (the

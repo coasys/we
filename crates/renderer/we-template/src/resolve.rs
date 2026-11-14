@@ -259,13 +259,14 @@ impl Env for TrackEnv<'_> {
     }
 
     fn call(&self, name: &str, args: &[Value]) -> Value {
-        // Settle once and return that same value — an accessor answer runs
+        // Read once and return that same value — an accessor answer runs
         // exactly once for the syntactic call, and what the `$call:` log
         // records is what the expression holds. (`call_function` does not
         // settle its env's answer; handing it the raw callable would invoke
         // the accessor a second time at the read and could log a different
-        // answer.)
-        let value = self.inner.call(name, args).settle();
+        // answer.) `read_value`, not `settle`: a namespace answer stays
+        // traversable, so `lookup().x` reads the member as it does untracked.
+        let value = self.inner.call(name, args).read_value();
         (self.observe)(&format!("$call:{name}"), &value);
         value
     }
