@@ -120,18 +120,28 @@ fn write_local(scope: &Scope, owner: &NodeId, field: &str, value: Value, cx: &mu
         _ => None,
     };
     let mirror = local_write_mirror(&ty, persist_name.as_deref(), &sync_param, &value, &initial);
+    let mut moved = false;
     if let Some((key, json)) = mirror.store {
-        cx.screen.apply(ScreenOp::SetPref {
-            key,
-            value: serde_json::from_str(&json).ok(),
-        });
+        moved |= cx
+            .screen
+            .apply(ScreenOp::SetPref {
+                key,
+                value: serde_json::from_str(&json).ok(),
+            })
+            .changed();
     }
     if let Some(param) = mirror.param {
-        cx.screen.apply(ScreenOp::SetParam {
-            name: param.name,
-            value: param.text,
-            push: Some(param.push),
-        });
+        moved |= cx
+            .screen
+            .apply(ScreenOp::SetParam {
+                name: param.name,
+                value: param.text,
+                push: Some(param.push),
+            })
+            .changed();
+    }
+    if moved {
+        crate::scope::bind_screen(cx.bag, cx.screen);
     }
 }
 
@@ -377,9 +387,14 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
                 None => vec![],
             };
             // A `screen` row applies straight to the screen state — the
-            // store map's answer for routeStore/shellStore/themeStore.
+            // store map's answer for routeStore/shellStore/themeStore. The
+            // bag's namespaces rebind at once: the next token's
+            // `routeStore.params.x` sees the write the way a WE action sees
+            // the store's synchronous update.
             if let Some(op) = screen_op(target, &evaluated, scope, cx.screen) {
-                cx.screen.apply(op);
+                if cx.screen.apply(op).changed() {
+                    crate::scope::bind_screen(cx.bag, cx.screen);
+                }
                 return;
             }
             match cx.host.invoke(target, evaluated) {

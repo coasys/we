@@ -41,6 +41,32 @@ fn root_id(root: &ResolvedNode) -> NodeId {
 }
 
 #[test]
+fn a_screen_write_is_visible_to_later_tokens_in_the_chain() {
+    // B8: `routeStore.setParam` mutates ScreenState; the next token's
+    // `routeStore.params.x` read must see it — TS store accessors see the
+    // synchronous navigation-state update in the next action.
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "seen": { "type": "string", "initial": "" } },
+        "props": { "onTap": [
+            { "$invoke": "routeStore.setParam", "args": ["x", "new"] },
+            { "$setLocal": "seen", "value": { "$": "routeStore.params.x" } }
+        ] }
+    }));
+    let (mut rt, mut host, locals, mut screen) = rig(node, StoreBag::new(), "/");
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root_id(&root);
+    rt.dispatch(&mut host, &mut screen, &owner, "onTap", Value::Null);
+    assert!(
+        locals
+            .get(&owner, "seen")
+            .strict_eq(&Value::from("new")),
+        "the second token must read the param the first just wrote; got {:?}",
+        locals.get(&owner, "seen")
+    );
+}
+
+#[test]
 fn invoke_done_never_runs_lifecycle_callbacks() {
     // WE's invoke.ts: `result instanceof Promise` gates the callbacks — a
     // synchronous answer fires none of them.
