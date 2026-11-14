@@ -1188,6 +1188,912 @@
       "print": "calendarMonth({ month: 8 })"
     },
     {
+      "id": "eval.host-source-month-iso",
+      "note": "evaluation over the named env",
+      "source": "calendarMonth({ month: '2025-08-15' })",
+      "result": [
+        {
+          "date": "2025-07-27",
+          "day": 27,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-07-28",
+          "day": 28,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-07-29",
+          "day": 29,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-07-30",
+          "day": 30,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-07-31",
+          "day": 31,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-01",
+          "day": 1,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-02",
+          "day": 2,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-03",
+          "day": 3,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-04",
+          "day": 4,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-05",
+          "day": 5,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-06",
+          "day": 6,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-07",
+          "day": 7,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-08",
+          "day": 8,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-09",
+          "day": 9,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-10",
+          "day": 10,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-11",
+          "day": 11,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-12",
+          "day": 12,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-13",
+          "day": 13,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-14",
+          "day": 14,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-15",
+          "day": 15,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-16",
+          "day": 16,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-17",
+          "day": 17,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-18",
+          "day": 18,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-19",
+          "day": 19,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-20",
+          "day": 20,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-21",
+          "day": 21,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-22",
+          "day": 22,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-23",
+          "day": 23,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-24",
+          "day": 24,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-25",
+          "day": 25,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-26",
+          "day": 26,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-27",
+          "day": 27,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-28",
+          "day": 28,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-29",
+          "day": 29,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-30",
+          "day": 30,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-31",
+          "day": 31,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-09-01",
+          "day": 1,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-09-02",
+          "day": 2,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-09-03",
+          "day": 3,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-09-04",
+          "day": 4,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-09-05",
+          "day": 5,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-09-06",
+          "day": 6,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 6
+        }
+      ],
+      "print": "calendarMonth({ month: '2025-08-15' })"
+    },
+    {
+      "id": "eval.host-source-month-noon",
+      "note": "evaluation over the named env",
+      "source": "calendarMonth({ month: '2025-08-01T12:00:00' })",
+      "result": [
+        {
+          "date": "2025-07-27",
+          "day": 27,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-07-28",
+          "day": 28,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-07-29",
+          "day": 29,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-07-30",
+          "day": 30,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-07-31",
+          "day": 31,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-01",
+          "day": 1,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-02",
+          "day": 2,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-03",
+          "day": 3,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-04",
+          "day": 4,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-05",
+          "day": 5,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-06",
+          "day": 6,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-07",
+          "day": 7,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-08",
+          "day": 8,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-09",
+          "day": 9,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-10",
+          "day": 10,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-11",
+          "day": 11,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-12",
+          "day": 12,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-13",
+          "day": 13,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-14",
+          "day": 14,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-15",
+          "day": 15,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-16",
+          "day": 16,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-17",
+          "day": 17,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-18",
+          "day": 18,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-19",
+          "day": 19,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-20",
+          "day": 20,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-21",
+          "day": 21,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-22",
+          "day": 22,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-23",
+          "day": 23,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-24",
+          "day": 24,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-25",
+          "day": 25,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-26",
+          "day": 26,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-27",
+          "day": 27,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-28",
+          "day": 28,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-29",
+          "day": 29,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-30",
+          "day": 30,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-31",
+          "day": 31,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-09-01",
+          "day": 1,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-09-02",
+          "day": 2,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-09-03",
+          "day": 3,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-09-04",
+          "day": 4,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-09-05",
+          "day": 5,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-09-06",
+          "day": 6,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 6
+        }
+      ],
+      "print": "calendarMonth({ month: '2025-08-01T12:00:00' })"
+    },
+    {
+      "id": "eval.host-source-month-offset",
+      "note": "evaluation over the named env",
+      "source": "calendarMonth({ month: '2025-08-15', offset: 3, weekStartsOn: 1 })",
+      "result": [
+        {
+          "date": "2025-10-27",
+          "day": 27,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-10-28",
+          "day": 28,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-10-29",
+          "day": 29,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-10-30",
+          "day": 30,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-10-31",
+          "day": 31,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-11-01",
+          "day": 1,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-11-02",
+          "day": 2,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-11-03",
+          "day": 3,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-11-04",
+          "day": 4,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-11-05",
+          "day": 5,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-11-06",
+          "day": 6,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-11-07",
+          "day": 7,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-11-08",
+          "day": 8,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-11-09",
+          "day": 9,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-11-10",
+          "day": 10,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-11-11",
+          "day": 11,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-11-12",
+          "day": 12,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-11-13",
+          "day": 13,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-11-14",
+          "day": 14,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-11-15",
+          "day": 15,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-11-16",
+          "day": 16,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-11-17",
+          "day": 17,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-11-18",
+          "day": 18,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-11-19",
+          "day": 19,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-11-20",
+          "day": 20,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-11-21",
+          "day": 21,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-11-22",
+          "day": 22,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-11-23",
+          "day": 23,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-11-24",
+          "day": 24,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-11-25",
+          "day": 25,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-11-26",
+          "day": 26,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-11-27",
+          "day": 27,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-11-28",
+          "day": 28,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-11-29",
+          "day": 29,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-11-30",
+          "day": 30,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-12-01",
+          "day": 1,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-12-02",
+          "day": 2,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-12-03",
+          "day": 3,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-12-04",
+          "day": 4,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-12-05",
+          "day": 5,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-12-06",
+          "day": 6,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-12-07",
+          "day": 7,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 0
+        }
+      ],
+      "print": "calendarMonth({ month: '2025-08-15', offset: 3, weekStartsOn: 1 })"
+    },
+    {
       "id": "env.local-accessor",
       "note": "a buildEnvironment root rule, under a callback context",
       "source": "local.page + 1",

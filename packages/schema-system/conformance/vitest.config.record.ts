@@ -12,6 +12,7 @@ export default defineConfig({
   },
   test: {
     globals: true,
+    env: { TZ: 'UTC' },
     environment: 'jsdom',
     include: ['tests/record-navigation.test.tsx'],
   },

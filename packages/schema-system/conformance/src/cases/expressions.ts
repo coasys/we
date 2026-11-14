@@ -202,7 +202,14 @@ export const EXPRESSION_CASES: ExpressionCase[] = [
   C('eval.where-miss', "find(items, { name: 'Zed' }).name", 'where'),
   C('eval.where-range', "filter(events, { startDate: { gte: '2026-09-15', lt: '2026-10-01' } }).map(e, e.id)", 'where'),
   C('eval.where-numeric', 'filter(events, { seats: { gt: 5 } }).map(e, e.id)', 'where'),
+  // `month: 8` is the numeric edge — `new Date(8)` lands in January 1970 only under the pinned
+  // TZ=UTC. The ISO cases are the explicit spellings: mid-month parses to August under any zone,
+  // and a local-time noon never date-shifts at all. All use past months, so `isToday` can never
+  // flip a vector when the calendar catches up.
   C('eval.host-source', 'calendarMonth({ month: 8 })'),
+  C('eval.host-source-month-iso', "calendarMonth({ month: '2025-08-15' })"),
+  C('eval.host-source-month-noon', "calendarMonth({ month: '2025-08-01T12:00:00' })"),
+  C('eval.host-source-month-offset', "calendarMonth({ month: '2025-08-15', offset: 3, weekStartsOn: 1 })"),
 
   /* --- the real environment's root rules, each under a callback context ------------------- */
   C('env.local-accessor', 'local.page + 1', 'callback'),

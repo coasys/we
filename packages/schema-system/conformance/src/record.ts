@@ -14,6 +14,11 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// The calendar host sources read the process timezone for `month` parsing and `isToday` — a vector
+// recorded behind UTC would differ from one recorded on it. Pin UTC so the recorder and the tests
+// agree wherever they run; the vitest configs pin it for the test side the same way.
+process.env.TZ = 'UTC';
+
 import { hostSourceBag } from '../../../app-shell/src/shared/sources/index.ts';
 import {
   evaluateExpression,
