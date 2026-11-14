@@ -98,16 +98,14 @@ impl Widget for NumberInput {
             commit(&text, cx);
         }
         // Steppers respect the bounds.
-        if !disabled {
-            if minus_r.clicked() || plus_r.clicked() {
-                let cur = text
-                    .trim()
-                    .parse::<f64>()
-                    .unwrap_or_else(|_| props::prop_num(node, "value").unwrap_or(0.0));
-                let next = clamp(cur + if minus_r.clicked() { -step } else { step }, min, max);
-                cx.edit.set_field(&node.id, "dirty", Value::Bool(false));
-                cx.emit(&node.id, "onChange", events::detail_num(next));
-            }
+        if !disabled && (minus_r.clicked() || plus_r.clicked()) {
+            let cur = text
+                .trim()
+                .parse::<f64>()
+                .unwrap_or_else(|_| props::prop_num(node, "value").unwrap_or(0.0));
+            let next = clamp(cur + if minus_r.clicked() { -step } else { step }, min, max);
+            cx.edit.set_field(&node.id, "dirty", Value::Bool(false));
+            cx.emit(&node.id, "onChange", events::detail_num(next));
         }
     }
 }
