@@ -143,9 +143,20 @@ pub fn effective(parent: Option<&Style>, style: Style) -> Style {
 fn type_defaults(bag: &mut Bag, node: &ResolvedNode) {
     match node.ty.as_ref() {
         "we-button" => {
-            // DEFAULT_PROPS (cursor/focus are egui's own concerns — `focusProps`
-            // still merges so a focus ring resolves where a theme paints one).
+            // DEFAULT_PROPS (cursor is egui's own concern). `focusProps: {
+            // ring: FOCUS_RING }` applies to EVERY variant — bare included —
+            // so keyboard focus paints the `--we-ring-color` ring.
             entries(bag, &[("r", "400"), ("ax", "center"), ("ay", "center")]);
+            if !bag.contains_key("focusProps") {
+                let mut focus = IndexMap::new();
+                focus.insert(
+                    Arc::from("ring"),
+                    Value::Str(Arc::from(
+                        "0 0 0 var(--we-focus-ring-width) var(--we-ring-color)",
+                    )),
+                );
+                bag.insert(Arc::from("focusProps"), Value::Obj(Arc::new(focus)));
+            }
             // Variant: toned when `tone` is set and not neutral.
             let t = toned(node);
             match variant(node, "solid") {

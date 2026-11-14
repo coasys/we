@@ -1483,3 +1483,85 @@ fn own_text_style_beats_inherited() {
         "the authored color wins: {f:?}"
     );
 }
+
+/// A8 — keyboard focus: TS `button.ts` DEFAULT_PROPS gives EVERY variant —
+/// `bare` included — `focusProps: { ring: FOCUS_RING }` where
+/// `FOCUS_RING = '0 0 0 var(--we-focus-ring-width) var(--we-ring-color)'`:
+/// a 2px `--we-ring-color` band painted around the box when the button has
+/// keyboard focus. The Rust button handled pointer states only.
+#[test]
+fn button_keyboard_focus_paints_the_ring() {
+    let registry = Registry::with_builtins();
+    let tokens = tokens();
+    let mut col = node("Column", "c", &[]);
+    child(
+        &mut col,
+        node(
+            "we-button",
+            "c/b1",
+            &[("text", s("first")), ("variant", s("bare"))],
+        ),
+    );
+    child(
+        &mut col,
+        node("we-button", "c/b2", &[("text", s("second"))]),
+    );
+    let lay_cell = std::cell::RefCell::new(None);
+    let shapes_cell = std::cell::RefCell::new(Vec::new());
+    let mut harness = harness_ui(|ui| {
+        let ctx = ui.ctx().clone();
+        let cx = MeasureCx::new(&ctx);
+        let scx = StyleCx {
+            tokens: &tokens,
+            ..StyleCx::empty()
+        };
+        let lay = layout(
+            &cx,
+            &scx,
+            &registry,
+            &col,
+            egui::Rect::from_min_size(ui.cursor().min, egui::vec2(400.0, 800.0)),
+        );
+        let mut events = Vec::new();
+        let mut edit = EditState::default();
+        paint(ui, &registry, &scx, &col, &lay, &mut events, &mut edit, 0.0);
+        let layer = ui.layer_id();
+        ctx.graphics(|g| {
+            *shapes_cell.borrow_mut() = g
+                .get(layer)
+                .map(|list| list.all_entries().map(|cs| cs.shape.clone()).collect())
+                .unwrap_or_default();
+        });
+        *lay_cell.borrow_mut() = Some(lay);
+    });
+    harness.run();
+    harness.key_press(egui::Key::Tab);
+    harness.run();
+    let lay = lay_cell.borrow_mut().take().expect("layout ran");
+    let btn = *lay.rects.get(&NodeId::from("c/b1")).expect("b1 rect");
+    let shapes = shapes_cell.take();
+    let ring_rect = btn.expand(2.0);
+    let ring_color = props_color32("oklch(0.55 0.258311 288)");
+    assert!(
+        shapes
+            .iter()
+            .any(|shape| matches!(shape, egui::Shape::Rect(r)
+            if (r.rect.min - ring_rect.min).abs().max_elem() < 1.0
+                && (r.rect.max - ring_rect.max).abs().max_elem() < 1.0
+                && stroke_is(r.fill, ring_color))),
+        "a --we-ring-color band at the button's 2px-expanded box must paint \
+         on keyboard focus: {shapes:?}"
+    );
+    // Focus must not land on the unfocused button's ring.
+    let btn2 = *lay.rects.get(&NodeId::from("c/b2")).expect("b2 rect");
+    let ring2 = btn2.expand(2.0);
+    assert!(
+        !shapes
+            .iter()
+            .any(|shape| matches!(shape, egui::Shape::Rect(r)
+            if (r.rect.min - ring2.min).abs().max_elem() < 1.0
+                && (r.rect.max - ring2.max).abs().max_elem() < 1.0
+                && stroke_is(r.fill, ring_color))),
+        "the unfocused button must not paint a ring"
+    );
+}

@@ -121,23 +121,32 @@ pub(crate) fn state_style<'a>(
     response: &egui::Response,
     disabled: bool,
 ) -> std::borrow::Cow<'a, Style> {
-    if disabled {
-        return match &style.disabled {
+    let mut out = if disabled {
+        match &style.disabled {
             Some(p) => patched(style, p),
             None => std::borrow::Cow::Borrowed(style),
-        };
-    }
-    if response.is_pointer_button_down_on() {
-        if let Some(p) = &style.active {
-            return patched(style, p);
+        }
+    } else if response.is_pointer_button_down_on() {
+        match &style.active {
+            Some(p) => patched(style, p),
+            None => std::borrow::Cow::Borrowed(style),
+        }
+    } else if response.hovered() {
+        match &style.hover {
+            Some(p) => patched(style, p),
+            None => std::borrow::Cow::Borrowed(style),
+        }
+    } else {
+        std::borrow::Cow::Borrowed(style)
+    };
+    // `:focus` composes with the resting state — the ring paints on top of
+    // hover/active chrome. A disabled button never takes focus.
+    if !disabled && response.has_focus() {
+        if let Some(p) = &style.focus {
+            out.to_mut().apply(p);
         }
     }
-    if response.hovered() {
-        if let Some(p) = &style.hover {
-            return patched(style, p);
-        }
-    }
-    std::borrow::Cow::Borrowed(style)
+    out
 }
 
 /// The pre-tier style with a state patch applied — `Style::with_state`
