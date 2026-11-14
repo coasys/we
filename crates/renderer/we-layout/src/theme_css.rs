@@ -140,6 +140,24 @@ fn retro(node: &ResolvedNode, style: &mut Style) {
             style.paint.bg = Some(color("silver"));
             style.text.color = Some(color("#222"));
             clear_borders(style);
+            // !important beats every non-important declaration, the
+            // `:hover`/`:active`/`:focus`/`:disabled` ones included — no
+            // state patch may change these three.
+            for patch in [
+                &mut style.hover,
+                &mut style.active,
+                &mut style.focus,
+                &mut style.disabled,
+            ]
+            .into_iter()
+            .flatten()
+            {
+                patch.paint.bg = None;
+                patch.text.color = None;
+                patch.paint.borders = we_style::Edges::default();
+                patch.paint.border_color = None;
+                patch.paint.border_width = None;
+            }
             style.paint.shadows = Some(retro_bevel().to_vec());
             // `:active` swaps the bevel — an authored `activeProps` shadow
             // still wins its slot (the rule is not !important); the rest
@@ -248,5 +266,69 @@ mod tests {
         assert_eq!(pressed[1].color, Some(eval_color("#0a0a0a").unwrap()));
         assert_eq!(pressed[2].color, Some(eval_color("#dfdfdf").unwrap()));
         assert_eq!(pressed[3].color, Some(eval_color("grey").unwrap()));
+    }
+
+    /// A retro button node with authored state bags that try to recolour
+    /// what the theme declares `!important`.
+    fn retro_button_with_states() -> ResolvedNode {
+        use std::sync::Arc;
+        let bag = |pairs: &[(&str, &str)]| {
+            we_expr::Value::from(
+                pairs
+                    .iter()
+                    .map(|(k, v)| (Arc::<str>::from(*k), we_expr::Value::from(*v)))
+                    .collect::<indexmap::IndexMap<Arc<str>, we_expr::Value>>(),
+            )
+        };
+        let paint = [
+            ("bg", "#ff0000"),
+            ("color", "#0000ff"),
+            ("border", "3px solid #00ff00"),
+        ];
+        ResolvedNode {
+            id: we_template::NodeId::from("b"),
+            ty: Arc::from("we-button"),
+            props: [
+                ("label", we_expr::Value::from("OK")),
+                ("hoverProps", bag(&paint)),
+                ("activeProps", bag(&paint)),
+                ("focusProps", bag(&paint)),
+                ("disabledProps", bag(&paint)),
+            ]
+            .into_iter()
+            .map(|(k, v)| (Arc::<str>::from(k), v))
+            .collect(),
+            handlers: indexmap::IndexMap::new(),
+            slot: None,
+            children: vec![],
+            transition: None,
+        }
+    }
+
+    /// `background: silver !important; color: #222 !important; border: 0
+    /// !important` — an !important declaration beats every non-important
+    /// one, `:hover`/`:active`/`:focus`/`:disabled` bags included.
+    #[test]
+    fn important_retro_button_decls_survive_every_state() {
+        let mut scx = StyleCx::empty();
+        scx.theme = "retro";
+        let style = crate::defaults::style_of(&retro_button_with_states(), &scx);
+        for kind in [
+            we_style::StateKind::Hover,
+            we_style::StateKind::Active,
+            we_style::StateKind::Focus,
+            we_style::StateKind::Disabled,
+        ] {
+            assert!(style.state(kind).is_some(), "{kind:?} bag resolved");
+            let s = style.with_state(kind);
+            assert_eq!(s.paint.bg, Some(color("silver")), "{kind:?} bg");
+            assert_eq!(s.text.color, Some(color("#222")), "{kind:?} color");
+            for side in s.paint.borders.as_slice() {
+                assert!(
+                    side.as_ref().is_some_and(|b| b.kind == BorderKind::None),
+                    "{kind:?} border stays 0: {side:?}"
+                );
+            }
+        }
     }
 }
