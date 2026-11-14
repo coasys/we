@@ -222,6 +222,11 @@ fn tag(node: &ResolvedNode) -> Tag {
     }
 }
 
+/// `display: none` — the node and its subtree leave layout and paint.
+fn hidden(style: &we_style::Style) -> bool {
+    matches!(style.layout.display, Some(we_style::Display::None))
+}
+
 /// A `we_style::Color` → `ratatui::style::Color`, `Reset` when transparent.
 fn rc(c: WColor, truecolor: bool) -> TColor {
     tui_color(c, truecolor).unwrap_or(TColor::Reset)
@@ -460,6 +465,9 @@ impl<'a> Painter<'a> {
     /// parent's height for `%` heights (`0` = unknown).
     pub fn measure(&self, node: &ResolvedNode, avail_w: u16, avail_h: u16) -> Dim {
         let style = self.style(node);
+        if hidden(&style) {
+            return Dim::default();
+        }
         // CSS: a `%` height against a parent whose height is auto is
         // auto. `avail_h == 0` is that unknown parent; children only see a
         // height when this box has a definite one.
@@ -687,6 +695,7 @@ impl<'a> Painter<'a> {
         for (i, (dim, _)) in self
             .measure_children(node, avail_w, avail_h)
             .iter()
+            .flatten()
             .enumerate()
         {
             w = w.max(dim.w);
@@ -706,6 +715,7 @@ impl<'a> Painter<'a> {
         for (i, (dim, _)) in self
             .measure_children(node, avail_w, avail_h)
             .iter()
+            .flatten()
             .enumerate()
         {
             w = w
@@ -716,32 +726,42 @@ impl<'a> Painter<'a> {
         Dim::new(w, h)
     }
 
-    /// Each child's measured size + whether `flex` marks it as springy.
+    /// Each child's measured size + whether `flex` marks it as springy —
+    /// `None` for a `display: none` child, which is not in the flow at all
+    /// (no size, no gap).
     fn measure_children(
         &self,
         node: &ResolvedNode,
         avail_w: u16,
         avail_h: u16,
-    ) -> Vec<(Dim, bool)> {
+    ) -> Vec<Option<(Dim, bool)>> {
         node.children
             .iter()
             .map(|c| match c {
-                ResolvedChild::Node(n) if self.out_of_flow(n).is_some() => (Dim::new(0, 0), false),
-                // A collapsed `$lane` is a 4px strip in we-egui — under a
-                // cell, so nothing here.
-                ResolvedChild::Node(n) if n.ty.as_ref() == "$lane" && prop_bool(n, "collapsed") => {
-                    (Dim::new(0, 0), false)
-                }
-                ResolvedChild::Node(n) => {
-                    let flex = self.style(n).layout.flex.is_some_and(|f| f.grow > 0.0);
-                    (self.measure(n, avail_w, avail_h), flex)
-                }
-                ResolvedChild::Text(t) => {
-                    let w = UnicodeWidthStr::width(t.as_ref()) as u16;
-                    (Dim::new(w.min(avail_w), 1), false)
-                }
+                ResolvedChild::Node(n) if hidden(&self.style(n)) => None,
+                c => Some(self.measure_child(c, avail_w, avail_h)),
             })
             .collect()
+    }
+
+    /// One shown child's size and springiness.
+    fn measure_child(&self, c: &ResolvedChild, avail_w: u16, avail_h: u16) -> (Dim, bool) {
+        match c {
+            ResolvedChild::Node(n) if self.out_of_flow(n).is_some() => (Dim::new(0, 0), false),
+            // A collapsed `$lane` is a 4px strip in we-egui — under a
+            // cell, so nothing here.
+            ResolvedChild::Node(n) if n.ty.as_ref() == "$lane" && prop_bool(n, "collapsed") => {
+                (Dim::new(0, 0), false)
+            }
+            ResolvedChild::Node(n) => {
+                let flex = self.style(n).layout.flex.is_some_and(|f| f.grow > 0.0);
+                (self.measure(n, avail_w, avail_h), flex)
+            }
+            ResolvedChild::Text(t) => {
+                let w = UnicodeWidthStr::width(t.as_ref()) as u16;
+                (Dim::new(w.min(avail_w), 1), false)
+            }
+        }
     }
 
     fn measure_tree_item(&self, node: &ResolvedNode, avail_w: u16, avail_h: u16) -> Dim {
@@ -868,6 +888,11 @@ impl<'a> Painter<'a> {
 
     /// Paint `node` into `area` — the entry point of the recursive walk.
     pub fn paint(&mut self, node: &ResolvedNode, area: Rect, env: &Env) {
+        // `display: none` — the node and its subtree are gone: nothing
+        // painted, nothing focusable (we-layout drops them the same way).
+        if hidden(&self.style(node)) {
+            return;
+        }
         if area.width == 0 || area.height == 0 {
             self.paint_out_of_flow(node, area, env);
             return;
@@ -1226,7 +1251,8 @@ impl<'a> Painter<'a> {
         env: &Env,
     ) {
         let gap = self.gap_cells(style, Direction::Column);
-        let dims = self.measure_children(node, inner.width, inner.height);
+        let all = self.measure_children(node, inner.width, inner.height);
+        let dims: Vec<(Dim, bool)> = all.iter().flatten().copied().collect();
         let n = dims.len();
         // Only non-flex children count toward the fixed share — a flex
         // child's own intrinsic size is its minimum, not part of `fixed`.
@@ -1249,14 +1275,19 @@ impl<'a> Painter<'a> {
             _ => (inner.y, 0),
         };
 
-        for (i, c) in node.children.iter().enumerate() {
+        // Shown children only, each with its measured entry.
+        let shown = node
+            .children
+            .iter()
+            .zip(&all)
+            .filter_map(|(c, d)| d.map(|d| (c, d)));
+        for (c, (dim, flex)) in shown {
             if y >= inner.y + inner.height {
                 break;
             }
             if matches!(c, ResolvedChild::Node(n) if self.out_of_flow(n).is_some()) {
                 continue;
             }
-            let (dim, flex) = dims[i];
             let h = if flex {
                 (leftover / n_flex.max(1)).max(dim.h.min(leftover))
             } else {
@@ -1292,7 +1323,8 @@ impl<'a> Painter<'a> {
     /// the rest; `ax` justifies, `ay` aligns vertically.
     fn layout_row(&mut self, node: &ResolvedNode, inner: Rect, style: &we_style::Style, env: &Env) {
         let gap = self.gap_cells(style, Direction::Row);
-        let dims = self.measure_children(node, inner.width, inner.height);
+        let all = self.measure_children(node, inner.width, inner.height);
+        let dims: Vec<(Dim, bool)> = all.iter().flatten().copied().collect();
         let n = dims.len();
         let fixed: u16 = dims
             .iter()
@@ -1311,14 +1343,19 @@ impl<'a> Painter<'a> {
             _ => (inner.x, 0),
         };
 
-        for (i, c) in node.children.iter().enumerate() {
+        // Shown children only, each with its measured entry.
+        let shown = node
+            .children
+            .iter()
+            .zip(&all)
+            .filter_map(|(c, d)| d.map(|d| (c, d)));
+        for (c, (dim, flex)) in shown {
             if x >= inner.x + inner.width {
                 break;
             }
             if matches!(c, ResolvedChild::Node(n) if self.out_of_flow(n).is_some()) {
                 continue;
             }
-            let (dim, flex) = dims[i];
             let w = if flex {
                 (leftover / n_flex.max(1)).max(dim.w.min(leftover))
             } else {
