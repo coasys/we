@@ -1032,7 +1032,7 @@ fn block_line(block: &Value, depth: usize, out: &mut Vec<String>) {
             } else {
                 o.get("blocks")
             }
-            .or_else(|| children);
+            .or(children);
             if let Some(Value::List(children)) = nested {
                 for b in children.iter() {
                     block_line(b, depth + 1, out);
