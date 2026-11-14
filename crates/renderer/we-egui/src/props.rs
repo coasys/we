@@ -678,7 +678,9 @@ impl ClipVert {
                 a.uv.x + (b.uv.x - a.uv.x) * t,
                 a.uv.y + (b.uv.y - a.uv.y) * t,
             ),
-            color: egui::Color32::from_rgba_unmultiplied(
+            // Mesh colours are premultiplied; lerping premultiplied
+            // channels is the correct blend, and they stay premultiplied.
+            color: egui::Color32::from_rgba_premultiplied(
                 c(a.color.r(), b.color.r()),
                 c(a.color.g(), b.color.g()),
                 c(a.color.b(), b.color.b()),

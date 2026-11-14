@@ -509,3 +509,71 @@ fn a_concave_notch_stays_empty_in_both_windings() {
         }
     }
 }
+
+/// A semitransparent background cut by a diagonal polygon: every vertex
+/// of the clipped mesh — the rectangle's own corners and the new ones on
+/// the cut — carries the same premultiplied colour. Feathering is off so
+/// no anti-aliasing fringe legitimately fades. Lerping premultiplied
+/// channels and then premultiplying them again darkens the cut vertices.
+#[test]
+fn a_translucent_cut_keeps_its_colour_at_the_new_vertices() {
+    let styles = obj(&[
+        ("clip-path", s("polygon(0 0, 100% 0, 0 100%)")),
+        ("background-color", s("rgba(0, 200, 255, 0.5)")),
+        ("width", s("120px")),
+        ("height", s("80px")),
+    ]);
+    let n = node("Column", "c", &[("styles", styles)]);
+    let registry = Registry::with_builtins();
+    let out = RefCell::new(Vec::new());
+    let mut harness = egui_kittest::Harness::new_ui(|ui| {
+        let ctx = ui.ctx().clone();
+        ctx.tessellation_options_mut(|o| o.feathering = false);
+        we_egui::install_media(&ctx);
+        let scx = StyleCx::empty();
+        let lay = layout(
+            &MeasureCx::new(&ctx),
+            &scx,
+            &registry,
+            &n,
+            egui::Rect::from_min_size(ui.cursor().min, egui::vec2(400.0, 600.0)),
+        );
+        let mut events = Vec::new();
+        let mut edit = EditState::default();
+        paint(ui, &registry, &scx, &n, &lay, &mut events, &mut edit, 0.0);
+        let layer = ui.layer_id();
+        let colours: Vec<egui::Color32> = ctx.graphics(|g| {
+            let mut v = Vec::new();
+            fn walk(s: &egui::Shape, v: &mut Vec<egui::Color32>) {
+                match s {
+                    egui::Shape::Mesh(m) => v.extend(m.vertices.iter().map(|x| x.color)),
+                    egui::Shape::Vec(l) => l.iter().for_each(|s| walk(s, v)),
+                    _ => {}
+                }
+            }
+            if let Some(list) = g.get(layer) {
+                list.all_entries().for_each(|cs| walk(&cs.shape, &mut v));
+            }
+            v
+        });
+        *out.borrow_mut() = colours;
+    });
+    harness.run_steps(2);
+    let colours = out.borrow().clone();
+    assert!(
+        colours.len() >= 3,
+        "the clipped background is a mesh: {colours:?}"
+    );
+    let first = colours[0];
+    assert!(first.a() > 100 && first.a() < 160, "half alpha: {first:?}");
+    for c in &colours {
+        let d = |x: u8, y: u8| (x as i32 - y as i32).abs();
+        assert!(
+            d(c.r(), first.r()) <= 1
+                && d(c.g(), first.g()) <= 1
+                && d(c.b(), first.b()) <= 1
+                && d(c.a(), first.a()) <= 1,
+            "every vertex keeps {first:?}; got {c:?} in {colours:?}"
+        );
+    }
+}
