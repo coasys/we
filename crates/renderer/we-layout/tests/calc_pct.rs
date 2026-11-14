@@ -527,6 +527,56 @@ fn percent_padding_under_deferred_base_exports_it() {
     );
 }
 
+/// A declared main-axis size is the flex *base*, not the used size —
+/// `flex-shrink` still moves it, and a child's percent resolves against
+/// the used size taffy computed (the CSS §flexbox "definite used size"
+/// rule).
+#[test]
+fn calc_child_of_shrunk_flex_item_reads_used_size() {
+    // 400px Row, two `width:300px; min-width:0` columns — flex-shrink:1
+    // is the CSS initial — shrink to 200px each. G's `calc(50% - 5px)`
+    // resolves against 200: 95px, not the declared-300 answer 145.
+    let item = |id: &str, child: Option<ResolvedNode>| {
+        let mut n = node(
+            "Column",
+            id,
+            &[
+                ("width", Value::from("300px")),
+                ("minWidth", Value::from("0px")),
+            ],
+        );
+        if let Some(c) = child {
+            n.children = vec![ResolvedChild::Node(Box::new(c))];
+        }
+        n
+    };
+    let g = node(
+        "Column",
+        "g",
+        &[
+            ("width", Value::from("calc(50% - 5px)")),
+            ("height", Value::from("10px")),
+        ],
+    );
+    let mut root = node("Row", "r", &[]);
+    root.children = vec![
+        ResolvedChild::Node(Box::new(item("a", Some(g)))),
+        ResolvedChild::Node(Box::new(item("b", None))),
+    ];
+
+    let out = run(&root, 400.0, 200.0);
+    let a = rect(&out, "a");
+    assert!(
+        (a.width() - 200.0).abs() < 0.5,
+        "the 300px item shrank to 200, got {a:?}"
+    );
+    let g = rect(&out, "g");
+    assert!(
+        (g.width() - 95.0).abs() < 0.5,
+        "child of a shrunk flex item resolves against the used 200px, not declared 300 — 95 expected, got {g:?}"
+    );
+}
+
 /// An absolutely-positioned child's containing block is its positioned
 /// ancestor's *padding* box: `p: calc(10% + 16px)` inside a `relative`
 /// 400px parent padded 40 resolves against 400 (56px), not the 320px

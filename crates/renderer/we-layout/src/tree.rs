@@ -1130,7 +1130,19 @@ impl<'a> Builder<'a> {
         let mr = lpa_base(s.margin.right, ncx.cb.0);
         let mt = lpa_base(s.margin.top, ncx.cb.1);
         let mb = lpa_base(s.margin.bottom, ncx.cb.1);
+        // A *declared* main size is the flex base, not the used size —
+        // `flex-shrink`/`grow` can still move it, and CSS §flexbox calls
+        // the flexed result definite for a child's % — so read it back.
+        // `auto` main sizes stay content-driven: a percent child fed
+        // into the measured box is the R2-3 cyclic equation.
+        let main_w_flexed = ncx.in_flow
+            && matches!(ncx.main, Direction::Row)
+            && (s.flex_grow > 0.0 || s.flex_shrink > 0.0);
+        let main_h_flexed = ncx.in_flow
+            && matches!(ncx.main, Direction::Column)
+            && (s.flex_grow > 0.0 || s.flex_shrink > 0.0);
         let mut own_w = match s.size.width.expand() {
+            Ed::Length(_) | Ed::Percent(_) if main_w_flexed => AxisBase::Deferred,
             Ed::Length(v) => AxisBase::Definite(v),
             Ed::Percent(p) => ncx.cb.0.map(|b| p * b),
             Ed::Auto => {
@@ -1147,6 +1159,7 @@ impl<'a> Builder<'a> {
             _ => AxisBase::Indefinite,
         };
         let mut own_h = match s.size.height.expand() {
+            Ed::Length(_) | Ed::Percent(_) if main_h_flexed => AxisBase::Deferred,
             Ed::Length(v) => AxisBase::Definite(v),
             Ed::Percent(p) => ncx.cb.1.map(|b| p * b),
             Ed::Auto => {
@@ -1162,13 +1175,23 @@ impl<'a> Builder<'a> {
             }
             _ => AxisBase::Indefinite,
         };
-        // `aspect-ratio` turns one definite used size into the other's.
+        // `aspect-ratio` turns one definite used size into the other's —
+        // a deferred source defers it too (the measured value carries
+        // taffy's transfer); only `Indefinite` leaves the axis alone.
         if let Some(r) = l.aspect_ratio {
             if auto_h {
-                own_h = own_w.val().map_or(own_h, |w| AxisBase::Definite(w / r));
+                own_h = match own_w {
+                    AxisBase::Definite(w) => AxisBase::Definite(w / r),
+                    AxisBase::Deferred => AxisBase::Deferred,
+                    AxisBase::Indefinite => own_h,
+                };
             }
             if auto_w {
-                own_w = own_h.val().map_or(own_w, |h| AxisBase::Definite(h * r));
+                own_w = match own_h {
+                    AxisBase::Definite(h) => AxisBase::Definite(h * r),
+                    AxisBase::Deferred => AxisBase::Deferred,
+                    AxisBase::Indefinite => own_w,
+                };
             }
         }
         // Definite min/max bounds clamp a definite used size; a bound
