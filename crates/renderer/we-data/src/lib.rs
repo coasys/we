@@ -1,4 +1,4 @@
-//! `we-store`: the store map's runtime and the executor boundary.
+//! `we-data`: the store map's runtime and the executor boundary.
 //!
 //! §6 of the plan: every read or write the store bag answers goes through
 //! [`Executor`]. `we-ad4m` implements it over `ad4m-client`; [`FakeExecutor`]

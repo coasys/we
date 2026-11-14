@@ -1,5 +1,5 @@
 [package]
-name = "we-store"
+name = "we-data"
 version = "0.1.0"
 edition = "2021"
 description = "The executor boundary: the Executor trait, its argument types and FakeExecutor"

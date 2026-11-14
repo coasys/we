@@ -1,7 +1,7 @@
 //! The query IR's wire names: a filter travels under `where` — `where_`
 //! is only the Rust-legal field name — and survives a JSON round trip.
 use serde_json::json;
-use we_store::QueryIr;
+use we_data::QueryIr;
 
 #[test]
 fn where_survives_round_trip() {

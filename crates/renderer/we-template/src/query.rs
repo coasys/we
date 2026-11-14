@@ -27,7 +27,7 @@ use crate::scope::StoreBag;
 /// (`QueryDescriptor` in `types.ts`, compiled for the backend's query IR).
 /// Fields stay raw JSON where the recipe is data.
 ///
-/// Home is `we-template` — the resolver compiles descriptors; `we-store`
+/// Home is `we-template` — the resolver compiles descriptors; `we-data`
 /// re-exports this type so the executor signature names the same thing.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct QueryIr {

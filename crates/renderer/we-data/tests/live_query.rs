@@ -5,10 +5,10 @@ use std::future::Future;
 use std::pin::pin;
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
+use we_data::{ClassSel, Executor, FakeExecutor, LiveQuery, LiveQueryId, QueryIr, SpaceId};
 use we_expr::Value;
-use we_store::{ClassSel, Executor, FakeExecutor, LiveQuery, LiveQueryId, QueryIr, SpaceId};
 
-/// Drive an always-ready future. we-store builds without tokio (wasm), so the
+/// Drive an always-ready future. we-data builds without tokio (wasm), so the
 /// test harness is a noop waker — the fake's futures never actually pend.
 fn block_on<F: Future>(future: F) -> F::Output {
     fn noop(_: *const ()) {}

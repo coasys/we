@@ -2,8 +2,8 @@
 name = "we-ad4m"
 version = "0.1.0"
 edition = "2021"
-description = "The executor adapter: we_store::Executor over ad4m-client"
+description = "The executor adapter: we_data::Executor over ad4m-client"
 publish = false
 
 [dependencies]
-we-store.workspace = true
+we-data.workspace = true

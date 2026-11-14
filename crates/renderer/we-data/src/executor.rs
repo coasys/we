@@ -192,7 +192,7 @@ pub type Result<T> = std::result::Result<T, ExecutorError>;
 ///
 /// ```
 /// use async_trait::async_trait;
-/// use we_store::{ClassSel, Executor, LiveQuery, QueryIr, Result, SpaceId};
+/// use we_data::{ClassSel, Executor, LiveQuery, QueryIr, Result, SpaceId};
 /// use we_expr::Value;
 ///
 /// struct MyExecutor;
@@ -202,16 +202,16 @@ pub type Result<T> = std::result::Result<T, ExecutorError>;
 ///         Ok(Value::Null)
 ///     }
 ///     async fn model_subscribe(&self, _s: &SpaceId, _c: ClassSel, _q: &QueryIr) -> Result<LiveQuery> {
-///         Ok(LiveQuery::new(we_store::LiveQueryId::new("sub-1"), Value::Null, 0))
+///         Ok(LiveQuery::new(we_data::LiveQueryId::new("sub-1"), Value::Null, 0))
 ///     }
-///     async fn dispose_query(&self, _s: &SpaceId, _id: &we_store::LiveQueryId) -> Result<bool> {
+///     async fn dispose_query(&self, _s: &SpaceId, _id: &we_data::LiveQueryId) -> Result<bool> {
 ///         Ok(true)
 ///     }
-///     async fn write(&self, _s: &SpaceId, _w: we_store::Write) -> Result<Value> { Ok(Value::Null) }
-///     async fn commit(&self, _s: &SpaceId, _w: Vec<we_store::Write>) -> Result<()> { Ok(()) }
-///     async fn flow(&self, _s: &SpaceId, _c: we_store::FlowCall) -> Result<Value> { Ok(Value::Null) }
-///     async fn shape(&self, _s: &SpaceId, _c: &str) -> Result<we_store::ClassShape> {
-///         Err(we_store::ExecutorError::Unsupported("shape".into()))
+///     async fn write(&self, _s: &SpaceId, _w: we_data::Write) -> Result<Value> { Ok(Value::Null) }
+///     async fn commit(&self, _s: &SpaceId, _w: Vec<we_data::Write>) -> Result<()> { Ok(()) }
+///     async fn flow(&self, _s: &SpaceId, _c: we_data::FlowCall) -> Result<Value> { Ok(Value::Null) }
+///     async fn shape(&self, _s: &SpaceId, _c: &str) -> Result<we_data::ClassShape> {
+///         Err(we_data::ExecutorError::Unsupported("shape".into()))
 ///     }
 /// }
 /// ```

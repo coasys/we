@@ -4553,7 +4553,7 @@ dependencies = [
 name = "we-ad4m"
 version = "0.1.0"
 dependencies = [
- "we-store",
+ "we-data",
 ]
 
 [[package]]
@@ -4566,12 +4566,25 @@ dependencies = [
  "indexmap",
  "serde",
  "serde_json",
+ "we-data",
  "we-expr",
  "we-screen",
- "we-store",
  "we-style",
  "we-template",
  "we-widgets",
+]
+
+[[package]]
+name = "we-data"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "indexmap",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "we-expr",
+ "we-template",
 ]
 
 [[package]]
@@ -4601,19 +4614,6 @@ dependencies = [
  "wasm-bindgen-test",
  "we-expr",
  "web-sys",
-]
-
-[[package]]
-name = "we-store"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "indexmap",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "we-expr",
- "we-template",
 ]
 
 [[package]]

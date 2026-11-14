@@ -1,5 +1,5 @@
 //! `matches_where` — the where-object matcher from `where.ts`, used by the
-//! `filter`/`find`/`count` built-ins and by `we-store`'s query layer.
+//! `filter`/`find`/`count` built-ins and by `we-data`'s query layer.
 //!
 //! A where-object's keys are field names (with `OR`/`AND`/`NOT` reserved);
 //! a field's condition is an exact value, a set, or an operator object:

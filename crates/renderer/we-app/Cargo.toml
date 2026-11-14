@@ -14,7 +14,7 @@ serde_json.workspace = true
 we-template.workspace = true
 we-widgets.workspace = true
 we-style.workspace = true
-we-store.workspace = true
+we-data.workspace = true
 we-expr.workspace = true
 we-screen.workspace = true
 

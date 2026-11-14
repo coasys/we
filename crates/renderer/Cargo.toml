@@ -3,9 +3,9 @@
 # own Cargo.lock; nothing here is published.
 #
 # Dependency direction, never the other way:
-#   we-expr <- we-screen <- we-template <- we-store <- we-widgets <- we-app
-#   we-style depends on we-expr only; we-ad4m depends on we-store.
-# we-expr, we-screen, we-template, we-store and we-style must build for
+#   we-expr <- we-screen <- we-template <- we-data <- we-widgets <- we-app
+#   we-style depends on we-expr only; we-ad4m depends on we-data.
+# we-expr, we-screen, we-template, we-data and we-style must build for
 # wasm32-unknown-unknown and must not depend on tokio.
 [workspace]
 resolver = "2"
@@ -13,7 +13,7 @@ members = [
     "we-expr",
     "we-screen",
     "we-template",
-    "we-store",
+    "we-data",
     "we-style",
     "we-widgets",
     "we-ad4m",
@@ -40,7 +40,7 @@ egui_extras = { version = "0.37", default-features = false, features = ["image",
 we-expr = { path = "we-expr" }
 we-screen = { path = "we-screen" }
 we-template = { path = "we-template" }
-we-store = { path = "we-store" }
+we-data = { path = "we-data" }
 we-style = { path = "we-style" }
 we-widgets = { path = "we-widgets" }
 we-ad4m = { path = "we-ad4m" }
