@@ -30,6 +30,10 @@ pub struct EditState {
     /// overlay-element.ts `captureFocus`/`releaseFocus`: the modal's
     /// disappearance hands focus back to it.
     pub modal_openers: HashMap<NodeId, Option<egui::Id>>,
+    /// The egui layer each popup last painted on — a programmatic close
+    /// asks whether keyboard focus sits there (the DOM hide-popover steps
+    /// only return focus that was inside the popover).
+    pub popup_layers: HashMap<NodeId, egui::LayerId>,
 }
 
 impl EditState {

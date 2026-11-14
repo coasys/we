@@ -648,7 +648,14 @@ fn overlay_open(w: &mut Walk<'_>, node: &ResolvedNode) -> bool {
             let pv = v.truthy();
             let last = w.edit.field(&node.id, "_open_prop");
             if !matches!(last, we_expr::Value::Bool(_)) || last.truthy() != pv {
-                w.edit.set_open(&node.id, pv);
+                if !pv && w.edit.is_open(&node.id) && focus_inside_popup(w, &node.id) {
+                    // The template closed it with focus inside: the same
+                    // transition selection and Escape run, so focus goes
+                    // back to the invoker instead of being stranded.
+                    w.edit.close_popup(w.ui.ctx(), &node.id);
+                } else {
+                    w.edit.set_open(&node.id, pv);
+                }
                 w.edit
                     .set_field(&node.id, "_open_prop", we_expr::Value::Bool(pv));
             }
@@ -656,6 +663,19 @@ fn overlay_open(w: &mut Walk<'_>, node: &ResolvedNode) -> bool {
         }
         _ => w.edit.is_open(&node.id),
     }
+}
+
+/// Whether keyboard focus sits on the layer `node`'s popup last painted
+/// on. The focused widget is read from the previous pass when this one
+/// has not painted it — a just-closed popup's content has not.
+fn focus_inside_popup(w: &Walk<'_>, node: &NodeId) -> bool {
+    let Some(layer) = w.edit.popup_layers.get(node).copied() else {
+        return false;
+    };
+    let ctx = w.ui.ctx();
+    ctx.memory(|m| m.focused())
+        .and_then(|f| ctx.read_response(f))
+        .is_some_and(|r| r.layer_id == layer)
 }
 
 /// The resolved children that got no layout rect — they were not picked by
@@ -1331,6 +1351,9 @@ fn anchored_overlay(
     // trigger anchor and ancestry tell an outside click what's inside.
     // `at` keeps it beneath the descendants its `show` recorded.
     if let Some(resp) = inner {
+        w.edit
+            .popup_layers
+            .insert(node.id.clone(), resp.response.layer_id);
         // A never-activated (controlled) open still names an invoker for
         // focus return: the last interactable painted inside the anchor —
         // the button in a padded wrapper, not the wrapper's own rect.

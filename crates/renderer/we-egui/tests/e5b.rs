@@ -2810,3 +2810,82 @@ fn live_input_rejected_prop_blur_commits_the_displayed_text() {
     assert_eq!(h.get_by_label("Name").value().as_deref(), Some("old"));
     assert_detail(&r, "onChange", s("old"));
 }
+
+/// A controlled popover with a wrapped trigger (a padded Row holding the
+/// "Open" button) and one content button, plus a page button beside it.
+fn controlled_popover(open: bool) -> ResolvedNode {
+    let mut col = node("Column", "col", props(&[]));
+    let mut pop = node("we-popover", "col/pop", props(&[("open", b(open))]));
+    let mut wrap = node(
+        "Row",
+        "col/pop/wrap",
+        props(&[("width", n(200.0)), ("height", n(48.0))]),
+    );
+    wrap.slot = Some(Arc::from("trigger"));
+    let trig = node(
+        "we-button",
+        "col/pop/wrap/btn",
+        props(&[("label", s("Open"))]),
+    );
+    wrap.children = vec![ResolvedChild::Node(Box::new(trig))];
+    let mut item = node(
+        "we-button",
+        "col/pop/item",
+        props(&[("label", s("Inside"))]),
+    );
+    item.slot = Some(Arc::from("content"));
+    pop.children = vec![
+        ResolvedChild::Node(Box::new(wrap)),
+        ResolvedChild::Node(Box::new(item)),
+    ];
+    let page = node("we-button", "col/page", props(&[("label", s("Page"))]));
+    col.children = vec![
+        ResolvedChild::Node(Box::new(pop)),
+        ResolvedChild::Node(Box::new(page)),
+    ];
+    col
+}
+
+/// R2 — the template closes a popover (`open` prop true → false) while
+/// keyboard focus is inside its content. The DOM's hide-popover steps
+/// return focus to the previously focused element; the close must run
+/// the same transition selection and Escape use, not a bare flag flip.
+#[test]
+fn programmatic_popover_close_returns_focus_to_the_wrapped_trigger() {
+    let (mut h, r) = rig(controlled_popover(false));
+    h.run();
+    *r.node.borrow_mut() = controlled_popover(true);
+    h.run();
+    h.get_by_label("Inside").focus();
+    h.run();
+    assert!(
+        h.get_by_label("Inside").is_focused(),
+        "focus is inside the popup"
+    );
+    *r.node.borrow_mut() = controlled_popover(false);
+    h.run();
+    assert!(h.query_by_label("Inside").is_none(), "the popover closed");
+    assert!(
+        h.get_by_label("Open").is_focused(),
+        "the programmatic close hands focus back to the trigger"
+    );
+}
+
+/// R2 — the negative: focus already left the popup for a page control
+/// when the template closes it. The hide-popover steps only restore
+/// focus that was inside, so the page control keeps it.
+#[test]
+fn programmatic_popover_close_leaves_outside_focus_alone() {
+    let (mut h, r) = rig(controlled_popover(false));
+    h.run();
+    *r.node.borrow_mut() = controlled_popover(true);
+    h.run();
+    h.get_by_label("Page").focus();
+    h.run();
+    *r.node.borrow_mut() = controlled_popover(false);
+    h.run();
+    assert!(
+        h.get_by_label("Page").is_focused(),
+        "a close does not steal focus that was outside the popup"
+    );
+}
