@@ -13,6 +13,8 @@
 //!   identity store the executor uses, and whether it trusts it, the service asks the executor.
 //! - [`sidecar`] serves the service over stdin and stdout, as the `we-custody` binary, for the
 //!   Electron app.
+//! - [`wallet`] keeps the executor's wallet passphrase in the keyring for the Electron supervisor
+//!   (`we-custody wallet-passphrase`): a stopgap ahead of AR-06, which replaces it.
 //!
 //! No Windows: the desktop app does not ship there. Nothing here links the executor;
 //! `tests/boundary.rs` keeps it so.
@@ -25,6 +27,7 @@ pub mod service;
 pub mod sidecar;
 pub mod store;
 pub mod vault;
+pub mod wallet;
 pub mod window;
 
 pub use pending::PendingIncepts;

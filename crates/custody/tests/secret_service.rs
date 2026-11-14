@@ -9,6 +9,9 @@
 //!   printf secret | HOME=$K XDG_DATA_HOME=$K gnome-keyring-daemon --unlock --components=secrets >/dev/null &&
 //!   CUSTODY_SECRET_SERVICE=1 cargo test --test secret_service'
 //! ```
+//!
+//! A locked keyring is `tests/secret_service_locked.rs`, in a session of its own: it leaves the
+//! keyring locked.
 #![cfg(target_os = "linux")]
 
 use we_custody::store::{SecretServiceStore, SecretStore, StoreKind};

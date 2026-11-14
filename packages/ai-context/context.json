@@ -245,6 +245,12 @@
           "type": "boolean",
           "optional": false,
           "default": "false"
+        },
+        {
+          "name": "autofocus",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
         }
       ]
     },
@@ -6291,6 +6297,113 @@
       "actions": ["activateApp", "deactivateApp"],
       "ambient": ["activateApp", "deactivateApp"],
       "needsArgs": ["activateApp"]
+    },
+    {
+      "name": "baseStore",
+      "state": {
+        "stage": {
+          "type": "string"
+        },
+        "page": {
+          "type": "string"
+        },
+        "hostKind": {
+          "type": "string"
+        },
+        "deviceNoun": {
+          "type": "string"
+        },
+        "brand": {
+          "type": "object"
+        },
+        "executorPhase": {
+          "type": "string"
+        },
+        "executorReason": {
+          "type": "string"
+        },
+        "executorStopped": {
+          "type": "boolean"
+        },
+        "hasIdentity": {
+          "type": "boolean"
+        },
+        "identityKnown": {
+          "type": "boolean"
+        },
+        "did": {
+          "type": "string"
+        },
+        "didShort": {
+          "type": "string"
+        },
+        "unpublished": {
+          "type": "string"
+        },
+        "holdsMaster": {
+          "type": "boolean"
+        },
+        "keepsLine": {
+          "type": "string"
+        },
+        "blocked": {
+          "type": "string"
+        },
+        "devices": {
+          "type": "array",
+          "properties": ["keyId", "label", "subtitle", "icon", "thisDevice", "master"]
+        },
+        "doors": {
+          "type": "object"
+        },
+        "connections": {
+          "type": "array",
+          "properties": ["id", "kind", "label", "detail", "icon", "chosen"]
+        },
+        "chosen": {
+          "type": "string"
+        },
+        "busy": {
+          "type": "boolean"
+        },
+        "lastOutcome": {
+          "type": "string"
+        },
+        "error": {
+          "type": "string"
+        },
+        "offlineReason": {
+          "type": "string"
+        },
+        "passwordIsNew": {
+          "type": "boolean"
+        },
+        "passwordWrong": {
+          "type": "boolean"
+        },
+        "passwordEntered": {
+          "type": "boolean"
+        },
+        "passwordConfirmed": {
+          "type": "boolean"
+        }
+      },
+      "actions": [
+        "refresh",
+        "makeIdentity",
+        "linkIdentity",
+        "useWords",
+        "startNow",
+        "choose",
+        "retry",
+        "showConnections",
+        "openPage",
+        "closePage",
+        "submitPassword",
+        "clearPasswordWrong"
+      ],
+      "ambient": ["refresh", "showConnections", "openPage", "closePage", "clearPasswordWrong"],
+      "needsArgs": ["choose", "openPage"]
     },
     {
       "name": "botStore",

@@ -3,7 +3,8 @@
  *
  * The app runs the person's executor, which keeps syncing their spaces while no window is open. So
  * closing the main window hides it, and the app and its executor keep running; the tray icon's menu
- * shows the window again ("Open") and quits the app ("Quit"), which stops the executor. The Tauri
+ * shows the window again ("Open") and quits the app ("Quit"), which stops the executor. It also says
+ * whether the executor runs, and starts, restarts or stops it without the window. The Tauri
  * app does the same (`src-tauri/src/main_window.rs`).
  *
  * A hidden window with no icon to bring it back would leave a running app nobody can reach. So the
@@ -51,20 +52,50 @@ export function closeHides({ quitting, trayUp, hostPresent }) {
   return !quitting && trayUp && hostPresent;
 }
 
+/** The tray menu's status line, by the executor's phase as the window hears it (`executor-state`). */
+export function trayStatus(name, phase) {
+  if (phase === 'ready') return `${name} is running`;
+  if (phase === 'starting') return `Starting ${name}…`;
+  return `${name} stopped`;
+}
+
 /**
- * The tray icon with "Open <name>" and "Quit <name>". Null, logged, when the platform refuses one.
+ * The tray menu: the executor's status, the ways to manage it, "Open <name>" and "Quit <name>".
+ *
+ * `executor` is how the app manages the executor it runs: `start` after it stopped, `restart` and
+ * `stop` while it runs, `settings` to open its settings in the main window. Absent where the app does
+ * not run the executor (an external one): the menu then says only how it is. While it starts, there
+ * is nothing to start or restart, and stopping waits for the start to end.
  */
-export function createTray({ Tray, Menu, icon, name, onOpen, onQuit, log = console }) {
+export function trayMenu({ name, phase = 'starting', onOpen, onQuit, executor }) {
+  const manage = !executor
+    ? []
+    : [
+        phase === 'ready'
+          ? { label: `Restart ${name}`, click: executor.restart }
+          : { label: `Start ${name}`, click: executor.start, enabled: phase !== 'starting' },
+        { label: `Stop ${name}`, click: executor.stop, enabled: phase !== 'failed' },
+        { label: 'Startup settings…', click: executor.settings },
+      ];
+  return [
+    { label: trayStatus(name, phase), enabled: false },
+    ...manage,
+    { type: 'separator' },
+    { label: `Open ${name}`, click: onOpen },
+    { type: 'separator' },
+    { label: `Quit ${name}`, click: onQuit },
+  ];
+}
+
+/**
+ * The tray icon with {@link trayMenu}'s menu. Null, logged, when the platform refuses one. Draw the
+ * menu again with {@link setTrayMenu} when the executor's phase changes.
+ */
+export function createTray({ Tray, Menu, icon, name, onOpen, onQuit, executor, phase, log = console }) {
   try {
     const tray = new Tray(icon);
     tray.setToolTip(name);
-    tray.setContextMenu(
-      Menu.buildFromTemplate([
-        { label: `Open ${name}`, click: onOpen },
-        { type: 'separator' },
-        { label: `Quit ${name}`, click: onQuit },
-      ]),
-    );
+    setTrayMenu(tray, Menu, { name, phase, onOpen, onQuit, executor });
     // Windows and macOS: a click on the icon itself opens the window.
     tray.on('click', onOpen);
     return tray;
@@ -72,4 +103,9 @@ export function createTray({ Tray, Menu, icon, name, onOpen, onQuit, log = conso
     log.warn(`[tray] No tray icon (${err.message}); closing the window quits the app`);
     return null;
   }
+}
+
+/** Sets the tray's menu: Electron's menus are fixed once built, so a change is a new menu. */
+export function setTrayMenu(tray, Menu, options) {
+  tray.setContextMenu(Menu.buildFromTemplate(trayMenu(options)));
 }

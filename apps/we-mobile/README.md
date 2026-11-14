@@ -1,9 +1,16 @@
 # Coasys phone app (`apps/we-mobile`)
 
-WE on a phone: `org.coasys.app`, shown as "Coasys". A Capacitor 8 shell around WE's own web build
-(`apps/we-web/dist`), copied unchanged. WE runs in the platform WebView and reaches its executor
-with the WebView's own `WebSocket` and `fetch`, the same way it does in a browser. Nothing is
-replaced or patched in.
+WE on a phone: `org.coasys.app`, shown as "Coasys". A Capacitor 8 shell around the Coasys app's web
+build (`apps/coasys/dist`), copied unchanged. It runs in the platform WebView and reaches its
+executor with the WebView's own `WebSocket` and `fetch`, the same way it does in a browser. Nothing
+is replaced or patched in.
+
+The Coasys app boots before any session (`apps/coasys/README.md`). On the phone it finds the
+`DeviceKey` plugin and uses the phone's host: the first run asks the person to link the phone to
+their identity (the phone joins one; making one and the 12 words are a computer's, and the screen
+says so), and the connection choice offers the key host the phone was given (`we-phone/key-host`)
+and AD4M Connect. With no network it shows the offline screen rather than a connect screen that
+cannot answer. WE's app mounts in the same page once a connection is chosen.
 
 The app adds one page of its own: the page Capacitor opens when the phone's Android System WebView
 is too old to run WE, or when WE's page fails to load (`src/error/`).
@@ -13,7 +20,8 @@ tree, and `cap sync ios` works, but nothing builds it.
 
 ## How the phone connects (phase 1)
 
-Through ad4m-connect, as the web app does (`apps/we-web/src/platform/ad4mConnector.ts`). On a
+Through ad4m-connect, as the web app does (`apps/we-web/src/platform/ad4mConnector.ts`), once
+"A host" is chosen on the connection choice. On a
 phone-sized screen it offers only **Remote Node**: pick a listed host or type a URL, then sign in or
 register with email and password on that executor (a multi-user executor: a host or Coasys cloud).
 The executor must be reachable over `https`/`wss` with a certificate the phone trusts. The release
@@ -48,16 +56,17 @@ built for Android with uniffi bindings:
 - **Joining an identity.** `join({link})` claims an offer a computer holding the identity's master
   key opened (`https://id.coasys.org/o#coasys:offer:1:…`); both sides show the same match code, the
   computer signs an `add` listing the phone's keys, and `waitJoined()` sees it land.
-- **Key login.** Once the phone has joined and has an executor to log in to, WE logs in with the
-  device key (`user.sessionChallenge` → a signed statement → `user.loginWithKey`) instead of showing
-  the connect screen, and renews the session five minutes before each expiry
-  (`apps/we-web/src/platform/deviceKeyConnector.ts`, `keySession.ts`). The token is never stored:
-  every boot logs in afresh, and a key login removes the password session the connect screen may
-  have stored before it, so a later fall-back never sends one host's token to another. A session
+- **Key login.** Once the phone has joined and has an executor to log in to, the connection choice
+  offers it, and WE logs in there with the device key (`user.sessionChallenge` → a signed statement →
+  `user.loginWithKey`), with no AD4M Connect involved, and renews the session five minutes before
+  each expiry (`apps/we-web/src/platform/deviceKeyConnector.ts`, `keySession.ts`). The token is
+  never stored, and AD4M Connect's stored session is left as it was: every boot logs in afresh. A key
+  login the executor refuses (the key not known there, or revoked) goes back to the connection
+  choice with the reason, where AD4M Connect is still offered; it never opens by itself. A session
   that ends by itself (no renewal succeeded before it expired, or the executor refused the token)
-  starts WE again: the boot logs in afresh, or shows the connect screen when it cannot; a session
-  that ended within a minute of opening skips the key login on the next boot, so it cannot loop.
-  Anywhere else, and on a phone that has not joined, WE connects as in phase 1.
+  starts WE again: the boot logs in afresh, or comes back to the connection choice when it cannot; a
+  session that ended within a minute of opening skips the key login on the next boot, so it cannot
+  loop. A phone with no key host connects as in phase 1.
 
 ### Known limits of phase 2a
 
@@ -123,7 +132,8 @@ answers their requests.
   is an error in Settings, never a list of unnamed devices.
 - **The identity page.** `/mobile/identity.html` (`src/identity/`) is the shared identity window
   (`@we/identity-window`, the same screens the desktop opens) over the `DeviceKey` plugin. It is a
-  page of its own, so no template, module or store code runs beside it. WE opens it in two cases:
+  page of its own, so no template, module or store code runs beside it. It wears the Coasys app's
+  theme, name and mark, worked into static CSS when `www/` is built. WE opens it in two cases:
   - on the first boot of a phone with no identity, to join one (`?join=`). "Not now" falls back to
     WE's own sign-in;
   - for each change Settings asks for (`?change=<json>`), through the phone's custody host
@@ -200,9 +210,9 @@ From the repo root:
 
 ```sh
 pnpm install
-pnpm build:web                 # WE's web build: apps/we-web/dist
+pnpm build:coasys              # the Coasys app's web build: apps/coasys/dist
 cd apps/we-mobile
-pnpm build:web                 # www/ = apps/we-web/dist + the error page in www/mobile/
+pnpm build:web                 # www/ = apps/coasys/dist + the error and identity pages in www/mobile/
 pnpm check:floor               # WE's scripts parse on the WebView floor; the error page parses on WebView 83
 pnpm test                      # the floor and the error page's wording
 pnpm exec cap sync android     # www/ and capacitor.config into android/
@@ -317,7 +327,7 @@ WebView version, not an Android version. `minSdk` stays 30.
 | `capacitor.config.ts`                                                        | App id and name, `server.errorPath`, `android.minWebViewVersion`                                              |
 | `src/webViewFloor.ts`                                                        | The floor, the error page's path, and which of its two messages a phone sees                                  |
 | `src/error/`                                                                 | The error page: plain DOM, built for WebView 83                                                               |
-| `scripts/assemble-web.mjs`                                                   | Builds `www/` from `apps/we-web/dist` and the error page                                                      |
+| `scripts/assemble-web.mjs`                                                   | Builds `www/` from `apps/coasys/dist`, the error page and the identity page                                   |
 | `scripts/check-floor.mjs`                                                    | The script half of the floor, checked                                                                         |
 | `scripts/cdp-eval.mjs`                                                       | Evaluates an expression in the app's WebView over DevTools                                                    |
 | `tests/webViewFloor.test.ts`                                                 | The floor, the messages, and that the Capacitor config uses both                                              |

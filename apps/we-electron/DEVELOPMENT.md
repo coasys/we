@@ -164,7 +164,10 @@ with the Tauri app, which links the same crate.
   Rust; in development a failed build only turns identity off).
 - **The identity window** (`electron/identityWindow.js`, opened by `main.js`) is the only page that
   runs a flow. Its page is the shared window (`packages/identity-window`) built from `identity/` by
-  `vite.identity.config.ts` into `dist/identity/`, under the window's strict CSP. It is served on its
+  `vite.identity.config.ts` into `dist/identity/`, under the window's strict CSP. It wears the
+  deployment's app as the app's screens before a session do — that app's theme, name and mark, read
+  from the seed's bundles (`seedBase` in `scripts/seed-vite.mjs`) and worked into static CSS at build
+  time, so no theme code runs in it. It is served on its
   own scheme (`we-identity://window/`) in its own in-memory session, from the built bundle in
   development too, so it shares nothing with the app. It is sandboxed, has its own preload
   (`electron/identityPreload.js`) exposing only its four calls, may not navigate or open windows,

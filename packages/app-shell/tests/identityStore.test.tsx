@@ -37,6 +37,7 @@ import { type DeviceStore, DeviceStoreProvider, useDeviceStore } from '../src/fr
 import {
   type IdentityStore,
   IdentityStoreProvider,
+  START_NOW_HERE_KEY,
   startNowKey,
   useIdentityStore,
 } from '../src/frameworks/solid/stores/IdentityStore';
@@ -375,6 +376,19 @@ describe('identityStore', () => {
     expect(identity.needsFirstRun()).toBe(true);
   });
 
+  it('takes "Skip for now" given before any account, in the app before a session, as this account\'s too', async () => {
+    localStorage.setItem(START_NOW_HERE_KEY, '1');
+    try {
+      setPorts({ identity: custody(backend({ did: null, events: [], devices: [] }).port, () => {}).identity });
+      const { identity } = mount();
+      await flush();
+      await flush();
+      expect(identity.needsFirstRun()).toBe(false);
+    } finally {
+      localStorage.removeItem(START_NOW_HERE_KEY);
+    }
+  });
+
   it('reports a change the person cancelled, and reads again all the same', async () => {
     const b = backend({ did: null, events: [], devices: [] });
     setPorts({
@@ -401,7 +415,7 @@ describe('deviceStore', () => {
     await flush();
     expect(stores.devices.devices().map((d) => [d.label, d.canRevoke])).toEqual([
       ['This computer', false],
-      ['Device d2', true],
+      ['Unnamed device', true],
     ]);
     expect(stores.devices.canManage()).toBe(false);
 
@@ -464,7 +478,7 @@ describe('deviceStore', () => {
     expect(c.changes).toEqual([{ kind: 'revoke', keyId: 'd2' }]);
     expect(deviceStore.devices().find((d) => d.keyId === 'd2')).toMatchObject({
       revoked: true,
-      status: 'Revoked at #2',
+      status: 'Removed at #2',
     });
     expect(deviceStore.validCount()).toBe(1);
     expect(identity.keyLog()[0].title).toBe('Revoked d2');

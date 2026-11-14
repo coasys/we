@@ -172,3 +172,23 @@ describe('the id a piece installs under', () => {
     expect(paths({ ...minimal(), id: 'field--guide' })).toContain('id');
   });
 });
+
+describe('the app before a session', () => {
+  const base = { id: 'base', type: 'Column', meta: meta('base') };
+
+  it('reads a base of role "base"', () => {
+    expect(paths({ ...minimal(), base })).toEqual([]);
+    expect(readBundle({ ...minimal(), base }).bundle?.base).toEqual(base);
+  });
+
+  it('keeps the base in "base" and nowhere else', () => {
+    expect(paths({ ...minimal(), base: { ...base, meta: meta() } })).toContain('base.meta.role');
+    expect(paths({ ...minimal(), base: { ...base, meta: meta('app') } })).toContain('base.meta.role');
+    expect(paths({ ...minimal(), templates: [...minimal().templates, base] })).toContain('templates.2.meta.role');
+    expect(paths({ ...minimal(), pages: [base] })).toContain('pages.0.meta.role');
+  });
+
+  it('refuses a base whose id another piece has', () => {
+    expect(paths({ ...minimal(), base: { ...base, id: 'app' } })).toContain('base.id');
+  });
+});

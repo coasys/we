@@ -1,10 +1,12 @@
 /**
  * Does this browser already hold somebody's real AD4M session?
  *
- * Split out from `guestConnector` and importing nothing, so the one decision that stands between a
- * guest link and an agent's existing identity can be tested without an executor, a connect client
- * or a DOM. It reads localStorage and answers a question; that is the whole module.
+ * Split out from `guestConnector`, importing nothing but ad4m-connect's own storage read (`utils`,
+ * which imports nothing itself), so the one decision that stands between a guest link and an agent's
+ * existing identity can be tested without an executor, a connect client or a DOM. It reads
+ * localStorage and answers a question; that is the whole module.
  */
+import { getLocal } from '@coasys/ad4m-connect/utils';
 
 /*
   The three keys ad4m-connect writes, named without their prefix.
@@ -13,6 +15,9 @@
 */
 const AD4M_TOKEN_KEY = 'ad4m-token';
 const AD4M_URL_KEY = 'ad4m-url';
+const AD4M_PORT_KEY = 'ad4m-port';
+/** ad4m-connect's port where none is stored (its `DEFAULT_PORT`). */
+const AD4M_DEFAULT_PORT = 12000;
 
 /** Mirrors ad4m-connect's own normalisation, so the marker below is looked up under the key it wrote. */
 function guestMarkerKey(hostUrl: string): string {
@@ -122,4 +127,40 @@ export function hasStoredSession(): boolean {
     if (!url || !read(`${prefix}${guestMarkerKey(url)}`)) return true;
   }
   return false;
+}
+
+/**
+ * The executor ad4m-connect will open on this load, as the http base it checks (`${base}/health`),
+ * when it holds a session to open there; null when it holds none.
+ *
+ * ## Why the base app asks
+ *
+ * ad4m-connect goes back to the executor it signed in to last, and when that one does not answer it
+ * draws its own "How would you like to connect?" over the page, as if the person had never chosen.
+ * The base app has an offline state for exactly that, with the reason and "Try again", so it asks
+ * where the session is and whether that place answers before ad4m-connect is started. Without a
+ * session nothing has been chosen yet, and ad4m-connect's screen is the right first step.
+ *
+ * ad4m-connect reads only its own version's keys (`${version}/${key}`, the version of its package).
+ * So this reads with ad4m-connect's own `getLocal`, from the copy this app bundles: the namespace is
+ * the one the running client will read, whatever version that is, and a session left by any other
+ * version (older, after an upgrade; newer, after a downgrade) is one it will not resume and so is
+ * not probed. Unlike {@link hasStoredSession}, which is about protecting any session at all, this
+ * asks what this client will do next.
+ */
+export function rememberedSessionBase(): string | null {
+  const read = (key: string): string | null => {
+    try {
+      return getLocal(key) || null;
+    } catch {
+      // A storage the browser refuses: nothing is remembered.
+      return null;
+    }
+  };
+  if (!read(AD4M_TOKEN_KEY)) return null;
+
+  const port = Number.parseInt(read(AD4M_PORT_KEY) ?? '', 10) || AD4M_DEFAULT_PORT;
+  const url = read(AD4M_URL_KEY) ?? `http://localhost:${port}`;
+  // ad4m-connect's `baseUrl`: a ws(s) address as http(s), then `/health` after it.
+  return url.replace(/^ws(s?):\/\//, (_, s: string) => `http${s}://`).replace(/\/+$/, '');
 }

@@ -6,9 +6,10 @@
  * written against *prefixed* keys throughout, with the unprefixed spelling covered only as the
  * legacy case: a test built on the shape the bug assumed would have passed while the bug was live.
  */
+import { getLocal, setLocal } from '@coasys/ad4m-connect/utils';
 import { beforeEach, describe, expect, it } from 'vitest';
 
-import { hasStoredSession, storedGuestHost } from './storedSession';
+import { hasStoredSession, rememberedSessionBase, storedGuestHost } from './storedSession';
 
 const V = '0.13.0-test-interpretation-2/';
 const HOST = 'https://node.example.org';
@@ -142,5 +143,68 @@ describe('storedGuestHost', () => {
     storage.setItem(`ad4m-guest-email-${HOST}`, 'guest-abc@flux.demo');
     expect(storedGuestHost()).toBe(HOST);
     expect(hasStoredSession()).toBe(false);
+  });
+});
+
+/*
+  Where a relaunch will go. ad4m-connect opens the executor it signed in to last, and when that one
+  does not answer it draws its own connect screen: the base app asks this first, so a place that
+  cannot be reached is its offline state instead.
+*/
+describe('rememberedSessionBase', () => {
+  /** Writes as the AD4M Connect this app bundles does: under its own version's namespace. */
+  const write = (key: string, value: string) => setLocal(key, value);
+
+  it('is null with nothing stored, and for a url with no token beside it', () => {
+    expect(rememberedSessionBase()).toBeNull();
+    write('ad4m-url', HOST);
+    expect(rememberedSessionBase()).toBeNull();
+  });
+
+  it("is the executor a stored session is against, as ad4m-connect's http base", () => {
+    write('ad4m-token', 'tok');
+    write('ad4m-url', 'ws://10.0.2.2:12000');
+    expect(rememberedSessionBase()).toBe('http://10.0.2.2:12000');
+    write('ad4m-url', 'wss://node.example.org/');
+    expect(rememberedSessionBase()).toBe('https://node.example.org');
+    write('ad4m-url', HOST);
+    expect(rememberedSessionBase()).toBe(HOST);
+  });
+
+  it("is ad4m-connect's default address for a token stored with no url", () => {
+    write('ad4m-token', 'tok');
+    expect(rememberedSessionBase()).toBe('http://localhost:12000');
+    write('ad4m-port', '12100');
+    expect(rememberedSessionBase()).toBe('http://localhost:12100');
+  });
+
+  /*
+    Lal's review of coasys/we#438: this read the numerically newest version that held a token, which
+    need not be the one the running client reads. After an upgrade that left only an older version's
+    keys, the base probed an executor the new client would never go back to.
+  */
+  it('reads only the namespace of the AD4M Connect this app bundles, never another version', () => {
+    storage.setItem('0.9.0/ad4m-token', 'old');
+    storage.setItem('0.9.0/ad4m-url', 'https://old.example.org');
+    storage.setItem('999.0.0/ad4m-token', 'newer');
+    storage.setItem('999.0.0/ad4m-url', 'https://newer.example.org');
+    storage.setItem('ad4m-token', 'bare');
+    expect(rememberedSessionBase()).toBeNull();
+
+    write('ad4m-token', 'tok');
+    write('ad4m-url', HOST);
+    expect(rememberedSessionBase()).toBe(HOST);
+    // The bundled client's own read agrees on which key that is.
+    expect(getLocal('ad4m-url')).toBe(HOST);
+  });
+
+  it('is null where localStorage cannot be read', () => {
+    Object.defineProperty(globalThis, 'localStorage', {
+      get() {
+        throw new Error('denied');
+      },
+      configurable: true,
+    });
+    expect(rememberedSessionBase()).toBeNull();
   });
 });

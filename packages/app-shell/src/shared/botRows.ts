@@ -88,6 +88,7 @@ function keyLine(key: BotKeyView | null): { line: string; tone: BotRow['keyTone'
   const until = key.expires === null ? '' : ` until ${dateOf(key.expires)}`;
   switch (key.verdict) {
     case 'valid':
+      // "Its key", never the key id: that is for the key log.
       return { line: `Key valid${until} · allows ${key.can.join(', ') || 'nothing'}`, tone: 'text-muted' };
     case 'expired':
       return {

@@ -219,6 +219,11 @@ export function spreadWords(pasted: string, at: number): Array<[number, string]>
 /** What the device the window runs on is called on its screens. */
 export type DeviceNoun = 'computer' | 'phone';
 
+/** How many devices a lock-out took, said without their key ids: the person ticked them a moment ago. */
+function devices(count: number): string {
+  return count === 1 ? '1 device' : `${count} devices`;
+}
+
 /**
  * The lead of each screen: its title and the sentence under it. `noun` is what this device is
  * where a screen speaks of it while it joins an identity, which a phone does too.
@@ -227,8 +232,8 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
   switch (screen.screen) {
     case 'show-words':
       return {
-        title: 'Your 12 words',
-        lead: 'Write these words down in order and keep them safe. You need them to restore your identity or replace your master key. You only see them once.',
+        title: 'Save your recovery phrase',
+        lead: 'Write down these 12 words in order and keep them safe. You need them to restore your identity or replace your master key. You only see them once.',
       };
     case 'confirm-words':
       return {
@@ -238,7 +243,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
     case 'set-passphrase':
       return {
         title: 'Protect your master key with a passphrase',
-        lead: 'This computer keeps your master key behind a passphrase. You type it for each change to your identity: adding a device, revoking one.',
+        lead: 'This computer keeps your master key behind a passphrase. You type it for each change to your identity: adding or removing a device.',
       };
     case 'enter-passphrase':
       return {
@@ -248,7 +253,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
     case 'identity-ready':
       return {
         title: 'Your identity exists now',
-        lead: 'It belongs to you, and it runs where you say. Your 12 words make your master key. The devices that serve you sign for you, and never change your keys.',
+        lead: 'It belongs to you, and it runs where you say. Your recovery phrase makes your master key. The devices that serve you sign for you, and never change your keys.',
       };
     case 'offer':
       return {
@@ -354,7 +359,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
         title: 'Master key replaced',
         lead: [
           'This computer has the new master key. The old one no longer works on any device.',
-          ...(screen.revoked.length ? [`Also removed: ${screen.revoked.join(', ')}.`] : []),
+          ...(screen.revoked.length ? [`Also removed: ${devices(screen.revoked.length)}.`] : []),
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
       };
@@ -363,7 +368,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
         title: 'New master key not saved',
         lead: [
           `Your master key was replaced and the old one no longer works, but this computer couldn't save the new one. ${screen.reason}`,
-          ...(screen.revoked.length ? [`Also removed: ${screen.revoked.join(', ')}.`] : []),
+          ...(screen.revoked.length ? [`Also removed: ${devices(screen.revoked.length)}.`] : []),
           ...(screen.note ? [screen.note] : []),
           'Enter your recovery phrase again to replace it with one this computer saves.',
         ].join(' '),
@@ -373,7 +378,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
         title: "This computer isn't linked yet",
         lead: [
           `Your identity was restored and your master key replaced. ${screen.reason}`,
-          ...(screen.revoked.length ? [`Removed: ${screen.revoked.join(', ')}.`] : []),
+          ...(screen.revoked.length ? [`Removed: ${devices(screen.revoked.length)}.`] : []),
           "Try again to link this computer. You don't need your recovery phrase again.",
         ].join(' '),
       };
@@ -382,7 +387,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
         title: 'Identity restored',
         lead: [
           `This computer is linked as ${screen.name} and has the new master key.`,
-          ...(screen.revoked.length ? [`Removed: ${screen.revoked.join(', ')}.`] : []),
+          ...(screen.revoked.length ? [`Removed: ${devices(screen.revoked.length)}.`] : []),
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
       };
@@ -420,14 +425,14 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
         ].join(' '),
       };
     case 'revoked':
-      return { title: `${screen.keyId} revoked`, lead: `Your key log records it as entry #${screen.seq}.` };
+      return { title: 'Device removed', lead: `Removed at #${screen.seq}.` };
     case 'pending-refused':
       return {
-        title: 'Your identity could not be published',
-        lead: `${screen.message} Trying again will not change that. Discard it, and this computer stops trying and goes on to make a new identity where it can. Its master key stays on this computer.`,
+        title: "Your identity couldn't be published",
+        lead: `${screen.message} Trying again won't change that. Discard it, and this computer stops trying and goes on to make a new identity where it can. Its master key stays on this computer.`,
       };
     case 'failed':
-      return { title: 'That did not work', lead: screen.message };
+      return { title: 'Something went wrong', lead: screen.message };
   }
 }
 

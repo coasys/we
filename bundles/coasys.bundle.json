@@ -15,7 +15,7 @@
       "description": "Your spaces down the left, the space you are in beside them.",
       "icon": "hexagon",
       "role": "app",
-      "frame": { "left": 72 },
+      "frame": { "left": 72, "narrow": { "top": 56 } },
       "panels": [
         {
           "id": "chat-global",
@@ -56,9 +56,9 @@
                   {
                     "type": "Column",
                     "props": {
-                      "width": { "$": "local.expanded ? '256px' : '72px'" },
+                      "width": { "$": "shellStore.narrowWindow ? '100%' : (local.expanded ? '256px' : '72px')" },
+                      "height": { "$": "(shellStore.narrowWindow && !local.expanded) ? '56px' : '100%'" },
                       "transition": "width 300 ease-in-out",
-                      "height": "100%",
                       "overflow": "hidden",
                       "bg": "chrome",
                       "borderRight": "1px solid border",
@@ -66,7 +66,21 @@
                       "zIndex": "chrome",
                       "top": "0",
                       "left": "0",
-                      "onMouseEnter": { "$setLocal": "expanded", "value": true },
+                      "data-we-covers-window": {
+                        "$": "(shellStore.narrowWindow && local.expanded) ? 'true' : 'false'"
+                      },
+                      "onKeyDown": {
+                        "$if": {
+                          "condition": { "$": "(shellStore.narrowWindow && local.expanded) && event.key == 'Escape'" },
+                          "then": { "$setLocal": "expanded", "value": false }
+                        }
+                      },
+                      "onMouseEnter": {
+                        "$if": {
+                          "condition": { "$": "!shellStore.narrowWindow" },
+                          "then": { "$setLocal": "expanded", "value": true }
+                        }
+                      },
                       "onMouseLeave": { "$setLocal": "expanded", "value": false }
                     },
                     "$localState": {
@@ -84,42 +98,48 @@
                         "props": { "width": "100%" },
                         "children": [
                           {
-                            "type": "Row",
+                            "type": "$if",
                             "props": {
-                              "height": "72px",
-                              "flex": "0 0 auto",
-                              "ay": "center",
-                              "gap": "300",
-                              "pl": "calc((72px - 28px) / 2)",
-                              "minWidth": "0",
-                              "width": "100%",
-                              "cursor": "pointer",
-                              "onClick": { "$invoke": "shellStore.openShellView", "args": ["landing-page"] }
-                            },
-                            "children": [
-                              {
-                                "type": "we-image",
+                              "condition": { "$": "shellStore.narrowWindow" },
+                              "then": {
+                                "type": "Row",
                                 "props": {
-                                  "src": { "$": "templateStore.brand.mark" },
-                                  "alt": "Coasys",
-                                  "width": "28px",
-                                  "height": "28px",
-                                  "flexShrink": 0
-                                }
-                              },
-                              {
-                                "type": "$if",
-                                "props": {
-                                  "condition": { "$": "local.expanded" },
-                                  "enterTransition": [
-                                    { "type": "reveal", "axis": "inline", "duration": 250 },
-                                    { "type": "fade", "duration": 150 }
-                                  ],
-                                  "exitTransition": [
-                                    { "type": "reveal", "axis": "inline", "duration": 250 },
-                                    { "type": "fade", "duration": 150 }
-                                  ],
-                                  "then": {
+                                  "height": "56px",
+                                  "width": "100%",
+                                  "flex": "0 0 auto",
+                                  "ay": "center",
+                                  "gap": "200",
+                                  "px": "300"
+                                },
+                                "children": [
+                                  {
+                                    "type": "we-button",
+                                    "props": {
+                                      "variant": "ghost",
+                                      "label": "Menu",
+                                      "expanded": { "$": "local.expanded" },
+                                      "gap": "200",
+                                      "px": "200",
+                                      "onClick": { "$toggleLocal": "expanded" }
+                                    },
+                                    "children": [
+                                      {
+                                        "type": "we-image",
+                                        "props": {
+                                          "src": { "$": "templateStore.brand.mark" },
+                                          "alt": "",
+                                          "width": "28px",
+                                          "height": "28px",
+                                          "flexShrink": 0
+                                        }
+                                      },
+                                      {
+                                        "type": "we-icon",
+                                        "props": { "name": { "$": "local.expanded ? 'x' : 'list'" } }
+                                      }
+                                    ]
+                                  },
+                                  {
                                     "type": "we-text",
                                     "props": {
                                       "variant": "body",
@@ -129,71 +149,135 @@
                                     },
                                     "children": [{ "$": "templateStore.brand.name" }]
                                   }
-                                }
-                              }
-                            ]
-                          },
-                          {
-                            "type": "we-button",
-                            "props": {
-                              "variant": "ghost",
-                              "size": "lg",
-                              "width": "100%",
-                              "height": "auto",
-                              "ax": "start",
-                              "ay": "center",
-                              "gap": "200",
-                              "py": "300",
-                              "px": { "$": "local.railInset" },
-                              "label": "AI chat",
-                              "onClick": { "$invoke": "chatStore.openChat" },
-                              "bg": { "$": "false ? 'accent-soft' : ''" },
-                              "color": { "$": "false ? 'accent-text' : 'text-muted'" },
-                              "hoverProps": {
-                                "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }"
+                                ]
                               },
-                              "activeProps": {
-                                "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }"
-                              }
-                            },
-                            "children": [
-                              {
+                              "else": {
                                 "type": "Row",
                                 "props": {
-                                  "width": "2rem",
-                                  "height": "2rem",
-                                  "ax": "center",
+                                  "height": "72px",
+                                  "flex": "0 0 auto",
                                   "ay": "center",
-                                  "flexShrink": "0"
+                                  "gap": "300",
+                                  "pl": "calc((72px - 28px) / 2)",
+                                  "minWidth": "0",
+                                  "width": "100%",
+                                  "cursor": "pointer",
+                                  "onClick": { "$invoke": "shellStore.openShellView", "args": ["landing-page"] }
                                 },
-                                "children": [{ "type": "we-icon", "props": { "name": "sparkle", "size": "sm" } }]
-                              },
-                              {
-                                "type": "$if",
-                                "props": {
-                                  "condition": { "$": "local.expanded" },
-                                  "enterTransition": [
-                                    { "type": "reveal", "axis": "inline", "duration": 250 },
-                                    { "type": "fade", "duration": 150 }
-                                  ],
-                                  "exitTransition": [
-                                    { "type": "reveal", "axis": "inline", "duration": 250 },
-                                    { "type": "fade", "duration": 150 }
-                                  ],
-                                  "then": {
-                                    "type": "Row",
-                                    "props": { "gap": "200", "ay": "center", "minWidth": "0" },
-                                    "children": [
-                                      {
+                                "children": [
+                                  {
+                                    "type": "we-image",
+                                    "props": {
+                                      "src": { "$": "templateStore.brand.mark" },
+                                      "alt": "Coasys",
+                                      "width": "28px",
+                                      "height": "28px",
+                                      "flexShrink": 0
+                                    }
+                                  },
+                                  {
+                                    "type": "$if",
+                                    "props": {
+                                      "condition": { "$": "local.expanded" },
+                                      "enterTransition": [
+                                        { "type": "reveal", "axis": "inline", "duration": 250 },
+                                        { "type": "fade", "duration": 150 }
+                                      ],
+                                      "exitTransition": [
+                                        { "type": "reveal", "axis": "inline", "duration": 250 },
+                                        { "type": "fade", "duration": 150 }
+                                      ],
+                                      "then": {
                                         "type": "we-text",
-                                        "props": { "truncate": true, "fontSize": "300" },
-                                        "children": ["AI chat"]
+                                        "props": {
+                                          "variant": "body",
+                                          "fontWeight": "semibold",
+                                          "letterSpacing": "tight",
+                                          "truncate": true
+                                        },
+                                        "children": [{ "$": "templateStore.brand.name" }]
                                       }
-                                    ]
+                                    }
                                   }
-                                }
+                                ]
                               }
-                            ]
+                            }
+                          },
+                          {
+                            "type": "$if",
+                            "props": {
+                              "condition": { "$": "!shellStore.narrowWindow || local.expanded" },
+                              "then": {
+                                "type": "we-button",
+                                "props": {
+                                  "variant": "ghost",
+                                  "size": "lg",
+                                  "width": "100%",
+                                  "height": "auto",
+                                  "ax": "start",
+                                  "ay": "center",
+                                  "gap": "200",
+                                  "py": "300",
+                                  "px": { "$": "local.railInset" },
+                                  "label": "AI chat",
+                                  "onClick": [
+                                    {
+                                      "$if": {
+                                        "condition": { "$": "shellStore.narrowWindow" },
+                                        "then": { "$setLocal": "expanded", "value": false }
+                                      }
+                                    },
+                                    { "$invoke": "chatStore.openChat" }
+                                  ],
+                                  "bg": { "$": "false ? 'accent-soft' : ''" },
+                                  "color": { "$": "false ? 'accent-text' : 'text-muted'" },
+                                  "hoverProps": {
+                                    "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }"
+                                  },
+                                  "activeProps": {
+                                    "$": "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }"
+                                  }
+                                },
+                                "children": [
+                                  {
+                                    "type": "Row",
+                                    "props": {
+                                      "width": "2rem",
+                                      "height": "2rem",
+                                      "ax": "center",
+                                      "ay": "center",
+                                      "flexShrink": "0"
+                                    },
+                                    "children": [{ "type": "we-icon", "props": { "name": "sparkle", "size": "sm" } }]
+                                  },
+                                  {
+                                    "type": "$if",
+                                    "props": {
+                                      "condition": { "$": "local.expanded" },
+                                      "enterTransition": [
+                                        { "type": "reveal", "axis": "inline", "duration": 250 },
+                                        { "type": "fade", "duration": 150 }
+                                      ],
+                                      "exitTransition": [
+                                        { "type": "reveal", "axis": "inline", "duration": 250 },
+                                        { "type": "fade", "duration": 150 }
+                                      ],
+                                      "then": {
+                                        "type": "Row",
+                                        "props": { "gap": "200", "ay": "center", "minWidth": "0" },
+                                        "children": [
+                                          {
+                                            "type": "we-text",
+                                            "props": { "truncate": true, "fontSize": "300" },
+                                            "children": ["AI chat"]
+                                          }
+                                        ]
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            }
                           }
                         ]
                       },
@@ -207,7 +291,8 @@
                           "py": "300",
                           "ay": "center",
                           "overflowY": "auto",
-                          "overflowX": "hidden"
+                          "overflowX": "hidden",
+                          "display": { "$": "(shellStore.narrowWindow && !local.expanded) ? 'none' : 'flex'" }
                         },
                         "children": [
                           {
@@ -288,10 +373,18 @@
                                                   "py": "300",
                                                   "px": { "$": "local.railInset" },
                                                   "label": { "$": "space.name" },
-                                                  "onClick": {
-                                                    "$invoke": "spaceStore.navigateToSpace",
-                                                    "args": [{ "$": "space.spaceId" }]
-                                                  },
+                                                  "onClick": [
+                                                    {
+                                                      "$if": {
+                                                        "condition": { "$": "shellStore.narrowWindow" },
+                                                        "then": { "$setLocal": "expanded", "value": false }
+                                                      }
+                                                    },
+                                                    {
+                                                      "$invoke": "spaceStore.navigateToSpace",
+                                                      "args": [{ "$": "space.spaceId" }]
+                                                    }
+                                                  ],
                                                   "bg": {
                                                     "$": "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? 'accent-soft' : ''"
                                                   },
@@ -414,7 +507,15 @@
                                       "py": "300",
                                       "px": { "$": "local.railInset" },
                                       "label": "Create a space",
-                                      "onClick": { "$invoke": "shellStore.setCreateSpaceOpen", "args": [true] },
+                                      "onClick": [
+                                        {
+                                          "$if": {
+                                            "condition": { "$": "shellStore.narrowWindow" },
+                                            "then": { "$setLocal": "expanded", "value": false }
+                                          }
+                                        },
+                                        { "$invoke": "shellStore.setCreateSpaceOpen", "args": [true] }
+                                      ],
                                       "bg": { "$": "false ? 'accent-soft' : ''" },
                                       "color": { "$": "false ? 'accent-text' : 'text-muted'" },
                                       "hoverProps": {
@@ -476,7 +577,15 @@
                                       "py": "300",
                                       "px": { "$": "local.railInset" },
                                       "label": "Join a space",
-                                      "onClick": { "$invoke": "shellStore.setJoinSpaceOpen", "args": [true] },
+                                      "onClick": [
+                                        {
+                                          "$if": {
+                                            "condition": { "$": "shellStore.narrowWindow" },
+                                            "then": { "$setLocal": "expanded", "value": false }
+                                          }
+                                        },
+                                        { "$invoke": "shellStore.setJoinSpaceOpen", "args": [true] }
+                                      ],
                                       "bg": { "$": "false ? 'accent-soft' : ''" },
                                       "color": { "$": "false ? 'accent-text' : 'text-muted'" },
                                       "hoverProps": {
@@ -533,7 +642,13 @@
                       },
                       {
                         "type": "Column",
-                        "props": { "width": "100%", "gap": "200", "px": "200", "py": "300" },
+                        "props": {
+                          "width": "100%",
+                          "gap": "200",
+                          "px": "200",
+                          "py": "300",
+                          "display": { "$": "(shellStore.narrowWindow && !local.expanded) ? 'none' : 'flex'" }
+                        },
                         "children": [
                           {
                             "type": "Column",
@@ -553,6 +668,12 @@
                                   "px": { "$": "local.railInset" },
                                   "label": "Settings",
                                   "onClick": [
+                                    {
+                                      "$if": {
+                                        "condition": { "$": "shellStore.narrowWindow" },
+                                        "then": { "$setLocal": "expanded", "value": false }
+                                      }
+                                    },
                                     { "$invoke": "appStore.deactivateApp" },
                                     { "$invoke": "shellStore.openShellView", "args": ["settings"] }
                                   ],
@@ -609,7 +730,7 @@
                               {
                                 "type": "DropdownMenu",
                                 "props": {
-                                  "placement": "right-end",
+                                  "placement": { "$": "shellStore.narrowWindow ? 'top-start' : 'right-end'" },
                                   "items": [
                                     { "id": "profile", "label": "Profile", "icon": "user" },
                                     { "id": "about", "label": "About Coasys", "icon": "info" },
@@ -619,13 +740,29 @@
                                     {
                                       "$if": {
                                         "condition": { "$": "arg.id == 'profile'" },
-                                        "then": { "$invoke": "shellStore.openShellView", "args": ["profile"] }
+                                        "then": [
+                                          {
+                                            "$if": {
+                                              "condition": { "$": "shellStore.narrowWindow" },
+                                              "then": { "$setLocal": "expanded", "value": false }
+                                            }
+                                          },
+                                          { "$invoke": "shellStore.openShellView", "args": ["profile"] }
+                                        ]
                                       }
                                     },
                                     {
                                       "$if": {
                                         "condition": { "$": "arg.id == 'about'" },
-                                        "then": { "$invoke": "shellStore.openShellView", "args": ["landing-page"] }
+                                        "then": [
+                                          {
+                                            "$if": {
+                                              "condition": { "$": "shellStore.narrowWindow" },
+                                              "then": { "$setLocal": "expanded", "value": false }
+                                            }
+                                          },
+                                          { "$invoke": "shellStore.openShellView", "args": ["landing-page"] }
+                                        ]
                                       }
                                     },
                                     {
@@ -28321,6 +28458,9 @@
                         "textDecoration": "none",
                         "fontSize": "24px",
                         "fontWeight": "800",
+                        "whiteSpace": "nowrap",
+                        "overflowWrap": "normal",
+                        "flexShrink": "0",
                         "smUpProps": { "fontSize": "34px" }
                       },
                       "children": [
@@ -30246,6 +30386,1382 @@
         ]
       }
     }
+  },
+  "base": {
+    "id": "base",
+    "type": "Column",
+    "meta": {
+      "name": "Before sign-in",
+      "description": "Setup, sign-in and connection screens.",
+      "icon": "hexagon",
+      "role": "base",
+      "themeId": "glow"
+    },
+    "props": { "styles": { "display": "contents" } },
+    "children": [
+      {
+        "type": "$if",
+        "props": {
+          "condition": { "$": "baseStore.stage == 'starting'" },
+          "then": {
+            "id": "base__starting",
+            "type": "Column",
+            "props": {
+              "position": "fixed",
+              "top": "0",
+              "left": "0",
+              "width": "100vw",
+              "height": "100dvh",
+              "bg": "page",
+              "ax": "center",
+              "ay": "center",
+              "gap": "500"
+            },
+            "children": [
+              {
+                "type": "we-image",
+                "props": { "src": { "$": "baseStore.brand.mark" }, "alt": "", "width": "48px", "height": "48px" }
+              },
+              { "type": "we-animated-icon", "props": { "name": "spinner", "size": "lg" } },
+              { "type": "we-text", "props": { "color": "text-muted" }, "children": ["Starting Coasys…"] }
+            ]
+          }
+        }
+      },
+      {
+        "type": "$if",
+        "props": {
+          "condition": { "$": "baseStore.stage == 'failed'" },
+          "then": {
+            "id": "chrome__executor-failed",
+            "type": "Column",
+            "props": {
+              "position": "fixed",
+              "top": "0",
+              "left": "0",
+              "width": "100vw",
+              "height": "100dvh",
+              "bg": "page",
+              "overflowY": "auto",
+              "gap": "600",
+              "pb": "800"
+            },
+            "children": [
+              {
+                "type": "Row",
+                "props": { "width": "100%", "ay": "center", "ax": "space-between", "gap": "300", "minHeight": "72px" },
+                "children": [
+                  {
+                    "type": "Row",
+                    "props": { "ay": "center", "gap": "300", "pl": "calc((72px - 28px) / 2)" },
+                    "children": [
+                      {
+                        "type": "we-image",
+                        "props": {
+                          "src": { "$": "baseStore.brand.mark" },
+                          "alt": "",
+                          "width": "28px",
+                          "height": "28px",
+                          "flexShrink": 0
+                        }
+                      },
+                      {
+                        "type": "we-text",
+                        "props": { "variant": "body", "fontWeight": "semibold", "letterSpacing": "tight" },
+                        "children": [{ "$": "baseStore.brand.name" }]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
+                      "condition": { "$": "baseStore.identityKnown && baseStore.did != ''" },
+                      "then": {
+                        "type": "Row",
+                        "props": { "gap": "200", "pr": "400" },
+                        "children": [
+                          {
+                            "type": "we-button",
+                            "props": {
+                              "variant": "ghost",
+                              "size": "sm",
+                              "onClick": { "$invoke": "baseStore.openPage", "args": ["devices"] }
+                            },
+                            "children": [
+                              { "type": "we-icon", "props": { "name": "devices", "slot": "start" } },
+                              "Devices"
+                            ]
+                          },
+                          {
+                            "type": "we-button",
+                            "props": {
+                              "variant": "ghost",
+                              "size": "sm",
+                              "onClick": { "$invoke": "baseStore.openPage", "args": ["security"] }
+                            },
+                            "children": [
+                              { "type": "we-icon", "props": { "name": "shield-check", "slot": "start" } },
+                              "Security"
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "Column",
+                "props": { "width": "100%", "maxWidth": "720px", "mx": "auto", "px": "600", "gap": "600" },
+                "children": [
+                  {
+                    "type": "Column",
+                    "props": { "gap": "200" },
+                    "children": [
+                      {
+                        "type": "we-text",
+                        "props": { "variant": "heading-xl", "tag": "h1" },
+                        "children": [{ "$": "baseStore.executorStopped ? 'Coasys stopped' : 'Coasys couldn’t start'" }]
+                      },
+                      {
+                        "type": "$if",
+                        "props": {
+                          "condition": { "$": "baseStore.executorStopped" },
+                          "then": {
+                            "type": "we-text",
+                            "props": { "color": "text-muted" },
+                            "children": ["Start it to open your spaces."]
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "we-alert",
+                    "props": { "tone": "danger" },
+                    "children": [
+                      { "$": "baseStore.executorReason != '' ? baseStore.executorReason : 'Something went wrong.'" }
+                    ]
+                  },
+                  {
+                    "type": "Row",
+                    "children": [
+                      {
+                        "type": "we-button",
+                        "props": {
+                          "variant": "primary",
+                          "loading": { "$": "baseStore.busy" },
+                          "onClick": { "$invoke": "baseStore.retry" }
+                        },
+                        "children": [{ "$": "baseStore.executorStopped ? 'Start Coasys' : 'Try again'" }]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "type": "$if",
+        "props": {
+          "condition": { "$": "baseStore.stage == 'password'" },
+          "then": {
+            "id": "base__password",
+            "type": "Column",
+            "props": {
+              "position": "fixed",
+              "top": "0",
+              "left": "0",
+              "width": "100vw",
+              "height": "100dvh",
+              "bg": "page",
+              "overflowY": "auto",
+              "gap": "600",
+              "pb": "800"
+            },
+            "children": [
+              {
+                "type": "Row",
+                "props": { "width": "100%", "ay": "center", "ax": "space-between", "gap": "300", "minHeight": "72px" },
+                "children": [
+                  {
+                    "type": "Row",
+                    "props": { "ay": "center", "gap": "300", "pl": "calc((72px - 28px) / 2)" },
+                    "children": [
+                      {
+                        "type": "we-image",
+                        "props": {
+                          "src": { "$": "baseStore.brand.mark" },
+                          "alt": "",
+                          "width": "28px",
+                          "height": "28px",
+                          "flexShrink": 0
+                        }
+                      },
+                      {
+                        "type": "we-text",
+                        "props": { "variant": "body", "fontWeight": "semibold", "letterSpacing": "tight" },
+                        "children": [{ "$": "baseStore.brand.name" }]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
+                      "condition": { "$": "baseStore.identityKnown && baseStore.did != ''" },
+                      "then": {
+                        "type": "Row",
+                        "props": { "gap": "200", "pr": "400" },
+                        "children": [
+                          {
+                            "type": "we-button",
+                            "props": {
+                              "variant": "ghost",
+                              "size": "sm",
+                              "onClick": { "$invoke": "baseStore.openPage", "args": ["devices"] }
+                            },
+                            "children": [
+                              { "type": "we-icon", "props": { "name": "devices", "slot": "start" } },
+                              "Devices"
+                            ]
+                          },
+                          {
+                            "type": "we-button",
+                            "props": {
+                              "variant": "ghost",
+                              "size": "sm",
+                              "onClick": { "$invoke": "baseStore.openPage", "args": ["security"] }
+                            },
+                            "children": [
+                              { "type": "we-icon", "props": { "name": "shield-check", "slot": "start" } },
+                              "Security"
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "Column",
+                "props": { "width": "100%", "maxWidth": "720px", "mx": "auto", "px": "600", "gap": "600" },
+                "children": [
+                  {
+                    "type": "Column",
+                    "props": { "gap": "200" },
+                    "children": [
+                      {
+                        "type": "we-text",
+                        "props": { "variant": "heading-xl", "tag": "h1" },
+                        "children": [{ "$": "baseStore.passwordIsNew ? 'Create a password' : 'Enter your password'" }]
+                      },
+                      {
+                        "type": "we-text",
+                        "props": { "color": "text-muted" },
+                        "children": ["This computer’s keyring isn’t available, so Coasys uses a password instead."]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "CredentialField",
+                    "props": {
+                      "purpose": { "$": "baseStore.passwordIsNew ? 'new' : 'unlock'" },
+                      "minLength": 8,
+                      "width": "100%",
+                      "placeholder": "Password",
+                      "confirmPlaceholder": "Confirm password",
+                      "onEdit": { "$invoke": "baseStore.clearPasswordWrong" },
+                      "onSubmit": { "$invoke": "baseStore.submitPassword" }
+                    }
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
+                      "condition": { "$": "baseStore.passwordWrong" },
+                      "then": {
+                        "type": "we-alert",
+                        "props": { "tone": "danger" },
+                        "children": [{ "$": "'Wrong password. Try again.'" }]
+                      }
+                    }
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
+                      "condition": { "$": "baseStore.error != ''" },
+                      "then": {
+                        "type": "we-alert",
+                        "props": { "tone": "danger" },
+                        "children": [{ "$": "baseStore.error" }]
+                      }
+                    }
+                  },
+                  {
+                    "type": "Row",
+                    "children": [
+                      {
+                        "type": "we-button",
+                        "props": {
+                          "variant": "primary",
+                          "loading": { "$": "baseStore.busy" },
+                          "disabled": {
+                            "$": "!baseStore.passwordEntered || (baseStore.passwordIsNew && !baseStore.passwordConfirmed)"
+                          },
+                          "onClick": { "$invoke": "baseStore.submitPassword" }
+                        },
+                        "children": ["Continue"]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "type": "$if",
+        "props": {
+          "condition": { "$": "baseStore.stage == 'loading' || baseStore.stage == 'handing-off'" },
+          "then": {
+            "id": "base__connecting",
+            "type": "Column",
+            "props": {
+              "position": "fixed",
+              "top": "0",
+              "left": "0",
+              "width": "100vw",
+              "height": "100dvh",
+              "bg": "page",
+              "ax": "center",
+              "ay": "center",
+              "gap": "500"
+            },
+            "children": [
+              {
+                "type": "we-image",
+                "props": { "src": { "$": "baseStore.brand.mark" }, "alt": "", "width": "48px", "height": "48px" }
+              },
+              { "type": "we-animated-icon", "props": { "name": "spinner", "size": "lg" } },
+              {
+                "type": "we-text",
+                "props": { "color": "text-muted" },
+                "children": [{ "$": "baseStore.stage == 'loading' ? 'Loading…' : 'Opening your spaces…'" }]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "type": "$if",
+        "props": {
+          "condition": { "$": "baseStore.stage == 'first-run'" },
+          "then": {
+            "id": "base__first-run",
+            "type": "Column",
+            "props": {
+              "position": "fixed",
+              "top": "0",
+              "left": "0",
+              "width": "100vw",
+              "height": "100dvh",
+              "bg": "page",
+              "overflowY": "auto",
+              "gap": "600",
+              "pb": "800"
+            },
+            "children": [
+              {
+                "type": "Row",
+                "props": { "width": "100%", "ay": "center", "ax": "space-between", "gap": "300", "minHeight": "72px" },
+                "children": [
+                  {
+                    "type": "Row",
+                    "props": { "ay": "center", "gap": "300", "pl": "calc((72px - 28px) / 2)" },
+                    "children": [
+                      {
+                        "type": "we-image",
+                        "props": {
+                          "src": { "$": "baseStore.brand.mark" },
+                          "alt": "",
+                          "width": "28px",
+                          "height": "28px",
+                          "flexShrink": 0
+                        }
+                      },
+                      {
+                        "type": "we-text",
+                        "props": { "variant": "body", "fontWeight": "semibold", "letterSpacing": "tight" },
+                        "children": [{ "$": "baseStore.brand.name" }]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
+                      "condition": { "$": "baseStore.identityKnown && baseStore.did != ''" },
+                      "then": {
+                        "type": "Row",
+                        "props": { "gap": "200", "pr": "400" },
+                        "children": [
+                          {
+                            "type": "we-button",
+                            "props": {
+                              "variant": "ghost",
+                              "size": "sm",
+                              "onClick": { "$invoke": "baseStore.openPage", "args": ["devices"] }
+                            },
+                            "children": [
+                              { "type": "we-icon", "props": { "name": "devices", "slot": "start" } },
+                              "Devices"
+                            ]
+                          },
+                          {
+                            "type": "we-button",
+                            "props": {
+                              "variant": "ghost",
+                              "size": "sm",
+                              "onClick": { "$invoke": "baseStore.openPage", "args": ["security"] }
+                            },
+                            "children": [
+                              { "type": "we-icon", "props": { "name": "shield-check", "slot": "start" } },
+                              "Security"
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "Column",
+                "props": { "width": "100%", "maxWidth": "720px", "mx": "auto", "px": "600", "gap": "600" },
+                "children": [
+                  {
+                    "type": "Column",
+                    "props": { "gap": "200" },
+                    "children": [
+                      {
+                        "type": "we-text",
+                        "props": { "variant": "heading-xl", "tag": "h1" },
+                        "children": [{ "$": "baseStore.hostKind == 'phone' ? 'Link this phone' : 'Set up Coasys'" }]
+                      },
+                      {
+                        "type": "we-text",
+                        "props": { "color": "text-muted" },
+                        "children": [
+                          {
+                            "$": "baseStore.hostKind == 'phone' ? 'You need a computer that has your master key.' : 'No email or password needed.'"
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "Column",
+                    "props": { "bg": "surface", "r": "surface", "border": "1px solid border", "overflow": "hidden" },
+                    "children": [
+                      {
+                        "type": "we-button",
+                        "props": {
+                          "variant": "bare",
+                          "width": "100%",
+                          "disabled": { "$": "baseStore.busy || !baseStore.doors.make.open" },
+                          "onClick": { "$invoke": "baseStore.makeIdentity" }
+                        },
+                        "children": [
+                          {
+                            "type": "Row",
+                            "props": {
+                              "width": "100%",
+                              "gap": "400",
+                              "ay": "center",
+                              "px": "400",
+                              "py": "400",
+                              "borderBottom": "1px solid border",
+                              "opacity": { "$": "!baseStore.doors.make.open ? 0.55 : 1" },
+                              "hoverProps": { "bg": "surface-hover" }
+                            },
+                            "children": [
+                              {
+                                "type": "Row",
+                                "props": {
+                                  "width": "44px",
+                                  "height": "44px",
+                                  "r": "full",
+                                  "bg": "surface-sunken",
+                                  "ax": "center",
+                                  "ay": "center",
+                                  "flexShrink": "0"
+                                },
+                                "children": [
+                                  { "type": "we-icon", "props": { "name": "sparkle", "color": "accent-text" } }
+                                ]
+                              },
+                              {
+                                "type": "Column",
+                                "props": { "gap": "100", "flex": "1", "minWidth": "0", "textAlign": "left" },
+                                "children": [
+                                  { "type": "we-text", "children": ["Create new identity"] },
+                                  {
+                                    "type": "we-text",
+                                    "props": { "variant": "footnote", "color": "text-muted" },
+                                    "children": [
+                                      {
+                                        "$": "baseStore.doors.make.open ? 'Your master key stays on this computer.' : baseStore.doors.make.note"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              { "type": "we-icon", "props": { "name": "caret-right", "color": "text-faint" } }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "type": "we-button",
+                        "props": {
+                          "variant": "bare",
+                          "width": "100%",
+                          "disabled": { "$": "baseStore.busy || !baseStore.doors.link.open" },
+                          "onClick": { "$invoke": "baseStore.linkIdentity" }
+                        },
+                        "children": [
+                          {
+                            "type": "Row",
+                            "props": {
+                              "width": "100%",
+                              "gap": "400",
+                              "ay": "center",
+                              "px": "400",
+                              "py": "400",
+                              "borderBottom": "1px solid border",
+                              "opacity": { "$": "!baseStore.doors.link.open ? 0.55 : 1" },
+                              "hoverProps": { "bg": "surface-hover" }
+                            },
+                            "children": [
+                              {
+                                "type": "Row",
+                                "props": {
+                                  "width": "44px",
+                                  "height": "44px",
+                                  "r": "full",
+                                  "bg": "surface-sunken",
+                                  "ax": "center",
+                                  "ay": "center",
+                                  "flexShrink": "0"
+                                },
+                                "children": [
+                                  { "type": "we-icon", "props": { "name": "qr-code", "color": "accent-text" } }
+                                ]
+                              },
+                              {
+                                "type": "Column",
+                                "props": { "gap": "100", "flex": "1", "minWidth": "0", "textAlign": "left" },
+                                "children": [
+                                  { "type": "we-text", "children": ["Link to another device"] },
+                                  {
+                                    "type": "we-text",
+                                    "props": { "variant": "footnote", "color": "text-muted" },
+                                    "children": [
+                                      {
+                                        "$": "baseStore.doors.link.open ? (baseStore.hostKind == 'phone' ? 'Enter the code from a computer that has your master key.' : 'Show a code to scan on a device that has your master key.') : baseStore.doors.link.note"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              { "type": "we-icon", "props": { "name": "caret-right", "color": "text-faint" } }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "type": "we-button",
+                        "props": {
+                          "variant": "bare",
+                          "width": "100%",
+                          "disabled": { "$": "baseStore.busy || !baseStore.doors.words.open" },
+                          "onClick": { "$invoke": "baseStore.useWords" }
+                        },
+                        "children": [
+                          {
+                            "type": "Row",
+                            "props": {
+                              "width": "100%",
+                              "gap": "400",
+                              "ay": "center",
+                              "px": "400",
+                              "py": "400",
+                              "borderBottom": "1px solid border",
+                              "opacity": { "$": "!baseStore.doors.words.open ? 0.55 : 1" },
+                              "hoverProps": { "bg": "surface-hover" }
+                            },
+                            "children": [
+                              {
+                                "type": "Row",
+                                "props": {
+                                  "width": "44px",
+                                  "height": "44px",
+                                  "r": "full",
+                                  "bg": "surface-sunken",
+                                  "ax": "center",
+                                  "ay": "center",
+                                  "flexShrink": "0"
+                                },
+                                "children": [{ "type": "we-icon", "props": { "name": "key", "color": "accent-text" } }]
+                              },
+                              {
+                                "type": "Column",
+                                "props": { "gap": "100", "flex": "1", "minWidth": "0", "textAlign": "left" },
+                                "children": [
+                                  { "type": "we-text", "children": ["Restore with recovery phrase"] },
+                                  {
+                                    "type": "we-text",
+                                    "props": { "variant": "footnote", "color": "text-muted" },
+                                    "children": [
+                                      {
+                                        "$": "baseStore.doors.words.open ? 'Enter your 12 words.' : baseStore.doors.words.note"
+                                      }
+                                    ]
+                                  }
+                                ]
+                              },
+                              { "type": "we-icon", "props": { "name": "caret-right", "color": "text-faint" } }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "type": "we-button",
+                        "props": {
+                          "variant": "bare",
+                          "width": "100%",
+                          "disabled": { "$": "baseStore.busy" },
+                          "onClick": { "$invoke": "baseStore.startNow" }
+                        },
+                        "children": [
+                          {
+                            "type": "Row",
+                            "props": {
+                              "width": "100%",
+                              "gap": "400",
+                              "ay": "center",
+                              "px": "400",
+                              "py": "400",
+                              "borderBottom": "1px solid border",
+                              "opacity": 1,
+                              "hoverProps": { "bg": "surface-hover" }
+                            },
+                            "children": [
+                              {
+                                "type": "Row",
+                                "props": {
+                                  "width": "44px",
+                                  "height": "44px",
+                                  "r": "full",
+                                  "bg": "surface-sunken",
+                                  "ax": "center",
+                                  "ay": "center",
+                                  "flexShrink": "0"
+                                },
+                                "children": [
+                                  { "type": "we-icon", "props": { "name": "lightning", "color": "accent-text" } }
+                                ]
+                              },
+                              {
+                                "type": "Column",
+                                "props": { "gap": "100", "flex": "1", "minWidth": "0", "textAlign": "left" },
+                                "children": [
+                                  { "type": "we-text", "children": ["Skip for now"] },
+                                  {
+                                    "type": "we-text",
+                                    "props": { "variant": "footnote", "color": "text-muted" },
+                                    "children": ["Set up your identity later in Settings."]
+                                  }
+                                ]
+                              },
+                              { "type": "we-icon", "props": { "name": "caret-right", "color": "text-faint" } }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
+                      "condition": { "$": "baseStore.unpublished != ''" },
+                      "then": {
+                        "type": "we-alert",
+                        "props": { "tone": "warning" },
+                        "children": [
+                          "Couldn’t publish your identity. Coasys tries again each time it starts. To try now, choose Create new identity: it publishes the same identity, with the same recovery phrase."
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
+                      "condition": { "$": "baseStore.lastOutcome == 'failed' && baseStore.unpublished == ''" },
+                      "then": {
+                        "type": "we-alert",
+                        "props": { "tone": "danger" },
+                        "children": [
+                          { "$": "baseStore.error != '' ? baseStore.error : 'Something went wrong. Try again.'" }
+                        ]
+                      }
+                    }
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
+                      "condition": {
+                        "$": "baseStore.lastOutcome == 'failed' && baseStore.unpublished != '' && baseStore.error != ''"
+                      },
+                      "then": {
+                        "type": "we-alert",
+                        "props": { "tone": "danger" },
+                        "children": [{ "$": "baseStore.error" }]
+                      }
+                    }
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
+                      "condition": { "$": "baseStore.lastOutcome != 'failed' && baseStore.error != ''" },
+                      "then": {
+                        "type": "we-alert",
+                        "props": { "tone": "danger" },
+                        "children": [{ "$": "baseStore.error" }]
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "type": "$if",
+        "props": {
+          "condition": { "$": "baseStore.stage == 'connect'" },
+          "then": {
+            "id": "base__connect",
+            "type": "Column",
+            "props": {
+              "position": "fixed",
+              "top": "0",
+              "left": "0",
+              "width": "100vw",
+              "height": "100dvh",
+              "bg": "page",
+              "overflowY": "auto",
+              "gap": "600",
+              "pb": "800"
+            },
+            "children": [
+              {
+                "type": "Row",
+                "props": { "width": "100%", "ay": "center", "ax": "space-between", "gap": "300", "minHeight": "72px" },
+                "children": [
+                  {
+                    "type": "Row",
+                    "props": { "ay": "center", "gap": "300", "pl": "calc((72px - 28px) / 2)" },
+                    "children": [
+                      {
+                        "type": "we-image",
+                        "props": {
+                          "src": { "$": "baseStore.brand.mark" },
+                          "alt": "",
+                          "width": "28px",
+                          "height": "28px",
+                          "flexShrink": 0
+                        }
+                      },
+                      {
+                        "type": "we-text",
+                        "props": { "variant": "body", "fontWeight": "semibold", "letterSpacing": "tight" },
+                        "children": [{ "$": "baseStore.brand.name" }]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
+                      "condition": { "$": "baseStore.identityKnown && baseStore.did != ''" },
+                      "then": {
+                        "type": "Row",
+                        "props": { "gap": "200", "pr": "400" },
+                        "children": [
+                          {
+                            "type": "we-button",
+                            "props": {
+                              "variant": "ghost",
+                              "size": "sm",
+                              "onClick": { "$invoke": "baseStore.openPage", "args": ["devices"] }
+                            },
+                            "children": [
+                              { "type": "we-icon", "props": { "name": "devices", "slot": "start" } },
+                              "Devices"
+                            ]
+                          },
+                          {
+                            "type": "we-button",
+                            "props": {
+                              "variant": "ghost",
+                              "size": "sm",
+                              "onClick": { "$invoke": "baseStore.openPage", "args": ["security"] }
+                            },
+                            "children": [
+                              { "type": "we-icon", "props": { "name": "shield-check", "slot": "start" } },
+                              "Security"
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "Column",
+                "props": { "width": "100%", "maxWidth": "720px", "mx": "auto", "px": "600", "gap": "600" },
+                "children": [
+                  {
+                    "type": "Column",
+                    "props": { "gap": "200" },
+                    "children": [
+                      {
+                        "type": "we-text",
+                        "props": { "variant": "heading-xl", "tag": "h1" },
+                        "children": ["Where to keep your spaces"]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "Column",
+                    "props": { "bg": "surface", "r": "surface", "border": "1px solid border", "overflow": "hidden" },
+                    "children": [
+                      {
+                        "type": "$each",
+                        "props": { "items": { "$": "baseStore.connections" }, "as": "place" },
+                        "children": [
+                          {
+                            "type": "we-button",
+                            "props": {
+                              "variant": "bare",
+                              "width": "100%",
+                              "disabled": { "$": "baseStore.busy" },
+                              "onClick": { "$invoke": "baseStore.choose", "args": [{ "$": "place.id" }] }
+                            },
+                            "children": [
+                              {
+                                "type": "Row",
+                                "props": {
+                                  "width": "100%",
+                                  "gap": "400",
+                                  "ay": "center",
+                                  "px": "400",
+                                  "py": "400",
+                                  "borderBottom": "1px solid border",
+                                  "opacity": 1,
+                                  "hoverProps": { "bg": "surface-hover" }
+                                },
+                                "children": [
+                                  {
+                                    "type": "Row",
+                                    "props": {
+                                      "width": "44px",
+                                      "height": "44px",
+                                      "r": "full",
+                                      "bg": "surface-sunken",
+                                      "ax": "center",
+                                      "ay": "center",
+                                      "flexShrink": "0"
+                                    },
+                                    "children": [
+                                      {
+                                        "type": "we-icon",
+                                        "props": { "name": { "$": "place.icon" }, "color": "accent-text" }
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "Column",
+                                    "props": { "gap": "100", "flex": "1", "minWidth": "0", "textAlign": "left" },
+                                    "children": [
+                                      { "type": "we-text", "children": [{ "$": "place.label" }] },
+                                      {
+                                        "type": "we-text",
+                                        "props": { "variant": "footnote", "color": "text-muted" },
+                                        "children": [{ "$": "place.detail" }]
+                                      }
+                                    ]
+                                  },
+                                  {
+                                    "type": "$if",
+                                    "props": {
+                                      "condition": { "$": "place.chosen" },
+                                      "then": {
+                                        "type": "we-tag",
+                                        "props": { "tone": "neutral" },
+                                        "children": ["Last used"]
+                                      },
+                                      "else": {
+                                        "type": "we-icon",
+                                        "props": { "name": "caret-right", "color": "text-faint" }
+                                      }
+                                    }
+                                  }
+                                ]
+                              }
+                            ]
+                          }
+                        ]
+                      }
+                    ]
+                  },
+                  {
+                    "id": "base__hosted",
+                    "type": "Column",
+                    "props": { "gap": "200", "p": "400", "r": "surface", "border": "1px dashed border" },
+                    "children": [
+                      {
+                        "type": "Row",
+                        "props": { "gap": "200", "ay": "center" },
+                        "children": [
+                          { "type": "we-icon", "props": { "name": "cloud", "color": "text-muted" } },
+                          {
+                            "type": "we-text",
+                            "props": { "fontWeight": "semibold" },
+                            "children": ["Coasys cloud and community hosts"]
+                          },
+                          { "type": "we-tag", "props": { "tone": "neutral" }, "children": ["Coming soon"] }
+                        ]
+                      },
+                      {
+                        "type": "we-text",
+                        "props": { "variant": "footnote", "color": "text-muted" },
+                        "children": ["Hosts run by Coasys and by communities will appear here."]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
+                      "condition": { "$": "baseStore.error != ''" },
+                      "then": {
+                        "type": "we-alert",
+                        "props": { "tone": "danger" },
+                        "children": [{ "$": "baseStore.error" }]
+                      }
+                    }
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
+                      "condition": { "$": "baseStore.error != ''" },
+                      "then": {
+                        "type": "Row",
+                        "children": [
+                          {
+                            "type": "we-button",
+                            "props": {
+                              "variant": "secondary",
+                              "loading": { "$": "baseStore.busy" },
+                              "onClick": { "$invoke": "baseStore.retry" }
+                            },
+                            "children": ["Try again"]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "type": "$if",
+        "props": {
+          "condition": { "$": "baseStore.stage == 'offline'" },
+          "then": {
+            "id": "chrome__offline",
+            "type": "Column",
+            "props": {
+              "position": "fixed",
+              "top": "0",
+              "left": "0",
+              "width": "100vw",
+              "height": "100dvh",
+              "bg": "page",
+              "overflowY": "auto",
+              "gap": "600",
+              "pb": "800"
+            },
+            "children": [
+              {
+                "type": "Row",
+                "props": { "width": "100%", "ay": "center", "ax": "space-between", "gap": "300", "minHeight": "72px" },
+                "children": [
+                  {
+                    "type": "Row",
+                    "props": { "ay": "center", "gap": "300", "pl": "calc((72px - 28px) / 2)" },
+                    "children": [
+                      {
+                        "type": "we-image",
+                        "props": {
+                          "src": { "$": "baseStore.brand.mark" },
+                          "alt": "",
+                          "width": "28px",
+                          "height": "28px",
+                          "flexShrink": 0
+                        }
+                      },
+                      {
+                        "type": "we-text",
+                        "props": { "variant": "body", "fontWeight": "semibold", "letterSpacing": "tight" },
+                        "children": [{ "$": "baseStore.brand.name" }]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "$if",
+                    "props": {
+                      "condition": { "$": "baseStore.identityKnown && baseStore.did != ''" },
+                      "then": {
+                        "type": "Row",
+                        "props": { "gap": "200", "pr": "400" },
+                        "children": [
+                          {
+                            "type": "we-button",
+                            "props": {
+                              "variant": "ghost",
+                              "size": "sm",
+                              "onClick": { "$invoke": "baseStore.openPage", "args": ["devices"] }
+                            },
+                            "children": [
+                              { "type": "we-icon", "props": { "name": "devices", "slot": "start" } },
+                              "Devices"
+                            ]
+                          },
+                          {
+                            "type": "we-button",
+                            "props": {
+                              "variant": "ghost",
+                              "size": "sm",
+                              "onClick": { "$invoke": "baseStore.openPage", "args": ["security"] }
+                            },
+                            "children": [
+                              { "type": "we-icon", "props": { "name": "shield-check", "slot": "start" } },
+                              "Security"
+                            ]
+                          }
+                        ]
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "type": "Column",
+                "props": { "width": "100%", "maxWidth": "720px", "mx": "auto", "px": "600", "gap": "600" },
+                "children": [
+                  {
+                    "type": "Column",
+                    "props": { "gap": "200" },
+                    "children": [
+                      {
+                        "type": "we-text",
+                        "props": { "variant": "heading-xl", "tag": "h1" },
+                        "children": ["Can’t connect"]
+                      },
+                      {
+                        "type": "we-text",
+                        "props": { "color": "text-muted" },
+                        "children": [{ "$": "baseStore.offlineReason" }]
+                      }
+                    ]
+                  },
+                  {
+                    "type": "Row",
+                    "props": { "gap": "300" },
+                    "children": [
+                      {
+                        "type": "we-button",
+                        "props": {
+                          "variant": "primary",
+                          "loading": { "$": "baseStore.busy" },
+                          "onClick": { "$invoke": "baseStore.retry" }
+                        },
+                        "children": ["Try again"]
+                      },
+                      {
+                        "type": "we-button",
+                        "props": {
+                          "variant": "secondary",
+                          "disabled": { "$": "baseStore.busy" },
+                          "onClick": { "$invoke": "baseStore.showConnections" }
+                        },
+                        "children": ["Choose another"]
+                      }
+                    ]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "type": "$if",
+        "props": {
+          "condition": { "$": "baseStore.page == 'devices'" },
+          "then": {
+            "id": "base__devices",
+            "type": "Column",
+            "props": {
+              "position": "fixed",
+              "top": "0",
+              "left": "0",
+              "width": "100vw",
+              "height": "100dvh",
+              "bg": "page",
+              "overflowY": "auto",
+              "zIndex": "modal",
+              "gap": "600",
+              "pb": "800"
+            },
+            "children": [
+              {
+                "type": "Row",
+                "props": { "minHeight": "72px", "ay": "center", "px": "400" },
+                "children": [
+                  {
+                    "type": "we-button",
+                    "props": { "variant": "ghost", "onClick": { "$invoke": "baseStore.closePage" } },
+                    "children": [{ "type": "we-icon", "props": { "name": "arrow-left", "slot": "start" } }, "Back"]
+                  }
+                ]
+              },
+              {
+                "type": "Column",
+                "props": { "width": "100%", "maxWidth": "720px", "mx": "auto", "px": "600", "gap": "500" },
+                "children": [
+                  {
+                    "type": "we-text",
+                    "props": { "variant": "heading-xl", "tag": "h1" },
+                    "children": ["Your devices"]
+                  },
+                  {
+                    "type": "Column",
+                    "props": { "bg": "surface", "r": "surface", "border": "1px solid border", "overflow": "hidden" },
+                    "children": [
+                      {
+                        "type": "$each",
+                        "props": { "items": { "$": "baseStore.devices" }, "as": "device" },
+                        "children": [
+                          {
+                            "type": "Row",
+                            "props": {
+                              "gap": "400",
+                              "px": "400",
+                              "py": "400",
+                              "ay": "center",
+                              "borderBottom": "1px solid border"
+                            },
+                            "children": [
+                              {
+                                "type": "we-icon",
+                                "props": { "name": { "$": "device.icon" }, "color": "accent-text" }
+                              },
+                              {
+                                "type": "Column",
+                                "props": { "gap": "100", "flex": "1", "minWidth": "0" },
+                                "children": [
+                                  { "type": "we-text", "children": [{ "$": "device.label" }] },
+                                  {
+                                    "type": "we-text",
+                                    "props": { "variant": "footnote", "color": "text-muted" },
+                                    "children": [{ "$": "device.subtitle" }]
+                                  }
+                                ]
+                              },
+                              {
+                                "type": "$if",
+                                "props": {
+                                  "condition": { "$": "device.master != ''" },
+                                  "then": {
+                                    "type": "we-tag",
+                                    "props": { "tone": "accent" },
+                                    "children": [{ "$": "device.master" }]
+                                  }
+                                }
+                              }
+                            ]
+                          }
+                        ]
+                      },
+                      {
+                        "type": "$if",
+                        "props": {
+                          "condition": { "$": "baseStore.devices.length == 0" },
+                          "then": {
+                            "type": "we-text",
+                            "props": { "color": "text-muted", "px": "400", "py": "400" },
+                            "children": ["No devices yet."]
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "we-text",
+                    "props": { "variant": "footnote", "color": "text-muted" },
+                    "children": ["To make changes, open Settings after you connect."]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      },
+      {
+        "type": "$if",
+        "props": {
+          "condition": { "$": "baseStore.page == 'security'" },
+          "then": {
+            "id": "base__security",
+            "type": "Column",
+            "props": {
+              "position": "fixed",
+              "top": "0",
+              "left": "0",
+              "width": "100vw",
+              "height": "100dvh",
+              "bg": "page",
+              "overflowY": "auto",
+              "zIndex": "modal",
+              "gap": "600",
+              "pb": "800"
+            },
+            "children": [
+              {
+                "type": "Row",
+                "props": { "minHeight": "72px", "ay": "center", "px": "400" },
+                "children": [
+                  {
+                    "type": "we-button",
+                    "props": { "variant": "ghost", "onClick": { "$invoke": "baseStore.closePage" } },
+                    "children": [{ "type": "we-icon", "props": { "name": "arrow-left", "slot": "start" } }, "Back"]
+                  }
+                ]
+              },
+              {
+                "type": "Column",
+                "props": { "width": "100%", "maxWidth": "720px", "mx": "auto", "px": "600", "gap": "500" },
+                "children": [
+                  { "type": "we-text", "props": { "variant": "heading-xl", "tag": "h1" }, "children": ["Security"] },
+                  {
+                    "type": "Column",
+                    "props": { "bg": "surface", "r": "surface", "border": "1px solid border", "overflow": "hidden" },
+                    "children": [
+                      {
+                        "type": "Row",
+                        "props": {
+                          "gap": "400",
+                          "px": "400",
+                          "py": "300",
+                          "borderBottom": "1px solid border",
+                          "ay": "center"
+                        },
+                        "children": [
+                          {
+                            "type": "we-text",
+                            "props": { "color": "text-muted", "width": "160px", "flexShrink": "0" },
+                            "children": ["Identity"]
+                          },
+                          {
+                            "type": "we-text",
+                            "props": { "flex": "1", "minWidth": "0" },
+                            "children": [{ "$": "baseStore.did != '' ? 'Set up' : 'Not set up'" }]
+                          }
+                        ]
+                      },
+                      {
+                        "type": "Row",
+                        "props": {
+                          "gap": "400",
+                          "px": "400",
+                          "py": "300",
+                          "borderBottom": "1px solid border",
+                          "ay": "center"
+                        },
+                        "children": [
+                          {
+                            "type": "we-text",
+                            "props": { "color": "text-muted", "width": "160px", "flexShrink": "0" },
+                            "children": ["Master key"]
+                          },
+                          {
+                            "type": "we-text",
+                            "props": { "flex": "1", "minWidth": "0" },
+                            "children": [{ "$": "baseStore.keepsLine" }]
+                          }
+                        ]
+                      },
+                      {
+                        "type": "$if",
+                        "props": {
+                          "condition": { "$": "baseStore.blocked != ''" },
+                          "then": {
+                            "type": "Row",
+                            "props": {
+                              "gap": "400",
+                              "px": "400",
+                              "py": "300",
+                              "borderBottom": "1px solid border",
+                              "ay": "center"
+                            },
+                            "children": [
+                              {
+                                "type": "we-text",
+                                "props": { "color": "text-muted", "width": "160px", "flexShrink": "0" },
+                                "children": ["Changes"]
+                              },
+                              {
+                                "type": "we-text",
+                                "props": { "flex": "1", "minWidth": "0" },
+                                "children": [{ "$": "baseStore.blocked" }]
+                              }
+                            ]
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "type": "we-text",
+                    "props": { "variant": "footnote", "color": "text-muted" },
+                    "children": ["To make changes, open Settings after you connect."]
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      }
+    ]
   },
   "starters": [
     {

@@ -17,10 +17,19 @@ export const appFrame = frame;
 /**
  * Take a frame from an app template's `meta.frame`. A declared frame names every band it holds; a
  * band it leaves out is empty. An app template that declares none keeps the built-in furniture.
+ *
+ * `narrow` is whether the window is below the `sm` breakpoint (`shellStore.narrowWindow`). There an
+ * app's `frame.narrow` replaces the frame, because a sidebar a phone has no width for becomes a bar
+ * across the top and the content has to clear that instead. An app that declares no narrow frame has
+ * the same frame at every width.
  */
-export function declareAppFrame(declared: Partial<AppFrame> | undefined): void {
-  const next = declared
-    ? { left: declared.left ?? 0, right: declared.right ?? 0, top: declared.top ?? 0, bottom: declared.bottom ?? 0 }
+export function declareAppFrame(
+  declared: (Partial<AppFrame> & { narrow?: Partial<AppFrame> }) | undefined,
+  narrow = false,
+): void {
+  const bands = narrow && declared?.narrow ? declared.narrow : declared;
+  const next = bands
+    ? { left: bands.left ?? 0, right: bands.right ?? 0, top: bands.top ?? 0, bottom: bands.bottom ?? 0 }
     : DEFAULT_APP_FRAME;
   const now = frame();
   if (now.left === next.left && now.right === next.right && now.top === next.top && now.bottom === next.bottom) return;

@@ -1,0 +1,40 @@
+{
+  "name": "@we/app-coasys",
+  "version": "0.1.0-alpha.1",
+  "description": "The Coasys app's web entry: the cartridge before a session, then WE's app with the connection chosen",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/seeded.mjs vite",
+    "build:steps": "node scripts/seeded.mjs vite build",
+    "build": "we-build",
+    "serve": "vite preview",
+    "typecheck": "node scripts/seeded.mjs tsc --noEmit",
+    "test": "vitest run",
+    "acceptance": "node --test acceptance/base.acceptance.mjs"
+  },
+  "exports": {
+    "./hosts/desktop": "./src/hosts/desktop.ts"
+  },
+  "dependencies": {
+    "@coasys/ad4m": "*",
+    "@coasys/ad4m-connect": "*",
+    "@we/app-shell": "workspace:*",
+    "@we/app-web": "workspace:*",
+    "@we/backend-ad4m": "workspace:*",
+    "@we/backend-shared": "workspace:*",
+    "solid-js": "^1.9.18"
+  },
+  "devDependencies": {
+    "@we/brand": "workspace:*",
+    "@we/cli": "workspace:*",
+    "@we/csp": "workspace:*",
+    "@we/globe-layers": "workspace:*",
+    "@we/globe-widget": "workspace:*",
+    "playwright-core": "^1.64.1",
+    "typescript": "^6.0.3",
+    "vite": "^8.3.5",
+    "vite-plugin-solid": "^2.11.15",
+    "vitest": "^5.0.5"
+  }
+}

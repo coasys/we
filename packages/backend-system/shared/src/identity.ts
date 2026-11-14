@@ -189,6 +189,12 @@ export interface IdentityCustodyView {
    * `IdentityStatusView.keyId` and `DeviceKeyView.thisDevice` already name.
    */
   thisDevice?: CustodyDeviceView | null;
+  /**
+   * An identity made on this device whose publish has not gone through yet, by its DID: its master
+   * key is kept here and it is published again on the next attempt, so a step that failed after
+   * making it did change something. `null` (or absent) once published, or when there is none.
+   */
+  pending?: string | null;
 }
 
 /** The device a custody service answers for, set apart from the backend it reaches. */

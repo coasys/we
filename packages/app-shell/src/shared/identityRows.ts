@@ -61,7 +61,7 @@ export interface DeviceRow {
   revoked: boolean;
   /** Neither revoked nor past the end the key log gives it. */
   valid: boolean;
-  /** "Valid", "Revoked at #2", or "Expired on 3 Dec 2026". */
+  /** "Valid", "Removed at #2", or "Expired on 3 Dec 2026". */
   status: string;
   /** Whether a revoke may be offered: a valid key that is not this computer's. */
   canRevoke: boolean;
@@ -123,6 +123,12 @@ export function custodyDevice(custody: IdentityCustodyView | null | undefined): 
 export function deviceNoun(here: CustodyDevice | null): 'phone' | 'computer' {
   return here?.label === THIS_PHONE ? 'phone' : 'computer';
 }
+
+/**
+ * A device nobody has named yet. Never its key id: an identifier is for the key log and the identity
+ * window's checks, not for the rows a person reads every day.
+ */
+export const UNNAMED_DEVICE = 'Unnamed device';
 
 /** "QmZkabc…xyz7rWd" → "QmZk…7rWd". */
 export function shortHash(hash: string | null | undefined): string {
@@ -193,7 +199,7 @@ export function keyLogRows(
 }
 
 /** The device list: valid keys first, this computer at the top, then in the order they were added. */
-const DEVICE_ICONS: Record<string, string> = {
+export const DEVICE_ICONS: Record<string, string> = {
   'desktop-app': 'laptop',
   'phone-app': 'device-mobile',
   browser: 'browser',
@@ -275,23 +281,20 @@ export function deviceRows(
             : revokedHolders.includes(device.keyId)
               ? REVOKED_MASTER_WORDS.may
               : '';
-      const fallback = device.thisDevice ? thisLabel : `Device ${device.keyId}`;
+      const fallback = device.thisDevice ? thisLabel : UNNAMED_DEVICE;
       return {
         keyId: device.keyId,
         addedSeq: device.addedSeq,
         revokedSeq: device.revokedSeq,
         label: name || fallback,
-        subtitle: [
-          ...(name && device.thisDevice ? [thisLabel] : []),
-          device.keyId,
-          `added at #${device.addedSeq}`,
-        ].join(' · '),
+        // Where it is in the key log, not its key id (the key log lists that).
+        subtitle: [...(name && device.thisDevice ? [thisLabel] : []), `added at #${device.addedSeq}`].join(' · '),
         icon: (record && DEVICE_ICONS[record.kind]) || (device.thisDevice ? thisIcon : 'key'),
         thisDevice: device.thisDevice,
         revoked,
         valid: !revoked && !expired,
         status: revoked
-          ? `Revoked at #${device.revokedSeq}`
+          ? `Removed at #${device.revokedSeq}`
           : expired
             ? `Expired on ${dateOf(device.expires as number)}`
             : 'Valid',

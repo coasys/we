@@ -1,5 +1,13 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
+/** Listeners for the tray's "Startup settings…", and whether one came with nobody listening. */
+const openSettingsListeners = new Set();
+let openSettingsPending = false;
+ipcRenderer.on('open-executor-settings', () => {
+  if (openSettingsListeners.size === 0) openSettingsPending = true;
+  for (const listener of openSettingsListeners) listener();
+});
+
 // Expose protected methods that allow the renderer process to use
 // the ipcRenderer without exposing the entire object
 contextBridge.exposeInMainWorld('electron', {
@@ -35,6 +43,36 @@ contextBridge.exposeInMainWorld('electron', {
   // Start the executor over (a new port and credential) and reload the window.
   restartExecutor: () => ipcRenderer.invoke('executor-restart'),
   chooseFile: (options) => ipcRenderer.invoke('executor-choose-file', options),
+
+  /*
+    The executor this app runs, as the app before a session reads it: starting, ready, or failed and
+    why. The window opens before it is up, so it asks, hears each change, and may try a failed start
+    again. `onState` hands back its own unsubscribe.
+  */
+  executor: {
+    state: () => ipcRenderer.invoke('executor-state'),
+    onState: (listener) => {
+      const forward = (_event, state) => listener(state);
+      ipcRenderer.on('executor-state', forward);
+      return () => ipcRenderer.removeListener('executor-state', forward);
+    },
+    start: () => ipcRenderer.invoke('executor-start'),
+    /*
+      The tray's "Startup settings…": open Settings where the executor's are. An ask that comes
+      before anything listens (the window loading, or the app before a session) is held and given to
+      the first listener, so it is not lost.
+    */
+    onOpenSettings: (listener) => {
+      openSettingsListeners.add(listener);
+      if (openSettingsPending) {
+        openSettingsPending = false;
+        listener();
+      }
+      return () => openSettingsListeners.delete(listener);
+    },
+    // The WE password, where no keyring could be used: sent once, from the host's own field.
+    password: (password) => ipcRenderer.invoke('executor-agent-password', password),
+  },
 
   // Every download in the app: the main process asks where, and writes it. See `save-file` in main.js.
   saveFile: (file) => ipcRenderer.invoke('save-file', file),

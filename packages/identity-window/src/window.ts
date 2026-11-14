@@ -9,9 +9,11 @@
  * Fields are cleared once their call returns, except the 12 words: a refused phrase stays in its
  * fields so the person corrects the word named, and they are cleared once any other screen comes.
  */
-import '@we/tokens/css/color';
+import '@we/tokens/css';
 import 'virtual:we-identity-theme.css';
 import './identity.css';
+
+import brand from 'virtual:we-identity-brand';
 
 import {
   BOT_ACTIONS,
@@ -493,7 +495,7 @@ function body(screen: Screen): Child[] {
       const ticks = screen.devices.map((d) => {
         const box = el('input', { type: 'checkbox' });
         box.checked = d.lockOut;
-        return { keyId: d.keyId, box, label: d.name ? `${d.name} (${d.keyId})` : d.keyId };
+        return { keyId: d.keyId, box, label: d.name || d.keyId };
       });
       const name = textField('Name for this computer', '', 'Home desktop');
       const go = () =>
@@ -618,7 +620,8 @@ function body(screen: Screen): Child[] {
       ];
     case 'joined':
     case 'master-taken':
-      return [el('div', { className: 'link', textContent: screen.did })];
+      // The identifier is shown once, when the identity is made; a device joining it needs no copy.
+      return [];
     case 'asked':
       return whoAsks(screen);
     case 'linked':
@@ -653,16 +656,17 @@ export function runIdentityWindow(transport: IdentityTransport): void {
   root = el('main', {});
   root.id = 'screen';
   root.setAttribute('aria-live', 'polite');
-  const mark = el('span', { className: 'mark' });
-  mark.setAttribute('aria-hidden', 'true');
+  /*
+    The app's mark and name, as its screens before a session draw them, handed in by the host's build.
+    A deployment whose app brings none gets a plain mark, and its name stays the window's title.
+  */
+  const mark = brand?.mark ? el('img', { className: 'mark' }) : el('span', { className: 'mark plain' });
+  if (mark instanceof HTMLImageElement && brand?.mark) {
+    mark.alt = '';
+    mark.src = brand.mark;
+  } else mark.setAttribute('aria-hidden', 'true');
   document.body.replaceChildren(
-    el(
-      'header',
-      { className: 'brand' },
-      mark,
-      // The app's own name is the window's title, which the host sets; the page names no app.
-      el('strong', { textContent: 'Your identity' }),
-    ),
+    el('header', { className: 'brand' }, mark, el('strong', { textContent: brand?.name ?? 'Your identity' })),
     root,
   );
   void run(() => host.start());

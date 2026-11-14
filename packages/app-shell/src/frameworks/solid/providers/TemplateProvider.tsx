@@ -19,6 +19,7 @@ import { workflowStateOf } from '@shared/taskWorkflow';
 import { taskWorkflowLive } from '@shared/taskWorkflowLive';
 import { landsOnRoot } from '@shared/templateLanding';
 import { copyText } from '@shared/utils';
+import { installWindowCover } from '@shared/windowCover';
 import { withExtractionDefaults } from '@we/entities';
 import { completeResponse, respondsThrough } from '@we/entities';
 
@@ -144,7 +145,9 @@ export default function TemplateProvider() {
   // Both follow the app's frame, which the app template declares (`meta.frame`): a frame with no rail
   // publishes no rail width, so nothing keeps clear of a rail that is not there.
   // The bands the app's chrome holds, as it declares them — what panels dock against.
-  createEffect(() => declareAppFrame(templateStore.appTemplate().meta?.frame));
+  // At phone width an app may hold different bands — its sidebar a bar across the top — so the frame
+  // follows the window across the `sm` breakpoint as well as the app template.
+  createEffect(() => declareAppFrame(templateStore.appTemplate().meta?.frame, shellStore.narrowWindow()));
   // And how its edges frame the panels pushing the content aside there (`meta.edges`).
   createEffect(() => declareAppEdges(templateStore.appTemplate().meta?.edges));
 
@@ -1083,6 +1086,13 @@ export default function TemplateProvider() {
     update();
     onCleanup(() => observer.disconnect());
   });
+  /*
+    And while something of the app's covers the whole window — a phone's menu, open — the rest of
+    the app is inert behind it and Tab stays inside it. See `windowCover.ts`.
+  */
+  onMount(() => {
+    if (appLayer) onCleanup(installWindowCover(appLayer));
+  });
   createEffect(() => {
     if (!asking() || !promptLayer) return;
     const release = holdTopLayer(promptLayer);
@@ -1638,15 +1648,15 @@ export default function TemplateProvider() {
         Every member, not only those whose profile has arrived: `members` drops anybody without a
         cached profile, and an agent — a bot like Data — often has none, so it could never be picked
         and a mention of it could only ever be a name in the text. A member with no profile is offered
-        under a shortened DID until its profile lands.
+        as "Someone" until its profile lands: an identifier is never a name a person reads.
       */
       mentions={() => {
         const profiles = new Map(spaceStore.members().map((m) => [m.did, m]));
         return spaceStore.memberDids().map((did) => {
           const m = profiles.get(did);
           return m
-            ? { did, name: m.name || m.handle || did, avatar: m.avatar || undefined }
-            : { did, name: did.length > 20 ? `${did.slice(0, 12)}…${did.slice(-4)}` : did };
+            ? { did, name: m.name || m.handle || 'Someone', avatar: m.avatar || undefined }
+            : { did, name: 'Someone' };
         });
       }}
       // A live co-editing session rides the ephemeral port of the space on screen — null in a

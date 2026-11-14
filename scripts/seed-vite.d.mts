@@ -4,6 +4,11 @@ import type { Plugin } from 'vite';
 export function seedPath(): string;
 /** The seed as an app's Vite build sees it. See `seed-vite.mjs`. */
 export function weSeed(): Plugin;
+/** The deployment's app before a session: its first theme and its brand, from the seed's bundles. */
+export function seedBase(
+  seed?: { bundles?: string[]; host?: { ui?: { app?: string } } },
+  bundlesDir?: string,
+): { theme?: { overrides: Record<string, unknown> }; brand?: { name: string; mark?: string } };
 /** Whether a build has developer features: always while serving, in a build only when asked for. */
 export function devFeatures(command: 'serve' | 'build', env?: Record<string, string | undefined>): boolean;
 /** The same registry redirect, for esbuild (tsup). */

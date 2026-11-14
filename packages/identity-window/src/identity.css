@@ -1,13 +1,14 @@
 /*
-  The identity window, in WE's own theme: the token ramps (`@we/tokens`), and the light and dark
-  presets worked out at build time (`vite.js`), following the computer's setting. Static CSS only,
-  so nothing a template or a theme a person installed can reach this window.
+  The identity window, in the app's own theme: the tokens (`@we/tokens`), and the theme the app's
+  screens before a session wear, worked out at build time (`vite.js`) by the rule the app wears it
+  by. Drawn as those screens draw themselves — the mark and name at the top, the heading's size and
+  weight, pill buttons, the theme's rounding — from `--we-*` variables only. Static CSS only, so
+  nothing a template or a theme a person installed can reach this window.
 */
 :root {
-  color-scheme: light dark;
   --page: var(--we-role-page);
   --surface: var(--we-role-surface);
-  --sunken: var(--we-role-surface-sunken);
+  --sunken: var(--we-role-field, var(--we-role-surface-sunken));
   --border: var(--we-role-border);
   --text: var(--we-role-text);
   --muted: var(--we-role-text-muted);
@@ -15,29 +16,46 @@
   --on-accent: var(--we-role-on-accent);
   --danger: var(--we-role-danger);
   --on-danger: var(--we-role-on-danger);
-  --mono: var(--we-font-family-mono, ui-monospace, monospace);
+  --mono: var(--we-font-mono, ui-monospace, monospace);
+  --control-radius: var(--we-theme-control-radius, 999px);
+  --input-radius: var(--we-theme-input-radius, var(--we-border-radius-200, 10px));
+  --surface-radius: var(--we-theme-surface-radius, var(--we-border-radius-300, 16px));
 
-  font-family: var(--we-font-family-base, system-ui, sans-serif);
-  background: var(--page);
+  font-family: var(--we-type-body-family, var(--we-font-family, system-ui, sans-serif));
+  background-color: var(--page);
+
+  /* The theme's own backdrop, as the app's page wears it. */
+  background-image: var(--we-surface-image-page, none);
+  background-attachment: fixed;
   color: var(--text);
 }
 
 body {
   margin: 0;
-  padding: 20px 28px 28px;
+  padding: var(--we-space-500) var(--we-space-600) var(--we-space-600);
 }
 
+/* The app's mark and name, as the screens before a session put them in the top corner. */
 .brand {
   display: flex;
-  gap: 6px;
+  gap: var(--we-space-300);
   align-items: center;
-  font-size: 15px;
+  margin-left: calc(var(--we-space-200) * -1);
+  font-size: var(--we-font-size-300);
+  font-weight: var(--we-font-weight-semibold);
 }
 
 .mark {
-  width: 18px;
-  height: 18px;
-  border-radius: 4px;
+  display: block;
+  width: 28px;
+  height: 28px;
+}
+
+/* No mark of the app's own: WE's hexagon, in the accent. */
+.mark.plain {
+  width: 20px;
+  height: 20px;
+  margin: 4px;
   background: var(--accent);
   clip-path: polygon(50% 0, 100% 25%, 100% 75%, 50% 100%, 0 75%, 0 25%);
 }
@@ -49,19 +67,22 @@ body {
 main {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  margin-top: 28px;
+  gap: var(--we-space-400);
+  margin-top: var(--we-space-500);
 }
 
 h1 {
-  font-size: 26px;
-  letter-spacing: -0.02em;
+  font-family: var(--we-type-heading-family, inherit);
+  font-size: var(--we-font-size-700);
+  font-weight: var(--we-type-heading-weight, var(--we-font-weight-bold));
+  letter-spacing: var(--we-type-heading-letter-spacing, var(--we-letter-spacing-tight));
+  line-height: var(--we-line-height-tight);
   margin: 0;
 }
 
 p {
   margin: 0;
-  line-height: 1.5;
+  line-height: var(--we-line-height-normal);
   color: var(--muted);
 
   /* A DID in a sentence is one long word: let it wrap rather than widen the window. */
@@ -73,7 +94,7 @@ p {
 
   /* `minmax(0, …)`: a column is never widened by its field's intrinsic width, so three always fit. */
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 8px;
+  gap: var(--we-space-200);
 
   /* Not selectable, so a stray select-all and copy cannot put the words on a synced clipboard. */
   user-select: none;
@@ -81,11 +102,11 @@ p {
 
 .word {
   display: flex;
-  gap: 8px;
+  gap: var(--we-space-200);
   align-items: baseline;
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 10px 12px;
+  border: var(--we-border-width, 1px) solid var(--border);
+  border-radius: var(--input-radius);
+  padding: 10px var(--we-space-300);
   background: var(--surface);
 }
 
@@ -93,7 +114,7 @@ p {
 .mono {
   font-family: var(--mono);
   color: var(--muted);
-  font-size: 12px;
+  font-size: var(--we-font-size-100);
 }
 
 .code {
@@ -102,26 +123,26 @@ p {
   letter-spacing: 0.12em;
   text-align: center;
   padding: 18px;
-  border: 1px solid var(--border);
-  border-radius: 16px;
+  border: var(--we-border-width, 1px) solid var(--border);
+  border-radius: var(--surface-radius);
   background: var(--surface);
   color: var(--text);
 }
 
 .note {
-  font-size: 13px;
+  font-size: var(--we-font-size-200);
 }
 
 .error {
   color: var(--danger);
-  font-size: 14px;
+  font-size: var(--we-font-size-200);
 }
 
 label {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  font-size: 14px;
+  font-size: var(--we-font-size-200);
   color: var(--muted);
 }
 
@@ -134,14 +155,24 @@ label.check {
 
 /* `border-box`: a field given a width keeps its padding and border inside it, never past its box. */
 input[type='text'],
-input[type='password'] {
+input[type='password'],
+input[type='url'],
+input[type='number'] {
   box-sizing: border-box;
   font: inherit;
   color: var(--text);
   background: var(--sunken);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 12px;
+  border: var(--we-border-width, 1px) solid var(--border);
+  border-radius: var(--input-radius);
+  min-height: var(--we-component-height-md);
+  padding: 10px 14px;
+}
+
+input[type='text']:hover,
+input[type='password']:hover,
+input[type='url']:hover,
+input[type='number']:hover {
+  background: var(--we-role-field-hover, var(--sunken));
 }
 
 /*
@@ -152,7 +183,7 @@ label.word {
   flex-direction: row;
   align-items: center;
   gap: 6px;
-  padding: 6px 8px;
+  padding: 4px 4px 4px 10px;
 }
 
 /* A word field shrinks with its column rather than keeping the browser's default input width. */
@@ -161,7 +192,9 @@ label.word {
   min-width: 0;
   width: 100%;
   flex: 1;
-  padding: 6px 8px;
+  min-height: var(--we-component-height-sm);
+  padding: 4px 8px;
+  border-radius: calc(var(--input-radius) - 4px);
 }
 
 /* The field the custody service refused: the error colour, in a border that shows without focus. */
@@ -173,24 +206,43 @@ input[aria-invalid='true'] {
 
 .row {
   display: flex;
-  gap: 10px;
+  gap: var(--we-space-300);
   flex-wrap: wrap;
 }
 
+/* The app's buttons: a pill, the accent filled for the step forward and an outline for the others. */
 button {
   font: inherit;
-  border-radius: 999px;
-  padding: 10px 20px;
-  border: 1px solid var(--border);
+  font-weight: var(--we-type-control-weight, var(--we-font-weight-semibold));
+  letter-spacing: var(--we-type-control-letter-spacing, normal);
+  min-height: var(--we-component-height-md);
+  border-radius: var(--control-radius);
+  padding: 0 var(--we-space-500);
+  /* stylelint-disable-next-line custom-property-pattern -- the design system names one variant's token `--we-theme-<component>--<variant>-<key>`. */
+  border: var(--we-theme-button--outline-border-width, 1px) solid var(--we-theme-button--outline-border, var(--muted));
   background: transparent;
   color: var(--text);
   cursor: pointer;
+  transition: background-color var(--we-transition-200, 0.2s);
+}
+
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
 input:focus-visible,
 button:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: var(--we-focus-ring-width, 2px) solid var(--we-role-focus, var(--accent));
   outline-offset: 2px;
+}
+
+label.check input {
+  accent-color: var(--accent);
+}
+
+button:hover:not(:disabled) {
+  background: var(--we-role-surface-hover);
 }
 
 button.primary {
@@ -199,33 +251,38 @@ button.primary {
   border-color: var(--accent);
 }
 
+button.primary:hover:not(:disabled) {
+  background: var(--we-role-accent-hover, var(--accent));
+  border-color: var(--we-role-accent-hover, var(--accent));
+}
+
 button.danger {
   background: var(--danger);
   color: var(--on-danger);
   border-color: var(--danger);
 }
 
-button:disabled {
-  opacity: 0.5;
-  cursor: default;
+button.danger:hover:not(:disabled) {
+  background: var(--we-role-danger-hover, var(--danger));
 }
 
 .link {
   word-break: break-all;
   font-family: var(--mono);
-  font-size: 12px;
-  padding: 10px;
-  border-radius: 10px;
+  font-size: var(--we-font-size-100);
+  padding: 10px 14px;
+  border-radius: var(--input-radius);
   background: var(--sunken);
-  border: 1px solid var(--border);
+  border: var(--we-border-width, 1px) solid var(--border);
 }
 
+/* A QR code reads dark on light whatever the theme, as a camera needs it. */
 .qr {
   width: 200px;
   height: 200px;
   align-self: center;
   background: white;
-  border-radius: 12px;
+  border-radius: var(--surface-radius);
   padding: 8px;
 }
 

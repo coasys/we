@@ -14,6 +14,9 @@
     "test:live": "node --test --test-concurrency=1 --test-timeout=1200000 tests/live/calls.live.mjs",
     "test:spaces": "node --test --test-concurrency=1 --test-timeout=7200000 tests/live/coasys-spaces/all.live.mjs"
   },
+  "exports": {
+    "./platform/*": "./src/platform/*.ts"
+  },
   "dependencies": {
     "@we/app-shell": "workspace:*",
     "@coasys/ad4m": "*",

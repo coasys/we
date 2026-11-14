@@ -30,4 +30,20 @@ describe.each(files)('%s', (file) => {
     });
     expect(judged.refusals).toEqual([]);
   });
+
+  // Before a session there is only `baseStore`: a base naming anything else would draw nothing there.
+  it.skipIf(!read.bundle?.base)('has an app before a session that names nothing past its tier', () => {
+    const { app: _app, templates: _templates, pages: _pages, display: _display, ...rest } = read.bundle!;
+    const judged = judgeBundle(rest, {
+      requiredBy: () => [],
+      hasModule: () => true,
+      moduleInstalled: () => true,
+      moduleName: (id) => id,
+      knownEntities: Object.keys(CORE_MANIFEST.entities),
+    });
+    expect(judged.refusals).toEqual([]);
+    expect(judged.blocked).toEqual([]);
+    const named = JSON.stringify(read.bundle!.base).match(/\b[a-z]+Store\b/g) ?? [];
+    expect([...new Set(named)]).toEqual(['baseStore']);
+  });
 });

@@ -52,6 +52,11 @@ export interface Cartridge {
   brand?: BundleBrand;
   /** Its own sign-in screen, around the host's password field. */
   bootScreen?: SchemaNode;
+  /**
+   * The app before a session (`meta.role: 'base'`): the first run, the connection choice and the
+   * offline state, drawn by the base host against `baseStore` before any backend is connected.
+   */
+  base?: TemplateSchema & { id: string };
   shapes: FixtureShape[];
   /** Modules the host must have. A cartridge names them; it cannot ship one. */
   modules: string[];
@@ -198,6 +203,16 @@ export function toBundle(cartridge: Cartridge, version = '1.0.0'): Bundle {
     display: cartridge.display === 'ours' ? { spaces: 'ours', template: shellId } : { spaces: 'theirs' },
     ...(cartridge.brand ? { brand: cartridge.brand } : {}),
     ...(cartridge.bootScreen ? { bootScreen: cartridge.bootScreen } : {}),
+    // In the app's theme, as the app is: the screens before a session are the same app.
+    ...(cartridge.base
+      ? {
+          base: {
+            ...cartridge.base,
+            id: piece(cartridge.base.id),
+            meta: { ...cartridge.base.meta, themeId: theme.id },
+          },
+        }
+      : {}),
     ...(cartridge.starters?.length ? { starters: cartridge.starters } : {}),
   };
 }

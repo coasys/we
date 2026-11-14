@@ -383,6 +383,7 @@ export function BundleStoreProvider(props: ParentProps) {
       );
     if (judged.adds.brand) adds.push(`Its own name and look: it calls itself “${judged.adds.brand}”`);
     if (judged.adds.bootScreen) adds.push('Its own sign-in screen, around the app’s password field');
+    if (judged.adds.base) adds.push('Its own screens before sign-in, shown only in a build that includes this app');
 
     const recordTypes = judged.adds.recordTypes;
     const previous = installedList().find((entry) => entry.id === bundle.id);

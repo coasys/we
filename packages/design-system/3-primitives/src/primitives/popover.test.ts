@@ -153,3 +153,43 @@ describe('content can say it is done with the popover', () => {
     expect(asked).toHaveLength(1);
   });
 });
+
+describe('Escape closes the nearest popover, and nothing around it', () => {
+  /*
+    The key went on up past the popover it had closed, so what held the popover heard it as its own
+    Escape: a profile menu inside a phone's open menu shut the whole menu along with it.
+  */
+  const opened = async () => {
+    const outer = document.createElement('div');
+    const host = document.createElement('we-popover') as HTMLElement & {
+      updateComplete: Promise<unknown>;
+      open: boolean;
+    };
+    const content = document.createElement('button');
+    content.slot = 'content';
+    host.append(content);
+    outer.append(host);
+    document.body.append(outer);
+    await host.updateComplete;
+    const heard: string[] = [];
+    outer.addEventListener('keydown', (e) => heard.push(e.key));
+    return { host, content, heard };
+  };
+  const escape = () => new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, composed: true });
+
+  it('closes, and keeps the Escape from what holds it', async () => {
+    const { host, content, heard } = await opened();
+    host.open = true;
+    await host.updateComplete;
+    content.dispatchEvent(escape());
+    await host.updateComplete;
+    expect(host.open).toBe(false);
+    expect(heard, 'the Escape that closed the popover reached what held it').toEqual([]);
+  });
+
+  it('lets it pass while closed: then the Escape is for something else', async () => {
+    const { content, heard } = await opened();
+    content.dispatchEvent(escape());
+    expect(heard).toEqual(['Escape']);
+  });
+});

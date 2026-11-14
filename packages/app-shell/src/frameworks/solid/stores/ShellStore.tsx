@@ -1167,6 +1167,9 @@ function savePlacements(placements: Record<string, FloatPlacement>): void {
   if (first) queueMicrotask(flushPlacements);
 }
 
+/** Settings' page for this device: the executor that serves it, and its settings under Advanced. */
+const EXECUTOR_SETTINGS_PATH = '/devices/this';
+
 export function ShellStoreProvider(props: ParentProps) {
   const [activeShellView, setActiveShellView] = createSignal<string | null>(initialShellView());
   const [pendingPath, setPendingPath] = createSignal<string | null>(null);
@@ -1207,17 +1210,27 @@ export function ShellStoreProvider(props: ParentProps) {
     draws its own). So a missing platform reads as "no capability", which is a state this already
     has to handle, rather than as a failure to construct the shell.
   */
-  const screens = (() => {
+  const platform = (() => {
     try {
-      return usePlatform().screenSources;
+      return usePlatform();
     } catch {
       return undefined;
     }
   })();
+  const screens = platform?.screenSources;
   if (screens) {
     const stop = screens.onRequest((sources) => setPendingScreenSources(sources));
     onCleanup(stop);
   }
+  /*
+    The host asks for the executor's settings from outside the window (Electron's tray menu). They
+    are on this device's Settings page, which holds them under Advanced.
+  */
+  const stopExecutorSettings = platform?.executor?.onOpenSettings?.(() => {
+    setPendingPath(EXECUTOR_SETTINGS_PATH);
+    setActiveShellView('settings');
+  });
+  if (stopExecutorSettings) onCleanup(stopExecutorSettings);
 
   /**
    * Answer the outstanding request, and clear the prompt.

@@ -97,6 +97,25 @@ The copies made before the sidecar have no such guarantee, and cannot be given o
   escapes and is borrowed from the line, but a passphrase with a `"` or a `\` in it leaves an
   unescaped copy in that scratch buffer.
 
+## The wallet passphrase (a stopgap until AR-06)
+
+`we-custody wallet-passphrase read|make --data-folder <dir>` answers one line of JSON about the
+executor's wallet passphrase for that data folder, and exits: `{"passphrase": …}`, `{"none": true}`,
+or `{"refused": "locked" | "unavailable", "reason"?: …}`. `make` keeps a new one (32 random bytes, in
+base58) when none is kept. The Electron supervisor uses it to make the executor's main agent on a
+first start, and to unlock it on every start after, with no prompt (`apps/we-electron/electron/mainAgent.js`).
+
+The item is named `coasys.wallet/<canonical data folder>`, one per folder, and kept in the Secret
+Service on Linux (`SecretServiceStore`, so a locked keyring is answered `locked` within the same
+90 s bound) and as a generic password in the login keychain on macOS (service
+`org.coasys.app.wallet`). It is not the data-protection keychain the master key uses: that needs a
+signed build's entitlement and asks for the person at every read. There is no file fallback: the
+passphrase rests unsealed, so only a keyring may keep it. Windows answers `unavailable`.
+
+Slice 3's AR-06 replaces this: the executor's storage is unlocked by a secret of its own
+(`storage.unlock`), and the command and its item go. `tests/wallet.rs` covers it over the in-memory
+store.
+
 ## The identity store
 
 **The network names its identity store, not WE.** The executor's bootstrap seed carries

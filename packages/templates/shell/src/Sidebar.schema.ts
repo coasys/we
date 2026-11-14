@@ -1,5 +1,5 @@
 import type { SchemaNode, SchemaProp } from '@we/schema-shared';
-import { confirmModal, railGroup, railItem, railShell } from '@we/template-kit';
+import { closeWhenCompact, confirmModal, railGroup, railItem, railShell } from '@we/template-kit';
 
 import { brandMark } from './brandMark';
 
@@ -25,6 +25,9 @@ import { brandMark } from './brandMark';
  */
 const COLLAPSED_WIDTH = '80px';
 
+/** The rail's height on a phone while shut — the band `weApp`'s narrow frame declares on top. */
+const PHONE_BAR = '56px';
+
 /**
  * Closing the rail behind a press on a phone, where it was opened by its menu button.
  *
@@ -34,20 +37,18 @@ const COLLAPSED_WIDTH = '80px';
  * than once on the rail, because a press on a group heading folds the group and should leave the
  * rail open to show the fold.
  */
-const closeOnPhone = {
-  $if: { condition: { $: 'shellStore.narrowWindow' }, then: { $setLocal: 'expanded', value: false } },
-};
+const closeOnPhone = closeWhenCompact({ $: 'shellStore.narrowWindow' });
 const andClose = (onClick: SchemaProp): SchemaProp[] => [
   ...(Array.isArray(onClick) ? onClick : [onClick]),
   closeOnPhone,
 ];
 
 /**
- * The rail's top square: WE's mark, which opens the About page — or, on a phone, the menu button.
+ * The rail's top square: WE's mark, which opens the About page — or, on a phone, the menu bar.
  *
- * A phone gets the button because nothing else opens the rail there. The mark gives way rather than
- * sharing the square: an 80px column has room for one control at the top, and the way to the rest
- * of the app outranks the way to About, which is in the rail once it is open in any case.
+ * On a phone the rail is a bar across the top of the window while shut (see `compact` below), and
+ * the mark in it is the switch between the rail and the page, since nothing else opens the rail
+ * there. About is a row in the rail once it is open, so the switch loses nothing.
  */
 const brandSquare: SchemaNode = {
   // No box of its own — `we-tooltip` is `display: contents`, so the Column below is the flex
@@ -71,19 +72,30 @@ const brandSquare: SchemaNode = {
   ],
 };
 
+/** The phone's bar: the mark and a menu glyph as one button called "Menu", the app's name beside it. */
 const menuSquare: SchemaNode = {
-  type: 'Column',
-  props: { width: COLLAPSED_WIDTH, height: '80px', flex: '0 0 auto', ax: 'center', ay: 'center' },
+  type: 'Row',
+  props: { width: '100%', height: PHONE_BAR, flex: '0 0 auto', ay: 'center', gap: '200', px: '300' },
   children: [
     {
       type: 'we-button',
       props: {
         variant: 'ghost',
-        square: true,
-        label: { $: "local.expanded ? 'Close menu' : 'Open menu'" },
+        label: 'Menu',
+        expanded: { $: 'local.expanded' },
+        gap: '200',
+        px: '200',
         onClick: { $toggleLocal: 'expanded' },
       },
-      children: [{ type: 'we-icon', props: { name: { $: "local.expanded ? 'x' : 'list'" } } }],
+      children: [
+        brandMark({ width: '28px', height: '28px', gradient: 'var(--we-gradient-accent)' }),
+        { type: 'we-icon', props: { name: { $: "local.expanded ? 'x' : 'list'" } } },
+      ],
+    },
+    {
+      type: 'we-text',
+      props: { variant: 'body', fontWeight: 'semibold', truncate: true },
+      children: [{ $: 'templateStore.brand.name' }],
     },
   ],
 };
@@ -133,6 +145,7 @@ const rail: SchemaNode = railShell({
     led to — over Settings, whose own nav then left its page a few letters wide.
   */
   compact: { $: 'shellStore.narrowWindow' },
+  compactHeight: PHONE_BAR,
   header: {
     type: '$if',
     props: { condition: { $: 'shellStore.narrowWindow' }, then: menuSquare, else: brandSquare },

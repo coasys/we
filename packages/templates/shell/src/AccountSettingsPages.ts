@@ -121,14 +121,52 @@ const avatar: SchemaNode = {
   },
 };
 
+/*
+  The identifier waits behind Advanced: a person is their name and picture on this page, and the
+  identifier is for whoever needs to paste it somewhere (a developer, a support question).
+*/
+const advancedIdentifier: SchemaNode = {
+  type: 'Column',
+  props: { gap: '300' },
+  $localState: { showAdvanced: { type: 'boolean', initial: false, persist: 'settings.profile.advanced' } },
+  children: [
+    {
+      type: 'Row',
+      props: { gap: '300', ay: 'center', ax: 'between' },
+      children: [
+        {
+          type: 'Column',
+          props: { gap: '100' },
+          children: [
+            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Advanced'] },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-muted' },
+              children: ['Show your identifier so you can copy it.'],
+            },
+          ],
+        },
+        {
+          type: 'we-switch',
+          props: {
+            checked: { $: 'local.showAdvanced' },
+            onChange: { $setLocal: 'showAdvanced', value: { $: 'event.detail' } },
+          },
+        },
+      ],
+    },
+    { type: '$if', props: { condition: { $: 'local.showAdvanced' }, then: identifier } },
+  ],
+};
+
 export const profilePage: SchemaNode = {
   type: 'Column',
   props: { gap: '400' },
   children: [
     heading('Profile', 'What other people see in spaces and on your messages.'),
     { type: 'Row', props: { gap: '400', ay: 'center' }, children: [avatar] },
-    identifier,
     profileEditor,
+    advancedIdentifier,
   ],
 };
 

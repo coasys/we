@@ -25,6 +25,7 @@ data the host already understands.
 | `themes`                                | The same, for an app offering several looks, its default first. A bundle uses one or the other.             |
 | `brand`                                 | `{ name, mark?, wordmark?, about?, aboutPage? }`: what the app calls itself. See "Whitelabelling".          |
 | `bootScreen`                            | A node: the app's own sign-in screen, placing WE's sign-in form or the host's `CredentialField`. See below. |
+| `base`                                  | A template with `meta.role: 'base'`: the app before a session. See "Before a session".                      |
 | `recordTypes`                           | `{ name, icon?, description?, manifest }`, one entity each, as the model wizard writes it.                  |
 | `display`                               | `{ spaces: 'ours' \| 'theirs', template? }` — see "How an app shows spaces".                                |
 | `starters`                              | Space starters, as a seed's `spaceStarters` are: what a space made in the app begins with. See below.       |
@@ -131,6 +132,52 @@ template — with its own router inside, so one page can hold sub-pages at paths
 - A built-in bundle's pages join the registries (`seedBundlePages`); an installed one's are written
   to the library with its other templates and removed with them. `templateStore.bundlePage` finds
   either, and `resolveShellView` asks it first.
+
+## Before a session
+
+An app can also say what a device shows before it has any backend: the first run (make an identity,
+link this device to one, bring one back from the 12 words), a phone joining an identity, the choice
+of where to connect, the offline state, and the identity's devices and security, read only. That is
+the bundle's `base`, a template with `meta.role: 'base'`. The Coasys cartridge's is
+`packages/templates/cartridges/src/coasys/base.ts`.
+
+- **It reads `baseStore` alone.** No other store exists before a session. `judgeBundle` judges the
+  base at the chrome tier, as the app is, and `realBundles.test.ts` fails a checked-in base that names
+  any other store.
+- **It never takes a secret.** Every door that needs one (`makeIdentity`, `linkIdentity`, `useWords`)
+  opens the host's own identity window: the custody service's window on a computer, the phone's
+  identity page on a phone. The base only says how the step ended.
+- **Only a built-in bundle's base is drawn.** An installed bundle is installed into a session, which
+  exists by then. The deployment's app (the first built-in bundle with an app, or `host.ui.app`) gives
+  the base; `deploymentBase` in `app-shell/src/frameworks/solid/base/BaseApp.tsx` finds it.
+
+**The host.** `BaseBoot` (same file) is what a host renders in place of WE's `App`. It takes a
+`BaseHost` (`app-shell/src/shared/platform/baseHost.ts`): what kind of device this is, its identity
+source, its own executor if it runs one, the places it can connect to, and the connector for each. The
+hosts are in `apps/coasys/src/hosts/`:
+
+| Host    | Identity                                      | Executor                                          | Places                                                       |
+| ------- | --------------------------------------------- | ------------------------------------------------- | ------------------------------------------------------------ |
+| Desktop | the custody service (Electron preload, Tauri) | Electron reports its own; Tauri's runs in-process | this computer (the account's servers: listed, not wired yet) |
+| Phone   | the `DeviceKey` plugin (`phoneCustody.ts`)    | none                                              | the executor its key logs in to, then AD4M Connect           |
+| Browser | none: the identity comes with the session     | none                                              | AD4M Connect                                                 |
+
+The desktop's remote servers are bookkeeping only until coasys/we#428: they are listed, but choosing
+one refuses in words (`ServerNotConnectable`), because the desktop's one connector reaches this
+computer's executor with its own admin credential and must never be handed over for another place.
+
+**The hand-off.** When a place is chosen, `BaseBoot` mounts WE's `App` in the same page with the
+host's connector for it. A place that cannot be reached (`BaseHost.isUnreachable`) comes back to the
+base's offline state with "Try again", not to the session's error screen. A deployment whose app has
+no `base` hands off at once to the host's first place, so nothing changes for it.
+
+**With no base.** The host's own `baseFallback` (`@we/template-shell`) still draws the executor's
+failure and the offline state, so those are never a blank page.
+
+`apps/coasys` is the web entry (the browser, and the phone app's WebView). The Electron and Tauri
+entries render the same `BaseBoot` with the desktop host. Electron opens its window before its
+executor is up and reports the executor's state to it (`executor-state`, `executor-start`), so a
+failure to start is a screen with "Try again" rather than a dialog and a quit.
 
 ## Whitelabelling
 

@@ -125,6 +125,15 @@ export interface Bundle {
    */
   bootScreen?: SchemaNode;
   /**
+   * The app before a session (`meta.role: 'base'`): what the deployment draws before any backend is
+   * connected — the first run, the phone joining an identity, the choice of where to connect, the
+   * offline state, and the identity's devices and security read without a session. Drawn by the base
+   * host against `baseStore` alone, at the chrome tier, and only for a bundle the seed builds in: an
+   * installed bundle is installed into a session, which by then exists. Every secret step it starts
+   * opens the host's own identity window; it never collects a word or a key itself.
+   */
+  base?: TemplateSchema & { id: string };
+  /**
    * What a space made while in this app can start with, its first chosen unless somebody changes it —
    * in the shape a seed's `spaceStarters` take. `defaultTemplateId` and `defaultThemeId` may name the
    * bundle's own pieces by their ids here. Only a bundle the seed builds in has its starters offered;
@@ -215,7 +224,7 @@ export function readBundle(
   if (input.author !== undefined && !isObject(input.author)) problem('author', 'author must be an object');
 
   const ids = new Set<string>();
-  const checkTemplate = (value: unknown, path: string, role: 'app' | 'page' | 'any') => {
+  const checkTemplate = (value: unknown, path: string, role: 'app' | 'page' | 'base' | 'any') => {
     if (!isObject(value)) return problem(path, 'Not a template');
     const id = value.id;
     if (typeof id !== 'string' || !ID.test(id))
@@ -226,6 +235,10 @@ export function readBundle(
     if (!isObject(meta)) return problem(`${path}.meta`, 'A template needs meta');
     if (role === 'app' && meta.role !== 'app') problem(`${path}.meta.role`, 'The app must have role "app"');
     if (role === 'page' && meta.role !== 'page') problem(`${path}.meta.role`, 'A page must have role "page"');
+    if (role === 'base' && meta.role !== 'base')
+      problem(`${path}.meta.role`, 'The app before a session must have role "base"');
+    if (role !== 'base' && meta.role === 'base')
+      problem(`${path}.meta.role`, 'The app before a session goes in "base", nowhere else');
     if (role === 'any' && meta.role === 'app')
       problem(`${path}.meta.role`, 'An app goes in "app", not among the templates');
     if (role === 'any' && meta.role === 'page')
@@ -233,6 +246,7 @@ export function readBundle(
   };
 
   if (input.app !== undefined) checkTemplate(input.app, 'app', 'app');
+  if (input.base !== undefined) checkTemplate(input.base, 'base', 'base');
   if (input.templates !== undefined) {
     if (!Array.isArray(input.templates)) problem('templates', 'templates must be a list');
     else input.templates.forEach((template, index) => checkTemplate(template, `templates.${index}`, 'any'));

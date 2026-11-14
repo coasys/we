@@ -17,6 +17,9 @@ const SOLID_TESTS = [
   'tests/runtimeStore.test.tsx',
   'tests/accountStore.test.tsx',
   'tests/identityStore.test.tsx',
+  // The app before a session: memos over a host of fakes, and the hand-off rendering WE's app.
+  'tests/baseStore.test.tsx',
+  'tests/baseBoot.test.tsx',
   'tests/botStore.test.tsx',
   'tests/profileStore.test.tsx',
   // Counts effect re-runs through a real provider. The node project resolves solid-js to its SSR
@@ -42,6 +45,9 @@ const SOLID_TESTS = [
   // Imports the shell's own schemas, which reach Solid modules that refuse to load outside a
   // browser environment. Nothing here renders — the DOM is a condition of the import, not the test.
   'tests/tierFit.test.ts',
+  // Asks `deploymentBase` its answer, which imports the base app's Solid components: the DOM is a
+  // condition of the import, as for tierFit.
+  'tests/seedBase.test.ts',
   // Drives a real signal through a real effect, which is the half of the behaviour a comparator
   // alone cannot show. Nothing renders, but the node project resolves solid-js to its SSR build,
   // where `createEffect` does nothing at all — so the test passes there for the wrong reason.
@@ -60,6 +66,8 @@ const SOLID_TESTS = [
   'tests/homeLaneState.test.tsx',
   // A lane holding any panel: renders the shell store's real reactivity, so the node build would not do.
   'tests/laneSections.test.tsx',
+  // A space's own panel covering its tree on a phone: a lane's styles following the window's width.
+  'tests/spacePanelPhone.test.tsx',
   'tests/edgeLanes.test.tsx',
   'tests/panelInstances.test.tsx',
   // Mounts the chat twice over the issued nonce — only the browser build's effects reach the

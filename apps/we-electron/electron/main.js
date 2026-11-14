@@ -40,8 +40,17 @@ import {
   waitForExecutorReady,
   withoutCustodyCredential,
 } from './executorProcess.js';
+import { LOG_WORDS, startFailureWords, stoppedWords } from './executorWords.js';
 import { createIdentity, IDENTITY_PAGE, IDENTITY_SCHEME, identityFile, isIdentityPage } from './identityWindow.js';
 import { executorSpawnEnv, handleFromWindow, isFromWindow } from './ipcSender.js';
+import {
+  agentPasswordFits,
+  ensureMainAgent,
+  executorRpc,
+  giveAgentPassword,
+  keptMarker,
+  walletKeyring,
+} from './mainAgent.js';
 import {
   allowMediaPermission,
   isExternallyOpenable,
@@ -52,7 +61,7 @@ import {
   trustedOrigins,
 } from './navigationPolicy.js';
 import { setupSeedServers } from './seed-servers.js';
-import { closeHides, createTray, trayHostPresent } from './tray.js';
+import { closeHides, createTray, setTrayMenu, trayHostPresent } from './tray.js';
 
 // Enable right-click context menu with inspect element in dev mode
 contextMenu({
@@ -82,6 +91,70 @@ let switchingAccount = false;
 const executorBackoff = crashBackoff();
 /** The current run's log in the account's data directory (see `executorLog.js`), or null. */
 let executorLog = null;
+
+/*
+  The executor as the window sees it: starting, ready, or failed and why.
+
+  The window opens before the executor is up, and draws the app before a session (the base app)
+  while it starts. A start that fails is a state of that app, with the reason and "Try again"
+  (`executor-start`), rather than an error box and a quit: the person can read why, change what
+  is wrong and try again without starting the app over, and the identity window and Settings'
+  account switch stay in reach.
+
+  `executorUp` is whether a first start has succeeded. Until it has, a start's own exit code is read
+  by the start (`startWithPortRetry` tries another port on exit 80); after it, the exit handler owns
+  every recovery. It used to be "the window exists", which meant the same thing when the window was
+  opened only after the first start.
+*/
+let executorUp = false;
+let executorState = { phase: 'starting' };
+/**
+ * The main agent as last read (`mainAgent.js`): `'unlocked'`, `'locked'` (nothing kept for it, left to
+ * sign-in), `'needs-new-password'` / `'needs-password'` (no keyring to use: the WE password is asked
+ * for, `executor-agent-password`), or null where the supervisor does not make it (no custody). Set by
+ * each start, and read again when the window asks for `executor-state` (`refreshMainAgent`), since
+ * sign-in unlocks a locked one later. Told to the window with `ready`, as `agent`: the identity doors
+ * need it unlocked.
+ */
+let mainAgent = null;
+/** The data folder of the executor `mainAgent` was read from: where its kept passphrase is noted. */
+let mainAgentFolder = null;
+/** The agent states the WE password is asked for in. */
+const ASKS_PASSWORD = new Set(['needs-new-password', 'needs-password']);
+const readyState = () => (mainAgent ? { phase: 'ready', agent: mainAgent } : { phase: 'ready' });
+/** The start running now, so a second "Try again" waits on it rather than starting another. */
+let executorBooting = null;
+
+function setExecutorState(next) {
+  executorState = next;
+  // The tray says how the executor is, and offers what can be done from there.
+  if (tray) setTrayMenu(tray, Menu, trayOptions());
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  mainWindow.webContents.send('executor-state', next);
+}
+
+/** Why a start failed, in words for the window, with no path in them (`executorWords.js`). */
+const startFailure = (err) => startFailureWords(err, { logged: Boolean(executorLog) });
+
+/** Starts the executor and says how it went in `executorState`; never throws. */
+function bootExecutor() {
+  executorBooting ??= (async () => {
+    setExecutorState({ phase: 'starting' });
+    try {
+      // A start that timed out can leave its executor running; a try again starts from nothing.
+      await stopExecutor();
+      await startExecutor();
+      executorUp = true;
+      setExecutorState(readyState());
+    } catch (err) {
+      console.error('[main] The executor did not start:', err);
+      setExecutorState({ phase: 'failed', reason: startFailure(err) });
+    } finally {
+      executorBooting = null;
+    }
+  })();
+  return executorBooting;
+}
 
 /*
   This process's own console goes into the executor log too.
@@ -281,7 +354,7 @@ function findFreePort(startPort, endPort) {
  * executor's last lines as the reason.
  */
 function startExecutor({ samePort = false } = {}) {
-  return startWithPortRetry(startExecutorOnce, { samePort, appUp: () => Boolean(mainWindow) });
+  return startWithPortRetry(startExecutorOnce, { samePort, appUp: () => executorUp });
 }
 
 /** The config file `--config` names, in the account's data folder. See `ensureExecutorConfig`. */
@@ -406,7 +479,7 @@ async function startExecutorOnce({ samePort }) {
         {
           current: executorProcess === proc,
           quitting: executorStoppedForQuit,
-          appUp: Boolean(mainWindow),
+          appUp: executorUp,
           startedAt,
           code,
           signal,
@@ -432,6 +505,13 @@ async function startExecutorOnce({ samePort }) {
       // that reaches here was asked for elsewhere (`runtime.quit`, a signal), and nothing starts it again.
       if (['refused', 'busy', 'give-up', 'done'].includes(outcome.action)) {
         void outputDone().then(() => showExecutorStopped(outcome.action, tail.lines(), configFile, ad4mDataPath));
+        // `stopped`: it was running and stopped, rather than failing to start; the window says so
+        // over whatever it showed, with a button that starts it again.
+        setExecutorState({
+          phase: 'failed',
+          reason: `${stoppedWords(outcome.action)}\n\n${LOG_WORDS}`,
+          stopped: true,
+        });
       }
       // Gone for good: the sidecar would only keep restarting against a dead port.
       if (outcome.action !== 'stopped' && outcome.action !== 'leave') void stopCustody();
@@ -460,6 +540,9 @@ async function startExecutorOnce({ samePort }) {
     }
 
     console.log('AD4M executor ready');
+    mainAgent = null;
+    mainAgentFolder = ad4mDataPath;
+    mainAgent = await ensureMainAgentFor(ad4mPort, ad4mToken, ad4mDataPath);
     startCustodyFor(ad4mPort, custodyToken);
   } catch (error) {
     console.error('Error starting executor:', error);
@@ -490,7 +573,7 @@ function showExecutorStopped(action, lines, configFile, dataPath) {
   const why = action === 'done' ? 'Another program stopped it.' : 'It stopped several times in a row.';
   const detail =
     startRefusal(code, lines, configFile, dataPath) ??
-    `${why} Quit and reopen ${name} to try again.${last}\n\nLog file: ${join(dataPath, 'logs', 'executor-0.log')}`;
+    `${why} Start it again from the window or the tray menu.${last}\n\nLog file: ${join(dataPath, 'logs', 'executor-0.log')}`;
   const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
   void dialog.showMessageBox(parent, { type: 'error', message: `${name} stopped`, detail });
 }
@@ -512,6 +595,118 @@ const custodyBinary = () =>
   app.isPackaged
     ? join(process.resourcesPath, 'we-custody')
     : join(__dirname, '..', '..', '..', 'crates', 'custody', 'target', 'release', 'we-custody');
+
+/** The `we-custody` binary where identity is on, else null: never on Windows, and only if built. */
+const custodyBinaryHere = () => {
+  if (process.platform === 'win32') return null;
+  const binary = custodyBinary();
+  return existsSync(binary) ? binary : null;
+};
+
+/**
+ * Makes the executor's main agent, or unlocks it, with the passphrase this computer's keyring keeps
+ * for `dataPath` (`mainAgent.js`): the identity doors run against it. A stopgap: slice 3's AR-06
+ * (`storage.unlock`) replaces it. Where identity is off there is nothing to make it for, and WE's own
+ * create and sign-in make and unlock it, as they always have: null. Throws, in words for the window,
+ * when the keyring refuses for an agent whose passphrase it keeps, or is there but locked or failing
+ * where there is no agent yet. No keyring at all on a first start is `needs-new-password`; a keyring
+ * that refuses for an agent with nothing kept for it is `needs-password`.
+ */
+async function ensureMainAgentFor(port, token, dataPath) {
+  const binary = custodyBinaryHere();
+  if (!binary) return null;
+  const rpc = executorRpc({ port, token });
+  try {
+    const agent = await ensureMainAgent({
+      call: rpc.call,
+      keyring: walletKeyring({ binary, dataFolder: dataPath }),
+      marker: keptMarker(dataPath),
+    });
+    console.log('[main] The main agent is', agent);
+    return agent;
+  } finally {
+    rpc.close();
+  }
+}
+
+/** How many reads of the main agent `refreshMainAgent` has begun: the newest is the one told. */
+let mainAgentReads = 0;
+
+/**
+ * Reads the main agent again where the executor is ready and the supervisor made it (`mainAgent` set),
+ * and tells the window if it has changed: a WE password's agent is unlocked by sign-in, after the
+ * start. A read that fails, or a start begun meanwhile, leaves the state as it was. Never throws.
+ */
+async function refreshMainAgent() {
+  if (!mainAgent || executorBooting || executorState.phase !== 'ready' || !ad4mPort || !ad4mToken) return;
+  // What it was asked of: an answer from an executor started since is not this one's.
+  const asked = { state: executorState, port: ad4mPort, token: ad4mToken };
+  // Which read this is: two can be in flight (the window asks again while one is), and the older can
+  // answer last. Only the newest is told; an older one answering after it would undo what it found.
+  const read = ++mainAgentReads;
+  const rpc = executorRpc({ port: asked.port, token: asked.token, timeoutMs: 5_000 });
+  let now;
+  try {
+    const status = await rpc.call('agent.status');
+    // Still locked, an agent the WE password is asked for is still asked it: never `locked`.
+    now = status?.isUnlocked ? 'unlocked' : ASKS_PASSWORD.has(mainAgent) ? mainAgent : 'locked';
+  } catch (err) {
+    console.error('[main] Could not read the main agent again:', err?.message);
+    return;
+  } finally {
+    rpc.close();
+  }
+  const same = executorState === asked.state && ad4mPort === asked.port && ad4mToken === asked.token;
+  if (read !== mainAgentReads || !same || executorBooting || !mainAgent || now === mainAgent) return;
+  console.log('[main] The main agent is now', now);
+  mainAgent = now;
+  setExecutorState(readyState());
+}
+
+/**
+ * The WE password, sent by the window's password step where the start answered `needs-new-password` or
+ * `needs-password` (`executor-agent-password`). Answers `'unlocked'` (the window hears `ready` with the
+ * agent unlocked), `'wrong'` (it stays as it was, and the step asks again), `'refused'` (no password is
+ * asked for now, or this is not one) or `'failed'` (the executor could not make or unlock it: the
+ * window hears the start failed, with "Try again").
+ *
+ * The password goes to the executor in this one call and nowhere else: it is not logged, kept, or put
+ * in an argument or the environment of any process.
+ */
+let agentPasswordBusy = false;
+async function takeAgentPassword(password) {
+  // Text, within the ceiling, and a new one over the floor (`agentPasswordFits`): what is not is
+  // refused here, before it is held or sent anywhere.
+  if (!agentPasswordFits(password, mainAgent)) return 'refused';
+  if (agentPasswordBusy || executorBooting || executorState.phase !== 'ready' || !ASKS_PASSWORD.has(mainAgent))
+    return 'refused';
+  agentPasswordBusy = true;
+  const asked = { state: executorState, need: mainAgent };
+  const rpc = executorRpc({ port: ad4mPort, token: ad4mToken });
+  try {
+    const answer = await giveAgentPassword({
+      call: rpc.call,
+      need: asked.need,
+      password,
+      marker: keptMarker(mainAgentFolder),
+    });
+    if (answer === 'unlocked' && executorState === asked.state) {
+      mainAgent = 'unlocked';
+      setExecutorState(readyState());
+    }
+    return answer;
+  } catch (err) {
+    // The executor's own words, which carry no password.
+    console.error('[main] The WE password could not make or unlock the main agent:', err?.message);
+    if (executorState === asked.state) setExecutorState({ phase: 'failed', reason: AGENT_PASSWORD_FAILED });
+    return 'failed';
+  } finally {
+    agentPasswordBusy = false;
+    rpc.close();
+  }
+}
+
+const AGENT_PASSWORD_FAILED = `Something went wrong. Try again.\n\n${LOG_WORDS}`;
 
 /** Starts the sidecar against the executor on `port`, whose custody credential is `credential`. */
 function startCustodyFor(port, credential) {
@@ -1014,6 +1209,54 @@ handle('accounts-apply', () => restartExecutorAndReload());
 handle('executor-restart', () => restartExecutorAndReload());
 
 /**
+ * The executor as the window last heard it: `{ phase: 'starting' | 'ready' | 'failed', reason?, agent? }`.
+ * Ready, its agent is read again first (`agent.status`): WE's sign-in unlocks a locked one after the
+ * start that reported it, and the base app asks again when it is shown, to open its doors then.
+ */
+handle('executor-state', async () => {
+  await refreshMainAgent();
+  return executorState;
+});
+
+/**
+ * The WE password, from the base app's password step, where no keyring could be used: see
+ * `takeAgentPassword`. Only the main window may send it (`handle`).
+ */
+handle('executor-agent-password', (_event, password) => takeAgentPassword(password));
+
+/**
+ * Try again after a start failed. Answers at once; the window hears how it went as `executor-state`.
+ * Only a failed executor is started: one starting or running is left alone, so a second click, or a
+ * page that asks twice, starts nothing. Once the app has been up, the same restart as Settings'.
+ */
+handle('executor-start', () => startExecutorAgain());
+
+/** Start a failed or stopped executor again: the window's "Try again" and the tray's Start. */
+function startExecutorAgain() {
+  if (executorState.phase !== 'failed') return executorState;
+  if (executorUp) void restartExecutorAndReload();
+  else void bootExecutor();
+  return { phase: 'starting' };
+}
+
+/**
+ * Stop the executor, from the tray, until it is started again. Queued behind any restart, and after a
+ * start under way, so it stops what that start made. Stopped first and then said: `stopExecutor`
+ * clears the process before it ends it, so its exit starts nothing again.
+ */
+function stopExecutorByHand() {
+  restartChain = restartChain
+    .catch(() => {})
+    .then(async () => {
+      await executorBooting;
+      if (executorStoppedForQuit || executorState.phase === 'failed') return;
+      await stopExecutor();
+      setExecutorState({ phase: 'failed', reason: stoppedWords('by-hand'), stopped: true });
+    });
+  return restartChain;
+}
+
+/**
  * A path on this machine, for the backend to write to or read from.
  *
  * The executor's export and import take a path on its own filesystem, and it runs here — so this is
@@ -1091,6 +1334,7 @@ function restartExecutorAndReload({ samePort = false, delayMs = 0 } = {}) {
 async function restartExecutorAndReloadOnce({ samePort = false } = {}) {
   switchingAccount = true;
   let started = false;
+  setExecutorState({ phase: 'starting' });
   try {
     await stopExecutor();
     // startExecutor picks up the new path, waits for the executor to be ready, and refreshes
@@ -1098,8 +1342,11 @@ async function restartExecutorAndReloadOnce({ samePort = false } = {}) {
     // credentials.
     await startExecutor({ samePort });
     started = true;
+    executorUp = true;
+    setExecutorState(readyState());
   } catch (err) {
     console.error('[main] Could not start the executor for the selected account:', err);
+    setExecutorState({ phase: 'failed', reason: startFailure(err) });
     // A refused start (78, 79) has already said why in a dialog, from the exit handler.
     // Fall through to the reload anyway: the renderer's boot will surface a connection failure,
     // which is a screen the user can act on. Leaving them on a spinner is not.
@@ -1239,26 +1486,20 @@ app.whenReady().then(async () => {
     delete process.env.WE_EXTERNAL_AD4M_CUSTODY_CREDENTIAL;
     if (custodyToken) startCustodyFor(ad4mPort, custodyToken);
     else console.error('[main] No WE_EXTERNAL_AD4M_CUSTODY_CREDENTIAL — identity is off');
-  } else {
-    try {
-      await startExecutor();
-    } catch (err) {
-      // No window exists yet, so this box is the only way to say the app failed. Before it, the
-      // rejection went unhandled and the app ran on with no window until it was killed.
-      const logLine = executorLog ? `\n\nThe executor's log: ${executorLog.path}` : '';
-      dialog.showErrorBox(
-        'The app could not start',
-        `The AD4M executor it runs on did not start.\n\n${err.message}${logLine}`,
-      );
-      app.quit();
-      return;
-    }
+    executorUp = true;
+    executorState = { phase: 'ready' };
   }
 
-  // Then create the window
+  // The window first: it draws the app before a session (identity, connection choice, settings)
+  // while the executor starts, and says so in the window if it does not (`bootExecutor`).
   installApplicationMenu();
+  // macOS draws the Dock and app-switcher icon from the app bundle, which unpackaged is Electron's
+  // own: a development run shows the deployment's icon only when it is set here. Packaged, the
+  // bundle's icon is the deployment's already.
+  if (process.platform === 'darwin' && !app.isPackaged) app.dock?.setIcon(windowIcon());
   installTray();
   createWindow();
+  if (!executorUp) void bootExecutor();
 
   // macOS: a click on the Dock icon opens the window, hidden or not.
   app.on('activate', () => openMainWindow());
@@ -1370,6 +1611,38 @@ function hideOnClose(window) {
   });
 }
 
+/**
+ * Settings → this device, where the executor's settings are, in the main window. The window holds
+ * the ask until it can open Settings (`onOpenExecutorSettings` in the preload), so one sent while it
+ * loads, or before a session, is not lost.
+ */
+function openExecutorSettings() {
+  openMainWindow();
+  if (!mainWindow || mainWindow.isDestroyed()) return;
+  const contents = mainWindow.webContents;
+  if (contents.isLoading()) contents.once('did-finish-load', () => contents.send('open-executor-settings'));
+  else contents.send('open-executor-settings');
+}
+
+/** What the tray's menu is drawn from: the product's name, the executor's phase, and what to do. */
+function trayOptions() {
+  return {
+    name: app.getName(),
+    phase: executorState.phase,
+    onOpen: openMainWindow,
+    onQuit: () => app.quit(),
+    // An executor this app does not run (`WE_EXTERNAL_AD4M_PORT`) is not this app's to start or stop.
+    executor: process.env.WE_EXTERNAL_AD4M_PORT
+      ? undefined
+      : {
+          start: () => startExecutorAgain(),
+          restart: () => void restartExecutorAndReload(),
+          stop: () => void stopExecutorByHand(),
+          settings: openExecutorSettings,
+        },
+  };
+}
+
 function installTray() {
   if (process.platform === 'linux' && !trayHostPresent()) {
     console.warn(
@@ -1384,8 +1657,6 @@ function installTray() {
       process.platform === 'linux'
         ? windowIcon()
         : nativeImage.createFromPath(windowIcon()).resize({ width: 16, height: 16 }),
-    name: app.getName(),
-    onOpen: openMainWindow,
-    onQuit: () => app.quit(),
+    ...trayOptions(),
   });
 }
