@@ -120,6 +120,10 @@ pub struct PaintCx<'a> {
 pub struct HitLog {
     pub activated: Vec<Rect>,
     pub dead: Vec<Rect>,
+    /// Painted rects of widgets that took keyboard focus this frame — the
+    /// enclosing scroller reads them to bring a Tab-visited control into
+    /// view, the job egui's `ScrollArea` does through `scroll_to_me`.
+    pub gained: Vec<Rect>,
 }
 
 impl<'a> PaintCx<'a> {
@@ -201,6 +205,9 @@ impl<'a> PaintCx<'a> {
             self.hits.dead.push(rect);
         } else if response.clicked() {
             self.hits.activated.push(rect);
+        }
+        if response.gained_focus() {
+            self.hits.gained.push(rect);
         }
         response
     }

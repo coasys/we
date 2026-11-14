@@ -17,6 +17,7 @@ fn snap(name: &str, open: bool, results: &mut SnapshotResults) {
         .with_size(egui::vec2(420.0, 720.0))
         .with_context_setup(|ctx| {
             ctx.set_fonts(egui::FontDefinitions::default());
+            we_egui::install_media(ctx);
             ctx.set_theme(egui::ThemePreference::Dark);
         })
         .build_ui(move |ui| {
@@ -52,6 +53,7 @@ fn widgets_open_modal_sizes_to_content() {
         .with_size(egui::vec2(420.0, 720.0))
         .with_context_setup(|ctx| {
             ctx.set_fonts(egui::FontDefinitions::default());
+            we_egui::install_media(ctx);
             ctx.set_theme(egui::ThemePreference::Dark);
         })
         .build_ui(move |ui| {
@@ -92,6 +94,7 @@ fn widgets_open_backdrop_covers_viewport() {
         .with_size(egui::vec2(420.0, 720.0))
         .with_context_setup(|ctx| {
             ctx.set_fonts(egui::FontDefinitions::default());
+            we_egui::install_media(ctx);
             ctx.set_theme(egui::ThemePreference::Dark);
         })
         .build_ui(move |ui| {

@@ -131,7 +131,8 @@ pub(crate) fn focused_last_frame(cx: &PaintCx, node: &ResolvedNode) -> bool {
 }
 
 /// Store the focused id when this frame's response holds it — the other
-/// half of [`focused_last_frame`].
+/// half of [`focused_last_frame`]. A fresh focus win also logs its rect so
+/// an enclosing scroller can bring a Tab-visited field into view.
 pub(crate) fn remember_focus(cx: &mut PaintCx, node: &ResolvedNode, response: &egui::Response) {
     if response.has_focus() {
         if let Some(fid) = cx.ui.memory(|m| m.focused()) {
@@ -141,6 +142,9 @@ pub(crate) fn remember_focus(cx: &mut PaintCx, node: &ResolvedNode, response: &e
                 we_expr::Value::Str(format!("{:x}", fid.value()).into()),
             );
         }
+    }
+    if response.gained_focus() {
+        cx.hits.gained.push(response.rect);
     }
 }
 

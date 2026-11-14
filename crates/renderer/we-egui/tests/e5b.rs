@@ -1499,3 +1499,175 @@ fn menu_search_filters_and_hidden_stays_out() {
         "non-matching entries filter out"
     );
 }
+
+/// B9 — modal.ts:143–189: the default slot is the only scroll region —
+/// `header`/`footer` slots pin outside it and the sheet caps at
+/// `100dvh - 64px`. A form taller than the cap must scroll to its last
+/// field, not paint past the sheet and the screen.
+#[test]
+fn tall_modal_scrolls_content_and_pins_header_footer() {
+    let mut modal = node(
+        "we-modal",
+        "m",
+        props(&[("open", b(true)), ("title", s("T"))]),
+    );
+    let mut head = node(
+        "we-button",
+        "m/head",
+        props(&[("label", s("Head")), ("height", n(30.0))]),
+    );
+    head.slot = Some("header".into());
+    let mut body = node(
+        "Column",
+        "m/body",
+        props(&[("height", n(600.0)), ("flexShrink", n(0.0))]),
+    );
+    body.children = vec![ResolvedChild::Node(Box::new(node(
+        "we-text",
+        "m/body/deep",
+        props(&[("text", s("deep")), ("height", n(580.0))]),
+    )))];
+    let mut foot = node(
+        "we-button",
+        "m/foot",
+        props(&[("label", s("Foot")), ("height", n(30.0))]),
+    );
+    foot.slot = Some("footer".into());
+    modal.children = vec![
+        ResolvedChild::Node(Box::new(head)),
+        ResolvedChild::Node(Box::new(body)),
+        ResolvedChild::Node(Box::new(foot)),
+    ];
+    let (mut h, r) = rig(modal);
+    h.run();
+    // The footer is pinned inside the capped sheet — reachable, not 600px
+    // down under a clipped content tail.
+    let foot = h.get_by_label("Foot").rect();
+    assert!(
+        foot.max.y <= 400.0,
+        "footer must pin inside the sheet, got {foot:?}"
+    );
+    assert!(h.query_by_label("Head").is_some(), "header still shows");
+    // And the default region really scrolls: a wheel over the sheet moves
+    // its stored offset rather than leaking to the page.
+    let head = h.get_by_label("Head").rect();
+    h.hover_at(egui::pos2(head.center().x, head.max.y + 60.0));
+    h.event(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: egui::vec2(0.0, -40.0),
+        phase: egui::TouchPhase::Move,
+        source: egui::MouseWheelSource::Wheel,
+        modifiers: egui::Modifiers::NONE,
+    });
+    h.run();
+    let y = match r.edit.borrow().field(&NodeId::from("m/~ms"), "_scroll") {
+        Value::Obj(o) => match o.get("y") {
+            Some(Value::Num(n)) => *n,
+            _ => 0.0,
+        },
+        _ => 0.0,
+    };
+    assert!(y > 0.0, "the content region must scroll, got {y}");
+    let foot_after = h.get_by_label("Foot").rect();
+    assert_eq!(
+        foot.min.y, foot_after.min.y,
+        "the footer stays pinned while content scrolls"
+    );
+}
+
+/// B9 — modal.ts:288–297: the chrome close button is drawn unless
+/// `hideclosebutton` — ghost, square, `x`, top-right — and clicking it is
+/// the same `close` the backdrop and Escape invoke.
+#[test]
+fn modal_default_close_button_emits_close() {
+    let mut modal = node(
+        "we-modal",
+        "m",
+        props(&[("open", b(true)), ("title", s("T"))]),
+    );
+    modal.handlers = handlers(&["close"]);
+    let (mut h, r) = rig(modal);
+    h.run();
+    h.get_by_label("Close").click();
+    h.run();
+    assert_eq!(
+        details(&r, "close").len(),
+        1,
+        "the close button must emit `close`"
+    );
+    // `hideclosebutton` takes it away (the confirmation modal owns its
+    // exits).
+    let mut modal2 = node(
+        "we-modal",
+        "m2",
+        props(&[
+            ("open", b(true)),
+            ("title", s("T")),
+            ("hideclosebutton", b(true)),
+        ]),
+    );
+    modal2.handlers = handlers(&["close"]);
+    let (mut h2, _r2) = rig(modal2);
+    h2.run();
+    assert!(
+        h2.query_by_label("Close").is_none(),
+        "hideclosebutton removes the chrome button"
+    );
+}
+
+/// B9 — keyboard parity with the DOM: Tab inside the sheet reaches a field
+/// below the fold, and the scroller brings it into view like the browser's
+/// focus scroll. TS traps focus inside the dialog (OverlayElement.
+/// trapFocus); the traversal half is what's tested here.
+#[test]
+fn modal_tab_focus_scrolls_offscreen_field_into_view() {
+    let mut modal = node(
+        "we-modal",
+        "m",
+        props(&[("open", b(true)), ("title", s("T"))]),
+    );
+    let mut body = node(
+        "Column",
+        "m/body",
+        props(&[("height", n(600.0)), ("flexShrink", n(0.0))]),
+    );
+    body.children = vec![
+        ResolvedChild::Node(Box::new(node(
+            "Column",
+            "m/body/pad",
+            props(&[("height", n(540.0))]),
+        ))),
+        ResolvedChild::Node(Box::new(node(
+            "we-input",
+            "m/body/field",
+            props(&[("label", s("Field")), ("value", s("")), ("height", n(28.0))]),
+        ))),
+    ];
+    modal.children = vec![ResolvedChild::Node(Box::new(body))];
+    let (mut h, r) = rig(modal);
+    h.run();
+    // Walk the focus until the deep field has it — the close button and
+    // any header controls come first in egui's registration order.
+    for _ in 0..6 {
+        if h.query_by_label("Field").is_some_and(|f| f.is_focused()) {
+            break;
+        }
+        h.key_press(egui::Key::Tab);
+        h.run();
+    }
+    let field = h.get_by_label("Field");
+    assert!(field.is_focused(), "Tab must reach the offscreen field");
+    let rect = field.rect();
+    assert!(
+        rect.max.y <= 400.0,
+        "focus must scroll the field into the sheet, got {rect:?}"
+    );
+    let y = match r.edit.borrow().field(&NodeId::from("m/~ms"), "_scroll") {
+        Value::Obj(o) => match o.get("y") {
+            Some(Value::Num(n)) => *n,
+            _ => 0.0,
+        },
+        _ => 0.0,
+    };
+    assert!(y > 0.0, "the scroller must follow focus, got {y}");
+}

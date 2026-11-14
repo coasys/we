@@ -275,6 +275,58 @@ fn deeper_can_scroll(w: &Walk<'_>, node: &ResolvedNode, axis: usize, delta: f32)
     false
 }
 
+/// Bring a focus gain inside `node`'s scroll region into view — the
+/// minimal nudge egui's `ScrollArea::end` applies to `scroll_to_me`
+/// targets (scroll_area.rs:1214): above the viewport scrolls the content
+/// down, below scrolls it up, and a target taller than the viewport wins
+/// its top edge. Only a `gained` rect inside the content's painted extent
+/// counts — a sibling scroller's field is not ours to move.
+fn focus_into_view(w: &mut Walk<'_>, node: &ResolvedNode, rect: egui::Rect) {
+    let axes = w
+        .layout
+        .scroll
+        .get(&node.id)
+        .copied()
+        .unwrap_or(egui::Vec2::ZERO);
+    let content = w
+        .layout
+        .scroll_content
+        .get(&node.id)
+        .copied()
+        .unwrap_or(rect);
+    let mut pos = scroll_pos(w.edit, &node.id);
+    let shown = content.translate(-egui::vec2(pos.x * axes.x, pos.y * axes.y));
+    for d in 0..2 {
+        if axes[d] == 0.0 {
+            continue;
+        }
+        let Some(target) = w
+            .hits
+            .gained
+            .iter()
+            .find(|r| r.min[d] >= shown.min[d] - 0.5 && r.max[d] <= shown.max[d] + 0.5)
+        else {
+            continue;
+        };
+        let (start, end) = (target.min[d], target.max[d]);
+        let (clip_start, clip_end) = (rect.min[d], rect.max[d]);
+        let delta = if start < clip_start && end < clip_end {
+            -(clip_start - start).min(clip_end - end)
+        } else if end > clip_end && start > clip_start {
+            (end - clip_end).min(start - clip_start)
+        } else {
+            0.0
+        };
+        if delta != 0.0 {
+            let max = (content.size()[d] - rect.size()[d]).max(0.0);
+            pos[d] = (pos[d] + delta).clamp(0.0, max);
+        }
+    }
+    if pos != scroll_pos(w.edit, &node.id) {
+        write_scroll(w.edit, &node.id, pos);
+    }
+}
+
 /// Every part rect shifted by `delta` — the scrolled subtree's view.
 fn translated_parts(parts: &Parts, delta: egui::Vec2) -> Parts {
     parts
@@ -411,6 +463,12 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
     w.offset = saved_offset;
     w.clip = saved_clip;
     if w.layout.scroll.contains_key(&node.id) {
+        // Tab-into-view: a control that took focus inside this scroller
+        // must be reachable — the minimal-offset nudge `ScrollArea` gives
+        // a `scroll_to_me` target. Runs after the children painted so
+        // this frame's focus gain is seen; innermost scroller wins the
+        // nested case.
+        focus_into_view(w, node, rect);
         w.parts_buf = if saved_offset == egui::Vec2::ZERO {
             None
         } else {
@@ -577,7 +635,7 @@ fn paint_overlays(w: &mut Walk<'_>) {
 }
 
 /// `node`'s close-ish handler name (`close` or `onClose`), if it declared one.
-fn close_handler(node: &ResolvedNode) -> Option<&'static str> {
+pub(crate) fn close_handler(node: &ResolvedNode) -> Option<&'static str> {
     if node.handlers.contains_key("close") {
         Some("close")
     } else if node.handlers.contains_key("onClose") {
@@ -588,13 +646,16 @@ fn close_handler(node: &ResolvedNode) -> Option<&'static str> {
 }
 
 /// The inner painting an overlay does inside its egui layer: the widget's
-/// second `paint` (marked by an `"overlay"` part rect), then the floating
+/// second `paint` (marked by an `"overlay"` part rect), then the host's
 /// children at the scratch layout's rects, then anything they deferred.
+/// `host` is the synthetic layout root — for the modal it reorders the
+/// floating set into pinned runs and a scroller.
 fn overlay_contents(
     w: &mut Walk<'_>,
     ui: &mut egui::Ui,
     node: &ResolvedNode,
     widget: &Arc<dyn crate::Widget>,
+    host: &ResolvedNode,
     scratch: &Layout,
     content_rect: Rect,
     parent_inh: &Option<Style>,
@@ -646,8 +707,11 @@ fn overlay_contents(
     }
     // Text spans the synthetic host column owns (direct text children of the
     // overlay's floating set) — child-node spans paint inside `paint_node`.
+    // Modal text children slot like nodes do: the default run's spans carry
+    // the scroller's id once it exists; this pass still paints the host's
+    // own (picks the modal had no slot for).
     for span in &scratch.texts {
-        if span.node != node.id {
+        if span.node != host.id {
             continue;
         }
         let text = props::transform_text(&style, &span.text, props::prop_bool(node, "uppercase"));
@@ -661,7 +725,7 @@ fn overlay_contents(
         );
         crate::text::paint_galley(inner.ui.painter(), span.rect.min, g, &style);
     }
-    for child in &node.children {
+    for child in &host.children {
         if let ResolvedChild::Node(n) = child {
             paint_node(&mut inner, n);
         }
@@ -669,9 +733,25 @@ fn overlay_contents(
     paint_overlays(&mut inner);
 }
 
+/// A child a named slot pulls out of the scroll region — modal.ts puts
+/// `header` above the scroller and `footer` below it; `close-button` and
+/// `start-button` pin to the sheet's corners, absolute over everything.
+fn modal_slot(c: &ResolvedChild) -> &str {
+    match c {
+        ResolvedChild::Node(n) => n.slot.as_deref().unwrap_or_default(),
+        ResolvedChild::Text(_) => "",
+    }
+}
+
 /// The `we-modal` path: `egui::Modal` draws the backdrop and centres the
 /// content; its layer blocks input below (egui marks it `top_modal_layer`).
 /// Escape or a backdrop click emits the node's `close`/`onClose`.
+///
+/// modal.ts:143–189: only the default slot scrolls. `header`/`footer`
+/// slot children pin outside the scroller — the DOM puts them in base
+/// before and after `[part=content]` — and the sheet caps at
+/// `100dvh - 64px`, so the cap's room goes to a real `overflowY:auto`
+/// column around the default children rather than clipping their tail.
 fn modal_overlay(
     w: &mut Walk<'_>,
     ctx: &egui::Context,
@@ -683,7 +763,57 @@ fn modal_overlay(
     let screen = ctx.content_rect();
     let width = modal_width(node, screen.width());
     let mcx = MeasureCx::new(ctx);
-    let host = modal_host(node, width, floating, &mcx);
+    let mut head: Vec<ResolvedChild> = Vec::new();
+    let mut body: Vec<ResolvedChild> = Vec::new();
+    let mut foot: Vec<ResolvedChild> = Vec::new();
+    let mut corners: Vec<ResolvedChild> = Vec::new();
+    let hide_close = props::prop_flag(node, "hideclosebutton").unwrap_or(false);
+    for c in floating {
+        match modal_slot(&c) {
+            "header" => head.push(c),
+            "footer" => foot.push(c),
+            "close-button" if hide_close => {
+                // `hideclosebutton` drops the whole close-button-wrapper —
+                // a slotted child has no slot to land in and renders
+                // nothing, same as the DOM.
+            }
+            "close-button" | "start-button" => {
+                // The slot replaces the chrome control its corner owns —
+                // `close-button` children paint where the default ×
+                // would, so modal.rs skips drawing it.
+                let side = if modal_slot(&c) == "close-button" {
+                    ("~mcb", "right")
+                } else {
+                    ("~msb", "left")
+                };
+                corners.push(ResolvedChild::Node(Box::new(ResolvedNode {
+                    id: format!("{}/{}", node.id.as_str(), side.0).into(),
+                    ty: "Column".into(),
+                    props: [
+                        ("position", we_expr::Value::Str("absolute".into())),
+                        ("top", we_expr::Value::Str("10px".into())),
+                        (side.1, we_expr::Value::Str("10px".into())),
+                    ]
+                    .into_iter()
+                    .map(|(k, v)| (k.into(), v))
+                    .collect(),
+                    handlers: Default::default(),
+                    slot: None,
+                    children: vec![c],
+                    transition: None,
+                })));
+            }
+            _ => body.push(c),
+        }
+    }
+    let flow: Vec<ResolvedChild> = head
+        .iter()
+        .cloned()
+        .chain(body.iter().cloned())
+        .chain(foot.iter().cloned())
+        .chain(corners.iter().cloned())
+        .collect();
+    let host = modal_host(node, width, flow, &mcx);
     // Not the page root — the host's `auto` height is the content's, so
     // `sub.size` stays the dialog's real box (a `100vh` floor here made the
     // dialog fill the viewport).
@@ -691,7 +821,53 @@ fn modal_overlay(
     // The dialog is sized by its content: `sub.size` is the padded host
     // column — width, plus `pt` (pad + title strip) + children + `pb`.
     // WE caps it at `maxHeight: calc(100dvh - 64px)`.
-    let content_size = egui::vec2(width, sub.size.y.min(screen.height() - 64.0).max(64.0));
+    let cap = (screen.height() - 64.0).max(64.0);
+    let (host, sub) = if sub.size.y > cap {
+        // Overflow: the default-slot run becomes a real scroll container
+        // (`~ms`) capped at whatever the cap leaves after everything else
+        // — pads, gaps, the header and footer runs — is paid. The wheel
+        // machinery in `paint_node` does the rest. The body's share of the
+        // natural height is the union of its children's rects, min-to-max.
+        let mut top = f32::INFINITY;
+        let mut bot = f32::NEG_INFINITY;
+        for c in &body {
+            if let ResolvedChild::Node(n) = c {
+                if let Some(r) = sub.rects.get(&n.id) {
+                    top = top.min(r.min.y);
+                    bot = bot.max(r.max.y);
+                }
+            }
+        }
+        let body_h = if bot > top { bot - top } else { 0.0 };
+        let scroll_h = (cap - (sub.size.y - body_h)).max(48.0);
+        let scroll = ResolvedNode {
+            id: format!("{}/~ms", node.id.as_str()).into(),
+            ty: "Column".into(),
+            props: [
+                ("height", we_expr::Value::Num(scroll_h as f64)),
+                ("overflowY", we_expr::Value::Str("auto".into())),
+            ]
+            .into_iter()
+            .map(|(k, v)| (k.into(), v))
+            .collect(),
+            handlers: Default::default(),
+            slot: None,
+            children: body,
+            transition: None,
+        };
+        let flow2: Vec<ResolvedChild> = head
+            .into_iter()
+            .chain(std::iter::once(ResolvedChild::Node(Box::new(scroll))))
+            .chain(foot)
+            .chain(corners)
+            .collect();
+        let host2 = modal_host(node, width, flow2, &mcx);
+        let sub2 = crate::layout_shrink(&mcx, w.scx, w.registry, &host2, screen);
+        (host2, sub2)
+    } else {
+        (host, sub)
+    };
+    let content_size = egui::vec2(width, sub.size.y.min(cap));
     let content_rect = Rect::from_center_size(screen.center(), content_size);
     let origin = sub.rects.get(&host.id).map(|r| r.min).unwrap_or_default();
     let scratch = translate_layout(&sub, content_rect.min - origin);
@@ -699,7 +875,16 @@ fn modal_overlay(
     let resp =
         egui::Modal::new(w.ui.scope_id().with((node.id.as_str(), "modal"))).show(ctx, |ui| {
             ui.set_min_size(content_size);
-            overlay_contents(w, ui, node, &widget, &scratch, content_rect, &parent_inh);
+            overlay_contents(
+                w,
+                ui,
+                node,
+                &widget,
+                &host,
+                &scratch,
+                content_rect,
+                &parent_inh,
+            );
         });
 
     if resp.backdrop_response.clicked()
@@ -751,7 +936,16 @@ fn anchored_overlay(
         let content_rect = Rect::from_min_size(ui.min_rect().min, size);
         let origin = sub.rects.get(&host.id).map(|r| r.min).unwrap_or_default();
         let scratch = translate_layout(&sub, content_rect.min - origin);
-        overlay_contents(w, ui, node, &widget, &scratch, content_rect, &parent_inh);
+        overlay_contents(
+            w,
+            ui,
+            node,
+            &widget,
+            &host,
+            &scratch,
+            content_rect,
+            &parent_inh,
+        );
     });
 
     // Internal open state lives in EditState — the prop-less popovers and
