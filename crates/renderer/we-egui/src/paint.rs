@@ -496,6 +496,12 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
     // exactly its own subtree's (the DOM scrolls a focused element's
     // scroll ancestors, not whatever box shares its coordinates).
     let gained_from = w.hits.gained.len();
+    // Likewise the controls and activations logged from here on are this
+    // node's own subtree — an overlay's trigger and a tooltip's slotted
+    // control are found by DOM ownership, never by "painted inside the
+    // anchor" (an overlapping sibling is not on the trigger's path).
+    let interact_from = w.hits.interact.len();
+    let activated_from = w.hits.activated.len();
     let extra = widget.synthesized_children(node);
     for child in node.children.iter().chain(extra.iter()) {
         match child {
@@ -568,28 +574,31 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
                     && pos.is_some_and(|p| w.clip.is_none_or(|c| c.contains(p)))
                     && w.ui.ctx().rect_contains_pointer(w.ui.layer_id(), anchor)
                     && !dead_hit;
-            let activated = w
-                .hits
-                .activated
-                .iter()
-                .find(|(r, _)| anchor.contains(r.center()));
+            // The node's in-flow subtree IS its trigger — floating
+            // children paint later, on the overlay layer.
+            let activated = w.hits.activated[activated_from..].last().copied();
             if activated.is_some() || pointer_hit {
                 // Name the invoker so a later close hands focus back to
                 // it — the DOM popover's "previously focused element".
-                // A bare pointer hit lands on the last control painted
-                // inside the anchor (the button in a padded wrapper).
-                if let Some(id) = activated.map(|(_, id)| *id).or_else(|| {
-                    w.hits
-                        .interact
-                        .iter()
-                        .rev()
-                        .find(|(r, _)| anchor.contains(r.center()))
-                        .map(|(_, id)| *id)
-                }) {
+                // A bare pointer hit lands on the last control the
+                // trigger subtree painted (the button in a padded wrapper).
+                if let Some(id) = activated
+                    .map(|(_, id)| id)
+                    .or_else(|| w.hits.interact[interact_from..].last().map(|(_, id)| *id))
+                {
                     w.edit.triggers.insert(node.id.clone(), id);
                 }
                 let open = w.edit.is_open(&node.id);
                 w.edit.set_open(&node.id, !open);
+            }
+            // A never-activated (controlled) open still names an invoker
+            // for focus return: the last control the trigger subtree
+            // painted — the button in a padded wrapper, never an
+            // overlapping sibling's.
+            if !w.edit.triggers.contains_key(&node.id) {
+                if let Some((_, id)) = w.hits.interact[interact_from..].last() {
+                    w.edit.triggers.insert(node.id.clone(), *id);
+                }
             }
         }
     }
@@ -608,20 +617,15 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
             .copied();
         if let Some(anchor) = anchor {
             let hovered = w.ui.rect_contains_pointer(anchor);
-            let focused = w.hits.interact.iter().any(|(r, id)| {
-                anchor.contains(r.center()) && w.ui.ctx().memory(|m| m.focused() == Some(*id))
-            });
+            let focused = w.hits.interact[interact_from..]
+                .iter()
+                .any(|(_, id)| w.ui.ctx().memory(|m| m.focused() == Some(*id)));
             let controlled = node.props.get("open").is_some_and(|v| !v.is_undefined());
             if !controlled {
                 w.edit.set_open(&node.id, hovered || focused);
             }
             let desc = widget.trigger_text(node);
-            for (_, id) in w
-                .hits
-                .interact
-                .iter()
-                .filter(|(r, _)| anchor.contains(r.center()))
-            {
+            for (_, id) in &w.hits.interact[interact_from..] {
                 w.ui.ctx().accesskit_node_builder(*id, |n| {
                     if desc.is_empty() {
                         n.clear_description();
@@ -1415,19 +1419,6 @@ fn anchored_overlay(
         w.edit
             .popup_layers
             .insert(node.id.clone(), resp.response.layer_id);
-        // A never-activated (controlled) open still names an invoker for
-        // focus return: the last interactable painted inside the anchor —
-        // the button in a padded wrapper, not the wrapper's own rect.
-        if let Some(id) = w.edit.triggers.get(&node.id).copied().or_else(|| {
-            w.hits
-                .interact
-                .iter()
-                .rev()
-                .find(|(r, _)| anchor.contains(r.center()))
-                .map(|(_, id)| *id)
-        }) {
-            w.edit.triggers.insert(node.id.clone(), id);
-        }
         w.frame.borrow_mut().insert(
             at,
             FrameOverlay {

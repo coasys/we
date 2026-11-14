@@ -1116,6 +1116,78 @@ fn tooltip_describes_the_trigger_control() {
     );
 }
 
+/// R4 — the tooltip's trigger is its own subtree, not whatever painted
+/// inside its box. An earlier-painted sibling control sits under the
+/// tooltip (the tooltip is positioned over it), so the sibling's centre
+/// is inside the trigger anchor: focusing the sibling must not open the
+/// tooltip, and the sibling must not take the tooltip's text as its
+/// description — it is not on the tooltip's DOM path.
+#[test]
+fn tooltip_ignores_an_overlapping_sibling_control() {
+    let mut col = node("Column", "r", &[("position", s("relative"))]);
+    child(
+        &mut col,
+        node(
+            "we-button",
+            "r/under",
+            &[
+                ("text", s("underneath")),
+                ("width", Value::Num(160.0)),
+                ("height", Value::Num(40.0)),
+            ],
+        ),
+    );
+    let mut tip = node(
+        "we-tooltip",
+        "t",
+        &[
+            ("content", s("the tip text")),
+            ("position", s("absolute")),
+            ("top", Value::Num(0.0)),
+            ("left", Value::Num(0.0)),
+        ],
+    );
+    child(
+        &mut tip,
+        node(
+            "we-button",
+            "t/b",
+            &[
+                ("text", s("hover me")),
+                ("width", Value::Num(160.0)),
+                ("height", Value::Num(40.0)),
+            ],
+        ),
+    );
+    child(&mut col, tip);
+    paint_rig(col, |harness, lay, edit| {
+        let under = lay.rects.get(&NodeId::from("r/under")).copied().unwrap();
+        let trig = lay.rects.get(&NodeId::from("t/b")).copied().unwrap();
+        assert!(
+            trig.contains(under.center()),
+            "fixture: the sibling's centre lies inside the trigger ({under:?} in {trig:?})"
+        );
+        harness.get_by_label("underneath").focus();
+        harness.run();
+        assert!(
+            harness.get_by_label("underneath").is_focused(),
+            "fixture: the sibling holds focus"
+        );
+        assert!(
+            !edit.borrow().as_ref().unwrap().is_open(&NodeId::from("t")),
+            "focus on an unrelated control must not open the tooltip"
+        );
+        let under = harness.get_by_label("underneath").accesskit_node();
+        assert_eq!(
+            under.description().as_deref(),
+            None,
+            "the sibling must not carry the tooltip's description"
+        );
+        let trigger = harness.get_by_label("hover me").accesskit_node();
+        assert_eq!(trigger.description().as_deref(), Some("the tip text"));
+    });
+}
+
 // ---------- A4: custom scroll offsets -----------------------------------
 
 /// The stored `_scroll` scratch y-offset for `id`.
