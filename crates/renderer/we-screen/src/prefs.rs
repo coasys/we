@@ -127,6 +127,9 @@ impl FilePrefs {
             .map(|(k, v)| (k.clone(), serde_json::Value::String(v.clone())))
             .collect();
         if let Ok(text) = serde_json::to_string(&serde_json::Value::Object(obj)) {
+            if let Some(parent) = self.path.parent() {
+                let _ = std::fs::create_dir_all(parent);
+            }
             let _ = std::fs::write(&self.path, text);
         }
     }
