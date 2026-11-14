@@ -16,10 +16,10 @@ describe('keyLogRows', () => {
     const rows = keyLogRows(events, 'd1');
     expect(rows.map((r) => [r.position, r.title, r.detail])).toEqual([
       ['#4', 'Scope', ''],
-      ['#3', 'Replaced the master key', 'with your 12 words'],
+      ['#3', 'Replaced the master key', 'with your recovery phrase'],
       ['#2', 'Revoked d2', 'd2'],
       ['#1', 'Added d2', 'd2'],
-      ['#0', 'Created your identity', 'with d1 · This computer'],
+      ['#0', 'Created identity', 'with d1 · This computer'],
     ]);
     expect(rows.find((r) => r.seq === 0)!.thisComputer).toBe(true);
     expect(rows.find((r) => r.seq === 1)!.thisComputer).toBe(false);
@@ -28,7 +28,7 @@ describe('keyLogRows', () => {
 
   it('names this computer and every other key by its id', () => {
     const rows = keyLogRows(events.slice(0, 3), 'd2');
-    expect(rows.map((r) => r.title)).toEqual(['Revoked This computer', 'Added This computer', 'Created your identity']);
+    expect(rows.map((r) => r.title)).toEqual(['Revoked this computer', 'Added this computer', 'Created identity']);
     expect(rows[2].detail).toBe('with d1');
   });
 });
@@ -41,9 +41,9 @@ describe('deviceRows', () => {
       { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, revokedSeq: null },
     ]);
     expect(rows.map((r) => [r.keyId, r.label, r.status, r.canRevoke])).toEqual([
-      ['d1', 'This computer', 'Valid', false],
-      ['d3', 'Device d3', 'Valid', true],
-      ['d2', 'Device d2', 'Revoked at #2', false],
+      ['d1', 'This computer', 'Active', false],
+      ['d3', 'Device d3', 'Active', true],
+      ['d2', 'Device d2', 'Removed at #2', false],
     ]);
     expect(rows[1].subtitle).toBe('d3 · added at #3');
     expect(rows.map((r) => r.icon)).toEqual(['laptop', 'key', 'key']);
