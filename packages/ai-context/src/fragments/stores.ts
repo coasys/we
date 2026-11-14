@@ -2238,7 +2238,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       canRestore:
         'boolean — "Restore with recovery phrase" can be offered: this computer can take the words and speaks for no identity yet. Offer it beside "Show code"',
       canRemoveMaster:
-        'boolean — this computer keeps the master key: on log out, offer "Also remove my master key from this computer"',
+        'boolean — this computer keeps the master key: on log out, ask "Remove master key from this computer?"',
       masterWaiting: 'boolean — a master key another device sent waits here: offer "Accept master key"',
       requests:
         "{ id, kind, title, detail }[] — what the person's other devices asked and is waiting for an answer, while this computer keeps the master key; empty otherwise. `kind` is 'send-master' or 'confirm-revoke'; `title` names the device that asked ('Laptop asks for the master key')",
@@ -2259,7 +2259,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         '(id: string): answers that request of another device, once the person says yes where the master key is kept (send the master key, or revoke the devices it names)',
       rename: '(keyId: string): names that device, in the private record only the identity’s devices read',
       revoke:
-        '(keyId: string): revokes that device key, once the person confirms it where the master key is kept; the confirmation offers "Also replace my master key" (ticked when the device kept a copy), which asks for the 12 words. Resolves with the outcome',
+        '(keyId: string): revokes that device key, once the person confirms it where the master key is kept; the confirmation offers "Also replace master key" (ticked when the device kept a copy), which asks for the 12 words. Resolves with the outcome',
       replaceMaster:
         '(): "Replace master key" — asks for the 12 words where the custody service runs and publishes the next master key, which this computer keeps; every copy kept until now stops counting. Resolves with the outcome',
       restore:
