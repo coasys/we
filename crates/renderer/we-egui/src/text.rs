@@ -479,8 +479,15 @@ impl Widget for Link {
             .unwrap_or("")
             .to_string();
         let disabled = props::prop_bool(node, "disabled");
-        let response =
-            cx.interact_label(rect, &label, egui::Role::Link, &node.id, "link", !disabled);
+        let response = cx.interact_label(
+            rect,
+            &label,
+            egui::Role::Link,
+            &node.id,
+            "link",
+            !disabled,
+            None,
+        );
         let eff = props::state_style(style, &response, disabled);
         if !disabled && response.clicked() {
             cx.emit(

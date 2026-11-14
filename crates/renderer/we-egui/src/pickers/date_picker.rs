@@ -100,8 +100,15 @@ impl Widget for DatePicker {
         let label = access_label(cx, node);
         let visuals = cx.ui.visuals().clone();
 
-        let response =
-            cx.interact_label(rect, &label, egui::Role::ComboBox, &node.id, "date", true);
+        let response = cx.interact_label(
+            rect,
+            &label,
+            egui::Role::ComboBox,
+            &node.id,
+            "date",
+            true,
+            None,
+        );
         cx.ui
             .painter()
             .rect_filled(rect, 4.0, visuals.widgets.inactive.bg_fill);

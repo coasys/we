@@ -113,8 +113,15 @@ impl Widget for IconPicker {
         let label = access_label(cx, node);
         let visuals = cx.ui.visuals().clone();
 
-        let response =
-            cx.interact_label(rect, &label, egui::Role::ComboBox, &node.id, "icon", true);
+        let response = cx.interact_label(
+            rect,
+            &label,
+            egui::Role::ComboBox,
+            &node.id,
+            "icon",
+            true,
+            None,
+        );
         cx.ui
             .painter()
             .rect_filled(rect, 4.0, visuals.widgets.inactive.bg_fill);

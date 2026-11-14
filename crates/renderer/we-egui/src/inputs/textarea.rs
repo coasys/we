@@ -95,7 +95,7 @@ impl Widget for Textarea {
         let response = cx.ui.put(rect, widget);
         remember_focus(cx, node, &response);
         response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::Role::TextInput, true, access_label(cx, node))
+            egui::WidgetInfo::labeled(egui::Role::TextInput, !disabled, access_label(cx, node))
         });
 
         if response.changed() {

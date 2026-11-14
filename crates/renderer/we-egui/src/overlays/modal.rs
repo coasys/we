@@ -66,7 +66,15 @@ impl Modal {
             egui::pos2(content.max.x - 10.0 - side, content.min.y + 10.0),
             egui::vec2(side, side),
         );
-        let resp = cx.interact_label(r, "Close", egui::Role::Button, &node.id, "close", true);
+        let resp = cx.interact_label(
+            r,
+            "Close",
+            egui::Role::Button,
+            &node.id,
+            "close",
+            true,
+            None,
+        );
         if resp.hovered() {
             cx.ui
                 .painter()

@@ -181,9 +181,10 @@ impl<'a> PaintCx<'a> {
     /// A clickable, labeled region — the tree-item row, a button. Returns the
     /// [`egui::Response`] so the caller decides what a click emits. The
     /// AccessKit node gets `role`, `enabled` and `text`, so `get_by_label`
-    /// finds it. A disabled region senses hover only: it still shows its
-    /// state, can't report `clicked()`, and logs itself as dead surface so
-    /// a pointer click on it can't activate an overlay's trigger beneath.
+    /// finds it; `selected` reports a checkbox/switch's toggled state.
+    /// A disabled region senses hover only: it still shows its state,
+    /// can't report `clicked()`, and logs itself as dead surface so a
+    /// pointer click on it can't activate an overlay's trigger beneath.
     pub fn interact_label(
         &mut self,
         rect: Rect,
@@ -192,6 +193,7 @@ impl<'a> PaintCx<'a> {
         node: &NodeId,
         part: &str,
         enabled: bool,
+        selected: Option<bool>,
     ) -> egui::Response {
         let id = self.ui.scope_id().with(("we-click", node.as_str(), part));
         let sense = if enabled {
@@ -200,7 +202,10 @@ impl<'a> PaintCx<'a> {
             egui::Sense::hover()
         };
         let response = self.ui.interact(rect, id, sense);
-        response.widget_info(|| egui::WidgetInfo::labeled(role, enabled, text.to_string()));
+        response.widget_info(|| match selected {
+            Some(sel) => egui::WidgetInfo::selected(role, enabled, sel, text.to_string()),
+            None => egui::WidgetInfo::labeled(role, enabled, text.to_string()),
+        });
         if !enabled {
             self.hits.dead.push(rect);
         } else if response.clicked() {

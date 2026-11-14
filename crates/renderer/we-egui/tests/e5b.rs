@@ -6,7 +6,10 @@ use std::cell::RefCell;
 use std::rc::Rc;
 use std::sync::Arc;
 
-use egui_kittest::{kittest::Queryable, Harness};
+use egui_kittest::{
+    kittest::{NodeT as _, Queryable},
+    Harness,
+};
 use indexmap::IndexMap;
 use we_egui::{layout, paint, EditState, MeasureCx, Registry, StyleCx, WidgetEvent};
 use we_expr::Value;
@@ -656,6 +659,107 @@ fn switch_pill_stays_inside_the_column() {
     assert!(
         sw_rect.min.x >= col_rect.min.x && sw_rect.max.x <= col_rect.max.x,
         "pill {sw_rect:?} must lie inside the column {col_rect:?}"
+    );
+}
+
+/// B11 — a switch is a checkbox to assistive tech: its AccessKit node
+/// must carry the `toggled` state, not just a label.
+#[test]
+fn switch_a11y_reports_checked_state() {
+    let on = node(
+        "we-switch",
+        "sw/on",
+        props(&[("label", s("On")), ("checked", b(true))]),
+    );
+    let off = node(
+        "we-switch",
+        "sw/off",
+        props(&[("label", s("Off")), ("checked", b(false))]),
+    );
+    let mut col = node("Column", "col", props(&[]));
+    col.children = vec![
+        ResolvedChild::Node(Box::new(on)),
+        ResolvedChild::Node(Box::new(off)),
+    ];
+    let (mut h, _r) = rig(col);
+    h.run();
+    assert_eq!(
+        h.get_by_label("On").accesskit_node().toggled(),
+        Some(egui::accesskit::Toggled::True),
+        "checked switch must report toggled=true"
+    );
+    assert_eq!(
+        h.get_by_label("Off").accesskit_node().toggled(),
+        Some(egui::accesskit::Toggled::False),
+        "unchecked switch must report toggled=false"
+    );
+}
+
+/// B11 — disabled controls must describe themselves as disabled to
+/// assistive tech, not enabled.
+#[test]
+fn disabled_controls_report_disabled_state() {
+    let mut sw = node(
+        "we-switch",
+        "d/sw",
+        props(&[
+            ("label", s("Disabled switch")),
+            ("checked", b(true)),
+            ("disabled", b(true)),
+        ]),
+    );
+    sw.handlers = handlers(&["onChange"]);
+    let mut inp = node(
+        "we-input",
+        "d/in",
+        props(&[("label", s("Disabled input")), ("disabled", b(true))]),
+    );
+    inp.handlers = handlers(&["onInput"]);
+    let mut sel = node(
+        "we-select",
+        "d/sel",
+        props(&[("label", s("Disabled select")), ("disabled", b(true))]),
+    );
+    sel.children = vec![];
+    let mut col = node("Column", "col", props(&[]));
+    col.children = vec![
+        ResolvedChild::Node(Box::new(sw)),
+        ResolvedChild::Node(Box::new(inp)),
+        ResolvedChild::Node(Box::new(sel)),
+    ];
+    let (mut h, _r) = rig(col);
+    h.run();
+    for label in ["Disabled switch", "Disabled input", "Disabled select"] {
+        assert!(
+            h.get_by_label(label).accesskit_node().is_disabled(),
+            "{label} must report disabled to a11y"
+        );
+    }
+}
+
+/// B11 — the control's own authored label names it, not an ancestor
+/// `we-form-field`'s. The inherited label is a fallback for an unlabeled
+/// control.
+#[test]
+fn control_label_beats_form_field_label() {
+    let mut field = node("we-form-field", "ff", props(&[("label", s("Email"))]));
+    let mut inp = node(
+        "we-input",
+        "ff/in",
+        props(&[("label", s("Direct")), ("value", s(""))]),
+    );
+    inp.handlers = handlers(&["onInput"]);
+    field.children = vec![ResolvedChild::Node(Box::new(inp))];
+    let (mut h, _r) = rig(field);
+    h.run();
+    let inputs: Vec<_> = h
+        .get_all_by_role(egui::accesskit::Role::TextInput)
+        .collect();
+    assert_eq!(inputs.len(), 1);
+    assert_eq!(
+        inputs[0].accesskit_node().label().as_deref(),
+        Some("Direct"),
+        "the control's own label wins over the field's"
     );
 }
 

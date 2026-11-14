@@ -180,10 +180,20 @@ pub(crate) fn consume_readonly_edits(cx: &PaintCx, multiline: bool) {
     });
 }
 
-/// The AccessKit label a `we-form-field` parent asked us to carry, else the
-/// node's own `label`/`placeholder`.
+/// The AccessKit label: the node's own `label`/`placeholder` first — an
+/// explicit name beats inheritance like the DOM's `aria-label` — then the
+/// `we-form-field` ancestor that slotted it (nearest first).
 pub(crate) fn access_label(cx: &PaintCx, node: &ResolvedNode) -> String {
-    // A `we-form-field` ancestor names us — nearest first.
+    if let we_expr::Value::Str(s) = cx.edit.field(&node.id, "aria_label") {
+        if !s.is_empty() {
+            return s.to_string();
+        }
+    }
+    if let Some(l) =
+        props::prop_string(node, "label").or_else(|| props::prop_string(node, "placeholder"))
+    {
+        return l;
+    }
     for owner in cx.ancestors().iter().rev() {
         if let we_expr::Value::Str(s) = cx.edit.field(owner, "aria_label") {
             if !s.is_empty() {
@@ -191,12 +201,5 @@ pub(crate) fn access_label(cx: &PaintCx, node: &ResolvedNode) -> String {
             }
         }
     }
-    if let we_expr::Value::Str(s) = cx.edit.field(&node.id, "aria_label") {
-        if !s.is_empty() {
-            return s.to_string();
-        }
-    }
-    props::prop_string(node, "label")
-        .or_else(|| props::prop_string(node, "placeholder"))
-        .unwrap_or_else(|| node.ty.to_string())
+    node.ty.to_string()
 }

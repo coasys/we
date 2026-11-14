@@ -63,6 +63,7 @@ impl Widget for NumberInput {
             &node.id,
             "minus",
             true,
+            None,
         );
         let plus_r = cx.interact_label(
             plus,
@@ -71,6 +72,7 @@ impl Widget for NumberInput {
             &node.id,
             "plus",
             true,
+            None,
         );
         let visuals = cx.ui.visuals().clone();
         for (r, glyph) in [(minus, "-"), (plus, "+")] {
@@ -99,7 +101,8 @@ impl Widget for NumberInput {
                 .align(egui::Align2::CENTER_CENTER)
                 .interactive(!disabled),
         );
-        response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, &label));
+        response
+            .widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, !disabled, &label));
         if response.changed() {
             cx.edit
                 .set_draft(&node.id, &text, props::prop(node, "value"));

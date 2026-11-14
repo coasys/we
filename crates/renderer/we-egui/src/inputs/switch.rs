@@ -42,6 +42,7 @@ impl Widget for Switch {
             &node.id,
             "switch",
             !disabled(node),
+            Some(on),
         );
 
         let visuals = cx.ui.visuals().clone();

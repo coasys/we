@@ -572,6 +572,7 @@ impl Widget for Avatar {
                 &node.id,
                 "avatar",
                 true,
+                None,
             );
             if resp.clicked() {
                 cx.emit(&node.id, "onClick", props::detail([]));
