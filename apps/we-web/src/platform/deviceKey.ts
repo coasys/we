@@ -181,6 +181,64 @@ export type LinkStep =
   | { step: 'claimed'; code: string; hint: string | null; canKeepMaster: boolean }
   | { step: 'linked'; keyId: string; seq: number; masterSent: boolean; note: string | null };
 
+/** One device of the identity a restore's words make: ticked to lock out when it may be lost. */
+export interface RestoreDeviceView {
+  keyId: string;
+  /** The record's name; `null` when the record does not name it or could not be read. */
+  name: string | null;
+  /** `phone-app`, `desktop-app`, …; `null` when the record does not say. */
+  kind: string | null;
+  lockOut: boolean;
+}
+
+/**
+ * What a make, restore or replace shows next (`IdentityStepsJson.kt`, from `PhoneScreen` in
+ * `crates/phone-custody/src/steps.rs`). `show-words` carries the 12 new words: the page shows them
+ * with the window secure and keeps no copy past the screen.
+ */
+export type IdentityScreen =
+  | { screen: 'show-words'; words: string[] }
+  /** Two of the words asked back, at `positions` (from 1); `error` when the last answer did not match. */
+  | { screen: 'confirm-words'; positions: [number, number]; error: string | null }
+  /** The words are confirmed: the person names this phone. */
+  | { screen: 'name-device' }
+  /** Type the 12 words; a refused word is named by its place only (`position`, from 1). */
+  | { screen: 'enter-words'; purpose: 'restore' | 'replace'; error: string | null; position: number | null }
+  | { screen: 'restore-devices'; did: string; devices: RestoreDeviceView[]; note: string | null }
+  /** Made and published: this phone is `keyId` in the log and keeps master #0. The make's last screen. */
+  | { screen: 'identity-ready'; did: string; keyId: string; note: string | null }
+  /** The make stopped before it was published. `pending`: the phone keeps master #0 and the identity. */
+  | { screen: 'make-stopped'; did: string | null; reason: string; pending: boolean }
+  /** The restore's last screen. */
+  | { screen: 'restored'; did: string; name: string; keyId: string; revoked: string[]; note: string | null }
+  /** The restore's rotation is published and this phone is not in the log yet. */
+  | { screen: 'restore-not-linked'; did: string; revoked: string[]; reason: string }
+  /** The replace's last screen: this phone keeps master `index`. */
+  | { screen: 'master-replaced'; index: number; revoked: string[]; note: string | null }
+  /** Master `index` is current and this phone could not keep it. */
+  | { screen: 'master-not-kept'; index: number; revoked: string[]; reason: string; note: string | null };
+
+/** The person's answer to an {@link IdentityScreen}. */
+export type IdentityInput =
+  | { input: 'words-written' }
+  | { input: 'confirm-words'; first: string; second: string }
+  | { input: 'name-device'; name?: string }
+  | { input: 'twelve-words'; words: string }
+  | { input: 'lock-out'; keyIds: string[]; name?: string }
+  /** To `make-stopped`, `restore-not-linked` and `master-not-kept`. */
+  | { input: 'try-again' };
+
+/** A flow's screen, and whether the flow is over (its last screen, or one it ended on). */
+export interface IdentityFlowStep {
+  screen: IdentityScreen;
+  ended: boolean;
+}
+
+/** A flow started: its id, for `identityStep` and `identityCancel`, and its first screen. */
+export interface IdentityFlowStart extends IdentityFlowStep {
+  flow: string;
+}
+
 /** The plugin's methods. Every one runs off the phone's main thread. */
 export interface DeviceKeyPlugin {
   status(): Promise<DeviceKeyStatus>;
@@ -231,6 +289,39 @@ export interface DeviceKeyPlugin {
    * `NoCamera` or `Cancelled`.
    */
   scanCode(options: { prefix: string; title?: string }): Promise<{ text: string }>;
+  /**
+   * Makes an identity on this phone: the 12 new words first (`show-words`), or `identity-ready` when
+   * one made here before is published now. Refused with `NoKeys`, `AlreadyJoined`, `NoBiometrics`,
+   * `WeakProtection` (the person declined to keep the master key without secure hardware) and
+   * `Unavailable` (the store did not answer: nothing was kept).
+   */
+  startMake(): Promise<IdentityFlowStart>;
+  /** Restores an identity from its 12 words (`enter-words`, `restore`). Refused as `startMake` is. */
+  startRestore(): Promise<IdentityFlowStart>;
+  /**
+   * Replaces the master key with the 12 words (`enter-words`, `replace`). Refused with `NoIdentity`
+   * on a phone that is no device of one, and as `startMake` is.
+   */
+  startRotate(): Promise<IdentityFlowStart>;
+  /**
+   * Answers the flow's screen. Refused with `WrongInput` when `input` does not answer it (the flow
+   * stays where it was), `Ended` when the flow is over, and `Invalid` for an input the plugin cannot
+   * read; any other refusal ends the flow.
+   */
+  identityStep(options: { flow: string; input: IdentityInput }): Promise<IdentityFlowStep>;
+  /**
+   * Ends the flow; it wipes the words it holds. It may be called while a step runs: a proof of work
+   * that step solves stops at its next round, and the step then refuses.
+   */
+  identityCancel(options: { flow: string }): Promise<Record<string, never>>;
+  /** An identity made here and not published yet, by its DID; asks no network. */
+  pendingIdentity(): Promise<{ did: string | null }>;
+  /** Publishes it: its DID, or `null` when none was pending. `Unavailable` while the store does not answer. */
+  finishPending(): Promise<{ did: string | null }>;
+  /** Sends the new master key again to the apps a replace or restore did not reach: what is left, or `null`. */
+  retryMasterPushes(): Promise<{ note: string | null }>;
+  /** Marks the window secure (no screenshots, no recent-apps thumbnail) or clears it; answered once set. */
+  setSecure(options: { on: boolean }): Promise<Record<string, never>>;
 }
 
 /** The part of Capacitor's native bridge this uses: present only inside the phone app. */
@@ -271,5 +362,14 @@ export function deviceKeyPlugin(
     linkConfirm: (options) => call('linkConfirm', options),
     linkCancel: (options) => call('linkCancel', options),
     scanCode: (options) => call('scanCode', options),
+    startMake: () => call('startMake'),
+    startRestore: () => call('startRestore'),
+    startRotate: () => call('startRotate'),
+    identityStep: (options) => call('identityStep', options),
+    identityCancel: (options) => call('identityCancel', options),
+    pendingIdentity: () => call('pendingIdentity'),
+    finishPending: () => call('finishPending'),
+    retryMasterPushes: () => call('retryMasterPushes'),
+    setSecure: (options) => call('setSecure', options),
   };
 }

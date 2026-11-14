@@ -4,7 +4,10 @@ This is a design, not a description of code. Phase 2a (see the README) gave the 
 and an enc key sealed by the Android Keystore, a join through an offer link, and key login to a host
 executor with renewal. Phase 2b covers the rest of what a device does in an identity: the linking
 screens and the camera, the device inbox, taking and holding the master key, asking for it, and
-acting as a holder for other devices.
+acting as a holder for other devices. It then goes past what a computer does for the phone: the phone
+makes an identity, restores one from its 12 words and replaces its master key with them, with no
+computer ("Make, restore and replace on the phone", below; built, unlike the rest of this design,
+which the README describes as it is).
 
 The references were checked at ad4m `95cefb35a`: `ad4m-identity-core` (the wire formats),
 `ad4m-identity-client` (the flows), `rust-executor/src/api/identity_ws.rs` (the executor's identity
@@ -140,6 +143,58 @@ The match-code screen, which shows the claimer's hint and the code and asks for 
 template fragment. The person's yes is a tap followed by a biometric prompt, and nothing else
 confirms it.
 
+## Make, restore and replace on the phone
+
+A phone needs no computer for an identity. The three 12-word flows run in `phone-custody` over
+`ViaStore`, as the holder's do. Their steps are `crates/identity-steps`, the crate the desktop's
+custody service (`crates/custody/src/service.rs`) runs too. So a word that does not match, a lost
+custody epoch, which devices a restore offers to lock out, and every sentence about a hand-over are
+decided once.
+
+- **Make.** Twelve new words are made in Rust and shown once. Two of them are asked back. The
+  phone is named and listed in the record as a `phone-app` that keeps the master key. Master #0 is
+  derived from the words and kept behind one biometric prompt, with the incept (co-signed by this
+  phone's device key) in the vault. The incept is then published with a proof of work (below).
+- **Restore.** The typed words find their identity (`RestoreFlow`). The phone lists its devices,
+  apps ticked to lock out, and one rotation revokes the ticked ones. The next master key is kept
+  here, and the phone joins as a device (`keyOwner`, `openOffer` and `claimOffer` over the store).
+- **Replace.** The typed words make the next master key. One rotation keeps it here, and the other
+  devices that keep the master key are sent it (a note says which were not reached, and
+  `retryMasterPushes` sends it again).
+
+Each flow is a step machine (`IdentitySteps`) on a thread of its own, answered one screen per
+input. The words never leave Rust memory except to be shown once. They are zeroed when two are
+confirmed, or when the flow ends, is cancelled or sits idle for 30 minutes. A master key is kept
+under the rule a taken one is (no `software` protection without the person's yes, asked before any
+word exists).
+
+A make that kept its incept and could not publish it leaves it pending in the vault. The flow's Try
+again, `finishPending()`, and the next make each publish it, and a key that speaks for another
+identity by then drops it.
+
+**The screens.** The page that drives the flows is the phone's identity page, so the words are
+shown and typed only there, in the shared identity window the desktop opens too. The phone adds two
+screens to it, which its flows have and a computer's do not: naming the phone after the words are
+confirmed (`name-device`), and the make's stop before publishing (`make-stopped`). The first run's
+"Make my identity here" and "Use my 12 words" open the page on `create` and `restore`, and Settings'
+"Replace my master key" on `replace-master`. The window is marked secure (`setSecure`, which sets
+`FLAG_SECURE`) from before a flow starts until the first screen without the words, and when the page
+leaves. A window that cannot be marked secure shows and asks for no words. The DID shows on
+`identity-ready` alone. The screen-by-screen list is in the README ("The identity on the phone").
+
+**The store's brake.** The store asks a proof of work of a new log's first event (`POST
+/v1/logs/{scid}/events` with `pow: {nonce, bits}`, at the bits `GET /v1/pow` names, 22 by default).
+`ViaStore` sends none, and neither does the executor. At the pinned ad4m the store checks a proof
+only when one is sent (`admit_new_log`), and admits a new log without one. The phone sends one
+anyway, so it keeps working once the store requires it. The phone adds it in its transport (`phone-custody/src/brake.rs`), with the
+solver from `ad4m-identity-core`'s `pow`, so no ad4m change was needed. It solves only for a log the
+store does not have yet (`GET /v1/heads/{scid}` is `404`), refuses above 28 bits, checks for a cancel
+between rounds, and reads the bits again once if the store raised them meanwhile (`403 pow`). At
+22 bits, a release build on a desktop CPU took 143 ms to 2.3 s per solve (median about 0.5 s, 8
+scids), and naming the device to a published identity against the store binary took 0.05 to
+3.5 s over six runs. The search has a long tail: some solves take several times the median. A debug
+build took about 39 s once. A phone's cores are slower.
+
 ## Where each step runs
 
 | Step                                        | Phone: Kotlin                                         | Phone: Rust (`phone-custody`)                                                             | WebView JS (WE)                                    | Host executor                        | Store                                                   |
@@ -156,6 +211,8 @@ confirms it.
 | Add, revoke or rotate                       | Biometric prompt                                      | Builds and signs the events                                                               | Devices page                                       | Optional: `publish`                  | `POST /v1/logs/{scid}/events`                           |
 | Answer a request                            | Biometric prompt                                      | Signs the answer (an `inboxPut` of `Master`, or the revoke events)                        | "Your laptop asks for…" screen                     | Optional: `inboxPut`, `publish`      | `GET`/`DELETE /v1/requests/{scid}[/{id}]`, inbox, logs  |
 | Private record                              | HTTP GET and PUT                                      | Unwraps the record key, opens, edits and reseals                                          | Device names on the Devices page                   | —                                    | `GET`/`PUT /v1/private/{scid}`                          |
+| Make an identity                            | Biometric prompt; `FLAG_SECURE` while words show      | Words, master #0, the incept co-signed by the device key, the proof of work, publish      | Shows the words, asks two back, names the phone    | —                                    | `GET /v1/keys/{key}`, `GET /v1/pow`, logs               |
+| Restore, or replace the master key          | Biometric prompt; `FLAG_SECURE` while words are typed | Reads the words, rotates, keeps the next master; a restore links this phone               | Takes the words; a restore's lock-out list         | —                                    | Logs, record, offers, inboxes                           |
 
 Only public keys, signatures, match codes, hints and progress cross into JS, as in 2a. No seed,
 record key or unsealed `Master` body crosses.
@@ -192,8 +249,9 @@ record key or unsealed `Master` body crosses.
 - The device key's sealer (no user auth), key login, and the `no_backup` file stay as they are.
 - The store's wire formats stay the same: everything above uses the routes and bodies that
   `ad4m-identity-core` already defines.
-- WE desktop's custody flows, in `crates/custody`, stay the same. The phone becomes one more
-  device they can add, ask and answer.
+- WE desktop's custody flows, in `crates/custody`, behave the same. The phone becomes one more
+  device they can add, ask and answer. Their make, restore and replace steps moved into
+  `crates/identity-steps` so the phone runs the same ones, and the desktop's tests pass unchanged.
 
 ## Open questions
 

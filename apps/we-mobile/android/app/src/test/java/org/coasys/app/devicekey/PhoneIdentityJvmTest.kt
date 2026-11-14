@@ -236,14 +236,30 @@ class PhoneIdentityJvmTest {
     assertEquals(before, seen.size)
   }
 
+  /**
+   * A key file that names no identity asks the store's key index which log lists this phone's key
+   * (a make or a restore that published and stopped before the key file was written). The index
+   * puts it in none: no identity, and nothing was sent but that read, unsigned.
+   */
   @Test
   fun aPhoneInNoIdentityHasNoIdentityToShow() {
+    answer = { Triple(404, emptyMap(), "{\"error\":\"not-found\"}".toByteArray()) }
     val keys = DeviceKeys.open(dir.absolutePath, AesGcmSealer { key })
     keys.create()
     val identity = PhoneIdentity(keys, StoreHttp.Transport, SoftMaster(), StoreConfig(store, emptyList()))
     assertThrows(PhoneKeyException.NoIdentity::class.java) { identity.status() }
     assertThrows(PhoneKeyException.NoIdentity::class.java) { identity.askForMaster() }
-    assertTrue(seen.isEmpty())
+    assertTrue(seen.isNotEmpty())
+    for (got in seen) {
+      assertEquals("GET", got.method)
+      assertTrue(got.path, got.path.startsWith("/v1/keys/"))
+      assertTrue(got.path, got.headers.keys.none { it.startsWith("x-coasys-") })
+      assertEquals(0, got.body.size)
+    }
+
+    // A store that does not answer leaves it in no identity too, as the key file says.
+    answer = { Triple(503, emptyMap(), "{\"error\":\"busy\"}".toByteArray()) }
+    assertThrows(PhoneKeyException.NoIdentity::class.java) { identity.status() }
   }
 
   /** A phone with a device key, joined to an identity at [store] by the 2a claim. */
@@ -265,14 +281,15 @@ class PhoneIdentityJvmTest {
 
   /**
    * The app's master sealer without the Keystore and the prompt: the same sealed form, a list of
-   * the prompts it would have shown, and a refusal to answer with.
+   * the prompts it would have shown, and a refusal to answer with. [protection] is the word the
+   * Keystore would report (`tee`, `strongbox`, or `software` for an emulator's).
    */
-  private class SoftMaster : MasterSealer {
+  internal class SoftMaster(private val protection: String = "tee") : MasterSealer {
     private val key = DeviceKeysJvmTest.aesKey()
     val prompts = Collections.synchronizedList(mutableListOf<String>())
     @Volatile var refuse: MasterSealException? = null
 
-    override fun protection(): String = "tee"
+    override fun protection(): String = protection
 
     override fun seal(label: String, plaintext: ByteArray, prompt: String): ByteArray {
       prompts.add(prompt)

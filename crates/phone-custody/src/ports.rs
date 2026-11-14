@@ -78,9 +78,10 @@ pub trait StoreTransport: Send + Sync {
     fn send(&self, request: StoreRequest) -> Result<StoreReply, TransportError>;
 }
 
-/// [`StoreTransport`] as `ViaStore`'s `HttpClient`. With a `cancelled` flag (a holder's link),
-/// every request after the flag is set fails without being sent, so a flow waiting on the store
-/// stops at its next request.
+/// [`StoreTransport`] as `ViaStore`'s `HttpClient`. With a `cancelled` flag (a holder's link, a
+/// make), every request after the flag is set fails without being sent, so a flow waiting on the
+/// store stops at its next request. The publish of a new log's event #0 gets the store's proof of
+/// work on the way ([`crate::brake`]), which the same flag stops.
 pub struct Transport {
     inner: Arc<dyn StoreTransport>,
     cancelled: Option<Arc<AtomicBool>>,
@@ -110,15 +111,22 @@ impl HttpClient for Transport {
             .into_iter()
             .map(|(name, value)| Header { name, value })
             .collect();
-        let reply = self
-            .inner
-            .send(StoreRequest {
+        let cancelled = || {
+            self.cancelled
+                .as_ref()
+                .is_some_and(|c| c.load(Ordering::SeqCst))
+        };
+        let reply = crate::brake::send(
+            self.inner.as_ref(),
+            StoreRequest {
                 method: request.method,
                 url: request.url,
                 headers,
                 body: request.body,
-            })
-            .map_err(|e| HttpError(e.to_string()))?;
+            },
+            &cancelled,
+        )
+        .map_err(|e| HttpError(e.to_string()))?;
         Ok(HttpResponse {
             status: reply.status,
             headers: reply

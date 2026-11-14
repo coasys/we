@@ -357,8 +357,12 @@ describe('a phone in no identity yet', () => {
     const { createDeviceKeyConnector } = await import('./deviceKeyConnector');
     const connector = createDeviceKeyConnector({ plugin, keyHost: () => 'https://b.example' });
     const result = await connector.initialize(ctx);
-    const options = (result.ports as unknown as { options: { custody?: { takesWords?: boolean } } }).options;
-    expect(options.custody?.takesWords).toBe(false);
+    const options = (
+      result.ports as unknown as { options: { custody?: { takesWords?: boolean; publicState?: unknown } } }
+    ).options;
+    expect(typeof options.custody?.publicState).toBe('function');
+    // The phone takes the 12 words as a computer does: Settings offers replacing the master key.
+    expect(options.custody?.takesWords).toBeUndefined();
     await result.disconnect!();
   });
 });

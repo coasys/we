@@ -2,17 +2,35 @@
  * The phone's identity page as an `IdentityTransport`: the shared identity window's screens, made
  * from the `DeviceKey` plugin's calls. On a computer a custody service sends the screens; on the
  * phone the plugin's Kotlin and Rust do every signing and network call, and the master key stays
- * behind the biometric prompt the plugin raises. Nothing secret crosses here: the phone takes no
- * passphrase and no words, so no screen it makes asks for either.
+ * behind the biometric prompt the plugin raises. The phone takes no passphrase.
  *
  * What the phone can run: joining an identity by an offer (scanned or pasted), adding a device by
- * the code it shows, taking, asking for and sending the master key, answering a revoke request, and
- * naming and revoking a device. Replacing the master key, restoring, and anything else that needs
- * the 12 words runs on a computer.
+ * the code it shows, taking, asking for and sending the master key, answering a revoke request,
+ * naming and revoking a device, and the three flows of the 12 words — making an identity
+ * (`create`), restoring one (`restore`) and replacing the master key (`replace-master`) — which
+ * the plugin runs as step machines (`startMake`, `startRestore`, `startRotate`, `identityStep`).
+ *
+ * **The words.** They cross this page twice: shown once by `show-words`, and typed into
+ * `confirm-words` and `enter-words`. The window is secure (`setSecure`: no screenshots, no
+ * recent-apps thumbnail) from before the flow starts until the page leaves. The mark is not cleared
+ * when the next screen comes: this side answers a screen before the window draws it, so the words
+ * would still be in the page. It is cleared in `cancel` and `finish`, which the window calls
+ * after it has blanked its screen (`blankedBefore` in `@we/identity-window`), and in `gone`, which
+ * the page calls on `pagehide` after it has emptied itself. The page keeps no
+ * copy: the screens pass to the window and are not held here, the inputs go to the plugin in the step that reads them, and nothing is
+ * logged, put on the clipboard, in the address or in storage. The window clears its word fields
+ * when another screen comes.
  */
 import type { IdentityTransport, RevokeTarget, Screen, StepInput } from '@we/identity-window';
 
-import type { DeviceKeyPlugin, DeviceRequestView, PhoneDeviceView } from '../../../we-web/src/platform/deviceKey';
+import type {
+  DeviceKeyPlugin,
+  DeviceRequestView,
+  IdentityFlowStart,
+  IdentityInput,
+  IdentityScreen,
+  PhoneDeviceView,
+} from '../../../we-web/src/platform/deviceKey';
 
 /** What the page was opened on: joining an identity, or one of WE's identity changes. */
 export type PhoneStart =
@@ -96,13 +114,50 @@ export function backPath(search: string, origin: string): string {
 }
 
 /** Why the phone does not run a change: one only a computer can. */
-export const ON_A_COMPUTER = 'This needs your recovery phrase. Do it on a linked computer.';
+export const ON_A_COMPUTER = 'This phone can’t do this. Do it on a linked computer.';
 
 const NO_MASTER_WAITING =
   'The master key hasn’t been sent to this phone yet. Send it from the device that has it, then choose “Accept master key” again.';
 
-const ROTATE_ON_A_COMPUTER =
-  'Replacing the master key needs your recovery phrase. Remove the device here without replacing it, then replace the master key on a computer.';
+/** A revoke that also replaces the master key: the phone does the two one after the other. */
+export const ROTATE_AFTER =
+  'Remove the device here without replacing the master key, then choose “Replace master key” in Settings.';
+
+/** A revoke request that also replaces the master key, which the phone does not answer in one step. */
+export const ANSWER_ON_A_COMPUTER = 'This request also replaces the master key. Answer it on a linked computer.';
+
+/** The changes the plugin runs as a flow of the 12 words, and the call that starts each. */
+const FLOWS = { create: 'startMake', restore: 'startRestore', 'replace-master': 'startRotate' } as const;
+type FlowKind = keyof typeof FLOWS;
+
+const isFlow = (kind: string): kind is FlowKind => Object.hasOwn(FLOWS, kind);
+
+/** The screens that show or ask for the words: the window is secure while one is up. */
+const WORDS_SCREENS: ReadonlySet<Screen['screen']> = new Set(['show-words', 'confirm-words', 'enter-words']);
+
+/** Why a flow could not start, in the words the page shows. */
+export function flowRefusal(kind: FlowKind, error: unknown): string {
+  switch (code(error)) {
+    case 'NoBiometrics':
+      return 'To keep the master key on this phone, set up fingerprint or face unlock in the phone’s settings. Then try again.';
+    case 'WeakProtection':
+      return kind === 'create'
+        ? 'No identity was created. The master key wasn’t kept on this phone.'
+        : 'Nothing was changed. The master key wasn’t kept on this phone.';
+    case 'AlreadyJoined':
+      return 'This phone is already linked. To create or restore an identity, use a phone that isn’t linked.';
+    case 'NoIdentity':
+      return 'This phone isn’t linked yet, so it has no master key to replace.';
+    case 'Unavailable':
+      return 'Can’t save your identity. Nothing was changed. Try again when this phone is online.';
+    default:
+      return reason(error);
+  }
+}
+
+/** Why the page would not show the words: the window could not be kept out of screenshots. */
+export const NOT_SECURE =
+  'Can’t block screenshots on this phone, so your recovery phrase can’t be shown or entered here.';
 
 /** A plugin refusal's own words. */
 export function reason(error: unknown): string {
@@ -134,18 +189,131 @@ export function revokeTargets(request: DeviceRequestView, devices: PhoneDeviceVi
   });
 }
 
-export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): IdentityTransport {
+/** The transport, and what the page calls when it goes without Cancel or Done. */
+export interface PhoneTransport extends IdentityTransport {
+  /**
+   * The page goes another way (back, or the app leaves it): the flow and the link end, and the mark
+   * goes. The page is emptied before this is called, so no word is in it when the mark goes.
+   */
+  gone(): Promise<void>;
+}
+
+export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): PhoneTransport {
   const { plugin } = deps;
   /** The holder link `scan-device` runs, while it runs. */
   let link: string | null = null;
   let cancelled = false;
-  let last: Screen | null = null;
+  /** The last screen's name only: a screen of the words is never held here. */
+  let last: Screen['screen'] | null = null;
   /** The request `answer-request` shows, and the device `revoke` and `rename` act on. */
   let request: (Screen & { screen: 'request' }) | null = null;
   let device: PhoneDeviceView | null = null;
+  /** The plugin's make, restore or replace while it runs, by its id. */
+  let flow: string | null = null;
+  /** Whether the window is marked secure now. */
+  let secure = false;
 
   const failed = (message: string): Screen => ({ screen: 'failed', message });
-  const shown = (screen: Screen): Screen => (last = screen);
+
+  /** Marks the window secure, or clears it, once the plugin says it is so. */
+  async function setSecure(on: boolean): Promise<void> {
+    if (secure === on) return;
+    await plugin.setSecure({ on });
+    secure = on;
+  }
+
+  /** Ends the flow that runs, if one does: the plugin wipes the words it holds. */
+  async function endFlow(): Promise<void> {
+    const open = flow;
+    flow = null;
+    if (open) await plugin.identityCancel({ flow: open }).catch(() => undefined);
+  }
+
+  /** Ends the holder link that runs, if one does. */
+  async function endLink(): Promise<void> {
+    cancelled = true;
+    const open = link;
+    link = null;
+    if (open) await plugin.linkCancel({ link: open }).catch(() => undefined);
+  }
+
+  /** The window's screen for the plugin's. No DID but on `identity-ready`, where it is made. */
+  function flowScreen(screen: IdentityScreen): Screen {
+    switch (screen.screen) {
+      case 'name-device':
+        return { screen: 'name-device', name: deps.hint ?? 'Phone' };
+      case 'make-stopped':
+        return { screen: 'make-stopped', reason: screen.reason, pending: screen.pending };
+      case 'identity-ready':
+        return { screen: 'identity-ready', did: screen.did, keyId: screen.keyId, note: screen.note };
+      default:
+        return screen;
+    }
+  }
+
+  /** Starts the make, restore or replace: the window is secure before any word exists. */
+  async function startFlow(kind: FlowKind): Promise<Screen> {
+    const status = await plugin.status();
+    if (!status.keys) await plugin.create();
+    try {
+      await setSecure(true);
+    } catch {
+      return failed(NOT_SECURE);
+    }
+    let started: IdentityFlowStart;
+    try {
+      started = await plugin[FLOWS[kind]]();
+    } catch (error) {
+      // The plugin made no word: the mark goes, as it was before the flow.
+      await setSecure(false).catch(() => undefined);
+      return failed(flowRefusal(kind, error));
+    }
+    if (!started.ended) flow = started.flow;
+    return flowScreen(started.screen);
+  }
+
+  /** Answers the flow's screen. A refusal other than `WrongInput` has ended the flow. */
+  async function flowStep(input: IdentityInput): Promise<Screen> {
+    if (!flow) return failed('This step has ended. Start again.');
+    try {
+      const next = await plugin.identityStep({ flow, input });
+      if (next.ended) flow = null;
+      return flowScreen(next.screen);
+    } catch (error) {
+      if (code(error) !== 'WrongInput') flow = null;
+      return failed(reason(error));
+    }
+  }
+
+  /**
+   * Draws `screen` once the window is as secure as it needs: on while it shows or asks for the
+   * words. It is never cleared here: the window draws `screen` after this answers, so the words are
+   * still in the page now; `leaving` clears it. A window that could not be made secure shows no
+   * words: the flow ends.
+   */
+  async function shown(screen: Screen): Promise<Screen> {
+    let drawn = screen;
+    if (WORDS_SCREENS.has(screen.screen)) {
+      try {
+        await setSecure(true);
+      } catch {
+        await endFlow();
+        drawn = failed(NOT_SECURE);
+      }
+    }
+    last = drawn.screen;
+    return drawn;
+  }
+
+  /**
+   * Leaves the page: no flow left running, and the window no longer secure. The window has blanked
+   * its screen before it calls `cancel` or `finish`, so no word is in the page when the mark goes.
+   */
+  async function leaving(outcome: PhoneOutcome): Promise<void> {
+    await endFlow();
+    await setSecure(false).catch(() => undefined);
+    deps.leave(outcome);
+  }
 
   async function findDevice(keyId: string): Promise<PhoneDeviceView | null> {
     const { devices } = await plugin.devices();
@@ -255,7 +423,7 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Ide
         };
       }
       default:
-        return failed(ON_A_COMPUTER);
+        return isFlow(start.kind) ? startFlow(start.kind) : failed(ON_A_COMPUTER);
     }
   }
 
@@ -300,7 +468,7 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Ide
           const answered = await plugin.answer({ id: request.id });
           return { screen: 'request-answered', kind: request.kind, device: answered.device, note: answered.note };
         } catch (error) {
-          const message = code(error) === 'NeedsWords' ? ON_A_COMPUTER : reason(error);
+          const message = code(error) === 'NeedsWords' ? ANSWER_ON_A_COMPUTER : reason(error);
           return { ...request, error: message };
         }
       case 'name': {
@@ -322,11 +490,11 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Ide
           passphrase: false,
           error: null,
         };
-        if (input.rotate) return { ...confirm, error: ROTATE_ON_A_COMPUTER };
+        if (input.rotate) return { ...confirm, error: ROTATE_AFTER };
         try {
           await plugin.revoke({ keyIds: [device.keyId] });
         } catch (error) {
-          return { ...confirm, error: code(error) === 'NeedsWords' ? ROTATE_ON_A_COMPUTER : reason(error) };
+          return { ...confirm, error: code(error) === 'NeedsWords' ? ROTATE_AFTER : reason(error) };
         }
         // The entry that revoked it, as the log now lists it.
         const keyId = device.keyId;
@@ -335,6 +503,22 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Ide
         if (seq === null) return failed('The device list doesn’t show it as removed yet. Check again in a moment.');
         return { screen: 'revoked', keyId, seq };
       }
+      case 'words-written':
+        return flowStep({ input: 'words-written' });
+      case 'words':
+        return flowStep({ input: 'confirm-words', first: input.answers[0], second: input.answers[1] });
+      case 'name-device':
+        return flowStep(input.name ? { input: 'name-device', name: input.name } : { input: 'name-device' });
+      case 'twelve-words':
+        return flowStep({ input: 'twelve-words', words: input.words });
+      case 'lock-out':
+        return flowStep({
+          input: 'lock-out',
+          keyIds: input.keyIds,
+          ...(input.name ? { name: input.name } : {}),
+        });
+      case 'try-again':
+        return flowStep({ input: 'try-again' });
       default:
         return failed(ON_A_COMPUTER);
     }
@@ -353,17 +537,18 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Ide
     start: () => guarded(begin),
     step: (input) => guarded(() => advance(input)),
     async cancel() {
-      cancelled = true;
-      const open = link;
-      link = null;
-      if (open) await plugin.linkCancel({ link: open }).catch(() => undefined);
-      deps.leave('cancelled');
+      await endLink();
+      await leaving('cancelled');
       // A phone joins with its own key and claims nothing: its cancel always ends the step.
       return null;
     },
     finish() {
-      deps.leave(last?.screen === 'failed' ? 'failed' : 'done');
-      return Promise.resolve();
+      return leaving(last === 'failed' ? 'failed' : 'done');
+    },
+    async gone() {
+      await endLink();
+      await endFlow();
+      await setSecure(false).catch(() => undefined);
     },
     async scan(prefix) {
       try {

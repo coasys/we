@@ -10,18 +10,22 @@ import css from './identity.css?raw';
 import indexSource from './index.ts?raw';
 import {
   actionsLine,
+  blankedBefore,
   BOT_ACTIONS,
   deviceMatchActions,
   deviceMatchNote,
   heading,
   isLast,
   oneAtATime,
+  type PageFrames,
+  painted,
   refusedField,
   remaining,
   type RevokeTarget,
   type Screen,
   spreadWords,
   targetLine,
+  turns,
   wordNumber,
 } from './screens';
 import screensSource from './screens.ts?raw';
@@ -334,6 +338,174 @@ describe('the identity window', () => {
     expect(windowSource).toMatch(
       /case 'restore-not-linked':[\s\S]*?step\(\{ kind: 'try-again' \}\)[\s\S]*?button\('Close', cancel\)/,
     );
+  });
+
+  it('words the make, restore and replace for the phone they run on, and never for a computer', () => {
+    const screens: Screen[] = [
+      { screen: 'show-words', words: Array.from({ length: 12 }, () => 'word') },
+      { screen: 'name-device', name: 'Phone' },
+      { screen: 'enter-words', purpose: 'restore', error: null, position: null },
+      { screen: 'enter-words', purpose: 'replace', error: null, position: null },
+      { screen: 'restore-devices', did: 'did:scid:coasys:1:Qm', devices: [], note: null },
+      { screen: 'restored', did: 'did:scid:coasys:1:Qm', name: 'Phone', keyId: 'd3', revoked: [], note: null },
+      { screen: 'restore-not-linked', did: 'did:scid:coasys:1:Qm', revoked: [], reason: 'Offline.' },
+      { screen: 'master-replaced', index: 1, revoked: [], note: null },
+      { screen: 'master-not-kept', index: 1, revoked: [], reason: 'Cancelled.', note: null },
+      { screen: 'make-stopped', reason: 'The store did not answer.', pending: true },
+      { screen: 'make-stopped', reason: 'The store did not answer.', pending: false },
+    ];
+    for (const screen of screens) {
+      const { title, lead } = heading(screen, 'phone');
+      expect(`${title} ${lead}`, screen.screen).not.toMatch(/computer/);
+    }
+    expect(heading({ screen: 'name-device', name: 'Phone' }, 'phone').title).toBe('Name this phone');
+    expect(heading(screens[5], 'phone').lead).toContain('This phone is linked as Phone and has the new master key.');
+    expect(heading(screens[6], 'phone').title).toBe("This phone isn't linked yet");
+    expect(heading(screens[7], 'phone').lead).toContain('This phone has the new master key.');
+  });
+
+  it('says whether a stopped make kept the identity, and offers to try again', () => {
+    const pending = heading({ screen: 'make-stopped', reason: 'The store did not answer.', pending: true }, 'phone');
+    expect(pending.title).toBe('Identity not published yet');
+    expect(pending.lead).toContain('The store did not answer.');
+    expect(pending.lead).toContain('Your identity and master key are saved on this phone.');
+    expect(pending.lead).toContain("You don't need your recovery phrase.");
+    const unmade = heading({ screen: 'make-stopped', reason: 'Offline.', pending: false }, 'phone');
+    expect(unmade.title).toBe('Identity not created');
+    expect(unmade.lead).toContain('Nothing was published.');
+    expect(unmade.lead).toContain('Your recovery phrase stays the same.');
+    for (const screen of [
+      { screen: 'make-stopped', reason: '', pending: true },
+      { screen: 'name-device', name: 'Phone' },
+    ] as Screen[])
+      expect(isLast(screen)).toBe(false);
+    // Both can solve the store's proof of work on the phone: their Cancel and Close stay live.
+    expect(windowSource).toMatch(
+      /case 'make-stopped':[\s\S]*?const close = button\('Close', cancel\);[\s\S]*?step\(\{ kind: 'try-again' \}, \[\], \[close\]\)/,
+    );
+    expect(windowSource).toMatch(
+      /case 'name-device':[\s\S]*?const stop = button\('Cancel', cancel\);[\s\S]*?step\(\{ kind: 'name-device', name: typed\(name\.input\) \}, \[\], \[stop\]\)/,
+    );
+    expect(windowSource).toContain('if (!live.includes(b)) b.disabled = true;');
+  });
+
+  it('draws no answer that comes after a cancel', () => {
+    const answers = turns();
+    const solving = answers.take();
+    expect(solving()).toBe(true);
+    // Cancel during the step: its late answer is not the window's any more.
+    answers.end();
+    expect(solving()).toBe(false);
+    // A step after the cancel (one the cancel stayed for) is drawn.
+    const next = answers.take();
+    expect(next()).toBe(true);
+    expect(solving()).toBe(false);
+    // The window takes a turn for each step and wait, checks it before it draws, and a cancel ends it.
+    expect(windowSource.match(/answers\.take\(\)/g)).toHaveLength(2);
+    expect(windowSource).toContain('if (current()) draw(screen);');
+    expect(windowSource).toContain("if (current()) draw({ screen: 'failed', message: String(error) });");
+    expect(windowSource).toContain('(screen) => current() && draw(screen)');
+    expect(windowSource).toMatch(/const cancel = oneAtATime\(\(\) => \{\n  answers\.end\(\);/);
+  });
+
+  it('blanks the screen, and waits for a frame that shows it, before it cancels or finishes', async () => {
+    const order: string[] = [];
+    let frame: () => void = () => {};
+    const left = blankedBefore(
+      () => order.push('blank'),
+      () => new Promise<void>((resolve) => (frame = () => (order.push('painted'), resolve()))),
+      async () => {
+        order.push('cancel');
+        return null;
+      },
+    );
+    await Promise.resolve();
+    // The host is not called (on the phone: the secure mark is not cleared) before the frame.
+    expect(order).toEqual(['blank']);
+    frame();
+    expect(await left).toBeNull();
+    expect(order).toEqual(['blank', 'painted', 'cancel']);
+    // Cancel and Done both leave through it; the blank screen holds no word.
+    expect(windowSource).toContain('const instead = await blankedBefore(blank, () => painted(page), call);');
+    expect(windowSource).toContain('return leave(() => host.cancel());');
+    expect(windowSource).toContain('const finish = () => void leave(() => host.finish());');
+    expect(windowSource).toMatch(/function blank\(\) \{[\s\S]*?forgetWords\(\);\n  root\.replaceChildren\(\);/);
+  });
+
+  it('counts the blank screen as shown only once a frame of a page that is not hidden drew it', async () => {
+    let hidden = false;
+    let frames: (() => void)[] = [];
+    let timers: (() => void)[] = [];
+    let shown: (() => void)[] = [];
+    const page: PageFrames = {
+      hidden: () => hidden,
+      shown: (then) => void shown.push(then),
+      frame: (then) => void frames.push(then),
+      after: (_ms, then) => void timers.push(then),
+    };
+    const run = (queue: (() => void)[]) => queue.splice(0).forEach((f) => f());
+    const settled = (p: Promise<void>) => {
+      let done = false;
+      void p.then(() => (done = true));
+      return Promise.resolve().then(() => done);
+    };
+
+    // Shown: two frames, or the timer where none comes.
+    const twoFrames = painted(page);
+    run(frames);
+    expect(await settled(twoFrames)).toBe(false);
+    run(frames);
+    expect(await settled(twoFrames)).toBe(true);
+    timers = [];
+    const slow = painted(page);
+    run(timers);
+    expect(await settled(slow)).toBe(true);
+    frames = [];
+
+    // Hidden: no timer runs, and nothing passes until the page is shown and two frames draw.
+    hidden = true;
+    const away = painted(page);
+    expect(timers).toEqual([]);
+    expect(frames).toEqual([]);
+    hidden = false;
+    run(shown);
+    run(frames);
+    expect(await settled(away)).toBe(false);
+    run(frames);
+    expect(await settled(away)).toBe(true);
+    timers = [];
+
+    // Hidden after it started: the timer that fires then waits for the page to be shown again.
+    const hiddenLater = painted(page);
+    hidden = true;
+    run(timers);
+    expect(await settled(hiddenLater)).toBe(false);
+    run(frames);
+    run(frames);
+    expect(await settled(hiddenLater)).toBe(false);
+    hidden = false;
+    run(shown);
+    run(frames);
+    run(frames);
+    expect(await settled(hiddenLater)).toBe(true);
+  });
+
+  it('adds a note to the identity being ready, which a later step left', () => {
+    const ready: Screen = { screen: 'identity-ready', did: 'did:scid:coasys:1:Qm', keyId: 'd1', note: 'Late.' };
+    expect(heading(ready).lead).toMatch(/ Late\.$/);
+    expect(heading({ ...ready, note: null }).lead).not.toContain('null');
+  });
+
+  it('draws a DID only where the identity is made', () => {
+    // Each `textContent: screen.did` in the window, by the case that draws it.
+    const cases = [...windowSource.matchAll(/case '([a-z-]+)':(?:(?!case ')[\s\S])*?textContent: screen\.did/g)].map(
+      (m) => m[1],
+    );
+    expect(cases).toContain('identity-ready');
+    expect(cases.filter((c) => !['identity-ready', 'device-match', 'pending-refused'].includes(c))).toEqual([]);
+    for (const restoreScreen of ['restore-devices', 'restore-not-linked', 'restored']) {
+      expect(cases).not.toContain(restoreScreen);
+    }
   });
 
   it('marks only the refused word field invalid, with a token value, and draws it', () => {

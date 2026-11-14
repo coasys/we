@@ -1,0 +1,4 @@
+# The same channel as `crates/custody` and `crates/phone-custody`, which both build this crate.
+[toolchain]
+channel = "1.96.1"
+components = ["clippy", "rustfmt"]

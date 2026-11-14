@@ -18,24 +18,33 @@ const plugin = deviceKeyPlugin();
 if (!plugin || !start) {
   location.replace(back);
 } else {
-  runIdentityWindow(
-    phoneTransport(start, {
-      plugin,
-      hint: 'Phone',
-      ...(start.kind === 'join'
-        ? { keyHost: { read: () => readKeyHost(), remember: (url) => rememberKeyHost(url) } }
-        : {}),
-      leave(outcome) {
-        // "Not now" on the join screen: WE's own sign-in, until the person asks to join again.
-        if (start.kind === 'join' && outcome === 'cancelled') {
-          try {
-            localStorage.setItem(JOIN_DECLINED_KEY, String(Date.now()));
-          } catch {
-            // No storage: WE asks again next time, which is no harm.
-          }
+  const transport = phoneTransport(start, {
+    plugin,
+    hint: 'Phone',
+    ...(start.kind === 'join'
+      ? { keyHost: { read: () => readKeyHost(), remember: (url) => rememberKeyHost(url) } }
+      : {}),
+    leave(outcome) {
+      // "Not now" on the join screen: WE's own sign-in, until the person asks to join again.
+      if (start.kind === 'join' && outcome === 'cancelled') {
+        try {
+          localStorage.setItem(JOIN_DECLINED_KEY, String(Date.now()));
+        } catch {
+          // No storage: WE asks again next time, which is no harm.
         }
-        location.replace(back);
-      },
-    }),
-  );
+      }
+      location.replace(back);
+    },
+  });
+  runIdentityWindow(transport);
+  // Leaving without Cancel or Done (back, or the app leaving the page): the page is emptied first,
+  // then the flow ends and the window is no longer secure. After Cancel or Done this finds nothing.
+  addEventListener('pagehide', () => {
+    document.body.replaceChildren();
+    void transport.gone();
+  });
+  // The same page brought back from the back-forward cache is empty, and its flow is over.
+  addEventListener('pageshow', (event) => {
+    if (event.persisted) location.replace(back);
+  });
 }

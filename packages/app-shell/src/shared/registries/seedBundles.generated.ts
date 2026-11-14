@@ -32843,20 +32843,8 @@ export const seedBundles: Bundle[] = [
                       type: 'Column',
                       props: { gap: '200' },
                       children: [
-                        {
-                          type: 'we-text',
-                          props: { variant: 'heading-xl', tag: 'h1' },
-                          children: [{ $: "baseStore.hostKind == 'phone' ? 'Link this phone' : 'Set up Coasys'" }],
-                        },
-                        {
-                          type: 'we-text',
-                          props: { color: 'text-muted' },
-                          children: [
-                            {
-                              $: "baseStore.hostKind == 'phone' ? 'You need a computer that has your master key.' : 'No email or password needed.'",
-                            },
-                          ],
-                        },
+                        { type: 'we-text', props: { variant: 'heading-xl', tag: 'h1' }, children: ['Set up Coasys'] },
+                        { type: 'we-text', props: { color: 'text-muted' }, children: ['No email or password needed.'] },
                       ],
                     },
                     {
@@ -32908,7 +32896,7 @@ export const seedBundles: Bundle[] = [
                                       props: { variant: 'footnote', color: 'text-muted' },
                                       children: [
                                         {
-                                          $: "baseStore.doors.make.open ? 'Your master key stays on this computer.' : baseStore.doors.make.note",
+                                          $: "baseStore.doors.make.open ? (baseStore.hostKind == 'phone' ? 'Your master key stays on this phone.' : 'Your master key stays on this computer.') : baseStore.doors.make.note",
                                         },
                                       ],
                                     },
@@ -32964,7 +32952,7 @@ export const seedBundles: Bundle[] = [
                                       props: { variant: 'footnote', color: 'text-muted' },
                                       children: [
                                         {
-                                          $: "baseStore.doors.link.open ? (baseStore.hostKind == 'phone' ? 'Enter the code from a computer that has your master key.' : 'Show a code to scan on a device that has your master key.') : baseStore.doors.link.note",
+                                          $: "baseStore.doors.link.open ? (baseStore.hostKind == 'phone' ? 'Enter the code from a device that has your master key.' : 'Show a code to scan on a device that has your master key.') : baseStore.doors.link.note",
                                         },
                                       ],
                                     },

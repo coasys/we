@@ -50,6 +50,35 @@ pub(crate) struct Parts {
     pub store: StoreConfig,
 }
 
+/// Why a phone the store lists as revoked is in no identity: another device revoked its key.
+pub const REMOVED: &str = "Another device removed this phone from your identity.";
+
+/// Records the identity whose log lists this phone's device key, when the key file names none:
+/// its did, or `None` when the store puts the key in no log. A make or a restore publishes before
+/// the key file records the identity, so a crash or a failed write between the two leaves the
+/// phone in a log the key file does not name. The store's answer is checked: `ViaStore` takes
+/// the key index's identity only when that identity's verified log lists this key. A log that
+/// lists the key as revoked is not recorded: another device removed this phone, and it refuses
+/// [`REMOVED`].
+pub(crate) fn rejoin(parts: &Parts, exec: &Executor) -> Result<Option<String>, PhoneKeyError> {
+    let status = block_on(exec.status()).map_err(rpc)?;
+    let Some(did) = status.did else {
+        return Ok(None);
+    };
+    if let Some(seq) = status.revoked {
+        log::warn!("phone: the store lists this phone in {did}, revoked at {seq}: not recorded");
+        return Err(PhoneKeyError::Refused {
+            reason: REMOVED.into(),
+        });
+    }
+    let scid = ad4m_identity_core::scid_of(&did).ok_or_else(|| PhoneKeyError::Refused {
+        reason: format!("{did} is not a did:scid:coasys:1"),
+    })?;
+    parts.keys.record_identity(scid, None, &parts.store_url())?;
+    log::warn!("phone: the store lists this phone in {did} and the key file did not: recorded");
+    Ok(Some(did))
+}
+
 impl Parts {
     /// The phone's executor: the one `ViaStore` of this crate. The store is the one the phone
     /// joined at, else the one the app is built with; `cancelled` stops a holder's link.
@@ -84,8 +113,25 @@ impl Parts {
         Ok(ViaExecutor::new(store))
     }
 
-    /// The scid and did of the identity the key file records.
+    /// The scid and did of the identity the key file records. When it records none, the identity
+    /// the store's verified log puts this phone's key in is recorded first ([`rejoin`]). A store
+    /// that does not answer leaves it `NoIdentity`, as the key file says; one that lists the key
+    /// as revoked refuses [`REMOVED`].
     pub(crate) fn member(&self) -> Result<(String, String), PhoneKeyError> {
+        if let Some(member) = self.keys.status().identity {
+            return Ok((member.scid, member.did));
+        }
+        match self.executor(None).and_then(|exec| rejoin(self, &exec)) {
+            Ok(Some(_)) => {}
+            Ok(None) => return Err(PhoneKeyError::NoIdentity),
+            Err(PhoneKeyError::Refused { reason }) if reason == REMOVED => {
+                return Err(PhoneKeyError::Refused { reason });
+            }
+            Err(e) => {
+                log::info!("phone: the store did not say which identity lists this phone: {e}");
+                return Err(PhoneKeyError::NoIdentity);
+            }
+        }
         let member = self
             .keys
             .status()
@@ -164,7 +210,7 @@ pub(crate) fn vault_error(e: VaultError) -> PhoneKeyError {
     }
 }
 
-fn rpc(e: RpcError) -> PhoneKeyError {
+pub(crate) fn rpc(e: RpcError) -> PhoneKeyError {
     phone_error(ClientError::Rpc(e))
 }
 
@@ -310,7 +356,7 @@ fn request_kind(body: &DeviceRequestBody) -> &'static str {
     }
 }
 
-fn kind_name(kind: DeviceKind) -> String {
+pub(crate) fn kind_name(kind: DeviceKind) -> String {
     serde_json::to_value(kind)
         .ok()
         .and_then(|v| v.as_str().map(String::from))
@@ -356,6 +402,13 @@ async fn receipt_owed(
 pub struct PhoneIdentity {
     parts: Parts,
     vault: Arc<PhoneVault>,
+}
+
+impl PhoneIdentity {
+    /// What a flow's thread takes with it: a copy of the parts and the vault.
+    pub(crate) fn inner(&self) -> (Parts, Arc<PhoneVault>) {
+        (self.parts.clone(), self.vault.clone())
+    }
 }
 
 #[uniffi::export]

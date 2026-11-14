@@ -7,6 +7,11 @@
  * the master key from this computer, and adding a bot. The words typed are never sent back: no screen after the words
  * entry carries them, and a refused word is named by its place only.
  *
+ * The phone draws the same screens over its own flows (`apps/we-mobile/src/identity`), with two of its
+ * own: naming the phone once its words are confirmed (`name-device`), and a make that stopped before
+ * the identity was published (`make-stopped`). `noun` words each screen for the device it runs on. An
+ * identity's DID shows on one screen only, `identity-ready`, where it is made.
+ *
  * Pure, so the wording is tested without a window (`screens.test.ts`). `window.ts` draws them.
  */
 
@@ -15,7 +20,16 @@ export type Screen =
   | { screen: 'confirm-words'; positions: [number, number]; error: string | null }
   | { screen: 'set-passphrase'; error: string | null }
   | { screen: 'enter-passphrase'; error: string | null }
-  | { screen: 'identity-ready'; did: string; keyId: string }
+  /** The identity is made: the one screen that shows its DID. `note`: a later step that did not pass. */
+  | { screen: 'identity-ready'; did: string; keyId: string; note?: string | null }
+  /** The phone's make: the words are confirmed, and the person names this device (`name-device`). */
+  | { screen: 'name-device'; name: string }
+  /**
+   * The phone's make stopped before the identity was published: `reason` says why. `pending`: the
+   * device keeps the identity and its master key already, and Try again publishes it; otherwise Try
+   * again makes it from the same words. Not a last screen.
+   */
+  | { screen: 'make-stopped'; reason: string; pending: boolean }
   | { screen: 'offer'; link: string; qrSvg: string; expires: number }
   | { screen: 'match'; code: string; hint: string | null; canKeep: boolean; ownName: boolean }
   | { screen: 'linked'; seq: number; masterSent: boolean; note: string | null }
@@ -182,6 +196,8 @@ export type StepInput =
   | { kind: 'accept' }
   | { kind: 'answer'; passphrase?: string }
   | { kind: 'name'; name: string }
+  /** To `name-device`: blank for the device's default name. */
+  | { kind: 'name-device'; name?: string }
   | { kind: 'revoke'; passphrase?: string; rotate?: boolean }
   | { kind: 'twelve-words'; words: string }
   | { kind: 'lock-out'; keyIds: string[]; name?: string }
@@ -253,8 +269,26 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
     case 'identity-ready':
       return {
         title: 'Your identity exists now',
-        lead: 'It belongs to you, and it runs where you say. Your recovery phrase makes your master key. The devices that serve you sign for you, and never change your keys.',
+        lead: [
+          'It belongs to you, and it runs where you say. Your recovery phrase makes your master key. The devices that serve you sign for you, and never change your keys.',
+          ...(screen.note ? [screen.note] : []),
+        ].join(' '),
       };
+    case 'name-device':
+      return {
+        title: `Name this ${noun}`,
+        lead: 'Your devices list it by this name. Only your devices can see it.',
+      };
+    case 'make-stopped':
+      return screen.pending
+        ? {
+            title: 'Identity not published yet',
+            lead: `${screen.reason} Your identity and master key are saved on this ${noun}. Try again to publish it. You don't need your recovery phrase. If you close the app, it tries again the next time it opens.`,
+          }
+        : {
+            title: 'Identity not created',
+            lead: `${screen.reason} Nothing was published. Try again. Your recovery phrase stays the same.`,
+          };
     case 'offer':
       return {
         title: 'Send this link to your device',
@@ -345,12 +379,12 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
         ].join(' '),
       };
     case 'enter-words':
-      return wordsHeading(screen.purpose);
+      return wordsHeading(screen.purpose, noun);
     case 'restore-devices':
       return {
         title: 'Remove lost devices',
         lead: [
-          'Select each device you lost or no longer use. Your master key is replaced, and this computer gets the new one.',
+          `Select each device you lost or no longer use. Your master key is replaced, and this ${noun} gets the new one.`,
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
       };
@@ -358,7 +392,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
       return {
         title: 'Master key replaced',
         lead: [
-          'This computer has the new master key. The old one no longer works on any device.',
+          `This ${noun} has the new master key. The old one no longer works on any device.`,
           ...(screen.revoked.length ? [`Also removed: ${devices(screen.revoked.length)}.`] : []),
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
@@ -367,26 +401,26 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
       return {
         title: 'New master key not saved',
         lead: [
-          `Your master key was replaced and the old one no longer works, but this computer couldn't save the new one. ${screen.reason}`,
+          `Your master key was replaced and the old one no longer works, but this ${noun} couldn't save the new one. ${screen.reason}`,
           ...(screen.revoked.length ? [`Also removed: ${devices(screen.revoked.length)}.`] : []),
           ...(screen.note ? [screen.note] : []),
-          'Enter your recovery phrase again to replace it with one this computer saves.',
+          `Enter your recovery phrase again to replace it with one this ${noun} saves.`,
         ].join(' '),
       };
     case 'restore-not-linked':
       return {
-        title: "This computer isn't linked yet",
+        title: `This ${noun} isn't linked yet`,
         lead: [
           `Your identity was restored and your master key replaced. ${screen.reason}`,
           ...(screen.revoked.length ? [`Removed: ${devices(screen.revoked.length)}.`] : []),
-          "Try again to link this computer. You don't need your recovery phrase again.",
+          `Try again to link this ${noun}. You don't need your recovery phrase again.`,
         ].join(' '),
       };
     case 'restored':
       return {
         title: 'Identity restored',
         lead: [
-          `This computer is linked as ${screen.name} and has the new master key.`,
+          `This ${noun} is linked as ${screen.name} and has the new master key.`,
           ...(screen.revoked.length ? [`Removed: ${devices(screen.revoked.length)}.`] : []),
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
@@ -437,18 +471,18 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
 }
 
 /** The words entry's lead, by what the words are for. */
-function wordsHeading(purpose: WordsPurpose): { title: string; lead: string } {
+function wordsHeading(purpose: WordsPurpose, noun: DeviceNoun): { title: string; lead: string } {
   const type = 'Enter your 12 words in order.';
   switch (purpose) {
     case 'replace':
       return {
         title: 'Replace master key',
-        lead: `${type} This computer gets the new master key, and the old one stops working on every device.`,
+        lead: `${type} This ${noun} gets the new master key, and the old one stops working on every device.`,
       };
     case 'restore':
       return {
         title: 'Restore with recovery phrase',
-        lead: `${type} This computer is then linked to your identity.`,
+        lead: `${type} This ${noun} is then linked to your identity.`,
       };
     case 'revoke':
     case 'answer':
@@ -554,4 +588,71 @@ export function oneAtATime<T>(call: () => Promise<T>): () => Promise<T> {
     (out ??= call().finally(() => {
       out = null;
     }));
+}
+
+/**
+ * The window's turns: a call's answer is drawn only while its turn is the current one. A cancel ends
+ * the turn, so the late answer of a step it cancelled (a proof of work it stopped, a wait it ended)
+ * is not drawn over the screen the cancel leaves.
+ */
+export function turns(): { take(): () => boolean; end(): void } {
+  let current = 0;
+  return {
+    take() {
+      const mine = current;
+      return () => mine === current;
+    },
+    end() {
+      current += 1;
+    },
+  };
+}
+
+/**
+ * `call`, once the screen is blank and a frame shows it so: `blank` empties the screen, and
+ * `painted` waits for the frame. Cancel and Done go through it. On the phone they clear the mark
+ * that keeps the window out of screenshots, and the words must be off the screen before it goes.
+ */
+export async function blankedBefore<T>(
+  blank: () => void,
+  painted: () => Promise<void>,
+  call: () => Promise<T>,
+): Promise<T> {
+  blank();
+  await painted();
+  return call();
+}
+
+/** What [`painted`] reads of the page: whether it is hidden, its frames and a timer. */
+export interface PageFrames {
+  hidden(): boolean;
+  /** Calls `then` once, when the page is shown again. */
+  shown(then: () => void): void;
+  frame(then: () => void): void;
+  after(ms: number, then: () => void): void;
+}
+
+/**
+ * Resolves once a frame after this one is drawn, or after `wait` ms where no frame comes (a slow
+ * page). Never while the page is hidden: a hidden page draws no frame, so the blank screen may not
+ * have been shown. It waits until the page is shown and starts again.
+ */
+export function painted(page: PageFrames, wait = 100): Promise<void> {
+  return new Promise((resolve) => {
+    let done = false;
+    const start = () => {
+      if (done) return;
+      if (page.hidden()) return page.shown(start);
+      page.after(wait, end);
+      // The second callback runs in the frame after the one that drew the blank screen.
+      page.frame(() => page.frame(end));
+    };
+    const end = () => {
+      if (done) return;
+      if (page.hidden()) return page.shown(start);
+      done = true;
+      resolve();
+    };
+    start();
+  });
 }

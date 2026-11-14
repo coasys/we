@@ -16,9 +16,10 @@ import { COLLAPSED } from './lockup.ts';
  *   it is typed twice, which only catches a typo, and has a floor of 8 characters; a password an agent
  *   was already made with has none.
  * - **first-run** — this device speaks for nobody yet: "Create new identity", "Link to another device",
- *   "Restore with recovery phrase", and "Skip for now". On a phone it is the join: a phone links to an identity a
- *   computer keeps, and the doors it cannot open say why. Every door opens the host's own identity
- *   window — the only place the 12 words are ever shown or typed.
+ *   "Restore with recovery phrase", and "Skip for now", on a phone as on a computer: a phone makes an
+ *   identity and keeps its master key, links to one, or restores one from the 12 words. A door a host
+ *   cannot open is drawn closed with its reason. Every door opens the host's own identity window — the
+ *   only place the 12 words are ever shown or typed.
  * - **connect** — where this device gets its session: this computer, the servers added on it (listed,
  *   but not wired on the desktop yet: choosing one says so, coasys/we#428), the computer a phone's
  *   key signs in to, or the browser's connect screen. Coasys cloud and the hosting index have a place
@@ -198,8 +199,8 @@ function row(options: {
 
 /**
  * A door of the first run: open, or drawn closed with the reason this device gives. `detail` is what an
- * open door says; one that does the reverse on a phone (the phone takes a computer's offer, where a
- * computer shows its code) says so in `{ computer, phone }`.
+ * open door says; one that reads differently on a phone (the phone takes an offer, where a computer
+ * shows its code; it keeps the master key itself) says so in `{ computer, phone }`.
  */
 function door(
   name: 'make' | 'link' | 'words',
@@ -237,28 +238,30 @@ const firstRun = screen('base__first-run', [
       {
         type: 'we-text',
         props: { variant: 'heading-xl', tag: 'h1' },
-        children: [{ $: "baseStore.hostKind == 'phone' ? 'Link this phone' : 'Set up Coasys'" }],
+        children: ['Set up Coasys'],
       },
       {
         type: 'we-text',
         props: { color: 'text-muted' },
-        children: [
-          {
-            $: "baseStore.hostKind == 'phone' ? 'You need a computer that has your master key.' : 'No email or password needed.'",
-          },
-        ],
+        children: ['No email or password needed.'],
       },
     ],
   },
   card([
-    door('make', 'sparkle', 'Create new identity', 'Your master key stays on this computer.', 'makeIdentity'),
+    door(
+      'make',
+      'sparkle',
+      'Create new identity',
+      { computer: 'Your master key stays on this computer.', phone: 'Your master key stays on this phone.' },
+      'makeIdentity',
+    ),
     door(
       'link',
       'qr-code',
       'Link to another device',
       {
         computer: 'Show a code to scan on a device that has your master key.',
-        phone: 'Enter the code from a computer that has your master key.',
+        phone: 'Enter the code from a device that has your master key.',
       },
       'linkIdentity',
     ),

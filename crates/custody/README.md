@@ -29,7 +29,9 @@ the same Secret Service.
 The crate runs the identity client's flows — make the identity, add a device, revoke one — and
 reaches the executor only over its RPC with the admin credential. It is its own crate so nothing of
 it links the executor; `tests/boundary.rs` keeps it so. No Windows: the desktop apps start there
-without identity.
+without identity. The word steps (make from new words, restore, replace the master key) are
+`crates/identity-steps`, which the phone's `crates/phone-custody` runs too; this crate holds the
+identity window's conversation and its vault around them.
 
 Only the **identity window** runs a flow. Its front end is shared too (`packages/identity-window`);
 each app opens it, gates its calls to that window, and answers the main window with how a step
