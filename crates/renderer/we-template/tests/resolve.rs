@@ -836,6 +836,97 @@ fn an_unread_surface_member_change_keeps_a_derived_initial() {
 }
 
 #[test]
+fn an_accessor_initial_tracks_the_result_not_the_function() {
+    // R3: `{"$":"store.sig"}` — `sig` is a reactive accessor (the
+    // `markReactive` kind `readValue` calls). The member's identity never
+    // changes — same callable — but the signal behind it moves A→B. TS's
+    // memo subscribed to the read *inside* the accessor, so the initial
+    // follows the result. Recording the callable's identity says
+    // "unmoved" forever and the edit never resets.
+    use std::sync::RwLock;
+    let sig = Arc::new(RwLock::new(Value::from("A")));
+    let sig_read = sig.clone();
+    let store = Value::from(we_expr::MapNamespace::new(
+        [(
+            "sig".into(),
+            Value::Callable(we_expr::CallableRef::accessor("sig", move |_| {
+                sig_read.read().unwrap().clone()
+            })),
+        )]
+        .into_iter()
+        .collect(),
+    ));
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "name": { "type": "string", "initial": { "$": "store.sig" } } },
+        "children": []
+    }));
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root("store", store.clone());
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+    assert!(locals.get(&owner, "name").strict_eq(&Value::from("A")));
+
+    locals.set(&owner, "name", Value::from("typed"));
+    locals.touch(&owner, "name");
+    let _ = rt.frame(&mut host, &screen).clone(); // unrelated pass — kept
+    assert!(locals.get(&owner, "name").strict_eq(&Value::from("typed")));
+    assert!(locals.is_touched(&owner, "name"));
+
+    // The accessor's result moves; a frame re-resolves (the bag version
+    // is what wakes it — the signal itself is opaque to the counters).
+    *sig.write().unwrap() = Value::from("B");
+    bag.set_root("store", store);
+    let _ = rt.frame(&mut host, &screen).clone();
+    assert!(
+        locals.get(&owner, "name").strict_eq(&Value::from("B")),
+        "the initial must follow the accessor's result: {:?}",
+        locals.get(&owner, "name")
+    );
+    assert!(!locals.is_touched(&owner, "name"));
+}
+
+#[test]
+fn a_host_function_initial_tracks_its_result() {
+    // R3, `env.call` variant: `{"$":"compute()"}` — TS's memo subscribed
+    // to whatever the function read while it ran inside the memo; the
+    // observable contract is that a changed RESULT is a moved input.
+    use std::sync::RwLock;
+    let sig = Arc::new(RwLock::new(Value::from("A")));
+    let sig_read = sig.clone();
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "name": { "type": "string", "initial": { "$": "compute()" } } },
+        "children": []
+    }));
+    let bag = Arc::new(StoreBag::new());
+    bag.set_function(
+        "compute",
+        Arc::new(move |_| sig_read.read().unwrap().clone()),
+    );
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+    assert!(locals.get(&owner, "name").strict_eq(&Value::from("A")));
+
+    locals.set(&owner, "name", Value::from("typed"));
+    locals.touch(&owner, "name");
+    let _ = rt.frame(&mut host, &screen).clone(); // unrelated pass — kept
+    assert!(locals.get(&owner, "name").strict_eq(&Value::from("typed")));
+
+    *sig.write().unwrap() = Value::from("B");
+    locals.set(&owner, "other", Value::Bool(true)); // bump: wake a frame
+    let _ = rt.frame(&mut host, &screen).clone();
+    assert!(
+        locals.get(&owner, "name").strict_eq(&Value::from("B")),
+        "the initial must follow the call's result: {:?}",
+        locals.get(&owner, "name")
+    );
+    assert!(!locals.is_touched(&owner, "name"));
+}
+
+#[test]
 fn a_dollar_string_initial_stays_literal() {
     // A4 sub-point: `initial: "$store.name"`. TS's `resolveInitial` calls
     // `resolveProp`, which has no `$`-string branch — the dispatcher's final

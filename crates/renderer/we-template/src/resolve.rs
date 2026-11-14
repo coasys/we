@@ -228,7 +228,10 @@ impl Env for TrackEnv<'_> {
             }),
             _ => {
                 if let Ok(mut deps) = self.deps.lock() {
-                    deps.push((name.into(), value.clone()));
+                    // The dep is the effective read — a reactive accessor's
+                    // result, not the accessor: `readValue` calls it inside
+                    // the memo, so what the signal answers IS the input.
+                    deps.push((name.into(), value.read_value()));
                 }
                 value
             }
@@ -236,7 +239,14 @@ impl Env for TrackEnv<'_> {
     }
 
     fn call(&self, name: &str, args: &[Value]) -> Value {
-        self.inner.call(name, args)
+        let value = self.inner.call(name, args);
+        // A call's inputs are whatever it read while it ran — opaque here,
+        // so its result stands for them (a pure function of reactive
+        // state moves its result exactly when an input moved).
+        if let Ok(mut deps) = self.deps.lock() {
+            deps.push((format!("$call:{name}").into(), value.read_value()));
+        }
+        value
     }
 }
 
@@ -273,7 +283,12 @@ impl Namespace for TrackNs {
         // It still answers; it is just not a reactive input.
         if !key.starts_with('$') {
             if let Ok(mut deps) = self.deps.lock() {
-                deps.push((path, value.clone()));
+                // The dep is the effective read — an accessor member's
+                // result, not the callable (its identity never moves while
+                // the signal behind it may). `read_property` `readValue`s
+                // the member again for use — the same call TS's memo
+                // makes.
+                deps.push((path, value.read_value()));
             }
         }
         value
