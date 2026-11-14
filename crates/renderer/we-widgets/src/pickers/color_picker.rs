@@ -103,6 +103,9 @@ impl Widget for ColorPicker {
                 ui.horizontal(|ui| {
                     for s in chunk {
                         let (r, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+                        resp.widget_info(|| {
+                            egui::WidgetInfo::labeled(egui::Role::Button, true, s.as_str())
+                        });
                         let c = parse_hex(s).unwrap_or(egui::Color32::GRAY);
                         ui.painter().rect_filled(r, 4.0, c);
                         if s == &value {
@@ -121,6 +124,9 @@ impl Widget for ColorPicker {
             }
             // Free hex input — commit on Enter/blur.
             let resp = ui.text_edit_singleline(&mut hex);
+            resp.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::Role::TextInput, true, "hex color")
+            });
             if resp.changed() {
                 cx.edit
                     .set_draft(&node.id, &hex, props::prop(node, "value"));

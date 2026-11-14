@@ -44,12 +44,14 @@ impl Widget for Popover {
         let Some(anchor) = props::part(cx, node, "trigger") else {
             return;
         };
-        let response = cx.ui.interact(
-            anchor,
-            cx.ui.scope_id().with((node.id.as_str(), "trigger")),
-            egui::Sense::click(),
-        );
-        if response.clicked() {
+        // The trigger child paints over us and wins egui's hit test, so
+        // watch the pointer itself: a click landing in the anchor toggles.
+        let clicked = cx.ui.input(|i| i.pointer.any_click())
+            && cx
+                .ui
+                .input(|i| i.pointer.interact_pos())
+                .is_some_and(|p| anchor.contains(p));
+        if clicked {
             let open = cx.edit.is_open(&node.id);
             cx.edit.set_open(&node.id, !open);
         }

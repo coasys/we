@@ -8,7 +8,7 @@ use we_expr::Value;
 use we_style::Style;
 use we_template::ResolvedNode;
 
-use crate::inputs::{access_label, disabled, reconcile_draft, shown_text};
+use crate::inputs::{access_label, disabled, reconcile_num, shown_num};
 use crate::props;
 use crate::{events, MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
 
@@ -42,8 +42,8 @@ impl Widget for NumberInput {
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, rect: Rect) {
         let (min, max, step) = bounds(node);
         let disabled = disabled(node);
-        reconcile_draft(cx.edit, node);
-        let mut text = shown_text(cx.edit, node);
+        reconcile_num(cx.edit, node);
+        let mut text = shown_num(cx.edit, node);
         let label = access_label(cx, node);
 
         // [−] [ text ] [+] — the field takes the middle.
@@ -59,7 +59,7 @@ impl Widget for NumberInput {
         let minus_r = cx.interact_label(minus, "decrement", egui::Role::Button, &node.id, "minus");
         let plus_r = cx.interact_label(plus, "increment", egui::Role::Button, &node.id, "plus");
         let visuals = cx.ui.visuals().clone();
-        for (r, glyph) in [(minus, "−"), (plus, "+")] {
+        for (r, glyph) in [(minus, "-"), (plus, "+")] {
             cx.ui
                 .painter()
                 .rect_filled(r, 4.0, visuals.widgets.inactive.bg_fill);

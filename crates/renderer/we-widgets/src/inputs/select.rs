@@ -105,7 +105,7 @@ impl Widget for Select {
         cx.ui.painter().text(
             egui::pos2(rect.max.x - 8.0, rect.center().y),
             egui::Align2::RIGHT_CENTER,
-            "▾",
+            "v",
             egui::FontId::default(),
             visuals.weak_text_color(),
         );

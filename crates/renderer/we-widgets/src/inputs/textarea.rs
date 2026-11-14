@@ -27,6 +27,7 @@ impl Widget for Textarea {
     }
 
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, rect: Rect) {
+        let committed = cx.edit.draft(&node.id);
         reconcile_draft(cx.edit, node);
         let mut text = shown_text(cx.edit, node);
         let disabled = disabled(node);
@@ -64,7 +65,11 @@ impl Widget for Textarea {
         if response.lost_focus() && cx.edit.field(&node.id, "dirty").truthy() {
             cx.edit
                 .set_field(&node.id, "dirty", we_expr::Value::Bool(false));
-            cx.emit(&node.id, "onChange", events::detail_str(&text));
+            cx.emit(
+                &node.id,
+                "onChange",
+                events::detail_str(committed.as_deref().unwrap_or(&text)),
+            );
         }
     }
 }

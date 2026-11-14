@@ -135,7 +135,7 @@ impl Widget for IconPicker {
         cx.ui.painter().text(
             egui::pos2(rect.max.x - 8.0, rect.center().y),
             egui::Align2::RIGHT_CENTER,
-            "▾",
+            "v",
             egui::FontId::default(),
             visuals.weak_text_color(),
         );
@@ -146,7 +146,11 @@ impl Widget for IconPicker {
         let mut query = cx.edit.draft(&node.id).unwrap_or_default();
         egui::Popup::menu(&response).show(|ui| {
             ui.set_min_width(220.0);
-            if ui.text_edit_singleline(&mut query).changed() {
+            let search = ui.text_edit_singleline(&mut query);
+            search.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::Role::TextInput, true, "icon search")
+            });
+            if search.changed() {
                 cx.edit
                     .set_draft(&node.id, &query, &Value::Str(query.clone().into()));
             }
@@ -163,6 +167,9 @@ impl Widget for IconPicker {
                 ui.horizontal(|ui| {
                     for name in chunk {
                         let (r, resp) = ui.allocate_exact_size(cell, egui::Sense::click());
+                        resp.widget_info(|| {
+                            egui::WidgetInfo::labeled(egui::Role::Button, true, *name)
+                        });
                         if resp.hovered() {
                             ui.painter()
                                 .rect_filled(r, 4.0, visuals.widgets.hovered.bg_fill);

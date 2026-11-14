@@ -37,18 +37,20 @@ impl Widget for DropdownMenu {
     }
 
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, _rect: Rect) {
-        // In-flow call: the trigger click toggles the open flag.
-        let Some(anchor) = props::part(cx, node, "trigger") else {
-            return;
-        };
         let overlay = props::part(cx, node, "overlay");
         if overlay.is_none() {
-            let response = cx.ui.interact(
-                anchor,
-                cx.ui.scope_id().with((node.id.as_str(), "trigger")),
-                egui::Sense::click(),
-            );
-            if response.clicked() {
+            // In-flow call: a pointer click in the trigger toggles the open
+            // flag (the trigger child wins egui's hit test, so we watch the
+            // pointer rather than an interact region).
+            let Some(anchor) = props::part(cx, node, "trigger") else {
+                return;
+            };
+            let clicked = cx.ui.input(|i| i.pointer.any_click())
+                && cx
+                    .ui
+                    .input(|i| i.pointer.interact_pos())
+                    .is_some_and(|p| anchor.contains(p));
+            if clicked {
                 let open = cx.edit.is_open(&node.id);
                 cx.edit.set_open(&node.id, !open);
             }
@@ -88,6 +90,9 @@ impl Widget for DropdownMenu {
                     .with((node.id.as_str(), "mi", label.as_str())),
                 egui::Sense::click(),
             );
+            resp.widget_info(|| {
+                egui::WidgetInfo::labeled(egui::Role::Button, true, label.as_str())
+            });
             if resp.hovered() {
                 cx.ui
                     .painter()

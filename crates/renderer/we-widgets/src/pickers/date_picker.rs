@@ -140,7 +140,7 @@ impl Widget for DatePicker {
             ui.set_min_width(210.0);
             // Month header: ‹ YYYY-MM ›
             ui.horizontal(|ui| {
-                if ui.small_button("‹").clicked() {
+                if ui.small_button("<").clicked() {
                     let m = month.shift_month(-1);
                     cx.edit.set_field(
                         &node.id,
@@ -149,7 +149,7 @@ impl Widget for DatePicker {
                     );
                 }
                 ui.strong(format!("{:04}-{:02}", month.0, month.1));
-                if ui.small_button("›").clicked() {
+                if ui.small_button(">").clicked() {
                     let m = month.shift_month(1);
                     cx.edit.set_field(
                         &node.id,
@@ -186,6 +186,9 @@ impl Widget for DatePicker {
                     let day = Ymd(month.0, month.1, d);
                     let is_sel = selected == Some(day);
                     let (r, resp) = ui.allocate_exact_size(cell, egui::Sense::click());
+                    resp.widget_info(|| {
+                        egui::WidgetInfo::labeled(egui::Role::Button, is_sel, day.2.to_string())
+                    });
                     if is_sel {
                         ui.painter()
                             .rect_filled(r, 4.0, visuals.widgets.active.bg_fill);

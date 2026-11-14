@@ -74,7 +74,7 @@ impl Widget for Sortable {
             cx.ui.painter().text(
                 handle.center(),
                 egui::Align2::CENTER_CENTER,
-                "⋮⋮",
+                "||",
                 egui::FontId::proportional(10.0),
                 cx.ui.visuals().weak_text_color(),
             );

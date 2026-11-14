@@ -33,6 +33,9 @@ impl Widget for Input {
     }
 
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, rect: Rect) {
+        // The DOM `change` event carries the field's text at commit time —
+        // the draft, not the prop it is about to be replaced by.
+        let committed = cx.edit.draft(&node.id);
         reconcile_draft(cx.edit, node);
         let mut text = shown_text(cx.edit, node);
         let disabled = disabled(node);
@@ -62,8 +65,10 @@ impl Widget for Input {
         }
 
         // Keys, only while focused — `key` is the egui name ("Enter",
-        // "A", "Escape"), which is what the bundle compares against.
-        if response.has_focus() {
+        // "A", "Escape"), which is what the bundle compares against. The
+        // frame Enter *surrenders* focus counts too (`lost_focus`), or the
+        // submit keystroke would never reach `onKeyDown`.
+        if response.has_focus() || response.lost_focus() {
             let keys: Vec<(String, String)> = cx.ui.input(|i| {
                 i.events
                     .iter()
@@ -89,13 +94,21 @@ impl Widget for Input {
             if enter && dirty {
                 cx.edit
                     .set_field(&node.id, "dirty", we_expr::Value::Bool(false));
-                cx.emit(&node.id, "onChange", events::detail_str(&text));
+                cx.emit(
+                    &node.id,
+                    "onChange",
+                    events::detail_str(committed.as_deref().unwrap_or(&text)),
+                );
             }
         }
         if response.lost_focus() && cx.edit.field(&node.id, "dirty").truthy() {
             cx.edit
                 .set_field(&node.id, "dirty", we_expr::Value::Bool(false));
-            cx.emit(&node.id, "onChange", events::detail_str(&text));
+            cx.emit(
+                &node.id,
+                "onChange",
+                events::detail_str(committed.as_deref().unwrap_or(&text)),
+            );
         }
     }
 }
