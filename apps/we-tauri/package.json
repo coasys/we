@@ -13,11 +13,11 @@
     "serve": "vite preview",
     "tauri": "tauri",
     "pretauri:dev": "node scripts/generate-seed-config.cjs",
-    "tauri:dev": "concurrently \"pnpm dev\" \"wait-on http://localhost:1420 && tauri dev --config src-tauri/tauri.seed.conf.json -- --release\"",
+    "tauri:dev": "concurrently \"pnpm dev\" \"wait-on http://localhost:1420 && tauri dev --config src-tauri/tauri.seed.conf.json --features devtools -- --release\"",
     "pretauri:build": "node scripts/generate-seed-config.cjs",
     "tauri:build": "tauri build --config src-tauri/tauri.seed.conf.json && node scripts/rename-bundle.cjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run identity"
+    "test": "vitest run identity scripts"
   },
   "dependencies": {
     "@coasys/ad4m": "*",
