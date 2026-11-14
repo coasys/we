@@ -1614,16 +1614,26 @@ impl<'a> Builder<'a> {
         };
         let pb = if is_positioned { own.padding } else { pf.pb };
         let is_grid = matches!(s.display, Display::Grid);
-        // The grid recipe counts items taffy actually lays out — a
-        // `display: none` child is skipped below and makes no track;
-        // counting it splits the row shares too thin.
+        // The grid recipe counts items taffy lays out *in flow* — a
+        // `display: none` child is skipped below and makes no track, and
+        // an `absolute`/`fixed`/`sticky` child maps to taffy's
+        // `Position::Absolute`: still a taffy child, but out of flow, so
+        // it makes no track either. Counting either splits the row
+        // shares too thin.
         let n_items = || -> usize {
             node.children
                 .iter()
                 .filter(|c| match c {
                     ResolvedChild::Text(_) => true,
                     ResolvedChild::Node(n) => {
-                        !matches!(style_of(n, &scoped).layout.display, Some(WsDisplay::None))
+                        let l = &style_of(n, &scoped).layout;
+                        !matches!(l.display, Some(WsDisplay::None))
+                            && !matches!(
+                                l.position,
+                                Some(Position::Absolute)
+                                    | Some(Position::Fixed)
+                                    | Some(Position::Sticky)
+                            )
                     }
                 })
                 .count()

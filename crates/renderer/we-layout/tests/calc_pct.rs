@@ -623,6 +623,53 @@ fn grid_row_recipe_skips_hidden_children() {
     );
 }
 
+/// An out-of-flow child makes no track either: `absolute`/`fixed`/
+/// `sticky` children map to taffy `Position::Absolute`, so taffy lays
+/// out one item and the row recipe must count only in-flow children.
+#[test]
+fn grid_row_recipe_skips_out_of_flow_children() {
+    // 400px-tall Grid, one column, no gap: one in-flow item + one
+    // `absolute` child → the single 1fr row occupies 400px, so the
+    // visible `calc(50% - 5px)` height is 195. Counting the positioned
+    // child makes it a 2-row recipe → 95.
+    let mut grid = node(
+        "Grid",
+        "grid",
+        &[
+            ("columns", Value::from(1.0)),
+            ("height", Value::from("400px")),
+        ],
+    );
+    grid.children = vec![
+        ResolvedChild::Node(Box::new(node(
+            "Column",
+            "v",
+            &[
+                ("height", Value::from("calc(50% - 5px)")),
+                ("width", Value::from("10px")),
+            ],
+        ))),
+        ResolvedChild::Node(Box::new(node(
+            "Column",
+            "a",
+            &[
+                ("position", Value::from("absolute")),
+                ("height", Value::from("10px")),
+                ("width", Value::from("10px")),
+            ],
+        ))),
+    ];
+    let mut root = node("Column", "r", &[]);
+    root.children = vec![ResolvedChild::Node(Box::new(grid))];
+
+    let out = run(&root, 400.0, 400.0);
+    let v = rect(&out, "v");
+    assert!(
+        (v.height() - 195.0).abs() < 0.5,
+        "one in-flow item = one 400px row: 0.5·400−5 = 195, got {v:?}"
+    );
+}
+
 /// A `minChildWidth` grid's rows follow the *measured* column count:
 /// `ceil(items / cols)` `1fr` shares of the grid's content height.
 #[test]
