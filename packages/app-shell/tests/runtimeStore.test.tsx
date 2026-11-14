@@ -550,7 +550,7 @@ describe('a backend that keeps its own config file', () => {
 
       await vi.waitFor(() => expect(store.executorConfigRows()).toHaveLength(6));
       const row = (key: string) => store.executorConfigRows().find((r) => r.key === key);
-      expect(row('hc_admin_port')).toMatchObject({ editable: false, note: 'Only from that computer' });
+      expect(row('hc_admin_port')).toMatchObject({ editable: false, note: 'Only on the host' });
       expect(row('mcp_port')).toMatchObject({ editable: true, note: '' });
       await store.setExecutorConfigValue('hc_admin_port', '4000');
       expect(calls.some((call) => call.includes('hc_admin_port'))).toBe(false);
@@ -569,7 +569,7 @@ describe('a backend that keeps its own config file', () => {
       expect(calls).toContain('runtime.restart');
       expect(calls).not.toContain('host.restart');
       expect(store.canRestartExecutor()).toBe(false);
-      expect(store.error()).toMatch(/only from that computer/);
+      expect(store.error()).toMatch(/can't restart the host from here/);
       // The change is still waiting for the server's next start.
       expect(store.executorRestartPending()).toBe(true);
     });

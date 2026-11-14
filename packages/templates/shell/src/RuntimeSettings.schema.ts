@@ -587,7 +587,7 @@ export const executorSettings: SchemaNode = {
           props: { variant: 'footnote', color: 'text-muted' },
           children: [
             {
-              $: 'runtimeStore.executorOnServer ? `What the server serving you starts with, from ${runtimeStore.executorConfigFile} on that server. You run it, so you can change it from here; what only that computer may change is marked. A change takes effect at its next start.` : `What your data layer starts with, from ${runtimeStore.executorConfigFile}. A change takes effect at the next start.`',
+              $: 'runtimeStore.executorOnServer ? `Settings from ${runtimeStore.executorConfigFile} on the host. Changes apply at its next start.` : `What your data layer starts with, from ${runtimeStore.executorConfigFile}. A change takes effect at the next start.`',
             },
           ],
         },

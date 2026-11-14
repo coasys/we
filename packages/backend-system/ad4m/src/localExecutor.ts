@@ -147,7 +147,7 @@ async function serveFromChosen(signer: unknown, host: Ad4mServerHost, connect?: 
       host,
       signer: keySigner,
       current: null,
-      problem: `Could not read your servers: ${String(error)}`,
+      problem: `Can't load your hosts. ${String(error)}`,
       connect,
     };
   }
@@ -158,7 +158,13 @@ async function serveFromChosen(signer: unknown, host: Ad4mServerHost, connect?: 
     session = await openKeySession(keySigner, chosen.address, connect ? { connect } : {});
   } catch (error) {
     const why = error instanceof Error ? error.message : String(error);
-    return { host, signer: keySigner, current: null, problem: `${chosen.name} is not serving you: ${why}`, connect };
+    return {
+      host,
+      signer: keySigner,
+      current: null,
+      problem: `Can't use ${chosen.name}, so this computer is in use. ${why}`,
+      connect,
+    };
   }
   return { host, signer: keySigner, current: { session, name: chosen.name }, problem: null, connect };
 }

@@ -371,7 +371,7 @@ const servingRow: SchemaNode = listRow(
       type: '$if',
       props: {
         condition: { $: 'server.current' },
-        then: { type: 'we-badge', props: { tone: 'success', size: 'sm' }, children: ['Serves you now'] },
+        then: { type: 'we-badge', props: { tone: 'success', size: 'sm' }, children: ['In use'] },
         else: {
           type: 'Row',
           props: { gap: '100', ay: 'center' },
@@ -430,8 +430,8 @@ export const addServerForm: SchemaNode = {
           props: {
             flex: '1',
             minWidth: '0',
-            label: 'Server address',
-            placeholder: 'https://my-server.example:12000',
+            label: 'Host address',
+            placeholder: 'https://host.example:12000',
             value: { $: 'deviceStore.serverAddress' },
             onInput: { $invoke: 'deviceStore.setServerAddress', args: [{ $: 'event.detail' }] },
           },
@@ -444,16 +444,14 @@ export const addServerForm: SchemaNode = {
             disabled: { $: "deviceStore.serverBusy || deviceStore.serverAddress == ''" },
             onClick: { $invoke: 'deviceStore.addServer' },
           },
-          children: ['Add a server'],
+          children: ['Add host'],
         },
       ],
     },
     {
       type: 'we-text',
       props: { variant: 'footnote', color: 'text-muted' },
-      children: [
-        'Its https:// address — your session travels over it. Plain http:// is only for a server on this computer.',
-      ],
+      children: ['Use an https:// address. http:// works only for a host on this computer.'],
     },
     {
       type: '$if',
@@ -499,7 +497,7 @@ export const sessionEndedNotice: SchemaNode = {
                     loading: { $: 'deviceStore.serverBusy' },
                     onClick: { $invoke: 'deviceStore.serveFrom', args: ['this-computer'] },
                   },
-                  children: ['Back to this computer'],
+                  children: ['Switch to this computer'],
                 },
               ],
             },
@@ -510,7 +508,4 @@ export const sessionEndedNotice: SchemaNode = {
   },
 };
 
-export const servingFootnote: SchemaNode = footnote(
-  'key',
-  'A server lets this computer in with its device key. Remove this device from your identity and every server stops letting it in.',
-);
+export const servingFootnote: SchemaNode = footnote('key', 'If you remove this device, every host signs it out.');

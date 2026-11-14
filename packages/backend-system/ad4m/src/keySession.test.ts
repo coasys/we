@@ -434,7 +434,7 @@ describe('a key session on a server', () => {
     const error = await tryKeyLogin(signer, EVIL, { connect: relay }).catch((e: unknown) => e);
     expect((error as KeySessionError).reason).toBe('audience');
     expect((error as KeySessionError).message).toBe(
-      'That server does not list https://evil.example as its address. Its operator sets it with --public-origin.',
+      "The host doesn't list https://evil.example as its address. Whoever runs it can add it with --public-origin.",
     );
     expect(signer.signed).toEqual([expect.objectContaining({ executor: SERVER, audience: EVIL })]);
     expect(real.tokens.size).toBe(0);
@@ -523,7 +523,7 @@ describe('reading a refusal', () => {
     const reason = refusalReason(new FakeRpcError(403, 'no-public-origin: set public_origins (--public-origin)'));
     expect(reason).toBe('no-public-origin');
     expect(describeRefusal(reason, 'https://home.example')).toMatch(
-      /does not list https:\/\/home\.example as its address\. Its operator sets it with --public-origin/,
+      /doesn't list https:\/\/home\.example as its address\. Whoever runs it can add it with --public-origin/,
     );
   });
 
@@ -685,7 +685,7 @@ describe('choosing which device serves the account (the identity port)', () => {
 
     const outcome = await port.addServer!(ADDRESS);
     expect(outcome).toMatchObject({ ok: false, reason: 'not-known' });
-    expect((outcome as { message: string }).message).toMatch(/does not know you/);
+    expect((outcome as { message: string }).message).toMatch(/don't have access to this host/);
     expect(await port.addServer!('ftp://nope')).toMatchObject({ ok: false, reason: 'address' });
     const insecure = await port.addServer!('http://my-server.example:12000');
     expect(insecure).toMatchObject({ ok: false, reason: 'insecure' });
@@ -707,7 +707,7 @@ describe('choosing which device serves the account (the identity port)', () => {
     });
     await here.serveFrom!(ADDRESS);
     expect(host.choose).toHaveBeenLastCalledWith(ADDRESS);
-    await expect(here.serveFrom!('http://elsewhere:1')).rejects.toThrow(/No server/);
+    await expect(here.serveFrom!('http://elsewhere:1')).rejects.toThrow(/Can't find the host/);
 
     const session = await openKeySession(local, ADDRESS, { connect: server.connect, now: server.now });
     const there = createAd4mIdentityPort(local, undefined, {
@@ -722,7 +722,7 @@ describe('choosing which device serves the account (the identity port)', () => {
       [ADDRESS, true],
     ]);
     expect((await there.serving!()).role).toBe('operator');
-    await expect(there.removeServer!(ADDRESS)).rejects.toThrow(/serves this session/);
+    await expect(there.removeServer!(ADDRESS)).rejects.toThrow(/This host is in use/);
 
     await there.serveFrom!(THIS_COMPUTER_ID);
     expect(server.loggedOut).toHaveLength(1);
@@ -815,7 +815,7 @@ describe('the desktop connector, with a server chosen', () => {
     expect(result.ports.runtime?.onThisMachine).toBeUndefined();
     const view = await result.ports.identity!.serving!();
     expect(view.devices.find((d) => d.current)?.id).toBe(THIS_COMPUTER_ID);
-    expect(view.problem).toMatch(/^home is not serving you: .*does not know you/);
+    expect(view.problem).toMatch(/^Can't use home, so this computer is in use\. .*don't have access to this host/);
   });
 
   it('does not dial a stored plain-http server on another computer, and says why', async () => {
@@ -835,7 +835,7 @@ describe('the desktop connector, with a server chosen', () => {
     expect(local.agent.signSessionStatement).not.toHaveBeenCalled();
     const view = await result.ports.identity!.serving!();
     expect(view.devices.find((d) => d.current)?.id).toBe(THIS_COMPUTER_ID);
-    expect(view.problem).toMatch(/^old is not serving you: .*https:\/\//);
+    expect(view.problem).toMatch(/^Can't use old, so this computer is in use\. .*https:\/\//);
     // It stays listed, so it can be removed (and added again as https).
     await result.ports.identity!.removeServer!(stored);
     expect(host.state.servers).toEqual([]);

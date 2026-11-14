@@ -513,7 +513,7 @@ describe('which device serves you', () => {
       {
         id: 'this-computer',
         name: 'This computer',
-        subtitle: 'Runs here',
+        subtitle: 'Available while this computer is on',
         icon: 'desktop',
         current: true,
         canRemove: false,
@@ -539,14 +539,14 @@ describe('which device serves you', () => {
 
   it('says why a server would not let this computer in, and lists nothing', async () => {
     const s = servingBackend({
-      'https://other.example': { reason: 'not-known', message: 'That server does not know you.' },
+      'https://other.example': { reason: 'not-known', message: "You don't have access to this host." },
     });
     setPorts({ identity: s.port });
     const { devices: deviceStore } = mount();
     await flush();
     deviceStore.setServerAddress('https://other.example');
     expect(await deviceStore.addServer()).toMatchObject({ ok: false, reason: 'not-known' });
-    expect(deviceStore.serverError()).toBe('That server does not know you.');
+    expect(deviceStore.serverError()).toBe("You don't have access to this host.");
     expect(deviceStore.servers()).toHaveLength(1);
     // The address stays, to be corrected.
     expect(deviceStore.serverAddress()).toBe('https://other.example');
@@ -583,10 +583,10 @@ describe('which device serves you', () => {
     s.end({ reason: 'revoked', id: 'https://a.example', name: 'a.example' });
     expect(deviceStore.sessionEnded()).toMatchObject({
       reason: 'revoked',
-      message: 'This device was removed from your identity, so a.example no longer lets it in.',
+      message: "You're signed out of a.example because this device was removed.",
     });
     const toast = toastService.toasts().find((t) => t.message === deviceStore.sessionEnded()?.message);
-    expect(toast).toMatchObject({ tone: 'danger', duration: 0, action: { label: 'Back to this computer' } });
+    expect(toast).toMatchObject({ tone: 'danger', duration: 0, action: { label: 'Switch to this computer' } });
 
     toast?.action?.run();
     await flush();
@@ -600,7 +600,7 @@ describe('which device serves you', () => {
     const { devices: deviceStore } = mount();
     await flush();
     s.end({ reason: 'ended', id: 'https://a.example', name: 'a.example' });
-    expect(deviceStore.sessionEnded()?.message).toBe('Your session on a.example ended.');
+    expect(deviceStore.sessionEnded()?.message).toBe("You're signed out of a.example.");
     for (const t of toastService.toasts()) toastService.remove(t.id);
   });
 });

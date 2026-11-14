@@ -43,7 +43,7 @@ export interface ServingRow {
   /** `this-computer`, or the server's address. */
   id: string;
   name: string;
-  /** The server's address, or "Runs here" for this computer. */
+  /** The server's address, or "Available while this computer is on" for this computer. */
   subtitle: string;
   icon: 'desktop' | 'cloud';
   /** It serves this session now. */
@@ -61,7 +61,7 @@ export function servingRows(view: ServingView | null): ServingRow[] {
   return (view?.devices ?? []).map((device) => ({
     id: device.id,
     name: device.name,
-    subtitle: device.address ?? 'Runs here',
+    subtitle: device.address ?? 'Available while this computer is on',
     icon: device.id === THIS_COMPUTER_ID ? 'desktop' : 'cloud',
     current: device.current,
     canRemove: device.id !== THIS_COMPUTER_ID && !device.current,
@@ -70,8 +70,8 @@ export function servingRows(view: ServingView | null): ServingRow[] {
 
 export function sessionEndedMessage(ended: ServingSessionEnded): string {
   return ended.reason === 'revoked'
-    ? `This device was removed from your identity, so ${ended.name} no longer lets it in.`
-    : `Your session on ${ended.name} ended.`;
+    ? `You're signed out of ${ended.name} because this device was removed.`
+    : `You're signed out of ${ended.name}.`;
 }
 
 export interface DeviceStore {
@@ -205,7 +205,7 @@ export function DeviceStoreProvider(props: ParentProps) {
         // Said wherever the person is, not only on the Devices page, and kept until they act on it:
         // nothing they do on that server works any more.
         toastService.add(message, 'danger', 0, {
-          label: 'Back to this computer',
+          label: 'Switch to this computer',
           run: () => void serveFrom(THIS_COMPUTER_ID),
         });
       });

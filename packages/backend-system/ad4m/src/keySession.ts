@@ -152,28 +152,28 @@ export function refusalReason(error: unknown): string {
 export function describeRefusal(reason: string, origin?: string): string {
   switch (reason) {
     case 'key':
-      return 'That server no longer accepts this device: it was removed from your identity.';
+      return "This device was removed, so the host won't let it sign in.";
     case 'not-known':
-      return 'That server does not know you: you do not run it, and none of its agents is yours.';
+      return "You don't have access to this host. Add a host you run or use.";
     case 'store-unavailable':
-      return 'That server cannot check your keys right now: it cannot reach the identity store. Try again later.';
+      return "The host can't check your identity right now. Try again later.";
     case 'audience':
     case 'no-public-origin':
       // The server accepts a login only for an origin it is configured as (`--public-origin`); with
       // none configured, only from its own computer.
-      return `That server does not list ${origin ?? 'this address'} as its address. Its operator sets it with --public-origin.`;
+      return `The host doesn't list ${origin ?? 'this address'} as its address. Whoever runs it can add it with --public-origin.`;
     case 'challenge':
-      return 'That server and this computer disagree about the time, or the login took too long. Try again.';
+      return 'Sign-in timed out. Check the clock on both computers and try again.';
     case 'signature':
-      return 'That server could not check this computer’s signature.';
+      return "The host couldn't verify this computer. Try again.";
     case 'local-only':
-      return 'This computer’s data layer would not sign the login.';
+      return "This computer couldn't sign you in.";
     case 'insecure':
-      return 'That address is plain http:// to another computer, so your session would travel unencrypted. Use its https:// address.';
+      return "That address uses http://, which isn't encrypted. Use its https:// address.";
     case 'unreachable':
-      return 'Could not reach that server. Check the address, and that it is running.';
+      return "Can't reach the host. Check the address and that the host is running.";
     default:
-      return 'That server refused the login.';
+      return "The host didn't let you sign in.";
   }
 }
 
@@ -223,15 +223,15 @@ export function normalizeServerAddress(address: string): string {
   try {
     parsed = new URL(withScheme);
   } catch {
-    throw new KeySessionError('address', 'That is not a server address. Try one like https://my-server.example:12000.');
+    throw new KeySessionError('address', 'Enter a host address, like https://host.example:12000.');
   }
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new KeySessionError('address', 'A server address starts with https://.');
+    throw new KeySessionError('address', 'A host address starts with https://.');
   }
   if (parsed.protocol === 'http:' && !isLoopbackHost(parsed.hostname)) {
     throw new KeySessionError(
       'insecure',
-      `${parsed.host} would be reached without encryption (http://), and your session with it would travel in the clear. Use its https:// address.`,
+      `${parsed.host} uses http://, which isn't encrypted. Use its https:// address.`,
     );
   }
   return parsed.origin;

@@ -327,7 +327,7 @@ function servingMembers(
     },
 
     async removeServer(id: string) {
-      if (id === servedBy) throw new Error('This server serves this session now. Switch to another device first.');
+      if (id === servedBy) throw new Error('This host is in use. Switch to another device first.');
       await host.remove(id);
     },
 
@@ -335,7 +335,7 @@ function servingMembers(
       const address = id === THIS_COMPUTER_ID ? null : id;
       if (address !== null) {
         const { servers } = await host.list();
-        if (!servers.some((server) => server.address === address)) throw new Error(`No server ${id} is listed.`);
+        if (!servers.some((server) => server.address === address)) throw new Error(`Can't find the host ${id}.`);
       }
       // Already served from there, and nothing went wrong getting there: nothing to start over.
       if (address === servedBy && serving.problem === null && ended === null) return;

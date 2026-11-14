@@ -504,10 +504,10 @@ describe('servers — which device serves the account', () => {
   it('refuses what is not an http address, a server it does not list, and removing the one serving', () => {
     expect(() => registry.addServer({ address: 'file:///etc/passwd' })).toThrow(/http/);
     expect(() => registry.addServer({ address: 'not a url' })).toThrow(/address/);
-    expect(() => registry.chooseServer('http://elsewhere:1')).toThrow(/No such server/);
+    expect(() => registry.chooseServer('http://elsewhere:1')).toThrow(/Can't find that host/);
     registry.addServer({ address: HOME });
     registry.chooseServer(HOME);
-    expect(() => registry.removeServer(HOME)).toThrow(/Switch away/);
+    expect(() => registry.removeServer(HOME)).toThrow(/Switch to another device first/);
     registry.chooseServer(null);
     registry.removeServer(HOME);
     expect(registry.servers().servers).toEqual([]);

@@ -311,7 +311,7 @@ const thisDeviceRow: SchemaNode = {
                     {
                       type: 'we-text',
                       props: { variant: 'footnote', color: 'text-muted' },
-                      children: ['Serves you now'],
+                      children: ['In use'],
                     },
                   ],
                 },
@@ -356,7 +356,7 @@ export const devicesPage: SchemaNode = {
       available: { $: 'deviceStore.canSwitch' },
       icon: 'arrows-left-right',
       title: 'Which device serves you',
-      description: 'Choose the device that holds your spaces for this session — your computer, or a server you run.',
+      description: 'Open your spaces from this computer or from a host you run.',
       preview: [actions('Switch device')],
       children: [servingProblem, servingList, addServerForm, servingFootnote],
     }),

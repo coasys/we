@@ -104,11 +104,11 @@ export function serverOrigin(address) {
   try {
     url = new URL(String(address));
   } catch {
-    throw new Error('Not a server address');
+    throw new Error('Enter a host address, like https://host.example:12000.');
   }
-  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('A server address is http or https');
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('A host address starts with https://.');
   if (!isEncryptedOrLocal(url)) {
-    throw new Error(`${url.host} is plain http:// to another computer. Use its https:// address.`);
+    throw new Error(`${url.host} uses http://, which isn't encrypted. Use its https:// address.`);
   }
   return url.origin;
 }
@@ -487,7 +487,7 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
         // A stored entry that may not be dialled serves nobody (the app stays on this computer), so
         // it can be removed even while it is the one chosen.
         if (entry.serving === address && diallable(address)) {
-          throw new Error('This server serves this account. Switch away from it first.');
+          throw new Error('This host is in use. Switch to another device first.');
         }
         const rest = { ...entry, servers: (entry.servers ?? []).filter((s) => s.address !== address) };
         if (rest.serving === address) delete rest.serving;
@@ -503,9 +503,9 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
           delete rest.serving;
           return rest;
         }
-        if (!(entry.servers ?? []).some((s) => s.address === address)) throw new Error('No such server');
+        if (!(entry.servers ?? []).some((s) => s.address === address)) throw new Error("Can't find that host.");
         if (!diallable(address)) {
-          throw new Error('That server is plain http:// to another computer. Add its https:// address.');
+          throw new Error("That host uses http://, which isn't encrypted. Add its https:// address.");
         }
         return { ...entry, serving: address };
       });

@@ -413,7 +413,7 @@ export function executorConfigRows(config: ExecutorConfig | null, onThisMachine 
         : machineOnly
           ? onThisMachine
             ? 'Only from this computer'
-            : 'Only from that computer'
+            : 'Only on the host'
           : '',
     };
   });
@@ -1085,7 +1085,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
       if (done.ok) setExecutorRestartPending(false);
       else if (/local-only/.test(error())) {
         setRestartRefused(true);
-        setError('That server restarts only from that computer. The change waits for its next start.');
+        setError("You can't restart the host from here. Changes apply at its next start.");
       }
       return;
     }
