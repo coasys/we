@@ -41,6 +41,10 @@ pub struct ResolveCx<'a> {
     /// Resolve-time complaints (a bad expression, a token this stage does not
     /// know). Never fatal.
     pub warnings: &'a mut Vec<Arc<str>>,
+    /// `$`-types that are real components (`$lane` is a widget, not a
+    /// structure op) — the app answers from its widget registry. Everything
+    /// else `$`-prefixed becomes a labelled `$todo:` placeholder.
+    pub dollar_type: &'a dyn Fn(&str) -> bool,
 }
 
 impl ResolveCx<'_> {
@@ -285,9 +289,10 @@ fn resolve_node(
             }
             out
         }
-        Some(ty) if ty.starts_with('$') => {
+        Some(ty) if ty.starts_with('$') && !(cx.dollar_type)(ty) => {
             // An op this stage does not know: a labelled placeholder node, its
-            // children still resolved so something paints.
+            // children still resolved so something paints. `$`-types the host
+            // registered (a `$lane` widget) fall through to the node path.
             let id = cx.node_id(path);
             cx.live.insert(id.clone());
             cx.parents.insert(id.clone(), parent.clone());

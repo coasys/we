@@ -41,6 +41,9 @@ pub struct Runtime {
     locals: LocalState,
     /// The screen revision — a routeStore write moves it.
     screen_rev: Box<dyn Fn() -> u64>,
+    /// `$`-types that are real components — the app seeds it from the widget
+    /// registry; the default treats every `$`-type as an unknown op.
+    dollar_type: Arc<dyn Fn(&str) -> bool>,
     cache: ParseCache,
     resolved: Option<Arc<ResolvedNode>>,
     /// (screen, data, local) at the end of the last resolve.
@@ -66,12 +69,20 @@ impl Runtime {
             bag,
             locals,
             screen_rev: Box::new(screen_rev),
+            dollar_type: Arc::new(|_| false),
             cache: ParseCache::new(),
             resolved: None,
             last: None,
             parents: HashMap::new(),
             stats: Stats::default(),
         }
+    }
+
+    /// `$`-types the resolve should treat as components — the app passes its
+    /// registry's membership test so a `$lane` node reaches the Lane widget.
+    pub fn with_dollar_types(mut self, f: impl Fn(&str) -> bool + 'static) -> Self {
+        self.dollar_type = Arc::new(f);
+        self
     }
 
     /// The shared local store — the app's host writes through the same one.
@@ -113,6 +124,7 @@ impl Runtime {
                     live: &mut live,
                     parents: &mut parents,
                     warnings: &mut warnings,
+                    dollar_type: &*self.dollar_type,
                 };
                 resolve(&self.template, &Scope::default(), &mut cx)
             };

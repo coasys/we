@@ -81,6 +81,19 @@ impl Registry {
             .unwrap_or_else(|| self.unknown.clone())
     }
 
+    /// Whether a widget is registered under `ty` — what separates `$lane`
+    /// (a component) from a `$`-prefixed structure op the resolver does not
+    /// know.
+    pub fn contains(&self, ty: &str) -> bool {
+        self.widgets.contains_key(ty)
+    }
+
+    /// Every registered type name — the membership set the template
+    /// resolver's `dollar_type` predicate is built from.
+    pub fn type_names(&self) -> impl Iterator<Item = &'static str> + '_ {
+        self.widgets.keys().copied()
+    }
+
     /// Register `widget` under its `type_name`, replacing any registered
     /// before. Returns the registry for chaining.
     pub fn with<W: Widget + 'static>(mut self, widget: W) -> Self {
