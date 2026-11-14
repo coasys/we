@@ -604,9 +604,8 @@ pub(crate) fn js_num_text(n: f64) -> String {
         }
         return s;
     }
-    if n.fract() == 0.0 {
-        return format!("{n:.0}");
-    }
+    // `{}` is shortest round-trip decimal — `{n:.0}` would print the exact
+    // binary integer (`1000000000000000128` where JS gives `…00100`).
     format!("{n}")
 }
 

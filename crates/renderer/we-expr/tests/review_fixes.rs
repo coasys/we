@@ -551,3 +551,16 @@ fn p2_8_flat_chains_evaluate_fully() {
     let expected = format!("{}a{}", "x".repeat(60), "y".repeat(60));
     assert_eq!(eval(&expr, &MapEnv::new()).to_json(), json!(expected));
 }
+
+/// Number→text above 2^53: JS prints the shortest decimal that round-trips,
+/// not the exact binary integer. `'' + 1000000000000000128` is
+/// '1000000000000000100' in TS.
+#[test]
+fn p3_9_big_number_text_is_shortest_round_trip() {
+    let src = "'' + 1000000000000000128";
+    let expr = parse(src).unwrap();
+    assert_eq!(
+        eval(&expr, &MapEnv::new()).to_json(),
+        json!("1000000000000000100")
+    );
+}
