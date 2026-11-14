@@ -8,9 +8,13 @@ import { applyFixture, datasetIdFor, type Fixture, type FixtureId, FIXTURES, pat
  * `?record=1` — the flag the snapshot recorder (`crates/renderer/scripts/record-coasys.mjs`) loads
  * the host under. Off, none of the recording hooks exist: the lifecycle port reports its real
  * member list (empty), and a fixture's `workflows` section is ignored, exactly as before.
+ *
+ * Dev builds only — same gate as the bridge (`index.tsx`). In a production bundle
+ * `import.meta.env.DEV` folds to `false`, so a deployed preview answers `false` whatever the
+ * URL asks for; a URL flag is a switch, not a boundary.
  */
 export function recordingRequested(): boolean {
-  return new URLSearchParams(window.location.search).get('record') === '1';
+  return import.meta.env.DEV && new URLSearchParams(window.location.search).get('record') === '1';
 }
 
 /**

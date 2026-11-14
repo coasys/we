@@ -20,6 +20,7 @@
 import { moduleRegistry, moduleStores } from '@shared/registries/moduleRegistry';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import {
+  isValidThemeKey,
   useAccountStore,
   useAppStore,
   useBundleStore,
@@ -45,8 +46,8 @@ import {
 } from '@we/app-shell/solid';
 import { manifestEntries, routeQuery } from '@we/backend-shared';
 import { CORE_MANIFEST } from '@we/entities/manifest';
-import { deepUnwrap, pruneUnresolvedWhere, resolveProp, scopeIsAnchored } from '@we/schema-shared';
-import { onMount } from 'solid-js';
+import { deepUnwrap, parseOverrides, pruneUnresolvedWhere, resolveProp, scopeIsAnchored } from '@we/schema-shared';
+import { onCleanup, onMount } from 'solid-js';
 
 type Json = Record<string, unknown>;
 type Row = Record<string, unknown>;
@@ -249,7 +250,7 @@ export function RecorderBridge() {
         if (!p) return { ok: false as const, reason: 'no-dataset' };
 
         if (when !== undefined && !deepResolveTokens(when, stores, context)) {
-          return { ok: true as const, skipped: 'when', rows: [] as Row[] };
+          return { ok: true as const, skipped: 'when' };
         }
 
         const resolvedParams = deepResolveTokens(params, stores, context) as Json;
@@ -260,7 +261,7 @@ export function RecorderBridge() {
         }
         // An unanchored scope is treated as a falsy `when` by the renderer — not asked at all.
         if (resolvedParams.scope !== undefined && !scopeIsAnchored(resolvedParams.scope)) {
-          return { ok: true as const, skipped: 'unanchored-scope', rows: [] as Row[] };
+          return { ok: true as const, skipped: 'unanchored-scope', request: resolvedParams };
         }
         if (include !== undefined) resolvedParams.include = deepResolveTokens(include, stores, context);
 
@@ -283,7 +284,10 @@ export function RecorderBridge() {
         const normalise = rows.map((row) => ({ id: (row as { id?: unknown }).id, ...(row as Row) }));
         const s = serializable(normalise);
         if (!s.ok) return { ok: false as const, reason: `serialize: ${s.reason}` };
-        return { ok: true as const, rows: s.value as Row[] };
+        // The full resolved request the answer belongs to — the identity a snapshot keys on,
+        // not the local query name: two surfaces asking `signalTypes` with different sorts are
+        // two different questions.
+        return { ok: true as const, request: { entity: entityName, ...resolvedParams }, rows: s.value as Row[] };
       } catch (error) {
         return { ok: false as const, reason: `threw: ${(error as Error).message}` };
       }
@@ -303,13 +307,39 @@ export function RecorderBridge() {
       setParam: (name: string, value: string | null) => routeStore.setParam(name, value),
       params: () => ({ ...routeStore.params() }),
       path: () => routeStore.currentPath(),
+      // `setDefaultTheme`'s boolean reaches the caller — a failed settings write must fail the
+      // recorder, not read back as success because the request was made.
       setTheme: (themeId: string) => themeStore.setDefaultTheme(themeId),
       theme: () => themeStore.defaultThemeId(),
+      /*
+        What the theme system actually applied, as opposed to what it was asked for. `resolved`
+        is the ThemeData `currentTheme` settled on — the lookup misses an unknown id and falls
+        back (to `light`), which is exactly the silent failure a screenshot must not survive.
+        `expectedAttr` recomputes the base name `applyThemeToDOM` stamps on documentElement;
+        `documentAttr`/`scopeAttr` are what the DOM carries now.
+      */
+      appliedTheme: () => {
+        const resolved = themeStore.currentTheme();
+        const themeName = parseOverrides(resolved.overrides).themeName;
+        return {
+          requested: themeStore.currentThemeId(),
+          resolved: resolved.id,
+          expectedAttr: themeName ?? (isValidThemeKey(resolved.id) ? resolved.id : 'light'),
+          documentAttr: document.documentElement.getAttribute('data-we-theme'),
+          scopeAttr: document.querySelector('[data-we-theme-scope]')?.getAttribute('data-we-theme') ?? null,
+        };
+      },
       openShellView: (view: string) => shellStore.openShellView(view),
       closeShellView: (_view?: string) => shellStore.closeShellView(),
       booted: () => sessionStore.bootState?.() === 'ready',
       datasetId: () => datasetStore.currentDataset()?.id ?? null,
     };
+  });
+
+  // The global exists for exactly the bridge's lifetime — a page navigating away or the flag
+  // flipping leaves nothing behind.
+  onCleanup(() => {
+    delete (window as unknown as Json).__weRecord;
   });
 
   // No UI — a mounted provider component exists to publish `__weRecord` and nothing else.
