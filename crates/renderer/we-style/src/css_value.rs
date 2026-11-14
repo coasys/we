@@ -399,8 +399,11 @@ impl<'a> Parser<'a> {
                 if !(lo.same_unit(v) && v.same_unit(hi)) {
                     return Err(());
                 }
+                // CSS ordering: max(min, min(preferred, max)) — the minimum
+                // wins over a smaller maximum (`clamp(100px, 50px, 0px)` is
+                // 100px). f64::clamp would panic on that valid CSS.
                 Ok(MathValue {
-                    value: v.value.clamp(lo.value, hi.value),
+                    value: lo.value.max(v.value.min(hi.value)),
                     unit: v.unit,
                 })
             }

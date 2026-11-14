@@ -81,6 +81,21 @@ fn calc_forms() {
 }
 
 #[test]
+fn clamp_reversed_bounds() {
+    // CSS: clamp(min, preferred, max) = max(min, min(preferred, max)) — the
+    // minimum wins over a smaller maximum; it is valid CSS, not an error.
+    // Rust's f64::clamp would panic on lo > hi.
+    assert_eq!(dim("clamp(100px, 50px, 0px)"), px(100.0));
+    assert_eq!(dim("clamp(0px, 50px, 100px)"), px(50.0));
+    assert_eq!(dim("clamp(0px, 500px, 100px)"), px(100.0));
+    // nested expression with reversed bounds
+    assert_eq!(
+        dim("clamp(calc(80px + 20px), 50px, var(--we-nothing, 0px))"),
+        px(100.0)
+    );
+}
+
+#[test]
 fn var_forms() {
     // declared var substitutes
     assert_eq!(dim("var(--we-space-300)"), px(12.0));
