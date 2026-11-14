@@ -121,12 +121,13 @@ impl DesktopVault {
         log::info!("custody: write");
         let name = item_name(&item.scid);
         // Sealed or not as the store this item goes to (where it already is, or where a new one
-        // goes) keeps it.
+        // goes) keeps it. Unsealed, the buffer is the master key itself: kept in the wiping buffer
+        // `to_bytes` makes, not copied out of it into one freed unwiped after the put.
         let bytes = if self.store.kind_of(&name)?.unlocks_itself() {
-            item.to_bytes().to_vec()
+            item.to_bytes()
         } else {
             let passphrase = passphrase.ok_or(VaultError::Cancelled)?;
-            seal::seal(item, passphrase, self.kdf, &os_random)?
+            Zeroizing::new(seal::seal(item, passphrase, self.kdf, &os_random)?)
         };
         self.store.put(&name, &bytes)
     }

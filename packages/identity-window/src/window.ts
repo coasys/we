@@ -20,6 +20,7 @@ import {
   oneAtATime,
   remaining,
   type Screen,
+  screenTurns,
   type StepInput,
   targetLine,
   wordNumber,
@@ -45,6 +46,8 @@ export interface IdentityTransport {
 let host: IdentityTransport;
 let root: HTMLElement;
 let offerTimer: number | undefined;
+/** Marked at each screen drawn and each step sent: a wait's answer is drawn only while it holds. */
+const turn = screenTurns();
 
 type Child = Node | string;
 
@@ -77,6 +80,7 @@ function secretField(label: string): { label: HTMLLabelElement; input: HTMLInput
 
 /** Runs a call, draws the screen it answers, and clears the fields it read. */
 async function run(call: () => Promise<Screen>, clear: HTMLInputElement[] = []) {
+  turn.mark();
   for (const b of Array.from(root.querySelectorAll('button'))) b.disabled = true;
   try {
     draw(await call());
@@ -155,11 +159,16 @@ function countdown(expires: number, waiting: string): HTMLParagraphElement {
 
 /**
  * Asks the custody service to wait for what the other device does next, once this screen is drawn,
- * leaving the buttons live so the person can still copy or cancel while it waits.
+ * leaving the buttons live so the person can still copy or cancel while it waits. Its answer is
+ * dropped once another screen was drawn or a step sent (`screenTurns`).
  */
 function waitFor(input: StepInput) {
   queueMicrotask(() => {
-    void host.step(input).then(draw, (error: unknown) => draw({ screen: 'failed', message: String(error) }));
+    const current = turn.hold();
+    void host.step(input).then(
+      (screen) => current() && draw(screen),
+      (error: unknown) => current() && draw({ screen: 'failed', message: String(error) }),
+    );
   });
 }
 
@@ -375,6 +384,7 @@ function body(screen: Screen): Child[] {
 }
 
 function draw(screen: Screen) {
+  turn.mark();
   if (offerTimer !== undefined) {
     window.clearInterval(offerTimer);
     offerTimer = undefined;
