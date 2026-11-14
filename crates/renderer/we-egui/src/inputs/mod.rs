@@ -178,38 +178,6 @@ pub(crate) fn remember_focus(cx: &mut PaintCx, node: &ResolvedNode, response: &e
     }
 }
 
-/// DOM `readonly`: focus, selection and copy stay, edits don't. egui has
-/// no read-only flag — `interactive(false)` kills selection too — so the
-/// mutating input events are consumed before the TextEdit sees them.
-/// `multiline` decides whether Enter inserts a newline to block.
-/// Call only when [`focused_last_frame`] is true, or the consume would
-/// steal a *different* widget's keys.
-pub(crate) fn consume_readonly_edits(cx: &PaintCx, multiline: bool) {
-    cx.ui.input_mut(|i| {
-        i.events.retain(|e| {
-            !match e {
-                egui::Event::Text(_)
-                | egui::Event::Paste(_)
-                | egui::Event::Cut
-                | egui::Event::Ime(_) => true,
-                egui::Event::Key {
-                    key,
-                    pressed: true,
-                    modifiers,
-                    ..
-                } => match key {
-                    egui::Key::Backspace | egui::Key::Delete => true,
-                    egui::Key::Enter => multiline,
-                    // Ctrl/Cmd+Z (undo) and +Y (redo) write the buffer too.
-                    egui::Key::Z | egui::Key::Y => modifiers.command,
-                    _ => false,
-                },
-                _ => false,
-            }
-        });
-    });
-}
-
 /// The AccessKit label: the node's own `label`/`placeholder` first — an
 /// explicit name beats inheritance like the DOM's `aria-label` — then the
 /// `we-form-field` ancestor that slotted it (nearest first).

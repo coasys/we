@@ -6,8 +6,8 @@ use we_style::Style;
 use we_template::ResolvedNode;
 
 use crate::inputs::{
-    access_label, commit_text, consume_readonly_edits, disabled, focused_last_frame, readonly,
-    reconcile_draft, remember_focus, shown_text,
+    access_label, commit_text, disabled, focused_last_frame, readonly, reconcile_draft,
+    remember_focus, shown_text,
 };
 use crate::props;
 use crate::{events, MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
@@ -47,11 +47,9 @@ impl Widget for Textarea {
         // the ui scope, so asking is more reliable than predicting).
         let submit_on_enter = props::prop_bool(node, "submitOnEnter");
         let focused = focused_last_frame(cx, node);
-        // textarea.ts:413 `?readonly` — same contract as we-input: focus
-        // stays, edits are consumed before the TextEdit gets them.
-        if readonly(node) && focused {
-            consume_readonly_edits(cx, true);
-        }
+        // textarea.ts:413 `?readonly` — same contract as we-input: the
+        // immutable `&str` buffer is the DOM attribute (edits are no-ops
+        // however focus arrived); focus, selection and copy stay live.
         let mut composing = cx.edit.field(&node.id, "ime").truthy();
         let mut plain_enter = false;
         if focused {
@@ -87,7 +85,15 @@ impl Widget for Textarea {
             });
         }
 
-        let widget = TextEdit::multiline(&mut text)
+        let is_readonly = readonly(node);
+        let mut readonly_text;
+        let buffer: &mut dyn egui::TextBuffer = if is_readonly {
+            readonly_text = text.as_str();
+            &mut readonly_text
+        } else {
+            &mut text
+        };
+        let widget = TextEdit::multiline(buffer)
             .id_salt(node.id.as_str())
             .desired_width(rect.width())
             .desired_rows(1)
@@ -102,7 +108,9 @@ impl Widget for Textarea {
             egui::WidgetInfo::labeled(egui::Role::TextInput, !disabled, access_label(cx, node))
         });
 
-        if response.changed() {
+        // Same spurious `changed` as we-input: a mutation the immutable
+        // buffer no-opped must not emit.
+        if response.changed() && !is_readonly {
             cx.edit
                 .set_draft(&node.id, &text, props::prop(node, "value"));
             cx.emit(&node.id, "onInput", events::detail_str(&text));

@@ -7,8 +7,7 @@ use we_style::Style;
 use we_template::ResolvedNode;
 
 use crate::inputs::{
-    access_label, commit_text, consume_readonly_edits, disabled, focused_last_frame, readonly,
-    reconcile_draft, remember_focus, shown_text,
+    access_label, commit_text, disabled, readonly, reconcile_draft, remember_focus, shown_text,
 };
 use crate::props;
 use crate::{events, MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
@@ -48,15 +47,24 @@ impl Widget for Input {
         let mut text = shown_text(cx.edit, node);
         let shown_is_draft = cx.edit.draft(&node.id).is_some_and(|d| d == text);
         let disabled = disabled(node);
-        // input.ts:352 `?readonly` — focus and selection stay, edits are
-        // consumed before the TextEdit gets them.
-        if readonly(node) && focused_last_frame(cx, node) {
-            consume_readonly_edits(cx, false);
-        }
+        // input.ts:352 `?readonly` — the DOM attribute blocks edits
+        // intrinsically, whenever focus arrived, while focus, selection
+        // and copy stay live. An immutable `&str` buffer is that
+        // attribute: every insert/delete is a no-op inside the TextEdit,
+        // so a keystroke in the first-focus frame (before any remembered
+        // focus id existed) cannot land either.
+        let is_readonly = readonly(node);
+        let mut readonly_text;
+        let buffer: &mut dyn egui::TextBuffer = if is_readonly {
+            readonly_text = text.as_str();
+            &mut readonly_text
+        } else {
+            &mut text
+        };
         let is_password =
             matches!(props::prop(node, "type"), we_expr::Value::Str(s) if s.as_ref() == "password");
 
-        let widget = TextEdit::singleline(&mut text)
+        let widget = TextEdit::singleline(buffer)
             .id_salt(node.id.as_str())
             .desired_width(rect.width())
             // Centre the text block in the field — the theme's atom
@@ -76,7 +84,9 @@ impl Widget for Input {
             egui::WidgetInfo::labeled(egui::Role::TextInput, !disabled, access_label(cx, node))
         });
 
-        if response.changed() {
+        // egui still reports `changed` for a mutation the immutable
+        // buffer turned into a no-op — readonly takes no input event.
+        if response.changed() && !is_readonly {
             cx.edit
                 .set_draft(&node.id, &text, props::prop(node, "value"));
             cx.emit(&node.id, "onInput", events::detail_str(&text));

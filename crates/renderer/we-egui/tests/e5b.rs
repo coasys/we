@@ -768,6 +768,62 @@ fn textarea_readonly_blocks_typing_and_enter() {
     );
 }
 
+/// F7 — the DOM `readonly` attribute is enforced by the element itself,
+/// independent of when focus arrived. The Rust port filtered mutating
+/// events only when a *remembered* TextEdit id held focus, so the first
+/// focus-acquisition frame reached the editor unfiltered: a paste in the
+/// same frame landed in the buffer and emitted `onInput`.
+#[test]
+fn readonly_input_blocks_the_first_focus_frames_edit() {
+    let mut inp = node(
+        "we-input",
+        "in",
+        props(&[
+            ("label", s("Name")),
+            ("value", s("keep")),
+            ("readonly", b(true)),
+        ]),
+    );
+    inp.handlers = handlers(&["onInput"]);
+    let (mut h, r) = rig(inp);
+    h.run();
+    // Focus and paste in ONE frame — no remembered TextEdit id exists
+    // yet, so the old consume path never ran.
+    h.get_by_label("Name").focus();
+    h.input_mut().events.push(egui::Event::Paste("x".into()));
+    h.step();
+    assert_eq!(h.get_by_label("Name").value().as_deref(), Some("keep"));
+    assert!(
+        details(&r, "onInput").is_empty(),
+        "readonly must not emit onInput"
+    );
+}
+
+/// F7 — the same first-focus frame on the multiline field.
+#[test]
+fn readonly_textarea_blocks_the_first_focus_frames_edit() {
+    let mut ta = node(
+        "we-textarea",
+        "ta",
+        props(&[
+            ("label", s("Body")),
+            ("value", s("keep")),
+            ("readonly", b(true)),
+        ]),
+    );
+    ta.handlers = handlers(&["onInput"]);
+    let (mut h, r) = rig(ta);
+    h.run();
+    h.get_by_label("Body").focus();
+    h.input_mut().events.push(egui::Event::Paste("x".into()));
+    h.step();
+    assert_eq!(h.get_by_label("Body").value().as_deref(), Some("keep"));
+    assert!(
+        details(&r, "onInput").is_empty(),
+        "readonly must not emit onInput"
+    );
+}
+
 /// B7 — input.ts:339, textarea.ts:401: `.value=${this.value ?? ''}` — a
 /// missing or null value is an empty field, never the text "undefined"
 /// (or "null"). `Value::to_text`, not `js_string`, is the conversion.
