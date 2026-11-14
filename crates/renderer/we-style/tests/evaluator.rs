@@ -269,6 +269,48 @@ fn color_forms() {
 }
 
 #[test]
+fn color_mix_accepted_spaces_match_spec() {
+    // `srgb-linear` mixes in linear light: equal black/white is linear 0.5,
+    // which encodes to ≈0.735 sRGB — not the gamma-space 0.5 `srgb` gives.
+    let mid = eval_color("color-mix(in srgb-linear, black, white)").unwrap();
+    assert!(
+        (mid.r - 0.7354).abs() < 1e-3 && (mid.g - 0.7354).abs() < 1e-3,
+        "srgb-linear midpoint is linear light: {mid:?}"
+    );
+    let gamma = eval_color("color-mix(in srgb, black, white)").unwrap();
+    assert!((gamma.r - 0.5).abs() < 1e-6, "srgb stays gamma: {gamma:?}");
+
+    // oklch: a colour mixed with itself must stay itself. The buggy build fed
+    // the degree-valued hue straight to f32::cos/sin and shifted it.
+    let one = eval_color("oklch(0.6 0.1 200)").unwrap();
+    let mixed = eval_color("color-mix(in oklch, oklch(0.6 0.1 200), oklch(0.6 0.1 200))")
+        .unwrap();
+    assert!(
+        (mixed.r - one.r).abs() < 1e-3
+            && (mixed.g - one.g).abs() < 1e-3
+            && (mixed.b - one.b).abs() < 1e-3,
+        "identity mix preserves colour: {mixed:?} vs {one:?}"
+    );
+
+    // hue interpolates along the shorter arc: 350° and 10° meet at 0°,
+    // not through 180°.
+    let mixed =
+        eval_color("color-mix(in oklch, oklch(0.6 0.1 350), oklch(0.6 0.1 10))").unwrap();
+    let expect = eval_color("oklch(0.6 0.1 0)").unwrap();
+    assert!(
+        (mixed.r - expect.r).abs() < 5e-3 && (mixed.g - expect.g).abs() < 5e-3,
+        "shorter-arc hue: {mixed:?} vs {expect:?}"
+    );
+
+    // percentages below 100% normalise for the colour and multiply the alpha.
+    let m = eval_color("color-mix(in srgb, red 30%, blue 30%)").unwrap();
+    assert!(
+        (m.r - 0.5).abs() < 1e-6 && (m.b - 0.5).abs() < 1e-6 && (m.a - 0.6).abs() < 1e-6,
+        "partial weights normalise colour, multiply alpha: {m:?}"
+    );
+}
+
+#[test]
 fn unsupported_forms_stay_unsupported() {
     // things the crate must not guess — they land in `unsupported`
     assert_eq!(dim("var(--we-gradient-hero)"), None);

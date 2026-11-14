@@ -393,12 +393,11 @@ fn parse_color_mix(args: &str) -> Option<Color> {
     }
     if sum < 1.0 {
         alpha_mul = sum;
-    } else {
-        w1 /= sum;
-        w2 /= sum;
     }
+    w1 /= sum;
+    w2 /= sum;
     let mixed = match space.as_str() {
-        "srgb" | "srgb-linear" => {
+        "srgb" => {
             let [r1, g1, b1, a1] = c1.premultiplied();
             let [r2, g2, b2, a2] = c2.premultiplied();
             Color::from_premultiplied([
@@ -408,19 +407,55 @@ fn parse_color_mix(args: &str) -> Option<Color> {
                 a1 * w1 + a2 * w2,
             ])
         }
+        "srgb-linear" => {
+            // interpolate the linear-light channels, premultiplied
+            let lin = |c: Color| {
+                [
+                    srgb_to_linear(c.r) * c.a,
+                    srgb_to_linear(c.g) * c.a,
+                    srgb_to_linear(c.b) * c.a,
+                    c.a,
+                ]
+            };
+            let (l1, l2) = (lin(c1), lin(c2));
+            let m = Color::from_premultiplied([
+                l1[0] * w1 + l2[0] * w2,
+                l1[1] * w1 + l2[1] * w2,
+                l1[2] * w1 + l2[2] * w2,
+                l1[3] * w1 + l2[3] * w2,
+            ]);
+            Color::new(
+                linear_to_srgb(m.r),
+                linear_to_srgb(m.g),
+                linear_to_srgb(m.b),
+                m.a,
+            )
+        }
         "oklab" | "oklch" => {
             let polar = space == "oklch";
-            let (a1, b1, c1l) = oklab_axes(c1, polar);
-            let (a2, b2, c2l) = oklab_axes(c2, polar);
-            let (ar, br, lr) = (a1 * w1 + a2 * w2, b1 * w1 + b2 * w2, c1l * w1 + c2l * w2);
-            let (la, aa, ba) = if polar {
-                // back from polar: a = C cos h, b = C sin h
-                (lr, ar * br.cos(), ar * br.sin())
+            // (a, b, L) or (C, h°, L)
+            let (x1, y1, l1) = oklab_axes(c1, polar);
+            let (x2, y2, l2) = oklab_axes(c2, polar);
+            let am = c1.a * w1 + c2.a * w2;
+            // premultiplied interpolation — every component except hue scales
+            // by the colour's alpha
+            let lw = l1 * c1.a * w1 + l2 * c2.a * w2;
+            let xw = x1 * c1.a * w1 + x2 * c2.a * w2;
+            let (l, a, b) = if am > 0.0 {
+                let (l, x) = (lw / am, xw / am);
+                if polar {
+                    // hue takes the shorter arc; degrees → radians for trig
+                    let dh = (((y2 - y1) % 360.0) + 540.0) % 360.0 - 180.0;
+                    let h = (y1 + dh * w2).to_radians();
+                    (l, x * h.cos(), x * h.sin())
+                } else {
+                    (l, x, (y1 * c1.a * w1 + y2 * c2.a * w2) / am)
+                }
             } else {
-                (lr, ar, br)
+                (0.0, 0.0, 0.0)
             };
-            let (r, g, b) = oklab_to_srgb(la, aa, ba);
-            Color::new(r, g, b, c1.a * w1 + c2.a * w2)
+            let (r, g, b) = oklab_to_srgb(l, a, b);
+            Color::new(r, g, b, am)
         }
         _ => return None,
     };
