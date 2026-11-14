@@ -18,17 +18,27 @@
 
 mod bundle;
 mod handler;
+mod handlers;
+mod local;
 mod node;
 mod order;
+mod resolve;
 mod resolved;
+mod runtime;
+mod scope;
 
 pub use bundle::{
     Bundle, BundleAuthor, BundleBrand, BundleDisplay, BundleRecordType, BundleTemplate,
     BundleTheme, DisplaySpaces, BUNDLE_FORMAT, BUNDLE_FORMAT_VERSION,
 };
 pub use handler::{CallId, HandlerToken, Host, Invoked};
+pub use handlers::{run as run_handler, HandlerCx};
+pub use local::LocalState;
 pub use node::{RouteNode, SchemaChild, SchemaNode};
+pub use resolve::{resolve, ResolveCx};
 pub use resolved::{
     normal_form, HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope, Transition,
     TransitionEffect, TransitionKind,
 };
+pub use runtime::{Runtime, StaticHost, Stats};
+pub use scope::{LocalDecl, LocalNs, LocalScope, RouteNs, RouteState, ScopeEnv, StoreBag};
