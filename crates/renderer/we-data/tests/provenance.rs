@@ -74,6 +74,8 @@ fn find_text(node: &ResolvedNode, out: &mut Vec<String>) {
 /// - `spaceStore.policy` — the policy line
 /// - `spaceStore.spaceDefaultThemeId`, `.spaceThemePinned`,
 ///   `.spaceDefaultTemplateId` — theme/template pickers
+/// - `templateStore.currentSwitcherId` — the picker's `t.id ==` filters and
+///   the row's `selected` condition
 /// - `spaceStore.canAdministerCurrentSpace` — admin affordances
 /// - `sessionStore.signInStep`/`.bootState` — `default_ready`'s gate
 /// - `sessionStore.me` — `$me.did` through the `me` alias
@@ -96,10 +98,12 @@ const SNAPSHOT_DEMO: &[&str] = &[
     "spaceStore.orderedSidebarItems",
     "spaceStore.policy",
     "spaceStore.root",
+    "spaceStore.spaceDefaultTemplateId",
     "spaceStore.spaceDefaultThemeId",
     "spaceStore.spaceThemePinned",
     "spaceStore.taskStates",
     "templateStore.brand",
+    "templateStore.currentSwitcherId",
     "templateStore.switcherGroups",
     "themeStore.builtInThemes",
     "themeStore.currentThemeId",
@@ -140,6 +144,47 @@ fn space_demo_resolves_and_records() {
         ["profileStore.ownProfile"].into_iter().collect(),
         "native-served members on /space/demo"
     );
+}
+
+/// The rail's template picker reads `switcherGroups[].items`, filtering the
+/// Built-in group down to the default and the current template — TS builds
+/// the groups as `{ label, items }` in `switcherGroups()`
+/// (TemplateStore.tsx:759), and the picker's `$each` renders what survives
+/// the filter (designChoices.ts:98).
+#[test]
+fn the_template_picker_renders_the_fixture_choices() {
+    let (mut session, data) = session("/space/demo");
+    let root = session.resolve().clone();
+    let mut texts = Vec::new();
+    find_text(&root, &mut texts);
+    let joined = texts.join("\n");
+
+    // SPACE_TEMPLATE_CHOICES: the default built-in, then the space's, then
+    // the agent's. "Minimal" is filtered out — it is neither.
+    for name in ["Starter", "Space Board", "My Own"] {
+        assert!(
+            joined.contains(name),
+            "choice {name} should render; {joined:?}"
+        );
+    }
+    assert!(
+        !joined.contains("Minimal"),
+        "a built-in that is neither default nor current is filtered out"
+    );
+
+    let report = data.provenance.report();
+    let snapshot_got: BTreeSet<&str> = report.snapshot_served.iter().map(String::as_str).collect();
+    // The row comparisons read both ids — they may only be missing if
+    // `.items` never resolved.
+    for member in [
+        "spaceStore.spaceDefaultTemplateId",
+        "templateStore.currentSwitcherId",
+    ] {
+        assert!(
+            snapshot_got.contains(member),
+            "{member} should be snapshot-served; got {snapshot_got:?}"
+        );
+    }
 }
 
 #[test]
