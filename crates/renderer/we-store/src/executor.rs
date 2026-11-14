@@ -60,7 +60,9 @@ impl ClassSel {
 /// and the E6 compiler fill them.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct QueryIr {
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// `where` on the wire — `where_` is only the Rust-legal field name.
+    /// Without the rename the executor drops every filter.
+    #[serde(rename = "where", skip_serializing_if = "Option::is_none")]
     pub where_: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order: Option<serde_json::Value>,
