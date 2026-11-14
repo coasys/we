@@ -954,9 +954,11 @@ fn block_lines(node: &ResolvedNode) -> Vec<String> {
 
 /// Whatever a stored composition arrives as → its blocks —
 /// `decodeEditorState`/`contentFromValue` (block-system shared/utils.ts).
-/// A `{_type:"document", blocks:[…]}` reads `blocks` (`children` only as
-/// a compat read); a bare array must be `isContentBlockArray` — every
-/// element an object carrying a string `_type`.
+/// Only the `{_type:"document"}` wrapper reads `blocks` — `children`
+/// stays a compat read on that one shape, not on any object that happens
+/// to carry a `children` list (a Lexical root tree decodes to null —
+/// content.test.ts:176). A bare array must be `isContentBlockArray` —
+/// every element an object carrying a string `_type`.
 fn content_blocks(value: &Value) -> Option<Vec<Value>> {
     match value {
         Value::Obj(o) => {
@@ -965,13 +967,12 @@ fn content_blocks(value: &Value) -> Option<Vec<Value>> {
                 let s = String::from_utf8(b64_decode(b64)?).ok()?;
                 return json_value(&s).and_then(|v| content_blocks(&v));
             }
-            let inner =
-                if matches!(o.get("_type"), Some(Value::Str(t)) if t.as_ref() == "document") {
-                    o.get("blocks")
-                } else {
-                    None
-                }
-                .or_else(|| o.get("children"));
+            let inner = if matches!(o.get("_type"), Some(Value::Str(t)) if t.as_ref() == "document")
+            {
+                o.get("blocks").or(o.get("children"))
+            } else {
+                None
+            };
             match inner {
                 Some(Value::List(blocks)) => Some(blocks.to_vec()),
                 _ => None,

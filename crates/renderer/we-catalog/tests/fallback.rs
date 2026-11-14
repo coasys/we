@@ -261,6 +261,57 @@ fn block_composer_reads_a_document_wrapper() {
 }
 
 #[test]
+fn editor_state_rejects_a_lexical_tree() {
+    // content.test.ts:176 — the Lexical root/children tree WE stored
+    // before the content layer is not a composition: decodeEditorState
+    // answers null and nothing is announced. `children` on an arbitrary
+    // object is not a document wrapper.
+    let n = node(
+        "BlockComposer",
+        &[(
+            "editorState",
+            obj(&[
+                ("type", Value::from("root")),
+                (
+                    "children",
+                    list(vec![obj(&[
+                        ("type", Value::from("paragraph")),
+                        (
+                            "children",
+                            list(vec![obj(&[
+                                ("type", Value::from("text")),
+                                ("text", Value::from("z")),
+                            ])]),
+                        ),
+                    ])]),
+                ),
+            ]),
+        )],
+    );
+    assert_eq!(fallback(&n), "");
+
+    // A lone collection object is one block, not a composition — TS
+    // accepts only a document wrapper or a block array here.
+    let n = node(
+        "BlockComposer",
+        &[(
+            "editorState",
+            obj(&[
+                ("_type", Value::from("collection")),
+                (
+                    "children",
+                    list(vec![obj(&[
+                        ("_type", Value::from("block")),
+                        ("text", Value::from("invented")),
+                    ])]),
+                ),
+            ]),
+        )],
+    );
+    assert_eq!(fallback(&n), "");
+}
+
+#[test]
 fn block_composer_decodes_a_stored_editor_state() {
     // What a resolved file field actually reads as: the Portable Text
     // projection under a `data:…;base64` URI (the decodeEditorState
