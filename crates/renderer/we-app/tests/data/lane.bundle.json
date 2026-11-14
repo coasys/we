@@ -13,9 +13,7 @@
         {
           "type": "$lane",
           "props": { "lane": "main" },
-          "children": [
-            { "type": "we-text", "props": { "text": "inside the lane" } }
-          ]
+          "children": [{ "type": "we-text", "props": { "text": "inside the lane" } }]
         }
       ]
     }

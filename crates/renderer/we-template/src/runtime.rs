@@ -54,8 +54,10 @@ pub enum RootSpec {
 
 /// A bundle's renderable pieces.
 pub struct AppSpec {
-    /// `bundle.app` — the chrome every route renders inside.
-    pub app: Option<SchemaNode>,
+    /// `bundle.app` — the chrome every route renders inside; its
+    /// `meta.frame` declares the bands it occupies (the rest is the
+    /// content viewport the mounted page fills).
+    pub app: Option<BundleTemplate>,
     /// The space template (`display.template` names it, else the first) —
     /// its `routes`, `meta.panels`, `meta.recordViews`.
     pub template: Option<BundleTemplate>,
@@ -218,7 +220,11 @@ impl Runtime {
     /// nothing for the landing.
     fn mounts_for<'a>(spec: &'a RootSpec, screen: &ScreenState, ready: bool) -> Vec<Mount<'a>> {
         let chrome = |spec: &'a AppSpec| Mount {
-            node: spec.app.as_ref().unwrap_or_else(|| empty_node()),
+            node: spec
+                .app
+                .as_ref()
+                .map(|t| &t.node)
+                .unwrap_or_else(|| empty_node()),
             id: "app".into(),
             template: None,
         };
@@ -295,11 +301,15 @@ impl Runtime {
             let mut warnings = Vec::new();
             let mut ops = Vec::new();
             let mut kept_filling = false;
+            // The leading resolved children that are the app chrome's —
+            // everything after them is content for the viewport wrapper.
+            let mut chrome_children = 0usize;
             for _ in 0..8 {
                 let mut round_live = HashSet::new();
                 let mut round_parents = HashMap::new();
                 warnings.clear();
                 children.clear();
+                chrome_children = 0;
                 for mount in &mounts {
                     let (routes, panels, record_views) = match mount.template {
                         Some(t) => (
@@ -330,12 +340,16 @@ impl Runtime {
                         dollar_type: &*self.dollar_type,
                         route_tail: &mut route_tail,
                     };
+                    let before = children.len();
                     children.extend(resolve::resolve(
                         mount.node,
                         &mount.id,
                         &Scope::default(),
                         &mut cx,
                     ));
+                    if mount.id.as_ref() == "app" {
+                        chrome_children = children.len() - before;
+                    }
                 }
                 live = round_live;
                 parents = round_parents;
@@ -354,16 +368,27 @@ impl Runtime {
             self.parents = parents;
             self.live = live;
 
+            // The app chrome's `meta.frame` declares the bands it
+            // occupies; the space the frame leaves is the content
+            // viewport — a fixed scroller the mounted page fills (the
+            // web's appViewport element). A bare landing gets it too.
+            if let RootSpec::App(spec) = &self.spec {
+                if chrome_children > 0 {
+                    let content = children.split_off(chrome_children);
+                    children.push(ResolvedChild::Node(Box::new(content_viewport(
+                        spec.app.as_ref(),
+                        content,
+                    ))));
+                }
+            }
             // A fragment, an op or the multi-mount root can answer several
             // children — the tree the frame paints always has one root, so
-            // wrap them.
+            // wrap them. The id names no mount: mount roots are `{id}:`,
+            // resolved children `{id}:{path}` — `root` cannot collide.
             let root = match children.as_slice() {
                 [ResolvedChild::Node(node)] => (**node).clone(),
                 _ => ResolvedNode {
-                    id: NodeId::new(format!(
-                        "{}:",
-                        mounts.first().map(|m| m.id.as_ref()).unwrap_or("root")
-                    )),
+                    id: NodeId::new("root"),
                     ty: "Column".into(),
                     props: IndexMap::new(),
                     handlers: IndexMap::new(),
@@ -372,6 +397,16 @@ impl Runtime {
                     transition: None,
                 },
             };
+            // Ids key layout, paint state and event dispatch: the app tree
+            // the runtime assembles from several mounts plus its synthetic
+            // `root`/`frame` wrappers must never repeat one.
+            if matches!(self.spec, RootSpec::App(_)) {
+                debug_assert!(
+                    first_duplicate_id(&root).is_none(),
+                    "duplicate node id {:?} in the resolved app tree",
+                    first_duplicate_id(&root)
+                );
+            }
             self.stats.nodes = count_nodes(&root);
             self.stats.last_resolve = started.elapsed();
             self.stats.resolves += 1;
@@ -529,6 +564,55 @@ fn empty_node() -> &'static SchemaNode {
     EMPTY.get_or_init(SchemaNode::default)
 }
 
+/// The bands an app template that declares no `meta.frame` keeps — TS
+/// `DEFAULT_APP_FRAME` in `app-shell/src/shared/dockGeometry.ts`: the
+/// collapsed shell sidebar (`SIDEBAR_PX`) on the left and the module rail
+/// (`CHROME_RAIL_PX`) on the right. `(left, top, right, bottom)`.
+const DEFAULT_APP_FRAME: (f64, f64, f64, f64) = (80.0, 0.0, 56.0, 0.0);
+
+/// `meta.frame`'s bands the chrome occupies → the box the content mounts
+/// fill: a fixed-position scroller offset by the frame (the web's
+/// appViewport). Children with `height: 100%` see a definite box through
+/// it; `overflowY: auto` keeps page scroll inside it.
+///
+/// As TS `declareAppFrame`: a declared frame names every band it holds and
+/// an edge it leaves out is 0; no frame at all (absent or `null`) keeps
+/// [`DEFAULT_APP_FRAME`].
+fn content_viewport(app: Option<&BundleTemplate>, children: Vec<ResolvedChild>) -> ResolvedNode {
+    let declared = app
+        .and_then(|t| t.meta.get("frame"))
+        .filter(|f| !f.is_null());
+    let (l, t, r, b) = match declared {
+        Some(f) => {
+            let edge = |key: &str| f.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0);
+            (edge("left"), edge("top"), edge("right"), edge("bottom"))
+        }
+        None => DEFAULT_APP_FRAME,
+    };
+    let px = |v: f64| Value::Str(format!("{v}px").into());
+    let calc = |unit: &str, v: f64| Value::Str(format!("calc(100{unit} - {v}px)").into());
+    ResolvedNode {
+        id: NodeId::new("frame"),
+        ty: "Column".into(),
+        props: [
+            ("position", Value::Str("fixed".into())),
+            ("left", px(l)),
+            ("top", px(t)),
+            ("width", calc("vw", l + r)),
+            ("height", calc("vh", t + b)),
+            ("overflowY", Value::Str("auto".into())),
+            ("bg", Value::Str("page".into())),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.into(), v))
+        .collect(),
+        handlers: IndexMap::new(),
+        slot: None,
+        children,
+        transition: None,
+    }
+}
+
 /// `sessionStore` readiness — `signInStep`/`bootState` reads `"ready"`; an
 /// absent store is not ready (the bundle's own `$if` draws the boot in WE).
 fn default_ready(bag: &StoreBag) -> bool {
@@ -563,6 +647,24 @@ fn count_nodes(node: &ResolvedNode) -> usize {
             ResolvedChild::Text(_) => 0,
         })
         .sum::<usize>()
+}
+
+/// The first node id the tree repeats, in walk order — `None` when every
+/// id is unique.
+fn first_duplicate_id(root: &ResolvedNode) -> Option<NodeId> {
+    fn walk<'a>(
+        n: &'a ResolvedNode,
+        seen: &mut std::collections::HashSet<&'a NodeId>,
+    ) -> Option<NodeId> {
+        if !seen.insert(&n.id) {
+            return Some(n.id.clone());
+        }
+        n.children.iter().find_map(|c| match c {
+            ResolvedChild::Node(x) => walk(x, seen),
+            ResolvedChild::Text(_) => None,
+        })
+    }
+    walk(root, &mut std::collections::HashSet::new())
 }
 
 /// The node under `id`, by walk — the resolved tree is small, and dispatch
@@ -635,5 +737,55 @@ impl Host for StaticHost {
 
     fn get_local(&self, node: &NodeId, field: &str) -> Value {
         self.locals.get(node, field)
+    }
+}
+
+#[cfg(test)]
+mod frame_tests {
+    use super::*;
+
+    fn app(meta: serde_json::Value) -> BundleTemplate {
+        serde_json::from_value(serde_json::json!({ "id": "app", "meta": meta, "type": "Column" }))
+            .expect("app template parses")
+    }
+
+    /// `(left, top, width, height)` of the content viewport, as authored.
+    fn frame_props(app: Option<&BundleTemplate>) -> [String; 4] {
+        let node = content_viewport(app, vec![]);
+        ["left", "top", "width", "height"].map(|k| match node.props.get(k) {
+            Some(Value::Str(s)) => s.to_string(),
+            other => panic!("{k}: {other:?}"),
+        })
+    }
+
+    /// TS `declareAppFrame(undefined)` keeps `DEFAULT_APP_FRAME`: the 80px
+    /// sidebar on the left and the 56px chrome rail on the right.
+    #[test]
+    fn an_app_without_meta_frame_keeps_the_default_frame() {
+        let a = app(serde_json::json!({ "name": "app", "role": "app" }));
+        assert_eq!(
+            frame_props(Some(&a)),
+            ["80px", "0px", "calc(100vw - 136px)", "calc(100vh - 0px)"]
+        );
+    }
+
+    /// A declared frame names every band it holds; one it leaves out is 0.
+    #[test]
+    fn a_partial_meta_frame_zeroes_its_missing_edges() {
+        let a = app(serde_json::json!({ "frame": { "right": 40, "top": 12 } }));
+        assert_eq!(
+            frame_props(Some(&a)),
+            ["0px", "12px", "calc(100vw - 40px)", "calc(100vh - 12px)"]
+        );
+    }
+
+    /// Coasys declares `{ "left": 72 }` — unchanged by the default.
+    #[test]
+    fn the_coasys_frame_is_unchanged() {
+        let a = app(serde_json::json!({ "frame": { "left": 72 } }));
+        assert_eq!(
+            frame_props(Some(&a)),
+            ["72px", "0px", "calc(100vw - 72px)", "calc(100vh - 0px)"]
+        );
     }
 }

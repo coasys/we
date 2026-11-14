@@ -402,13 +402,20 @@ impl Axes {
     }
 }
 
-/// A percent term's resolution context: which node it belongs to and
-/// which of its bases feeds it — the deferred-measurement key.
+/// A percent term's resolution context: which node it belongs to, which
+/// of its bases feeds it — the deferred-measurement key — and whether
+/// taffy's own percent resolution lands on the same box.
 #[derive(Clone, Copy)]
 struct PctBase<'a> {
     node: &'a NodeId,
     axis: Axis,
     base: AxisBase,
+    /// `true` when taffy resolves `percent`/`calc` percents against
+    /// `base` already — an in-flow child's parent content box, or a grid
+    /// child's cell. `false` for abs/fixed children: taffy resolves
+    /// against the DOM parent's box while `base` is the positioned
+    /// containing block — the term resolves through `pct_px` instead.
+    taffy_resolves: bool,
 }
 
 /// What a percent-bearing `calc` becomes in the taffy style.
@@ -932,6 +939,9 @@ struct Builder<'a> {
     axes: HashMap<NodeId, Axes>,
     scroll: HashMap<NodeId, Vec2>,
     clip: HashMap<NodeId, Vec2>,
+    /// The layout rect's dims — the viewport a `position: fixed` node's
+    /// percent terms resolve against, whatever its ancestors are.
+    viewport: (AxisBase, AxisBase),
 }
 
 impl<'a> Builder<'a> {
@@ -982,7 +992,13 @@ impl<'a> Builder<'a> {
         match d {
             Some(Dimension::Percent(p)) => match b.base {
                 AxisBase::Indefinite => taffy::Dimension::auto(),
-                _ => taffy::Dimension::percent(*p),
+                _ if b.taffy_resolves => taffy::Dimension::percent(*p),
+                _ => match self.pct_px(b) {
+                    Some(v) => taffy::Dimension::length(*p * v),
+                    // An unmeasured deferred base stands the percent in —
+                    // the next pass replaces it with the resolved length.
+                    None => taffy::Dimension::percent(*p),
+                },
             },
             Some(Dimension::Calc(c)) if c.percent != 0.0 => match self.pct_calc(c, b) {
                 PctCalc::Px(v) => taffy::Dimension::length(v),
@@ -1001,7 +1017,11 @@ impl<'a> Builder<'a> {
         match d {
             Some(Dimension::Percent(p)) => match b.base {
                 AxisBase::Indefinite => LengthPercentage::length(0.0),
-                _ => LengthPercentage::percent(*p),
+                _ if b.taffy_resolves => LengthPercentage::percent(*p),
+                _ => match self.pct_px(b) {
+                    Some(v) => LengthPercentage::length(*p * v),
+                    None => LengthPercentage::percent(*p),
+                },
             },
             Some(Dimension::Calc(c)) if c.percent != 0.0 => match self.pct_calc(c, b) {
                 PctCalc::Px(v) => LengthPercentage::length(v),
@@ -1029,7 +1049,11 @@ impl<'a> Builder<'a> {
         match d {
             Some(Dimension::Percent(p)) => match b.base {
                 AxisBase::Indefinite => LengthPercentageAuto::auto(),
-                _ => LengthPercentageAuto::percent(*p),
+                _ if b.taffy_resolves => LengthPercentageAuto::percent(*p),
+                _ => match self.pct_px(b) {
+                    Some(v) => LengthPercentageAuto::length(*p * v),
+                    None => LengthPercentageAuto::percent(*p),
+                },
             },
             Some(Dimension::Calc(c)) if c.percent != 0.0 => match self.pct_calc(c, b) {
                 PctCalc::Px(v) => LengthPercentageAuto::length(v),
@@ -1050,7 +1074,11 @@ impl<'a> Builder<'a> {
         match d {
             Some(Dimension::Percent(p)) => match b.base {
                 AxisBase::Indefinite => LengthPercentageAuto::length(0.0),
-                _ => LengthPercentageAuto::percent(*p),
+                _ if b.taffy_resolves => LengthPercentageAuto::percent(*p),
+                _ => match self.pct_px(b) {
+                    Some(v) => LengthPercentageAuto::length(*p * v),
+                    None => LengthPercentageAuto::percent(*p),
+                },
             },
             Some(Dimension::Auto) => LengthPercentageAuto::auto(),
             Some(Dimension::Calc(c)) if c.percent != 0.0 => match self.pct_calc(c, b) {
@@ -1151,16 +1179,19 @@ impl<'a> Builder<'a> {
             node: ncx.id,
             axis: Axis::CbX,
             base: ncx.cb.0,
+            taffy_resolves: ncx.in_flow,
         };
         let cby = PctBase {
             node: ncx.id,
             axis: Axis::CbY,
             base: ncx.cb.1,
+            taffy_resolves: ncx.in_flow,
         };
         let basis = PctBase {
             node: ncx.id,
             axis: Axis::Basis,
             base: ncx.basis,
+            taffy_resolves: ncx.in_flow,
         };
 
         let mut s = taffy::Style {
@@ -1382,6 +1413,9 @@ impl<'a> Builder<'a> {
                         node: ncx.id,
                         axis: Axis::OwnX,
                         base: content.0,
+                        // A gap's percent names the node's own box —
+                        // exactly the box taffy resolves gap % against.
+                        taffy_resolves: true,
                     },
                 ),
                 height: self.gap_lp(
@@ -1390,6 +1424,7 @@ impl<'a> Builder<'a> {
                         node: ncx.id,
                         axis: Axis::OwnY,
                         base: content.1,
+                        taffy_resolves: true,
                     },
                 ),
             };
@@ -1558,16 +1593,31 @@ impl<'a> Builder<'a> {
 
         // This node's containing block — the box its percent terms resolve
         // against — and where a deferred one reads back a measured value.
-        // abs/fixed children take the nearest positioned ancestor's padding
-        // box; grid children take their cell; in-flow children take the
-        // parent's content box (the layout rect for the root).
+        // fixed children take the viewport; abs (and sticky, which the
+        // adapter maps to taffy's absolute) children take the nearest
+        // positioned ancestor's padding box; grid children take their cell;
+        // in-flow children take the parent's content box (the layout rect
+        // for the root).
+        //
+        // CSS lets a `transform`, `filter`, `perspective`, `will-change` of
+        // those, or `contain: paint/layout` ancestor capture fixed
+        // descendants. The style model has none of those as layout inputs
+        // (`transform` is paint-only here), so the viewport is always the
+        // answer — a positioned ancestor, the app frame included, never is.
         let l = &style.layout;
+        let fixed = matches!(l.position, Some(Position::Fixed));
         let abs = matches!(
             l.position,
-            Some(Position::Absolute) | Some(Position::Fixed) | Some(Position::Sticky)
+            Some(Position::Absolute) | Some(Position::Sticky)
         );
         let parent = pf.id.cloned();
-        let (cb, src_x, src_y) = if abs {
+        let (cb, src_x, src_y) = if fixed {
+            let src = || CbSrc::Box {
+                node: None,
+                padding_box: true,
+            };
+            (self.viewport, src(), src())
+        } else if abs {
             let src = || CbSrc::Box {
                 node: pf.positioned.cloned(),
                 padding_box: true,
@@ -1682,7 +1732,7 @@ impl<'a> Builder<'a> {
 
         // The node's taffy style + its own box states — every percent and
         // `calc` term resolves against the statically derived bases.
-        let in_flow = !abs;
+        let in_flow = !(abs || fixed);
         let ncx = NodeCx {
             id: &node.id,
             cb: (cbx, cby),
@@ -2160,6 +2210,10 @@ fn layout_impl(
             axes: HashMap::new(),
             scroll: HashMap::new(),
             clip: HashMap::new(),
+            viewport: (
+                AxisBase::Definite(rect.width()),
+                AxisBase::Definite(rect.height()),
+            ),
         };
         let root_id = b
             .resolved_node(

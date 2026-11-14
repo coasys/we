@@ -21,9 +21,7 @@
                       { "id": "a", "type": "step", "label": "Draft" },
                       { "id": "b", "type": "step", "label": "Review" }
                     ],
-                    "edges": [
-                      { "id": "e1", "source": "a", "target": "b", "type": "next" }
-                    ]
+                    "edges": [{ "id": "e1", "source": "a", "target": "b", "type": "next" }]
                   }
                 },
                 {
@@ -44,9 +42,7 @@
                           "_type": "collection",
                           "_key": "c1",
                           "layout": "row",
-                          "content": [
-                            { "_type": "block", "text": "Nested item" }
-                          ]
+                          "content": [{ "_type": "block", "text": "Nested item" }]
                         }
                       ]
                     }

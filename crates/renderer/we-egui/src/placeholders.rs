@@ -7,7 +7,7 @@ use we_template::ResolvedNode;
 
 use crate::defaults::view_of;
 use crate::props;
-use crate::{MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
+use crate::{Direction, MeasureCx, PaintCx, PartsSpec, Rect, Size, Widget, WidgetKind};
 
 /// A bordered box with the type name + its main prop — the honest "not yet"
 /// marker. The stroke is the muted border color, never the unknown red.
@@ -101,6 +101,59 @@ impl Widget for Video {
     }
 }
 
+/// `AgentChatSheet` — a sheet host, like the web's: closed, the element
+/// has no box and paints nothing; `open` floats its children on the
+/// overlay layer. The placeholder card marks where stage 5's panel lands.
+pub struct Sheet;
+
+impl Widget for Sheet {
+    fn type_name(&self) -> &'static str {
+        "AgentChatSheet"
+    }
+    fn kind(&self) -> WidgetKind {
+        WidgetKind::Overlay
+    }
+    fn parts_spec(&self, _node: &ResolvedNode) -> Option<PartsSpec> {
+        // No parts — a sheet's children all float.
+        Some(PartsSpec {
+            direction: Direction::Column,
+            parts: vec![],
+        })
+    }
+    fn measure(&self, _cx: &MeasureCx, _n: &ResolvedNode, _s: &Style, _a: Size) -> Size {
+        // A sheet takes no room in the flow.
+        Size::new(0.0, 0.0)
+    }
+    fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, _rect: Rect) {
+        // Only the overlay pass hands us an "overlay" rect — the in-flow
+        // call (rect is our zero-size slot) paints nothing.
+        let Some(content) = props::part(cx, node, "overlay") else {
+            return;
+        };
+        let view = view_of(cx.ui.ctx());
+        cx.ui.painter().rect_stroke(
+            content,
+            props::radius_px(
+                &style.paint.radius,
+                content,
+                view.font_px,
+                view.root_px,
+                view.viewport,
+            ),
+            egui::Stroke::new(1.0, cx.ui.visuals().weak_text_color()),
+            egui::StrokeKind::Inside,
+        );
+        cx.ui.painter().text(
+            content.min + egui::vec2(12.0, 12.0),
+            egui::Align2::LEFT_TOP,
+            "AgentChatSheet · stage 5",
+            egui::FontId::proportional(11.0),
+            cx.ui.visuals().weak_text_color(),
+        );
+        cx.label(content, "AgentChatSheet");
+    }
+}
+
 /// The E5a placeholder registrations — each names the stage that replaces it.
 /// The E5b types (`we-input` etc.) are NOT here; that branch registers them.
 pub fn register(reg: &mut crate::Registry) {
@@ -111,5 +164,5 @@ pub fn register(reg: &mut crate::Registry) {
     reg.register(Placeholder::new("we-file-upload", "E8"));
     reg.register(Video);
     reg.register(Placeholder::new("AgentChat", "stage 5"));
-    reg.register(Placeholder::new("AgentChatSheet", "stage 5"));
+    reg.register(Sheet);
 }

@@ -115,15 +115,11 @@
       "switcherGroups": [
         {
           "label": "Space templates",
-          "items": [
-            { "id": "space::tpl-space", "name": "Space Board", "icon": "square-kanban", "editable": true }
-          ]
+          "items": [{ "id": "space::tpl-space", "name": "Space Board", "icon": "square-kanban", "editable": true }]
         },
         {
           "label": "My templates",
-          "items": [
-            { "id": "tpl-mine", "name": "My Own", "icon": "user", "editable": true }
-          ]
+          "items": [{ "id": "tpl-mine", "name": "My Own", "icon": "user", "editable": true }]
         },
         {
           "label": "Built-in",

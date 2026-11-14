@@ -160,7 +160,7 @@ fn run_dump(args: &Args) {
     };
     let screen = ScreenState::desktop(screen_schema, &args.route);
     let spec = AppSpec {
-        app: bundle.app.as_ref().map(|t| t.node.clone()),
+        app: bundle.app.clone(),
         template: bundle.templates.as_deref().and_then(|t| t.first()).cloned(),
         pages: bundle.pages.clone().unwrap_or_default(),
         boot: bundle.boot_screen.clone(),
@@ -254,7 +254,8 @@ fn run_native(args: Args) -> eframe::Result<()> {
     eframe::run_native(
         &title,
         options,
-        Box::new(move |_cc| {
+        Box::new(move |cc| {
+            we_app::init_host(&cc.egui_ctx);
             Ok(Box::new(App {
                 shell: std::cell::RefCell::new(shell),
             }))
@@ -305,7 +306,14 @@ fn run_gallery(kind: Gallery) -> eframe::Result<()> {
             .with_inner_size(size),
         ..Default::default()
     };
-    eframe::run_native(title, options, Box::new(|_cc| Ok(app)))
+    eframe::run_native(
+        title,
+        options,
+        Box::new(|cc| {
+            we_app::init_host(&cc.egui_ctx);
+            Ok(app)
+        }),
+    )
 }
 
 #[cfg(not(target_arch = "wasm32"))]

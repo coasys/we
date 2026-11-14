@@ -406,13 +406,16 @@ jobs:
           key: renderer-${{ runner.os }}-${{ hashFiles('crates/renderer/Cargo.lock', 'crates/renderer/rust-toolchain.toml') }}
           restore-keys: renderer-${{ runner.os }}-
 
-      # egui needs the X11/GL dev libraries to compile on Linux.
+      # egui needs the X11/GL dev libraries to compile on Linux. The snapshot
+      # tests render through wgpu, and the runner has no GPU: mesa-vulkan-drivers
+      # gives it lavapipe, the CPU Vulkan adapter egui_kittest picks.
       - name: Install egui system packages
         run: |
           sudo apt-get update >/dev/null
           sudo apt-get install -y --no-install-recommends \
             libxcb-render0-dev libxcb-shape0-dev libxcb-xfixes0-dev \
-            libxkbcommon-dev libssl-dev libasound2-dev pkg-config >/dev/null
+            libxkbcommon-dev libssl-dev libasound2-dev pkg-config \
+            mesa-vulkan-drivers >/dev/null
 
       - name: Format
         run: cargo fmt --all -- --check
