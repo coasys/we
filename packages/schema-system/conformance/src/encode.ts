@@ -17,6 +17,7 @@
  * | `{"$number": "-0"}`        | `-0` — JSON prints it `0`, but `1/-0` is `-Infinity` |
  * | `{"$callable": "<name>"}`  | a function (the name is informative; decoding stubs) |
  * | `{"$accessor": <v>}`       | `markReactive(() => v)` — a signal (input only)       |
+ * | `{"$thunk": <v>}`          | `() => v` untagged — a host global's getter (input)   |
  * | `{"$namespace": {...}}`    | `namespace(prop => members[prop])`                    |
  * | `{"$namespace": true}`     | an opaque namespace (used only in output position)   |
  *
@@ -96,6 +97,13 @@ export function decodeValue(value: EncodedValue): unknown {
       // Encoding side has no marker of its own: a function leaving the evaluator is `$callable`.
       const held = decodeValue((value as { $accessor: EncodedValue }).$accessor);
       return markReactive(() => held);
+    }
+    if (has(value, '$thunk')) {
+      // An UNtagged zero-arg function — a host global's getter. `buildEnvironment` invokes it for
+      // the root's value; anywhere else `readValue` refuses it, so it also pins "a store's
+      // function member is unreachable".
+      const held = decodeValue((value as { $thunk: EncodedValue }).$thunk);
+      return () => held;
     }
     if (has(value, '$namespace')) {
       const members = (value as { $namespace: unknown }).$namespace;

@@ -204,13 +204,16 @@
           "did": "did:me"
         },
         "$clock": {
-          "$accessor": "tick:tock"
+          "$thunk": "tick:tock"
         },
         "$item": {
           "role": "global-shadowed"
         },
         "counter": {
-          "value": 7
+          "value": 7,
+          "fn": {
+            "$thunk": "unreachable"
+          }
         }
       },
       "local": {
@@ -2218,6 +2221,16 @@
       "env": "callback",
       "result": 7,
       "print": "counter.value"
+    },
+    {
+      "id": "env.store-fn-refused",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "counter.fn",
+      "env": "callback",
+      "result": {
+        "$undefined": true
+      },
+      "print": "counter.fn"
     },
     {
       "id": "env.local-with-callback",

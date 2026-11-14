@@ -113,9 +113,9 @@ export const EXPRESSION_ENVS: Record<string, ExpressionEnvSpec> = {
   callback: {
     stores: {
       $me: { did: 'did:me' },
-      $clock: { $accessor: 'tick:tock' },
+      $clock: { $thunk: 'tick:tock' },
       $item: { role: 'global-shadowed' },
-      counter: { value: 7 },
+      counter: { value: 7, fn: { $thunk: 'unreachable' } },
     },
     local: { page: 2, dirty: false },
     context: {
@@ -226,6 +226,7 @@ export const EXPRESSION_CASES: ExpressionCase[] = [
   C('env.function-global', 'clock', 'callback'),
   C('env.object-global', 'me.did', 'callback'),
   C('env.store-member', 'counter.value', 'callback'),
+  C('env.store-fn-refused', 'counter.fn', 'callback'),
   C('env.local-with-callback', "local.dirty ? 'd' : event.id", 'callback'),
 
   /* --- systematic: operators the corpus must pin ---------------------------------------- */
