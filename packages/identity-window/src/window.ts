@@ -136,17 +136,18 @@ function shareable(text: string, qrSvg: string, alt: string, expires: number, wa
     el(
       'div',
       { className: 'row' },
-      button('Copy the link', () => void navigator.clipboard?.writeText(text)),
+      button('Copy link', () => void navigator.clipboard?.writeText(text)),
       button('Cancel', cancel),
     ),
     countdown(expires, waiting),
   ];
 }
 
-/** "Works once, for 4:52 · Waiting…", ticking. */
+/** "Single use · Expires in 4:52 · Waiting…", ticking. */
 function countdown(expires: number, waiting: string): HTMLParagraphElement {
   const left = el('p', { className: 'note' });
-  const tick = () => (left.textContent = `Works once, for ${remaining(expires, Date.now() / 1000)} · ${waiting}`);
+  const tick = () =>
+    (left.textContent = `Single use · Expires in ${remaining(expires, Date.now() / 1000)} · ${waiting}`);
   tick();
   offerTimer = window.setInterval(tick, 1000);
   return left;
@@ -178,7 +179,7 @@ function body(screen: Screen): Child[] {
   switch (screen.screen) {
     case 'show-words': {
       const understood = el('input', { type: 'checkbox' });
-      const next = button('I wrote them down', () => step({ kind: 'words-written' }), 'primary');
+      const next = button('Continue', () => step({ kind: 'words-written' }), 'primary');
       next.disabled = true;
       understood.addEventListener('change', () => (next.disabled = !understood.checked));
       return [
@@ -191,13 +192,13 @@ function body(screen: Screen): Child[] {
         ),
         el('p', {
           className: 'note',
-          textContent: 'Avoid screenshots and password managers that sync. Paper in a safe place works best.',
+          textContent: "Don't take a screenshot or save them in a password manager that syncs.",
         }),
         el(
           'label',
           { className: 'check' },
           understood,
-          'I understand: without these words, nobody can recover my identity or change its keys. Not even the people who made this app.',
+          "I understand that no one can restore my identity without these words, not even the app's developers.",
         ),
         el('div', { className: 'row' }, next, button('Cancel', cancel)),
       ];
@@ -215,8 +216,8 @@ function body(screen: Screen): Child[] {
       ];
     }
     case 'set-passphrase': {
-      const p = secretField('Passphrase — at least 15 characters; spaces count');
-      const again = secretField('Type it again');
+      const p = secretField('Passphrase (at least 15 characters)');
+      const again = secretField('Confirm passphrase');
       const go = () =>
         step({ kind: 'passphrase', passphrase: p.input.value, confirm: again.input.value }, [p.input, again.input]);
       return [
@@ -238,13 +239,7 @@ function body(screen: Screen): Child[] {
     case 'offer':
       // The claim can come at any moment: wait for it now.
       waitFor({ kind: 'wait-claim' });
-      return shareable(
-        screen.link,
-        screen.qrSvg,
-        'QR code of the offer link',
-        screen.expires,
-        'Waiting for your device…',
-      );
+      return shareable(screen.link, screen.qrSvg, 'QR code for the link', screen.expires, 'Waiting for your device…');
     case 'enter-code': {
       const code = textField('Code', '', 'coasys:device:1:…');
       const go = () => step({ kind: 'code', code: code.input.value.trim() }, [code.input]);
@@ -306,15 +301,15 @@ function body(screen: Screen): Child[] {
               }),
             ]
           : []),
-        el('p', { textContent: 'It will be able to' }),
+        el('p', { textContent: 'It will be able to:' }),
         el(
           'ul',
           {},
-          el('li', { textContent: 'Sign posts, messages and edits as you' }),
-          el('li', { textContent: 'Join your identity’s spaces' }),
+          el('li', { textContent: 'Post, send messages and edit as you' }),
+          el('li', { textContent: 'Join your spaces' }),
         ),
-        el('p', { className: 'note', textContent: 'Add only a device you run or have in front of you.' }),
-        el('div', { className: 'row' }, button('Add it', confirm, 'primary'), button('Deny', cancel)),
+        el('p', { className: 'note', textContent: 'Only link a device you own or have with you.' }),
+        el('div', { className: 'row' }, button('Link', confirm, 'primary'), button('Deny', cancel)),
       ];
     }
     case 'request': {
@@ -356,14 +351,14 @@ function body(screen: Screen): Child[] {
         el(
           'div',
           { className: 'row' },
-          button('Discard it', () => step({ kind: 'discard' }), 'danger'),
+          button('Discard', () => step({ kind: 'discard' }), 'danger'),
           button('Cancel', cancel),
         ),
       ];
     case 'identity-ready':
       return [
         el('div', { className: 'link', textContent: screen.did }),
-        el('p', { className: 'note', textContent: `This computer is ${screen.keyId} in your key log.` }),
+        el('p', { className: 'note', textContent: `Listed as ${screen.keyId} in your key log.` }),
       ];
     case 'joined':
     case 'master-taken':
@@ -405,7 +400,7 @@ export function runIdentityWindow(transport: IdentityTransport): void {
       { className: 'brand' },
       mark,
       // The app's own name is the window's title, which the host sets; the page names no app.
-      el('strong', { textContent: 'Your identity' }),
+      el('strong', { textContent: 'Identity' }),
     ),
     root,
   );

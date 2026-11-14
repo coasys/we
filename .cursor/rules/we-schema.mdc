@@ -3107,22 +3107,22 @@ DatasetStore:
 
 DeviceStore:
 - State:
-  - devices: { keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke, name, holdsMaster, master }[] — the device keys of the person's key log, valid first and this computer on top, named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' or 'Device d2'; `name` the record's name or empty; `status` 'Valid' or 'Revoked at #2'; `canRevoke` is a valid key that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Holds the master key', 'Master key offered, not yet taken', or empty). A revoked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it ('Still holds a valid master key — replace your master key', 'May still hold a valid master key — replace your master key'): a revoke leaves a copy of the master key valid. Draw `master` in a warning tone unless `holdsMaster` is 'yes'
+  - devices: { keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke, name, holdsMaster, master }[] — the device keys of the person's key log, valid first and this computer on top, named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' or 'Device d2'; `name` the record's name or empty; `status` 'Active' or 'Removed at #2'; `canRevoke` is a valid key that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Has master key', 'Master key sent', or empty). A revoked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it ('Still has your master key. Replace it to lock this device out.', 'May still have your master key. Replace it to lock this device out.'): a revoke leaves a copy of the master key valid. Draw `master` in a warning tone unless `holdsMaster` is 'yes'
   - devicesLoaded: boolean — the list has been read once
   - validCount: number — how many keys are valid
-  - canManage: boolean — linking (scanDevice, addDevice), Rename, Revoke and answering requests can be offered: this computer keeps the master key of the identity
-  - canShowCode: boolean — "Show my code" can be offered: this computer can join an identity and speaks for none yet
-  - canAskMaster: boolean — "Ask for the master key" can be offered: a device of the identity that does not keep the master key and has none waiting
-  - masterWaiting: boolean — a master key another device sent waits here: offer "Take the master key"
+  - canManage: boolean — Link a device (scanDevice, addDevice), Rename, Remove and answering requests can be offered: this computer keeps the master key of the identity
+  - canShowCode: boolean — "Show code" can be offered: this computer can join an identity and speaks for none yet
+  - canAskMaster: boolean — "Ask for master key" can be offered: a device of the identity that does not keep the master key and has none waiting
+  - masterWaiting: boolean — a master key another device sent waits here: offer "Accept master key"
   - requests: { id, kind, title, detail }[] — what the person's other devices asked and is waiting for an answer, while this computer keeps the master key; empty otherwise. `kind` is 'send-master' or 'confirm-revoke'; `title` names the device that asked ('Laptop asks for the master key')
   - error: string — why the last read failed, or empty
 - Actions:
   - refresh(): reads the device list again
   - addDevice(): adds a server by an offer link — the backend asks the person wherever it keeps the master key (on the desktop: the offer link and QR code, then the match code, then the confirmation that signs it). Resolves with the outcome; the list is read again
-  - scanDevice(): "Scan or paste a code" — adds a device by the code it shows: the person pastes it, both show a match code, and the confirmation names the device and may let it keep the master key
-  - showCode(): "Show my code" — on a computer of no identity yet, shows its code (QR and link) until a device of the identity adds it
-  - takeMaster(): "Take the master key" — keeps the master key another device sent here
-  - askMaster(): "Ask for the master key" — asks the devices that keep it to send it here; one answers from its own requests
+  - scanDevice(): "Enter code" — adds a device by the code it shows: the person pastes it, both show a match code, and the confirmation names the device and may let it keep the master key
+  - showCode(): "Show code" — on a computer of no identity yet, shows its code (QR and link) until a device of the identity adds it
+  - takeMaster(): "Accept master key" — keeps the master key another device sent here
+  - askMaster(): "Ask for master key" — asks the devices that keep it to send it here; one answers from its own requests
   - answerRequest(id: string): answers that request of another device, once the person says yes where the master key is kept (send the master key, or revoke the devices it names)
   - rename(keyId: string): names that device, in the private record only the identity’s devices read
   - revoke(keyId: string): revokes that device key, once the person confirms it where the master key is kept. Resolves with the outcome
@@ -3204,7 +3204,7 @@ IdentityStore:
   - did: string — the person’s identifier, or empty while this device speaks for nobody
   - keyId: string — this device’s id in the key log (`d1`), or empty
   - thisDeviceRevoked: boolean — the key log revoked this device’s key: it no longer speaks for the person
-  - keyLog: { seq, op, keys, position, icon, title, detail, hash, hashShort, thisComputer }[] — the key log, newest first, with what each row says made from `op` and `keys` (reword from those where a template wants other words), already worded: `title` "Created your identity", "Added d2", "Revoked d2"; `detail` the keys it names with this computer’s marked "This computer"; `hashShort` the event’s hash for a monospace column
+  - keyLog: { seq, op, keys, position, icon, title, detail, hash, hashShort, thisComputer }[] — the key log, newest first, with what each row says made from `op` and `keys` (reword from those where a template wants other words), already worded: `title` "Created identity", "Added d2", "Revoked d2"; `detail` the keys it names with this computer’s marked "This computer"; `hashShort` the event’s hash for a monospace column
   - keyLogLoaded: boolean — the log has been read once
   - forked: boolean — the backend found two different logs for this identity
   - fork: { seq, ours, theirs } | null — where they part
