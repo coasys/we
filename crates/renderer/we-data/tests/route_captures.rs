@@ -149,6 +149,23 @@ fn the_flat_tables_are_never_read_for_a_route() {
 }
 
 #[test]
+fn a_capture_from_another_dataset_does_not_answer() {
+    // The dataset is part of a request's identity: rows recorded against
+    // another dataset do not answer the same question asked in this one.
+    let mut doc = doc();
+    doc["routes"]["dna"]["queries"]
+        .as_array_mut()
+        .unwrap()
+        .push(
+            json!({ "name": "tags", "scope": "c", "dataset": "elsewhere",
+                      "request": { "entity": "Tag" }, "rows": [{ "id": "t9" }] }),
+        );
+    let data = OfflineData::from_route(&doc, "dna", None).expect("route loads");
+    let (tags, tags_ir) = key(json!({ "entity": "Tag" }));
+    assert_eq!(rows(data.source().rows(&tags, &tags_ir)), None);
+}
+
+#[test]
 fn the_route_executor_answers_by_request_and_space() {
     let data = OfflineData::from_route(&doc(), "dna", None).unwrap();
     let exec = data.executor();
