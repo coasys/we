@@ -15,6 +15,7 @@ pub mod draw;
 pub mod icons;
 pub mod load;
 pub mod palette;
+pub mod term;
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;

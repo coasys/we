@@ -22,16 +22,12 @@ mod native {
     use std::time::Duration;
 
     use crossterm::event::{self, Event};
-    use crossterm::execute;
-    use crossterm::terminal::{
-        disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen,
-    };
     use ratatui::backend::CrosstermBackend;
     use ratatui::buffer::Buffer;
     use ratatui::layout::Rect;
     use ratatui::Terminal;
     use we_tui::palette::{load_theme_set, truecolor_env};
-    use we_tui::{buffer_text, KeyResult, TuiApp};
+    use we_tui::{buffer_text, term, KeyResult, TuiApp};
 
     const DEFAULT_BUNDLE: &str = concat!(
         env!("CARGO_MANIFEST_DIR"),
@@ -112,11 +108,11 @@ mod native {
         }
 
         // Interactive: raw mode + the alternate screen, redraw on every event
-        // and on a 100ms tick (a resize or an op landing redraws too).
-        let mut out = stdout();
-        enable_raw_mode().expect("raw mode");
-        execute!(out, EnterAlternateScreen).expect("alternate screen");
-        let backend = CrosstermBackend::new(out);
+        // and on a 100ms tick (a resize or an op landing redraws too). The
+        // guard restores the terminal when it drops — after the loop, or
+        // while a panic in setup or in the loop unwinds.
+        let guard = term::init(term::Crossterm).expect("terminal setup");
+        let backend = CrosstermBackend::new(stdout());
         let mut terminal = Terminal::new(backend).expect("terminal");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| loop {
             app.session.poll();
@@ -143,9 +139,7 @@ mod native {
                 Err(e) => break Err(e),
             }
         }));
-        let _ = disable_raw_mode();
-        let _ = execute!(terminal.backend_mut(), LeaveAlternateScreen);
-        let _ = terminal.show_cursor();
+        drop(guard);
         match result {
             Ok(Ok(())) => {}
             Ok(Err(e)) => eprintln!("we-tui: terminal error: {e}"),
