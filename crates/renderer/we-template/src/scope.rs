@@ -363,6 +363,17 @@ impl StoreBag {
         }
     }
 
+    /// Whether `name` is a root `bind_screen` synthesized — it holds a
+    /// captured screen base, and [`StoreBag::set_root`] drops that base
+    /// when real data replaces the root. WE keeps one live store object
+    /// per mount, so the rebuilt wrapper's identity is not an input; the
+    /// reads through it (`routeStore.params.id`) are.
+    pub(crate) fn is_screen_conduit(&self, name: &str) -> bool {
+        self.screen_bases
+            .read()
+            .is_ok_and(|bases| bases.contains_key(name))
+    }
+
     /// The layer a screen overlay wraps: the value captured before the
     /// first `bind_screen` for this name, or today's root if none was
     /// ever bound.

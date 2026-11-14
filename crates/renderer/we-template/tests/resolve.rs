@@ -2536,3 +2536,148 @@ fn a_host_computation_initial_keeps_an_edit_whose_hidden_input_moved() {
         "still touched under output-content tracking"
     );
 }
+
+/// The first entry of a list-valued local, as text.
+fn first_text(v: &Value) -> Option<String> {
+    match v {
+        Value::List(items) => items
+            .first()
+            .and_then(|v| v.to_json().as_str().map(String::from)),
+        _ => None,
+    }
+}
+
+/// An unrelated screen change — a surface measurement elsewhere — that
+/// moves `screen.version` and so re-runs `bind_screen`.
+fn unrelated_screen_change(screen: &mut ScreenState) {
+    let before = screen.version;
+    screen.apply(we_screen::ScreenOp::SetSurface {
+        id: "elsewhere".into(),
+        width: 321.0,
+        tier: "md".into(),
+    });
+    assert_ne!(
+        before, screen.version,
+        "the surface write must move the screen version"
+    );
+}
+
+#[test]
+fn a_screen_rebind_keeps_an_edit_on_a_route_member_initial() {
+    // R6-1: a screen-version move rebuilds the routeStore root; WE keeps one
+    // live store object per mount, so the bare root is not an input — the
+    // edit and touched survive an unrelated screen change.
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "sel": { "type": "array", "initial": { "$": "[routeStore.params.id]" } } },
+        "children": []
+    }));
+    let locals = LocalState::new();
+    let bag = Arc::new(StoreBag::new());
+    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone());
+    let mut host = StaticHost::new(bag.clone(), locals.clone());
+    let mut screen = ScreenState::desktop(ScreenSchema::default(), "/?id=demo");
+    let owner = rt.frame(&mut host, &screen).id.clone();
+    assert_eq!(
+        first_text(&locals.get(&owner, "sel")).as_deref(),
+        Some("demo")
+    );
+
+    locals.set(
+        &owner,
+        "sel",
+        Value::List(Arc::new(vec![Value::from("typed")])),
+    );
+    locals.touch(&owner, "sel");
+    unrelated_screen_change(&mut screen);
+    let _ = rt.frame(&mut host, &screen).clone();
+    assert_eq!(
+        first_text(&locals.get(&owner, "sel")).as_deref(),
+        Some("typed"),
+        "an unrelated screen rebind must not reset the edit: {:?}",
+        locals.get(&owner, "sel")
+    );
+    assert!(
+        locals.is_touched(&owner, "sel"),
+        "a kept edit stays touched"
+    );
+}
+
+#[test]
+fn a_real_route_param_change_still_resets_after_a_rebind() {
+    // R6-1, the other half: the read through the root (`params.id`) is still
+    // a dependency — a genuine param change resets the initial.
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "sel": { "type": "array", "initial": { "$": "[routeStore.params.id]" } } },
+        "children": []
+    }));
+    let locals = LocalState::new();
+    let bag = Arc::new(StoreBag::new());
+    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone());
+    let mut host = StaticHost::new(bag.clone(), locals.clone());
+    let mut screen = ScreenState::desktop(ScreenSchema::default(), "/?id=demo");
+    let owner = rt.frame(&mut host, &screen).id.clone();
+
+    locals.set(
+        &owner,
+        "sel",
+        Value::List(Arc::new(vec![Value::from("typed")])),
+    );
+    locals.touch(&owner, "sel");
+    unrelated_screen_change(&mut screen);
+    let _ = rt.frame(&mut host, &screen).clone();
+    screen.apply(we_screen::ScreenOp::SetParam {
+        name: "id".into(),
+        value: Some("other".into()),
+        push: None,
+    });
+    let _ = rt.frame(&mut host, &screen).clone();
+    assert_eq!(
+        first_text(&locals.get(&owner, "sel")).as_deref(),
+        Some("other"),
+        "a real params.id change must reset the initial: {:?}",
+        locals.get(&owner, "sel")
+    );
+    assert!(!locals.is_touched(&owner, "sel"));
+}
+
+#[test]
+fn a_screen_rebind_keeps_an_edit_on_a_space_store_member_initial() {
+    // R6-1, the spaceStore twin: `bind_screen` rewraps spaceStore too; a
+    // base member read must survive the rebind.
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "sel": { "type": "array", "initial": { "$": "[spaceStore.root]" } } },
+        "children": []
+    }));
+    let bag = Arc::new(
+        StoreBag::from_snapshot(&json!({
+            "stores": { "spaceStore": { "root": "demo" } },
+            "queries": {}, "invokes": {}
+        }))
+        .unwrap(),
+    );
+    let (mut rt, mut host, locals, mut screen) = rig_arc(node, bag);
+    let owner = rt.frame(&mut host, &screen).id.clone();
+    assert_eq!(
+        first_text(&locals.get(&owner, "sel")).as_deref(),
+        Some("demo")
+    );
+
+    locals.set(
+        &owner,
+        "sel",
+        Value::List(Arc::new(vec![Value::from("typed")])),
+    );
+    locals.touch(&owner, "sel");
+    unrelated_screen_change(&mut screen);
+    let _ = rt.frame(&mut host, &screen).clone();
+    assert_eq!(
+        first_text(&locals.get(&owner, "sel")).as_deref(),
+        Some("typed"),
+        "a spaceStore rebind must not reset the edit: {:?}",
+        locals.get(&owner, "sel")
+    );
+    assert!(locals.is_touched(&owner, "sel"));
+}

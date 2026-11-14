@@ -182,8 +182,9 @@ pub(crate) fn eval_str(
 /// is what suppresses the non-emission when the memo's own answer is the
 /// shared child. The reads the port synthesizes are not inputs and are
 /// excluded at the recorder, named: `local.$*` plumbing and a bare
-/// conduit-box root (`local`, `surface`, `$nav`, an `$agent` stub) —
-/// rebuilt every pass where WE keeps one object alive per mount, so
+/// conduit-box root (`local`, `surface`, `$nav`, an `$agent` stub, and the
+/// screen-store roots `bind_screen` rewraps on a screen move) — rebuilt
+/// every pass where WE keeps one object alive per mount, so
 /// recording the box would fake a moved input while the reads through it
 /// (`local.src`, `surface.tier`) stay real. [`LocalState::follow_initial`]
 /// is the consumer.
@@ -198,13 +199,22 @@ fn eval_str_tracked(
         Ok(expr) => {
             let reads = RefCell::new(TrackedDeps::default());
             let value = {
+                // A bare root is a conduit when its innermost scope binding
+                // is marked one, or — unshadowed by the scope — when it is
+                // a root `bind_screen` rebuilt (`routeStore`, `shellStore`,
+                // `themeStore`, `spaceStore`), rewrapped on every screen
+                // version move.
+                let is_conduit_root = |name: &str| match scope.get(name) {
+                    Some(_) => scope.is_conduit(name),
+                    None => bag.is_screen_conduit(name),
+                };
                 let observe = |path: &str, value: &Value| {
                     // `$`-members (`local.$fields`, `local.$decl:*`,
                     // `local.$owner:*`) are the port's own plumbing — they
                     // rebuild on demand — and a bare conduit-box root is
                     // the same kind of read: recording either registers a
                     // dependency that moves every pass without meaning one.
-                    if !path.contains(".$") && (path.contains('.') || !scope.is_conduit(path)) {
+                    if !path.contains(".$") && (path.contains('.') || !is_conduit_root(path)) {
                         reads.borrow_mut().push((path.into(), value.clone()));
                     }
                 };
