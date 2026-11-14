@@ -148,16 +148,16 @@ fn distinct(args: &[Value], _env: &dyn Env) -> Value {
     out.into()
 }
 
-/// `join(list, sep?)` — each element as text; `', '` is the default.
+/// `join(list, sep?)` — each element as text; `', '` when the separator is
+/// missing or `undefined` (`separator === undefined` — `null` is `''`).
 fn join(args: &[Value], _env: &dyn Env) -> Value {
     let list = arg(args, 0);
     let Some(items) = as_list(&list) else {
         return "".into();
     };
     let sep = match args.get(1) {
-        Some(Value::Str(s)) => s.to_string(),
-        Some(v) => v.to_text().to_string(),
-        None => ", ".to_string(),
+        None | Some(Value::Undefined) => ", ".to_string(),
+        Some(v) => as_text(v),
     };
     items
         .iter()
@@ -290,14 +290,16 @@ fn concat(args: &[Value], _env: &dyn Env) -> Value {
 
 // ---------------------------------------------------------------- text ----
 
-/// `split(text, sep?)` — `,` default, each part trimmed, empties dropped.
+/// `split(text, sep?)` — `asText(text)` cut at `asText(sep)` (`,` when
+/// missing or `undefined` — `separator === undefined`, `null` is `''`),
+/// each part trimmed, empties dropped.
 fn split(args: &[Value], _env: &dyn Env) -> Value {
-    let text = arg(args, 0);
-    let Value::Str(s) = &text else {
-        return Vec::<Value>::new().into();
+    let text = as_text(&arg(args, 0));
+    let sep = match args.get(1) {
+        None | Some(Value::Undefined) => ",".to_string(),
+        Some(v) => as_text(v),
     };
-    let sep = args.get(1).map(as_text).unwrap_or_else(|| ",".to_string());
-    s.split(sep.as_str())
+    text.split(sep.as_str())
         .map(|p| p.trim())
         .filter(|p| !p.is_empty())
         .map(|p| p.into())
@@ -305,53 +307,40 @@ fn split(args: &[Value], _env: &dyn Env) -> Value {
         .into()
 }
 
-/// `contains(haystack, needle)` — case-INSENSITIVE substring for text
-/// (matching the vectors: `'Prefix Body'` contains `'PREFIX'`), membership
-/// for a list.
+/// `contains(haystack, needle)` — case-INSENSITIVE substring of the `asText`
+/// forms (the same test the where-object's `contains` makes): `asText(12)`
+/// contains `'2'`, `asText([12])` — `'12'` — contains `'2'`.
 fn contains(args: &[Value], _env: &dyn Env) -> Value {
-    match &arg(args, 0) {
-        Value::Str(s) => s
-            .to_lowercase()
-            .contains(&as_text(&arg(args, 1)).to_lowercase())
-            .into(),
-        Value::List(l) => l.iter().any(|v| same_value_zero(v, &arg(args, 1))).into(),
-        _ => Value::Bool(false),
-    }
+    as_text(&arg(args, 0))
+        .to_lowercase()
+        .contains(&as_text(&arg(args, 1)).to_lowercase())
+        .into()
 }
 
+/// `startsWith(text, prefix)` — case-sensitive, on the `asText` forms.
 fn starts_with(args: &[Value], _env: &dyn Env) -> Value {
-    match &arg(args, 0) {
-        Value::Str(s) => s.starts_with(&as_text(&arg(args, 1))).into(),
-        _ => Value::Bool(false),
-    }
+    as_text(&arg(args, 0))
+        .starts_with(&as_text(&arg(args, 1)))
+        .into()
 }
 
+/// `endsWith(text, suffix)` — case-sensitive, on the `asText` forms.
 fn ends_with(args: &[Value], _env: &dyn Env) -> Value {
-    match &arg(args, 0) {
-        Value::Str(s) => s.ends_with(&as_text(&arg(args, 1))).into(),
-        _ => Value::Bool(false),
-    }
+    as_text(&arg(args, 0))
+        .ends_with(&as_text(&arg(args, 1)))
+        .into()
 }
 
 fn trim(args: &[Value], _env: &dyn Env) -> Value {
-    match &arg(args, 0) {
-        Value::Str(s) => s.trim().into(),
-        _ => "".into(),
-    }
+    as_text(&arg(args, 0)).trim().into()
 }
 
 fn lower(args: &[Value], _env: &dyn Env) -> Value {
-    match &arg(args, 0) {
-        Value::Str(s) => s.to_lowercase().into(),
-        _ => "".into(),
-    }
+    as_text(&arg(args, 0)).to_lowercase().into()
 }
 
 fn upper(args: &[Value], _env: &dyn Env) -> Value {
-    match &arg(args, 0) {
-        Value::Str(s) => s.to_uppercase().into(),
-        _ => "".into(),
-    }
+    as_text(&arg(args, 0)).to_uppercase().into()
 }
 
 /// `replace(text, from, to)` — `String.replaceAll`.
@@ -561,14 +550,6 @@ fn field_errors(entry: &Value) -> Vec<Value> {
     match call_prop(entry, "errors") {
         Value::List(l) => l.iter().cloned().collect(),
         _ => Vec::new(),
-    }
-}
-
-/// `includes` membership — `SameValueZero`.
-fn same_value_zero(a: &Value, b: &Value) -> bool {
-    match (a, b) {
-        (Value::Num(x), Value::Num(y)) => x == y || (x.is_nan() && y.is_nan()),
-        _ => a.strict_eq(b),
     }
 }
 

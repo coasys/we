@@ -172,3 +172,64 @@ fn p2_2_round_ts_digits_and_signed_zero() {
         json!({ "$nan": true })
     );
 }
+
+/// Every text built-in starts with `asText(arg)` — a number, a list, a bool
+/// or null all convert; nothing is rejected for not being a `Str`.
+#[test]
+fn p2_3_text_functions_apply_as_text() {
+    let env = MapEnv::new();
+    // contains: substring in the *text* form — a list reads as its joined
+    // text (`String([12])` is '12'), there is no membership interpretation.
+    assert_eq!(
+        call_json("contains", &[12.into(), "2".into()], &env),
+        json!(true)
+    );
+    assert_eq!(
+        call_json("contains", &[vec![Value::from(12)].into(), 2.into()], &env),
+        json!(true)
+    );
+    assert_eq!(
+        call_json("contains", &[false.into(), "als".into()], &env),
+        json!(true)
+    );
+    assert_eq!(
+        call_json("contains", &[Value::Undefined, "x".into()], &env),
+        json!(false)
+    );
+    // split: asText then cut — a non-string is its text, not [].
+    assert_eq!(call_json("split", &[12.into()], &env), json!(["12"]));
+    assert_eq!(call_json("split", &[Value::Null], &env), json!([]));
+    // `separator === undefined` defaults — `null` does not (it is '').
+    assert_eq!(
+        call_json("split", &["a,b".into(), Value::Undefined], &env),
+        json!(["a", "b"])
+    );
+    assert_eq!(
+        call_json("split", &["a,b".into(), Value::Null], &env),
+        json!(["a", ",", "b"])
+    );
+    assert_eq!(
+        call_json(
+            "join",
+            &[vec![1.into(), 2.into()].into(), Value::Null],
+            &env
+        ),
+        json!("12")
+    );
+    // startsWith/endsWith/trim/lower/upper — all asText first.
+    assert_eq!(
+        call_json("startsWith", &[Value::Null, "".into()], &env),
+        json!(true)
+    );
+    assert_eq!(
+        call_json("startsWith", &[123.into(), "1".into()], &env),
+        json!(true)
+    );
+    assert_eq!(
+        call_json("endsWith", &[12.into(), "2".into()], &env),
+        json!(true)
+    );
+    assert_eq!(call_json("trim", &[12.into()], &env), json!("12"));
+    assert_eq!(call_json("lower", &[12.into()], &env), json!("12"));
+    assert_eq!(call_json("upper", &[12.into()], &env), json!("12"));
+}
