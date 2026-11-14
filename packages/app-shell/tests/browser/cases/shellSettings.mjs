@@ -171,15 +171,22 @@ export async function check(
     }
   }
   // What it covers is out of reach for anything else, a screen reader included.
-  const covered = await evaluate(() => document.getElementById('settings-frame')?.closest('[inert]') !== null);
-  if (!covered) problems.push('the page under the open menu is not inert');
+  // `missing` rather than a boolean where there is no frame: `undefined !== null` passed for nothing.
+  const inertFrame = () => {
+    const frame = document.getElementById('settings-frame');
+    return frame ? frame.closest('[inert]') !== null : 'missing';
+  };
+  const covered = await evaluate(inertFrame);
+  if (covered === 'missing') problems.push('no settings-frame under the open menu');
+  else if (!covered) problems.push('the page under the open menu is not inert');
   await key('Escape');
   await sleep(300);
   const shutByKey = await rail(measureAll);
   if (shutByKey?.h !== 56) problems.push(`Escape leaves the rail ${shutByKey?.h}px tall`);
   if ((await focusedName()) !== 'Menu') problems.push(`after Escape, focus is on "${await focusedName()}", not Menu`);
-  const released = await evaluate(() => document.getElementById('settings-frame')?.closest('[inert]') === null);
-  if (!released) problems.push('the page stays inert after the menu shuts');
+  const stillInert = await evaluate(inertFrame);
+  if (stillInert === 'missing') problems.push('no settings-frame after the menu shuts');
+  else if (stillInert) problems.push('the page stays inert after the menu shuts');
 
   // The menu button opens it over the window…
   await press(pressAt, menu);

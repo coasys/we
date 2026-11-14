@@ -1333,12 +1333,110 @@ const audienceNote = (text: string, editableWhen?: SchemaProp): SchemaNode => ({
  * enormous, which is most of why these are tabs at all.
  */
 const TABS = [
-  { key: 'about', label: 'About' },
-  { key: 'people', label: 'People' },
-  { key: 'appearance', label: 'Appearance' },
-  { key: 'features', label: 'Features' },
-  { key: 'vocabulary', label: 'Vocabulary' },
+  // `icon:` entries, so the icon bundler sees them — the phone's list draws them (see `phoneList`).
+  { key: 'about', label: 'About', icon: 'info' },
+  { key: 'people', label: 'People', icon: 'users' },
+  { key: 'appearance', label: 'Appearance', icon: 'palette' },
+  { key: 'features', label: 'Features', icon: 'puzzle-piece' },
+  { key: 'vocabulary', label: 'Vocabulary', icon: 'book-open-text' },
 ];
+
+/**
+ * The panel on a phone: the list of its sections, then the section chosen, with a way back.
+ *
+ * On a phone the panel covers the window, and five tabs across the top scrolled sideways: Features
+ * was cut at the edge and Vocabulary off the screen. So the two take turns, as app Settings does on a
+ * phone: the list until a section is chosen, then that section under Back and its name.
+ *
+ * Measured against the window (`shellStore.narrowWindow`), not the panel's own box: on a desktop the
+ * panel is as narrow as a phone, and there the tabs fit and stay. Only the panel (`fill`) does this;
+ * the page in Settings → Spaces & data keeps its tabs.
+ */
+const PANEL_PHONE = 'shellStore.narrowWindow';
+/** On a phone, with a section open — the list is put away. */
+const PANEL_PHONE_PAGE = `${PANEL_PHONE} && local.tabPage`;
+/** On a phone, with the list showing — every section is put away. */
+const PANEL_PHONE_LIST = `${PANEL_PHONE} && !local.tabPage`;
+
+/**
+ * The phone's list of sections, one full-width row each.
+ *
+ * Put away rather than unmounted while a section is open, so Back returns focus to the very entry
+ * that opened it: the entry takes focus as its `autofocus` turns on (`we-button`).
+ */
+const phoneList: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: PANEL_PHONE },
+    then: {
+      type: 'Column',
+      props: { gap: '100', width: '100%', display: { $: `${PANEL_PHONE_LIST} ? 'flex' : 'none'` } },
+      children: TABS.map((tab) => ({
+        type: 'we-button',
+        props: {
+          variant: 'ghost',
+          width: '100%',
+          ax: 'start',
+          autofocus: { $: `${PANEL_PHONE_LIST} && local.tabFrom == '${tab.key}'` },
+          onClick: [
+            { $setLocal: 'tabFrom', value: tab.key },
+            { $setLocal: 'tab', value: tab.key },
+            { $setLocal: 'tabPage', value: true },
+          ],
+        },
+        children: [
+          { type: 'we-icon', props: { name: tab.icon } },
+          { type: 'we-text', children: [tab.label] },
+        ],
+      })),
+    },
+  },
+};
+
+/**
+ * A section's header on a phone: Back to the list, and the section's name under it, which the tabs
+ * said before. Back takes focus as the section arrives, because the entry pressed has just gone.
+ */
+const phonePageHeader: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: PANEL_PHONE_PAGE },
+    then: {
+      type: 'Column',
+      // `ax: 'start'`: a stretched Back centres its words; app Settings' Back sits at the start.
+      props: { gap: '200', width: '100%', flex: '0 0 auto', ax: 'start' },
+      children: [
+        {
+          type: 'we-button',
+          props: {
+            variant: 'ghost',
+            autofocus: true,
+            // Opened on a section directly, nothing in the list opened it: focus goes to that section's entry.
+            onClick: [
+              { $setLocal: 'tabFrom', value: { $: 'local.tab' } },
+              { $setLocal: 'tabPage', value: false },
+            ],
+          },
+          children: [
+            { type: 'we-icon', props: { name: 'caret-left' } },
+            { type: 'we-text', children: ['Back'] },
+          ],
+        },
+        ...TABS.map((tab): SchemaNode => ({
+          type: '$if',
+          props: {
+            condition: expr`local.tab == ${tab.key}`,
+            then: { type: 'we-text', props: { variant: 'heading-sm' }, children: [tab.label] },
+          },
+        })),
+      ],
+    },
+  },
+};
+
+/** `node`, except in the panel on a phone (`fill`), where the list and its sections stand in for it. */
+const phoneless = (fill: boolean | undefined, node: SchemaNode): SchemaNode =>
+  fill ? { type: '$if', props: { condition: { $: `!${PANEL_PHONE}` }, then: node } } : node;
 
 /**
  * One tab's contents, mounted only while it is the open one.
@@ -1350,14 +1448,15 @@ const TABS = [
  *
  * `fill` is the panel's shape: the tab strip is pinned and *this* is what scrolls, so the tabs stay
  * reachable in a box a few hundred pixels tall. The page wants the opposite — it scrolls as a whole,
- * inside the overlay — and a scroll region there would be a second scrollbar inside the first.
+ * inside the overlay — and a scroll region there would be a second scrollbar inside the first. In the
+ * panel on a phone, no section is drawn while the list is (see `PANEL_PHONE`).
  */
 const tabPanel = (key: string, children: SchemaNode[], fill?: boolean): SchemaNode => {
   const body: SchemaNode = { type: 'Column', props: { gap: '400', width: '100%' }, children };
   return {
     type: '$if',
     props: {
-      condition: expr`local.tab == ${key}`,
+      condition: fill ? { $: `local.tab == '${key}' && !(${PANEL_PHONE_LIST})` } : expr`local.tab == ${key}`,
       then: fill ? { type: 'we-scroll-area', props: { flex: '1', width: '100%' }, children: [body] } : body,
     },
   };
@@ -1402,7 +1501,21 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
       elsewhere can point at the tab holding the setting it is about, and the reader is then free to
       walk away from it. Bound, they would be dragged back the moment anything re-evaluated.
     */
-    $localState: { tab: { type: 'string', initial: { $: 'shellStore.spaceSettingsTab' } } },
+    $localState: {
+      tab: { type: 'string', initial: { $: 'shellStore.spaceSettingsTab' } },
+      /*
+        In the panel on a phone, whether a section is open rather than the list — see `PANEL_PHONE`.
+        Open from the start where the panel was opened on a section other than the first: a control
+        elsewhere pointing at the setting it is about lands on that section, not on the list.
+        `tabFrom` is the entry that opened it, for Back to give focus to.
+      */
+      ...(fill
+        ? {
+            tabPage: { type: 'boolean', initial: { $: "shellStore.spaceSettingsTab != 'about'" } },
+            tabFrom: { type: 'string', initial: '' },
+          }
+        : {}),
+    },
     children: [
       {
         type: '$each',
@@ -1415,7 +1528,13 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
             type: 'Column',
             props: { gap: '400', width: '100%', ...fills },
             children: [
-              ...chrome,
+              // On a phone's section the header names it instead, and Back is first.
+              ...(fill
+                ? chrome.map((node): SchemaNode => ({
+                    type: '$if',
+                    props: { condition: { $: `!(${PANEL_PHONE_PAGE})` }, then: node },
+                  }))
+                : chrome),
               {
                 type: '$if',
                 props: {
@@ -1424,7 +1543,9 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                     type: 'Column',
                     props: { gap: '400', width: '100%', ...fills },
                     children: [
-                      {
+                      ...(fill ? [phoneList, phonePageHeader] : []),
+                      // In the panel on a phone, the list above stands in for the strip.
+                      phoneless(fill, {
                         type: 'we-tabs',
                         props: {
                           selectedKey: { $: 'local.tab' },
@@ -1445,7 +1566,7 @@ export function spaceSettingsBody(uuid: SchemaProp, chrome: SchemaNode[], fill?:
                           type: 'we-tab',
                           props: { key: tab.key, label: tab.label, onClick: { $setLocal: 'tab', value: tab.key } },
                         })),
-                      },
+                      }),
 
                       /*
                     About — the space's own identity, and the link that gets someone else into it.

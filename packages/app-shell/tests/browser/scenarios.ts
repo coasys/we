@@ -37,6 +37,7 @@ import {
   safeModeBanner,
   settingsTemplate,
   sidebar,
+  spaceSettingsPanel,
 } from '@we/template-shell';
 import { CALL_CHROME_BAND, themeLabTemplate, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
 import {
@@ -2018,6 +2019,42 @@ const shellSettings = (scale?: number): Scenario => {
 };
 
 /**
+ * A space's settings panel, as a window of a given width shows it: on a phone covering the window
+ * (`PanelLane`'s `foldEmpty`), on a desktop in its 340px lane beside the space.
+ *
+ * The real `spaceSettingsPanel` over one space. Its sections read stores this harness does not
+ * mount, and what is measured is the frame around them: the tabs, or on a phone the list of
+ * sections and a section under Back. `scale` is the window's width, which `shellStore.narrowWindow`
+ * answers to.
+ */
+const spaceSettingsPanelScenario = (scale?: number): Scenario => {
+  const windowWidth = scale ?? 1280;
+  return {
+    node: {
+      type: 'Column',
+      props: {
+        id: 'space-settings',
+        width: windowWidth < 640 ? '100%' : '340px',
+        height: '100vh',
+        overflow: 'hidden',
+        bg: 'chrome',
+      },
+      children: [{ type: '$surface', props: { height: '100%' }, children: [spaceSettingsPanel] }],
+    },
+    tables: {},
+    stores: {
+      shellStore: { narrowWindow: windowWidth < 640, spaceSettingsTab: 'about', spaceSettingsFocus: '' },
+      datasetStore: { currentDataset: { id: 'space-1' } },
+      spaceStore: {
+        spaceList: [{ uuid: 'space-1', name: 'Club Business', kind: 'shared', isWeSpace: true, canAdminister: false }],
+      },
+      templateStore: { brand: { name: 'WE' } },
+      sessionStore: { bootState: 'ready', devTools: false, devFeatures: false, isGuest: false },
+    },
+  };
+};
+
+/**
  * The top of the Coasys tree under Glow: a rounded-square space face, a two-line description, and a
  * tree with one row selected — the pieces whose look is the theme's or the primitive's to get right.
  */
@@ -2825,6 +2862,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'tree:caret-end': treeCaretEnd,
   'rail:app': appRail,
   'shell:settings': shellSettings,
+  'shell:space-settings': spaceSettingsPanelScenario,
   'shell:landing': shellLanding,
   'coasys:tree-top': coasysTreeTop,
   'bundle:prompt': bundleInstallPrompt,

@@ -113,10 +113,13 @@ describe("a space's own panel at phone width", () => {
     expect(panel.style.flex).toBe('0 0 100%');
     expect(tree.style.minWidth).toBe('0px');
     expect(tree.style.flex).toBe('');
-    // Its own close stays where it was: the section's header has one.
-    expect(
-      [...panel.querySelectorAll('we-icon')].some((icon) => (icon as HTMLElement & { name?: string }).name === 'x'),
-    ).toBe(true);
+    // Its own close stays where it was: the section's header has one, and it is named for a screen
+    // reader rather than being an icon alone.
+    const close = [...panel.querySelectorAll('we-icon')].find(
+      (icon) => (icon as HTMLElement & { name?: string }).name === 'x',
+    );
+    expect(close).toBeDefined();
+    expect((close!.closest('we-button') as HTMLElement & { label?: string }).label).toBe('Close');
 
     setSettingsOpen(false);
     expect(panel.style.width).toBe('0px');

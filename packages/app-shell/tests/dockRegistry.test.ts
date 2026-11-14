@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { bundledModules } from '../src/shared/registries/bundledModules';
 import {
   dockRegistry,
+  dockTitle,
+  frameBox,
   hostChromeReserves,
   hostDockStores,
   onDockRegistryChanged,
@@ -13,7 +15,7 @@ import {
 import { EDITOR_STORE_ID, registerEditorDocks } from '../src/shared/registries/editorDocks';
 import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
 import { moduleRegistry, moduleStores } from '../src/shared/registries/moduleRegistry';
-import { registerShellDocks, SHELL_DOCK_STORE_ID } from '../src/shared/registries/shellDocks';
+import { registerShellDocks, SHELL_DOCK_STORE_ID, SPACE_SETTINGS_DOCK_ID } from '../src/shared/registries/shellDocks';
 import { onSlotRegistryChanged, slotRegistry } from '../src/shared/registries/slotRegistry';
 import { TEMPLATE_SURFACE } from '../src/shared/registries/templateSurface';
 
@@ -174,6 +176,45 @@ describe('a panel declares how it closes', () => {
     for (const entry of editorPanels) {
       expect(entry.close, `${entry.id} has no close`).toBeTruthy();
       expect(TEMPLATE_SURFACE.editorStore?.[entry.close!], `editorStore.${entry.close}`).toBeDefined();
+    }
+  });
+});
+
+/** Every node under `node`, depth first. */
+function nodesOf(node: unknown): Record<string, unknown>[] {
+  if (Array.isArray(node)) return node.flatMap(nodesOf);
+  if (!node || typeof node !== 'object') return [];
+  const n = node as Record<string, unknown>;
+  const props = (n.props ?? {}) as Record<string, unknown>;
+  return [n, ...nodesOf(n.children), ...nodesOf(props.then), ...nodesOf(props.else)];
+}
+
+/**
+ * A panel's header says what the panel is, and its close says what it does.
+ *
+ * The space's settings is the host's panel, not a module's, and registered with no `title`: the
+ * header fell back to the store it reads its keys from and read "Shell", on a phone and on a desktop
+ * alike. And the close is an icon alone, so a screen reader announced a nameless button.
+ */
+describe("a panel's header", () => {
+  it("names the space's settings as what they are, not the store behind them", () => {
+    registerShellDocks();
+    expect(dockTitle(dockRegistry.get(SPACE_SETTINGS_DOCK_ID)!)).toBe('Space settings');
+  });
+
+  it('gives every close an accessible name', () => {
+    registerShellDocks();
+    registerEditorDocks();
+    const closing = dockRegistry.ordered().filter((entry) => entry.close || entry.closeAction);
+    expect(closing.length).toBeGreaterThan(0);
+    for (const entry of closing) {
+      const closes = nodesOf(frameBox(entry)).filter(
+        (n) =>
+          n.type === 'we-button' &&
+          nodesOf(n.children).some((c) => c.type === 'we-icon' && (c.props as { name?: string })?.name === 'x'),
+      );
+      expect(closes.length, entry.id).toBeGreaterThan(0);
+      for (const close of closes) expect((close.props as { label?: string }).label, entry.id).toBe('Close');
     }
   });
 });
