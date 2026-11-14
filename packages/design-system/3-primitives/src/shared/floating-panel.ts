@@ -1,4 +1,4 @@
-import { autoUpdate, computePosition, flip, offset, shift } from '@floating-ui/dom';
+import { autoUpdate, computePosition, flip, offset, shift, size } from '@floating-ui/dom';
 import type { Placement } from '@we/design-types';
 
 /**
@@ -31,7 +31,19 @@ import type { Placement } from '@we/design-types';
  *
  * Degrades where the Popover API is missing: the panel keeps its old positioning and its old
  * clipping, rather than disappearing.
+ *
+ * ## It stays in the window
+ *
+ * `flip` alone only tries the opposite side. A menu asked for `right-end` beside a trigger as wide
+ * as a phone has no room on the right and none on the left, so it kept the side it asked for and
+ * opened off the edge of the screen — the person menu at the foot of a phone's rail did exactly
+ * that. So the sides across the other axis are tried as well (above, then below), `shift` keeps the
+ * panel inside the window on both axes as a last resort, and `size` caps it at the room there is,
+ * scrolling what does not fit rather than drawing it off screen.
  */
+/** The least room kept between a panel and the window's edge, in pixels. */
+const EDGE = 8;
+
 export interface FloatingPanelOptions {
   /** Where the panel prefers to sit; `flip` moves it when there is no room. */
   placement?: Placement;
@@ -72,10 +84,37 @@ export function openFloatingPanel(
   const supportsPopover = typeof (panel as HTMLElement & { showPopover?: () => void }).showPopover === 'function';
   if (supportsPopover && !panel.hasAttribute('popover')) panel.setAttribute('popover', 'manual');
 
+  /*
+    What the panel's own styles said before this capped it, so the cap is never larger than a
+    panel's own limit (a listbox's max-height) and the teardown puts back exactly what was there.
+  */
+  const own = getComputedStyle(panel);
+  const ownMax = { width: own.maxWidth, height: own.maxHeight };
+  const ownOverflow = own.overflow;
+  const inline = { maxWidth: panel.style.maxWidth, maxHeight: panel.style.maxHeight, overflow: panel.style.overflow };
+  const cap = (ownLimit: string, room: number) =>
+    ownLimit === 'none' || ownLimit === '' ? `${room}px` : `min(${ownLimit}, ${room}px)`;
+
   const reposition = () => {
     void computePosition(trigger, panel, {
       placement,
-      middleware: [offset(gap), flip(), shift({ padding: 8 })],
+      middleware: [
+        offset(gap),
+        flip({ fallbackAxisSideDirection: 'start', padding: EDGE }),
+        shift({ padding: EDGE, crossAxis: true }),
+        size({
+          padding: EDGE,
+          apply({ availableWidth, availableHeight }) {
+            const room = { width: Math.max(0, availableWidth), height: Math.max(0, availableHeight) };
+            panel.style.maxWidth = cap(ownMax.width, room.width);
+            panel.style.maxHeight = cap(ownMax.height, room.height);
+            // Scrolled only while its content is more than the room — a panel that fits keeps its
+            // own overflow, so nothing it draws past its edge (a focus ring, a shadow) is clipped.
+            const tooBig = panel.scrollWidth > room.width || panel.scrollHeight > room.height;
+            panel.style.overflow = tooBig && ownOverflow === 'visible' ? 'auto' : inline.overflow;
+          },
+        }),
+      ],
     }).then(({ x, y }) => {
       panel.style.left = `${x}px`;
       panel.style.top = `${y}px`;
@@ -94,6 +133,9 @@ export function openFloatingPanel(
 
   return () => {
     stopWatching();
+    panel.style.maxWidth = inline.maxWidth;
+    panel.style.maxHeight = inline.maxHeight;
+    panel.style.overflow = inline.overflow;
     if (!supportsPopover) return;
     const open = panel.matches?.(':popover-open');
     if (!open) return;

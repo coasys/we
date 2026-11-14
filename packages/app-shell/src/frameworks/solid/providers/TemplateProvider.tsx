@@ -144,7 +144,9 @@ export default function TemplateProvider() {
   // Both follow the app's frame, which the app template declares (`meta.frame`): a frame with no rail
   // publishes no rail width, so nothing keeps clear of a rail that is not there.
   // The bands the app's chrome holds, as it declares them — what panels dock against.
-  createEffect(() => declareAppFrame(templateStore.appTemplate().meta?.frame));
+  // At phone width an app may hold different bands — its sidebar a bar across the top — so the frame
+  // follows the window across the `sm` breakpoint as well as the app template.
+  createEffect(() => declareAppFrame(templateStore.appTemplate().meta?.frame, shellStore.narrowWindow()));
   // And how its edges frame the panels pushing the content aside there (`meta.edges`).
   createEffect(() => declareAppEdges(templateStore.appTemplate().meta?.edges));
 

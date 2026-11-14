@@ -299,8 +299,18 @@ export type TemplateMeta = {
    * Declared, as `chromeReserve` is, so chrome that grows as somebody opens it does not shove every
    * docked panel across the screen. A band left out is empty; an app declaring no frame keeps WE's
    * own furniture. Ignored on a shell or a view.
+   *
+   * `narrow` is the frame below the `sm` breakpoint (`shellStore.narrowWindow`), where a phone has no
+   * width to give a sidebar: an app whose sidebar becomes a bar across the top there declares that
+   * band, `{ top: 56 }`. Left out, the frame is the same at every width.
    */
-  frame?: { left?: number; right?: number; top?: number; bottom?: number };
+  frame?: {
+    left?: number;
+    right?: number;
+    top?: number;
+    bottom?: number;
+    narrow?: { left?: number; right?: number; top?: number; bottom?: number };
+  };
   /**
    * For an `'app'`: how a panel pushing the content aside at each window edge is framed, when the
    * panel declares no frame of its own — `'flush'` makes that edge's lanes part of the app around

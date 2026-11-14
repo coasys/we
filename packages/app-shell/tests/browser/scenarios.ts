@@ -46,6 +46,7 @@ import {
   themeSides,
   withThemeSide,
 } from '@we/themes/presets';
+import { createSignal } from 'solid-js';
 
 import coasysBundle from '../../../../bundles/coasys.bundle.json';
 import fieldGuideBundle from '../../../../bundles/field-guide.bundle.json';
@@ -1958,6 +1959,22 @@ const shellSettings = (scale?: number): Scenario => {
     routes: _routes,
     ...settings
   } = settingsTemplate as SchemaNode & { meta?: unknown; routes?: unknown };
+  /*
+    A router that moves, so a case can go from a phone's list to a page and back. Opened on Devices,
+    as a link into Settings would open it; the stand-in page is drawn whatever the path.
+  */
+  const [path, setPath] = createSignal('/devices');
+  const routeStore = {
+    params: {},
+    templateSegments: [],
+    get currentPath() {
+      return path();
+    },
+    get segments() {
+      return path().split('/').filter(Boolean);
+    },
+    navigate: (to: string) => setPath(to),
+  };
   return {
     node: {
       type: 'Column',
@@ -1967,7 +1984,15 @@ const shellSettings = (scale?: number): Scenario => {
         sidebar,
         {
           type: 'Column',
-          props: { id: 'settings-frame', position: 'absolute', top: '0', left: '80px', right: '0', bottom: '0' },
+          // Where the app's frame puts a shell view: beside the 80px rail, or under a phone's 56px bar.
+          props: {
+            id: 'settings-frame',
+            position: 'absolute',
+            top: windowWidth < 640 ? '56px' : '0',
+            left: windowWidth < 640 ? '0' : '80px',
+            right: '0',
+            bottom: '0',
+          },
           children: [
             {
               type: '$surface',
@@ -1982,7 +2007,7 @@ const shellSettings = (scale?: number): Scenario => {
     stores: {
       sessionStore: { bootState: 'ready', devTools: false, devFeatures: false, isGuest: false },
       shellStore: { panelMaximised: false, activeShellView: 'settings', narrowWindow: windowWidth < 640 },
-      routeStore: { params: {}, currentPath: '/devices', segments: ['devices'], templateSegments: [] },
+      routeStore,
       templateStore: { brand: { name: 'WE' } },
       runtimeStore: { canManageAi: true, canManageApps: true },
       datasetStore: { marketplaceConfigured: false },
@@ -2391,6 +2416,11 @@ const coasysLockup = (): Scenario => {
   const band = (node: unknown): SchemaNode | undefined => {
     if (!node || typeof node !== 'object') return undefined;
     const n = node as Record<string, unknown>;
+    // A desktop's rail: on a phone the mark is the Menu button in a bar, which signing in does not
+    // fade onto from the sign-in screen's corner.
+    const props = n.props as { condition?: unknown; else?: unknown } | undefined;
+    if (n.type === '$if' && JSON.stringify(props?.condition) === JSON.stringify({ $: 'shellStore.narrowWindow' }))
+      return band(props?.else);
     if (Array.isArray(n.children) && n.children.some(isMark)) return structuredClone(n) as SchemaNode;
     for (const v of Object.values(n)) {
       const found = Array.isArray(v) ? v.map(band).find(Boolean) : band(v);

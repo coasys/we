@@ -1379,18 +1379,59 @@ const deviceSection: SchemaNode = {
 };
 
 /**
- * The edges of the nav's strip on a phone: it reaches out over Settings' own padding (12px, `px:
- * '300'` below `sm`) on both sides, keeps that much padding inside, and fades to nothing across it.
+ * Settings on a phone: the list of its pages, then the page chosen, with a way back.
  *
- * A strip cut flush at the page's edge left a sliver of whatever entry had scrolled past: a stray
- * clipped icon to the left of "Plan & usage", read as a broken button. Now an entry going out of view
- * fades over the 12px the page's padding already gave, at rest the strip stops at the start of an
- * entry (`scroll-snap-align` on each, `scroll-padding` keeping it clear of the fade), and at either
- * end the first or last entry sits on the page's own edge, whole. From `sm` up the nav is a column
- * that does not scroll, and none of this applies.
+ * Below `sm` there is no room for the nav beside the page, and a strip of entries scrolling sideways
+ * across the top hid most of them and grouped none — a person looking for Devices had to know to
+ * swipe for it. So the two take turns: the list is the whole of Settings until something in it is
+ * chosen, and then the page is, under a header with Back. From `sm` up nothing here applies and the
+ * nav sits beside the page as it always did.
+ *
+ * Measured against the overlay's own surface, not the window, so a desktop window narrowed by a
+ * docked panel gets the same answer for the same room.
  */
-const STRIP_EDGES =
-  "surface.tier == 'base' ? { 'margin-inline': '-0.75rem', 'padding-inline': '0.75rem', width: 'calc(100% + 1.5rem)', 'max-width': 'none', 'scroll-snap-type': 'x mandatory', 'scroll-padding-inline': '0.75rem', 'mask-image': 'linear-gradient(to right, transparent, #000 0.75rem, #000 calc(100% - 0.75rem), transparent)' } : null";
+const PHONE = "surface.tier == 'base'";
+
+/**
+ * A page is open rather than the list: one was chosen, or Settings opened on one (a link into
+ * `/ai`, the page somebody was on last time). `/` is both the list and Profile, so choosing Profile
+ * is what says the page is wanted rather than the list.
+ */
+const PAGE_OPEN = "(local.settingsPage || routeStore.currentPath != '/')";
+
+/** On a phone, with a page open — the list is put away. */
+const SETTINGS_PHONE_PAGE = `${PHONE} && ${PAGE_OPEN}`;
+/** On a phone, with the list showing — the page is put away. */
+const SETTINGS_PHONE_LIST = `${PHONE} && !${PAGE_OPEN}`;
+
+/**
+ * The header of a page on a phone: Back to the list. The page's own heading, right under it, says
+ * which page this is.
+ *
+ * Back is a real button and takes focus as the page arrives (`autofocus`), because the entry that
+ * was pressed has just gone from the screen, and focus with it.
+ */
+const phonePageHeader: SchemaNode = {
+  type: 'Row',
+  props: { gap: '200', ay: 'center', width: '100%', minWidth: '0' },
+  children: [
+    {
+      type: 'we-button',
+      props: {
+        variant: 'ghost',
+        autofocus: true,
+        onClick: [
+          { $setLocal: 'settingsPage', value: false },
+          { $invoke: 'routeStore.navigate', args: ['/'] },
+        ],
+      },
+      children: [
+        { type: 'we-icon', props: { name: 'caret-left' } },
+        { type: 'we-text', children: ['Back'] },
+      ],
+    },
+  ],
+};
 
 /**
  * One entry in the left-hand nav.
@@ -1402,21 +1443,21 @@ function navItem(label: string, icon: string, path: string): SchemaNode {
   // Matched on the first path segment, not the whole path, so a page with sub-routes keeps its nav
   // entry lit — `/spaces/<uuid>` is still Spaces & data. Exact equality left the nav with nothing
   // selected there, which reads as having navigated out of settings altogether.
-  const selected =
-    path === '/' ? { $: "routeStore.currentPath == '/'" } : expr`routeStore.segments[0] == ${path.slice(1)}`;
+  const selected = path === '/' ? "routeStore.currentPath == '/'" : `routeStore.segments[0] == '${path.slice(1)}'`;
   return {
     type: 'we-button',
     props: {
-      variant: expr`${selected} ? 'soft' : 'ghost'`,
-      // A strip entry on a phone, where the nav runs across the top: its own width, never squeezed.
-      // A full-width row in the column it is from `sm` up.
-      flex: '0 0 auto',
+      // Not on a phone's list, which is only seen with no page open: Back goes to '/', so Profile
+      // would be lit every time the list came back.
+      variant: { $: `!(${PHONE}) && (${selected}) ? 'soft' : 'ghost'` },
+      // A full-width row: in the column beside the page from `sm` up, in the list on a phone.
+      width: '100%',
       ax: 'start',
-      smUpProps: { width: '100%' },
-      // Where the phone's strip comes to rest: at the start of an entry. Nothing scrolls in the
-      // column from `sm` up, so nothing snaps there.
-      styles: { 'scroll-snap-align': 'start' },
-      onClick: { $invoke: 'routeStore.navigate', args: [path] },
+      // On a phone, choosing it opens the page in place of the list — see `PAGE_OPEN`.
+      onClick: [
+        { $setLocal: 'settingsPage', value: true },
+        { $invoke: 'routeStore.navigate', args: [path] },
+      ],
     },
     children: [
       { type: 'we-icon', props: { name: icon } },
@@ -1428,26 +1469,18 @@ function navItem(label: string, icon: string, path: string): SchemaNode {
 /**
  * A heading over a run of nav entries.
  *
- * On a phone the nav is one strip across the top of the page, so a group is a run in that strip and
- * its heading is left out: a heading between two buttons in a scrolling row reads as a third button
- * that does nothing. From `sm` up it wraps with every entry the full width, which is the column
- * under its heading it always was — see the nav in `settingsTemplate`.
+ * A row that wraps with every entry the full width, which is a column under its heading — the same
+ * on a phone's list as beside the page from `sm` up. See the nav in `settingsTemplate`.
  */
 function navGroup(label: string, items: SchemaNode[]): SchemaNode {
   return {
     type: 'Row',
-    props: { gap: '100', flex: '0 0 auto', smUpProps: { wrap: true, width: '100%' } },
+    props: { gap: '100', wrap: true, width: '100%' },
     children: [
       {
-        type: '$if',
-        props: {
-          condition: { $: "surface.tier != 'base'" },
-          then: {
-            type: 'we-text',
-            props: { variant: 'footnote', color: 'text-muted', px: '300', pt: '300', width: '100%' },
-            children: [label],
-          },
-        },
+        type: 'we-text',
+        props: { variant: 'footnote', color: 'text-muted', px: '300', pt: '300', width: '100%' },
+        children: [label],
       },
       ...items,
     ],
@@ -1626,23 +1659,29 @@ export const settingsTemplate: TemplateSchema = {
         width: '100%',
         smUpProps: { px: '400', py: '800' },
       },
+      // Whether a page was chosen from a phone's list — see `PAGE_OPEN`. Here rather than on the
+      // root, which is a route's ancestor in the schema and not at render time; the nav, the header
+      // and the page's column are all under this one.
+      $localState: { settingsPage: { type: 'boolean', initial: false } },
       children: [
-        pageHeader,
+        // "Settings" over the list, and beside the page from `sm` up; a phone's page has its own.
+        { ...pageHeader, props: { ...pageHeader.props, display: { $: `${SETTINGS_PHONE_PAGE} ? 'none' : 'flex'` } } },
+        { type: '$if', props: { condition: { $: SETTINGS_PHONE_PAGE }, then: phonePageHeader } },
         /*
-          The nav above the page on a phone, beside it from `sm` up.
+          The nav beside the page from `sm` up, and on a phone in its place — see `PHONE`.
 
           It was always beside it, with a 200px nav, and inside a 332px overlay that left the page a
-          column a few letters wide — "Devices" broke one letter to a line. Below `sm` the nav is one
-          strip across the top that scrolls sideways, and the page has the whole width under it.
-          Measured against the overlay's own surface, not the window, so a desktop window narrowed
-          by a docked panel gets the same answer for the same room.
+          column a few letters wide — "Devices" broke one letter to a line. Then a strip across the
+          top that scrolled sideways, which hid most of the entries and grouped none. Now a phone
+          shows the list, grouped as it is beside the page, and the page in its place once chosen.
 
           Rows that wrap rather than a direction that flips, because a layout component's direction
           is its type and no tier can change it. The row wraps, so a nav as wide as the row puts the
           page on the line under it; from `sm` the nav is 200px and the page shares its line, as it
-          always did. The nav is a row too: unwrapped it is the strip, and from `sm` it wraps with
-          every entry the full 200px, which is a column drawn by the line breaks — so nothing
-          remounts at the threshold, and the page's own state survives the window crossing it.
+          always did. The nav is a row too, wrapping with every entry the full width, which is a
+          column drawn by the line breaks. The list and the page are put away with `display`, not an
+          `$if`, so nothing remounts as a phone goes between them or a window crosses `sm`, and the
+          page's own state survives both.
         */
         {
           type: 'Row',
@@ -1653,10 +1692,9 @@ export const settingsTemplate: TemplateSchema = {
               props: {
                 gap: '100',
                 width: '100%',
-                overflowX: 'auto',
-                scrollbarWidth: 'none',
-                smUpProps: { wrap: true, gap: '300', width: '200px', minWidth: '200px', overflowX: 'visible' },
-                styles: { $: STRIP_EDGES },
+                wrap: true,
+                display: { $: `${SETTINGS_PHONE_PAGE} ? 'none' : 'flex'` },
+                smUpProps: { gap: '300', width: '200px', minWidth: '200px' },
               },
               children: [
                 navGroup('Account', [
@@ -1717,27 +1755,27 @@ export const settingsTemplate: TemplateSchema = {
                     },
                   },
                 ]),
-                /*
-                  An action rather than a page, set apart at the foot of the nav — see `logOutAction`.
-                  Not in a phone's strip, where the foot of the nav is somewhere off to the right: the
-                  sidebar's own Logout is one press away there.
-                */
+                // An action rather than a page, set apart at the foot of the nav — see `logOutAction`.
                 {
-                  type: '$if',
-                  props: {
-                    condition: { $: "surface.tier != 'base'" },
-                    then: {
-                      type: 'Column',
-                      props: { pt: '300', borderTop: '1px solid border', width: '100%' },
-                      children: [logOutAction],
-                    },
-                  },
+                  type: 'Column',
+                  props: { pt: '300', borderTop: '1px solid border', width: '100%' },
+                  children: [logOutAction],
                 },
               ],
             },
             // `minWidth: '0'`: a flex child is at least as wide as its widest content, so without it
             // one long line (an executor log line) widened every settings page past the window.
-            { type: 'Column', props: { flex: '1', gap: '600', minWidth: '0' }, children: [{ type: '$routes' }] },
+            {
+              type: 'Column',
+              props: {
+                flex: '1',
+                gap: '600',
+                minWidth: '0',
+                // Put away while a phone shows the list: `/` is Profile as well as the list.
+                display: { $: `${SETTINGS_PHONE_LIST} ? 'none' : 'flex'` },
+              },
+              children: [{ type: '$routes' }],
+            },
           ],
         },
       ],

@@ -245,6 +245,12 @@
           "type": "boolean",
           "optional": false,
           "default": "false"
+        },
+        {
+          "name": "autofocus",
+          "type": "boolean",
+          "optional": false,
+          "default": "false"
         }
       ]
     },

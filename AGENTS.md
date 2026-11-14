@@ -1363,7 +1363,7 @@ turn rather than rise, and the spinner keeps turning, since a still spinner look
   Props: variant: 'soft' | 'solid' = 'soft', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-blockquote (DesignSystemElement)
 - we-button (DesignSystemElement)
-  Props: variant: 'solid' | 'soft' | 'outline' | 'ghost' | 'bare' = 'solid', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, label: string = '', expanded?: boolean | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
+  Props: variant: 'solid' | 'soft' | 'outline' | 'ghost' | 'bare' = 'solid', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, label: string = '', expanded?: boolean | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false, autofocus: boolean = false
 - we-checkbox (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-code (DesignSystemElement)
@@ -3643,7 +3643,7 @@ ShellStore:
   - coveredInset: { top, right, bottom, left } in pixels — what FLOATING panels and floating chrome (the call bar along the bottom) are covering. They take no room, so they leave contentInset at zero while still sitting over the content: this is the part of your own box the reader cannot see. Read it to keep something in the clear where contentInset would say there is nothing in the way. Chrome only; a space template reads the same numbers as CSS, `var(--we-covered-bottom, 0px)` and its three siblings — pad a composer pinned to the bottom of a view by it, and it rises above the call bar while one is up and settles when it goes
   - dockResizing: boolean — a panel is being dragged or resized right now. Suspend transitions while it is true so the edge tracks the cursor
   - panelMaximised: boolean — some panel covers the whole window. The app's own chrome — sidebar, module rail — hides while it is true; a template's fixed chrome should too
-  - narrowWindow: boolean — the window is narrower than the sm breakpoint (640px): a phone held upright. Chrome only, because chrome sits outside every surface and has no surface.tier to read; the sidebar opens from a menu button while it is true rather than under the pointer. A template answers to its own surface with smUpProps instead
+  - narrowWindow: boolean — the window is narrower than the sm breakpoint (640px): a phone held upright. Chrome only, because chrome sits outside every surface and has no surface.tier to read; while it is true the sidebar is a bar across the top whose Menu button switches between it and the page, and meta.frame.narrow replaces the app frame. A template answers to its own surface with smUpProps instead
   - dockPlacement: Record<dockId, { snap, displace, canDisplace, … }> — where each panel is parked, for its frame to read: which of the eight snaps it is at, whether it displaces content, and whether it may. The state a position menu ticks; dockGeometry is the resulting box
   - panelFrames: Record<dockId, 'window' | 'flush' | 'none'> — how each panel is framed where it is not a window: its own declared frame, else — pushing the content aside at an edge — that edge's frame as the app template declares it (meta.edges); absent, a window's frame
   - movingDock: string | null — the id of the panel being dragged, or null. What mounts the snap-target overlay
@@ -5334,6 +5334,14 @@ themselves come from a `$query`.
 The label is mounted only while the rail is open rather than narrowed to nothing: at collapsed width
 there is no room for it, and a hidden-but-present label is still in the accessibility tree and still
 found by find-in-page.
+
+On a phone there is no hover: a tap reports the pointer arriving and nothing reports it leaving.
+Below `sm` (`shellStore.narrowWindow`) WE's rail is a bar across the top instead — the kit's
+`railShell({ compact })` draws it — whose mark is a `we-button` labelled "Menu"
+(`{ "$toggleLocal": "expanded" }`, `expanded` bound to `local.expanded`) that opens the rail over
+the whole window. `onMouseEnter` is gated on `!shellStore.narrowWindow`, and every row that goes
+somewhere also shuts the rail (`closeWhenCompact`), so the place chosen is what shows. The app's
+`meta.frame.narrow` gives the page the band under the bar rather than the column beside it.
 
 A group heading toggles its own id in the set, and its body reveals on the block axis:
 

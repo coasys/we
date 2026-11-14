@@ -24,7 +24,7 @@ export const seedBundles: Bundle[] = [
         description: 'Your spaces down the left, the space you are in beside them.',
         icon: 'hexagon',
         role: 'app',
-        frame: { left: 72 },
+        frame: { left: 72, narrow: { top: 56 } },
         panels: [
           {
             id: 'chat-global',
@@ -65,9 +65,9 @@ export const seedBundles: Bundle[] = [
                     {
                       type: 'Column',
                       props: {
-                        width: { $: "local.expanded ? '256px' : '72px'" },
+                        width: { $: "shellStore.narrowWindow ? '100%' : (local.expanded ? '256px' : '72px')" },
+                        height: { $: "(shellStore.narrowWindow && !local.expanded) ? '56px' : '100%'" },
                         transition: 'width 300 ease-in-out',
-                        height: '100%',
                         overflow: 'hidden',
                         bg: 'chrome',
                         borderRight: '1px solid border',
@@ -75,7 +75,12 @@ export const seedBundles: Bundle[] = [
                         zIndex: 'chrome',
                         top: '0',
                         left: '0',
-                        onMouseEnter: { $setLocal: 'expanded', value: true },
+                        onMouseEnter: {
+                          $if: {
+                            condition: { $: '!shellStore.narrowWindow' },
+                            then: { $setLocal: 'expanded', value: true },
+                          },
+                        },
                         onMouseLeave: { $setLocal: 'expanded', value: false },
                       },
                       $localState: {
@@ -90,42 +95,45 @@ export const seedBundles: Bundle[] = [
                           props: { width: '100%' },
                           children: [
                             {
-                              type: 'Row',
+                              type: '$if',
                               props: {
-                                height: '72px',
-                                flex: '0 0 auto',
-                                ay: 'center',
-                                gap: '300',
-                                pl: 'calc((72px - 28px) / 2)',
-                                minWidth: '0',
-                                width: '100%',
-                                cursor: 'pointer',
-                                onClick: { $invoke: 'shellStore.openShellView', args: ['landing-page'] },
-                              },
-                              children: [
-                                {
-                                  type: 'we-image',
+                                condition: { $: 'shellStore.narrowWindow' },
+                                then: {
+                                  type: 'Row',
                                   props: {
-                                    src: { $: 'templateStore.brand.mark' },
-                                    alt: 'Coasys',
-                                    width: '28px',
-                                    height: '28px',
-                                    flexShrink: 0,
+                                    height: '56px',
+                                    width: '100%',
+                                    flex: '0 0 auto',
+                                    ay: 'center',
+                                    gap: '200',
+                                    px: '300',
                                   },
-                                },
-                                {
-                                  type: '$if',
-                                  props: {
-                                    condition: { $: 'local.expanded' },
-                                    enterTransition: [
-                                      { type: 'reveal', axis: 'inline', duration: 250 },
-                                      { type: 'fade', duration: 150 },
-                                    ],
-                                    exitTransition: [
-                                      { type: 'reveal', axis: 'inline', duration: 250 },
-                                      { type: 'fade', duration: 150 },
-                                    ],
-                                    then: {
+                                  children: [
+                                    {
+                                      type: 'we-button',
+                                      props: {
+                                        variant: 'ghost',
+                                        label: 'Menu',
+                                        expanded: { $: 'local.expanded' },
+                                        gap: '200',
+                                        px: '200',
+                                        onClick: { $toggleLocal: 'expanded' },
+                                      },
+                                      children: [
+                                        {
+                                          type: 'we-image',
+                                          props: {
+                                            src: { $: 'templateStore.brand.mark' },
+                                            alt: '',
+                                            width: '28px',
+                                            height: '28px',
+                                            flexShrink: 0,
+                                          },
+                                        },
+                                        { type: 'we-icon', props: { name: { $: "local.expanded ? 'x' : 'list'" } } },
+                                      ],
+                                    },
+                                    {
                                       type: 'we-text',
                                       props: {
                                         variant: 'body',
@@ -135,65 +143,135 @@ export const seedBundles: Bundle[] = [
                                       },
                                       children: [{ $: 'templateStore.brand.name' }],
                                     },
+                                  ],
+                                },
+                                else: {
+                                  type: 'Row',
+                                  props: {
+                                    height: '72px',
+                                    flex: '0 0 auto',
+                                    ay: 'center',
+                                    gap: '300',
+                                    pl: 'calc((72px - 28px) / 2)',
+                                    minWidth: '0',
+                                    width: '100%',
+                                    cursor: 'pointer',
+                                    onClick: { $invoke: 'shellStore.openShellView', args: ['landing-page'] },
                                   },
-                                },
-                              ],
-                            },
-                            {
-                              type: 'we-button',
-                              props: {
-                                variant: 'ghost',
-                                size: 'lg',
-                                width: '100%',
-                                height: 'auto',
-                                ax: 'start',
-                                ay: 'center',
-                                gap: '200',
-                                py: '300',
-                                px: { $: 'local.railInset' },
-                                label: 'AI chat',
-                                onClick: { $invoke: 'chatStore.openChat' },
-                                bg: { $: "false ? 'accent-soft' : ''" },
-                                color: { $: "false ? 'accent-text' : 'text-muted'" },
-                                hoverProps: {
-                                  $: "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }",
-                                },
-                                activeProps: {
-                                  $: "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }",
+                                  children: [
+                                    {
+                                      type: 'we-image',
+                                      props: {
+                                        src: { $: 'templateStore.brand.mark' },
+                                        alt: 'Coasys',
+                                        width: '28px',
+                                        height: '28px',
+                                        flexShrink: 0,
+                                      },
+                                    },
+                                    {
+                                      type: '$if',
+                                      props: {
+                                        condition: { $: 'local.expanded' },
+                                        enterTransition: [
+                                          { type: 'reveal', axis: 'inline', duration: 250 },
+                                          { type: 'fade', duration: 150 },
+                                        ],
+                                        exitTransition: [
+                                          { type: 'reveal', axis: 'inline', duration: 250 },
+                                          { type: 'fade', duration: 150 },
+                                        ],
+                                        then: {
+                                          type: 'we-text',
+                                          props: {
+                                            variant: 'body',
+                                            fontWeight: 'semibold',
+                                            letterSpacing: 'tight',
+                                            truncate: true,
+                                          },
+                                          children: [{ $: 'templateStore.brand.name' }],
+                                        },
+                                      },
+                                    },
+                                  ],
                                 },
                               },
-                              children: [
-                                {
-                                  type: 'Row',
-                                  props: { width: '2rem', height: '2rem', ax: 'center', ay: 'center', flexShrink: '0' },
-                                  children: [{ type: 'we-icon', props: { name: 'sparkle', size: 'sm' } }],
-                                },
-                                {
-                                  type: '$if',
+                            },
+                            {
+                              type: '$if',
+                              props: {
+                                condition: { $: '!shellStore.narrowWindow || local.expanded' },
+                                then: {
+                                  type: 'we-button',
                                   props: {
-                                    condition: { $: 'local.expanded' },
-                                    enterTransition: [
-                                      { type: 'reveal', axis: 'inline', duration: 250 },
-                                      { type: 'fade', duration: 150 },
-                                    ],
-                                    exitTransition: [
-                                      { type: 'reveal', axis: 'inline', duration: 250 },
-                                      { type: 'fade', duration: 150 },
-                                    ],
-                                    then: {
-                                      type: 'Row',
-                                      props: { gap: '200', ay: 'center', minWidth: '0' },
-                                      children: [
-                                        {
-                                          type: 'we-text',
-                                          props: { truncate: true, fontSize: '300' },
-                                          children: ['AI chat'],
+                                    variant: 'ghost',
+                                    size: 'lg',
+                                    width: '100%',
+                                    height: 'auto',
+                                    ax: 'start',
+                                    ay: 'center',
+                                    gap: '200',
+                                    py: '300',
+                                    px: { $: 'local.railInset' },
+                                    label: 'AI chat',
+                                    onClick: [
+                                      {
+                                        $if: {
+                                          condition: { $: 'shellStore.narrowWindow' },
+                                          then: { $setLocal: 'expanded', value: false },
                                         },
-                                      ],
+                                      },
+                                      { $invoke: 'chatStore.openChat' },
+                                    ],
+                                    bg: { $: "false ? 'accent-soft' : ''" },
+                                    color: { $: "false ? 'accent-text' : 'text-muted'" },
+                                    hoverProps: {
+                                      $: "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-hover', color: 'text' }",
+                                    },
+                                    activeProps: {
+                                      $: "false ? { bg: 'surface-active', color: 'accent-text' } : { bg: 'surface-active', color: 'text' }",
                                     },
                                   },
+                                  children: [
+                                    {
+                                      type: 'Row',
+                                      props: {
+                                        width: '2rem',
+                                        height: '2rem',
+                                        ax: 'center',
+                                        ay: 'center',
+                                        flexShrink: '0',
+                                      },
+                                      children: [{ type: 'we-icon', props: { name: 'sparkle', size: 'sm' } }],
+                                    },
+                                    {
+                                      type: '$if',
+                                      props: {
+                                        condition: { $: 'local.expanded' },
+                                        enterTransition: [
+                                          { type: 'reveal', axis: 'inline', duration: 250 },
+                                          { type: 'fade', duration: 150 },
+                                        ],
+                                        exitTransition: [
+                                          { type: 'reveal', axis: 'inline', duration: 250 },
+                                          { type: 'fade', duration: 150 },
+                                        ],
+                                        then: {
+                                          type: 'Row',
+                                          props: { gap: '200', ay: 'center', minWidth: '0' },
+                                          children: [
+                                            {
+                                              type: 'we-text',
+                                              props: { truncate: true, fontSize: '300' },
+                                              children: ['AI chat'],
+                                            },
+                                          ],
+                                        },
+                                      },
+                                    },
+                                  ],
                                 },
-                              ],
+                              },
                             },
                           ],
                         },
@@ -208,6 +286,7 @@ export const seedBundles: Bundle[] = [
                             ay: 'center',
                             overflowY: 'auto',
                             overflowX: 'hidden',
+                            display: { $: "(shellStore.narrowWindow && !local.expanded) ? 'none' : 'flex'" },
                           },
                           children: [
                             {
@@ -285,10 +364,18 @@ export const seedBundles: Bundle[] = [
                                                     py: '300',
                                                     px: { $: 'local.railInset' },
                                                     label: { $: 'space.name' },
-                                                    onClick: {
-                                                      $invoke: 'spaceStore.navigateToSpace',
-                                                      args: [{ $: 'space.spaceId' }],
-                                                    },
+                                                    onClick: [
+                                                      {
+                                                        $if: {
+                                                          condition: { $: 'shellStore.narrowWindow' },
+                                                          then: { $setLocal: 'expanded', value: false },
+                                                        },
+                                                      },
+                                                      {
+                                                        $invoke: 'spaceStore.navigateToSpace',
+                                                        args: [{ $: 'space.spaceId' }],
+                                                      },
+                                                    ],
                                                     bg: {
                                                       $: "(space.spaceId == routeStore.segments[1] && !shellStore.activeShellView) ? 'accent-soft' : ''",
                                                     },
@@ -411,7 +498,15 @@ export const seedBundles: Bundle[] = [
                                         py: '300',
                                         px: { $: 'local.railInset' },
                                         label: 'Create a space',
-                                        onClick: { $invoke: 'shellStore.setCreateSpaceOpen', args: [true] },
+                                        onClick: [
+                                          {
+                                            $if: {
+                                              condition: { $: 'shellStore.narrowWindow' },
+                                              then: { $setLocal: 'expanded', value: false },
+                                            },
+                                          },
+                                          { $invoke: 'shellStore.setCreateSpaceOpen', args: [true] },
+                                        ],
                                         bg: { $: "false ? 'accent-soft' : ''" },
                                         color: { $: "false ? 'accent-text' : 'text-muted'" },
                                         hoverProps: {
@@ -473,7 +568,15 @@ export const seedBundles: Bundle[] = [
                                         py: '300',
                                         px: { $: 'local.railInset' },
                                         label: 'Join a space',
-                                        onClick: { $invoke: 'shellStore.setJoinSpaceOpen', args: [true] },
+                                        onClick: [
+                                          {
+                                            $if: {
+                                              condition: { $: 'shellStore.narrowWindow' },
+                                              then: { $setLocal: 'expanded', value: false },
+                                            },
+                                          },
+                                          { $invoke: 'shellStore.setJoinSpaceOpen', args: [true] },
+                                        ],
                                         bg: { $: "false ? 'accent-soft' : ''" },
                                         color: { $: "false ? 'accent-text' : 'text-muted'" },
                                         hoverProps: {
@@ -530,7 +633,13 @@ export const seedBundles: Bundle[] = [
                         },
                         {
                           type: 'Column',
-                          props: { width: '100%', gap: '200', px: '200', py: '300' },
+                          props: {
+                            width: '100%',
+                            gap: '200',
+                            px: '200',
+                            py: '300',
+                            display: { $: "(shellStore.narrowWindow && !local.expanded) ? 'none' : 'flex'" },
+                          },
                           children: [
                             {
                               type: 'Column',
@@ -550,6 +659,12 @@ export const seedBundles: Bundle[] = [
                                     px: { $: 'local.railInset' },
                                     label: 'Settings',
                                     onClick: [
+                                      {
+                                        $if: {
+                                          condition: { $: 'shellStore.narrowWindow' },
+                                          then: { $setLocal: 'expanded', value: false },
+                                        },
+                                      },
                                       { $invoke: 'appStore.deactivateApp' },
                                       { $invoke: 'shellStore.openShellView', args: ['settings'] },
                                     ],
@@ -606,7 +721,7 @@ export const seedBundles: Bundle[] = [
                                 {
                                   type: 'DropdownMenu',
                                   props: {
-                                    placement: 'right-end',
+                                    placement: { $: "shellStore.narrowWindow ? 'top-start' : 'right-end'" },
                                     items: [
                                       { id: 'profile', label: 'Profile', icon: 'user' },
                                       { id: 'about', label: 'About Coasys', icon: 'info' },
@@ -616,13 +731,29 @@ export const seedBundles: Bundle[] = [
                                       {
                                         $if: {
                                           condition: { $: "arg.id == 'profile'" },
-                                          then: { $invoke: 'shellStore.openShellView', args: ['profile'] },
+                                          then: [
+                                            {
+                                              $if: {
+                                                condition: { $: 'shellStore.narrowWindow' },
+                                                then: { $setLocal: 'expanded', value: false },
+                                              },
+                                            },
+                                            { $invoke: 'shellStore.openShellView', args: ['profile'] },
+                                          ],
                                         },
                                       },
                                       {
                                         $if: {
                                           condition: { $: "arg.id == 'about'" },
-                                          then: { $invoke: 'shellStore.openShellView', args: ['landing-page'] },
+                                          then: [
+                                            {
+                                              $if: {
+                                                condition: { $: 'shellStore.narrowWindow' },
+                                                then: { $setLocal: 'expanded', value: false },
+                                              },
+                                            },
+                                            { $invoke: 'shellStore.openShellView', args: ['landing-page'] },
+                                          ],
                                         },
                                       },
                                       {
