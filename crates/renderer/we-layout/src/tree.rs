@@ -916,6 +916,9 @@ struct Builder<'a> {
     axes: HashMap<NodeId, Axes>,
     scroll: HashMap<NodeId, Vec2>,
     clip: HashMap<NodeId, Vec2>,
+    /// The layout rect's dims — the viewport a `position: fixed` node's
+    /// percent terms resolve against, whatever its ancestors are.
+    viewport: (AxisBase, AxisBase),
 }
 
 impl<'a> Builder<'a> {
@@ -1547,16 +1550,31 @@ impl<'a> Builder<'a> {
 
         // This node's containing block — the box its percent terms resolve
         // against — and where a deferred one reads back a measured value.
-        // abs/fixed children take the nearest positioned ancestor's padding
-        // box; grid children take their cell; in-flow children take the
-        // parent's content box (the layout rect for the root).
+        // fixed children take the viewport; abs (and sticky, which the
+        // adapter maps to taffy's absolute) children take the nearest
+        // positioned ancestor's padding box; grid children take their cell;
+        // in-flow children take the parent's content box (the layout rect
+        // for the root).
+        //
+        // CSS lets a `transform`, `filter`, `perspective`, `will-change` of
+        // those, or `contain: paint/layout` ancestor capture fixed
+        // descendants. The style model has none of those as layout inputs
+        // (`transform` is paint-only here), so the viewport is always the
+        // answer — a positioned ancestor, the app frame included, never is.
         let l = &style.layout;
+        let fixed = matches!(l.position, Some(Position::Fixed));
         let abs = matches!(
             l.position,
-            Some(Position::Absolute) | Some(Position::Fixed) | Some(Position::Sticky)
+            Some(Position::Absolute) | Some(Position::Sticky)
         );
         let parent = pf.id.cloned();
-        let (cb, src_x, src_y) = if abs {
+        let (cb, src_x, src_y) = if fixed {
+            let src = || CbSrc::Box {
+                node: None,
+                padding_box: true,
+            };
+            (self.viewport, src(), src())
+        } else if abs {
             let src = || CbSrc::Box {
                 node: pf.positioned.cloned(),
                 padding_box: true,
@@ -1671,7 +1689,7 @@ impl<'a> Builder<'a> {
 
         // The node's taffy style + its own box states — every percent and
         // `calc` term resolves against the statically derived bases.
-        let in_flow = !abs;
+        let in_flow = !(abs || fixed);
         let ncx = NodeCx {
             id: &node.id,
             cb: (cbx, cby),
@@ -2149,6 +2167,10 @@ fn layout_impl(
             axes: HashMap::new(),
             scroll: HashMap::new(),
             clip: HashMap::new(),
+            viewport: (
+                AxisBase::Definite(rect.width()),
+                AxisBase::Definite(rect.height()),
+            ),
         };
         let root_id = b
             .resolved_node(
