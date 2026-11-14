@@ -191,8 +191,8 @@ describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp
       expect(starts()).toHaveLength(1);
       expect(state.messageBoxes).toHaveLength(1);
       const [, box] = state.messageBoxes[0];
-      expect(box.message).toBe('The AD4M executor stopped');
-      expect(box.detail).toMatch(/stopped outside the app/);
+      expect(box.message).toBe('WE stopped');
+      expect(box.detail).toMatch(/Another program stopped it/);
       expect(box.detail).toMatch(/executor-0\.log/);
       // The window stays on what it shows: nothing was started to reload it onto.
       expect(state.windows[0].loads).toHaveLength(1);
