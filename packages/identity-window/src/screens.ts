@@ -555,3 +555,21 @@ export function oneAtATime<T>(call: () => Promise<T>): () => Promise<T> {
       out = null;
     }));
 }
+
+/**
+ * Which answer still belongs on screen. The window marks each screen it draws and each step it sends;
+ * a wait for what the other device does next takes `hold()` when it is sent, and its answer is drawn
+ * only while that holds. An accept sent while a wait for the join is out answers the join itself, and
+ * the two answers can arrive in either order: the wait's, drawn after it, would put the screen that
+ * started it back over the join.
+ */
+export function screenTurns(): { mark(): void; hold(): () => boolean } {
+  let turn = 0;
+  return {
+    mark: () => void (turn += 1),
+    hold: () => {
+      const at = turn;
+      return () => turn === at;
+    },
+  };
+}

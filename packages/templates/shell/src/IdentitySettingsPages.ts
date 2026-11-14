@@ -337,7 +337,10 @@ const deviceRow: SchemaNode = listRow(
     {
       type: '$if',
       props: {
-        condition: { $: '!device.revoked && deviceStore.canManage' },
+        // Any linked device may name itself; naming another needs the master key here.
+        condition: {
+          $: '!device.revoked && (deviceStore.canManage || (device.thisDevice && identityStore.canChange))',
+        },
         then: {
           type: 'we-button',
           props: {
