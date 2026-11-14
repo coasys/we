@@ -15,6 +15,7 @@ members = [
     "we-template",
     "we-store",
     "we-style",
+    "we-widgets",
     "we-ad4m",
 ]
 
