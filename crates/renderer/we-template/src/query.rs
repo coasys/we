@@ -81,6 +81,42 @@ pub enum QueryState {
     Rows(Arc<Vec<Value>>),
 }
 
+/// The cell a named query compiled to this pass — predeclared into `local`
+/// before any query compiles so a sibling's `local.<name>` resolves
+/// whichever order the node's queries are compiled in (WE's `forward`
+/// accessors, which read the real signal once it exists). Until `set`
+/// fills it the slot answers like a gated cell: `[]`, `Loaded` `false`.
+#[derive(Debug, Default)]
+pub struct QuerySlot(RwLock<Option<Arc<QueryCell>>>);
+
+impl QuerySlot {
+    /// Bind the slot to the cell this pass's compile produced.
+    pub fn set(&self, cell: Arc<QueryCell>) {
+        if let Ok(mut s) = self.0.write() {
+            *s = Some(cell);
+        }
+    }
+
+    /// This pass's compile gated — the slot answers empty again.
+    pub fn clear(&self) {
+        if let Ok(mut s) = self.0.write() {
+            *s = None;
+        }
+    }
+
+    /// The bound cell, if the query compiled this pass.
+    pub fn cell(&self) -> Option<Arc<QueryCell>> {
+        self.0.read().ok().and_then(|s| s.clone())
+    }
+
+    /// The bound cell's state — `Loading` (empty rows) while unbound.
+    pub fn state(&self) -> QueryState {
+        self.cell()
+            .map(|cell| cell.state())
+            .unwrap_or(QueryState::Loading)
+    }
+}
+
 /// One cell in the pool — shared by every node asking the same question.
 /// `names` are the `$queries` field names that compiled to it — data a
 /// snapshot fallback answers by, never part of the key.

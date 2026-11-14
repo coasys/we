@@ -16,7 +16,10 @@ use std::sync::Arc;
 
 use serde_json::Value as Json;
 use we_expr::{ParseCache, Value};
-use we_screen::{local_write_mirror, template_root_depth, ScreenOp, ScreenState};
+use we_screen::{
+    local_persist_key, local_sync_spec, local_write_mirror, template_root_depth, ScreenOp,
+    ScreenState,
+};
 
 use crate::handler::{CallId, HandlerToken};
 use crate::resolve::{eval_json, handler_tokens};
@@ -120,34 +123,120 @@ fn write_local(scope: &Scope, owner: &NodeId, field: &str, value: Value, cx: &mu
         _ => None,
     };
     let mirror = local_write_mirror(&ty, persist_name.as_deref(), &sync_param, &value, &initial);
+    let mut moved = false;
     if let Some((key, json)) = mirror.store {
-        cx.screen.apply(ScreenOp::SetPref {
-            key,
-            value: serde_json::from_str(&json).ok(),
-        });
+        moved |= cx
+            .screen
+            .apply(ScreenOp::SetPref {
+                key,
+                value: serde_json::from_str(&json).ok(),
+            })
+            .changed();
     }
     if let Some(param) = mirror.param {
-        cx.screen.apply(ScreenOp::SetParam {
-            name: param.name,
-            value: param.text,
-            push: Some(param.push),
-        });
+        moved |= cx
+            .screen
+            .apply(ScreenOp::SetParam {
+                name: param.name,
+                value: param.text,
+                push: Some(param.push),
+            })
+            .changed();
+    }
+    if moved {
+        crate::scope::bind_screen(cx.bag, cx.screen);
+    }
+}
+
+/// `meta.reset()` — the field back to its initial with the mirror REMOVED,
+/// not written through the setter: `localStorage.removeItem(persistKey)` and
+/// `routeParams.set(name, null)`. Writing the initial into the store would
+/// pin it — the next mount restores it even after the template's declared
+/// initial moved on.
+fn reset_local(scope: &Scope, owner: &NodeId, field: &str, value: Value, cx: &mut HandlerCx) {
+    cx.host.set_local(owner, field, value);
+    cx.locals.untouch(owner, field);
+    let Some((ty, persist, sync_param, _)) = local_decl(scope, field) else {
+        return;
+    };
+    let persist_name = match &persist {
+        Value::Str(s) => Some(s.to_string()),
+        _ => None,
+    };
+    let mut moved = false;
+    if let Some(key) = local_persist_key(&ty, persist_name.as_deref()) {
+        moved |= cx
+            .screen
+            .apply(ScreenOp::SetPref { key, value: None })
+            .changed();
+    }
+    if let Some((name, _)) = local_sync_spec(&ty, &sync_param) {
+        moved |= cx
+            .screen
+            .apply(ScreenOp::SetParam {
+                name,
+                value: None,
+                push: None,
+            })
+            .changed();
+    }
+    if moved {
+        crate::scope::bind_screen(cx.bag, cx.screen);
+    }
+}
+
+/// The `$nav.baseDepth` a route step bound — the route's depth in the
+/// address, the base a relative navigate climbs from.
+fn nav_base_depth(scope: &Scope) -> Option<usize> {
+    match scope.get("$nav") {
+        Some(Value::Obj(o)) => match o.get("baseDepth") {
+            Some(Value::Num(n)) if *n >= 0.0 => Some(*n as usize),
+            _ => None,
+        },
+        _ => None,
     }
 }
 
 /// A `$invoke` target's [`ScreenOp`], when it names one — the store map's
 /// `screen` rows, in the names a template writes. `None` → the host answers.
-fn screen_op(target: &str, args: &[Value], screen: &ScreenState) -> Option<ScreenOp> {
+fn screen_op(
+    target: &str,
+    args: &[Value],
+    scope: &Scope,
+    screen: &ScreenState,
+) -> Option<ScreenOp> {
     let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undefined);
     let text = |v: &Value| -> String { v.js_string() };
     match target {
-        "routeStore.navigate" => Some(ScreenOp::Navigate {
-            to: text(&arg(0)),
-            query: None,
-            // The template's own root — a relative `to` resolves from it.
-            base_depth: Some(template_root_depth(&screen.nav.current_path())),
-            replace: false,
-        }),
+        "routeStore.navigate" => {
+            // The options object rides beside `to` — `{query, replace, base}`
+            // — and `$nav.baseDepth` merges on top at call time
+            // (invoke.ts): the route the handler sits in wins.
+            let mut query = None;
+            let mut replace = false;
+            let mut base = None;
+            if let Value::Obj(opts) = arg(1) {
+                if let Some(Value::Obj(q)) = opts.get("query") {
+                    query = Some(q.iter().map(|(k, v)| (k.to_string(), v.clone())).collect());
+                }
+                if let Some(Value::Obj(b)) = opts.get("base") {
+                    if let Some(Value::Num(d)) = b.get("depth") {
+                        base = Some(*d as usize);
+                    }
+                }
+                replace = opts.get("replace").is_some_and(Value::truthy);
+            }
+            Some(ScreenOp::Navigate {
+                to: text(&arg(0)),
+                query,
+                base_depth: Some(
+                    nav_base_depth(scope)
+                        .or(base)
+                        .unwrap_or_else(|| template_root_depth(&screen.nav.current_path())),
+                ),
+                replace,
+            })
+        }
         "routeStore.setParam" | "routeStore.setUrlParam" => Some(ScreenOp::SetParam {
             name: text(&arg(0)),
             value: match arg(1) {
@@ -307,8 +396,9 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
         }
         HandlerToken::ResetLocal { .. } => {
             // Every field of the innermost declaring scope back to `initial`
-            // (`resolveResetLocalProp` walks `$localScopeFields`), touched
-            // cleared with it — `meta.reset()` in the validation layer.
+            // (`resolveResetLocalProp` walks `$localScopeFields`) with its
+            // persist/URL mirror REMOVED — `meta.reset()` in the validation
+            // layer.
             for name in scope_fields(scope) {
                 let Some(owner) = local_owner(scope, &name) else {
                     continue;
@@ -316,8 +406,7 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
                 let initial = local_decl(scope, &name)
                     .map(|(_, _, _, initial)| initial)
                     .unwrap_or(Value::Undefined);
-                write_local(scope, &owner, &name, initial, cx);
-                cx.locals.untouch(&owner, &name);
+                reset_local(scope, &owner, &name, initial, cx);
             }
         }
         HandlerToken::Invoke {
@@ -339,9 +428,14 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
                 None => vec![],
             };
             // A `screen` row applies straight to the screen state — the
-            // store map's answer for routeStore/shellStore/themeStore.
-            if let Some(op) = screen_op(target, &evaluated, cx.screen) {
-                cx.screen.apply(op);
+            // store map's answer for routeStore/shellStore/themeStore. The
+            // bag's namespaces rebind at once: the next token's
+            // `routeStore.params.x` sees the write the way a WE action sees
+            // the store's synchronous update.
+            if let Some(op) = screen_op(target, &evaluated, scope, cx.screen) {
+                if cx.screen.apply(op).changed() {
+                    crate::scope::bind_screen(cx.bag, cx.screen);
+                }
                 return;
             }
             match cx.host.invoke(target, evaluated) {

@@ -95,6 +95,9 @@ pub struct Runtime {
     /// Parsed embedded sub-schemas (`$if` branches, panel bodies, record
     /// views) — raw `Json` address → node, valid for the bundle's lifetime.
     node_memo: HashMap<usize, Arc<SchemaNode>>,
+    /// Scope objects interned by content across passes (`$surface`, `$nav`)
+    /// — a same-content rebuild keeps its identity, like WE's stores do.
+    value_memo: HashMap<Arc<str>, Value>,
     stats: Stats,
 }
 
@@ -127,6 +130,7 @@ impl Runtime {
             live: HashSet::new(),
             parents: HashMap::new(),
             node_memo: HashMap::new(),
+            value_memo: HashMap::new(),
             stats: Stats::default(),
         }
     }
@@ -158,6 +162,7 @@ impl Runtime {
             live: HashSet::new(),
             parents: HashMap::new(),
             node_memo: HashMap::new(),
+            value_memo: HashMap::new(),
             stats: Stats::default(),
         }
     }
@@ -289,6 +294,7 @@ impl Runtime {
             let mut parents = HashMap::new();
             let mut warnings = Vec::new();
             let mut ops = Vec::new();
+            let mut kept_filling = false;
             for _ in 0..8 {
                 let mut round_live = HashSet::new();
                 let mut round_parents = HashMap::new();
@@ -303,6 +309,7 @@ impl Runtime {
                         ),
                         None => (None, None, None),
                     };
+                    let mut route_tail = Vec::new();
                     let mut cx = ResolveCx {
                         bag: self.bag.as_ref(),
                         host,
@@ -319,7 +326,9 @@ impl Runtime {
                         parents: &mut round_parents,
                         warnings: &mut warnings,
                         node_memo: &mut self.node_memo,
+                        value_memo: &mut self.value_memo,
                         dollar_type: &*self.dollar_type,
+                        route_tail: &mut route_tail,
                     };
                     children.extend(resolve::resolve(
                         mount.node,
@@ -330,7 +339,8 @@ impl Runtime {
                 }
                 live = round_live;
                 parents = round_parents;
-                if !self.fill_queries() {
+                kept_filling = self.fill_queries();
+                if !kept_filling {
                     break;
                 }
             }
@@ -372,13 +382,22 @@ impl Runtime {
                 self.locals.version(),
                 self.pool.revision(),
             ));
+            // Every pass filled a cell — a deeper dependency chain may still
+            // be climbing. Bump the pool past what `last` recorded so the
+            // next frame re-resolves instead of caching this partial tree.
+            if kept_filling {
+                self.pool.bump();
+            }
         }
         self.resolved.as_ref().unwrap()
     }
 
     /// Fill every Loading cell from the `QuerySource` or the snapshot's
     /// `queries` table — keyed by the cell's declared name. `true` when a
-    /// cell moved, meaning a re-resolve may now see rows.
+    /// cell moved, meaning a re-resolve may now see rows. `Loading →
+    /// Loading` is not progress — a still-pending query must not dirty
+    /// the revision or every frame re-resolves while it warms (R5); the
+    /// pending cell waits for `Rows` or an external wake.
     fn fill_queries(&self) -> bool {
         let mut moved = false;
         for cell in self.pool.cells() {
@@ -390,6 +409,9 @@ impl Runtime {
                 None => snapshot_rows(&self.bag, cell.as_ref()),
             };
             if let Some(state) = state {
+                if matches!(state, QueryState::Loading) {
+                    continue;
+                }
                 cell.fill(state);
                 moved = true;
             }
