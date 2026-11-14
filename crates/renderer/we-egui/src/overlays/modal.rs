@@ -45,6 +45,54 @@ impl Modal {
             .fonts_mut(|f| f.row_height(&egui::FontId::proportional(Self::TITLE_FONT)));
         Some(row + Self::TITLE_GAP)
     }
+
+    /// The chrome control the close-button-wrapper holds — ghost, sm,
+    /// square, `x`, 10px in from the sheet's top-right. A `close-button`
+    /// slot child replaces it (the wrapper then holds the authored
+    /// control); `hideclosebutton` drops the wrapper outright. Clicking it
+    /// is the same `close`/`onClose` the backdrop and Escape invoke.
+    fn close_button(&self, cx: &mut PaintCx, node: &ResolvedNode, content: Rect) {
+        if props::prop_flag(node, "hideclosebutton").unwrap_or(false) {
+            return;
+        }
+        let slotted = node.children.iter().any(|c| {
+            matches!(c, we_template::ResolvedChild::Node(n) if n.slot.as_deref() == Some("close-button"))
+        });
+        if slotted {
+            return;
+        }
+        let side = 24.0;
+        let r = Rect::from_min_size(
+            egui::pos2(content.max.x - 10.0 - side, content.min.y + 10.0),
+            egui::vec2(side, side),
+        );
+        let resp = cx.interact_label(
+            r,
+            "Close",
+            egui::Role::Button,
+            &node.id,
+            "close",
+            true,
+            None,
+        );
+        if resp.hovered() {
+            cx.ui
+                .painter()
+                .rect_filled(r, 4.0, cx.ui.visuals().widgets.hovered.bg_fill);
+        }
+        cx.ui.painter().text(
+            r.center(),
+            egui::Align2::CENTER_CENTER,
+            crate::media::phosphor("x").unwrap_or("x"),
+            egui::FontId::proportional(14.0),
+            cx.ui.visuals().text_color(),
+        );
+        if resp.clicked() {
+            if let Some(name) = crate::paint::close_handler(node) {
+                cx.emit(&node.id, name, crate::events::empty());
+            }
+        }
+    }
 }
 
 impl Widget for Modal {
@@ -90,5 +138,6 @@ impl Widget for Modal {
                 cx.ui.visuals().text_color(),
             );
         }
+        self.close_button(cx, node, content);
     }
 }

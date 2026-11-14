@@ -23,6 +23,7 @@ fn band(name: &'static str, h: f32) -> PartSpec {
         min_height: 0.0,
         indent: 0.0,
         align: None,
+        column_gap: 0.0,
         parts: vec![],
     }
 }

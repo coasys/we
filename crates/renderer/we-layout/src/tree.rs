@@ -16,7 +16,7 @@ use we_expr::Value;
 use we_style::{Dimension, Display as WsDisplay, ItemAlign, Overflow, Position, Style, Wrap};
 use we_template::{NodeId, ResolvedChild, ResolvedNode};
 
-use crate::defaults::{direction_of, style_of, StyleCx, FONT_PX, ROOT_PX};
+use crate::defaults::{direction_of, effective, style_of, StyleCx, FONT_PX, ROOT_PX};
 use crate::{Pos2, Rect, Size, Vec2};
 
 /// A virtual sub-rectangle layout computed for a widget — the caret, row and
@@ -59,6 +59,8 @@ pub struct PartSpec {
     pub indent: f32,
     /// Align-items override for a part (e.g. `ay` on the tree row).
     pub align: Option<ItemAlign>,
+    /// `gap` between the part's children (the button's icon–label space).
+    pub column_gap: f32,
     pub parts: Vec<PartSpec>,
 }
 
@@ -74,6 +76,7 @@ impl PartSpec {
             min_height: 0.0,
             indent: 0.0,
             align: None,
+            column_gap: 0.0,
             parts: vec![],
         }
     }
@@ -89,6 +92,7 @@ impl PartSpec {
             min_height: 0.0,
             indent: 0.0,
             align: None,
+            column_gap: 0.0,
             parts: vec![],
         }
     }
@@ -104,6 +108,7 @@ impl PartSpec {
             min_height: 0.0,
             indent: 0.0,
             align: None,
+            column_gap: 0.0,
             parts,
         }
     }
@@ -125,6 +130,12 @@ impl PartSpec {
         self.min_height = px;
         self
     }
+
+    /// `gap` between this part's children.
+    pub fn gapped(mut self, px: f32) -> Self {
+        self.column_gap = px;
+        self
+    }
 }
 
 /// A widget's virtual layout structure — [`Measure::parts_spec`]
@@ -134,6 +145,28 @@ impl PartSpec {
 pub struct PartsSpec {
     pub direction: Direction,
     pub parts: Vec<PartSpec>,
+}
+
+/// What a widget does with a node's resolved children — the answer
+/// [`Measure::text_children`] returns per node.
+///
+/// `Leaves` is the common case: text children become shrinkable text
+/// leaves laid out beside element children (a button's icon + label) and
+/// element children recurse. `Owned` absorbs the text children into the
+/// widget's own content — no spans are emitted; the widget measures and
+/// paints them itself (the `we-text` `this.text ?? <slot>` case, or a
+/// text-only `we-button`). `Suppressed` is the slot-suppression case: a
+/// `text` prop replaces *every* child (TS `this.text ? <span> : <slot>`)
+/// so none of them lays out at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextChildren {
+    /// Text children lay out as [`Ctx::Text`] leaves; element children recurse.
+    Leaves,
+    /// Text children are the widget's content — no leaves; element
+    /// children still lay out.
+    Owned,
+    /// Every child is suppressed — a prop replaced the whole slot.
+    Suppressed,
 }
 
 /// Tree state passed parent → item: caret side, leading indent, and the
@@ -165,6 +198,11 @@ pub struct Layout {
     pub texts: Vec<TextSpan>,
     /// Nodes with `overflow: auto|scroll` — which axes scroll at paint.
     pub scroll: HashMap<NodeId, Vec2>,
+    /// Each scroll node's content extent: the union of every visible
+    /// descendant rect and owned text span, in base coordinates — a
+    /// descendant's own overflow reaches past its box, but a nested
+    /// clip/scroll boundary bounds its subtree on that axis.
+    pub scroll_content: HashMap<NodeId, Rect>,
     /// Nodes with `overflow: hidden|clip` — children clip to their rect.
     pub clip: HashMap<NodeId, Vec2>,
     /// The percent bases each node's `calc`/`%` terms resolved against —
@@ -790,6 +828,10 @@ fn part_style(spec: &PartSpec) -> taffy::Style {
                 LengthPercentageAuto::auto()
             },
         },
+        gap: taffy::Size {
+            width: LengthPercentage::length(spec.column_gap),
+            height: LengthPercentage::length(0.0),
+        },
         padding: taffy::Rect {
             left: LengthPercentage::length(spec.indent),
             right: LengthPercentage::length(0.0),
@@ -839,8 +881,16 @@ struct Builder<'a> {
     scx: &'a StyleCx<'a>,
     /// `id` → resolved node — the measure function re-finds its widget.
     nodes: HashMap<NodeId, &'a ResolvedNode>,
-    /// `id` → the style the tree walk resolved — measure and the `Layout`
-    /// output read it so every consumer shares the scoped answer.
+    /// Widget-synthesized children (`Measure::synthesized_children`),
+    /// materialized before the build so `&'a` borrows out of the arena
+    /// satisfy `nodes` — `extra_map` maps an owner's id to its slice.
+    extra: &'a [ResolvedChild],
+    extra_map: &'a HashMap<NodeId, std::ops::Range<usize>>,
+    /// `id` → the node's *effective* style: resolved in the scope the tree
+    /// walk established, with the parent's inherited text fields and the
+    /// opacity product folded in (CSS's computed-style cascade). Measure
+    /// and the `Layout` output read it, so an inherited fontSize sizes the
+    /// galley it paints and paint never re-resolves without the scope.
     styles: HashMap<NodeId, Style>,
     /// `(id, axis)` → the measured value a deferred base got on the last
     /// pass — empty on the first (placeholder) build.
@@ -1308,14 +1358,21 @@ impl<'a> Builder<'a> {
     /// an empty fixed box. `scx` is the owner's scope and `pf` its frame —
     /// parts are layout chrome, not DOM boxes, so the `pick` children keep
     /// the node's containing block (only the part's own direction changes).
+    /// `extra` is the owner's synthesized children — indistinguishable from
+    /// authored ones to a pick; `tc`/`eff` are the owner's text policy and
+    /// effective style.
+    #[allow(clippy::too_many_arguments)]
     fn part_node(
         &mut self,
         owner: &NodeId,
         spec: &PartSpec,
         node: &'a ResolvedNode,
+        extra: &'a [ResolvedChild],
         tree: &TreeCfg,
         pf: &ParentFrame,
         scx: &StyleCx,
+        tc: TextChildren,
+        eff: &Style,
     ) -> Option<TaffyId> {
         // A part's box dims are definite props (`width`/`height` − its
         // `indent` is inset); its children keep the positioned chain.
@@ -1340,21 +1397,26 @@ impl<'a> Builder<'a> {
         };
         let mut kids = Vec::new();
         if let Some(pick) = &spec.pick {
-            for child in node.children.iter().filter(|c| match (pick, c) {
-                (Pick::Default, ResolvedChild::Node(n)) => n.slot.is_none(),
-                (Pick::Default, ResolvedChild::Text(_)) => true,
-                (Pick::Named(want), ResolvedChild::Node(n)) => {
-                    n.slot.as_deref() == Some(want.as_ref())
-                }
-                (Pick::Named(_), ResolvedChild::Text(_)) => false,
-            }) {
-                if let Some(k) = self.child_node(node, child, tree, &pf, scx) {
+            for child in node
+                .children
+                .iter()
+                .chain(extra.iter())
+                .filter(|c| match (pick, c) {
+                    (Pick::Default, ResolvedChild::Node(n)) => n.slot.is_none(),
+                    (Pick::Default, ResolvedChild::Text(_)) => true,
+                    (Pick::Named(want), ResolvedChild::Node(n)) => {
+                        n.slot.as_deref() == Some(want.as_ref())
+                    }
+                    (Pick::Named(_), ResolvedChild::Text(_)) => false,
+                })
+            {
+                if let Some(k) = self.child_node(node, child, tree, &pf, scx, tc, eff) {
                     kids.push(k);
                 }
             }
         }
         for sub in &spec.parts {
-            if let Some(k) = self.part_node(owner, sub, node, tree, &pf, scx) {
+            if let Some(k) = self.part_node(owner, sub, node, extra, tree, &pf, scx, tc, eff) {
                 kids.push(k);
             }
         }
@@ -1375,8 +1437,11 @@ impl<'a> Builder<'a> {
         }
     }
 
-    /// A resolved child → a taffy node: nodes recurse, text becomes a leaf
-    /// measured by the galley. `scx` is the owner's scope, `pf` its frame.
+    /// A resolved child → a taffy node: nodes recurse; a text child becomes
+    /// a shrinkable leaf measured through the measure pass — unless the
+    /// owner's [`TextChildren`] answer absorbs or suppresses it. `scx` is
+    /// the owner's scope, `pf` its frame, `eff` its effective style.
+    #[allow(clippy::too_many_arguments)]
     fn child_node(
         &mut self,
         owner: &'a ResolvedNode,
@@ -1384,27 +1449,37 @@ impl<'a> Builder<'a> {
         tree: &TreeCfg,
         pf: &ParentFrame,
         scx: &StyleCx,
+        tc: TextChildren,
+        eff: &Style,
     ) -> Option<TaffyId> {
         match child {
-            ResolvedChild::Node(node) => self.resolved_node(node, tree, pf, scx),
+            ResolvedChild::Node(node) => {
+                if tc == TextChildren::Suppressed {
+                    return None;
+                }
+                self.resolved_node(node, tree, pf, scx, Some(eff))
+            }
             ResolvedChild::Text(text) => {
-                // Text is measured in its owner's font — `layout_no_wrap`
-                // matches the paint path's single-line spans.
-                let style = self
-                    .styles
-                    .get(&owner.id)
-                    .cloned()
-                    .unwrap_or_else(|| style_of(owner, scx));
-                let size = self.m.measure_text(owner, &style, text);
+                if tc != TextChildren::Leaves {
+                    return None;
+                }
+                // The span lays out like CSS anonymous flex text: `auto`
+                // size answered by the measure pass at whatever width is
+                // offered (so wrap/truncate see it), allowed to shrink, but
+                // never below the MinContent floor the frontend answers
+                // (the longest word — or the ellipsis when the owner
+                // truncates). It measures in the owner's effective style —
+                // scoped and inherited, the same one its paint uses.
+                let min = self.m.measure_text(owner, eff, text, Size::ZERO);
                 Some(
                     self.tree
                         .new_leaf_with_context(
                             taffy::Style {
-                                size: taffy::Size {
-                                    width: taffy::Dimension::length(size.x),
-                                    height: taffy::Dimension::length(size.y),
+                                min_size: taffy::Size {
+                                    width: LengthPercentageAuto::length(min.x),
+                                    height: LengthPercentageAuto::auto(),
                                 },
-                                flex_shrink: 0.0,
+                                flex_shrink: 1.0,
                                 ..Default::default()
                             },
                             Ctx::Text(owner.id.clone(), text.clone()),
@@ -1419,15 +1494,17 @@ impl<'a> Builder<'a> {
     /// `tree` is the nearest `we-tree` ancestor's config, if any; `scx`
     /// carries the ancestors' custom-property scope and `pf` the parent's
     /// frame — this node's children resolve inside its own scope against
-    /// its own box.
+    /// its own box. `inherited` is the parent's effective style — text
+    /// fields and `opacity` merge down the tree the way CSS inherits them.
     fn resolved_node(
         &mut self,
         node: &'a ResolvedNode,
         tree: &TreeCfg,
         pf: &ParentFrame,
         scx: &StyleCx,
+        inherited: Option<&Style>,
     ) -> Option<TaffyId> {
-        let style = style_of(node, scx);
+        let style = effective(inherited, style_of(node, scx));
 
         // `display: none` removes the node AND its subtree from layout — no
         // rect, no parts, nothing painted.
@@ -1596,7 +1673,19 @@ impl<'a> Builder<'a> {
             }
         }
 
+        // What the widget does with the node's resolved children — text
+        // children may be the widget's own content (`Owned`) or dropped with
+        // the slot (`Suppressed`) instead of laying out as spans.
+        let tc = self.m.text_children(node);
         let mut spec = self.m.parts_spec(node);
+        // The widget's synthesized children (a component's generated
+        // content — `Measure::synthesized_children`) join the authored
+        // ones for every pick and the plain children walk.
+        let extra: &'a [ResolvedChild] = self
+            .extra_map
+            .get(&node.id)
+            .map(|r| &self.extra[r.clone()])
+            .unwrap_or(&[]);
         // `caret="end"` on the tree reorders the item's caret part to the row's
         // end; `lead` pads the row's left edge — part order/insets are
         // layout's call, and only it can see the ancestor.
@@ -1647,11 +1736,15 @@ impl<'a> Builder<'a> {
         // shares too thin. Sticky is in flow in CSS; it is excluded here
         // because the recipe must predict the tracks taffy builds, and the
         // adapter's `position` mapping above sends sticky to Absolute.
+        // Synthesized children are taffy children too; text the widget
+        // owns or a suppressed slot makes no item.
         let n_items = || -> usize {
             node.children
                 .iter()
+                .chain(extra.iter())
                 .filter(|c| match c {
-                    ResolvedChild::Text(_) => true,
+                    ResolvedChild::Text(_) => tc == TextChildren::Leaves,
+                    ResolvedChild::Node(_) if tc == TextChildren::Suppressed => false,
                     ResolvedChild::Node(n) => {
                         let l = &style_of(n, &scoped).layout;
                         !matches!(l.display, Some(WsDisplay::None))
@@ -1684,7 +1777,9 @@ impl<'a> Builder<'a> {
                 };
                 spec.parts
                     .iter()
-                    .filter_map(|part| self.part_node(&node.id, part, node, &tree, &pf, &scoped))
+                    .filter_map(|part| {
+                        self.part_node(&node.id, part, node, extra, &tree, &pf, &scoped, tc, &style)
+                    })
                     .collect()
             }
             None => {
@@ -1707,7 +1802,8 @@ impl<'a> Builder<'a> {
                 };
                 node.children
                     .iter()
-                    .filter_map(|c| self.child_node(node, c, &tree, &pf, &scoped))
+                    .chain(extra.iter())
+                    .filter_map(|c| self.child_node(node, c, &tree, &pf, &scoped, tc, &style))
                     .collect()
             }
         };
@@ -1734,18 +1830,39 @@ impl<'a> Builder<'a> {
 }
 
 /// What a frontend supplies so [`layout`] can size the tree — the widget's
-/// parts breakdown, a leaf's intrinsic size, and a text run's single-line
-/// size. All answers are in the frontend's own unit (egui: px).
+/// parts breakdown, its answer for text children, a leaf's intrinsic size,
+/// and a text run's size. All answers are in the frontend's own unit
+/// (egui: px).
 pub trait Measure {
     /// The virtual chrome `node` needs laid out — `None` (the usual) lays
     /// children out directly.
     fn parts_spec(&self, node: &ResolvedNode) -> Option<PartsSpec>;
+    /// What `node`'s widget does with its resolved children — the default
+    /// leaves text children as spans and recurses element children.
+    fn text_children(&self, _node: &ResolvedNode) -> TextChildren {
+        TextChildren::Leaves
+    }
+    /// Children the widget itself renders — a component's generated
+    /// content (the DropdownMenu's fallback trigger). Layout collects them
+    /// once per build and treats them exactly like authored children:
+    /// part picks see them, they get rects, and they recurse.
+    fn synthesized_children(&self, _node: &ResolvedNode) -> Vec<ResolvedChild> {
+        Vec::new()
+    }
     /// The size a leaf wants in `avail` room, at the content box (padding
     /// and border land outside — taffy offers the content box).
     fn measure(&self, node: &ResolvedNode, style: &Style, avail: Size) -> Size;
-    /// A text child's single-line size in its owner's resolved style —
-    /// matches the paint path's single-line spans.
-    fn measure_text(&self, owner: &ResolvedNode, owner_style: &Style, text: &str) -> Size;
+    /// A text child's size in its owner's resolved style, in `avail` room.
+    /// `avail.x <= 0` is the MinContent query — the floor under the
+    /// shrinkable span: the longest unbreakable run, or the ellipsis when
+    /// the owner truncates.
+    fn measure_text(
+        &self,
+        owner: &ResolvedNode,
+        owner_style: &Style,
+        text: &str,
+        avail: Size,
+    ) -> Size;
 }
 
 /// The measured boxes a pass produced — `(content, padding)` dims per node.
@@ -1883,7 +2000,7 @@ fn vals_eq(a: &HashMap<(NodeId, Axis), f32>, b: &HashMap<(NodeId, Axis), f32>) -
 /// `height: auto` still paints the whole viewport (`min-height: 100vh`),
 /// so a `bg` root covers the empty tail of a short panel.
 pub fn layout(m: &dyn Measure, scx: &StyleCx, root: &ResolvedNode, rect: Rect) -> Layout {
-    layout_impl(m, scx, root, rect, true)
+    layout_impl(m, scx, root, rect, true, None)
 }
 
 /// The same walk for a subtree that is not the page root — the overlay
@@ -1891,8 +2008,36 @@ pub fn layout(m: &dyn Measure, scx: &StyleCx, root: &ResolvedNode, rect: Rect) -
 /// `rect` (a block box fills its containing block), but `height: auto`
 /// stays content-sized: the `min-height: 100vh` floor is the page root's
 /// alone, so `sub.size` is the real content box a dialog centres.
-pub fn layout_shrink(m: &dyn Measure, scx: &StyleCx, root: &ResolvedNode, rect: Rect) -> Layout {
-    layout_impl(m, scx, root, rect, false)
+/// `parent` is the DOM context the subtree's paint inherits — typography
+/// and opacity measure the way they paint.
+pub fn layout_shrink(
+    m: &dyn Measure,
+    scx: &StyleCx,
+    root: &ResolvedNode,
+    rect: Rect,
+    parent: Option<&Style>,
+) -> Layout {
+    layout_impl(m, scx, root, rect, false, parent)
+}
+
+/// Fill `extra`/`map` with `node`'s synthesized children and recurse into
+/// its authored children — see `layout_impl` for why the arena exists.
+fn collect_synth(
+    node: &ResolvedNode,
+    m: &dyn Measure,
+    extra: &mut Vec<ResolvedChild>,
+    map: &mut HashMap<NodeId, std::ops::Range<usize>>,
+) {
+    let start = extra.len();
+    extra.extend(m.synthesized_children(node));
+    if extra.len() > start {
+        map.insert(node.id.clone(), start..extra.len());
+    }
+    for child in &node.children {
+        if let ResolvedChild::Node(n) = child {
+            collect_synth(n, m, extra, map);
+        }
+    }
 }
 
 fn layout_impl(
@@ -1901,6 +2046,7 @@ fn layout_impl(
     root: &ResolvedNode,
     rect: Rect,
     viewport_root: bool,
+    parent: Option<&Style>,
 ) -> Layout {
     /// Deep acyclic chains settle in a handful of passes; the cap
     /// bounds whatever does not — a repeated measured state is cyclic
@@ -1920,10 +2066,32 @@ fn layout_impl(
         parts: Parts::new(),
         texts: Vec::new(),
         scroll: HashMap::new(),
+        scroll_content: HashMap::new(),
         clip: HashMap::new(),
         bases: HashMap::new(),
         unconverged: false,
     };
+
+    // Synthesized children live in an arena outliving every build pass:
+    // `&'a` borrows into `extra` satisfy `nodes`, so a generated child is
+    // indistinguishable from an authored one downstream, and each rebuild
+    // sees the same children. `extra` is iterated while it grows — nested
+    // synthesis (a generated subtree whose nodes generate children of
+    // their own) is covered; the clone is only a probe, since the arena
+    // can't lend its own entries while it grows.
+    let (mut extra, mut extra_map) = (Vec::new(), HashMap::new());
+    collect_synth(root, m, &mut extra, &mut extra_map);
+    let mut i = 0;
+    while i < extra.len() {
+        let probe = match &extra[i] {
+            ResolvedChild::Node(n) => Some((**n).clone()),
+            ResolvedChild::Text(_) => None,
+        };
+        if let Some(n) = probe {
+            collect_synth(&n, m, &mut extra, &mut extra_map);
+        }
+        i += 1;
+    }
 
     for pass in 0..=MAX_PASSES {
         // The extra slot exists so a cycle detected on the last regular
@@ -1938,6 +2106,8 @@ fn layout_impl(
             m,
             scx,
             nodes: HashMap::new(),
+            extra: &extra,
+            extra_map: &extra_map,
             styles: HashMap::new(),
             vals: &vals,
             consumed: std::collections::HashSet::new(),
@@ -1970,6 +2140,7 @@ fn layout_impl(
                     stretch_y: false,
                 },
                 scx,
+                parent,
             )
             .expect("root lays out");
 
@@ -2024,13 +2195,14 @@ fn layout_impl(
                 height: AvailableSpace::MinContent,
             },
             |inputs, _taffy_id, ctx, style| {
-                let node = match ctx {
-                    Some(Ctx::Node(id)) => nodes.get(id).copied(),
+                let measured = match ctx {
+                    Some(Ctx::Node(id)) => nodes.get(id).map(|n| (*n, None)),
+                    Some(Ctx::Text(id, text)) => nodes.get(id).map(|n| (*n, Some(text.clone()))),
                     _ => None,
                 };
-                let Some(node) = node else {
-                    // Text spans and decorative parts pin their size in the
-                    // style — a zero measure leaves those sizes to rule.
+                let Some((node, text)) = measured else {
+                    // Decorative parts pin their size in the style — a zero
+                    // measure leaves those sizes to rule.
                     return taffy::compute::compute_leaf_layout(
                         inputs,
                         style,
@@ -2047,7 +2219,13 @@ fn layout_impl(
                     |_, _| 0.0,
                     |_known, space| {
                         let avail = Size::new(offered(space.width), offered(space.height));
-                        let s = m.measure(node, wstyle, avail);
+                        // A text span measures in its owner's effective
+                        // style at the width offered — wrap and truncate
+                        // see the real room.
+                        let s = match &text {
+                            Some(t) => m.measure_text(node, wstyle, t, avail),
+                            None => m.measure(node, wstyle, avail),
+                        };
                         taffy::Size {
                             width: finite(s.x),
                             height: finite(s.y),
@@ -2074,6 +2252,7 @@ fn layout_impl(
             parts: Parts::new(),
             texts: Vec::new(),
             scroll,
+            scroll_content: HashMap::new(),
             clip,
             // The bases this build resolved against: a deferred axis a
             // `calc` consumed exports the input measurement it was
@@ -2089,6 +2268,14 @@ fn layout_impl(
             unconverged: false,
         };
         collect(&tree, root_id, rect.min, &mut next);
+        // Scroll extents read the final geometry of this build.
+        for id in next.scroll.keys().cloned().collect::<Vec<_>>() {
+            if let Some(node) = nodes.get(&id) {
+                if let Some(r) = scroll_content_rect(&next, node) {
+                    next.scroll_content.insert(id, r);
+                }
+            }
+        }
         if let Some(r) = next.rects.get(&root.id) {
             next.size = r.size();
         }
@@ -2125,6 +2312,100 @@ fn layout_impl(
         );
     }
     out
+}
+
+/// The union of every descendant rect and descendant-owned text span —
+/// the scrollable content box (`node` itself contributes only its
+/// children's geometry, so the base rect is their union).
+///
+/// The walk carries a visible window: a descendant that clips or
+/// scrolls on an axis (`overflow: hidden|clip|auto|scroll`) bounds its
+/// subtree's visible reach on that axis to its own box — inner overflow
+/// is the inner scroller's own extent, never an ancestor's. A box that
+/// clips nothing never prunes its subtree, even outside the window.
+/// `node` bounds nothing: this *is* its scrollable extent.
+fn scroll_content_rect(out: &Layout, node: &ResolvedNode) -> Option<Rect> {
+    let mut acc: Option<Rect> = None;
+    fn union(acc: &mut Option<Rect>, r: Rect) {
+        *acc = Some(match acc.take() {
+            Some(a) => Rect::from_min_size(
+                Pos2::new(a.min.x.min(r.min.x), a.min.y.min(r.min.y)),
+                Vec2::new(
+                    a.max.x.max(r.max.x) - a.min.x.min(r.min.x),
+                    a.max.y.max(r.max.y) - a.min.y.min(r.min.y),
+                ),
+            ),
+            None => r,
+        });
+    }
+    // `window` after `id`'s own overflow boundary: clipped axes are
+    // limited to `r` (the node's box), unbounded axes pass through.
+    fn bound(out: &Layout, id: &NodeId, r: Rect, window: Rect) -> Rect {
+        let axes = Vec2::new(
+            out.scroll
+                .get(id)
+                .map_or(0.0, |a| a.x)
+                .max(out.clip.get(id).map_or(0.0, |a| a.x)),
+            out.scroll
+                .get(id)
+                .map_or(0.0, |a| a.y)
+                .max(out.clip.get(id).map_or(0.0, |a| a.y)),
+        );
+        let mut w = window;
+        if axes.x > 0.0 {
+            w.min.x = w.min.x.max(r.min.x);
+            w.max.x = w.max.x.min(r.max.x);
+        }
+        if axes.y > 0.0 {
+            w.min.y = w.min.y.max(r.min.y);
+            w.max.y = w.max.y.min(r.max.y);
+        }
+        w
+    }
+    fn intersect(a: Rect, b: Rect) -> Option<Rect> {
+        let min = Pos2::new(a.min.x.max(b.min.x), a.min.y.max(b.min.y));
+        let max = Pos2::new(a.max.x.min(b.max.x), a.max.y.min(b.max.y));
+        (max.x >= min.x && max.y >= min.y).then_some(Rect { min, max })
+    }
+    let unbounded = Rect {
+        min: Pos2::new(f32::NEG_INFINITY, f32::NEG_INFINITY),
+        max: Pos2::new(f32::INFINITY, f32::INFINITY),
+    };
+    let mut stack: Vec<(&ResolvedNode, Rect)> = vec![(node, unbounded)];
+    while let Some((n, window)) = stack.pop() {
+        for child in &n.children {
+            match child {
+                ResolvedChild::Node(c) => {
+                    let Some(r) = out.rects.get(&c.id).copied() else {
+                        continue;
+                    };
+                    // Each box contributes only what the window shows…
+                    if let Some(cr) = intersect(r, window) {
+                        union(&mut acc, cr);
+                    }
+                    // …but a box that clips nothing passes the window on
+                    // unchanged even when its own rect misses it: an
+                    // absolute or overflowing descendant can reach back
+                    // in. Only a clipping box bounds its subtree, by its
+                    // full rect on its clipped axes; an empty window
+                    // means nothing below can show.
+                    let w = bound(out, &c.id, r, window);
+                    if w.min.x <= w.max.x && w.min.y <= w.max.y {
+                        stack.push((c, w));
+                    }
+                }
+                ResolvedChild::Text(_) => {}
+            }
+        }
+        for span in &out.texts {
+            if span.node == n.id {
+                if let Some(r) = intersect(span.rect, window) {
+                    union(&mut acc, r);
+                }
+            }
+        }
+    }
+    acc
 }
 
 /// Walk the computed tree into the flat [`Layout`].

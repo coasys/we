@@ -44,8 +44,8 @@
             { "type": "we-icon", "props": { "name": "rocket", "size": 24 } },
             { "type": "we-icon", "props": { "name": "bell", "size": 24, "weight": "fill" } },
             { "type": "we-animated-icon", "props": { "name": "circle-notch", "size": 24 } },
-            { "type": "we-avatar", "props": { "name": "Ada Lovelace", "size": 32 } },
-            { "type": "we-avatar", "props": { "initials": "GH", "size": 32, "ring": true } },
+            { "type": "we-avatar", "props": { "initials": "Ada Lovelace", "size": "sm" } },
+            { "type": "we-avatar", "props": { "initials": "Grace Hopper", "size": "sm", "ringColor": "accent" } },
             {
               "type": "AvatarStack",
               "props": {

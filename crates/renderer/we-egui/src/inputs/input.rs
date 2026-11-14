@@ -6,7 +6,9 @@ use egui::TextEdit;
 use we_style::Style;
 use we_template::ResolvedNode;
 
-use crate::inputs::{access_label, disabled, reconcile_draft, shown_text};
+use crate::inputs::{
+    access_label, disabled, readonly, reconcile_draft, remember_focus, shown_text,
+};
 use crate::props;
 use crate::{events, MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
 
@@ -33,16 +35,33 @@ impl Widget for Input {
     }
 
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, rect: Rect) {
-        // The DOM `change` event carries the field's text at commit time —
-        // the draft, not the prop it is about to be replaced by.
-        let committed = cx.edit.draft(&node.id);
+        // The DOM `change` event carries the field's text at commit time
+        // (input.ts:282–285 reads `e.target.value`): `text` after the
+        // editor ran is exactly what the field displays this frame — a
+        // same-frame keystroke, an external write, or the live rule's
+        // revert included — so it is what onInput reported and what
+        // onChange commits. No frame-start draft is ever committed.
         reconcile_draft(cx.edit, node);
         let mut text = shown_text(cx.edit, node);
         let disabled = disabled(node);
+        // input.ts:352 `?readonly` — the DOM attribute blocks edits
+        // intrinsically, whenever focus arrived, while focus, selection
+        // and copy stay live. An immutable `&str` buffer is that
+        // attribute: every insert/delete is a no-op inside the TextEdit,
+        // so a keystroke in the first-focus frame (before any remembered
+        // focus id existed) cannot land either.
+        let is_readonly = readonly(node);
+        let mut readonly_text;
+        let buffer: &mut dyn egui::TextBuffer = if is_readonly {
+            readonly_text = text.as_str();
+            &mut readonly_text
+        } else {
+            &mut text
+        };
         let is_password =
             matches!(props::prop(node, "type"), we_expr::Value::Str(s) if s.as_ref() == "password");
 
-        let widget = TextEdit::singleline(&mut text)
+        let widget = TextEdit::singleline(buffer)
             .id_salt(node.id.as_str())
             .desired_width(rect.width())
             // Centre the text block in the field — the theme's atom
@@ -57,11 +76,14 @@ impl Widget for Input {
             None => widget,
         };
         let response = cx.ui.put(rect, widget);
+        remember_focus(cx, node, &response);
         response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::Role::TextInput, true, access_label(cx, node))
+            egui::WidgetInfo::labeled(egui::Role::TextInput, !disabled, access_label(cx, node))
         });
 
-        if response.changed() {
+        // egui still reports `changed` for a mutation the immutable
+        // buffer turned into a no-op — readonly takes no input event.
+        if response.changed() && !is_readonly {
             cx.edit
                 .set_draft(&node.id, &text, props::prop(node, "value"));
             cx.emit(&node.id, "onInput", events::detail_str(&text));
@@ -73,47 +95,78 @@ impl Widget for Input {
         // "A", "Escape"), which is what the bundle compares against. The
         // frame Enter *surrenders* focus counts too (`lost_focus`), or the
         // submit keystroke would never reach `onKeyDown`.
+        let mut ime_enter = false;
         if response.has_focus() || response.lost_focus() {
-            let keys: Vec<(String, String)> = cx.ui.input(|i| {
-                i.events
-                    .iter()
-                    .filter_map(|e| match e {
+            // `isComposing` rides along: an Enter still inside the IME's
+            // composition is the candidate's, not a submit. egui reports
+            // it the way the DOM does — the `Ime` events around the key
+            // say whether the field was composing when it arrived, so the
+            // events are walked in order and the flag lands per keydown.
+            let was_composing = cx.edit.field(&node.id, "ime").truthy();
+            let (keys, composing) = cx.ui.input(|i| {
+                let mut composing = was_composing;
+                let mut keys = Vec::new();
+                for e in &i.events {
+                    match e {
+                        egui::Event::Ime(egui::ImeEvent::Preedit { text, .. }) => {
+                            composing = !text.is_empty();
+                        }
+                        egui::Event::Ime(egui::ImeEvent::Commit(_)) => {
+                            composing = false;
+                        }
                         egui::Event::Key {
                             key,
                             physical_key,
                             pressed: true,
                             ..
-                        } => Some((
+                        } => keys.push((
                             format!("{key:?}"),
                             format!("{:?}", physical_key.unwrap_or(*key)),
+                            composing,
                         )),
-                        _ => None,
-                    })
-                    .collect()
+                        _ => {}
+                    }
+                }
+                (keys, composing)
             });
-            let enter = keys.iter().any(|(k, _)| k == "Enter");
-            for (key, code) in keys {
-                cx.emit(&node.id, "onKeyDown", events::key_down(&key, &code, false));
+            if composing != was_composing {
+                cx.edit
+                    .set_field(&node.id, "ime", we_expr::Value::Bool(composing));
+            }
+            let enter = keys
+                .iter()
+                .any(|(k, _, composing)| k == "Enter" && !composing);
+            // A composing Enter commits the candidate, not the field — and
+            // the focus the TextEdit surrenders to it is the IME's, not
+            // the user's blur, so the lost-focus commit below must not
+            // run for it either.
+            ime_enter = keys
+                .iter()
+                .any(|(k, _, composing)| k == "Enter" && *composing);
+            if ime_enter {
+                // The DOM input keeps focus through the composition — take
+                // back the focus egui's TextEdit surrenders on Enter, or
+                // the arriving `Commit` lands on a blurred field.
+                response.request_focus();
+            }
+            for (key, code, composing) in keys {
+                cx.emit(
+                    &node.id,
+                    "onKeyDown",
+                    events::key_down(&key, &code, composing),
+                );
             }
             let dirty = cx.edit.field(&node.id, "dirty").truthy();
             if enter && dirty {
                 cx.edit
                     .set_field(&node.id, "dirty", we_expr::Value::Bool(false));
-                cx.emit(
-                    &node.id,
-                    "onChange",
-                    events::detail_str(committed.as_deref().unwrap_or(&text)),
-                );
+                cx.emit(&node.id, "onChange", events::detail_str(&text));
             }
         }
-        if response.lost_focus() && cx.edit.field(&node.id, "dirty").truthy() {
+        if response.lost_focus() && !ime_enter && cx.edit.field(&node.id, "dirty").truthy() {
             cx.edit
                 .set_field(&node.id, "dirty", we_expr::Value::Bool(false));
-            cx.emit(
-                &node.id,
-                "onChange",
-                events::detail_str(committed.as_deref().unwrap_or(&text)),
-            );
+            cx.emit(&node.id, "onChange", events::detail_str(&text));
         }
     }
 }

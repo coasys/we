@@ -21,6 +21,21 @@ pub struct EditState {
     pub focused: Option<NodeId>,
     /// Per-widget scratch — a draft string, a selection range.
     pub data: HashMap<NodeId, Value>,
+    /// The control that invoked each overlay — a close hands keyboard
+    /// focus back to it, the DOM popover's "previously focused element"
+    /// rule. Recorded at activation; a never-activated (controlled) open
+    /// fills it from the trigger's own interactable.
+    pub triggers: HashMap<NodeId, egui::Id>,
+    /// What held keyboard focus when each painted modal opened, with the
+    /// order it opened in — overlay-element.ts `captureFocus`/
+    /// `releaseFocus`: the modal's disappearance hands focus back to it.
+    pub modal_openers: HashMap<NodeId, (u64, Option<egui::Id>)>,
+    /// The next modal-open sequence number.
+    pub modal_seq: u64,
+    /// The egui layer each popup last painted on — a programmatic close
+    /// asks whether keyboard focus sits there (the DOM hide-popover steps
+    /// only return focus that was inside the popover).
+    pub popup_layers: HashMap<NodeId, egui::LayerId>,
 }
 
 impl EditState {
@@ -91,6 +106,18 @@ impl EditState {
     /// Set the internal open flag.
     pub fn set_open(&mut self, node: &NodeId, open: bool) {
         self.set_field(node, "open", Value::Bool(open));
+    }
+
+    /// The one transition every popup close shares — menu selection,
+    /// Escape, outside click alike: drop the internal open flag and
+    /// return keyboard focus to the recorded invoker. (The trigger
+    /// toggle is the exception: it keeps a plain `set_open`, focus
+    /// never left it.)
+    pub fn close_popup(&mut self, ctx: &egui::Context, node: &NodeId) {
+        self.set_open(node, false);
+        if let Some(id) = self.triggers.get(node) {
+            ctx.memory_mut(|m| m.request_focus(*id));
+        }
     }
 
     /// Drop every scratch field `node` held.

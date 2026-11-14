@@ -7,65 +7,104 @@ use we_template::ResolvedNode;
 
 use crate::defaults::{view_of, FONT_PX, ROOT_PX};
 use crate::props;
-use crate::{MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
+use crate::{
+    Direction, MeasureCx, PaintCx, PartSpec, PartsSpec, Pick, Rect, Size, TextChildren, Widget,
+    WidgetKind,
+};
 
 // ── we-tooltip ───────────────────────────────────────────────────────────
 
-/// `we-tooltip` — a container whose *children* are the trigger; `content` +
-/// `placement` describe the tip. Hovering the trigger's box shows the tip in
-/// an egui tooltip window at the requested edge.
+/// `we-tooltip` — the default slot is the trigger; `slot="content"` children
+/// (or the `content` text prop) are the bubble, painted only on the overlay
+/// layer while the tip is open. `open` is controlled; otherwise hover or
+/// keyboard focus inside the trigger flips the internal flag — the walk
+/// applies `mouseover`/`focusin` → show, `mouseout`/`focusout` → hide
+/// post-children (tooltip.ts:234-249).
 #[derive(Debug, Default)]
 pub struct Tooltip;
+
+impl Tooltip {
+    /// `_hasSomethingToSay` — a `content` string or a `slot="content"` child.
+    fn has_something_to_say(node: &ResolvedNode) -> bool {
+        if props::prop_text(node, "content").is_some_and(|c| !c.is_empty()) {
+            return true;
+        }
+        node.children.iter().any(|c| match c {
+            we_template::ResolvedChild::Node(n) => n.slot.as_deref() == Some("content"),
+            we_template::ResolvedChild::Text(_) => false,
+        })
+    }
+}
+
+/// `textContent` of the subtree — every descendant text child (the
+/// trigger's words and a slotted bubble's alike), the way
+/// `_describeTrigger` reads it.
+fn subtree_text(node: &ResolvedNode) -> String {
+    let mut s = String::new();
+    for c in &node.children {
+        match c {
+            we_template::ResolvedChild::Text(t) => s.push_str(t),
+            we_template::ResolvedChild::Node(n) => s.push_str(&subtree_text(n)),
+        }
+    }
+    s
+}
 
 impl Widget for Tooltip {
     fn type_name(&self) -> &'static str {
         "we-tooltip"
     }
     fn kind(&self) -> WidgetKind {
-        WidgetKind::Container
+        WidgetKind::Overlay
+    }
+    fn parts_spec(&self, _node: &ResolvedNode) -> Option<PartsSpec> {
+        // `trigger` is the anchor; `slot="content"` children float.
+        Some(PartsSpec {
+            direction: Direction::Column,
+            parts: vec![PartSpec::group("trigger", Pick::Default, Direction::Column)],
+        })
     }
     fn measure(&self, _cx: &MeasureCx, _n: &ResolvedNode, _s: &Style, _a: Size) -> Size {
         Size::ZERO
     }
-    fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
-        crate::containers::paint_container(cx, node, style, rect);
-        let content = props::prop_text(node, "content").unwrap_or("");
-        if content.is_empty() {
-            return;
-        }
-        let id = cx.ui.scope_id().with(("we-tooltip", node.id.as_str()));
-        let resp = cx.ui.interact(rect, id, egui::Sense::hover());
-        if !resp.hovered() {
-            return;
-        }
-        // The tip grows away from the edge it anchors to (`placement`).
-        let (pivot, at) = match props::prop_str(node, "placement").unwrap_or("top") {
-            "bottom" => (
-                egui::Align2::CENTER_TOP,
-                rect.center_bottom() + egui::vec2(0.0, 6.0),
-            ),
-            "left" => (
-                egui::Align2::RIGHT_CENTER,
-                rect.left_center() + egui::vec2(-6.0, 0.0),
-            ),
-            "right" => (
-                egui::Align2::LEFT_CENTER,
-                rect.right_center() + egui::vec2(6.0, 0.0),
-            ),
-            _ => (
-                egui::Align2::CENTER_BOTTOM,
-                rect.center_top() + egui::vec2(0.0, -6.0),
-            ),
-        };
-        egui::Area::new(egui::Id::unique(("we-tip", node.id.as_str())))
-            .order(egui::Order::Foreground)
-            .pivot(pivot)
-            .fixed_pos(at)
-            .show(cx.ui.ctx(), |ui| {
-                egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.label(content);
-                });
+    /// Hover or focus inside the trigger opens — gated on
+    /// `_hasSomethingToSay`. The walk applies it post-children.
+    fn focus_opens(&self, node: &ResolvedNode) -> bool {
+        Self::has_something_to_say(node)
+    }
+
+    /// `_describeTrigger`: `content` first, the subtree's text after —
+    /// what the slotted control carries as its accessible description.
+    fn trigger_text(&self, node: &ResolvedNode) -> String {
+        props::prop_text(node, "content")
+            .map(|s| s.to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| subtree_text(node).trim().to_string())
+    }
+
+    fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, _rect: Rect) {
+        // Overlay pass: the popup frame is drawn by `anchored_overlay`; the
+        // `content` prop is the slot's fallback — paint it only when no
+        // `slot="content"` child took over the bubble.
+        if let Some(inner) = props::part(cx, node, "overlay") {
+            let has_slot = node.children.iter().any(|c| match c {
+                we_template::ResolvedChild::Node(n) => n.slot.as_deref() == Some("content"),
+                we_template::ResolvedChild::Text(_) => false,
             });
+            if !has_slot {
+                if let Some(content) = props::prop_text(node, "content") {
+                    cx.ui.painter().text(
+                        inner.center(),
+                        egui::Align2::CENTER_CENTER,
+                        content,
+                        egui::FontId::proportional(FONT_PX),
+                        cx.ui.visuals().text_color(),
+                    );
+                }
+            }
+        }
+        // In-flow pass paints nothing: the trigger is its slotted child,
+        // and the hover/focus open rule runs post-children in the walk.
     }
 }
 
@@ -100,6 +139,15 @@ impl Widget for Badge {
     fn kind(&self) -> WidgetKind {
         WidgetKind::Leaf
     }
+    /// Text-only children are the pill's galley (badge.ts renders `<slot>`);
+    /// with element children the text runs stay spans.
+    fn text_children(&self, node: &ResolvedNode) -> TextChildren {
+        if props::has_node_children(node) {
+            TextChildren::Leaves
+        } else {
+            TextChildren::Owned
+        }
+    }
     fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, avail: Size) -> Size {
         // The content box is the galley — layout adds the padding outside it.
         crate::text::text_job(&Self::text(node), style, cx.ctx, avail.x, true, None).size()
@@ -109,12 +157,19 @@ impl Widget for Badge {
         let content =
             props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()), cx.cb_w);
         let text = Self::text(node);
-        let g = crate::text::text_job(&text, style, cx.ui.ctx(), content.width(), true, None);
-        // The galley centers in the pill's content box.
-        let pos = content.center() - g.size() / 2.0;
-        cx.ui
-            .painter()
-            .add(egui::Shape::galley(pos, g, egui::Color32::PLACEHOLDER));
+        // The pill's galley is its own content — the absorbed child text or
+        // prop-supplied text; under `Leaves` the span paints it instead.
+        let own = !matches!(self.text_children(node), TextChildren::Leaves)
+            || node.props.contains_key("count")
+            || props::prop_text(node, "text").is_some()
+            || props::prop_text(node, "label").is_some()
+            || props::prop_text(node, "value").is_some();
+        if !text.is_empty() && own {
+            let g = crate::text::text_job(&text, style, cx.ui.ctx(), content.width(), true, None);
+            // The galley centers in the pill's content box.
+            let pos = content.center() - g.size() / 2.0;
+            crate::text::paint_galley(cx.ui.painter(), pos, g, style);
+        }
         cx.label(rect, &text);
     }
 }
@@ -138,6 +193,15 @@ impl Widget for Tag {
     fn kind(&self) -> WidgetKind {
         WidgetKind::Leaf
     }
+    /// Text-only children are the pill's galley (tag.ts renders `<slot>`);
+    /// with element children the text runs stay spans.
+    fn text_children(&self, node: &ResolvedNode) -> TextChildren {
+        if props::has_node_children(node) {
+            TextChildren::Leaves
+        } else {
+            TextChildren::Owned
+        }
+    }
     fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, avail: Size) -> Size {
         let mut s =
             crate::text::text_job(&Self::text(node), style, cx.ctx, avail.x, true, None).size();
@@ -155,17 +219,22 @@ impl Widget for Tag {
         let content =
             props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()), cx.cb_w);
         let text = Self::text(node);
-        let g = crate::text::text_job(&text, style, cx.ui.ctx(), content.width(), true, None);
+        // The tag's galley is its own content — the absorbed child text or
+        // prop-supplied text; under `Leaves` the span paints it instead.
+        let own = !matches!(self.text_children(node), TextChildren::Leaves)
+            || props::prop_text(node, "text").is_some()
+            || props::prop_text(node, "label").is_some()
+            || props::prop_text(node, "value").is_some();
+        let g = (own && !text.is_empty())
+            .then(|| crate::text::text_job(&text, style, cx.ui.ctx(), content.width(), true, None));
         let dismissible = props::prop_bool(node, "dismissible");
         // Text + optional × centered as a pair inside the content box.
-        let left = content.center().x - (g.size().x + if dismissible { 14.0 } else { 0.0 }) / 2.0;
-        let gy = content.center().y - g.size().y / 2.0;
-        let gw = g.size().x;
-        cx.ui.painter().add(egui::Shape::galley(
-            egui::pos2(left, gy),
-            g,
-            egui::Color32::PLACEHOLDER,
-        ));
+        let gw = g.as_ref().map(|g| g.size().x).unwrap_or(0.0);
+        let left = content.center().x - (gw + if dismissible { 14.0 } else { 0.0 }) / 2.0;
+        let gy = content.center().y - g.as_ref().map(|g| g.size().y).unwrap_or(0.0) / 2.0;
+        if let Some(g) = g {
+            crate::text::paint_galley(cx.ui.painter(), egui::pos2(left, gy), g, style);
+        }
         if dismissible {
             let x_rect = Rect::from_center_size(
                 egui::pos2(left + gw + 8.0 + 5.0, content.center().y),
@@ -310,10 +379,11 @@ impl Widget for Alert {
                     };
                 let wrap_w = (right - gap).max(1.0);
                 let g = crate::text::text_job(text, style, cx.ui.ctx(), wrap_w, false, None);
-                cx.ui.painter().galley(
+                crate::text::paint_galley(
+                    cx.ui.painter(),
                     egui::pos2(gap, content.min.y),
                     g,
-                    props::text_color(style, cx.ui.ctx()),
+                    style,
                 );
             }
         }

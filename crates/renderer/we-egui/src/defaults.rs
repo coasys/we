@@ -2,7 +2,7 @@
 //! `Context`. Style resolution itself (`style_of`, `StyleCx`, the per-type
 //! default bags) moved to `we_layout::defaults`; re-exported so widget code
 //! keeps calling `crate::defaults::*`.
-pub use we_layout::defaults::{style_of, StyleCx};
+pub use we_layout::defaults::{effective, style_of, StyleCx};
 pub(crate) use we_layout::defaults::{FONT_PX, ROOT_PX};
 
 /// The frame-time unit context widgets get outside `style_of`: the viewport
@@ -17,15 +17,25 @@ pub(crate) struct ViewportCx {
 }
 
 const VIEW_KEY: &str = "we-egui::viewport";
+const TOKENS_KEY: &str = "we-egui::tokens";
 
 /// Stash the frame's style context on the ctx (called by `layout`/`paint`).
+/// The token table rides along — `PaintCx`/`MeasureCx` are frozen, so a
+/// widget that must resolve `var(--we-*)` inside a prop (an avatar's
+/// `ringColor`, the generated fill's ramp) reads it back with `tokens_of`.
 pub(crate) fn store_view(ctx: &egui::Context, scx: &StyleCx) {
     ctx.data_mut(|d| {
         d.insert_temp(
             egui::Id::unique(VIEW_KEY),
             (scx.viewport.width, scx.viewport.height, scx.container_width),
-        )
+        );
+        d.insert_temp(egui::Id::unique(TOKENS_KEY), scx.tokens.clone());
     });
+}
+
+/// The stashed token table — `None` before the first `layout`/`paint`.
+pub(crate) fn tokens_of(ctx: &egui::Context) -> Option<we_style::TokenTable> {
+    ctx.data_mut(|d| d.get_temp::<we_style::TokenTable>(egui::Id::unique(TOKENS_KEY)))
 }
 
 /// The stashed view — an empty context before the first `layout`/`paint`.
