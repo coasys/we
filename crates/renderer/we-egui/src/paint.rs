@@ -106,9 +106,10 @@ struct Walk<'a> {
     /// `Overlay` nodes met in the walk, in tree order — painted after it.
     /// Each entry carries the node's *parent* style context (what `w.inh`
     /// held at encounter) so the deferred pass recomputes the same
-    /// effective style, and the overlay ancestor chain (outermost first)
-    /// the dismissal pass uses to shield parents from child-popup clicks.
-    overlays: Vec<(ResolvedNode, Option<Style>, Vec<NodeId>)>,
+    /// effective style, the overlay ancestor chain (outermost first) the
+    /// dismissal pass shields with, and the trigger anchor as painted —
+    /// scroll offsets applied — since `base_parts` forgets them (S1).
+    overlays: Vec<(ResolvedNode, Option<Style>, Vec<NodeId>, Option<Rect>)>,
     /// The chain of overlays this walk paints inside — the entry's own id
     /// appended when `overlay_contents` recurses.
     overlay_stack: Vec<NodeId>,
@@ -383,8 +384,18 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
     }
     let widget = w.registry.widget_for(&node.ty);
     if widget.kind() == WidgetKind::Overlay {
+        // The trigger rect *as painted*: inside a scroll region the
+        // effective parts carry the accumulated offset; reading
+        // `base_parts` later would anchor the popup where the trigger
+        // used to be.
+        let anchor = w
+            .parts_buf
+            .as_ref()
+            .unwrap_or(&w.base_parts)
+            .get(&(node.id.clone(), "trigger"))
+            .copied();
         w.overlays
-            .push((node.clone(), w.inh.clone(), w.overlay_stack.clone()));
+            .push((node.clone(), w.inh.clone(), w.overlay_stack.clone(), anchor));
     }
     w.ancestors.push(node.id.clone());
 
@@ -662,15 +673,16 @@ fn rect_align(node: &ResolvedNode) -> egui::RectAlign {
 /// overlay's children are pushed during its paint and run after it.
 fn paint_overlays(w: &mut Walk<'_>) {
     while !w.overlays.is_empty() {
-        let (node, parent_inh, stack) = w.overlays.remove(0);
+        let (node, parent_inh, stack, anchor) = w.overlays.remove(0);
         if !overlay_open(w, &node) {
             continue;
         }
         let ctx = w.ui.ctx().clone();
         let floating = floating_children(w, &node);
         // A "trigger" part makes this an anchored popup; without one the
-        // node is a centred modal.
-        match w.base_parts.get(&(node.id.clone(), "trigger")).copied() {
+        // node is a centred modal. The anchor was captured at encounter —
+        // scroll offsets and all.
+        match anchor {
             Some(anchor) => anchored_overlay(w, &ctx, &node, anchor, floating, parent_inh, stack),
             None => modal_overlay(w, &ctx, &node, floating, parent_inh, stack),
         }

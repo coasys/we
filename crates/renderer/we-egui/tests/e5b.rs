@@ -1900,6 +1900,85 @@ fn escape_closes_only_the_topmost_popup() {
     );
 }
 
+/// S1 — the deferred overlay pass must anchor where the trigger painted,
+/// not where the untranslated layout put it. A popover inside a scrolled
+/// column keeps its popup glued to the trigger as the content moves.
+#[test]
+fn scrolled_trigger_keeps_its_popup_anchored() {
+    let mut scroller = node(
+        "Column",
+        "sc",
+        props(&[("height", n(120.0)), ("overflowY", s("auto"))]),
+    );
+    let mut inner = node(
+        "Column",
+        "sc/in",
+        props(&[("height", n(400.0)), ("flexShrink", n(0.0))]),
+    );
+    let spacer = node("Column", "sc/in/sp", props(&[("height", n(60.0))]));
+    let mut pop = node("we-popover", "sc/in/pop", props(&[]));
+    let trig = node(
+        "we-button",
+        "sc/in/pop/trig",
+        props(&[("label", s("Trig")), ("height", n(30.0))]),
+    );
+    let mut item = node(
+        "we-button",
+        "sc/in/pop/item",
+        props(&[("label", s("Pop")), ("height", n(30.0))]),
+    );
+    item.slot = Some(Arc::from("content"));
+    item.handlers = handlers(&["onClick"]);
+    pop.children = vec![
+        ResolvedChild::Node(Box::new(trig)),
+        ResolvedChild::Node(Box::new(item)),
+    ];
+    inner.children = vec![
+        ResolvedChild::Node(Box::new(spacer)),
+        ResolvedChild::Node(Box::new(pop)),
+    ];
+    scroller.children = vec![ResolvedChild::Node(Box::new(inner))];
+    let (mut h, r) = rig(scroller);
+    h.run();
+    h.get_by_label("Trig").click();
+    h.run();
+    assert!(h.query_by_label("Pop").is_some());
+    // Scroll the 60px spacer out: the trigger repaints where the spacer
+    // was — still inside the viewport, 60px above its layout rect.
+    let mut m = indexmap::IndexMap::new();
+    m.insert(Arc::from("x"), n(0.0));
+    m.insert(Arc::from("y"), n(60.0));
+    r.edit
+        .borrow_mut()
+        .set_field(&NodeId::from("sc"), "_scroll", Value::Obj(Arc::new(m)));
+    h.run();
+    let trig = h.get_by_label("Trig").rect();
+    // The popup must sit under the trigger's *painted* rect: clicking
+    // just below it must land on the popup item. Anchored at the stale
+    // un-scrolled rect the popup would sit 60px lower and this click
+    // would hit scroller content instead. (Emit doesn't gate on declared
+    // handlers, so the item's own id distinguishes its clicks.)
+    let inside_popup = egui::pos2(trig.center().x, trig.max.y + 15.0);
+    h.drag_at(inside_popup);
+    h.step();
+    h.drop_at(inside_popup);
+    h.run();
+    let item_clicks = r
+        .events
+        .borrow()
+        .iter()
+        .filter(|e| e.handler.as_ref() == "onClick" && e.node.as_str() == "sc/in/pop/item")
+        .count();
+    assert!(
+        item_clicks > 0,
+        "popup must follow the scrolled trigger (rect {trig:?})"
+    );
+    assert!(
+        h.query_by_label("Pop").is_some(),
+        "an inside click must not dismiss the popup"
+    );
+}
+
 /// B10 — `open` is element state the prop syncs on change, not a lock:
 /// Escape on a controlled popover still dismisses it (the DOM element
 /// writes `this.open = false`), and a declared `close` handler hears
