@@ -501,6 +501,97 @@ fn textarea_submit_on_enter_ignores_composing_enter() {
     );
 }
 
+/// B7 — input.ts:352 `?readonly`: focus, selection and key reporting stay
+/// (it is not `disabled`), but nothing mutates the buffer — no `onInput`.
+#[test]
+fn input_readonly_keeps_focus_but_blocks_edits() {
+    let mut inp = node(
+        "we-input",
+        "in",
+        props(&[
+            ("label", s("Name")),
+            ("value", s("seed")),
+            ("readonly", b(true)),
+        ]),
+    );
+    inp.handlers = handlers(&["onInput", "onKeyDown"]);
+    let (mut h, r) = rig(inp);
+    h.run();
+    let f = h.get_by_label("Name");
+    f.click();
+    f.type_text("x");
+    h.step();
+    assert!(
+        details(&r, "onInput").is_empty(),
+        "readonly: typing mutates nothing"
+    );
+    // …but the keys themselves still report, like the DOM element.
+    h.key_press(egui::Key::A);
+    h.step();
+    assert!(
+        !details(&r, "onKeyDown").is_empty(),
+        "readonly keeps the field live: keydown still fires"
+    );
+}
+
+/// B7 — textarea.ts:413 — the same `?readonly` on the multiline field,
+/// Enter included: no newline lands, nothing reports.
+#[test]
+fn textarea_readonly_blocks_typing_and_enter() {
+    let mut ta = node(
+        "we-textarea",
+        "ta",
+        props(&[
+            ("label", s("Body")),
+            ("value", s("seed")),
+            ("readonly", b(true)),
+        ]),
+    );
+    ta.handlers = handlers(&["onInput"]);
+    let (mut h, r) = rig(ta);
+    h.run();
+    let f = h.get_by_label("Body");
+    f.click();
+    f.type_text("x");
+    h.key_press(egui::Key::Enter);
+    h.run();
+    assert!(
+        details(&r, "onInput").is_empty(),
+        "readonly: neither typing nor Enter mutates"
+    );
+}
+
+/// B7 — input.ts:339, textarea.ts:401: `.value=${this.value ?? ''}` — a
+/// missing or null value is an empty field, never the text "undefined"
+/// (or "null"). `Value::to_text`, not `js_string`, is the conversion.
+#[test]
+fn inputs_show_nullish_value_as_empty() {
+    // Undefined — the prop never resolved at all.
+    let mut inp = node("we-input", "in", props(&[("label", s("N"))]));
+    inp.handlers = handlers(&["onInput"]);
+    let (mut h, r) = rig(inp);
+    h.run();
+    let f = h.get_by_label("N");
+    f.click();
+    f.type_text("a");
+    h.run();
+    assert_detail(&r, "onInput", s("a"));
+    // Null — the record exists, the field does not yet.
+    let mut ta = node(
+        "we-textarea",
+        "ta",
+        props(&[("label", s("B")), ("value", Value::Null)]),
+    );
+    ta.handlers = handlers(&["onInput"]);
+    let (mut h2, r2) = rig(ta);
+    h2.run();
+    let f2 = h2.get_by_label("B");
+    f2.click();
+    f2.type_text("b");
+    h2.run();
+    assert_detail(&r2, "onInput", s("b"));
+}
+
 #[test]
 fn select_emits_option_value() {
     let mut sel = node(

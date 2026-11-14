@@ -5,7 +5,10 @@ use egui::TextEdit;
 use we_style::Style;
 use we_template::ResolvedNode;
 
-use crate::inputs::{access_label, disabled, reconcile_draft, shown_text};
+use crate::inputs::{
+    access_label, consume_readonly_edits, disabled, focused_last_frame, readonly, reconcile_draft,
+    remember_focus, shown_text,
+};
 use crate::props;
 use crate::{events, MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
 
@@ -39,12 +42,12 @@ impl Widget for Textarea {
         // the widget id the previous frame stored (egui composes it from
         // the ui scope, so asking is more reliable than predicting).
         let submit_on_enter = props::prop_bool(node, "submitOnEnter");
-        let focused = match cx.edit.field(&node.id, "te_egui_id") {
-            we_expr::Value::Str(raw) => u64::from_str_radix(&raw, 16)
-                .ok()
-                .is_some_and(|raw| cx.ui.memory(|m| m.focused().map(|i| i.value())) == Some(raw)),
-            _ => false,
-        };
+        let focused = focused_last_frame(cx, node);
+        // textarea.ts:413 `?readonly` — same contract as we-input: focus
+        // stays, edits are consumed before the TextEdit gets them.
+        if readonly(node) && focused {
+            consume_readonly_edits(cx, true);
+        }
         let mut composing = cx.edit.field(&node.id, "ime").truthy();
         let mut plain_enter = false;
         if focused {
@@ -90,17 +93,7 @@ impl Widget for Textarea {
             None => widget,
         };
         let response = cx.ui.put(rect, widget);
-        if response.has_focus() {
-            // The focused id is the TextEdit's inner one — learn it rather
-            // than compose it, for next frame's pre-put focus check.
-            if let Some(fid) = cx.ui.memory(|m| m.focused()) {
-                cx.edit.set_field(
-                    &node.id,
-                    "te_egui_id",
-                    we_expr::Value::Str(format!("{:x}", fid.value()).into()),
-                );
-            }
-        }
+        remember_focus(cx, node, &response);
         response.widget_info(|| {
             egui::WidgetInfo::labeled(egui::Role::TextInput, true, access_label(cx, node))
         });

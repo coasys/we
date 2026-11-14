@@ -6,7 +6,10 @@ use egui::TextEdit;
 use we_style::Style;
 use we_template::ResolvedNode;
 
-use crate::inputs::{access_label, disabled, reconcile_draft, shown_text};
+use crate::inputs::{
+    access_label, consume_readonly_edits, disabled, focused_last_frame, readonly, reconcile_draft,
+    remember_focus, shown_text,
+};
 use crate::props;
 use crate::{events, MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
 
@@ -39,6 +42,11 @@ impl Widget for Input {
         reconcile_draft(cx.edit, node);
         let mut text = shown_text(cx.edit, node);
         let disabled = disabled(node);
+        // input.ts:352 `?readonly` — focus and selection stay, edits are
+        // consumed before the TextEdit gets them.
+        if readonly(node) && focused_last_frame(cx, node) {
+            consume_readonly_edits(cx, false);
+        }
         let is_password =
             matches!(props::prop(node, "type"), we_expr::Value::Str(s) if s.as_ref() == "password");
 
@@ -57,6 +65,7 @@ impl Widget for Input {
             None => widget,
         };
         let response = cx.ui.put(rect, widget);
+        remember_focus(cx, node, &response);
         response.widget_info(|| {
             egui::WidgetInfo::labeled(egui::Role::TextInput, true, access_label(cx, node))
         });
