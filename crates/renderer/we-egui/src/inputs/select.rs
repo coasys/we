@@ -11,12 +11,17 @@ use crate::{events, MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
 
 pub struct Select;
 
-/// One `options` entry: `{value, label?, icon?}` — `value` is what
-/// `onChange` carries.
+/// One `options` entry: `{value, label?, icon?, disabled?, group?}` —
+/// `value` is what `onChange` carries; `disabled` keeps the row in the
+/// list but out of reach (select.ts:438); `group` names the heading that
+/// precedes a run of entries sharing it.
 #[derive(Debug, Clone)]
 struct Opt {
     value: Value,
     label: String,
+    icon: Option<String>,
+    disabled: bool,
+    group: Option<String>,
 }
 
 fn options(node: &ResolvedNode) -> Vec<Opt> {
@@ -32,11 +37,26 @@ fn options(node: &ResolvedNode) -> Vec<Opt> {
                     .get("label")
                     .map(|l| l.js_string())
                     .unwrap_or_else(|| value.js_string());
-                Some(Opt { value, label })
+                Some(Opt {
+                    value,
+                    label,
+                    icon: map
+                        .get("icon")
+                        .and_then(|v| crate::media::phosphor(&v.js_string()))
+                        .map(str::to_string),
+                    disabled: map.get("disabled").is_some_and(|v| v.truthy()),
+                    group: map
+                        .get("group")
+                        .map(|g| g.js_string())
+                        .filter(|g| !g.is_empty()),
+                })
             }
             Value::Str(s) => Some(Opt {
                 value: Value::Str(s.clone()),
                 label: s.to_string(),
+                icon: None,
+                disabled: false,
+                group: None,
             }),
             _ => None,
         })
@@ -78,12 +98,24 @@ impl Widget for Select {
         let current = opts.iter().find(|o| o.value.strict_eq(value));
         let is_placeholder = current.is_none();
         let shown = current
-            .map(|o| o.label.clone())
+            .map(|o| match &o.icon {
+                // select.ts:599 — the chosen row keeps its leading glyph.
+                Some(glyph) => format!("{glyph} {}", o.label),
+                None => o.label.clone(),
+            })
             .or_else(|| props::prop_string(node, "placeholder"))
             .unwrap_or_default();
         let label = access_label(cx, node);
 
-        let response = cx.interact_label(rect, &label, egui::Role::ComboBox, &node.id, "select");
+        let response = cx.interact_label(
+            rect,
+            &label,
+            egui::Role::ComboBox,
+            &node.id,
+            "select",
+            !disabled(node),
+            None,
+        );
         let visuals = cx.ui.visuals().clone();
         let fill = if response.hovered() {
             visuals.widgets.hovered.bg_fill
@@ -113,23 +145,42 @@ impl Widget for Select {
         if disabled(node) {
             return;
         }
-        // `Popup::menu` anchors to the trigger rect, toggles on its click,
-        // and closes on an outside click or Escape — egui's popup memory
-        // carries the open flag.
-        egui::Popup::menu(&response).width(rect.width()).show(|ui| {
-            ui.set_min_width(rect.width());
-            if opts.is_empty() {
-                ui.weak("no options");
-            }
-            for opt in &opts {
-                if ui
-                    .selectable_label(opt.value.strict_eq(value), opt.label.clone())
-                    .clicked()
-                {
-                    cx.emit(&node.id, "onChange", events::detail(opt.value.clone()));
-                    ui.close();
+        // `Popup::menu` anchors to the trigger rect and toggles on its
+        // click. `CloseOnClickOutside`, not the menu's usual
+        // `CloseOnClick`: an inside click on a disabled option is the
+        // DOM's no-op — the listbox stays open (select.ts:438) — and a
+        // real pick closes it itself below.
+        egui::Popup::menu(&response)
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+            .width(rect.width())
+            .show(|ui| {
+                ui.set_min_width(rect.width());
+                if opts.is_empty() {
+                    ui.weak("no options");
                 }
-            }
-        });
+                let mut last_group: Option<&str> = None;
+                for opt in &opts {
+                    // select.ts:641 — a heading when the group name changes
+                    // from the previous rendered option's.
+                    if opt.group.is_some() && opt.group.as_deref() != last_group {
+                        ui.weak(opt.group.as_deref().unwrap_or_default());
+                    }
+                    last_group = opt.group.as_deref();
+                    let text = match &opt.icon {
+                        Some(glyph) => format!("{glyph} {}", opt.label),
+                        None => opt.label.clone(),
+                    };
+                    let mut picked = false;
+                    ui.add_enabled_ui(!opt.disabled, |ui| {
+                        picked = ui
+                            .selectable_label(opt.value.strict_eq(value), text)
+                            .clicked();
+                    });
+                    if picked {
+                        cx.emit(&node.id, "onChange", events::detail(opt.value.clone()));
+                        ui.close();
+                    }
+                }
+            });
     }
 }

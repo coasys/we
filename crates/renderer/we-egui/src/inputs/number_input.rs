@@ -56,8 +56,26 @@ impl Widget for NumberInput {
             egui::pos2(plus.min.x - 2.0, rect.max.y),
         );
 
-        let minus_r = cx.interact_label(minus, "decrement", egui::Role::Button, &node.id, "minus");
-        let plus_r = cx.interact_label(plus, "increment", egui::Role::Button, &node.id, "plus");
+        let minus_r = cx.interact_label(
+            minus,
+            "decrement",
+            egui::Role::Button,
+            &node.id,
+            "minus",
+            // number-input.ts: `<button ?disabled=${this.disabled}>`.
+            !disabled,
+            None,
+        );
+        let plus_r = cx.interact_label(
+            plus,
+            "increment",
+            egui::Role::Button,
+            &node.id,
+            "plus",
+            // number-input.ts: `<button ?disabled=${this.disabled}>`.
+            !disabled,
+            None,
+        );
         let visuals = cx.ui.visuals().clone();
         for (r, glyph) in [(minus, "-"), (plus, "+")] {
             cx.ui
@@ -85,7 +103,8 @@ impl Widget for NumberInput {
                 .align(egui::Align2::CENTER_CENTER)
                 .interactive(!disabled),
         );
-        response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, &label));
+        response
+            .widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, !disabled, &label));
         if response.changed() {
             cx.edit
                 .set_draft(&node.id, &text, props::prop(node, "value"));

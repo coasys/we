@@ -39,8 +39,9 @@ impl Widget for Slider {
         let response = cx
             .ui
             .add_enabled_ui(!disabled(node), |ui| ui.put(rect, slider));
-        response.inner.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::Role::Slider, true, access_label(cx, node))
+        response.inner.widget_info(|| egui::WidgetInfo {
+            value: Some(value),
+            ..egui::WidgetInfo::labeled(egui::Role::Slider, !disabled(node), access_label(cx, node))
         });
         if response.inner.changed() {
             cx.emit(&node.id, "onInput", events::detail_num(value));

@@ -4,8 +4,8 @@
 //! re-exported so widget code keeps calling `crate::defaults::*`.
 use std::sync::Arc;
 
+pub use we_layout::defaults::{effective, style_of, StyleCx};
 pub(crate) use we_layout::defaults::{font_px, root_px, FONT_PX, ROOT_PX};
-pub use we_layout::defaults::{style_of, StyleCx};
 
 /// The frame-time unit context widgets get outside `style_of`: the viewport
 /// (for `vw`/`radius %`), the tier's container width, and the theme's font
@@ -39,8 +39,12 @@ impl Default for ViewportCx {
 const VIEW_KEY: &str = "we-egui::viewport";
 const FAMILY_KEY: &str = "we-egui::base-family";
 const THEME_KEY: &str = "we-egui::theme-id";
+const TOKENS_KEY: &str = "we-egui::tokens";
 
 /// Stash the frame's style context on the ctx (called by `layout`/`paint`).
+/// The token table rides along — `PaintCx`/`MeasureCx` are frozen, so a
+/// widget that must resolve `var(--we-*)` inside a prop (an avatar's
+/// `ringColor`, the generated fill's ramp) reads it back with `tokens_of`.
 pub(crate) fn store_view(ctx: &egui::Context, scx: &StyleCx) {
     ctx.data_mut(|d| {
         d.insert_temp(
@@ -53,6 +57,7 @@ pub(crate) fn store_view(ctx: &egui::Context, scx: &StyleCx) {
                 root_px(scx),
             ),
         );
+        d.insert_temp(egui::Id::unique(TOKENS_KEY), scx.tokens.clone());
         // The theme's `--we-font-family` — the family body text inherits on
         // the web side (`font-family` on the app host). A separate key so
         // `ViewportCx` stays `Copy`; an explicit `font-family` on the node
@@ -68,6 +73,11 @@ pub(crate) fn store_view(ctx: &egui::Context, scx: &StyleCx) {
             d.insert_temp(egui::Id::unique(THEME_KEY), Arc::<str>::from(scx.theme));
         }
     });
+}
+
+/// The stashed token table — `None` before the first `layout`/`paint`.
+pub(crate) fn tokens_of(ctx: &egui::Context) -> Option<we_style::TokenTable> {
+    ctx.data_mut(|d| d.get_temp::<we_style::TokenTable>(egui::Id::unique(TOKENS_KEY)))
 }
 
 /// The stashed view — the unthemed defaults before the first

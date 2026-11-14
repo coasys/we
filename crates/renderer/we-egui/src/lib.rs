@@ -37,7 +37,7 @@ use std::sync::Arc;
 
 use we_expr::Value;
 use we_style::Style;
-use we_template::{NodeId, ResolvedNode};
+use we_template::{NodeId, ResolvedChild, ResolvedNode};
 
 pub use containers::{Card, Column, Div, Grid, Lane, Row};
 pub use controls::Button;
@@ -58,7 +58,7 @@ pub use text::{
 };
 pub use tree::{Tree, TreeItem};
 pub use unknown::UnknownWidget;
-pub use we_layout::{Direction, PartSpec, PartsSpec, Pick, TreeCfg};
+pub use we_layout::{Direction, PartSpec, PartsSpec, Pick, TextChildren, TreeCfg};
 
 /// `style_of` for callers (the gallery's swatches, tests).
 pub use defaults::style_of;
@@ -98,6 +98,10 @@ impl<'a> MeasureCx<'a> {
 /// - `ancestors` — the node ids above this one in the resolved tree, root
 ///   first (a tree item asks how deep it is).
 /// - `events` — the sink [`PaintCx::emit`] pushes to; the frame drains it.
+/// - `hits` — the frame's interactive-hit log: which click-sensing rects
+///   activated and which were dead surface. An overlay reads it to learn
+///   that the DOM equivalent of "the trigger element got a click"
+///   happened — a keyboard fake-click on a child button included.
 pub struct PaintCx<'a> {
     pub ui: &'a mut egui::Ui,
     pub parts: &'a Parts,
@@ -112,9 +116,50 @@ pub struct PaintCx<'a> {
     pub cb_w: Option<f32>,
     pub(crate) ancestors: &'a [NodeId],
     pub(crate) events: &'a mut Vec<WidgetEvent>,
+    pub(crate) hits: &'a mut HitLog,
+    pub(crate) clicks: &'a mut ClickLog,
+}
+
+/// The click-sensing rects the frame has reported so far: `activated` —
+/// a response that reported `clicked()` (pointer, keyboard fake-click or
+/// a11y activation, all layer/enabled-correct by egui), with its widget
+/// id so a popup can name the control that invoked it; `dead` — a rect a
+/// disabled control still occupies, which swallows the DOM click rather
+/// than letting it reach whatever is beneath.
+#[derive(Debug, Default)]
+pub struct HitLog {
+    pub activated: Vec<(Rect, egui::Id)>,
+    pub dead: Vec<Rect>,
+    /// Painted rects of widgets that took keyboard focus this frame — the
+    /// enclosing scroller reads them to bring a Tab-visited control into
+    /// view, the job egui's `ScrollArea` does through `scroll_to_me`.
+    pub gained: Vec<Rect>,
+    /// Every focusable's (rect, egui id) — `interact_label` regions and
+    /// the TextEdit fields. A popup's close finds its trigger's id to
+    /// return focus (the DOM's `trigger.focus()` on dismiss); a tooltip
+    /// reads "a control inside the trigger holds focus" from it.
+    pub interact: Vec<(Rect, egui::Id)>,
+}
+
+/// The frame's click propagation. Each `paths` entry is a click's DOM
+/// target chain (root → target): a container records it when a
+/// primary-button release lands in its box, a widget when it emits its
+/// own `onClick` or reports any click-sensing activation (a switch, a
+/// stepper — the DOM click happens whatever the widget emits). `at_target` marks the nodes that already fired —
+/// the post-children pass emits `onClick` for the remaining path
+/// members, so handlers run child-first like a real DOM bubble.
+#[derive(Debug, Default)]
+pub struct ClickLog {
+    pub paths: Vec<Vec<NodeId>>,
+    pub at_target: std::collections::HashSet<NodeId>,
+    /// Ancestors whose bubbled `onClick` already ran this frame — the
+    /// post-overlay pass skips them (an overlay's click reaches page
+    /// ancestors only after the page walk unwound).
+    pub fired: std::collections::HashSet<NodeId>,
 }
 
 impl<'a> PaintCx<'a> {
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         ui: &'a mut egui::Ui,
         events: &'a mut Vec<WidgetEvent>,
@@ -122,6 +167,8 @@ impl<'a> PaintCx<'a> {
         edit: &'a mut EditState,
         now: f64,
         ancestors: &'a [NodeId],
+        hits: &'a mut HitLog,
+        clicks: &'a mut ClickLog,
     ) -> Self {
         Self {
             ui,
@@ -131,12 +178,27 @@ impl<'a> PaintCx<'a> {
             cb_w: None,
             ancestors,
             events,
+            hits,
+            clicks,
         }
     }
 
     /// Report user input on `node`'s handler — `cx.emit(&node.id, "onClick",
     /// event_value)`. The frame runs the handler on the host.
     pub fn emit(&mut self, node: &NodeId, handler: &str, value: Value) {
+        if handler == "onClick" {
+            // A widget activation is a DOM click: the node's handler is
+            // the at-target phase, and the path records it so the
+            // ancestor chain bubbles after it.
+            self.clicks.at_target.insert(node.clone());
+            self.clicks.paths.push(
+                self.ancestors
+                    .iter()
+                    .cloned()
+                    .chain(std::iter::once(node.clone()))
+                    .collect(),
+            );
+        }
         self.events.push(WidgetEvent {
             node: node.clone(),
             handler: handler.into(),
@@ -166,7 +228,12 @@ impl<'a> PaintCx<'a> {
 
     /// A clickable, labeled region — the tree-item row, a button. Returns the
     /// [`egui::Response`] so the caller decides what a click emits. The
-    /// AccessKit node gets `role` and `text`, so `get_by_label` finds it.
+    /// AccessKit node gets `role`, `enabled` and `text`, so `get_by_label`
+    /// finds it; `selected` reports a checkbox/switch's toggled state.
+    /// A disabled region senses hover only: it still shows its state,
+    /// can't report `clicked()`, and logs itself as dead surface so a
+    /// pointer click on it can't activate an overlay's trigger beneath.
+    #[allow(clippy::too_many_arguments)]
     pub fn interact_label(
         &mut self,
         rect: Rect,
@@ -174,10 +241,39 @@ impl<'a> PaintCx<'a> {
         role: egui::Role,
         node: &NodeId,
         part: &str,
+        enabled: bool,
+        selected: Option<bool>,
     ) -> egui::Response {
         let id = self.ui.scope_id().with(("we-click", node.as_str(), part));
-        let response = self.ui.interact(rect, id, egui::Sense::click());
-        response.widget_info(|| egui::WidgetInfo::labeled(role, true, text.to_string()));
+        let sense = if enabled {
+            egui::Sense::click()
+        } else {
+            egui::Sense::hover()
+        };
+        let response = self.ui.interact(rect, id, sense);
+        response.widget_info(|| match selected {
+            Some(sel) => egui::WidgetInfo::selected(role, enabled, sel, text.to_string()),
+            None => egui::WidgetInfo::labeled(role, enabled, text.to_string()),
+        });
+        self.hits.interact.push((rect, response.id));
+        if !enabled {
+            self.hits.dead.push(rect);
+        } else if response.clicked() {
+            self.hits.activated.push((rect, response.id));
+            // An accepted activation — pointer, keyboard fake-click or
+            // a11y — is a DOM click on this element whatever handler the
+            // widget emits for it, so the ancestor chain hears it.
+            self.clicks.paths.push(
+                self.ancestors
+                    .iter()
+                    .cloned()
+                    .chain(std::iter::once(node.clone()))
+                    .collect(),
+            );
+        }
+        if response.gained_focus() {
+            self.hits.gained.push(rect);
+        }
         response
     }
 }
@@ -221,5 +317,45 @@ pub trait Widget: Send + Sync {
     /// children group. `None` (the default) → children inside `rect`.
     fn parts_spec(&self, _node: &ResolvedNode) -> Option<PartsSpec> {
         None
+    }
+    /// What the widget does with the node's text children — the default
+    /// leaves them as spans laid out beside element children. `Owned` makes
+    /// them the widget's own galley (`we-text`'s `text ?? <slot>` content);
+    /// `Suppressed` drops every child (a `text` prop replaces the slot).
+    fn text_children(&self, _node: &ResolvedNode) -> TextChildren {
+        TextChildren::Leaves
+    }
+    /// Children the widget itself renders — a component's generated
+    /// content (the DropdownMenu's fallback `we-button` trigger when the
+    /// authored node is childless). They lay out and paint exactly like
+    /// authored children: part picks see them, they get ids and rects,
+    /// and the paint walk recurses into them.
+    fn synthesized_children(&self, _node: &ResolvedNode) -> Vec<ResolvedChild> {
+        Vec::new()
+    }
+    /// `true` when an activation inside the `trigger` part toggles open —
+    /// the DOM "click on the trigger" of a popover/menu. A click-sensing
+    /// descendant reporting `clicked()` counts (pointer, keyboard
+    /// fake-click, a11y activation); so does a pointer click in the anchor
+    /// that no disabled surface swallowed. `we-tooltip` opts out — its
+    /// trigger opens on hover, not click.
+    fn trigger_toggles(&self) -> bool {
+        false
+    }
+    /// `we-tooltip` only: pointer hover or keyboard focus inside the
+    /// `trigger` part drives `open` — the element's `mouseover`/`focusin`
+    /// → show, `mouseout`/`focusout` → hide (tooltip.ts), gated on
+    /// `_hasSomethingToSay`, which the node answers here. The walk applies
+    /// it post-children, when the subtree's focus state exists, and copies
+    /// [`Self::trigger_text`]'s answer onto the controls inside.
+    fn focus_opens(&self, _node: &ResolvedNode) -> bool {
+        false
+    }
+    /// The text a `focus_opens` trigger's controls carry as their
+    /// AccessKit description — `_describeTrigger`'s `aria-description`
+    /// (the text, not an id reference, which cannot cross the shadow
+    /// boundary). The walk writes it each frame; empty clears.
+    fn trigger_text(&self, _node: &ResolvedNode) -> String {
+        String::new()
     }
 }

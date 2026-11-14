@@ -24,6 +24,7 @@ fn band(name: &'static str, h: f32) -> PartSpec {
         indent: 0.0,
         align: None,
         flex_grow: 0.0,
+        column_gap: 0.0,
         parts: vec![],
     }
 }

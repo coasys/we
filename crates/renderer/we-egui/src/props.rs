@@ -60,6 +60,14 @@ pub(crate) fn prop_list<'a>(node: &'a ResolvedNode, key: &str) -> Option<&'a Vec
     }
 }
 
+/// Any element child (not text) — the "real children" check the
+/// text-painting widgets share.
+pub(crate) fn has_node_children(node: &ResolvedNode) -> bool {
+    node.children
+        .iter()
+        .any(|c| matches!(c, we_template::ResolvedChild::Node(_)))
+}
+
 /// Just the text children, concatenated — the default slot's words on the
 /// web component, which never sees the `label`/`value` props `text_of`
 /// falls back to.
@@ -120,28 +128,32 @@ pub(crate) fn state_style<'a>(
     response: &egui::Response,
     disabled: bool,
 ) -> std::borrow::Cow<'a, Style> {
-    if disabled {
-        return match &style.disabled {
+    let mut out = if disabled {
+        match &style.disabled {
             Some(p) => patched(style, p),
             None => std::borrow::Cow::Borrowed(style),
-        };
-    }
-    if response.is_pointer_button_down_on() {
-        if let Some(p) = &style.active {
-            return patched(style, p);
         }
-    }
-    if response.has_focus() {
+    } else if response.is_pointer_button_down_on() {
+        match &style.active {
+            Some(p) => patched(style, p),
+            None => std::borrow::Cow::Borrowed(style),
+        }
+    } else if response.hovered() {
+        match &style.hover {
+            Some(p) => patched(style, p),
+            None => std::borrow::Cow::Borrowed(style),
+        }
+    } else {
+        std::borrow::Cow::Borrowed(style)
+    };
+    // `:focus` composes with the resting state — the ring paints on top of
+    // hover/active chrome. A disabled button never takes focus.
+    if !disabled && response.has_focus() {
         if let Some(p) = &style.focus {
-            return patched(style, p);
+            out.to_mut().apply(p);
         }
     }
-    if response.hovered() {
-        if let Some(p) = &style.hover {
-            return patched(style, p);
-        }
-    }
-    std::borrow::Cow::Borrowed(style)
+    out
 }
 
 /// The pre-tier style with a state patch applied — `Style::with_state`
@@ -799,6 +811,14 @@ pub(crate) fn text_color(style: &Style, ctx: &egui::Context) -> egui::Color32 {
         .unwrap_or_else(|| ctx.global_style().visuals.text_color())
 }
 
+/// `style`'s composed `opacity` folded into a colour's alpha — the fold
+/// `text_job` gives galleys, for the glyph/label sites that paint through
+/// `painter().text` directly (`paint.rs` already composed the ancestor
+/// product into `style.paint.opacity`, the CSS group rule).
+pub(crate) fn faded(style: &Style, c: egui::Color32) -> egui::Color32 {
+    c.gamma_multiply(style.paint.opacity.unwrap_or(1.0).clamp(0.0, 1.0))
+}
+
 /// A prop value as a `Dimension` — `we-*` prop syntax: `"12px"`, `"0.5"`, a
 /// bare number. `None` = absent or not a length.
 pub(crate) fn dim_of(v: &Value) -> Option<Dimension> {
@@ -814,8 +834,71 @@ pub(crate) fn dim_prop(node: &ResolvedNode, key: &str) -> Option<Dimension> {
     node.props.get(key).and_then(dim_of)
 }
 
+/// A `--we-*` token's computed text as a colour — `tokens_of` holds the
+/// frame's table (stashed by `store_view`). `var()`s inside the value are
+/// substituted first, then `eval_color` parses the result.
+pub(crate) fn token_color(ctx: &egui::Context, name: &str) -> Option<egui::Color32> {
+    let tokens = crate::defaults::tokens_of(ctx)?;
+    let raw = tokens.get(name)?;
+    let resolved = tokens.substitute(raw);
+    we_style::eval_color(&resolved).map(color32)
+}
+
+/// A `--we-role-{role}` colour — how a widget prop that names a role
+/// (`ringColor: "border-strong"`) resolves against the frame's theme.
+pub(crate) fn role_color(ctx: &egui::Context, role: &str) -> Option<egui::Color32> {
+    token_color(ctx, &format!("--we-role-{role}"))
+}
+
+/// A `--we-*` token's value as px — `--we-avatar-size-md` → 40.
+pub(crate) fn token_px(
+    ctx: &egui::Context,
+    name: &str,
+    font_px: f32,
+    root_px: f32,
+    viewport: Size,
+) -> Option<f32> {
+    let tokens = crate::defaults::tokens_of(ctx)?;
+    let raw = tokens.get(name)?;
+    let resolved = tokens.substitute(raw);
+    we_style::eval_dimension(&resolved).and_then(|d| d.to_px(font_px, root_px, viewport))
+}
+
+/// The port of `seededHue`/`seededFill` in `shared/seededColor.ts`: FNV-1a
+/// over UTF-16 code units quantized to twelve hues, then the theme's own
+/// 100/700 ramp steps at that hue — the pair `initialsFill` sets. `None`
+/// without a token table (the ramp's lightness/saturation come from it).
+pub(crate) fn seeded_fill(
+    ctx: &egui::Context,
+    seed: &str,
+) -> Option<(egui::Color32, egui::Color32)> {
+    let tokens = crate::defaults::tokens_of(ctx)?;
+    let num = |name: &str, dflt: f32| -> f32 {
+        tokens
+            .get(name)
+            .and_then(|v| tokens.substitute(v).parse::<f32>().ok())
+            .unwrap_or(dflt)
+    };
+    let sat = num("--we-color-saturation", 97.0) / 100.0;
+    // FNV-1a, `Math.imul` semantics — the same hash, twelve buckets.
+    let mut h: u32 = 0x811c9dc5;
+    for u in seed.encode_utf16() {
+        h ^= u as u32;
+        h = h.wrapping_mul(0x01000193);
+    }
+    let hue = (h % 12) as f32 * 30.0;
+    let step = |lightness: f32| -> Option<egui::Color32> {
+        let chroma = sat * 0.18 * 2.0 * lightness.min(1.0 - lightness).max(0.0);
+        we_style::eval_color(&format!("oklch({lightness} {chroma} {hue})")).map(color32)
+    };
+    let bg = step(num("--we-color-lightness-100", 0.925))?;
+    let fg = step(num("--we-color-lightness-700", 0.42))?;
+    Some((bg, fg))
+}
+
 /// The accent colour: style's `bg` when a solid variant set it, else the
 /// tone's `solid` var, else `bg` — used for rings, badges and counts.
+#[allow(dead_code)]
 pub(crate) fn accent_color(style: &Style, ctx: &egui::Context) -> egui::Color32 {
     tone_color(
         style,

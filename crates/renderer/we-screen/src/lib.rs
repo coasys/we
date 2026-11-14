@@ -47,6 +47,17 @@ pub use history_web::BrowserHistory;
 #[cfg(target_arch = "wasm32")]
 pub use prefs::LocalStoragePrefs;
 
+/// The measured box a `$surface` reported — `{width, tier}`, the store
+/// `createSurface` hands a Solid renderer. The frontend measures; the
+/// resolved tree reads.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SurfaceMeasure {
+    /// Content-box inline size in px.
+    pub width: f64,
+    /// `base` | `sm` | `md` | `lg`, decided by the frontend's layout.
+    pub tier: String,
+}
+
 /// Everything about "what is on screen" that is not model data
 /// (screen-state.md §4.1). Writes go through [`ScreenState::apply`] with a
 /// [`ScreenOp`]; reads go through [`ScreenBag`] or the fields' accessors.
@@ -59,6 +70,10 @@ pub struct ScreenState {
     pub theme: ThemeState,
     /// Tier 3, persisted per device.
     pub prefs: DevicePrefs,
+    /// `$surface` measures by resolved-node id — the resolve/layout
+    /// feedback seam: the frontend writes through `ScreenOp::SetSurface`,
+    /// the bump in `version` re-resolves the expressions that read them.
+    pub surfaces: std::collections::HashMap<String, SurfaceMeasure>,
     /// Bumped on every change; the renderer re-resolves when it moves.
     pub version: u64,
 }
@@ -71,6 +86,7 @@ impl ScreenState {
             shell: ShellState::default(),
             theme: ThemeState::default(),
             prefs,
+            surfaces: std::collections::HashMap::new(),
             version: 0,
         }
     }

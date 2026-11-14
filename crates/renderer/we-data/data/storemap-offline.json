@@ -1,0 +1,68 @@
+{
+  "version": 1,
+  "screen": {
+    "store": "routeStore",
+    "members": {
+      "params": true,
+      "segments": true,
+      "templateSegments": true,
+      "currentPath": true,
+      "page": true,
+      "href": true,
+      "spacePath": true
+    },
+    "stores": {
+      "spaceStore": ["spacePath"],
+      "shellStore": [
+        "activeShellView",
+        "spaceSettingsOpen",
+        "spaceSettingsTab",
+        "collapsedLanes",
+        "layoutDirty",
+        "panelsHidden",
+        "panelMaximised",
+        "createSpaceOpen",
+        "joinSpaceOpen",
+        "panels"
+      ],
+      "themeStore": ["themeFork"]
+    }
+  },
+  "members": {
+    "profileStore.ownProfile": {
+      "kind": "derived",
+      "native": "agent.ownProfile",
+      "note": "profiles().find(p => p.did === me.did) — ProfileStore.tsx:220"
+    },
+    "spaceStore.mutedDids": {
+      "kind": "derived",
+      "native": "space.mutedDids",
+      "note": "mutedAgents().map(m => m.did) — SpaceStore.tsx:5386"
+    },
+    "spaceStore.offeredInvolvementTypes": {
+      "kind": "derived",
+      "native": "space.offeredInvolvementTypes",
+      "note": "involvementTypes().filter(k => !k.retired) — SpaceStore.tsx:4174"
+    },
+    "workflowStore.canEdit": {
+      "kind": "derived",
+      "expr": "workflowStore.available && spaceStore.canAdministerCurrentSpace",
+      "note": "available() && spaceStore.canAdministerCurrentSpace() — WorkflowStore.tsx:247"
+    },
+    "recordStore.saveRecord": {
+      "kind": "modelWrite",
+      "call": "record.save",
+      "note": "a write — never runs offline; lands in dropped"
+    },
+    "modules.call.goToCall": {
+      "kind": "command",
+      "call": "call.goTo",
+      "note": "host command — never runs offline"
+    },
+    "modules.transcribe.reply": {
+      "kind": "flow",
+      "stage": ["listen", "reply"],
+      "note": "a flow — never runs offline"
+    }
+  }
+}

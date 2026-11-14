@@ -8,7 +8,7 @@ use we_template::ResolvedNode;
 
 use crate::defaults::{base_family_of, view_of};
 use crate::props;
-use crate::{MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
+use crate::{MeasureCx, PaintCx, Rect, Size, TextChildren, Widget, WidgetKind};
 
 // ── date math ────────────────────────────────────────────────────────────
 
@@ -218,7 +218,11 @@ pub fn format_relative(target_ms: f64, now_ms: f64, style: &str) -> String {
 // ── galley helpers ───────────────────────────────────────────────────────
 
 /// The `LayoutJob` a we-text-family widget paints: transform, wrap,
-/// `lines`/`truncate` clamps with an ellipsis, align, break-anywhere.
+/// `lines`/`truncate` clamps with an ellipsis, align, break-anywhere —
+/// and the authored typography: `font-style` → synthesized slant,
+/// `font-weight` → the `wght` variation coordinate (and a second offset
+/// pass at paint — see [`paint_galley`]), `line-height`, `letter-spacing`,
+/// and `opacity` folded into the colour's alpha.
 pub fn text_job(
     text: &str,
     style: &Style,
@@ -237,7 +241,32 @@ pub fn text_job(
         view.root_px,
         view.viewport,
     );
-    let color = props::text_color(style, ctx);
+    let opacity = style.paint.opacity.unwrap_or(1.0).clamp(0.0, 1.0);
+    let color = props::text_color(style, ctx).gamma_multiply(opacity);
+    let mut format = egui::text::TextFormat::simple(font.clone(), color);
+    format.coords = weight_coords(style);
+    format.italics = italic(style);
+    if let Some(ls) = props::px(
+        style.text.letter_spacing.as_ref(),
+        view.font_px,
+        view.root_px,
+        view.viewport,
+    ) {
+        format.extra_letter_spacing = ls;
+    }
+    if matches!(
+        style.text.line_height,
+        Some(we_style::LineHeight::Ratio(_)) | Some(we_style::LineHeight::Length(_))
+    ) {
+        format.line_height = Some(props::line_height_px(
+            style,
+            &font,
+            ctx,
+            view.font_px,
+            view.root_px,
+            view.viewport,
+        ));
+    }
     // `white-space: nowrap` gets an unbounded galley (it clips at the rect);
     // `truncate` must NOT — the ellipsis only appears when the row overflows
     // a finite `max_width`.
@@ -246,16 +275,12 @@ pub fn text_job(
         style.text.overflow_wrap,
         Some(we_style::OverflowWrap::Anywhere) | Some(we_style::OverflowWrap::BreakWord)
     );
-    let mut job = egui::text::LayoutJob::simple(
-        text.to_string(),
-        font,
-        color,
-        if nowrap {
-            f32::INFINITY
-        } else {
-            avail_w.max(0.0)
-        },
-    );
+    let mut job = egui::text::LayoutJob::simple_format(text.to_string(), format);
+    job.wrap.max_width = if nowrap {
+        f32::INFINITY
+    } else {
+        avail_w.max(0.0)
+    };
     job.wrap.break_anywhere = break_anywhere;
     if truncate {
         job.wrap.max_rows = 1;
@@ -270,6 +295,54 @@ pub fn text_job(
         _ => egui::Align::Min,
     };
     ctx.fonts_mut(|f| f.layout_job(job))
+}
+
+/// `font-weight` as a `wght` variation coordinate — static faces ignore
+/// it (the offset pass in [`paint_galley`] supplies the look); a variable
+/// face honours it directly.
+pub(crate) fn weight_coords(style: &Style) -> egui::epaint::text::VariationCoords {
+    match style.text.font_weight {
+        Some(w) => egui::epaint::text::VariationCoords::new([(b"wght", w)]),
+        None => egui::epaint::text::VariationCoords::default(),
+    }
+}
+
+/// `font-weight ≥ 600` — semibold-and-up paints a second offset pass: the
+/// bundled faces are static, so `wght` alone changes nothing on screen.
+pub(crate) fn bold(style: &Style) -> bool {
+    style.text.font_weight.unwrap_or(400.0) >= 600.0
+}
+
+/// `font-style: italic|oblique` — synthesized slant (the faces are static).
+pub(crate) fn italic(style: &Style) -> bool {
+    matches!(
+        style.text.font_style,
+        Some(we_style::FontStyle::Italic) | Some(we_style::FontStyle::Oblique)
+    )
+}
+
+/// `Shape::galley(pos, g, PLACEHOLDER)` plus the static-face bold pass: a
+/// second galley a fraction of a pixel right. Every text-owning paint
+/// goes through here so `font-weight` is never a silent no-op.
+pub(crate) fn paint_galley(
+    painter: &egui::Painter,
+    pos: egui::Pos2,
+    g: std::sync::Arc<egui::Galley>,
+    style: &Style,
+) {
+    painter.add(egui::Shape::galley(
+        pos,
+        g.clone(),
+        egui::Color32::PLACEHOLDER,
+    ));
+    if bold(style) {
+        let dx = (g.size().y * 0.03).clamp(0.3, 1.2);
+        painter.add(egui::Shape::galley(
+            pos + egui::vec2(dx, 0.0),
+            g,
+            egui::Color32::PLACEHOLDER,
+        ));
+    }
 }
 
 fn measure_text(
@@ -349,6 +422,18 @@ impl Widget for Text {
     fn kind(&self) -> WidgetKind {
         WidgetKind::Leaf
     }
+    /// `this.text ?? <slot>`: a `text` prop replaces every child; only text
+    /// children are the galley's content; element children flow beside
+    /// their text spans.
+    fn text_children(&self, node: &ResolvedNode) -> TextChildren {
+        if props::prop_text(node, "text").is_some() {
+            TextChildren::Suppressed
+        } else if props::has_node_children(node) {
+            TextChildren::Leaves
+        } else {
+            TextChildren::Owned
+        }
+    }
     fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, avail: Size) -> Size {
         measure_text(
             cx,
@@ -361,25 +446,23 @@ impl Widget for Text {
         )
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
-        let view = view_of(cx.ui.ctx());
-        // The galley lives in the content box — inside `rect`'s padding and
-        // border (the same box `measure` wrapped it at).
-        let content_rect = props::content_rect(rect, style, view, cx.cb_w);
         let content = Self::content(node, style);
-        let g = text_job(
-            &content,
-            style,
-            cx.ui.ctx(),
-            content_rect.width(),
-            props::prop_bool(node, "truncate"),
-            props::prop_num(node, "lines").map(|n| n.max(1.0) as usize),
-        );
-        cx.ui.painter().add(egui::Shape::galley(
-            content_rect.min,
-            g,
-            egui::Color32::PLACEHOLDER,
-        ));
-        underline(cx, style, content_rect);
+        if !matches!(self.text_children(node), TextChildren::Leaves) {
+            let view = view_of(cx.ui.ctx());
+            // The galley lives in the content box — inside `rect`'s padding
+            // and border (the same box `measure` wrapped it at).
+            let content_rect = props::content_rect(rect, style, view, cx.cb_w);
+            let g = text_job(
+                &content,
+                style,
+                cx.ui.ctx(),
+                content_rect.width(),
+                props::prop_bool(node, "truncate"),
+                props::prop_num(node, "lines").map(|n| n.max(1.0) as usize),
+            );
+            paint_galley(cx.ui.painter(), content_rect.min, g, style);
+            underline(cx, style, content_rect);
+        }
         cx.label(rect, &content);
     }
 }
@@ -399,6 +482,15 @@ impl Widget for Link {
     fn kind(&self) -> WidgetKind {
         WidgetKind::Container
     }
+    /// A text-only link's children are its galley; with element children
+    /// the text runs stay spans inside it (link.ts renders `<slot>` only).
+    fn text_children(&self, node: &ResolvedNode) -> TextChildren {
+        if props::has_node_children(node) {
+            TextChildren::Leaves
+        } else {
+            TextChildren::Owned
+        }
+    }
     fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, avail: Size) -> Size {
         measure_text(cx, node, style, avail, &props::text_of(node), false, None)
     }
@@ -410,7 +502,15 @@ impl Widget for Link {
             .unwrap_or("")
             .to_string();
         let disabled = props::prop_bool(node, "disabled");
-        let response = cx.interact_label(rect, &label, egui::Role::Link, &node.id, "link");
+        let response = cx.interact_label(
+            rect,
+            &label,
+            egui::Role::Link,
+            &node.id,
+            "link",
+            !disabled,
+            None,
+        );
         let eff = props::state_style(style, &response, disabled);
         if !disabled && response.clicked() {
             cx.emit(
@@ -425,19 +525,16 @@ impl Widget for Link {
                 cx.ui.ctx().open_url(egui::OpenUrl::new_tab(href));
             }
         }
-        // Children paint themselves (the default slot's spans); with none,
-        // `text_of`'s prop text is the link's body — either way the rule
-        // underlines the content box.
-        if !label.is_empty() {
+        // The galley is the link's own text — an absorbed text child or a
+        // `text`/`label` prop; under `Leaves` the span paints it instead.
+        let prop_text = props::prop_text(node, "text").is_some()
+            || props::prop_text(node, "label").is_some()
+            || props::prop_text(node, "value").is_some();
+        let own = !matches!(self.text_children(node), TextChildren::Leaves);
+        if !label.is_empty() && (own || prop_text) {
             let content_rect = props::content_rect(rect, &eff, view_of(cx.ui.ctx()), cx.cb_w);
-            if node.children.is_empty() {
-                let g = text_job(&label, &eff, cx.ui.ctx(), content_rect.width(), false, None);
-                cx.ui.painter().add(egui::Shape::galley(
-                    content_rect.min,
-                    g,
-                    egui::Color32::PLACEHOLDER,
-                ));
-            }
+            let g = text_job(&label, &eff, cx.ui.ctx(), content_rect.width(), false, None);
+            paint_galley(cx.ui.painter(), content_rect.min, g, &eff);
             underline(cx, &eff, content_rect);
         }
         if response.hovered() && !disabled {
@@ -499,11 +596,7 @@ impl Widget for Timestamp {
         let text = Self::text(node, now_secs);
         let content_rect = props::content_rect(rect, style, view_of(cx.ui.ctx()), cx.cb_w);
         let g = text_job(&text, style, cx.ui.ctx(), content_rect.width(), false, None);
-        cx.ui.painter().add(egui::Shape::galley(
-            content_rect.min,
-            g,
-            props::text_color(style, cx.ui.ctx()),
-        ));
+        paint_galley(cx.ui.painter(), content_rect.min, g, style);
         cx.label(rect, &text);
     }
 }
@@ -626,11 +719,7 @@ impl Widget for Typewriter {
             None,
         );
         let x_after = g_fixed.size().x;
-        cx.ui.painter().add(egui::Shape::galley(
-            content_rect.min,
-            g_fixed,
-            egui::Color32::PLACEHOLDER,
-        ));
+        paint_galley(cx.ui.painter(), content_rect.min, g_fixed, style);
         let mut phrase_style = style.clone();
         if let Some(t) = props::prop_str(node, "phraseColor") {
             if let Some(c) = we_style::eval_color(t) {
@@ -646,11 +735,12 @@ impl Widget for Typewriter {
             None,
         );
         let w_rest = g_rest.size().x;
-        cx.ui.painter().add(egui::Shape::galley(
+        paint_galley(
+            cx.ui.painter(),
             content_rect.min + egui::vec2(x_after, 0.0),
             g_rest,
-            egui::Color32::PLACEHOLDER,
-        ));
+            &phrase_style,
+        );
         if props::prop_bool(node, "cursor") || !cycled.is_empty() {
             let p = content_rect.min + egui::vec2(x_after + w_rest + 1.0, 0.0);
             cx.ui.painter().rect_filled(

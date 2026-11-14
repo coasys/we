@@ -113,6 +113,8 @@ export interface FixtureSignalType {
   description?: string;
   mode?: 'toggle' | 'range';
   semantic?: string;
+  /** Written onto the record's stamps, exactly as {@link FixtureNode.createdAt}. */
+  createdAt?: string;
 }
 
 /** A peer to show as present. `path` puts them on a route, which is what `onlineHere` filters on. */
@@ -167,6 +169,17 @@ export interface FixtureTheme {
 export interface Fixture {
   /** Stable id — what the shoot script takes on the command line. */
   id: string;
+  /**
+   * The fixture's epoch, written onto every record's stamps that nothing more specific overrides —
+   * the space itself, its signal types, its carried templates/themes/shapes. A fixture that wants
+   * byte-identical loads (a snapshot recorder diffing two boots) sets it; the wall clock is the
+   * honest default everywhere else.
+   *
+   * Strictly opt-in: a fixture without one is stamped exactly as fixtures always were — a node's
+   * own `createdAt` sets `createdAt`/`timestamp` and nothing else (no `updatedAt`, and signals
+   * keep creation-time stamps rather than inheriting their parent's).
+   */
+  createdAt?: string;
   /**
    * The template this content is shaped for: a bundled template's id, or the id of one of
    * {@link templates}.

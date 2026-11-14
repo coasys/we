@@ -87,14 +87,11 @@ fn widgets_open_modal_sizes_to_content() {
     assert!(dialog.contains_rect(inside));
 }
 
-/// The open-modal backdrop dims the whole viewport — every pixel is
-/// opaque, and the bare corners all carry the same scrimmed surface
-/// colour (previously only the content rect was opaque, so the dim
-/// looked patchy).
-#[test]
-fn widgets_open_backdrop_covers_viewport() {
+/// Render the widgets gallery with the modal open or closed; returns
+/// every pixel plus the four near-corner samples at `spots`.
+fn render_widgets(open: bool, spots: &[(u32, u32); 4]) -> (Vec<u8>, [[u8; 4]; 4]) {
     let edit = Rc::new(RefCell::new(EditState::default()));
-    let tree = widgets_tree(true);
+    let tree = widgets_tree(open);
     let e = edit.clone();
     let mut harness = Harness::builder()
         .with_size(egui::vec2(420.0, 720.0))
@@ -108,19 +105,37 @@ fn widgets_open_backdrop_covers_viewport() {
         });
     harness.run();
     let image = harness.render().expect("render");
-    let (w, h) = (image.width(), image.height());
-    assert_eq!((420, 720), (w, h));
+    let alphas: Vec<u8> = image.pixels().map(|p| p.0[3]).collect();
+    let corners = spots.map(|(x, y)| image.get_pixel(x, y).0);
+    (alphas, corners)
+}
+
+/// The open-modal backdrop dims the whole viewport: every pixel is
+/// opaque, the corners share one scrimmed surface colour, and that
+/// surface is genuinely darker than the same pixels with no modal —
+/// an opaque uniform background would satisfy the first two without a
+/// scrim (B12).
+#[test]
+fn widgets_open_backdrop_covers_viewport() {
+    let spots = [(2, 2), (417, 2), (2, 717), (417, 717)];
+    let (alphas, corners) = render_widgets(true, &spots);
     assert!(
-        image.pixels().all(|p| p.0[3] == 255),
+        alphas.iter().all(|&a| a == 255),
         "viewport has transparent pixels under the backdrop"
     );
-    let corners =
-        [(2, 2), (w - 3, 2), (2, h - 3), (w - 3, h - 3)].map(|(x, y)| image.get_pixel(x, y).0);
     let [r, g, b, _] = corners[0];
     for c in corners {
         assert!(
             c[0].abs_diff(r) < 4 && c[1].abs_diff(g) < 4 && c[2].abs_diff(b) < 4,
             "scrimmed surface differs between corners: {corners:?}"
+        );
+    }
+    let (_, bare) = render_widgets(false, &spots);
+    let lum = |p: [u8; 4]| p[0] as u32 + p[1] as u32 + p[2] as u32;
+    for (i, (dim, bare)) in corners.iter().zip(bare).enumerate() {
+        assert!(
+            lum(*dim) < lum(bare),
+            "backdrop corner {spots:?}[{i}] must dim the gallery beneath: {dim:?} vs {bare:?}"
         );
     }
 }

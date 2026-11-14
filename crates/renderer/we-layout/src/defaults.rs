@@ -167,14 +167,38 @@ pub fn style_of(node: &ResolvedNode, scx: &StyleCx) -> Style {
     style
 }
 
+/// `style` with the parent's inherited text style merged in and `opacity`
+/// composed — what CSS calls the node's computed style. Layout fields
+/// never inherit, so the box side of `style` passes through untouched.
+pub fn effective(parent: Option<&Style>, style: Style) -> Style {
+    let mut style = style;
+    if let Some(p) = parent {
+        style.text.inherit_from(&p.text);
+        style.paint.opacity =
+            Some(p.paint.opacity.unwrap_or(1.0) * style.paint.opacity.unwrap_or(1.0));
+    }
+    style
+}
+
 /// Per-type DS defaults — the token-name bags the TS primitives merge
 /// beneath authored props. Dispatch is by `ty`.
 fn type_defaults(bag: &mut Bag, node: &ResolvedNode) {
     match node.ty.as_ref() {
         "we-button" => {
-            // DEFAULT_PROPS (cursor/focus are egui's own concerns — `focusProps`
-            // still merges so a focus ring resolves where a theme paints one).
+            // DEFAULT_PROPS (cursor is egui's own concern). `focusProps: {
+            // ring: FOCUS_RING }` applies to EVERY variant — bare included —
+            // so keyboard focus paints the `--we-ring-color` ring.
             entries(bag, &[("r", "400"), ("ax", "center"), ("ay", "center")]);
+            if !bag.contains_key("focusProps") {
+                let mut focus = IndexMap::new();
+                focus.insert(
+                    Arc::from("ring"),
+                    Value::Str(Arc::from(
+                        "0 0 0 var(--we-focus-ring-width) var(--we-ring-color)",
+                    )),
+                );
+                bag.insert(Arc::from("focusProps"), Value::Obj(Arc::new(focus)));
+            }
             // Variant: toned when `tone` is set and not neutral.
             let t = toned(node);
             match variant(node, "solid") {
@@ -357,6 +381,37 @@ fn type_defaults(bag: &mut Bag, node: &ResolvedNode) {
         }
         "we-avatar" => {
             entries(bag, &[("flex", "0 0 auto")]);
+            // `:host` pins both dims to `--we-avatar-size`, and the tier
+            // rules point it at `--we-avatar-size-{tier}` — without them a
+            // `stretch` parent widens the face (the TS element's own
+            // width/height are what stop it, not `flex`). A tier name reads
+            // its var; a custom size is a CSS length/number.
+            let dim = match node.props.get("size") {
+                Some(Value::Str(s)) => match s.as_ref() {
+                    t @ ("xxs" | "xs" | "sm" | "md" | "lg" | "xl" | "xxl") => {
+                        format!("var(--we-avatar-size-{t})")
+                    }
+                    other => other.to_string(),
+                },
+                Some(Value::Num(n)) => format!("{n}px"),
+                _ => "var(--we-avatar-size, var(--we-avatar-size-md))".to_string(),
+            };
+            entries(bag, &[("width", &dim), ("height", &dim)]);
+        }
+        "we-icon" => {
+            // icon.ts: `:host([size='xs']) → --icon-size: var(--we-size-xs)`
+            // — tiers read the theme var so a theme that moves
+            // `--we-size-lg` moves the glyph. Raw lengths/numbers stay the
+            // widget's own `size` handling; the unset default
+            // (`var(--we-context-icon-size, var(--we-size-md))`) needs the
+            // context-var bridge we do not plumb, so it is left to the
+            // inherited font size for now.
+            if let Some(Value::Str(t)) = node.props.get("size") {
+                if matches!(t.as_ref(), "xxs" | "xs" | "sm" | "md" | "lg" | "xl" | "xxl") {
+                    let fs = format!("var(--we-size-{t})");
+                    entries(bag, &[("fontSize", &fs)]);
+                }
+            }
         }
         "we-text" => {
             // Variant table — display face for headings.
@@ -407,6 +462,10 @@ fn type_defaults(bag: &mut Bag, node: &ResolvedNode) {
                 ),
                 "subheading" => entries(bag, &[("fontSize", "400"), ("fontWeight", "medium")]),
                 "ingress" => entries(bag, &[("fontSize", "400"), ("lineHeight", "1.6")]),
+                // text.ts VARIANT_DEFAULTS: body `{ fontSize: '300' }`,
+                // label `{ fontSize: '200', fontWeight: 'medium' }`.
+                "body" => entries(bag, &[("fontSize", "300")]),
+                "label" => entries(bag, &[("fontSize", "200"), ("fontWeight", "medium")]),
                 "footnote" => entries(bag, &[("fontSize", "100")]),
                 "overline" => entries(
                     bag,
@@ -418,8 +477,13 @@ fn type_defaults(bag: &mut Bag, node: &ResolvedNode) {
                 ),
                 _ => {}
             }
-            // `uppercase`/`italic` are widget props — the transform lands in
-            // the text painter, not the bag.
+            // `uppercase` is a widget prop — the transform lands in the
+            // text painter. `italic` is a bag entry (`font-style` is real
+            // CSS and inherits): the TS `:host([italic])` sets the same
+            // var on the element.
+            if crate::props::prop_bool(node, "italic") {
+                entries(bag, &[("fontStyle", "italic")]);
+            }
         }
         "we-divider" => {
             // The primitive defaults are CSS on the part; the thickness and

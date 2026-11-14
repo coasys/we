@@ -5,7 +5,10 @@ use egui::TextEdit;
 use we_style::Style;
 use we_template::ResolvedNode;
 
-use crate::inputs::{access_label, disabled, reconcile_draft, shown_text};
+use crate::inputs::{
+    access_label, disabled, focused_last_frame, readonly, reconcile_draft, remember_focus,
+    shown_text,
+};
 use crate::props;
 use crate::{events, MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
 
@@ -27,12 +30,77 @@ impl Widget for Textarea {
     }
 
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, rect: Rect) {
-        let committed = cx.edit.draft(&node.id);
+        // The DOM `change` event carries the field's text at commit time
+        // (input.ts:282–285 reads `e.target.value`): `text` after the
+        // editor ran is exactly what the field displays this frame — a
+        // same-frame keystroke, an external write, or the live rule's
+        // revert included — so it is what onInput reported and what
+        // onChange commits. No frame-start draft is ever committed.
         reconcile_draft(cx.edit, node);
         let mut text = shown_text(cx.edit, node);
         let disabled = disabled(node);
 
-        let widget = TextEdit::multiline(&mut text)
+        // textarea.ts:315–319 — `submitOnEnter` opts in: an unshifted,
+        // noncomposing Enter preventDefaults the newline and submits the
+        // text when it isn't blank. The Enter has to be consumed before
+        // the TextEdit sees it; focus is knowable ahead of time through
+        // the widget id the previous frame stored (egui composes it from
+        // the ui scope, so asking is more reliable than predicting).
+        let submit_on_enter = props::prop_bool(node, "submitOnEnter");
+        let focused = focused_last_frame(cx, node);
+        // textarea.ts:413 `?readonly` — same contract as we-input: the
+        // immutable `&str` buffer is the DOM attribute (edits are no-ops
+        // however focus arrived); focus, selection and copy stay live.
+        let mut composing = cx.edit.field(&node.id, "ime").truthy();
+        // textarea.ts:316 — Shift and an open composition are the only
+        // exclusions: Ctrl/Cmd/Alt+Enter submit exactly like a plain
+        // Enter. The matched modifiers ride along so the preventDefault
+        // consumes the same keystroke it came from.
+        let mut submit_mods = Vec::new();
+        if focused {
+            cx.ui.input(|i| {
+                for e in &i.events {
+                    match e {
+                        egui::Event::Ime(egui::ImeEvent::Preedit { text, .. }) => {
+                            composing = !text.is_empty();
+                        }
+                        egui::Event::Ime(egui::ImeEvent::Commit(_)) => {
+                            composing = false;
+                        }
+                        egui::Event::Key {
+                            key: egui::Key::Enter,
+                            pressed: true,
+                            modifiers,
+                            ..
+                        } if !modifiers.shift && !composing => {
+                            submit_mods.push(*modifiers);
+                        }
+                        _ => {}
+                    }
+                }
+            });
+            if composing != cx.edit.field(&node.id, "ime").truthy() {
+                cx.edit
+                    .set_field(&node.id, "ime", we_expr::Value::Bool(composing));
+            }
+        }
+        if submit_on_enter && focused && !submit_mods.is_empty() {
+            cx.ui.input_mut(|i| {
+                for mods in &submit_mods {
+                    i.consume_key(*mods, egui::Key::Enter);
+                }
+            });
+        }
+
+        let is_readonly = readonly(node);
+        let mut readonly_text;
+        let buffer: &mut dyn egui::TextBuffer = if is_readonly {
+            readonly_text = text.as_str();
+            &mut readonly_text
+        } else {
+            &mut text
+        };
+        let widget = TextEdit::multiline(buffer)
             .id_salt(node.id.as_str())
             .desired_width(rect.width())
             .desired_rows(1)
@@ -42,34 +110,29 @@ impl Widget for Textarea {
             None => widget,
         };
         let response = cx.ui.put(rect, widget);
+        remember_focus(cx, node, &response);
         response.widget_info(|| {
-            egui::WidgetInfo::labeled(egui::Role::TextInput, true, access_label(cx, node))
+            egui::WidgetInfo::labeled(egui::Role::TextInput, !disabled, access_label(cx, node))
         });
 
-        if response.changed() {
+        // Same spurious `changed` as we-input: a mutation the immutable
+        // buffer no-opped must not emit.
+        if response.changed() && !is_readonly {
             cx.edit
                 .set_draft(&node.id, &text, props::prop(node, "value"));
             cx.emit(&node.id, "onInput", events::detail_str(&text));
             cx.edit
                 .set_field(&node.id, "dirty", we_expr::Value::Bool(true));
         }
-        // Ctrl+Enter submits, the way the TS textarea's `submit` event does.
-        let submit = response.has_focus()
-            && cx.ui.input(|i| {
-                i.key_pressed(egui::Key::Enter)
-                    && i.modifiers.matches_logically(egui::Modifiers::CTRL)
-            });
-        if submit {
-            cx.emit(&node.id, "onSubmit", events::detail_str(&text));
+        if submit_on_enter && !submit_mods.is_empty() && !text.trim().is_empty() {
+            for _ in &submit_mods {
+                cx.emit(&node.id, "onSubmit", events::detail_str(&text));
+            }
         }
         if response.lost_focus() && cx.edit.field(&node.id, "dirty").truthy() {
             cx.edit
                 .set_field(&node.id, "dirty", we_expr::Value::Bool(false));
-            cx.emit(
-                &node.id,
-                "onChange",
-                events::detail_str(committed.as_deref().unwrap_or(&text)),
-            );
+            cx.emit(&node.id, "onChange", events::detail_str(&text));
         }
     }
 }

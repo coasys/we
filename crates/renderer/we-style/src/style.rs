@@ -386,6 +386,15 @@ pub enum LineHeight {
     Length(Dimension),
 }
 
+/// `font-style` — `oblique` paints through the same synthesized slant
+/// `italic` does (the bundled faces are static).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FontStyle {
+    Normal,
+    Italic,
+    Oblique,
+}
+
 /// `border-*-style`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BorderKind {
@@ -568,6 +577,7 @@ pub struct TextStyle {
     pub color: Option<Color>,
     pub font_size: Option<Dimension>,
     pub font_weight: Option<f32>,
+    pub font_style: Option<FontStyle>,
     /// The font stack as text — `Fira Code, monospace` — or `None` when the
     /// token's variable is not declared by this theme.
     pub font_family: Option<Arc<str>>,
@@ -807,6 +817,9 @@ impl TextStyle {
         if self.font_weight.is_some() {
             dst.font_weight = self.font_weight;
         }
+        if self.font_style.is_some() {
+            dst.font_style = self.font_style;
+        }
         if self.font_family.is_some() {
             dst.font_family = self.font_family.clone();
         }
@@ -830,6 +843,49 @@ impl TextStyle {
         }
         if self.overflow_wrap.is_some() {
             dst.overflow_wrap = self.overflow_wrap.clone();
+        }
+    }
+
+    /// Fill unset fields from the parent's computed text style — CSS's
+    /// inherit-by-default set. `decoration` is included: authored
+    /// `text-decoration` propagates to descendant inline boxes (a child
+    /// cannot un-underline itself either).
+    pub fn inherit_from(&mut self, parent: &TextStyle) {
+        if self.color.is_none() {
+            self.color = parent.color;
+        }
+        if self.font_size.is_none() {
+            self.font_size = parent.font_size;
+        }
+        if self.font_weight.is_none() {
+            self.font_weight = parent.font_weight;
+        }
+        if self.font_style.is_none() {
+            self.font_style = parent.font_style;
+        }
+        if self.font_family.is_none() {
+            self.font_family = parent.font_family.clone();
+        }
+        if self.line_height.is_none() {
+            self.line_height = parent.line_height;
+        }
+        if self.letter_spacing.is_none() {
+            self.letter_spacing = parent.letter_spacing;
+        }
+        if self.align.is_none() {
+            self.align = parent.align.clone();
+        }
+        if self.transform.is_none() {
+            self.transform = parent.transform.clone();
+        }
+        if self.decoration.is_none() {
+            self.decoration = parent.decoration.clone();
+        }
+        if self.white_space.is_none() {
+            self.white_space = parent.white_space.clone();
+        }
+        if self.overflow_wrap.is_none() {
+            self.overflow_wrap = parent.overflow_wrap.clone();
         }
     }
 }

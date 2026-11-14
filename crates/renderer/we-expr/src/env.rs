@@ -39,7 +39,22 @@ pub trait Env {
     /// A built-in or host-registered function. `Undefined` for a name nothing
     /// provides.
     fn call(&self, name: &str, args: &[Value]) -> Value;
+    /// The read observer this env wants, if any — called once per read the
+    /// evaluator performs, with `(path, effective value)`: the read's name
+    /// (`store`, `store.items`, `items.0.sig`) and the value the expression
+    /// sees, so an accessor is invoked once for the one syntactic read it
+    /// stands for and the answer reported is the same value the expression
+    /// holds. This is how a tracked evaluation learns its inputs without
+    /// the evaluator wrapping values — identity is preserved end to end.
+    /// The default `None` means untracked: evaluation pays only the check.
+    fn read_observer(&self) -> Option<&ReadObserver<'_>> {
+        None
+    }
 }
+
+/// The callback [`Env::read_observer`] may install — `observe(path, value)`
+/// once per read the evaluator performs.
+pub type ReadObserver<'a> = dyn Fn(&str, &Value) + 'a;
 
 /// An [`Env`] over two maps — roots and functions — for tests and for the
 /// vector loader.

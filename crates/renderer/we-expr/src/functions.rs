@@ -9,6 +9,7 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 
+use crate::value::js_trim;
 use crate::where_match::{as_text, matches_where};
 use crate::{Env, Value};
 
@@ -308,7 +309,7 @@ fn split(args: &[Value], _env: &dyn Env) -> Value {
         Some(v) => as_text(v),
     };
     text.split(sep.as_str())
-        .map(|p| p.trim())
+        .map(js_trim)
         .filter(|p| !p.is_empty())
         .map(|p| p.into())
         .collect::<Vec<Value>>()
@@ -340,7 +341,7 @@ fn ends_with(args: &[Value], _env: &dyn Env) -> Value {
 }
 
 fn trim(args: &[Value], _env: &dyn Env) -> Value {
-    as_text(&arg(args, 0)).trim().into()
+    js_trim(&as_text(&arg(args, 0))).into()
 }
 
 fn lower(args: &[Value], _env: &dyn Env) -> Value {
@@ -386,7 +387,10 @@ fn round(args: &[Value], _env: &dyn Env) -> Value {
 /// is exact — integral inputs and every |x| ≥ 2^52 give 0 — so a zero result
 /// keeps `x`'s sign (`Math.round(-0.5)` is `-0`), and a non-finite `x` rounds
 /// to itself.
-fn js_round(x: f64) -> f64 {
+///
+/// Exported so the `we-data` natives round like the expression evaluator —
+/// there is only one `Math.round`.
+pub fn js_round(x: f64) -> f64 {
     if !x.is_finite() {
         return x;
     }

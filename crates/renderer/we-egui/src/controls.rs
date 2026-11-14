@@ -4,7 +4,10 @@ use we_template::ResolvedNode;
 
 use crate::defaults::view_of;
 use crate::props;
-use crate::{MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
+use crate::{
+    Direction, MeasureCx, PaintCx, PartSpec, PartsSpec, Pick, Rect, Size, TextChildren, Widget,
+    WidgetKind,
+};
 
 /// `we-button` — variant + size come through `Style`; `disabled`, `loading`,
 /// `square`, `href`, `expanded`, `text` are widget props. Children (icon +
@@ -54,13 +57,45 @@ impl Widget for Button {
     fn kind(&self) -> WidgetKind {
         WidgetKind::Container
     }
+    /// `this.text ? <span> : <slot>`: a `text` prop replaces every child
+    /// (the icon too); text-only children are the painted label; element
+    /// children flow in the button's own row.
+    fn text_children(&self, node: &ResolvedNode) -> TextChildren {
+        if props::prop_text(node, "text").is_some() {
+            TextChildren::Suppressed
+        } else if props::has_node_children(node) {
+            TextChildren::Leaves
+        } else {
+            TextChildren::Owned
+        }
+    }
+    /// button.ts: the default slot flows inside `display:flex;
+    /// align-items:center; gap:var(--we-button-size-gap)` — icon + label
+    /// side by side, centered. `--we-button-size-gap` is `xs→space-100`,
+    /// `sm→space-200`, `md/lg/xl→space-300` (4/8/12px).
+    fn parts_spec(&self, node: &ResolvedNode) -> Option<PartsSpec> {
+        // `text` suppresses the slot, and text-only children are the
+        // painted label — only `Leaves` children need the content row.
+        let parts = if matches!(self.text_children(node), TextChildren::Leaves) {
+            let gap = match props::prop_str(node, "size") {
+                Some("xs") => 4.0,
+                Some("sm") => 8.0,
+                _ => 12.0,
+            };
+            vec![PartSpec::group("content", Pick::Default, Direction::Row)
+                .aligned(we_style::ItemAlign::Center)
+                .gapped(gap)]
+        } else {
+            vec![]
+        };
+        Some(PartsSpec {
+            direction: Direction::Column,
+            parts,
+        })
+    }
     fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, avail: Size) -> Size {
-        // Only the text child participates — a child node flows itself.
-        let has_node_children = node
-            .children
-            .iter()
-            .any(|c| matches!(c, we_template::ResolvedChild::Node(_)));
-        if has_node_children {
+        // `Leaves` implies element children — a container, not a leaf.
+        if matches!(self.text_children(node), TextChildren::Leaves) {
             return Size::ZERO;
         }
         Self::measure_label(node, style, cx.ctx, avail.x)
@@ -74,7 +109,15 @@ impl Widget for Button {
         let a11y = props::prop_text(node, "label")
             .map(str::to_string)
             .unwrap_or_else(|| label.clone());
-        let response = cx.interact_label(rect, &a11y, egui::Role::Button, &node.id, "base");
+        let response = cx.interact_label(
+            rect,
+            &a11y,
+            egui::Role::Button,
+            &node.id,
+            "base",
+            !disabled,
+            None,
+        );
         // NOTE: `expanded` has no egui 0.37 WidgetInfo field — the disclosure
         // state reaches tests through the caret/children instead.
         let eff = props::state_style(style, &response, disabled);
@@ -85,14 +128,14 @@ impl Widget for Button {
             props::text_color(&eff, cx.ui.ctx()),
             view,
         );
-        // `text`-prop buttons paint their label centered; children paint
-        // themselves — node children in the walk, text children as spans —
-        // so a galley on top would draw the words twice. Truncation answers
-        // at the content box — the padding is not label room.
-        let has_children = !node.children.is_empty();
+        // Owned/suppressed buttons paint their label centered; `Leaves`
+        // children are painted by the walk inside the button's own row
+        // layout. Truncation answers at the content box — the padding is
+        // not label room.
+        let leaves = matches!(self.text_children(node), TextChildren::Leaves);
         // `loading && square` shows the spinner alone — the square has no
         // room for a label beside it.
-        let show_label = !(has_children || label.is_empty() || loading && square);
+        let show_label = !(leaves || label.is_empty() || loading && square);
         let spin_w = if loading {
             SPINNER + if show_label { SPINNER_GAP } else { 0.0 }
         } else {

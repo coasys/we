@@ -28,6 +28,10 @@ impl Env for ScopedEnv<'_> {
     fn call(&self, name: &str, args: &[Value]) -> Value {
         self.parent.call(name, args)
     }
+
+    fn read_observer(&self) -> Option<&crate::ReadObserver<'_>> {
+        self.parent.read_observer()
+    }
 }
 
 /// `receiver` is the already-evaluated, already-settled value.

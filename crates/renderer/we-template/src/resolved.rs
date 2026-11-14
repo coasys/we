@@ -95,37 +95,86 @@ pub struct HandlerRef {
 /// name → value, innermost last. Read before the store bag and the built-ins
 /// when the handler runs.
 #[derive(Debug, Clone, Default)]
-pub struct Scope(pub Vec<(Arc<str>, Value)>);
+pub struct Scope {
+    /// name → value (and the conduit mark, see [`Scope::bind_conduit`]),
+    /// innermost last.
+    binds: Vec<Bind>,
+}
+
+/// One scope binding. `conduit` marks the resolver's synthesized boxes —
+/// `local`, a `$surface` measure, `$nav`, an unresolved `$agent` stub —
+/// objects the resolve rebuilds every pass where WE keeps one context
+/// object alive for the mount: reading the box itself subscribes to
+/// nothing, so a tracked initial may not count a rebuilt box as a moved
+/// dependency. Reads THROUGH the box (`local.src`, `surface.tier`) remain
+/// real dependencies.
+#[derive(Debug, Clone)]
+struct Bind {
+    name: Arc<str>,
+    value: Value,
+    conduit: bool,
+}
 
 impl Scope {
     /// The innermost binding for `name`, if any.
     pub fn get(&self, name: &str) -> Option<&Value> {
-        self.0
+        self.binds
             .iter()
             .rev()
-            .find(|(n, _)| n.as_ref() == name)
-            .map(|(_, v)| v)
+            .find(|b| b.name.as_ref() == name)
+            .map(|b| &b.value)
     }
 
     /// Push a binding on top.
     pub fn bind(&mut self, name: impl Into<Arc<str>>, value: Value) {
-        self.0.push((name.into(), value));
+        self.binds.push(Bind {
+            name: name.into(),
+            value,
+            conduit: false,
+        });
+    }
+
+    /// A synthesized box — the name reads like any binding; the mark only
+    /// tells a tracked evaluation that the box is not itself a dependency.
+    pub fn bind_conduit(&mut self, name: impl Into<Arc<str>>, value: Value) {
+        self.binds.push(Bind {
+            name: name.into(),
+            value,
+            conduit: true,
+        });
+    }
+
+    /// Whether `name`'s innermost binding is a conduit box — the check a
+    /// tracked read makes before recording a bare root read: `[local]` is
+    /// no dependency, `local.src` still is.
+    pub fn is_conduit(&self, name: &str) -> bool {
+        self.binds
+            .iter()
+            .rev()
+            .find(|b| b.name.as_ref() == name)
+            .is_some_and(|b| b.conduit)
     }
 
     pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+        self.binds.is_empty()
     }
 
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.binds.len()
     }
 }
 
-/// What `$if`/`$animate` leave for the painter: enter and exit effect lists.
+/// What `$if`/`$animate` leave for the painter: enter and exit effect lists,
+/// and `$animate`'s open state when it authors a `condition` — the child is
+/// mounted either way; the painter draws hidden/visual state from `open`.
 #[derive(Debug, Clone, Default)]
 pub struct Transition {
     pub enter: Option<Vec<TransitionEffect>>,
     pub exit: Option<Vec<TransitionEffect>>,
+    /// `$animate`'s evaluated `condition` (`Some` when authored): the painter
+    /// draws the open or hidden style — the subtree is present regardless.
+    /// `None` for a mount/scroll-driven animation and for `$if`.
+    pub open: Option<bool>,
 }
 
 /// One animation effect (`TransitionEffect` in `types.ts`). `distance` is text
@@ -181,7 +230,11 @@ impl Transition {
         };
         let enter = read("enterTransition");
         let exit = read("exitTransition");
-        (enter.is_some() || exit.is_some()).then_some(Transition { enter, exit })
+        (enter.is_some() || exit.is_some()).then_some(Transition {
+            enter,
+            exit,
+            open: None,
+        })
     }
 }
 

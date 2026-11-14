@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use we_style::Style;
-use we_template::{NodeId, ResolvedNode};
+use we_template::{NodeId, ResolvedChild, ResolvedNode};
 
 use crate::defaults::{font_px, root_px, store_view, StyleCx};
 use crate::{MeasureCx, Rect, Registry, Size};
@@ -30,6 +30,9 @@ pub struct Layout {
     pub texts: Vec<TextSpan>,
     /// Nodes with `overflow: auto|scroll` — which axes scroll at paint.
     pub scroll: HashMap<NodeId, egui::Vec2>,
+    /// Each scroll node's content extent — union of all descendant rects
+    /// and their text spans, in base coordinates.
+    pub scroll_content: HashMap<NodeId, Rect>,
     /// Nodes with `overflow: hidden|clip` — children clip to their rect.
     pub clip: HashMap<NodeId, egui::Vec2>,
     /// The percent bases each node's `calc`/`%` terms resolved against —
@@ -77,9 +80,27 @@ impl<'a> we_layout::Measure for EguiMeasure<'a> {
         we_layout::Size::new(s.x, s.y)
     }
 
-    fn measure_text(&self, _owner: &ResolvedNode, style: &Style, text: &str) -> we_layout::Size {
-        // Text is measured in its owner's font — `layout_no_wrap` matches the
-        // paint path's single-line spans.
+    fn text_children(&self, node: &ResolvedNode) -> we_layout::TextChildren {
+        self.registry.widget_for(&node.ty).text_children(node)
+    }
+
+    fn synthesized_children(&self, node: &ResolvedNode) -> Vec<ResolvedChild> {
+        self.registry
+            .widget_for(&node.ty)
+            .synthesized_children(node)
+    }
+
+    fn measure_text(
+        &self,
+        owner: &ResolvedNode,
+        style: &Style,
+        text: &str,
+        avail: we_layout::Size,
+    ) -> we_layout::Size {
+        let text =
+            crate::props::transform_text(style, text, crate::props::prop_bool(owner, "uppercase"));
+        let truncate = crate::props::prop_bool(owner, "truncate");
+        let lines = crate::props::prop_num(owner, "lines").map(|n| n.max(1.0) as usize);
         let font = crate::props::font_id(
             style,
             self.cx.ctx,
@@ -88,12 +109,27 @@ impl<'a> we_layout::Measure for EguiMeasure<'a> {
             root_px(self.scx),
             self.scx.viewport,
         );
-        let galley = self
-            .cx
-            .ctx
-            .fonts_mut(|f| f.layout_no_wrap(text.to_string(), font, egui::Color32::WHITE));
-        let size = galley.size();
-        we_layout::Size::new(size.x, size.y)
+        if avail.x <= 0.0 {
+            // MinContent: CSS's automatic minimum — the longest unbreakable
+            // run, or the ellipsis when the owner truncates.
+            let probe = if truncate {
+                "…".to_string()
+            } else {
+                text.split_whitespace()
+                    .max_by(|a, b| a.len().cmp(&b.len()))
+                    .unwrap_or("")
+                    .to_string()
+            };
+            let g = self
+                .cx
+                .ctx
+                .fonts_mut(|f| f.layout_no_wrap(probe, font, egui::Color32::WHITE));
+            return we_layout::Size::new(g.size().x, g.size().y);
+        }
+        // The same galley `paint` draws: wrapped at the offered width, the
+        // owner's transform and `truncate`/`lines` clamps applied.
+        let g = crate::text::text_job(&text, style, self.cx.ctx, avail.x, truncate, lines);
+        we_layout::Size::new(g.size().x, g.size().y)
     }
 }
 
@@ -106,22 +142,26 @@ pub fn layout(
     root: &ResolvedNode,
     rect: Rect,
 ) -> Layout {
-    run(cx, scx, registry, root, rect, false)
+    run(cx, scx, registry, root, rect, false, None)
 }
 
 /// The same, for a subtree that is not the page root — the overlay pass's
 /// synthetic host column, whose `auto` height must be its content's, not
-/// the `min-height: 100vh` floor `layout` gives the page root.
+/// the `min-height: 100vh` floor `layout` gives the page root. `parent` is
+/// the computed style the subtree's paint inherits (the overlay node's
+/// effective style), so the measure sees the same typography.
 pub fn layout_shrink(
     cx: &MeasureCx,
     scx: &StyleCx,
     registry: &Registry,
     root: &ResolvedNode,
     rect: Rect,
+    parent: Option<&Style>,
 ) -> Layout {
-    run(cx, scx, registry, root, rect, true)
+    run(cx, scx, registry, root, rect, true, parent)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run(
     cx: &MeasureCx,
     scx: &StyleCx,
@@ -129,6 +169,7 @@ fn run(
     root: &ResolvedNode,
     rect: Rect,
     shrink: bool,
+    parent: Option<&Style>,
 ) -> Layout {
     store_view(cx.ctx, scx);
     let m = EguiMeasure { cx, scx, registry };
@@ -137,7 +178,7 @@ fn run(
         we_layout::Vec2::new(rect.width(), rect.height()),
     );
     let out = if shrink {
-        we_layout::layout_shrink(&m, scx, root, rect)
+        we_layout::layout_shrink(&m, scx, root, rect, parent)
     } else {
         we_layout::layout(&m, scx, root, rect)
     };
@@ -165,6 +206,11 @@ fn run(
             .scroll
             .into_iter()
             .map(|(k, v)| (k, egui::vec2(v.x, v.y)))
+            .collect(),
+        scroll_content: out
+            .scroll_content
+            .into_iter()
+            .map(|(k, v)| (k, r(v)))
             .collect(),
         clip: out
             .clip
