@@ -231,9 +231,8 @@ impl LocalState {
             return 0;
         };
         let refs = inner.each_refs.entry(node.clone()).or_default();
-        // A namespace can stand in for the object it wraps (`raw()` — a
-        // tracked initial's element wrappers); identity keys on the row
-        // behind it, not on the wrapper.
+        // A namespace can stand in for the object it wraps (`raw()`); the
+        // key is the row behind it, not the namespace box.
         let item = match item {
             Value::Namespace(ns) => ns.raw().unwrap_or_else(|| item.clone()),
             _ => item.clone(),

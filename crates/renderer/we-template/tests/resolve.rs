@@ -1704,3 +1704,422 @@ fn handler_bubbles_to_an_ancestor() {
         .get(&root.id, "sel")
         .strict_eq(&Value::from("group|dna")));
 }
+
+#[test]
+fn a_tracked_eval_leaves_no_retained_wrapper_graph() {
+    // R4-1: the per-evaluation tracker used to own a cycle — the Tracker
+    // kept every wrapper, each wrapper kept the Tracker — so the source
+    // graph it read never dropped, even after the field and the runtime
+    // were gone. Tracking is now the evaluator's own read observation:
+    // it builds nothing but the dep list. Drop everything and the Weak
+    // handles must die.
+    let bag = Arc::new(StoreBag::new());
+    let weak_ns;
+    let weak_member;
+    {
+        let member: Arc<indexmap::IndexMap<Arc<str>, Value>> =
+            Arc::new([("leaf".into(), Value::from("v"))].into_iter().collect());
+        let ns: Arc<dyn we_expr::Namespace> = Arc::new(we_expr::MapNamespace::new(
+            [("cfg".into(), Value::Obj(member.clone()))]
+                .into_iter()
+                .collect(),
+        ));
+        weak_member = Arc::downgrade(&member);
+        weak_ns = Arc::downgrade(&ns);
+        bag.set_root("store", Value::Namespace(ns));
+    }
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "sel": { "type": "object", "initial": { "$": "store.cfg" } } },
+        "children": []
+    }));
+    {
+        let locals = LocalState::new();
+        let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone());
+        let mut host = StaticHost::new(bag.clone(), locals.clone());
+        let screen = screen();
+        let _ = rt.frame(&mut host, &screen).clone();
+    }
+    bag.set_root("store", Value::Undefined);
+    drop(bag);
+    assert!(
+        weak_ns.upgrade().is_none(),
+        "nothing may retain the store root once the tracked eval, field and runtime are gone"
+    );
+    assert!(
+        weak_member.upgrade().is_none(),
+        "nothing may retain the object the initial read"
+    );
+}
+
+#[test]
+fn a_tracked_eval_compares_list_elements_by_identity() {
+    // R4-2: `store.items[0] in store.items` — `in` is Array.includes,
+    // SameValueZero: the element the eval reads and the element the list
+    // holds must be THE SAME value. The tracker used to answer a
+    // namespace for the element while the list held wrapped elements —
+    // `includes` said false where TS (no wrappers) says true.
+    let item = Value::Obj(Arc::new(
+        [("id".into(), Value::from(1.0))].into_iter().collect(),
+    ));
+    let store = Value::from(we_expr::MapNamespace::new(
+        [("items".into(), Value::List(Arc::new(vec![item])))]
+            .into_iter()
+            .collect(),
+    ));
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "member": { "type": "boolean", "initial": { "$": "store.items[0] in store.items" } } },
+        "children": []
+    }));
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root("store", store);
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    assert!(
+        locals.get(&root.id, "member").strict_eq(&Value::Bool(true)),
+        "items[0] is in items — tracking may not change element identity: {:?}",
+        locals.get(&root.id, "member")
+    );
+}
+
+#[test]
+fn a_tracked_eval_hands_plain_values_to_host_calls() {
+    // R4-2: a host function's arguments are the real data — `Obj`
+    // elements, not the tracker's namespaces. The wrapper used to cross
+    // the host boundary: `capture(store.items)` saw a list of
+    // `Value::Namespace`.
+    let seen = Arc::new(std::sync::Mutex::new(Vec::new()));
+    let seen_in = seen.clone();
+    let item = Value::Obj(Arc::new(
+        [("id".into(), Value::from(1.0))].into_iter().collect(),
+    ));
+    let store = Value::from(we_expr::MapNamespace::new(
+        [("items".into(), Value::List(Arc::new(vec![item])))]
+            .into_iter()
+            .collect(),
+    ));
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "r": { "type": "string", "initial": { "$": "capture(store.items)" } } },
+        "children": []
+    }));
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root("store", store);
+    bag.set_function(
+        "capture",
+        Arc::new(move |args| {
+            seen_in.lock().unwrap().push(args[0].clone());
+            Value::from("ok")
+        }),
+    );
+    let (mut rt, mut host, _locals, screen) = rig_arc(node, bag.clone());
+    let _ = rt.frame(&mut host, &screen).clone();
+    let seen = seen.lock().unwrap();
+    let Value::List(items) = &seen[0] else {
+        panic!("capture must get the list: {:?}", seen[0])
+    };
+    assert!(
+        matches!(items[0], Value::Obj(_)),
+        "a host call sees a plain object, not a tracking wrapper: {:?}",
+        items[0]
+    );
+}
+
+#[test]
+fn a_tracked_initial_stores_the_source_allocation_itself() {
+    // R4-3: `{"$":"store.cfg"}` — the field must hold cfg's own object;
+    // TS never copies. `local.sel == store.cfg` is a strict identity
+    // check — the tracker's unwrapping allocated a fresh Obj, so `===`
+    // was false the moment the field seeded.
+    let cfg = Value::Obj(Arc::new(
+        [("a".into(), Value::from(1.0))].into_iter().collect(),
+    ));
+    let store = Value::from(we_expr::MapNamespace::new(
+        [("cfg".into(), cfg.clone())].into_iter().collect(),
+    ));
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "sel": { "type": "object", "initial": { "$": "store.cfg" } } },
+        "children": [{ "type": "we-text", "props": { "text": { "$": "local.sel == store.cfg" } } }]
+    }));
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root("store", store);
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    assert!(
+        locals.get(&root.id, "sel").strict_eq(&cfg),
+        "the field must hold the source's own allocation, not a cleanup copy"
+    );
+    assert!(
+        find_text(&root).is_some_and(|t| t.strict_eq(&Value::Bool(true))),
+        "local.sel == store.cfg must be true right after seeding"
+    );
+}
+
+#[test]
+fn a_parent_swap_sharing_the_child_keeps_the_initial() {
+    // R4-3: `{"$":"store.cfg.child"}` — cfg moves P1→P2 (a real dep
+    // change: re-evaluate) but the child the memo emits is the same
+    // allocation C both times — TS's memo does not emit, the edit and
+    // its touched flag stay. The cleanup copy made C !== itself, so the
+    // non-emit read as a reset.
+    let child_c = Value::Obj(Arc::new(
+        [("k".into(), Value::from("C"))].into_iter().collect(),
+    ));
+    let parent = |tag: &str| {
+        Value::Obj(Arc::new(
+            [
+                ("child".into(), child_c.clone()),
+                ("tag".into(), Value::from(tag)),
+            ]
+            .into_iter()
+            .collect(),
+        ))
+    };
+    let store = |cfg: Value| {
+        Value::from(we_expr::MapNamespace::new(
+            [("cfg".into(), cfg)].into_iter().collect(),
+        ))
+    };
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "sel": { "type": "object", "initial": { "$": "store.cfg.child" } } },
+        "children": []
+    }));
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root("store", store(parent("p1")));
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+
+    locals.set(&owner, "sel", Value::from("typed"));
+    locals.touch(&owner, "sel");
+    bag.set_root("store", store(parent("p2"))); // cfg P1→P2, child still C
+    let _ = rt.frame(&mut host, &screen).clone();
+    assert!(
+        locals.get(&owner, "sel").strict_eq(&Value::from("typed")),
+        "the memo did not emit (same child C) — the edit stands: {:?}",
+        locals.get(&owner, "sel")
+    );
+    assert!(locals.is_touched(&owner, "sel"), "no emit → still touched");
+}
+
+#[test]
+fn an_initial_tracks_through_an_accessor_returned_list() {
+    // R4-4: `store.items` is an ACCESSOR answering the same list L on
+    // every call; L[0].sig is an accessor too. `store.items[0].sig` runs
+    // through BOTH accessors — each one's answer is the dep the memo
+    // holds. The wrapper recorded `store.items → L` and stopped: reads
+    // inside an accessor's answer never reached a tracker, so sig A→B
+    // looked unmoved.
+    use std::sync::RwLock;
+    let sig = Arc::new(RwLock::new(Value::from("A")));
+    let sig_read = sig.clone();
+    let item = Value::Obj(Arc::new(
+        [(
+            "sig".into(),
+            Value::Callable(we_expr::CallableRef::accessor("sig", move |_| {
+                sig_read.read().unwrap().clone()
+            })),
+        )]
+        .into_iter()
+        .collect(),
+    ));
+    let list = Value::List(Arc::new(vec![item]));
+    let list_read = list.clone();
+    let store = Value::from(we_expr::MapNamespace::new(
+        [(
+            "items".into(),
+            Value::Callable(we_expr::CallableRef::accessor("items", move |_| {
+                list_read.clone()
+            })),
+        )]
+        .into_iter()
+        .collect(),
+    ));
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "name": { "type": "string", "initial": { "$": "store.items[0].sig" } } },
+        "children": []
+    }));
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root("store", store.clone());
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+    assert!(locals.get(&owner, "name").strict_eq(&Value::from("A")));
+
+    locals.set(&owner, "name", Value::from("typed"));
+    locals.touch(&owner, "name");
+    *sig.write().unwrap() = Value::from("B");
+    bag.set_root("store", store); // wake a frame — the signals are opaque to counters
+    let _ = rt.frame(&mut host, &screen).clone();
+    assert!(
+        locals.get(&owner, "name").strict_eq(&Value::from("B")),
+        "an accessor inside an accessor's answer is still a dep: {:?}",
+        locals.get(&owner, "name")
+    );
+    assert!(!locals.is_touched(&owner, "name"));
+}
+
+#[test]
+fn a_synthesized_route_conduit_is_not_a_dependency() {
+    // R4-5: `routeStore.params` is rebuilt on every read (a fresh
+    // MapNamespace each `get`) — recording the conduit made every pass
+    // a "move" and wiped the edit on an unrelated resolve. The deps are
+    // the leaf reads beneath it — `params.id` — never the conduit's
+    // identity. (TS's params object is one allocation a param write
+    // replaces; an unchanged route emits nothing.)
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "sel": { "type": "array", "initial": { "$": "[routeStore.params.id]" } } },
+        "children": []
+    }));
+    let locals = LocalState::new();
+    let bag = Arc::new(StoreBag::new());
+    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone());
+    let mut host = StaticHost::new(bag.clone(), locals.clone());
+    let screen = ScreenState::desktop(ScreenSchema::default(), "/?id=demo");
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+    match locals.get(&owner, "sel") {
+        Value::List(items) => assert_eq!(
+            items
+                .first()
+                .and_then(|v| v.to_json().as_str().map(String::from)),
+            Some("demo".to_string()),
+            "sel seeds [routeStore.params.id]"
+        ),
+        other => panic!("sel must seed a list: {other:?}"),
+    }
+
+    locals.set(
+        &owner,
+        "sel",
+        Value::List(Arc::new(vec![Value::from("typed")])),
+    );
+    locals.touch(&owner, "sel");
+    locals.set(&owner, "other", Value::Bool(true)); // an unrelated write wakes a frame
+    let _ = rt.frame(&mut host, &screen).clone();
+    match locals.get(&owner, "sel") {
+        Value::List(items) => assert_eq!(
+            items
+                .first()
+                .and_then(|v| v.to_json().as_str().map(String::from)),
+            Some("typed".to_string()),
+            "a rebuilt params conduit must not move a leaf dep: {items:?}"
+        ),
+        other => panic!("sel must stay a list: {other:?}"),
+    }
+    assert!(
+        locals.is_touched(&owner, "sel"),
+        "a kept edit stays touched"
+    );
+}
+
+#[test]
+fn a_synthesized_panels_conduit_is_not_a_dependency() {
+    // R4-5, the shell twin: `shellStore.panels` is also a fresh
+    // MapNamespace per read — `[shellStore.panels.inspector]` depends on
+    // the panel flag's leaf read, not on the rebuilt map.
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "open": { "type": "array", "initial": { "$": "[shellStore.panels.inspector]" } } },
+        "children": []
+    }));
+    let locals = LocalState::new();
+    let bag = Arc::new(StoreBag::new());
+    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone());
+    let mut host = StaticHost::new(bag.clone(), locals.clone());
+    let mut screen = screen();
+    screen.apply(we_screen::ScreenOp::OpenTemplatePanel {
+        id: "inspector".into(),
+    });
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+    assert_eq!(
+        locals.get(&owner, "open").to_json(),
+        json!([true]),
+        "open seeds [shellStore.panels.inspector]"
+    );
+
+    locals.set(
+        &owner,
+        "open",
+        Value::List(Arc::new(vec![Value::from("typed")])),
+    );
+    locals.touch(&owner, "open");
+    locals.set(&owner, "other", Value::Bool(true));
+    let _ = rt.frame(&mut host, &screen).clone();
+    match locals.get(&owner, "open") {
+        Value::List(items) => assert_eq!(
+            items
+                .first()
+                .and_then(|v| v.to_json().as_str().map(String::from)),
+            Some("typed".to_string()),
+            "a rebuilt panels conduit must not move a leaf dep: {items:?}"
+        ),
+        other => panic!("open must stay a list: {other:?}"),
+    }
+    assert!(
+        locals.is_touched(&owner, "open"),
+        "a kept edit stays touched"
+    );
+}
+
+#[test]
+fn a_host_computation_initial_keeps_an_edit_whose_hidden_input_moved() {
+    // The equal-content edge of the output-content contract: `compute`
+    // reads a revision internally but always allocates `["A"]` — the
+    // hidden input moved underneath it, the answer's content did not,
+    // so the edit stands. DIVERGENCE from TS, on purpose and documented
+    // at `StoreBag::set_function`: the TS memo sees the internal signal
+    // fire, re-evaluates, and the fresh `["A"]` !== the old one RESETS
+    // the field. The Rust contract is answer content, not true input
+    // tracking.
+    use std::sync::RwLock;
+    let sig = Arc::new(RwLock::new(Value::from("rev-1")));
+    let sig_read = sig.clone();
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "sel": { "type": "array", "initial": { "$": "compute()" } } },
+        "children": []
+    }));
+    let bag = Arc::new(StoreBag::new());
+    bag.set_function(
+        "compute",
+        Arc::new(move |_| {
+            let _revision = sig_read.read().unwrap().clone(); // an input the answer never reports
+            Value::List(Arc::new(vec![Value::from("A")])) // same content, fresh allocation
+        }),
+    );
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+    assert_eq!(locals.get(&owner, "sel").to_json(), json!(["A"]));
+
+    locals.set(
+        &owner,
+        "sel",
+        Value::List(Arc::new(vec![Value::from("typed")])),
+    );
+    locals.touch(&owner, "sel");
+    *sig.write().unwrap() = Value::from("rev-2"); // the hidden input moves
+    locals.set(&owner, "other", Value::Bool(true)); // wake a frame
+    let _ = rt.frame(&mut host, &screen).clone();
+    match locals.get(&owner, "sel") {
+        Value::List(items) => assert_eq!(
+            items
+                .first()
+                .and_then(|v| v.to_json().as_str().map(String::from)),
+            Some("typed".to_string()),
+            "equal-content answer → no dep moved → the edit stands (TS resets here)"
+        ),
+        other => panic!("sel must stay a list: {other:?}"),
+    }
+    assert!(
+        locals.is_touched(&owner, "sel"),
+        "still touched under output-content tracking"
+    );
+}

@@ -11,12 +11,13 @@
 //! page, panel or part it resolved under, the path its child path plus the
 //! `$each` row keys — so a re-resolve of an unchanged tree hands back the
 //! same ids and [`LocalState`] keyed by them survives.
+use std::cell::RefCell;
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use indexmap::IndexMap;
 use serde_json::Value as Json;
-use we_expr::{eval, Env, Namespace, ParseCache, Value};
+use we_expr::{eval, Env, ParseCache, Value};
 use we_screen::{local_persist_key, local_sync_spec, resolve_local_initial, ScreenOp, ScreenState};
 
 use crate::handler::HandlerToken;
@@ -168,98 +169,16 @@ pub(crate) fn eval_str(
     }
 }
 
-/// One tracked evaluation's bookkeeping: the `path → effective value`
-/// reads the expression made (its dependencies), plus a wrapper cache so
-/// two reads of the same container answer the SAME namespace — `a.b ==
-/// a.b` stays true the way it is in TS, which never wraps at all.
-#[derive(Debug, Default)]
-struct Tracker {
-    deps: Mutex<TrackedDeps>,
-    wraps: Mutex<HashMap<usize, Value>>,
-}
-
-impl Tracker {
-    fn record(&self, name: Arc<str>, value: Value) {
-        if let Ok(mut deps) = self.deps.lock() {
-            deps.push((name, value));
-        }
-    }
-
-    /// `value` wrapped so deeper reads record `path.key → answer`.
-    ///
-    /// This is where the no-wrapping ideal cannot quite reach: TS relies
-    /// on accessor calls happening *inside* the memo — the only
-    /// interception `we-expr` offers for `obj.sig` or `items[0].x` is a
-    /// `Namespace` (`read_property` calls `ns.get`). So an Obj or
-    /// Namespace member still wraps — but the recorded dep is the plain
-    /// member's identity (a signal returning an object fires on `!==`),
-    /// the leaf records its effective value, and a list is never itself
-    /// wrapped (a namespace would break numeric `read_index` — TS answers
-    /// `undefined` for `ns[0]` too); its container ELEMENTS wrap instead,
-    /// which is where `items[0].sig` keeps traversing.
-    fn descend(self: &Arc<Self>, path: Arc<str>, value: Value) -> Value {
-        let key = match &value {
-            Value::Obj(o) => Arc::as_ptr(o) as usize,
-            Value::List(l) => Arc::as_ptr(l) as usize,
-            Value::Namespace(n) => Arc::as_ptr(n) as *const () as usize,
-            _ => return value,
-        };
-        if let Some(v) = self.wraps.lock().ok().and_then(|w| w.get(&key).cloned()) {
-            return v;
-        }
-        let wrapped = match value {
-            Value::List(l) => Value::List(Arc::new(
-                l.iter()
-                    .enumerate()
-                    .map(|(i, v)| match v {
-                        Value::Obj(_) | Value::Namespace(_) | Value::List(_) => {
-                            self.descend(format!("{path}.{i}").into(), v.clone())
-                        }
-                        _ => v.clone(),
-                    })
-                    .collect(),
-            )),
-            inner => Value::namespace(TrackNs {
-                path,
-                inner,
-                track: self.clone(),
-            }),
-        };
-        if let Ok(mut w) = self.wraps.lock() {
-            w.insert(key, wrapped.clone());
-        }
-        wrapped
-    }
-}
-
-/// The value leaving a tracked evaluation, with the bookkeeping removed:
-/// a `TrackNs` only exists to record reads, so what the FIELD stores must
-/// be the plain value it stood for — recursively, since a list's wrapped
-/// elements are inside it. (TS never wraps — this is the same plain data.)
-fn unwrap_tracked(value: Value) -> Value {
-    match value {
-        Value::Namespace(ns) => match ns.raw() {
-            Some(raw) => unwrap_tracked(raw),
-            None => Value::Namespace(ns),
-        },
-        Value::List(l) => Value::List(Arc::new(
-            l.iter().map(|v| unwrap_tracked(v.clone())).collect(),
-        )),
-        Value::Obj(o) => Value::Obj(Arc::new(
-            o.iter()
-                .map(|(k, v)| (k.clone(), unwrap_tracked(v.clone())))
-                .collect(),
-        )),
-        _ => value,
-    }
-}
-
 /// `source` evaluated once with its reads recorded — the `(name, value)`
 /// pairs the expression actually consumed, so a later pass can ask whether
 /// its memo's inputs moved rather than whether this pass's value merely
-/// differs. A container root records nothing itself (reading the bag
-/// subscribes to nothing — the member reads under it are the deps).
-/// [`LocalState::follow_initial`] is the consumer.
+/// differs. The evaluator's [`Env::read_observer`] reports every link of
+/// every read chain as it happens — no value is wrapped, so what the field
+/// stores, what a host call receives and what `===` compares are the same
+/// allocations the bag answered. [`leaf_deps`] keeps the links the
+/// expression *held* — the chain's terminal reads — and drops the
+/// containers it only walked through. [`LocalState::follow_initial`] is
+/// the consumer.
 fn eval_str_tracked(
     source: &str,
     scope: &Scope,
@@ -269,13 +188,26 @@ fn eval_str_tracked(
 ) -> (Value, TrackedDeps) {
     match cache.parse(source) {
         Ok(expr) => {
-            let env = TrackEnv {
-                inner: ScopeEnv { scope, bag },
-                track: Arc::new(Tracker::default()),
+            let reads = RefCell::new(TrackedDeps::default());
+            let value = {
+                let observe = |path: &str, value: &Value| {
+                    // A `$`-member is the port's own plumbing (`local.$fields`,
+                    // `local.$decl:*`, `local.$owner:*`) — it rebuilds on
+                    // demand, so recording it would register a dependency
+                    // that moves every pass.
+                    if !path.contains(".$") {
+                        reads.borrow_mut().push((path.into(), value.clone()));
+                    }
+                };
+                eval(
+                    &expr,
+                    &TrackEnv {
+                        inner: ScopeEnv { scope, bag },
+                        observe: &observe,
+                    },
+                )
             };
-            let value = unwrap_tracked(eval(&expr, &env));
-            let deps = env.track.deps.lock().map(|d| d.clone()).unwrap_or_default();
-            (value, deps)
+            (value, leaf_deps(reads.into_inner()))
         }
         Err(err) => {
             let message: Arc<str> = format!("expression {source:?}: {err}").into();
@@ -287,105 +219,54 @@ fn eval_str_tracked(
     }
 }
 
-/// The [`Env`] one tracked initial evaluates against: scope then bag, like
-/// [`ScopeEnv`], recording every signal read and the value it returned.
+/// The terminal read of each chain, kept; the links walked through,
+/// dropped. The observer reports every link of every chain in evaluation
+/// order — `store`, `store.cfg`, `store.cfg.child` — and a read the
+/// evaluator only used to reach deeper is always followed by the read it
+/// enabled. So a recorded read is a conduit exactly when the NEXT recorded
+/// read extends its path (`child` is `parent.<more>`); the last link of
+/// each chain is what the expression held. That is what makes a rebuilt
+/// `routeStore.params` conduit free — only `routeStore.params.id` lands —
+/// and a parent swap `P1→P2` sharing child `C` a non-event (`store.cfg`
+/// under `store.cfg.child` was a conduit, never an input).
+fn leaf_deps(reads: TrackedDeps) -> TrackedDeps {
+    reads
+        .iter()
+        .enumerate()
+        .filter(|(i, (path, _))| {
+            !reads
+                .get(i + 1)
+                .is_some_and(|(next, _)| next.as_ref().starts_with(&format!("{path}.")))
+        })
+        .map(|(_, entry)| entry.clone())
+        .collect()
+}
+
+/// The [`Env`] one tracked initial evaluates against: `ScopeEnv` reads,
+/// observed. The evaluator reports each read to `observe` — the deps, with
+/// no wrapping — and each host call adds a `$call:` output-content entry:
+/// an opaque call's inputs are whatever it read while it ran, invisible
+/// here, so the settled ANSWER compared by content (`deps_moved` gives
+/// `$call:` entries `content_eq`) is the contract — documented at
+/// [`StoreBag::set_function`] for registrants.
 struct TrackEnv<'a> {
     inner: ScopeEnv<'a>,
-    track: Arc<Tracker>,
+    observe: &'a dyn Fn(&str, &Value),
 }
 
 impl Env for TrackEnv<'_> {
     fn root(&self, name: &str) -> Option<Value> {
-        let value = self.inner.root(name)?;
-        Some(match value {
-            Value::Namespace(_) | Value::Obj(_) | Value::List(_) => {
-                self.track.descend(name.into(), value)
-            }
-            // The effective read — a reactive accessor's result, not the
-            // accessor: `readValue` calls it inside the memo, so what the
-            // signal answers IS the input. Evaluated ONCE: the recorded
-            // value is also what the expression sees.
-            _ => {
-                let v = value.read_value();
-                self.track.record(name.into(), v.clone());
-                v
-            }
-        })
+        self.inner.root(name)
     }
 
     fn call(&self, name: &str, args: &[Value]) -> Value {
         let value = self.inner.call(name, args);
-        // An opaque host call's inputs are whatever it read while it ran —
-        // invisible here. The settled RESULT, compared by content
-        // (`deps_moved` gives `$call:` entries `content_eq`), is the
-        // honest proxy for "its inputs moved": a pure function that
-        // allocates a fresh container per call does not move while its
-        // answer holds — a changed answer does.
-        self.track
-            .record(format!("$call:{name}").into(), value.settle());
+        (self.observe)(&format!("$call:{name}"), &value.settle());
         value
     }
-}
 
-/// The member-read recorder — each `get` records `path.key → effective
-/// value`, and a container member wraps deeper so `store.a.b` lands under
-/// `store.a.b`, not under `store` alone. Reads keep `read_property`'s own
-/// semantics (member lookup, `Undefined` for a miss); the wrapper only
-/// ever sits over a namespace or an object.
-#[derive(Debug)]
-struct TrackNs {
-    path: Arc<str>,
-    inner: Value,
-    track: Arc<Tracker>,
-}
-
-impl Namespace for TrackNs {
-    fn get(&self, key: &str) -> Value {
-        let member = match &self.inner {
-            Value::Namespace(inner) => inner.get(key),
-            Value::Obj(inner) => inner.get(key).cloned().unwrap_or(Value::Undefined),
-            _ => Value::Undefined,
-        };
-        // A `$`-member is the port's own plumbing (`local.$fields`,
-        // `local.$decl:*`, `local.$owner:*`) — it rebuilds on demand, so
-        // recording it would register a dependency that moves every pass.
-        // It still answers; it is just not a reactive input.
-        if key.starts_with('$') {
-            return member;
-        }
-        let path: Arc<str> = format!("{}.{}", self.path, key).into();
-        match member {
-            // The member read itself is the dep — a signal returning an
-            // object fires on `!==` like any other — and deeper reads keep
-            // recording through the wrapper.
-            Value::Obj(_) | Value::Namespace(_) | Value::List(_) => {
-                self.track.record(path.clone(), member.clone());
-                self.track.descend(path, member)
-            }
-            // The effective read, evaluated once: an accessor member's
-            // result is both the recorded dep and the answer the
-            // expression sees — the single call TS's memo makes.
-            _ => {
-                let v = member.read_value();
-                self.track.record(path, v.clone());
-                v
-            }
-        }
-    }
-
-    fn keys(&self) -> Vec<Arc<str>> {
-        match &self.inner {
-            Value::Namespace(inner) => inner.keys(),
-            Value::Obj(inner) => inner.keys().cloned().collect(),
-            _ => Vec::new(),
-        }
-    }
-
-    fn raw(&self) -> Option<Value> {
-        match &self.inner {
-            Value::Namespace(inner) => inner.raw(),
-            _ => Some(self.inner.clone()),
-        }
+    fn read_observer(&self) -> Option<&we_expr::ReadObserver<'_>> {
+        Some(self.observe)
     }
 }
 
