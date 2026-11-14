@@ -1,0 +1,11 @@
+[package]
+name = "we-catalog"
+version = "0.1.0"
+edition = "2021"
+description = "The widget catalog as data — names, props, events, semantic roles and text fallbacks"
+publish = false
+
+[dependencies]
+we-expr.workspace = true
+we-template.workspace = true
+indexmap.workspace = true

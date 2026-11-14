@@ -18,6 +18,7 @@ we-style.workspace = true
 we-expr.workspace = true
 
 [dev-dependencies]
+we-catalog.workspace = true
 egui = { workspace = true, features = ["default_fonts"] }
 egui_kittest.workspace = true
 serde_json.workspace = true

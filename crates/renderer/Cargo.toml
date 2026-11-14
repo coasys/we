@@ -16,6 +16,7 @@ members = [
     "we-data",
     "we-style",
     "we-layout",
+    "we-catalog",
     "we-widgets",
     "we-ad4m",
     "we-app",
@@ -44,5 +45,6 @@ we-template = { path = "we-template" }
 we-data = { path = "we-data" }
 we-style = { path = "we-style" }
 we-layout = { path = "we-layout" }
+we-catalog = { path = "we-catalog" }
 we-widgets = { path = "we-widgets" }
 we-ad4m = { path = "we-ad4m" }

@@ -4575,6 +4575,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "we-catalog"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "we-expr",
+ "we-template",
+]
+
+[[package]]
 name = "we-data"
 version = "0.1.0"
 dependencies = [
@@ -4662,6 +4671,7 @@ dependencies = [
  "indexmap",
  "serde_json",
  "taffy",
+ "we-catalog",
  "we-expr",
  "we-layout",
  "we-style",
