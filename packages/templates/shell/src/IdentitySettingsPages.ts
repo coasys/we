@@ -149,7 +149,7 @@ export const keyLogList: SchemaNode = {
     else: {
       type: 'we-text',
       props: { color: 'text-muted', loading: { $: '!identityStore.keyLogLoaded' } },
-      children: ['Your identity has no key log yet: make one on a computer that keeps your master key.'],
+      children: ['No key log yet. Create your identity on a computer that can keep your master key.'],
     },
   },
 };
@@ -159,7 +159,7 @@ export const keyLogPage: SchemaNode = {
   props: { gap: '400' },
   children: [
     back('Security', '/security'),
-    heading('Key log', 'Every change to your keys, signed and chained. Anyone can check it; nobody can rewrite it.'),
+    heading('Key log', 'Every change to your devices and keys, in order. Anyone can check it. No one can rewrite it.'),
     {
       type: '$if',
       props: {
@@ -168,7 +168,7 @@ export const keyLogPage: SchemaNode = {
           type: 'we-alert',
           props: { tone: 'danger' },
           children: [
-            'Two different logs exist for your identity. This computer kept the one it had and added nothing until this is settled.',
+            'There are two different key logs for your identity. This computer keeps its own and makes no changes until this is resolved.',
           ],
         },
       },
@@ -186,13 +186,13 @@ export const keyLogPage: SchemaNode = {
             {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-muted' },
-              children: [{ $: '`The shared store signed this log up to #${identityStore.status.head.seq}.`' }],
+              children: [{ $: '`Confirmed by the identity store up to #${identityStore.status.head.seq}.`' }],
             },
           ],
         },
       },
     },
-    footnote('lock', 'Names come from your private record. The public log holds only keys.'),
+    footnote('lock', 'The public log lists only keys. Names show only on your devices.'),
   ],
 };
 
@@ -205,7 +205,7 @@ export const keyLogSummary: SchemaNode[] = [
       {
         type: 'we-text',
         props: { color: 'text-muted' },
-        children: [{ $: "count(identityStore.keyLog) == 1 ? '1 event' : `${count(identityStore.keyLog)} events`" }],
+        children: [{ $: "count(identityStore.keyLog) == 1 ? '1 entry' : `${count(identityStore.keyLog)} entries`" }],
       },
       {
         type: 'we-button',
@@ -214,7 +214,7 @@ export const keyLogSummary: SchemaNode[] = [
           size: 'sm',
           onClick: { $invoke: 'routeStore.navigate', args: ['/security/key-log'] },
         },
-        children: ['See the log'],
+        children: ['View log'],
       },
     ],
   },
@@ -237,15 +237,13 @@ export const makeIdentityCard: SchemaNode = {
           props: { gap: '300', ay: 'center' },
           children: [
             { type: 'we-icon', props: { name: 'sparkle', color: 'accent-text' } },
-            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Make my identity here'] },
+            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Create your identity'] },
           ],
         },
         {
           type: 'we-text',
           props: { variant: 'body', color: 'text-muted' },
-          children: [
-            'Your 12 words, no email needed. This computer keeps your master key, and this computer becomes your first device.',
-          ],
+          children: ['No email or password needed. This computer becomes your first device and keeps your master key.'],
         },
         {
           type: 'Row',
@@ -259,7 +257,7 @@ export const makeIdentityCard: SchemaNode = {
                 disabled: { $: 'identityStore.busy' },
                 onClick: { $invoke: 'identityStore.makeIdentity' },
               },
-              children: ['Make my identity'],
+              children: ['Create identity'],
             },
           ],
         },
@@ -404,7 +402,7 @@ export const deviceList: SchemaNode = {
     else: {
       type: 'we-text',
       props: { color: 'text-muted', loading: { $: '!deviceStore.devicesLoaded && !!identityStore.did' } },
-      children: ['No device speaks for you yet. Make your identity first.'],
+      children: ['No devices yet. Create your identity first.'],
     },
   },
 };
@@ -423,7 +421,7 @@ const stepButton = (label: string, invoke: string, variant = 'solid', args: unkn
 });
 
 /**
- * Linking, where this computer can sign a device in: by the code a device shows, or a server by a
+ * "Link a device", where this computer can sign one in: by the code a device shows, or a host by a
  * link this computer gives it.
  */
 export const addDeviceButton: SchemaNode = {
@@ -576,5 +574,5 @@ export const requestList: SchemaNode = when('count(deviceStore.requests)', {
 
 export const deviceListFootnote: SchemaNode = footnote(
   'lock',
-  'Only your devices can see device names. Your public key log lists only keys.',
+  'Only your devices can see device names. Your public key log lists only keys. Removing a device takes effect from that point in the log.',
 );
