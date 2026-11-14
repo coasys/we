@@ -5,24 +5,33 @@
  * Boots `apps/we-preview` (the whole WE app over `@we/backend-inmemory`) with the Coasys bundle and
  * `crates/renderer/fixtures/coasys/fixture.json`, under `?record=1` — the flag that mounts the
  * recorder bridge (`apps/we-preview/src/RecorderBridge.tsx`) and the connector's members/workflows
- * seeding. For each route the script then:
+ * seeding, both gated on a dev build. The run is two passes:
  *
- * - navigates the page there,
- * - evaluates every store-member path the bundle's mounted surfaces reference, through the space-tier
- *   filtered bag (and again unfiltered, to tell "absent by the tier" from "undefined"),
- * - resolves every `$queries` descriptor through the same path the renderer uses
- *   (`resolveProp`/`deepUnwrap` → `pruneUnresolvedWhere`/`scopeIsAnchored` → `routeQuery` on the
- *   backend's own adapter → `Model.findAll`), and
- * - photographs the route under each of the six themes at 1280×800.
+ * - **capture** — for each route: navigate, evaluate every store-member path the bundle's
+ *   mounted surfaces reference (through the space-tier filtered bag, and again unfiltered to
+ *   tell "absent by the tier" from "undefined"), and resolve every `$queries` descriptor through
+ *   the same path the renderer uses (`resolveProp`/`deepUnwrap` → `pruneUnresolvedWhere`/
+ *   `scopeIsAnchored` → `routeQuery` on the backend's own adapter → `Model.findAll`). The theme
+ *   is never touched in this pass, and every route asserts it records under the same one.
+ * - **photography** — the routes again under each theme at 1280×800. A screenshot label maps to
+ *   its registered theme id (`glow` → `coasys--glow`, the way `themeRegistry` keys it), the
+ *   applied theme is verified after every switch — a miss fails the run rather than writing a
+ *   PNG of the wrong theme — and the capture theme is restored after each route.
  *
  * Output:
- * - `fixtures/coasys/snapshot.json` — `{ stores, queries, invokes, routes }` in the shape
- *   `we-app/tests/data/tree-snapshot.json` established, extended with `routes` (per-route params,
- *   member values, query rows and diagnostics) — see `fixtures/coasys/README.md`.
+ * - `fixtures/coasys/snapshot.json` — `{ meta, stores, queries, invokes, routes }`. `routes.<id>`
+ *   is the primary shape — per-route truth: params, member values, query answers keyed by the
+ *   full resolved request, skipped queries marked as skipped. The flat `stores`/`queries`/
+ *   `invokes` tables are exactly the landing route's capture (`meta.flatScope`), kept for
+ *   consumers that only know the flat shape — see `fixtures/coasys/README.md`.
  * - `target/coasys-web/<route>-<theme>.png` — one per route × theme.
  *
+ * Environment:
+ * - `WE_RECORD_CHROME` — path to a Chrome/Chromium binary. Default: playwright's `chrome`
+ *   channel (an installed Google Chrome).
+ *
  * Usage:
- *   node record-coasys.mjs [--base <url>] [--wait <ms>]
+ *   node record-coasys.mjs [--base <url>] [--wait <ms>] [--routes <csv>] [--themes <csv>]
  *   --base   use a preview already running there instead of starting one on :4317
  */
 import { spawn } from 'node:child_process';
@@ -39,7 +48,10 @@ const BUNDLE = resolve(repoRoot, 'bundles/coasys.bundle.json');
 const OUT = resolve(repoRoot, 'crates/renderer/fixtures/coasys/snapshot.json');
 const SHOTS = resolve(repoRoot, 'crates/renderer/target/coasys-web');
 
-const require = createRequire('/home/data/.nvm/versions/node/v24.20.0/lib/node_modules/openclaw/package.json');
+// `playwright-core` is a devDependency of `apps/we-preview` — resolved from the repo, so the
+// recorder regenerates the snapshot on any checkout with the workspace installed, not just on
+// the machine that first ran it.
+const require = createRequire(resolve(repoRoot, 'apps/we-preview/package.json'));
 const { chromium } = require('playwright-core');
 
 function parseArgs(argv) {
@@ -55,13 +67,17 @@ function parseArgs(argv) {
     else if (flag === '--wait') args.wait = Number(consume());
     else if (flag === '--out') args.out = consume();
     else if (flag === '--shots') args.shots = consume();
-    else if (flag === '--routes') args.routes = consume(); // comma list of route ids
+    else if (flag === '--routes')
+      args.routes = consume(); // comma list of route ids
+    else if (flag === '--themes') args.themes = consume(); // comma list of theme labels
   }
   return args;
 }
 const args = parseArgs(process.argv.slice(2));
 
-const THEMES = ['light', 'dark', 'black', 'retro', 'glow', 'cyberpunk'];
+// Screenshot labels — what the PNG files are named, not necessarily the registered theme id.
+// `--themes` reorders or subsets the photography without touching the captured data.
+const THEMES = args.themes?.split(',') ?? ['light', 'dark', 'black', 'retro', 'glow', 'cyberpunk'];
 
 /**
  * The routes the recorder photographs, and the surfaces each mounts for member/query collection.
@@ -229,7 +245,14 @@ function scanSurface(node, bag, surface) {
   if (typeof node !== 'object') return;
   for (const [key, value] of Object.entries(node)) {
     if (key === '$queries' && value && typeof value === 'object') {
-      for (const [name, descriptor] of Object.entries(value)) bag.queries.set(name, descriptor);
+      // Every descriptor per name — two surfaces ask `signalTypes` with different sorts, and a
+      // name-keyed map silently kept the last. Identity is the resolved request, decided at run
+      // time; the scan keeps them all.
+      for (const [name, descriptor] of Object.entries(value)) {
+        const list = bag.queries.get(name) ?? [];
+        list.push({ descriptor, surface });
+        bag.queries.set(name, list);
+      }
       continue;
     }
     if (key === '$invoke') {
@@ -340,15 +363,31 @@ for (const route of ROUTES) {
 
 console.log(`routes: ${[...wanted.keys()].join(', ')}`);
 for (const [id, bag] of wanted) {
+  const descriptors = [...bag.queries.values()].reduce((n, list) => n + list.length, 0);
   console.log(
-    `  ${id}: ${bag.members.size} member refs, ${bag.queries.size} queries, ${bag.invokes.size} invoke targets`,
+    `  ${id}: ${bag.members.size} member refs, ${descriptors} query descriptors, ${bag.invokes.size} invoke targets`,
   );
 }
+
+/*
+ * The registered theme id a screenshot label resolves to — built the way `themeRegistry` is:
+ * a theme the bundle owns lands under `<bundleId>--<themeId>` (see `bundlePieceId` and the
+ * `themeRef` map in `bundlePieces`); every other label is already a registry id. Asking the
+ * store for the bundle-local name (`glow`) misses the lookup and silently falls back — the bug
+ * this mapping exists to prevent.
+ */
+const ownThemeIds = new Set((bundle.themes ?? (bundle.theme ? [bundle.theme] : [])).map((t) => t.id));
+const registeredThemeId = (label) => (ownThemeIds.has(label) ? `${bundle.id}--${label}` : label);
 
 // ─── Drive the page ───────────────────────────────────────────────────────────
 const fixtureUrl = `/@fs${FIXTURE}`;
 const appUrl = `${base}/?fixtureUrl=${encodeURIComponent(fixtureUrl)}&record=1`;
-const browser = await chromium.launch({ channel: 'chrome' });
+
+// `WE_RECORD_CHROME` names the binary; without it playwright resolves the installed Google
+// Chrome channel — the same default the first recordings used.
+const browser = await chromium.launch(
+  process.env.WE_RECORD_CHROME ? { executablePath: process.env.WE_RECORD_CHROME } : { channel: 'chrome' },
+);
 
 // A cold vite re-bundles discovered dependencies once, mid-boot, reloading the page and dropping
 // `window.__weRecord`. Burn that reload on a throwaway page so the recording page starts stable;
@@ -384,9 +423,25 @@ console.log(`fixture '${info.fixture}' template '${info.templateId}' dataset '${
 
 await mkdir(args.shots ?? SHOTS, { recursive: true });
 
-const snapshot = { stores: {}, queries: {}, invokes: {}, routes: {} };
+const snapshot = {
+  meta: {
+    format: 'we-snapshot@2',
+    fixture: info.fixture,
+    dataset: info.datasetId,
+    /*
+      `stores`/`queries`/`invokes` hold exactly this route's capture — the landing route — for
+      the consumers that only know the flat shape. Per-route truth lives in `routes.<id>`; read
+      it there. `captureTheme` is set from the first route's applied theme, asserted equal on
+      every route.
+    */
+    flatScope: 'index',
+  },
+  stores: {},
+  queries: {},
+  invokes: {},
+  routes: {},
+};
 const notCaptured = new Map(); // member → {reason, routes}
-const queriesFromSkip = new Set(); // snapshot query names whose table came from a skipped run
 const report = new Map(); // route id → report row
 
 const settle = async (ms = args.wait) => page.waitForTimeout(ms);
@@ -398,20 +453,40 @@ const ev = async (fn, arg) => {
   return page.evaluate(fn, arg);
 };
 
-for (const route of ROUTES) {
-  const bag = wanted.get(route.id);
-  if (!bag) continue;
-  const started = Date.now();
-
+// Both passes navigate the same way: a route, or a route plus the shell overlay opened over it.
+// An open overlay survives navigation (it sits *over* whatever page mounts), so a plain route
+// must close one explicitly — otherwise pass 1's `about` leaves `landing-page` covering every
+// shot in pass 2.
+const navigateTo = async (route) => {
+  await ev((p) => window.__weRecord.navigate(p), route.web);
   if (route.overlay) {
-    // An overlay opens over whatever page is mounted — here, the feed.
-    await ev((p) => window.__weRecord.navigate(p), route.web);
     await settle();
     await ev((v) => window.__weRecord.openShellView(v), route.overlay);
     await settle(400);
   } else {
-    await ev((p) => window.__weRecord.navigate(p), route.web);
+    await ev(() => window.__weRecord.closeShellView());
     await settle();
+  }
+};
+
+// ─── Pass 1 — capture ─────────────────────────────────────────────────────────
+// The theme is never touched here: every route records under the state the app chose, and the
+// second pass's theme changes cannot leak into the data. `appliedTheme` is asserted identical
+// on every route — drift would mean a capture under a different baseline, the contamination
+// this separation exists to remove.
+let baselineTheme;
+for (const route of ROUTES) {
+  const bag = wanted.get(route.id);
+  if (!bag) continue;
+  const started = Date.now();
+  await navigateTo(route);
+
+  const applied = await ev(() => window.__weRecord.appliedTheme());
+  baselineTheme ??= applied;
+  if (applied.resolved !== baselineTheme.resolved || applied.documentAttr !== applied.expectedAttr) {
+    throw new Error(
+      `route '${route.id}' under theme ${JSON.stringify(applied)} — the capture baseline is ${JSON.stringify(baselineTheme)}`,
+    );
   }
 
   const params = await ev(() => window.__weRecord.params());
@@ -448,25 +523,49 @@ for (const route of ROUTES) {
     notCaptured.set(member, seen);
   }
 
-  // Queries — each descriptor run the way the renderer would run it now. A skipped descriptor
-  // (`when` false / unanchored scope) writes an empty table but stays replaceable: a later route
-  // where the descriptor actually runs overwrites it.
-  const queries = {};
-  const skippedHere = new Set();
-  const queryNotes = [];
-  for (const [name, descriptor] of [...bag.queries].sort(([a], [b]) => a.localeCompare(b))) {
-    const result = await ev((d) => window.__weRecord.runQuery(d), descriptor);
-    if (result.ok && !result.skipped) {
-      queries[name] = result.rows;
-    } else if (result.ok && result.skipped) {
-      queries[name] = [];
-      skippedHere.add(name);
-      queryNotes.push({ name, note: `skipped:${result.skipped}` });
-    } else {
-      queryNotes.push({ name, note: `failed:${result.reason}` });
-      notCaptured.set(`$queries.${name}`, { reason: result.reason, routes: [route.id] });
+  /*
+    Queries — every descriptor the surfaces declare, resolved the way `runQuery` resolves it now.
+
+    An answer's identity is the *resolved request* (entity + scope/where/sort/limit), not the
+    local name: the tree's `signalTypes` sorts by name and the inspector's does not, and those
+    are different answers to different questions. Descriptors resolving to the same request
+    dedup to one capture (keeping their surfaces). A descriptor the renderer would not run —
+    `when` false, unanchored scope — is recorded as `skipped`, never as an answered empty list;
+    a real empty answer keeps `rows: []` and the two stay distinguishable.
+  */
+  const captures = new Map(); // dedup key → capture
+  for (const [name, entries] of [...bag.queries].sort(([a], [b]) => a.localeCompare(b))) {
+    for (const { descriptor, surface } of entries) {
+      const result = await ev((d) => window.__weRecord.runQuery(d), descriptor);
+      let key;
+      let capture;
+      if (result.ok && !result.skipped) {
+        key = `${name}\n${JSON.stringify(canon(result.request))}`;
+        capture = captures.get(key) ?? { name, request: result.request, rows: result.rows, surfaces: [] };
+      } else if (result.ok) {
+        key = `${name}\nskipped:${result.skipped}\n${JSON.stringify(canon(result.request ?? descriptor))}`;
+        capture = captures.get(key) ?? {
+          name,
+          skipped: result.skipped,
+          ...(result.request !== undefined ? { request: result.request } : {}),
+          surfaces: [],
+        };
+      } else {
+        key = `${name}\nfailed:${result.reason}\n${JSON.stringify(canon(descriptor))}`;
+        capture = captures.get(key) ?? { name, failed: result.reason, surfaces: [] };
+        const seen = notCaptured.get(`$queries.${name}`) ?? { reason: result.reason, routes: [] };
+        seen.routes.push(route.id);
+        notCaptured.set(`$queries.${name}`, seen);
+      }
+      capture.surfaces = [...new Set([...capture.surfaces, surface])].sort();
+      captures.set(key, capture);
     }
   }
+  const queries = [...captures.values()].sort(
+    (a, b) =>
+      a.name.localeCompare(b.name) ||
+      JSON.stringify(canon(a.request ?? null)).localeCompare(JSON.stringify(canon(b.request ?? null))),
+  );
 
   // $agent — the person page's profile load.
   let agent;
@@ -482,60 +581,93 @@ for (const route of ROUTES) {
     ...(route.overlay ? { overlay: route.overlay } : {}),
     path: currentPath,
     params,
+    theme: applied.resolved,
     members,
     queries,
-    ...(queryNotes.length ? { queryNotes } : {}),
     ...(agent ? { agents: { [route.agentDid]: agent } } : {}),
     ...(absent.length ? { absent } : {}),
     invokeTargets: [...bag.invokes].sort(),
   });
 
-  // Merge into the flat tables — first route wins on conflict (the feed is the honest default).
-  // `routeStore` is route state, though: the flat table must be *one* route's truth — the landing
-  // route's — not a union of every page's params. Per-route values live in `routes.<id>`.
-  for (const member of [...bag.members.keys()].sort()) {
-    if (member.startsWith('routeStore.') && route.id !== ROUTES[0].id) continue;
-    const value = member.split('.').reduce((o, k) => o?.[k], members);
-    if (value === undefined) continue;
-    if (member.split('.').reduce((o, k) => o?.[k], snapshot.stores) === undefined)
-      setNested(snapshot.stores, member, value);
-  }
-  for (const [name, rows] of Object.entries(queries)) {
-    if (!(name in snapshot.queries)) {
-      snapshot.queries[name] = rows;
-      if (skippedHere.has(name)) queriesFromSkip.add(name);
-    } else if (queriesFromSkip.has(name) && !skippedHere.has(name)) {
-      snapshot.queries[name] = rows; // a real execution replaces the skipped placeholder
-      queriesFromSkip.delete(name);
-    }
-  }
-
   report.set(route.id, {
     route: route.id,
     membersRead: bag.members.size - absent.length,
     absent: absent.length,
-    queries: Object.entries(queries)
-      .map(([n, r]) => `${n}(${Array.isArray(r) ? r.length : '?'})`)
+    queries: queries
+      .map((c) => `${c.name}(${c.rows === undefined ? (c.skipped ?? `failed:${c.failed}`) : c.rows.length})`)
       .join(', '),
     ms: Date.now() - started,
   });
-
-  // The screenshots — every theme, same page state.
-  for (const theme of THEMES) {
-    await ev((t) => window.__weRecord.setTheme(t), theme);
-    await settle(350);
-    const path = resolve(args.shots ?? SHOTS, `${route.id}-${theme}.png`);
-    await page.screenshot({ path });
-  }
-  if (route.overlay) await ev((v) => window.__weRecord.closeShellView(v), route.overlay);
-  console.log(`  ${route.id}: captured in ${report.get(route.id).ms}ms, ${THEMES.length} shots`);
+  console.log(`  ${route.id}: captured in ${report.get(route.id).ms}ms`);
 }
 
-snapshot.stores = canon(snapshot.stores);
-snapshot.queries = canon(snapshot.queries);
+/*
+  The flat tables are exactly the landing route's capture — nothing merged across routes, no
+  placeholders for questions a route never asked. They exist for consumers that only know
+  `{stores, queries, invokes}`; `routes.<id>` is the truth and `meta.flatScope` says which
+  route the tables repeat.
+*/
+const landing = snapshot.routes[snapshot.meta.flatScope];
+if (landing) {
+  snapshot.stores = canon(landing.members);
+  const flatQueries = {};
+  for (const capture of landing.queries) {
+    // First request per name wins — a `{name: rows}` table cannot hold two answers honestly,
+    // which is part of why the real data lives in `routes`.
+    if (capture.rows === undefined || capture.name in flatQueries) continue;
+    flatQueries[capture.name] = capture.rows;
+  }
+  snapshot.queries = canon(flatQueries);
+}
+snapshot.meta.captureTheme = baselineTheme?.resolved ?? null;
 snapshot.invokes = canon(
   Object.fromEntries([...new Set([...wanted.values()].flatMap((b) => [...b.invokes]))].sort().map((t) => [t, null])),
 );
+
+// ─── Pass 2 — photography ─────────────────────────────────────────────────────
+// The data is already recorded; themes may change freely here. After every switch the *applied*
+// theme is checked against the registered id asked for — the store falls back rather than
+// failing, and a PNG of the wrong theme is worse than none. The capture theme goes back on
+// after each route's loop, so photography leaves the page the way capture found it.
+const shotsDir = args.shots ?? SHOTS;
+for (const route of ROUTES) {
+  if (!wanted.has(route.id)) continue;
+  await navigateTo(route);
+
+  for (const label of THEMES) {
+    const id = registeredThemeId(label);
+    const wrote = await ev((t) => window.__weRecord.setTheme(t), id);
+    if (wrote === false) throw new Error(`setTheme('${id}') — the settings write failed`);
+    // Resolution is async — the theme record may still be arriving. Wait until what is applied
+    // is what was asked, then read it back; the check below reports the state actually reached.
+    await page
+      .waitForFunction(
+        (want) => {
+          const a = window.__weRecord?.appliedTheme?.();
+          return Boolean(a && a.resolved === want && a.documentAttr === a.expectedAttr);
+        },
+        id,
+        { timeout: 15_000 },
+      )
+      .catch(() => {});
+    const applied = await ev(() => window.__weRecord.appliedTheme());
+    if (
+      applied.resolved !== id ||
+      applied.documentAttr !== applied.expectedAttr ||
+      (applied.scopeAttr !== null && applied.scopeAttr !== applied.expectedAttr)
+    ) {
+      throw new Error(`theme '${label}' (${id}) did not apply: ${JSON.stringify(applied)}`);
+    }
+    await settle(350); // let the cross-fade finish before the exposure
+    await page.screenshot({ path: resolve(shotsDir, `${route.id}-${label}.png`) });
+  }
+  if (route.overlay) await ev((v) => window.__weRecord.closeShellView(v), route.overlay);
+  if (baselineTheme) {
+    const restored = await ev((t) => window.__weRecord.setTheme(t), baselineTheme.resolved);
+    if (restored === false) throw new Error(`restoring theme '${baselineTheme.resolved}' failed`);
+  }
+  console.log(`  ${route.id}: ${THEMES.length} shots`);
+}
 
 await writeFile(args.out ?? OUT, JSON.stringify(snapshot, null, 1) + '\n');
 const hash = createHash('sha256')
