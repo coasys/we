@@ -32,6 +32,23 @@ describe('a button marked autofocus', () => {
     expect(el.shadowRoot!.activeElement).toBe(base(el));
   });
 
+  it('focuses its control again when autofocus turns on after it was drawn — an entry shown again', async () => {
+    const el = await mount();
+    const other = document.createElement('button');
+    document.body.appendChild(other);
+    other.focus();
+    el.autofocus = true;
+    await el.updateComplete;
+    expect(document.activeElement).toBe(el);
+    expect(el.shadowRoot!.activeElement).toBe(base(el));
+
+    // Staying on is not turning on: focus moved elsewhere is left there on an unrelated update.
+    other.focus();
+    el.setAttribute('variant', 'soft');
+    await el.updateComplete;
+    expect(document.activeElement).toBe(other);
+  });
+
   it('leaves focus where it was otherwise', async () => {
     const other = document.createElement('button');
     document.body.appendChild(other);

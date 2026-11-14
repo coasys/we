@@ -19,6 +19,7 @@ import { workflowStateOf } from '@shared/taskWorkflow';
 import { taskWorkflowLive } from '@shared/taskWorkflowLive';
 import { landsOnRoot } from '@shared/templateLanding';
 import { copyText } from '@shared/utils';
+import { installWindowCover } from '@shared/windowCover';
 import { withExtractionDefaults } from '@we/entities';
 import { completeResponse, respondsThrough } from '@we/entities';
 
@@ -1084,6 +1085,13 @@ export default function TemplateProvider() {
     observer.observe(layer, { childList: true, subtree: true });
     update();
     onCleanup(() => observer.disconnect());
+  });
+  /*
+    And while something of the app's covers the whole window — a phone's menu, open — the rest of
+    the app is inert behind it and Tab stays inside it. See `windowCover.ts`.
+  */
+  onMount(() => {
+    if (appLayer) onCleanup(installWindowCover(appLayer));
   });
   createEffect(() => {
     if (!asking() || !promptLayer) return;

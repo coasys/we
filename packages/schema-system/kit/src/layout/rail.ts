@@ -228,6 +228,15 @@ export function railShell(opts: RailShellOptions): SchemaNode {
   // `display` rather than an `$if`, so what the rail holds (a folded group, a scroll position)
   // is where it was when the rail opens again.
   const hiddenWhileShut = shut === undefined ? {} : { display: expr`${shut} ? 'none' : 'flex'` };
+  /*
+    Open and compact, the rail is the whole window, and what it covers must not be reachable behind
+    it: Tab past its last control landed on the covered page, and a screen reader read it out. The
+    host does that part, for any element marked as covering the window (`COVER_ATTR` in app-shell's
+    `windowCover.ts`): everything else is made inert, Tab is kept inside, and focus goes back to
+    what opened it — the Menu button — once it closes. Escape is the rail's, since only the rail
+    holds the flag that closes it.
+  */
+  const covering = compact === undefined ? undefined : expr`${compact} && local.expanded`;
 
   return {
     type: 'Column',
@@ -248,6 +257,12 @@ export function railShell(opts: RailShellOptions): SchemaNode {
       position: opts.position ?? 'fixed',
       ...(opts.zIndex !== undefined && { zIndex: opts.zIndex }),
       ...(opts.position !== 'static' && { top: '0', [side]: '0' }),
+      ...(covering !== undefined && {
+        'data-we-covers-window': expr`${covering} ? 'true' : 'false'`,
+        onKeyDown: {
+          $if: { condition: expr`${covering} && event.key == 'Escape'`, then: { $setLocal: 'expanded', value: false } },
+        },
+      }),
       ...(hoverExpand && {
         onMouseEnter:
           opts.compact === undefined

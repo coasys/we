@@ -365,6 +365,11 @@ export default class Button extends DesignSystemElement {
    * `<button>` inside this one's shadow root. Without it, a press that swaps the whole view leaves
    * focus on a button that is no longer drawn, and a keyboard or screen reader starts again from the
    * top of the page.
+   *
+   * And again whenever it turns true after that, for a control that is not drawn anew but shown
+   * again: Settings' list on a phone is put away while a page is open, not unmounted, so the entry
+   * that opened the page is the same element when Back brings the list back, and it is told to take
+   * focus by its `autofocus` turning on.
    */
   @property({ type: Boolean, reflect: true }) autofocus = false;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
@@ -380,6 +385,10 @@ export default class Button extends DesignSystemElement {
 
   override updated(changedProperties: Map<string, unknown>) {
     super.updated(changedProperties);
+    // Turned on after the first render: `false` before, where the first render's is `undefined`.
+    if (this.autofocus && changedProperties.get('autofocus') === false) {
+      this.renderRoot.querySelector<HTMLElement>('[part="base"]')?.focus();
+    }
     // Gradients are a solid-variant affordance; anywhere else the flag is meaningless.
     const hasGradient = this.gradient && this.variant === 'solid';
     this.style.setProperty('--we-button-gradient', hasGradient ? 'var(--we-gradient-accent)' : 'none');

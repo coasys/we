@@ -1409,7 +1409,9 @@ const SETTINGS_PHONE_LIST = `${PHONE} && !${PAGE_OPEN}`;
  * which page this is.
  *
  * Back is a real button and takes focus as the page arrives (`autofocus`), because the entry that
- * was pressed has just gone from the screen, and focus with it.
+ * was pressed has just gone from the screen, and focus with it. And Back gives it back: the list
+ * returns with focus on the entry that opened the page (`settingsFrom`), or on the first entry where
+ * Settings opened on a page directly — see `navItem`.
  */
 const phonePageHeader: SchemaNode = {
   type: 'Row',
@@ -1421,6 +1423,8 @@ const phonePageHeader: SchemaNode = {
         variant: 'ghost',
         autofocus: true,
         onClick: [
+          // Opened on a page directly, nothing in the list opened it: the first entry, which is Profile.
+          { $setLocal: 'settingsFrom', value: { $: "local.settingsFrom == '' ? '/' : local.settingsFrom" } },
           { $setLocal: 'settingsPage', value: false },
           { $invoke: 'routeStore.navigate', args: ['/'] },
         ],
@@ -1450,11 +1454,19 @@ function navItem(label: string, icon: string, path: string): SchemaNode {
       // Not on a phone's list, which is only seen with no page open: Back goes to '/', so Profile
       // would be lit every time the list came back.
       variant: { $: `!(${PHONE}) && (${selected}) ? 'soft' : 'ghost'` },
+      /*
+        Focus back on the entry that opened the page, as Back brings the list back. The list is put
+        away rather than unmounted, so this is the same button as before, and it takes focus by its
+        `autofocus` turning on (`we-button`). Nothing is focused when Settings first opens on the
+        list: `settingsFrom` is empty until something is chosen.
+      */
+      autofocus: { $: `${SETTINGS_PHONE_LIST} && local.settingsFrom == '${path}'` },
       // A full-width row: in the column beside the page from `sm` up, in the list on a phone.
       width: '100%',
       ax: 'start',
       // On a phone, choosing it opens the page in place of the list — see `PAGE_OPEN`.
       onClick: [
+        { $setLocal: 'settingsFrom', value: path },
         { $setLocal: 'settingsPage', value: true },
         { $invoke: 'routeStore.navigate', args: [path] },
       ],
@@ -1662,7 +1674,11 @@ export const settingsTemplate: TemplateSchema = {
       // Whether a page was chosen from a phone's list — see `PAGE_OPEN`. Here rather than on the
       // root, which is a route's ancestor in the schema and not at render time; the nav, the header
       // and the page's column are all under this one.
-      $localState: { settingsPage: { type: 'boolean', initial: false } },
+      // And which entry opened it, so Back can put focus back on it — see `phonePageHeader`.
+      $localState: {
+        settingsPage: { type: 'boolean', initial: false },
+        settingsFrom: { type: 'string', initial: '' },
+      },
       children: [
         // "Settings" over the list, and beside the page from `sm` up; a phone's page has its own.
         { ...pageHeader, props: { ...pageHeader.props, display: { $: `${SETTINGS_PHONE_PAGE} ? 'none' : 'flex'` } } },

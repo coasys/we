@@ -66,6 +66,15 @@
                       "zIndex": "chrome",
                       "top": "0",
                       "left": "0",
+                      "data-we-covers-window": {
+                        "$": "(shellStore.narrowWindow && local.expanded) ? 'true' : 'false'"
+                      },
+                      "onKeyDown": {
+                        "$if": {
+                          "condition": { "$": "(shellStore.narrowWindow && local.expanded) && event.key == 'Escape'" },
+                          "then": { "$setLocal": "expanded", "value": false }
+                        }
+                      },
                       "onMouseEnter": {
                         "$if": {
                           "condition": { "$": "!shellStore.narrowWindow" },
