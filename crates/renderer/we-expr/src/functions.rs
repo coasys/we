@@ -458,100 +458,68 @@ fn default(args: &[Value], _env: &dyn Env) -> Value {
 
 /// The form functions read the node's `$localMeta` bag: a map from field
 /// name to `{touched, errors}` — decoded from the conformance format's
-/// `$localMetaEntry` records. `$localScopeFields` scopes them to the fields
-/// the local form actually owns.
+/// `$localMetaEntry` records.
 fn local_meta(env: &dyn Env) -> Value {
     env.root("$localMeta").unwrap_or(Value::Undefined)
 }
 
-fn local_scope_fields(env: &dyn Env) -> Vec<Value> {
-    match env.root("$localScopeFields") {
-        Some(Value::List(l)) => l.iter().cloned().collect(),
-        _ => Vec::new(),
+/// `meta(env)?.[asText(field)]` — the one read every form function makes of
+/// its argument: the field argument is text, missing or not (a missing
+/// argument names `''`, a number `'5'` — there is no aggregate reading).
+fn field_entry(env: &dyn Env, field: &Value) -> Option<Value> {
+    match local_meta(env) {
+        Value::Obj(meta) => meta.get(field.to_text().as_ref()).cloned(),
+        _ => None,
     }
 }
 
-/// The `$localMeta` entries, scoped to `$localScopeFields` when that root is
-/// bound — the same read the TS form functions make of the node context.
-fn meta_entries(env: &dyn Env) -> Vec<(Arc<str>, Value)> {
-    let Value::Obj(meta) = local_meta(env) else {
-        return Vec::new();
-    };
-    let scope = local_scope_fields(env);
-    if scope.is_empty() {
-        return meta.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-    }
-    let mut out = Vec::new();
-    for field in &scope {
-        let name = field.to_text();
-        if let Some(entry) = meta.get(name.as_ref()) {
-            out.push((name, entry.clone()));
-        }
-    }
-    out
-}
-
-/// `touched()` — every in-scope field has been touched (or named field has).
+/// `touched(field)` — whether the named field has been blurred or marked
+/// with `$touch`; false for a field the meta bag does not hold.
 fn touched(args: &[Value], env: &dyn Env) -> Value {
-    match args.first() {
-        // `touched('name')` — one field.
-        Some(Value::Str(name)) => field_entry(env, name)
-            .map(|e| prop_truthy(&e, "touched"))
-            .unwrap_or(false)
-            .into(),
-        _ => {
-            let entries = meta_entries(env);
-            (!entries.is_empty() && entries.iter().all(|(_, e)| prop_truthy(e, "touched"))).into()
-        }
-    }
-}
-
-/// `valid()` — no in-scope field has errors (or named field has none).
-fn valid(args: &[Value], env: &dyn Env) -> Value {
-    match args.first() {
-        Some(Value::Str(name)) => field_entry(env, name)
-            .map(|e| field_errors(&e).is_empty())
-            .unwrap_or(true)
-            .into(),
-        _ => meta_entries(env)
-            .iter()
-            .all(|(_, e)| field_errors(e).is_empty())
-            .into(),
-    }
-}
-
-/// `error(name?)` — the named field's first error once touched, `''` when
-/// clean or untouched. With no name, the first error across the in-scope
-/// fields.
-fn error(args: &[Value], env: &dyn Env) -> Value {
-    match args.first() {
-        Some(Value::Str(name)) => field_entry(env, name)
-            .filter(|e| prop_truthy(e, "touched"))
-            .and_then(|e| field_errors(&e).first().cloned())
-            .unwrap_or_else(|| "".into()),
-        _ => meta_entries(env)
-            .iter()
-            .filter(|(_, e)| prop_truthy(e, "touched"))
-            .find_map(|(_, e)| field_errors(e).first().cloned())
-            .unwrap_or_else(|| "".into()),
-    }
-}
-
-/// `formValid()` — every in-scope field valid AND touched; no fields at all
-/// is vacuously valid.
-fn form_valid(args: &[Value], env: &dyn Env) -> Value {
-    let _ = args;
-    meta_entries(env)
-        .iter()
-        .all(|(_, e)| prop_truthy(e, "touched") && field_errors(e).is_empty())
+    field_entry(env, &arg(args, 0))
+        .map(|e| prop_truthy(&e, "touched"))
+        .unwrap_or(false)
         .into()
 }
 
-fn field_entry(env: &dyn Env, name: &Arc<str>) -> Option<Value> {
-    match local_meta(env) {
-        Value::Obj(meta) => meta.get(name.as_ref()).cloned(),
-        _ => None,
-    }
+/// `valid(field)` — the named field has no errors, touched or not. True for
+/// a field the meta bag does not hold.
+fn valid(args: &[Value], env: &dyn Env) -> Value {
+    field_entry(env, &arg(args, 0))
+        .map(|e| field_errors(&e).is_empty())
+        .unwrap_or(true)
+        .into()
+}
+
+/// `error(field)` — the named field's first error once touched, `''` when
+/// clean or untouched.
+fn error(args: &[Value], env: &dyn Env) -> Value {
+    field_entry(env, &arg(args, 0))
+        .filter(|e| prop_truthy(e, "touched"))
+        .and_then(|e| field_errors(&e).first().cloned())
+        .unwrap_or_else(|| "".into())
+}
+
+/// `formValid()` — every field `$localScopeFields` names is error-free;
+/// touched is not required. With no meta map or no scope list at all, true
+/// (`!map || !fields` in `functions.ts`), so an empty scope list iterates
+/// nothing and a bad field outside the scope does not count.
+fn form_valid(_args: &[Value], env: &dyn Env) -> Value {
+    let Value::Obj(meta) = local_meta(env) else {
+        return true.into();
+    };
+    let Some(Value::List(fields)) = env.root("$localScopeFields") else {
+        return true.into();
+    };
+    fields
+        .iter()
+        .all(|field| {
+            meta.get(field.to_text().as_ref())
+                .map(|e| field_errors(e).is_empty())
+                // `map[name]?.errors().length ?? 0` — a missing entry is valid.
+                .unwrap_or(true)
+        })
+        .into()
 }
 
 /// `entry.prop()` — the form functions invoke their meta members directly
