@@ -54,6 +54,7 @@ impl OfflineData {
         json: &serde_json::Value,
         store_map: Option<&StoreMap>,
     ) -> Result<OfflineData, String> {
+        validate_snapshot(json)?;
         let bag = Arc::new(StoreBag::from_snapshot(json)?);
         let provenance = Provenance::new();
         let queries = query_table(json);
@@ -116,6 +117,33 @@ impl OfflineData {
         let root = self.bag.root(store).unwrap_or(Value::Undefined);
         member_get(&root, member)
     }
+}
+
+/// What a snapshot may claim before [`StoreBag::from_snapshot`] looks at it:
+/// `version` absent or `1` is the format this reader knows — anything else
+/// refuses rather than half-loading fields it cannot interpret. The known
+/// tables, when present, must be objects; unknown fields pass through — a
+/// recorder is free to decorate the file (`recordedAt`, `routes`, …).
+fn validate_snapshot(json: &serde_json::Value) -> Result<(), String> {
+    const SUPPORTED: u64 = 1;
+    if let Some(version) = json.get("version") {
+        let v = version
+            .as_u64()
+            .ok_or_else(|| format!("snapshot: version must be a whole number, got {version}"))?;
+        if v > SUPPORTED {
+            return Err(format!(
+                "snapshot: unsupported version {v} (reader knows {SUPPORTED})"
+            ));
+        }
+    }
+    for table in ["stores", "queries", "invokes"] {
+        if let Some(v) = json.get(table) {
+            if !v.is_object() {
+                return Err(format!("snapshot: {table} must be an object"));
+            }
+        }
+    }
+    Ok(())
 }
 
 /// The snapshot's `queries` table, decoded — `IndexMap` keeps authored order.

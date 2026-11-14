@@ -89,7 +89,8 @@
           "fields": [
             { "name": "name", "kind": "text", "role": "title" },
             { "name": "description", "kind": "text", "role": "detail" },
-            { "name": "assignee", "kind": "text", "role": "detail" }
+            { "name": "assignee", "kind": "text", "role": "detail" },
+            { "name": "linkedCard", "kind": "relation", "target": "CollectionBlock" }
           ]
         },
         "SignalType": {
@@ -202,6 +203,7 @@
           { "author": "did:key:z6MkAda", "signalTypeId": "sig-like", "value": 1 }
         ],
         "assignee": "did:key:z6MkBo",
+        "linkedCard": "call-2",
         "pendingSignals": [
           {
             "record": "call-1",
@@ -226,6 +228,15 @@
         "node": "call-1",
         "agent": "did:key:z6MkBo",
         "kind": "helper"
+      }
+    ],
+    "linked": [
+      {
+        "id": "call-2",
+        "kind": "call",
+        "name": "Design review",
+        "createdAt": "2026-05-02T14:00:00Z",
+        "signals": []
       }
     ]
   },

@@ -94,6 +94,16 @@ impl StoreMap {
     pub fn parse(text: &str) -> Result<StoreMap, String> {
         let wire: WireStoreMap =
             serde_json::from_str(text).map_err(|e| format!("store map: {e}"))?;
+        // Version 1 is the only schema this reader knows — an omitted version
+        // is a pre-version file and stays accepted as 0; anything newer
+        // refuses rather than half-loading rows it cannot interpret.
+        if let Some(v) = wire.version {
+            if v > 1 {
+                return Err(format!(
+                    "store map: unsupported version {v} (reader knows 1)"
+                ));
+            }
+        }
         let mut members = BTreeMap::new();
         for (path, raw) in &wire.members {
             let row = raw
