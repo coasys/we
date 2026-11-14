@@ -507,6 +507,14 @@ fn marker(key: &str, value: serde_json::Value) -> serde_json::Value {
     serde_json::Value::Object(map)
 }
 
+/// A canonical array-index string — the only spelling a JS array answers to
+/// for `'0' in a`/`a['0']`: the digits of a usize and nothing else, so `'00'`,
+/// `'+0'`, `' 0'` and `'1.5'` are not indices.
+pub(crate) fn canonical_index(key: &str) -> Option<usize> {
+    let index = key.parse::<usize>().ok()?;
+    (index.to_string() == key).then_some(index)
+}
+
 /// `Number(string)` — the spellings JavaScript accepts that Rust's `f64`
 /// parser does not (`"0x…"` hex, `"0b…"`/`"0o…"`, a BigInt `"…n"` which reads
 /// `NaN`, `"+Infinity"`), and the spellings Rust accepts that JavaScript does

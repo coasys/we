@@ -377,3 +377,136 @@ fn p2_6_number_coercion() {
         json!("one")
     );
 }
+
+/// The where grammar (`where.ts`) — OR/AND take lists of records, NOT takes
+/// a record, and a field's operator object resolves in family order
+/// (exists → contains → range → anchors → not), not all-keys-AND. Field
+/// reads go through `readField`, so denied names never reach the data.
+#[test]
+fn p2_7_where_matcher_reference_shape() {
+    let env = MapEnv::new();
+    let rows = || list(&[obj(&[("v", 1.into())])]);
+    // OR/AND operands must be lists of records; other shapes fail the key.
+    assert_eq!(
+        call_json(
+            "filter",
+            &[rows(), obj(&[("OR", obj(&[("v", 1.into())]))])],
+            &env
+        ),
+        json!([])
+    );
+    assert_eq!(
+        call_json(
+            "filter",
+            &[rows(), obj(&[("AND", obj(&[("v", 1.into())]))])],
+            &env
+        ),
+        json!([])
+    );
+    assert_eq!(
+        call_json(
+            "filter",
+            &[
+                rows(),
+                obj(&[("OR", list(&[obj(&[("v", 2.into())]), 1.into()]))])
+            ],
+            &env
+        ),
+        json!([]),
+        "a non-record OR branch cannot match"
+    );
+    // NOT's operand must be a record — `{NOT: 1}` fails, not "didn't match".
+    assert_eq!(
+        call_json("filter", &[rows(), obj(&[("NOT", 1.into())])], &env),
+        json!([])
+    );
+    assert_eq!(
+        call_json(
+            "filter",
+            &[rows(), obj(&[("NOT", obj(&[("v", 2.into())]))])],
+            &env
+        ),
+        json!([{"v": 1}])
+    );
+    // Operator families in priority order — `exists` answers alone, other
+    // keys in the object do not tighten it.
+    assert_eq!(
+        call_json(
+            "filter",
+            &[
+                rows(),
+                obj(&[("v", obj(&[("exists", true.into()), ("gt", 2.into())]))])
+            ],
+            &env
+        ),
+        json!([{"v": 1}])
+    );
+    // `contains` answers before `not` — `{not:1, contains:'1'}` passes: the
+    // `not` is never reached.
+    assert_eq!(
+        call_json(
+            "filter",
+            &[
+                rows(),
+                obj(&[("v", obj(&[("not", 1.into()), ("contains", "1".into())]))])
+            ],
+            &env
+        ),
+        json!([{"v": 1}])
+    );
+    // An unrecognised key is ignored; a `not` beside it still applies.
+    assert_eq!(
+        call_json(
+            "filter",
+            &[
+                rows(),
+                obj(&[("v", obj(&[("bogus", 1.into()), ("not", 2.into())]))])
+            ],
+            &env
+        ),
+        json!([{"v": 1}])
+    );
+    assert_eq!(
+        call_json(
+            "filter",
+            &[
+                rows(),
+                obj(&[("v", obj(&[("bogus", 1.into()), ("not", 1.into())]))])
+            ],
+            &env
+        ),
+        json!([])
+    );
+    // A record condition with no operator family is a strict-equality test —
+    // `{}` can never `===`.
+    assert_eq!(
+        call_json("filter", &[rows(), obj(&[("v", obj(&[]))])], &env),
+        json!([])
+    );
+    // A denied field name reads `undefined` — `{constructor: 'x'}` matches
+    // nothing even when the record holds that key (env-supplied where, so the
+    // parser's static denial cannot protect it).
+    let rows = list(&[obj(&[("constructor", "secret".into())])]);
+    assert_eq!(
+        call_json(
+            "filter",
+            &[rows, obj(&[("constructor", "secret".into())])],
+            &env
+        ),
+        json!([])
+    );
+    // List items read 'length' and canonical numeric keys like JS arrays.
+    let lists = list(&[list(&[9.into()]), list(&[1.into(), 2.into()])]);
+    assert_eq!(
+        call_json(
+            "filter",
+            &[lists.clone(), obj(&[("length", 2.into())])],
+            &env
+        ),
+        json!([[1, 2]])
+    );
+    assert_eq!(
+        call_json("filter", &[lists, obj(&[("0", 9.into())])], &env),
+        json!([[9]])
+    );
+}
