@@ -409,11 +409,25 @@ pub(crate) fn paint_box(
             continue;
         }
         let color = side.color.map(color32).unwrap_or(current_color);
+        // CSS `border` paints inside the border box — the stroke runs
+        // half its width in from the edge, not centered on it.
         let (a, b) = match edge {
-            egui::Align2::CENTER_TOP => (rect.left_top(), rect.right_top()),
-            egui::Align2::RIGHT_CENTER => (rect.right_top(), rect.right_bottom()),
-            egui::Align2::CENTER_BOTTOM => (rect.right_bottom(), rect.left_bottom()),
-            _ => (rect.left_bottom(), rect.left_top()),
+            egui::Align2::CENTER_TOP => (
+                rect.left_top() + egui::vec2(0.0, width * 0.5),
+                rect.right_top() + egui::vec2(0.0, width * 0.5),
+            ),
+            egui::Align2::RIGHT_CENTER => (
+                rect.right_top() + egui::vec2(-width * 0.5, 0.0),
+                rect.right_bottom() + egui::vec2(-width * 0.5, 0.0),
+            ),
+            egui::Align2::CENTER_BOTTOM => (
+                rect.right_bottom() + egui::vec2(0.0, -width * 0.5),
+                rect.left_bottom() + egui::vec2(0.0, -width * 0.5),
+            ),
+            _ => (
+                rect.left_bottom() + egui::vec2(width * 0.5, 0.0),
+                rect.left_top() + egui::vec2(width * 0.5, 0.0),
+            ),
         };
         match side.kind {
             we_style::BorderKind::Dashed | we_style::BorderKind::Dotted => {

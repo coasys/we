@@ -182,3 +182,88 @@ fn polygon_clip_removes_child_text() {
         "the clipped-away text survives: {texts:?}"
     );
 }
+
+/// Every vertex the subtree emitted — meshes unpacked; galleys/paths would
+/// be a shape the clip output still carries.
+fn mesh_verts(shapes: &[egui::epaint::ClippedShape]) -> Vec<egui::Pos2> {
+    let mut out = Vec::new();
+    fn walk(s: &egui::Shape, out: &mut Vec<egui::Pos2>) {
+        match s {
+            egui::Shape::Mesh(m) => out.extend(m.vertices.iter().map(|v| v.pos)),
+            egui::Shape::Vec(v) => v.iter().for_each(|s| walk(s, out)),
+            _ => {}
+        }
+    }
+    for cs in shapes {
+        walk(&cs.shape, &mut out);
+    }
+    out
+}
+
+/// The cyberpunk input: `border: 10px` top/bottom, `2px` sides, a 60px
+/// field and a notch polygon whose top edge dips `0 → 5px` at `60%`. CSS
+/// paints the rectangular borders first and clips them — the clip adds no
+/// stroke of its own: at the notch row y=5 only the border's 5..10 strip
+/// survives, nothing paints at y=10..15, and the little diagonal step
+/// carries no line.
+#[test]
+fn polygon_clip_keeps_the_rectangular_borders_only() {
+    let styles = obj(&[
+        (
+            "clip-path",
+            s("polygon(0 5px, 5px 0, calc(60% - 5px) 0, 60% 5px, 100% 5px, 100% calc(100% - 5px), calc(100% - 5px) calc(100% - 3px), calc(80% - 3px) calc(100% - 3px), calc(80% - 5px) calc(100% - 0px), 0 calc(100% - 0px), 0% calc(100% - 0px))"),
+        ),
+        ("border-top", s("10px solid #00f0ff")),
+        ("border-bottom", s("10px solid #00f0ff")),
+        ("border-left", s("2px solid #00f0ff")),
+        ("border-right", s("2px solid #00f0ff")),
+        ("height", s("60px")),
+        ("width", s("200px")),
+    ]);
+    let n = node("we-input", "i", &[("styles", styles)]);
+    let (rect, shapes) = painted(&n);
+    // No invented polygon-edge strokes — nothing painted as a path/line.
+    fn has_lines(s: &egui::Shape) -> bool {
+        match s {
+            egui::Shape::LineSegment { .. } | egui::Shape::Path(_) => true,
+            egui::Shape::Vec(v) => v.iter().any(has_lines),
+            _ => false,
+        }
+    }
+    assert!(
+        !shapes.iter().any(|cs| has_lines(&cs.shape)),
+        "a polygon-edge stroke survives: {shapes:?}"
+    );
+    let verts = mesh_verts(&shapes);
+    let w = rect.width();
+    // In the notch zone (x > 60% of width, inside the right border) the
+    // top edge drops to y=5: the 10px border's visible remnant is the
+    // 5..10 strip, and nothing paints at y=10..15.
+    let notch: Vec<egui::Pos2> = verts
+        .iter()
+        .copied()
+        .filter(|p| p.x > rect.min.x + 0.61 * w && p.x < rect.max.x - 2.0)
+        .filter(|p| p.y < rect.min.y + 15.0 && p.y > rect.min.y - 1.0)
+        .collect();
+    assert!(
+        notch
+            .iter()
+            .any(|p| p.y >= rect.min.y + 4.5 && p.y <= rect.min.y + 10.0),
+        "the 5..10 border strip is missing: {notch:?}"
+    );
+    assert!(
+        !notch.iter().any(|p| p.y > rect.min.y + 10.5),
+        "paint below the top border in the notch band: {notch:?}"
+    );
+    // The top-left band y<5 starts only where the polygon's top edge sits.
+    assert!(
+        !verts
+            .iter()
+            .any(|p| p.x > rect.min.x + 0.62 * w && p.y < rect.min.y + 4.5),
+        "paint above the notch edge: {:?}",
+        verts
+            .iter()
+            .filter(|p| p.y < rect.min.y + 4.5)
+            .collect::<Vec<_>>()
+    );
+}
