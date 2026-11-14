@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use egui_kittest::kittest::Queryable;
+use egui_kittest::kittest::{NodeT, Queryable};
 use indexmap::IndexMap;
 use we_egui::{layout, paint, EditState, Layout, MeasureCx, Registry, StyleCx, WidgetEvent};
 use we_expr::Value;
@@ -991,6 +991,51 @@ fn tooltip_content_prop_is_the_slot_fallback() {
         rig.texts.iter().any(|(_, t)| t.contains("just text")),
         "a prop-only tooltip shows its content text: {:?}",
         rig.texts
+    );
+}
+
+/// A3 round 2 — `focusin` opens like `mouseover` does (tooltip.ts:248:
+/// `focusin`/`focusout` → `show`/`hide`), and focus leaving closes.
+#[test]
+fn tooltip_focus_opens_and_leaving_closes() {
+    let mut col = node("Column", "r", &[]);
+    child(&mut col, tooltip_node("t", &[("content", s("phrase"))]));
+    child(
+        &mut col,
+        node("we-button", "r/other", &[("text", s("elsewhere"))]),
+    );
+    paint_rig(col, |harness, _lay, edit| {
+        harness.get_by_label("hover me").focus();
+        harness.run();
+        assert!(
+            edit.borrow().as_ref().unwrap().is_open(&NodeId::from("t")),
+            "focusing the trigger opens the tooltip"
+        );
+        harness.get_by_label("elsewhere").focus();
+        harness.run();
+        assert!(
+            !edit.borrow().as_ref().unwrap().is_open(&NodeId::from("t")),
+            "focus leaving the trigger closes the tooltip"
+        );
+    });
+}
+
+/// A3 round 2 — the bubble's text is the trigger control's accessible
+/// description (tooltip.ts `_describeTrigger`: `aria-description` on the
+/// slotted element — the text, not an id reference, because
+/// `aria-describedby` cannot cross the shadow boundary).
+#[test]
+fn tooltip_describes_the_trigger_control() {
+    paint_rig(
+        tooltip_node("t", &[("content", s("the tip text"))]),
+        |harness, _lay, _edit| {
+            let trigger = harness.get_by_label("hover me").accesskit_node();
+            assert_eq!(
+                trigger.description().as_deref(),
+                Some("the tip text"),
+                "the slotted control carries the tooltip text as its description"
+            );
+        },
     );
 }
 

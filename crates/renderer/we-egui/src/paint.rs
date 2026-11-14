@@ -553,6 +553,45 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
         }
     }
 
+    // `we-tooltip`'s open rule (tooltip.ts `mouseover`/`focusin` → show,
+    // `mouseout`/`focusout` → hide): open while the pointer is inside the
+    // trigger's box or a control inside it holds focus — post-children,
+    // where that focus state exists. `_describeTrigger` rides along: the
+    // bubble's text lands on the controls inside as their description.
+    if widget.kind() == WidgetKind::Overlay && widget.focus_opens(node) {
+        let anchor = w
+            .parts_buf
+            .as_ref()
+            .unwrap_or(&w.base_parts)
+            .get(&(node.id.clone(), "trigger"))
+            .copied();
+        if let Some(anchor) = anchor {
+            let hovered = w.ui.rect_contains_pointer(anchor);
+            let focused = w.hits.interact.iter().any(|(r, id)| {
+                anchor.contains(r.center()) && w.ui.ctx().memory(|m| m.focused() == Some(*id))
+            });
+            let controlled = node.props.get("open").is_some_and(|v| !v.is_undefined());
+            if !controlled {
+                w.edit.set_open(&node.id, hovered || focused);
+            }
+            let desc = widget.trigger_text(node);
+            for (_, id) in w
+                .hits
+                .interact
+                .iter()
+                .filter(|(r, _)| anchor.contains(r.center()))
+            {
+                w.ui.ctx().accesskit_node_builder(*id, |n| {
+                    if desc.is_empty() {
+                        n.clear_description();
+                    } else {
+                        n.set_description(desc.clone());
+                    }
+                });
+            }
+        }
+    }
+
     w.inh = saved_inh;
     w.offset = saved_offset;
     w.clip = saved_clip;

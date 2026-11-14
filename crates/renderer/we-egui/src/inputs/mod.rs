@@ -176,6 +176,9 @@ pub(crate) fn remember_focus(cx: &mut PaintCx, node: &ResolvedNode, response: &e
     if response.gained_focus() {
         cx.hits.gained.push(response.rect);
     }
+    // A field is a focusable control the interact log should name too —
+    // a tooltip on its wrapper reads "a control inside holds focus".
+    cx.hits.interact.push((response.rect, response.id));
 }
 
 /// The AccessKit label: the node's own `label`/`placeholder` first — an

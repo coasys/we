@@ -16,8 +16,10 @@ use crate::{
 
 /// `we-tooltip` — the default slot is the trigger; `slot="content"` children
 /// (or the `content` text prop) are the bubble, painted only on the overlay
-/// layer while the tip is open. `open` is controlled; otherwise hover over
-/// the trigger flips the internal flag (`mouseenter`/`mouseleave`, tooltip.ts).
+/// layer while the tip is open. `open` is controlled; otherwise hover or
+/// keyboard focus inside the trigger flips the internal flag — the walk
+/// applies `mouseover`/`focusin` → show, `mouseout`/`focusout` → hide
+/// post-children (tooltip.ts:234-249).
 #[derive(Debug, Default)]
 pub struct Tooltip;
 
@@ -32,6 +34,20 @@ impl Tooltip {
             we_template::ResolvedChild::Text(_) => false,
         })
     }
+}
+
+/// `textContent` of the subtree — every descendant text child (the
+/// trigger's words and a slotted bubble's alike), the way
+/// `_describeTrigger` reads it.
+fn subtree_text(node: &ResolvedNode) -> String {
+    let mut s = String::new();
+    for c in &node.children {
+        match c {
+            we_template::ResolvedChild::Text(t) => s.push_str(t),
+            we_template::ResolvedChild::Node(n) => s.push_str(&subtree_text(n)),
+        }
+    }
+    s
 }
 
 impl Widget for Tooltip {
@@ -51,7 +67,22 @@ impl Widget for Tooltip {
     fn measure(&self, _cx: &MeasureCx, _n: &ResolvedNode, _s: &Style, _a: Size) -> Size {
         Size::ZERO
     }
-    fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, rect: Rect) {
+    /// Hover or focus inside the trigger opens — gated on
+    /// `_hasSomethingToSay`. The walk applies it post-children.
+    fn focus_opens(&self, node: &ResolvedNode) -> bool {
+        Self::has_something_to_say(node)
+    }
+
+    /// `_describeTrigger`: `content` first, the subtree's text after —
+    /// what the slotted control carries as its accessible description.
+    fn trigger_text(&self, node: &ResolvedNode) -> String {
+        props::prop_text(node, "content")
+            .map(|s| s.to_string())
+            .filter(|s| !s.is_empty())
+            .unwrap_or_else(|| subtree_text(node).trim().to_string())
+    }
+
+    fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, _rect: Rect) {
         // Overlay pass: the popup frame is drawn by `anchored_overlay`; the
         // `content` prop is the slot's fallback — paint it only when no
         // `slot="content"` child took over the bubble.
@@ -71,23 +102,9 @@ impl Widget for Tooltip {
                     );
                 }
             }
-            return;
         }
-        // In-flow pass: hover on the trigger opens — but only when there is
-        // something to say (tooltip.ts: `mouseenter` gates on content).
-        if !Self::has_something_to_say(node) {
-            return;
-        }
-        // `mouseenter` = pointer inside the trigger's box. `ui.interact`
-        // would lose the hover to the trigger's own widget (the button on
-        // top is the hovered widget); `rect_contains_pointer` asks the
-        // layer, which is what "enter the trigger" means.
-        let anchor = props::part(cx, node, "trigger").unwrap_or(rect);
-        let hovered = cx.ui.rect_contains_pointer(anchor);
-        let controlled = node.props.get("open").is_some_and(|v| !v.is_undefined());
-        if !controlled {
-            cx.edit.set_open(&node.id, hovered);
-        }
+        // In-flow pass paints nothing: the trigger is its slotted child,
+        // and the hover/focus open rule runs post-children in the walk.
     }
 }
 

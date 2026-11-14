@@ -126,9 +126,10 @@ pub struct HitLog {
     /// enclosing scroller reads them to bring a Tab-visited control into
     /// view, the job egui's `ScrollArea` does through `scroll_to_me`.
     pub gained: Vec<Rect>,
-    /// Every `interact_label` region as (rect, egui id) — a popup's close
-    /// finds its trigger's id to return focus, matching the DOM's
-    /// `trigger.focus()` on dismiss.
+    /// Every focusable's (rect, egui id) — `interact_label` regions and
+    /// the TextEdit fields. A popup's close finds its trigger's id to
+    /// return focus (the DOM's `trigger.focus()` on dismiss); a tooltip
+    /// reads "a control inside the trigger holds focus" from it.
     pub interact: Vec<(Rect, egui::Id)>,
 }
 
@@ -316,5 +317,21 @@ pub trait Widget: Send + Sync {
     /// trigger opens on hover, not click.
     fn trigger_toggles(&self) -> bool {
         false
+    }
+    /// `we-tooltip` only: pointer hover or keyboard focus inside the
+    /// `trigger` part drives `open` — the element's `mouseover`/`focusin`
+    /// → show, `mouseout`/`focusout` → hide (tooltip.ts), gated on
+    /// `_hasSomethingToSay`, which the node answers here. The walk applies
+    /// it post-children, when the subtree's focus state exists, and copies
+    /// [`Self::trigger_text`]'s answer onto the controls inside.
+    fn focus_opens(&self, _node: &ResolvedNode) -> bool {
+        false
+    }
+    /// The text a `focus_opens` trigger's controls carry as their
+    /// AccessKit description — `_describeTrigger`'s `aria-description`
+    /// (the text, not an id reference, which cannot cross the shadow
+    /// boundary). The walk writes it each frame; empty clears.
+    fn trigger_text(&self, _node: &ResolvedNode) -> String {
+        String::new()
     }
 }
