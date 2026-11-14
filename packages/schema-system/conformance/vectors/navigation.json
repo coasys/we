@@ -301,7 +301,7 @@
     },
     {
       "id": "nav.same-target",
-      "note": "rule 5: navigating to the current path is a no-op — no entry, no move",
+      "note": "rule 5: navigating to the current path is a no-op — no entry, no move; '.' is not the current path, it resolves to the template root",
       "schema": {
         "params": {}
       },
@@ -504,10 +504,10 @@
           "index": 1
         },
         {
-          "href": "/space/abc/board?sel=r:2",
+          "href": "/space/abc/board?sel=r:1",
           "pageIdentity": "/space/abc/board",
           "depth": 2,
-          "index": 1
+          "index": 0
         }
       ]
     },
@@ -728,10 +728,50 @@
           "index": 1
         },
         {
-          "href": "/space/abc/board?q=x",
+          "href": "/space/abc/board",
           "pageIdentity": "/space/abc/board",
           "depth": 2,
-          "index": 1
+          "index": 0
+        }
+      ]
+    },
+    {
+      "id": "nav.sync-replace",
+      "note": "rule 9: syncParam without push rewrites the entry — depth stays and back cannot undo the write",
+      "schema": {
+        "params": {
+          "q": {
+            "type": "string"
+          }
+        }
+      },
+      "start": "/space/abc/board",
+      "steps": [
+        {
+          "op": "sync_param",
+          "args": {
+            "name": "q",
+            "value": "x",
+            "initial": "",
+            "type": "string"
+          }
+        },
+        {
+          "op": "back"
+        }
+      ],
+      "expect": [
+        {
+          "href": "/space/abc/board?q=x",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0
+        },
+        {
+          "href": "/space/abc/board?q=x",
+          "pageIdentity": "/space/abc/board",
+          "depth": 1,
+          "index": 0
         }
       ]
     },
@@ -930,16 +970,16 @@
           "index": 2
         },
         {
-          "href": "/space/abc/people",
-          "pageIdentity": "/space/abc/people",
-          "depth": 3,
-          "index": 2
-        },
-        {
           "href": "/space/abc/wall",
           "pageIdentity": "/space/abc/wall",
           "depth": 3,
           "index": 1
+        },
+        {
+          "href": "/space/abc/board",
+          "pageIdentity": "/space/abc/board",
+          "depth": 3,
+          "index": 0
         },
         {
           "href": "/space/abc/wall",
@@ -997,16 +1037,16 @@
           "index": 2
         },
         {
-          "href": "/space/abc/wall",
-          "pageIdentity": "/space/abc/wall",
-          "depth": 3,
-          "index": 2
-        },
-        {
           "href": "/space/abc/board?sel=r:1",
           "pageIdentity": "/space/abc/board",
           "depth": 3,
           "index": 1
+        },
+        {
+          "href": "/space/abc/board",
+          "pageIdentity": "/space/abc/board",
+          "depth": 3,
+          "index": 0
         }
       ]
     },

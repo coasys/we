@@ -11,16 +11,26 @@
  * lent through `setNavigateFunction`, so the script's own mirror applies it to `window.history`
  * the way @solidjs/router would (push unless `replace`), then reports the location back through
  * `setCurrentPath` — the same call TemplateLayout's router effect makes.
+ *
+ * Traversals (`back`/`forward`/`go`) run against the same mirror rather than jsdom's real ones:
+ * jsdom applies a traversal two queued tasks after the call — a snapshot in between sees the
+ * address before the move — and its session history is shared across every script in a run, so a
+ * back past this stack's first entry would land inside the previous script's. The mirror defines
+ * the semantics the vector asserts: traversal moves within the script's own entries and stops at
+ * either end, as a real browser does at the edge of its session.
  */
 import { render } from '@solidjs/testing-library';
+import { createComponent } from 'solid-js';
+
+// Source-relative, never the package's dist — a sabotage in shared/src is what the vectors see.
+// (The vitest configs that run this also alias @we/schema-shared to src, which is what makes
+// RouteStore's own resolvePath import reach the same copy.)
 import {
   type LocalStateField,
   localWriteMirror,
   resolveLocalInitial,
   type RouteParamsBinding,
-} from '@we/schema-shared';
-import { createComponent } from 'solid-js';
-
+} from '../../../schema-system/shared/src/index.ts';
 import RouteStoreProvider, { type RouteStore, useRouteStore } from '../../src/frameworks/solid/stores/RouteStore';
 
 /** One step of a navigation script. `args` are decoded JSON — see the ops below. */
@@ -66,21 +76,9 @@ function localFieldFromArgs(args: Record<string, unknown>): LocalStateField {
   };
 }
 
-/** Wait one popstate: jsdom dispatches it on a task, not synchronously. */
+/** Drain a macrotask so anything a step scheduled — effects, deferred router work — lands. */
 function settle(): Promise<void> {
-  return new Promise((resolve) => {
-    let done = false;
-    const finish = () => {
-      if (done) return;
-      done = true;
-      window.removeEventListener('popstate', finish);
-      resolve();
-    };
-    window.addEventListener('popstate', finish);
-    // No event ever arrives for a traversal that hit the stack's end — do not hang on it.
-    setTimeout(finish, 0);
-    setTimeout(finish, 10);
-  });
+  return new Promise((resolve) => setTimeout(resolve, 0));
 }
 
 /**
@@ -110,16 +108,20 @@ export async function runNavigationScript(script: NavigationScript): Promise<Nav
     replaceState(data, unused, url);
     entries[index] = href();
   };
-  const onPopState = () => {
-    const here = href();
-    if (index > 0 && entries[index - 1] === here) index--;
-    else if (index < entries.length - 1 && entries[index + 1] === here) index++;
-    else {
-      const at = entries.lastIndexOf(here);
-      if (at >= 0) index = at;
-    }
+  const { back, forward, go } = window.history;
+  // Traversals move the mirror and set the address through the real replaceState; the popstate is
+  // dispatched so the store's own listener still refreshes its params signal. At either end of
+  // the script's stack a traversal does nothing — no move, no event.
+  const traverse = (delta: number) => {
+    const target = index + delta;
+    if (!Number.isInteger(delta) || delta === 0 || target < 0 || target >= entries.length) return;
+    index = target;
+    replaceState(null, '', entries[index]);
+    window.dispatchEvent(new window.PopStateEvent('popstate'));
   };
-  window.addEventListener('popstate', onPopState);
+  window.history.back = () => traverse(-1);
+  window.history.forward = () => traverse(1);
+  window.history.go = (delta = 0) => traverse(delta);
 
   let store!: RouteStore;
   const issued: { to: string; options?: Record<string, unknown> }[] = [];
@@ -233,7 +235,9 @@ export async function runNavigationScript(script: NavigationScript): Promise<Nav
   } finally {
     window.history.pushState = pushState;
     window.history.replaceState = replaceState;
-    window.removeEventListener('popstate', onPopState);
+    window.history.back = back;
+    window.history.forward = forward;
+    window.history.go = go;
     window.localStorage.clear();
   }
   return expect;

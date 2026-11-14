@@ -11,9 +11,18 @@
  * the same way `tests/browser` and `we-render` do: an esbuild bundle + a tiny HTTP server + the
  * installed Chrome driven by playwright-core (`WE_CHROME` overrides the binary).
  *
- * Custom properties compute to their own token stream, not to resolved colours — so anything
- * that quacks like a colour is additionally probed: `color` set to `var(--x)` on a probe element
- * computes to `rgb()`/`rgba()`, which is the form a Rust renderer can compare without a CSS engine.
+ * Custom properties compute to their own (fully var()-substituted) token stream — `1rem` stays
+ * `1rem`, an `oklch(…)` stays an `oklch(…)` — so each var is additionally normalised through the
+ * real property its value belongs to, decided by the value itself rather than the name:
+ *
+ * - `CSS.supports('color', raw)` → a colour: probed through `color: var(--x)`, which computes to
+ *   the serialised colour (`oklch(…)`/`rgb(…)`/…) a Rust renderer can compare without a CSS engine.
+ * - `CSS.supports('scroll-margin-left', raw)` → a length (that property takes `<length>` only — no
+ *   `%`, keywords or numbers): probed to its `"<n>px"` resolution, `rem`/`em`/`calc()` included.
+ * - `CSS.supports('scale', raw)` on a `%`-free value → a number: probed so number calcs come out
+ *   evaluated (`calc(0.4 * 2)` → `0.6`-style). `%` is excluded first because `scale` accepts it —
+ *   `50%` is a ratio, not `0.5`, in every family that uses it.
+ * - anything else keeps its computed text: shadows, gradients, font stacks, `150ms`, `ease-out`.
  *
  * NOT part of `pnpm test`: there is no browser in the vitest run. vectors.test.ts only checks the
  * files exist, parse, and agree with style.json's computed values.
@@ -52,36 +61,46 @@ window.__tokens = {
     document.documentElement.setAttribute('data-we-theme', baseName);
     applyThemeVars(document.documentElement, overrides);
   },
-  names() {
-    const names = new Set();
-    const walk = (rule) => {
-      if ('cssRules' in rule && rule.cssRules) for (const r of rule.cssRules) walk(r);
-      else if (rule.style) for (let i = 0; i < rule.style.length; i++) {
-        const p = rule.style.item(i);
-        if (p.startsWith('--we-')) names.add(p);
-      }
-    };
-    for (const sheet of document.styleSheets) { try { for (const r of sheet.cssRules) walk(r); } catch {} }
-    const st = document.documentElement.style;
-    for (let i = 0; i < st.length; i++) { const p = st.item(i); if (p.startsWith('--we-')) names.add(p); }
-    return [...names].sort();
-  },
   computed() {
     const cs = getComputedStyle(document.documentElement);
-    const probe = document.createElement('div');
-    document.body.appendChild(probe);
-    const pcs = getComputedStyle(probe);
-    const out = {};
-    for (const name of window.__tokens.names()) {
-      const raw = cs.getPropertyValue(name).trim();
-      // Colour probe: var() as a real colour property computes to rgb()/rgba(); anything else
-      // leaves the sentinel, which says the var is not a colour and its own text stands.
-      probe.style.setProperty('color', 'rgb(1, 2, 3)');
-      probe.style.setProperty('color', 'var(' + name + ')');
-      const c = pcs.getPropertyValue('color').trim();
-      out[name] = c !== 'rgb(1, 2, 3)' ? c : raw;
+    // Every --we-* custom property that applies to the element — iterating the computed style
+    // sees inline theme vars, :root rules and @imports alike; a stylesheet walk misses rules that
+    // carry a nested cssRules (every style rule does) and vars declared only for other selectors.
+    const names = [];
+    for (let i = 0; i < cs.length; i++) {
+      const p = cs.item(i);
+      if (p.startsWith('--we-')) names.push(p);
     }
-    probe.remove();
+    names.sort();
+    // The probe lives under a wrapper carrying a sentinel colour: a colour-declared var(--x) that
+    // is not a colour is invalid at computed-value time, computes to unset, inherits the sentinel.
+    const wrap = document.createElement('div');
+    wrap.style.setProperty('color', 'rgb(1, 2, 3)');
+    const probe = document.createElement('div');
+    wrap.appendChild(probe);
+    document.body.appendChild(wrap);
+    const pcs = getComputedStyle(probe);
+    const probeValue = (prop, name) => {
+      probe.style.setProperty(prop, 'var(' + name + ')');
+      const v = pcs.getPropertyValue(prop).trim();
+      probe.style.removeProperty(prop);
+      return v;
+    };
+    const out = {};
+    for (const name of names) {
+      const raw = cs.getPropertyValue(name).trim();
+      if (CSS.supports('color', raw)) {
+        const c = probeValue('color', name);
+        out[name] = c !== 'rgb(1, 2, 3)' ? c : raw;
+      } else if (CSS.supports('scroll-margin-left', raw)) {
+        out[name] = probeValue('scroll-margin-left', name);
+      } else if (!raw.includes('%') && CSS.supports('scale', raw)) {
+        out[name] = probeValue('scale', name);
+      } else {
+        out[name] = raw;
+      }
+    }
+    wrap.remove();
     return out;
   },
 };
@@ -96,7 +115,6 @@ interface ThemeJob {
 /** The harness `ENTRY` installs on `window`. */
 interface TokenHarness {
   apply(overrides: Record<string, unknown>, baseName: string): void;
-  names(): string[];
   computed(): Record<string, string>;
 }
 declare const window: { __tokens?: TokenHarness } & Window;

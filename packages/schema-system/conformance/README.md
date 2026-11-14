@@ -127,11 +127,26 @@ Props the resolver does not consume (`styles`, state bags, tiers) may appear in 
 
 ### tokens/\<theme\>.json
 
-`{ "theme": "<id>", "vars": { "--we-x": "<computed>" } }` — every `--we-*` custom property on
-`document.documentElement` after `data-we-theme` + `applyThemeVars(overrides)`, computed by
-Chrome. Colour-valued vars are normalised to `rgb()/rgba()` by probing `color: var(--x)` on a
-detached element; everything else keeps its computed text. The six ids: `light`, `dark`, `black`,
-`retro`, `cyberpunk`, `glow` (the bundle's own theme; `glow` counts as a preset in coverage).
+`{ "theme": "<id>", "vars": { "--we-x": "<computed>" } }` — every `--we-*` custom property that
+applies to `document.documentElement` after `data-we-theme` + `applyThemeVars(overrides)`, read
+from `getComputedStyle`. `var()` references inside a value are already substituted by the engine;
+what each var records beyond that is decided by what its value _is_, not its name:
+
+- **colour** (`CSS.supports('color', v)`): the serialised colour — `oklch(…)`, `rgb()`/`rgba()`,
+  `color(srgb …)` — probed through a real `color` declaration so `calc()`, relative `oklch(from …)`
+  and `color-mix()` come out evaluated.
+- **length** (`CSS.supports('scroll-margin-left', v)`): its px resolution as a `"<n>px"` string —
+  `rem`/`em`/`calc()` resolved against the 16px root font size (`--we-space-400` → `"16px"`,
+  `--we-letter-spacing-tight` → `"-0.4px"`). `px` is the unit in the JSON; parse the number.
+  `%`-valued vars (`--we-radius-full` → `"50%"`) are not lengths here — they record their text.
+- **number** (`CSS.supports('scale', v)`): the number as text, calcs evaluated
+  (`--we-color-lightness-500` → `"0.6"`, `--we-font-weight-600` → `"600"`, `--we-z-modal` → `"300"`).
+- **anything else** keeps its computed text: shadows (`"0 1px 2px color-mix(in srgb, oklch(…) …)"`),
+  gradients, font stacks, `"150ms"`, `"ease-out"`, `"none"`.
+
+`--we-theme-*` vars are a theme's heterogeneous inputs — colours, lengths and numbers each record
+by the rules above. The six ids: `light`, `dark`, `black`, `retro`, `cyberpunk`, `glow` (the
+bundle's own theme; `glow` counts as a preset in coverage).
 
 ## For Rust implementers
 
