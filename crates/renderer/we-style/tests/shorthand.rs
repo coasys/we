@@ -42,7 +42,10 @@ fn missing_var_invalidates_whole_shorthand() {
         "the valid corner must not apply when a sibling slot is guaranteed-invalid"
     );
     assert!(
-        style.unsupported.iter().any(|u| u.contains("border-radius")),
+        style
+            .unsupported
+            .iter()
+            .any(|u| u.contains("border-radius")),
         "the invalid shorthand lands one unsupported entry, got {:?}",
         style.unsupported
     );

@@ -186,7 +186,10 @@ fn parse_rgb(args: &str) -> Option<Color> {
         if p.len() < 3 || p.len() > 4 {
             return None;
         }
-        let mut v: Vec<f32> = p[..3].iter().map(|c| rgb_channel(c)).collect::<Option<_>>()?;
+        let mut v: Vec<f32> = p[..3]
+            .iter()
+            .map(|c| rgb_channel(c))
+            .collect::<Option<_>>()?;
         // The 4th comma argument is an `<alpha-value>` — `50%` is 0.5, not
         // an RGB channel's 127.5.
         if let Some(a) = p.get(3) {

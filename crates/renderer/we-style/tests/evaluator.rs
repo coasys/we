@@ -283,8 +283,7 @@ fn color_mix_accepted_spaces_match_spec() {
     // oklch: a colour mixed with itself must stay itself. The buggy build fed
     // the degree-valued hue straight to f32::cos/sin and shifted it.
     let one = eval_color("oklch(0.6 0.1 200)").unwrap();
-    let mixed = eval_color("color-mix(in oklch, oklch(0.6 0.1 200), oklch(0.6 0.1 200))")
-        .unwrap();
+    let mixed = eval_color("color-mix(in oklch, oklch(0.6 0.1 200), oklch(0.6 0.1 200))").unwrap();
     assert!(
         (mixed.r - one.r).abs() < 1e-3
             && (mixed.g - one.g).abs() < 1e-3
@@ -294,8 +293,7 @@ fn color_mix_accepted_spaces_match_spec() {
 
     // hue interpolates along the shorter arc: 350° and 10° meet at 0°,
     // not through 180°.
-    let mixed =
-        eval_color("color-mix(in oklch, oklch(0.6 0.1 350), oklch(0.6 0.1 10))").unwrap();
+    let mixed = eval_color("color-mix(in oklch, oklch(0.6 0.1 350), oklch(0.6 0.1 10))").unwrap();
     let expect = eval_color("oklch(0.6 0.1 0)").unwrap();
     assert!(
         (mixed.r - expect.r).abs() < 5e-3 && (mixed.g - expect.g).abs() < 5e-3,

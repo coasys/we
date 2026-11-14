@@ -524,6 +524,7 @@ fn oracle_color(text: &str) -> Option<Color> {
 }
 
 /// Ottosson's OKLab → sRGB, from the spec's published constants.
+#[allow(clippy::excessive_precision)]
 fn oracle_oklab(l: f32, a: f32, b: f32, alpha: f32) -> Color {
     let l_ = l + 0.3963377774 * a + 0.2158037573 * b;
     let m_ = l - 0.1055613458 * a - 0.0638541728 * b;
