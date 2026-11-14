@@ -366,17 +366,35 @@ fn replace(args: &[Value], _env: &dyn Env) -> Value {
 
 // -------------------------------------------------------------- number ----
 
-/// `round(n, digits?)` — `toFixed`-like decimal rounding (the epsilon nudge
-/// makes `2.675` at 2 come out `2.68`) combined with `Math.round`'s
-/// half-toward-+∞ rule (`floor(x + 0.5)`, so `-2.5` is `-2`).
+/// `round(n, digits?)` — `Math.round(asNumber(n) * factor) / factor` with
+/// `factor = 10 ** max(0, floor(asNumber(digits)))`, `functions.ts` verbatim.
+/// A negative or fractional digit count floors and clamps to 0 first, so
+/// `round(123.45, -1)` is `123`, not `120`.
 fn round(args: &[Value], _env: &dyn Env) -> Value {
     let n = arg(args, 0).to_number();
-    let digits = arg(args, 1).to_number();
-    let factor = 10f64.powf(digits);
-    // `|n| * EPSILON`: an `EPSILON` alone is a half-ulp tie at |n|≥2 and
-    // vanishes; a |n|-proportional nudge always lands one ulp toward +∞.
-    let nudged = n + n.abs() * f64::EPSILON;
-    (((nudged * factor) + 0.5).floor() / factor).into()
+    let digits = arg(args, 1).to_number().floor().max(0.0);
+    let factor = if digits > 308.0 {
+        // `10 ** 309` overflows f64, as `10 **` does in JavaScript.
+        f64::INFINITY
+    } else {
+        10f64.powi(digits as i32)
+    };
+    (js_round(n * factor) / factor).into()
+}
+
+/// `Math.round` — `floor(x + 0.5)` halves toward +∞, but a zero result keeps
+/// `x`'s sign (`Math.round(-0.1)` is `-0`, not `+0`), and a non-finite `x`
+/// rounds to itself.
+fn js_round(x: f64) -> f64 {
+    if !x.is_finite() {
+        return x;
+    }
+    let rounded = (x + 0.5).floor();
+    if rounded == 0.0 && x.is_sign_negative() {
+        -0.0
+    } else {
+        rounded
+    }
 }
 
 fn floor(args: &[Value], _env: &dyn Env) -> Value {

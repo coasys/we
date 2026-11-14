@@ -133,3 +133,42 @@ fn p2_1_form_field_arg_is_text_not_aggregate() {
     assert_eq!(call_json("valid", &[5.into()], &env), json!(false));
     assert_eq!(call_json("error", &[], &env), json!("")); // '' untouched
 }
+
+/// `round` is `Math.round(asNumber(v) * 10 ** max(0, floor(asNumber(d)))) /
+/// factor` — a negative digit count clamps to 0 (integer result), a
+/// fractional one floors, and `Math.round` keeps the sign of a zero result.
+#[test]
+fn p2_2_round_ts_digits_and_signed_zero() {
+    let env = MapEnv::new();
+    // Negative digits: max(0, floor(-1)) is 0 — round to an integer, not tens.
+    assert_eq!(
+        call_json("round", &[123.45.into(), (-1).into()], &env),
+        json!(123)
+    );
+    // Fractional digits: floor(0.5) is 0 — not a √10 factor.
+    assert_eq!(
+        call_json("round", &[1.25.into(), 0.5.into()], &env),
+        json!(1)
+    );
+    // `Math.round(-0.1)` and `Math.round(-0.5)` are `-0`, not `+0`.
+    assert_eq!(
+        call_json("round", &[(-0.1).into()], &env),
+        json!({ "$number": "-0" })
+    );
+    assert_eq!(
+        call_json("round", &[(-0.5).into()], &env),
+        json!({ "$number": "-0" })
+    );
+    // `2.675*100 === 267.5` in IEEE — no epsilon nudge needed for 2.68.
+    assert_eq!(
+        call_json("round", &[2.675.into(), 2.into()], &env),
+        json!(2.68)
+    );
+    // Halves go toward +∞, so -2.5 → -2 (existing vector round.104).
+    assert_eq!(call_json("round", &[(-2.5).into()], &env), json!(-2));
+    // A huge digit count: factor overflows, `Math.round(±∞)/∞` → NaN.
+    assert_eq!(
+        call_json("round", &[1.into(), 1e21.into()], &env),
+        json!({ "$nan": true })
+    );
+}
