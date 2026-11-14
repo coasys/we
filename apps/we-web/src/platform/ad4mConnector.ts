@@ -26,6 +26,7 @@ export const ad4mConnector: BackendConnector = {
       hosting: true,
       capabilities: [{ with: { domain: '*', pointers: ['*'] }, can: ['*'] }],
     });
+    hideWhileSignedIn(core);
 
     // Resolves when the user has connected and authorised WE — the connect UI is up until then, so
     // this is where a web boot waits.
@@ -119,3 +120,17 @@ export const ad4mConnector: BackendConnector = {
     };
   },
 };
+
+/**
+ * AD4M Connect pins its settings button over the window's bottom-right corner once signed in. The app
+ * manages the session itself (Settings), so the button only covers the UI: hide the element while the
+ * session is signed in. Its sign-in screens still show when the session ends.
+ */
+export function hideWhileSignedIn(core: ReturnType<typeof getAd4mConnect>['core']): void {
+  const elements = document.querySelectorAll<HTMLElement>('ad4m-connect');
+  const apply = () => {
+    for (const element of elements) element.style.display = core.authState === 'authenticated' ? 'none' : '';
+  };
+  core.addEventListener('authstatechange', apply);
+  apply();
+}

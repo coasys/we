@@ -134,8 +134,12 @@ export interface BaseStore {
   /** Opens a read-only page over the stage: `devices` or `security`. */
   openPage: (page: BasePage) => void;
   closePage: () => void;
-  /** The host's own: a session the app had came back unreachable, and the offline state is due. */
-  handBack: (reason: string) => void;
+  /**
+   * The host's own: a session the app had came back unreachable, and the offline state is due
+   * (`offline`, the default); or the place refused this device's sign-in, and the connection choice is
+   * due, with the reason as its error (`connect`).
+   */
+  handBack: (reason: string, to?: BaseHandBack) => void;
   /**
    * "Continue" on the password step: gives what the password field holds to this device's backend,
    * which makes or unlocks its agent with it, then clears the field. Takes no argument: the password
@@ -150,6 +154,9 @@ export type BaseStage =
   'loading' | 'starting' | 'failed' | 'password' | 'first-run' | 'connect' | 'offline' | 'handing-off' | 'session';
 
 export type BasePage = '' | 'devices' | 'security';
+
+/** Where a session handed back goes: the offline state, or the connection choice. */
+export type BaseHandBack = 'offline' | 'connect';
 
 export interface BaseBrand {
   name: string;
@@ -658,8 +665,19 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
     },
     openPage: (next) => setPage(next === 'devices' || next === 'security' ? next : ''),
     closePage: () => setPage(''),
-    handBack: (reason) => {
+    handBack: (reason, to = 'offline') => {
       generation++;
+      if (to === 'connect') {
+        // The choice is shown, not jumped past again to the place that refused.
+        auto = false;
+        batch(() => {
+          setBusy(false);
+          setError(reason);
+          setStage('connect');
+        });
+        void lookAgain();
+        return;
+      }
       batch(() => {
         setBusy(false);
         setOfflineReason(reason);

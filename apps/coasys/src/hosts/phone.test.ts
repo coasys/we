@@ -5,7 +5,7 @@
 import type { BackendConnector } from '@we/app-shell/shared';
 import type { DeviceKeyPlugin, PhoneIdentityView } from '@we/app-web/platform/deviceKey';
 import type { DeviceKeyConnectorDeps } from '@we/app-web/platform/deviceKeyConnector';
-import { KeyLoginUnreachable } from '@we/app-web/platform/deviceKeyConnector';
+import { KeyLoginRefused, KeyLoginUnreachable } from '@we/app-web/platform/deviceKeyConnector';
 import type { PageNav } from '@we/app-web/platform/phoneCustody';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -125,7 +125,7 @@ describe('the phone host', () => {
     expect(await none.connections()).toEqual([CONNECT]);
   });
 
-  it('logs in with the device key on the key host, without sending the person to join a second time', async () => {
+  it('logs in with the device key on the key host, with no other way to sign in behind it', async () => {
     const made = { initialize: async () => ({}) } as unknown as BackendConnector;
     const keyConnector = vi.fn((_deps: DeviceKeyConnectorDeps) => made);
     const p = plugin();
@@ -134,7 +134,7 @@ describe('the phone host', () => {
     const deps = keyConnector.mock.calls[0][0];
     expect(deps.plugin?.()).toBe(p);
     expect(deps.keyHost?.()).toBe(KEY_HOST);
-    expect(deps.joinDeclined?.()).toBe(true);
+    expect(Object.keys(deps).sort()).toEqual(['keyHost', 'nav', 'plugin']);
   });
 
   it('hands AD4M Connect the browser connector', async () => {
@@ -197,6 +197,10 @@ describe('the phone host', () => {
     expect(online.isUnreachable?.(new KeyLoginUnreachable(KEY_HOST, null))).toBe(true);
     expect(online.isUnreachable?.(new TypeError('Failed to fetch'))).toBe(true);
     expect(online.isUnreachable?.(new Error('The key was refused'))).toBe(false);
+    // A key login the executor refused goes back to the choice; anything else does not.
+    expect(online.isRefused?.(new KeyLoginRefused('b.example did not sign this phone in: not-known'))).toBe(true);
+    expect(online.isRefused?.(new KeyLoginUnreachable(KEY_HOST, null))).toBe(false);
+    expect(online.isRefused?.(new Error('The key was refused'))).toBe(false);
     const offline = phoneBaseHost({ plugin: plugin(), fallback, nav: nav(), online: () => false });
     expect(offline.isUnreachable?.(new Error('The key was refused'))).toBe(true);
     expect(offline.online?.()).toBe(false);

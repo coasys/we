@@ -42,7 +42,8 @@ ceiling on what every template above can express. A deployment is described by a
 WE's data layer is **AD4M** — an agent-centric, local-first, peer-to-peer meta-ontology.
 Data is yours, stored locally and synced P2P (via Holochain) with no central server. The Solid
 app (\`@we/app-shell\`, hosted by the web/electron/tauri targets) talks to an **AD4M executor**
-(the ad4m runtime; \`@coasys/ad4m\` + \`ad4m-connect\`) that holds perspectives and syncs
+(the ad4m runtime, reached with \`@coasys/ad4m\`; the browser signs in to a remote one through
+\`ad4m-connect\`) that holds perspectives and syncs
 neighbourhoods. Stores (\`sessionStore\`, \`datasetStore\`, \`spaceStore\`, …) expose reactive state to schemas.
 
 AD4M is reached through the **backend contract** rather than directly: \`@we/backend-shared\` declares

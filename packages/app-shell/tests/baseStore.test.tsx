@@ -430,6 +430,18 @@ describe('baseStore, the connection', () => {
     expect(store.busy()).toBe(false);
   });
 
+  it('takes the connection choice back, with the reason, from a session the place refused', async () => {
+    const { store } = make(host(), { takeFirst: true });
+    await until(() => store.stage() === 'session');
+    store.handBack('The executor at node.example does not know this phone’s key', 'connect');
+    expect(store.stage()).toBe('connect');
+    expect(store.error()).toBe('The executor at node.example does not know this phone’s key');
+    expect(store.busy()).toBe(false);
+    // The choice stays up: the place that refused is not taken again by itself.
+    await new Promise((r) => setTimeout(r, 20));
+    expect(store.stage()).toBe('connect');
+  });
+
   // The executor stopped under a session (outside the app, from the tray): the base takes the window
   // back to say so, and its button starts it again through the host.
   it('takes the window back from a session whose executor stopped, and starts it again', async () => {

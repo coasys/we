@@ -656,9 +656,11 @@ What the SDK and executor do around a subscription, so a watch can rely on it:
 
 ### Reading shapes from \`@we/backend-ad4m\`
 
-The \`PerspectiveProxy\` the app holds comes from the SDK copy bundled inside \`@coasys/ad4m-connect\`,
-not from the \`@coasys/ad4m\` this repo pins. An SDK fix reaches the app only when ad4m-connect
-republishes, so measure performance work against that copy, not the workspace one.
+Where the browser signs in through AD4M Connect, the \`PerspectiveProxy\` the app holds comes from the SDK
+copy bundled inside \`@coasys/ad4m-connect\`, not from the \`@coasys/ad4m\` this repo pins: an SDK fix
+reaches that path only when ad4m-connect republishes, so measure performance work there against that
+copy. The desktop's local executor and the phone's key login open an \`Ad4mClient\` from the pinned
+\`@coasys/ad4m\` themselves.
 
 In that copy, \`getAllShacl()\` reads every shape one at a time — \`getShaclNames()\`, then \`getShacl()\`
 per shape at 3 + P calls for P properties — and it rejects outright when one shape carries a

@@ -31,7 +31,7 @@ vi.mock('../src/frameworks/solid/providers/PlatformProvider', () => ({
   },
 }));
 
-import { BaseBoot, deploymentBase, handBackOnUnreachable } from '../src/frameworks/solid/base/BaseApp';
+import { BaseBoot, deploymentBase, handBackOnFailure } from '../src/frameworks/solid/base/BaseApp';
 import { NEW_PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH } from '../src/frameworks/solid/credential';
 import type { BaseStore } from '../src/frameworks/solid/stores/BaseStore';
 import type { WeSeedFile } from '../src/types/seed';
@@ -76,12 +76,16 @@ afterEach(() => {
   localStorage.clear();
 });
 
-describe('handBackOnUnreachable', () => {
-  const host = { kind: 'computer', isUnreachable: unreachable } as BaseHost;
+describe('handBackOnFailure', () => {
+  const host = {
+    kind: 'computer',
+    isUnreachable: unreachable,
+    isRefused: (e: unknown) => (e as Error)?.message === 'Key not known there',
+  } as BaseHost;
 
   it('passes a session through untouched', async () => {
     const session = { client: {}, ports: {} };
-    const wrapped = handBackOnUnreachable(
+    const wrapped = handBackOnFailure(
       connector(async () => session as never),
       host,
       HERE,
@@ -90,9 +94,9 @@ describe('handBackOnUnreachable', () => {
     expect(await wrapped.initialize({} as never)).toBe(session);
   });
 
-  it('hands an unreachable place back, and leaves every other failure to the session', async () => {
+  it('hands an unreachable place back to the offline state, a refusal to the choice, and leaves every other failure to the session', async () => {
     const back = vi.fn();
-    const lost = handBackOnUnreachable(
+    const lost = handBackOnFailure(
       connector(async () => Promise.reject(new Error('Failed to fetch'))),
       host,
       HERE,
@@ -100,16 +104,26 @@ describe('handBackOnUnreachable', () => {
     );
     void lost.initialize({} as never);
     await until(() => back.mock.calls.length === 1);
-    expect(back).toHaveBeenCalledWith("WE isn't responding.");
+    expect(back).toHaveBeenCalledWith("WE isn't responding.", 'offline');
 
-    const refused = handBackOnUnreachable(
+    const refused = handBackOnFailure(
+      connector(async () => Promise.reject(new Error('Key not known there'))),
+      host,
+      HERE,
+      back,
+    );
+    void refused.initialize({} as never);
+    await until(() => back.mock.calls.length === 2);
+    expect(back).toHaveBeenLastCalledWith('Key not known there', 'connect');
+
+    const failed = handBackOnFailure(
       connector(async () => Promise.reject(new Error('Wrong token'))),
       host,
       HERE,
       back,
     );
-    await expect(refused.initialize({} as never)).rejects.toThrow('Wrong token');
-    expect(back).toHaveBeenCalledTimes(1);
+    await expect(failed.initialize({} as never)).rejects.toThrow('Wrong token');
+    expect(back).toHaveBeenCalledTimes(2);
   });
 });
 

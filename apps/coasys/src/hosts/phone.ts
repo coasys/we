@@ -14,6 +14,7 @@ import type { DeviceKeyPlugin } from '@we/app-web/platform/deviceKey';
 import {
   createDeviceKeyConnector,
   type DeviceKeyConnectorDeps,
+  KeyLoginRefused,
   KeyLoginUnreachable,
 } from '@we/app-web/platform/deviceKeyConnector';
 import { joinDeclined, readKeyHost } from '@we/app-web/platform/keyHost';
@@ -25,7 +26,7 @@ import { CONNECT, connectFor, type ReachDeps, unreachable } from './web';
 /** What the phone host is built from; the tests pass their own. */
 export interface PhoneHostDeps extends Pick<ReachDeps, 'remembered' | 'reach'> {
   plugin: DeviceKeyPlugin;
-  /** The connector AD4M Connect gives: the browser's. */
+  /** The connector AD4M Connect gives, for the CONNECT choice: the browser's. */
   fallback: BackendConnector;
   keyHost?: () => string | null;
   joinDeclined?: () => boolean;
@@ -92,8 +93,7 @@ export function phoneBaseHost(deps: PhoneHostDeps): BaseHost {
   const declined = deps.joinDeclined ?? joinDeclined;
   const nav = deps.nav ?? browserNav;
   const online = deps.online ?? (() => globalThis.navigator?.onLine ?? true);
-  const makeKeyConnector =
-    deps.keyConnector ?? ((d: DeviceKeyConnectorDeps) => createDeviceKeyConnector(deps.fallback, d));
+  const makeKeyConnector = deps.keyConnector ?? createDeviceKeyConnector;
   return {
     kind: 'phone',
     identity: phoneIdentitySource(deps.plugin, nav, declined),
@@ -106,18 +106,12 @@ export function phoneBaseHost(deps: PhoneHostDeps): BaseHost {
         return Promise.resolve(
           connectFor(deps.fallback, how, { remembered: deps.remembered, reach: deps.reach, online }),
         );
-      return Promise.resolve(
-        makeKeyConnector({
-          plugin: () => deps.plugin,
-          keyHost,
-          nav,
-          // The base app asks about joining itself, before a connection is chosen; the connector must
-          // not send the person to the join page a second time.
-          joinDeclined: () => true,
-        }),
-      );
+      return Promise.resolve(makeKeyConnector({ plugin: () => deps.plugin, keyHost, nav }));
     },
     isUnreachable: (error) => error instanceof KeyLoginUnreachable || unreachable(error, online),
+    // The key login not made (the key not known there, revoked): back to the choice, which still
+    // offers AD4M Connect.
+    isRefused: (error) => error instanceof KeyLoginRefused,
     online,
   };
 }

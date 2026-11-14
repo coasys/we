@@ -139,6 +139,12 @@ export interface BaseHost {
    * with a way to try again, instead of ending on the session's error screen.
    */
   isUnreachable?(error: unknown): boolean;
+  /**
+   * Whether a connector's failure is the place refusing this device's sign-in, where another place
+   * may still take it: a key that executor does not know, say. Such a failure comes back to the base
+   * app's connection choice with the reason, instead of ending on the session's error screen.
+   */
+  isRefused?(error: unknown): boolean;
   /** Whether the device has a network at all; absent means it is not known, and assumed. */
   online?(): boolean;
 }

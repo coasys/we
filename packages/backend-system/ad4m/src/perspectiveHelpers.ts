@@ -40,8 +40,8 @@ export type ForeignShape = { name: string; shape: SHACLShape };
 /*
   Why the shape registry is read with SPARQL rather than `getAllShacl()`.
 
-  The client the app runs comes from `@coasys/ad4m-connect`, which bundles its own copy of
-  `@coasys/ad4m` — not the one this package depends on. In that copy `getAllShacl()` is not one
+  In the browser the client the app runs comes from `@coasys/ad4m-connect`, which bundles its own
+  copy of `@coasys/ad4m` — not the one this package depends on. In that copy `getAllShacl()` is not one
   call: it lists the names, then reads every shape with `getShacl()`, which costs 3 + P calls for a
   shape of P properties. A space with ~40 shapes paid ~650 `queryLinks` on every load to keep the
   handful that are foreign, and a remote executor queued them for seconds.

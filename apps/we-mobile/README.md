@@ -56,16 +56,17 @@ built for Android with uniffi bindings:
 - **Joining an identity.** `join({link})` claims an offer a computer holding the identity's master
   key opened (`https://id.coasys.org/o#coasys:offer:1:…`); both sides show the same match code, the
   computer signs an `add` listing the phone's keys, and `waitJoined()` sees it land.
-- **Key login.** Once the phone has joined and has an executor to log in to, WE logs in with the
-  device key (`user.sessionChallenge` → a signed statement → `user.loginWithKey`) instead of showing
-  the connect screen, and renews the session five minutes before each expiry
-  (`apps/we-web/src/platform/deviceKeyConnector.ts`, `keySession.ts`). The token is never stored:
-  every boot logs in afresh, and a key login removes the password session the connect screen may
-  have stored before it, so a later fall-back never sends one host's token to another. A session
+- **Key login.** Once the phone has joined and has an executor to log in to, the connection choice
+  offers it, and WE logs in there with the device key (`user.sessionChallenge` → a signed statement →
+  `user.loginWithKey`), with no AD4M Connect involved, and renews the session five minutes before
+  each expiry (`apps/we-web/src/platform/deviceKeyConnector.ts`, `keySession.ts`). The token is
+  never stored, and AD4M Connect's stored session is left as it was: every boot logs in afresh. A key
+  login the executor refuses (the key not known there, or revoked) goes back to the connection
+  choice with the reason, where AD4M Connect is still offered; it never opens by itself. A session
   that ends by itself (no renewal succeeded before it expired, or the executor refused the token)
-  starts WE again: the boot logs in afresh, or shows the connect screen when it cannot; a session
-  that ended within a minute of opening skips the key login on the next boot, so it cannot loop.
-  Anywhere else, and on a phone that has not joined, WE connects as in phase 1.
+  starts WE again: the boot logs in afresh, or comes back to the connection choice when it cannot; a
+  session that ended within a minute of opening skips the key login on the next boot, so it cannot
+  loop. A phone with no key host connects as in phase 1.
 
 ### Known limits of phase 2a
 
