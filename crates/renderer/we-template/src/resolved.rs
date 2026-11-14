@@ -121,11 +121,17 @@ impl Scope {
     }
 }
 
-/// What `$if`/`$animate` leave for the painter: enter and exit effect lists.
+/// What `$if`/`$animate` leave for the painter: enter and exit effect lists,
+/// and `$animate`'s open state when it authors a `condition` — the child is
+/// mounted either way; the painter draws hidden/visual state from `open`.
 #[derive(Debug, Clone, Default)]
 pub struct Transition {
     pub enter: Option<Vec<TransitionEffect>>,
     pub exit: Option<Vec<TransitionEffect>>,
+    /// `$animate`'s evaluated `condition` (`Some` when authored): the painter
+    /// draws the open or hidden style — the subtree is present regardless.
+    /// `None` for a mount/scroll-driven animation and for `$if`.
+    pub open: Option<bool>,
 }
 
 /// One animation effect (`TransitionEffect` in `types.ts`). `distance` is text
@@ -181,7 +187,11 @@ impl Transition {
         };
         let enter = read("enterTransition");
         let exit = read("exitTransition");
-        (enter.is_some() || exit.is_some()).then_some(Transition { enter, exit })
+        (enter.is_some() || exit.is_some()).then_some(Transition {
+            enter,
+            exit,
+            open: None,
+        })
     }
 }
 

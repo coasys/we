@@ -184,26 +184,86 @@ fn agent_binds_the_profile_from_profilestore() {
 }
 
 #[test]
-fn animate_gates_children_and_attaches_transition() {
+fn animate_mounts_children_and_marks_open_state() {
+    // Rewritten to the TS contract (AnimateRenderer.tsx): `$animate` never
+    // controls presence — the child is always mounted; `condition` only
+    // drives open/hidden visual state, and no transitions is a transparent
+    // pass-through. The previous version of this test asserted the child
+    // unmounts on `condition: false` — the opposite of the contract.
     let node = schema(json!({ "type": "Column", "children": [
         { "type": "$animate", "props": {
             "condition": { "$": "1 == 1" },
             "enterTransition": { "type": "fade", "duration": 200 }
           }, "children": [{ "type": "Shown" }] },
-        { "type": "$animate", "props": { "condition": { "$": "false" } },
-          "children": [{ "type": "Hidden" }] }
+        { "type": "$animate", "props": {
+            "condition": { "$": "false" },
+            "exitTransition": { "type": "fade", "duration": 100 }
+          }, "children": [{ "type": "Hidden" }] },
+        { "type": "$animate", "children": [{ "type": "Bare" }] }
     ]}));
     let (mut rt, mut host, screen) = rig(node, StoreBag::new(), "/");
     let root = rt.frame(&mut host, &screen).clone();
-    let shown = find_ty(&root, "Shown").expect("$animate child missing");
-    assert!(
-        shown.transition.is_some(),
-        "enterTransition must attach to the child"
+    let shown = find_ty(&root, "Shown").expect("$animate child must mount");
+    assert_eq!(
+        shown.transition.as_ref().and_then(|t| t.open),
+        Some(true),
+        "open condition reads as open"
+    );
+    let hidden = find_ty(&root, "Hidden").expect("condition:false must still mount the child");
+    assert_eq!(
+        hidden.transition.as_ref().and_then(|t| t.open),
+        Some(false),
+        "the painter reads open:false — hidden, but present"
+    );
+    let bare = find_ty(&root, "Bare").expect("no transitions is a pass-through");
+    assert!(bare.transition.is_none());
+}
+
+#[test]
+fn animate_keeps_locals_across_close_and_reopen() {
+    // The half-typed field: closing the condition must not drop the
+    // subtree's ids or locals — there is nothing to reopen into otherwise.
+    let node = schema(json!({ "type": "Column", "children": [
+        { "type": "$animate", "props": {
+            "condition": { "$": "open" },
+            "enterTransition": { "type": "fade" }
+          }, "children": [{
+            "type": "we-text",
+            "$localState": { "draft": { "type": "string", "initial": "start" } },
+            "props": { "text": { "$": "local.draft" } }
+          }] }
+    ]}));
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root("open", Value::Bool(true));
+    let locals = LocalState::new();
+    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone());
+    let mut host = StaticHost::new(bag.clone(), locals.clone());
+    let screen = screen("/");
+
+    let first = rt.frame(&mut host, &screen).clone();
+    let child = find_ty(&first, "we-text").expect("child must mount").id.clone();
+    locals.set(&child, "draft", Value::from("half-typed"));
+
+    bag.set_root("open", Value::Bool(false));
+    let closed = rt.frame(&mut host, &screen).clone();
+    let closed_child = find_ty(&closed, "we-text").expect("closed child stays mounted");
+    assert_eq!(closed_child.id, child, "the child's identity survives closing");
+    assert_eq!(
+        closed_child.transition.as_ref().and_then(|t| t.open),
+        Some(false)
     );
     assert!(
-        find_ty(&root, "Hidden").is_none(),
-        "false condition must gate"
+        locals.get(&child, "draft").strict_eq(&Value::from("half-typed")),
+        "locals survive while closed"
     );
+
+    bag.set_root("open", Value::Bool(true));
+    let reopened = rt.frame(&mut host, &screen).clone();
+    let reopened_child = find_ty(&reopened, "we-text").expect("child remounts open");
+    assert_eq!(reopened_child.id, child);
+    assert!(locals
+        .get(&child, "draft")
+        .strict_eq(&Value::from("half-typed")));
 }
 
 #[test]

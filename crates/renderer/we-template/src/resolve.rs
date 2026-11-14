@@ -542,15 +542,14 @@ fn resolve_node(
             out
         }
         Some("$animate") => {
-            // Same shape `$if` resolves to, with the transitions attached:
-            // the painter plays them; kept rows on exit are its business.
-            let cond = props
+            // `$animate` never gates — AnimateRenderer mounts the child
+            // either way and drives only visual state (opacity/transform/
+            // reveal; a settled reveal draws `display:none`). `condition`'s
+            // evaluated value goes to the painter as `open`; no transitions
+            // at all is a transparent pass-through.
+            let open = props
                 .and_then(|p| p.get("condition"))
-                .map(|c| eval_json(c, scope, cx.bag, cx.cache, cx.warnings))
-                .unwrap_or(Value::Undefined);
-            if !cond.truthy() {
-                return vec![];
-            }
+                .map(|c| eval_json(c, scope, cx.bag, cx.cache, cx.warnings).truthy());
             let children = resolve_children(
                 node.children.as_deref(),
                 scope,
@@ -560,7 +559,10 @@ fn resolve_node(
                 decls,
                 cx,
             );
-            with_transition(children, props.and_then(Transition::from_props))
+            let transition = props
+                .and_then(Transition::from_props)
+                .map(|t| Transition { open, ..t });
+            with_transition(children, transition)
         }
         Some("$agent") => {
             let did = props
