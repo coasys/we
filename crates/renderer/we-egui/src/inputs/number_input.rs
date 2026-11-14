@@ -62,7 +62,8 @@ impl Widget for NumberInput {
             egui::Role::Button,
             &node.id,
             "minus",
-            true,
+            // number-input.ts: `<button ?disabled=${this.disabled}>`.
+            !disabled,
             None,
         );
         let plus_r = cx.interact_label(
@@ -71,7 +72,8 @@ impl Widget for NumberInput {
             egui::Role::Button,
             &node.id,
             "plus",
-            true,
+            // number-input.ts: `<button ?disabled=${this.disabled}>`.
+            !disabled,
             None,
         );
         let visuals = cx.ui.visuals().clone();

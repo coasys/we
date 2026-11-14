@@ -1059,6 +1059,33 @@ fn disabled_controls_report_disabled_state() {
     }
 }
 
+/// B11 round 2 — number-input.ts renders its steppers as
+/// `<button ?disabled=${this.disabled}>`: a disabled field's − and + are
+/// disabled too, not enabled tab stops that do nothing.
+#[test]
+fn disabled_number_input_disables_its_steppers() {
+    let mut num = node(
+        "we-number-input",
+        "n",
+        props(&[
+            ("label", s("Qty")),
+            ("value", Value::Num(3.0)),
+            ("disabled", b(true)),
+        ]),
+    );
+    num.handlers = handlers(&["onChange"]);
+    let mut col = node("Column", "col", props(&[]));
+    col.children = vec![ResolvedChild::Node(Box::new(num))];
+    let (mut h, _r) = rig(col);
+    h.run();
+    for label in ["decrement", "increment"] {
+        assert!(
+            h.get_by_label(label).accesskit_node().is_disabled(),
+            "the {label} stepper of a disabled number input must report disabled"
+        );
+    }
+}
+
 /// B11 — the control's own authored label names it, not an ancestor
 /// `we-form-field`'s. The inherited label is a fallback for an unlabeled
 /// control.
