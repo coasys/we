@@ -471,12 +471,12 @@ function body(screen: Screen): Child[] {
           days: Number(days.value),
         });
       return [
-        el('p', { textContent: 'Its key may' }),
+        el('p', { textContent: 'Permissions' }),
         ...ticks.map((t) => el('label', { className: 'check' }, t.box, t.label)),
-        el('label', {}, `For how many days (1 to ${BOT_DAYS_MAX})`, days),
+        el('label', {}, `Days (1 to ${BOT_DAYS_MAX})`, days),
         el('p', {
           className: 'note',
-          textContent: 'This is the most it may ever do. A bot that should run longer is added again.',
+          textContent: 'This is the most it can ever do. To change it, add the bot again.',
         }),
         ...errorLine(screen.error),
         el('div', { className: 'row' }, button('Continue', go, 'primary'), button('Cancel', cancel)),
@@ -490,23 +490,23 @@ function body(screen: Screen): Child[] {
         el(
           'div',
           { className: 'row' },
-          button('Copy the offer', () => void navigator.clipboard?.writeText(screen.offer), 'primary'),
+          button('Copy code', () => void navigator.clipboard?.writeText(screen.offer), 'primary'),
           button('Cancel', cancel),
         ),
         el('p', {
           className: 'note',
-          textContent: 'Anyone with this offer can make a bot of yours: give it only to the bot.',
+          textContent: 'Anyone with this code can create a bot for you. Paste it only where your bot runs.',
         }),
         countdown(screen.expires, 'Waiting for the bot…'),
       ];
     case 'bot-match': {
-      const name = textField('Name the bot', screen.name ?? '', 'Meeting notes bot…');
+      const name = textField('Name', screen.name ?? '', 'Meeting notes bot');
       const confirm = () => step({ kind: 'confirm', name: typed(name.input) });
       return [
         el('div', { className: 'code', textContent: screen.code }),
         name.label,
-        el('p', { className: 'note', textContent: 'Add only a bot you made or run yourself.' }),
-        el('div', { className: 'row' }, button('Add it', confirm, 'primary'), button('Deny', cancel)),
+        el('p', { className: 'note', textContent: 'Only add a bot you run yourself.' }),
+        el('div', { className: 'row' }, button('Add', confirm, 'primary'), button('Cancel', cancel)),
       ];
     }
     case 'bot-added':

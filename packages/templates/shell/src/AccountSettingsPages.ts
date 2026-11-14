@@ -469,13 +469,12 @@ export const botsPage: SchemaNode = {
       type: 'Column',
       props: { gap: '400' },
       children: [
-        heading('Bots', 'Bots act for you with keys of their own, inside what you grant them.'),
+        heading('Bots', 'Bots work only in the spaces you choose and give a reason for everything they write.'),
         comingSoon({
           available: can('bots'),
           icon: 'robot',
-          title: 'Your bots',
-          description:
-            'Each bot signs as itself, never as you, in the spaces you let it into, and gives a reason for each thing it writes. Each thing it does is logged.',
+          title: 'Bots',
+          description: 'Bots never write as you, and you can see everything they do.',
           preview: [actions('Add a bot')],
         }),
       ],

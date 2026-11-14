@@ -97,9 +97,9 @@ export type BotAction = 'read' | 'write' | 'join';
 
 /** The actions a bot may be given, in the order the window lists them, with what each lets it do. */
 export const BOT_ACTIONS: ReadonlyArray<{ action: BotAction; label: string }> = [
-  { action: 'read', label: 'Read the spaces you give it' },
-  { action: 'write', label: 'Write in them, with a reason each time' },
-  { action: 'join', label: 'Join the spaces you give it' },
+  { action: 'read', label: 'Allow reading spaces' },
+  { action: 'write', label: 'Allow writing, with a reason each time' },
+  { action: 'join', label: 'Allow joining spaces' },
 ];
 
 /** How long a bot's key lives when the person does not choose, and the longest it may. */
@@ -378,23 +378,23 @@ export function heading(screen: Screen): { title: string; lead: string } {
     case 'bot-scope':
       return {
         title: 'Add a bot',
-        lead: 'A bot acts for you with a key of its own. Choose what that key may ever do, and for how long. Later you choose which spaces it may act in, and you can pause or revoke it at any time.',
+        lead: 'Choose what this bot can do and for how long. You choose its spaces later, and can pause or remove it at any time.',
       };
     case 'bot-offer':
       return {
-        title: 'Give this offer to the bot',
-        lead: `Copy the offer. In WE, open Settings → Bots, choose “Make the bot”, and paste it there. A bot on another computer takes it with \`bot.createAgent\`. Its key may ${actionsLine(screen.can)} until ${day(screen.keyExpires)}.`,
+        title: 'Copy setup code',
+        lead: `Paste it in Settings → Bots on the computer that runs the bot. It can ${actionsLine(screen.can)} until ${day(screen.keyExpires)}.`,
       };
     case 'bot-match':
       return {
         title: screen.name ? `Add ${screen.name}?` : 'Add this bot?',
-        lead: 'Check that the place where you made the bot shows the same code. Your computer lets the bot act only in the spaces you give it, within what this key allows, and it never speaks for you.',
+        lead: 'Check the code matches the one in Settings → Bots.',
       };
     case 'bot-added':
       return {
         title: `${screen.name} added`,
         lead: [
-          `Your key log records its key ${screen.keyId} as entry #${screen.seq}. It can do nothing yet: give it spaces on the Bots page.`,
+          "It can't do anything yet. Choose its spaces in Settings → Bots.",
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
       };

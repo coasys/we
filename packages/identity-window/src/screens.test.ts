@@ -404,7 +404,7 @@ describe('the identity window', () => {
 
   it('adds a bot in four screens: its scope, the offer to paste, the match code, and what is next', () => {
     expect(heading({ screen: 'bot-scope', error: null }).title).toBe('Add a bot');
-    expect(heading({ screen: 'bot-scope', error: null }).lead).toContain('pause or revoke it');
+    expect(heading({ screen: 'bot-scope', error: null }).lead).toContain('pause or remove it');
     expect(BOT_ACTIONS.map((a) => a.action)).toEqual(['read', 'write', 'join']);
     expect(actionsLine(['read'])).toBe('read');
     expect(actionsLine(['read', 'write', 'join'])).toBe('read, write and join');
@@ -416,13 +416,13 @@ describe('the identity window', () => {
       expires: 1_700_000_300,
     };
     expect(heading(offer).lead).toContain('Settings → Bots');
-    expect(heading(offer).lead).toContain('may read and write until');
+    expect(heading(offer).lead).toContain('can read and write until');
     expect(heading({ screen: 'bot-match', code: '123456', name: 'Test bot' }).title).toBe('Add Test bot?');
     expect(heading({ screen: 'bot-match', code: '123456', name: null }).title).toBe('Add this bot?');
     const added: Screen = { screen: 'bot-added', seq: 4, keyId: 'd3', name: 'Test bot', note: null };
     expect(heading(added)).toEqual({
       title: 'Test bot added',
-      lead: 'Your key log records its key d3 as entry #4. It can do nothing yet: give it spaces on the Bots page.',
+      lead: "It can't do anything yet. Choose its spaces in Settings → Bots.",
     });
     expect(heading({ ...added, note: 'Its name was not saved.' }).lead).toContain('Its name was not saved.');
     expect(isLast(added)).toBe(true);
