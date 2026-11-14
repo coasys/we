@@ -11,3 +11,4 @@ serde_json.workspace = true
 indexmap.workspace = true
 thiserror.workspace = true
 we-expr.workspace = true
+we-screen.workspace = true

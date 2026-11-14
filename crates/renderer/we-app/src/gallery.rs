@@ -460,7 +460,7 @@ impl WidgetsApp {
             schema,
             "widget-gallery",
             Arc::new(we_template::StoreBag::new()),
-            we_template::RouteState::new("/gallery"),
+            we_screen::ScreenState::desktop(we_screen::ScreenSchema::default(), "/gallery"),
             we_widgets::Registry::with_builtins(),
         );
         let (theme, _) = set.theme(&current);
@@ -476,7 +476,7 @@ impl WidgetsApp {
             schema,
             "widget-gallery",
             Arc::new(we_template::StoreBag::new()),
-            we_template::RouteState::new("/gallery"),
+            we_screen::ScreenState::desktop(we_screen::ScreenSchema::default(), "/gallery"),
             we_widgets::Registry::with_builtins(),
         );
         let (theme, _) = set.theme(theme);

@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 
-use crate::{CallFn, Value};
+use crate::{CallFn, CallableKind, CallableRef, Namespace, Value};
 
 /// The environment an expression is evaluated against.
 ///
@@ -83,5 +83,73 @@ impl Env for MapEnv {
             .get(name)
             .map(|f| f(args))
             .unwrap_or(Value::Undefined)
+    }
+}
+
+/// The value of a call-time root — `event`, `arg`, `result` — as an
+/// expression reads it (`callbackValue` in `evaluate.ts`).
+///
+/// An object is wrapped in a namespace whose members are read as data: a
+/// function member comes back [`CallableKind::Callback`]-tagged (a composer's
+/// `save()` is let through on purpose), an accessor member passes through so
+/// `readValue` invokes it, and anything else is wrapped recursively. The
+/// namespace settles back to the raw object — `event` alone is the event,
+/// not a store. Any non-object is itself, unwrapped.
+///
+/// ```
+/// use indexmap::IndexMap;
+/// use std::sync::Arc;
+/// use we_expr::{callback_value, eval, parse, MapEnv, Value};
+///
+/// let event: Value = Value::Obj(Arc::new(IndexMap::from([
+///     ("id".into(), "ev:9".into()),
+/// ])));
+/// let env = MapEnv::new().with_root("event", callback_value(&event));
+/// assert!(eval(&parse("event.id").unwrap(), &env).strict_eq(&"ev:9".into()));
+/// // `event` itself settles back to the raw object.
+/// assert_eq!(
+///     eval(&parse("event").unwrap(), &env).to_json(),
+///     event.to_json()
+/// );
+/// ```
+pub fn callback_value(value: &Value) -> Value {
+    match value {
+        Value::Obj(_) => Value::Namespace(Arc::new(CallbackNamespace { raw: value.clone() })),
+        _ => value.clone(),
+    }
+}
+
+/// The namespace `callback_value` wraps an object in — `CallbackNamespace` in
+/// `evaluate.ts`. Member reads go through [`Namespace::get`]; [`raw`] keeps
+/// the value it wraps so `settle` hands the object itself back.
+///
+/// [`raw`]: Namespace::raw
+#[derive(Debug)]
+struct CallbackNamespace {
+    raw: Value,
+}
+
+impl Namespace for CallbackNamespace {
+    fn get(&self, property: &str) -> Value {
+        let Value::Obj(raw) = &self.raw else {
+            return Value::Undefined;
+        };
+        let member = raw.get(property).cloned().unwrap_or(Value::Undefined);
+        match member {
+            Value::Callable(c) => match c.kind() {
+                // A signal stays itself — `readValue` calls it.
+                CallableKind::Accessor => Value::Callable(c),
+                // Any other function comes back bound to the payload and
+                // callback-tagged — `readValue` lets it through. (`bound` is
+                // the name JavaScript reports for the bound function, and
+                // what the vectors re-encode.)
+                _ => Value::Callable(CallableRef::callback("bound", move |args| c.call(args))),
+            },
+            member => callback_value(&member),
+        }
+    }
+
+    fn raw(&self) -> Option<Value> {
+        Some(self.raw.clone())
     }
 }

@@ -16,6 +16,7 @@ we-widgets.workspace = true
 we-style.workspace = true
 we-store.workspace = true
 we-expr.workspace = true
+we-screen.workspace = true
 
 [dev-dependencies]
 egui_kittest = { workspace = true, features = ["snapshot", "wgpu"] }

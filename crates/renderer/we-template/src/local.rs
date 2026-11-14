@@ -25,6 +25,9 @@ pub struct LocalState {
 #[derive(Debug, Default)]
 struct Inner {
     fields: HashMap<(NodeId, Arc<str>), Value>,
+    /// Fields `$touch` has marked — validation reads ("field was edited").
+    /// Cleared when the owning node leaves the tree.
+    touched: HashSet<(NodeId, Arc<str>)>,
     /// Bumped by [`LocalState::set`] when a write changes a field — one of the
     /// three counters that decide whether the next frame re-resolves.
     version: u64,
@@ -88,11 +91,40 @@ impl LocalState {
         }
     }
 
+    /// `$touch` — mark the field edited (WE: `setTouched` for validation).
+    /// Bumps the version; a touched state can flip a guard.
+    pub fn touch(&self, node: &NodeId, field: &str) {
+        if let Ok(mut inner) = self.inner.write() {
+            if inner.touched.insert((node.clone(), field.into())) {
+                inner.version += 1;
+            }
+        }
+    }
+
+    /// Clear the touch — `$resetLocal`'s `meta.reset()` clears it with the
+    /// value.
+    pub fn untouch(&self, node: &NodeId, field: &str) {
+        if let Ok(mut inner) = self.inner.write() {
+            if inner.touched.remove(&(node.clone(), field.into())) {
+                inner.version += 1;
+            }
+        }
+    }
+
+    /// Whether `$touch` has marked the field this mount.
+    pub fn is_touched(&self, node: &NodeId, field: &str) -> bool {
+        self.inner
+            .read()
+            .map(|i| i.touched.contains(&(node.clone(), field.into())))
+            .unwrap_or(false)
+    }
+
     /// Drop the fields of every node not in `live` — a node that leaves the
     /// resolved tree takes its state with it (an unmount in WE).
     pub fn retain(&self, live: &HashSet<NodeId>) {
         if let Ok(mut inner) = self.inner.write() {
             inner.fields.retain(|(node, _), _| live.contains(node));
+            inner.touched.retain(|(node, _)| live.contains(node));
         }
     }
 }

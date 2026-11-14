@@ -5,7 +5,8 @@ use std::sync::Arc;
 
 use egui_kittest::kittest::Queryable;
 use we_app::RendererApp;
-use we_template::{Bundle, RouteState, SchemaNode, StoreBag};
+use we_screen::{ScreenSchema, ScreenState};
+use we_template::{Bundle, SchemaNode, StoreBag};
 use we_widgets::Registry;
 
 const BUNDLE: &str = include_str!(concat!(
@@ -37,7 +38,7 @@ fn app(route: &str) -> RendererApp {
         schema,
         "tree",
         Arc::new(bag),
-        RouteState::new(route),
+        ScreenState::desktop(ScreenSchema::default(), route),
         Registry::with_builtins(),
     )
 }
@@ -82,12 +83,16 @@ fn clicking_a_row_changes_routestore_params() {
         app("/space/demo?view=canvas"),
     );
     harness.run();
-    assert!(harness.state().host.route.param("dna").is_undefined());
+    assert!(harness.state().screen.nav.param("dna").is_none());
     // "Social DNA" carries value "group|dna"; in canvas view its onSelect
-    // runs routeStore.setParam("dna", "all").
+    // runs routeStore.setParam("dna", "all"). The full evaluator resolves
+    // enough rows to push it below the fold — scroll it into view first.
+    let row = harness.get_by_label("group|dna");
+    row.scroll_to_me();
+    harness.run();
     harness.get_by_label("group|dna").click();
     harness.run();
-    assert_eq!(harness.state().host.route.param("dna").js_string(), "all");
+    assert_eq!(harness.state().screen.nav.param("dna"), Some("all"));
 }
 
 #[test]
