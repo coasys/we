@@ -218,6 +218,7 @@ pub fn widgets_ui(
     let (theme, _) = set.theme("dark");
     let scx = StyleCx {
         tokens: theme.tokens.as_ref(),
+        theme: "dark",
         viewport: we_style::Size::new(rect.width(), rect.height()),
         container_width: rect.width(),
         ..StyleCx::empty()

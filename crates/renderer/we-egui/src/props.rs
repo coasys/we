@@ -274,7 +274,7 @@ pub(crate) fn paint_box(
     );
 
     // Shadows under the box: egui has shadows only as widgets; paint a soft
-    // offset rect per layer (inset shadows are skipped — noted in NOTES).
+    // offset rect per layer (inset layers paint over the bg below).
     if let Some(shadows) = &style.paint.shadows {
         for s in shadows {
             if s.inset {
@@ -316,6 +316,55 @@ pub(crate) fn paint_box(
 
     if let Some(bg) = style.paint.bg {
         painter.rect_filled(rect, radius, fade(color32(bg)));
+    }
+
+    // Inset layers: over the background, under the borders (CSS painting
+    // order). The layer's shape is the box shrunk by its spread and
+    // shifted by its offset — `inset 1px 1px` lights the top/left inner
+    // edges, `inset -1px -1px` the bottom/right. Painted region =
+    // `rect \ shape`, the four edge strips between them. Layers stack
+    // front-to-back like CSS shadows (first declared on top), so they
+    // paint in reverse.
+    if let Some(shadows) = &style.paint.shadows {
+        for s in shadows.iter().rev() {
+            if !s.inset {
+                continue;
+            }
+            let dx =
+                s.dx.to_px(view.font_px, view.root_px, viewport)
+                    .unwrap_or(0.0);
+            let dy =
+                s.dy.to_px(view.font_px, view.root_px, viewport)
+                    .unwrap_or(0.0);
+            let spread = s
+                .spread
+                .and_then(|d| d.to_px(view.font_px, view.root_px, viewport))
+                .unwrap_or(0.0);
+            let blur = s
+                .blur
+                .and_then(|d| d.to_px(view.font_px, view.root_px, viewport))
+                .unwrap_or(0.0);
+            let color = s.color.map(color32).unwrap_or(current_color);
+            let shape = rect.expand(-spread).translate(egui::vec2(dx, dy));
+            // Blur softens the band inward — the uncovered shape shrinks
+            // in fading steps, matching the outer-shadow approximation.
+            let layers = if blur > 0.0 { 3 } else { 1 };
+            for i in 0..layers {
+                // Deepest layer first, sharpest band last at full alpha.
+                let grow = blur * (layers - 1 - i) as f32 / layers as f32;
+                let alpha = if blur > 0.0 {
+                    1.0 - (layers - 1 - i) as f32 / layers as f32 * 0.6
+                } else {
+                    1.0
+                };
+                paint_inset_layer(
+                    painter,
+                    rect,
+                    shape.expand(-grow),
+                    fade(color).gamma_multiply(alpha),
+                );
+            }
+        }
     }
 
     for (edge, side) in [
@@ -367,6 +416,62 @@ pub(crate) fn paint_box(
             }
             _ => {
                 painter.line_segment([a, b], egui::Stroke::new(width, fade(color)));
+            }
+        }
+    }
+}
+
+/// Where one inset layer paints — `rect \ shape` as four edge strips
+/// `[top, bottom, left, right]` (`None` where the shape reaches the box
+/// edge), or the whole box when the shifted shape misses it. The
+/// geometry, separate from the painter so tests can read it.
+enum InsetStrips {
+    Covers,
+    Strips([Option<egui::Rect>; 4]),
+}
+
+/// A diagonal offset leaves an L (two adjoining strips); a spread-only
+/// layer the full ring. Strips are square-cornered: a rounded box keeps
+/// its corner fill from the bg, which the strips then partially cover —
+/// close enough that the radius-0 faces this exists for read exactly.
+fn inset_strips(rect: egui::Rect, shape: egui::Rect) -> InsetStrips {
+    let inner = shape.intersect(rect);
+    if inner.width() <= 0.0 || inner.height() <= 0.0 {
+        return InsetStrips::Covers;
+    }
+    // Top/bottom run the full width; left/right fill the middle rows.
+    let top = (inner.min.y > rect.min.y)
+        .then(|| egui::Rect::from_min_max(rect.min, egui::pos2(rect.max.x, inner.min.y)));
+    let bottom = (inner.max.y < rect.max.y)
+        .then(|| egui::Rect::from_min_max(egui::pos2(rect.min.x, inner.max.y), rect.max));
+    let left = (inner.min.x > rect.min.x).then(|| {
+        egui::Rect::from_min_max(
+            egui::pos2(rect.min.x, inner.min.y),
+            egui::pos2(inner.min.x, inner.max.y),
+        )
+    });
+    let right = (inner.max.x < rect.max.x).then(|| {
+        egui::Rect::from_min_max(
+            egui::pos2(inner.max.x, inner.min.y),
+            egui::pos2(rect.max.x, inner.max.y),
+        )
+    });
+    InsetStrips::Strips([top, bottom, left, right])
+}
+
+fn paint_inset_layer(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    shape: egui::Rect,
+    color: egui::Color32,
+) {
+    match inset_strips(rect, shape) {
+        InsetStrips::Covers => {
+            painter.rect_filled(rect, 0.0, color);
+        }
+        InsetStrips::Strips(strips) => {
+            for strip in strips.into_iter().flatten() {
+                painter.rect_filled(strip, 0.0, color);
             }
         }
     }
@@ -614,5 +719,112 @@ mod tests {
             "cyclic calc padding keeps its 16px term (percent → 0), got {r:?}"
         );
         assert_eq!(r.width(), 200.0 - 32.0, "both sides inset 16px");
+    }
+
+    /// `inset dx dy` geometry: a `+1 +1` layer uncovers the top and left
+    /// inner edges, a `-1 -1` the bottom and right — the L a diagonal
+    /// offset leaves.
+    #[test]
+    fn inset_strips_offset_leaves_the_lit_edges() {
+        let rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(80.0, 28.0));
+        let InsetStrips::Strips([top, bottom, left, right]) =
+            inset_strips(rect, rect.translate(egui::vec2(1.0, 1.0)))
+        else {
+            panic!("a +1/+1 shape still intersects the box");
+        };
+        assert_eq!(
+            top,
+            Some(egui::Rect::from_min_max(
+                egui::pos2(0.0, 0.0),
+                egui::pos2(80.0, 1.0)
+            ))
+        );
+        assert_eq!(bottom, None);
+        assert_eq!(
+            left,
+            Some(egui::Rect::from_min_max(
+                egui::pos2(0.0, 1.0),
+                egui::pos2(1.0, 28.0)
+            ))
+        );
+        assert_eq!(right, None);
+        let InsetStrips::Strips([top, bottom, left, right]) =
+            inset_strips(rect, rect.translate(egui::vec2(-1.0, -1.0)))
+        else {
+            panic!("a -1/-1 shape still intersects the box");
+        };
+        assert_eq!(top, None);
+        assert_eq!(
+            bottom,
+            Some(egui::Rect::from_min_max(
+                egui::pos2(0.0, 27.0),
+                egui::pos2(80.0, 28.0)
+            ))
+        );
+        assert_eq!(left, None);
+        assert_eq!(
+            right,
+            Some(egui::Rect::from_min_max(
+                egui::pos2(79.0, 0.0),
+                egui::pos2(80.0, 27.0)
+            ))
+        );
+        // A shape that misses the box entirely covers it.
+        assert!(matches!(
+            inset_strips(rect, rect.translate(egui::vec2(500.0, 0.0))),
+            InsetStrips::Covers
+        ));
+    }
+
+    /// The theme's own four layers, `theme_css::retro_bevel`, resolve to
+    /// the Win95 face: the light layers land on the top/left strips, the
+    /// dark on bottom/right — and the `:active` list reverses the pairing.
+    #[test]
+    fn retro_bevel_layers_light_top_left_dark_bottom_right() {
+        let rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(80.0, 28.0));
+        let view = crate::defaults::ViewportCx::default();
+        for s in we_layout::theme_css::retro_bevel() {
+            let d = egui::vec2(
+                s.dx.to_px(view.font_px, view.root_px, view.viewport)
+                    .unwrap_or(0.0),
+                s.dy.to_px(view.font_px, view.root_px, view.viewport)
+                    .unwrap_or(0.0),
+            );
+            let InsetStrips::Strips([top, bottom, left, right]) =
+                inset_strips(rect, rect.translate(d))
+            else {
+                panic!("every bevel layer leaves strips, got Covers for {s:?}");
+            };
+            // `grey` (128) is the dark pair's second edge — it goes with
+            // the negative offsets below.
+            let light = s.color.is_some_and(|c| color32(c).r() > 128);
+            if light {
+                assert!(top.is_some() && left.is_some(), "light layer {s:?}");
+                assert!(bottom.is_none() && right.is_none(), "light layer {s:?}");
+            } else {
+                assert!(bottom.is_some() && right.is_some(), "dark layer {s:?}");
+                assert!(top.is_none() && left.is_none(), "dark layer {s:?}");
+            }
+        }
+        // The pressed swap: the same colours on opposite edges.
+        for s in we_layout::theme_css::retro_bevel_pressed() {
+            let d = egui::vec2(
+                s.dx.to_px(view.font_px, view.root_px, view.viewport)
+                    .unwrap_or(0.0),
+                s.dy.to_px(view.font_px, view.root_px, view.viewport)
+                    .unwrap_or(0.0),
+            );
+            let InsetStrips::Strips([top, bottom, left, right]) =
+                inset_strips(rect, rect.translate(d))
+            else {
+                panic!("every pressed layer leaves strips, got Covers for {s:?}");
+            };
+            let light = s.color.is_some_and(|c| color32(c).r() > 128);
+            if light {
+                assert!(bottom.is_some() && right.is_some(), "pressed light {s:?}");
+            } else {
+                assert!(top.is_some() && left.is_some(), "pressed dark {s:?}");
+            }
+        }
     }
 }

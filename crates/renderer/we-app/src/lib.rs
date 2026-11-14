@@ -98,6 +98,7 @@ impl RendererApp {
                 let rect = Rect::from_min_size(ui.cursor().min, vec2(width, vp.y));
                 let scx = StyleCx {
                     tokens: &self.theme.tokens,
+                    theme: self.theme.id.as_ref(),
                     viewport: we_style::Size::new(vp.x, vp.y),
                     container_width: width,
                     ..StyleCx::empty()

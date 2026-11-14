@@ -32,7 +32,7 @@ impl Widget for Input {
         Size::new(avail.x.min(220.0), h)
     }
 
-    fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, rect: Rect) {
+    fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         // The DOM `change` event carries the field's text at commit time —
         // the draft, not the prop it is about to be replaced by.
         let committed = cx.edit.draft(&node.id);
@@ -42,7 +42,31 @@ impl Widget for Input {
         let is_password =
             matches!(props::prop(node, "type"), we_expr::Value::Str(s) if s.as_ref() == "password");
 
-        let widget = TextEdit::singleline(&mut text)
+        // Chrome that comes from the resolved style — the theme's part
+        // rule (retro's white bevelled well) or authored `styles` —
+        // replaces egui's own TextEdit frame; an unstyled field keeps it.
+        let view = crate::defaults::view_of(cx.ui.ctx());
+        let chrome = style.paint.bg.is_some()
+            || style.paint.shadows.as_ref().is_some_and(|s| !s.is_empty())
+            || style.paint.borders.as_slice().iter().any(|b| {
+                b.as_ref().is_some_and(|s| {
+                    !matches!(
+                        s.kind,
+                        we_style::BorderKind::None | we_style::BorderKind::Hidden
+                    )
+                })
+            });
+        if chrome {
+            props::paint_box(
+                cx.ui.painter(),
+                rect,
+                style,
+                props::text_color(style, cx.ui.ctx()),
+                view,
+            );
+        }
+
+        let mut widget = TextEdit::singleline(&mut text)
             .id_salt(node.id.as_str())
             .desired_width(rect.width())
             // Centre the text block in the field — the theme's atom
@@ -52,6 +76,18 @@ impl Widget for Input {
             .align(egui::Align2::LEFT_CENTER)
             .password(is_password)
             .interactive(!disabled);
+        if chrome {
+            widget = widget.frame(egui::Frame::NONE);
+            // The resolved padding/border insets carry as the TextEdit's
+            // margin, so the text still starts at the content box.
+            let inner = props::content_rect(rect, style, view, cx.cb_w);
+            widget = widget.margin(egui::Margin {
+                left: (inner.min.x - rect.min.x) as i8,
+                top: (inner.min.y - rect.min.y) as i8,
+                right: (rect.max.x - inner.max.x) as i8,
+                bottom: (rect.max.y - inner.max.y) as i8,
+            });
+        }
         let widget = match props::prop_string(node, "placeholder") {
             Some(p) => widget.hint_text(p),
             None => widget,

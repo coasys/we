@@ -51,7 +51,23 @@ impl Widget for Switch {
         } else {
             visuals.widgets.inactive.bg_fill
         };
-        cx.ui.painter().rect_filled(switch_rect, 10.0, fill);
+        // The theme's part rules reach the track/thumb where they are —
+        // no node addresses them. Retro's `we-switch::part(track|thumb)`:
+        // square faces carrying the Win95 bevel over the same fills.
+        let retro = crate::defaults::theme_of(cx.ui.ctx()).as_deref() == Some("retro");
+        let view = crate::defaults::view_of(cx.ui.ctx());
+        let bevel = |rect: Rect| {
+            if !retro {
+                return;
+            }
+            let mut part = Style::default();
+            part.paint.shadows = Some(we_layout::theme_css::retro_bevel().to_vec());
+            props::paint_box(cx.ui.painter(), rect, &part, egui::Color32::WHITE, view);
+        };
+        cx.ui
+            .painter()
+            .rect_filled(switch_rect, if retro { 0.0 } else { 10.0 }, fill);
+        bevel(switch_rect);
         let knob_center = egui::pos2(
             if on {
                 switch_rect.max.x - 10.0
@@ -60,9 +76,19 @@ impl Widget for Switch {
             },
             switch_rect.center().y,
         );
-        cx.ui
-            .painter()
-            .circle_filled(knob_center, 8.0, egui::Color32::WHITE);
+        if retro {
+            // The `part(thumb)` rule's square face — the web part is the
+            // 16px block at 2px insets, which this centre reproduces.
+            let thumb = Rect::from_center_size(knob_center, Size::new(16.0, 16.0));
+            cx.ui
+                .painter()
+                .rect_filled(thumb, 0.0, egui::Color32::WHITE);
+            bevel(thumb);
+        } else {
+            cx.ui
+                .painter()
+                .circle_filled(knob_center, 8.0, egui::Color32::WHITE);
+        }
         // The `labelOn`/`labelOff` text beside the pill.
         let text = if on {
             props::prop_string(node, "labelOn")

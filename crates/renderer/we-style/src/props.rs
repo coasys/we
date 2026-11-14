@@ -1267,7 +1267,10 @@ fn eval_shadow_layer(text: &str) -> Option<Shadow> {
     })
 }
 
-fn eval_box_shadow(text: &str) -> Option<Vec<Shadow>> {
+/// A `box-shadow` list: one [`Shadow`] per comma-separated layer.
+/// `none` resolves to the empty list; any unparseable layer fails the
+/// whole value (CSS's all-or-nothing declaration rule).
+pub fn eval_box_shadow(text: &str) -> Option<Vec<Shadow>> {
     let t = text.trim();
     if t.eq_ignore_ascii_case("none") {
         return Some(Vec::new());

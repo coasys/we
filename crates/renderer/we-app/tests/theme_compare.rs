@@ -42,6 +42,7 @@ fn content_height(ctx: &egui::Context, app: &mut we_app::RendererApp, width: f32
     let mcx = MeasureCx::new(ctx);
     let scx = StyleCx {
         tokens: &app.theme.tokens,
+        theme: app.theme.id.as_ref(),
         viewport: we_style::Size::new(width, 1.0),
         container_width: width,
         ..StyleCx::empty()

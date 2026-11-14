@@ -53,6 +53,10 @@ pub fn root_px(scx: &StyleCx) -> f32 {
 #[derive(Clone, Copy)]
 pub struct StyleCx<'a> {
     pub tokens: &'a TokenTable,
+    /// The theme's id — the `[data-we-theme='x']` selector in `theme_css`.
+    /// `""` for a context built without a theme (tests, token-free docs):
+    /// no component stylesheet applies, the token-only answer.
+    pub theme: &'a str,
     pub viewport: we_style::Size,
     pub container_width: f32,
     /// The ancestors' custom-property scope — empty for a layout root.
@@ -70,6 +74,7 @@ impl<'a> StyleCx<'a> {
         static EMPTY_SCOPE: LazyLock<IndexMap<Arc<str>, Arc<str>>> = LazyLock::new(IndexMap::new);
         Self {
             tokens: &EMPTY,
+            theme: "",
             viewport: we_style::Size::new(0.0, 0.0),
             container_width: 0.0,
             scope: &EMPTY_SCOPE,
@@ -155,7 +160,11 @@ pub fn style_of(node: &ResolvedNode, scx: &StyleCx) -> Style {
     input.font_px = font_px(scx);
     input.root_px = root_px(scx);
     input.inherited = scx.scope;
-    we_style::resolve(&bag, &input)
+    let mut style = we_style::resolve(&bag, &input);
+    // The theme's component stylesheet — `[data-we-theme='x'] x::part(*)`
+    // rules a var read cannot carry — lands over the resolved bags.
+    crate::theme_css::apply(scx.theme, node, &mut style);
+    style
 }
 
 /// Per-type DS defaults — the token-name bags the TS primitives merge

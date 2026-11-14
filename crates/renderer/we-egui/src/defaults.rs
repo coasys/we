@@ -38,6 +38,7 @@ impl Default for ViewportCx {
 
 const VIEW_KEY: &str = "we-egui::viewport";
 const FAMILY_KEY: &str = "we-egui::base-family";
+const THEME_KEY: &str = "we-egui::theme-id";
 
 /// Stash the frame's style context on the ctx (called by `layout`/`paint`).
 pub(crate) fn store_view(ctx: &egui::Context, scx: &StyleCx) {
@@ -60,6 +61,12 @@ pub(crate) fn store_view(ctx: &egui::Context, scx: &StyleCx) {
         if let Some(f) = scx.tokens.get("--we-font-family") {
             d.insert_temp(egui::Id::unique(FAMILY_KEY), Arc::<str>::from(f));
         }
+        // The theme id for part-level rules that address parts the element
+        // does not expose as nodes (the switch's track/thumb) — the
+        // `data-we-theme` selector read at paint time.
+        if !scx.theme.is_empty() {
+            d.insert_temp(egui::Id::unique(THEME_KEY), Arc::<str>::from(scx.theme));
+        }
     });
 }
 
@@ -80,4 +87,11 @@ pub(crate) fn view_of(ctx: &egui::Context) -> ViewportCx {
 /// theme that records no `--we-font-family`.
 pub(crate) fn base_family_of(ctx: &egui::Context) -> Option<Arc<str>> {
     ctx.data_mut(|d| d.get_temp::<Arc<str>>(egui::Id::unique(FAMILY_KEY)))
+}
+
+/// The stashed theme id — `None` before the first frame and on a theme-
+/// less context. Widgets that paint parts the node tree cannot address
+/// read it to apply the theme's part rules (`theme_css`).
+pub(crate) fn theme_of(ctx: &egui::Context) -> Option<Arc<str>> {
+    ctx.data_mut(|d| d.get_temp::<Arc<str>>(egui::Id::unique(THEME_KEY)))
 }

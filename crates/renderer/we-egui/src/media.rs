@@ -322,8 +322,21 @@ impl Avatar {
             .bg
             .map(props::color32)
             .unwrap_or_else(|| ui.visuals().widgets.noninteractive.bg_fill);
+        ui.painter().rect_filled(rect, r, bg);
+        // The element's chrome — the theme's part rules (retro's squared
+        // bevel) or authored shadows/borders — over the slot fill, under
+        // the image/initials. `bg` is cleared: the fallback-aware fill
+        // above already painted it.
+        let mut chrome = style.clone();
+        chrome.paint.bg = None;
+        props::paint_box(
+            ui.painter(),
+            rect,
+            &chrome,
+            props::text_color(style, ui.ctx()),
+            view,
+        );
         let p = ui.painter().with_clip_rect(rect);
-        p.rect_filled(rect, r, bg);
         match url.filter(|u| !u.is_empty()) {
             Some(u) => {
                 egui::Image::new(image_source(u))
