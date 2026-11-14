@@ -17,6 +17,7 @@ members = [
     "we-style",
     "we-widgets",
     "we-ad4m",
+    "we-app",
 ]
 
 [workspace.dependencies]
