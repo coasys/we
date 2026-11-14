@@ -392,6 +392,49 @@ fn remembered_query_updates_on_every_report() {
     assert_eq!(s.nav.href(), "/space/abc/wall?mode=grid");
 }
 
+// --- the navigation boundary: `new URL(to, href)` semantics ----------------
+// The pure `resolve_path` stays literal (paths.json pins it); these pin what
+// the boundary then does — `recordNavigation.ts:150`'s `new URL(call.to,
+// window.location.href)`, which `Navigator` must land identically.
+
+#[test]
+fn fragment_navigation_keeps_the_query() {
+    // A bare `#fragment` stays on this page — pathname *and* search, not just
+    // the path (`new URL('#top', href)` moves only the hash).
+    let mut s = screen(
+        json!({ "params": { "id": { "type": "id", "identity": true } } }),
+        "/space/abc/board?id=we://r/1&sort=top",
+    );
+    s.apply(ScreenOp::Navigate {
+        to: "#top".to_string(),
+        query: None,
+        base_depth: None,
+        replace: false,
+    });
+    assert_eq!(s.nav.href(), "/space/abc/board?id=we://r/1&sort=top#top");
+    assert_eq!(s.nav.page_identity(), "/space/abc/board?id=we://r/1");
+    assert_eq!(s.nav.depth(), 2);
+    // Back restores the whole pre-fragment address, query included.
+    assert_eq!(s.apply(ScreenOp::Back), Changed::Yes);
+    assert_eq!(s.nav.href(), "/space/abc/board?id=we://r/1&sort=top");
+    assert_eq!(s.nav.page_identity(), "/space/abc/board?id=we://r/1");
+}
+
+#[test]
+fn fragment_navigation_replaces_the_old_fragment() {
+    let mut s = screen(
+        json!({ "params": {} }),
+        "/space/abc/board?sort=top#old",
+    );
+    s.apply(ScreenOp::Navigate {
+        to: "#new".to_string(),
+        query: None,
+        base_depth: None,
+        replace: false,
+    });
+    assert_eq!(s.nav.href(), "/space/abc/board?sort=top#new");
+}
+
 #[test]
 fn bag_reads_the_template_names_as_strings() {
     use we_expr::{Namespace, Value};

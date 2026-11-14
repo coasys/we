@@ -117,9 +117,10 @@ impl Navigator {
             path
         };
         // A bare `#fragment` stays on this page — the router resolves it
-        // against the current address.
+        // against the current address, so the query stays too (`new URL`
+        // moves only the hash, `recordNavigation.ts:150`).
         let landed = if let Some(frag) = target.strip_prefix('#') {
-            format!("{}#{frag}", self.current_path())
+            format!("{}{}#{frag}", self.current_path(), self.location.search())
         } else {
             target
         };
