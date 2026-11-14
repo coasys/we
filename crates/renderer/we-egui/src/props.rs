@@ -219,18 +219,16 @@ pub(crate) fn radius_px(
     let mut n = 0;
     for side in radius.as_slice() {
         let Some(d) = side else { continue };
-        let v = match d {
-            // Corners read percent against the box's short side — the base
-            // is known, so a calc sum resolves fully.
-            other => other
-                .resolve(
-                    Some(rect.width().min(rect.height())),
-                    font_px,
-                    root_px,
-                    viewport,
-                )
-                .unwrap_or(0.0),
-        };
+        // Corners read percent against the box's short side — the base
+        // is known, so a calc sum resolves fully.
+        let v = d
+            .resolve(
+                Some(rect.width().min(rect.height())),
+                font_px,
+                root_px,
+                viewport,
+            )
+            .unwrap_or(0.0);
         sum += v;
         n += 1;
     }

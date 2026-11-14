@@ -326,7 +326,7 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode, cb_w: f32) {
                     let mut p = w.ui.painter().clone();
                     p.set_clip_rect(w.clip.unwrap_or(w.base_clip));
                     let font = props::font_id(
-                        &style,
+                        style,
                         crate::defaults::FONT_PX,
                         crate::defaults::ROOT_PX,
                         w.scx.viewport,
@@ -336,7 +336,7 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode, cb_w: f32) {
                         egui::Align2::LEFT_TOP,
                         t.as_ref(),
                         font,
-                        props::text_color(&style, w.ui),
+                        props::text_color(style, w.ui),
                     );
                 }
             }
@@ -604,7 +604,7 @@ fn overlay_contents(
             continue;
         }
         let font = props::font_id(
-            &style,
+            style,
             crate::defaults::FONT_PX,
             crate::defaults::ROOT_PX,
             w.scx.viewport,
@@ -614,7 +614,7 @@ fn overlay_contents(
             egui::Align2::LEFT_TOP,
             span.text.as_ref(),
             font,
-            props::text_color(&style, inner.ui.ctx()),
+            props::text_color(style, inner.ui.ctx()),
         );
     }
     for child in &node.children {
