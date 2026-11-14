@@ -30,22 +30,21 @@ impl Env for ScopedEnv<'_> {
     }
 }
 
+/// `receiver` is the already-evaluated, already-settled value.
 pub(crate) fn eval_macro(
     name: MacroName,
-    receiver: &Node,
+    receiver: &Value,
     variable: &str,
     body: &Node,
     env: &dyn Env,
-    depth: usize,
 ) -> Value {
-    let receiver = crate::eval::eval_node(receiver, env, depth + 1).settle();
     match name {
         // `filter` on a list keeps elements whose body is truthy; a
         // non-list filters to `[]`.
-        MacroName::Filter => match &receiver {
+        MacroName::Filter => match receiver {
             Value::List(items) => items
                 .iter()
-                .filter(|item| run_body(item, variable, body, env, depth).truthy())
+                .filter(|item| run_body(item, variable, body, env).truthy())
                 .cloned()
                 .collect::<Vec<Value>>()
                 .into(),
@@ -54,48 +53,48 @@ pub(crate) fn eval_macro(
         // `map` on a list maps each element. On a non-list it maps the single
         // object through the body — and the empty answer for anything else is
         // `[]` (`evaluate.ts`: `isRecord(receiver) ? body(receiver) : []`).
-        MacroName::Map => match &receiver {
+        MacroName::Map => match receiver {
             Value::List(items) => items
                 .iter()
-                .map(|item| run_body(item, variable, body, env, depth))
+                .map(|item| run_body(item, variable, body, env))
                 .collect::<Vec<Value>>()
                 .into(),
-            Value::Obj(_) => run_body(&receiver, variable, body, env, depth),
+            Value::Obj(_) => run_body(receiver, variable, body, env),
             _ => Vec::<Value>::new().into(),
         },
         // `find` returns the first element whose body is truthy, `undefined`
         // when none — and `undefined` on a non-list.
-        MacroName::Find => match &receiver {
+        MacroName::Find => match receiver {
             Value::List(items) => items
                 .iter()
-                .find(|item| run_body(item, variable, body, env, depth).truthy())
+                .find(|item| run_body(item, variable, body, env).truthy())
                 .cloned()
                 .unwrap_or(Value::Undefined),
             _ => Value::Undefined,
         },
         // `exists`/`all` quantifiers: `false`/`true` on a non-list.
-        MacroName::Exists => match &receiver {
+        MacroName::Exists => match receiver {
             Value::List(items) => items
                 .iter()
-                .any(|item| run_body(item, variable, body, env, depth).truthy())
+                .any(|item| run_body(item, variable, body, env).truthy())
                 .into(),
             _ => Value::Bool(false),
         },
-        MacroName::All => match &receiver {
+        MacroName::All => match receiver {
             Value::List(items) => items
                 .iter()
-                .all(|item| run_body(item, variable, body, env, depth).truthy())
+                .all(|item| run_body(item, variable, body, env).truthy())
                 .into(),
             _ => Value::Bool(true),
         },
     }
 }
 
-fn run_body(item: &Value, variable: &str, body: &Node, env: &dyn Env, depth: usize) -> Value {
+fn run_body(item: &Value, variable: &str, body: &Node, env: &dyn Env) -> Value {
     let scoped = ScopedEnv {
         parent: env,
         variable,
         value: item,
     };
-    crate::eval::eval_node(body, &scoped, depth + 1).settle()
+    crate::eval::eval_node(body, &scoped).settle()
 }

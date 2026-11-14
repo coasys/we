@@ -510,3 +510,44 @@ fn p2_7_where_matcher_reference_shape() {
         json!([[9]])
     );
 }
+
+/// `evaluate.ts` has no eval-depth cap. Flat left-associative chains spend
+/// none of the parser's 40-level nesting budget, so a ≤4000-unit source can
+/// hold an AST far deeper — and TS evaluates all of it. Verified live: TS
+/// returns 150, 7, 42 and the full nested-template string.
+#[test]
+fn p2_8_flat_chains_evaluate_fully() {
+    // 150 `1` terms joined by `+` — 299 units.
+    let src = vec!["1"; 150].join("+");
+    let expr = parse(&src).unwrap();
+    assert_eq!(eval(&expr, &MapEnv::new()).to_json(), json!(150));
+
+    // A flat member chain `x.a.a…` 120 deep is the same class.
+    let mut v: Value = 7.into();
+    for _ in 0..119 {
+        v = obj(&[("a", v)]);
+    }
+    let mut env = MapEnv::new();
+    env.set_root("x", v);
+    let expr = parse(&format!("x{}", ".a".repeat(119))).unwrap();
+    assert_eq!(eval(&expr, &env).to_json(), json!(7));
+
+    // And a flat index chain `x[0][0]…` 150 deep.
+    let mut v: Value = 42.into();
+    for _ in 0..150 {
+        v = list(&[v]);
+    }
+    env.set_root("x", v);
+    let expr = parse(&format!("x{}", "[0]".repeat(150))).unwrap();
+    assert_eq!(eval(&expr, &env).to_json(), json!(42));
+
+    // Nested template holes are the other unbounded-depth source — each hole
+    // re-parses at depth 0. Sixty nestings sit inside 4000 units.
+    let mut s = "`a`".to_string();
+    for _ in 0..60 {
+        s = format!("`x${{{s}}}y`");
+    }
+    let expr = parse(&s).unwrap();
+    let expected = format!("{}a{}", "x".repeat(60), "y".repeat(60));
+    assert_eq!(eval(&expr, &MapEnv::new()).to_json(), json!(expected));
+}
