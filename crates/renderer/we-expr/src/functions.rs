@@ -554,19 +554,26 @@ fn field_entry(env: &dyn Env, name: &Arc<str>) -> Option<Value> {
     }
 }
 
-fn prop_truthy(entry: &Value, prop: &str) -> bool {
+/// `entry.prop()` — the form functions invoke their meta members directly
+/// (`entry.touched()`), not through `readValue`. A member that is not a
+/// callable answers `Undefined`, as the call would in JavaScript.
+fn call_prop(entry: &Value, prop: &str) -> Value {
     match entry {
-        Value::Obj(e) => e.get(prop).map(|v| v.truthy()).unwrap_or(false),
-        _ => false,
+        Value::Obj(e) => match e.get(prop) {
+            Some(Value::Callable(c)) => c.call(&[]),
+            _ => Value::Undefined,
+        },
+        _ => Value::Undefined,
     }
 }
 
+fn prop_truthy(entry: &Value, prop: &str) -> bool {
+    call_prop(entry, prop).truthy()
+}
+
 fn field_errors(entry: &Value) -> Vec<Value> {
-    match entry {
-        Value::Obj(e) => match e.get("errors") {
-            Some(Value::List(l)) => l.iter().cloned().collect(),
-            _ => Vec::new(),
-        },
+    match call_prop(entry, "errors") {
+        Value::List(l) => l.iter().cloned().collect(),
         _ => Vec::new(),
     }
 }

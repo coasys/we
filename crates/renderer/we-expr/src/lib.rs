@@ -30,9 +30,11 @@ mod value;
 mod where_match;
 
 pub use ast::{CALL_TIME_ROOTS, WELL_KNOWN_ROOTS};
-pub use env::{Env, MapEnv};
+pub use env::{callback_value, Env, MapEnv};
 pub use eval::eval;
 pub use parse::{parse, Expr, ParseCache, Span, SyntaxError};
 pub use print::print;
-pub use value::{CallFn, CallableRef, MapNamespace, Namespace, Value, DENIED_PROPERTIES};
+pub use value::{
+    CallFn, CallableKind, CallableRef, MapNamespace, Namespace, Value, DENIED_PROPERTIES,
+};
 pub use where_match::{as_text, matches_where};

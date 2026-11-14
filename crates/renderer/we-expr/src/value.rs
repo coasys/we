@@ -1,15 +1,22 @@
 //! [`Value`]: every value a template expression can hold.
 //!
 //! JSON round-trips go through [`Value::to_json`]/[`Value::from_json`], which
-//! carry the four markers the shared conformance vectors use for the values
-//! plain JSON cannot hold (`packages/schema-system/conformance`, task C1):
+//! carry the markers the shared conformance vectors use for the values
+//! plain JSON cannot hold (`packages/schema-system/conformance`, task C1 —
+//! `src/encode.ts`):
 //!
-//! | marker                | decodes to                        |
-//! |-----------------------|-----------------------------------|
-//! | `{"$undefined":true}` | [`Value::Undefined`]              |
-//! | `{"$nan":true}`       | [`Value::Num(NAN)`]               |
-//! | `{"$namespace":{…}}`  | [`Value::Namespace`] over a map   |
-//! | `{"$callable":"…"}`   | [`Value::Callable`] of that name  |
+//! | marker                      | decodes to                          |
+//! |-----------------------------|-------------------------------------|
+//! | `{"$undefined":true}`       | [`Value::Undefined`]                |
+//! | `{"$nan":true}`             | [`Value::Num(NAN)`]                 |
+//! | `{"$number":"-0"}`          | [`Value::Num(-0.0)`]                |
+//! | `{"$number":"±Infinity"}`   | [`Value::Num(±INFINITY)`]           |
+//! | `{"$callable":"…"}`         | [`Value::Callable`] of that name    |
+//! | `{"$accessor":v}`           | a signal — [`Value::read_value`] calls it (input only) |
+//! | `{"$thunk":v}`              | an untagged `() => v` (input only)  |
+//! | `{"$namespace":{…}}`        | [`Value::Namespace`] over a map     |
+//! | `{"$namespace":true}`       | an opaque namespace (no members)    |
+//! | `{"$localMetaEntry":true,…}`| a field's `{touched, errors}` meta  |
 use std::fmt;
 use std::sync::Arc;
 
@@ -43,6 +50,12 @@ pub trait Namespace: Send + Sync + fmt::Debug {
     fn keys(&self) -> Vec<Arc<str>> {
         vec![]
     }
+    /// What [`Value::settle`] hands back when the namespace lands in a value
+    /// position — `RAW` in `evaluate.ts`. A callback value returns the object
+    /// it wraps; a store or `local` returns `None` and settles to `Undefined`.
+    fn raw(&self) -> Option<Value> {
+        None
+    }
 }
 
 /// A namespace over an [`IndexMap`] — what `{"$namespace": {…}}` decodes to, and
@@ -71,22 +84,44 @@ impl Namespace for MapNamespace {
 /// A callable's function: args in, a [`Value`] out.
 pub type CallFn = Arc<dyn Fn(&[Value]) -> Value + Send + Sync>;
 
+/// What the evaluator may do with a callable it meets — the two tags
+/// `readValue` in `evaluate.ts` checks, and their absence.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CallableKind {
+    /// A function that surfaced in the data: `readValue` refuses it
+    /// (`undefined`). `{"$callable": …}` and `{"$thunk": …}` decode to this,
+    /// and so do [`CallableRef::new`] and [`CallableRef::named`].
+    Raw,
+    /// `CALLBACK_FUNCTION` — the host handed it to the template on purpose
+    /// (a callback payload's method, bound by [`crate::callback_value`]).
+    /// `readValue` lets it through.
+    Callback,
+    /// `REACTIVE_ACCESSOR` — a signal: `readValue` calls it and reads the
+    /// result. `{"$accessor": …}` decodes to this.
+    Accessor,
+}
+
 /// A function carried as a value — a store method or a local function. Only
 /// handlers may call one; an expression may pass it around and compare it.
 ///
-/// `tagged` mirrors `CALLBACK_FUNCTION` in `evaluate.ts`: a callable the host
-/// handed the template on purpose (a callback payload, a store method) reads
-/// as a value and survives `settle`. One that merely surfaced in the data —
-/// what `{"$callable": "…"}` decodes to, or a name reached through an object's
-/// inherited fields — reads as `undefined`, as `readValue` refuses it.
+/// `kind` mirrors the tags `readValue` checks in `evaluate.ts`: a callable the
+/// host handed the template on purpose ([`CallableKind::Callback`]) reads as a
+/// value and survives `settle`; a signal ([`CallableKind::Accessor`]) is
+/// invoked for the value it holds. One that merely surfaced in the data —
+/// what `{"$callable": "…"}` or `{"$thunk": …}` decodes to, or a name reached
+/// through an object's own fields — reads as `undefined`.
 #[derive(Clone)]
 pub struct CallableRef {
     name: Arc<str>,
     call: CallFn,
-    tagged: bool,
+    kind: CallableKind,
 }
 
 impl CallableRef {
+    /// A callable carrying a Rust closure. Like the decoded `{"$callable": …}`
+    /// marker, it is [`CallableKind::Raw`] — `readValue` refuses it when it
+    /// surfaces in data. Call sites that invoke it directly (the form
+    /// functions' meta entries) are unaffected.
     pub fn new(
         name: impl Into<Arc<str>>,
         call: impl Fn(&[Value]) -> Value + Send + Sync + 'static,
@@ -94,7 +129,7 @@ impl CallableRef {
         Self {
             name: name.into(),
             call: Arc::new(call),
-            tagged: true,
+            kind: CallableKind::Raw,
         }
     }
 
@@ -103,24 +138,41 @@ impl CallableRef {
         Self::new(name, |_| Value::Undefined)
     }
 
-    /// A callable the template may see mid-evaluation but that `readValue`
-    /// refuses — the decoded form of a `{"$callable": "…"}` marker and of a
-    /// name inherited from an object. Calling it answers `Undefined`.
-    pub(crate) fn untagged(name: impl Into<Arc<str>>) -> Self {
-        let mut c = Self::named(name);
-        c.tagged = false;
-        c
+    /// `CALLBACK_FUNCTION` — a callable the host handed the template on
+    /// purpose: `readValue` lets it through and `settle` keeps it. This is
+    /// what [`crate::callback_value`] tags; a host building a callback payload
+    /// by hand wants this constructor, not [`CallableRef::new`].
+    pub fn callback(
+        name: impl Into<Arc<str>>,
+        call: impl Fn(&[Value]) -> Value + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            call: Arc::new(call),
+            kind: CallableKind::Callback,
+        }
+    }
+
+    /// `REACTIVE_ACCESSOR` — a signal: `readValue` calls it (with no
+    /// arguments) and reads the result.
+    pub fn accessor(
+        name: impl Into<Arc<str>>,
+        call: impl Fn(&[Value]) -> Value + Send + Sync + 'static,
+    ) -> Self {
+        Self {
+            name: name.into(),
+            call: Arc::new(call),
+            kind: CallableKind::Accessor,
+        }
     }
 
     pub fn name(&self) -> &str {
         &self.name
     }
 
-    /// Whether `readValue` lets it through — `CALLBACK_FUNCTION in fn` in the
-    /// TypeScript evaluator. `new` and `named` produce tagged callables; the
-    /// vector marker produces untagged ones.
-    pub fn tagged(&self) -> bool {
-        self.tagged
+    /// Which of the `readValue` tags it carries — see [`CallableKind`].
+    pub fn kind(&self) -> CallableKind {
+        self.kind
     }
 
     pub fn call(&self, args: &[Value]) -> Value {
@@ -261,23 +313,27 @@ impl Value {
         }
     }
 
-    /// `readValue` in `evaluate.ts`: an untagged callable reads as
-    /// `undefined`; everything else passes. There is no reactive-accessor
-    /// case — envs resolve their accessors before a value reaches the tree.
+    /// `readValue` in `evaluate.ts`: an accessor is invoked and its result
+    /// read; a callback callable passes; any other function reads as
+    /// `undefined`.
     pub fn read_value(&self) -> Value {
         match self {
-            Value::Callable(c) if !c.tagged() => Value::Undefined,
+            Value::Callable(c) => match c.kind() {
+                CallableKind::Accessor => c.call(&[]).read_value(),
+                CallableKind::Callback => self.clone(),
+                CallableKind::Raw => Value::Undefined,
+            },
             _ => self.clone(),
         }
     }
 
     /// The value fit to leave the evaluator (`settle` in `evaluate.ts`): a
-    /// namespace in a value position is `Undefined`, an untagged callable
-    /// likewise; everything else is itself. Callback payloads arrive already
-    /// unwrapped, so there is no raw case here.
+    /// namespace in a value position is the `raw` it wraps — `Undefined` for
+    /// an ordinary store, the raw object for a callback value — and an
+    /// untagged callable is `Undefined` (via [`Value::read_value`]).
     pub fn settle(&self) -> Value {
         match self.read_value() {
-            Value::Namespace(_) => Value::Undefined,
+            Value::Namespace(ns) => ns.raw().unwrap_or(Value::Undefined),
             value => value,
         }
     }
@@ -352,9 +408,13 @@ impl Value {
 
     /// The inverse of [`Value::to_json`]. A marker is only read when it is the
     /// object's only key, so a record that happens to carry one of these names
-    /// beside its own fields decodes as an ordinary object. A `{"$callable":…}`
-    /// decodes to an *untagged* callable — `readValue` refuses it, as the
-    /// decoded function carries no `CALLBACK_FUNCTION` mark.
+    /// beside its own fields decodes as an ordinary object — `$localMetaEntry`
+    /// excepted: `encode.ts` reads it wherever the key appears, beside
+    /// `touched` and `errors`. A `{"$callable":…}` decodes to a *raw*
+    /// callable — `readValue` refuses it, as the decoded function carries no
+    /// `CALLBACK_FUNCTION` mark; `$accessor`/`$thunk` are input-only markers
+    /// for the values an env can hold (an encode never writes them — a
+    /// function leaving the evaluator is `$callable`).
     pub fn from_json(json: &serde_json::Value) -> Value {
         match json {
             serde_json::Value::Null => Value::Null,
@@ -363,6 +423,9 @@ impl Value {
             serde_json::Value::String(s) => Value::Str(s.as_str().into()),
             serde_json::Value::Array(a) => {
                 Value::List(Arc::new(a.iter().map(Value::from_json).collect()))
+            }
+            serde_json::Value::Object(o) if o.contains_key("$localMetaEntry") => {
+                local_meta_entry(o)
             }
             serde_json::Value::Object(o) if o.len() == 1 => {
                 if o.contains_key("$undefined") {
@@ -378,7 +441,20 @@ impl Value {
                         _ => f64::NAN,
                     })
                 } else if let Some(name) = o.get("$callable") {
-                    Value::Callable(CallableRef::untagged(name.as_str().unwrap_or("anonymous")))
+                    Value::Callable(CallableRef::named(name.as_str().unwrap_or("anonymous")))
+                } else if let Some(payload) = o.get("$accessor") {
+                    // `markReactive(() => v)` — an accessor `readValue` calls.
+                    // The decode's own marker is `$callable` on the way out.
+                    let held = Value::from_json(payload);
+                    Value::Callable(CallableRef::accessor("anonymous", move |_| {
+                        held.clone()
+                    }))
+                } else if let Some(payload) = o.get("$thunk") {
+                    // An untagged `() => v` — a host global's getter; the env
+                    // invokes it for the root's value, and `readValue` refuses
+                    // it everywhere else.
+                    let held = Value::from_json(payload);
+                    Value::Callable(CallableRef::new("anonymous", move |_| held.clone()))
                 } else if let Some(members) = o.get("$namespace") {
                     match members {
                         serde_json::Value::Object(bag) => {
@@ -398,6 +474,26 @@ impl Value {
             serde_json::Value::Object(o) => obj_from_map(o),
         }
     }
+}
+
+/// `{"$localMetaEntry": true, touched, errors}` — a form field's meta, in the
+/// shape the `error`/`valid`/`touched`/`formValid` built-ins read it: an
+/// object whose `touched` and `errors` call without arguments (`encode.ts`'s
+/// `decodeValue`). Re-encoding it writes the callables' `$callable` markers,
+/// as `encodeValue` does for the TS functions.
+fn local_meta_entry(o: &serde_json::Map<String, serde_json::Value>) -> Value {
+    Value::Obj(Arc::new(
+        ["touched", "errors"]
+            .into_iter()
+            .map(|key| {
+                let value = o.get(key).map(Value::from_json).unwrap_or(Value::Undefined);
+                (
+                    Arc::from(key),
+                    Value::Callable(CallableRef::new(key, move |_| value.clone())),
+                )
+            })
+            .collect(),
+    ))
 }
 
 fn obj_from_map(o: &serde_json::Map<String, serde_json::Value>) -> Value {

@@ -7,13 +7,31 @@
 use serde::Deserialize;
 use std::collections::BTreeMap;
 use std::path::PathBuf;
-use we_expr::{eval, parse, print, MapEnv, Value};
+use std::sync::Arc;
+use we_expr::{
+    callback_value, eval, parse, print, CallableRef, Env, MapEnv, Namespace, Value,
+    CALL_TIME_ROOTS,
+};
 
 #[derive(Deserialize)]
 struct VectorFile {
     #[serde(default)]
-    envs: BTreeMap<String, BTreeMap<String, serde_json::Value>>,
+    envs: BTreeMap<String, EnvSpec>,
     cases: Vec<ExpressionCase>,
+}
+
+/// A named environment's spec — `ExpressionEnvSpec` in `evalEnv.ts`. `stores`
+/// decodes to the bag (`$`-keys are host globals; `hostSourceBag()` is
+/// installed under `$sources`), `context` to the render context, `local` to
+/// the `context.$local` accessor map.
+#[derive(Deserialize, Default, Clone)]
+struct EnvSpec {
+    #[serde(default)]
+    stores: BTreeMap<String, serde_json::Value>,
+    #[serde(default)]
+    context: BTreeMap<String, serde_json::Value>,
+    #[serde(default)]
+    local: BTreeMap<String, serde_json::Value>,
 }
 
 #[derive(Deserialize)]
@@ -49,30 +67,150 @@ fn vectors_path(name: &str) -> PathBuf {
         .join(name)
 }
 
-/// The evaluation env a case's `env` decodes to — `evalEnv.ts`: named roots,
-/// plus the host `$sources` bag. The one source a vector calls is
-/// `calendarMonth`, reproduced here in UTC.
-fn env_for(file: &VectorFile, name: Option<&str>) -> MapEnv {
-    let mut env = MapEnv::new().with_function("calendarMonth", calendar_month);
-    for name in [
-        "reactions",
-        "reactors",
-        "signalTally",
-        "signalTypesByUse",
-        "voices",
-        "voicesParam",
-        "involvement",
-        "involvementMenu",
-        "generatedRun",
-    ] {
-        env = env.with_function(name, move |args| source(name, args));
-    }
-    if let Some(name) = name {
-        for (k, v) in file.envs.get(name).cloned().unwrap_or_default() {
-            env.set_root(k, Value::from_json(&v));
+/// The evaluation env a case's `env` decodes to — `buildEnvironment` over the
+/// spec, as `evalEnv.ts` builds it: `local` reads the `context.$local`
+/// accessors; `event`/`arg`/`result` are wrapped in `callback_value` (with
+/// `arg` falling back to `event`); a `$`-prefixed context key is skipped; a
+/// `$name` bag entry is a host global — a function is invoked for the value;
+/// and an object bag entry is a store namespace. `call` finds built-ins
+/// first (the evaluator's own dispatch), then the host's `$sources` — the
+/// same order the renderer uses.
+struct VectorEnv {
+    bag: indexmap::IndexMap<Arc<str>, Value>,
+    context: indexmap::IndexMap<Arc<str>, Value>,
+    local: indexmap::IndexMap<Arc<str>, Value>,
+}
+
+impl Env for VectorEnv {
+    fn root(&self, name: &str) -> Option<Value> {
+        if name == "local" {
+            return Some(Value::namespace(LocalNamespace {
+                local: self.local.clone(),
+            }));
+        }
+        if CALL_TIME_ROOTS.contains(&name) {
+            if let Some(value) = self.context.get(name) {
+                return Some(callback_value(value));
+            }
+            if name == "arg" {
+                if let Some(value) = self.context.get("event") {
+                    return Some(callback_value(value));
+                }
+            }
+        }
+        if !name.starts_with('$') {
+            if let Some(value) = self.context.get(name) {
+                return Some(value.clone());
+            }
+        }
+        if let Some(global) = self.bag.get(format!("${name}").as_str()) {
+            if !global.is_undefined() {
+                return Some(match global {
+                    // A host global's function is invoked for the value —
+                    // `typeof global === 'function' ? global() : global`.
+                    Value::Callable(c) => c.call(&[]),
+                    value => value.clone(),
+                });
+            }
+        }
+        match self.bag.get(name) {
+            Some(store @ Value::Obj(_)) => Some(Value::namespace(StoreNamespace {
+                store: store.clone(),
+            })),
+            _ => None,
         }
     }
-    env
+
+    fn call(&self, name: &str, args: &[Value]) -> Value {
+        // Built-ins are dispatched by the evaluator before the env is asked;
+        // what reaches here is a host source — `$sources[name](args[0])`.
+        if name == "calendarMonth" {
+            calendar_month(args)
+        } else {
+            source(name, args)
+        }
+    }
+}
+
+/// `local` — a namespace over `context.$local`, the signals `$localState` and
+/// `$queries` made. Each member comes back as the accessor `buildEnvironment`
+/// marks reactive; an undeclared field is `Undefined`.
+#[derive(Debug)]
+struct LocalNamespace {
+    local: indexmap::IndexMap<Arc<str>, Value>,
+}
+
+impl Namespace for LocalNamespace {
+    fn get(&self, key: &str) -> Value {
+        match self.local.get(key) {
+            Some(held) => {
+                let held = held.clone();
+                Value::Callable(CallableRef::accessor("anonymous", move |_| {
+                    held.clone()
+                }))
+            }
+            None => Value::Undefined,
+        }
+    }
+
+    fn keys(&self) -> Vec<Arc<str>> {
+        self.local.keys().cloned().collect()
+    }
+}
+
+/// A store — `namespace((member) => (member in store ? store[member] :
+/// undefined))`. Members read raw: a function member answers an untagged
+/// callable, which `readValue` refuses.
+#[derive(Debug)]
+struct StoreNamespace {
+    store: Value,
+}
+
+impl Namespace for StoreNamespace {
+    fn get(&self, key: &str) -> Value {
+        match &self.store {
+            Value::Obj(o) => o.get(key).cloned().unwrap_or(Value::Undefined),
+            _ => Value::Undefined,
+        }
+    }
+
+    fn keys(&self) -> Vec<Arc<str>> {
+        match &self.store {
+            Value::Obj(o) => o.keys().cloned().collect(),
+            _ => vec![],
+        }
+    }
+}
+
+/// `envFor` — the `{stores, context, local}` spec becomes the bag and
+/// context `buildEnvironment` reads, and `hostSourceBag()` sits under
+/// `$sources` exactly where the host puts it (here: the `source` dispatch in
+/// `Env::call`).
+fn env_for(file: &VectorFile, name: Option<&str>) -> VectorEnv {
+    let spec = name
+        .and_then(|n| file.envs.get(n))
+        .cloned()
+        .unwrap_or_default();
+    let bag = spec
+        .stores
+        .iter()
+        .map(|(k, v)| (k.as_str().into(), Value::from_json(v)))
+        .collect();
+    let context = spec
+        .context
+        .iter()
+        .map(|(k, v)| (k.as_str().into(), Value::from_json(v)))
+        .collect();
+    let local = spec
+        .local
+        .iter()
+        .map(|(k, v)| (k.as_str().into(), Value::from_json(v)))
+        .collect();
+    VectorEnv {
+        bag,
+        context,
+        local,
+    }
 }
 
 fn describe(case: &ExpressionCase) -> String {
