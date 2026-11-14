@@ -1565,3 +1565,81 @@ fn button_keyboard_focus_paints_the_ring() {
         "the unfocused button must not paint a ring"
     );
 }
+
+/// A9 — we-icon `size` takes the TS tier names: icon.ts's attribute
+/// selectors map `xs → var(--we-size-xs)` etc. (`--we-size-xs` = 16px,
+/// `--we-size-lg` = 40px in light.json). Plain dimensions keep working
+/// (`24` → 24px) — the web falls back to `--we-size-md` for them, but the
+/// Rust impl already promises numeric sizes.
+#[test]
+fn icon_size_tiers_resolve_we_size_tokens() {
+    let mut row = node("Row", "r", &[("direction", s("row"))]);
+    child(
+        &mut row,
+        node("we-icon", "r/a", &[("name", s("x")), ("size", s("xs"))]),
+    );
+    child(
+        &mut row,
+        node("we-icon", "r/b", &[("name", s("x")), ("size", s("lg"))]),
+    );
+    child(
+        &mut row,
+        node(
+            "we-icon",
+            "r/c",
+            &[("name", s("x")), ("size", Value::Num(24.0))],
+        ),
+    );
+    let lay = lay_out(&row, 400.0);
+    let a = lay.rects.get(&NodeId::from("r/a")).copied().unwrap();
+    let b = lay.rects.get(&NodeId::from("r/b")).copied().unwrap();
+    let c = lay.rects.get(&NodeId::from("r/c")).copied().unwrap();
+    assert_eq!(a.width(), 16.0, "size:xs must be --we-size-xs: {a:?}");
+    assert_eq!(b.width(), 40.0, "size:lg must be --we-size-lg: {b:?}");
+    assert_eq!(c.width(), 24.0, "a numeric size keeps working: {c:?}");
+}
+
+/// A9 — text.ts `VARIANT_DEFAULTS`: `label` = `{ fontSize: '200',
+/// fontWeight: 'medium' }` (→ `--we-font-size-200` = 14px, wght 500);
+/// `body` = `{ fontSize: '300' }` (16px). The Rust variant table omitted
+/// both, so a `label` rendered at generic body size.
+#[test]
+fn text_label_and_body_variants_resolve_the_ts_table() {
+    let mut col = node("Column", "c", &[]);
+    child(
+        &mut col,
+        node(
+            "we-text",
+            "c/l",
+            &[("text", s("lab")), ("variant", s("label"))],
+        ),
+    );
+    child(
+        &mut col,
+        node(
+            "we-text",
+            "c/b",
+            &[("text", s("bod")), ("variant", s("body"))],
+        ),
+    );
+    let (_lay, galleys) = painted_galley_formats(&col, 200.0);
+    let lab = galleys
+        .iter()
+        .find(|(_, t, _)| t == "lab")
+        .map(|(_, _, f)| f.clone())
+        .expect("label galley");
+    assert_eq!(lab.font_id.size, 14.0, "label is font-size-200: {lab:?}");
+    assert!(
+        lab.coords
+            .as_ref()
+            .iter()
+            .any(|(tag, v)| tag.to_string() == "wght" && *v == 500.0),
+        "label is font-weight medium: {lab:?}"
+    );
+    let bod = galleys
+        .iter()
+        .find(|(_, t, _)| t == "bod")
+        .map(|(_, _, f)| f.clone())
+        .expect("body galley");
+    assert_eq!(bod.font_id.size, 16.0, "body is font-size-300: {bod:?}");
+}

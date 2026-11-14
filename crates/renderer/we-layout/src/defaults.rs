@@ -356,6 +356,21 @@ fn type_defaults(bag: &mut Bag, node: &ResolvedNode) {
             };
             entries(bag, &[("width", &dim), ("height", &dim)]);
         }
+        "we-icon" => {
+            // icon.ts: `:host([size='xs']) → --icon-size: var(--we-size-xs)`
+            // — tiers read the theme var so a theme that moves
+            // `--we-size-lg` moves the glyph. Raw lengths/numbers stay the
+            // widget's own `size` handling; the unset default
+            // (`var(--we-context-icon-size, var(--we-size-md))`) needs the
+            // context-var bridge we do not plumb, so it is left to the
+            // inherited font size for now.
+            if let Some(Value::Str(t)) = node.props.get("size") {
+                if matches!(t.as_ref(), "xxs" | "xs" | "sm" | "md" | "lg" | "xl" | "xxl") {
+                    let fs = format!("var(--we-size-{t})");
+                    entries(bag, &[("fontSize", &fs)]);
+                }
+            }
+        }
         "we-text" => {
             // Variant table — display face for headings.
             match variant(node, "") {
@@ -405,6 +420,10 @@ fn type_defaults(bag: &mut Bag, node: &ResolvedNode) {
                 ),
                 "subheading" => entries(bag, &[("fontSize", "400"), ("fontWeight", "medium")]),
                 "ingress" => entries(bag, &[("fontSize", "400"), ("lineHeight", "1.6")]),
+                // text.ts VARIANT_DEFAULTS: body `{ fontSize: '300' }`,
+                // label `{ fontSize: '200', fontWeight: 'medium' }`.
+                "body" => entries(bag, &[("fontSize", "300")]),
+                "label" => entries(bag, &[("fontSize", "200"), ("fontWeight", "medium")]),
                 "footnote" => entries(bag, &[("fontSize", "100")]),
                 "overline" => entries(
                     bag,
