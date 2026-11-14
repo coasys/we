@@ -889,6 +889,97 @@ fn a_deep_query_chain_settles_past_the_round_cap() {
 }
 
 #[test]
+fn a_fill_chain_deeper_than_the_pass_cap_continues_then_rests() {
+    // R5's other half: the `kept_filling` continuation exists for fill
+    // chains DEEPER than the eight-pass cap. Ten queries, each gated on
+    // the next — qN asks `first(local.qN+1).kind`, each with its own
+    // `where` so every query compiles to its OWN cell (the earlier deep
+    // test shared one pre-filled cell and never exercised this path).
+    // Each fill lands one pass later: pass 1 fills q10, pass 8 fills q3,
+    // and q2+q1 still need frames — without the post-loop bump the
+    // runtime would cache the partial tree and q1 would stay [] forever.
+    struct Tasks;
+    impl we_template::QuerySource for Tasks {
+        fn rows(
+            &self,
+            _key: &we_template::QueryKey,
+            _ir: &we_template::QueryIr,
+        ) -> we_template::QueryState {
+            we_template::QueryState::Rows(Arc::new(vec![Value::from_json(
+                &json!({ "kind": "Task" }),
+            )]))
+        }
+    }
+    let node = schema(json!({ "type": "Column",
+        "$queries": {
+            "q1":  { "entity": { "$": "first(local.q2).kind" },  "where": { "stage": "s1" } },
+            "q2":  { "entity": { "$": "first(local.q3).kind" },  "where": { "stage": "s2" } },
+            "q3":  { "entity": { "$": "first(local.q4).kind" },  "where": { "stage": "s3" } },
+            "q4":  { "entity": { "$": "first(local.q5).kind" },  "where": { "stage": "s4" } },
+            "q5":  { "entity": { "$": "first(local.q6).kind" },  "where": { "stage": "s5" } },
+            "q6":  { "entity": { "$": "first(local.q7).kind" },  "where": { "stage": "s6" } },
+            "q7":  { "entity": { "$": "first(local.q8).kind" },  "where": { "stage": "s7" } },
+            "q8":  { "entity": { "$": "first(local.q9).kind" },  "where": { "stage": "s8" } },
+            "q9":  { "entity": { "$": "first(local.q10).kind" }, "where": { "stage": "s9" } },
+            "q10": { "entity": "Task",                           "where": { "stage": "s10" } }
+        },
+        "children": [
+            { "type": "we-text", "props": { "text": { "$": "local.q1.length" } } }
+        ]
+    }));
+    let locals = LocalState::new();
+    let bag = Arc::new(StoreBag::new());
+    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone())
+        .with_sources(Some(Arc::new(Tasks)), Arc::new(we_template::NoParts));
+    let mut host = StaticHost::new(bag, locals.clone());
+    let screen = screen("/");
+
+    let text = |root: &ResolvedNode| {
+        find_ty(root, "we-text")
+            .and_then(|n| n.props.get("text"))
+            .cloned()
+            .unwrap_or(Value::Undefined)
+    };
+    // Frame 1 exhausts the pass cap mid-chain: q10..q3 filled (8 distinct
+    // fills), q2 and q1 still gated.
+    let root = rt.frame(&mut host, &screen).clone();
+    assert!(
+        text(&root).strict_eq(&Value::from(0.0)),
+        "q1 still gated after the capped first frame: {text:?}",
+        text = text(&root)
+    );
+
+    // The kept_filling bump wakes frame 2 — the chain finishes.
+    let root = rt.frame(&mut host, &screen).clone();
+    assert!(
+        text(&root).strict_eq(&Value::from(1.0)),
+        "the continuation must finish the chain past the pass cap: {text:?}",
+        text = text(&root)
+    );
+    assert_eq!(
+        rt.pool().len(),
+        10,
+        "all ten queries compiled to their own cells"
+    );
+    assert!(
+        rt.pool()
+            .cells()
+            .iter()
+            .all(|c| matches!(c.state(), we_template::QueryState::Rows(_))),
+        "every cell holds rows"
+    );
+
+    // And then it rests — a third frame finds nothing moved.
+    let resolves = rt.stats().resolves;
+    let _ = rt.frame(&mut host, &screen).clone();
+    assert_eq!(
+        rt.stats().resolves,
+        resolves,
+        "once every cell holds rows the runtime goes quiet"
+    );
+}
+
+#[test]
 fn a_pending_query_is_not_progress() {
     // R5: `Loading → Loading` is not progress. A `QuerySource` still
     // pending answers `Loading`; filling the cell with it marked the

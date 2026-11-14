@@ -198,71 +198,40 @@ pub(crate) fn content_eq(a: &Value, b: &Value) -> bool {
             && a.to_json() == b.to_json())
 }
 
-/// The member-read identity TS's screen accessors guarantee. `segments`,
+/// `(store, member) → canonical allocation`, shared by every bind of the
+/// same bag — the flat table [`Canon`] reads through.
+type CanonMap = Arc<Mutex<HashMap<(Arc<str>, Arc<str>), Value>>>;
+
+/// The member-read identity TS's screen accessors guarantee, as a flat
+/// `(store, member) → canonical value` table on the bag. `segments`,
 /// `templateSegments`, `collapsedLanes`, `themeFork` recompute from screen
 /// state on every bind (fresh allocations each `get`), but while their
 /// content holds the SAME value must answer — `===` on a rebuilt-but-equal
-/// read says "moved" where the memo it stands for never emitted.
-/// [`StableNs`] memoizes each member's first answer for the bind's
-/// lifetime, and inherits the previous bind's allocation while the content
-/// is unchanged — a param-only navigation keeps `segments` identical, the
-/// way `createMemo` does.
-#[derive(Debug)]
-struct StableNs {
-    inner: Value,
-    /// The previous bind's root — its `get` answers with ITS canonical
-    /// allocations, so equal content inherits identity across binds.
-    prev: Option<Value>,
-    cache: Mutex<HashMap<Arc<str>, Value>>,
+/// read says "moved" where the memo it stands for never emitted. The
+/// canonical allocation survives rebinds without any wrapper owning its
+/// predecessor: the nth bind carries no history, and an unread member
+/// read after many binds asks its source once.
+#[derive(Debug, Clone)]
+pub(crate) struct Canon {
+    store: Arc<str>,
+    map: CanonMap,
 }
 
-impl StableNs {
-    fn wrap(inner: Value, prev: Option<Value>) -> Value {
-        Value::namespace(StableNs {
-            inner,
-            prev,
-            cache: Mutex::new(HashMap::new()),
-        })
-    }
-}
-
-impl Namespace for StableNs {
-    fn get(&self, key: &str) -> Value {
-        if let Some(v) = self.cache.lock().ok().and_then(|c| c.get(key).cloned()) {
-            return v;
-        }
-        let new = match &self.inner {
-            Value::Namespace(ns) => ns.get(key),
-            _ => Value::Undefined,
+impl Canon {
+    /// `candidate`, interned: while the content holds, the canonical
+    /// allocation answers (`createMemo`'s unchanged-value identity); a
+    /// changed answer replaces it.
+    fn get(&self, member: &str, candidate: Value) -> Value {
+        let key = (self.store.clone(), member.into());
+        let Ok(mut map) = self.map.lock() else {
+            return candidate;
         };
-        let value = match &self.prev {
-            Some(Value::Namespace(prev)) => {
-                let old = prev.get(key);
-                if content_eq(&old, &new) {
-                    old
-                } else {
-                    new
-                }
+        match map.get(&key) {
+            Some(held) if content_eq(held, &candidate) => held.clone(),
+            _ => {
+                map.insert(key, candidate.clone());
+                candidate
             }
-            _ => new,
-        };
-        if let Ok(mut cache) = self.cache.lock() {
-            cache.insert(key.into(), value.clone());
-        }
-        value
-    }
-
-    fn keys(&self) -> Vec<Arc<str>> {
-        match &self.inner {
-            Value::Namespace(ns) => ns.keys(),
-            _ => Vec::new(),
-        }
-    }
-
-    fn raw(&self) -> Option<Value> {
-        match &self.inner {
-            Value::Namespace(ns) => ns.raw(),
-            _ => None,
         }
     }
 }
@@ -302,6 +271,10 @@ pub struct StoreBag {
     /// `bind_screen` wrapped it — the stable layer under the overlay,
     /// so re-binds replace the overlay rather than stack it.
     screen_bases: RwLock<IndexMap<Arc<str>, Value>>,
+    /// `(store, member) → canonical allocation` for the members a screen
+    /// bind synthesizes — see [`Canon`]. Flat on the bag, so a rebound
+    /// namespace holds no predecessor.
+    canon: CanonMap,
     functions: RwLock<HashMap<Arc<str>, CallFn>>,
     queries: RwLock<IndexMap<Arc<str>, Value>>,
     invokes: RwLock<HashMap<String, Value>>,
@@ -361,6 +334,15 @@ impl StoreBag {
             roots.insert(name.into(), value);
         }
         self.version.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// The canonical-value table for one store's synthesized members —
+    /// `bind_screen` hands one to each namespace it builds.
+    fn canon(&self, store: &str) -> Canon {
+        Canon {
+            store: store.into(),
+            map: self.canon.clone(),
+        }
     }
 
     /// The layer a screen overlay wraps: the value captured before the
@@ -467,6 +449,9 @@ struct MergedNs {
     base: Value,
     /// Reads the overlay owns even when its answer is `Undefined`/`null`.
     owned: &'static [&'static str],
+    /// Canonical allocations for the overlay's answers — synthesized
+    /// screen members only; forwarded data reads stay live.
+    canon: Canon,
 }
 
 impl Namespace for MergedNs {
@@ -476,7 +461,7 @@ impl Namespace for MergedNs {
             _ => Value::Undefined,
         };
         if self.owned.contains(&key) || !matches!(over, Value::Undefined) {
-            return over;
+            return self.canon.get(key, over);
         }
         match &self.base {
             Value::Namespace(ns) => ns.get(key),
@@ -508,12 +493,15 @@ impl Namespace for MergedNs {
 struct SpaceStoreNs {
     base: Value,
     space_path: Value,
+    /// Canonical allocation for `spacePath` — the screen fact; every other
+    /// member is the base store's data and reads live.
+    canon: Canon,
 }
 
 impl Namespace for SpaceStoreNs {
     fn get(&self, key: &str) -> Value {
         if key == "spacePath" {
-            return self.space_path.clone();
+            return self.canon.get(key, self.space_path.clone());
         }
         match &self.base {
             Value::Namespace(ns) => ns.get(key),
@@ -544,80 +532,65 @@ impl Namespace for SpaceStoreNs {
 pub fn bind_screen(bag: &StoreBag, screen: &ScreenState) {
     let sb = screen.bag();
     // One overlay over the captured base — a re-bind replaces the overlay,
-    // it never wraps the last one (each screen revision used to stack
-    // another MergedNs, so reads traversed every snapshot ever mounted).
-    // `StableNs` hands each member a stable identity while its content
-    // holds — the previous bind's root supplies the allocations to inherit.
-    let route_base = bag.screen_base("routeStore");
-    let route_prev = bag.root("routeStore");
+    // it never wraps the last one. `Canon` hands each synthesized member a
+    // stable identity while its content holds — flat on the bag, so the
+    // new root carries no reference to the bind it replaced.
     bag.bind_root(
         "routeStore",
-        StableNs::wrap(
-            Value::namespace(MergedNs {
-                overlay: sb.get("nav"),
-                base: route_base,
-                owned: &[
-                    "params",
-                    "templateSegments",
-                    "segments",
-                    "currentPath",
-                    "page",
-                    "href",
-                    "spacePath",
-                ],
-            }),
-            route_prev,
-        ),
+        Value::namespace(MergedNs {
+            overlay: sb.get("nav"),
+            base: bag.screen_base("routeStore"),
+            canon: bag.canon("routeStore"),
+            owned: &[
+                "params",
+                "templateSegments",
+                "segments",
+                "currentPath",
+                "page",
+                "href",
+                "spacePath",
+            ],
+        }),
     );
-    let shell_base = bag.screen_base("shellStore");
-    let shell_prev = bag.root("shellStore");
     bag.bind_root(
         "shellStore",
-        StableNs::wrap(
-            Value::namespace(MergedNs {
-                overlay: sb.get("shell"),
-                base: shell_base,
-                owned: &[
-                    "activeShellView",
-                    "spaceSettingsOpen",
-                    "spaceSettingsTab",
-                    "collapsedLanes",
-                    "layoutDirty",
-                    "panelsHidden",
-                    "panelMaximised",
-                    "createSpaceOpen",
-                    "joinSpaceOpen",
-                    "panels",
-                ],
-            }),
-            shell_prev,
-        ),
+        Value::namespace(MergedNs {
+            overlay: sb.get("shell"),
+            base: bag.screen_base("shellStore"),
+            canon: bag.canon("shellStore"),
+            owned: &[
+                "activeShellView",
+                "spaceSettingsOpen",
+                "spaceSettingsTab",
+                "collapsedLanes",
+                "layoutDirty",
+                "panelsHidden",
+                "panelMaximised",
+                "createSpaceOpen",
+                "joinSpaceOpen",
+                "panels",
+            ],
+        }),
     );
-    let theme_base = bag.screen_base("themeStore");
-    let theme_prev = bag.root("themeStore");
     bag.bind_root(
         "themeStore",
-        StableNs::wrap(
-            Value::namespace(MergedNs {
-                overlay: sb.get("theme"),
-                base: theme_base,
-                // `themeFork` is always the screen's call (`null` = no fork);
-                // an unset `currentThemeId` reads Undefined and defers to the
-                // store's answer.
-                owned: &["themeFork"],
-            }),
-            theme_prev,
-        ),
+        Value::namespace(MergedNs {
+            overlay: sb.get("theme"),
+            base: bag.screen_base("themeStore"),
+            canon: bag.canon("themeStore"),
+            // `themeFork` is always the screen's call (`null` = no fork);
+            // an unset `currentThemeId` reads Undefined and defers to the
+            // store's answer.
+            owned: &["themeFork"],
+        }),
     );
-    let base = bag.screen_base("spaceStore");
-    let space_prev = bag.root("spaceStore");
-    let space_path = sb.get("nav").read_key("spacePath");
     bag.bind_root(
         "spaceStore",
-        StableNs::wrap(
-            Value::namespace(SpaceStoreNs { base, space_path }),
-            space_prev,
-        ),
+        Value::namespace(SpaceStoreNs {
+            base: bag.screen_base("spaceStore"),
+            space_path: sb.get("nav").read_key("spacePath"),
+            canon: bag.canon("spaceStore"),
+        }),
     );
 }
 

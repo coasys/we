@@ -87,7 +87,7 @@ impl RefIds {
 }
 
 /// Whether this pass's tracked reads differ from the previous pass's —
-/// same names in the same order, each `===` the value it recorded. The
+/// same names in the same order, each equal to the value it recorded. The
 /// comparison is JavaScript-strict, identity and all: a fresh container
 /// holding identical content IS a moved dependency — the store key fired —
 /// so an equal-content replacement still resets. What must not move are
@@ -99,7 +99,22 @@ fn deps_moved(prev: &TrackedDeps, next: &TrackedDeps) -> bool {
         || prev
             .iter()
             .zip(next)
-            .any(|((n1, v1), (n2, v2))| n1 != n2 || !v1.strict_eq(v2))
+            .any(|((n1, v1), (n2, v2))| n1 != n2 || !dep_eq(n1, v1, v2))
+}
+
+/// The recorded value's equality. A `$call:` entry is an opaque host
+/// computation's settled answer — the port cannot see which reactive
+/// inputs the call read, so the honest proxy for "its inputs moved" is
+/// whether its answer changed CONTENT: a pure function that allocates a
+/// fresh container per call is unmoved while the answer holds (TS sees
+/// the internal signals, which never fired). Every other read is strict
+/// `===`.
+fn dep_eq(name: &str, a: &Value, b: &Value) -> bool {
+    if name.starts_with("$call:") {
+        crate::scope::content_eq(a, b)
+    } else {
+        a.strict_eq(b)
+    }
 }
 
 impl LocalState {
@@ -216,7 +231,14 @@ impl LocalState {
             return 0;
         };
         let refs = inner.each_refs.entry(node.clone()).or_default();
-        match item {
+        // A namespace can stand in for the object it wraps (`raw()` — a
+        // tracked initial's element wrappers); identity keys on the row
+        // behind it, not on the wrapper.
+        let item = match item {
+            Value::Namespace(ns) => ns.raw().unwrap_or_else(|| item.clone()),
+            _ => item.clone(),
+        };
+        match &item {
             Value::Obj(o) => RefIds::of(&mut refs.next, &mut refs.objs, o),
             Value::List(l) => RefIds::of(&mut refs.next, &mut refs.lists, l),
             _ => 0,

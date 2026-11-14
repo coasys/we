@@ -927,6 +927,508 @@ fn a_host_function_initial_tracks_its_result() {
 }
 
 #[test]
+fn an_initial_resets_when_an_enclosing_local_object_is_replaced() {
+    // N1: `{"$":"local.src"}` where `src` holds an OBJECT. The member read
+    // is the signal's read — TS's local namespace returns the field's
+    // accessor, the memo calls it, the replacement (even equal-content,
+    // `!==`) re-runs the initial. Wrapping the object for traversal is not
+    // an excuse to forget the read itself.
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "src": { "type": "object", "initial": { "a": 1 } } },
+        "children": [{
+            "type": "Row",
+            "$localState": { "sel": { "type": "object", "initial": { "$": "local.src" } } },
+            "children": []
+        }]
+    }));
+    let obj = |a: f64| {
+        Value::Obj(Arc::new(
+            [("a".into(), Value::from(a))].into_iter().collect(),
+        ))
+    };
+    let (mut rt, mut host, locals, screen) = rig(node, StoreBag::new());
+    let root = rt.frame(&mut host, &screen).clone();
+    let parent = root.id.clone();
+    let child = NodeId::new("test:/Row0");
+    assert_eq!(
+        locals.get(&child, "sel").to_json(),
+        json!({ "a": 1 }),
+        "sel seeds from local.src"
+    );
+
+    locals.set(&child, "sel", obj(9.0)); // a user edit
+    locals.touch(&child, "sel");
+    locals.set(&parent, "src", obj(1.0)); // equal content, new allocation
+    let _ = rt.frame(&mut host, &screen).clone();
+    assert_eq!(
+        locals.get(&child, "sel").to_json(),
+        json!({ "a": 1 }),
+        "an equal-content object replacement still resets (the signal fired)"
+    );
+    assert!(
+        !locals.is_touched(&child, "sel"),
+        "a real reset clears touched"
+    );
+
+    locals.set(&parent, "src", obj(2.0)); // different content
+    let _ = rt.frame(&mut host, &screen).clone();
+    assert_eq!(
+        locals.get(&child, "sel").to_json(),
+        json!({ "a": 2 }),
+        "a different-content object replacement resets too"
+    );
+}
+
+#[test]
+fn an_initial_resets_when_a_store_object_member_is_replaced() {
+    // N1, store side: `{"$":"store.cfg"}` — a whole object-valued member.
+    // TS's per-key store signal fires on `!==` — the member's identity IS
+    // the dependency.
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "sel": { "type": "object", "initial": { "$": "store.cfg" } } },
+        "children": []
+    }));
+    let cfg = |a: f64| {
+        Value::Obj(Arc::new(
+            [("a".into(), Value::from(a))].into_iter().collect(),
+        ))
+    };
+    let store = |cfg: Value| {
+        Value::from(we_expr::MapNamespace::new(
+            [("cfg".into(), cfg)].into_iter().collect(),
+        ))
+    };
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root("store", store(cfg(1.0)));
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+    assert_eq!(locals.get(&owner, "sel").to_json(), json!({ "a": 1 }));
+
+    locals.set(&owner, "sel", cfg(9.0));
+    locals.touch(&owner, "sel");
+    bag.set_root("store", store(cfg(1.0))); // equal content, new allocations
+    let _ = rt.frame(&mut host, &screen).clone();
+    assert_eq!(
+        locals.get(&owner, "sel").to_json(),
+        json!({ "a": 1 }),
+        "an equal-content object member replacement still resets"
+    );
+    assert!(!locals.is_touched(&owner, "sel"));
+}
+
+#[test]
+fn an_initial_tracks_an_accessor_inside_a_list_member() {
+    // N2: `{"$":"store.items[0].sig"}` — `items` is a STABLE list; the
+    // `[0]` object's `sig` accessor runs inside TS's memo (a plain index
+    // read is untracked, the accessor invocation is the tracked signal).
+    // Tracking only the list's allocation loses the deeper read.
+    use std::sync::RwLock;
+    let sig = Arc::new(RwLock::new(Value::from("A")));
+    let sig_read = sig.clone();
+    let item = Value::Obj(Arc::new(
+        [(
+            "sig".into(),
+            Value::Callable(we_expr::CallableRef::accessor("sig", move |_| {
+                sig_read.read().unwrap().clone()
+            })),
+        )]
+        .into_iter()
+        .collect(),
+    ));
+    let store = Value::from(we_expr::MapNamespace::new(
+        [("items".into(), Value::List(Arc::new(vec![item])))]
+            .into_iter()
+            .collect(),
+    ));
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "name": { "type": "string", "initial": { "$": "store.items[0].sig" } } },
+        "children": []
+    }));
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root("store", store.clone());
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+    assert!(locals.get(&owner, "name").strict_eq(&Value::from("A")));
+
+    locals.set(&owner, "name", Value::from("typed"));
+    locals.touch(&owner, "name");
+    // The accessor's answer moves; the items allocation does not.
+    *sig.write().unwrap() = Value::from("B");
+    bag.set_root("store", store); // wake a frame — the signal is opaque to counters
+    let _ = rt.frame(&mut host, &screen).clone();
+    assert!(
+        locals.get(&owner, "name").strict_eq(&Value::from("B")),
+        "a deeper read through the list is still a dep: {:?}",
+        locals.get(&owner, "name")
+    );
+    assert!(!locals.is_touched(&owner, "name"));
+}
+
+#[test]
+fn a_tracked_initial_calls_a_member_accessor_once() {
+    // N3, member side: one syntactic read = one call. Logging the read by
+    // invoking the accessor and then returning the callable for eval to
+    // invoke AGAIN makes every pass call it twice — and an advancing
+    // accessor would record one answer while assigning the next.
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let calls = Arc::new(AtomicUsize::new(0));
+    let c = calls.clone();
+    let store = Value::from(we_expr::MapNamespace::new(
+        [(
+            "sig".into(),
+            Value::Callable(we_expr::CallableRef::accessor("sig", move |_| {
+                c.fetch_add(1, Ordering::Relaxed);
+                Value::from("m")
+            })),
+        )]
+        .into_iter()
+        .collect(),
+    ));
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "name": { "type": "string", "initial": { "$": "store.sig" } } },
+        "children": []
+    }));
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root("store", store);
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let _ = rt.frame(&mut host, &screen).clone();
+    assert_eq!(
+        calls.load(Ordering::Relaxed),
+        1,
+        "one tracked read must invoke the accessor once, not once for the log + once for eval"
+    );
+    let _ = locals;
+}
+
+#[test]
+fn a_tracked_initial_calls_a_root_accessor_once() {
+    // N3, root side: `{"$":"sig"}` where `sig` is a bag-bound accessor —
+    // same one-call rule at `env.root`.
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let calls = Arc::new(AtomicUsize::new(0));
+    let c = calls.clone();
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "name": { "type": "string", "initial": { "$": "sig" } } },
+        "children": []
+    }));
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root(
+        "sig",
+        Value::Callable(we_expr::CallableRef::accessor("sig", move |_| {
+            c.fetch_add(1, Ordering::Relaxed);
+            Value::from("r")
+        })),
+    );
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    let got = locals.get(&root.id, "name");
+    assert_eq!(
+        calls.load(Ordering::Relaxed),
+        1,
+        "one tracked root read must invoke the accessor once: {got:?}"
+    );
+}
+
+#[test]
+fn a_tracked_initial_assigns_the_answer_it_logged() {
+    // N3's visible half: an ADVANCING accessor — answer-N per call. If the
+    // dep log and the evaluated value come from different calls they
+    // disagree about what the field holds.
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let n = Arc::new(AtomicUsize::new(0));
+    let c = n.clone();
+    let store = Value::from(we_expr::MapNamespace::new(
+        [(
+            "sig".into(),
+            Value::Callable(we_expr::CallableRef::accessor("sig", move |_| {
+                let i = c.fetch_add(1, Ordering::Relaxed) + 1;
+                Value::from(format!("answer-{i}"))
+            })),
+        )]
+        .into_iter()
+        .collect(),
+    ));
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "name": { "type": "string", "initial": { "$": "store.sig" } } },
+        "children": []
+    }));
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root("store", store);
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+    assert!(
+        locals
+            .get(&owner, "name")
+            .strict_eq(&Value::from("answer-1")),
+        "the field must hold the answer the read produced: {:?} (calls: {})",
+        locals.get(&owner, "name"),
+        n.load(Ordering::Relaxed)
+    );
+}
+
+#[test]
+fn a_host_computation_initial_tracks_inputs_not_result_allocations() {
+    // N4: `{"$":"compute()"}` — the host function returns a FRESH array on
+    // every call wrapping an unchanged signal. TS's memo subscribed to the
+    // signal the function read while it ran — the result's allocation is
+    // not a dependency. An unchanged input must keep the edit even though
+    // each call allocates anew; a moved input resets.
+    use std::sync::RwLock;
+    let sig = Arc::new(RwLock::new(Value::from("A")));
+    let sig_read = sig.clone();
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "sel": { "type": "array", "initial": { "$": "compute()" } } },
+        "children": []
+    }));
+    let bag = Arc::new(StoreBag::new());
+    bag.set_function(
+        "compute",
+        Arc::new(move |_| {
+            // A fresh container every call — the result identity always moves.
+            Value::List(Arc::new(vec![sig_read.read().unwrap().clone()]))
+        }),
+    );
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+
+    locals.set(
+        &owner,
+        "sel",
+        Value::List(Arc::new(vec![Value::from("typed")])),
+    );
+    locals.touch(&owner, "sel");
+    let _ = rt.frame(&mut host, &screen).clone(); // unrelated pass, input unmoved
+    match locals.get(&owner, "sel") {
+        Value::List(items) => assert_eq!(
+            items
+                .first()
+                .and_then(|v| v.to_json().as_str().map(String::from)),
+            Some("typed".to_string()),
+            "a fresh result allocation on unchanged inputs must not reset the edit"
+        ),
+        other => panic!("sel must stay a list: {other:?}"),
+    }
+    assert!(
+        locals.is_touched(&owner, "sel"),
+        "an unchanged input must not clear touched"
+    );
+
+    *sig.write().unwrap() = Value::from("B");
+    locals.set(&owner, "other", Value::Bool(true)); // wake a frame
+    let _ = rt.frame(&mut host, &screen).clone();
+    match locals.get(&owner, "sel") {
+        Value::List(items) => assert_eq!(
+            items
+                .first()
+                .and_then(|v| v.to_json().as_str().map(String::from)),
+            Some("B".to_string()),
+            "a moved input resets"
+        ),
+        other => panic!("sel must stay a list: {other:?}"),
+    }
+    assert!(!locals.is_touched(&owner, "sel"));
+}
+
+/// A namespace backed by a mutable map — the "the source moved on without
+/// a screen change" shape N5 needs (E6's real stores sit behind one).
+#[derive(Debug)]
+struct MutNs(Arc<std::sync::RwLock<indexmap::IndexMap<Arc<str>, Value>>>);
+
+impl we_expr::Namespace for MutNs {
+    fn get(&self, key: &str) -> Value {
+        self.0
+            .read()
+            .unwrap()
+            .get(key)
+            .cloned()
+            .unwrap_or(Value::Undefined)
+    }
+
+    fn keys(&self) -> Vec<Arc<str>> {
+        self.0.read().unwrap().keys().cloned().collect()
+    }
+}
+
+#[test]
+fn a_forwarded_store_member_reads_live_without_a_screen_change() {
+    // N5: `spaceStore.members` is forwarded DATA, not a screen-synthesized
+    // member. The bind-time wrapper must not serve a cached copy once the
+    // source moves — no screen.version change means no rebind, so the same
+    // wrapper answers the next resolve.
+    let mut map = indexmap::IndexMap::new();
+    map.insert(
+        "members".into(),
+        Value::List(Arc::new(vec![Value::from("m1")])),
+    );
+    let source = Arc::new(std::sync::RwLock::new(map));
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root("spaceStore", Value::namespace(MutNs(source.clone())));
+    let node = schema(json!({
+        "type": "Column",
+        "children": [{ "type": "we-text", "props": { "text": { "$": "spaceStore.members.length" } } }]
+    }));
+    let (mut rt, mut host, _locals, screen) = rig_arc(node, bag.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    let text = |root: &ResolvedNode| find_text(root).unwrap_or(Value::Undefined);
+    assert!(
+        text(&root).strict_eq(&Value::from(1.0)),
+        "members.length starts at 1: {text:?}",
+        text = text(&root)
+    );
+
+    // The source updates behind the bound namespace — the screen never
+    // moved, so nothing rebinds; the next resolve must read the live map.
+    source.write().unwrap().insert(
+        "members".into(),
+        Value::List(Arc::new(vec![Value::from("m1"), Value::from("m2")])),
+    );
+    bag.set_root("unrelated", Value::Bool(true)); // bump the bag → re-resolve
+    let root = rt.frame(&mut host, &screen).clone();
+    assert!(
+        text(&root).strict_eq(&Value::from(2.0)),
+        "a forwarded member must read the live source, not the bind's cache: {text:?}",
+        text = text(&root)
+    );
+}
+
+#[test]
+fn a_forwarded_member_replaced_equal_content_resets_the_tracked_initial() {
+    // N5 across a rebind: the source hands a NEW list with equal content.
+    // Forwarded data obeys strict identity (R1) — the replacement fires
+    // the member's signal and the tracked initial resets.
+    let list = |xs: &[&str]| Value::List(Arc::new(xs.iter().map(|s| Value::from(*s)).collect()));
+    let mut map = indexmap::IndexMap::new();
+    map.insert("members".into(), list(&["m1"]));
+    let source = Arc::new(std::sync::RwLock::new(map));
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root("spaceStore", Value::namespace(MutNs(source.clone())));
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "sel": { "type": "array", "initial": { "$": "spaceStore.members" } } },
+        "children": []
+    }));
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+    assert_eq!(locals.get(&owner, "sel").to_json(), json!(["m1"]));
+
+    locals.set(&owner, "sel", list(&["typed"]));
+    locals.touch(&owner, "sel");
+    // The source swaps in an equal-content list, then the screen rebinds
+    // (what `frame` does when screen.version moves).
+    source
+        .write()
+        .unwrap()
+        .insert("members".into(), list(&["m1"]));
+    we_template::bind_screen(&bag, &screen);
+    let _ = rt.frame(&mut host, &screen).clone();
+    assert_eq!(
+        locals.get(&owner, "sel").to_json(),
+        json!(["m1"]),
+        "an equal-content replacement of forwarded data still resets (identity moved)"
+    );
+    assert!(
+        !locals.is_touched(&owner, "sel"),
+        "a real reset clears touched"
+    );
+}
+
+/// The `we-text.text` prop of the first `we-text` in the tree.
+fn find_text(node: &ResolvedNode) -> Option<Value> {
+    if node.ty.as_ref() == "we-text" {
+        return node.props.get("text").cloned();
+    }
+    node.children.iter().find_map(|c| match c {
+        ResolvedChild::Node(n) => find_text(n),
+        _ => None,
+    })
+}
+
+#[test]
+fn screen_rebinds_keep_no_wrapper_chain() {
+    // N6, lifetime: every bind used to own the previous bind's wrapper —
+    // the nth bind transitively retained the whole history. A Weak on an
+    // early bind's root must die once it has been replaced.
+    let bag = StoreBag::new();
+    let screen = screen();
+    we_template::bind_screen(&bag, &screen);
+    let weak = match bag.root("routeStore") {
+        Some(Value::Namespace(ns)) => Arc::downgrade(&ns),
+        other => panic!("routeStore must be a namespace: {other:?}"),
+    };
+    we_template::bind_screen(&bag, &screen);
+    we_template::bind_screen(&bag, &screen);
+    assert!(
+        weak.upgrade().is_none(),
+        "a replaced screen wrapper must be dropped, not retained by its successor"
+    );
+}
+
+#[test]
+fn a_member_read_after_many_rebinds_hits_the_source_once() {
+    // N6, traversal: an unread member read after N rebinds must ask the
+    // captured base once — a wrapper chain would recurse through every
+    // predecessor (and populate every cache).
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    struct CountNs {
+        gets: Arc<AtomicUsize>,
+        members: indexmap::IndexMap<Arc<str>, Value>,
+    }
+    impl we_expr::Namespace for CountNs {
+        fn get(&self, key: &str) -> Value {
+            self.gets.fetch_add(1, Ordering::Relaxed);
+            self.members.get(key).cloned().unwrap_or(Value::Undefined)
+        }
+        fn keys(&self) -> Vec<Arc<str>> {
+            self.members.keys().cloned().collect()
+        }
+    }
+    impl std::fmt::Debug for CountNs {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            f.debug_struct("CountNs").finish()
+        }
+    }
+
+    let mut members = indexmap::IndexMap::new();
+    members.insert("data".into(), Value::from("v"));
+    let gets = Arc::new(AtomicUsize::new(0));
+    let bag = StoreBag::new();
+    bag.set_root(
+        "routeStore",
+        Value::namespace(CountNs {
+            gets: gets.clone(),
+            members,
+        }),
+    ); // the captured base
+    let screen = screen();
+    for _ in 0..20 {
+        we_template::bind_screen(&bag, &screen);
+    }
+    gets.store(0, Ordering::Relaxed);
+    let v = match bag.root("routeStore") {
+        Some(Value::Namespace(ns)) => ns.get("data"),
+        other => panic!("routeStore must be a namespace: {other:?}"),
+    };
+    assert!(v.strict_eq(&Value::from("v")));
+    assert_eq!(
+        gets.load(Ordering::Relaxed),
+        1,
+        "one unread member read = one source read, not one per retained wrapper"
+    );
+}
+
+#[test]
 fn a_dollar_string_initial_stays_literal() {
     // A4 sub-point: `initial: "$store.name"`. TS's `resolveInitial` calls
     // `resolveProp`, which has no `$`-string branch — the dispatcher's final
