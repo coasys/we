@@ -190,11 +190,16 @@ fn empty_rows() -> Arc<Vec<Value>> {
 /// `deps_moved`'s strict compare — a member a TS memo stands for emits
 /// only when its answer differs, not when a rebuild allocated it again —
 /// so equal content inherits the predecessor's allocation rather than
-/// pretending the memo fired.
+/// pretending the memo fired. A namespace's content is what it
+/// enumerates: the conduit maps (`routeStore.params`,
+/// `shellStore.panels`) are a fresh `MapNamespace` per read but equal
+/// while the screen holds — interning needs the same relaxation for
+/// them, or a held conduit read (the initial's value, or one an index
+/// expression's own reads interleave under) moves every pass.
 pub(crate) fn content_eq(a: &Value, b: &Value) -> bool {
     a.strict_eq(b)
-        || (matches!(a, Value::Obj(_) | Value::List(_))
-            && matches!(b, Value::Obj(_) | Value::List(_))
+        || (matches!(a, Value::Obj(_) | Value::List(_) | Value::Namespace(_))
+            && matches!(b, Value::Obj(_) | Value::List(_) | Value::Namespace(_))
             && a.to_json() == b.to_json())
 }
 
@@ -205,12 +210,14 @@ type CanonMap = Arc<Mutex<HashMap<(Arc<str>, Arc<str>), Value>>>;
 /// The member-read identity TS's screen accessors guarantee, as a flat
 /// `(store, member) → canonical value` table on the bag. `segments`,
 /// `templateSegments`, `collapsedLanes`, `themeFork` recompute from screen
-/// state on every bind (fresh allocations each `get`), but while their
-/// content holds the SAME value must answer — `===` on a rebuilt-but-equal
-/// read says "moved" where the memo it stands for never emitted. The
-/// canonical allocation survives rebinds without any wrapper owning its
-/// predecessor: the nth bind carries no history, and an unread member
-/// read after many binds asks its source once.
+/// state on every bind, and the `params`/`panels` conduit maps rebuild on
+/// every READ — fresh allocations each `get` — but while their content
+/// holds the SAME value must answer: `===` on a rebuilt-but-equal read
+/// says "moved" where the memo it stands for never emitted, and a
+/// rebuilt conduit recorded as a tracked initial's dep would reset it on
+/// an unrelated pass. The canonical allocation survives rebinds without
+/// any wrapper owning its predecessor: the nth bind carries no history,
+/// and an unread member read after many binds asks its source once.
 #[derive(Debug, Clone)]
 pub(crate) struct Canon {
     store: Arc<str>,

@@ -2071,6 +2071,205 @@ fn a_synthesized_panels_conduit_is_not_a_dependency() {
 }
 
 #[test]
+fn a_synthesized_conduit_read_whole_is_not_a_dependency() {
+    // R4-5, the terminal-read edge: `routeStore.params` AS the initial's
+    // value is a leaf — there is no deeper read to spare it — so the
+    // conduit needs a stable identity while its content holds (TS's
+    // params object is one allocation a param write replaces). The
+    // conduit's stable identity means the dep now never moves at all —
+    // and a scalar form was doubly safe even before it: a rebuilt
+    // conduit moved the dep, but the re-evaluated initial settled to the
+    // same `Undefined` and the memo's `===` check never emitted.
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "bag": { "type": "object", "initial": { "$": "routeStore.params" } } },
+        "children": []
+    }));
+    let locals = LocalState::new();
+    let bag = Arc::new(StoreBag::new());
+    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone());
+    let mut host = StaticHost::new(bag.clone(), locals.clone());
+    let screen = ScreenState::desktop(ScreenSchema::default(), "/?id=demo");
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+
+    locals.set(&owner, "bag", Value::from("typed"));
+    locals.touch(&owner, "bag");
+    locals.set(&owner, "other", Value::Bool(true)); // an unrelated write wakes a frame
+    let _ = rt.frame(&mut host, &screen).clone();
+    assert!(
+        locals.get(&owner, "bag").strict_eq(&Value::from("typed")),
+        "a rebuilt params conduit held as the leaf must not move: {:?}",
+        locals.get(&owner, "bag")
+    );
+    assert!(
+        locals.is_touched(&owner, "bag"),
+        "a kept edit stays touched"
+    );
+}
+
+#[test]
+fn a_synthesized_conduit_in_a_fresh_container_keeps_the_edit() {
+    // R4-5, the terminal-read edge that actually resets: wrapped in a
+    // list the conduit is still a leaf read, and the re-evaluated
+    // `[undefined]` is a FRESH allocation each pass — the `===` emit
+    // check fires, so the moved dep reaches the field. The conduit's
+    // stable identity is the only thing that spares the edit here.
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "bag": { "type": "object", "initial": { "$": "[routeStore.params]" } } },
+        "children": []
+    }));
+    let locals = LocalState::new();
+    let bag = Arc::new(StoreBag::new());
+    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone());
+    let mut host = StaticHost::new(bag.clone(), locals.clone());
+    let screen = ScreenState::desktop(ScreenSchema::default(), "/?id=demo");
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+    assert_eq!(
+        locals.get(&owner, "bag").to_json(),
+        json!([{ "$undefined": true }]),
+        "bag seeds [routeStore.params] — a namespace settles to undefined in a value position"
+    );
+
+    locals.set(
+        &owner,
+        "bag",
+        Value::List(Arc::new(vec![Value::from("typed")])),
+    );
+    locals.touch(&owner, "bag");
+    locals.set(&owner, "other", Value::Bool(true));
+    let _ = rt.frame(&mut host, &screen).clone();
+    match locals.get(&owner, "bag") {
+        Value::List(items) => assert_eq!(
+            items
+                .first()
+                .and_then(|v| v.to_json().as_str().map(String::from)),
+            Some("typed".to_string()),
+            "a rebuilt params conduit held as the leaf must not move: {items:?}"
+        ),
+        other => panic!("bag must stay a list: {other:?}"),
+    }
+    assert!(
+        locals.is_touched(&owner, "bag"),
+        "a kept edit stays touched"
+    );
+}
+
+#[test]
+fn a_synthesized_panels_conduit_in_a_fresh_container_keeps_the_edit() {
+    // R4-5, the same edge for the shell twin — `[shellStore.panels]`.
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "bag": { "type": "object", "initial": { "$": "[shellStore.panels]" } } },
+        "children": []
+    }));
+    let locals = LocalState::new();
+    let bag = Arc::new(StoreBag::new());
+    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone());
+    let mut host = StaticHost::new(bag.clone(), locals.clone());
+    let mut screen = screen();
+    screen.apply(we_screen::ScreenOp::OpenTemplatePanel {
+        id: "inspector".into(),
+    });
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+
+    locals.set(
+        &owner,
+        "bag",
+        Value::List(Arc::new(vec![Value::from("typed")])),
+    );
+    locals.touch(&owner, "bag");
+    locals.set(&owner, "other", Value::Bool(true));
+    let _ = rt.frame(&mut host, &screen).clone();
+    match locals.get(&owner, "bag") {
+        Value::List(items) => assert_eq!(
+            items
+                .first()
+                .and_then(|v| v.to_json().as_str().map(String::from)),
+            Some("typed".to_string()),
+            "a rebuilt panels conduit held as the leaf must not move: {items:?}"
+        ),
+        other => panic!("bag must stay a list: {other:?}"),
+    }
+    assert!(
+        locals.is_touched(&owner, "bag"),
+        "a kept edit stays touched"
+    );
+}
+
+#[test]
+fn a_dynamic_index_through_a_synthesized_conduit_keeps_the_edit() {
+    // R4-5, the interleaved-read edge: `routeStore.params[local.key]` —
+    // the index's own read (`local.key`) lands between the conduit and
+    // its leaf in the read log, so the conduit is not the "next read
+    // extends it" case and leaf-collapsing keeps it. Its stable identity
+    // is what spares the edit: only `params.id` and `local.key` may move
+    // the field.
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "key": { "type": "string", "initial": "id" } },
+        "children": [{
+            "type": "Row",
+            "$localState": { "sel": { "type": "array", "initial": { "$": "[routeStore.params[local.key]]" } } },
+            "children": []
+        }]
+    }));
+    let locals = LocalState::new();
+    let bag = Arc::new(StoreBag::new());
+    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone());
+    let mut host = StaticHost::new(bag.clone(), locals.clone());
+    let screen = ScreenState::desktop(ScreenSchema::default(), "/?id=demo");
+    let root = rt.frame(&mut host, &screen).clone();
+    let parent = root.id.clone();
+    let child = NodeId::new("test:/Row0");
+    assert_eq!(
+        locals.get(&child, "sel").to_json(),
+        json!(["demo"]),
+        "sel seeds [routeStore.params[local.key]]"
+    );
+
+    locals.set(
+        &child,
+        "sel",
+        Value::List(Arc::new(vec![Value::from("typed")])),
+    );
+    locals.touch(&child, "sel");
+    locals.set(&child, "other", Value::Bool(true)); // an unrelated write wakes a frame
+    let _ = rt.frame(&mut host, &screen).clone();
+    match locals.get(&child, "sel") {
+        Value::List(items) => assert_eq!(
+            items
+                .first()
+                .and_then(|v| v.to_json().as_str().map(String::from)),
+            Some("typed".to_string()),
+            "a rebuilt params conduit under a dynamic index must not move: {items:?}"
+        ),
+        other => panic!("sel must stay a list: {other:?}"),
+    }
+    assert!(
+        locals.is_touched(&child, "sel"),
+        "a kept edit stays touched"
+    );
+
+    // And the leaf deps still fire: moving `local.key` to a param the
+    // route does not carry re-reads a different leaf and resets.
+    locals.set(&parent, "key", Value::from("missing"));
+    let _ = rt.frame(&mut host, &screen).clone();
+    assert_eq!(
+        locals.get(&child, "sel").to_json(),
+        json!([{ "$undefined": true }]),
+        "a moved leaf dep still resets — params.missing is undefined"
+    );
+    assert!(
+        !locals.is_touched(&child, "sel"),
+        "a real reset clears touched"
+    );
+}
+
+#[test]
 fn a_host_computation_initial_keeps_an_edit_whose_hidden_input_moved() {
     // The equal-content edge of the output-content contract: `compute`
     // reads a revision internally but always allocates `["A"]` — the

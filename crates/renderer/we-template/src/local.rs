@@ -91,9 +91,10 @@ impl RefIds {
 /// comparison is JavaScript-strict, identity and all: a fresh container
 /// holding identical content IS a moved dependency — the store key fired —
 /// so an equal-content replacement still resets. What must not move are
-/// the reads the port rebuilds itself (`routeStore.segments`, a pending
-/// query's `[]`, the surface box); the producers keep those identities
-/// stable so this comparison can stay honest.
+/// the reads the port rebuilds itself (`routeStore.segments`, the
+/// `params`/`panels` conduit maps, a pending query's `[]`, the surface
+/// box); the producers keep those identities stable so this comparison
+/// can stay honest.
 fn deps_moved(prev: &TrackedDeps, next: &TrackedDeps) -> bool {
     prev.len() != next.len()
         || prev
