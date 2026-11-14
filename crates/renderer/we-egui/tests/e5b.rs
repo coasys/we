@@ -1558,7 +1558,10 @@ fn menu_escape_restores_focus_through_a_trigger_wrapper() {
     h.get_by_label("Edit").focus();
     h.run();
     assert!(h.get_by_label("Edit").is_focused(), "focus is on the item");
-    assert!(!h.get_by_label("Menu").is_focused(), "focus left the trigger");
+    assert!(
+        !h.get_by_label("Menu").is_focused(),
+        "focus left the trigger"
+    );
     h.key_press(egui::Key::Escape);
     h.run();
     assert!(
@@ -2894,4 +2897,74 @@ fn programmatic_popover_close_leaves_outside_focus_alone() {
         h.get_by_label("Page").is_focused(),
         "a close does not steal focus that was outside the popup"
     );
+}
+
+/// Page button P, modal A (opened from P) holding button Q and modal B
+/// (opened from Q) holding a field.
+fn nested_modals(a_open: bool, b_open: bool) -> ResolvedNode {
+    let p = node("we-button", "c/p", props(&[("label", s("P"))]));
+    let mut b_modal = node(
+        "we-modal",
+        "c/a/b",
+        props(&[("open", b(b_open)), ("title", s("B"))]),
+    );
+    b_modal.handlers = handlers(&["close"]);
+    b_modal.children = vec![ResolvedChild::Node(Box::new(node(
+        "we-input",
+        "c/a/b/field",
+        props(&[("label", s("Inner")), ("value", s(""))]),
+    )))];
+    let mut a_modal = node(
+        "we-modal",
+        "c/a",
+        props(&[("open", b(a_open)), ("title", s("A"))]),
+    );
+    a_modal.handlers = handlers(&["close"]);
+    a_modal.children = vec![
+        ResolvedChild::Node(Box::new(node(
+            "we-button",
+            "c/a/q",
+            props(&[("label", s("Q"))]),
+        ))),
+        ResolvedChild::Node(Box::new(b_modal)),
+    ];
+    let mut col = node("Column", "c", props(&[]));
+    col.children = vec![
+        ResolvedChild::Node(Box::new(p)),
+        ResolvedChild::Node(Box::new(a_modal)),
+    ];
+    col
+}
+
+/// R6 — A opened from P, B opened from Q inside A; one template update
+/// closes both. Q went with A, so focus must land on P — the surviving
+/// opener (overlay-element.ts `releaseFocus` checks `isConnected`) — not
+/// on whichever modal a HashMap happened to visit last. Repeated so an
+/// arbitrary order cannot pass by luck (each EditState seeds its own
+/// map order).
+#[test]
+fn nested_modals_closing_together_return_focus_to_the_surviving_opener() {
+    for round in 0..8 {
+        let (mut h, r) = rig(nested_modals(false, false));
+        h.run();
+        h.get_by_label("P").focus();
+        h.run();
+        *r.node.borrow_mut() = nested_modals(true, false);
+        h.run();
+        h.get_by_label("Q").focus();
+        h.run();
+        assert!(h.get_by_label("Q").is_focused(), "round {round}: Q focused");
+        *r.node.borrow_mut() = nested_modals(true, true);
+        h.run();
+        h.get_by_label("Inner").focus();
+        h.run();
+        assert!(h.get_by_label("Inner").is_focused(), "round {round}: in B");
+        *r.node.borrow_mut() = nested_modals(false, false);
+        h.run();
+        h.run();
+        assert!(
+            h.get_by_label("P").is_focused(),
+            "round {round}: closing both returns focus to P, the surviving opener"
+        );
+    }
 }

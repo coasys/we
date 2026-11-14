@@ -942,6 +942,10 @@ fn finish_overlays(w: &mut Walk<'_>) {
 /// overlay-element.ts `captureFocus`/`releaseFocus`: a modal painted for
 /// the first time records what held focus (its opener); a modal no longer
 /// painted — closed by its template, whatever the cause — hands focus back.
+/// Several closing in one frame (a nested pair removed together) resolve
+/// deterministically: the earliest-opened one's opener wins — a later
+/// modal's opener sat inside an earlier modal, so it went with it, the
+/// `isConnected` check `releaseFocus` makes.
 fn modal_focus(w: &mut Walk<'_>, frame: &[FrameOverlay]) {
     let ctx = w.ui.ctx().clone();
     let painted: Vec<&NodeId> = frame.iter().filter(|e| e.modal).map(|e| &e.id).collect();
@@ -952,15 +956,20 @@ fn modal_focus(w: &mut Walk<'_>, frame: &[FrameOverlay]) {
         .filter(|k| !painted.contains(k))
         .cloned()
         .collect();
-    for id in gone {
-        if let Some(Some(f)) = w.edit.modal_openers.remove(&id) {
-            ctx.memory_mut(|m| m.request_focus(f));
-        }
+    let restore = gone
+        .iter()
+        .filter_map(|id| w.edit.modal_openers.remove(id))
+        .min_by_key(|(seq, _)| *seq)
+        .and_then(|(_, f)| f);
+    if let Some(f) = restore {
+        ctx.memory_mut(|m| m.request_focus(f));
     }
     for id in painted {
         if !w.edit.modal_openers.contains_key(id) {
             let f = ctx.memory(|m| m.focused());
-            w.edit.modal_openers.insert(id.clone(), f);
+            let seq = w.edit.modal_seq;
+            w.edit.modal_seq += 1;
+            w.edit.modal_openers.insert(id.clone(), (seq, f));
         }
     }
 }
