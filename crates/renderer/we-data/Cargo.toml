@@ -13,3 +13,12 @@ thiserror.workspace = true
 async-trait.workspace = true
 we-expr.workspace = true
 we-template.workspace = true
+
+[dev-dependencies]
+# Session + screen for the offline-report example and the route-resolution
+# tests — we-session does not depend on we-data, so there is no cycle.
+we-session.workspace = true
+we-screen.workspace = true
+# A minimal block_on for the async Executor calls in tests — tokio is off
+# limits; pollster is already in the lock via eframe.
+pollster = "1.0"

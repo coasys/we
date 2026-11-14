@@ -14,6 +14,7 @@ mod executor;
 mod fake;
 mod natives;
 mod provenance;
+mod query_source;
 mod storemap;
 
 pub use executor::{
@@ -23,5 +24,6 @@ pub use executor::{
 pub use fake::FakeExecutor;
 pub use natives::run_host_function;
 pub use provenance::{Provenance, ProvenanceReport};
+pub use query_source::SnapshotQuerySource;
 pub use storemap::{MemberKind, MemberRow, StoreMap};
 pub use we_template::StoreBag;
