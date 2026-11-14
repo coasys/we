@@ -7,6 +7,8 @@
  * line. jsdom has no layout, so this checks the row's shape — the three things that together keep
  * the name whole.
  */
+import type { EvaluationEnv } from '@we/schema-shared';
+import { evaluateExpression, parseExpression } from '@we/schema-shared';
 import * as shell from '@we/template-shell';
 import { describe, expect, it } from 'vitest';
 
@@ -74,5 +76,53 @@ describe('a device row', () => {
       (n) => (n as Node).type === '$if' && ((n as Node).props?.then as Node).type === 'we-badge',
     ) as Node;
     expect(conditionOf(badge)).toBe("!device.revoked && device.master != ''");
+  });
+});
+
+/*
+  A linked device without the master key may rename itself (the custody service refuses only a
+  rename of another device there), but Rename was gated on `deviceStore.canManage` alone, which needs
+  the master key: no row offered it.
+*/
+describe("a device row's Rename", () => {
+  const rename = (): string => {
+    const end = deviceRow().children![2] as Node;
+    const button = end.children!.find(
+      (n) =>
+        (n as Node).type === '$if' &&
+        ((n as Node).props?.then as Node).type === 'we-button' &&
+        ((n as Node).props?.then as Node).children?.[0] === 'Rename',
+    ) as Node;
+    expect(button, 'the Rename button').toBeDefined();
+    return (button.props?.condition as { $: string }).$;
+  };
+  const shown = (device: { revoked: boolean; thisDevice: boolean }, canManage: boolean, canChange: boolean) => {
+    const scope: Record<string, unknown> = {
+      device,
+      deviceStore: { canManage },
+      identityStore: { canChange },
+    };
+    const env: EvaluationEnv = {
+      root: (name) => ({ bound: name in scope, value: scope[name] }),
+      call: () => undefined,
+    };
+    return !!evaluateExpression(parseExpression(rename()), env);
+  };
+  const own = { revoked: false, thisDevice: true };
+  const other = { revoked: false, thisDevice: false };
+
+  it('is offered on this device’s own row without the master key, while identity changes can be made', () => {
+    expect(shown(own, false, true)).toBe(true);
+    expect(shown(own, false, false)).toBe(false);
+  });
+
+  it('still needs the master key for another device', () => {
+    expect(shown(other, false, true)).toBe(false);
+    expect(shown(other, true, true)).toBe(true);
+  });
+
+  it('is never offered on a removed device, this one included', () => {
+    expect(shown({ revoked: true, thisDevice: true }, true, true)).toBe(false);
+    expect(shown({ revoked: true, thisDevice: false }, true, true)).toBe(false);
   });
 });

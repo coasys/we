@@ -257,7 +257,8 @@ export function requestRows(
       id: request.id,
       kind: request.kind,
       title: `${device} asks to remove ${keys}`,
-      detail: 'Removed devices lose access to your identity.',
+      // A revoke ends the device key; a copy of the master key stays valid until it is replaced.
+      detail: 'Their device keys stop working. A device with your master key keeps access until you replace it.',
     };
   });
 }

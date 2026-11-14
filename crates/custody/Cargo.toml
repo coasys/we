@@ -26,7 +26,7 @@ cheap-kdf = []
 # From the ad4m commit WE pins (`node scripts/ad4m-pin.mjs --commit`): `tests/boundary.rs` checks
 # the two agree. For a local ad4m checkout, override with
 #   cargo test --config 'patch."https://github.com/coasys/ad4m".ad4m-identity-client.path="<ad4m>/ad4m-identity-client"' …
-# (and the same for ad4m-identity-core and ad4m-client), as `crates/custody/README.md` says.
+# (and the same for ad4m-identity-core, ad4m-client and ad4m-ldk), as `crates/custody/README.md` says.
 ad4m-identity-client = { git = "https://github.com/coasys/ad4m", rev = "7d5d41ddd2b7a2829a746f5df0b942713efb4db3", features = ["ws"] }
 ad4m-identity-core = { git = "https://github.com/coasys/ad4m", rev = "7d5d41ddd2b7a2829a746f5df0b942713efb4db3", features = ["build", "words"] }
 ad4m-client = { git = "https://github.com/coasys/ad4m", rev = "7d5d41ddd2b7a2829a746f5df0b942713efb4db3" }
