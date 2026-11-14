@@ -554,18 +554,31 @@ fn empty_node() -> &'static SchemaNode {
     EMPTY.get_or_init(SchemaNode::default)
 }
 
+/// The bands an app template that declares no `meta.frame` keeps — TS
+/// `DEFAULT_APP_FRAME` in `app-shell/src/shared/dockGeometry.ts`: the
+/// collapsed shell sidebar (`SIDEBAR_PX`) on the left and the module rail
+/// (`CHROME_RAIL_PX`) on the right. `(left, top, right, bottom)`.
+const DEFAULT_APP_FRAME: (f64, f64, f64, f64) = (80.0, 0.0, 56.0, 0.0);
+
 /// `meta.frame`'s bands the chrome occupies → the box the content mounts
 /// fill: a fixed-position scroller offset by the frame (the web's
 /// appViewport). Children with `height: 100%` see a definite box through
-/// it; `overflowY: auto` keeps page scroll inside it. Missing edges → 0.
+/// it; `overflowY: auto` keeps page scroll inside it.
+///
+/// As TS `declareAppFrame`: a declared frame names every band it holds and
+/// an edge it leaves out is 0; no frame at all (absent or `null`) keeps
+/// [`DEFAULT_APP_FRAME`].
 fn content_viewport(app: Option<&BundleTemplate>, children: Vec<ResolvedChild>) -> ResolvedNode {
-    let edge = |key: &str| {
-        app.and_then(|t| t.meta.get("frame"))
-            .and_then(|f| f.get(key))
-            .and_then(|v| v.as_f64())
-            .unwrap_or(0.0)
+    let declared = app
+        .and_then(|t| t.meta.get("frame"))
+        .filter(|f| !f.is_null());
+    let (l, t, r, b) = match declared {
+        Some(f) => {
+            let edge = |key: &str| f.get(key).and_then(|v| v.as_f64()).unwrap_or(0.0);
+            (edge("left"), edge("top"), edge("right"), edge("bottom"))
+        }
+        None => DEFAULT_APP_FRAME,
     };
-    let (l, t, r, b) = (edge("left"), edge("top"), edge("right"), edge("bottom"));
     let px = |v: f64| Value::Str(format!("{v}px").into());
     let calc = |unit: &str, v: f64| Value::Str(format!("calc(100{unit} - {v}px)").into());
     ResolvedNode {
@@ -696,5 +709,55 @@ impl Host for StaticHost {
 
     fn get_local(&self, node: &NodeId, field: &str) -> Value {
         self.locals.get(node, field)
+    }
+}
+
+#[cfg(test)]
+mod frame_tests {
+    use super::*;
+
+    fn app(meta: serde_json::Value) -> BundleTemplate {
+        serde_json::from_value(serde_json::json!({ "id": "app", "meta": meta, "type": "Column" }))
+            .expect("app template parses")
+    }
+
+    /// `(left, top, width, height)` of the content viewport, as authored.
+    fn frame_props(app: Option<&BundleTemplate>) -> [String; 4] {
+        let node = content_viewport(app, vec![]);
+        ["left", "top", "width", "height"].map(|k| match node.props.get(k) {
+            Some(Value::Str(s)) => s.to_string(),
+            other => panic!("{k}: {other:?}"),
+        })
+    }
+
+    /// TS `declareAppFrame(undefined)` keeps `DEFAULT_APP_FRAME`: the 80px
+    /// sidebar on the left and the 56px chrome rail on the right.
+    #[test]
+    fn an_app_without_meta_frame_keeps_the_default_frame() {
+        let a = app(serde_json::json!({ "name": "app", "role": "app" }));
+        assert_eq!(
+            frame_props(Some(&a)),
+            ["80px", "0px", "calc(100vw - 136px)", "calc(100vh - 0px)"]
+        );
+    }
+
+    /// A declared frame names every band it holds; one it leaves out is 0.
+    #[test]
+    fn a_partial_meta_frame_zeroes_its_missing_edges() {
+        let a = app(serde_json::json!({ "frame": { "right": 40, "top": 12 } }));
+        assert_eq!(
+            frame_props(Some(&a)),
+            ["0px", "12px", "calc(100vw - 40px)", "calc(100vh - 12px)"]
+        );
+    }
+
+    /// Coasys declares `{ "left": 72 }` — unchanged by the default.
+    #[test]
+    fn the_coasys_frame_is_unchanged() {
+        let a = app(serde_json::json!({ "frame": { "left": 72 } }));
+        assert_eq!(
+            frame_props(Some(&a)),
+            ["72px", "0px", "calc(100vw - 72px)", "calc(100vh - 0px)"]
+        );
     }
 }
