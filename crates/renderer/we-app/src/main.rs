@@ -35,7 +35,17 @@ struct Args {
     bundle: String,
     snapshot: Option<String>,
     route: String,
-    gallery: bool,
+    gallery: Gallery,
+}
+
+/// Which `--gallery` showcase to open (`none` → render the bundle).
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Default, PartialEq)]
+enum Gallery {
+    #[default]
+    None,
+    Style,
+    Widgets,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -44,7 +54,7 @@ fn parse_args() -> Args {
         bundle: DEFAULT_BUNDLE.to_string(),
         snapshot: None,
         route: "/".to_string(),
-        gallery: false,
+        gallery: Gallery::None,
     };
     let mut rest = std::env::args().skip(1);
     while let Some(arg) = rest.next() {
@@ -66,18 +76,20 @@ fn parse_args() -> Args {
                     .unwrap_or_else(|| panic!("--route needs a path"));
             }
             "--gallery" => match rest.next().as_deref() {
-                Some("style") => args.gallery = true,
-                other => panic!("--gallery needs a target (only `style` exists): {other:?}"),
+                Some("style") => args.gallery = Gallery::Style,
+                Some("widgets") => args.gallery = Gallery::Widgets,
+                other => panic!("--gallery needs a target (`style` or `widgets`): {other:?}"),
             },
             "--offline" => {}
             "--help" | "-h" => {
                 eprintln!(
-                    "usage: we-app [--bundle <path>] [--snapshot <path>] [--route <href>] [--offline] [--gallery style]\n\n\
+                    "usage: we-app [--bundle <path>] [--snapshot <path>] [--route <href>] [--offline] [--gallery style|widgets]\n\n\
                      --bundle <path>    bundle to render (default: the repo's bundles/coasys.bundle.json)\n\
                      --snapshot <path>  offline data: stores/queries/invokes as JSON\n\
                      --route <href>     initial routeStore path (default /)\n\
                      --offline          run with no executor — the only mode this stage has\n\
-                     --gallery style    design-system showcase: roles, scales, radii, shadows"
+                     --gallery style    design-system showcase: roles, scales, radii, shadows\n\
+                     --gallery widgets  the E5b widget showcase, painted through layout+paint"
                 );
                 std::process::exit(0);
             }
@@ -176,28 +188,35 @@ impl eframe::App for App {
     }
 }
 
-/// `we-app --gallery style` — the design-system showcase with its theme
-/// picker, over the recorded token tables.
+/// `we-app --gallery <style|widgets>` — the showcases: the style token
+/// table with its theme picker, or the E5b widget page painted live.
 #[cfg(not(target_arch = "wasm32"))]
-fn run_gallery() -> eframe::Result<()> {
+fn run_gallery(kind: Gallery) -> eframe::Result<()> {
+    let (title, app): (&str, Box<dyn eframe::App>) = match kind {
+        Gallery::Style => (
+            "we gallery — style",
+            Box::new(we_app::gallery::GalleryApp::new()),
+        ),
+        Gallery::Widgets => (
+            "we gallery — widgets",
+            Box::new(we_app::gallery_widgets::WidgetsGalleryApp::new()),
+        ),
+        Gallery::None => unreachable!(),
+    };
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_title("we gallery — style")
+            .with_title(title)
             .with_inner_size([720.0, 900.0]),
         ..Default::default()
     };
-    eframe::run_native(
-        "we gallery — style",
-        options,
-        Box::new(|_cc| Ok(Box::new(we_app::gallery::GalleryApp::new()))),
-    )
+    eframe::run_native(title, options, Box::new(|_cc| Ok(app)))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
     let args = parse_args();
-    if args.gallery {
-        return run_gallery();
+    if args.gallery != Gallery::None {
+        return run_gallery(args.gallery);
     }
     run_native(args)
 }

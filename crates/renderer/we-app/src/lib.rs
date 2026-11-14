@@ -12,6 +12,7 @@
 #![forbid(unsafe_code)]
 
 pub mod gallery;
+pub mod gallery_widgets;
 
 use std::collections::BTreeSet;
 use std::sync::Arc;

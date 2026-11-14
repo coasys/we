@@ -3803,6 +3803,7 @@ dependencies = [
  "eframe",
  "egui",
  "egui_kittest",
+ "indexmap",
  "serde",
  "serde_json",
  "we-expr",
