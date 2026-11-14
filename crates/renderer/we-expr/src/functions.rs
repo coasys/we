@@ -90,17 +90,20 @@ fn count(args: &[Value], _env: &dyn Env) -> Value {
 }
 
 /// `filter(list, where?, limit?)` — items matching the where-object; a
-/// non-object `where` filters nothing, and `limit` truncates.
+/// non-object `where` filters nothing. `limit` keeps the first N, but only
+/// when it is a real `number >= 0` (`typeof limit === 'number' &&
+/// limit >= 0` in `functions.ts`) — an `undefined`, negative, string or
+/// NaN limit leaves the whole matched list.
 fn filter(args: &[Value], _env: &dyn Env) -> Value {
     let list = arg(args, 0);
     let Some(items) = as_list(&list) else {
         return Vec::<Value>::new().into();
     };
     let where_ = arg(args, 1);
-    let limit = args
-        .get(2)
-        .map(|v| v.to_number().max(0.0) as usize)
-        .unwrap_or(usize::MAX);
+    let limit = match args.get(2) {
+        Some(Value::Num(n)) if *n >= 0.0 => *n as usize,
+        _ => usize::MAX,
+    };
     items
         .iter()
         .filter(|i| !matches!(where_, Value::Obj(_)) || matches_where(i, &where_))
@@ -125,9 +128,11 @@ fn find(args: &[Value], _env: &dyn Env) -> Value {
 }
 
 /// `distinct(list, list, …)` — the list arguments flattened, first of each
-/// kept. The dedupe key is the item's `id` when it is an object that has one
-/// (`{id:1, v:'x'}` and `{id:1, v:'y'}` are the same record) and the item
-/// itself otherwise (`{id:1}` and `{id:'1'}` stay distinct).
+/// kept. The dedupe key is `entry.id !== undefined ? entry.id : entry`
+/// (`{id:1, v:'x'}` and `{id:1, v:'y'}` are the same record; `{id:undefined}`
+/// keys on the entry), and the `seen` check is a JS `Set` — SameValueZero,
+/// so containers compare by identity: two equal-but-separate objects stay
+/// two entries.
 fn distinct(args: &[Value], _env: &dyn Env) -> Value {
     let mut keys: Vec<Value> = Vec::new();
     let mut out: Vec<Value> = Vec::new();
@@ -135,10 +140,13 @@ fn distinct(args: &[Value], _env: &dyn Env) -> Value {
         if let Value::List(items) = a {
             for item in items.iter() {
                 let key = match item {
-                    Value::Obj(o) => o.get("id").cloned().unwrap_or_else(|| item.clone()),
+                    Value::Obj(o) => match o.get("id") {
+                        Some(id) if !id.is_undefined() => id.clone(),
+                        _ => item.clone(),
+                    },
                     _ => item.clone(),
                 };
-                if !keys.iter().any(|v| deep_eq(v, &key)) {
+                if !keys.iter().any(|v| same_value_zero(v, &key)) {
                     keys.push(key);
                     out.push(item.clone());
                 }
@@ -148,16 +156,16 @@ fn distinct(args: &[Value], _env: &dyn Env) -> Value {
     out.into()
 }
 
-/// `join(list, sep?)` — each element as text; `', '` is the default.
+/// `join(list, sep?)` — each element as text; `', '` when the separator is
+/// missing or `undefined` (`separator === undefined` — `null` is `''`).
 fn join(args: &[Value], _env: &dyn Env) -> Value {
     let list = arg(args, 0);
     let Some(items) = as_list(&list) else {
         return "".into();
     };
     let sep = match args.get(1) {
-        Some(Value::Str(s)) => s.to_string(),
-        Some(v) => v.to_text().to_string(),
-        None => ", ".to_string(),
+        None | Some(Value::Undefined) => ", ".to_string(),
+        Some(v) => as_text(v),
     };
     items
         .iter()
@@ -290,14 +298,16 @@ fn concat(args: &[Value], _env: &dyn Env) -> Value {
 
 // ---------------------------------------------------------------- text ----
 
-/// `split(text, sep?)` — `,` default, each part trimmed, empties dropped.
+/// `split(text, sep?)` — `asText(text)` cut at `asText(sep)` (`,` when
+/// missing or `undefined` — `separator === undefined`, `null` is `''`),
+/// each part trimmed, empties dropped.
 fn split(args: &[Value], _env: &dyn Env) -> Value {
-    let text = arg(args, 0);
-    let Value::Str(s) = &text else {
-        return Vec::<Value>::new().into();
+    let text = as_text(&arg(args, 0));
+    let sep = match args.get(1) {
+        None | Some(Value::Undefined) => ",".to_string(),
+        Some(v) => as_text(v),
     };
-    let sep = args.get(1).map(as_text).unwrap_or_else(|| ",".to_string());
-    s.split(sep.as_str())
+    text.split(sep.as_str())
         .map(|p| p.trim())
         .filter(|p| !p.is_empty())
         .map(|p| p.into())
@@ -305,53 +315,40 @@ fn split(args: &[Value], _env: &dyn Env) -> Value {
         .into()
 }
 
-/// `contains(haystack, needle)` — case-INSENSITIVE substring for text
-/// (matching the vectors: `'Prefix Body'` contains `'PREFIX'`), membership
-/// for a list.
+/// `contains(haystack, needle)` — case-INSENSITIVE substring of the `asText`
+/// forms (the same test the where-object's `contains` makes): `asText(12)`
+/// contains `'2'`, `asText([12])` — `'12'` — contains `'2'`.
 fn contains(args: &[Value], _env: &dyn Env) -> Value {
-    match &arg(args, 0) {
-        Value::Str(s) => s
-            .to_lowercase()
-            .contains(&as_text(&arg(args, 1)).to_lowercase())
-            .into(),
-        Value::List(l) => l.iter().any(|v| same_value_zero(v, &arg(args, 1))).into(),
-        _ => Value::Bool(false),
-    }
+    as_text(&arg(args, 0))
+        .to_lowercase()
+        .contains(&as_text(&arg(args, 1)).to_lowercase())
+        .into()
 }
 
+/// `startsWith(text, prefix)` — case-sensitive, on the `asText` forms.
 fn starts_with(args: &[Value], _env: &dyn Env) -> Value {
-    match &arg(args, 0) {
-        Value::Str(s) => s.starts_with(&as_text(&arg(args, 1))).into(),
-        _ => Value::Bool(false),
-    }
+    as_text(&arg(args, 0))
+        .starts_with(&as_text(&arg(args, 1)))
+        .into()
 }
 
+/// `endsWith(text, suffix)` — case-sensitive, on the `asText` forms.
 fn ends_with(args: &[Value], _env: &dyn Env) -> Value {
-    match &arg(args, 0) {
-        Value::Str(s) => s.ends_with(&as_text(&arg(args, 1))).into(),
-        _ => Value::Bool(false),
-    }
+    as_text(&arg(args, 0))
+        .ends_with(&as_text(&arg(args, 1)))
+        .into()
 }
 
 fn trim(args: &[Value], _env: &dyn Env) -> Value {
-    match &arg(args, 0) {
-        Value::Str(s) => s.trim().into(),
-        _ => "".into(),
-    }
+    as_text(&arg(args, 0)).trim().into()
 }
 
 fn lower(args: &[Value], _env: &dyn Env) -> Value {
-    match &arg(args, 0) {
-        Value::Str(s) => s.to_lowercase().into(),
-        _ => "".into(),
-    }
+    as_text(&arg(args, 0)).to_lowercase().into()
 }
 
 fn upper(args: &[Value], _env: &dyn Env) -> Value {
-    match &arg(args, 0) {
-        Value::Str(s) => s.to_uppercase().into(),
-        _ => "".into(),
-    }
+    as_text(&arg(args, 0)).to_uppercase().into()
 }
 
 /// `replace(text, from, to)` — `String.replaceAll`.
@@ -366,17 +363,40 @@ fn replace(args: &[Value], _env: &dyn Env) -> Value {
 
 // -------------------------------------------------------------- number ----
 
-/// `round(n, digits?)` — `toFixed`-like decimal rounding (the epsilon nudge
-/// makes `2.675` at 2 come out `2.68`) combined with `Math.round`'s
-/// half-toward-+∞ rule (`floor(x + 0.5)`, so `-2.5` is `-2`).
+/// `round(n, digits?)` — `Math.round(asNumber(n) * factor) / factor` with
+/// `factor = 10 ** max(0, floor(asNumber(digits)))`, `functions.ts` verbatim.
+/// A negative or fractional digit count floors and clamps to 0 first, so
+/// `round(123.45, -1)` is `123`, not `120`.
 fn round(args: &[Value], _env: &dyn Env) -> Value {
     let n = arg(args, 0).to_number();
-    let digits = arg(args, 1).to_number();
-    let factor = 10f64.powf(digits);
-    // `|n| * EPSILON`: an `EPSILON` alone is a half-ulp tie at |n|≥2 and
-    // vanishes; a |n|-proportional nudge always lands one ulp toward +∞.
-    let nudged = n + n.abs() * f64::EPSILON;
-    (((nudged * factor) + 0.5).floor() / factor).into()
+    let digits = arg(args, 1).to_number().floor().max(0.0);
+    let factor = if digits > 308.0 {
+        // `10 ** 309` overflows f64, as `10 **` does in JavaScript.
+        f64::INFINITY
+    } else {
+        10f64.powi(digits as i32)
+    };
+    (js_round(n * factor) / factor).into()
+}
+
+/// `Math.round` — the integral value nearest `x`, halves toward +∞. The
+/// decision reads the real fractional part, NOT `floor(x + 0.5)`: that
+/// addition rounds first (`0.49999999999999994 + 0.5` is exactly 1;
+/// `4503599627370497 + 0.5` ties to the even 4503599627370498). `x - x.floor()`
+/// is exact — integral inputs and every |x| ≥ 2^52 give 0 — so a zero result
+/// keeps `x`'s sign (`Math.round(-0.5)` is `-0`), and a non-finite `x` rounds
+/// to itself.
+fn js_round(x: f64) -> f64 {
+    if !x.is_finite() {
+        return x;
+    }
+    let down = x.floor();
+    let rounded = if x - down >= 0.5 { down + 1.0 } else { down };
+    if rounded == 0.0 && x.is_sign_negative() {
+        -0.0
+    } else {
+        rounded
+    }
 }
 
 fn floor(args: &[Value], _env: &dyn Env) -> Value {
@@ -458,100 +478,68 @@ fn default(args: &[Value], _env: &dyn Env) -> Value {
 
 /// The form functions read the node's `$localMeta` bag: a map from field
 /// name to `{touched, errors}` — decoded from the conformance format's
-/// `$localMetaEntry` records. `$localScopeFields` scopes them to the fields
-/// the local form actually owns.
+/// `$localMetaEntry` records.
 fn local_meta(env: &dyn Env) -> Value {
     env.root("$localMeta").unwrap_or(Value::Undefined)
 }
 
-fn local_scope_fields(env: &dyn Env) -> Vec<Value> {
-    match env.root("$localScopeFields") {
-        Some(Value::List(l)) => l.iter().cloned().collect(),
-        _ => Vec::new(),
+/// `meta(env)?.[asText(field)]` — the one read every form function makes of
+/// its argument: the field argument is text, missing or not (a missing
+/// argument names `''`, a number `'5'` — there is no aggregate reading).
+fn field_entry(env: &dyn Env, field: &Value) -> Option<Value> {
+    match local_meta(env) {
+        Value::Obj(meta) => meta.get(field.to_text().as_ref()).cloned(),
+        _ => None,
     }
 }
 
-/// The `$localMeta` entries, scoped to `$localScopeFields` when that root is
-/// bound — the same read the TS form functions make of the node context.
-fn meta_entries(env: &dyn Env) -> Vec<(Arc<str>, Value)> {
-    let Value::Obj(meta) = local_meta(env) else {
-        return Vec::new();
-    };
-    let scope = local_scope_fields(env);
-    if scope.is_empty() {
-        return meta.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-    }
-    let mut out = Vec::new();
-    for field in &scope {
-        let name = field.to_text();
-        if let Some(entry) = meta.get(name.as_ref()) {
-            out.push((name, entry.clone()));
-        }
-    }
-    out
-}
-
-/// `touched()` — every in-scope field has been touched (or named field has).
+/// `touched(field)` — whether the named field has been blurred or marked
+/// with `$touch`; false for a field the meta bag does not hold.
 fn touched(args: &[Value], env: &dyn Env) -> Value {
-    match args.first() {
-        // `touched('name')` — one field.
-        Some(Value::Str(name)) => field_entry(env, name)
-            .map(|e| prop_truthy(&e, "touched"))
-            .unwrap_or(false)
-            .into(),
-        _ => {
-            let entries = meta_entries(env);
-            (!entries.is_empty() && entries.iter().all(|(_, e)| prop_truthy(e, "touched"))).into()
-        }
-    }
-}
-
-/// `valid()` — no in-scope field has errors (or named field has none).
-fn valid(args: &[Value], env: &dyn Env) -> Value {
-    match args.first() {
-        Some(Value::Str(name)) => field_entry(env, name)
-            .map(|e| field_errors(&e).is_empty())
-            .unwrap_or(true)
-            .into(),
-        _ => meta_entries(env)
-            .iter()
-            .all(|(_, e)| field_errors(e).is_empty())
-            .into(),
-    }
-}
-
-/// `error(name?)` — the named field's first error once touched, `''` when
-/// clean or untouched. With no name, the first error across the in-scope
-/// fields.
-fn error(args: &[Value], env: &dyn Env) -> Value {
-    match args.first() {
-        Some(Value::Str(name)) => field_entry(env, name)
-            .filter(|e| prop_truthy(e, "touched"))
-            .and_then(|e| field_errors(&e).first().cloned())
-            .unwrap_or_else(|| "".into()),
-        _ => meta_entries(env)
-            .iter()
-            .filter(|(_, e)| prop_truthy(e, "touched"))
-            .find_map(|(_, e)| field_errors(e).first().cloned())
-            .unwrap_or_else(|| "".into()),
-    }
-}
-
-/// `formValid()` — every in-scope field valid AND touched; no fields at all
-/// is vacuously valid.
-fn form_valid(args: &[Value], env: &dyn Env) -> Value {
-    let _ = args;
-    meta_entries(env)
-        .iter()
-        .all(|(_, e)| prop_truthy(e, "touched") && field_errors(e).is_empty())
+    field_entry(env, &arg(args, 0))
+        .map(|e| prop_truthy(&e, "touched"))
+        .unwrap_or(false)
         .into()
 }
 
-fn field_entry(env: &dyn Env, name: &Arc<str>) -> Option<Value> {
-    match local_meta(env) {
-        Value::Obj(meta) => meta.get(name.as_ref()).cloned(),
-        _ => None,
-    }
+/// `valid(field)` — the named field has no errors, touched or not. True for
+/// a field the meta bag does not hold.
+fn valid(args: &[Value], env: &dyn Env) -> Value {
+    field_entry(env, &arg(args, 0))
+        .map(|e| field_errors(&e).is_empty())
+        .unwrap_or(true)
+        .into()
+}
+
+/// `error(field)` — the named field's first error once touched, `''` when
+/// clean or untouched.
+fn error(args: &[Value], env: &dyn Env) -> Value {
+    field_entry(env, &arg(args, 0))
+        .filter(|e| prop_truthy(e, "touched"))
+        .and_then(|e| field_errors(&e).first().cloned())
+        .unwrap_or_else(|| "".into())
+}
+
+/// `formValid()` — every field `$localScopeFields` names is error-free;
+/// touched is not required. With no meta map or no scope list at all, true
+/// (`!map || !fields` in `functions.ts`), so an empty scope list iterates
+/// nothing and a bad field outside the scope does not count.
+fn form_valid(_args: &[Value], env: &dyn Env) -> Value {
+    let Value::Obj(meta) = local_meta(env) else {
+        return true.into();
+    };
+    let Some(Value::List(fields)) = env.root("$localScopeFields") else {
+        return true.into();
+    };
+    fields
+        .iter()
+        .all(|field| {
+            meta.get(field.to_text().as_ref())
+                .map(|e| field_errors(e).is_empty())
+                // `map[name]?.errors().length ?? 0` — a missing entry is valid.
+                .unwrap_or(true)
+        })
+        .into()
 }
 
 /// `entry.prop()` — the form functions invoke their meta members directly
@@ -578,27 +566,11 @@ fn field_errors(entry: &Value) -> Vec<Value> {
     }
 }
 
-/// `includes` membership — `SameValueZero`.
+/// `Set`/`includes` membership — `SameValueZero`: `===` except `NaN` counts
+/// equal to itself (and `-0`/`+0` are already `==`).
 fn same_value_zero(a: &Value, b: &Value) -> bool {
     match (a, b) {
         (Value::Num(x), Value::Num(y)) => x == y || (x.is_nan() && y.is_nan()),
-        _ => a.strict_eq(b),
-    }
-}
-
-/// Structural equality for `distinct`: same shape, same contents; numbers by
-/// value (`NaN` counts equal to itself, as `Set` would).
-fn deep_eq(a: &Value, b: &Value) -> bool {
-    match (a, b) {
-        (Value::Num(x), Value::Num(y)) => x == y || (x.is_nan() && y.is_nan()),
-        (Value::List(x), Value::List(y)) => {
-            x.len() == y.len() && x.iter().zip(y.iter()).all(|(u, v)| deep_eq(u, v))
-        }
-        (Value::Obj(x), Value::Obj(y)) => {
-            x.len() == y.len()
-                && x.iter()
-                    .all(|(k, v)| y.get(k).is_some_and(|w| deep_eq(v, w)))
-        }
         _ => a.strict_eq(b),
     }
 }
