@@ -59,6 +59,8 @@ pub struct PartSpec {
     pub indent: f32,
     /// Align-items override for a part (e.g. `ay` on the tree row).
     pub align: Option<ItemAlign>,
+    /// `gap` between the part's children (the button's icon–label space).
+    pub column_gap: f32,
     pub parts: Vec<PartSpec>,
 }
 
@@ -74,6 +76,7 @@ impl PartSpec {
             min_height: 0.0,
             indent: 0.0,
             align: None,
+            column_gap: 0.0,
             parts: vec![],
         }
     }
@@ -89,6 +92,7 @@ impl PartSpec {
             min_height: 0.0,
             indent: 0.0,
             align: None,
+            column_gap: 0.0,
             parts: vec![],
         }
     }
@@ -104,6 +108,7 @@ impl PartSpec {
             min_height: 0.0,
             indent: 0.0,
             align: None,
+            column_gap: 0.0,
             parts,
         }
     }
@@ -123,6 +128,12 @@ impl PartSpec {
     /// A floor on the part's height even when it holds nothing.
     pub fn min_height(mut self, px: f32) -> Self {
         self.min_height = px;
+        self
+    }
+
+    /// `gap` between this part's children.
+    pub fn gapped(mut self, px: f32) -> Self {
+        self.column_gap = px;
         self
     }
 }
@@ -531,6 +542,10 @@ fn part_style(spec: &PartSpec) -> taffy::Style {
             } else {
                 LengthPercentageAuto::auto()
             },
+        },
+        gap: taffy::Size {
+            width: LengthPercentage::length(spec.column_gap),
+            height: LengthPercentage::length(0.0),
         },
         padding: taffy::Rect {
             left: LengthPercentage::length(spec.indent),

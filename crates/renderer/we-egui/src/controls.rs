@@ -4,7 +4,10 @@ use we_template::ResolvedNode;
 
 use crate::defaults::{view_of, FONT_PX, ROOT_PX};
 use crate::props;
-use crate::{MeasureCx, PaintCx, Rect, Size, TextChildren, Widget, WidgetKind};
+use crate::{
+    Direction, MeasureCx, PaintCx, PartSpec, PartsSpec, Pick, Rect, Size, TextChildren, Widget,
+    WidgetKind,
+};
 
 /// `we-button` — variant + size come through `Style`; `disabled`, `loading`,
 /// `square`, `href`, `expanded`, `label` are widget props. Children (icon +
@@ -59,6 +62,30 @@ impl Widget for Button {
         } else {
             TextChildren::Owned
         }
+    }
+    /// button.ts: the default slot flows inside `display:flex;
+    /// align-items:center; gap:var(--we-button-size-gap)` — icon + label
+    /// side by side, centered. `--we-button-size-gap` is `xs→space-100`,
+    /// `sm→space-200`, `md/lg/xl→space-300` (4/8/12px).
+    fn parts_spec(&self, node: &ResolvedNode) -> Option<PartsSpec> {
+        // `text` suppresses the slot, and text-only children are the
+        // painted label — only `Leaves` children need the content row.
+        let parts = if matches!(self.text_children(node), TextChildren::Leaves) {
+            let gap = match props::prop_str(node, "size") {
+                Some("xs") => 4.0,
+                Some("sm") => 8.0,
+                _ => 12.0,
+            };
+            vec![PartSpec::group("content", Pick::Default, Direction::Row)
+                .aligned(we_style::ItemAlign::Center)
+                .gapped(gap)]
+        } else {
+            vec![]
+        };
+        Some(PartsSpec {
+            direction: Direction::Column,
+            parts,
+        })
     }
     fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, avail: Size) -> Size {
         // `Leaves` implies element children — a container, not a leaf.

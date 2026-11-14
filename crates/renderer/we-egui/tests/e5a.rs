@@ -1109,6 +1109,35 @@ fn scroll_inner_consumes_then_chains_to_parent() {
     );
 }
 
+// ---------- A5: we-button child flow is an inline row -------------------
+
+/// A5 — TS button.ts renders children inside `display:flex;
+/// align-items:center; gap:…` — `we-button[we-icon, "label"]` puts icon
+/// and text BESIDE each other, not stacked.
+#[test]
+fn button_child_flow_is_a_row() {
+    let mut btn = node("we-button", "b", &[]);
+    child(&mut btn, node("we-icon", "b/i", &[("name", s("check"))]));
+    btn.children
+        .push(we_template::ResolvedChild::Text(Arc::from("Save")));
+    let layout = lay_out(&btn, 200.0);
+    let icon = layout.rects.get(&NodeId::from("b/i")).copied().unwrap();
+    let span = layout
+        .texts
+        .iter()
+        .find(|t| t.text.as_ref() == "Save")
+        .map(|t| t.rect)
+        .expect("the label got a span");
+    assert!(
+        (icon.center().y - span.center().y).abs() < 4.0,
+        "icon and label share the row's center line: icon {icon:?} label {span:?}"
+    );
+    assert!(
+        span.min.x > icon.min.x,
+        "the label sits right of the icon: icon {icon:?} label {span:?}"
+    );
+}
+
 fn handlers_list(list: &[&str]) -> IndexMap<Arc<str>, we_template::HandlerRef> {
     list.iter()
         .map(|k| {
