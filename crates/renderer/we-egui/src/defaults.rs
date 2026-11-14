@@ -61,16 +61,24 @@ pub(crate) fn store_view(ctx: &egui::Context, scx: &StyleCx) {
         // The theme's `--we-font-family` — the family body text inherits on
         // the web side (`font-family` on the app host). A separate key so
         // `ViewportCx` stays `Copy`; an explicit `font-family` on the node
-        // beats it. `insert_temp` clears each frame, so a theme swap can
-        // only remove the family by not writing it — correct by frame.
-        if let Some(f) = scx.tokens.get("--we-font-family") {
-            d.insert_temp(egui::Id::unique(FAMILY_KEY), Arc::<str>::from(f));
+        // beats it. Temp data outlives the frame, so a view without one
+        // must remove the last view's, or a theme swap keeps its face.
+        let family = egui::Id::unique(FAMILY_KEY);
+        match scx.tokens.get("--we-font-family") {
+            Some(f) => {
+                d.insert_temp(family, Arc::<str>::from(f));
+            }
+            None => d.remove::<Arc<str>>(family),
         }
         // The theme id for part-level rules that address parts the element
         // does not expose as nodes (the switch's track/thumb) — the
-        // `data-we-theme` selector read at paint time.
-        if !scx.theme.is_empty() {
-            d.insert_temp(egui::Id::unique(THEME_KEY), Arc::<str>::from(scx.theme));
+        // `data-we-theme` selector read at paint time. Removed for a
+        // theme-less view, as above.
+        let theme = egui::Id::unique(THEME_KEY);
+        if scx.theme.is_empty() {
+            d.remove::<Arc<str>>(theme);
+        } else {
+            d.insert_temp(theme, Arc::<str>::from(scx.theme));
         }
     });
 }
