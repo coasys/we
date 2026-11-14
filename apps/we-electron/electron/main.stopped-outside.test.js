@@ -142,6 +142,8 @@ const dataDir = () => join(state.root, 'data');
 const lastState = () => state.sent.filter(([channel]) => channel === 'executor-state').at(-1)?.[1];
 /** The tray's menu as last drawn, and an item of it by label. */
 const tray = () => state.trayMenus.at(-1) ?? [];
+/** The tray's status line, however the executor is. */
+const STATUS = /^(WE is running|Starting WE…|WE stopped)$/;
 const trayItem = (label) =>
   tray().find((item) => (typeof label === 'string' ? item.label === label : label.test(item.label ?? '')));
 const executorLog = () =>
@@ -203,16 +205,17 @@ describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp
       expect(starts()).toHaveLength(1);
       expect(state.messageBoxes).toHaveLength(1);
       const [, box] = state.messageBoxes[0];
-      expect(box.message).toMatch(/ has stopped$/);
-      expect(box.detail).toMatch(/stopped outside the app/);
-      expect(box.detail).toMatch(/executor-0\.log/);
+      expect(box.message).toBe('WE stopped');
+      expect(box.detail).toMatch(/Another program stopped it/);
+      expect(box.detail).toMatch(/Start it again from the window or the tray menu/);
+      expect(box.detail).toMatch(/Log file: .*executor-0\.log/);
       // The window stays on what it shows: nothing was started to reload it onto.
       expect(state.windows[0].loads).toHaveLength(1);
       // Told it stopped after running, so the base takes the window back and offers to start it.
       expect(lastState()).toMatchObject({ phase: 'failed', stopped: true });
       expect(lastState().reason).toMatch(/stopped outside the app/);
       // The tray says so, and offers Start, under the app's name.
-      expect(trayItem(/^WE: /)).toEqual({ label: 'WE: stopped', enabled: false });
+      expect(trayItem(STATUS)).toEqual({ label: 'WE stopped', enabled: false });
       expect(trayItem('Start WE').enabled).not.toBe(false);
       expect(trayItem('Stop WE').enabled).toBe(false);
       for (const item of tray()) expect(item.label ?? '').not.toMatch(/electron/i);
@@ -222,7 +225,7 @@ describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp
       trayItem('Start WE').click();
       await until(() => starts().length === 2 && /^2 ready$/m.test(executorLog()), 30_000);
       await until(() => lastState()?.phase === 'ready', 10_000);
-      expect(trayItem(/^WE: /).label).toBe('WE: running');
+      expect(trayItem(STATUS).label).toBe('WE is running');
       expect(trayItem('Restart WE')).toBeTruthy();
       expect(trayItem('Stop WE').enabled).not.toBe(false);
     }, 60_000);
@@ -232,7 +235,7 @@ describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp
       await until(() => lastState()?.phase === 'failed', 10_000);
       expect(lastState()).toEqual({
         phase: 'failed',
-        reason: 'The executor was stopped from the tray menu. It stays stopped until it is started again.',
+        reason: 'It was stopped from the tray menu.',
         stopped: true,
       });
       await until(() => /^2 (exit|stdin closed)/m.test(executorLog()), 10_000);
@@ -240,11 +243,11 @@ describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp
       expect(starts()).toHaveLength(2);
       // A stop asked for is not a fault: no dialog beyond the first one.
       expect(state.messageBoxes).toHaveLength(1);
-      expect(trayItem(/^WE: /).label).toBe('WE: stopped');
+      expect(trayItem(STATUS).label).toBe('WE stopped');
     }, 60_000);
 
     it("opens the executor's settings in the main window from the tray", () => {
-      trayItem('Executor settings…').click();
+      trayItem('Startup settings…').click();
       expect(state.sent.at(-1)).toEqual(['open-executor-settings', undefined]);
     });
   },

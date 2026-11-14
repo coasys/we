@@ -2,7 +2,7 @@ import type { DesignSystemProps } from '@we/design-types';
 import { type DSLayer, filterProps, getKeysForLayers, mergeProps } from '@we/design-utils';
 import { safeHref } from '@we/design-utils';
 import { FOCUS_RING, FOCUS_RING_BEYOND_BORDER } from '@we/tokens';
-import { css, html, nothing } from 'lit';
+import { css, html, nothing, type PropertyValues } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
 import { styleMap } from 'lit/directives/style-map.js';
 
@@ -356,14 +356,39 @@ export default class Button extends DesignSystemElement {
   @property({ type: Boolean, reflect: true }) loading = false;
   @property({ type: Boolean, reflect: true }) gradient = false;
   @property({ type: Boolean, reflect: true }) square = false;
+  /**
+   * Take focus when drawn — for the control a change of view puts first, such as the Back at the
+   * top of a page that has just replaced a list.
+   *
+   * Done here rather than left to the attribute, because the browser honours `autofocus` once per
+   * document, at load, and on the element itself — and the element that takes focus is the
+   * `<button>` inside this one's shadow root. Without it, a press that swaps the whole view leaves
+   * focus on a button that is no longer drawn, and a keyboard or screen reader starts again from the
+   * top of the page.
+   *
+   * And again whenever it turns true after that, for a control that is not drawn anew but shown
+   * again: Settings' list on a phone is put away while a page is open, not unmounted, so the entry
+   * that opened the page is the same element when Back brings the list back, and it is told to take
+   * focus by its `autofocus` turning on.
+   */
+  @property({ type: Boolean, reflect: true }) autofocus = false;
   @property({ type: Object }) styles?: Record<string, string | number | undefined>;
 
   static getDefaultProps() {
     return DEFAULT_PROPS;
   }
 
+  override firstUpdated(changedProperties: PropertyValues) {
+    super.firstUpdated(changedProperties);
+    if (this.autofocus) this.renderRoot.querySelector<HTMLElement>('[part="base"]')?.focus();
+  }
+
   override updated(changedProperties: Map<string, unknown>) {
     super.updated(changedProperties);
+    // Turned on after the first render: `false` before, where the first render's is `undefined`.
+    if (this.autofocus && changedProperties.get('autofocus') === false) {
+      this.renderRoot.querySelector<HTMLElement>('[part="base"]')?.focus();
+    }
     // Gradients are a solid-variant affordance; anywhere else the flag is meaningless.
     const hasGradient = this.gradient && this.variant === 'solid';
     this.style.setProperty('--we-button-gradient', hasGradient ? 'var(--we-gradient-accent)' : 'none');

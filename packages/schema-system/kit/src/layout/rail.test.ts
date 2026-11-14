@@ -7,9 +7,10 @@
  * the expansion because the failure mode is silent: a button with no busy state simply never spins.
  */
 import type { SchemaNode } from '@we/schema-shared';
+import { evaluateExpression, parseExpression } from '@we/schema-shared';
 import { describe, expect, it } from 'vitest';
 
-import { railButton, railGroup } from './rail.ts';
+import { closeWhenCompact, railButton, railGroup, railShell } from './rail.ts';
 
 type Node = { type: string; props?: Record<string, unknown>; children?: Node[] };
 
@@ -140,5 +141,79 @@ describe('a rail group that does not fold', () => {
     const group = railGroup({ id: 'spaces', label: 'Spaces', children: [row] }) as Node;
     expect(((group.children?.[0] as Node).children?.[0] as Node).type).toBe('we-button');
     expect((group.children?.[1] as Node).type).toBe('$animate');
+  });
+});
+
+/**
+ * A compact rail is a phone's: a bar across the top while shut, the whole window while open.
+ *
+ * Evaluated rather than matched as JSON, because what matters is the size each state comes out at,
+ * and the expressions are where a slip (a missing `!`, the arms of a ternary swapped) would hide.
+ */
+describe('a compact rail', () => {
+  const header: SchemaNode = { type: 'we-button', props: { onClick: { $toggleLocal: 'expanded' } } };
+  const footer: SchemaNode = { type: 'we-text', children: ['Foot'] };
+  const shell = (compact?: { $: string }) =>
+    railShell({
+      header,
+      footer,
+      children: [{ type: 'we-text', children: ['Row'] }],
+      collapsedWidth: '72px',
+      expandedWidth: '256px',
+      ...(compact ? { compact } : {}),
+    }) as Node;
+  // A store-free stand-in for the window's width, since this package names no store.
+  const compact = { $: 'win.narrow' };
+
+  const value = (prop: unknown, roots: Record<string, unknown>) => {
+    if (!prop || typeof prop !== 'object' || !('$' in prop)) return prop;
+    const env = { root: (name: string) => ({ bound: name in roots, value: roots[name] }), call: () => undefined };
+    return evaluateExpression(parseExpression((prop as { $: string }).$), env);
+  };
+  const at = (narrow: boolean, expanded: boolean) => ({ win: { narrow }, local: { expanded } });
+
+  it('is a bar the width of the window while shut, showing only its header', () => {
+    const rail = shell(compact);
+    const roots = at(true, false);
+    expect(value(rail.props?.width, roots)).toBe('100%');
+    expect(value(rail.props?.height, roots)).toBe('56px');
+    expect(rail.children?.[0]).toBe(header);
+    // The rows and the foot are put away, not unmounted, so a folded group is still folded later.
+    expect(value(rail.children?.[1].props?.display, roots)).toBe('none');
+    expect(value(rail.children?.[2].props?.display, roots)).toBe('none');
+  });
+
+  it('covers the window while open', () => {
+    const rail = shell(compact);
+    const roots = at(true, true);
+    expect(value(rail.props?.width, roots)).toBe('100%');
+    expect(value(rail.props?.height, roots)).toBe('100%');
+    expect(value(rail.children?.[1].props?.display, roots)).toBe('flex');
+    expect(value(rail.children?.[2].props?.display, roots)).toBe('flex');
+  });
+
+  it('is the ordinary rail when the window is wide', () => {
+    const rail = shell(compact);
+    expect(value(rail.props?.width, at(false, false))).toBe('72px');
+    expect(value(rail.props?.width, at(false, true))).toBe('256px');
+    expect(value(rail.props?.height, at(false, false))).toBe('100%');
+    expect(value(rail.children?.[1].props?.display, at(false, false))).toBe('flex');
+    // And the pointer opens it only there.
+    expect(rail.props?.onMouseEnter).toEqual({
+      $if: { condition: { $: '!win.narrow' }, then: { $setLocal: 'expanded', value: true } },
+    });
+  });
+
+  it('is unchanged for a rail that is never compact', () => {
+    const rail = shell();
+    expect(rail.props?.height).toBe('100%');
+    expect(rail.children?.[1].props?.display).toBeUndefined();
+    expect(rail.props?.onMouseEnter).toEqual({ $setLocal: 'expanded', value: true });
+  });
+
+  it('shuts behind a press only while compact', () => {
+    expect(closeWhenCompact(compact)).toEqual({
+      $if: { condition: compact, then: { $setLocal: 'expanded', value: false } },
+    });
   });
 });

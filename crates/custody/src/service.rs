@@ -66,7 +66,7 @@ pub enum IdentityStep {
     Create,
     /// The holder adds a server by an offer link it gives.
     AddDevice,
-    /// The holder adds a device by the code that device shows ("Scan or paste a code").
+    /// The holder adds a device by the code that device shows ("Enter code").
     ScanDevice,
     /// This computer, a device of no identity yet, shows its code for a holder to scan.
     ShowCode,
@@ -91,10 +91,10 @@ pub enum IdentityStep {
     /// every other app that kept the old one is sent the new one.
     ReplaceMaster,
     /// On a computer of no identity: the 12 words give the identity back here, and lock out the
-    /// devices the person ticks ("Use my 12 words").
+    /// devices the person ticks ("Restore with recovery phrase").
     Restore,
-    /// Forgets this computer's copy of the master key ("Also remove my master key from this
-    /// computer", on log out). Refused while it is the only copy.
+    /// Forgets this computer's copy of the master key ("Remove master key from this computer?",
+    /// on sign out). Refused while it is the only copy.
     RemoveMaster,
     /// The holder adds a bot: picks what its key may ever do and until when, opens a bot offer
     /// for the executor that runs the bot to claim (`bot.createAgent`), and confirms the match
@@ -247,7 +247,7 @@ pub enum Screen {
         /// replaced.
         #[serde(rename = "mayHoldMaster")]
         may_hold_master: bool,
-        /// Whether "Also replace my master key" starts ticked: when the device may hold a copy.
+        /// Whether "Also replace master key" starts ticked: when the device may hold a copy.
         rotate: bool,
         passphrase: bool,
         error: Option<String>,
@@ -553,7 +553,7 @@ pub struct CustodyPublic {
     pub revoked_holders: Vec<String>,
     /// The requests of other devices waiting in the identity's box.
     pub requests: Vec<RequestView>,
-    /// A master key waits in this computer's inbox ("Take the master key").
+    /// A master key waits in this computer's inbox ("Accept master key").
     pub master_waiting: bool,
 }
 
@@ -729,27 +729,23 @@ fn names_no_store(e: &ClientError) -> bool {
 
 /// A step stopped because this computer lost its count of the changes to the master key it keeps
 /// (`custody-epochs.json`, or an identity's entry in it, gone from the custody folder). The way
-/// back is the words-gated recovery (`we_identity_steps::recover_lost_epoch`): in "Replace my master key"
-/// ([`rotate_with_words`]) on a linked computer, in "Use my 12 words" ([`restore_on`]) on one
-/// not linked yet.
-const LOST_EPOCH: &str = "This computer has lost its count of the changes to the master key it \
-     keeps (a file in its custody folder is gone), so it will not change or remove that key on \
-     its own. Your master key is still here. To go on, type your 12 words: on a computer that \
-     is linked to this identity, choose “Replace my master key”; on one that is not linked yet, \
-     restore the identity. Once the words check out, this computer starts the count again and \
-     replaces the key.";
+/// back is the words-gated recovery (`we_identity_steps::recover_lost_epoch`): in "Replace master key"
+/// ([`rotate_with_words`]) on a linked computer, in "Restore with recovery phrase"
+/// ([`restore_on`]) on one not linked yet.
+const LOST_EPOCH: &str = "This computer lost track of changes to its master key, so it won't \
+     change or remove the key. Your master key is still here. To fix this, go to Settings > \
+     Devices and choose Replace master key, or Restore with recovery phrase if this computer \
+     isn't linked.";
 
 /// A step stopped because the keyring this computer keeps keys in is locked
 /// ([`crate::store::is_keyring_locked`]): it asked to be unlocked and nobody answered in time, or
 /// the person dismissed the prompt. The store stops waiting, so custody is never held by a prompt.
-const KEYRING_LOCKED_WORDS: &str = "Your keyring is locked, so this computer could not keep \
-     your master key in it. Unlock it when your desktop asks for its password (or in its \
-     Passwords and Keys app), then try again. Nothing was changed.";
+const KEYRING_LOCKED_WORDS: &str = "Your keyring is locked. Unlock it when your desktop asks \
+     for its password, or in Passwords and Keys, then try again. Nothing was changed.";
 
 /// Why a master key is not removed from this computer.
-const ONLY_COPY: &str = "This computer keeps the only copy of your master key: no other \
-     computer or phone of yours keeps one. Removing it would leave only your 12 words to add or \
-     remove devices. Send it to another device first. Your master key stays on this computer.";
+const ONLY_COPY: &str = "This computer has the only copy of your master key. Send it to another \
+     device before you remove it here. Nothing was removed.";
 
 /// Words a person reads, for each way a flow stops.
 fn failed(e: &ClientError) -> Screen {
@@ -774,24 +770,25 @@ fn failed(e: &ClientError) -> Screen {
         ClientError::OfferEnded(state) => {
             format!("The offer ended ({state}) before it was confirmed. Nothing was added.")
         }
-        ClientError::NotAKeeper(_) => "That device cannot keep the master key: only an app on \
-                                       a computer or a phone can. Nothing was sent."
+        ClientError::NotAKeeper(_) => "That device can't have the master key. Only the app on \
+                                       a computer or phone can. Nothing was sent."
             .into(),
         ClientError::Poster(why) => {
-            format!("The request does not check out ({why}). Nothing was done.")
+            log::warn!("custody: the request does not check out: {why}");
+            "This request couldn't be verified. Nothing changed.".into()
         }
         ClientError::NeedsWords => {
-            "This also replaces your master key, which needs your 12 words.".into()
+            "This also replaces your master key, which needs your recovery phrase.".into()
         }
         // Never the word itself, nor the list word nearest it: either may be one of the 12.
         ClientError::Words(e) => words_refused(e).0,
         ClientError::NotTheseWords(_) => NOT_THESE_WORDS.into(),
-        ClientError::LogBusy => "Your key log kept changing on another device while this ran. \
-                                 Nothing was replaced. Try again in a moment."
+        ClientError::LogBusy => "Another device kept changing your key log. Nothing was \
+                                 replaced. Try again in a moment."
             .into(),
         ClientError::OnlyCopy => ONLY_COPY.into(),
         ClientError::RecordBusy => {
-            "Your device list is being changed on another device. Try again in a moment.".into()
+            "Another device is changing your device list. Try again in a moment.".into()
         }
         ClientError::Rpc(e) => format!(
             "The identity service on this computer answered: {}",
@@ -1000,7 +997,7 @@ async fn public_state_on<R: ExecutorRpc>(
         // Where the operating system unlocks a new item, the master key waiting is taken as the
         // app starts and whenever the main window asks: the keychain's own unlock guards it, as
         // it guards the key made here. A sealed item needs the passphrase, so the person takes
-        // it in the identity window ("Take the master key").
+        // it in the identity window ("Accept master key").
         let held = ad4m_identity_core::scid_of(did).map(|scid| held_sealed(vault, scid));
         // The same unlock pushes again what the retry list keeps: a master key given to a device
         // whose push the app did not see through. `retry_pushes` unlocks only when a push is left.
@@ -1760,18 +1757,20 @@ async fn follow_link<R: ExecutorRpc>(
                         record::write(executor, unlocking, did, &[change], &RANDOM).await
                     {
                         log::warn!("custody: this computer was not listed in the record: {e}");
-                        notes.push("This computer's name was not saved: rename it on Devices.");
+                        notes.push(
+                            "This computer's name wasn't saved. Rename it in Settings > Devices.",
+                        );
                     }
                 }
                 if let Err(e) = &linked.record {
                     log::warn!("custody: the linked device was not listed in the record: {e}");
-                    notes.push("Its name was not saved: rename it on Devices.");
+                    notes.push("Its name wasn't saved. Rename it in Settings > Devices.");
                 }
                 if let Some(Err(e)) = &linked.master {
                     log::warn!("custody: the master key was not put in its inbox: {e}");
                     notes.push(
-                        "The master key did not reach it yet: it is sent again the next time \
-                         this computer unlocks.",
+                        "The master key wasn't sent yet. It's sent again the next time this \
+                         computer unlocks.",
                     );
                 }
                 retry_quietly(executor, unlocking, did).await;
@@ -1954,14 +1953,14 @@ async fn run_scan(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
 /// `store_url`; else what to tell the person.
 fn check_code(code: &str, store_url: &str, now: u64) -> Result<DeviceString, String> {
     let device = DeviceString::parse(code).map_err(|_| {
-        "That is not a device's code. Copy the whole code the new device shows.".to_string()
+        "That isn't a device code. Copy the whole code from the new device.".to_string()
     })?;
     if now >= device.exp {
-        return Err("That code has expired. Show a new one on the new device.".into());
+        return Err("That code expired. Show a new code on the new device.".into());
     }
     if device.store.trim_end_matches('/') != store_url.trim_end_matches('/') {
         return Err(format!(
-            "That device uses another identity store ({}). Both devices must use the same one.",
+            "That device uses a different identity store ({}). Both devices need the same one.",
             device.store
         ));
     }
@@ -2019,14 +2018,13 @@ async fn show_code_on<R: ExecutorRpc>(
     }
     match executor.status().await {
         Ok(status) => {
-            if let Some(did) = status.did {
+            if status.did.is_some() {
                 return answer(
                     reply,
                     Ok(Screen::Failed {
-                        message: format!(
-                            "This computer already speaks for {did}, so it cannot join another \
-                             identity."
-                        ),
+                        message: "This computer already has an identity, so it can't link to \
+                                  another."
+                            .into(),
                     }),
                 );
             }
@@ -2046,7 +2044,7 @@ async fn show_code_on<R: ExecutorRpc>(
         return answer(
             reply,
             Ok(Screen::Failed {
-                message: "This computer's code was not made. Try again.".into(),
+                message: "Couldn't make a code. Try again.".into(),
             }),
         );
     };
@@ -2081,9 +2079,7 @@ async fn show_code_on<R: ExecutorRpc>(
                         return answer(
                             reply,
                             Ok(Screen::Failed {
-                                message: "No device linked this computer before its code \
-                                          expired. Show a new code to try again."
-                                    .into(),
+                                message: "The code expired. Show a new code to try again.".into(),
                             }),
                         )
                     }
@@ -2091,8 +2087,7 @@ async fn show_code_on<R: ExecutorRpc>(
                         return answer(
                             reply,
                             Ok(Screen::Failed {
-                                message: "The identity service on this computer stopped \
-                                          answering. Try again in a moment."
+                                message: "The app stopped responding. Try again in a moment."
                                     .into(),
                             }),
                         )
@@ -2241,7 +2236,7 @@ async fn follow_claim<R: ExecutorRpc>(
     reply: &mut Reply,
 ) -> Result<Screen, Option<CancelReply>> {
     let closed = || Screen::Failed {
-        message: "The other device did not confirm in time. Show a new code to try again.".into(),
+        message: "The other device didn't confirm in time. Show a new code to try again.".into(),
     };
     let mut next_poll = tokio::time::Instant::now();
     loop {
@@ -2317,19 +2312,20 @@ async fn follow_claim<R: ExecutorRpc>(
                         key_id: key_id.to_string(),
                     },
                     _ => Screen::Failed {
-                        message: "The link was confirmed, but the identity's log does not list \
-                                  this computer. Show a new code to try again."
+                        message: "The link was confirmed, but this computer isn't in your key \
+                                  log. Show a new code to try again."
                             .into(),
                     },
                 })
             }
             other => {
+                log::warn!(
+                    "custody: the link ended unconfirmed ({})",
+                    other.unwrap_or("unknown")
+                );
                 return Ok(Screen::Failed {
-                    message: format!(
-                        "The link ended unconfirmed ({}). Show a new code to try again.",
-                        other.unwrap_or("unknown")
-                    ),
-                })
+                    message: "The link wasn't confirmed. Show a new code to try again.".into(),
+                });
             }
         }
         next_poll = tokio::time::Instant::now()
@@ -2357,8 +2353,7 @@ async fn accept_join<R: ExecutorRpc>(
         }
         Err(e) if e.code == 409 && e.message.starts_with("cancelled") => Err(cancelled_here()),
         Err(e) if e.code == 404 => Err(Screen::Failed {
-            message: "This link is no longer open on this computer. Show a new code to try again."
-                .into(),
+            message: "This link has closed. Show a new code to try again.".into(),
         }),
         Err(e) => Err(failed(&ClientError::Rpc(e))),
     }
@@ -2482,8 +2477,7 @@ async fn already_joined<R: ExecutorRpc>(
 
 /// A cancel that reached the executor after this computer joined, when the join's key is unknown.
 const ALREADY_JOINED: &str =
-    "This computer had already joined the identity before the cancel reached it, so it stays \
-     joined.";
+    "This computer was already linked when you cancelled, so it stays linked.";
 
 /// A cancel the executor did not confirm: the claim may stand, and a confirm still join.
 fn cancel_unconfirmed() -> Screen {
@@ -2493,14 +2487,14 @@ fn cancel_unconfirmed() -> Screen {
 }
 
 const CANCEL_UNCONFIRMED: &str =
-    "The identity service on this computer did not confirm the cancel, so this computer may \
-     still join the identity if the other device confirms the link.";
+    "The cancel wasn't confirmed. This computer is still linked if your other device \
+     confirms.";
 
 /// The claim was cancelled on this computer (`identity.acceptJoin` 409 `cancelled`, or a
 /// `cancelled` `identity.joinStatus`).
 fn cancelled_here() -> Screen {
     Screen::Failed {
-        message: "This link was cancelled on this computer. Show a new code to try again.".into(),
+        message: "This link was cancelled. Show a new code to try again.".into(),
     }
 }
 
@@ -2577,8 +2571,8 @@ async fn run_take_master(
     take_master_on(&executor, vault, address, rx, reply).await
 }
 
-const NO_MASTER_WAITING: &str = "No master key is waiting for this computer. Ask for it here, \
-     then say yes on a device that holds it.";
+const NO_MASTER_WAITING: &str = "No master key was sent to this computer. Ask for it, then \
+     send it from a device that has it.";
 
 /// [`run_take_master`] once the executor answers.
 async fn take_master_on<R: ExecutorRpc>(
@@ -2596,7 +2590,7 @@ async fn take_master_on<R: ExecutorRpc>(
         return answer(
             reply,
             Ok(Screen::Failed {
-                message: "This computer is not linked to an identity yet.".into(),
+                message: "This computer isn't linked yet.".into(),
             }),
         );
     };
@@ -2767,8 +2761,7 @@ async fn repair_mark_on<R: ExecutorRpc>(
 /// The note of a key kept here whose record write failed: the record is marked later.
 fn not_listed_yet(e: ClientError) -> String {
     log::warn!("custody: the record does not mark this computer yet: {e}");
-    "Your device list does not show it yet: it is updated the next time a device changes it."
-        .to_string()
+    "Your device list shows this after its next change.".to_string()
 }
 
 /// A linked app without the master key asks the identity's other devices for it: a
@@ -2789,17 +2782,17 @@ async fn ask_master_on<R: ExecutorRpc>(executor: &ViaExecutor<R>, vault: &Deskto
     };
     let (Some(did), Some(key_id)) = (status.did, status.key_id) else {
         return Screen::Failed {
-            message: "This computer is not linked to an identity yet.".into(),
+            message: "This computer isn't linked yet.".into(),
         };
     };
     let Some(scid) = ad4m_identity_core::scid_of(&did) else {
         return Screen::Failed {
-            message: "This computer is not linked to an identity yet.".into(),
+            message: "This computer isn't linked yet.".into(),
         };
     };
     if matches!(vault.holds(scid), Ok(true)) {
         return Screen::Failed {
-            message: "This computer already keeps your master key.".into(),
+            message: "This computer already has the master key.".into(),
         };
     }
     match executor
@@ -2858,7 +2851,7 @@ async fn answer_on<R: ExecutorRpc>(
         return answer(
             reply,
             Ok(Screen::Failed {
-                message: "That request is no longer waiting.".into(),
+                message: "This request is no longer open.".into(),
             }),
         );
     };
@@ -2893,7 +2886,7 @@ async fn answer_on<R: ExecutorRpc>(
                         reply,
                         Ok(Screen::Failed {
                             message: format!(
-                                "The request asks to revoke {key_id}, which is not in your key log."
+                                "This request asks to remove {key_id}, which isn't in your key log."
                             ),
                         }),
                     );
@@ -2913,7 +2906,7 @@ async fn answer_on<R: ExecutorRpc>(
         return answer(
             reply,
             Ok(Screen::Failed {
-                message: "The device that asks is not in your key log.".into(),
+                message: "The device asking isn't in your key log.".into(),
             }),
         );
     };
@@ -2923,8 +2916,8 @@ async fn answer_on<R: ExecutorRpc>(
             reply,
             Ok(Screen::Failed {
                 message: format!(
-                    "Device {} (key {fingerprint}) joined as a device that does not keep the \
-                     master key, so it cannot be sent to it.",
+                    "Device {} (key {fingerprint}) was linked as a device that can't have the \
+                     master key. Nothing was sent.",
                     request.by
                 ),
             }),
@@ -2961,12 +2954,10 @@ async fn answer_on<R: ExecutorRpc>(
                     // The rotation is published: a request left in the box is a note.
                     let left = deleted.err().map(|e| {
                         log::warn!("custody: the answered request was not deleted: {e}");
-                        "The request is answered, but it was not taken out of your request \
-                         box: it may still show there."
-                            .to_string()
+                        "The request was answered, but it may still show in Requests.".to_string()
                     });
                     if rotated.kept.is_err() {
-                        let answered = format!("The request from {device} is answered.");
+                        let answered = format!("The request from {device} was answered.");
                         return replaced(rotated, joined(Some(answered), left));
                     }
                     joined(handed_over(&rotated.pushes, &rotated.record), left)
@@ -3069,8 +3060,7 @@ async fn rename_on<R: ExecutorRpc>(
         return answer(
             reply,
             Ok(Screen::Failed {
-                message: "Only a device that keeps your master key can rename another device."
-                    .into(),
+                message: "Only a device with the master key can rename other devices.".into(),
             }),
         );
     }
@@ -3100,7 +3090,7 @@ async fn rename_on<R: ExecutorRpc>(
                 Ok(Screen::Rename {
                     key_id: key_id.clone(),
                     name: String::new(),
-                    error: Some("Give the device a name.".into()),
+                    error: Some("Enter a name.".into()),
                 }),
             );
             continue;
@@ -3410,7 +3400,7 @@ async fn run_revoke(
     revoke_on(&executor, vault, address, rx, reply, key_id).await
 }
 
-/// [`run_revoke`] once the executor answers. With "Also replace my master key" ticked (by
+/// [`run_revoke`] once the executor answers. With "Also replace master key" ticked (by
 /// default when the key log says the device may hold a copy, [`may_hold_master`]), the 12 words
 /// are asked next and the revoke is one rotation to a new master key: the revoked device's copy
 /// stops acting with it.
@@ -3628,24 +3618,24 @@ fn after_publish(e: &ClientError) -> String {
         }
         ClientError::Vault(VaultError::Cancelled) => "The unlock was cancelled.".into(),
         ClientError::Vault(VaultError::NotFound) => {
-            "The new master key was no longer where this computer set it aside.".into()
+            "The new master key went missing on this computer.".into()
         }
         ClientError::Vault(e) if crate::pending::is_lost_epoch(e) => LOST_EPOCH.into(),
         ClientError::Vault(e) if crate::store::is_keyring_locked(e) => {
-            "Your keyring is locked: unlock it when your desktop asks for its password.".into()
+            "Your keyring is locked. Unlock it when your desktop asks for its password.".into()
         }
-        ClientError::Vault(VaultError::Unavailable(why)) => {
-            format!("Where it keeps keys answered: {why}")
-        }
-        ClientError::LogBusy => "Your key log kept changing on another device.".into(),
+        ClientError::Vault(VaultError::Unavailable(why)) => format!("Key storage error: {why}"),
+        ClientError::LogBusy => "Another device kept changing your key log.".into(),
         ClientError::OfferEnded(state) => {
-            format!("Linking this computer ended ({state}) before it was confirmed.")
+            log::warn!("custody: linking this computer ended unconfirmed ({state})");
+            "Linking this computer wasn't confirmed.".into()
         }
-        ClientError::NotAKeeper(_) => "That device cannot keep the master key.".into(),
-        ClientError::Poster(why) => format!("The request does not check out ({why})."),
-        ClientError::NotTheseWords(_) => {
-            "These words do not make your identity's master key.".into()
+        ClientError::NotAKeeper(_) => "That device can't have the master key.".into(),
+        ClientError::Poster(why) => {
+            log::warn!("custody: the request does not check out: {why}");
+            "This request couldn't be verified.".into()
         }
+        ClientError::NotTheseWords(_) => "This recovery phrase doesn't match your identity.".into(),
         e => match failed(e) {
             Screen::Failed { message } => message,
             _ => unreachable!("failed() answers Failed"),
@@ -3742,7 +3732,7 @@ fn handed_over(
     we_identity_steps::handed_over(
         pushes,
         record,
-        "this computer sends it again each time it unlocks.",
+        "It's sent again the next time this computer unlocks.",
     )
 }
 
@@ -3751,7 +3741,7 @@ async fn identity_of<R: ExecutorRpc>(executor: &ViaExecutor<R>) -> Result<String
     match executor.status().await {
         Ok(IdentityStatus { did: Some(did), .. }) => Ok(did),
         Ok(_) => Err(Screen::Failed {
-            message: "This computer is not linked to an identity yet.".into(),
+            message: "This computer isn't linked yet.".into(),
         }),
         Err(e) => Err(failed(&ClientError::Rpc(e))),
     }
@@ -3875,7 +3865,7 @@ async fn run_restore(
     restore_on(&executor, vault, address, rx, reply).await
 }
 
-/// "Use my 12 words" on a computer of no identity: the words name the identity (the store's key
+/// "Restore with recovery phrase" on a computer of no identity: the words name the identity (the store's key
 /// index knows whose master #0 they make), its devices are listed with the apps ticked to lock out,
 /// and one rotation revokes the ticked ones and gives this computer the new master key; then
 /// this computer joins as a device, and the apps not locked out are sent the new key.
@@ -3944,8 +3934,8 @@ async fn restore_on<R: ExecutorRpc>(
             return answer(
                 reply,
                 Ok(Screen::Failed {
-                    message: "This computer keeps a master key of this identity behind another \
-                              passphrase. Nothing was changed."
+                    message: "This computer has a master key for this identity with a \
+                              different passphrase. Nothing changed."
                         .into(),
                 }),
             );
@@ -3978,7 +3968,7 @@ async fn restore_on<R: ExecutorRpc>(
     let name = entry.name.clone();
     // Before the stage the rotation makes: a custody epoch of this identity this computer lost
     // (a first restore stopped, a file of the custody folder gone) is recovered here, the words
-    // checked first to make the identity's current master. "Replace my master key", the way back
+    // checked first to make the identity's current master. "Replace master key", the way back
     // on a linked computer, refuses this one: it is not linked yet.
     let finished =
         finish_restore(&mut flow, executor, vault, &words, &lock_out, entry.clone()).await;
@@ -5158,7 +5148,7 @@ mod tests {
             }
         );
         assert!(
-            matches!(&last, Screen::Failed { message } if message.contains("ended unconfirmed (expired)")),
+            matches!(&last, Screen::Failed { message } if message.contains("wasn't confirmed")),
             "{last:?}"
         );
     }
@@ -5378,7 +5368,7 @@ mod tests {
         // The fake answers an unknown method 404, as the executor answers an unknown offer.
         for screen in [&waiting, &accepted] {
             assert!(
-                matches!(screen, Screen::Failed { message } if message.contains("no longer open")),
+                matches!(screen, Screen::Failed { message } if message.contains("has closed")),
                 "{screen:?}"
             );
         }
@@ -5668,7 +5658,7 @@ mod tests {
             }
         );
         assert!(
-            matches!(&last, Screen::Failed { message } if message == "This link was cancelled on this computer. Show a new code to try again."),
+            matches!(&last, Screen::Failed { message } if message == "This link was cancelled. Show a new code to try again."),
             "{last:?}"
         );
     }
@@ -5682,7 +5672,7 @@ mod tests {
         show_code_on(&executor, events, &vault, &address, &mut rx, &mut reply).await;
         let screen = first.await.unwrap().unwrap();
         assert!(
-            matches!(&screen, Screen::Failed { message } if message.contains("already speaks for")),
+            matches!(&screen, Screen::Failed { message } if message.contains("already has an identity")),
             "{screen:?}"
         );
         assert!(executor.rpc().called("identity.prepareDevice").is_empty());
@@ -5808,7 +5798,7 @@ mod tests {
         .await;
         let screen = first.await.unwrap().unwrap();
         assert!(
-            matches!(&screen, Screen::Failed { message } if message.contains("no longer waiting")),
+            matches!(&screen, Screen::Failed { message } if message.contains("no longer open")),
             "{screen:?}"
         );
     }
@@ -5880,7 +5870,7 @@ mod tests {
             } else {
                 assert!(
                     matches!(&screen, Screen::Failed { message }
-                        if message.contains("does not keep the master key")),
+                        if message.contains("can't have the master key")),
                     "{screen:?}"
                 );
             }
@@ -6069,7 +6059,7 @@ mod tests {
         let screen = first_answer_screen(&executor).await;
         assert!(
             matches!(&screen, Screen::Failed { message } if message.contains("d3")
-                && message.contains("not in your key log")),
+                && message.contains("isn't in your key log")),
             "{screen:?}"
         );
     }
@@ -6164,7 +6154,7 @@ mod tests {
         .await;
         let screen = first.await.unwrap().unwrap();
         assert!(
-            matches!(&screen, Screen::Failed { message } if message.contains("Only a device that keeps")),
+            matches!(&screen, Screen::Failed { message } if message.contains("Only a device with the master key")),
             "{screen:?}"
         );
 
@@ -6182,7 +6172,7 @@ mod tests {
         .await;
         let screen = first.await.unwrap().unwrap();
         assert!(
-            !matches!(&screen, Screen::Failed { message } if message.contains("Only a device that keeps")),
+            !matches!(&screen, Screen::Failed { message } if message.contains("Only a device with the master key")),
             "{screen:?}"
         );
     }
@@ -6206,11 +6196,11 @@ mod tests {
             .contains("expired"));
         assert!(check_code(&code, "https://other.example", 999)
             .unwrap_err()
-            .contains("another identity store"));
+            .contains("different identity store"));
         assert!(
             check_code("coasys:offer:1:zzz", "https://store.example", 999)
                 .unwrap_err()
-                .contains("not a device's code")
+                .contains("isn't a device code")
         );
     }
 
@@ -6532,14 +6522,17 @@ mod tests {
     #[test]
     fn a_count_refusal_says_word_for_one_and_words_for_more() {
         let count = |typed: &str| words_refused(&words::parse(typed).unwrap_err()).0;
-        assert_eq!(count("abandon"), "That is 1 word. Type all 12, in order.");
+        assert_eq!(
+            count("abandon"),
+            "That's 1 word. Enter all 12 words in order."
+        );
         assert_eq!(
             count("abandon ability"),
-            "That is 2 words. Type all 12, in order."
+            "That's 2 words. Enter all 12 words in order."
         );
         assert_eq!(
             count(&["abandon"; 13].join(" ")),
-            "That is 13 words. Type all 12, in order."
+            "That's 13 words. Enter all 12 words in order."
         );
     }
 
@@ -6928,7 +6921,7 @@ mod tests {
     }
 
     /// Lal's review of we#431 at 0d4501589: a custody folder that lost its epochs file refuses
-    /// to change the kept key, and "Replace my master key" is the way back. The words are
+    /// to change the kept key, and "Replace master key" is the way back. The words are
     /// checked against the log's current master first; then the identity's epoch is recovered,
     /// and the rotation goes on.
     #[tokio::test]
@@ -7044,7 +7037,7 @@ mod tests {
             after_publish(&ClientError::Vault(lost)),
         ] {
             assert_eq!(message, LOST_EPOCH);
-            assert!(message.contains("Replace my master key"), "{message}");
+            assert!(message.contains("Replace master key"), "{message}");
         }
     }
 
@@ -7301,7 +7294,7 @@ mod tests {
         executor
     }
 
-    /// "Use my 12 words" with `phrase` on `executor`, every other device locked out, as far as
+    /// "Restore with recovery phrase" with `phrase` on `executor`, every other device locked out, as far as
     /// it goes: its screens. Where the rotation published and the log served is still the one
     /// before it, the log is served again with it and "Try again" links this computer, so a
     /// restore that went through ends on [`Screen::Restored`].
@@ -7347,8 +7340,8 @@ mod tests {
     }
 
     /// Lal's review of we#431 at 564d9aaa0: on a computer not linked to an identity yet, a lost
-    /// custody epoch of the identity the words name is recovered by "Use my 12 words" — the way
-    /// back the lost-epoch screen names there, "Replace my master key" refusing an unlinked
+    /// custody epoch of the identity the words name is recovered by "Restore with recovery phrase" — the way
+    /// back the lost-epoch screen names there, "Replace master key" refusing an unlinked
     /// computer. The words are checked against the log's current master first. Both losses: the
     /// whole epochs file, and the identity's entry in a file that is there. Another identity
     /// noted and lost stays lost.

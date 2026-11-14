@@ -556,27 +556,26 @@ async function startExecutorOnce({ samePort }) {
  * does not help either, so the app says so rather than trying again.
  */
 function startRefusal(code, lines, configFile, dataPath) {
+  const name = app.getName();
   const last = lines.length ? `\n\n${lines.slice(-8).join('\n')}` : '';
   if (code === EXIT.CONFIG_REFUSED)
-    return `The executor refused its settings. Fix the config file and start the app again:\n${configFile}${last}`;
+    return `A setting in this file stops ${name} from starting:\n${configFile}\n\nFix it, then restart ${name}.${last}`;
   if (code === EXIT.DATA_FOLDER_BUSY)
-    return `Another AD4M executor is using this data folder:\n${dataPath}\n\nQuit the app that runs it (the ADAM launcher, another copy of this app), then start this one again.${last}`;
+    return `Another app is using this data folder:\n${dataPath}\n\nQuit ADAM Launcher or any other copy of ${name}, then restart ${name}.${last}`;
   return null;
 }
 
 /** Tell the person the executor stopped and will not be started again, and why. */
 function showExecutorStopped(action, lines, configFile, dataPath) {
+  const name = app.getName();
   const code = { refused: EXIT.CONFIG_REFUSED, busy: EXIT.DATA_FOLDER_BUSY }[action];
   const last = lines.length ? `\n\n${lines.slice(-8).join('\n')}` : '';
-  const why =
-    action === 'done'
-      ? 'It was stopped outside the app, so the app does not start it again.'
-      : 'It keeps stopping, so the app does not start it again.';
+  const why = action === 'done' ? 'Another program stopped it.' : 'It stopped several times in a row.';
   const detail =
     startRefusal(code, lines, configFile, dataPath) ??
-    `${why} Start it again from its window or its tray menu.${last}\n\nThe executor's log: ${join(dataPath, 'logs', 'executor-0.log')}`;
+    `${why} Start it again from the window or the tray menu.${last}\n\nLog file: ${join(dataPath, 'logs', 'executor-0.log')}`;
   const parent = mainWindow && !mainWindow.isDestroyed() ? mainWindow : undefined;
-  void dialog.showMessageBox(parent, { type: 'error', message: `${app.getName()} has stopped`, detail });
+  void dialog.showMessageBox(parent, { type: 'error', message: `${name} stopped`, detail });
 }
 
 /** The renderer bundle: copied beside the app when packaged, built into `dist` otherwise. */
@@ -707,8 +706,7 @@ async function takeAgentPassword(password) {
   }
 }
 
-const AGENT_PASSWORD_FAILED =
-  "The app could not make or unlock your agent with your password. Try again; if it keeps happening, the executor's log says why.";
+const AGENT_PASSWORD_FAILED = `Something went wrong. Try again.\n\n${LOG_WORDS}`;
 
 /** Starts the sidecar against the executor on `port`, whose custody credential is `credential`. */
 function startCustodyFor(port, credential) {

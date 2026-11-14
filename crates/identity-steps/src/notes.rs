@@ -5,8 +5,8 @@ use ad4m_identity_client::ClientError;
 use ad4m_identity_core::KeyId;
 
 /// What the hand-over of a new master key left undone: the apps it has not reached yet, and the
-/// device list not updated yet. `again` says when this device sends the key again (the desktop:
-/// "this computer sends it again each time it unlocks.").
+/// device list not updated yet. `again` is the sentence saying when this device sends the key
+/// again (the desktop: "It's sent again the next time this computer unlocks.").
 pub fn handed_over(
     pushes: &[(KeyId, Result<String, ClientError>)],
     record: &Result<u64, ClientError>,
@@ -25,17 +25,13 @@ pub fn handed_over(
     }
     if !late.is_empty() {
         note.push(format!(
-            "The new master key has not reached {} yet: {again}",
+            "The new master key wasn't sent to {} yet. {again}",
             late.join(", ")
         ));
     }
     if let Err(e) = record {
         log::warn!("identity: the record was not written after the rotation: {e}");
-        note.push(
-            "Your device list does not show it yet: it is updated the next time a device \
-             changes it."
-                .into(),
-        );
+        note.push("Your device list shows this after its next change.".into());
     }
     (!note.is_empty()).then(|| note.join(" "))
 }
@@ -59,7 +55,7 @@ mod tests {
 
     #[test]
     fn a_hand_over_names_the_apps_it_missed_and_a_record_not_written() {
-        let again = "this phone sends it again.";
+        let again = "Send it again from this phone.";
         assert_eq!(handed_over(&[], &Ok(3), again), None);
         let pushes = vec![
             (KeyId::from("d2"), Ok("m1".to_string())),
@@ -68,11 +64,11 @@ mod tests {
         ];
         assert_eq!(
             handed_over(&pushes, &Ok(3), again).unwrap(),
-            "The new master key has not reached d3, d4 yet: this phone sends it again."
+            "The new master key wasn't sent to d3, d4 yet. Send it again from this phone."
         );
         let both = handed_over(&pushes, &Err(ClientError::LogBusy), again).unwrap();
         assert!(
-            both.ends_with("updated the next time a device changes it."),
+            both.ends_with("Your device list shows this after its next change."),
             "{both}"
         );
         assert_eq!(joined(None, Some("b".into())), Some("b".into()));

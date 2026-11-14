@@ -34,6 +34,8 @@ function fakeCore() {
     userInfo: undefined,
     disconnect: () => {},
     connectAsGuest: async () => ({}),
+    authState: 'authenticated',
+    addEventListener: () => {},
   };
 }
 
@@ -54,6 +56,7 @@ const OPERATOR = 'the-admin-credential';
 beforeEach(() => {
   created.options = [];
   vi.stubGlobal('window', { location: { origin: 'https://we.example.test', href: 'https://we.example.test/' } });
+  vi.stubGlobal('document', { querySelectorAll: () => [] });
 });
 
 afterEach(() => {
@@ -84,5 +87,25 @@ describe('the guest connector', () => {
       await createGuestConnector('https://node.example.org').initialize({} as never);
     }
     expect(created.options.map((o) => o.operator)).toEqual([false, false]);
+  });
+});
+
+describe("AD4M Connect's settings button", () => {
+  it('is hidden while signed in and shows again when the session ends', async () => {
+    const element = { style: { display: '' } };
+    vi.stubGlobal('document', { querySelectorAll: () => [element] });
+    let onChange = () => {};
+    const core = {
+      authState: 'authenticated',
+      addEventListener: (_: string, listener: () => void) => {
+        onChange = listener;
+      },
+    };
+    const { hideWhileSignedIn } = await import('./ad4mConnector');
+    hideWhileSignedIn(core as never);
+    expect(element.style.display).toBe('none');
+    core.authState = 'unauthenticated';
+    onChange();
+    expect(element.style.display).toBe('');
   });
 });

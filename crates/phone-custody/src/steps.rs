@@ -63,8 +63,10 @@ use crate::identity::{
 use crate::vault::PhoneVault;
 use crate::PhoneKeyError;
 
-/// What a hand-over note says about a push that did not reach a device yet.
-const AGAIN: &str = "send it again from this phone with \"Send the master key again\".";
+/// What a hand-over note says about a push that did not reach a device yet. Nothing on the phone
+/// offers to send it again yet ([`PhoneIdentity::retry_master_pushes`] does, and no screen calls
+/// it), so the note says what the person can rely on: what those devices cannot do.
+const AGAIN: &str = "Until they get it, they can't add or remove devices.";
 
 /// How long a flow waits for the person's next input before it ends, and wipes what it holds.
 /// Long enough to write 12 words down by hand.
@@ -388,7 +390,7 @@ impl IdentitySteps {
 
     fn over() -> PhoneKeyError {
         PhoneKeyError::Ended {
-            reason: "these steps are over".into(),
+            reason: "This step has ended. Start again.".into(),
         }
     }
 }
@@ -473,7 +475,7 @@ impl Talk<'_> {
             Ok(command) => command,
             Err(RecvTimeoutError::Timeout) => {
                 return Err(PhoneKeyError::Ended {
-                    reason: "nothing was typed for too long; start again".into(),
+                    reason: "Nothing was entered for 30 minutes. Start again.".into(),
                 })
             }
             Err(RecvTimeoutError::Disconnected) => return Err(PhoneKeyError::Cancelled),
@@ -530,11 +532,18 @@ pub(crate) fn this_phone(name: Option<String>) -> DeviceEntry {
 /// nothing changed: the publish stands.
 fn after_publish(e: ClientError) -> String {
     match e {
-        ClientError::NotTheseWords(_) => {
-            "These words do not make your identity's master key.".into()
-        }
-        ClientError::LogBusy => "Your key log kept changing on another device.".into(),
+        ClientError::NotTheseWords(_) => "This recovery phrase doesn't match your identity.".into(),
+        ClientError::LogBusy => "Another device kept changing your key log.".into(),
         e => phone_error(e).to_string(),
+    }
+}
+
+/// `text` ending in a full stop: an error's text is a sentence of its own or a fragment.
+fn sentence(text: String) -> String {
+    if text.ends_with('.') {
+        text
+    } else {
+        format!("{text}.")
     }
 }
 
@@ -609,7 +618,7 @@ fn no_identity_yet(parts: &Parts, exec: &Executor) -> Result<(), PhoneKeyError> 
     if let Some(pending) = status.pending {
         return Err(PhoneKeyError::Refused {
             reason: format!(
-                "this phone is joining {} already; finish or cancel that first",
+                "This phone is already being linked to {}. Finish or cancel that first.",
                 pending.did
             ),
         });
@@ -629,13 +638,13 @@ fn make(parts: &Parts, vault: &PhoneVault, exec: &Executor, talk: &Talk<'_>) -> 
         return Ok(PhoneScreen::IdentityReady {
             did: created.did,
             key_id: created.device_key_id,
-            note: Some("The identity made on this phone before is published now.".into()),
+            note: Some("Your identity created earlier on this phone is now published.".into()),
         });
     }
     no_identity_yet(parts, exec)?;
     let mut flow = MakeWords::start(&OsRandom);
     let shown = flow.words().ok_or_else(|| PhoneKeyError::Refused {
-        reason: "the new words are not there to show".into(),
+        reason: "Couldn't show your recovery phrase. Start again.".into(),
     })?;
     talk.show(PhoneScreen::ShowWords {
         words: shown.expose().clone(),
@@ -690,11 +699,7 @@ fn make(parts: &Parts, vault: &PhoneVault, exec: &Executor, talk: &Talk<'_>) -> 
                 let note = match created.record {
                     Some(Err(e)) => {
                         log::warn!("phone: the record was not written after the make: {e}");
-                        Some(
-                            "Your device list does not show this phone yet: it is written the \
-                             next time a device changes it."
-                                .into(),
-                        )
+                        Some("Your device list shows this phone after its next change.".into())
                     }
                     _ => None,
                 };
@@ -720,14 +725,8 @@ fn make(parts: &Parts, vault: &PhoneVault, exec: &Executor, talk: &Talk<'_>) -> 
                 let pending = pending_did(vault, &device_key)?;
                 log::warn!("phone: the make stopped before its publish: {e}");
                 let reason = match &pending {
-                    Some(_) => format!(
-                        "Your identity is made on this phone and not published yet: {e}. Try \
-                         again: the same identity is published."
-                    ),
-                    None => format!(
-                        "Your identity is not made yet: {e}. Try again: the words you wrote \
-                         down are used."
-                    ),
+                    Some(_) => sentence(format!("Couldn't publish your identity: {e}")),
+                    None => sentence(format!("Couldn't create your identity: {e}")),
                 };
                 talk.show(PhoneScreen::MakeStopped {
                     pending: pending.is_some(),

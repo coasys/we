@@ -32,7 +32,7 @@ const centred = (children: SchemaNode[]): SchemaNode => ({
   children,
 });
 
-const waiting = (words: string): SchemaNode =>
+const waiting = (words: string | { $: string }): SchemaNode =>
   centred([
     { type: 'we-animated-icon', props: { name: 'spinner', size: 'lg' } },
     { type: 'we-text', props: { color: 'text-muted' }, children: [words] },
@@ -60,7 +60,7 @@ const problem = (id: string, title: string | { $: string }, reason: string): Sch
               // A backend that ran and stopped is started again, under the deployment's name.
               children: [
                 {
-                  $: "baseStore.stage == 'failed' && baseStore.executorStopped ? `Start ${baseStore.brand.name} again` : 'Try again'",
+                  $: "baseStore.stage == 'failed' && baseStore.executorStopped ? `Start ${baseStore.brand.name}` : 'Try again'",
                 },
               ],
             },
@@ -77,7 +77,7 @@ export const baseFallback: TemplateSchema & { id: string } = {
   type: 'Column',
   meta: {
     name: 'Before you sign in',
-    description: 'This device’s backend starting, and a place that could not be reached.',
+    description: 'Startup and connection screens.',
     icon: 'power',
     role: 'base',
   },
@@ -90,9 +90,9 @@ export const baseFallback: TemplateSchema & { id: string } = {
         then: problem(
           'chrome__executor-failed',
           {
-            $: 'baseStore.executorStopped ? `${baseStore.brand.name} has stopped` : `${baseStore.brand.name} could not start`',
+            $: 'baseStore.executorStopped ? `${baseStore.brand.name} stopped` : `${baseStore.brand.name} couldn’t start`',
           },
-          "baseStore.executorReason != '' ? baseStore.executorReason : 'The backend on this computer stopped before it was ready.'",
+          "baseStore.executorReason != '' ? baseStore.executorReason : 'Something went wrong.'",
         ),
       },
     },
@@ -100,14 +100,14 @@ export const baseFallback: TemplateSchema & { id: string } = {
       type: '$if',
       props: {
         condition: { $: "baseStore.stage == 'offline'" },
-        then: problem('chrome__offline', 'You are offline', 'baseStore.offlineReason'),
+        then: problem('chrome__offline', 'Can’t connect', 'baseStore.offlineReason'),
       },
     },
     {
       type: '$if',
       props: {
         condition: { $: "baseStore.stage == 'starting'" },
-        then: waiting('Starting on this computer…'),
+        then: waiting({ $: '`Starting ${baseStore.brand.name}…`' }),
       },
     },
     {

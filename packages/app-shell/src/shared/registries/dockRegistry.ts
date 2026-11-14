@@ -1277,6 +1277,8 @@ function closeButton(entry: DockEntry): SchemaNode {
       {
         type: 'we-button',
         props: {
+          // An icon alone has no name; the tooltip shows on hover and names nothing for a screen reader.
+          label: 'Close',
           size: 'xs',
           square: true,
           variant: 'ghost',

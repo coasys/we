@@ -54,9 +54,9 @@ export function closeHides({ quitting, trayUp, hostPresent }) {
 
 /** The tray menu's status line, by the executor's phase as the window hears it (`executor-state`). */
 export function trayStatus(name, phase) {
-  if (phase === 'ready') return `${name}: running`;
-  if (phase === 'starting') return `${name}: starting…`;
-  return `${name}: stopped`;
+  if (phase === 'ready') return `${name} is running`;
+  if (phase === 'starting') return `Starting ${name}…`;
+  return `${name} stopped`;
 }
 
 /**
@@ -75,7 +75,7 @@ export function trayMenu({ name, phase = 'starting', onOpen, onQuit, executor })
           ? { label: `Restart ${name}`, click: executor.restart }
           : { label: `Start ${name}`, click: executor.start, enabled: phase !== 'starting' },
         { label: `Stop ${name}`, click: executor.stop, enabled: phase !== 'failed' },
-        { label: 'Executor settings…', click: executor.settings },
+        { label: 'Startup settings…', click: executor.settings },
       ];
   return [
     { label: trayStatus(name, phase), enabled: false },

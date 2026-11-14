@@ -118,7 +118,7 @@ pub enum PhoneKeyError {
     Io { reason: String },
     /// The store did not answer, or answered that it is busy: a later try may pass. The app
     /// says "offline" and tries again; nothing was changed.
-    #[error("the identity store is unreachable: {reason}")]
+    #[error("Can't connect. Check that this phone is online, then try again. ({reason})")]
     Unavailable { reason: String },
     /// The store or the identity's log refused the step.
     #[error("{reason}")]
@@ -127,7 +127,7 @@ pub enum PhoneKeyError {
     #[error("the fingerprint prompt was cancelled")]
     Cancelled,
     /// The phone has no biometric enrolled, so it cannot keep or use a master key.
-    #[error("set up a fingerprint or face unlock on this phone to keep the master key here")]
+    #[error("Set up fingerprint or face unlock to keep the master key on this phone.")]
     NoBiometrics,
     /// A biometric enrolled since the master key was kept invalidated the key that sealed it:
     /// the phone must be sent the master key again.
@@ -144,10 +144,10 @@ pub enum PhoneKeyError {
     #[error("{key} may not keep the master key")]
     NotAKeeper { key: String },
     /// The request asks for a rotation, which needs the 12 words.
-    #[error("this request replaces the master key, which needs the 12 words: answer it on your computer")]
+    #[error("This request replaces the master key, which needs your recovery phrase. Answer it on a computer.")]
     NeedsWords,
     /// The offer, ticket or request ended (expired, cancelled, answered elsewhere).
-    #[error("it ended: {reason}")]
+    #[error("{reason}")]
     Ended { reason: String },
     /// The input does not answer the screen shown (identity steps): the flow stays where it was.
     #[error("that does not answer the screen shown")]

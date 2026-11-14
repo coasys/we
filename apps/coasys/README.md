@@ -52,8 +52,8 @@ pnpm --filter @we/app-coasys acceptance # the built page in Chrome, with no exec
 ```
 
 The acceptance test (`acceptance/base.acceptance.mjs`) serves `dist/` and acts as a person does:
-the phone's first run and its three doors, "Link to my identity" leaving for the phone's identity
-page, "Start now" → where to connect → the hand-off, and offline → "Try again" → back online; then the
+the phone's first run and its three doors, "Link to another device" leaving for the phone's identity
+page, "Skip for now" → where to connect → the hand-off, and offline → "Try again" → back online; then the
 browser's connection choice → the hand-off. The phone's native `DeviceKey` plugin is the one stand-in.
 `WE_CHROME` names the Chrome to run (`/usr/bin/google-chrome` by default), and `WE_COASYS_SHOTS=<dir>`
 keeps a screenshot after each step.

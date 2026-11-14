@@ -200,7 +200,7 @@ describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp
       expect(state.executorStates.map((s) => s.phase)).toEqual(['starting', 'failed']);
       const failed = await ask('executor-state');
       expect(failed.phase).toBe('failed');
-      expect(failed.reason).toMatch(/refused its settings/);
+      expect(failed.reason).toMatch(/Couldn't read the startup settings/);
       expect(failed.reason).toMatch(/executor-config\.json/);
       // No path: the window may be seen by somebody else.
       expect(failed.reason).not.toContain(state.root);

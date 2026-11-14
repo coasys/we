@@ -315,7 +315,7 @@ describe('adding a device by the code it shows', () => {
           scanCode: [
             { text: 'coasys:device:1:x' },
             refusal('Cancelled', 'the scan was cancelled'),
-            refusal('CameraDenied', 'the camera was not allowed; paste the code instead'),
+            refusal('CameraDenied', 'Allow camera access to scan, or paste the code.'),
           ],
         }),
         leave: () => {},
@@ -323,7 +323,7 @@ describe('adding a device by the code it shows', () => {
     );
     expect(await scanning.scan!('coasys:device:1:')).toBe('coasys:device:1:x');
     expect(await scanning.scan!('coasys:device:1:')).toBeNull();
-    await expect(scanning.scan!('coasys:device:1:')).rejects.toThrow('paste the code instead');
+    await expect(scanning.scan!('coasys:device:1:')).rejects.toThrow('paste the code');
   });
 });
 
@@ -352,7 +352,7 @@ describe('the master key on the phone', () => {
         plugin: plugin({
           takeMaster: refusal(
             'NoBiometrics',
-            'set up a fingerprint or face unlock on this phone to keep the master key here',
+            'Set up fingerprint or face unlock to keep the master key on this phone.',
           ),
         }),
         leave: () => {},
@@ -360,7 +360,7 @@ describe('the master key on the phone', () => {
     );
     expect(await transport.start()).toEqual({
       screen: 'failed',
-      message: 'set up a fingerprint or face unlock on this phone to keep the master key here',
+      message: 'Set up fingerprint or face unlock to keep the master key on this phone.',
     });
   });
 
@@ -526,6 +526,7 @@ describe('naming and revoking a device', () => {
     const rotate = await transport.step({ kind: 'revoke', rotate: true });
     expect(rotate).toMatchObject({ screen: 'revoke-confirm', keyId: 'd1' });
     expect((rotate as { error: string }).error).toBe(ROTATE_AFTER);
+    expect((rotate as { error: string }).error).toContain('Replace master key');
     expect(calls.map(([m]) => m)).not.toContain('revoke');
 
     expect(await transport.step({ kind: 'revoke', rotate: false })).toEqual({ screen: 'revoked', keyId: 'd1', seq: 5 });
@@ -688,9 +689,9 @@ describe('making an identity on the phone', () => {
   it('says why a make could not start, in the page’s words, and leaves the window as it was', async () => {
     const cases: Array<[string, RegExp]> = [
       ['NoBiometrics', /fingerprint or face unlock/],
-      ['WeakProtection', /no identity was made/],
-      ['AlreadyJoined', /one of your devices already/],
-      ['Unavailable', /did not answer/],
+      ['WeakProtection', /No identity was created/],
+      ['AlreadyJoined', /already linked/],
+      ['Unavailable', /Can’t save your identity/],
       ['Rpc', /the plugin’s own words/],
     ];
     for (const [code, text] of cases) {
@@ -989,7 +990,7 @@ describe('restoring an identity on the phone', () => {
       },
     );
     const screen = await transport.start();
-    expect((screen as { message: string }).message).toMatch(/one of your devices already/);
+    expect((screen as { message: string }).message).toMatch(/already linked/);
     expect((screen as { message: string }).message).not.toContain('did:');
   });
 });

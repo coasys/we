@@ -38,6 +38,17 @@ describe('the app frame', () => {
     expect(appFrame()).toEqual(DEFAULT_APP_FRAME);
   });
 
+  it('takes the app’s narrow frame below the breakpoint, and the same frame where it declares none', () => {
+    const declared = { left: 72, narrow: { top: 56 } };
+    declareAppFrame(declared, true);
+    // The sidebar is a bar across the top on a phone: no band on the left, one on top.
+    expect(appFrame()).toEqual({ left: 0, right: 0, top: 56, bottom: 0 });
+    declareAppFrame(declared, false);
+    expect(appFrame()).toEqual({ left: 72, right: 0, top: 0, bottom: 0 });
+    declareAppFrame({ left: 64 }, true);
+    expect(appFrame()).toEqual({ left: 64, right: 0, top: 0, bottom: 0 });
+  });
+
   it('keeps the rail’s clearance to the rail the app has', () => {
     const bar = { height: 74, width: 2000 };
     const inset = { left: 0, right: 0, top: 0, bottom: 0 };

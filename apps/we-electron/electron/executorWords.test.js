@@ -28,13 +28,11 @@ function notADirectory() {
 describe('stoppedWords', () => {
   it('says an executor stopped outside the app is not started again', () => {
     expect(stoppedWords('done')).toContain('stopped outside the app');
-    expect(stoppedWords('give-up')).toContain('kept stopping');
+    expect(stoppedWords('give-up')).toContain('several times in a row');
   });
 
   it('says an executor stopped from the tray stays stopped until started again', () => {
-    expect(stoppedWords('by-hand')).toBe(
-      'The executor was stopped from the tray menu. It stays stopped until it is started again.',
-    );
+    expect(stoppedWords('by-hand')).toBe('It was stopped from the tray menu.');
   });
 });
 
@@ -53,12 +51,12 @@ describe('startFailureWords', () => {
     expect(err.message).toContain(root);
     const words = startFailureWords(err);
     expect(words).not.toContain(root);
-    expect(words).toBe("The app could not use this account's data folder: a file is where a folder must be (ENOTDIR).");
+    expect(words).toBe("Can't use the data folder because a file is in the way (ENOTDIR).");
   });
 
   it('says the system refused for a code it has no words for', () => {
     const err = Object.assign(new Error(`EIO: i/o error, open '${root}/x'`), { code: 'EIO', syscall: 'open' });
-    expect(startFailureWords(err)).toBe("The app could not use this account's data folder: the system refused (EIO).");
+    expect(startFailureWords(err)).toBe("Can't use the data folder because the system refused it (EIO).");
   });
 
   it('keeps any other message, with every path in it replaced', () => {
@@ -73,7 +71,7 @@ describe('startFailureWords', () => {
   });
 
   it('has words for a failure with no message', () => {
-    expect(startFailureWords(undefined)).toBe('The executor did not start.');
+    expect(startFailureWords(undefined)).toBe('Something went wrong.');
   });
 
   it("adds where the log is when this start's log is open", () => {
@@ -82,7 +80,7 @@ describe('startFailureWords', () => {
 
   /*
     The window draws the reason as one paragraph, so the break before the log's sentence reads as a
-    space: a reason with no full stop ran on into it ("…before it was ready Its log is…").
+    space: a reason with no full stop ran on into it ("…before it was ready Log file:…").
   */
   it('ends the reason with a full stop before the log sentence', () => {
     expect(startFailureWords(new Error('The executor exited before it was ready'), { logged: true })).toBe(

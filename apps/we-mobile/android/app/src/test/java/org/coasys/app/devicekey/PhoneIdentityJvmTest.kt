@@ -214,7 +214,7 @@ class PhoneIdentityJvmTest {
 
     // A store that answers 503: unreachable, the sentence the page shows as offline.
     val busy = assertThrows(PhoneKeyException.Unavailable::class.java) { identity.status() }
-    assertTrue(busy.message!!, busy.message!!.startsWith("the identity store is unreachable"))
+    assertTrue(busy.message!!, busy.message!!.startsWith("Can't connect."))
     val asked = seen.last()
     assertEquals("GET", asked.method)
     assertTrue(asked.path, asked.path.startsWith("/v1/logs/$scid"))

@@ -49,7 +49,7 @@ export interface ExecutorBridge {
   start(): Promise<unknown>;
   /** Sends the agent its WE password, where no keyring could be used; answers how it went. */
   password?(password: string): Promise<unknown>;
-  /** The tray's "Executor settings…": open Settings where the executor's are. Hands back its unsubscribe. */
+  /** The tray's "Startup settings…": open Settings where the executor's are. Hands back its unsubscribe. */
   onOpenSettings?(listener: () => void): () => void;
 }
 
@@ -72,7 +72,7 @@ function asState(value: unknown): BaseExecutorState {
     // Stopped after it ran, rather than failing to start: the base takes the window back for it.
     return v.stopped === true ? { phase: 'failed', reason, stopped: true } : { phase: 'failed', reason };
   }
-  return { phase: 'failed', reason: 'The app did not say how its executor is.' };
+  return { phase: 'failed', reason: 'Something went wrong.' };
 }
 
 /**
@@ -157,8 +157,7 @@ export function bridgedExecutor(bridge: ExecutorBridge): BaseExecutor {
   };
 }
 
-export const WORDS_HERE_OFF =
-  'This computer takes no 12 words. Bring your identity back on a computer that does, then link this one to it.';
+export const WORDS_HERE_OFF = 'Restore on another computer, then link this one.';
 
 /**
  * What the shell refused, as a sentence: Electron wraps every refusal of a call to its main process in
@@ -169,8 +168,7 @@ export function shellRefusal(error: unknown): string {
   return text.replace(/^Error invoking remote method '[^']*': (?:Error: )?/, '');
 }
 
-export const WORDS_EXECUTOR_NOT_UP =
-  "This computer's executor is not up yet. Your identity can be changed here once it is.";
+export const WORDS_EXECUTOR_NOT_UP = 'Available once Coasys has started.';
 
 /*
   A locked agent with nothing kept for it is one made with a WE password, or one whose kept passphrase
@@ -178,11 +176,10 @@ export const WORDS_EXECUTOR_NOT_UP =
   so the words say what to do for each.
 */
 /** Where no keyring could be used, the base app asks for the WE password before anything else. */
-export const WORDS_AGENT_NEEDS_PASSWORD =
-  "This computer's agent waits for your WE password. Give it first, then your identity can be changed here.";
+export const WORDS_AGENT_NEEDS_PASSWORD = 'Enter your password first.';
 
 export const WORDS_AGENT_LOCKED =
-  "This computer's agent is locked, so your identity cannot be changed here yet. Choose This computer and sign in with your WE password. If you never set one, the key this computer kept for your agent is gone: restore your identity with your 12 words.";
+  'Locked until you sign in. If you never set a password, restore with your recovery phrase.';
 
 /**
  * The custody service as the base app's identity source. With the shell's `executor`, the doors open
@@ -232,7 +229,7 @@ export const THIS_COMPUTER_CONNECTION: BaseConnection = {
   id: 'this-device',
   kind: 'this-device',
   label: 'This computer',
-  detail: 'The executor this app runs, with your data kept here',
+  detail: 'Available while this computer is on',
 };
 
 const SERVER_PREFIX = 'server:';
@@ -257,7 +254,7 @@ export function serverUnreachable(error: unknown): boolean {
  */
 export class ServerNotConnectable extends Error {
   constructor(readonly server: string) {
-    super(`${server} cannot be opened from this app yet: only this computer can. Choose This computer.`);
+    super(`Can't open ${server} from this app yet. Choose This computer.`);
     this.name = 'ServerNotConnectable';
   }
 }

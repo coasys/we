@@ -15,7 +15,7 @@
  *    WE password (a desktop with no keyring it can use), that is asked for first, in the host's own
  *    field (`CredentialField`, read through `credential`), and given to the host, never to a template.
  * 2. **The first run.** A device whose custody speaks for nobody, keeps no master key, and where
- *    "Start now" was not chosen is asked how it comes in: make the identity here, link to one, or use
+ *    "Skip for now" was not chosen is asked how it comes in: make the identity here, link to one, or use
  *    the 12 words. Each door opens the host's own identity window, the only place a secret is shown or
  *    typed; this store learns how the step ended and reads the identity again.
  * 3. **The connection.** The places a session can be had from here (`connections`). A choice is
@@ -83,7 +83,7 @@ export interface BaseStore {
   unpublished: Accessor<string>;
   /** This device keeps a master key of it. */
   holdsMaster: Accessor<boolean>;
-  /** "This computer keeps your master key behind its own sign-in", or what this device keeps instead. */
+  /** "On this computer, protected by your device login", or what this device keeps instead. */
   keepsLine: Accessor<string>;
   /** Why no identity change can be made here, in words a person reads; empty when one can. */
   blocked: Accessor<string>;
@@ -117,13 +117,13 @@ export interface BaseStore {
 
   /** Reads the identity and the connections again, and works out the stage afresh. */
   refresh: () => Promise<void>;
-  /** "Make my identity here": opens the identity window on making one. */
+  /** "Create new identity": opens the identity window on making one. */
   makeIdentity: () => Promise<IdentityChangeOutcome>;
-  /** "Link to my identity": opens the identity window on joining one another device keeps. */
+  /** "Link to another device": opens the identity window on joining one another device keeps. */
   linkIdentity: () => Promise<IdentityChangeOutcome>;
-  /** "Use my 12 words": opens the identity window on bringing the identity back from them. */
+  /** "Restore with recovery phrase": opens the identity window on bringing the identity back from it. */
   useWords: () => Promise<IdentityChangeOutcome>;
-  /** "Start now": no identity on this device for now; remembered here, and offered again in Settings. */
+  /** "Skip for now": no identity on this device for now; remembered here, and offered again in Settings. */
   startNow: () => Promise<void>;
   /** Connects to one of `connections`, by its id, and hands the session to the app, as the person's choice. */
   choose: (id: string) => Promise<void>;
@@ -134,8 +134,12 @@ export interface BaseStore {
   /** Opens a read-only page over the stage: `devices` or `security`. */
   openPage: (page: BasePage) => void;
   closePage: () => void;
-  /** The host's own: a session the app had came back unreachable, and the offline state is due. */
-  handBack: (reason: string) => void;
+  /**
+   * The host's own: a session the app had came back unreachable, and the offline state is due
+   * (`offline`, the default); or the place refused this device's sign-in, and the connection choice is
+   * due, with the reason as its error (`connect`).
+   */
+  handBack: (reason: string, to?: BaseHandBack) => void;
   /**
    * "Continue" on the password step: gives what the password field holds to this device's backend,
    * which makes or unlocks its agent with it, then clears the field. Takes no argument: the password
@@ -150,6 +154,9 @@ export type BaseStage =
   'loading' | 'starting' | 'failed' | 'password' | 'first-run' | 'connect' | 'offline' | 'handing-off' | 'session';
 
 export type BasePage = '' | 'devices' | 'security';
+
+/** Where a session handed back goes: the offline state, or the connection choice. */
+export type BaseHandBack = 'offline' | 'connect';
 
 export interface BaseBrand {
   name: string;
@@ -178,7 +185,7 @@ export interface BaseDeviceRow {
   subtitle: string;
   icon: string;
   thisDevice: boolean;
-  /** "Holds the master key", "Master key offered, not yet taken", or empty. */
+  /** "Has master key", "Master key pending", or empty. */
   master: string;
 }
 
@@ -203,7 +210,7 @@ export interface BaseStoreOptions {
    * says the place is unreachable, the offline state.
    */
   onHandOff: (connection: BaseConnection, how: BaseHandOff) => Promise<void>;
-  /** Where the choice and "Start now" are remembered. `localStorage` where there is one. */
+  /** Where the choice and "Skip for now" are remembered. `localStorage` where there is one. */
   storage?: BaseStorage;
   /**
    * Go straight to a remembered connection when nothing else is due. On by default; the base app
@@ -272,6 +279,29 @@ const doorView = (door: BaseDoor | undefined, absent: string): BaseDoorView =>
   !door ? { open: false, note: absent } : door.step ? { open: true, note: '' } : { open: false, note: door.note };
 
 /**
+ * What the offline state says of a place that could not be reached, in words for the person: the host
+ * an error names (`url`, as the connectors' unreachable errors carry it), else the place's own name.
+ * This device's own backend is the app itself, so it is named by the app's name. The error's message
+ * is left out: it is the network's ("Failed to fetch"), not something a person can act on.
+ */
+export function unreachableWords(connection: BaseConnection, error: unknown, appName: string): string {
+  const url = (error as { url?: unknown } | null)?.url;
+  if (typeof url === 'string' && url) {
+    let host = url;
+    try {
+      host = new URL(url).host || url;
+    } catch {
+      // Not a URL: the whole of it is still a fair name.
+    }
+    return `Can't reach ${host}.`;
+  }
+  if (connection.kind === 'this-device') return `${appName} isn't responding.`;
+  // The sign-in screen's row names a kind of place, not one: there is no host to name without a URL.
+  if (connection.kind === 'connect') return "Can't reach the host.";
+  return `Can't reach ${connection.label}.`;
+}
+
+/**
  * Builds the store. Call it under a Solid owner (`createRoot`, a component): the subscriptions it
  * makes to the host end with that owner.
  */
@@ -323,7 +353,7 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
       }
     }
     setCustody(null);
-    setError(`This ${deviceNoun()} could not read its identity: ${message(lastError)}`);
+    setError(`Couldn't read your identity: ${message(lastError)}`);
   }
 
   function firstRunDue(): boolean {
@@ -345,7 +375,7 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
     } catch (e) {
       if (!current()) return null;
       setConnections([]);
-      setError(`The places to connect to could not be read: ${message(e)}`);
+      setError(`Couldn't load the list: ${message(e)}`);
       return [];
     }
   }
@@ -390,7 +420,7 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
     const source = host.identity;
     if (!source || !step) {
       setLastOutcome('failed');
-      setError(note || `This ${deviceNoun()} cannot change your identity.`);
+      setError(note || `Not available on this ${deviceNoun()}.`);
       return 'failed';
     }
     if (busy()) return 'failed';
@@ -441,7 +471,7 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
   async function choose(id: string, how: BaseHandOff = {}): Promise<void> {
     const connection = connections().find((c) => c.id === id);
     if (!connection) {
-      setError('That place is no longer offered here.');
+      setError("That option isn't available anymore.");
       setStage('connect');
       return;
     }
@@ -454,7 +484,7 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
     });
     safely(() => storage.setItem(BASE_CONNECTION_KEY, id), undefined);
     if (connection.kind !== 'this-device' && host.online && !host.online()) {
-      setOfflineReason(`This ${deviceNoun()} has no network. ${connection.label} cannot be reached until it has.`);
+      setOfflineReason(`This ${deviceNoun()} is offline.`);
       setStage('offline');
       return;
     }
@@ -465,7 +495,7 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
       setStage('session');
     } catch (e) {
       if (host.isUnreachable?.(e)) {
-        setOfflineReason(`${connection.label} could not be reached: ${message(e)}`);
+        setOfflineReason(unreachableWords(connection, e, options.brand.name));
         setStage('offline');
       } else {
         setError(message(e));
@@ -526,12 +556,7 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
         subtitle: kind,
         icon: DEVICE_ICONS[d.kind] ?? 'key',
         thisDevice,
-        master:
-          d.holdsMaster === 'yes'
-            ? 'Holds the master key'
-            : d.holdsMaster === 'offered'
-              ? 'Master key offered, not yet taken'
-              : '',
+        master: d.holdsMaster === 'yes' ? 'Has master key' : d.holdsMaster === 'offered' ? 'Master key pending' : '',
       };
     });
   });
@@ -560,10 +585,10 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
     keepsLine: () => {
       const state = custody();
       const noun = deviceNoun();
-      if (!state?.holdsMaster) return `This ${noun} keeps no master key`;
+      if (!state?.holdsMaster) return `Not on this ${noun}`;
       return state.unlock === 'os'
-        ? `This ${noun} keeps your master key behind its own sign-in`
-        : `This ${noun} keeps your master key behind your passphrase`;
+        ? `On this ${noun}, protected by your device login`
+        : `On this ${noun}, protected by your passphrase`;
     },
     blocked: () => custody()?.blocked ?? '',
     devices,
@@ -571,7 +596,7 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
       // Tracked: a host's doors may follow its own backend (`BaseIdentitySource.doors`).
       executor();
       const source = host.identity;
-      const none = `This ${deviceNoun()} keeps no identity of its own; connect to the place that does.`;
+      const none = `Not available on this ${deviceNoun()}.`;
       const blocked = custody()?.blocked ?? '';
       const make = doorView(source?.doors.make, none);
       return {
@@ -640,8 +665,19 @@ export function createBaseStore(host: BaseHost, options: BaseStoreOptions): Base
     },
     openPage: (next) => setPage(next === 'devices' || next === 'security' ? next : ''),
     closePage: () => setPage(''),
-    handBack: (reason) => {
+    handBack: (reason, to = 'offline') => {
       generation++;
+      if (to === 'connect') {
+        // The choice is shown, not jumped past again to the place that refused.
+        auto = false;
+        batch(() => {
+          setBusy(false);
+          setError(reason);
+          setStage('connect');
+        });
+        void lookAgain();
+        return;
+      }
       batch(() => {
         setBusy(false);
         setOfflineReason(reason);

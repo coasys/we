@@ -114,18 +114,17 @@ export function backPath(search: string, origin: string): string {
 }
 
 /** Why the phone does not run a change: one only a computer can. */
-export const ON_A_COMPUTER = 'This phone cannot do that. Do it on a computer that has your identity.';
+export const ON_A_COMPUTER = 'This phone can’t do this. Do it on a linked computer.';
 
 const NO_MASTER_WAITING =
-  'No master key waits for this phone yet. Send it from the device that keeps it, then choose “Take the master key” here again.';
+  'The master key hasn’t been sent to this phone yet. Send it from the device that has it, then choose “Accept master key” again.';
 
 /** A revoke that also replaces the master key: the phone does the two one after the other. */
 export const ROTATE_AFTER =
-  'This phone does not replace your master key in the same step as a revoke. Revoke the device here without it, then choose “Replace my master key” in Settings.';
+  'Remove the device here without replacing the master key, then choose “Replace master key” in Settings.';
 
 /** A revoke request that also replaces the master key, which the phone does not answer in one step. */
-export const ANSWER_ON_A_COMPUTER =
-  'That request also replaces your master key in the same step, which this phone does not do. Answer it on a computer that has your identity.';
+export const ANSWER_ON_A_COMPUTER = 'This request also replaces the master key. Answer it on a linked computer.';
 
 /** The changes the plugin runs as a flow of the 12 words, and the call that starts each. */
 const FLOWS = { create: 'startMake', restore: 'startRestore', 'replace-master': 'startRotate' } as const;
@@ -140,17 +139,17 @@ const WORDS_SCREENS: ReadonlySet<Screen['screen']> = new Set(['show-words', 'con
 export function flowRefusal(kind: FlowKind, error: unknown): string {
   switch (code(error)) {
     case 'NoBiometrics':
-      return 'This phone keeps your master key only behind a fingerprint or face unlock, and none is set up. Set one up in the phone’s settings, then try again.';
+      return 'To keep the master key on this phone, set up fingerprint or face unlock in the phone’s settings. Then try again.';
     case 'WeakProtection':
       return kind === 'create'
-        ? 'You chose not to keep your master key on this phone, so no identity was made.'
-        : 'You chose not to keep your master key on this phone, so nothing was changed.';
+        ? 'No identity was created. The master key wasn’t kept on this phone.'
+        : 'Nothing was changed. The master key wasn’t kept on this phone.';
     case 'AlreadyJoined':
-      return 'This phone is one of your devices already. It makes or restores an identity only while it is in none.';
+      return 'This phone is already linked. To create or restore an identity, use a phone that isn’t linked.';
     case 'NoIdentity':
-      return 'This phone is not one of your devices yet, so it has no master key to replace.';
+      return 'This phone isn’t linked yet, so it has no master key to replace.';
     case 'Unavailable':
-      return 'Your identity store did not answer, so nothing was kept. Try again when this phone is online.';
+      return 'Can’t save your identity. Nothing was changed. Try again when this phone is online.';
     default:
       return reason(error);
   }
@@ -158,7 +157,7 @@ export function flowRefusal(kind: FlowKind, error: unknown): string {
 
 /** Why the page would not show the words: the window could not be kept out of screenshots. */
 export const NOT_SECURE =
-  'This phone could not keep the screen out of screenshots and the recent apps, so your 12 words are neither shown nor asked for here.';
+  'Can’t block screenshots on this phone, so your recovery phrase can’t be shown or entered here.';
 
 /** A plugin refusal's own words. */
 export function reason(error: unknown): string {
@@ -166,7 +165,7 @@ export function reason(error: unknown): string {
   if (error && typeof error === 'object' && typeof (error as { message?: unknown }).message === 'string') {
     return (error as { message: string }).message;
   }
-  return typeof error === 'string' ? error : 'The phone refused without saying why.';
+  return typeof error === 'string' ? error : 'Something went wrong.';
 }
 
 const code = (error: unknown): string | undefined =>
@@ -183,7 +182,7 @@ export function revokeTargets(request: DeviceRequestView, devices: PhoneDeviceVi
     const device = devices.find((d) => d.keyId === keyId);
     return {
       keyId,
-      fingerprint: device?.fingerprint ?? 'not in the key log',
+      fingerprint: device?.fingerprint ?? 'unknown',
       recordName: request.targets[i] ?? device?.name ?? null,
       mayHoldMaster: device?.mayKeepMaster ?? false,
     };
@@ -275,7 +274,7 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Pho
 
   /** Answers the flow's screen. A refusal other than `WrongInput` has ended the flow. */
   async function flowStep(input: IdentityInput): Promise<Screen> {
-    if (!flow) return failed('That step is over. Start it again from Settings.');
+    if (!flow) return failed('This step has ended. Start again.');
     try {
       const next = await plugin.identityStep({ flow, input });
       if (next.ended) flow = null;
@@ -333,7 +332,7 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Pho
 
   async function joinStart(): Promise<Screen> {
     const status = await plugin.status();
-    if (status.identity) return failed('This phone is one of your devices already.');
+    if (status.identity) return failed('This phone is already linked.');
     if (!status.keys) await plugin.create();
     if (status.pending) return matching(status.pending.matchCode, status.pending.did);
     return offerScreen(null, deps.keyHost?.read() ?? '');
@@ -359,7 +358,7 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Pho
   }
 
   async function nextLinkStep(): Promise<Screen> {
-    if (!link) return failed('That link is over.');
+    if (!link) return failed('This link has ended. Start again.');
     const step = await plugin.linkNext({ link });
     switch (step.step) {
       case 'ticket-sent':
@@ -388,7 +387,7 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Pho
         const id = (start as { id: string }).id;
         const [{ requests }, { devices }] = await Promise.all([plugin.requests(), plugin.devices()]);
         const found = requests.find((r) => r.id === id);
-        if (!found) return failed('That request was answered already, or it expired.');
+        if (!found) return failed('This request was already answered, or it expired.');
         if (found.problem) return failed(found.problem);
         request = {
           screen: 'request',
@@ -408,12 +407,12 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Pho
         device = await findDevice((start as { keyId: string }).keyId);
         return device
           ? { screen: 'rename', keyId: device.keyId, name: device.name, error: null }
-          : failed('That device is not one of yours, or it was revoked.');
+          : failed('This device was removed, or it isn’t linked.');
       }
       case 'revoke': {
         device = await findDevice((start as { keyId: string }).keyId);
-        if (!device) return failed('That device is not one of yours, or it was revoked already.');
-        if (device.thisDevice) return failed('Revoke this phone from another of your devices.');
+        if (!device) return failed('This device was removed, or it isn’t linked.');
+        if (device.thisDevice) return failed('To remove this phone, use another linked device.');
         return {
           screen: 'revoke-confirm',
           keyId: device.keyId,
@@ -434,7 +433,7 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Pho
         const typedHost = input.host ?? '';
         const host = deps.keyHost ? executorUrl(typedHost) : null;
         if (deps.keyHost && !host) {
-          return offerScreen('Type the address of the executor this phone signs in to, starting https://.', typedHost);
+          return offerScreen('Enter the host’s full address, starting with https://.', typedHost);
         }
         try {
           const joined = await plugin.join({ link: input.link, ...(deps.hint ? { hint: deps.hint } : {}) });
@@ -456,7 +455,7 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Pho
       case 'wait-claim':
         return nextLinkStep();
       case 'confirm':
-        if (!link) return failed('That link is over.');
+        if (!link) return failed('This link has ended. Start again.');
         await plugin.linkConfirm({
           link,
           ...(input.name ? { name: input.name } : {}),
@@ -464,7 +463,7 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Pho
         });
         return nextLinkStep();
       case 'answer':
-        if (!request) return failed('That request is over.');
+        if (!request) return failed('This request has ended. Start again.');
         try {
           const answered = await plugin.answer({ id: request.id });
           return { screen: 'request-answered', kind: request.kind, device: answered.device, note: answered.note };
@@ -473,7 +472,7 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Pho
           return { ...request, error: message };
         }
       case 'name': {
-        if (!device) return failed('That device is not one of yours.');
+        if (!device) return failed('This device isn’t linked.');
         try {
           await plugin.rename({ keyId: device.keyId, name: input.name });
         } catch (error) {
@@ -482,7 +481,7 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Pho
         return { screen: 'renamed', keyId: device.keyId, name: input.name.trim() };
       }
       case 'revoke': {
-        if (!device) return failed('That device is not one of yours.');
+        if (!device) return failed('This device isn’t linked.');
         const confirm: Screen = {
           screen: 'revoke-confirm',
           keyId: device.keyId,
@@ -501,7 +500,7 @@ export function phoneTransport(start: PhoneStart, deps: PhoneTransportDeps): Pho
         const keyId = device.keyId;
         const { devices } = await plugin.devices();
         const seq = devices.find((d) => d.keyId === keyId)?.revokedSeq ?? null;
-        if (seq === null) return failed(`The store does not list ${keyId} as revoked yet. Look again in a moment.`);
+        if (seq === null) return failed('The device list doesn’t show it as removed yet. Check again in a moment.');
         return { screen: 'revoked', keyId, seq };
       }
       case 'words-written':

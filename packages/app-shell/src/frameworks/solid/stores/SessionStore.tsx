@@ -58,7 +58,7 @@ const SESSION_TIMEOUT_MESSAGE =
   'Your account is taking longer than usual to start. It may still be finishing — try again in a moment.';
 
 /** What signing up says where the backend already has an account: the person signs in instead. */
-const AGENT_EXISTS_MESSAGE = 'An account already exists on this computer. Sign in with its password instead.';
+const AGENT_EXISTS_MESSAGE = 'This computer already has an account. Sign in instead.';
 
 /** The authenticated identity as the shell holds it — neutral `id` plus the backend's own fields
  * (`did` is template-facing vocabulary: `$me.did`). */

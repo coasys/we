@@ -396,9 +396,9 @@ export function executorConfigRows(config: ExecutorConfig | null): ExecutorConfi
       choice: value == null ? 'default' : value === true ? 'on' : 'off',
       editable: !entry.pinned && kind !== 'fixed',
       note: entry.pinned
-        ? 'Set by the app at each start'
+        ? 'Set automatically'
         : entry.writableFrom === 'this-machine'
-          ? 'Only from this computer'
+          ? "Can't be changed remotely"
           : '',
     };
   });
@@ -932,7 +932,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     const { refused } = written.value;
     await loadExecutorConfig();
     if (refused.length) {
-      setError(refused.map(({ key, reason, detail }) => `${key}: ${reason}${detail ? ` — ${detail}` : ''}`).join('; '));
+      setError(refused.map(({ key, reason, detail }) => `${key}: ${reason}${detail ? ` (${detail})` : ''}`).join('; '));
     }
   }
 
@@ -945,7 +945,7 @@ export function RuntimeStoreProvider(props: ParentProps) {
     const text = typeof raw === 'string' ? raw.trim() : typeof raw === 'number' ? `${raw}` : '';
     const coerced = row.kind === 'boolean' ? raw === true || raw === 'on' : row.kind === 'number' ? Number(raw) : text;
     if (row.kind === 'number' && !Number.isFinite(coerced)) {
-      setError(`${key}: a number is required`);
+      setError(`Enter a number for ${key}.`);
       return;
     }
     await writeExecutorConfig({ [key]: coerced });

@@ -112,8 +112,17 @@ export default class Popover extends LayoutElement {
     this.open = false;
   };
 
+  /**
+   * Escape closes this panel, and only this panel.
+   *
+   * The key went on up past the popover it had closed, so whatever held the popover heard the same
+   * Escape as its own: a profile menu opened inside a phone's open menu (`railShell`'s `compact`)
+   * shut the whole menu with it, when the key was meant for the nearest layer. Answered here, it
+   * goes no further — the same rule `_onDismiss` keeps. A closed popover lets it pass.
+   */
   private _onKeyDown = (e: KeyboardEvent) => {
     if (e.key === 'Escape' && this.open) {
+      e.stopPropagation();
       this.open = false;
     }
   };

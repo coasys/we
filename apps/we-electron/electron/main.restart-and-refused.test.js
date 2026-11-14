@@ -197,7 +197,7 @@ describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp
       // 78: not started again; one box with the executor's last lines and the config file.
       expect(state.messageBoxes).toHaveLength(1);
       const [, box] = state.messageBoxes[0];
-      expect(box.message).toMatch(/ has stopped$/);
+      expect(box.message).toBe('WE stopped');
       expect(box.detail).toMatch(/executor-config\.json/);
       expect(box.detail).toMatch(/exits 78/);
       // The window reloaded once per restart: after the first 75 onto the new executor, and after
@@ -206,7 +206,7 @@ describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp
       // And the window is told, in words with no path in them: it draws this, with a way to try again.
       const last = state.executorStates.at(-1);
       expect(last.phase).toBe('failed');
-      expect(last.reason).toMatch(/refused its settings/);
+      expect(last.reason).toMatch(/Couldn't read the startup settings/);
       expect(last.reason).not.toContain(state.root);
       expect(pids().every((pid) => !alive(pid))).toBe(true);
     }, 60_000);

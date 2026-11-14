@@ -4,8 +4,8 @@
 use ad4m_identity_core::words::WordsError;
 
 /// Words that are all on the list and pass the checksum, yet make no master key of the identity.
-pub const NOT_THESE_WORDS: &str = "These words do not make your identity's master key. Check each \
-     word against your paper, in order. Nothing was changed.";
+pub const NOT_THESE_WORDS: &str = "This recovery phrase doesn't match your identity. Check the \
+     spelling and order of each word. Nothing changed.";
 
 /// The two words typed back at a make are not the words at the places asked.
 pub const WRONG_CONFIRM: &str = "Those are not the words at those places. Check your paper.";
@@ -15,20 +15,21 @@ pub fn words_refused(e: &WordsError) -> (String, Option<usize>) {
     match e {
         WordsError::Count(n) => {
             let noun = if *n == 1 { "word" } else { "words" };
-            (format!("That is {n} {noun}. Type all 12, in order."), None)
+            (
+                format!("That's {n} {noun}. Enter all 12 words in order."),
+                None,
+            )
         }
         WordsError::UnknownWord { position, .. } => (
-            format!("Word {position} is not one of the words a recovery phrase uses. Check it on your paper."),
+            format!("Word {position} isn't a recovery phrase word. Check its spelling."),
             Some(*position),
         ),
         WordsError::Checksum => (
-            "One of the words is wrong: they do not fit together. Check each word against your \
-             paper, in order."
-                .into(),
+            "One or more words are wrong. Check the spelling and order of each word.".into(),
             None,
         ),
         WordsError::Index(_) => (
-            "Your master key cannot be replaced again from these words.".into(),
+            "Your master key can't be replaced again with this recovery phrase.".into(),
             None,
         ),
     }
@@ -51,7 +52,7 @@ mod tests {
         assert!(!message.contains("zzzzq"));
 
         let (message, position) = words_refused(&words::parse("abandon").unwrap_err());
-        assert_eq!(message, "That is 1 word. Type all 12, in order.");
+        assert_eq!(message, "That's 1 word. Enter all 12 words in order.");
         assert_eq!(position, None);
     }
 }

@@ -40,7 +40,8 @@ ceiling on what every template above can express. A deployment is described by a
 WE's data layer is **AD4M** — an agent-centric, local-first, peer-to-peer meta-ontology.
 Data is yours, stored locally and synced P2P (via Holochain) with no central server. The Solid
 app (`@we/app-shell`, hosted by the web/electron/tauri targets) talks to an **AD4M executor**
-(the ad4m runtime; `@coasys/ad4m` + `ad4m-connect`) that holds perspectives and syncs
+(the ad4m runtime, reached with `@coasys/ad4m`; the browser signs in to a remote one through
+`ad4m-connect`) that holds perspectives and syncs
 neighbourhoods. Stores (`sessionStore`, `datasetStore`, `spaceStore`, …) expose reactive state to schemas.
 
 AD4M is reached through the **backend contract** rather than directly: `@we/backend-shared` declares
@@ -1362,7 +1363,7 @@ turn rather than rise, and the spinner keeps turning, since a still spinner look
   Props: variant: 'soft' | 'solid' = 'soft', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-blockquote (DesignSystemElement)
 - we-button (DesignSystemElement)
-  Props: variant: 'solid' | 'soft' | 'outline' | 'ghost' | 'bare' = 'solid', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, label: string = '', expanded?: boolean | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false
+  Props: variant: 'solid' | 'soft' | 'outline' | 'ghost' | 'bare' = 'solid', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md', text?: string | undefined, label: string = '', expanded?: boolean | undefined, href?: string | undefined, disabled: boolean = false, loading: boolean = false, gradient: boolean = false, square: boolean = false, autofocus: boolean = false
 - we-checkbox (DesignSystemElement)
   Props: checked: boolean = false, disabled: boolean = false, name: string = '', label: string = '', value: string = '', size: 'xs' | 'sm' | 'md' | 'lg' | 'xl' = 'md'
 - we-code (DesignSystemElement)
@@ -3200,10 +3201,10 @@ DeviceStore:
   - deviceNoun: 'phone' | 'computer' — what this device is, for the sentences about it: 'This ' + deviceStore.deviceNoun + ' does not keep your master key'
   - validCount: number — how many device keys are valid (neither revoked nor ended); bot keys are not counted
   - canManage: boolean — linking (scanDevice, addDevice), Rename, Revoke and answering requests can be offered: this computer keeps the master key of the identity
-  - canShowCode: boolean — "Show my code" can be offered: this computer can join an identity and speaks for none yet
+  - canShowCode: boolean — "Show code" can be offered: this computer can join an identity and speaks for none yet
   - canAskMaster: boolean — "Ask for the master key" can be offered: a device of the identity that does not keep the master key and has none waiting
-  - canReplaceMaster: boolean — "Replace my master key" can be offered: a valid device of the identity where the 12 words can be typed. It need not keep the master key: replacing it shuts out a lost device that kept one
-  - canRestore: boolean — "Use my 12 words" can be offered: this computer can take the words and speaks for no identity yet. Offer it beside "Show my code"
+  - canReplaceMaster: boolean — "Replace master key" can be offered: a valid device of the identity where the 12 words can be typed. It need not keep the master key: replacing it shuts out a lost device that kept one
+  - canRestore: boolean — "Restore with recovery phrase" can be offered: this computer can take the words and speaks for no identity yet. Offer it beside "Show code"
   - canRemoveMaster: boolean — this computer keeps the master key: on log out, offer "Also remove my master key from this computer"
   - masterWaiting: boolean — a master key another device sent waits here: offer "Take the master key"
   - requests: { id, kind, title, detail }[] — what the person's other devices asked and is waiting for an answer, while this computer keeps the master key; empty otherwise. `kind` is 'send-master' or 'confirm-revoke'; `title` names the device that asked ('Laptop asks for the master key')
@@ -3212,14 +3213,14 @@ DeviceStore:
   - refresh(): reads the device list again
   - addDevice(): adds a server by an offer link — the backend asks the person wherever it keeps the master key (on the desktop: the offer link and QR code, then the match code, then the confirmation that signs it). Resolves with the outcome; the list is read again
   - scanDevice(): "Scan or paste a code" — adds a device by the code it shows: the person pastes it, both show a match code, and the confirmation names the device and may let it keep the master key
-  - showCode(): "Show my code" — on a computer of no identity yet, shows its code (QR and link) until a device of the identity adds it
+  - showCode(): "Show code" — on a computer of no identity yet, shows its code (QR and link) until a device of the identity adds it
   - takeMaster(): "Take the master key" — keeps the master key another device sent here
   - askMaster(): "Ask for the master key" — asks the devices that keep it to send it here; one answers from its own requests
   - answerRequest(id: string): answers that request of another device, once the person says yes where the master key is kept (send the master key, or revoke the devices it names)
   - rename(keyId: string): names that device, in the private record only the identity’s devices read
   - revoke(keyId: string): revokes that device key, once the person confirms it where the master key is kept; the confirmation offers "Also replace my master key" (ticked when the device kept a copy), which asks for the 12 words. Resolves with the outcome
-  - replaceMaster(): "Replace my master key" — asks for the 12 words where the custody service runs and publishes the next master key, which this computer keeps; every copy kept until now stops counting. Resolves with the outcome
-  - restore(): "Use my 12 words" — on a computer of no identity, asks for the words, lists the identity's devices to lock out, and makes this computer a device of it that keeps the new master key. Resolves with the outcome
+  - replaceMaster(): "Replace master key" — asks for the 12 words where the custody service runs and publishes the next master key, which this computer keeps; every copy kept until now stops counting. Resolves with the outcome
+  - restore(): "Restore with recovery phrase" — on a computer of no identity, asks for the words, lists the identity's devices to lock out, and makes this computer a device of it that keeps the new master key. Resolves with the outcome
   - removeMaster(): stops keeping the master key on this computer, once the person confirms it; refused, with the reason, when this computer keeps the only copy. Resolves 'done' only when it was removed
 
 EditorStore:
@@ -3642,7 +3643,7 @@ ShellStore:
   - coveredInset: { top, right, bottom, left } in pixels — what FLOATING panels and floating chrome (the call bar along the bottom) are covering. They take no room, so they leave contentInset at zero while still sitting over the content: this is the part of your own box the reader cannot see. Read it to keep something in the clear where contentInset would say there is nothing in the way. Chrome only; a space template reads the same numbers as CSS, `var(--we-covered-bottom, 0px)` and its three siblings — pad a composer pinned to the bottom of a view by it, and it rises above the call bar while one is up and settles when it goes
   - dockResizing: boolean — a panel is being dragged or resized right now. Suspend transitions while it is true so the edge tracks the cursor
   - panelMaximised: boolean — some panel covers the whole window. The app's own chrome — sidebar, module rail — hides while it is true; a template's fixed chrome should too
-  - narrowWindow: boolean — the window is narrower than the sm breakpoint (640px): a phone held upright. Chrome only, because chrome sits outside every surface and has no surface.tier to read; the sidebar opens from a menu button while it is true rather than under the pointer. A template answers to its own surface with smUpProps instead
+  - narrowWindow: boolean — the window is narrower than the sm breakpoint (640px): a phone held upright. Chrome only, because chrome sits outside every surface and has no surface.tier to read; while it is true the sidebar is a bar across the top whose Menu button switches between it and the page, and meta.frame.narrow replaces the app frame. A template answers to its own surface with smUpProps instead
   - dockPlacement: Record<dockId, { snap, displace, canDisplace, … }> — where each panel is parked, for its frame to read: which of the eight snaps it is at, whether it displaces content, and whether it may. The state a position menu ticks; dockGeometry is the resulting box
   - panelFrames: Record<dockId, 'window' | 'flush' | 'none'> — how each panel is framed where it is not a window: its own declared frame, else — pushing the content aside at an edge — that edge's frame as the app template declares it (meta.edges); absent, a window's frame
   - movingDock: string | null — the id of the panel being dragged, or null. What mounts the snap-target overlay
@@ -5334,6 +5335,14 @@ The label is mounted only while the rail is open rather than narrowed to nothing
 there is no room for it, and a hidden-but-present label is still in the accessibility tree and still
 found by find-in-page.
 
+On a phone there is no hover: a tap reports the pointer arriving and nothing reports it leaving.
+Below `sm` (`shellStore.narrowWindow`) WE's rail is a bar across the top instead — the kit's
+`railShell({ compact })` draws it — whose mark is a `we-button` labelled "Menu"
+(`{ "$toggleLocal": "expanded" }`, `expanded` bound to `local.expanded`) that opens the rail over
+the whole window. `onMouseEnter` is gated on `!shellStore.narrowWindow`, and every row that goes
+somewhere also shuts the rail (`closeWhenCompact`), so the place chosen is what shows. The app's
+`meta.frame.narrow` gives the page the band under the bar rather than the column beside it.
+
 A group heading toggles its own id in the set, and its body reveals on the block axis:
 
 ```json
@@ -6661,9 +6670,11 @@ What the SDK and executor do around a subscription, so a watch can rely on it:
 
 ### Reading shapes from `@we/backend-ad4m`
 
-The `PerspectiveProxy` the app holds comes from the SDK copy bundled inside `@coasys/ad4m-connect`,
-not from the `@coasys/ad4m` this repo pins. An SDK fix reaches the app only when ad4m-connect
-republishes, so measure performance work against that copy, not the workspace one.
+Where the browser signs in through AD4M Connect, the `PerspectiveProxy` the app holds comes from the SDK
+copy bundled inside `@coasys/ad4m-connect`, not from the `@coasys/ad4m` this repo pins: an SDK fix
+reaches that path only when ad4m-connect republishes, so measure performance work there against that
+copy. The desktop's local executor and the phone's key login open an `Ad4mClient` from the pinned
+`@coasys/ad4m` themselves.
 
 In that copy, `getAllShacl()` reads every shape one at a time — `getShaclNames()`, then `getShacl()`
 per shape at 3 + P calls for P properties — and it rejects outright when one shape carries a

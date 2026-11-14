@@ -14,7 +14,7 @@ cannot answer. WE's app mounts in the same page once a connection is chosen.
 The phone can make an identity of its own, restore one from its 12 words and replace its master key
 with them, with no computer and no executor (below, "Make, restore and replace"). The first run's
 three doors open them (`apps/coasys/src/hosts/phone.ts`), and Settings opens replacing the master
-key ("Replace my master key").
+key ("Replace master key").
 
 The app adds one page of its own: the page Capacitor opens when the phone's Android System WebView
 is too old to run WE, or when WE's page fails to load (`src/error/`).
@@ -25,7 +25,7 @@ tree, and `cap sync ios` works, but nothing builds it.
 ## How the phone connects (phase 1)
 
 Through ad4m-connect, as the web app does (`apps/we-web/src/platform/ad4mConnector.ts`), once
-"AD4M Connect" is chosen on the connection choice. On a
+"A host" is chosen on the connection choice. On a
 phone-sized screen it offers only **Remote Node**: pick a listed host or type a URL, then sign in or
 register with email and password on that executor (a multi-user executor: a host or Coasys cloud).
 The executor must be reachable over `https`/`wss` with a certificate the phone trusts. The release
@@ -60,16 +60,17 @@ built for Android with uniffi bindings:
 - **Joining an identity.** `join({link})` claims an offer a computer holding the identity's master
   key opened (`https://id.coasys.org/o#coasys:offer:1:…`); both sides show the same match code, the
   computer signs an `add` listing the phone's keys, and `waitJoined()` sees it land.
-- **Key login.** Once the phone has joined and has an executor to log in to, WE logs in with the
-  device key (`user.sessionChallenge` → a signed statement → `user.loginWithKey`) instead of showing
-  the connect screen, and renews the session five minutes before each expiry
-  (`apps/we-web/src/platform/deviceKeyConnector.ts`, `keySession.ts`). The token is never stored:
-  every boot logs in afresh, and a key login removes the password session the connect screen may
-  have stored before it, so a later fall-back never sends one host's token to another. A session
+- **Key login.** Once the phone has joined and has an executor to log in to, the connection choice
+  offers it, and WE logs in there with the device key (`user.sessionChallenge` → a signed statement →
+  `user.loginWithKey`), with no AD4M Connect involved, and renews the session five minutes before
+  each expiry (`apps/we-web/src/platform/deviceKeyConnector.ts`, `keySession.ts`). The token is
+  never stored, and AD4M Connect's stored session is left as it was: every boot logs in afresh. A key
+  login the executor refuses (the key not known there, or revoked) goes back to the connection
+  choice with the reason, where AD4M Connect is still offered; it never opens by itself. A session
   that ends by itself (no renewal succeeded before it expired, or the executor refused the token)
-  starts WE again: the boot logs in afresh, or shows the connect screen when it cannot; a session
-  that ended within a minute of opening skips the key login on the next boot, so it cannot loop.
-  Anywhere else, and on a phone that has not joined, WE connects as in phase 1.
+  starts WE again: the boot logs in afresh, or comes back to the connection choice when it cannot; a
+  session that ended within a minute of opening skips the key login on the next boot, so it cannot
+  loop. A phone with no key host connects as in phase 1.
 
 ### Known limits of phase 2a
 
@@ -123,9 +124,9 @@ master key, replaces it with the words, adds devices and answers their requests.
   `master-keys.json`, sealed by a second Keystore key (`MasterKeystoreKey.kt`) that needs a strong
   biometric for every use (auth timeout 0, invalidated by a new enrolment). Each seal and each open
   is one `BiometricPrompt` with the cipher as its `CryptoObject` (`BiometricMasterSealer.kt`), titled
-  with what the key is about to do ("Add a device to your identity"). The device key's sealer is
+  with what the key is about to do ("Confirm it's you to link a device"). The device key's sealer is
   unchanged, so a key login never prompts. The master key is kept only at `strongbox` or `tee`. At
-  `software` (an emulator) the phone asks first ("Keep your master key without secure hardware?"),
+  `software` (an emulator) the phone asks first ("Keep master key without a secure chip?"),
   and keeps it only if the person agrees. The vault keeps the rules of WE's desktop vault
   (`crates/custody`): each change is decided and written under one lock, the kept key never goes
   back a generation, a forget is a compare-and-delete on the index or on the **custody epoch**,
@@ -149,8 +150,8 @@ master key, replaces it with the words, adds devices and answers their requests.
 
 - **What the phone can do.**
   - Join by an offer link, scanned or pasted.
-  - Ask for the master key, and take it when it is sent (Settings shows "Your master key was sent
-    here" from the store inbox, `masterWaiting`).
+  - Ask for the master key, and take it when it is sent (Settings shows "Master key sent to this
+    phone" from the store inbox, `masterWaiting`).
   - As the holder: add a device by the `coasys:device:1:` code it shows (scan or paste, a ticket in
     its pre-join inbox, the match code, then the add).
   - Send the master key to a device that asked, and answer a revoke request.
@@ -232,7 +233,7 @@ master key, replaces it with the words, adds devices and answers their requests.
 
 - **What it cannot.** A revoke that rotates in the same step (revoking a device that keeps the
   master key, and replacing the master key with it): the phone revokes the device and the person
-  then chooses "Replace my master key". A revoke request that asks for a rotation is answered on
+  then chooses "Replace master key". A revoke request that asks for a rotation is answered on
   a computer. Removing the master key from the phone and adding a bot are a computer's too.
 - **The camera.** `ScanActivity.kt`: CameraX and ML Kit's bundled barcode scanner (the model ships
   in the app; no Play services, nothing sent anywhere). A QR that is not the expected kind is passed

@@ -190,7 +190,7 @@ class IdentityStepsJvmTest {
       assertEquals(PhoneScreen.NameDevice, again2)
 
       val stopped = flow.step(PhoneInput.NameDevice("Test phone")) as PhoneScreen.MakeStopped
-      assertTrue(stopped.reason, stopped.reason.contains("unreachable"))
+      assertTrue(stopped.reason, stopped.reason.contains("Can't connect."))
       assertTrue("${stopped.reason} $paths", paths.any { it.startsWith("POST ") })
       // Master #0 and the incept are kept: the identity is pending, and published by a try again
       // or by finishPending once the store answers.
@@ -217,7 +217,7 @@ class IdentityStepsJvmTest {
     val flow = identity.startMake(false)
     try {
       val down = assertThrows(PhoneKeyException.Unavailable::class.java) { flow.next() }
-      assertTrue(down.message!!, down.message!!.startsWith("the identity store is unreachable"))
+      assertTrue(down.message!!, down.message!!.startsWith("Can't connect."))
       assertThrows(PhoneKeyException.Ended::class.java) { flow.step(PhoneInput.WordsWritten) }
       assertTrue(flow.ended())
       assertNull(identity.pendingIdentity())

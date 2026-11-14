@@ -3,9 +3,9 @@
  * a session is had with the device key from the executor the phone was told to use, or through AD4M
  * Connect like a browser.
  *
- * The first run's three doors all open here: "Make my identity here" makes one with its 12 words and
- * keeps its master key on this phone, "Link to my identity" joins one by a device's offer, and "Use my
- * 12 words" brings one back. Every step leaves for the phone's identity page
+ * The first run's three doors all open here: "Create new identity" makes one with its 12 words and
+ * keeps its master key on this phone, "Link to another device" joins one by a device's offer, and
+ * "Restore with recovery phrase" brings one back. Every step leaves for the phone's identity page
  * (`apps/we-mobile/src/identity`), the only place a secret is shown or typed, and the app boots again
  * when that page sends the person back.
  */
@@ -14,6 +14,7 @@ import type { DeviceKeyPlugin } from '@we/app-web/platform/deviceKey';
 import {
   createDeviceKeyConnector,
   type DeviceKeyConnectorDeps,
+  KeyLoginRefused,
   KeyLoginUnreachable,
 } from '@we/app-web/platform/deviceKeyConnector';
 import { joinDeclined, readKeyHost } from '@we/app-web/platform/keyHost';
@@ -25,7 +26,7 @@ import { CONNECT, connectFor, type ReachDeps, unreachable } from './web';
 /** What the phone host is built from; the tests pass their own. */
 export interface PhoneHostDeps extends Pick<ReachDeps, 'remembered' | 'reach'> {
   plugin: DeviceKeyPlugin;
-  /** The connector AD4M Connect gives: the browser's. */
+  /** The connector AD4M Connect gives, for the CONNECT choice: the browser's. */
   fallback: BackendConnector;
   keyHost?: () => string | null;
   joinDeclined?: () => boolean;
@@ -63,7 +64,7 @@ export function phoneIdentitySource(
       }
       return custody.open(step);
     },
-    // "Not now" on the phone's own join page is the same answer as "Start now" here.
+    // "Not now" on the phone's own join page is the same answer as "Skip for now" here.
     skipped: declined,
   };
 }
@@ -80,7 +81,7 @@ export function keyHostConnection(url: string): BaseConnection {
     id: 'key-host',
     kind: 'key-host',
     label: host,
-    detail: "Signs in with this phone's device key, asking you for nothing",
+    detail: 'Signs in automatically',
   };
 }
 
@@ -89,8 +90,7 @@ export function phoneBaseHost(deps: PhoneHostDeps): BaseHost {
   const declined = deps.joinDeclined ?? joinDeclined;
   const nav = deps.nav ?? browserNav;
   const online = deps.online ?? (() => globalThis.navigator?.onLine ?? true);
-  const makeKeyConnector =
-    deps.keyConnector ?? ((d: DeviceKeyConnectorDeps) => createDeviceKeyConnector(deps.fallback, d));
+  const makeKeyConnector = deps.keyConnector ?? createDeviceKeyConnector;
   return {
     kind: 'phone',
     identity: phoneIdentitySource(deps.plugin, nav, declined),
@@ -103,18 +103,12 @@ export function phoneBaseHost(deps: PhoneHostDeps): BaseHost {
         return Promise.resolve(
           connectFor(deps.fallback, how, { remembered: deps.remembered, reach: deps.reach, online }),
         );
-      return Promise.resolve(
-        makeKeyConnector({
-          plugin: () => deps.plugin,
-          keyHost,
-          nav,
-          // The base app asks about joining itself, before a connection is chosen; the connector must
-          // not send the person to the join page a second time.
-          joinDeclined: () => true,
-        }),
-      );
+      return Promise.resolve(makeKeyConnector({ plugin: () => deps.plugin, keyHost, nav }));
     },
     isUnreachable: (error) => error instanceof KeyLoginUnreachable || unreachable(error, online),
+    // The key login not made (the key not known there, revoked): back to the choice, which still
+    // offers AD4M Connect.
+    isRefused: (error) => error instanceof KeyLoginRefused,
     online,
   };
 }

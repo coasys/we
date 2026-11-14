@@ -30,8 +30,7 @@ pub struct RestoreDevice {
 }
 
 /// The note shown above the list when the record could not be read.
-pub const RECORD_UNREAD: &str =
-    "Your device list could not be read, so your devices show by their keys.";
+pub const RECORD_UNREAD: &str = "Couldn't read your device list, so devices show without names.";
 
 /// The identity's valid devices other than this one, as the lock-out screen lists them.
 pub fn listed<R: ExecutorRpc>(flow: &RestoreFlow<'_, R>) -> Vec<RestoreDevice> {
