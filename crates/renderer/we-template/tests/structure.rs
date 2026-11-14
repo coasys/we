@@ -2,6 +2,7 @@
 //! `$animate` transitions, `meta.recordViews` kind preference, and the query
 //! pool's keyed dedup / gating.
 
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use serde_json::json;
@@ -884,6 +885,81 @@ fn a_deep_query_chain_settles_past_the_round_cap() {
     assert!(
         text.strict_eq(&Value::from(1.0)),
         "q1 must settle to the Task rows — got {text:?}"
+    );
+}
+
+#[test]
+fn a_pending_query_is_not_progress() {
+    // R5: `Loading → Loading` is not progress. A `QuerySource` still
+    // pending answers `Loading`; filling the cell with it marked the
+    // pool moved every pass, so the fill loop spun to its cap each frame
+    // and the trailing bump re-dirtied every later frame — a pending
+    // subscription re-resolved the template forever. Only `Loading →
+    // Rows` (or an external wake) may move the revision.
+    struct Pending {
+        calls: AtomicUsize,
+        ready: AtomicBool,
+    }
+    impl we_template::QuerySource for Pending {
+        fn rows(
+            &self,
+            _key: &we_template::QueryKey,
+            _ir: &we_template::QueryIr,
+        ) -> we_template::QueryState {
+            self.calls.fetch_add(1, Ordering::Relaxed);
+            if self.ready.load(Ordering::Relaxed) {
+                we_template::QueryState::Rows(Arc::new(vec![Value::from_json(
+                    &json!({ "id": "t1", "name": "landed" }),
+                )]))
+            } else {
+                we_template::QueryState::Loading
+            }
+        }
+    }
+    let node = schema(json!({ "type": "Column",
+        "$queries": { "items": { "entity": "Task" } },
+        "children": [
+            { "type": "we-text", "props": { "text": { "$": "local.items.length" } } }
+        ]
+    }));
+    let locals = LocalState::new();
+    let bag = Arc::new(StoreBag::new());
+    let source = Arc::new(Pending {
+        calls: AtomicUsize::new(0),
+        ready: AtomicBool::new(false),
+    });
+    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone())
+        .with_sources(Some(source.clone()), Arc::new(we_template::NoParts));
+    let mut host = StaticHost::new(bag, locals);
+    let screen = screen("/");
+
+    let _ = rt.frame(&mut host, &screen).clone();
+    for _ in 0..4 {
+        let _ = rt.frame(&mut host, &screen).clone();
+    }
+    assert_eq!(
+        rt.stats().resolves,
+        1,
+        "a query that stays pending must not re-resolve every frame"
+    );
+    assert_eq!(
+        source.calls.load(Ordering::Relaxed),
+        1,
+        "the pending cell was asked once — extra asks were the bug's spin"
+    );
+
+    // When the source finally has rows, a wake lands them on the next
+    // frame — progress is `Loading → Rows`, not the passing of time.
+    source.ready.store(true, Ordering::Relaxed);
+    rt.pool().bump();
+    let root = rt.frame(&mut host, &screen).clone();
+    let text = find_ty(&root, "we-text")
+        .and_then(|n| n.props.get("text"))
+        .cloned()
+        .unwrap_or(Value::Undefined);
+    assert!(
+        text.strict_eq(&Value::from(1.0)),
+        "the landed rows resolve once the source actually has them — got {text:?}"
     );
 }
 

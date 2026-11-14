@@ -394,7 +394,10 @@ impl Runtime {
 
     /// Fill every Loading cell from the `QuerySource` or the snapshot's
     /// `queries` table — keyed by the cell's declared name. `true` when a
-    /// cell moved, meaning a re-resolve may now see rows.
+    /// cell moved, meaning a re-resolve may now see rows. `Loading →
+    /// Loading` is not progress — a still-pending query must not dirty
+    /// the revision or every frame re-resolves while it warms (R5); the
+    /// pending cell waits for `Rows` or an external wake.
     fn fill_queries(&self) -> bool {
         let mut moved = false;
         for cell in self.pool.cells() {
@@ -406,6 +409,9 @@ impl Runtime {
                 None => snapshot_rows(&self.bag, cell.as_ref()),
             };
             if let Some(state) = state {
+                if matches!(state, QueryState::Loading) {
+                    continue;
+                }
                 cell.fill(state);
                 moved = true;
             }
