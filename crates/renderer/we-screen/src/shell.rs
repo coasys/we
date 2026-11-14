@@ -223,7 +223,9 @@ impl ShellState {
     }
 
     /// `resetTemplateLayout()` — panels and lanes back to the template's
-    /// declaration (`ShellStore.tsx:4803`).
+    /// declaration (`ShellStore.tsx:4803`): every override is deleted —
+    /// open and closed markers alike, so a panel opened over a `open:
+    /// false` declaration re-closes — not only the ones that differ.
     pub fn reset_template_layout(&mut self) -> Changed {
         if !self.layout_dirty
             && self.panels.values().all(|p| p == &PanelState::default())
@@ -231,7 +233,7 @@ impl ShellState {
         {
             return Changed::No;
         }
-        self.panels.retain(|_, p| *p != PanelState::default());
+        self.panels.clear();
         self.lanes.clear();
         self.layout_dirty = false;
         Changed::Yes

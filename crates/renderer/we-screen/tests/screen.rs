@@ -179,6 +179,36 @@ fn open_template_panel_reveals_it() {
 }
 
 #[test]
+fn reset_template_layout_clears_the_layout_overrides() {
+    // `ShellStore.tsx:4803` deletes this template's placement / closed-panel
+    // / lane overrides wholesale, so the declaration rules again — in both
+    // directions: a panel opened over a `open: false` declaration re-closes.
+    let mut s = screen(json!({ "params": {} }), "/space/abc/board");
+    s.shell.panels.insert(
+        "inspector".to_string(),
+        we_screen::PanelState {
+            open: true,
+            maximised: true,
+            width: Some(600),
+        },
+    );
+    s.apply(ScreenOp::SetLaneCollapsed {
+        lane: "tree".to_string(),
+        collapsed: true,
+    });
+    assert!(s.shell.layout_dirty);
+
+    assert_eq!(s.apply(ScreenOp::ResetTemplateLayout), Changed::Yes);
+    assert!(
+        s.shell.panels.is_empty() && s.shell.lanes.is_empty() && !s.shell.layout_dirty,
+        "reset must clear the overrides, not retain them: {:?}",
+        s.shell.panels
+    );
+    // The reset affordance is really off: a second reset is a no-op.
+    assert_eq!(s.apply(ScreenOp::ResetTemplateLayout), Changed::No);
+}
+
+#[test]
 fn space_settings_tab_defaults_to_about() {
     let mut s = screen(json!({ "params": {} }), "/space/abc/board");
     s.apply(ScreenOp::OpenSpaceSettings {
