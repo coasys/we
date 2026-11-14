@@ -143,13 +143,18 @@ pub struct HitLog {
 /// The frame's click propagation. Each `paths` entry is a click's DOM
 /// target chain (root → target): a container records it when a
 /// primary-button release lands in its box, a widget when it emits its
-/// own `onClick`. `at_target` marks the nodes that already fired —
+/// own `onClick` or reports any click-sensing activation (a switch, a
+/// stepper — the DOM click happens whatever the widget emits). `at_target` marks the nodes that already fired —
 /// the post-children pass emits `onClick` for the remaining path
 /// members, so handlers run child-first like a real DOM bubble.
 #[derive(Debug, Default)]
 pub struct ClickLog {
     pub paths: Vec<Vec<NodeId>>,
     pub at_target: std::collections::HashSet<NodeId>,
+    /// Ancestors whose bubbled `onClick` already ran this frame — the
+    /// post-overlay pass skips them (an overlay's click reaches page
+    /// ancestors only after the page walk unwound).
+    pub fired: std::collections::HashSet<NodeId>,
 }
 
 impl<'a> PaintCx<'a> {
@@ -254,6 +259,16 @@ impl<'a> PaintCx<'a> {
             self.hits.dead.push(rect);
         } else if response.clicked() {
             self.hits.activated.push((rect, response.id));
+            // An accepted activation — pointer, keyboard fake-click or
+            // a11y — is a DOM click on this element whatever handler the
+            // widget emits for it, so the ancestor chain hears it.
+            self.clicks.paths.push(
+                self.ancestors
+                    .iter()
+                    .cloned()
+                    .chain(std::iter::once(node.clone()))
+                    .collect(),
+            );
         }
         if response.gained_focus() {
             self.hits.gained.push(rect);

@@ -79,12 +79,22 @@ pub fn paint(
     };
     paint_node(&mut w, root);
     paint_overlays(&mut w);
+    bubble_unwound(&mut w, root);
     finish_overlays(&mut w);
 }
 
 /// An overlay queued mid-walk: the node, its parent style context, the
-/// overlay ancestor chain, and the painted trigger anchor.
-type PendingOverlay = (ResolvedNode, Option<Style>, Vec<NodeId>, Option<Rect>);
+/// overlay ancestor chain, the painted trigger anchor, and its ancestry.
+/// The last field is the node's DOM ancestry at the encounter — the
+/// overlay layer paints after the page walk unwound, so its clicks would
+/// otherwise bubble through an empty chain.
+type PendingOverlay = (
+    ResolvedNode,
+    Option<Style>,
+    Vec<NodeId>,
+    Option<Rect>,
+    Vec<NodeId>,
+);
 
 /// The walk's shared state — everything but the node being painted.
 struct Walk<'a> {
@@ -410,8 +420,13 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
             .unwrap_or(&w.base_parts)
             .get(&(node.id.clone(), "trigger"))
             .copied();
-        w.overlays
-            .push((node.clone(), w.inh.clone(), w.overlay_stack.clone(), anchor));
+        w.overlays.push((
+            node.clone(),
+            w.inh.clone(),
+            w.overlay_stack.clone(),
+            anchor,
+            w.ancestors.clone(),
+        ));
     }
     w.ancestors.push(node.id.clone());
 
@@ -518,6 +533,7 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
             .iter()
             .any(|p| p.iter().any(|id| id == &node.id))
     {
+        w.clicks.fired.insert(node.id.clone());
         w.events.push(WidgetEvent {
             node: node.id.clone(),
             handler: "onClick".into(),
@@ -813,10 +829,13 @@ fn rect_align(node: &ResolvedNode) -> egui::RectAlign {
 /// overlay's children are pushed during its paint and run after it.
 fn paint_overlays(w: &mut Walk<'_>) {
     while !w.overlays.is_empty() {
-        let (node, parent_inh, stack, anchor) = w.overlays.remove(0);
+        let (node, parent_inh, stack, anchor, ancestry) = w.overlays.remove(0);
         if !overlay_open(w, &node) {
             continue;
         }
+        // The overlay paints as the DOM descendant it is: its contents'
+        // click paths carry the page ancestry, not the unwound walk's.
+        let saved_ancestors = std::mem::replace(&mut w.ancestors, ancestry);
         let ctx = w.ui.ctx().clone();
         let floating = floating_children(w, &node);
         // A "trigger" part makes this an anchored popup; without one the
@@ -825,6 +844,48 @@ fn paint_overlays(w: &mut Walk<'_>) {
         match anchor {
             Some(anchor) => anchored_overlay(w, &ctx, &node, anchor, floating, parent_inh, stack),
             None => modal_overlay(w, &ctx, &node, floating, parent_inh, stack),
+        }
+        w.ancestors = saved_ancestors;
+    }
+}
+
+/// The bubble the page walk could not run: a click inside an overlay
+/// reached page ancestors that unwound before the overlay layer painted.
+/// Each path's unfired `onClick` ancestors fire deepest first, after the
+/// targets already emitted — the same child-first order the in-walk
+/// bubble keeps.
+fn bubble_unwound(w: &mut Walk<'_>, root: &ResolvedNode) {
+    let mut pending: Vec<NodeId> = Vec::new();
+    for path in &w.clicks.paths {
+        for id in path.iter().rev().skip(1) {
+            if !w.clicks.at_target.contains(id)
+                && !w.clicks.fired.contains(id)
+                && !pending.contains(id)
+            {
+                pending.push(id.clone());
+            }
+        }
+    }
+    if pending.is_empty() {
+        return;
+    }
+    fn find<'n>(n: &'n ResolvedNode, id: &NodeId) -> Option<&'n ResolvedNode> {
+        if &n.id == id {
+            return Some(n);
+        }
+        n.children.iter().find_map(|c| match c {
+            ResolvedChild::Node(c) => find(c, id),
+            ResolvedChild::Text(_) => None,
+        })
+    }
+    for id in pending {
+        if find(root, &id).is_some_and(|n| n.handlers.contains_key("onClick")) {
+            w.clicks.fired.insert(id.clone());
+            w.events.push(WidgetEvent {
+                node: id,
+                handler: "onClick".into(),
+                value: crate::props::detail([]),
+            });
         }
     }
 }
@@ -1075,9 +1136,9 @@ fn overlay_contents(
     }
     paint_overlays(&mut inner);
     // Hand the click log back: paths witnessed inside this overlay keep
-    // propagating to later sibling overlays' containers. (A bubble from
-    // overlay content back to the page walk's containers can't run —
-    // the page unwind finished before this layer painted.)
+    // propagating — to later sibling overlays' containers, and (through
+    // `bubble_unwound`, after every overlay painted) to the page
+    // ancestors whose own walk unwound before this layer painted.
     w.clicks = std::mem::take(&mut inner.clicks);
 }
 

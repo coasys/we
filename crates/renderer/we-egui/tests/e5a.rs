@@ -1510,6 +1510,74 @@ fn container_keyboard_activation_bubbles() {
     );
 }
 
+/// R3 — a click inside a popover's content is a DOM click on a
+/// descendant of the page Column, so it bubbles there too. The page walk
+/// unwound before the overlay layer painted, so the Column never heard
+/// it; keyboard activation (no pointer for the Column's own geometry to
+/// see) isolates the propagation path.
+#[test]
+fn overlay_content_activation_bubbles_to_page_ancestors() {
+    let mut col = node("Column", "c", &[("width", Value::Num(300.0))]);
+    col.handlers = handlers_list(&["onClick"]);
+    let mut pop = node("we-popover", "c/p", &[("open", Value::Bool(true))]);
+    let trig = node("we-button", "c/p/t", &[("text", s("open"))]);
+    let mut item = node("we-button", "c/p/i", &[("text", s("inside"))]);
+    item.slot = Some(Arc::from("content"));
+    item.handlers = handlers_list(&["onClick"]);
+    child(&mut pop, trig);
+    child(&mut pop, item);
+    child(&mut col, pop);
+    let rig = paint_rig(col, |harness, _lay, _| {
+        harness.run();
+        let b = harness.get_by_label("inside");
+        b.focus();
+        harness.run();
+        harness.key_press(egui::Key::Enter);
+        harness.run();
+    });
+    let order: Vec<&str> = rig
+        .events
+        .iter()
+        .filter(|e| e.handler.as_ref() == "onClick")
+        .map(|e| e.node.as_str())
+        .collect();
+    assert_eq!(
+        order,
+        ["c/p/i", "c"],
+        "the overlay button's click bubbles child-first to the page Column: {order:?}"
+    );
+}
+
+/// R3 — a switch's activation is a DOM click whatever the switch emits:
+/// keyboard-toggling it fires its change AND bubbles a click to the
+/// Column around it. The click log only heard widgets that emit the
+/// literal `onClick`, so the switch's Space never reached the Column.
+#[test]
+fn switch_keyboard_activation_bubbles_a_click() {
+    let mut col = node(
+        "Column",
+        "c",
+        &[("height", Value::Num(60.0)), ("width", Value::Num(200.0))],
+    );
+    col.handlers = handlers_list(&["onClick"]);
+    let mut sw = node("we-switch", "c/s", &[("label", s("Dark"))]);
+    sw.handlers = handlers_list(&["onChange"]);
+    child(&mut col, sw);
+    let rig = paint_rig(col, |harness, _lay, _| {
+        let b = harness.get_by_label("Dark");
+        b.focus();
+        harness.run();
+        harness.key_press(egui::Key::Space);
+        harness.run();
+    });
+    assert!(emitted(&rig, "c/s", "onChange"), "the switch toggles");
+    assert!(
+        emitted(&rig, "c", "onClick"),
+        "the switch's activation bubbles to the Column: {:?}",
+        rig.events
+    );
+}
+
 fn handlers_list(list: &[&str]) -> IndexMap<Arc<str>, we_template::HandlerRef> {
     list.iter()
         .map(|k| {
