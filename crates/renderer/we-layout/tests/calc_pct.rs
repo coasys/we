@@ -479,6 +479,54 @@ fn calc_deferred_chain_converges_not_first_values() {
     );
 }
 
+/// A bare `Percent` padding goes straight to taffy — no `calc` term
+/// consumed a deferred base — but paint still re-resolves the edge
+/// against the exported `cb.0`, so the measured base must land in
+/// `Layout::bases` even when the solve never rebuilds.
+#[test]
+fn percent_padding_under_deferred_base_exports_it() {
+    // 400px Row → two `flex:1` Columns (200px each) → leaf `p: 10%`:
+    // taffy reserves 20px/edge itself; paint needs cb.0 = 200, not None.
+    let mut col = node(
+        "Column",
+        "a",
+        &[("flex", Value::from("1")), ("minWidth", Value::from("0px"))],
+    );
+    col.children = vec![ResolvedChild::Node(Box::new(node(
+        "Column",
+        "leaf",
+        &[("p", Value::from("10%"))],
+    )))];
+    let mut root = node("Row", "r", &[]);
+    root.children = vec![
+        ResolvedChild::Node(Box::new(col)),
+        ResolvedChild::Node(Box::new(node(
+            "Column",
+            "b",
+            &[("flex", Value::from("1")), ("minWidth", Value::from("0px"))],
+        ))),
+    ];
+
+    let out = run(&root, 400.0, 200.0);
+    let b = out
+        .bases
+        .get(&NodeId::from("leaf"))
+        .copied()
+        .unwrap_or_default();
+    assert_eq!(
+        b.cb.0,
+        Some(200.0),
+        "bare-percent padding's containing block must be exported — paint insets against it, got {b:?}"
+    );
+    // And taffy really reserved the padding — the unstretched axis shows
+    // the intrinsic 10px content plus 20px per edge.
+    let l = rect(&out, "leaf");
+    assert!(
+        (l.height() - 50.0).abs() < 0.5,
+        "leaf border-box height = 10 + 2×20px padding = 50, got {l:?}"
+    );
+}
+
 /// An absolutely-positioned child's containing block is its positioned
 /// ancestor's *padding* box: `p: calc(10% + 16px)` inside a `relative`
 /// 400px parent padded 40 resolves against 400 (56px), not the 320px

@@ -170,8 +170,8 @@ pub struct Layout {
     /// The percent bases each node's `calc`/`%` terms resolved against —
     /// `cb.0` is the containing-block width every edge % reads. `None` on
     /// an axis means the base was content-driven (the CSS cyclic fallback
-    /// applied) or never consumed. Paint resolves its own insets against
-    /// these — it never rebuilds a base from a parent rect.
+    /// applied) or the source never laid out. Paint resolves its own
+    /// insets against these — it never rebuilds a base from a parent rect.
     pub bases: HashMap<NodeId, Bases>,
 }
 
@@ -1929,10 +1929,14 @@ fn layout_impl(
             scroll,
             clip,
             // The bases this build resolved against — deferred axes take
-            // the measured values, the rest their static ones.
+            // the fresh measured values, the rest their static ones. The
+            // export reads `new_vals` (this pass's measurement), not the
+            // build inputs: a deferred base nobody's `calc` consumed —
+            // bare percent padding is the case paint re-resolves — is
+            // still real, just never a rebuild trigger.
             bases: axes
                 .iter()
-                .map(|(id, a)| (id.clone(), a.to_bases(id, &vals)))
+                .map(|(id, a)| (id.clone(), a.to_bases(id, &new_vals)))
                 .collect(),
         };
         collect(&tree, root_id, rect.min, &mut next);
