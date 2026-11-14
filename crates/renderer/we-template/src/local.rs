@@ -29,10 +29,11 @@ struct Inner {
     /// Fields `$touch` has marked — validation reads ("field was edited").
     /// Cleared when the owning node leaves the tree.
     touched: HashSet<(NodeId, Arc<str>)>,
-    /// The last-evaluated `initial` of each token-object-initial field —
-    /// the tracking effect's previous reading. Fields whose `initial` is a
-    /// literal never get an entry, so a static seed never resets.
-    initials: HashMap<(NodeId, Arc<str>), Value>,
+    /// The last reading of each token-object-initial field's `initial`:
+    /// the evaluated value plus the `(name → value)` reads the evaluation
+    /// made. Fields whose `initial` is a literal never get an entry, so a
+    /// static seed never resets.
+    initials: HashMap<(NodeId, Arc<str>), (Value, Vec<(Arc<str>, Value)>)>,
     /// `$each` node → its container rows' reference identities — held so a
     /// row's key is the live allocation, never a reusable address.
     each_refs: HashMap<NodeId, RefIds>,
@@ -75,6 +76,28 @@ impl RefIds {
         self.objs.retain(|_, (_, w)| w.upgrade().is_some());
         self.lists.retain(|_, (_, w)| w.upgrade().is_some());
     }
+}
+
+/// Whether this pass's tracked reads differ from the previous pass's —
+/// same names in the same order with equivalent values. A value compares
+/// like the signal's `===`, with one relaxation: a fresh container holding
+/// identical content counts as unchanged — the resolver rebuilds a few
+/// scope objects (`$nav`, the surface box) every pass, where TS keeps one
+/// object alive. The consequence of a wrong "unchanged" is a kept user
+/// edit, never a lost one.
+fn deps_moved(prev: &[(Arc<str>, Value)], next: &[(Arc<str>, Value)]) -> bool {
+    prev.len() != next.len()
+        || prev
+            .iter()
+            .zip(next)
+            .any(|((n1, v1), (n2, v2))| n1 != n2 || !dep_eq(v1, v2))
+}
+
+fn dep_eq(a: &Value, b: &Value) -> bool {
+    a.strict_eq(b)
+        || (matches!(a, Value::Obj(_) | Value::List(_))
+            && matches!(b, Value::Obj(_) | Value::List(_))
+            && a.to_json() == b.to_json())
 }
 
 impl LocalState {
@@ -135,22 +158,46 @@ impl LocalState {
         }
     }
 
-    /// The tracking effect WE runs for a token-object `initial`: when the
-    /// evaluated source moves between passes — the first read included —
-    /// the field takes the new value and `touched` clears. Called at
-    /// resolve with this pass's evaluated initial; literal initials never
-    /// enter, so a static seed keeps whatever the field holds.
-    pub fn follow_initial(&self, node: &NodeId, field: &str, evaluated: Value) {
+    /// The tracking effect WE runs for a token-object `initial` — as two
+    /// questions, like Solid's memo + effect (SchemaRenderer's initial
+    /// effect):
+    ///
+    /// 1. Did the memo's *inputs* move? `deps` is the `(name → value)`
+    ///    multiset this pass's evaluation read; an unchanged multiset
+    ///    means the memo did not re-evaluate at all — nothing to do,
+    ///    whatever the evaluated value happens to be. That is what lets a
+    ///    constant `{"$":"[]"}` initial keep the user's edit: a fresh `[]`
+    ///    every pass, but no reads to have changed.
+    /// 2. Did the memo *emit*? Only when a dep moved is the new value
+    ///    compared — JavaScript `===` — so a re-evaluation producing the
+    ///    same value leaves the field and `touched` alone.
+    ///
+    /// The first read always emits (the effect runs at mount).
+    pub fn follow_initial(
+        &self,
+        node: &NodeId,
+        field: &str,
+        evaluated: Value,
+        deps: &[(Arc<str>, Value)],
+    ) {
         if let Ok(mut inner) = self.inner.write() {
             let key = (node.clone(), field.into());
-            if inner
-                .initials
-                .get(&key)
-                .is_some_and(|prev| prev.strict_eq(&evaluated))
-            {
-                return;
+            if let Some((prev_value, prev_deps)) = inner.initials.get(&key) {
+                if !deps_moved(prev_deps, deps) {
+                    return;
+                }
+                if prev_value.strict_eq(&evaluated) {
+                    // Re-evaluated to the identical value — no emit; keep
+                    // the field and refresh the recorded reads.
+                    inner.initials.insert(key, (evaluated, deps.to_vec()));
+                    return;
+                }
             }
-            inner.initials.insert(key.clone(), evaluated.clone());
+            // The memo emitted: the field takes the initial and `touched`
+            // clears (the effect's `set(next); setTouched(false)`).
+            inner
+                .initials
+                .insert(key.clone(), (evaluated.clone(), deps.to_vec()));
             let changed = match inner.fields.get(&key) {
                 Some(old) => !old.strict_eq(&evaluated),
                 None => true,

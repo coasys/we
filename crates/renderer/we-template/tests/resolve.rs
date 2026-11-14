@@ -501,6 +501,98 @@ fn an_expression_initial_follows_its_source() {
 }
 
 #[test]
+fn a_constant_expression_initial_keeps_edits_across_resolves() {
+    // F2: `{"$":"[]"}` allocates a fresh list every pass — comparing
+    // identities says the initial "moved" and erases the edit on any
+    // unrelated resolve. TS's memo for a constant has no dependencies, so
+    // its tracking effect ran once at mount and never again.
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "sel": { "type": "array", "initial": { "$": "[]" } } },
+        "children": []
+    }));
+    let (mut rt, mut host, locals, screen) = rig(node, StoreBag::new());
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+    locals.set(&owner, "sel", Value::List(Arc::new(vec![Value::from("x")])));
+    locals.touch(&owner, "sel");
+
+    // An unrelated re-resolve — the same frame another field write would
+    // produce — must leave the selection alone.
+    let _ = rt.frame(&mut host, &screen).clone();
+    let held = locals.get(&owner, "sel");
+    match &held {
+        Value::List(items) => assert_eq!(
+            items.len(),
+            1,
+            "a dependency-free initial must not reset on an unrelated pass"
+        ),
+        other => panic!("sel must stay a list, got {other:?}"),
+    }
+    assert!(
+        locals.is_touched(&owner, "sel"),
+        "an unrelated pass must not clear touched"
+    );
+}
+
+#[test]
+fn a_derived_initial_resets_only_when_its_source_moves() {
+    // F2: `{"$":"[store.name]"}` builds a fresh list each pass — but its
+    // one input is `store.name`. An unrelated resolve keeps the edit; the
+    // source moving resets (the memo's dep check, then `!==`, like TS).
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "draft": { "type": "array", "initial": { "$": "[store.name]" } } },
+        "children": []
+    }));
+    let store = |name: &str| {
+        Value::Obj(Arc::new(
+            [("name".into(), Value::from(name))].into_iter().collect(),
+        ))
+    };
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root("store", store("A"));
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+
+    locals.set(
+        &owner,
+        "draft",
+        Value::List(Arc::new(vec![Value::from("me")])),
+    );
+    locals.touch(&owner, "draft");
+    let _ = rt.frame(&mut host, &screen).clone(); // unrelated pass
+    match locals.get(&owner, "draft") {
+        Value::List(items) => assert_eq!(
+            items
+                .first()
+                .and_then(|v| v.to_json().as_str().map(String::from)),
+            Some("me".to_string()),
+            "unchanged deps must not reset the field"
+        ),
+        other => panic!("draft must stay a list: {other:?}"),
+    }
+
+    bag.set_root("store", store("B"));
+    let _ = rt.frame(&mut host, &screen).clone();
+    match locals.get(&owner, "draft") {
+        Value::List(items) => assert_eq!(
+            items
+                .first()
+                .and_then(|v| v.to_json().as_str().map(String::from)),
+            Some("B".to_string()),
+            "a moved dependency resets to the new initial"
+        ),
+        other => panic!("draft must stay a list: {other:?}"),
+    }
+    assert!(
+        !locals.is_touched(&owner, "draft"),
+        "a real reset clears touched"
+    );
+}
+
+#[test]
 fn a_dollar_string_initial_stays_literal() {
     // A4 sub-point: `initial: "$store.name"`. TS's `resolveInitial` calls
     // `resolveProp`, which has no `$`-string branch — the dispatcher's final

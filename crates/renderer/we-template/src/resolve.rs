@@ -12,11 +12,11 @@
 //! `$each` row keys — so a re-resolve of an unchanged tree hands back the
 //! same ids and [`LocalState`] keyed by them survives.
 use std::collections::{HashMap, HashSet};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use indexmap::IndexMap;
 use serde_json::Value as Json;
-use we_expr::{eval, ParseCache, Value};
+use we_expr::{eval, Env, Namespace, ParseCache, Value};
 use we_screen::{local_persist_key, local_sync_spec, resolve_local_initial, ScreenOp, ScreenState};
 
 use crate::handler::HandlerToken;
@@ -144,6 +144,116 @@ pub(crate) fn eval_str(
                 warnings.push(message);
             }
             Value::Undefined
+        }
+    }
+}
+
+/// `source` evaluated with its reads recorded — the `(name, value)` pairs
+/// the expression actually consumed, so a later pass can ask whether its
+/// memo's inputs moved rather than whether this pass's value merely
+/// differs. A root that is a namespace records nothing itself (a fresh
+/// `local` wrapper is built every pass); the member reads under it record
+/// `path.key → value`. [`LocalState::follow_initial`] is the consumer.
+fn eval_str_tracked(
+    source: &str,
+    scope: &Scope,
+    bag: &StoreBag,
+    cache: &mut ParseCache,
+    warnings: &mut Vec<Arc<str>>,
+) -> (Value, Vec<(Arc<str>, Value)>) {
+    match cache.parse(source) {
+        Ok(expr) => {
+            let env = TrackEnv {
+                inner: ScopeEnv { scope, bag },
+                deps: Arc::new(Mutex::new(Vec::new())),
+            };
+            let value = eval(&expr, &env);
+            let deps = env.deps.lock().map(|d| d.clone()).unwrap_or_default();
+            (value, deps)
+        }
+        Err(err) => {
+            let message: Arc<str> = format!("expression {source:?}: {err}").into();
+            if !warnings.iter().any(|w| w == &message) {
+                warnings.push(message);
+            }
+            (Value::Undefined, Vec::new())
+        }
+    }
+}
+
+/// The [`Env`] one tracked initial evaluates against: scope then bag, like
+/// [`ScopeEnv`], with every root read going into `deps`.
+struct TrackEnv<'a> {
+    inner: ScopeEnv<'a>,
+    deps: Arc<Mutex<Vec<(Arc<str>, Value)>>>,
+}
+
+impl Env for TrackEnv<'_> {
+    fn root(&self, name: &str) -> Option<Value> {
+        let value = self.inner.root(name)?;
+        Some(match &value {
+            // A namespace is a conduit — its member reads are the deps;
+            // the wrapper itself is rebuilt every pass and must not be one.
+            Value::Namespace(_) => Value::namespace(TrackNs {
+                path: name.into(),
+                inner: value.clone(),
+                deps: self.deps.clone(),
+            }),
+            _ => {
+                if let Ok(mut deps) = self.deps.lock() {
+                    deps.push((name.into(), value.clone()));
+                }
+                value
+            }
+        })
+    }
+
+    fn call(&self, name: &str, args: &[Value]) -> Value {
+        self.inner.call(name, args)
+    }
+}
+
+/// The namespace wrapper member reads go through — each `get` records
+/// `path.key → value`, and a namespace member wraps deeper so
+/// `store.a.b` lands under `store.a.b`, not under `store` alone.
+#[derive(Debug)]
+struct TrackNs {
+    path: Arc<str>,
+    inner: Value,
+    deps: Arc<Mutex<Vec<(Arc<str>, Value)>>>,
+}
+
+impl Namespace for TrackNs {
+    fn get(&self, key: &str) -> Value {
+        let Value::Namespace(inner) = &self.inner else {
+            return Value::Undefined;
+        };
+        let value = inner.get(key);
+        let path: Arc<str> = format!("{}.{}", self.path, key).into();
+        if matches!(value, Value::Namespace(_)) {
+            return Value::namespace(TrackNs {
+                path,
+                inner: value,
+                deps: self.deps.clone(),
+            });
+        }
+        if let Ok(mut deps) = self.deps.lock() {
+            deps.push((path, value.clone()));
+        }
+        value
+    }
+
+    fn keys(&self) -> Vec<Arc<str>> {
+        match &self.inner {
+            Value::Namespace(inner) => inner.keys(),
+            _ => Vec::new(),
+        }
+    }
+
+    fn raw(&self) -> Option<Value> {
+        match &self.inner {
+            Value::Namespace(inner) => inner.raw(),
+            _ => None,
         }
     }
 }
@@ -893,9 +1003,27 @@ fn declare_locals(
                 .and_then(|t| t.as_str())
                 .unwrap_or("string")
                 .into();
-            let declared_initial = match spec.get("initial") {
-                Some(initial) => eval_json(initial, scope, cx.bag, cx.cache, cx.warnings),
-                None => Value::Undefined,
+            let (declared_initial, initial_deps) = match spec.get("initial") {
+                Some(initial) if has_any_token(initial) => {
+                    match initial.get("$").and_then(|s| s.as_str()) {
+                        Some(source) => {
+                            // An expression initial: evaluate with its reads
+                            // recorded — `follow_initial` compares this pass's
+                            // inputs, not just this pass's value.
+                            let (value, deps) =
+                                eval_str_tracked(source, scope, cx.bag, cx.cache, cx.warnings);
+                            (value, Some(deps))
+                        }
+                        // `{$query: …}`/`{$invoke: …}` as an initial is not a
+                        // value here — `Undefined`, with nothing to track.
+                        None => (Value::Undefined, Some(Vec::new())),
+                    }
+                }
+                Some(initial) => (
+                    eval_json(initial, scope, cx.bag, cx.cache, cx.warnings),
+                    None,
+                ),
+                None => (Value::Undefined, None),
             };
             let persist_key = local_persist_key(&ty, spec.get("persist").and_then(|p| p.as_str()));
             let sync_param = spec.get("syncParam").cloned().unwrap_or(Json::Null);
@@ -917,11 +1045,11 @@ fn declare_locals(
             );
             cx.locals.seed(id, &field, seeded);
             // A token-object `initial` keeps tracking its source: when the
-            // evaluation moves the field resets to it and `touched` clears —
-            // the effect `RenderSchema` mounts next to the signal.
-            if spec.get("initial").is_some_and(has_any_token) {
+            // memo's inputs move the field resets to it and `touched`
+            // clears — the effect `RenderSchema` mounts next to the signal.
+            if let Some(deps) = initial_deps {
                 cx.locals
-                    .follow_initial(id, &field, declared_initial.clone());
+                    .follow_initial(id, &field, declared_initial.clone(), &deps);
             }
             fields.insert(
                 field.clone(),
