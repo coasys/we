@@ -49,19 +49,37 @@ impl Location {
             None => (before_hash, ""),
         };
         // A parsed URL never holds dot segments — `new URL` resolves `.` and
-        // `..` when the address is written, `..` clamped at the root. The
-        // pure `resolve_path` keeps them literal on purpose (paths.json);
-        // this is the boundary that resolves them.
-        let mut segments: Vec<String> = Vec::new();
-        for seg in path.split('/').filter(|s| !s.is_empty()) {
-            match seg {
-                "." => {}
-                ".." => {
-                    segments.pop();
+        // `..` (percent-encoded spellings included) when the address is
+        // written. The shortening works on the whole segment list, empties
+        // too: `/space/abc//../board` lands on `/space/abc/board` because
+        // `..` removes the empty segment, not `abc`. The pure `resolve_path`
+        // keeps them literal on purpose (paths.json); this is the boundary
+        // that resolves them.
+        let mut resolved: Vec<&str> = Vec::new();
+        let mut parts = path.split('/').peekable();
+        while let Some(seg) = parts.next() {
+            if is_double_dot(seg) {
+                resolved.pop();
+                // A trailing `..` still leaves the slash (`/a/b/..` → `/a/`).
+                if parts.peek().is_none() {
+                    resolved.push("");
                 }
-                s => segments.push(s.to_string()),
+            } else if is_single_dot(seg) {
+                if parts.peek().is_none() {
+                    resolved.push("");
+                }
+            } else {
+                resolved.push(seg);
             }
         }
+        // Route segments read without the empties — `split('/').filter(Boolean)`,
+        // exactly as `routeStore.segments` derives them (R3's gap: the
+        // pathname's own spelling still loses them, fixed separately).
+        let segments = resolved
+            .into_iter()
+            .filter(|s| !s.is_empty())
+            .map(str::to_string)
+            .collect();
         Location {
             segments,
             params: parse_query(query),
@@ -117,4 +135,20 @@ impl Location {
             _ => Route::Other,
         }
     }
+}
+
+/// `.` or its percent-encoded spelling — WHATWG's "single-dot path
+/// segment" (`%2e`, hex case-insensitive).
+fn is_single_dot(seg: &str) -> bool {
+    seg == "." || seg.eq_ignore_ascii_case("%2e")
+}
+
+/// `..` or one of its percent-encoded spellings — WHATWG's "double-dot
+/// path segment" (`.%2e`, `%2e.`, `%2e%2e`, hex case-insensitive). A
+/// `%2e%2e%2e` is `...`, not a dot segment, and stays literal.
+fn is_double_dot(seg: &str) -> bool {
+    seg == ".."
+        || seg.eq_ignore_ascii_case(".%2e")
+        || seg.eq_ignore_ascii_case("%2e.")
+        || seg.eq_ignore_ascii_case("%2e%2e")
 }

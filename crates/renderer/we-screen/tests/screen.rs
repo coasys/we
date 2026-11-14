@@ -558,6 +558,53 @@ fn open_and_traverse_normalize_the_location() {
     assert_eq!(s.nav.href(), "/a/b");
 }
 
+#[test]
+fn dot_segments_pop_empty_segments_too() {
+    // `/space/abc//../board`: WHATWG keeps the empty segment in the path
+    // list, so `..` removes *it* — `new URL` lands on /space/abc/board, and
+    // the selected space stays `abc` (verified with node; probe-r2).
+    // Filtering empties first pops `abc` instead — the wrong ancestor.
+    let mut s = screen(json!({ "params": {} }), "/space/abc/board");
+    s.apply(ScreenOp::Open {
+        href: "/space/abc//../board".to_string(),
+    });
+    assert_eq!(s.nav.href(), "/space/abc/board");
+    assert_eq!(s.nav.segments().join("/"), "space/abc/board");
+    // The same boundary through `navigate` — an absolute `to` passes the
+    // pure resolver unchanged and meets it here.
+    s.apply(ScreenOp::Navigate {
+        to: "/space/abc//../wall".to_string(),
+        query: None,
+        base_depth: None,
+        replace: false,
+    });
+    assert_eq!(s.nav.href(), "/space/abc/wall");
+}
+
+#[test]
+fn encoded_dot_segments_resolve_at_the_url_boundary() {
+    // `%2e%2e` (and mixed `.%2e`, `%2e.`) spell `..` to a URL parser —
+    // percent-encoding is not a way to keep `..` literal (probe-r2).
+    let mut s = screen(json!({ "params": {} }), "/space/abc/board");
+    s.apply(ScreenOp::Open {
+        href: "/space/abc/a/%2e%2e/board".to_string(),
+    });
+    assert_eq!(s.nav.href(), "/space/abc/board");
+    s.apply(ScreenOp::Open {
+        href: "/space/abc/a/%2E./x".to_string(),
+    });
+    assert_eq!(s.nav.href(), "/space/abc/x");
+    s.apply(ScreenOp::Open {
+        href: "/space/abc/a/.%2e/y".to_string(),
+    });
+    assert_eq!(s.nav.href(), "/space/abc/y");
+    // …but `%2e%2e%2e` spells `...` — not a dot segment, stays literal.
+    s.apply(ScreenOp::Open {
+        href: "/space/abc/%2e%2e%2e/z".to_string(),
+    });
+    assert_eq!(s.nav.href(), "/space/abc/%2e%2e%2e/z");
+}
+
 // --- JS semantics: JSON.stringify property order --------------------------
 
 #[test]
