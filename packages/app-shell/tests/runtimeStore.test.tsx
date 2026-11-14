@@ -418,7 +418,7 @@ describe('a backend that keeps its own config file', () => {
     const row = (key: string) => store.executorConfigRows().find((r) => r.key === key);
     expect(row('auto_permit_cap_requests')).toMatchObject({ kind: 'boolean', choice: 'on', editable: true });
     expect(row('port')).toMatchObject({ kind: 'number', editable: false });
-    expect(row('port')?.note).toMatch(/at each start/);
+    expect(row('port')?.note).toBe('Set automatically');
 
     await store.setExecutorConfigValue('auto_permit_cap_requests', 'off');
     expect(row('auto_permit_cap_requests')).toMatchObject({ choice: 'off' });
@@ -490,7 +490,7 @@ describe('a backend that keeps its own config file', () => {
     const store = mount();
 
     await store.setMcpPort(80);
-    expect(store.error()).toBe('mcp_port: invalid — below 1024');
+    expect(store.error()).toBe('mcp_port: invalid (below 1024)');
   });
 
   it('reads the log tail', async () => {
