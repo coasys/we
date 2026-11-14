@@ -667,6 +667,80 @@ fn resolve_node(
         }
         Some("$panels") => resolve_panels(node, scope, parent, root, path, decls, cx),
         Some("$routes") => resolve_routes(scope, parent, root, path, decls, cx),
+        Some("$surface") => {
+            // A measuring box that stays a real node — the frontend paints
+            // it and reports the box through `ScreenOp::SetSurface`. `as`
+            // names the context key (`surface` by default); the value is
+            // `{width, tier}`, `createSurface`'s initial `{0, "base"}`
+            // until the first measure lands. Nesting shadows: the
+            // innermost surface's key wins (SurfaceRenderer).
+            let id = cx.node_id(root, path);
+            cx.live.insert(id.clone());
+            cx.parents.insert(id.clone(), parent.clone());
+
+            let as_key: Arc<str> = props
+                .and_then(|p| p.get("as"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("surface")
+                .into();
+            let measure = cx
+                .screen
+                .surfaces
+                .get(id.as_str())
+                .cloned()
+                .unwrap_or(we_screen::SurfaceMeasure {
+                    width: 0.0,
+                    tier: "base".into(),
+                });
+            let mut surface = IndexMap::new();
+            surface.insert("width".into(), Value::Num(measure.width));
+            surface.insert("tier".into(), Value::Str(measure.tier.into()));
+            let mut surface_scope = node_scope.clone();
+            surface_scope.bind(as_key.as_ref(), Value::Obj(Arc::new(surface)));
+
+            let mut resolved_props = IndexMap::new();
+            let mut handlers = IndexMap::new();
+            if let Some(props) = props {
+                for (key, value) in props {
+                    if key == "as" {
+                        continue;
+                    }
+                    if is_event_prop(key) || is_callback_prop(value) {
+                        handlers.insert(
+                            key.as_str().into(),
+                            HandlerRef {
+                                tokens: handler_tokens(value),
+                                scope: surface_scope.clone(),
+                            },
+                        );
+                    } else {
+                        resolved_props.insert(
+                            key.as_str().into(),
+                            eval_json(value, &node_scope, cx.bag, cx.cache, cx.warnings),
+                        );
+                    }
+                }
+            }
+
+            let children = resolve_children(
+                node.children.as_deref(),
+                &surface_scope,
+                &id,
+                root,
+                path,
+                &node_decls,
+                cx,
+            );
+            vec![ResolvedChild::Node(Box::new(ResolvedNode {
+                id,
+                ty: "$surface".into(),
+                props: resolved_props,
+                handlers,
+                slot: node.slot.as_deref().map(Into::into),
+                children,
+                transition: props.and_then(Transition::from_props),
+            }))]
+        }
         Some(ty) if ty.starts_with('$') && !(cx.dollar_type)(ty) => {
             // An op this stage does not know: a labelled placeholder node, its
             // children still resolved so something paints. `$`-types the host

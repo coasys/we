@@ -101,6 +101,16 @@ pub enum ScreenOp {
         /// The value as JSON — `None` removes the entry.
         value: Option<serde_json::Value>,
     },
+    /// A `$surface`'s measured box, reported by the frontend — the
+    /// resolve/layout feedback seam (`surfaces.set`).
+    SetSurface {
+        /// The surface node's resolved id.
+        id: String,
+        /// Content-box inline size in px.
+        width: f64,
+        /// The tier the layout decided.
+        tier: String,
+    },
 }
 
 /// The op names the store map's `screen` rows write — one table, so the map
@@ -124,6 +134,7 @@ pub const OP_NAMES: &[&str] = &[
     "theme.setCurrentTheme",
     "shell.resetTemplateLayout",
     "prefs.set",
+    "surfaces.set",
 ];
 
 impl ScreenOp {
@@ -147,6 +158,7 @@ impl ScreenOp {
             ScreenOp::SetCurrentTheme { .. } => "theme.setCurrentTheme",
             ScreenOp::ResetTemplateLayout => "shell.resetTemplateLayout",
             ScreenOp::SetPref { .. } => "prefs.set",
+            ScreenOp::SetSurface { .. } => "surfaces.set",
         }
     }
 }
@@ -193,6 +205,16 @@ impl ScreenState {
             ScreenOp::SetCurrentTheme { theme } => self.theme.set_current_theme(&theme),
             ScreenOp::ResetTemplateLayout => self.shell.reset_template_layout(),
             ScreenOp::SetPref { key, value } => self.prefs.set(&key, value.as_ref()),
+            ScreenOp::SetSurface { id, width, tier } => {
+                let measure = crate::SurfaceMeasure { width, tier };
+                match self.surfaces.get(&id) {
+                    Some(m) if *m == measure => Changed::No,
+                    _ => {
+                        self.surfaces.insert(id, measure);
+                        Changed::Yes
+                    }
+                }
+            }
         };
         if changed.changed() {
             self.version += 1;

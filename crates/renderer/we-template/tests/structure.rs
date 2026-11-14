@@ -430,6 +430,70 @@ fn two_mounts_of_one_part_have_independent_identities() {
 }
 
 #[test]
+fn surface_keeps_its_node_and_binds_the_measured_box() {
+    // B7: `$surface` is a real resolved node whose children read the
+    // measured box — `{width, tier}` — under `as` or the default key
+    // (SurfaceRenderer + createSurface's initial `{0, "base"}`).
+    let node = schema(json!({ "type": "Column", "children": [{
+        "type": "$surface",
+        "children": [{ "type": "Label", "props": {
+            "t": { "$": "surface.tier" },
+            "w": { "$": "surface.width" }
+        } }, {
+            "type": "$surface",
+            "props": { "as": "inner" },
+            "children": [{ "type": "Tag", "props": { "t": { "$": "inner.tier" } } }]
+        }]
+    }]}));
+    let (mut rt, mut host, mut screen) = rig(node, StoreBag::new(), "/");
+    let root = rt.frame(&mut host, &screen).clone();
+
+    let outer = find_ty(&root, "$surface").expect("the surface node stays in the tree");
+    let label = find_ty(&root, "Label").expect("children resolve inside it");
+    assert!(label
+        .props
+        .get("t")
+        .is_some_and(|v| v.strict_eq(&Value::from("base"))));
+    assert!(label
+        .props
+        .get("w")
+        .is_some_and(|v| v.strict_eq(&Value::from(0.0))));
+
+    // The measured box arrives through the op and the next frame reads it.
+    screen.apply(we_screen::ScreenOp::SetSurface {
+        id: outer.id.as_str().to_string(),
+        width: 840.0,
+        tier: "lg".into(),
+    });
+    let root = rt.frame(&mut host, &screen).clone();
+    let label = find_ty(&root, "Label").unwrap();
+    assert!(label
+        .props
+        .get("t")
+        .is_some_and(|v| v.strict_eq(&Value::from("lg"))));
+    assert!(label
+        .props
+        .get("w")
+        .is_some_and(|v| v.strict_eq(&Value::from(840.0))));
+
+    // `as` names the key — the inner surface binds `inner`.
+    let mut surfaces = Vec::new();
+    find_all_ty(&root, "$surface", &mut surfaces);
+    let inner_id = surfaces[1].id.as_str().to_string();
+    screen.apply(we_screen::ScreenOp::SetSurface {
+        id: inner_id,
+        width: 200.0,
+        tier: "sm".into(),
+    });
+    let root = rt.frame(&mut host, &screen).clone();
+    let tag = find_ty(&root, "Tag").unwrap();
+    assert!(tag
+        .props
+        .get("t")
+        .is_some_and(|v| v.strict_eq(&Value::from("sm"))));
+}
+
+#[test]
 fn record_view_prefers_entity_kind_then_entity() {
     let tmpl = template(
         json!({ "recordViews": {
