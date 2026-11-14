@@ -33,6 +33,7 @@ indexmap = { version = "2", features = ["serde"] }
 thiserror = "2"
 log = "0.4"
 async-trait = "0.1"
+unicode-normalization = "0.1"
 egui = { version = "0.37", features = ["default_fonts"] }
 eframe = "0.37"
 taffy = "0.15"

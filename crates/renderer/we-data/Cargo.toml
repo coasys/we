@@ -11,6 +11,7 @@ serde_json.workspace = true
 indexmap.workspace = true
 thiserror.workspace = true
 async-trait.workspace = true
+unicode-normalization.workspace = true
 we-expr.workspace = true
 we-template.workspace = true
 

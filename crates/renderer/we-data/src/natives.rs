@@ -20,7 +20,9 @@
 //! so [`get`] borrows member fields by reference — a `Namespace` never
 //! appears in an options object.
 use indexmap::IndexMap;
+use std::cmp::Ordering;
 use std::sync::Arc;
+use unicode_normalization::UnicodeNormalization;
 use we_expr::Value;
 use we_template::StoreBag;
 
@@ -155,6 +157,102 @@ fn by_did(profiles: &[Value]) -> IndexMap<&str, &Value> {
     map
 }
 
+/// `String.prototype.localeCompare`, levelled the way the UCA levels it:
+/// the base letters decide first — case and accents only break ties — then
+/// the accents, then the case (lowercase before uppercase), then the raw
+/// text. NFD makes "é" and "e\u{301}" tie, as in ICU.
+fn locale_cmp(a: &str, b: &str) -> Ordering {
+    let (ap, am, ac) = collation_keys(a);
+    let (bp, bm, bc) = collation_keys(b);
+    ap.cmp(&bp)
+        .then_with(|| am.cmp(&bm))
+        .then_with(|| ac.cmp(&bc))
+        .then_with(|| a.cmp(b))
+}
+
+/// A weight for an expanded letter (æ, ß, ø, …): it sorts after every real
+/// accent, so "o" < "ø" and "ss" < "ß" like `localeCompare` has them.
+const VARIANT_MARK: u16 = 0x8000;
+
+/// Letters NFD leaves whole but ICU folds into their base letters at the
+/// primary level. Each reads as the string it stands for, marked VARIANT so
+/// the plain spelling still wins the tie-break.
+fn expansion(base: char) -> Option<&'static str> {
+    match base {
+        'æ' | 'Æ' => Some("ae"),
+        'œ' | 'Œ' => Some("oe"),
+        'ß' | 'ẞ' => Some("ss"),
+        'ø' | 'Ø' => Some("o"),
+        'đ' | 'Đ' | 'ð' | 'Ð' => Some("d"),
+        'ł' | 'Ł' => Some("l"),
+        'þ' | 'Þ' => Some("th"),
+        'ŋ' | 'Ŋ' => Some("n"),
+        'ħ' | 'Ħ' => Some("h"),
+        'ı' => Some("i"),
+        'ĸ' => Some("k"),
+        'ŧ' | 'Ŧ' => Some("t"),
+        _ => None,
+    }
+}
+
+/// An accent's secondary weight, in the order ICU orders them
+/// (acute < grave < breve < circumflex < caron < diaeresis < tilde < dot
+/// above < cedilla < ogonek < macron < dot below < double grave — recorded
+/// from V8, not codepoint order). Marks outside the table still sort, by
+/// codepoint, between the known marks and the letter variants.
+fn mark_weight(mark: char) -> u16 {
+    match mark {
+        '\u{301}' => 2,  // acute
+        '\u{300}' => 3,  // grave
+        '\u{306}' => 4,  // breve
+        '\u{302}' => 5,  // circumflex
+        '\u{30C}' => 6,  // caron
+        '\u{308}' => 7,  // diaeresis
+        '\u{303}' => 8,  // tilde
+        '\u{307}' => 9,  // dot above
+        '\u{327}' => 10, // cedilla
+        '\u{328}' => 11, // ogonek
+        '\u{304}' => 12, // macron
+        '\u{323}' => 13, // dot below
+        '\u{30F}' => 14, // double grave
+        _ => 0x100 + mark as u16,
+    }
+}
+
+/// One char's share of the three collation keys: its base letters, the
+/// accent weights aligned to each base letter, and its case rank.
+fn collation_keys(s: &str) -> (Vec<char>, Vec<Vec<u16>>, Vec<u8>) {
+    let (mut primary, mut marks, mut case) = (Vec::new(), Vec::new(), Vec::new());
+    for c in s.chars() {
+        case.push(if c.is_uppercase() { 1 } else { 0 });
+        let mut decomposed = c.nfd();
+        let base = decomposed.next().unwrap_or(c);
+        let accents: Vec<u16> = decomposed.map(mark_weight).collect();
+        if let Some(exp) = expansion(base) {
+            for (i, e) in exp.chars().enumerate() {
+                primary.push(e);
+                marks.push(if i == 0 {
+                    [VARIANT_MARK]
+                        .into_iter()
+                        .chain(accents.iter().copied())
+                        .collect()
+                } else {
+                    Vec::new()
+                });
+            }
+        } else {
+            let mut lower = base.to_lowercase();
+            primary.extend(lower.next());
+            marks.push(accents);
+            for lc in lower {
+                primary.push(lc);
+                marks.push(Vec::new());
+            }
+        }
+    }
+    (primary, marks, case)
+}
+
 /// `relationId` — a string, a one-element list's head, or an object's `id`.
 fn relation_id(v: &Value) -> String {
     match v {
@@ -241,11 +339,10 @@ fn reactors(options: &Value) -> Value {
         ]));
     }
     // Reader first; the rest by name. `sort_by` is stable, as JS sort is.
-    // `localeCompare` stands in as plain byte order — names are ASCII.
     all.sort_by(|a, b| {
         let (am, bm) = (get(a, "mine").truthy(), get(b, "mine").truthy());
         if am == bm {
-            as_str(get(a, "name")).cmp(as_str(get(b, "name")))
+            locale_cmp(as_str(get(a, "name")), as_str(get(b, "name")))
         } else if am {
             std::cmp::Ordering::Less
         } else {
@@ -816,7 +913,7 @@ fn involvement_menu(options: &Value) -> Value {
         }
     };
     let mut by_name: Vec<Value> = members.values().cloned().collect();
-    by_name.sort_by_key(|a| name_of(a));
+    by_name.sort_by(|a, b| locale_cmp(&name_of(a), &name_of(b)));
 
     let mut out: Vec<Value> = Vec::new();
     let doing = kinds
