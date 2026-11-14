@@ -20,9 +20,7 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 use we_expr::Value;
-use we_style::{
-    build_layout_decls, emitted_for, Bag, DeclValue, Direction, StyleInput, TokenTable,
-};
+use we_style::{build_layout_decls, emitted_for, Bag, Direction, StyleInput, TokenTable};
 
 fn vectors_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))

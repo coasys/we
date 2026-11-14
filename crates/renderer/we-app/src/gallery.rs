@@ -295,6 +295,13 @@ pub struct GalleryApp {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+impl Default for GalleryApp {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 impl GalleryApp {
     pub fn new() -> Self {
         let set = load_theme_set();

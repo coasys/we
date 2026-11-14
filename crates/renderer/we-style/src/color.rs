@@ -465,6 +465,8 @@ fn linear_to_srgb(c: f32) -> f32 {
 }
 
 /// `(a, b, L)` — the OKLab axes and lightness.
+/// The matrices are Ottosson's published constants, kept at spec precision.
+#[allow(clippy::excessive_precision)]
 fn srgb_to_oklab(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     let (r, g, b) = (srgb_to_linear(r), srgb_to_linear(g), srgb_to_linear(b));
     let l = 0.4122214708 * r + 0.5363325363 * g + 0.0514459929 * b;
@@ -479,6 +481,8 @@ fn srgb_to_oklab(r: f32, g: f32, b: f32) -> (f32, f32, f32) {
     )
 }
 
+/// Ottosson's published constants, kept at spec precision.
+#[allow(clippy::excessive_precision)]
 fn oklab_to_srgb(l: f32, a: f32, b: f32) -> (f32, f32, f32) {
     let l_ = l + 0.3963377774 * a + 0.2158037573 * b;
     let m_ = l - 0.1055613458 * a - 0.0638541728 * b;

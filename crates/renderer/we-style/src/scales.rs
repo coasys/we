@@ -287,8 +287,7 @@ pub fn parse_transition_prop(value: &str) -> Option<Arc<str>> {
     let out = value
         .split(',')
         .map(|part| {
-            part.trim()
-                .split_whitespace()
+            part.split_whitespace()
                 .map(|seg| {
                     if DURATIONS.contains(&seg) {
                         format!("var(--we-transition-{seg})")
@@ -433,8 +432,7 @@ pub fn bg_image_layer(raw: &str) -> Arc<str> {
     }
     if is_gradient_value(raw) {
         return Arc::from(
-            raw.trim()
-                .split_whitespace()
+            raw.split_whitespace()
                 .collect::<Vec<_>>()
                 .join(" ")
                 .as_str(),
@@ -626,7 +624,7 @@ const LINE_HEIGHT_TOKENS: &[&str] = &["none", "tight", "snug", "normal", "relaxe
 
 /// `makeTokenResolver` for the three font props: a token name emits
 /// `var(--we-<cssVarPrefix>-<name>)`, anything else passes through.
-fn set_resolver<'a>(tokens: &[&str], prefix: &str, value: &str) -> Arc<str> {
+fn set_resolver(tokens: &[&str], prefix: &str, value: &str) -> Arc<str> {
     if tokens.contains(&value) {
         Arc::from(format!("var(--we-{prefix}-{value})").as_str())
     } else {
