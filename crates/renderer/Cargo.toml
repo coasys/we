@@ -19,6 +19,7 @@ members = [
     "we-catalog",
     "we-session",
     "we-egui",
+    "we-cli",
     "we-ad4m",
     "we-app",
 ]
@@ -48,5 +49,6 @@ we-style = { path = "we-style" }
 we-layout = { path = "we-layout" }
 we-catalog = { path = "we-catalog" }
 we-session = { path = "we-session" }
+we-cli = { path = "we-cli" }
 we-egui = { path = "we-egui" }
 we-ad4m = { path = "we-ad4m" }

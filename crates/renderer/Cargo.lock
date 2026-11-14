@@ -4585,6 +4585,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "we-cli"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "we-catalog",
+ "we-expr",
+ "we-screen",
+ "we-session",
+ "we-template",
+]
+
+[[package]]
 name = "we-data"
 version = "0.1.0"
 dependencies = [

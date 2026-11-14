@@ -1,0 +1,19 @@
+[package]
+name = "we-cli"
+version = "0.1.0"
+edition = "2021"
+description = "CLI frontend over we-session — resolves the offline space and prints the tree as an indented outline"
+publish = false
+
+[dependencies]
+we-expr.workspace = true
+we-screen.workspace = true
+we-template.workspace = true
+we-session.workspace = true
+we-catalog.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+[[bin]]
+name = "we-cli"
+path = "src/main.rs"
