@@ -113,6 +113,14 @@ fn str_or(v: &Value) -> Option<&str> {
     }
 }
 
+/// `Math.round` — halves go toward +∞ (`Math.round(-0.5)` is `-0`), unlike
+/// `f64::round`, which takes them away from zero. `(x + 0.5).floor()` is
+/// the JS answer for every finite `x`, and `NaN`/the infinities pass
+/// through both the same way.
+fn js_round(n: f64) -> f64 {
+    (n + 0.5).floor()
+}
+
 /// `Number(x) || 0` — `NaN` and `0` itself collapse to `0`.
 fn num_or_zero(v: &Value) -> f64 {
     let n = v.js_number();
@@ -288,7 +296,7 @@ fn signal_tally(options: &Value) -> Value {
     if rows.is_empty() {
         return 0.into();
     }
-    let round = |n: f64| (n * 10.0).round() / 10.0;
+    let round = |n: f64| js_round(n * 10.0) / 10.0;
     match aggregate_for(type_).as_str() {
         "count" => rows.iter().filter(|v| **v != 0.0).count().into(),
         "sum" => rows.iter().sum::<f64>().into(),
@@ -439,7 +447,7 @@ fn voices(options: &Value) -> Value {
                 .unwrap_or("")
                 .to_string()
         };
-        let weight = (weights.get(did).copied().unwrap_or(1.0) * 100.0).round();
+        let weight = js_round(weights.get(did).copied().unwrap_or(1.0) * 100.0);
         listed.push(obj(vec![
             ("did", did.into()),
             ("name", name.into()),
@@ -458,7 +466,7 @@ fn voices(options: &Value) -> Value {
         .sum();
     for v in &mut listed {
         let share = if total != 0.0 {
-            (as_num(get(v, "weight")).unwrap_or(0.0) / total * 100.0).round()
+            js_round(as_num(get(v, "weight")).unwrap_or(0.0) / total * 100.0)
         } else {
             0.0
         };
@@ -488,7 +496,7 @@ fn voices_param(options: &Value) -> Value {
     } else if str_or(did).is_some_and(|d| !d.is_empty()) {
         // `Math.min(100, Math.max(0, Math.round(Number(weight))))` — NaN
         // survives `Math.max`/`Math.min` in JS, so clamp by hand.
-        let share = get(options, "weight").js_number().round();
+        let share = js_round(get(options, "weight").js_number());
         let share = if share.is_nan() {
             share
         } else {
@@ -502,7 +510,7 @@ fn voices_param(options: &Value) -> Value {
     }
     weights
         .iter()
-        .map(|(who, share)| format!("{who}={}", (share * 100.0).round()))
+        .map(|(who, share)| format!("{who}={}", js_round(share * 100.0)))
         .collect::<Vec<_>>()
         .join(",")
         .into()
