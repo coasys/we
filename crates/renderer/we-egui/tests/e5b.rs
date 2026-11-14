@@ -2301,6 +2301,88 @@ fn scrolled_trigger_keeps_its_popup_anchored() {
     );
 }
 
+/// F5 — the pointer fallback must respect the scroll clip: a trigger
+/// scrolled above its viewport is invisible and dead, so a click where
+/// its translated anchor still sits must NOT toggle. The old fallback
+/// checked the anchor rect and the layer, never the active clip.
+#[test]
+fn scrolled_out_trigger_does_not_open() {
+    // A 60px page pad above the scroller gives the scrolled-out trigger's
+    // translated anchor somewhere visible to land — the DOM case where a
+    // click there would wrongly toggle.
+    let mut root = node("Column", "root", props(&[]));
+    let pad = node("Column", "root/pad", props(&[("height", n(60.0))]));
+    let mut scroller = node(
+        "Column",
+        "root/sc",
+        props(&[
+            ("label", s("Scroller")),
+            ("height", n(120.0)),
+            ("overflowY", s("auto")),
+        ]),
+    );
+    let mut inner = node(
+        "Column",
+        "root/sc/in",
+        props(&[("height", n(400.0)), ("flexShrink", n(0.0))]),
+    );
+    let spacer = node("Column", "root/sc/in/sp", props(&[("height", n(60.0))]));
+    let mut pop = node("we-popover", "root/sc/in/pop", props(&[]));
+    let trig = node(
+        "we-button",
+        "root/sc/in/pop/trig",
+        props(&[("label", s("Trig")), ("height", n(30.0))]),
+    );
+    let mut item = node(
+        "we-button",
+        "root/sc/in/pop/item",
+        props(&[("label", s("Pop")), ("height", n(30.0))]),
+    );
+    item.slot = Some(Arc::from("content"));
+    pop.children = vec![
+        ResolvedChild::Node(Box::new(trig)),
+        ResolvedChild::Node(Box::new(item)),
+    ];
+    inner.children = vec![
+        ResolvedChild::Node(Box::new(spacer)),
+        ResolvedChild::Node(Box::new(pop)),
+    ];
+    scroller.children = vec![ResolvedChild::Node(Box::new(inner))];
+    root.children = vec![
+        ResolvedChild::Node(Box::new(pad)),
+        ResolvedChild::Node(Box::new(scroller)),
+    ];
+    let (mut h, r) = rig(root);
+    h.run();
+    // Scroll 100px down: the trigger (inner y 60..90) paints 40..10px
+    // above the viewport — onto the page pad, fully clipped away.
+    let mut m = indexmap::IndexMap::new();
+    m.insert(Arc::from("x"), n(0.0));
+    m.insert(Arc::from("y"), n(100.0));
+    r.edit
+        .borrow_mut()
+        .set_field(&NodeId::from("root/sc"), "_scroll", Value::Obj(Arc::new(m)));
+    h.run();
+    let trig = h.get_by_label("Trig").rect();
+    let sc = h.get_by_label("Scroller").rect();
+    assert!(
+        trig.max.y <= sc.min.y + 1.0 && trig.min.y >= 0.0,
+        "fixture: the trigger is clipped away but on-screen: {trig:?}"
+    );
+    h.drag_at(trig.center());
+    h.step();
+    h.drop_at(trig.center());
+    h.run();
+    assert!(
+        h.query_by_label("Pop").is_none(),
+        "a click on clipped-away trigger surface must not open the popup"
+    );
+    assert!(
+        !r.edit.borrow().is_open(&NodeId::from("root/sc/in/pop")),
+        "the overlay stayed closed"
+    );
+}
+
 /// Acceptance set — a dismissed popup returns keyboard focus to its
 /// trigger, the DOM's `trigger.focus()` on light-dismiss/Escape.
 #[test]

@@ -519,10 +519,17 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
         if let Some(anchor) = anchor {
             let pos = w.ui.input(|i| i.pointer.interact_pos());
             let dead_hit = pos.is_some_and(|p| w.hits.dead.iter().any(|r| r.contains(p)));
-            let pointer_hit = w.ui.input(|i| i.pointer.any_click())
-                && pos.is_some_and(|p| anchor.contains(p))
-                && w.ui.ctx().rect_contains_pointer(w.ui.layer_id(), anchor)
-                && !dead_hit;
+            // The pointer fallback is the DOM "the trigger element got a
+            // click": primary button only, landing on the anchor's
+            // *visible* surface — a scroller clips its overflow away, so
+            // the active clip bounds the hit just like the child
+            // response's own hit-test would.
+            let pointer_hit =
+                w.ui.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary))
+                    && pos.is_some_and(|p| anchor.contains(p))
+                    && pos.is_some_and(|p| w.clip.is_none_or(|c| c.contains(p)))
+                    && w.ui.ctx().rect_contains_pointer(w.ui.layer_id(), anchor)
+                    && !dead_hit;
             let activated = w.hits.activated.iter().any(|r| anchor.contains(r.center()));
             if activated || pointer_hit {
                 let open = w.edit.is_open(&node.id);
