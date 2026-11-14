@@ -3681,6 +3681,10 @@ name = "we-app"
 version = "0.1.0"
 dependencies = [
  "eframe",
+ "egui",
+ "egui_kittest",
+ "serde",
+ "serde_json",
  "we-expr",
  "we-store",
  "we-style",

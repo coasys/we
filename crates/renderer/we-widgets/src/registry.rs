@@ -40,6 +40,23 @@ impl Registry {
         }
     }
 
+    /// The E3a builtin set — the tree panel's six. E5a/E5b add theirs here.
+    pub fn with_builtins() -> Self {
+        Self::empty()
+            .with(crate::Row)
+            .with(crate::Column)
+            .with(crate::Text)
+            .with(crate::Icon)
+            .with(crate::Button)
+            .with(crate::Tree)
+            .with(crate::TreeItem)
+            .with(crate::Avatar)
+            .with(crate::Badge)
+            .with(crate::Tooltip)
+            .with(crate::AnimatedIcon)
+            .with(crate::Timestamp)
+    }
+
     /// `ty` → widget impl, or the unknown box for a `ty` it does not know.
     pub fn widget_for(&self, ty: &str) -> Arc<dyn Widget> {
         self.widgets

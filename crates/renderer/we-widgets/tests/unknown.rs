@@ -63,7 +63,9 @@ fn events_flow_through_paint_cx() {
     let mut harness = egui_kittest::Harness::new_ui(move |ui| {
         let mut events: Vec<WidgetEvent> = Vec::new();
         {
-            let mut cx = PaintCx::new(ui, &mut events);
+            let parts = we_widgets::Parts::new();
+            let mut edit = we_widgets::EditState::default();
+            let mut cx = PaintCx::new(ui, &mut events, &parts, &mut edit, 0.0, &[]);
             let stub = Stub;
             stub.paint(
                 &mut cx,

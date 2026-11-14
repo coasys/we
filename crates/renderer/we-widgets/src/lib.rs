@@ -6,9 +6,18 @@
 //! Every painted widget sets an AccessKit label so tests can find it; a `ty`
 //! the registry does not know paints a red outlined box with the type name —
 //! the same answer WE gives (`data-we-missing-component`).
+//!
+//! **Frozen at E3a** — E5a/E5b/E8 code against [`Widget`], [`MeasureCx`],
+//! [`PaintCx`], [`PartsSpec`], [`EditState`]; do not change their shapes
+//! without updating `_shared-architecture.md` §3.5.
 #![forbid(unsafe_code)]
 
+mod basic;
+mod edit;
+mod layout;
+mod paint;
 mod registry;
+mod tree;
 mod unknown;
 
 use std::sync::Arc;
@@ -17,7 +26,12 @@ use we_expr::Value;
 use we_style::Style;
 use we_template::{NodeId, ResolvedNode};
 
+pub use basic::{AnimatedIcon, Avatar, Badge, Button, Column, Icon, Row, Text, Timestamp, Tooltip};
+pub use edit::EditState;
+pub use layout::{layout, style_of, Direction, Layout, PartSpec, Parts, PartsSpec, Pick, TextSpan};
+pub use paint::paint;
 pub use registry::Registry;
+pub use tree::{Tree, TreeItem};
 pub use unknown::UnknownWidget;
 
 /// The room a widget may take during [`Widget::measure`].
@@ -44,16 +58,43 @@ impl<'a> MeasureCx<'a> {
     }
 }
 
-/// What a widget may use while painting: the egui painter, and the event sink
-/// the frame drains afterwards.
+/// What a widget may use while painting.
+///
+/// - `ui` — the egui painter + interaction.
+/// - `parts` — the virtual rects layout computed from the widget's
+///   [`Widget::parts_spec`] (the tree-item's caret, a card's header).
+/// - `edit` — widget-owned editing state that survives frames (`we-input`'s
+///   draft, an IME range).
+/// - `now` — seconds; animations and transitions read it.
+/// - `ancestors` — the node ids above this one in the resolved tree, root
+///   first (a tree item asks how deep it is).
+/// - `events` — the sink [`PaintCx::emit`] pushes to; the frame drains it.
 pub struct PaintCx<'a> {
     pub ui: &'a mut egui::Ui,
-    events: &'a mut Vec<WidgetEvent>,
+    pub parts: &'a Parts,
+    pub edit: &'a mut EditState,
+    pub now: f64,
+    pub(crate) ancestors: &'a [NodeId],
+    pub(crate) events: &'a mut Vec<WidgetEvent>,
 }
 
 impl<'a> PaintCx<'a> {
-    pub fn new(ui: &'a mut egui::Ui, events: &'a mut Vec<WidgetEvent>) -> Self {
-        Self { ui, events }
+    pub fn new(
+        ui: &'a mut egui::Ui,
+        events: &'a mut Vec<WidgetEvent>,
+        parts: &'a Parts,
+        edit: &'a mut EditState,
+        now: f64,
+        ancestors: &'a [NodeId],
+    ) -> Self {
+        Self {
+            ui,
+            parts,
+            edit,
+            now,
+            ancestors,
+            events,
+        }
     }
 
     /// Report user input on `node`'s handler — `cx.emit(&node.id, "onClick",
@@ -71,17 +112,43 @@ impl<'a> PaintCx<'a> {
         self.events
     }
 
-    /// Set the AccessKit label tests query by — every painted widget calls this
-    /// with its `label` or `text` prop (or its type, as the fallback does).
+    /// The node ids above the one being painted, root first.
+    pub fn ancestors(&self) -> &[NodeId] {
+        self.ancestors
+    }
+
+    /// Set the AccessKit label tests query by — every painted widget calls
+    /// this with its `label` or `text` prop (or its type, as the fallback
+    /// does).
     pub fn label(&mut self, rect: Rect, text: &str) {
         let id = self.ui.scope_id().with(("we-label", text));
         self.ui
             .interact(rect, id, egui::Sense::hover())
             .widget_info(|| egui::WidgetInfo::labeled(egui::Role::Unknown, true, text.to_string()));
     }
+
+    /// A clickable, labeled region — the tree-item row, a button. Returns the
+    /// [`egui::Response`] so the caller decides what a click emits. The
+    /// AccessKit node gets `role` and `text`, so `get_by_label` finds it.
+    pub fn interact_label(
+        &mut self,
+        rect: Rect,
+        text: &str,
+        role: egui::Role,
+        node: &NodeId,
+        part: &str,
+    ) -> egui::Response {
+        let id = self.ui.scope_id().with(("we-click", node.as_str(), part));
+        let response = self.ui.interact(rect, id, egui::Sense::click());
+        response.widget_info(|| {
+            egui::WidgetInfo::labeled(role, true, text.to_string())
+        });
+        response
+    }
 }
 
-/// What the node is to layout: it holds children, it is content, or it floats.
+/// What the node is to layout: it holds children, it is content, or it
+/// floats.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum WidgetKind {
     Container,
@@ -103,9 +170,7 @@ pub enum WidgetKind {
 ///     fn measure(&self, _cx: &MeasureCx, _node: &ResolvedNode, _style: &Style, avail: Size) -> Size {
 ///         Size::new(avail.x.min(80.0), 20.0)
 ///     }
-///     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, rect: Rect) {
-///         cx.emit(&node.id, "onShown", we_expr::Value::Null);
-///     }
+///     fn paint(&self, _cx: &mut PaintCx, _node: &ResolvedNode, _style: &Style, _rect: Rect) {}
 /// }
 /// ```
 pub trait Widget: Send + Sync {
@@ -117,4 +182,9 @@ pub trait Widget: Send + Sync {
     fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, avail: Size) -> Size;
     /// Draw the node inside `rect`.
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect);
+    /// Virtual chrome the node needs laid out — the tree-item's row / caret /
+    /// children group. `None` (the default) → children inside `rect`.
+    fn parts_spec(&self, _node: &ResolvedNode) -> Option<PartsSpec> {
+        None
+    }
 }
