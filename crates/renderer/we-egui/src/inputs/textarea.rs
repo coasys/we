@@ -6,8 +6,8 @@ use we_style::Style;
 use we_template::ResolvedNode;
 
 use crate::inputs::{
-    access_label, consume_readonly_edits, disabled, focused_last_frame, readonly, reconcile_draft,
-    remember_focus, shown_text,
+    access_label, commit_text, consume_readonly_edits, disabled, focused_last_frame, readonly,
+    reconcile_draft, remember_focus, shown_text,
 };
 use crate::props;
 use crate::{events, MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
@@ -30,9 +30,13 @@ impl Widget for Textarea {
     }
 
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, rect: Rect) {
+        // The DOM `change` event carries the field's text at commit time —
+        // the same draft/baseline capture as we-input (`commit_text`).
         let committed = cx.edit.draft(&node.id);
+        let baseline = cx.edit.seen_prop(&node.id);
         reconcile_draft(cx.edit, node);
         let mut text = shown_text(cx.edit, node);
+        let shown_is_draft = cx.edit.draft(&node.id).is_some_and(|d| d == text);
         let disabled = disabled(node);
 
         // textarea.ts:315–319 — `submitOnEnter` opts in: an unshifted,
@@ -111,11 +115,8 @@ impl Widget for Textarea {
         if response.lost_focus() && cx.edit.field(&node.id, "dirty").truthy() {
             cx.edit
                 .set_field(&node.id, "dirty", we_expr::Value::Bool(false));
-            cx.emit(
-                &node.id,
-                "onChange",
-                events::detail_str(committed.as_deref().unwrap_or(&text)),
-            );
+            let commit = commit_text(node, &baseline, committed.as_deref(), shown_is_draft, &text);
+            cx.emit(&node.id, "onChange", events::detail_str(&commit));
         }
     }
 }

@@ -68,6 +68,30 @@ pub(crate) fn shown_text(edit: &EditState, node: &ResolvedNode) -> String {
     }
 }
 
+/// The DOM `change` payload — `e.target.value` at commit time
+/// (input.ts:282–285). `baseline`/`committed` are the draft and the prop
+/// it was typed against, read at the top of the frame before
+/// [`reconcile_draft`] could retire them; `shown_is_draft` says this
+/// frame's display was that draft. A prop write off the baseline is what
+/// the field displays (`text`); a shown draft carries this frame's edits
+/// (`text`); and a draft the live prop-wins rule retired while its
+/// baseline held is still the buffer the DOM keeps — the Lit element's
+/// `value` tracks the field through `handleInput`, not the frame.
+pub(crate) fn commit_text(
+    node: &ResolvedNode,
+    baseline: &we_expr::Value,
+    committed: Option<&str>,
+    shown_is_draft: bool,
+    text: &str,
+) -> String {
+    let write_moved = committed.is_some() && !baseline.strict_eq(props::prop(node, "value"));
+    if shown_is_draft || write_moved {
+        text.to_string()
+    } else {
+        committed.unwrap_or(text).to_string()
+    }
+}
+
 /// Drop a draft the prop has moved past (see [`shown_text`]).
 pub(crate) fn reconcile_draft(edit: &mut EditState, node: &ResolvedNode) {
     let prop = props::prop(node, "value");

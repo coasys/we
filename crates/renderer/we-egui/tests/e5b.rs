@@ -237,6 +237,116 @@ fn onchange_only_input_keeps_its_draft_until_commit() {
     assert_detail(&r, "onChange", s("keepxy"));
 }
 
+/// F1 — input.ts:282–285 `handleChange` reads `e.target.value`: the DOM
+/// change event carries the field's text AT COMMIT TIME. A frame that
+/// batches new text with the Enter must commit the accepted buffer
+/// ("abc"), not the draft the frame started with ("ab").
+#[test]
+fn input_enter_commits_this_frames_text_not_the_stale_draft() {
+    let mut inp = node(
+        "we-input",
+        "in",
+        props(&[("label", s("Name")), ("value", s(""))]),
+    );
+    inp.handlers = handlers(&["onChange"]);
+    let (mut h, r) = rig(inp);
+    h.run();
+    let f = h.get_by_label("Name");
+    f.click();
+    f.type_text("ab");
+    h.step();
+    // One RawInput frame: the "c" lands and Enter commits — `abc`, not `ab`.
+    h.input_mut().events.push(egui::Event::Text("c".into()));
+    h.input_mut().events.push(egui::Event::Key {
+        key: egui::Key::Enter,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Default::default(),
+    });
+    h.step();
+    assert_detail(&r, "onChange", s("abc"));
+}
+
+/// F1 — the blur side of the same stale read: an external prop write
+/// landing in the blur frame itself drops the draft, so the field
+/// displays "new" at the moment focus leaves — and `change` must carry
+/// what is displayed, not the frame-start draft ("oldx").
+#[test]
+fn input_blur_commits_the_shown_prop_not_the_dead_draft() {
+    let mut col = node("Column", "col", props(&[]));
+    let mut inp = node(
+        "we-input",
+        "col/in",
+        props(&[("label", s("Name")), ("value", s("old"))]),
+    );
+    inp.handlers = handlers(&["onChange"]);
+    let btn = node("we-button", "col/b", props(&[("label", s("Next"))]));
+    col.children = vec![
+        ResolvedChild::Node(Box::new(inp)),
+        ResolvedChild::Node(Box::new(btn)),
+    ];
+    let (mut h, r) = rig(col);
+    h.run();
+    let f = h.get_by_label("Name");
+    f.click();
+    f.type_text("x");
+    h.step();
+    // The record writes back and focus leaves in ONE frame (the
+    // AccessKit focus request lands at frame start): the blur commit
+    // sees "new" displayed, not the retired "oldx".
+    r.node.borrow_mut().children[0] = ResolvedChild::Node(Box::new({
+        let mut inp = node(
+            "we-input",
+            "col/in",
+            props(&[("label", s("Name")), ("value", s("new"))]),
+        );
+        inp.handlers = handlers(&["onChange"]);
+        inp
+    }));
+    h.get_by_label("Next").focus();
+    h.step();
+    assert_eq!(h.get_by_label("Name").value().as_deref(), Some("new"));
+    assert_detail(&r, "onChange", s("new"));
+}
+
+/// F1 — the same commit path on the multiline field: a prop write
+/// landing in the blur frame itself must commit the displayed prop,
+/// not the draft the commit frame captured first.
+#[test]
+fn textarea_blur_commits_the_shown_prop_not_the_dead_draft() {
+    let mut col = node("Column", "col", props(&[]));
+    let mut ta = node(
+        "we-textarea",
+        "col/ta",
+        props(&[("label", s("Body")), ("value", s("old"))]),
+    );
+    ta.handlers = handlers(&["onChange"]);
+    let btn = node("we-button", "col/b", props(&[("label", s("Next"))]));
+    col.children = vec![
+        ResolvedChild::Node(Box::new(ta)),
+        ResolvedChild::Node(Box::new(btn)),
+    ];
+    let (mut h, r) = rig(col);
+    h.run();
+    let f = h.get_by_label("Body");
+    f.click();
+    f.type_text("x");
+    h.step();
+    r.node.borrow_mut().children[0] = ResolvedChild::Node(Box::new({
+        let mut ta = node(
+            "we-textarea",
+            "col/ta",
+            props(&[("label", s("Body")), ("value", s("new"))]),
+        );
+        ta.handlers = handlers(&["onChange"]);
+        ta
+    }));
+    h.get_by_label("Next").focus();
+    h.step();
+    assert_detail(&r, "onChange", s("new"));
+}
+
 #[test]
 fn input_keydown_reports_key_code_and_enter_commits_change() {
     let mut inp = node(

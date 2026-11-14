@@ -7,8 +7,8 @@ use we_style::Style;
 use we_template::ResolvedNode;
 
 use crate::inputs::{
-    access_label, consume_readonly_edits, disabled, focused_last_frame, readonly, reconcile_draft,
-    remember_focus, shown_text,
+    access_label, commit_text, consume_readonly_edits, disabled, focused_last_frame, readonly,
+    reconcile_draft, remember_focus, shown_text,
 };
 use crate::props;
 use crate::{events, MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
@@ -36,11 +36,17 @@ impl Widget for Input {
     }
 
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, rect: Rect) {
-        // The DOM `change` event carries the field's text at commit time —
-        // the draft, not the prop it is about to be replaced by.
+        // The DOM `change` event carries the field's text at commit time
+        // (`commit_text`). The draft and its baseline are read before
+        // `reconcile_draft` may retire them; `shown_is_draft` records
+        // whether the frame displays that draft, so a same-frame edit or
+        // prop write commits what is displayed instead of frame-start
+        // state.
         let committed = cx.edit.draft(&node.id);
+        let baseline = cx.edit.seen_prop(&node.id);
         reconcile_draft(cx.edit, node);
         let mut text = shown_text(cx.edit, node);
+        let shown_is_draft = cx.edit.draft(&node.id).is_some_and(|d| d == text);
         let disabled = disabled(node);
         // input.ts:352 `?readonly` — focus and selection stay, edits are
         // consumed before the TextEdit gets them.
@@ -147,21 +153,16 @@ impl Widget for Input {
             if enter && dirty {
                 cx.edit
                     .set_field(&node.id, "dirty", we_expr::Value::Bool(false));
-                cx.emit(
-                    &node.id,
-                    "onChange",
-                    events::detail_str(committed.as_deref().unwrap_or(&text)),
-                );
+                let commit =
+                    commit_text(node, &baseline, committed.as_deref(), shown_is_draft, &text);
+                cx.emit(&node.id, "onChange", events::detail_str(&commit));
             }
         }
         if response.lost_focus() && !ime_enter && cx.edit.field(&node.id, "dirty").truthy() {
             cx.edit
                 .set_field(&node.id, "dirty", we_expr::Value::Bool(false));
-            cx.emit(
-                &node.id,
-                "onChange",
-                events::detail_str(committed.as_deref().unwrap_or(&text)),
-            );
+            let commit = commit_text(node, &baseline, committed.as_deref(), shown_is_draft, &text);
+            cx.emit(&node.id, "onChange", events::detail_str(&commit));
         }
     }
 }
