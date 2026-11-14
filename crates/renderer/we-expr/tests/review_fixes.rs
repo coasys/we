@@ -582,3 +582,14 @@ fn p3_10_loose_string_indices_do_not_index() {
     let expr = parse("[7]['0']").unwrap();
     assert_eq!(eval(&expr, &env).to_json(), json!(7));
 }
+
+/// `parseCached` in index.ts clears the map at 4000 entries instead of
+/// growing without bound.
+#[test]
+fn p3_11_parse_cache_is_bounded() {
+    let mut cache = we_expr::ParseCache::new();
+    for i in 0..4100 {
+        let _ = cache.parse(&format!("x{i}"));
+    }
+    assert!(cache.len() <= 4000, "cache grew to {}", cache.len());
+}
