@@ -1176,6 +1176,50 @@ fn a_tracked_initial_assigns_the_answer_it_logged() {
 }
 
 #[test]
+fn a_tracked_call_settles_its_answer_once() {
+    // R5-3: `compute()` returns a tagged ACCESSOR — a reactive answer, the
+    // shape a host-backed signal takes behind a call. The tracked `call`
+    // must settle it once and hand eval that same answer: settling for the
+    // `$call:` log and then returning the raw callable lets eval settle it
+    // AGAIN — an advancing accessor logs one answer while the field is
+    // assigned the next, and the accessor runs twice for one call.
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let calls = Arc::new(AtomicUsize::new(0));
+    let calls_in = calls.clone();
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "name": { "type": "string", "initial": { "$": "compute()" } } },
+        "children": []
+    }));
+    let bag = Arc::new(StoreBag::new());
+    bag.set_function(
+        "compute",
+        Arc::new(move |_| {
+            let calls = calls_in.clone();
+            Value::Callable(we_expr::CallableRef::accessor("answer", move |_| {
+                let i = calls.fetch_add(1, Ordering::Relaxed) + 1;
+                Value::from(format!("answer-{i}"))
+            }))
+        }),
+    );
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+    assert_eq!(
+        calls.load(Ordering::Relaxed),
+        1,
+        "one tracked call must invoke the returned accessor once, not once for the log + once for eval"
+    );
+    assert!(
+        locals
+            .get(&owner, "name")
+            .strict_eq(&Value::from("answer-1")),
+        "the logged answer must be the assigned one: {:?}",
+        locals.get(&owner, "name")
+    );
+}
+
+#[test]
 fn a_host_computation_initial_tracks_output_content_not_allocations() {
     // N4/Q2: `{"$":"compute()"}` — the host function returns a FRESH array
     // on every call. The port tracks output content, not inputs (the
