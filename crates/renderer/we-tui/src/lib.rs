@@ -103,6 +103,10 @@ pub struct TuiApp {
     seen: HashMap<NodeId, Value>,
     /// The first visible canvas line.
     pub scroll: u16,
+    /// The focus the viewport last scrolled to. Focus is brought into
+    /// view when it differs — a focus change — so paging away from a
+    /// focused row is not undone by the next redraw.
+    revealed: Option<NodeId>,
     /// The last frame's content height, for scroll clamping.
     content_height: u16,
     /// The last frame's content window height — PageUp/Down's step.
@@ -123,6 +127,7 @@ impl TuiApp {
             dirty: HashSet::new(),
             seen: HashMap::new(),
             scroll: 0,
+            revealed: None,
             content_height: 0,
             view_height: 0,
         }
@@ -172,17 +177,21 @@ impl TuiApp {
                 self.focus = None;
             }
         }
-        // Scroll to the focused row.
-        if let Some(f) = self
-            .focus
-            .as_ref()
-            .and_then(|id| frame.focusables.iter().find(|f| &f.id == id))
-        {
-            if f.rect.y < self.scroll {
-                self.scroll = f.rect.y;
-            } else if f.rect.y + f.rect.height > self.scroll + view_h {
-                self.scroll = f.rect.y + f.rect.height - view_h;
+        // Scroll a newly focused row into view — once per focus change;
+        // after that PageUp/Down, Home/End move the viewport freely.
+        if self.focus != self.revealed {
+            if let Some(f) = self
+                .focus
+                .as_ref()
+                .and_then(|id| frame.focusables.iter().find(|f| &f.id == id))
+            {
+                if f.rect.y < self.scroll {
+                    self.scroll = f.rect.y;
+                } else if f.rect.y + f.rect.height > self.scroll + view_h {
+                    self.scroll = f.rect.y + f.rect.height - view_h;
+                }
             }
+            self.revealed = self.focus.clone();
         }
         let max_scroll = frame.content_height.saturating_sub(view_h);
         self.scroll = self.scroll.min(max_scroll);
