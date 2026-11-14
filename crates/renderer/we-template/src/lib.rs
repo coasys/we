@@ -22,6 +22,7 @@ mod handlers;
 mod local;
 mod node;
 mod order;
+mod query;
 mod resolve;
 mod resolved;
 mod runtime;
@@ -32,13 +33,17 @@ pub use bundle::{
     BundleTheme, DisplaySpaces, BUNDLE_FORMAT, BUNDLE_FORMAT_VERSION,
 };
 pub use handler::{CallId, HandlerToken, Host, Invoked};
-pub use handlers::{run as run_handler, HandlerCx};
+pub use handlers::{run as run_handler, HandlerCx, PendingCall, PendingMap};
 pub use local::LocalState;
 pub use node::{RouteNode, SchemaChild, SchemaNode};
-pub use resolve::{resolve, ResolveCx};
+pub use query::{
+    compile_query, prune_where, query_descriptor, scope_anchored, CompiledQuery, QueryCell,
+    QueryIr, QueryKey, QueryPool, QuerySource, QueryState,
+};
+pub use resolve::{resolve, NoParts, PartSource, ResolveCx};
 pub use resolved::{
     normal_form, HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope, Transition,
     TransitionEffect, TransitionKind,
 };
-pub use runtime::{Runtime, StaticHost, Stats};
-pub use scope::{LocalDecl, LocalNs, LocalScope, RouteNs, RouteState, ScopeEnv, StoreBag};
+pub use runtime::{AppSpec, RootSpec, Runtime, StaticHost, Stats};
+pub use scope::{bind_screen, FieldMeta, LocalDecl, LocalNs, LocalScope, ScopeEnv, StoreBag};

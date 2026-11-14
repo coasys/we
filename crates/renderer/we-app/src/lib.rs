@@ -1,8 +1,9 @@
 //! `we-app`'s render loop, as a type tests can drive without a window.
 //!
-//! [`RendererApp`] owns the [`Runtime`], the [`StaticHost`], the [`Registry`]
-//! and the cached [`Layout`]. One [`RendererApp::frame_body`] call = one
-//! frame: `frame` (re-resolve iff a revision moved) → layout (cached on
+//! [`RendererApp`] owns the [`Runtime`], the [`StaticHost`], the
+//! [`ScreenState`], the [`Registry`] and the cached [`Layout`]. One
+//! [`RendererApp::frame_body`] call = one frame: `frame` (re-resolve iff a
+//! revision moved) → apply the ops a route queued → layout (cached on
 //! resolve count + rect) → paint → drain events → `dispatch`. F12 toggles
 //! the debug overlay — resolve count, last resolve time, node count, unknown
 //! types, dropped calls.
@@ -12,7 +13,8 @@ use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use egui::{vec2, Color32, Rect, RichText, Vec2};
-use we_template::{ResolvedNode, RouteState, Runtime, SchemaNode, StaticHost, StoreBag};
+use we_screen::ScreenState;
+use we_template::{ResolvedNode, Runtime, SchemaNode, StaticHost, StoreBag};
 use we_widgets::{layout, paint, EditState, Layout, MeasureCx, Registry, WidgetEvent};
 
 /// One frame's plumbing: the app wires host ↔ runtime ↔ registry; tests drive
@@ -20,6 +22,9 @@ use we_widgets::{layout, paint, EditState, Layout, MeasureCx, Registry, WidgetEv
 pub struct RendererApp {
     pub runtime: Runtime,
     pub host: StaticHost,
+    /// The address and chrome — `routeStore`/`shellStore` reads answer from
+    /// here; screen ops land here.
+    pub screen: ScreenState,
     pub registry: Registry,
     edit: EditState,
     layout: Option<Layout>,
@@ -30,25 +35,23 @@ pub struct RendererApp {
 }
 
 impl RendererApp {
-    /// `schema` under `template_id`, against `bag`/`route`, with the builtin
+    /// `schema` under `template_id`, against `bag`/`screen`, with the builtin
     /// widget set.
     pub fn new(
         schema: SchemaNode,
         template_id: impl Into<Arc<str>>,
         bag: Arc<StoreBag>,
-        route: RouteState,
+        screen: ScreenState,
         registry: Registry,
     ) -> Self {
         let locals = we_template::LocalState::new();
         let bag_for_host = bag.clone();
-        let route_for_rev = route.clone();
-        let runtime = Runtime::new(schema, template_id, bag, locals.clone(), move || {
-            route_for_rev.version()
-        });
-        let host = StaticHost::new(route, bag_for_host, locals);
+        let runtime = Runtime::new(schema, template_id, bag, locals.clone());
+        let host = StaticHost::new(bag_for_host, locals);
         Self {
             runtime,
             host,
+            screen,
             registry,
             edit: EditState::default(),
             layout: None,
@@ -57,14 +60,27 @@ impl RendererApp {
         }
     }
 
-    /// What a frame draws: resolve (cached) → layout (cached) → paint →
-    /// dispatch the events it produced.
+    /// What a frame draws: resolve (cached) → apply queued route ops →
+    /// layout (cached) → paint → dispatch the events it produced.
     pub fn frame_body(&mut self, ui: &mut egui::Ui) {
         if ui.input(|i| i.key_pressed(egui::Key::F12)) {
             self.debug = !self.debug;
         }
 
-        let resolved = self.runtime.frame(&mut self.host).clone();
+        // A resolve can queue a redirect; applying it bumps the version, so
+        // the next `frame` resolves the tree it landed on. A few rounds in
+        // case a redirect lands on another.
+        let mut resolved = self.runtime.frame(&mut self.host, &self.screen).clone();
+        for _ in 0..8 {
+            let ops = self.runtime.take_ops();
+            if ops.is_empty() {
+                break;
+            }
+            for op in ops {
+                self.screen.apply(op);
+            }
+            resolved = self.runtime.frame(&mut self.host, &self.screen).clone();
+        }
         let stats = self.runtime.stats().clone();
 
         egui::ScrollArea::vertical()
@@ -107,7 +123,7 @@ impl RendererApp {
         } in events
         {
             self.runtime
-                .dispatch(&mut self.host, &node, &handler, value);
+                .dispatch(&mut self.host, &mut self.screen, &node, &handler, value);
         }
     }
 
@@ -180,7 +196,7 @@ impl Shell {
                 self.panel.frame_body(ui);
             });
         egui::CentralPanel::default().show(ui, |ui| {
-            let route = self.panel.host.route.path();
+            let route = self.panel.screen.nav.current_path();
             ui.centered_and_justified(|ui| {
                 ui.label(format!("view: {route}"));
             });

@@ -12,3 +12,4 @@ indexmap.workspace = true
 thiserror.workspace = true
 async-trait.workspace = true
 we-expr.workspace = true
+we-template.workspace = true

@@ -4151,6 +4151,7 @@ dependencies = [
  "serde",
  "serde_json",
  "we-expr",
+ "we-screen",
  "we-store",
  "we-style",
  "we-template",
@@ -4196,6 +4197,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "we-expr",
+ "we-template",
 ]
 
 [[package]]
@@ -4217,6 +4219,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "we-expr",
+ "we-screen",
 ]
 
 [[package]]

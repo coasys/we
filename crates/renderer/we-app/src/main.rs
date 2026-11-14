@@ -17,7 +17,9 @@ use serde::Deserialize;
 #[cfg(not(target_arch = "wasm32"))]
 use we_app::{RendererApp, Shell};
 #[cfg(not(target_arch = "wasm32"))]
-use we_template::{Bundle, RouteState, StoreBag};
+use we_screen::{ScreenSchema, ScreenState};
+#[cfg(not(target_arch = "wasm32"))]
+use we_template::{Bundle, StoreBag};
 #[cfg(not(target_arch = "wasm32"))]
 use we_widgets::Registry;
 
@@ -35,6 +37,8 @@ struct Args {
     bundle: String,
     snapshot: Option<String>,
     route: String,
+    /// `dump` — resolve once, print the normal-form tree, exit.
+    dump: bool,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -43,8 +47,13 @@ fn parse_args() -> Args {
         bundle: DEFAULT_BUNDLE.to_string(),
         snapshot: None,
         route: "/".to_string(),
+        dump: false,
     };
-    let mut rest = std::env::args().skip(1);
+    let mut rest = std::env::args().skip(1).peekable();
+    if rest.peek().is_some_and(|a| a == "dump") {
+        rest.next();
+        args.dump = true;
+    }
     while let Some(arg) = rest.next() {
         match arg.as_str() {
             "--bundle" => {
@@ -66,7 +75,8 @@ fn parse_args() -> Args {
             "--offline" => {}
             "--help" | "-h" => {
                 eprintln!(
-                    "usage: we-app [--bundle <path>] [--snapshot <path>] [--route <href>] [--offline]\n\n\
+                    "usage: we-app [dump] [--bundle <path>] [--snapshot <path>] [--route <href>] [--offline]\n\n\
+                     dump               resolve the app root once, print the normal-form tree, exit\n\
                      --bundle <path>    bundle to render (default: the repo's bundles/coasys.bundle.json)\n\
                      --snapshot <path>  offline data: stores/queries/invokes as JSON\n\
                      --route <href>     initial routeStore path (default /)\n\
@@ -92,6 +102,58 @@ fn load_bundle(path: &str) -> Bundle {
         );
     }
     bundle
+}
+
+/// `we-app dump` — resolve the bundle's app root once against the snapshot
+/// and print the normal-form tree. The offline answer to "what did the
+/// renderer produce": no window, no executor.
+#[cfg(not(target_arch = "wasm32"))]
+fn run_dump(args: &Args) {
+    use we_template::{AppSpec, LocalState, Runtime, StaticHost};
+
+    let bundle = load_bundle(&args.bundle);
+    let bag = match &args.snapshot {
+        Some(path) => {
+            let text = std::fs::read_to_string(path)
+                .unwrap_or_else(|e| panic!("cannot read snapshot {path}: {e}"));
+            let json: serde_json::Value =
+                serde_json::from_str(&text).unwrap_or_else(|e| panic!("snapshot parse: {e}"));
+            StoreBag::from_snapshot(&json).unwrap_or_else(|e| panic!("snapshot: {e}"))
+        }
+        None => StoreBag::new(),
+    };
+    let screen_schema = ScreenSchema {
+        pages: bundle
+            .pages
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .map(|p| p.id.clone())
+            .collect(),
+        ..ScreenSchema::default()
+    };
+    let screen = ScreenState::desktop(screen_schema, &args.route);
+    let spec = AppSpec {
+        app: bundle.app.as_ref().map(|t| t.node.clone()),
+        template: bundle.templates.as_deref().and_then(|t| t.first()).cloned(),
+        pages: bundle.pages.clone().unwrap_or_default(),
+        boot: bundle.boot_screen.clone(),
+    };
+    let locals = LocalState::new();
+    let bag = Arc::new(bag);
+    let mut rt = Runtime::app(spec, Arc::clone(&bag), locals.clone());
+    let mut host = StaticHost::new(bag, locals);
+    let root = rt.frame(&mut host, &screen).clone();
+    let stats = rt.stats();
+    eprintln!(
+        "dump: nodes={} resolves={} last_resolve={:?} warnings={}",
+        stats.nodes,
+        stats.resolves,
+        stats.last_resolve,
+        stats.warnings.len()
+    );
+    let out = we_template::normal_form(&root);
+    println!("{}", serde_json::to_string_pretty(&out).unwrap());
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -127,13 +189,23 @@ fn run_native(args: Args) -> eframe::Result<()> {
         }
         None => StoreBag::new(),
     };
-    let route = RouteState::new(&args.route);
+    let screen_schema = ScreenSchema {
+        pages: bundle
+            .pages
+            .as_deref()
+            .unwrap_or_default()
+            .iter()
+            .map(|p| p.id.clone())
+            .collect(),
+        ..ScreenSchema::default()
+    };
+    let screen = ScreenState::desktop(screen_schema, &args.route);
     let shell = Shell {
         panel: RendererApp::new(
             schema,
             "tree",
             Arc::new(bag),
-            route,
+            screen,
             Registry::with_builtins(),
         ),
     };
@@ -171,7 +243,12 @@ impl eframe::App for App {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
-    run_native(parse_args())
+    let args = parse_args();
+    if args.dump {
+        run_dump(&args);
+        return Ok(());
+    }
+    run_native(args)
 }
 
 #[cfg(target_arch = "wasm32")]

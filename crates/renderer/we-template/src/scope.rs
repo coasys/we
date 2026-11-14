@@ -4,10 +4,10 @@
 //! - [`StoreBag`] is the root-name table — `spaceStore`, `routeStore`, … —
 //!   plus the functions expressions call. A [`StoreBag::from_snapshot`]
 //!   builds it from a `--snapshot` JSON file (the offline stage's `StaticBag`);
-//!   E2/E6 put the real sources behind the same `root`/`call` surface.
-//! - [`RouteState`] is the hard-wired `routeStore`: `params`, `path`,
-//!   `templateSegments`, `navigate`, `setParam`. we-screen replaces it; the
-//!   [`crate::Host`] call `routeStore.*` keeps working.
+//!   E6 puts the real sources behind the same `root`/`call` surface.
+//! - [`bind_screen`] mounts `we-screen`'s [`ScreenBag`] into the table —
+//!   `routeStore`, `shellStore`, `themeStore` as namespaces, and
+//!   `spaceStore.spacePath` merged into the snapshot's `spaceStore`.
 //! - [`LocalNs`] is `local` — the `$localState`/`$queries` fields in scope,
 //!   read lazily so a re-resolve picks up writes.
 use std::collections::HashMap;
@@ -16,18 +16,48 @@ use std::sync::{Arc, RwLock};
 
 use indexmap::IndexMap;
 use we_expr::{CallFn, Env, MapNamespace, Namespace, Value};
+use we_screen::ScreenState;
 
+use crate::query::QueryCell;
 use crate::{LocalState, NodeId, Scope};
 
-/// What a node declares on `local`: a writable `$localState` field, or a
-/// read-only `$queries` answer (read-only like WE's query accessors).
+/// What a `$localState` field declared, kept for the handler layer: the
+/// field's type, its authored `persist`/`syncParam` spec, and the `initial`
+/// it declared (the comparison a `syncParam` write clears against).
+/// `we_screen::sync_param` resolves them into keys and param names.
+#[derive(Debug, Clone)]
+pub struct FieldMeta {
+    /// The declared `type` (`string`, `boolean`, `array`, `function`, …).
+    pub ty: Arc<str>,
+    /// The authored `persist` name — the storage key is `we-local:<persist>`.
+    pub persist: Option<Arc<str>>,
+    /// The authored `syncParam` spec, raw (`"name"` or `{name, push}`).
+    pub sync_param: serde_json::Value,
+    /// The declared `initial`, as seeded — `local_param_text` clears a param
+    /// whose value came back to this.
+    pub declared_initial: Value,
+}
+
+/// What a node declares on `local`: a writable `$localState` field, a
+/// read-only `$queries` cell, or a gated query's empty answer.
 #[derive(Debug, Clone)]
 pub enum LocalDecl {
     /// `$localState` — the value lives in [`LocalState`], keyed by the
     /// declaring node's id.
-    State,
-    /// `$queries` — a static answer in E3a; E3b asks a `QuerySource`.
-    Query(Value),
+    State(FieldMeta),
+    /// `$queries` — rows from the pool cell this entry compiled to.
+    Query(Arc<QueryCell>),
+    /// A `<name>Loaded` companion — `true` once the cell holds rows.
+    QueryLoaded(Arc<QueryCell>),
+    /// A query that did not compile this frame (`when` false, entity or a
+    /// bound unresolved): rows read `[]`, `Loaded` reads `false`.
+    Gated {
+        /// `true` for the `<name>Loaded` companion of a gated query.
+        loaded: bool,
+    },
+    /// A static answer — the snapshot's `queries` table before pooling, and
+    /// what a `QuerySource` that has no opinion falls back to.
+    Static(Value),
 }
 
 /// One node's contribution to `local`: its declared fields, innermost
@@ -41,11 +71,15 @@ pub struct LocalScope {
 /// `local.<field>` — the declarations in scope, searched innermost first
 /// (WE merges `context.$local` parent-over-child, so the same name wins).
 ///
-/// One reserved read: `local["$owner:<field>"]` answers the declaring node's
-/// id as a string, for a `State` field. That is how a `$setLocal` finds the
-/// node it must write — the field's owner is part of the declaration, and a
-/// handler runs against the scope it was written in. [`Namespace::keys`]
-/// never lists it; it is plumbing, not data.
+/// Reserved reads (`Namespace::keys` never lists them — plumbing, not data):
+///
+/// - `local["$owner:<field>"]` — the declaring node's id, for a `State`
+///   field. That is how a `$setLocal` finds the node it must write.
+/// - `local["$decl:<field>"]` — the field's [`FieldMeta`] as an object
+///   (`type`, `persistKey`, `syncName`, `syncPush`, `initial`) — what a
+///   `$setLocal` mirror needs.
+/// - `local["$fields"]` — the declaring scope's `State` field names, for
+///   `$resetLocal`/`$touch "$all"`.
 #[derive(Debug)]
 pub struct LocalNs {
     state: LocalState,
@@ -66,19 +100,69 @@ impl LocalNs {
                 .map(|(_, d)| (&scope.node, d))
         })
     }
+
+    /// The `State` fields the innermost `$localState` declared — the scope a
+    /// `$resetLocal`/`$touch "$all"` acts on.
+    fn scope_fields(&self) -> Vec<Value> {
+        let Some(inner) = self.decls.last() else {
+            return Vec::new();
+        };
+        inner
+            .fields
+            .iter()
+            .filter(|(_, d)| matches!(d, LocalDecl::State(_)))
+            .map(|(name, _)| Value::Str(name.clone()))
+            .collect()
+    }
 }
 
 impl Namespace for LocalNs {
     fn get(&self, key: &str) -> Value {
         if let Some(field) = key.strip_prefix("$owner:") {
             return match self.owner(field) {
-                Some((node, LocalDecl::State)) => node.as_str().into(),
+                Some((node, LocalDecl::State(_))) => node.as_str().into(),
                 _ => Value::Undefined,
             };
         }
+        if let Some(field) = key.strip_prefix("$decl:") {
+            return match self.owner(field) {
+                Some((_, LocalDecl::State(meta))) => {
+                    let mut o = IndexMap::new();
+                    o.insert("type".into(), Value::Str(meta.ty.clone()));
+                    o.insert(
+                        "persist".into(),
+                        meta.persist
+                            .as_ref()
+                            .map(|p| Value::Str(p.clone()))
+                            .unwrap_or(Value::Null),
+                    );
+                    o.insert("syncParam".into(), Value::from_json(&meta.sync_param));
+                    o.insert("initial".into(), meta.declared_initial.clone());
+                    Value::Obj(Arc::new(o))
+                }
+                _ => Value::Undefined,
+            };
+        }
+        if key == "$fields" {
+            return Value::List(Arc::new(self.scope_fields()));
+        }
         match self.owner(key) {
-            Some((node, LocalDecl::State)) => self.state.get(node, key),
-            Some((_, LocalDecl::Query(value))) => value.clone(),
+            Some((node, LocalDecl::State(_))) => self.state.get(node, key),
+            Some((_, LocalDecl::Query(cell))) => match cell.state() {
+                crate::query::QueryState::Rows(rows) => Value::List(rows),
+                crate::query::QueryState::Loading => Value::List(Arc::new(Vec::new())),
+            },
+            Some((_, LocalDecl::QueryLoaded(cell))) => {
+                Value::Bool(matches!(cell.state(), crate::query::QueryState::Rows(_)))
+            }
+            Some((_, LocalDecl::Gated { loaded })) => {
+                if *loaded {
+                    Value::Bool(false)
+                } else {
+                    Value::List(Arc::new(Vec::new()))
+                }
+            }
+            Some((_, LocalDecl::Static(value))) => value.clone(),
             None => Value::Undefined,
         }
     }
@@ -112,13 +196,13 @@ impl Env for ScopeEnv<'_> {
 }
 
 /// The store bag: root names → namespaces (or plain values), the function
-/// table [`Env::call`] reads, and the two E3a stand-ins —
-/// `$queries` answers and canned `$invoke` replies — that the snapshot file
-/// carries. Everything mutable is behind locks and bumps [`StoreBag::version`]
-/// so a write moves the data revision a frame watches.
+/// table [`Env::call`] reads, and the snapshot's static answers —
+/// `$queries` rows and canned `$invoke` replies. Everything mutable is
+/// behind locks and bumps [`StoreBag::version`] so a write moves the data
+/// revision a frame watches.
 ///
-/// E2/E6 build the real bag — screen state, model reads, flows — behind this
-/// same `root`/`call` surface; nothing above it changes.
+/// E6 builds the real bag — model reads, flows — behind this same
+/// `root`/`call` surface; nothing above it changes.
 #[derive(Default)]
 pub struct StoreBag {
     roots: RwLock<IndexMap<Arc<str>, Value>>,
@@ -158,7 +242,7 @@ impl StoreBag {
             .unwrap_or(Value::Undefined)
     }
 
-    /// The data revision — one of the frame's three counters.
+    /// The data revision — one of the frame's counters.
     pub fn version(&self) -> u64 {
         self.version.load(Ordering::Relaxed)
     }
@@ -178,7 +262,7 @@ impl StoreBag {
         }
     }
 
-    /// The static answer a `$queries` field reads in E3a — `queries.<name>`
+    /// A static answer a `$queries` field may fall back to — `queries.<name>`
     /// in the snapshot. `Undefined` when the snapshot does not name it.
     pub fn query(&self, name: &str) -> Value {
         self.queries
@@ -204,8 +288,9 @@ impl StoreBag {
     ///
     /// Each store is an object of members → a [`MapNamespace`]; each entry of
     /// `queries` is the rows `local.<name>` answers; `invokes` maps a
-    /// `$invoke` target to the `Done` value it replies. `routeStore` is not
-    /// read from the file — [`RouteState`] provides it.
+    /// `$invoke` target to the `Done` value it replies. `routeStore`,
+    /// `shellStore` and `themeStore` are not read from the file —
+    /// [`bind_screen`] provides them from `we-screen`'s state.
     pub fn from_snapshot(json: &serde_json::Value) -> Result<StoreBag, String> {
         let bag = StoreBag::new();
         let Some(obj) = json.as_object() else {
@@ -248,162 +333,161 @@ impl StoreBag {
     }
 }
 
-/// `routeStore` — the one store a walking skeleton cannot do without. It is
-/// hard-wired here on purpose: `navigate`/`setParam` mutate it through the
-/// [`crate::Host`], `params`/`path`/`templateSegments` read it through the
-/// namespace, and [`RouteState::version`] is the screen revision a frame
-/// watches. we-screen (E2) replaces this type; the `routeStore.*` names
-/// handlers invoke stay.
-#[derive(Debug, Clone, Default)]
-pub struct RouteState {
-    inner: Arc<RwLock<RouteInner>>,
-}
-
-#[derive(Debug, Default)]
-struct RouteInner {
-    /// `/space/demo` — the path half of the href, no query.
-    path: String,
-    params: IndexMap<Arc<str>, Value>,
-    /// Where `navigate` has been — the back stack E2 owns for real.
-    history: Vec<String>,
-    version: u64,
-}
-
-impl RouteState {
-    /// Parse an href — `/space/demo?view=canvas&dna=all`. Bare strings are
-    /// numbers/booleans stay strings (the URL holds text only).
-    pub fn new(href: &str) -> Self {
-        let state = RouteState::default();
-        state.navigate(href);
-        {
-            let Ok(mut inner) = state.inner.write() else {
-                return state;
-            };
-            inner.history.clear();
-            inner.version = 0;
-        }
-        state
-    }
-
-    pub fn version(&self) -> u64 {
-        self.inner.read().map(|i| i.version).unwrap_or(0)
-    }
-
-    pub fn path(&self) -> String {
-        self.inner
-            .read()
-            .map(|i| i.path.clone())
-            .unwrap_or_default()
-    }
-
-    /// A param's value — `routeStore.params.<name>`. Absent → `Undefined`.
-    pub fn param(&self, name: &str) -> Value {
-        self.inner
-            .read()
-            .ok()
-            .and_then(|i| i.params.get(name).cloned())
-            .unwrap_or(Value::Undefined)
-    }
-
-    /// `routeStore.params` as an object — what an expression reads.
-    pub fn params_obj(&self) -> Value {
-        let params: IndexMap<Arc<str>, Value> = self
-            .inner
-            .read()
-            .map(|i| i.params.clone())
-            .unwrap_or_default();
-        Value::Obj(Arc::new(params))
-    }
-
-    /// Path segments after the leading `/`, minus the two segments the route
-    /// owns (`/space/<id>/…` → the view path). `routeStore.templateSegments`.
-    pub fn template_segments(&self) -> Value {
-        let path = self.path();
-        let segments: Vec<Value> = path
-            .trim_matches('/')
-            .split('/')
-            .skip(2)
-            .filter(|s| !s.is_empty())
-            .map(Value::from)
-            .collect();
-        Value::List(Arc::new(segments))
-    }
-
-    /// `routeStore.navigate(href)` — replace the route, push history, move the
-    /// version. An href that is not a string does nothing (a template handed
-    /// us `Undefined`).
-    pub fn navigate(&self, href: &str) {
-        if let Ok(mut inner) = self.inner.write() {
-            let (path, query) = href.split_once('?').unwrap_or((href, ""));
-            inner.params.clear();
-            for pair in query.split('&').filter(|p| !p.is_empty()) {
-                let (k, v) = pair.split_once('=').unwrap_or((pair, ""));
-                inner.params.insert(k.into(), Value::from(v));
-            }
-            inner.path = path.to_string();
-            inner.history.push(href.to_string());
-            inner.version += 1;
-        }
-    }
-
-    /// `routeStore.setParam(name, value)` — `null`/`undefined` drops the param,
-    /// anything else stores its text (`to_text`, as the URL is text).
-    pub fn set_param(&self, name: &str, value: &Value) {
-        if let Ok(mut inner) = self.inner.write() {
-            match value {
-                Value::Null | Value::Undefined => {
-                    inner.params.swap_remove(name);
-                }
-                other => {
-                    inner.params.insert(name.into(), other.to_text().into());
-                }
-            }
-            inner.version += 1;
-        }
-    }
-
-    /// Where `navigate` has been, first to last.
-    pub fn history(&self) -> Vec<String> {
-        self.inner
-            .read()
-            .map(|i| i.history.clone())
-            .unwrap_or_default()
-    }
-
-    /// The store object expressions read.
-    pub fn namespace(&self) -> RouteNs {
-        RouteNs(self.clone())
-    }
-}
-
-/// `routeStore` as a namespace — reads only; writes go through the
-/// [`crate::Host`] (`routeStore.navigate`, `routeStore.setParam`).
+/// A namespace overlaid on whatever a store root already held — the screen's
+/// accessor names (`shellStore.activeShellView`, `themeStore.currentThemeId`,
+/// `spaceStore.spacePath`) on top, the store's own members underneath. A
+/// plain value (not a namespace) answers by name only when it is the
+/// overlay's to give.
 #[derive(Debug)]
-pub struct RouteNs(RouteState);
+struct MergedNs {
+    overlay: Value,
+    base: Value,
+    /// Reads the overlay owns even when its answer is `Undefined`/`null`.
+    owned: &'static [&'static str],
+}
 
-impl Namespace for RouteNs {
+impl Namespace for MergedNs {
     fn get(&self, key: &str) -> Value {
-        match key {
-            "params" => self.0.params_obj(),
-            "path" => self.0.path().into(),
-            "templateSegments" => self.0.template_segments(),
-            "navigate" | "setParam" | "goBack" | "goForward" | "setUrlParam" => {
-                Value::Callable(we_expr::CallableRef::named(key))
-            }
+        let over = match &self.overlay {
+            Value::Namespace(ns) => ns.get(key),
+            _ => Value::Undefined,
+        };
+        if self.owned.contains(&key) || !matches!(over, Value::Undefined) {
+            return over;
+        }
+        match &self.base {
+            Value::Namespace(ns) => ns.get(key),
             _ => Value::Undefined,
         }
     }
 
     fn keys(&self) -> Vec<Arc<str>> {
-        vec![
-            "params".into(),
-            "path".into(),
-            "templateSegments".into(),
-            "navigate".into(),
-            "setParam".into(),
-            "goBack".into(),
-            "goForward".into(),
-            "setUrlParam".into(),
-        ]
+        let mut keys = match &self.base {
+            Value::Namespace(ns) => ns.keys(),
+            _ => Vec::new(),
+        };
+        if let Value::Namespace(ns) = &self.overlay {
+            for k in ns.keys() {
+                if !keys.iter().any(|e| e == &k) {
+                    keys.push(k);
+                }
+            }
+        }
+        keys
+    }
+}
+
+/// `spaceStore` merged with `spacePath` — the snapshot's members underneath,
+/// the screen's reading of where we are on top. `spacePath` is a screen fact
+/// (`/space/<id>` inside a space, null out); a snapshot cannot carry it
+/// because it changes with the route.
+#[derive(Debug)]
+struct SpaceStoreNs {
+    base: Value,
+    space_path: Value,
+}
+
+impl Namespace for SpaceStoreNs {
+    fn get(&self, key: &str) -> Value {
+        if key == "spacePath" {
+            return self.space_path.clone();
+        }
+        match &self.base {
+            Value::Namespace(ns) => ns.get(key),
+            _ => Value::Undefined,
+        }
+    }
+
+    fn keys(&self) -> Vec<Arc<str>> {
+        let mut keys = match &self.base {
+            Value::Namespace(ns) => ns.keys(),
+            _ => Vec::new(),
+        };
+        if !keys.iter().any(|k| k.as_ref() == "spacePath") {
+            keys.push("spacePath".into());
+        }
+        keys
+    }
+}
+
+/// Mount the screen's read surface into the bag: `routeStore` ← nav,
+/// `shellStore` ← shell, `themeStore` ← theme (the names §4.4 gives a
+/// template), and `spaceStore.spacePath` merged into whatever `spaceStore`
+/// the bag already holds. Shell and theme are overlays — the screen's
+/// accessors first, the store's own members underneath — a real
+/// `themeStore` carries `builtInThemes` a screen never answers.
+/// Called when `screen.version` moves — the bag version bumps once per
+/// changed root.
+pub fn bind_screen(bag: &StoreBag, screen: &ScreenState) {
+    let sb = screen.bag();
+    let route_base = bag.root("routeStore").unwrap_or(Value::Undefined);
+    bag.set_root(
+        "routeStore",
+        Value::namespace(MergedNs {
+            overlay: sb.get("nav"),
+            base: route_base,
+            owned: &[
+                "params",
+                "templateSegments",
+                "segments",
+                "currentPath",
+                "page",
+                "href",
+                "spacePath",
+            ],
+        }),
+    );
+    let shell_base = bag.root("shellStore").unwrap_or(Value::Undefined);
+    bag.set_root(
+        "shellStore",
+        Value::namespace(MergedNs {
+            overlay: sb.get("shell"),
+            base: shell_base,
+            owned: &[
+                "activeShellView",
+                "spaceSettingsOpen",
+                "spaceSettingsTab",
+                "collapsedLanes",
+                "layoutDirty",
+                "panelsHidden",
+                "panelMaximised",
+                "createSpaceOpen",
+                "joinSpaceOpen",
+                "panels",
+            ],
+        }),
+    );
+    let theme_base = bag.root("themeStore").unwrap_or(Value::Undefined);
+    bag.set_root(
+        "themeStore",
+        Value::namespace(MergedNs {
+            overlay: sb.get("theme"),
+            base: theme_base,
+            // `themeFork` is always the screen's call (`null` = no fork);
+            // an unset `currentThemeId` reads Undefined and defers to the
+            // store's answer.
+            owned: &["themeFork"],
+        }),
+    );
+    let base = bag.root("spaceStore").unwrap_or(Value::Undefined);
+    let space_path = sb.get("nav").read_key("spacePath");
+    bag.set_root(
+        "spaceStore",
+        Value::namespace(SpaceStoreNs { base, space_path }),
+    );
+}
+
+/// Read one key off a `Value` that may be a namespace — for `spacePath`
+/// above, which lives behind `nav`.
+trait ReadKey {
+    fn read_key(&self, key: &str) -> Value;
+}
+
+impl ReadKey for Value {
+    fn read_key(&self, key: &str) -> Value {
+        match self {
+            Value::Namespace(ns) => ns.get(key),
+            _ => Value::Undefined,
+        }
     }
 }

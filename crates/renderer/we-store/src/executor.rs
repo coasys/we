@@ -56,32 +56,9 @@ impl ClassSel {
 
 /// A compiled query — the `$query` descriptor after expressions are resolved
 /// (`QueryDescriptor` in `types.ts`, compiled for the backend's query IR).
-/// Fields stay raw JSON where the recipe is data; task M2's `modelRead` rows
-/// and the E6 compiler fill them.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct QueryIr {
-    /// `where` on the wire — `where_` is only the Rust-legal field name.
-    /// Without the rename the executor drops every filter.
-    #[serde(rename = "where", skip_serializing_if = "Option::is_none")]
-    pub where_: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub order: Option<serde_json::Value>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub limit: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub offset: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub include: Option<serde_json::Value>,
-    /// `select`: the fields a row carries; `id` always comes.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub select: Option<Vec<String>>,
-    /// `scope`: anchor drill-down (`via` / `anchorId` / transitive / direction).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub scope: Option<serde_json::Value>,
-    /// Store path to the dataset handle (`dataset` in `QueryToken`).
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub dataset: Option<String>,
-}
+/// Its home is `we-template::query` — the resolver compiles descriptors into
+/// it; this re-export keeps the executor signature naming the same type.
+pub use we_template::QueryIr;
 
 /// One write the validated write RPC performs (AD4M task A3). The recipe is
 /// data — see the `modelWrite`/`command` rows in the store map.
