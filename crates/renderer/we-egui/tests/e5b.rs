@@ -262,6 +262,85 @@ fn input_keydown_reports_key_code_and_enter_commits_change() {
     assert_detail(&r, "onChange", s("a"));
 }
 
+/// B5 — the IME's Enter is not a submit. input.ts:296–304 forwards
+/// `e.isComposing`; the bundle's "Find or ask" sends on
+/// `Enter && !event.detail.isComposing`. A hardcoded `false` reports the
+/// candidate-confirming keystroke as an ordinary submit, and the Rust
+/// `enter && dirty → onChange` fires the send itself.
+#[test]
+fn ime_enter_reports_composing_and_does_not_submit() {
+    let mut inp = node(
+        "we-input",
+        "in",
+        props(&[("label", s("Ask")), ("value", s(""))]),
+    );
+    inp.handlers = handlers(&["onInput", "onChange", "onKeyDown"]);
+    let (mut h, r) = rig(inp);
+    h.run();
+    let f = h.get_by_label("Ask");
+    f.click();
+    f.type_text("ka");
+    h.step();
+    // Composition opens (preedit) and the Enter confirming the candidate
+    // arrives inside it — one frame, in order, like winit delivers them.
+    h.input_mut()
+        .events
+        .push(egui::Event::Ime(egui::ImeEvent::Preedit {
+            text: "か".into(),
+            active_range_chars: None,
+        }));
+    h.input_mut().events.push(egui::Event::Key {
+        key: egui::Key::Enter,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Default::default(),
+    });
+    h.step();
+    let kd = details(&r, "onKeyDown");
+    let Value::Obj(m) = kd.last().expect("keydown fired") else {
+        panic!("keydown payload not an object")
+    };
+    let Some(Value::Obj(d)) = m.get("detail") else {
+        panic!("no detail")
+    };
+    assert!(
+        d.get("isComposing").is_some_and(|v| v.strict_eq(&b(true))),
+        "Enter inside a composition must report isComposing:true: {d:?}"
+    );
+    assert!(
+        details(&r, "onChange").is_empty(),
+        "an IME Enter must not commit/submit"
+    );
+    // Commit ends the composition; the following Enter submits for real.
+    h.input_mut()
+        .events
+        .push(egui::Event::Ime(egui::ImeEvent::Commit("か".into())));
+    h.step();
+    h.key_press(egui::Key::Enter);
+    h.run();
+    let kd = details(&r, "onKeyDown");
+    let Value::Obj(m) = kd.last().expect("keydown fired") else {
+        panic!("keydown payload not an object")
+    };
+    let Some(Value::Obj(d)) = m.get("detail") else {
+        panic!("no detail")
+    };
+    assert!(d.get("isComposing").is_some_and(|v| v.strict_eq(&b(false))));
+    // The committed text is the field's — the clean Enter submits once,
+    // with whatever the TextEdit now holds.
+    let changes = details(&r, "onChange");
+    assert_eq!(changes.len(), 1);
+    let Some(Value::Obj(m)) = changes.last() else {
+        panic!("onChange payload not an object")
+    };
+    assert!(
+        m.get("detail")
+            .is_some_and(|v| matches!(v, Value::Str(t) if !t.is_empty())),
+        "onChange detail must be the field's text: {m:?}"
+    );
+}
+
 #[test]
 fn textarea_emits_oninput() {
     let mut ta = node(

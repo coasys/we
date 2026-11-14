@@ -73,27 +73,66 @@ impl Widget for Input {
         // "A", "Escape"), which is what the bundle compares against. The
         // frame Enter *surrenders* focus counts too (`lost_focus`), or the
         // submit keystroke would never reach `onKeyDown`.
+        let mut ime_enter = false;
         if response.has_focus() || response.lost_focus() {
-            let keys: Vec<(String, String)> = cx.ui.input(|i| {
-                i.events
-                    .iter()
-                    .filter_map(|e| match e {
+            // `isComposing` rides along: an Enter still inside the IME's
+            // composition is the candidate's, not a submit. egui reports
+            // it the way the DOM does — the `Ime` events around the key
+            // say whether the field was composing when it arrived, so the
+            // events are walked in order and the flag lands per keydown.
+            let was_composing = cx.edit.field(&node.id, "ime").truthy();
+            let (keys, composing) = cx.ui.input(|i| {
+                let mut composing = was_composing;
+                let mut keys = Vec::new();
+                for e in &i.events {
+                    match e {
+                        egui::Event::Ime(egui::ImeEvent::Preedit { text, .. }) => {
+                            composing = !text.is_empty();
+                        }
+                        egui::Event::Ime(egui::ImeEvent::Commit(_)) => {
+                            composing = false;
+                        }
                         egui::Event::Key {
                             key,
                             physical_key,
                             pressed: true,
                             ..
-                        } => Some((
+                        } => keys.push((
                             format!("{key:?}"),
                             format!("{:?}", physical_key.unwrap_or(*key)),
+                            composing,
                         )),
-                        _ => None,
-                    })
-                    .collect()
+                        _ => {}
+                    }
+                }
+                (keys, composing)
             });
-            let enter = keys.iter().any(|(k, _)| k == "Enter");
-            for (key, code) in keys {
-                cx.emit(&node.id, "onKeyDown", events::key_down(&key, &code, false));
+            if composing != was_composing {
+                cx.edit
+                    .set_field(&node.id, "ime", we_expr::Value::Bool(composing));
+            }
+            let enter = keys
+                .iter()
+                .any(|(k, _, composing)| k == "Enter" && !composing);
+            // A composing Enter commits the candidate, not the field — and
+            // the focus the TextEdit surrenders to it is the IME's, not
+            // the user's blur, so the lost-focus commit below must not
+            // run for it either.
+            ime_enter = keys
+                .iter()
+                .any(|(k, _, composing)| k == "Enter" && *composing);
+            if ime_enter {
+                // The DOM input keeps focus through the composition — take
+                // back the focus egui's TextEdit surrenders on Enter, or
+                // the arriving `Commit` lands on a blurred field.
+                response.request_focus();
+            }
+            for (key, code, composing) in keys {
+                cx.emit(
+                    &node.id,
+                    "onKeyDown",
+                    events::key_down(&key, &code, composing),
+                );
             }
             let dirty = cx.edit.field(&node.id, "dirty").truthy();
             if enter && dirty {
@@ -106,7 +145,7 @@ impl Widget for Input {
                 );
             }
         }
-        if response.lost_focus() && cx.edit.field(&node.id, "dirty").truthy() {
+        if response.lost_focus() && !ime_enter && cx.edit.field(&node.id, "dirty").truthy() {
             cx.edit
                 .set_field(&node.id, "dirty", we_expr::Value::Bool(false));
             cx.emit(
