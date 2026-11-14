@@ -318,9 +318,10 @@ fn deeper_can_scroll(w: &Walk<'_>, node: &ResolvedNode, axis: usize, delta: f32)
 /// minimal nudge egui's `ScrollArea::end` applies to `scroll_to_me`
 /// targets (scroll_area.rs:1214): above the viewport scrolls the content
 /// down, below scrolls it up, and a target taller than the viewport wins
-/// its top edge. Only a `gained` rect inside the content's painted extent
-/// counts — a sibling scroller's field is not ours to move.
-fn focus_into_view(w: &mut Walk<'_>, node: &ResolvedNode, rect: egui::Rect) {
+/// its top edge. Only a gain logged while this node's children painted
+/// (`gained[from..]`, its descendants) and inside the content's painted
+/// extent counts — a sibling's field is not ours to move.
+fn focus_into_view(w: &mut Walk<'_>, node: &ResolvedNode, rect: egui::Rect, from: usize) {
     let axes = w
         .layout
         .scroll
@@ -342,6 +343,8 @@ fn focus_into_view(w: &mut Walk<'_>, node: &ResolvedNode, rect: egui::Rect) {
         let Some(target) = w
             .hits
             .gained
+            .get(from..)
+            .unwrap_or_default()
             .iter()
             .find(|r| r.min[d] >= shown.min[d] - 0.5 && r.max[d] <= shown.max[d] + 0.5)
         else {
@@ -455,6 +458,11 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
     // children (the widget's generated content) join the authored ones —
     // the layout pass already gave them rects.
     let saved_inh = w.inh.replace(style.clone());
+    // Focus gains logged from here on are this node's descendants — the
+    // walk is depth-first, so the scroller's tab-into-view below sees
+    // exactly its own subtree's (the DOM scrolls a focused element's
+    // scroll ancestors, not whatever box shares its coordinates).
+    let gained_from = w.hits.gained.len();
     let extra = widget.synthesized_children(node);
     for child in node.children.iter().chain(extra.iter()) {
         match child {
@@ -601,7 +609,7 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
         // a `scroll_to_me` target. Runs after the children painted so
         // this frame's focus gain is seen; innermost scroller wins the
         // nested case.
-        focus_into_view(w, node, rect);
+        focus_into_view(w, node, rect, gained_from);
         w.parts_buf = if saved_offset == egui::Vec2::ZERO {
             None
         } else {

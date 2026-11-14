@@ -2633,3 +2633,59 @@ fn modal_close_returns_focus_to_the_opener() {
         "closing the modal must return focus to the control that had it at open"
     );
 }
+
+/// B9 round 2 — the browser scrolls a focused element's own scroll
+/// ANCESTORS into view, nothing else. A field in a sibling column whose y
+/// happens to fall inside a scroller's content range is not that
+/// scroller's to move (the old check was geometric, per axis).
+#[test]
+fn focus_in_a_sibling_column_does_not_scroll_an_unrelated_scroller() {
+    let mut scroller = node(
+        "Column",
+        "r/s",
+        props(&[
+            ("height", n(100.0)),
+            ("width", n(150.0)),
+            ("overflowY", s("auto")),
+        ]),
+    );
+    scroller.children = vec![ResolvedChild::Node(Box::new(node(
+        "Column",
+        "r/s/pad",
+        props(&[("height", n(300.0)), ("flexShrink", n(0.0))]),
+    )))];
+    let mut side = node("Column", "r/side", props(&[("width", n(200.0))]));
+    side.children = vec![
+        ResolvedChild::Node(Box::new(node(
+            "Column",
+            "r/side/pad",
+            props(&[("height", n(150.0)), ("flexShrink", n(0.0))]),
+        ))),
+        ResolvedChild::Node(Box::new(node(
+            "we-input",
+            "r/side/field",
+            props(&[("label", s("Side field")), ("value", s(""))]),
+        ))),
+    ];
+    let mut row = node("Row", "r", props(&[("ay", s("start"))]));
+    // The sibling paints first, so its focus gain is already logged when
+    // the scroller's tab-into-view pass runs.
+    row.children = vec![
+        ResolvedChild::Node(Box::new(side)),
+        ResolvedChild::Node(Box::new(scroller)),
+    ];
+    let (mut h, r) = rig(row);
+    h.run();
+    h.get_by_label("Side field").focus();
+    h.run();
+    h.run();
+    assert!(h.get_by_label("Side field").is_focused());
+    let y = match r.edit.borrow().field(&NodeId::from("r/s"), "_scroll") {
+        Value::Obj(o) => match o.get("y") {
+            Some(Value::Num(n)) => *n,
+            _ => 0.0,
+        },
+        _ => 0.0,
+    };
+    assert_eq!(y, 0.0, "a sibling's focus must not scroll this scroller");
+}
