@@ -46,14 +46,14 @@ impl Widget for NumberInput {
         let mut text = shown_num(cx.edit, node);
         let label = access_label(cx, node);
 
-        // [−] [ text ] [+] — the field takes the middle.
-        let h = props::control_height(node);
+        // [−] [ text ] [+] — the field takes the middle, all three on one
+        // shared band (WE's `ay: center` inline-flex row).
         let btn = Size::new(28.0, rect.height());
         let minus = Rect::from_min_size(rect.min, btn);
         let plus = Rect::from_min_size(egui::pos2(rect.max.x - 28.0, rect.min.y), btn);
         let field = Rect::from_min_max(
             egui::pos2(minus.max.x + 2.0, rect.min.y),
-            egui::pos2(plus.min.x - 2.0, rect.min.y + h.max(rect.height())),
+            egui::pos2(plus.min.x - 2.0, rect.max.y),
         );
 
         let minus_r = cx.interact_label(minus, "decrement", egui::Role::Button, &node.id, "minus");
@@ -77,6 +77,12 @@ impl Widget for NumberInput {
             TextEdit::singleline(&mut text)
                 .id_salt(node.id.as_str())
                 .desired_width(field.width())
+                // Fill the field so the row reads as one control, and
+                // centre the text block in it (WE's `text-align: center`
+                // on the native input) — the theme styles the atom
+                // LEFT_TOP, so without this the digit floats high and left.
+                .min_size(field.size())
+                .align(egui::Align2::CENTER_CENTER)
                 .interactive(!disabled),
         );
         response.widget_info(|| egui::WidgetInfo::labeled(egui::Role::TextInput, true, &label));

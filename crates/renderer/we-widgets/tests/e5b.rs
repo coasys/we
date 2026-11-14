@@ -377,6 +377,55 @@ fn number_input_steppers_respect_bounds() {
 }
 
 #[test]
+fn number_input_row_shares_one_height() {
+    // [−] [ text ] [+] is one band: the steppers are the row's height and
+    // the field matches them, with every centre on the same line.
+    let ni = node(
+        "we-number-input",
+        "ni",
+        props(&[("label", s("Count")), ("value", n(3.0))]),
+    );
+    let (mut h, _r) = rig(ni);
+    h.run();
+    let minus = h.get_by_label("decrement").rect();
+    let plus = h.get_by_label("increment").rect();
+    let field = h.get_by_label("Count").rect();
+    for (name, a, b) in [
+        ("minus/field", minus, field),
+        ("field/plus", field, plus),
+        ("minus/plus", minus, plus),
+    ] {
+        assert!(
+            (a.height() - b.height()).abs() < 0.5,
+            "{name} heights differ: {a:?} vs {b:?}"
+        );
+        assert!(
+            (a.center().y - b.center().y).abs() < 0.5,
+            "{name} centres misaligned: {a:?} vs {b:?}"
+        );
+    }
+    // The glyph itself sits on that line — the AccessKit `TextRun` child
+    // carries the text row's real bounds.
+    let run = h
+        .get_all_by_role(egui::accesskit::Role::TextRun)
+        .find(|n| n.value().as_deref() == Some("3"))
+        .expect("a TextRun node for the field's value");
+    let run = run.rect();
+    assert!(
+        (run.center().y - field.center().y).abs() < 1.0,
+        "text baseline off the row: glyph {run:?} vs field {field:?}"
+    );
+    // WE centres the digit in the well (`text-align: center`); egui's atom
+    // layout keeps a few px for the trailing slot, so it lands ~4px shy of
+    // dead centre — assert it's close, and fully inside the field.
+    assert!(
+        (run.center().x - field.center().x).abs() < 6.0,
+        "digit far from the field's centre: glyph {run:?} vs field {field:?}"
+    );
+    assert!(field.contains_rect(run), "glyph {run:?} outside {field:?}");
+}
+
+#[test]
 fn form_field_passes_label_to_control() {
     let mut field = node(
         "we-form-field",

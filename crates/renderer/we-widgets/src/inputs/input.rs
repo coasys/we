@@ -45,6 +45,11 @@ impl Widget for Input {
         let widget = TextEdit::singleline(&mut text)
             .id_salt(node.id.as_str())
             .desired_width(rect.width())
+            // Centre the text block in the field — the theme's atom
+            // alignment is LEFT_TOP, which parks the text high inside a
+            // `control_height` rect.
+            .min_size(rect.size())
+            .align(egui::Align2::LEFT_CENTER)
             .password(is_password)
             .interactive(!disabled);
         let widget = match props::prop_str(node, "placeholder") {
