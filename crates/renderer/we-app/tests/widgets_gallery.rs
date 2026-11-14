@@ -5,7 +5,7 @@
 use std::cell::RefCell;
 use std::rc::Rc;
 
-use egui_kittest::{Harness, SnapshotResults};
+use egui_kittest::{Harness, SnapshotOptions, SnapshotResults};
 use we_app::gallery_widgets::{widgets_tree, widgets_ui};
 use we_egui::EditState;
 
@@ -15,10 +15,16 @@ fn snap(name: &str, open: bool, results: &mut SnapshotResults) {
     let e = edit.clone();
     let mut harness = Harness::builder()
         .with_size(egui::vec2(420.0, 720.0))
+        // Pinned raster inputs, same policy as `gallery.rs`: bundled
+        // fonts, 1px-per-point, CPU-preferred wgpu adapter, 0.6 YIQ
+        // per-pixel tolerance with an 8px changed-area budget.
+        .with_pixels_per_point(1.0)
         .with_context_setup(|ctx| {
             ctx.set_fonts(egui::FontDefinitions::default());
             ctx.set_theme(egui::ThemePreference::Dark);
         })
+        .wgpu()
+        .with_options(SnapshotOptions::new().threshold(0.6).max_failed_pixels(8))
         .build_ui(move |ui| {
             let mut events = Vec::new();
             widgets_ui(ui, &tree, &mut e.borrow_mut(), &mut events, 0.0);
