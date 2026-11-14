@@ -81,7 +81,15 @@ export function localWriteMirror(
 ): LocalWriteMirror {
   const mirror: LocalWriteMirror = {};
   const key = localPersistKey(field);
-  if (key) mirror.store = { key, json: JSON.stringify(value) };
+  if (key) {
+    // A value JSON cannot encode (a cycle, a BigInt) is simply not persisted: the in-memory
+    // value still applies, as it did when the renderer wrapped the whole write in its try.
+    try {
+      mirror.store = { key, json: JSON.stringify(value) };
+    } catch {
+      /* not persistable */
+    }
+  }
   const spec = localSyncSpec(field);
   if (spec) {
     mirror.param = { name: spec.name, text: localParamText(field.type, value, declaredInitial), push: spec.push };
