@@ -380,26 +380,35 @@ fn navigate_options_pass_through() {
 
 #[test]
 fn a_nested_route_redirect_propagates_to_a_navigate_op() {
-    // F4: a `redirect` on a NESTED route completes the match — the
-    // router's Navigate fires for the branch it completed. Treating the
-    // inner match as "no child matched" swallows it: the frame paints
-    // nothing and no navigation ever arrives.
+    // R4: a `redirect` on a NESTED route completes the match — and in
+    // buildRoutes the `Navigate` mounts as the matched layout's child, so
+    // (a) a non-`.` target composes over the parent's full path —
+    // `/new-home` under `/app` means `/app/new-home`, not the root — and
+    // (b) the layout stays mounted around the empty outlet, so a local
+    // inside it survives the frame the redirect fires and the landing.
+    // The pre-R4 assertions (`to == "/new-home"`, chrome absent) pinned
+    // the opposite of both.
     let tmpl: BundleTemplate = serde_json::from_value(json!({
         "id": "t", "meta": {}, "type": "Column",
         "routes": [
             { "path": "/app",
-              "children": [ { "type": "AppChrome" }, { "type": "$routes" } ],
+              "children": [
+                  { "type": "AppChrome",
+                    "$localState": { "draft": { "type": "string", "initial": "" } } },
+                  { "type": "$routes" }
+              ],
               "routes": [
                   { "path": "/old", "redirect": "/new-home" },
+                  { "path": "/new-home", "children": [ { "type": "Home" } ] },
                   { "path": "/page", "children": [ { "type": "Page" } ] }
               ] },
-            { "path": "/new-home", "children": [ { "type": "Home" } ] }
+            { "path": "/landing", "children": [ { "type": "Landing" } ] }
         ],
         "children": [{ "type": "$routes" }]
     }))
     .unwrap();
 
-    let (mut rt, mut host, screen) = app_rt(None, Some(tmpl), "/space/demo/app/old");
+    let (mut rt, mut host, mut screen) = app_rt(None, Some(tmpl), "/space/demo/app/old");
     let root = rt.frame(&mut host, &screen).clone();
     let ops = rt.take_ops();
     let nav = ops.iter().find_map(|op| match op {
@@ -408,12 +417,155 @@ fn a_nested_route_redirect_propagates_to_a_navigate_op() {
     });
     assert_eq!(
         nav,
-        Some(("/new-home".to_string(), true)),
-        "a nested redirect must queue a replace Navigate — ops: {ops:?}"
+        Some(("/app/new-home".to_string(), true)),
+        "a nested redirect composes over the parent's path — ops: {ops:?}"
+    );
+    let chrome = find_ty(&root, "AppChrome")
+        .expect("the matched layout stays mounted while its child redirects");
+    assert!(
+        find_ty(&root, "Home").is_none(),
+        "the outlet the redirect fires in is empty until the navigation lands"
+    );
+    rt.locals().set(&chrome.id, "draft", Value::from("edited"));
+    for op in ops {
+        screen.apply(op);
+    }
+    let root = rt.frame(&mut host, &screen).clone();
+    assert_eq!(
+        find_ty(&root, "AppChrome").map(|n| n.id.clone()),
+        Some(chrome.id.clone()),
+        "the layout is still mounted after the redirect lands"
     );
     assert!(
-        find_ty(&root, "AppChrome").is_none(),
-        "the redirecting branch paints nothing while it navigates"
+        find_ty(&root, "Home").is_some(),
+        "the redirect's target renders in the outlet"
+    );
+    assert!(
+        rt.locals()
+            .get(&chrome.id, "draft")
+            .strict_eq(&Value::from("edited")),
+        "a layout-local edit survives routing between its children"
+    );
+}
+
+#[test]
+fn a_nested_relative_redirect_climbs_from_the_route() {
+    // R4: `./`/`../` redirects pass through verbatim — the router resolves
+    // them from the matched route's own path (`resolvePath`'s `from`), so
+    // `../new-home` on `/app/rel` lands a segment up, at `/app/new-home`.
+    let tmpl: BundleTemplate = serde_json::from_value(json!({
+        "id": "t", "meta": {}, "type": "Column",
+        "routes": [
+            { "path": "/app",
+              "children": [ { "type": "AppChrome" }, { "type": "$routes" } ],
+              "routes": [
+                  { "path": "/rel", "redirect": "../new-home" },
+                  { "path": "/new-home", "children": [ { "type": "Home" } ] }
+              ] }
+        ],
+        "children": [{ "type": "$routes" }]
+    }))
+    .unwrap();
+
+    let (mut rt, mut host, mut screen) = app_rt(None, Some(tmpl), "/space/demo/app/rel");
+    let root = rt.frame(&mut host, &screen).clone();
+    let ops = rt.take_ops();
+    let nav = ops.iter().find_map(|op| match op {
+        we_screen::ScreenOp::Navigate {
+            to,
+            base_depth,
+            replace,
+            ..
+        } => Some((to.clone(), *base_depth, *replace)),
+        _ => None,
+    });
+    assert_eq!(
+        nav,
+        Some(("../new-home".to_string(), Some(4), true)),
+        "the op keeps the relative target verbatim, based at the route's \
+         own matched depth (`/space/demo/app/rel` — 4) — ops: {ops:?}"
+    );
+    assert!(
+        find_ty(&root, "AppChrome").is_some(),
+        "the layout still mounts around a relative redirect"
+    );
+    for op in ops {
+        screen.apply(op);
+    }
+    assert_eq!(
+        screen.nav.current_path(),
+        "/space/demo/app/new-home",
+        "`../new-home` resolves from the route's own matched path"
+    );
+    let root = rt.frame(&mut host, &screen).clone();
+    assert!(find_ty(&root, "Home").is_some());
+    assert!(find_ty(&root, "AppChrome").is_some());
+}
+
+#[test]
+fn wildcard_and_index_redirects_compose_over_the_parent() {
+    // R4: a `*` catch-all and an index (`path: "/"`) child redirect obey
+    // the same rule — the target composes over the matched parent's path.
+    let tmpl: BundleTemplate = serde_json::from_value(json!({
+        "id": "t", "meta": {}, "type": "Column",
+        "routes": [
+            { "path": "/app",
+              "children": [ { "type": "$routes" } ],
+              "routes": [
+                  { "path": "/", "redirect": "/start" },
+                  { "path": "/start", "children": [ { "type": "Start" } ] },
+                  { "path": "/gone", "children": [ { "type": "Gone" } ] },
+                  { "path": "*", "redirect": "/gone" }
+              ] }
+        ],
+        "children": [{ "type": "$routes" }]
+    }))
+    .unwrap();
+
+    // Wildcard: an unmatched deep address takes the `*` redirect — nested
+    // under `/app`, so `/gone` means `/app/gone`.
+    let (mut rt, mut host, mut screen) =
+        app_rt(None, Some(tmpl.clone()), "/space/demo/app/anything/deep");
+    let _ = rt.frame(&mut host, &screen).clone();
+    let ops = rt.take_ops();
+    let nav = ops.iter().find_map(|op| match op {
+        we_screen::ScreenOp::Navigate { to, .. } => Some(to.clone()),
+        _ => None,
+    });
+    assert_eq!(
+        nav,
+        Some("/app/gone".to_string()),
+        "a wildcard redirect composes over the parent's path — ops: {ops:?}"
+    );
+    for op in ops {
+        screen.apply(op);
+    }
+    let root = rt.frame(&mut host, &screen).clone();
+    assert!(
+        find_ty(&root, "Gone").is_some(),
+        "the wildcard redirect lands on the nested target"
+    );
+
+    // Index child: `/app` with no child segment takes the `/` redirect.
+    let (mut rt, mut host, mut screen) = app_rt(None, Some(tmpl), "/space/demo/app");
+    let _ = rt.frame(&mut host, &screen).clone();
+    let ops = rt.take_ops();
+    let nav = ops.iter().find_map(|op| match op {
+        we_screen::ScreenOp::Navigate { to, .. } => Some(to.clone()),
+        _ => None,
+    });
+    assert_eq!(
+        nav,
+        Some("/app/start".to_string()),
+        "an index-child redirect composes over the parent's path — ops: {ops:?}"
+    );
+    for op in ops {
+        screen.apply(op);
+    }
+    let root = rt.frame(&mut host, &screen).clone();
+    assert!(
+        find_ty(&root, "Start").is_some(),
+        "the index redirect lands on the nested target"
     );
 }
 

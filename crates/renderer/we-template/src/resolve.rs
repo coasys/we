@@ -554,8 +554,16 @@ pub struct MatchedRoute<'a> {
 enum RouteMatch<'a> {
     /// The matched chain — each step's `$routes` outlet holds the next.
     Chain(Vec<MatchedRoute<'a>>),
-    /// A `*` or an explicit `redirect` — queue a replace navigation.
-    Redirect(String),
+    /// A `*` or an explicit `redirect`: buildRoutes mounts the `Navigate`
+    /// as the matched layouts' child, so they stay mounted around the
+    /// (empty) outlet while it lands. `to` is the op's path; `matched` is
+    /// the redirect route's own matched depth — the `from` the router
+    /// resolves `./`/`../` against.
+    Redirect {
+        mounted: Vec<MatchedRoute<'a>>,
+        to: String,
+        matched: usize,
+    },
 }
 
 fn match_routes<'a>(
@@ -588,7 +596,19 @@ fn match_routes<'a>(
         };
         let rest = &segments[parts.len()..];
         if let Some(redirect) = &route.redirect {
-            return Some(RouteMatch::Redirect(resolve_redirect(redirect, prefix)));
+            // A redirect route compiles to a leaf `<Route>` — it fires
+            // only when the pattern spent the segments; `routes` a
+            // redirect also carries are dead (buildRoutes checks
+            // `redirect` first), so leftovers mean this route does not
+            // match and the table moves on.
+            if !rest.is_empty() {
+                continue;
+            }
+            return Some(RouteMatch::Redirect {
+                mounted: Vec::new(),
+                to: resolve_redirect(redirect, prefix),
+                matched: segment_count(prefix) + parts.len(),
+            });
         }
         if let Some(children) = route.node.routes.as_deref() {
             match match_routes(children, rest, &full) {
@@ -600,10 +620,26 @@ fn match_routes<'a>(
                     chain.append(&mut tail);
                     return Some(RouteMatch::Chain(chain));
                 }
-                // A nested redirect completed the branch — the Navigate it
-                // carries fires for this route. Only a `None` (no nested
-                // route matched) falls through to the outer siblings.
-                found @ Some(RouteMatch::Redirect(_)) => return found,
+                // A nested redirect fires inside this layout's outlet —
+                // buildRoutes mounts the `Navigate` as its child, so the
+                // layout stays mounted (its locals included) while it
+                // lands. Only a `None` falls through to outer siblings.
+                Some(RouteMatch::Redirect {
+                    mounted,
+                    to,
+                    matched,
+                }) => {
+                    let mut chain = vec![MatchedRoute {
+                        route,
+                        full: full.clone(),
+                    }];
+                    chain.extend(mounted);
+                    return Some(RouteMatch::Redirect {
+                        mounted: chain,
+                        to,
+                        matched,
+                    });
+                }
                 None => {}
             }
             if rest.is_empty() {
@@ -620,7 +656,12 @@ fn match_routes<'a>(
     // No pattern matched: the catch-all, which here means its redirect.
     if let Some(route) = wildcard {
         if let Some(redirect) = &route.redirect {
-            return Some(RouteMatch::Redirect(resolve_redirect(redirect, prefix)));
+            return Some(RouteMatch::Redirect {
+                mounted: Vec::new(),
+                to: resolve_redirect(redirect, prefix),
+                // A `*` route's matched path is everything under `prefix`.
+                matched: segment_count(prefix) + segments.len(),
+            });
         }
         return Some(RouteMatch::Chain(vec![MatchedRoute {
             route,
@@ -630,19 +671,23 @@ fn match_routes<'a>(
     None
 }
 
-/// `redirect` as the `Navigate` op should see it: relative targets
-/// (`./`, `../`, bare names) pass through for the Navigator to resolve
-/// against the route's base depth (buildRoutes' `parentPath + redirect`),
-/// an absolute one goes as written.
+/// How many path segments a route path covers (its depth in the address).
+fn segment_count(path: &str) -> usize {
+    path.split('/').filter(|s| !s.is_empty()).count()
+}
+
+/// `redirect` as the `Navigate` op should see it (buildRoutes):
+/// `./`/`../` go through for `resolve_path` to climb from the redirect
+/// route's own matched depth — everything else, a leading `/` included,
+/// composes over the parent's full path (`parentPath + route.redirect`),
+/// so `/x` nested under `/app` means `/app/x`, not the root. The
+/// composition is literal string concatenation, as written in TS — a
+/// bare `x` produces `/appx`.
 fn resolve_redirect(redirect: &str, prefix: &str) -> String {
-    if redirect.starts_with('/')
-        || redirect.starts_with('.')
-        || redirect.starts_with('?')
-        || redirect.starts_with('#')
-    {
+    if redirect.starts_with("./") || redirect.starts_with("../") {
         redirect.to_string()
     } else {
-        format!("{prefix}/{redirect}")
+        format!("{prefix}{redirect}")
     }
 }
 
@@ -1367,18 +1412,28 @@ fn resolve_routes(
         Some(RouteMatch::Chain(chain)) => {
             resolve_chain(&chain, scope, parent, root, path, decls, cx)
         }
-        Some(RouteMatch::Redirect(to)) => {
+        Some(RouteMatch::Redirect {
+            mounted,
+            to,
+            matched,
+        }) => {
             // `*` and explicit redirects replace — the address was nobody's
-            // page, so it earns no Back entry.
+            // page, so it earns no Back entry. A relative `to` climbs from
+            // the redirect route's own matched depth — the `from` the
+            // router's Navigate resolves it against (`route.resolvePath`).
             cx.ops.push(ScreenOp::Navigate {
                 to,
                 query: None,
-                base_depth: Some(we_screen::template_root_depth(
-                    &cx.screen.nav.current_path(),
-                )),
+                base_depth: Some(
+                    we_screen::template_root_depth(&cx.screen.nav.current_path()) + matched,
+                ),
                 replace: true,
             });
-            vec![]
+            // The layouts the redirect matched under stay mounted — only
+            // the outlet it fires in is empty this frame — so their locals
+            // survive the landing (buildRoutes mounts `Navigate` as the
+            // layout route's child, not instead of it).
+            resolve_chain(&mounted, scope, parent, root, path, decls, cx)
         }
         None => vec![],
     }
