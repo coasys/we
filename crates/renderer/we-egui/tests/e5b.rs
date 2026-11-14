@@ -363,6 +363,144 @@ fn textarea_emits_oninput() {
     assert_detail(&r, "onInput", s("hi"));
 }
 
+/// B6 — the authored switch, not a foreign shortcut. textarea.ts:315–319:
+/// `submitOnEnter` opts in; an unshifted, noncomposing Enter on nonblank
+/// text dispatches `submit` and `preventDefault()` keeps the newline out;
+/// Shift+Enter is the newline; a composing Enter confirms the candidate.
+/// Rust answered Ctrl+Enter instead and never looked at the props.
+#[test]
+fn textarea_submit_on_enter_contract() {
+    let mut ta = node(
+        "we-textarea",
+        "ta",
+        props(&[
+            ("label", s("Msg")),
+            ("value", s("")),
+            ("submitOnEnter", b(true)),
+        ]),
+    );
+    ta.handlers = handlers(&["onInput", "onSubmit"]);
+    let (mut h, r) = rig(ta);
+    h.run();
+    let f = h.get_by_label("Msg");
+    f.click();
+    f.type_text("hi");
+    h.step();
+    // Live input: the app's setter echoes `onInput` back into `value`
+    // before the Enter, or the field has reverted to the prop.
+    r.node
+        .borrow_mut()
+        .props
+        .insert("value".into(), last_detail(&r, "onInput"));
+    h.step();
+    // Plain Enter submits the field's text — and preventDefault keeps the
+    // newline out of it.
+    h.key_press(egui::Key::Enter);
+    h.step();
+    let subs = details(&r, "onSubmit");
+    assert_eq!(
+        subs.len(),
+        1,
+        "submitOnEnter must submit on Enter: {subs:?}"
+    );
+    assert_detail(&r, "onSubmit", s("hi"));
+    assert_detail(&r, "onInput", s("hi"));
+    // Shift+Enter falls through to the newline — no submit.
+    h.key_down_modifiers(egui::Modifiers::SHIFT, egui::Key::Enter);
+    h.step();
+    assert_eq!(details(&r, "onSubmit").len(), 1, "Shift+Enter is a newline");
+    assert_detail(&r, "onInput", s("hi\n"));
+}
+
+/// B6 — the opt-in is real: without `submitOnEnter` an Enter is just a
+/// newline, and Enter on whitespace carries nothing to send.
+#[test]
+fn textarea_submit_on_enter_opt_out_and_blank() {
+    let mut ta = node(
+        "we-textarea",
+        "ta",
+        props(&[("label", s("Msg")), ("value", s(""))]),
+    );
+    ta.handlers = handlers(&["onInput", "onSubmit"]);
+    let (mut h, r) = rig(ta);
+    h.run();
+    let f = h.get_by_label("Msg");
+    f.click();
+    f.type_text("x");
+    h.step();
+    h.key_press(egui::Key::Enter);
+    h.step();
+    assert!(
+        details(&r, "onSubmit").is_empty(),
+        "no submitOnEnter → Enter is a newline"
+    );
+    // Opt in but blank: the guard sends nothing.
+    let mut ta2 = node(
+        "we-textarea",
+        "ta2",
+        props(&[
+            ("label", s("Blank")),
+            ("value", s("")),
+            ("submitOnEnter", b(true)),
+        ]),
+    );
+    ta2.handlers = handlers(&["onInput", "onSubmit"]);
+    let (mut h2, r2) = rig(ta2);
+    h2.run();
+    let f2 = h2.get_by_label("Blank");
+    f2.click();
+    f2.type_text("   ");
+    h2.step();
+    h2.key_press(egui::Key::Enter);
+    h2.step();
+    assert!(
+        details(&r2, "onSubmit").is_empty(),
+        "whitespace submits nothing"
+    );
+    // …but preventDefault still ran: no newline either.
+    assert_detail(&r2, "onInput", s("   "));
+}
+
+/// B6 — the IME's Enter is the candidate's, not a send (same composition
+/// tracking as we-input).
+#[test]
+fn textarea_submit_on_enter_ignores_composing_enter() {
+    let mut ta = node(
+        "we-textarea",
+        "ta",
+        props(&[
+            ("label", s("Msg")),
+            ("value", s("")),
+            ("submitOnEnter", b(true)),
+        ]),
+    );
+    ta.handlers = handlers(&["onInput", "onSubmit"]);
+    let (mut h, r) = rig(ta);
+    h.run();
+    let f = h.get_by_label("Msg");
+    f.click();
+    f.type_text("ka");
+    h.step();
+    h.input_mut()
+        .events
+        .push(egui::Event::Ime(egui::ImeEvent::Preedit {
+            text: "か".into(),
+            active_range_chars: None,
+        }));
+    h.input_mut().events.push(egui::Event::Key {
+        key: egui::Key::Enter,
+        physical_key: None,
+        pressed: true,
+        repeat: false,
+        modifiers: Default::default(),
+    });
+    h.step();
+    assert!(
+        details(&r, "onSubmit").is_empty(),
+        "a composing Enter confirms the candidate, never submits"
+    );
+}
+
 #[test]
 fn select_emits_option_value() {
     let mut sel = node(
