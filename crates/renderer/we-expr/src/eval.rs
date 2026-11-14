@@ -167,7 +167,7 @@ fn eval_base(
         return (Value::Undefined, None);
     }
     match node {
-        Node::Ident(name) => (eval_ident(name, env, obs), Some(name.clone())),
+        Node::Ident(name) => (eval_ident(name, env, obs), obs.map(|_| name.clone())),
         Node::Member { object, property } => {
             let (base, base_path) = eval_base(object, env, depth + 1, obs);
             let path = base_path.map(|p| format!("{p}.{property}"));
