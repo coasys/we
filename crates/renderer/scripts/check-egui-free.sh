@@ -16,6 +16,11 @@
 #                    we-screen's wasm-only `wasm-bindgen-test` chain pulls
 #                    `wasm-bindgen-futures` → `tokio` there, which can never
 #                    leak into a consumer.
+#
+# we-tui is held to the same rule, and per-target: a dependency hidden behind
+# cfg(windows)/cfg(unix) only resolves when that platform is asked for, so the
+# crate is checked on the native triples it can actually run on. wasm32 is not
+# one of them (crossterm is native-only).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -35,4 +40,16 @@ if echo "$tree" | grep -E "\b(${deny}) +v[0-9]"; then
     echo "egui-free check FAILED: a core crate pulled a denied dependency" >&2
     exit 1
 fi
-echo "egui-free check passed: ${core} pull no ${deny//|/, } (all features, all targets)"
+
+# we-tui, host + the other native desktops — per-target.
+for target in "" x86_64-pc-windows-msvc x86_64-apple-darwin; do
+    if ! tree="$(cargo tree --locked --all-features -e normal,build ${target:+--target "$target"} -p we-tui)"; then
+        echo "egui-free check FAILED: cargo tree --locked could not resolve we-tui${target:+ on $target}" >&2
+        exit 1
+    fi
+    if echo "$tree" | grep -E "\b(${deny}) +v[0-9]"; then
+        echo "egui-free check FAILED: we-tui pulled a denied dependency${target:+ on $target}" >&2
+        exit 1
+    fi
+done
+echo "egui-free check passed: ${core} + we-tui pull no ${deny//|/, } (core: all features, all targets; we-tui: per native target)"
