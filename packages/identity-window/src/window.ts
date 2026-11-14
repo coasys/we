@@ -97,7 +97,7 @@ function body(screen: Screen): Child[] {
   switch (screen.screen) {
     case 'show-words': {
       const understood = el('input', { type: 'checkbox' });
-      const next = button('I wrote them down', () => step({ kind: 'words-written' }), 'primary');
+      const next = button('Continue', () => step({ kind: 'words-written' }), 'primary');
       next.disabled = true;
       understood.addEventListener('change', () => (next.disabled = !understood.checked));
       return [
@@ -110,13 +110,13 @@ function body(screen: Screen): Child[] {
         ),
         el('p', {
           className: 'note',
-          textContent: 'Avoid screenshots and password managers that sync. Paper in a safe place works best.',
+          textContent: "Don't take a screenshot or save them in a password manager that syncs.",
         }),
         el(
           'label',
           { className: 'check' },
           understood,
-          'I understand: without these words, nobody can recover my identity or change its keys. Not even the people who made this app.',
+          "I understand that no one can restore my identity without these words, not even the app's developers.",
         ),
         el('div', { className: 'row' }, next, button('Cancel', cancel)),
       ];
@@ -134,8 +134,8 @@ function body(screen: Screen): Child[] {
       ];
     }
     case 'set-passphrase': {
-      const p = secretField('Passphrase — at least 15 characters; spaces count');
-      const again = secretField('Type it again');
+      const p = secretField('Passphrase (at least 15 characters)');
+      const again = secretField('Confirm passphrase');
       const go = () =>
         step({ kind: 'passphrase', passphrase: p.input.value, confirm: again.input.value }, [p.input, again.input]);
       return [
@@ -156,11 +156,11 @@ function body(screen: Screen): Child[] {
     }
     case 'offer': {
       const qr = el('img', { className: 'qr' });
-      qr.alt = 'QR code of the offer link';
+      qr.alt = 'QR code for the link';
       qr.src = `data:image/svg+xml;utf8,${encodeURIComponent(screen.qrSvg)}`;
       const left = el('p', { className: 'note' });
       const tick = () =>
-        (left.textContent = `Works once, for ${remaining(screen.expires, Date.now() / 1000)} · Waiting for your device…`);
+        (left.textContent = `Single use · Expires in ${remaining(screen.expires, Date.now() / 1000)} · Waiting for your device…`);
       tick();
       offerTimer = window.setInterval(tick, 1000);
       // The claim can come at any moment: ask the custody service to wait for it now, leaving the
@@ -176,7 +176,7 @@ function body(screen: Screen): Child[] {
         el(
           'div',
           { className: 'row' },
-          button('Copy the link', () => void navigator.clipboard?.writeText(screen.link)),
+          button('Copy link', () => void navigator.clipboard?.writeText(screen.link)),
           button('Cancel', cancel),
         ),
         left,
@@ -185,18 +185,18 @@ function body(screen: Screen): Child[] {
     case 'match':
       return [
         el('div', { className: 'code', textContent: screen.code }),
-        el('p', { textContent: 'It will be able to' }),
+        el('p', { textContent: 'It will be able to:' }),
         el(
           'ul',
           {},
-          el('li', { textContent: 'Sign posts, messages and edits as you' }),
-          el('li', { textContent: 'Join your identity’s spaces' }),
+          el('li', { textContent: 'Post, send messages and edit as you' }),
+          el('li', { textContent: 'Join your spaces' }),
         ),
-        el('p', { className: 'note', textContent: 'Add only a device you run or have in front of you.' }),
+        el('p', { className: 'note', textContent: 'Only link a device you own or have with you.' }),
         el(
           'div',
           { className: 'row' },
-          button('Add it', () => step({ kind: 'confirm' }), 'primary'),
+          button('Link', () => step({ kind: 'confirm' }), 'primary'),
           button('Deny', cancel),
         ),
       ];
@@ -206,7 +206,7 @@ function body(screen: Screen): Child[] {
       return [
         ...(p ? [p.label] : []),
         ...errorLine(screen.error),
-        el('div', { className: 'row' }, button('Revoke', go, 'danger'), button('Cancel', cancel)),
+        el('div', { className: 'row' }, button('Remove', go, 'danger'), button('Cancel', cancel)),
       ];
     }
     case 'pending-refused':
@@ -215,14 +215,14 @@ function body(screen: Screen): Child[] {
         el(
           'div',
           { className: 'row' },
-          button('Discard it', () => step({ kind: 'discard' }), 'danger'),
+          button('Discard', () => step({ kind: 'discard' }), 'danger'),
           button('Cancel', cancel),
         ),
       ];
     case 'identity-ready':
       return [
         el('div', { className: 'link', textContent: screen.did }),
-        el('p', { className: 'note', textContent: `This computer is ${screen.keyId} in your key log.` }),
+        el('p', { className: 'note', textContent: `Listed as ${screen.keyId} in your key log.` }),
       ];
     case 'linked':
     case 'revoked':
@@ -257,7 +257,7 @@ export function runIdentityWindow(transport: IdentityTransport): void {
       { className: 'brand' },
       mark,
       // The app's own name is the window's title, which the host sets; the page names no app.
-      el('strong', { textContent: 'Your identity' }),
+      el('strong', { textContent: 'Identity' }),
     ),
     root,
   );
