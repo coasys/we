@@ -25,7 +25,7 @@ fn rig(node: SchemaNode, bag: StoreBag, href: &str) -> (Runtime, StaticHost, Scr
     let locals = LocalState::new();
     let bag = Arc::new(bag);
     let runtime = Runtime::new(node, "test", bag.clone(), locals.clone());
-    let host = StaticHost::new(bag, locals);
+    let host = StaticHost::new(bag);
     (runtime, host, screen(href))
 }
 
@@ -79,7 +79,7 @@ fn app_rt(
         boot: None,
     };
     let rt = Runtime::app(spec, bag.clone(), locals.clone());
-    (rt, StaticHost::new(bag, locals), screen(href))
+    (rt, StaticHost::new(bag), screen(href))
 }
 
 #[test]
@@ -125,7 +125,7 @@ fn part_uses_the_source_and_falls_back_to_a_placeholder() {
     let bag = Arc::new(StoreBag::new());
     let mut rt =
         Runtime::new(node, "test", bag.clone(), locals.clone()).with_sources(None, Arc::new(Parts));
-    let mut host = StaticHost::new(bag, locals);
+    let mut host = StaticHost::new(bag);
     let screen = screen("/");
     let root = rt.frame(&mut host, &screen).clone();
     let mut tys = Vec::new();
@@ -238,7 +238,7 @@ fn animate_keeps_locals_across_close_and_reopen() {
     bag.set_root("open", Value::Bool(true));
     let locals = LocalState::new();
     let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone());
-    let mut host = StaticHost::new(bag.clone(), locals.clone());
+    let mut host = StaticHost::new(bag.clone());
     let screen = screen("/");
 
     let first = rt.frame(&mut host, &screen).clone();
@@ -605,7 +605,7 @@ fn two_mounts_of_one_part_have_independent_identities() {
     let bag = Arc::new(StoreBag::new());
     let mut rt =
         Runtime::new(node, "test", bag.clone(), locals.clone()).with_sources(None, Arc::new(Parts));
-    let mut host = StaticHost::new(bag, locals.clone());
+    let mut host = StaticHost::new(bag);
     let screen = screen("/");
 
     let root = rt.frame(&mut host, &screen).clone();
@@ -813,7 +813,7 @@ fn inline_query_tokens_flow_through_the_pool() {
     let bag = Arc::new(StoreBag::new());
     let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone())
         .with_sources(Some(Arc::new(Tasks)), Arc::new(we_template::NoParts));
-    let mut host = StaticHost::new(bag, locals);
+    let mut host = StaticHost::new(bag);
     let screen = screen("/");
 
     let root = rt.frame(&mut host, &screen).clone();
@@ -869,7 +869,7 @@ fn a_deep_query_chain_settles_past_the_round_cap() {
     let bag = Arc::new(StoreBag::new());
     let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone())
         .with_sources(Some(Arc::new(Tasks)), Arc::new(we_template::NoParts));
-    let mut host = StaticHost::new(bag, locals.clone());
+    let mut host = StaticHost::new(bag);
     let screen = screen("/");
 
     rt.frame(&mut host, &screen); // Task cell fills; the lower chain binds
@@ -931,7 +931,7 @@ fn a_fill_chain_deeper_than_the_pass_cap_continues_then_rests() {
     let bag = Arc::new(StoreBag::new());
     let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone())
         .with_sources(Some(Arc::new(Tasks)), Arc::new(we_template::NoParts));
-    let mut host = StaticHost::new(bag, locals.clone());
+    let mut host = StaticHost::new(bag);
     let screen = screen("/");
 
     let text = |root: &ResolvedNode| {
@@ -1021,7 +1021,7 @@ fn a_pending_query_is_not_progress() {
     });
     let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone())
         .with_sources(Some(source.clone()), Arc::new(we_template::NoParts));
-    let mut host = StaticHost::new(bag, locals);
+    let mut host = StaticHost::new(bag);
     let screen = screen("/");
 
     let _ = rt.frame(&mut host, &screen).clone();

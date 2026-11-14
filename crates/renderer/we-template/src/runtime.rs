@@ -5,7 +5,9 @@
 //! version), data (the [`StoreBag`] version), local ([`LocalState`]), pool
 //! ([`QueryPool`] revision). A frame with no change hands back the tree it
 //! had. `dispatch` turns a widget event into handler tokens run against the
-//! [`Host`] and the [`ScreenState`]; `complete` settles a pending `$invoke`.
+//! [`Host`] and the [`ScreenState`]; `drain_completions` takes what the
+//! host's [`crate::Completer`]s delivered and `complete` settles each
+//! pending `$invoke`.
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -15,6 +17,7 @@ use we_expr::{ParseCache, Value};
 use we_screen::{Route, ScreenOp, ScreenState};
 
 use crate::handlers::{self, HandlerCx, PendingMap};
+use crate::host::{CallBook, Completer, MountId};
 use crate::query::{QueryCell, QueryPool, QueryState};
 use crate::resolve::{self, NoParts, PartSource};
 use crate::resolved::{HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope};
@@ -35,6 +38,13 @@ pub struct Stats {
     pub parse_errors: usize,
     /// Dispatch-time and resolve-time complaints, deduplicated.
     pub warnings: Vec<Arc<str>>,
+    /// Pending calls settled — their lifecycle ran.
+    pub completions: u64,
+    /// Completions for a call that was unknown or already settled (a
+    /// second `complete`, or one after the host answered `Done`).
+    pub completions_ignored: u64,
+    /// Completions whose node had left the tree — nothing ran.
+    pub completions_dropped: u64,
 }
 
 /// What the runtime resolves at the top: one template (tests, the panel
@@ -82,6 +92,10 @@ pub struct Runtime {
     /// `$part` content.
     parts: Arc<dyn PartSource>,
     pending: PendingMap,
+    /// Call ids core mints, and the queue completions land in.
+    calls: CallBook,
+    /// The mount ids the last frame resolved — a node's origin mount.
+    mount_ids: Vec<Arc<str>>,
     /// Ops a resolve queued (route redirects) — `take_ops` hands them out.
     ops: Vec<ScreenOp>,
     /// Whether `sessionStore` says the app is ready — boot screens read it.
@@ -111,11 +125,20 @@ impl Runtime {
         bag: Arc<StoreBag>,
         locals: LocalState,
     ) -> Self {
-        Self {
-            spec: RootSpec::Single {
+        Self::from_spec(
+            RootSpec::Single {
                 node: Box::new(template),
                 id: template_id.into(),
             },
+            bag,
+            locals,
+        )
+    }
+
+    /// Either root — what a session is built from.
+    pub fn from_spec(spec: RootSpec, bag: Arc<StoreBag>, locals: LocalState) -> Self {
+        Self {
+            spec,
             bag,
             locals,
             dollar_type: Arc::new(|_| false),
@@ -123,6 +146,8 @@ impl Runtime {
             source: None,
             parts: Arc::new(NoParts),
             pending: HashMap::new(),
+            calls: CallBook::default(),
+            mount_ids: Vec::new(),
             ops: Vec::new(),
             ready: Box::new(default_ready),
             cache: ParseCache::new(),
@@ -146,27 +171,7 @@ impl Runtime {
 
     /// A bundle: chrome + template + pages + boot, one resolved tree.
     pub fn app(spec: AppSpec, bag: Arc<StoreBag>, locals: LocalState) -> Self {
-        Self {
-            spec: RootSpec::App(Box::new(spec)),
-            bag,
-            locals,
-            dollar_type: Arc::new(|_| false),
-            pool: QueryPool::new(),
-            source: None,
-            parts: Arc::new(NoParts),
-            pending: HashMap::new(),
-            ops: Vec::new(),
-            ready: Box::new(default_ready),
-            cache: ParseCache::new(),
-            resolved: None,
-            last: None,
-            bound_screen: None,
-            live: HashSet::new(),
-            parents: HashMap::new(),
-            node_memo: HashMap::new(),
-            value_memo: HashMap::new(),
-            stats: Stats::default(),
-        }
+        Self::from_spec(RootSpec::App(Box::new(spec)), bag, locals)
     }
 
     /// Install the query source (E6/E7) and the part source (E9).
@@ -291,6 +296,7 @@ impl Runtime {
             let started = Instant::now();
             let ready = (self.ready)(&self.bag);
             let mounts = Self::mounts_for(&self.spec, screen, ready);
+            self.mount_ids = mounts.iter().map(|m| m.id.clone()).collect();
             // Resolve → fill new cells → resolve again: a query's rows land
             // after the pass that created its cell (the same resolve that
             // asks `local.<name>` reads `[]`). Loop until a pass fills
@@ -481,6 +487,7 @@ impl Runtime {
             if let Some(HandlerRef { tokens, scope }) = target.handlers.get(name) {
                 let tokens = tokens.clone();
                 let scope = scope.clone();
+                let mount = mount_of(&self.mount_ids, &id);
                 let mut cx = HandlerCx {
                     host,
                     bag: &self.bag,
@@ -488,7 +495,9 @@ impl Runtime {
                     cache: &mut self.cache,
                     screen,
                     pending: &mut self.pending,
+                    calls: &mut self.calls,
                     node: &id,
+                    mount: &mount,
                     warnings: &mut self.stats.warnings,
                 };
                 handlers::run(&tokens, &scope, event, &mut cx);
@@ -498,7 +507,20 @@ impl Runtime {
         }
     }
 
-    /// Settle a pending `$invoke` (`Host::invoke` answered `Pending(id)`):
+    /// Run every completion the host's [`Completer`]s delivered since the
+    /// last drain, in arrival order — `complete` for each. Answers how many
+    /// arrived (settled, ignored or dropped alike).
+    pub fn drain_completions(&mut self, host: &mut dyn Host, screen: &mut ScreenState) -> usize {
+        let arrived = self.calls.drain();
+        let n = arrived.len();
+        for (call, result) in arrived {
+            self.complete(host, screen, call, result);
+        }
+        n
+    }
+
+    /// Settle a pending `$invoke` (`Host::act` answered `Pending` for the
+    /// call core minted as `call_id`):
     /// `Ok` runs `onSuccess` with `result` bound, `Err` runs `onError` with
     /// it, and `onFinally` runs after either — unless the node that asked
     /// has left the tree, in which case nothing runs and nothing panics
@@ -511,11 +533,15 @@ impl Runtime {
         result: Result<Value, Value>,
     ) {
         let Some(pending) = self.pending.remove(&call_id) else {
+            self.stats.completions_ignored += 1;
             return;
         };
         if !self.live.contains(&pending.node) {
+            self.stats.completions_dropped += 1;
             return;
         }
+        self.stats.completions += 1;
+        let mount = mount_of(&self.mount_ids, &pending.node);
         let mut cx = HandlerCx {
             host,
             bag: &self.bag,
@@ -523,7 +549,9 @@ impl Runtime {
             cache: &mut self.cache,
             screen,
             pending: &mut self.pending,
+            calls: &mut self.calls,
             node: &pending.node,
+            mount: &mount,
             warnings: &mut self.stats.warnings,
         };
         match &result {
@@ -547,6 +575,22 @@ impl Runtime {
             handlers::run_lifecycle(on_finally, &pending.scope, None, &mut cx);
         }
     }
+}
+
+/// The mount `node` was resolved under: the longest mount id its own id is
+/// prefixed by (`{mount}:{path}`). A synthetic wrapper (`root`, `frame`)
+/// names itself.
+fn mount_of(mounts: &[Arc<str>], node: &NodeId) -> MountId {
+    let id = node.as_str();
+    mounts
+        .iter()
+        .filter(|m| {
+            id.strip_prefix(m.as_ref())
+                .is_some_and(|rest| rest.starts_with(':'))
+        })
+        .max_by_key(|m| m.len())
+        .map(|m| MountId(m.clone()))
+        .unwrap_or_else(|| MountId(id.into()))
 }
 
 /// One mount — a node resolved under an id prefix, with the template
@@ -680,63 +724,51 @@ fn find_node<'a>(node: &'a ResolvedNode, id: &NodeId) -> Option<&'a ResolvedNode
 }
 
 /// The host the offline app and tests run handlers against: screen targets
-/// land on `ScreenState` before this sees them; `$setLocal`/`get_local` on
-/// the shared [`LocalState`]; anything else answers the snapshot's
-/// `invokes` table, parks a `Pending` under an incrementing ticket, or
-/// `Undefined` — the "not wired yet" no-op of the fallback rule.
+/// and local writes never reach it (core applies them); a legacy `$invoke`
+/// answers the snapshot's `invokes` table — `{"$pending": true}` parks the
+/// call's [`Completer`] in `parked` — or is dropped as `Undefined`, the
+/// "not wired yet" no-op of the fallback rule.
 pub struct StaticHost {
     pub bag: Arc<StoreBag>,
-    pub locals: LocalState,
     /// Targets invoked that nothing answered — the debug overlay's "calls
     /// dropped" counter.
     pub dropped: Vec<String>,
-    /// Invokes the snapshot marks async — `invokes.<target>` of
-    /// `{"$pending": true}` parks a ticket; `Runtime::complete` settles it.
-    pub next_call: u64,
-    /// Whether unknown invokes answer `Pending` (tests flip it off).
+    /// Pending calls, in the order they were asked — complete one to settle
+    /// its `$invoke`.
+    pub parked: Vec<Completer>,
+    /// Whether unknown invokes answer `Pending` (tests flip it on).
     pub pending_unknowns: bool,
 }
 
 impl StaticHost {
-    pub fn new(bag: Arc<StoreBag>, locals: LocalState) -> Self {
+    pub fn new(bag: Arc<StoreBag>) -> Self {
         Self {
             bag,
-            locals,
             dropped: Vec::new(),
-            next_call: 0,
+            parked: Vec::new(),
             pending_unknowns: false,
         }
     }
 }
 
 impl Host for StaticHost {
-    fn invoke(&mut self, target: &str, args: Vec<Value>) -> Invoked {
+    fn act(&mut self, request: crate::ActionRequest, done: Completer) -> Invoked {
+        let crate::Action::Invoke { target, .. } = &request.action;
         if let Some(reply) = self.bag.invoke_reply(target) {
             if let Value::Obj(o) = &reply {
                 if matches!(o.get("$pending"), Some(Value::Bool(true))) {
-                    let id = CallId(self.next_call);
-                    self.next_call += 1;
-                    return Invoked::Pending(id);
+                    self.parked.push(done);
+                    return Invoked::Pending;
                 }
             }
             return Invoked::Done(Ok(reply));
         }
         if self.pending_unknowns {
-            let id = CallId(self.next_call);
-            self.next_call += 1;
-            return Invoked::Pending(id);
+            self.parked.push(done);
+            return Invoked::Pending;
         }
-        let _ = args;
         self.dropped.push(target.to_string());
         Invoked::Done(Ok(Value::Undefined))
-    }
-
-    fn set_local(&mut self, node: &NodeId, field: &str, value: Value) {
-        self.locals.set(node, field, value);
-    }
-
-    fn get_local(&self, node: &NodeId, field: &str) -> Value {
-        self.locals.get(node, field)
     }
 }
 

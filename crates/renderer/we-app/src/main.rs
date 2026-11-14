@@ -174,7 +174,7 @@ fn run_dump(args: &Args) {
         Registry::with_builtins().type_names().collect();
     let mut rt = Runtime::app(spec, Arc::clone(&bag), locals.clone())
         .with_dollar_types(move |ty| types.contains(ty));
-    let mut host = StaticHost::new(bag, locals);
+    let mut host = StaticHost::new(bag);
     let root = rt.frame(&mut host, &screen).clone();
     let stats = rt.stats();
     eprintln!(

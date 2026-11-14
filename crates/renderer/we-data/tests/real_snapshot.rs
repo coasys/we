@@ -209,7 +209,7 @@ fn check_route(truth: &Json, doc: &Json, id: &str) -> Result<(), String> {
     let locals = LocalState::new();
     let mut runtime = Runtime::app(spec, data.bag.clone(), locals.clone())
         .with_sources(Some(data.source()), Arc::new(NoParts));
-    let mut host = StaticHost::new(data.bag.clone(), locals);
+    let mut host = StaticHost::new(data.bag.clone());
     let path = truth["routes"][id]["rust"].as_str().expect("route path");
     let screen = ScreenState::desktop(
         ScreenSchema {

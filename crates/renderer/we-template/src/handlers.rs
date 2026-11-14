@@ -8,9 +8,11 @@
 //!
 //! `routeStore.*`/`shellStore.*`/`themeStore.*` targets become
 //! [`ScreenOp`]s and land on the [`ScreenState`] the caller hands in — the
-//! store map's `screen` rows — while `$setLocal` and friends write through
-//! the [`Host`], and `$invoke` answers `Done` or parks a `Pending` the
-//! [`crate::Runtime`] completes later.
+//! store map's `screen` rows — while `$setLocal` and friends write core's
+//! [`LocalState`] directly. Only a domain `$invoke` reaches the [`Host`], as
+//! an [`ActionRequest`] under a core-minted call id: it answers `Done`, or
+//! `Pending` and the [`crate::Runtime`] runs the lifecycle when its
+//! [`crate::Completer`] settles.
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -22,6 +24,7 @@ use we_screen::{
 };
 
 use crate::handler::{CallId, HandlerToken};
+use crate::host::{Action, ActionRequest, CallBook, MountId, Origin};
 use crate::resolve::{eval_json, handler_tokens};
 use crate::resolved::NodeId;
 use crate::{Host, Invoked, LocalState, Scope, StoreBag};
@@ -40,8 +43,8 @@ pub struct PendingCall {
     pub on_finally: Option<Json>,
 }
 
-/// Calls awaiting settlement, keyed by the ticket [`Invoked::Pending`]
-/// answered.
+/// Calls awaiting settlement, keyed by the id core minted for the call the
+/// host answered [`Invoked::Pending`].
 pub type PendingMap = HashMap<CallId, PendingCall>;
 
 /// What a handler needs to fire.
@@ -52,8 +55,12 @@ pub struct HandlerCx<'a> {
     pub cache: &'a mut ParseCache,
     pub screen: &'a mut ScreenState,
     pub pending: &'a mut PendingMap,
+    /// Call ids and the completion queue a [`crate::Completer`] pushes to.
+    pub calls: &'a mut CallBook,
     /// The node the handler lives on — a pending call's owner.
     pub node: &'a NodeId,
+    /// The mount that node was resolved under — the request's origin.
+    pub mount: &'a MountId,
     pub warnings: &'a mut Vec<Arc<str>>,
 }
 
@@ -114,7 +121,7 @@ fn scope_fields(scope: &Scope) -> Vec<String> {
 /// URL param a `persist`/`syncParam` declaration asks for (WE's setters do
 /// the same through `localWriteMirror`).
 fn write_local(scope: &Scope, owner: &NodeId, field: &str, value: Value, cx: &mut HandlerCx) {
-    cx.host.set_local(owner, field, value.clone());
+    cx.locals.set(owner, field, value.clone());
     let Some((ty, persist, sync_param, initial)) = local_decl(scope, field) else {
         return;
     };
@@ -154,7 +161,7 @@ fn write_local(scope: &Scope, owner: &NodeId, field: &str, value: Value, cx: &mu
 /// pin it — the next mount restores it even after the template's declared
 /// initial moved on.
 fn reset_local(scope: &Scope, owner: &NodeId, field: &str, value: Value, cx: &mut HandlerCx) {
-    cx.host.set_local(owner, field, value);
+    cx.locals.set(owner, field, value);
     cx.locals.untouch(owner, field);
     let Some((ty, persist, sync_param, _)) = local_decl(scope, field) else {
         return;
@@ -306,7 +313,7 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
                 // `merge:` — shallow-merge evaluated members into the object
                 // the field holds (`{...(current ?? {}), ...resolved}` in WE).
                 let evaluated = eval_json(spec, scope, cx.bag, cx.cache, cx.warnings);
-                let mut merged = match cx.host.get_local(&owner, field) {
+                let mut merged = match cx.locals.get(&owner, field) {
                     Value::Obj(o) => (*o).clone(),
                     _ => Default::default(),
                 };
@@ -330,7 +337,7 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
                     .push(format!("$toggleLocal: no $localState in scope for {field:?}").into());
                 return;
             };
-            let next = !cx.host.get_local(&owner, field).truthy();
+            let next = !cx.locals.get(&owner, field).truthy();
             write_local(scope, &owner, field, Value::Bool(next), cx);
         }
         HandlerToken::ToggleLocalIn { field, value, .. } => {
@@ -343,7 +350,7 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
                 .as_ref()
                 .map(|v| eval_json(v, scope, cx.bag, cx.cache, cx.warnings))
                 .unwrap_or(Value::Undefined);
-            let current = cx.host.get_local(&owner, field);
+            let current = cx.locals.get(&owner, field);
             let mut list: Vec<Value> = match current {
                 Value::List(l) => (*l).clone(),
                 Value::Undefined | Value::Null => vec![],
@@ -369,7 +376,7 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
                 return;
             };
             let event = scope.get("event").cloned().unwrap_or(Value::Undefined);
-            match cx.host.get_local(&owner, field) {
+            match cx.locals.get(&owner, field) {
                 Value::Callable(f) => {
                     f.call(&[event]);
                 }
@@ -438,13 +445,26 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
                 }
                 return;
             }
-            match cx.host.invoke(target, evaluated) {
+            let done = cx.calls.mint();
+            let call = done.call_id();
+            let request = ActionRequest {
+                origin: Origin {
+                    mount: cx.mount.clone(),
+                    node: cx.node.clone(),
+                },
+                action: Action::Invoke {
+                    target: target.as_str().into(),
+                    args: evaluated,
+                },
+            };
+            match cx.host.act(request, done) {
                 // A sync answer carries no lifecycle (WE: callbacks are a
-                // Promise's companions — `result instanceof Promise`).
+                // Promise's companions — `result instanceof Promise`). The
+                // call is settled: a late completion is unknown → ignored.
                 Invoked::Done(_) => {}
-                Invoked::Pending(id) => {
+                Invoked::Pending => {
                     cx.pending.insert(
-                        id,
+                        call,
                         PendingCall {
                             node: cx.node.clone(),
                             scope: scope.clone(),

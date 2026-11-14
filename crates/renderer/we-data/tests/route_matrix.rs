@@ -57,7 +57,7 @@ fn session(route: &str) -> (Session, OfflineData) {
     );
     let session = Session {
         runtime: we_template::Runtime::app(spec, data.bag.clone(), locals.clone()),
-        host: StaticHost::new(data.bag.clone(), locals),
+        host: Box::new(StaticHost::new(data.bag.clone())),
         screen,
     };
     (session, data)

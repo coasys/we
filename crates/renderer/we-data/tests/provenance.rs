@@ -48,7 +48,7 @@ fn session(route: &str) -> (Session, OfflineData) {
     );
     let session = Session {
         runtime: we_template::Runtime::app(spec, data.bag.clone(), locals.clone()),
-        host: StaticHost::new(data.bag.clone(), locals),
+        host: Box::new(StaticHost::new(data.bag.clone())),
         screen,
     };
     (session, data)
@@ -123,8 +123,12 @@ fn space_demo_resolves_and_records() {
     );
 
     // `$invoke` targets nothing answered are drained into dropped.
-    data.provenance
-        .absorb_dropped(std::mem::take(&mut session.host.dropped));
+    data.provenance.absorb_dropped(std::mem::take(
+        &mut session
+            .host_mut_as::<StaticHost>()
+            .expect("the offline host")
+            .dropped,
+    ));
 
     let report = data.provenance.report();
 
@@ -200,8 +204,12 @@ fn inspector_route_fires_member_natives_and_host_functions() {
         Some(&serde_json::json!(true)),
     );
     session.resolve();
-    data.provenance
-        .absorb_dropped(std::mem::take(&mut session.host.dropped));
+    data.provenance.absorb_dropped(std::mem::take(
+        &mut session
+            .host_mut_as::<StaticHost>()
+            .expect("the offline host")
+            .dropped,
+    ));
     let report = data.provenance.report();
     let native_got: BTreeSet<&str> = report.native_served.iter().map(String::as_str).collect();
 
