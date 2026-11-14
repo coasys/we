@@ -21,3 +21,6 @@ we-screen.workspace = true
 
 [dev-dependencies]
 egui_kittest = { workspace = true, features = ["snapshot", "wgpu"] }
+# PNG in/out for the `coasys_shots` side-by-sides — the version egui_kittest
+# already pulls in.
+image = { version = "0.25", default-features = false, features = ["png"] }

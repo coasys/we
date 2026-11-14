@@ -4578,6 +4578,7 @@ dependencies = [
  "eframe",
  "egui",
  "egui_kittest",
+ "image",
  "indexmap",
  "serde",
  "serde_json",
