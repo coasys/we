@@ -1,0 +1,437 @@
+[
+  {
+    "source": "conv://ConversationTopicFlow",
+    "predicate": "rdf://type",
+    "target": "ad4m://Flow"
+  },
+  {
+    "source": "conv://ConversationTopicFlow",
+    "predicate": "ad4m://flowName",
+    "target": "literal:string:ConversationTopic"
+  },
+  {
+    "source": "conv://ConversationTopicFlow",
+    "predicate": "ad4m://interpretationHint",
+    "target": "literal:string:Tracks%20how%20far%20the%20group%20has%20got%20on%20one%20topic.%20Propose%20the%20topic%27s%20next%20state%20in%20%60flow_proposals%60%20as%20soon%20as%20the%20turns%20show%20it."
+  },
+  {
+    "source": "conv://ConversationTopicFlow",
+    "predicate": "ad4m://inputTypes",
+    "target": "literal:string:%5B%22DiscussionTopic%22%5D"
+  },
+  {
+    "source": "conv://ConversationTopicFlow",
+    "predicate": "ad4m://hasState",
+    "target": "conv://ConversationTopic.raised"
+  },
+  {
+    "source": "conv://ConversationTopic.raised",
+    "predicate": "rdf://type",
+    "target": "ad4m://FlowState"
+  },
+  {
+    "source": "conv://ConversationTopic.raised",
+    "predicate": "ad4m://stateName",
+    "target": "literal:string:raised"
+  },
+  {
+    "source": "conv://ConversationTopic.raised",
+    "predicate": "ad4m://stateValue",
+    "target": "literal:number:0"
+  },
+  {
+    "source": "conv://ConversationTopic.raised",
+    "predicate": "ad4m://interpretationHint",
+    "target": "literal:string:Only%20one%20person%20has%20spoken%20about%20it%20so%20far."
+  },
+  {
+    "source": "conv://ConversationTopicFlow",
+    "predicate": "ad4m://hasState",
+    "target": "conv://ConversationTopic.discussing"
+  },
+  {
+    "source": "conv://ConversationTopic.discussing",
+    "predicate": "rdf://type",
+    "target": "ad4m://FlowState"
+  },
+  {
+    "source": "conv://ConversationTopic.discussing",
+    "predicate": "ad4m://stateName",
+    "target": "literal:string:discussing"
+  },
+  {
+    "source": "conv://ConversationTopic.discussing",
+    "predicate": "ad4m://stateValue",
+    "target": "literal:number:0.5"
+  },
+  {
+    "source": "conv://ConversationTopic.discussing",
+    "predicate": "ad4m://interpretationHint",
+    "target": "literal:string:Two%20or%20more%20people%20engage%20and%20views%20differ%2C%20someone%20is%20confused%2C%20or%20the%20key%20question%20is%20still%20open."
+  },
+  {
+    "source": "conv://ConversationTopicFlow",
+    "predicate": "ad4m://hasState",
+    "target": "conv://ConversationTopic.resonant"
+  },
+  {
+    "source": "conv://ConversationTopic.resonant",
+    "predicate": "rdf://type",
+    "target": "ad4m://FlowState"
+  },
+  {
+    "source": "conv://ConversationTopic.resonant",
+    "predicate": "ad4m://stateName",
+    "target": "literal:string:resonant"
+  },
+  {
+    "source": "conv://ConversationTopic.resonant",
+    "predicate": "ad4m://stateValue",
+    "target": "literal:number:1"
+  },
+  {
+    "source": "conv://ConversationTopic.resonant",
+    "predicate": "ad4m://interpretationHint",
+    "target": "literal:string:The%20people%20engaging%20agree%20on%20the%20substance%20%28%22yes%22%2C%20%22makes%20sense%22%2C%20%22I%20think%20that%27s%20right%22%2C%20%22cool%22%29%20and%20nobody%20holds%20an%20objection%2C%20or%20the%20group%20settles%20on%20a%20concrete%20decision."
+  },
+  {
+    "source": "conv://ConversationTopicFlow",
+    "predicate": "ad4m://hasState",
+    "target": "conv://ConversationTopic.parked"
+  },
+  {
+    "source": "conv://ConversationTopic.parked",
+    "predicate": "rdf://type",
+    "target": "ad4m://FlowState"
+  },
+  {
+    "source": "conv://ConversationTopic.parked",
+    "predicate": "ad4m://stateName",
+    "target": "literal:string:parked"
+  },
+  {
+    "source": "conv://ConversationTopic.parked",
+    "predicate": "ad4m://stateValue",
+    "target": "literal:number:0.25"
+  },
+  {
+    "source": "conv://ConversationTopic.parked",
+    "predicate": "ad4m://interpretationHint",
+    "target": "literal:string:The%20group%20explicitly%20defers%20it%20%28%22later%22%2C%20%22next%20week%22%2C%20%22not%20now%22%2C%20%22let%27s%20not%20spend%20time%20on%20this%20now%22%29."
+  },
+  {
+    "source": "conv://ConversationTopicFlow",
+    "predicate": "ad4m://hasTransition",
+    "target": "conv://ConversationTopic.transition/raised/discussing/Engage"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/raised/discussing/Engage",
+    "predicate": "rdf://type",
+    "target": "ad4m://FlowTransition"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/raised/discussing/Engage",
+    "predicate": "ad4m://actionName",
+    "target": "literal:string:Engage"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/raised/discussing/Engage",
+    "predicate": "ad4m://fromState",
+    "target": "conv://ConversationTopic.raised"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/raised/discussing/Engage",
+    "predicate": "ad4m://toState",
+    "target": "conv://ConversationTopic.discussing"
+  },
+  {
+    "source": "conv://ConversationTopicFlow",
+    "predicate": "ad4m://hasTransition",
+    "target": "conv://ConversationTopic.transition/discussing/resonant/Agree"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/discussing/resonant/Agree",
+    "predicate": "rdf://type",
+    "target": "ad4m://FlowTransition"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/discussing/resonant/Agree",
+    "predicate": "ad4m://actionName",
+    "target": "literal:string:Agree"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/discussing/resonant/Agree",
+    "predicate": "ad4m://fromState",
+    "target": "conv://ConversationTopic.discussing"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/discussing/resonant/Agree",
+    "predicate": "ad4m://toState",
+    "target": "conv://ConversationTopic.resonant"
+  },
+  {
+    "source": "conv://ConversationTopicFlow",
+    "predicate": "ad4m://hasTransition",
+    "target": "conv://ConversationTopic.transition/raised/resonant/Agree"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/raised/resonant/Agree",
+    "predicate": "rdf://type",
+    "target": "ad4m://FlowTransition"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/raised/resonant/Agree",
+    "predicate": "ad4m://actionName",
+    "target": "literal:string:Agree"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/raised/resonant/Agree",
+    "predicate": "ad4m://fromState",
+    "target": "conv://ConversationTopic.raised"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/raised/resonant/Agree",
+    "predicate": "ad4m://toState",
+    "target": "conv://ConversationTopic.resonant"
+  },
+  {
+    "source": "conv://ConversationTopicFlow",
+    "predicate": "ad4m://hasTransition",
+    "target": "conv://ConversationTopic.transition/raised/parked/Park"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/raised/parked/Park",
+    "predicate": "rdf://type",
+    "target": "ad4m://FlowTransition"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/raised/parked/Park",
+    "predicate": "ad4m://actionName",
+    "target": "literal:string:Park"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/raised/parked/Park",
+    "predicate": "ad4m://fromState",
+    "target": "conv://ConversationTopic.raised"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/raised/parked/Park",
+    "predicate": "ad4m://toState",
+    "target": "conv://ConversationTopic.parked"
+  },
+  {
+    "source": "conv://ConversationTopicFlow",
+    "predicate": "ad4m://hasTransition",
+    "target": "conv://ConversationTopic.transition/discussing/parked/Park"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/discussing/parked/Park",
+    "predicate": "rdf://type",
+    "target": "ad4m://FlowTransition"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/discussing/parked/Park",
+    "predicate": "ad4m://actionName",
+    "target": "literal:string:Park"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/discussing/parked/Park",
+    "predicate": "ad4m://fromState",
+    "target": "conv://ConversationTopic.discussing"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/discussing/parked/Park",
+    "predicate": "ad4m://toState",
+    "target": "conv://ConversationTopic.parked"
+  },
+  {
+    "source": "conv://ConversationTopicFlow",
+    "predicate": "ad4m://hasTransition",
+    "target": "conv://ConversationTopic.transition/parked/discussing/Resume"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/parked/discussing/Resume",
+    "predicate": "rdf://type",
+    "target": "ad4m://FlowTransition"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/parked/discussing/Resume",
+    "predicate": "ad4m://actionName",
+    "target": "literal:string:Resume"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/parked/discussing/Resume",
+    "predicate": "ad4m://fromState",
+    "target": "conv://ConversationTopic.parked"
+  },
+  {
+    "source": "conv://ConversationTopic.transition/parked/discussing/Resume",
+    "predicate": "ad4m://toState",
+    "target": "conv://ConversationTopic.discussing"
+  },
+  {
+    "source": "ad4m://self",
+    "predicate": "ad4m://has_flow",
+    "target": "literal:string:ConversationTopic"
+  },
+  {
+    "source": "literal:string:ConversationTopic",
+    "predicate": "ad4m://flow_uri",
+    "target": "conv://ConversationTopicFlow"
+  },
+  {
+    "source": "delivery://DeliveryFlow",
+    "predicate": "rdf://type",
+    "target": "ad4m://Flow"
+  },
+  {
+    "source": "delivery://DeliveryFlow",
+    "predicate": "ad4m://flowName",
+    "target": "literal:string:Delivery"
+  },
+  {
+    "source": "delivery://DeliveryFlow",
+    "predicate": "ad4m://interpretationHint",
+    "target": "literal:string:Tracks%20an%20action%20item%20from%20the%20conversation%20to%20done."
+  },
+  {
+    "source": "delivery://DeliveryFlow",
+    "predicate": "ad4m://inputTypes",
+    "target": "literal:string:%5B%22ActionItem%22%5D"
+  },
+  {
+    "source": "delivery://DeliveryFlow",
+    "predicate": "ad4m://hasState",
+    "target": "delivery://Delivery.identified"
+  },
+  {
+    "source": "delivery://Delivery.identified",
+    "predicate": "rdf://type",
+    "target": "ad4m://FlowState"
+  },
+  {
+    "source": "delivery://Delivery.identified",
+    "predicate": "ad4m://stateName",
+    "target": "literal:string:identified"
+  },
+  {
+    "source": "delivery://Delivery.identified",
+    "predicate": "ad4m://stateValue",
+    "target": "literal:number:0"
+  },
+  {
+    "source": "delivery://Delivery.identified",
+    "predicate": "ad4m://interpretationHint",
+    "target": "literal:string:Someone%20named%20work%20that%20should%20happen."
+  },
+  {
+    "source": "delivery://DeliveryFlow",
+    "predicate": "ad4m://hasState",
+    "target": "delivery://Delivery.committed"
+  },
+  {
+    "source": "delivery://Delivery.committed",
+    "predicate": "rdf://type",
+    "target": "ad4m://FlowState"
+  },
+  {
+    "source": "delivery://Delivery.committed",
+    "predicate": "ad4m://stateName",
+    "target": "literal:string:committed"
+  },
+  {
+    "source": "delivery://Delivery.committed",
+    "predicate": "ad4m://stateValue",
+    "target": "literal:number:0.3"
+  },
+  {
+    "source": "delivery://Delivery.committed",
+    "predicate": "ad4m://interpretationHint",
+    "target": "literal:string:A%20named%20person%20said%20they%20will%20do%20it."
+  },
+  {
+    "source": "delivery://DeliveryFlow",
+    "predicate": "ad4m://hasState",
+    "target": "delivery://Delivery.done"
+  },
+  {
+    "source": "delivery://Delivery.done",
+    "predicate": "rdf://type",
+    "target": "ad4m://FlowState"
+  },
+  {
+    "source": "delivery://Delivery.done",
+    "predicate": "ad4m://stateName",
+    "target": "literal:string:done"
+  },
+  {
+    "source": "delivery://Delivery.done",
+    "predicate": "ad4m://stateValue",
+    "target": "literal:number:1"
+  },
+  {
+    "source": "delivery://Delivery.done",
+    "predicate": "ad4m://interpretationHint",
+    "target": "literal:string:Someone%20reports%20it%20finished."
+  },
+  {
+    "source": "delivery://DeliveryFlow",
+    "predicate": "ad4m://hasTransition",
+    "target": "delivery://Delivery.transition/identified/committed/Commit"
+  },
+  {
+    "source": "delivery://Delivery.transition/identified/committed/Commit",
+    "predicate": "rdf://type",
+    "target": "ad4m://FlowTransition"
+  },
+  {
+    "source": "delivery://Delivery.transition/identified/committed/Commit",
+    "predicate": "ad4m://actionName",
+    "target": "literal:string:Commit"
+  },
+  {
+    "source": "delivery://Delivery.transition/identified/committed/Commit",
+    "predicate": "ad4m://fromState",
+    "target": "delivery://Delivery.identified"
+  },
+  {
+    "source": "delivery://Delivery.transition/identified/committed/Commit",
+    "predicate": "ad4m://toState",
+    "target": "delivery://Delivery.committed"
+  },
+  {
+    "source": "delivery://DeliveryFlow",
+    "predicate": "ad4m://hasTransition",
+    "target": "delivery://Delivery.transition/committed/done/Finish"
+  },
+  {
+    "source": "delivery://Delivery.transition/committed/done/Finish",
+    "predicate": "rdf://type",
+    "target": "ad4m://FlowTransition"
+  },
+  {
+    "source": "delivery://Delivery.transition/committed/done/Finish",
+    "predicate": "ad4m://actionName",
+    "target": "literal:string:Finish"
+  },
+  {
+    "source": "delivery://Delivery.transition/committed/done/Finish",
+    "predicate": "ad4m://fromState",
+    "target": "delivery://Delivery.committed"
+  },
+  {
+    "source": "delivery://Delivery.transition/committed/done/Finish",
+    "predicate": "ad4m://toState",
+    "target": "delivery://Delivery.done"
+  },
+  {
+    "source": "ad4m://self",
+    "predicate": "ad4m://has_flow",
+    "target": "literal:string:Delivery"
+  },
+  {
+    "source": "literal:string:Delivery",
+    "predicate": "ad4m://flow_uri",
+    "target": "delivery://DeliveryFlow"
+  }
+]
