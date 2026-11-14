@@ -273,6 +273,47 @@ fn unsupported_ops_become_todo_placeholders() {
 }
 
 #[test]
+fn a_callback_prop_resolves_as_a_handler() {
+    // `we-modal`'s `close` is a callback prop, not an `on*` prop — the Solid
+    // dispatcher resolves handler tokens in any prop position into callables.
+    // The resolver must capture it so `dispatch(node, "close")` runs it.
+    let node = schema(json!({
+        "type": "we-modal",
+        "$localState": { "closed": { "type": "boolean", "initial": false } },
+        "props": {
+            "open": true,
+            "close": { "$setLocal": "closed", "value": true }
+        },
+        "children": []
+    }));
+    let (mut rt, mut host, locals) = rig(node, StoreBag::new());
+    let root = rt.frame(&mut host).clone();
+    assert!(
+        root.handlers.contains_key("close"),
+        "close must be a captured handler, not a prop: {:?}",
+        root.handlers.keys().collect::<Vec<_>>()
+    );
+    rt.dispatch(&mut host, &root.id, "close", Value::Null);
+    assert!(locals.get(&root.id, "closed").strict_eq(&Value::Bool(true)));
+}
+
+#[test]
+fn an_expression_prop_is_not_a_callback() {
+    // `{"$": …}` is a value prop, not a handler — it must still evaluate.
+    let node = schema(json!({
+        "type": "we-input",
+        "props": { "value": { "$": "greeting" } },
+        "children": []
+    }));
+    let bag = StoreBag::new();
+    bag.set_root("greeting", Value::from("hi"));
+    let (mut rt, mut host, _locals) = rig(node, bag);
+    let root = rt.frame(&mut host).clone();
+    assert_eq!(root.props["value"].to_text().as_ref(), "hi");
+    assert!(root.handlers.is_empty());
+}
+
+#[test]
 fn handler_bubbles_to_an_ancestor() {
     // onSelect lives on the parent; the child's event bubbles up to it —
     // the we-tree pattern.
