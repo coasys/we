@@ -19,6 +19,7 @@
 mod bundle;
 mod handler;
 mod handlers;
+mod host;
 mod local;
 mod node;
 mod order;
@@ -32,8 +33,9 @@ pub use bundle::{
     Bundle, BundleAuthor, BundleBrand, BundleDisplay, BundleRecordType, BundleTemplate,
     BundleTheme, DisplaySpaces, BUNDLE_FORMAT, BUNDLE_FORMAT_VERSION,
 };
-pub use handler::{CallId, HandlerToken, Host, Invoked};
+pub use handler::{CallId, HandlerToken};
 pub use handlers::{run as run_handler, HandlerCx, PendingCall, PendingMap};
+pub use host::{Action, ActionRequest, CallBook, Completer, Host, Invoked, MountId, Origin};
 pub use local::LocalState;
 pub use node::{RouteNode, SchemaChild, SchemaNode};
 pub use query::{

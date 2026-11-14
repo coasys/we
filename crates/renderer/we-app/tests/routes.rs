@@ -27,7 +27,7 @@ fn rig(route: &str) -> (Runtime, StaticHost, ScreenState) {
         boot: bundle.boot_screen.clone(),
     };
     let rt = Runtime::app(spec, Arc::clone(&bag), locals.clone());
-    let host = StaticHost::new(bag, locals);
+    let host = StaticHost::new(bag);
     let screen = ScreenState::desktop(
         ScreenSchema {
             pages: bundle

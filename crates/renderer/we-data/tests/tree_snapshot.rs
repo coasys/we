@@ -33,7 +33,7 @@ fn tree_snapshot_loads_and_marks_sidebar_members() {
     let screen = ScreenState::desktop(ScreenSchema::default(), "/space/demo");
     let mut session = Session {
         runtime: we_template::Runtime::app(spec, data.bag.clone(), locals.clone()),
-        host: StaticHost::new(data.bag.clone(), locals),
+        host: Box::new(StaticHost::new(data.bag.clone())),
         screen,
     };
     session.resolve();

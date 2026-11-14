@@ -28,7 +28,7 @@ fn rig(
     let locals = LocalState::new();
     let bag = Arc::new(bag);
     let runtime = Runtime::new(node, "test", bag.clone(), locals.clone());
-    let host = StaticHost::new(bag, locals.clone());
+    let host = StaticHost::new(bag);
     (runtime, host, locals, screen(href))
 }
 

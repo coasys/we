@@ -4,7 +4,7 @@ use std::sync::Arc;
 use serde_json::json;
 use we_screen::{ScreenSchema, ScreenState};
 use we_session::Session;
-use we_template::{ResolvedChild, SchemaNode, StoreBag};
+use we_template::{ResolvedChild, RootSpec, SchemaNode, StoreBag};
 
 fn schema(v: serde_json::Value) -> SchemaNode {
     serde_json::from_value(v).unwrap()
@@ -15,7 +15,14 @@ fn screen() -> ScreenState {
 }
 
 fn session(v: serde_json::Value) -> Session {
-    Session::new(schema(v), "test", Arc::new(StoreBag::new()), screen())
+    Session::offline(
+        RootSpec::Single {
+            node: Box::new(schema(v)),
+            id: "test".into(),
+        },
+        Arc::new(StoreBag::new()),
+        screen(),
+    )
 }
 
 #[test]

@@ -11,7 +11,7 @@ use std::sync::Arc;
 use serde::Deserialize;
 use we_screen::{ScreenSchema, ScreenState};
 use we_session::Session;
-use we_template::{Bundle, ResolvedChild, ResolvedNode, SchemaNode, StoreBag};
+use we_template::{Bundle, ResolvedChild, ResolvedNode, RootSpec, SchemaNode, StoreBag};
 
 const DEFAULT_BUNDLE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -107,8 +107,15 @@ fn main() {
     };
     let screen = ScreenState::desktop(screen_schema, &route);
 
-    let mut session = Session::new(tree_schema(&bundle), "tree", Arc::new(bag), screen)
-        .with_dollar_types(|ty| we_catalog::entry(ty).is_some());
+    let mut session = Session::offline(
+        RootSpec::Single {
+            node: Box::new(tree_schema(&bundle)),
+            id: "tree".into(),
+        },
+        Arc::new(bag),
+        screen,
+    )
+    .with_dollar_types(|ty| we_catalog::entry(ty).is_some());
     let root = session.resolve();
 
     let mut out = String::new();

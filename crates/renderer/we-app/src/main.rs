@@ -135,7 +135,8 @@ fn load_bundle(path: &str) -> Bundle {
 /// renderer produce": no window, no executor.
 #[cfg(not(target_arch = "wasm32"))]
 fn run_dump(args: &Args) {
-    use we_template::{AppSpec, LocalState, Runtime, StaticHost};
+    use we_session::Session;
+    use we_template::{AppSpec, RootSpec};
 
     let bundle = load_bundle(&args.bundle);
     let bag = match &args.snapshot {
@@ -165,18 +166,24 @@ fn run_dump(args: &Args) {
         pages: bundle.pages.clone().unwrap_or_default(),
         boot: bundle.boot_screen.clone(),
     };
-    let locals = LocalState::new();
     let bag = Arc::new(bag);
     // `$`-types the widget registry knows (`$lane`) resolve as components —
     // the same gate `RendererApp::new` sets, or a dump full of `$todo:`
     // placeholders lies about what the app renders.
     let types: std::collections::HashSet<&'static str> =
         Registry::with_builtins().type_names().collect();
-    let mut rt = Runtime::app(spec, Arc::clone(&bag), locals.clone())
+    // The same session the window and the CLI run, with the offline host
+    // injected. One frame, exactly as before: the dump prints the tree the
+    // first resolve produced, redirects not followed.
+    let mut session = Session::offline(RootSpec::App(Box::new(spec)), bag, screen)
         .with_dollar_types(move |ty| types.contains(ty));
-    let mut host = StaticHost::new(bag, locals);
-    let root = rt.frame(&mut host, &screen).clone();
-    let stats = rt.stats();
+    let Session {
+        runtime,
+        host,
+        screen,
+    } = &mut session;
+    let root = runtime.frame(host.as_mut(), screen).clone();
+    let stats = runtime.stats();
     eprintln!(
         "dump: nodes={} resolves={} last_resolve={:?} warnings={}",
         stats.nodes,
