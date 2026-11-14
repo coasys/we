@@ -365,6 +365,32 @@ fn color_mix_powerless_hue() {
             && (m.a - 0.75).abs() < 1e-2,
         "semi-transparent black's hue is still powerless: {m:?} vs {expect:?}"
     );
+
+    // The epsilon boundary (CSS Color 4: chroma < 0.000004 is powerless).
+    // 0.0005 chroma is *above* it — near-gray but still chromatic, so its
+    // hue is meaningful: the mix interpolates 60° → 200° on the shorter
+    // arc to ≈130° at ≈0.05025 chroma (the old 1e-3 threshold wrongly
+    // carried the 200° endpoint hue).
+    let expect = eval_color("oklch(0.6 0.05025 130)").unwrap();
+    let m = eval_color("color-mix(in oklch, oklch(0.6 0.0005 60), oklch(0.6 0.1 200))").unwrap();
+    assert!(
+        (m.r - expect.r).abs() < 5e-3
+            && (m.g - expect.g).abs() < 5e-3
+            && (m.b - expect.b).abs() < 5e-3,
+        "0.0005 chroma is not powerless — hue interpolates to ~130°: {m:?} vs {expect:?}"
+    );
+
+    // 0.0000005 chroma is *below* the epsilon — powerless, so the mix
+    // carries the chromatic endpoint's 200° hue (chroma still averages
+    // to ≈0.05).
+    let expect = eval_color("oklch(0.6 0.05 200)").unwrap();
+    let m = eval_color("color-mix(in oklch, oklch(0.6 0.0000005 60), oklch(0.6 0.1 200))").unwrap();
+    assert!(
+        (m.r - expect.r).abs() < 5e-3
+            && (m.g - expect.g).abs() < 5e-3
+            && (m.b - expect.b).abs() < 5e-3,
+        "0.0000005 chroma is powerless — endpoint's hue carries: {m:?} vs {expect:?}"
+    );
 }
 
 #[test]

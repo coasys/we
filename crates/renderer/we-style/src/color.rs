@@ -451,8 +451,10 @@ fn parse_color_mix(args: &str) -> Option<Color> {
                     // is ~zero is missing, and a missing component takes
                     // the other endpoint's value — an achromatic colour's
                     // arbitrary h must not drag the mix off the chromatic
-                    // endpoint's hue. (x1/x2 are the endpoint chromas.)
-                    const POWERLESS: f32 = 1e-3;
+                    // endpoint's hue. The spec's OKLCH powerless-chroma
+                    // epsilon is 0.000004 — low-but-nonzero chroma keeps
+                    // its hue. (x1/x2 are the endpoint chromas.)
+                    const POWERLESS: f32 = 0.000004;
                     let dh = (((y2 - y1) % 360.0) + 540.0) % 360.0 - 180.0;
                     let h = match (x1 < POWERLESS, x2 < POWERLESS) {
                         (true, true) => 0.0,
