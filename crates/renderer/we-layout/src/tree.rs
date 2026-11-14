@@ -1102,8 +1102,8 @@ fn layout_impl(
                 |_known, space| {
                     let avail = Size::new(offered(space.width), offered(space.height));
                     let s = match &text {
-                        Some(t) => m.measure_text(node, &wstyle, t, avail),
-                        None => m.measure(node, &wstyle, avail),
+                        Some(t) => m.measure_text(node, wstyle, t, avail),
+                        None => m.measure(node, wstyle, avail),
                     };
                     taffy::Size {
                         width: finite(s.x),
@@ -1126,7 +1126,7 @@ fn layout_impl(
     collect(&tree, root_id, rect.min, &mut out);
     for id in out.scroll.keys().cloned().collect::<Vec<_>>() {
         if let Some(node) = nodes.get(&id) {
-            if let Some(r) = scroll_content_rect(&out, *node) {
+            if let Some(r) = scroll_content_rect(&out, node) {
                 out.scroll_content.insert(id, r);
             }
         }

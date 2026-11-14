@@ -48,7 +48,7 @@ fn harness_ui<'a>(run: impl FnMut(&mut egui::Ui) + 'a) -> egui_kittest::Harness<
         // The image loader's ⚠ has no glyph in the test fonts — a paint
         // detail, not a failure. install_media supplies the rest.
         .allow_missing_glyphs()
-        .with_context_setup(|ctx| we_egui::install_media(ctx))
+        .with_context_setup(we_egui::install_media)
         .build_ui(run)
 }
 fn lay_out(root: &ResolvedNode, width: f32) -> Layout {
@@ -833,7 +833,7 @@ fn tooltip_content_slot_never_enters_page_layout() {
     let tip = tooltip_node("t", &[("content", s("phrase"))]);
     let layout = lay_out(&tip, 400.0);
     assert!(
-        layout.rects.get(&NodeId::from("t/c")).is_none(),
+        !layout.rects.contains_key(&NodeId::from("t/c")),
         "content-slot child must not enter page layout: {:?}",
         layout.rects.keys().collect::<Vec<_>>()
     );
@@ -947,7 +947,7 @@ fn tooltip_open_prop_shows_the_slotted_content() {
         rig.texts
     );
     // And it painted in the overlay — still no page rect for `t/c`.
-    assert!(rig.layout.rects.get(&NodeId::from("t/c")).is_none());
+    assert!(!rig.layout.rects.contains_key(&NodeId::from("t/c")));
 }
 
 /// A3 — hovering the trigger opens the tooltip (tooltip.ts `mouseenter →
@@ -1355,7 +1355,7 @@ fn authored_font_style_and_metrics_reach_the_galley() {
         f.coords
             .as_ref()
             .iter()
-            .any(|(tag, v)| tag.to_string() == "wght" && *v == 700.0),
+            .any(|(tag, v)| *tag == "wght" && *v == 700.0),
         "fontWeight: 700 must reach the galley as a wght coordinate: {f:?}"
     );
     assert!(
@@ -1633,7 +1633,7 @@ fn text_label_and_body_variants_resolve_the_ts_table() {
         lab.coords
             .as_ref()
             .iter()
-            .any(|(tag, v)| tag.to_string() == "wght" && *v == 500.0),
+            .any(|(tag, v)| *tag == "wght" && *v == 500.0),
         "label is font-weight medium: {lab:?}"
     );
     let bod = galleys

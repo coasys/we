@@ -322,7 +322,7 @@ impl Rings {
         let dflt = if small { 1.5 } else { 2.0 };
         let edge_w = dflt;
         let ring_w = width_raw
-            .and_then(|w| we_style::eval_dimension(w))
+            .and_then(we_style::eval_dimension)
             .and_then(|d| d.to_px(FONT_PX, ROOT_PX, we_style::Size::new(0.0, 0.0)))
             .unwrap_or(dflt);
         Self {
@@ -436,7 +436,7 @@ impl Avatar {
     }
 
     /// `image` is the picture prop; `url`/`src` are accepted spellings.
-    pub(crate) fn image<'a>(node: &'a ResolvedNode) -> Option<&'a str> {
+    pub(crate) fn image(node: &ResolvedNode) -> Option<&'_ str> {
         props::prop_text(node, "image")
             .or_else(|| props::prop_text(node, "url"))
             .or_else(|| props::prop_text(node, "src"))
