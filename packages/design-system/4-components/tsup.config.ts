@@ -13,6 +13,8 @@ export default defineConfig({
   entry: {
     'solid/index': 'src/frameworks/solid/index.ts',
     'signals/index': 'src/components/signals/aggregate.ts',
+    // How a step reads and whether it wrote — pure, so a test can ask it without a renderer.
+    'step-words/index': 'src/components/feedback/AgentSteps/stepWords.ts',
   },
   format: ['esm'],
   dts: true,

@@ -18,7 +18,7 @@
  */
 import { dockRegistry, dockTitle, frameBox } from '@shared/registries/dockRegistry';
 import { chromeBag } from '@shared/registries/templateBag';
-import { componentRegistry as registry } from '@solid/registries/componentRegistry';
+import { chromeComponentRegistry as registry } from '@solid/registries/componentRegistry';
 import type { TemplatePanel } from '@we/schema-shared';
 import { RenderSchema } from '@we/schema-solid';
 import { For, type JSX, untrack } from 'solid-js';

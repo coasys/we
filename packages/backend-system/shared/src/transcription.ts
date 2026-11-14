@@ -1,8 +1,8 @@
 /**
  * Speech-to-text, as a capability rather than a model to administer.
  *
- * `RuntimeAdminPort` already knows about transcription models — it lists them, adds them, downloads
- * them and picks a default. What it cannot do is *use* one. That gap is why transcription could not
+ * `ModelAdminPort` already knows about transcription models — it lists them, adds them and picks a
+ * default. What it cannot do is *use* one. That gap is why transcription could not
  * be ported without a module reaching for a backend's client directly and declaring itself
  * backend-specific, which is the coupling the module contract exists to avoid.
  *
@@ -24,7 +24,10 @@ export interface TranscriptionRecord {
   name: string;
   /** True for the one the backend uses when asked for transcription without naming a model. */
   isDefault: boolean;
-  /** False while weights are still downloading — opening a stream on it will fail or stall. */
+  /**
+   * False while the model cannot run — still downloading, or its server is not answering or no
+   * longer has it. Opening a stream on it will fail or stall.
+   */
   ready: boolean;
   /**
    * How far a download has got, 0–100, while `ready` is false — when the backend reports it.
@@ -32,47 +35,25 @@ export interface TranscriptionRecord {
    * Absent rather than 0 where nothing is known, so "not started" and "no idea" do not read alike.
    */
   progress?: number;
+  /** Why it cannot run, in words, while `ready` is false. Empty when the backend cannot say. */
+  detail?: string;
 }
 
 /**
- * A model the backend will install when asked, for a caller that would rather offer one button than
+ * How transcription could be set up from here, for a caller that would rather offer one button than
  * send somebody to a settings page.
  *
- * The backend chooses it, because only the backend knows which of its models suits speech on the
- * hardware it runs on — and the caller still needs the size, because a download of most of a gigabyte
- * is something to say before anyone agrees to it rather than after.
+ * The backend looks, because only it can see the machine it runs on: a speech server already running
+ * there is one press from working. Where there is none, the caller still has somewhere to point.
  */
-export interface TranscriptionModelOffer {
-  /** What to call it — "Whisper small". */
-  name: string;
-  /** Roughly how much will be downloaded, in bytes. */
-  downloadBytes: number;
-}
-
-/**
- * How eagerly a stream decides that speech has started and stopped.
- *
- * Backend-tunable because the same audio serves two different purposes: a low-latency preview wants
- * to emit a word the moment it is heard, while the transcript of record would rather wait and be
- * right. Every field is optional and the backend's defaults are reasonable; a caller that does not
- * care should pass nothing.
- *
- * **Advisory.** These describe one way of finding speech — a loudness detector with hysteresis — and
- * a backend that finds it another way (a model that segments by itself, a service that streams
- * words as they come) is free to ignore any of them. A caller may not rely on a field having had an
- * effect, only on the stream still producing text.
- */
-export interface TranscriptionTuning {
-  /** Loudness at which speech is considered to have begun. Lower catches quieter speakers. */
-  startThreshold?: number;
-  /** How long that must hold before it counts, in milliseconds. Lower reacts faster. */
-  startWindow?: number;
-  /** Loudness below which speech is considered over. */
-  endThreshold?: number;
-  /** How long silence must hold before an utterance is closed, in milliseconds. */
-  endWindow?: number;
-  /** Audio to keep from before speech was detected, so a sentence does not lose its first word. */
-  timeBeforeSpeech?: number;
+export interface TranscriptionSetup {
+  /**
+   * A speech server found on the backend's machine, as a button names it — "Use the speech server at
+   * localhost:8000". Empty when none was found that serves a transcription model.
+   */
+  found: string;
+  /** Where to get a speech server, for when none was found. */
+  installUrl: string;
 }
 
 /** An open transcription session. Closing it releases the backend's side. */
@@ -109,20 +90,18 @@ export interface TranscriptionPort {
    * "transcription produced nothing" — which look identical from the callback's point of view and
    * mean very different things to a user.
    */
-  open(modelId: string, onText: (text: string) => void, tuning?: TranscriptionTuning): Promise<TranscriptionStream>;
+  open(modelId: string, onText: (text: string) => void): Promise<TranscriptionStream>;
   /**
-   * The model {@link installOfferedModel} would add, or null when this connection may not add one.
+   * What setting transcription up from here would use, or null when this connection may not set it
+   * up.
    *
-   * Null — or the member absent — on a node somebody else runs: installing a model changes a
-   * machine other people share, which is the operator's decision even where the grant would allow it.
+   * Null — or the member absent — on a node somebody else runs: adding a model changes a machine
+   * other people share, which is the operator's decision even where the grant would allow it.
    */
-  offeredModel?(): TranscriptionModelOffer | null;
+  setup?(): Promise<TranscriptionSetup | null>;
   /**
-   * Register the offered model, and resolve once it is registered — not once it has downloaded.
-   *
-   * The download can take minutes; `models()` reports it through `ready` and `progress` meanwhile,
-   * which is what a caller should watch. Resolving early is the point: a promise held open for a
-   * gigabyte would outlive every timeout between here and the backend.
+   * Connect the server {@link setup} found and make its transcription model the default. Resolves
+   * once the model is registered; `models()` then says whether it can run.
    */
-  installOfferedModel?(): Promise<void>;
+  connectFound?(): Promise<void>;
 }

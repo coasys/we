@@ -3,7 +3,6 @@ import { tokenVar } from '@we/design-utils';
 import DOMPurify from 'dompurify';
 import { css, html, unsafeCSS } from 'lit';
 import { customElement, property } from 'lit/decorators.js';
-import { unsafeHTML } from 'lit/directives/unsafe-html.js';
 import { Marked } from 'marked';
 
 import { DesignSystemElement } from '../shared/design-system-element';
@@ -120,6 +119,35 @@ const styles = css`
   [part='base'] a {
     color: var(--we-role-accent-text);
     text-decoration: underline;
+  }
+
+  /*
+    Tables scroll inside their own band rather than breaking their cells.
+
+    A reply is read in whatever width the window has, and a table needs the width its columns say —
+    squeezed, a header arrives as "Nam/e" and an id in chunks. The band keeps the table whole and
+    slides the overflow, and the cells keep their words together: code and identifiers never wrap,
+    a prose cell folds only between words.
+  */
+  [part='base'] .we-md-table {
+    overflow-x: auto;
+    max-width: 100%;
+    margin: var(--we-markdown-gap, 0.5em) 0;
+  }
+  [part='base'] .we-md-table table {
+    border-collapse: collapse;
+  }
+  [part='base'] .we-md-table th,
+  [part='base'] .we-md-table td {
+    padding: 0.3em 0.6em;
+    border: 1px solid var(--we-role-border);
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: none;
+  }
+  [part='base'] .we-md-table th,
+  [part='base'] .we-md-table td code {
+    white-space: nowrap;
   }
 
   /* Horizontal rule */
@@ -239,6 +267,18 @@ export default class Markdown extends DesignSystemElement {
       `javascript:` half; `safeHref` covers the same ground for hrefs a template sets directly.
     */
     const parsed = md.parse(this.content, { async: false }) as string;
-    return html`<div part="base">${unsafeHTML(DOMPurify.sanitize(parsed))}</div>`;
+    const fragment = DOMPurify.sanitize(parsed, { RETURN_DOM_FRAGMENT: true });
+    /*
+      Tables get the scrolling band their CSS works against — wrapped after sanitising rather than
+      emitted by a marked renderer, so the wrapper is the element's own and never reaches the
+      markup a caller could supply.
+    */
+    for (const table of [...fragment.querySelectorAll('table')]) {
+      const band = document.createElement('div');
+      band.className = 'we-md-table';
+      table.parentNode!.replaceChild(band, table);
+      band.appendChild(table);
+    }
+    return html`<div part="base">${fragment}</div>`;
   }
 }

@@ -13,7 +13,12 @@ import { appSpaceTemplate, followedTemplateId } from '@shared/bundles/display';
 import { displaySourceOf, readInstalledBundles } from '@shared/bundles/installedBundles';
 import { bootScreenTemplate, placesCredentialField } from '@shared/bundles/judgeBundle';
 import { offeredInPickers } from '@shared/devOnlyOffers';
-import { appTemplateRegistry, DEFAULT_APP_ID, resolveAppTemplate } from '@shared/registries/appTemplates';
+import {
+  appChoiceToKeep,
+  appTemplateRegistry,
+  DEFAULT_APP_ID,
+  resolveAppTemplate,
+} from '@shared/registries/appTemplates';
 import { withDerivedIds } from '@shared/registries/derivedIds';
 import { reservedTemplateIds } from '@shared/registries/reservedTemplateIds';
 import { seedBundleAppId, seedBundlePages, seedBundlePieces } from '@shared/registries/seedBundles';
@@ -575,17 +580,19 @@ export function TemplateStoreProvider(props: ParentProps) {
   /*
     The app this agent is in: the template WE's own chrome is drawn from.
 
-    Their own choice, else the deployment's (the seed's `host.ui.app`), else WE's. Only WE's apps and
+    Their own choice, else the deployment's (the seed's `host.ui.app`, else its first bundle's app),
+    else WE's. Only WE's apps and
     the agent's own copies are honoured — an app is drawn with the chrome tier, so one from a
     stranger waits for an install that asks first. Safe mode always draws WE's, so an app that hides
     every way out is never the only way in. While the app is being edited, its working copy is drawn.
   */
   const ownApps = () => allTemplates().filter((t) => isApp(t) && !t._fromSpace && !!t.id);
+  const deploymentAppId = () => getSeed().host?.ui?.app || seedBundleAppId;
   const appTemplate = createMemo<TemplateSchema>(() => {
     const found = resolveAppTemplate({
       safe: safe.on,
       chosen: settingOrRemembered('appTemplateId'),
-      seed: getSeed().host?.ui?.app || seedBundleAppId,
+      seed: deploymentAppId(),
       own: ownApps(),
     });
     return draftOf(found) ?? found;
@@ -614,7 +621,7 @@ export function TemplateStoreProvider(props: ParentProps) {
     ]),
   );
   async function setAppTemplate(id: string): Promise<boolean> {
-    const saved = await datasetStore.updateAgentSettings({ appTemplateId: id === DEFAULT_APP_ID ? '' : id });
+    const saved = await datasetStore.updateAgentSettings({ appTemplateId: appChoiceToKeep(id, deploymentAppId()) });
     /*
       Entering an app adopts its look: the first theme it names becomes the agent's default, at the
       moment they chose the app. A choice they make afterwards wins, as any later choice does — this
@@ -1425,9 +1432,10 @@ export function TemplateStoreProvider(props: ParentProps) {
     });
 
     // An app of the agent's own is deleted from the same library. If it was the app they are in, they
-    // are back in WE's: the chrome already falls back once the record is gone, and the choice is put
-    // back with it, so nothing goes on naming an app that no longer exists.
-    if (datasetStore.agentSettings()?.appTemplateId === templateId) await setAppTemplate(DEFAULT_APP_ID);
+    // are back in the deployment's: the choice is cleared with the record, so nothing goes on naming an
+    // app that no longer exists.
+    if (datasetStore.agentSettings()?.appTemplateId === templateId)
+      await setAppTemplate(deploymentAppId() || DEFAULT_APP_ID);
 
     // If we deleted the current template, switch to the default
     if (currentTemplate.id === templateId) {

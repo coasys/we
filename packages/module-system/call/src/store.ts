@@ -69,6 +69,14 @@ export type BackendDataMessage = CallDataMessage;
 /** A WebRTC session run by the backend — topology-agnostic. */
 export type CallBackend = CallSession;
 
+/** One other session in the call: whose it is, and what it sends. */
+interface RemoteSession {
+  agent: string;
+  stream: MediaStream;
+  hasAudio?: boolean;
+  hasVideo?: boolean;
+}
+
 /**
  * One participant, flattened for a template.
  *
@@ -478,6 +486,14 @@ export function createCallStore(deps: ModuleStoreDeps) {
   const CAMERA_LOST =
     'Your camera is no longer available — it may have been unplugged, or another app may have taken it.';
   /**
+   * This device joined the same call from another tab, which took the call over from this one.
+   *
+   * Said rather than left silent, because the call in this tab simply ends: without the sentence it
+   * reads as a dropped call, and the natural response, joining again, takes it back from the other
+   * tab.
+   */
+  const REPLACED = 'You joined this call from another tab, so it ended here.';
+  /**
    * The microphone this agent is sending, as a signal rather than a read through to the controller.
    *
    * It has to be a signal because of *when* the stream appears. `join` sets `callId` and only then
@@ -615,7 +631,16 @@ export function createCallStore(deps: ModuleStoreDeps) {
    */
   const [backendJoined, setBackendJoined] = signal(false);
   let controller: MediaController | null = null;
-  let remoteStreams = new Map<string, MediaStream>();
+  /**
+   * The media of every session in the call but this one, by participant id.
+   *
+   * By session rather than by agent, because an agent can be in an SFU call from two devices, and
+   * each device sends its own picture. Keyed by agent, the second device's stream overwrote the
+   * first's and one of them was never shown. On the mesh the participant id is the DID, so there it
+   * is still one entry per agent. `hasAudio`/`hasVideo` are what the session reports, and are read
+   * only for this agent's own other devices, which publish no presence of their own.
+   */
+  let remoteSessions = new Map<string, RemoteSession>();
   let peerStates = new Map<string, RTCPeerConnectionState>();
   let dataUnsubscribe: (() => void) | null = null;
   const dataListeners: Set<(msg: BackendDataMessage) => void> = new Set();
@@ -772,7 +797,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
   }
 
   function watchRemoteStreams() {
-    const held = new Set([...remoteStreams.values()].filter(Boolean));
+    const held = new Set([...remoteSessions.values()].map((session) => session.stream).filter(Boolean));
     for (const [stream, watcher] of watchedStreams) {
       if (held.has(stream)) continue;
       watcher.stop();
@@ -839,19 +864,28 @@ export function createCallStore(deps: ModuleStoreDeps) {
       });
     }
 
-    // Through the shared helper, which is what this loop used to duplicate without its liveness
-    // test — so a peer who had stopped heartbeating kept a tile even once the mesh had let them go.
-    for (const { peer, activity } of liveCallActivities()) {
-      if (activity.id !== id || peer.agentId === me) continue;
-      const settings = activity.media;
-      const stream = remoteStreams.get(peer.agentId) ?? null;
-      next.push(stabilise({ id: peer.agentId, did: peer.agentId, stream, isSelf: false }));
-      const connection = peerStates.get(peer.agentId);
-      const repair = recovering.get(peer.agentId);
+    /*
+      The sessions in the call, grouped by agent. Presence says who is in the call, and it says it per
+      agent; the session says how many devices each of them is in it from. So an agent gets one tile
+      per session, and one tile keyed by their DID while no session of theirs has arrived yet, which
+      is the tile that says "Connecting…" during the first seconds.
+    */
+    const sessionsOf = new Map<string, string[]>();
+    for (const [sessionId, session] of remoteSessions) {
+      const ids = sessionsOf.get(session.agent);
+      if (ids) ids.push(sessionId);
+      else sessionsOf.set(session.agent, [sessionId]);
+    }
+
+    const pushRemote = (tileId: string, did: string, settings: Partial<MediaSettings> | undefined) => {
+      const stream = remoteSessions.get(tileId)?.stream ?? null;
+      next.push(stabilise({ id: tileId, did, stream, isSelf: false }));
+      const connection = peerStates.get(tileId);
+      const repair = recovering.get(tileId);
       const wantsPicture = (settings?.videoEnabled ?? true) || (settings?.screenShareEnabled ?? false);
       const picture = wantsPicture && hasLiveVideo(stream);
       states.push({
-        id: peer.agentId,
+        id: tileId,
         // Read from the roster, never inferred from the track — the sender is the only one who knows
         // whether the video it is sending is a camera or a desktop.
         isScreen: settings?.screenShareEnabled ?? false,
@@ -881,9 +915,36 @@ export function createCallStore(deps: ModuleStoreDeps) {
         // without a second source of truth.
         retrying: !!repair && connection !== 'connected',
         attempts: repair?.attempts ?? 0,
-        transport: transports.get(peer.agentId) ?? '',
+        transport: transports.get(tileId) ?? '',
         failed: connection === 'failed',
       });
+    };
+
+    // Through the shared helper, which is what this loop used to duplicate without its liveness
+    // test — so a peer who had stopped heartbeating kept a tile even once the mesh had let them go.
+    for (const { peer, activity } of liveCallActivities()) {
+      if (activity.id !== id || peer.agentId === me) continue;
+      const sessions = sessionsOf.get(peer.agentId);
+      // The media settings are the agent's, as presence carries them, so every device of theirs
+      // shows the same ones.
+      for (const tileId of sessions?.length ? sessions : [peer.agentId])
+        pushRemote(tileId, peer.agentId, activity.media);
+    }
+
+    /*
+      This agent's own other devices, which the roster above can never list: presence holds one
+      entry per agent, and for this agent that entry is this tab. What they send is read off the
+      session instead.
+    */
+    if (me) {
+      for (const tileId of sessionsOf.get(me) ?? []) {
+        const session = remoteSessions.get(tileId);
+        pushRemote(tileId, me, {
+          audioEnabled: session?.hasAudio ?? true,
+          videoEnabled: session?.hasVideo ?? true,
+          screenShareEnabled: false,
+        });
+      }
     }
 
     /*
@@ -1084,7 +1145,12 @@ export function createCallStore(deps: ModuleStoreDeps) {
       // Called directly after a join as well as from events, and joining can hand the call straight
       // to a switch — whose new session's streams these would overwrite.
       if (backend !== session) return;
-      remoteStreams = new Map(session.participants.map((p) => [p.agentDid, p.stream]));
+      remoteSessions = new Map(
+        session.participants.map((p) => [
+          p.participantId,
+          { agent: p.agentDid, stream: p.stream, hasAudio: p.hasAudio, hasVideo: p.hasVideo },
+        ]),
+      );
       rebuildTiles();
     };
     // `participant-updated`: a rebuilt connection has a new stream object, and a track that stops
@@ -1126,6 +1192,19 @@ export function createCallStore(deps: ModuleStoreDeps) {
         setCallTopology({ mode: topo, at: Date.now() });
         publishActivity();
       }
+    });
+    /*
+      Another tab of this device joined the call and took it over: the SFU holds one session per
+      device. The call has ended in this tab, so it is let go like a leave — devices released, the
+      session destroyed — and nothing rebuilds or rejoins it. Joining again is the person's choice.
+
+      `teardown` also takes this tab's call activity out of presence. That is this tab's own record,
+      not the agent's: the other tab holds its own, and the tab coordinator hands publishing to it
+      when this tab stops holding a call (see `setPinned` in the app shell's `tabCoordinator`).
+    */
+    on('replaced', () => {
+      teardown();
+      setProblem(REPLACED);
     });
     session.on('error', (err: unknown) => console.error('call: backend error', err));
 
@@ -1204,7 +1283,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     setBackendJoined(false);
     dataUnsubscribe?.();
     dataUnsubscribe = null;
-    remoteStreams = new Map();
+    remoteSessions = new Map();
     peerStates = new Map();
     recovering.clear();
     transports.clear();
@@ -1323,7 +1402,7 @@ export function createCallStore(deps: ModuleStoreDeps) {
     scopeHandle?.dispose();
     scopeHandle = null;
     setLocalAudio(null);
-    remoteStreams = new Map();
+    remoteSessions = new Map();
     peerStates = new Map();
     recovering.clear();
     transports.clear();
@@ -1777,7 +1856,8 @@ export function createCallStore(deps: ModuleStoreDeps) {
         // The host lends the constructor; the ICE opinion stays the mesh's — see `DEFAULT_ICE_SERVERS`.
         createPeerConnection: (configuration) => connections.create(configuration),
         onRemoteStreamsChanged: (streams) => {
-          remoteStreams = streams;
+          // The mesh is one session per agent, so its participant id is the DID.
+          remoteSessions = new Map([...streams].map(([agent, stream]) => [agent, { agent, stream }]));
           rebuildTiles();
         },
         onPeerStateChanged: (peerId, state) => {

@@ -62,6 +62,36 @@ describe('the panels on screen', () => {
 
     expect(ids(activePanels([], view, ['space', 'abc', 'graph']))).toEqual(['legend']);
   });
+
+  it('rides the app’s panels under the interface’s — the chrome every page is inside', () => {
+    // The app declares what exists in and out of every space: the AI chats are the first of these.
+    const shell = [panel('calls')];
+    const app = [panel('chat-global'), panel('chat-space')];
+
+    expect(ids(activePanels(shell, undefined, ['space', 'abc', 'canvas'], app))).toEqual([
+      'chat-global',
+      'chat-space',
+      'calls',
+    ]);
+  });
+
+  it('lets the space keep the last word on an id the app also declares', () => {
+    const shell = [{ ...panel('chat-global'), title: "the space's" }];
+    const app = [{ ...panel('chat-global'), title: "the app's" }, panel('chat-space')];
+
+    const result = activePanels(shell, undefined, ['space', 'abc', 'canvas'], app);
+
+    expect(ids(result)).toEqual(['chat-space', 'chat-global']);
+    expect(result.find((p) => p.id === 'chat-global')?.title).toBe("the space's");
+  });
+
+  it('lets an app panel outrank a section’s, as the shell does', () => {
+    const shell = [panel('calls')];
+    const view = [panel('chat-global'), panel('legend')];
+    const app = [panel('chat-global')];
+
+    expect(ids(activePanels(shell, view, ['space', 'abc', 'canvas'], app))).toEqual(['legend', 'chat-global', 'calls']);
+  });
 });
 
 /**

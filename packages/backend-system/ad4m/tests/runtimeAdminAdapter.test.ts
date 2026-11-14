@@ -97,6 +97,10 @@ describe('what a connection is allowed to administer', () => {
     expect(port.update).toBeUndefined();
     expect(port.remove).toBeUndefined();
     expect(port.setDefault).toBeUndefined();
+    // The executor shows its endpoints, their addresses and their health to its operator only.
+    expect(port.endpoints).toBeUndefined();
+    expect(port.addEndpoint).toBeUndefined();
+    expect(port.pullModel).toBeUndefined();
   });
 
   it('hides AI entirely when the grant does not include it', () => {
@@ -154,155 +158,6 @@ describe('system languages', () => {
       { address: 'Qm-sys', name: 'languages', system: true },
       { address: 'Qm-mine', name: 'note-language', system: false },
     ]);
-  });
-});
-
-describe('remote models', () => {
-  function aiClient(models: unknown[] = [], extra: Record<string, unknown> = {}) {
-    const added: unknown[] = [];
-    const client = stubClient({
-      ai: {
-        getModels: vi.fn(async () => models),
-        getDefaultModel: vi.fn(async () => undefined),
-        setDefaultModel: vi.fn(async () => true),
-        addModel: vi.fn(async (input: unknown) => {
-          added.push(input);
-          return 'new-id';
-        }),
-        updateModel: vi.fn(async (_id: string, input: unknown) => {
-          added.push(input);
-          return true;
-        }),
-        ...extra,
-      },
-    });
-    return { client, added };
-  }
-
-  it('reads an Anthropic model back as Anthropic, and writes it back the same way', async () => {
-    // Before, the API type was dropped on read and written as OPEN_AI, so editing an Anthropic
-    // model's name turned it into an OpenAI model pointed at Anthropic's URL.
-    const { client, added } = aiClient([
-      {
-        id: 'm1',
-        name: 'Claude',
-        modelType: 'LLM',
-        api: { baseUrl: 'https://api.anthropic.com', hasApiKey: true, model: 'claude-sonnet-5', apiType: 'ANTHROPIC' },
-      },
-    ]);
-    const port = createAd4mModelAdmin(client, { capabilities: null });
-
-    const [model] = await port.list!();
-    expect(model.source).toMatchObject({ kind: 'api', protocol: 'anthropic' });
-
-    await port.update!('m1', { name: 'Claude, renamed', kind: 'llm', source: model.source });
-    expect(added[0]).toMatchObject({ api: { apiType: 'ANTHROPIC' } });
-  });
-
-  it('reads whether a key is set, and an edit that does not touch it sends none', async () => {
-    // The executor answers `hasApiKey` and never the key. An update without `apiKey` keeps the
-    // stored one, so an edit that left the key alone must not send one — not even an empty one,
-    // which would remove it.
-    const { client, added } = aiClient([
-      {
-        id: 'm1',
-        name: 'Claude',
-        modelType: 'LLM',
-        api: { baseUrl: 'https://api.anthropic.com', hasApiKey: true, model: 'claude-sonnet-5', apiType: 'ANTHROPIC' },
-      },
-    ]);
-    const port = createAd4mModelAdmin(client, { capabilities: null });
-
-    const [model] = await port.list!();
-    expect(model.source).toEqual({
-      kind: 'api',
-      protocol: 'anthropic',
-      baseUrl: 'https://api.anthropic.com',
-      hasApiKey: true,
-      model: 'claude-sonnet-5',
-    });
-
-    const api = {
-      kind: 'api',
-      protocol: 'anthropic',
-      baseUrl: 'https://api.anthropic.com',
-      model: 'claude-sonnet-5',
-    } as const;
-    await port.update!('m1', { name: 'Claude', kind: 'llm', source: api });
-    await port.update!('m1', { name: 'Claude', kind: 'llm', source: { ...api, apiKey: 'sk-new' } });
-    await port.update!('m1', { name: 'Claude', kind: 'llm', source: { ...api, apiKey: '' } });
-
-    const sent = added.map((input) => (input as { api: Record<string, unknown> }).api);
-    expect(sent[0]).not.toHaveProperty('apiKey');
-    expect(sent[1]).toMatchObject({ apiKey: 'sk-new' });
-    expect(sent[2]).toMatchObject({ apiKey: '' });
-  });
-
-  it('keeps an Ollama model’s provider and context ceiling through an edit', async () => {
-    // Both were lost the same way the Anthropic type was: read as OpenAI with no ceiling, and an
-    // update replaces the record, so renaming the model rewrote it onto the wrong provider.
-    const { client, added } = aiClient([
-      {
-        id: 'm1',
-        name: 'Qwen',
-        modelType: 'LLM',
-        api: {
-          baseUrl: 'http://localhost:11434',
-          hasApiKey: false,
-          model: 'qwen3:4b',
-          apiType: 'OLLAMA',
-          maxNumCtx: 40960,
-        },
-      },
-    ]);
-    const port = createAd4mModelAdmin(client, { capabilities: null });
-
-    const [model] = await port.list!();
-    expect(model.source).toMatchObject({ kind: 'api', protocol: 'ollama', maxContext: 40960 });
-
-    await port.update!('m1', { name: 'Qwen, renamed', kind: 'llm', source: model.source });
-    expect(added[0]).toMatchObject({ api: { apiType: 'OLLAMA', maxNumCtx: 40960 } });
-  });
-
-  it('sends no ceiling for a model that has none', async () => {
-    const { client, added } = aiClient();
-    const port = createAd4mModelAdmin(client, { capabilities: null });
-    await port.add!({
-      name: 'Qwen',
-      kind: 'llm',
-      source: { kind: 'api', protocol: 'ollama', baseUrl: 'http://localhost:11434', apiKey: '', model: 'qwen3:4b' },
-    });
-    expect((added[0] as { api: object }).api).not.toHaveProperty('maxNumCtx');
-  });
-
-  it('reads an API type it does not know as OpenAI', async () => {
-    const { client } = aiClient([
-      {
-        id: 'm1',
-        name: 'Old',
-        modelType: 'LLM',
-        api: { baseUrl: 'u', hasApiKey: false, model: 'x', apiType: 'OPEN_AI' },
-      },
-    ]);
-    const [model] = await createAd4mModelAdmin(client, { capabilities: null }).list!();
-    expect(model.source).toMatchObject({ protocol: 'openai' });
-  });
-
-  it('lists an endpoint’s models where the client can ask, in the executor’s spelling', async () => {
-    const discoverModels = vi.fn(async () => ['claude-sonnet-5']);
-    const { client } = aiClient([], { discoverModels });
-    const port = createAd4mModelAdmin(client, { capabilities: null });
-
-    await expect(
-      port.discover!({ protocol: 'anthropic', baseUrl: 'https://api.anthropic.com', apiKey: '' }),
-    ).resolves.toEqual(['claude-sonnet-5']);
-    // An empty key is sent as none, which the executor reads as a keyless endpoint.
-    expect(discoverModels).toHaveBeenCalledWith('https://api.anthropic.com', undefined, 'ANTHROPIC');
-  });
-
-  it('offers no listing on a client that predates it', () => {
-    const { client } = aiClient();
-    expect(createAd4mModelAdmin(client, { capabilities: null }).discover).toBeUndefined();
   });
 });
 

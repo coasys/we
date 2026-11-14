@@ -331,7 +331,7 @@ export const mcpServer: SchemaNode = {
                 {
                   type: 'we-text',
                   props: { variant: 'footnote' },
-                  children: ['Saved. It takes effect when the data layer restarts.'],
+                  children: ['Saved. Restart to apply.'],
                 },
                 {
                   type: 'we-button',
@@ -709,7 +709,7 @@ const peerExchangeModal: SchemaNode = {
             {
               type: '$if',
               props: {
-                condition: { $: 'runtimeStore.error && !count(runtimeStore.pending)' },
+                condition: { $: 'runtimeStore.error' },
                 then: { type: 'we-alert', props: { tone: 'danger' }, children: [{ $: 'runtimeStore.error' }] },
               },
             },

@@ -89,6 +89,21 @@ export const feedModule = defineModule({
         default: true,
         levels: ['agent'],
       },
+      /*
+        Whether the Feed draws every line a call spoke. Off until this reader asks — calls write a
+        line a few seconds at a time into the same stream written messages land in, and in a space
+        that calls often the typed ones sink. Per space: a standup somebody skims and an all-hands
+        they want verbatim are different answers, and the transcript is where a call's words are
+        read anyway.
+      */
+      {
+        key: 'showCallTranscripts',
+        label: 'Show call transcripts',
+        description: 'Draw the lines calls spoke in this space’s Feed, among the written ones.',
+        type: 'boolean',
+        default: false,
+        levels: ['agent-in-space'],
+      },
     ],
   },
 

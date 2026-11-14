@@ -400,6 +400,8 @@ describe('transport and device lifetime', () => {
     }[] = [];
     /** Every call activity this store published, in order. */
     const activities: Record<string, unknown>[] = [];
+    /** Every call activity this store took out of presence, as `[type, id]`. */
+    const cleared: unknown[][] = [];
 
     const disposers: Array<() => void> = [];
     let created = 0;
@@ -462,7 +464,7 @@ describe('transport and device lifetime', () => {
         presence: {
           peers: () => (rosterVersion(), roster),
           setActivity: (activity: Record<string, unknown>) => void activities.push(activity),
-          clearActivity: () => {},
+          clearActivity: (...args: unknown[]) => void cleared.push(args),
         },
         records: {
           create: async (...args: unknown[]) => {
@@ -542,6 +544,7 @@ describe('transport and device lifetime', () => {
       disposers,
       removeDataset: (uri: string) => notifyRemoved?.(uri),
       activities,
+      cleared,
       /** Somebody else joins the call this store is in, and the roster catches up. */
       joinedBy: (agentId: string) => {
         roster = [...roster, { agentId, activities: [{ type: 'call', id: store.callId() ?? '' }] }];
@@ -1038,7 +1041,7 @@ describe('transport and device lifetime', () => {
       const handlers = new Map<string, ((...args: unknown[]) => void)[]>();
       const reconnected: string[] = [];
       const session = {
-        participants: [] as { agentDid: string; stream: MediaStream }[],
+        participants: [] as { participantId: string; agentDid: string; stream: MediaStream; hasVideo?: boolean }[],
         joinedWith: null as MediaStream | null,
         destroyed: false,
         join: async (stream: MediaStream) => void (session.joinedWith = stream),
@@ -1137,10 +1140,131 @@ describe('transport and device lifetime', () => {
         store.tiles().find((tile: { id: string }) => tile.id === 'did:someone')?.stream as MediaStream | null;
 
       const rebuilt = new MediaStream();
-      session.participants = [{ agentDid: 'did:someone', stream: rebuilt }];
+      session.participants = [{ participantId: 'did:someone', agentDid: 'did:someone', stream: rebuilt }];
       fire('participant-updated', { did: 'did:someone', stream: rebuilt });
 
       expect(streamOf()).toBe(rebuilt);
+    });
+
+    /*
+      An SFU call holds one session per device, so one agent can be in it from a laptop and a phone.
+      The session lists each as a participant of its own, with the same DID and different participant
+      ids. Keyed by DID, the second stream overwrote the first and one device was never shown.
+    */
+    describe('an agent in the call from more than one device', () => {
+      const remoteTiles = (store: { tiles: () => unknown }) =>
+        (store.tiles() as { id: string; did: string; stream: MediaStream | null; isSelf: boolean }[]).filter(
+          (tile) => !tile.isSelf,
+        );
+
+      it('shows each device as a tile of its own, under the same agent', async () => {
+        const { store, session, fire } = await inCallWith('did:someone');
+        const laptop = new MediaStream();
+        const phone = new MediaStream();
+        session.participants = [
+          { participantId: 'session-laptop', agentDid: 'did:someone', stream: laptop },
+          { participantId: 'session-phone', agentDid: 'did:someone', stream: phone },
+        ];
+        fire('participant-joined', { participantId: 'session-phone', did: 'did:someone' });
+
+        expect(remoteTiles(store).map((tile) => [tile.id, tile.did, tile.stream])).toEqual([
+          ['session-laptop', 'did:someone', laptop],
+          ['session-phone', 'did:someone', phone],
+        ]);
+      });
+
+      it('keeps the other device’s tile, unchanged, when one device leaves', async () => {
+        const { store, session, fire } = await inCallWith('did:someone');
+        const laptop = { participantId: 'session-laptop', agentDid: 'did:someone', stream: new MediaStream() };
+        const phone = { participantId: 'session-phone', agentDid: 'did:someone', stream: new MediaStream() };
+        session.participants = [laptop, phone];
+        fire('participant-joined', { participantId: 'session-phone', did: 'did:someone' });
+        const before = remoteTiles(store).find((tile) => tile.id === 'session-phone');
+
+        session.participants = [phone];
+        fire('participant-left', { participantId: 'session-laptop', did: 'did:someone' });
+
+        expect(remoteTiles(store).map((tile) => tile.id)).toEqual(['session-phone']);
+        expect(remoteTiles(store)[0], 'the same tile, so its video is not remounted').toBe(before);
+      });
+
+      it('shows this agent’s own other device, which presence never lists', async () => {
+        const { store, session, fire } = await inCallWith('did:someone');
+        const phone = new MediaStream();
+        session.participants = [
+          { participantId: 'session-own-phone', agentDid: 'did:test:me', stream: phone, hasVideo: false },
+        ];
+        fire('participant-joined', { participantId: 'session-own-phone', did: 'did:test:me' });
+
+        const own = remoteTiles(store).find((tile) => tile.id === 'session-own-phone');
+        expect(own).toMatchObject({ did: 'did:test:me', stream: phone, isSelf: false });
+        expect(
+          store.tiles().filter((tile: { isSelf: boolean }) => tile.isSelf),
+          'this tab is still the one tile marked as you',
+        ).toHaveLength(1);
+        const state = store.tileStates().find((tile: { id: string }) => tile.id === 'session-own-phone') as {
+          videoEnabled: boolean;
+        };
+        expect(state.videoEnabled, 'read off the session, since that device publishes no presence').toBe(false);
+      });
+    });
+
+    /*
+      The SFU holds one session per device, so joining the call from a second tab takes it over, and
+      the first tab's session says `replaced`. The call has ended in that tab: it has to let go of the
+      camera and the microphone, say why, and stay out — joining again is what takes the call back.
+    */
+    describe('when another tab of this device joins the call', () => {
+      const settle = async () => {
+        for (let i = 0; i < 6; i++) await Promise.resolve();
+      };
+
+      it('ends the call in this tab and says why', async () => {
+        const { store, session, fire, published, cleared } = await inCallWith('did:someone');
+        const id = store.callId();
+        expect(id).toBeTruthy();
+
+        fire('replaced', { participantId: 'session-this-tab' });
+        await settle();
+
+        expect(store.callId()).toBeNull();
+        expect(store.tiles()).toEqual([]);
+        expect(store.problem()).toMatch(/another tab/);
+        expect(session.destroyed, 'the session is let go like on a leave').toBe(true);
+        expect(published.at(-1), 'the camera and the microphone are released').toBeNull();
+        // This tab's own call activity. The other tab publishes its own, and the tab coordinator
+        // hands publishing to it — see `tabCoordinator.test.ts`.
+        expect(cleared).toEqual([['call', id]]);
+      });
+
+      it('does not join again, by itself or when the call goes on around it', async () => {
+        const { store, fire, sessions, backendArgs, publishesCall } = await inCallWith('did:someone');
+        const id = store.callId() as string;
+
+        fire('replaced', { participantId: 'session-this-tab' });
+        await settle();
+        // The call goes on: presence keeps saying who is in it, a switch included.
+        publishesCall('did:someone', id, { topology: { mode: 'mesh', at: Date.now() + 1, by: 'did:someone' } });
+        await settle();
+
+        expect(store.callId()).toBeNull();
+        expect(sessions, 'no session is built to rejoin').toHaveLength(1);
+        expect(backendArgs).toHaveLength(1);
+      });
+
+      it('joins again when the person asks', async () => {
+        const { store, fire, sessions } = await inCallWith('did:someone');
+        const id = store.callId() as string;
+        fire('replaced', { participantId: 'session-this-tab' });
+        await settle();
+
+        await store.joinCall(id);
+        await settle();
+
+        expect(store.callId()).toBe(id);
+        expect(sessions).toHaveLength(2);
+        expect(store.problem(), 'joining again clears the notice').toBeNull();
+      });
     });
 
     /*
@@ -1191,7 +1315,7 @@ describe('transport and device lifetime', () => {
         harness.publishesCall('did:someone', harness.store.callId() as string, {
           media: { audioEnabled: true, videoEnabled: true, screenShareEnabled: false },
         });
-        harness.session.participants = [{ agentDid: 'did:someone', stream }];
+        harness.session.participants = [{ participantId: 'did:someone', agentDid: 'did:someone', stream }];
         harness.fire('stream-added', stream);
         const tile = () => harness.store.tiles().find((t: { id: string }) => t.id === 'did:someone');
         const picture = () =>
@@ -1225,7 +1349,7 @@ describe('transport and device lifetime', () => {
         stream.removeTrack(stale.track as unknown as MediaStreamTrack);
         const fresh = remoteTrack('video', true);
         stream.addTrack(fresh.track as unknown as MediaStreamTrack);
-        session.participants = [{ agentDid: 'did:someone', stream }];
+        session.participants = [{ participantId: 'did:someone', agentDid: 'did:someone', stream }];
         fire('stream-added', stream, fresh.track);
         expect(picture(), 'the fresh track has not received anything yet').toBe(false);
 
@@ -1251,7 +1375,7 @@ describe('transport and device lifetime', () => {
         const before = tile();
 
         stream.addTrack(remoteTrack('video').track as unknown as MediaStreamTrack);
-        session.participants = [{ agentDid: 'did:someone', stream }];
+        session.participants = [{ participantId: 'did:someone', agentDid: 'did:someone', stream }];
         fire('participant-updated', { did: 'did:someone', stream });
 
         expect(picture()).toBe(true);

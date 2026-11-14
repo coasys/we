@@ -8,7 +8,7 @@
  */
 import { lineContent, threadLines } from '@we/messages';
 import type { RecordQuery } from '@we/module-shared';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { type FeedActivity, FeedReadStopped, groupActivity, markPending, nounFor, readFeedWindow } from './feed';
 
@@ -107,6 +107,43 @@ describe('the feed window', () => {
     await readFeedWindow(find, { root: ROOT, shown: 1, fromStart: true, activityTypes: [] });
     // Monday's first line fills the window and Standup began after it, so Standup is never read.
     expect(asked.filter((a) => a.query.within === 'standup')).toEqual([]);
+  });
+
+  it('does not let hidden spoken lines use up the window', async () => {
+    /*
+      The schedule that emptied the feed: a call speaks more lines than the window holds after the
+      last typed message. Cut after the merge, those lines were the whole window — the feed said
+      "Nothing said here yet…" and never loaded more, because a list that does not overflow never
+      scrolls. Spoken lines go as they are read instead, so the cut lands on the rows that will be
+      drawn, and the typed history before the call is in it.
+    */
+    const spoken = Array.from({ length: 60 }, (_, i) => line(`said-${i}`, 10 + i, 'standup'));
+    const { find } = store([
+      ...calls,
+      ...spoken,
+      line('m1', 1, 'monday'),
+      line('s1', 6, 'standup'),
+      line('typed-1', 1, ROOT, { source: 'typed' }),
+      line('typed-2', 2, ROOT, { source: 'typed' }),
+      // A typed reply to a hidden spoken line still shows, quoting it.
+      {
+        ...line('reply-1', 40, '', { author: 'did:ben', text: 'answering', source: 'typed', respondsTo: 'said-30' }),
+        threadOf: 'said-30',
+      },
+    ]);
+    const options = { root: ROOT, shown: 50, fromStart: false, activityTypes: [] };
+
+    const hidden = await readFeedWindow(find, { ...options, spoken: false });
+    expect(hidden.rows.map((r) => r.id)).toEqual(['reply-1', 'typed-2', 'typed-1']);
+    expect(hidden.rows[0]).toMatchObject({ replyTo: { id: 'said-30' } });
+    // More is still out there: the call's unread lines, and whatever is older.
+    expect(hidden.hasMore).toBe(true);
+
+    const shown = await readFeedWindow(find, { ...options, spoken: true });
+    expect(shown.rows).toHaveLength(50);
+    expect(shown.rows[0]).toMatchObject({ id: 'said-59', source: 'spoken' });
+    // The call's lines fill the window, the typed reply among them.
+    expect(shown.rows.filter((r) => r.kind === 'line' && r.source === 'spoken')).toHaveLength(49);
   });
 
   it('draws a reply after the line it answers, in the order it was said, quoting it', async () => {
@@ -220,6 +257,52 @@ describe('the feed window', () => {
       expect(query).toEqual({ within: ROOT, order: { createdAt: 'desc' }, limit: 10 });
     }
     expect(drawn.find((r) => r.kind === 'activity')).toMatchObject({ origin: 'monday', originTitle: 'Monday sync' });
+  });
+
+  it('drops only the kind that cannot be read, rather than the whole window', async () => {
+    /*
+      A class the space lists as an extraction target can be one this client cannot resolve — a
+      space's own SHACL class before the records kernel learned those, or one the backend fails on.
+      The finds ran in one Promise.all, so one bad class rejected the whole read and the Feed drew
+      nothing at all.
+    */
+    const { find } = store([
+      ...calls,
+      line('m1', 1, 'monday'),
+      { entity: 'TaskBlock', id: 't1', in: ROOT, title: 'Brief', createdAt: t(2), author: 'did:ann' },
+    ]);
+    const failingFind = (entity: string, query: RecordQuery) =>
+      entity === 'Position' ? Promise.reject(new Error('Model "Position" not found in registry')) : find(entity, query);
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+
+    const { rows: drawn } = await readFeedWindow(failingFind, {
+      root: ROOT,
+      shown: 10,
+      fromStart: true,
+      activityTypes: ['TaskBlock', 'Position'],
+    });
+
+    expect(drawn.map((r) => r.id)).toEqual(['m1', 'activity:t1']);
+    expect(warn).toHaveBeenCalledWith('[feed] could not read Position', expect.any(Error));
+    warn.mockRestore();
+  });
+
+  it('still fails the read when the messages or the calls cannot be read', async () => {
+    // The activity finds are the only tolerant ones: a window without its lines is wrong to draw.
+    const { find } = store(rows);
+    const failOn = (bad: string) => (entity: string, query: RecordQuery) =>
+      entity === bad ? Promise.reject(new Error('executor unreachable')) : find(entity, query);
+    await expect(
+      readFeedWindow(failOn('TextBlock'), { root: ROOT, shown: 10, fromStart: true, activityTypes: ['TaskBlock'] }),
+    ).rejects.toThrow('executor unreachable');
+    await expect(
+      readFeedWindow(failOn('CollectionBlock'), {
+        root: ROOT,
+        shown: 10,
+        fromStart: true,
+        activityTypes: ['TaskBlock'],
+      }),
+    ).rejects.toThrow('executor unreachable');
   });
 });
 
