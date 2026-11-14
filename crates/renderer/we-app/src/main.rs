@@ -35,6 +35,7 @@ struct Args {
     bundle: String,
     snapshot: Option<String>,
     route: String,
+    gallery: bool,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -43,6 +44,7 @@ fn parse_args() -> Args {
         bundle: DEFAULT_BUNDLE.to_string(),
         snapshot: None,
         route: "/".to_string(),
+        gallery: false,
     };
     let mut rest = std::env::args().skip(1);
     while let Some(arg) = rest.next() {
@@ -63,14 +65,19 @@ fn parse_args() -> Args {
                     .next()
                     .unwrap_or_else(|| panic!("--route needs a path"));
             }
+            "--gallery" => match rest.next().as_deref() {
+                Some("style") => args.gallery = true,
+                other => panic!("--gallery needs a target (only `style` exists): {other:?}"),
+            },
             "--offline" => {}
             "--help" | "-h" => {
                 eprintln!(
-                    "usage: we-app [--bundle <path>] [--snapshot <path>] [--route <href>] [--offline]\n\n\
+                    "usage: we-app [--bundle <path>] [--snapshot <path>] [--route <href>] [--offline] [--gallery style]\n\n\
                      --bundle <path>    bundle to render (default: the repo's bundles/coasys.bundle.json)\n\
                      --snapshot <path>  offline data: stores/queries/invokes as JSON\n\
                      --route <href>     initial routeStore path (default /)\n\
-                     --offline          run with no executor — the only mode this stage has"
+                     --offline          run with no executor — the only mode this stage has\n\
+                     --gallery style    design-system showcase: roles, scales, radii, shadows"
                 );
                 std::process::exit(0);
             }
@@ -169,9 +176,30 @@ impl eframe::App for App {
     }
 }
 
+/// `we-app --gallery style` — the design-system showcase with its theme
+/// picker, over the recorded token tables.
+#[cfg(not(target_arch = "wasm32"))]
+fn run_gallery() -> eframe::Result<()> {
+    let options = eframe::NativeOptions {
+        viewport: eframe::egui::ViewportBuilder::default()
+            .with_title("we gallery — style")
+            .with_inner_size([720.0, 900.0]),
+        ..Default::default()
+    };
+    eframe::run_native(
+        "we gallery — style",
+        options,
+        Box::new(|_cc| Ok(Box::new(we_app::gallery::GalleryApp::new()))),
+    )
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
-    run_native(parse_args())
+    let args = parse_args();
+    if args.gallery {
+        return run_gallery();
+    }
+    run_native(args)
 }
 
 #[cfg(target_arch = "wasm32")]

@@ -6,7 +6,12 @@
 //! resolve count + rect) → paint → drain events → `dispatch`. F12 toggles
 //! the debug overlay — resolve count, last resolve time, node count, unknown
 //! types, dropped calls.
+//!
+//! The gallery mode shares its paint code between the native window
+//! (`--gallery style`) and the `egui_kittest` snapshots in `tests/gallery.rs`.
 #![forbid(unsafe_code)]
+
+pub mod gallery;
 
 use std::collections::BTreeSet;
 use std::sync::Arc;

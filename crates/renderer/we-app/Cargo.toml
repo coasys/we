@@ -17,4 +17,4 @@ we-store.workspace = true
 we-expr.workspace = true
 
 [dev-dependencies]
-egui_kittest.workspace = true
+egui_kittest = { workspace = true, features = ["snapshot", "wgpu"] }
