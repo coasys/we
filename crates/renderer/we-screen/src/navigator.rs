@@ -201,18 +201,17 @@ impl Navigator {
     }
 
     /// The address `to` leads to, resolved as `navigate` would resolve it,
-    /// without going there (`routeStore.resolve`).
-    pub fn resolve(&self, to: &str, base_depth: Option<usize>) -> String {
-        let here = self.current_path();
-        let root = template_root_depth(&here);
-        resolve_path(
-            to,
-            &here,
-            PathBase {
-                depth: base_depth.unwrap_or(root),
-                root,
-            },
-        )
+    /// without going there (`routeStore.resolve`). A caller that knows
+    /// nothing passes `self.template_base()`.
+    pub fn resolve(&self, to: &str, base: PathBase) -> String {
+        resolve_path(to, &self.current_path(), base)
+    }
+
+    /// `PathBase` for a node at the template root — what `navigate` uses
+    /// when `NavigateOptions.base_depth` is absent.
+    pub fn template_base(&self) -> PathBase {
+        let root = template_root_depth(&self.current_path());
+        PathBase { depth: root, root }
     }
 
     /// The current location.
