@@ -198,3 +198,26 @@ fn the_route_executor_answers_by_request_and_space() {
     ))
     .is_err());
 }
+
+#[test]
+fn a_reserved_dataset_in_the_ir_is_refused_against_captures() {
+    // Capture identity strips `dataset`, so without the executor's
+    // reserved-key guard this IR would find demo's recorded rows: the
+    // refusal here is the guard's, not an unlearned key's.
+    let data = OfflineData::from_route(&doc(), "dna", None).unwrap();
+    let exec = data.executor();
+    let demo = SpaceId::new("demo");
+    let class = ClassSel::One("SignalType".into());
+    let (_, ir) = key(json!({ "entity": "SignalType" }));
+    assert!(pollster::block_on(exec.model_query(&demo, class.clone(), &ir)).is_ok());
+    let mut ds_ir = ir.clone();
+    ds_ir
+        .extra
+        .insert("dataset".to_string(), serde_json::json!("demo"));
+    let refused = pollster::block_on(exec.model_query(&demo, class, &ds_ir));
+    let err = refused.expect_err("a reserved dataset in the IR is refused");
+    assert!(
+        err.to_string().contains("reserved `dataset`"),
+        "refused by the guard: {err}"
+    );
+}
