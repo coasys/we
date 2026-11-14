@@ -26,9 +26,10 @@
 use std::sync::Arc;
 
 use we_expr::Value;
+use we_style::Style;
 use we_template::{NodeId, ResolvedChild, ResolvedNode};
 
-use crate::defaults::StyleCx;
+use crate::defaults::{effective, StyleCx};
 use crate::props;
 use crate::{
     events, EditState, Layout, MeasureCx, PaintCx, Parts, Rect, Registry, WidgetEvent, WidgetKind,
@@ -70,6 +71,7 @@ pub fn paint(
         base_parts,
         parts_buf: None,
         overlays: Vec::new(),
+        inh: None,
     };
     paint_node(&mut w, root);
     paint_overlays(&mut w);
@@ -98,7 +100,14 @@ struct Walk<'a> {
     /// regions (`None` when offset is zero → use `base_parts`).
     parts_buf: Option<Parts>,
     /// `Overlay` nodes met in the walk, in tree order — painted after it.
-    overlays: Vec<ResolvedNode>,
+    /// Each entry carries the node's *parent* style context (what `w.inh`
+    /// held at encounter) so the deferred pass recomputes the same
+    /// effective style.
+    overlays: Vec<(ResolvedNode, Option<Style>)>,
+    /// The parent's computed style — text fields inherit down the walk
+    /// and `opacity` composes (`defaults::effective` merges them; the
+    /// builder's measure pass applies the same rule).
+    inh: Option<Style>,
 }
 
 /// `rect` clipped on the axes `axes` marks — the other axis unbounded.
@@ -289,7 +298,7 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
     }
     let widget = w.registry.widget_for(&node.ty);
     if widget.kind() == WidgetKind::Overlay {
-        w.overlays.push(node.clone());
+        w.overlays.push((node.clone(), w.inh.clone()));
     }
     w.ancestors.push(node.id.clone());
 
@@ -305,7 +314,7 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
     }
     w.ui.set_clip_rect(w.clip.unwrap_or(w.base_clip));
 
-    let style = crate::defaults::style_of(node, w.scx);
+    let style = effective(w.inh.as_ref(), crate::defaults::style_of(node, w.scx));
     let parts = w.parts_buf.as_ref().unwrap_or(&w.base_parts);
     {
         let mut cx = PaintCx {
@@ -333,6 +342,9 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
         w.parts_buf = Some(translated_parts(&w.base_parts, -w.offset));
     }
 
+    // Children paint under this node's computed style: inherited text
+    // fields and the composed opacity flow down the recursion.
+    let saved_inh = w.inh.replace(style.clone());
     for child in &node.children {
         match child {
             ResolvedChild::Node(n) => paint_node(w, n),
@@ -353,16 +365,13 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
                         props::prop_bool(node, "truncate"),
                         props::prop_num(node, "lines").map(|n| n.max(1.0) as usize),
                     );
-                    p.add(egui::Shape::galley(
-                        span.translate(-w.offset).min,
-                        g,
-                        egui::Color32::PLACEHOLDER,
-                    ));
+                    crate::text::paint_galley(&p, span.translate(-w.offset).min, g, &style);
                 }
             }
         }
     }
 
+    w.inh = saved_inh;
     w.offset = saved_offset;
     w.clip = saved_clip;
     if w.layout.scroll.contains_key(&node.id) {
@@ -508,7 +517,7 @@ fn rect_align(node: &ResolvedNode) -> egui::RectAlign {
 /// overlay's children are pushed during its paint and run after it.
 fn paint_overlays(w: &mut Walk<'_>) {
     while !w.overlays.is_empty() {
-        let node = w.overlays.remove(0);
+        let (node, parent_inh) = w.overlays.remove(0);
         if !overlay_open(w, &node) {
             continue;
         }
@@ -517,8 +526,8 @@ fn paint_overlays(w: &mut Walk<'_>) {
         // A "trigger" part makes this an anchored popup; without one the
         // node is a centred modal.
         match w.base_parts.get(&(node.id.clone(), "trigger")).copied() {
-            Some(anchor) => anchored_overlay(w, &ctx, &node, anchor, floating),
-            None => modal_overlay(w, &ctx, &node, floating),
+            Some(anchor) => anchored_overlay(w, &ctx, &node, anchor, floating, parent_inh),
+            None => modal_overlay(w, &ctx, &node, floating, parent_inh),
         }
     }
 }
@@ -544,7 +553,13 @@ fn overlay_contents(
     widget: &Arc<dyn crate::Widget>,
     scratch: &Layout,
     content_rect: Rect,
+    parent_inh: &Option<Style>,
 ) {
+    // The overlay's floating children are DOM descendants of the node —
+    // the synthetic host column must not break the cascade: the node's own
+    // computed style (merged over the recorded parent context) is what
+    // they inherit.
+    let style = effective(parent_inh.as_ref(), crate::style_of(node, w.scx));
     let mut base_parts = scratch.parts.clone();
     for (id, rect) in &scratch.rects {
         base_parts.insert((id.clone(), "rect"), *rect);
@@ -566,6 +581,7 @@ fn overlay_contents(
         base_parts,
         parts_buf: None,
         overlays: Vec::new(),
+        inh: Some(style.clone()),
     };
     inner.ancestors.push(node.id.clone());
     {
@@ -578,11 +594,10 @@ fn overlay_contents(
             now: inner.now,
             ancestors: &ancestors,
         };
-        widget.paint(&mut cx, node, &crate::style_of(node, w.scx), content_rect);
+        widget.paint(&mut cx, node, &style, content_rect);
     }
     // Text spans the synthetic host column owns (direct text children of the
     // overlay's floating set) — child-node spans paint inside `paint_node`.
-    let style = crate::style_of(node, w.scx);
     for span in &scratch.texts {
         if span.node != node.id {
             continue;
@@ -596,11 +611,7 @@ fn overlay_contents(
             props::prop_bool(node, "truncate"),
             props::prop_num(node, "lines").map(|n| n.max(1.0) as usize),
         );
-        inner.ui.painter().add(egui::Shape::galley(
-            span.rect.min,
-            g,
-            egui::Color32::PLACEHOLDER,
-        ));
+        crate::text::paint_galley(inner.ui.painter(), span.rect.min, g, &style);
     }
     for child in &node.children {
         if let ResolvedChild::Node(n) = child {
@@ -618,6 +629,7 @@ fn modal_overlay(
     ctx: &egui::Context,
     node: &ResolvedNode,
     floating: Vec<ResolvedChild>,
+    parent_inh: Option<Style>,
 ) {
     let widget = w.registry.widget_for(&node.ty);
     let screen = ctx.content_rect();
@@ -639,7 +651,7 @@ fn modal_overlay(
     let resp =
         egui::Modal::new(w.ui.scope_id().with((node.id.as_str(), "modal"))).show(ctx, |ui| {
             ui.set_min_size(content_size);
-            overlay_contents(w, ui, node, &widget, &scratch, content_rect);
+            overlay_contents(w, ui, node, &widget, &scratch, content_rect, &parent_inh);
         });
 
     if resp.backdrop_response.clicked()
@@ -664,6 +676,7 @@ fn anchored_overlay(
     node: &ResolvedNode,
     anchor: Rect,
     floating: Vec<ResolvedChild>,
+    parent_inh: Option<Style>,
 ) {
     let widget = w.registry.widget_for(&node.ty);
     let width = anchor.width().max(160.0);
@@ -690,7 +703,7 @@ fn anchored_overlay(
         let content_rect = Rect::from_min_size(ui.min_rect().min, size);
         let origin = sub.rects.get(&host.id).map(|r| r.min).unwrap_or_default();
         let scratch = translate_layout(&sub, content_rect.min - origin);
-        overlay_contents(w, ui, node, &widget, &scratch, content_rect);
+        overlay_contents(w, ui, node, &widget, &scratch, content_rect, &parent_inh);
     });
 
     // Internal open state lives in EditState — the prop-less popovers and

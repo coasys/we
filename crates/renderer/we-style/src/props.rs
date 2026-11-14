@@ -364,6 +364,9 @@ pub fn build_layout_decls(props: &Bag, direction: Direction) -> Decls {
             put(&mut d, "font-weight", f);
         }
     }
+    if let Some(v) = truthy(props, "fontStyle") {
+        put(&mut d, "font-style", v.js_string());
+    }
     if let Some(v) = truthy(props, "fontSize") {
         put(
             &mut d,
@@ -701,6 +704,7 @@ pub fn emitted_for(prop: &str, value: &Value, style: &Decls) -> Option<DeclValue
         "textAlign" => get("text-align"),
         "fontFamily" => get("font-family"),
         "fontWeight" => get("font-weight"),
+        "fontStyle" => get("font-style"),
         "fontSize" => get("font-size"),
         "lineHeight" => get("line-height"),
         "letterSpacing" => get("letter-spacing"),
@@ -1019,6 +1023,15 @@ fn eval_text_transform(text: &str) -> Option<TextTransform> {
         "lowercase" => TextTransform::Lowercase,
         "capitalize" => TextTransform::Capitalize,
         other => TextTransform::Other(Arc::from(other)),
+    })
+}
+
+fn eval_font_style(text: &str) -> Option<FontStyle> {
+    Some(match text.trim() {
+        "normal" => FontStyle::Normal,
+        "italic" => FontStyle::Italic,
+        "oblique" | "oblique 0deg" => FontStyle::Oblique,
+        _ => return None,
     })
 }
 
@@ -1653,6 +1666,7 @@ fn eval_decls_scoped(
                 }
             }
             "font-size" => dim!(r.text.font_size),
+            "font-style" => simple!(r.text.font_style, eval_font_style),
             "line-height" => simple!(r.text.line_height, eval_line_height),
             "letter-spacing" => dim!(r.text.letter_spacing),
             "text-align" => simple!(r.text.align, eval_text_align),
@@ -1731,7 +1745,7 @@ pub fn is_design_prop(key: &str) -> bool {
         | "borderLeft" | "borderWidth"
         | "r" | "rr" | "rt" | "rb" | "rl" | "rtl" | "rtr" | "rbr" | "rbl"
         // typography layer
-        | "textAlign" | "fontFamily" | "fontWeight" | "fontSize" | "lineHeight"
+        | "textAlign" | "fontFamily" | "fontWeight" | "fontStyle" | "fontSize" | "lineHeight"
         | "letterSpacing" | "textDecoration" | "textTransform" | "whiteSpace"
         | "overflowWrap"
         // signature-adjacent, bags, escape hatch

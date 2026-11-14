@@ -125,6 +125,19 @@ pub fn style_of(node: &ResolvedNode, scx: &StyleCx) -> Style {
     we_style::resolve(&bag, &input)
 }
 
+/// `style` with the parent's inherited text style merged in and `opacity`
+/// composed — what CSS calls the node's computed style. Layout fields
+/// never inherit, so the box side of `style` passes through untouched.
+pub fn effective(parent: Option<&Style>, style: Style) -> Style {
+    let mut style = style;
+    if let Some(p) = parent {
+        style.text.inherit_from(&p.text);
+        style.paint.opacity =
+            Some(p.paint.opacity.unwrap_or(1.0) * style.paint.opacity.unwrap_or(1.0));
+    }
+    style
+}
+
 /// Per-type DS defaults — the token-name bags the TS primitives merge
 /// beneath authored props. Dispatch is by `ty`.
 fn type_defaults(bag: &mut Bag, node: &ResolvedNode) {
@@ -392,8 +405,13 @@ fn type_defaults(bag: &mut Bag, node: &ResolvedNode) {
                 ),
                 _ => {}
             }
-            // `uppercase`/`italic` are widget props — the transform lands in
-            // the text painter, not the bag.
+            // `uppercase` is a widget prop — the transform lands in the
+            // text painter. `italic` is a bag entry (`font-style` is real
+            // CSS and inherits): the TS `:host([italic])` sets the same
+            // var on the element.
+            if crate::props::prop_bool(node, "italic") {
+                entries(bag, &[("fontStyle", "italic")]);
+            }
         }
         "we-divider" => {
             // The primitive defaults are CSS on the part; the thickness and

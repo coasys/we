@@ -1260,3 +1260,226 @@ fn lane_keeps_its_authored_width() {
         "$lane is a real widget: width 120 in an 80px row: {l:?}"
     );
 }
+
+// ---------- A7: resolved text style reaches the galley ----------
+
+/// Position, text and the `TextFormat` baked into every painted galley —
+/// the assertions A7 needs live on the format, not just the glyphs.
+fn painted_galley_formats(
+    root: &ResolvedNode,
+    width: f32,
+) -> (Layout, Vec<(egui::Pos2, String, egui::TextFormat)>) {
+    let registry = Registry::with_builtins();
+    let tokens = tokens();
+    let scx = StyleCx {
+        tokens: &tokens,
+        ..StyleCx::empty()
+    };
+    let out = std::cell::RefCell::new(None);
+    let mut harness = harness_ui(|ui| {
+        let ctx = ui.ctx().clone();
+        let cx = MeasureCx::new(&ctx);
+        let lay = layout(
+            &cx,
+            &scx,
+            &registry,
+            root,
+            egui::Rect::from_min_size(ui.cursor().min, egui::vec2(width, 800.0)),
+        );
+        let mut events = Vec::new();
+        let mut edit = EditState::default();
+        paint(ui, &registry, &scx, root, &lay, &mut events, &mut edit, 0.0);
+        let layer = ui.layer_id();
+        let galleys: Vec<(egui::Pos2, String, egui::TextFormat)> = ctx.graphics(|g| {
+            g.get(layer)
+                .map(|list| {
+                    list.all_entries()
+                        .filter_map(|cs| match &cs.shape {
+                            egui::Shape::Text(t) => Some((
+                                t.pos,
+                                t.galley.text().to_string(),
+                                t.galley.job.sections[0].format.clone(),
+                            )),
+                            _ => None,
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        });
+        *out.borrow_mut() = Some((lay, galleys));
+    });
+    harness.run();
+    let out = out.borrow_mut().take().expect("rendered");
+    out
+}
+
+/// A7 — authored `fontWeight`/`italic`/`lineHeight`/`letterSpacing` must
+/// reach the painted galley: TS emits `font-weight: 700`, `font-style:
+/// italic`, `line-height: 2`, `letter-spacing: 2px` on the element.
+/// With only static faces bundled, bold is approximated by a second
+/// galley pass a fraction of a pixel right — the value still reaches the
+/// job's `coords`.
+#[test]
+fn authored_font_style_and_metrics_reach_the_galley() {
+    let mut col = node("Column", "c", &[]);
+    child(
+        &mut col,
+        child_text_node(
+            "c/t",
+            "styled",
+            &[
+                ("italic", Value::Bool(true)),
+                ("fontWeight", s("700")),
+                ("lineHeight", s("2")),
+                ("letterSpacing", s("2px")),
+            ],
+        ),
+    );
+    let (_lay, galleys) = painted_galley_formats(&col, 400.0);
+    let hits: Vec<_> = galleys
+        .iter()
+        .filter(|(_, t, _)| t.contains("styled"))
+        .collect();
+    let f = &hits[0].2;
+    assert!(f.italics, "italic must reach the galley format: {f:?}");
+    assert_eq!(
+        f.extra_letter_spacing, 2.0,
+        "letterSpacing: 2px must reach the galley format: {f:?}"
+    );
+    assert_eq!(
+        f.line_height,
+        Some(f.font_id.size * 2.0),
+        "lineHeight: 2 must reach the galley format: {f:?}"
+    );
+    assert!(
+        f.coords
+            .as_ref()
+            .iter()
+            .any(|(tag, v)| tag.to_string() == "wght" && *v == 700.0),
+        "fontWeight: 700 must reach the galley as a wght coordinate: {f:?}"
+    );
+    assert!(
+        hits.len() >= 2,
+        "bold approximates as a second pass — one galley is a no-op: {galleys:?}"
+    );
+    let dx = (hits[1].0.x - hits[0].0.x).abs();
+    assert!(
+        dx > 0.0 && dx <= 1.5,
+        "the bold pass sits a sub-pixel offset right: {hits:?}"
+    );
+}
+
+/// A7 — CSS typography inherits: a `we-text` inside a styled Column gets
+/// the column's color/fontSize/lineHeight/letterSpacing for both measure
+/// and paint (the web resolves them in the cascade, not per element).
+#[test]
+fn parent_typography_inherits_into_child_text() {
+    let mut col = node(
+        "Column",
+        "c",
+        &[
+            ("color", s("#3366cc")),
+            ("fontSize", s("20px")),
+            ("lineHeight", s("1.5")),
+            ("letterSpacing", s("1px")),
+        ],
+    );
+    child(&mut col, child_text_node("c/t", "inherits", &[]));
+    // A bare text span two levels down — the row inherits the column's
+    // typography and the span must measure/paint with it too.
+    let mut row = node("Row", "c/r", &[]);
+    row.children.push(ResolvedChild::Text(Arc::from("deep")));
+    child(&mut col, row);
+    let (lay, galleys) = painted_galley_formats(&col, 400.0);
+
+    let t = lay.rects.get(&NodeId::from("c/t")).copied().unwrap();
+    assert!(
+        (t.height() - 30.0).abs() < 1.0,
+        "the text box is 20px * 1.5 line-height = 30px, not the default: {t:?}"
+    );
+    let (_, _, f) = galleys
+        .iter()
+        .find(|(_, t, _)| t.contains("inherits"))
+        .expect("the we-text galley painted");
+    assert_eq!(
+        f.font_id.size, 20.0,
+        "fontSize inherits into the galley: {f:?}"
+    );
+    assert_eq!(
+        f.color,
+        egui::Color32::from_rgb(51, 102, 204),
+        "color inherits into the galley: {f:?}"
+    );
+    assert_eq!(f.extra_letter_spacing, 1.0);
+    assert_eq!(f.line_height, Some(30.0));
+
+    let deep = galleys
+        .iter()
+        .find(|(_, t, _)| t.contains("deep"))
+        .expect("the row's text span painted");
+    assert_eq!(
+        deep.2.font_id.size, 20.0,
+        "two-level inheritance reaches the span: {:?}",
+        deep.2
+    );
+    assert_eq!(deep.2.color, egui::Color32::from_rgb(51, 102, 204));
+    let span = lay
+        .texts
+        .iter()
+        .find(|s| s.node == NodeId::from("c/r"))
+        .expect("the row owns a text span");
+    assert!(
+        (span.rect.height() - 30.0).abs() < 1.0,
+        "the span measured at the inherited leading: {:?}",
+        span.rect
+    );
+}
+
+/// A7 — `opacity` composes down the tree (the web multiplies it into a
+/// group): 0.5 × 0.5 fades descendant text to a quarter alpha.
+#[test]
+fn opacity_composes_into_descendant_text() {
+    let mut col = node("Column", "c", &[("opacity", Value::Num(0.5))]);
+    let mut inner = node("Column", "c/i", &[("opacity", Value::Num(0.5))]);
+    child(&mut inner, child_text_node("c/i/t", "faded", &[]));
+    child(&mut col, inner);
+    let (_lay, galleys) = painted_galley_formats(&col, 400.0);
+    let (_, _, f) = galleys
+        .iter()
+        .find(|(_, t, _)| t.contains("faded"))
+        .expect("the faded text painted");
+    assert!(
+        (60.0..=68.0).contains(&(f.color.a() as f32)),
+        "0.5×0.5 opacity fades the text alpha to ~64: {f:?}"
+    );
+}
+
+/// A7 — the node's own typography beats the inherited parent's (the
+/// cascade's normal rule — a guard so the merge doesn't clobber).
+#[test]
+fn own_text_style_beats_inherited() {
+    let mut col = node(
+        "Column",
+        "c",
+        &[("color", s("#3366cc")), ("fontSize", s("20px"))],
+    );
+    child(
+        &mut col,
+        child_text_node(
+            "c/t",
+            "mine",
+            &[("color", s("#22cc88")), ("fontSize", s("10px"))],
+        ),
+    );
+    let (_lay, galleys) = painted_galley_formats(&col, 400.0);
+    let (_, _, f) = galleys
+        .iter()
+        .find(|(_, t, _)| t.contains("mine"))
+        .expect("the own-styled text painted");
+    assert_eq!(f.font_id.size, 10.0, "the authored size wins: {f:?}");
+    assert_eq!(
+        f.color,
+        egui::Color32::from_rgb(34, 204, 136),
+        "the authored color wins: {f:?}"
+    );
+}

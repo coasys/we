@@ -150,9 +150,7 @@ impl Widget for Badge {
             let g = crate::text::text_job(&text, style, cx.ui.ctx(), content.width(), true, None);
             // The galley centers in the pill's content box.
             let pos = content.center() - g.size() / 2.0;
-            cx.ui
-                .painter()
-                .add(egui::Shape::galley(pos, g, egui::Color32::PLACEHOLDER));
+            crate::text::paint_galley(cx.ui.painter(), pos, g, style);
         }
         cx.label(rect, &text);
     }
@@ -216,11 +214,7 @@ impl Widget for Tag {
         let left = content.center().x - (gw + if dismissible { 14.0 } else { 0.0 }) / 2.0;
         let gy = content.center().y - g.as_ref().map(|g| g.size().y).unwrap_or(0.0) / 2.0;
         if let Some(g) = g {
-            cx.ui.painter().add(egui::Shape::galley(
-                egui::pos2(left, gy),
-                g,
-                egui::Color32::PLACEHOLDER,
-            ));
+            crate::text::paint_galley(cx.ui.painter(), egui::pos2(left, gy), g, style);
         }
         if dismissible {
             let x_rect = Rect::from_center_size(
@@ -366,10 +360,11 @@ impl Widget for Alert {
                     };
                 let wrap_w = (right - gap).max(1.0);
                 let g = crate::text::text_job(text, style, cx.ui.ctx(), wrap_w, false, None);
-                cx.ui.painter().galley(
+                crate::text::paint_galley(
+                    cx.ui.painter(),
                     egui::pos2(gap, content.min.y),
                     g,
-                    props::text_color(style, cx.ui.ctx()),
+                    style,
                 );
             }
         }

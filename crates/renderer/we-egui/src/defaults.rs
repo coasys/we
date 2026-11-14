@@ -2,7 +2,7 @@
 //! `Context`. Style resolution itself (`style_of`, `StyleCx`, the per-type
 //! default bags) moved to `we_layout::defaults`; re-exported so widget code
 //! keeps calling `crate::defaults::*`.
-pub use we_layout::defaults::{style_of, StyleCx};
+pub use we_layout::defaults::{effective, style_of, StyleCx};
 pub(crate) use we_layout::defaults::{FONT_PX, ROOT_PX};
 
 /// The frame-time unit context widgets get outside `style_of`: the viewport

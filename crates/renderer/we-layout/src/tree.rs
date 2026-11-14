@@ -16,7 +16,7 @@ use we_expr::Value;
 use we_style::{Dimension, Display as WsDisplay, ItemAlign, Overflow, Position, Style, Wrap};
 use we_template::{NodeId, ResolvedChild, ResolvedNode};
 
-use crate::defaults::{direction_of, style_of, StyleCx, FONT_PX, ROOT_PX};
+use crate::defaults::{direction_of, effective, style_of, StyleCx, FONT_PX, ROOT_PX};
 use crate::{Pos2, Rect, Size, Vec2};
 
 /// A virtual sub-rectangle layout computed for a widget — the caret, row and
@@ -596,6 +596,11 @@ struct Builder<'a> {
     scx: &'a StyleCx<'a>,
     /// `id` → resolved node — the measure function re-finds its widget.
     nodes: HashMap<NodeId, &'a ResolvedNode>,
+    /// `id` → the node's *effective* style — its own resolved style with
+    /// the parent's inherited text fields and the opacity product folded
+    /// in (CSS's computed-style cascade). The measure pass uses these so
+    /// an inherited fontSize/lineHeight sizes the galley it paints.
+    styles: HashMap<NodeId, Style>,
     scroll: HashMap<NodeId, Vec2>,
     clip: HashMap<NodeId, Vec2>,
 }
@@ -612,6 +617,7 @@ impl<'a> Builder<'a> {
         parent_h_definite: bool,
         main_indefinite: bool,
         tc: TextChildren,
+        eff: &Style,
     ) -> Option<TaffyId> {
         let mut kids = Vec::new();
         if let Some(pick) = &spec.pick {
@@ -623,9 +629,15 @@ impl<'a> Builder<'a> {
                 }
                 (Pick::Named(_), ResolvedChild::Text(_)) => false,
             }) {
-                if let Some(k) =
-                    self.child_node(node, child, tree, parent_h_definite, main_indefinite, tc)
-                {
+                if let Some(k) = self.child_node(
+                    node,
+                    child,
+                    tree,
+                    parent_h_definite,
+                    main_indefinite,
+                    tc,
+                    eff,
+                ) {
                     kids.push(k);
                 }
             }
@@ -639,6 +651,7 @@ impl<'a> Builder<'a> {
                 parent_h_definite,
                 main_indefinite,
                 tc,
+                eff,
             ) {
                 kids.push(k);
             }
@@ -672,13 +685,14 @@ impl<'a> Builder<'a> {
         parent_h_definite: bool,
         main_indefinite: bool,
         tc: TextChildren,
+        eff: &Style,
     ) -> Option<TaffyId> {
         match child {
             ResolvedChild::Node(node) => {
                 if tc == TextChildren::Suppressed {
                     return None;
                 }
-                self.resolved_node(node, tree, parent_h_definite, main_indefinite)
+                self.resolved_node(node, tree, parent_h_definite, main_indefinite, Some(eff))
             }
             ResolvedChild::Text(text) => {
                 if tc != TextChildren::Leaves {
@@ -691,8 +705,7 @@ impl<'a> Builder<'a> {
                 // (the longest word — or the ellipsis when the owner
                 // truncates). The old leaf pinned max-content and refused
                 // to shrink, so a long title ran over the row's action.
-                let style = style_of(owner, self.scx);
-                let min = self.m.measure_text(owner, &style, text, Size::ZERO);
+                let min = self.m.measure_text(owner, eff, text, Size::ZERO);
                 Some(
                     self.tree
                         .new_leaf_with_context(
@@ -713,15 +726,18 @@ impl<'a> Builder<'a> {
     }
 
     /// A resolved node → a taffy node + its children (or its parts).
-    /// `tree` is the nearest `we-tree` ancestor's config, if any.
+    /// `tree` is the nearest `we-tree` ancestor's config, if any; `parent`
+    /// is the parent's computed style — text fields and `opacity` merge
+    /// down the tree the way CSS inherits them.
     fn resolved_node(
         &mut self,
         node: &'a ResolvedNode,
         tree: &TreeCfg,
         parent_h_definite: bool,
         main_indefinite: bool,
+        parent: Option<&Style>,
     ) -> Option<TaffyId> {
-        let style = style_of(node, self.scx);
+        let style = effective(parent, style_of(node, self.scx));
 
         // `display: none` removes the node AND its subtree from layout — no
         // rect, no parts, nothing painted.
@@ -729,6 +745,7 @@ impl<'a> Builder<'a> {
             return None;
         }
         self.nodes.insert(node.id.clone(), node);
+        self.styles.insert(node.id.clone(), style.clone());
 
         // Record scroll/clip axes on the layout output.
         let scrolls =
@@ -820,7 +837,16 @@ impl<'a> Builder<'a> {
                 spec.parts
                     .iter()
                     .filter_map(|part| {
-                        self.part_node(&node.id, part, node, &tree, h_definite, main_indefinite, tc)
+                        self.part_node(
+                            &node.id,
+                            part,
+                            node,
+                            &tree,
+                            h_definite,
+                            main_indefinite,
+                            tc,
+                            &style,
+                        )
                     })
                     .collect()
             }
@@ -832,7 +858,7 @@ impl<'a> Builder<'a> {
                 node.children
                     .iter()
                     .filter_map(|c| {
-                        self.child_node(node, c, &tree, h_definite, main_indefinite, tc)
+                        self.child_node(node, c, &tree, h_definite, main_indefinite, tc, &style)
                     })
                     .collect()
             }
@@ -919,11 +945,12 @@ fn layout_impl(
         m,
         scx,
         nodes: HashMap::new(),
+        styles: HashMap::new(),
         scroll: HashMap::new(),
         clip: HashMap::new(),
     };
     let root_id = b
-        .resolved_node(root, &TreeCfg::default(), false, true)
+        .resolved_node(root, &TreeCfg::default(), false, true, None)
         .expect("root lays out");
 
     // The root's containing block is the viewport: `width: auto` fills it —
@@ -956,6 +983,7 @@ fn layout_impl(
     let Builder {
         mut tree,
         nodes,
+        styles,
         scroll,
         clip,
         ..
@@ -984,7 +1012,16 @@ fn layout_impl(
                     |_, _| taffy::Size::ZERO,
                 );
             };
-            let wstyle = style_of(node, scx);
+            let owned;
+            let wstyle = match styles.get(&node.id) {
+                // The computed style — the parent's inherited typography is
+                // already merged in.
+                Some(s) => s,
+                None => {
+                    owned = style_of(node, scx);
+                    &owned
+                }
+            };
             taffy::compute::compute_leaf_layout(
                 inputs,
                 style,
