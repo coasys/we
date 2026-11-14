@@ -331,7 +331,7 @@ export const mcpServer: SchemaNode = {
                 {
                   type: 'we-text',
                   props: { variant: 'footnote' },
-                  children: ['Saved. It takes effect when the data layer restarts.'],
+                  children: ['Saved. Restart to apply.'],
                 },
                 {
                   type: 'we-button',

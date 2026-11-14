@@ -282,13 +282,13 @@ async function waitForGraphQL(port, proc) {
 
   const outcome = await waitUntilReady(answers, { gone: () => proc.exitCode !== null || proc.signalCode !== null });
   if (outcome === 'ready') {
-    console.log(`GraphQL server on port ${port} is ready`);
+    console.log(`API on port ${port} is ready`);
     return;
   }
   throw new Error(
     outcome === 'gone'
-      ? `The executor exited before its GraphQL server on port ${port} was ready`
-      : `GraphQL server on port ${port} not ready after 60 s`,
+      ? `The executor exited before its API on port ${port} was ready`
+      : `API on port ${port} not ready after 60 s`,
   );
 }
 
@@ -540,7 +540,7 @@ function identitySession() {
 function openIdentityWindow({ onClosed }) {
   const win = new BrowserWindow({
     // The app's own name, whichever build this is (WE, or a white-labelled one); the page names none.
-    title: `${app.getName()} — your identity`,
+    title: `${app.getName()} — Identity`,
     icon: windowIcon(),
     width: 480,
     height: 640,
@@ -1202,11 +1202,8 @@ app.whenReady().then(async () => {
     } catch (err) {
       // No window exists yet, so this box is the only way to say the app failed. Before it, the
       // rejection went unhandled and the app ran on with no window until it was killed.
-      const logLine = executorLog ? `\n\nThe executor's log: ${executorLog.path}` : '';
-      dialog.showErrorBox(
-        'The app could not start',
-        `The AD4M executor it runs on did not start.\n\n${err.message}${logLine}`,
-      );
+      const logLine = executorLog ? `\n\nLog file: ${executorLog.path}` : '';
+      dialog.showErrorBox(`${app.getName()} couldn't start`, `Try opening it again.\n\n${err.message}${logLine}`);
       app.quit();
       return;
     }
