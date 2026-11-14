@@ -103,11 +103,12 @@ pub struct PaintCx<'a> {
     pub edit: &'a mut EditState,
     pub now: f64,
     /// The containing-block width the node's percent paddings/margins (and
-    /// percent terms inside `calc()`) resolve against — the parent's
-    /// content-box width, threaded down the paint walk the way the DOM
-    /// defines it. `0.0` when there is no containing block (a hand-built
-    /// context in tests).
-    pub cb_w: f32,
+    /// percent terms inside `calc()`) resolve against — the value
+    /// [`crate::layout::Layout::bases`] recorded for the node, which is
+    /// the same base layout used. `None` when layout found the base
+    /// content-driven (the CSS cyclic fallback → `0`) or for a
+    /// hand-built context in tests.
+    pub cb_w: Option<f32>,
     pub(crate) ancestors: &'a [NodeId],
     pub(crate) events: &'a mut Vec<WidgetEvent>,
 }
@@ -126,7 +127,7 @@ impl<'a> PaintCx<'a> {
             parts,
             edit,
             now,
-            cb_w: 0.0,
+            cb_w: None,
             ancestors,
             events,
         }

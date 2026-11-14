@@ -186,3 +186,287 @@ fn calc_percent_uses_parent_content_box() {
         "calc(50% - 5px) against the 320px content box must be 155, got {c:?}"
     );
 }
+
+/// A narrowed root feeds its own resolved content box down: `width: 200px;
+/// p: calc(10% + 16px)` at a 400px frame gives children a 200 - 2*56 = 88px
+/// containing block — not the 400px frame the naive "root = CB" rule reads.
+#[test]
+fn calc_percent_uses_root_content_box_not_frame() {
+    let mut root = node(
+        "Column",
+        "r",
+        &[
+            ("width", Value::from("200px")),
+            ("p", Value::from("calc(10% + 16px)")),
+        ],
+    );
+    let child = node(
+        "Column",
+        "r/c",
+        &[
+            ("width", Value::from("100%")),
+            ("height", Value::from("10px")),
+        ],
+    );
+    root.children = vec![ResolvedChild::Node(Box::new(child))];
+
+    let out = run(&root, 400.0, 200.0);
+    let c = rect(&out, "r/c");
+    assert!(
+        (c.width() - 88.0).abs() < 0.01,
+        "100% of the root's 200 - 112 content box must be 88, got {c:?}"
+    );
+}
+
+/// Dependency-order resolution, not iteration: four nested columns each
+/// `width: calc(100% - 10px)` resolve 390 / 380 / 370 / 360 at a 400px
+/// frame — each level's base is its *parent's resolved width*, a static
+/// answer at arbitrary depth.
+#[test]
+fn calc_percent_nested_columns_resolve_in_order() {
+    fn nest(ids: &[&str]) -> ResolvedChild {
+        let mut n = node(
+            "Column",
+            ids[0],
+            &[
+                ("width", Value::from("calc(100% - 10px)")),
+                ("height", Value::from("10px")),
+            ],
+        );
+        if ids.len() > 1 {
+            n.children = vec![nest(&ids[1..])];
+        }
+        ResolvedChild::Node(Box::new(n))
+    }
+    let mut root = node("Column", "r", &[]);
+    root.children = vec![nest(&["c0", "c1", "c2", "c3"])];
+
+    let out = run(&root, 400.0, 200.0);
+    for (i, w) in [390.0_f32, 380.0, 370.0, 360.0].iter().enumerate() {
+        let c = rect(&out, &format!("c{i}"));
+        assert!(
+            (c.width() - w).abs() < 0.01,
+            "level {i}: calc(100% - 10px) must be {w}, got {c:?}"
+        );
+    }
+}
+
+/// `gap` percentages resolve against the element's *own* content box —
+/// so on an auto-height column the row-gap % is cyclic: CSS resolves it
+/// to zero (css-sizing-3 cyclic percentages). `calc(50% + 10px)` between
+/// two 100px children is therefore a 10px gap and a 210px column — not
+/// the 420px a measured-box feedback loop produces.
+#[test]
+fn calc_row_gap_auto_height_is_cyclic() {
+    // The gapped column sits under a plain root — `layout` floors the
+    // *root's* height at the viewport, which would hide the column's own
+    // content height otherwise.
+    let mut col = node(
+        "Column",
+        "c",
+        &[("gap", Value::from("calc(50% + 10px) 0px"))],
+    );
+    col.children = vec![
+        ResolvedChild::Node(Box::new(node(
+            "Column",
+            "a",
+            &[
+                ("width", Value::from("100px")),
+                ("height", Value::from("100px")),
+            ],
+        ))),
+        ResolvedChild::Node(Box::new(node(
+            "Column",
+            "b",
+            &[
+                ("width", Value::from("100px")),
+                ("height", Value::from("100px")),
+            ],
+        ))),
+    ];
+    let mut root = node("Column", "r", &[]);
+    root.children = vec![ResolvedChild::Node(Box::new(col))];
+
+    let out = run(&root, 400.0, 400.0);
+    let b = rect(&out, "b");
+    assert!(
+        (b.min.y - 110.0).abs() < 0.01,
+        "cyclic row-gap resolves to the 10px non-percent term: b at y=110, got {b:?}"
+    );
+    let c = rect(&out, "c");
+    assert!(
+        (c.height() - 210.0).abs() < 0.5,
+        "column height = 100 + 10 + 100 = 210 (pixel-snapped), got {c:?}"
+    );
+}
+
+/// The same gap on a definite-height column resolves against the real own
+/// size: `calc(50% + 10px)` of 400 = a 210px gap, child `b` at y = 310.
+/// (`flexShrink: 0` keeps the children's 100px — CSS would otherwise
+/// shrink them to fit the 400px column, 100 + 210 + 100 > 400.)
+#[test]
+fn calc_row_gap_definite_height_resolves_own_size() {
+    let mut root = node(
+        "Column",
+        "r",
+        &[
+            ("height", Value::from("400px")),
+            ("gap", Value::from("calc(50% + 10px) 0px")),
+        ],
+    );
+    root.children = vec![
+        ResolvedChild::Node(Box::new(node(
+            "Column",
+            "a",
+            &[
+                ("width", Value::from("100px")),
+                ("height", Value::from("100px")),
+                ("flexShrink", Value::from(0.0)),
+            ],
+        ))),
+        ResolvedChild::Node(Box::new(node(
+            "Column",
+            "b",
+            &[
+                ("width", Value::from("100px")),
+                ("height", Value::from("100px")),
+                ("flexShrink", Value::from(0.0)),
+            ],
+        ))),
+    ];
+
+    let out = run(&root, 400.0, 400.0);
+    let b = rect(&out, "b");
+    assert!(
+        (b.min.y - 310.0).abs() < 0.01,
+        "definite own height: row-gap = 50% of 400 + 10 = 210 → b at y=310, got {b:?}"
+    );
+}
+
+/// A bare `50%` row-gap on an auto-height column is cyclic too — zero,
+/// per the same CSS rule (not half of a measured feedback box).
+#[test]
+fn percent_row_gap_auto_height_is_cyclic() {
+    let mut root = node("Column", "r", &[("gap", Value::from("50% 0px"))]);
+    root.children = vec![
+        ResolvedChild::Node(Box::new(node(
+            "Column",
+            "a",
+            &[
+                ("width", Value::from("100px")),
+                ("height", Value::from("100px")),
+            ],
+        ))),
+        ResolvedChild::Node(Box::new(node(
+            "Column",
+            "b",
+            &[
+                ("width", Value::from("100px")),
+                ("height", Value::from("100px")),
+            ],
+        ))),
+    ];
+
+    let out = run(&root, 400.0, 400.0);
+    let b = rect(&out, "b");
+    assert!(
+        (b.min.y - 100.0).abs() < 0.01,
+        "cyclic 50% row-gap resolves to 0: b at y=100, got {b:?}"
+    );
+}
+
+/// A `calc` percent under a *flexed* parent — the containing block's
+/// width is content-independent but only taffy knows it (a `Deferred`
+/// base): the first build stands the percent term in, the measured pass
+/// resolves it. Two `flex:1` columns in a 400px row give each a 200px
+/// content box, so `calc(50% - 5px)` is 95px — not the placeholder's
+/// 200px-ish answer.
+#[test]
+fn calc_percent_under_flexed_parent_resolves_after_measure() {
+    let mut f = node("Column", "f", &[("flex", Value::from("1"))]);
+    f.children = vec![ResolvedChild::Node(Box::new(node(
+        "Column",
+        "g",
+        &[
+            ("width", Value::from("calc(50% - 5px)")),
+            ("height", Value::from("10px")),
+        ],
+    )))];
+    let mut root = node("Row", "r", &[("width", Value::from("400px"))]);
+    root.children = vec![
+        ResolvedChild::Node(Box::new(f)),
+        ResolvedChild::Node(Box::new(node("Column", "h", &[("flex", Value::from("1"))]))),
+    ];
+
+    let out = run(&root, 400.0, 400.0);
+    let g = rect(&out, "g");
+    assert!(
+        (g.width() - 95.0).abs() < 0.5,
+        "flexed column ~200px: 50% - 5 = 95, got {g:?}"
+    );
+    let b = out
+        .bases
+        .get(&NodeId::from("g"))
+        .copied()
+        .unwrap_or_default();
+    assert!(
+        b.cb.0.is_some_and(|v| (v - 200.0).abs() < 0.5),
+        "g's containing block = the flexed column's measured width ~200, got {b:?}"
+    );
+}
+
+/// An absolutely-positioned child's containing block is its positioned
+/// ancestor's *padding* box: `p: calc(10% + 16px)` inside a `relative`
+/// 400px parent padded 40 resolves against 400 (56px), not the 320px
+/// content box an in-flow child would read.
+#[test]
+fn calc_abs_child_uses_positioned_padding_box() {
+    let mut root = node(
+        "Column",
+        "r",
+        &[
+            ("position", Value::from("relative")),
+            ("p", Value::from("40px")),
+        ],
+    );
+    let mut abs = node(
+        "Column",
+        "abs",
+        &[
+            ("position", Value::from("absolute")),
+            ("left", Value::from("0px")),
+            ("top", Value::from("0px")),
+            ("p", Value::from("calc(10% + 16px)")),
+            ("width", Value::from("200px")),
+            ("height", Value::from("200px")),
+        ],
+    );
+    abs.children = vec![ResolvedChild::Node(Box::new(node(
+        "Column",
+        "abs/c",
+        &[
+            ("width", Value::from("100%")),
+            ("height", Value::from("10px")),
+        ],
+    )))];
+    root.children = vec![ResolvedChild::Node(Box::new(abs))];
+
+    let out = run(&root, 400.0, 400.0);
+    // The exported bases say what the child's percent terms resolved
+    // against — paint reads this instead of re-deriving a base.
+    let b = out
+        .bases
+        .get(&NodeId::from("abs"))
+        .copied()
+        .unwrap_or_default();
+    assert_eq!(
+        b.cb.0,
+        Some(400.0),
+        "abs containing block = positioned ancestor's padding box (400), got {b:?}"
+    );
+    let c = rect(&out, "abs/c");
+    assert!(
+        (c.min.x - 56.0).abs() < 0.01 && (c.width() - 88.0).abs() < 0.01,
+        "abs padding = 10% of 400 + 16 = 56 → content 200 - 112 = 88 at x=56, got {c:?}"
+    );
+}

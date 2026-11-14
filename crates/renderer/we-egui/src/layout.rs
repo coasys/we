@@ -32,6 +32,10 @@ pub struct Layout {
     pub scroll: HashMap<NodeId, egui::Vec2>,
     /// Nodes with `overflow: hidden|clip` — children clip to their rect.
     pub clip: HashMap<NodeId, egui::Vec2>,
+    /// The percent bases each node's `calc`/`%` terms resolved against —
+    /// `cb.0` is the containing-block width paint insets percent padding
+    /// against. Paint never rebuilds the base itself.
+    pub bases: HashMap<NodeId, we_layout::Bases>,
 }
 
 /// A text child and where it landed.
@@ -157,5 +161,6 @@ fn run(
             .into_iter()
             .map(|(k, v)| (k, egui::vec2(v.x, v.y)))
             .collect(),
+        bases: out.bases,
     }
 }

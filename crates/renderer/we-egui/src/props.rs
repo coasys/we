@@ -143,19 +143,21 @@ fn patched<'a>(style: &'a Style, patch: &StylePatch) -> std::borrow::Cow<'a, Sty
 /// An inset edge (`padding`/`border` width) in px — `Percent` (and the
 /// percent term of a `calc()`) resolves against `base`, the containing
 /// block's content width — CSS puts every edge's percentage on the CB
-/// *width*. `ch`/`ex`/`lh` take `layout::dim_px`'s font-metric
-/// approximations so paint agrees with the space taffy offered measure —
-/// the shared `Dimension::resolve` policy.
+/// *width*. `base` is `None` when layout found it content-driven (the
+/// CSS cyclic fallback — the term resolves to `0`). `ch`/`ex`/`lh` take
+/// `layout::dim_px`'s font-metric approximations so paint agrees with
+/// the space taffy offered measure — the shared `Dimension::resolve`
+/// policy.
 fn inset_px(
     d: &Option<Dimension>,
     font_px: f32,
     root_px: f32,
     view: crate::defaults::ViewportCx,
-    base: f32,
+    base: Option<f32>,
 ) -> f32 {
     match d.as_ref() {
         Some(d) => d
-            .resolve(Some(base), font_px, root_px, view.viewport)
+            .resolve(base, font_px, root_px, view.viewport)
             .unwrap_or(0.0),
         None => 0.0,
     }
@@ -166,14 +168,15 @@ fn inset_px(
 /// taffy offers `widget.measure` (it pre-subtracts this inset). Leaf
 /// widgets paint their glyphs/images/icons inside it; `paint_box` chrome —
 /// bg, borders, shadows — stays on `rect`. Interaction keeps `rect`.
-/// `base` is the node's containing-block width (the parent's content box).
+/// `base` is the containing-block width [`Layout::bases`] recorded —
+/// the same value layout resolved percent terms against.
 pub(crate) fn content_rect(
     rect: egui::Rect,
     style: &Style,
     font_px: f32,
     root_px: f32,
     view: crate::defaults::ViewportCx,
-    base: f32,
+    base: Option<f32>,
 ) -> egui::Rect {
     let pad = &style.layout.padding;
     let bor = &style.paint.borders;
