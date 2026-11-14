@@ -200,3 +200,27 @@ fn a_pick_carries_the_selected_chains_name() {
         .collect();
     assert_eq!(rest, ["m", "a", "a.obj", "a.obj.x"]);
 }
+
+#[test]
+fn a_nullish_left_pick_keeps_its_chains_name() {
+    // `(a.obj ?? m).x` with a non-nullish left side: the left value is the
+    // pick, and the read through it reports under the left chain's name.
+    let obj = Value::from(MapNamespace::new(
+        [(
+            "obj".into(),
+            Value::Obj(Arc::new(
+                [("x".into(), Value::from(7.0))].into_iter().collect(),
+            )),
+        )]
+        .into_iter()
+        .collect(),
+    ));
+    let (env, log) = observed(
+        MapEnv::new()
+            .with_root("a", obj)
+            .with_root("m", Value::Null),
+    );
+    let value = eval(&parse("(a.obj ?? m).x").unwrap(), &env);
+    assert!(value.strict_eq(&Value::from(7.0)));
+    assert_eq!(paths(&log), ["a", "a.obj", "a.obj.x"]);
+}
