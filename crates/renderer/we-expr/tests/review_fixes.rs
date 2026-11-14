@@ -332,3 +332,48 @@ fn p2_5_filter_limit_type_gate() {
         json!([])
     );
 }
+
+/// `Number(str)` takes radix literals only *unsigned* — `'+0x1'`/`'-0b1'`
+/// are `NaN` — and `Number(list)` is `Number` of the comma-joined text, so a
+/// single element converts through `String(x)`, never directly.
+#[test]
+fn p2_6_number_coercion() {
+    let env = MapEnv::new();
+    let run = |source: &str, env: &MapEnv| eval(&parse(source).unwrap(), env);
+    // Signed radix strings are NaN — arithmetic clamps them to 0.
+    assert_eq!(run("'+0x1' - 0", &env).to_json(), json!(0));
+    assert_eq!(run("'-0b1' - 0", &env).to_json(), json!(0));
+    assert_eq!(run("'-0x10' - 0", &env).to_json(), json!(0));
+    // …while the unsigned forms still parse, and a bare prefix is NaN.
+    assert_eq!(run("'0x10' - 0", &env).to_json(), json!(16));
+    assert_eq!(run("'0x' - 0", &env).to_json(), json!(0));
+    // `Number([x])` is `Number(String(x))`: [true] is 'true' → NaN → 0,
+    // [undefined]/[null] are '' → 0, [[1]] is '1' → 1.
+    assert_eq!(run("[true] - 0", &env).to_json(), json!(0));
+    assert_eq!(run("[[1]] - 0", &env).to_json(), json!(1));
+    assert_eq!(run("[[]] - 0", &env).to_json(), json!(0));
+    assert_eq!(
+        call_json(
+            "plural",
+            &[list(&[true.into()]), "one".into(), "other".into()],
+            &env
+        ),
+        json!("other")
+    );
+    assert_eq!(
+        call_json(
+            "plural",
+            &[list(&[Value::Undefined]), "one".into(), "other".into()],
+            &env
+        ),
+        json!("other")
+    );
+    assert_eq!(
+        call_json(
+            "plural",
+            &[list(&[1.into()]), "one".into(), "other".into()],
+            &env
+        ),
+        json!("one")
+    );
+}
