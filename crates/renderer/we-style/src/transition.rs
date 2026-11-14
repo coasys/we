@@ -47,7 +47,7 @@ pub fn parse_transitions(text: &str) -> Vec<Transition> {
         let mut easing: Option<Easing> = None;
         for seg in top_level_parts(part) {
             let lower = seg.to_ascii_lowercase();
-            if lower.starts_with("var(--we-easing") {
+            if lower.starts_with("var(--we-easing") || lower.starts_with("var(--we-ease") {
                 easing = Some(Easing::Other(Arc::from(seg)));
             } else if let Some(d) = parse_duration(seg) {
                 durations.push(Some(d));

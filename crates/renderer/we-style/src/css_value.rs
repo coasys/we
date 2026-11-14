@@ -114,6 +114,28 @@ pub fn split_top_commas(text: &str) -> Vec<&str> {
     parts
 }
 
+/// Split on a depth-0 `/` — the `head / alpha` separator of the modern colour
+/// syntaxes. A `/` inside `calc(16 / 100 * x)` is inside parens and does not
+/// count.
+pub fn split_slash(text: &str) -> Vec<&str> {
+    let mut parts = Vec::new();
+    let mut depth = 0i32;
+    let mut start = 0usize;
+    for (i, ch) in text.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            '/' if depth == 0 => {
+                parts.push(text[start..i].trim());
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(text[start..].trim());
+    parts
+}
+
 /// A CSS dimension: `12px`, `0.75rem`, `55%`, `1lh`, `auto`, or a math
 /// function that reduces to a length/percent. `None` for everything else —
 /// an unset var, a bare number, a keyword that is not a length.

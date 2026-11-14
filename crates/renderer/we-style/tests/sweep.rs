@@ -101,12 +101,60 @@ fn theme_table(theme: &str) -> TokenTable {
     token_table(theme)
 }
 
+/// Every `var(…)` span in an emitted declaration (balanced parens), plus its
+/// custom-property name — for the resolve/unresolved token count.
+fn var_spans(text: &str) -> Vec<(String, String)> {
+    let bytes = text.as_bytes();
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i + 4 < bytes.len() {
+        if &bytes[i..i + 4] != b"var(" {
+            i += 1;
+            continue;
+        }
+        let mut j = i + 4;
+        while j < bytes.len() && bytes[j].is_ascii_whitespace() {
+            j += 1;
+        }
+        let start = j;
+        while j < bytes.len()
+            && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_' || bytes[j] == b'-')
+        {
+            j += 1;
+        }
+        let name = text[start..j].to_string();
+        // the balanced close of this var(, if the text has one
+        let mut depth = 1i32;
+        let mut k = i + 4;
+        while k < bytes.len() {
+            match bytes[k] {
+                b'(' => depth += 1,
+                b')' => {
+                    depth -= 1;
+                    if depth == 0 {
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            k += 1;
+        }
+        let end = if k < bytes.len() { k + 1 } else { bytes.len() };
+        out.push((name, text[i..end].to_string()));
+        i = end;
+    }
+    out
+}
+
 fn sweep_under(tokens: TokenTable, theme: &str, bundles: &[&str]) {
     let mut histogram: BTreeMap<String, usize> = BTreeMap::new();
     let mut node_count = 0usize;
     let mut prop_bags = 0usize;
     let mut styles_with_patches = 0usize;
     let mut tiered = 0usize;
+    // Emitted `var(--we-*)` references vs. the names left after substitution.
+    let mut var_refs = 0usize;
+    let mut unresolved_vars: BTreeMap<String, usize> = BTreeMap::new();
 
     for name in bundles {
         let path = repo_root().join("bundles").join(name);
@@ -126,6 +174,16 @@ fn sweep_under(tokens: TokenTable, theme: &str, bundles: &[&str]) {
                 .iter()
                 .map(|(k, v)| (Arc::from(k.as_str()), json_to_value(v)))
                 .collect();
+            for value in we_style::build_layout_decls(&bag, Direction::Column).values() {
+                let text = value.text();
+                var_refs += var_spans(&text)
+                    .iter()
+                    .filter(|(n, _)| n.starts_with("--we-"))
+                    .count();
+                for (_, span) in var_spans(&tokens.substitute_nested(&text)) {
+                    *unresolved_vars.entry(span).or_default() += 1;
+                }
+            }
             // Wide container — the bundle's sm/md/lg bags all get exercised.
             let mut input = StyleInput::new(&tokens, Direction::Column);
             input.container_width = 1400.0;
@@ -153,12 +211,19 @@ fn sweep_under(tokens: TokenTable, theme: &str, bundles: &[&str]) {
                 all.extend(patch.unsupported.iter().map(|s| s.as_ref()));
             }
             for entry in all {
-                let head = entry.split('=').next().unwrap_or("?").to_string();
-                *histogram.entry(head).or_default() += 1;
+                *histogram.entry(entry.to_string()).or_default() += 1;
             }
         }
     }
     eprintln!("[{theme}] nodes={node_count} prop_bags={prop_bags} patched={styles_with_patches} tiered={tiered}");
+    eprintln!(
+        "  var(--we-*) refs={var_refs} resolved={} unresolved={}",
+        var_refs - unresolved_vars.values().sum::<usize>(),
+        unresolved_vars.values().sum::<usize>()
+    );
+    for (k, c) in &unresolved_vars {
+        eprintln!("    {c:4} {k}");
+    }
     for (k, c) in &histogram {
         eprintln!("  {c:4} {k}");
     }

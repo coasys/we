@@ -83,6 +83,91 @@ impl TokenTable {
         }
         Arc::from(out.as_str())
     }
+
+    /// `var()` resolved the way a browser does it — parentheses balanced, a
+    /// fallback's own `var()`s honoured recursively. [`substitute`] is the
+    /// *recorded* simulation (shallow, stray-paren artefacts and all); this is
+    /// the *evaluation* view: `var(--we-theme-control-radius,
+    /// var(--we-radius-400))` under glow computes to `999px`, not `999px)`.
+    /// Bounded at eight levels of nesting — recorded table values carry no
+    /// `var()`s, so depth only comes from authored text.
+    pub fn substitute_nested(&self, css: &str) -> Arc<str> {
+        Arc::from(substitute_nested_at(css, self, 0).as_str())
+    }
+}
+
+/// One balanced pass of [`TokenTable::substitute_nested`]. Non-`--we-*` vars
+/// are skipped at their `var(` (the scan still recurses *inside*, so
+/// `var(--page-x, var(--we-y))` still resolves `--we-y`).
+fn substitute_nested_at(css: &str, vars: &TokenTable, depth: u8) -> String {
+    if depth >= 8 {
+        return css.to_string();
+    }
+    let bytes = css.as_bytes();
+    let mut out = String::with_capacity(css.len());
+    let mut i = 0usize;
+    let mut last = 0usize;
+    while i + 4 < bytes.len() {
+        if &bytes[i..i + 4] != b"var(" {
+            i += 1;
+            continue;
+        }
+        // The whole `var(…)` span — balanced parens, not the first `)`. The
+        // opener was already consumed: depth starts at 1, the match ends at 0.
+        let mut depth_p = 1i32;
+        let mut j = i + 4;
+        while j < bytes.len() {
+            match bytes[j] {
+                b'(' => depth_p += 1,
+                b')' => {
+                    depth_p -= 1;
+                    if depth_p == 0 {
+                        break;
+                    }
+                }
+                _ => {}
+            }
+            j += 1;
+        }
+        if j >= bytes.len() {
+            break; // unbalanced — leave the rest verbatim
+        }
+        let (name, fallback) = split_var_args(&css[i + 4..j]);
+        if !name.starts_with("--we-") {
+            i += 4;
+            continue;
+        }
+        let replacement = if let Some(v) = vars.get(name) {
+            substitute_nested_at(v, vars, depth + 1)
+        } else if let Some(fb) = fallback {
+            substitute_nested_at(fb, vars, depth + 1)
+        } else {
+            css[i..=j].to_string()
+        };
+        out.push_str(&css[last..i]);
+        out.push_str(&replacement);
+        last = j + 1;
+        i = j + 1;
+    }
+    out.push_str(&css[last..]);
+    out
+}
+
+/// `name, fallback` of a `var()`'s argument list — the comma counts only at
+/// paren depth 0, so `var(--a, var(--b))` splits as `--a` / `var(--b)`.
+fn split_var_args(inner: &str) -> (&str, Option<&str>) {
+    let mut depth = 0i32;
+    for (i, ch) in inner.char_indices() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            ',' if depth == 0 => {
+                return (inner[..i].trim(), Some(inner[i + 1..].trim()));
+            }
+            _ => {}
+        }
+    }
+    (inner.trim(), None)
 }
 
 /// One substitution round — the `VAR_RE` of the TypeScript, hand-written:

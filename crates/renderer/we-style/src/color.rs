@@ -1,18 +1,21 @@
 //! A colour value, once `var()`s are substituted: hex, `rgb()`/`rgba()`,
-//! `hsl()`/`hsla()`, `oklch()`, `oklab()`, `color-mix(in srgb|oklab|oklch, …)`,
-//! `transparent` and the CSS named colours.
+//! `hsl()`/`hsla()`, `oklch()`, `oklab()`, `color(srgb …)`,
+//! `color-mix(in srgb|oklab|oklch, …)`, `transparent` and the CSS named
+//! colours. Channels may be `calc()`/`min()`/`max()`/`clamp()` expressions —
+//! the recorded tables write `oklch(14.6% calc(16 / 100 * 0.2322) 288)` for
+//! computed colours.
 //!
 //! The parser is deliberately a *mini* evaluator: it reads the shapes the
 //! recorded token tables and the bundle actually contain, and returns `None`
 //! for anything else — `oklch(from …)` relative syntax, `lab()`/`lch()`,
-//! `hwb()`, `color()`, `color-contrast()`, `light-dark()` — which the caller
-//! records in `Style::unsupported` rather than guessing.
+//! `hwb()`, non-srgb `color()`, `color-contrast()`, `light-dark()` — which the
+//! caller records in `Style::unsupported` rather than guessing.
 //!
 //! Stored as straight (non-premultiplied) sRGB channels in `0..=1`. Mixing
 //! happens premultiplied (per the CSS colour-mix spec) and the result is
 //! un-premultiplied again; the egui boundary calls [`Color::to_premultiplied`].
 
-use crate::css_value::{eval_math, split_top_commas, MathUnit};
+use crate::css_value::{eval_math, split_slash, split_top_commas, top_level_parts, MathUnit};
 
 /// One sRGB colour, straight alpha.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -109,6 +112,7 @@ pub fn eval_color(text: &str) -> Option<Color> {
         "hsl" | "hsla" => parse_hsl(args),
         "oklch" => parse_oklch(args),
         "oklab" => parse_oklab(args),
+        "color" => parse_color_fn(args),
         "color-mix" => parse_color_mix(args),
         _ => None,
     }
@@ -146,27 +150,33 @@ fn parse_hex(t: &str) -> Option<Color> {
     ))
 }
 
-/// A channel of `rgb()`: `0..255` number or `0..100%`, `none` treated as 0.
-fn rgb_channel(s: &str) -> Option<f32> {
+/// A channel that may be a literal, a `…%`, or a math expression —
+/// `calc(16 / 100 * 0.2322)` appears inside the recorded shadows' `oklch()`.
+/// `pct_scale` is what `100%` means on this channel (1.0 for alpha, 2.55 for
+/// `rgb()`, 0.01 for lightness, 0.004 for chroma/oklab axes). `none` is 0.
+fn math_channel(s: &str, pct_scale: f32) -> Option<f32> {
     let s = s.trim();
     if s.eq_ignore_ascii_case("none") {
         return Some(0.0);
     }
     if let Some(p) = s.strip_suffix('%') {
-        return p.trim().parse::<f32>().ok().map(|v| v * 2.55);
+        return p.trim().parse::<f32>().ok().map(|v| v * pct_scale);
     }
-    s.parse::<f32>().ok()
+    let v = eval_math(s)?;
+    Some(match v.unit {
+        MathUnit::Unitless => v.value as f32,
+        MathUnit::Percent => (v.value as f32) * pct_scale,
+        _ => return None,
+    })
+}
+
+/// A channel of `rgb()`: `0..255` number or `0..100%`, `none` treated as 0.
+fn rgb_channel(s: &str) -> Option<f32> {
+    math_channel(s, 2.55)
 }
 
 fn alpha_channel(s: &str) -> Option<f32> {
-    let s = s.trim();
-    if s.eq_ignore_ascii_case("none") {
-        return Some(0.0);
-    }
-    if let Some(p) = s.strip_suffix('%') {
-        return p.trim().parse::<f32>().ok().map(|v| v / 100.0);
-    }
-    s.parse::<f32>().ok()
+    math_channel(s, 0.01)
 }
 
 /// `rgb(199, 201, 220)`, `rgba(199,201,220,.08)` and `rgb(199 201 220 / .08)`.
@@ -177,10 +187,10 @@ fn parse_rgb(args: &str) -> Option<Color> {
             .map(|p| rgb_channel(p))
             .collect::<Option<_>>()?
     } else {
-        let slash = args.split('/').collect::<Vec<_>>();
-        let head: Vec<f32> = slash[0]
-            .split_whitespace()
-            .map(rgb_channel)
+        let slash = split_slash(args);
+        let head: Vec<f32> = top_level_parts(slash[0])
+            .iter()
+            .map(|p| rgb_channel(p))
             .collect::<Option<_>>()?;
         if slash.len() == 2 {
             let mut v = head;
@@ -216,7 +226,11 @@ fn hue_degrees(s: &str) -> Option<f32> {
             return n.trim().parse::<f32>().ok().map(|v| v * mul);
         }
     }
-    s.parse::<f32>().ok()
+    // `calc(288 - 30)` — a hue may arrive as unitless math.
+    match eval_math(s)? {
+        v if v.unit == MathUnit::Unitless => Some(v.value as f32),
+        _ => None,
+    }
 }
 
 /// `hsl(240, 50%, 50%)` / `hsl(240 50% 50% / .5)`.
@@ -236,8 +250,8 @@ fn parse_hsl(args: &str) -> Option<Color> {
             },
         )
     } else {
-        let slash = args.split('/').collect::<Vec<_>>();
-        let head: Vec<&str> = slash[0].split_whitespace().collect();
+        let slash = split_slash(args);
+        let head = top_level_parts(slash[0]);
         if head.len() != 3 {
             return None;
         }
@@ -261,32 +275,26 @@ fn pct(s: &str) -> Option<f32> {
     if s.eq_ignore_ascii_case("none") {
         return Some(0.0);
     }
-    s.strip_suffix('%')?
-        .trim()
-        .parse::<f32>()
-        .ok()
-        .map(|v| v / 100.0)
+    if let Some(p) = s.strip_suffix('%') {
+        return p.trim().parse::<f32>().ok().map(|v| v / 100.0);
+    }
+    // `calc(50%)` and friends — s/l channels are percentages only.
+    match eval_math(s)? {
+        v if v.unit == MathUnit::Percent => Some((v.value / 100.0) as f32),
+        _ => None,
+    }
 }
 
-/// `oklch(0.55 0.27 288)` / `oklch(55% 0.27 288deg / 0.8)`.
+/// `oklch(0.55 0.27 288)` / `oklch(55% 0.27 288deg / 0.8)` — and the
+/// recorder's computed forms `oklch(14.6% calc(16 / 100 * 0.2322) 288)`.
 fn parse_oklch(args: &str) -> Option<Color> {
-    let slash = args.split('/').collect::<Vec<_>>();
-    let head: Vec<&str> = slash[0].split_whitespace().collect();
+    let slash = split_slash(args);
+    let head = top_level_parts(slash[0]);
     if head.len() != 3 {
         return None;
     }
     let l = lightness(head[0])?;
-    let c = {
-        let s = head[1].trim();
-        if s.eq_ignore_ascii_case("none") {
-            0.0
-        } else {
-            s.strip_suffix('%').map_or_else(
-                || s.parse::<f32>().ok(),
-                |p| p.trim().parse::<f32>().ok().map(|v| v * 0.004), // % is of 0.4 chroma
-            )?
-        }
-    };
+    let c = math_channel(head[1], 0.004)?; // % is of 0.4 chroma
     let h = hue_degrees(head[2])?;
     let a = if slash.len() == 2 {
         alpha_channel(slash[1])?
@@ -300,22 +308,13 @@ fn parse_oklch(args: &str) -> Option<Color> {
 
 /// `oklab(0.55 0.1 -0.05 / 0.8)` — `a`/`b` as numbers or `%` (of ±0.4).
 fn parse_oklab(args: &str) -> Option<Color> {
-    let slash = args.split('/').collect::<Vec<_>>();
-    let head: Vec<&str> = slash[0].split_whitespace().collect();
+    let slash = split_slash(args);
+    let head = top_level_parts(slash[0]);
     if head.len() != 3 {
         return None;
     }
     let l = lightness(head[0])?;
-    let axis = |s: &str| -> Option<f32> {
-        let s = s.trim();
-        if s.eq_ignore_ascii_case("none") {
-            return Some(0.0);
-        }
-        s.strip_suffix('%').map_or_else(
-            || s.parse::<f32>().ok(),
-            |p| p.trim().parse::<f32>().ok().map(|v| v * 0.004),
-        )
-    };
+    let axis = |s: &str| math_channel(s, 0.004);
     let a = if slash.len() == 2 {
         alpha_channel(slash[1])?
     } else {
@@ -326,14 +325,38 @@ fn parse_oklab(args: &str) -> Option<Color> {
 }
 
 fn lightness(s: &str) -> Option<f32> {
-    let s = s.trim();
-    if s.eq_ignore_ascii_case("none") {
-        return Some(0.0);
+    math_channel(s, 0.01)
+}
+
+/// `color(srgb r g b / a)` — what Chrome serialises an srgb colour outside
+/// the `rgb()` gamut of notations to (`--we-role-text-selection` records
+/// `color(srgb 0.457459 0.240274 0.984199 / 0.3)`). Other `color()` spaces
+/// stay `None` — nothing in the tables or bundles uses them.
+fn parse_color_fn(args: &str) -> Option<Color> {
+    let (space, rest) = args.split_once(char::is_whitespace)?;
+    if !space.trim().eq_ignore_ascii_case("srgb") {
+        return None;
     }
-    s.strip_suffix('%').map_or_else(
-        || s.parse::<f32>().ok(),
-        |p| p.trim().parse::<f32>().ok().map(|v| v / 100.0),
-    )
+    let slash = split_slash(rest);
+    if slash.len() > 2 {
+        return None;
+    }
+    let head = top_level_parts(slash[0]);
+    if head.len() != 3 {
+        return None;
+    }
+    let channel = |s: &str| -> Option<f32> { math_channel(s, 0.01).map(|v| v.clamp(0.0, 1.0)) };
+    let a = if slash.len() == 2 {
+        alpha_channel(slash[1])?
+    } else {
+        1.0
+    };
+    Some(Color::new(
+        channel(head[0])?,
+        channel(head[1])?,
+        channel(head[2])?,
+        a.clamp(0.0, 1.0),
+    ))
 }
 
 /// `color-mix(in <space>, c1 [p%], c2 [p%])` — the one blend the token tables

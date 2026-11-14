@@ -837,9 +837,12 @@ impl<'a> EvalCx<'a> {
         }
     }
 
-    /// `var()`-substituted text for one emitted declaration.
+    /// `var()`-substituted text for one emitted declaration — the
+    /// browser-faithful resolution (`substitute_nested`), so a declared outer
+    /// var of a nested fallback chain lands on its value, not the recorded
+    /// simulation's stray-paren text.
     fn subst(&self, value: &DeclValue) -> String {
-        self.tokens.substitute(&value.text()).to_string()
+        self.tokens.substitute_nested(&value.text()).to_string()
     }
 }
 
