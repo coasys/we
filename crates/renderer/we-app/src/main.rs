@@ -109,7 +109,7 @@ fn run_native(args: Args) -> eframe::Result<()> {
                 .or_else(|| panels.first())
         })
         .and_then(|panel| {
-            we_template::SchemaNode::deserialize(panel.clone()).ok()
+            we_template::SchemaNode::deserialize(panel.get("node").cloned()?).ok()
         })
         .unwrap_or_else(|| panic!("bundle has no panels to render"));
 

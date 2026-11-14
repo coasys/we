@@ -217,7 +217,10 @@ pub struct StaticHost {
 }
 
 impl StaticHost {
+    /// Binds `routeStore` into the bag so expressions read it — the one store
+    /// the skeleton owns itself.
     pub fn new(route: RouteState, bag: Arc<StoreBag>, locals: LocalState) -> Self {
+        bag.set_root("routeStore", Value::namespace(route.namespace()));
         Self {
             route,
             bag,

@@ -136,14 +136,29 @@ impl Widget for TreeItem {
                 let caret_label = if Self::open(node) { "collapse" } else { "expand" };
                 let caret_response =
                     cx.interact_label(caret, caret_label, egui::Role::Button, &node.id, "caret");
-                let glyph = if Self::open(node) { "▾" } else { "▸" };
-                cx.ui.painter().text(
-                    caret.center(),
-                    egui::Align2::CENTER_CENTER,
-                    glyph,
-                    egui::FontId::default(),
+                // A triangle, not a glyph — the kittest font set has no ▸/▾.
+                let c = caret.center();
+                let (w, h) = (3.0, 4.0);
+                let points = if Self::open(node) {
+                    // Down-pointing.
+                    vec![
+                        c + egui::vec2(-w - 1.0, -h / 2.0),
+                        c + egui::vec2(w + 1.0, -h / 2.0),
+                        c + egui::vec2(0.0, h / 2.0 + 2.0),
+                    ]
+                } else {
+                    // Right-pointing.
+                    vec![
+                        c + egui::vec2(-w / 2.0, -h),
+                        c + egui::vec2(-w / 2.0, h),
+                        c + egui::vec2(w / 2.0 + 2.0, 0.0),
+                    ]
+                };
+                cx.ui.painter().add(egui::Shape::convex_polygon(
+                    points,
                     visuals.weak_text_color(),
-                );
+                    egui::Stroke::NONE,
+                ));
                 if caret_response.clicked() {
                     cx.emit(
                         &node.id,

@@ -1,0 +1,77 @@
+{
+  "stores": {
+    "spaceStore": {
+      "root": "demo",
+      "spacePath": "/space/demo",
+      "canAdministerCurrentSpace": true,
+      "spaceDefaultTemplateId": "tpl-default",
+      "spaceDefaultThemeId": "theme-default",
+      "spaceThemePinned": true,
+      "currentSpace": { "name": "Demo Space", "description": "A walking-skeleton space" },
+      "members": [
+        { "did": "did:key:z6MkAlpha", "name": "Ada" },
+        { "did": "did:key:z6MkBeta", "name": "Bo" }
+      ],
+      "taskStates": [
+        { "id": "state-todo", "name": "To do" },
+        { "id": "state-doing", "name": "Doing" },
+        { "id": "state-done", "name": "Done" }
+      ],
+      "involvementTypes": [
+        { "id": "inv-owner", "name": "Owner" }
+      ],
+      "policy": { "sentences": ["everyone can read", "members can write"] }
+    },
+    "modules": {
+      "call": { "liveCalls": [], "canCall": false }
+    },
+    "recordStore": {
+      "creatableEntities": [
+        { "value": "note", "label": "Note", "icon": "note", "description": "A note" },
+        { "value": "task", "label": "Task", "icon": "check-square", "description": "A task" }
+      ]
+    },
+    "workflowStore": {
+      "workflows": [
+        { "id": "wf-1", "name": "standup", "archived": false, "records": 3 },
+        { "id": "wf-2", "name": "retro", "archived": false, "records": 0 }
+      ]
+    },
+    "templateStore": {
+      "currentSwitcherId": "tpl-default",
+      "switcherGroups": [
+        { "label": "Built-in", "templates": [
+          { "id": "tpl-default", "name": "Default", "editable": false },
+          { "id": "tpl-min", "name": "Minimal", "editable": true }
+        ] }
+      ]
+    },
+    "themeStore": {
+      "currentThemeId": "theme-default",
+      "builtInThemes": [
+        { "id": "theme-default", "name": "Default", "origin": "built-in" },
+        { "id": "theme-dark", "name": "Dark", "origin": "built-in" }
+      ]
+    },
+    "shellStore": { "layoutDirty": false },
+    "chatStore": {},
+    "editorStore": {}
+  },
+  "queries": {
+    "calls": [
+      { "id": "call-1", "kind": "call", "name": "Daily sync", "createdAt": "2026-05-01T10:00:00Z" },
+      { "id": "call-2", "kind": "call", "name": "Design review", "createdAt": "2026-05-02T14:00:00Z" }
+    ],
+    "signalTypes": [
+      { "id": "sig-like", "name": "Like" },
+      { "id": "sig-pin", "name": "Pin" }
+    ],
+    "relationshipTypes": [
+      { "id": "rel-reply", "name": "Reply" }
+    ],
+    "topics": [
+      { "id": "topic-general", "name": "General" }
+    ]
+  },
+  "invokes": {}
+}
