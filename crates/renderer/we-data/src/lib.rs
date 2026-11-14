@@ -6,13 +6,17 @@
 //! `we-ad4m` knows about WebSockets.
 //!
 //! No egui, no I/O, no tokio: this crate builds for `wasm32-unknown-unknown`.
+//! `StoreMap::load` is the only filesystem helper and it is compiled out on
+//! wasm — file reads live in tests and examples.
 #![forbid(unsafe_code)]
 
 mod executor;
 mod fake;
+mod storemap;
 
 pub use executor::{
     ClassSel, ClassShape, Executor, ExecutorError, FlowCall, LiveQuery, LiveQueryId, QueryIr,
     Result, SpaceId, Write, WriteOp,
 };
 pub use fake::FakeExecutor;
+pub use storemap::{MemberKind, MemberRow, StoreMap};
