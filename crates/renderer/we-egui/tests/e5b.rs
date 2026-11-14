@@ -1359,6 +1359,18 @@ fn icon_picker_searches_and_emits() {
     h.run();
     h.get_by_label("Icon").click();
     h.run();
+    // The name is the contract: typing filters the grid — a picker that
+    // only listed everything would fail here (B12).
+    assert!(h.query_by_label("house").is_some());
+    let search = h.get_by_label("icon search");
+    search.click();
+    h.run();
+    h.get_by_label("icon search").type_text("trash");
+    h.run();
+    assert!(
+        h.query_by_label("house").is_none(),
+        "typing 'trash' must filter non-matching icons out"
+    );
     h.get_by_label("trash").click();
     h.run();
     assert_detail(&r, "onChange", s("trash"));

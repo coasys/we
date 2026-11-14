@@ -103,48 +103,55 @@ impl Widget for ColorPicker {
         }
 
         let mut hex = cx.edit.draft(&node.id).unwrap_or_else(|| value.clone());
-        egui::Popup::menu(&response).show(|ui| {
-            ui.set_min_width(196.0);
-            // Swatch grid.
-            let size = egui::vec2(22.0, 22.0);
-            for chunk in swatches(node).chunks(7) {
-                ui.horizontal(|ui| {
-                    for s in chunk {
-                        let (r, resp) = ui.allocate_exact_size(size, egui::Sense::click());
-                        resp.widget_info(|| {
-                            egui::WidgetInfo::labeled(egui::Role::Button, true, s.as_str())
-                        });
-                        let c = parse_hex(s).unwrap_or(egui::Color32::GRAY);
-                        ui.painter().rect_filled(r, 4.0, c);
-                        if s == &value {
-                            ui.painter().rect_stroke(
-                                r,
-                                4.0,
-                                visuals.widgets.active.fg_stroke,
-                                egui::StrokeKind::Middle,
-                            );
+        // `CloseOnClick` would dismiss on the hex field's own click —
+        // inside clicks keep the DOM panel open; selection closes it.
+        egui::Popup::menu(&response)
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+            .show(|ui| {
+                ui.set_min_width(196.0);
+                // Swatch grid.
+                let size = egui::vec2(22.0, 22.0);
+                for chunk in swatches(node).chunks(7) {
+                    ui.horizontal(|ui| {
+                        for s in chunk {
+                            let (r, resp) = ui.allocate_exact_size(size, egui::Sense::click());
+                            resp.widget_info(|| {
+                                egui::WidgetInfo::labeled(egui::Role::Button, true, s.as_str())
+                            });
+                            let c = parse_hex(s).unwrap_or(egui::Color32::GRAY);
+                            ui.painter().rect_filled(r, 4.0, c);
+                            if s == &value {
+                                ui.painter().rect_stroke(
+                                    r,
+                                    4.0,
+                                    visuals.widgets.active.fg_stroke,
+                                    egui::StrokeKind::Middle,
+                                );
+                            }
+                            if resp.clicked() {
+                                cx.emit(&node.id, "onChange", events::detail_str(&normalize(s)));
+                                ui.close();
+                            }
                         }
-                        if resp.clicked() {
-                            cx.emit(&node.id, "onChange", events::detail_str(&normalize(s)));
-                        }
-                    }
+                    });
+                }
+                // Free hex input — commit on Enter/blur.
+                let resp = ui.text_edit_singleline(&mut hex);
+                resp.widget_info(|| {
+                    egui::WidgetInfo::labeled(egui::Role::TextInput, true, "hex color")
                 });
-            }
-            // Free hex input — commit on Enter/blur.
-            let resp = ui.text_edit_singleline(&mut hex);
-            resp.widget_info(|| {
-                egui::WidgetInfo::labeled(egui::Role::TextInput, true, "hex color")
+                if resp.changed() {
+                    cx.edit
+                        .set_draft(&node.id, &hex, props::prop(node, "value"));
+                }
+                let enter = resp.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
+                if (resp.lost_focus() || enter)
+                    && parse_hex(&hex).is_some()
+                    && normalize(&hex) != value
+                {
+                    cx.edit.clear_draft(&node.id);
+                    cx.emit(&node.id, "onChange", events::detail_str(&normalize(&hex)));
+                }
             });
-            if resp.changed() {
-                cx.edit
-                    .set_draft(&node.id, &hex, props::prop(node, "value"));
-            }
-            let enter = resp.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter));
-            if (resp.lost_focus() || enter) && parse_hex(&hex).is_some() && normalize(&hex) != value
-            {
-                cx.edit.clear_draft(&node.id);
-                cx.emit(&node.id, "onChange", events::detail_str(&normalize(&hex)));
-            }
-        });
     }
 }

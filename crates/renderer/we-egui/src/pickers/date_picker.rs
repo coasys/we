@@ -144,101 +144,107 @@ impl Widget for DatePicker {
         let month_s = cx.edit.field(&node.id, "month").js_string();
         let month = Ymd::parse(&(month_s + "-01")).unwrap_or_else(|| today(cx.now));
 
-        egui::Popup::menu(&response).show(|ui| {
-            ui.set_min_width(210.0);
-            // Month header: ‹ YYYY-MM ›
-            ui.horizontal(|ui| {
-                if ui.small_button("<").clicked() {
-                    let m = month.shift_month(-1);
-                    cx.edit.set_field(
-                        &node.id,
-                        "month",
-                        Value::Str(format!("{:04}-{:02}", m.0, m.1).into()),
-                    );
-                }
-                ui.strong(format!("{:04}-{:02}", month.0, month.1));
-                if ui.small_button(">").clicked() {
-                    let m = month.shift_month(1);
-                    cx.edit.set_field(
-                        &node.id,
-                        "month",
-                        Value::Str(format!("{:04}-{:02}", m.0, m.1).into()),
-                    );
-                }
-            });
-            // Day grid, Monday first.
-            let cell = egui::vec2(28.0, 24.0);
-            ui.horizontal(|ui| {
-                for w in ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"] {
-                    let (r, _) = ui.allocate_exact_size(cell, egui::Sense::hover());
-                    ui.painter().text(
-                        r.center(),
-                        egui::Align2::CENTER_CENTER,
-                        w,
-                        egui::FontId::proportional(10.0),
-                        visuals.weak_text_color(),
-                    );
-                }
-            });
-            let first = month.first_weekday();
-            let days = month.days();
-            let mut col = first;
-            ui.horizontal_wrapped(|ui| {
-                for _ in 0..first {
-                    ui.allocate_exact_size(cell, egui::Sense::hover());
-                }
-                for d in 1..=days {
-                    if col == 7 {
-                        col = 0;
-                    }
-                    let day = Ymd(month.0, month.1, d);
-                    let is_sel = selected == Some(day);
-                    let (r, resp) = ui.allocate_exact_size(cell, egui::Sense::click());
-                    resp.widget_info(|| {
-                        egui::WidgetInfo::labeled(egui::Role::Button, is_sel, day.2.to_string())
-                    });
-                    if is_sel {
-                        ui.painter()
-                            .rect_filled(r, 4.0, visuals.widgets.active.bg_fill);
-                    } else if resp.hovered() {
-                        ui.painter()
-                            .rect_filled(r, 4.0, visuals.widgets.hovered.bg_fill);
-                    }
-                    ui.painter().text(
-                        r.center(),
-                        egui::Align2::CENTER_CENTER,
-                        d.to_string(),
-                        egui::FontId::default(),
-                        visuals.text_color(),
-                    );
-                    if resp.clicked() {
-                        let mut detail = day.iso();
-                        if show_time(node) {
-                            detail = format!(
-                                "{detail}T{}",
-                                props::prop_string(node, "time").unwrap_or_else(|| "00:00".into())
-                            );
-                        }
-                        cx.emit(&node.id, "onChange", events::detail_str(&detail));
-                        ui.close();
-                    }
-                    col += 1;
-                }
-            });
-            if show_time(node) {
-                let mut t = props::prop_string(node, "time").unwrap_or_else(|| "00:00".into());
+        // `CloseOnClick` would dismiss on the month-nav buttons and the
+        // time field — the DOM calendar stays open for inside clicks;
+        // only a day pick (`ui.close()`) or an outside click leaves.
+        egui::Popup::menu(&response)
+            .close_behavior(egui::PopupCloseBehavior::CloseOnClickOutside)
+            .show(|ui| {
+                ui.set_min_width(210.0);
+                // Month header: ‹ YYYY-MM ›
                 ui.horizontal(|ui| {
-                    ui.label("Time");
-                    if ui.text_edit_singleline(&mut t).lost_focus() {
-                        let d = selected.unwrap_or_else(|| today(cx.now)).iso();
-                        cx.emit(
+                    if ui.small_button("<").clicked() {
+                        let m = month.shift_month(-1);
+                        cx.edit.set_field(
                             &node.id,
-                            "onChange",
-                            events::detail_str(&format!("{d}T{t}")),
+                            "month",
+                            Value::Str(format!("{:04}-{:02}", m.0, m.1).into()),
+                        );
+                    }
+                    ui.strong(format!("{:04}-{:02}", month.0, month.1));
+                    if ui.small_button(">").clicked() {
+                        let m = month.shift_month(1);
+                        cx.edit.set_field(
+                            &node.id,
+                            "month",
+                            Value::Str(format!("{:04}-{:02}", m.0, m.1).into()),
                         );
                     }
                 });
-            }
-        });
+                // Day grid, Monday first.
+                let cell = egui::vec2(28.0, 24.0);
+                ui.horizontal(|ui| {
+                    for w in ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"] {
+                        let (r, _) = ui.allocate_exact_size(cell, egui::Sense::hover());
+                        ui.painter().text(
+                            r.center(),
+                            egui::Align2::CENTER_CENTER,
+                            w,
+                            egui::FontId::proportional(10.0),
+                            visuals.weak_text_color(),
+                        );
+                    }
+                });
+                let first = month.first_weekday();
+                let days = month.days();
+                let mut col = first;
+                ui.horizontal_wrapped(|ui| {
+                    for _ in 0..first {
+                        ui.allocate_exact_size(cell, egui::Sense::hover());
+                    }
+                    for d in 1..=days {
+                        if col == 7 {
+                            col = 0;
+                        }
+                        let day = Ymd(month.0, month.1, d);
+                        let is_sel = selected == Some(day);
+                        let (r, resp) = ui.allocate_exact_size(cell, egui::Sense::click());
+                        resp.widget_info(|| {
+                            egui::WidgetInfo::labeled(egui::Role::Button, is_sel, day.2.to_string())
+                        });
+                        if is_sel {
+                            ui.painter()
+                                .rect_filled(r, 4.0, visuals.widgets.active.bg_fill);
+                        } else if resp.hovered() {
+                            ui.painter()
+                                .rect_filled(r, 4.0, visuals.widgets.hovered.bg_fill);
+                        }
+                        ui.painter().text(
+                            r.center(),
+                            egui::Align2::CENTER_CENTER,
+                            d.to_string(),
+                            egui::FontId::default(),
+                            visuals.text_color(),
+                        );
+                        if resp.clicked() {
+                            let mut detail = day.iso();
+                            if show_time(node) {
+                                detail = format!(
+                                    "{detail}T{}",
+                                    props::prop_string(node, "time")
+                                        .unwrap_or_else(|| "00:00".into())
+                                );
+                            }
+                            cx.emit(&node.id, "onChange", events::detail_str(&detail));
+                            ui.close();
+                        }
+                        col += 1;
+                    }
+                });
+                if show_time(node) {
+                    let mut t = props::prop_string(node, "time").unwrap_or_else(|| "00:00".into());
+                    ui.horizontal(|ui| {
+                        ui.label("Time");
+                        if ui.text_edit_singleline(&mut t).lost_focus() {
+                            let d = selected.unwrap_or_else(|| today(cx.now)).iso();
+                            cx.emit(
+                                &node.id,
+                                "onChange",
+                                events::detail_str(&format!("{d}T{t}")),
+                            );
+                        }
+                    });
+                }
+            });
     }
 }
