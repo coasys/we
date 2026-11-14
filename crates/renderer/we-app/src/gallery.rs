@@ -238,8 +238,11 @@ pub fn gallery_ui(ui: &mut Ui, theme: &Theme) {
                     ui.vertical(|ui| {
                         let (rect, _) =
                             ui.allocate_exact_size(Vec2::new(44.0, 30.0), egui::Sense::hover());
-                        ui.painter()
-                            .rect_filled(rect, px.min(15.0), Color32::from_rgb(120, 144, 200));
+                        ui.painter().rect_filled(
+                            rect,
+                            px.min(15.0),
+                            Color32::from_rgb(120, 144, 200),
+                        );
                         ui.monospace(*t);
                         // `r: "0"` emits no border-radius declaration at all —
                         // the browser keeps its default 0. That is faithful,
@@ -305,11 +308,7 @@ pub fn gallery_ui(ui: &mut Ui, theme: &Theme) {
         ui.horizontal_wrapped(|ui| {
             for t in FONT_SIZES {
                 let style = resolve1(input, "fontSize", t);
-                match style
-                    .text
-                    .font_size
-                    .and_then(|d| dim_px(d, input, 30.0))
-                {
+                match style.text.font_size.and_then(|d| dim_px(d, input, 30.0)) {
                     Some(px) => {
                         ui.label(
                             egui::RichText::new(format!("{t} "))
