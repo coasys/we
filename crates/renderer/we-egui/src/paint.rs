@@ -788,6 +788,7 @@ fn paint_overlays(w: &mut Walk<'_>) {
 /// popup's rect, its trigger and any painted descendant's rect.
 fn finish_overlays(w: &mut Walk<'_>) {
     let frame = std::mem::take(&mut *w.frame.borrow_mut());
+    modal_focus(w, &frame);
     if frame.is_empty() {
         return;
     }
@@ -821,6 +822,32 @@ fn finish_overlays(w: &mut Walk<'_>) {
                     request_close(w, entry);
                 }
             }
+        }
+    }
+}
+
+/// overlay-element.ts `captureFocus`/`releaseFocus`: a modal painted for
+/// the first time records what held focus (its opener); a modal no longer
+/// painted — closed by its template, whatever the cause — hands focus back.
+fn modal_focus(w: &mut Walk<'_>, frame: &[FrameOverlay]) {
+    let ctx = w.ui.ctx().clone();
+    let painted: Vec<&NodeId> = frame.iter().filter(|e| e.modal).map(|e| &e.id).collect();
+    let gone: Vec<NodeId> = w
+        .edit
+        .modal_openers
+        .keys()
+        .filter(|k| !painted.contains(k))
+        .cloned()
+        .collect();
+    for id in gone {
+        if let Some(Some(f)) = w.edit.modal_openers.remove(&id) {
+            ctx.memory_mut(|m| m.request_focus(f));
+        }
+    }
+    for id in painted {
+        if !w.edit.modal_openers.contains_key(id) {
+            let f = ctx.memory(|m| m.focused());
+            w.edit.modal_openers.insert(id.clone(), f);
         }
     }
 }

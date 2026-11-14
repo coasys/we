@@ -2582,3 +2582,54 @@ fn escape_over_modal_closes_popup_not_modal() {
         "the modal under the popup must not hear the same Escape"
     );
 }
+
+/// Set `open` on the modal at `children[idx]` of the rig's root.
+fn set_modal_open(r: &Rig, idx: usize, open: bool) {
+    if let ResolvedChild::Node(m) = &mut r.node.borrow_mut().children[idx] {
+        m.props.insert("open".into(), b(open));
+    }
+}
+
+/// B9 round 2 — overlay-element.ts `captureFocus` records
+/// `deepActiveElement()` when a modal opens and `releaseFocus` refocuses
+/// it when the modal goes away: closing a dialog hands keyboard focus
+/// back to whatever opened it, not to nowhere.
+#[test]
+fn modal_close_returns_focus_to_the_opener() {
+    let opener = node("we-button", "c/open", props(&[("label", s("Open"))]));
+    let mut modal = node(
+        "we-modal",
+        "c/m",
+        props(&[("open", b(false)), ("title", s("T"))]),
+    );
+    modal.handlers = handlers(&["close"]);
+    modal.children = vec![ResolvedChild::Node(Box::new(node(
+        "we-input",
+        "c/m/field",
+        props(&[("label", s("Field")), ("value", s(""))]),
+    )))];
+    let mut col = node("Column", "c", props(&[]));
+    col.children = vec![
+        ResolvedChild::Node(Box::new(opener)),
+        ResolvedChild::Node(Box::new(modal)),
+    ];
+    let (mut h, r) = rig(col);
+    h.run();
+    h.get_by_label("Open").focus();
+    h.run();
+    assert!(h.get_by_label("Open").is_focused());
+    // The template opens the dialog; focus moves into it.
+    set_modal_open(&r, 1, true);
+    h.run();
+    h.get_by_label("Field").focus();
+    h.run();
+    assert!(h.get_by_label("Field").is_focused());
+    // The template closes it (its `close` handler set open=false).
+    set_modal_open(&r, 1, false);
+    h.run();
+    h.run();
+    assert!(
+        h.get_by_label("Open").is_focused(),
+        "closing the modal must return focus to the control that had it at open"
+    );
+}

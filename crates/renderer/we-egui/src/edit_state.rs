@@ -26,6 +26,10 @@ pub struct EditState {
     /// rule. Recorded at activation; a never-activated (controlled) open
     /// fills it from the trigger's own interactable.
     pub triggers: HashMap<NodeId, egui::Id>,
+    /// What held keyboard focus when each painted modal opened —
+    /// overlay-element.ts `captureFocus`/`releaseFocus`: the modal's
+    /// disappearance hands focus back to it.
+    pub modal_openers: HashMap<NodeId, Option<egui::Id>>,
 }
 
 impl EditState {
