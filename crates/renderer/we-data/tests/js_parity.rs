@@ -85,3 +85,69 @@ fn an_empty_aggregate_is_absent() {
     );
     assert_eq!(corrected, json!(3), "'count' on a slider → mean");
 }
+
+/// The profile joins build a `Map` keyed by did (reactors.ts:64,
+/// voices.ts:58, involvementMenu.ts:97) — the last row for a did wins,
+/// not the first. With `find` the stale row survived.
+#[test]
+fn profile_joins_take_the_last_duplicate() {
+    let profiles = json!([
+        { "did": "did:a", "name": "Old", "avatar": "a-old" },
+        { "did": "did:a", "name": "New", "avatar": "a-new" }
+    ]);
+
+    let reacted = call(
+        "reactors",
+        json!({
+            "signals": [{ "author": "did:a", "value": 1 }],
+            "profiles": profiles,
+            "me": "did:b"
+        }),
+    );
+    assert_eq!(reacted["people"][0]["name"], json!("New"));
+    assert_eq!(reacted["people"][0]["avatar"], json!("a-new"));
+
+    // And the search matches the name that won — 'new' finds the person.
+    let searched = call(
+        "reactors",
+        json!({
+            "signals": [{ "author": "did:a", "value": 1 }],
+            "profiles": profiles,
+            "me": "did:b",
+            "search": "new"
+        }),
+    );
+    assert_eq!(searched["people"].as_array().unwrap().len(), 1);
+    assert_eq!(searched["unresolved"], json!(0));
+
+    let listed = call(
+        "voices",
+        json!({
+            "summary": { "voices": [{ "author": "did:a", "cards": 1, "mean": 1 }] },
+            "profiles": profiles,
+            "me": "did:b",
+            "param": ""
+        }),
+    );
+    assert_eq!(listed[0]["name"], json!("New"));
+    assert_eq!(listed[0]["avatar"], json!("a-new"));
+
+    // A holder who left still comes from the profile cache — the last one.
+    let menu = call(
+        "involvementMenu",
+        json!({
+            "node": "n1",
+            "entity": "TaskBlock",
+            "rows": [{ "node": "n1", "agent": "did:a", "kind": "helper" }],
+            "types": [{ "slug": "helper", "semantic": "responsible", "reflexive": false }],
+            "members": [],
+            "profiles": profiles,
+            "me": "did:b"
+        }),
+    );
+    assert_eq!(
+        menu[0]["items"][0]["label"],
+        json!("New"),
+        "departed holder joins the last profile"
+    );
+}

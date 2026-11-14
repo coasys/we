@@ -143,6 +143,18 @@ fn list(items: Vec<Value>) -> Value {
     Value::List(Arc::new(items))
 }
 
+/// `new Map(profiles.map(p => [p.did, p]))` — the last row for a did wins.
+/// Only a string did can ever be looked up, so non-strings never enter.
+fn by_did(profiles: &[Value]) -> IndexMap<&str, &Value> {
+    let mut map = IndexMap::new();
+    for p in profiles {
+        if let Some(did) = str_or(get(p, "did")) {
+            map.insert(did, p);
+        }
+    }
+    map
+}
+
 /// `relationId` — a string, a one-element list's head, or an object's `id`.
 fn relation_id(v: &Value) -> String {
     match v {
@@ -209,12 +221,13 @@ fn reactors(options: &Value) -> Value {
     let mine = as_str(get(options, "me"));
     let needle = as_str(get(options, "search")).trim().to_lowercase();
 
+    let by_did = by_did(cache);
     let mut all: Vec<Value> = Vec::new();
     for row in rows {
         let Some(author) = str_or(get(row, "author")) else {
             continue;
         };
-        let profile = cache.iter().find(|p| str_or(get(p, "did")) == Some(author));
+        let profile = by_did.get(author).copied();
         // `typeof profile?.name === 'string' ? profile.name : ''` — an empty
         // name stays empty (no `||` fallback here, unlike `voices`).
         let name = profile.and_then(|p| str_or(get(p, "name"))).unwrap_or("");
@@ -427,6 +440,7 @@ fn short_did(did: &str) -> String {
 fn voices(options: &Value) -> Value {
     let rows = as_list(get(get(options, "summary"), "voices"));
     let profiles = as_list(get(options, "profiles"));
+    let by_did = by_did(profiles);
     let me = get(options, "me");
     let weights = parse_weights(get(options, "param"));
 
@@ -435,7 +449,7 @@ fn voices(options: &Value) -> Value {
         let Some(did) = str_or(get(row, "author")).filter(|d| !d.is_empty()) else {
             continue;
         };
-        let profile = profiles.iter().find(|p| str_or(get(p, "did")) == Some(did));
+        let profile = by_did.get(did).copied();
         let pretend = str_or(get(row, "name")).is_some_and(|n| !n.is_empty());
         // `profile?.name || shortDid(did)` — an empty name falls back.
         let name = if pretend {
@@ -780,14 +794,13 @@ fn involvement_menu(options: &Value) -> Value {
             members.insert(did.to_string(), m.clone());
         }
     }
-    let profiles = as_list(get(options, "profiles")).to_vec();
+    let by_did = by_did(as_list(get(options, "profiles")));
     for person in as_list(get(on_node, "people")) {
         let did = as_str(get(person, "did")).to_string();
         if !did.is_empty() && !members.contains_key(&did) {
-            let fallback = profiles
-                .iter()
-                .find(|p| str_or(get(p, "did")) == Some(did.as_str()))
-                .cloned()
+            let fallback = by_did
+                .get(did.as_str())
+                .map(|p| (*p).clone())
                 .unwrap_or_else(|| obj(vec![("did", did.clone().into())]));
             members.insert(did, fallback);
         }
