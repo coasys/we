@@ -340,12 +340,32 @@ pub(crate) fn paint_box(
     }
 
     // Inset layers: over the background, under the borders (CSS painting
-    // order). The layer's shape is the box shrunk by its spread and
-    // shifted by its offset — `inset 1px 1px` lights the top/left inner
-    // edges, `inset -1px -1px` the bottom/right. Painted region =
-    // `rect \ shape`, the four edge strips between them. Layers stack
-    // front-to-back like CSS shadows (first declared on top), so they
-    // paint in reverse.
+    // order), inside the PADDING box — an inner shadow starts at the
+    // padding edge, so a border never covers its band. The layer's shape
+    // is that box shrunk by its spread and shifted by its offset —
+    // `inset 1px 1px` lights the top/left inner edges, `inset -1px -1px`
+    // the bottom/right. Painted region = `padding \ shape`, the four
+    // edge strips between them. Layers stack front-to-back like CSS
+    // shadows (first declared on top), so they paint in reverse.
+    let border_w = |side: &Option<we_style::BorderSide>| match side {
+        Some(b)
+            if !matches!(
+                b.kind,
+                we_style::BorderKind::None | we_style::BorderKind::Hidden
+            ) =>
+        {
+            b.width
+                .and_then(|d| d.to_px(view.font_px, view.root_px, viewport))
+                .unwrap_or(3.0) // CSS `medium`, as the stroke below
+                .max(0.0)
+        }
+        _ => 0.0,
+    };
+    let b = &style.paint.borders;
+    let padding_box = egui::Rect::from_min_max(
+        rect.min + egui::vec2(border_w(&b.left), border_w(&b.top)),
+        rect.max - egui::vec2(border_w(&b.right), border_w(&b.bottom)),
+    );
     if let Some(shadows) = &style.paint.shadows {
         for s in shadows.iter().rev() {
             if !s.inset {
@@ -366,7 +386,10 @@ pub(crate) fn paint_box(
                 .and_then(|d| d.to_px(view.font_px, view.root_px, viewport))
                 .unwrap_or(0.0);
             let color = s.color.map(color32).unwrap_or(current_color);
-            let shape = rect.expand(-spread).translate(egui::vec2(dx, dy));
+            if padding_box.width() <= 0.0 || padding_box.height() <= 0.0 {
+                continue; // the borders fill the box — no padding edge
+            }
+            let shape = padding_box.expand(-spread).translate(egui::vec2(dx, dy));
             // Blur softens the band inward — the uncovered shape shrinks
             // in fading steps, matching the outer-shadow approximation.
             let layers = if blur > 0.0 { 3 } else { 1 };
@@ -380,7 +403,7 @@ pub(crate) fn paint_box(
                 };
                 paint_inset_layer(
                     painter,
-                    rect,
+                    padding_box,
                     shape.expand(-grow),
                     fade(color).gamma_multiply(alpha),
                 );
