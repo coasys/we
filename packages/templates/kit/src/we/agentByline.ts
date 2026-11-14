@@ -172,8 +172,8 @@ export function agentByline(opts: AgentBylineOptions): SchemaNode {
 
 /** What each verdict a byline marks says, on hover and to a screen reader. */
 export const VERDICT_WORDS = {
-  cantCheck: "Can't check who wrote this yet",
-  flagged: 'Written by a device that has since been removed',
+  cantCheck: 'Author not confirmed yet',
+  flagged: 'From a removed device',
 } as const;
 
 /**
