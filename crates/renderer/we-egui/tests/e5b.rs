@@ -619,6 +619,68 @@ fn textarea_submit_on_enter_contract() {
     assert_detail(&r, "onInput", s("hi\n"));
 }
 
+/// F8 — textarea.ts:316 `e.key !== 'Enter' || e.shiftKey || e.isComposing`:
+/// Shift and composition are the ONLY exclusions — Ctrl/Cmd/Alt+Enter
+/// submit like a plain Enter. The Rust guard required `Modifiers::NONE`,
+/// so modified Enters fell through to editing instead of submitting.
+#[test]
+fn textarea_submit_on_enter_accepts_ctrl_enter() {
+    let mut ta = node(
+        "we-textarea",
+        "ta",
+        props(&[
+            ("label", s("Msg")),
+            ("value", s("")),
+            ("submitOnEnter", b(true)),
+        ]),
+    );
+    ta.handlers = handlers(&["onInput", "onSubmit"]);
+    let (mut h, r) = rig(ta);
+    h.run();
+    let f = h.get_by_label("Msg");
+    f.click();
+    f.type_text("hi");
+    h.step();
+    r.node
+        .borrow_mut()
+        .props
+        .insert("value".into(), last_detail(&r, "onInput"));
+    h.step();
+    h.key_down_modifiers(egui::Modifiers::CTRL, egui::Key::Enter);
+    h.step();
+    assert_detail(&r, "onSubmit", s("hi"));
+    // The Enter was consumed for the submit — no newline lands either.
+    assert_detail(&r, "onInput", s("hi"));
+}
+
+/// F8 — the opt-out side: without `submitOnEnter` the modified Enter is
+/// a no-op, same as the DOM element (a browser inserts a newline only
+/// for plain/Shift Enter — Ctrl+Enter has no default edit), and submits
+/// nothing.
+#[test]
+fn textarea_ctrl_enter_without_optin_is_a_noop() {
+    let mut ta = node(
+        "we-textarea",
+        "ta",
+        props(&[("label", s("Msg")), ("value", s(""))]),
+    );
+    ta.handlers = handlers(&["onInput", "onSubmit"]);
+    let (mut h, r) = rig(ta);
+    h.run();
+    let f = h.get_by_label("Msg");
+    f.click();
+    f.type_text("hi");
+    h.step();
+    h.key_down_modifiers(egui::Modifiers::CTRL, egui::Key::Enter);
+    h.step();
+    assert!(
+        details(&r, "onSubmit").is_empty(),
+        "no submitOnEnter → Ctrl+Enter submits nothing"
+    );
+    // And no edit landed: the last input event is still the typed text.
+    assert_detail(&r, "onInput", s("hi"));
+}
+
 /// B6 — the opt-in is real: without `submitOnEnter` an Enter is just a
 /// newline, and Enter on whitespace carries nothing to send.
 #[test]

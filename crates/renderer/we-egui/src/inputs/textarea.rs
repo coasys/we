@@ -51,7 +51,11 @@ impl Widget for Textarea {
         // immutable `&str` buffer is the DOM attribute (edits are no-ops
         // however focus arrived); focus, selection and copy stay live.
         let mut composing = cx.edit.field(&node.id, "ime").truthy();
-        let mut plain_enter = false;
+        // textarea.ts:316 — Shift and an open composition are the only
+        // exclusions: Ctrl/Cmd/Alt+Enter submit exactly like a plain
+        // Enter. The matched modifiers ride along so the preventDefault
+        // consumes the same keystroke it came from.
+        let mut submit_mods = Vec::new();
         if focused {
             cx.ui.input(|i| {
                 for e in &i.events {
@@ -67,8 +71,8 @@ impl Widget for Textarea {
                             pressed: true,
                             modifiers,
                             ..
-                        } if *modifiers == egui::Modifiers::NONE && !composing => {
-                            plain_enter = true;
+                        } if !modifiers.shift && !composing => {
+                            submit_mods.push(*modifiers);
                         }
                         _ => {}
                     }
@@ -79,9 +83,11 @@ impl Widget for Textarea {
                     .set_field(&node.id, "ime", we_expr::Value::Bool(composing));
             }
         }
-        if submit_on_enter && focused && plain_enter {
+        if submit_on_enter && focused && !submit_mods.is_empty() {
             cx.ui.input_mut(|i| {
-                i.consume_key(egui::Modifiers::NONE, egui::Key::Enter);
+                for mods in &submit_mods {
+                    i.consume_key(*mods, egui::Key::Enter);
+                }
             });
         }
 
@@ -117,8 +123,10 @@ impl Widget for Textarea {
             cx.edit
                 .set_field(&node.id, "dirty", we_expr::Value::Bool(true));
         }
-        if submit_on_enter && plain_enter && !text.trim().is_empty() {
-            cx.emit(&node.id, "onSubmit", events::detail_str(&text));
+        if submit_on_enter && !submit_mods.is_empty() && !text.trim().is_empty() {
+            for _ in &submit_mods {
+                cx.emit(&node.id, "onSubmit", events::detail_str(&text));
+            }
         }
         if response.lost_focus() && cx.edit.field(&node.id, "dirty").truthy() {
             cx.edit
