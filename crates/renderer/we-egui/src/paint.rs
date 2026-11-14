@@ -147,9 +147,6 @@ struct FrameOverlay {
     stack: Vec<NodeId>,
     /// `close`/`onClose` the node declared, resolved once at record time.
     close: Option<&'static str>,
-    /// The trigger's egui widget id — a dismissed popup returns keyboard
-    /// focus to it like the DOM's `trigger.focus()`.
-    trig: Option<egui::Id>,
     /// A modal closes only through its handler (its `open` is always
     /// prop-driven); popups also carry an internal flag.
     modal: bool,
@@ -530,8 +527,26 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
                     && pos.is_some_and(|p| w.clip.is_none_or(|c| c.contains(p)))
                     && w.ui.ctx().rect_contains_pointer(w.ui.layer_id(), anchor)
                     && !dead_hit;
-            let activated = w.hits.activated.iter().any(|r| anchor.contains(r.center()));
-            if activated || pointer_hit {
+            let activated = w
+                .hits
+                .activated
+                .iter()
+                .find(|(r, _)| anchor.contains(r.center()));
+            if activated.is_some() || pointer_hit {
+                // Name the invoker so a later close hands focus back to
+                // it — the DOM popover's "previously focused element".
+                // A bare pointer hit lands on the last control painted
+                // inside the anchor (the button in a padded wrapper).
+                if let Some(id) = activated.map(|(_, id)| *id).or_else(|| {
+                    w.hits
+                        .interact
+                        .iter()
+                        .rev()
+                        .find(|(r, _)| anchor.contains(r.center()))
+                        .map(|(_, id)| *id)
+                }) {
+                    w.edit.triggers.insert(node.id.clone(), id);
+                }
                 let open = w.edit.is_open(&node.id);
                 w.edit.set_open(&node.id, !open);
             }
@@ -786,10 +801,7 @@ fn request_close(w: &mut Walk<'_>, entry: &FrameOverlay) {
         }
         return;
     }
-    w.edit.set_open(&entry.id, false);
-    if let Some(id) = entry.trig {
-        w.ui.ctx().memory_mut(|m| m.request_focus(id));
-    }
+    w.edit.close_popup(w.ui.ctx(), &entry.id);
     if let Some(name) = entry.close {
         w.events.push(WidgetEvent {
             node: entry.id.clone(),
@@ -1086,7 +1098,6 @@ fn modal_overlay(
             anchor: None,
             stack,
             close: close_handler(node),
-            trig: None,
             modal: true,
             id: node.id.clone(),
         },
@@ -1171,6 +1182,19 @@ fn anchored_overlay(
     // trigger anchor and ancestry tell an outside click what's inside.
     // `at` keeps it beneath the descendants its `show` recorded.
     if let Some(resp) = inner {
+        // A never-activated (controlled) open still names an invoker for
+        // focus return: the last interactable painted inside the anchor —
+        // the button in a padded wrapper, not the wrapper's own rect.
+        if let Some(id) = w.edit.triggers.get(&node.id).copied().or_else(|| {
+            w.hits
+                .interact
+                .iter()
+                .rev()
+                .find(|(r, _)| anchor.contains(r.center()))
+                .map(|(_, id)| *id)
+        }) {
+            w.edit.triggers.insert(node.id.clone(), id);
+        }
         w.frame.borrow_mut().insert(
             at,
             FrameOverlay {
@@ -1178,14 +1202,6 @@ fn anchored_overlay(
                 anchor: Some(anchor),
                 stack,
                 close: close_handler(node),
-                // The trigger's interact rect is its part rect — the same
-                // rect the anchor was captured from.
-                trig: w
-                    .hits
-                    .interact
-                    .iter()
-                    .find(|(r, _)| *r == anchor)
-                    .map(|(_, id)| *id),
                 modal: false,
                 id: node.id.clone(),
             },

@@ -1437,6 +1437,84 @@ fn dropdown_menu_item_fires_once_and_closes() {
     assert!(!r.edit.borrow().is_open(&NodeId::from("menu")));
 }
 
+/// F6 — a popover that hides with focus inside hands focus back to the
+/// invoker (native `popover="auto"` behavior, the browser's own close
+/// transition). Menu selection set `open=false` directly and never ran
+/// that path: a keyboard-focused item disappeared with focus going
+/// nowhere.
+#[test]
+fn menu_keyboard_selection_returns_focus_to_trigger() {
+    let mut menu = node(
+        "DropdownMenu",
+        "menu",
+        props(&[(
+            "items",
+            Value::List(Arc::new(vec![Value::Obj(Arc::new(props(&[
+                ("id", s("edit")),
+                ("label", s("Edit")),
+            ])))])),
+        )]),
+    );
+    menu.handlers = handlers(&["onSelect"]);
+    let trig = node("we-button", "menu/trig", props(&[("label", s("Menu"))]));
+    menu.children = vec![ResolvedChild::Node(Box::new(trig))];
+    let (mut h, r) = rig(menu);
+    h.run();
+    h.get_by_label("Menu").click();
+    h.run();
+    h.get_by_label("Edit").focus();
+    h.run();
+    h.key_press(egui::Key::Enter);
+    h.run();
+    assert!(
+        !r.edit.borrow().is_open(&NodeId::from("menu")),
+        "selecting an action closes the menu"
+    );
+    assert!(
+        h.get_by_label("Menu").is_focused(),
+        "the close hands focus back to the invoker"
+    );
+}
+
+/// F6 — a trigger wrapper wider than its control (the padded/rail-row
+/// shape): the anchor is the wrapper's rect, so exact-rect trigger
+/// lookup found no interactive id and Escape could not restore focus.
+/// The activating control is the button *inside* the anchor.
+#[test]
+fn menu_escape_restores_focus_through_a_trigger_wrapper() {
+    let mut menu = node(
+        "DropdownMenu",
+        "menu",
+        props(&[(
+            "items",
+            Value::List(Arc::new(vec![Value::Obj(Arc::new(props(&[
+                ("id", s("edit")),
+                ("label", s("Edit")),
+            ])))])),
+        )]),
+    );
+    // A padded Row holding a smaller button — the trigger part is the
+    // Row's rect, the control is inside it.
+    let mut wrap = node(
+        "Row",
+        "menu/wrap",
+        props(&[("width", n(200.0)), ("height", n(48.0))]),
+    );
+    let trig = node("we-button", "menu/wrap/btn", props(&[("label", s("Menu"))]));
+    wrap.children = vec![ResolvedChild::Node(Box::new(trig))];
+    menu.children = vec![ResolvedChild::Node(Box::new(wrap))];
+    let (mut h, _r) = rig(menu);
+    h.run();
+    h.get_by_label("Menu").click();
+    h.run();
+    h.key_press(egui::Key::Escape);
+    h.run();
+    assert!(
+        h.get_by_label("Menu").is_focused(),
+        "Escape returns focus to the control inside the trigger wrapper"
+    );
+}
+
 /// B3 — a childless DropdownMenu gets the generated we-button trigger
 /// (DropdownMenu.solid.tsx:441–463): a `triggerIcon` makes it icon-only
 /// (`square`), so the accessible name is `triggerTitle`; the bundle's two

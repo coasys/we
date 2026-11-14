@@ -508,7 +508,9 @@ fn paint_item(
         );
     } else {
         // onAction, then onSelect, then `closeMenu` — and the search
-        // starts over next time (`setQuery('')` on the way out).
+        // starts over next time (`setQuery('')` on the way out). The
+        // close is the shared popup transition: the flag drops and focus
+        // returns to the invoker, like the DOM popover hiding does.
         invoke(map, "onAction");
         cx.emit(
             &node.id,
@@ -517,6 +519,6 @@ fn paint_item(
         );
         cx.edit
             .set_field(&node.id, "menu_query", Value::Str("".into()));
-        cx.edit.set_open(&node.id, false);
+        cx.edit.close_popup(cx.ui.ctx(), &node.id);
     }
 }

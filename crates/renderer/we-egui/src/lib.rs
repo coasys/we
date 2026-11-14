@@ -114,12 +114,13 @@ pub struct PaintCx<'a> {
 
 /// The click-sensing rects the frame has reported so far: `activated` —
 /// a response that reported `clicked()` (pointer, keyboard fake-click or
-/// a11y activation, all layer/enabled-correct by egui); `dead` — a rect a
+/// a11y activation, all layer/enabled-correct by egui), with its widget
+/// id so a popup can name the control that invoked it; `dead` — a rect a
 /// disabled control still occupies, which swallows the DOM click rather
 /// than letting it reach whatever is beneath.
 #[derive(Debug, Default)]
 pub struct HitLog {
-    pub activated: Vec<Rect>,
+    pub activated: Vec<(Rect, egui::Id)>,
     pub dead: Vec<Rect>,
     /// Painted rects of widgets that took keyboard focus this frame — the
     /// enclosing scroller reads them to bring a Tab-visited control into
@@ -243,7 +244,7 @@ impl<'a> PaintCx<'a> {
         if !enabled {
             self.hits.dead.push(rect);
         } else if response.clicked() {
-            self.hits.activated.push(rect);
+            self.hits.activated.push((rect, response.id));
         }
         if response.gained_focus() {
             self.hits.gained.push(rect);
