@@ -40,9 +40,9 @@ impl Registry {
         }
     }
 
-    /// The builtin set — E3a's six plus the E5a batch: layout containers,
-    /// text, media, the button, feedback and the tree pair. E5b registers
-    /// its own on top.
+    /// The builtin set — the E5a batch (layout containers, text, media, the
+    /// button, feedback, the tree pair) plus E5b's (inputs, overlays,
+    /// pickers, sortable), then the labelled placeholders.
     pub fn with_builtins() -> Self {
         let mut reg = Self::empty()
             .with(crate::Row)
@@ -68,7 +68,25 @@ impl Registry {
             .with(crate::Skeleton)
             .with(crate::Divider)
             .with(crate::Tree)
-            .with(crate::TreeItem);
+            .with(crate::TreeItem)
+            // E5b — inputs
+            .with(crate::Input)
+            .with(crate::Textarea)
+            .with(crate::Select)
+            .with(crate::Switch)
+            .with(crate::Slider)
+            .with(crate::NumberInput)
+            .with(crate::FormField)
+            // E5b — overlays
+            .with(crate::Modal)
+            .with(crate::Popover)
+            .with(crate::DropdownMenu)
+            // E5b — pickers
+            .with(crate::DatePicker)
+            .with(crate::ColorPicker)
+            .with(crate::IconPicker)
+            // E5b — drag & drop
+            .with(crate::Sortable);
         crate::placeholders::register(&mut reg);
         reg
     }

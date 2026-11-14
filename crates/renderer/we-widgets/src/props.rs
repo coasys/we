@@ -1,31 +1,42 @@
 //! Prop helpers + the paint toolbox every widget shares.
 //!
-//! The rules from the TS primitives:
-//! - props come off `ResolvedNode.props` already evaluated — wrong types
-//!   fall back to defaults, never panic;
-//! - the *look* comes from [`we_style::Style`] first, then the widget's own
-//!   token defaults (in [`crate::defaults`]); no colour literals in widget
-//!   code — egui `visuals()` is the last fallback and always noted.
+//! Two layers:
+//! - the `pub` safe reads E5b's input/overlay/picker widgets use — a prop of
+//!   the wrong type falls back to the caller's default, never panics;
+//! - the `pub(crate)` paint toolbox the E5a widgets share — the *look* comes
+//!   from [`we_style::Style`] first, then the widget's own token defaults
+//!   (in [`crate::defaults`]); no colour literals in widget code — egui
+//!   `visuals()` is the last fallback and always noted.
 use indexmap::IndexMap;
 use we_expr::Value;
 use we_style::{Color, Dimension, Edges, Size, Style, StylePatch};
 use we_template::{NodeId, ResolvedNode};
 
-use crate::PaintCx;
+use crate::{PaintCx, Rect};
 
 /// The resolved DS-prop bag style resolution reads — what `props` becomes
 /// after the widget's defaults and the `style`/`styles` escape hatches merge.
 pub(crate) type Bag = IndexMap<std::sync::Arc<str>, Value>;
 
-/// `props[key]`.
-pub(crate) fn prop<'a>(node: &'a ResolvedNode, key: &str) -> Option<&'a Value> {
-    node.props.get(key)
+/// `props[key]` or `Undefined`.
+pub fn prop<'a>(node: &'a ResolvedNode, key: &str) -> &'a Value {
+    node.props.get(key).unwrap_or(&Value::Undefined)
 }
 
 /// `props[key]` as a string — `Str` only; anything else is a wrong type.
 pub(crate) fn prop_str<'a>(node: &'a ResolvedNode, key: &str) -> Option<&'a str> {
     match prop(node, key) {
-        Some(Value::Str(s)) => Some(s.as_ref()),
+        Value::Str(s) => Some(s.as_ref()),
+        _ => None,
+    }
+}
+
+/// A string prop, owned; `Num`/`Bool` coerce through their JS text form the
+/// way a DOM attribute would, anything else is `None`.
+pub fn prop_string(node: &ResolvedNode, key: &str) -> Option<String> {
+    match prop(node, key) {
+        Value::Str(s) => Some(s.to_string()),
+        Value::Num(_) | Value::Bool(_) => Some(prop(node, key).js_string()),
         _ => None,
     }
 }
@@ -38,15 +49,30 @@ pub(crate) fn prop_text<'a>(node: &'a ResolvedNode, key: &str) -> Option<&'a str
 /// `props[key]` truthy — `Bool` and `Num` read directly; `Str` the way the
 /// resolver leaves tokens; anything else `false`.
 pub(crate) fn prop_bool(node: &ResolvedNode, key: &str) -> bool {
-    prop(node, key).is_some_and(|v| v.truthy())
+    prop(node, key).truthy()
+}
+
+/// A boolean prop — `Bool` only; a string `"true"` does not coerce (wrong
+/// type → default).
+pub fn prop_flag(node: &ResolvedNode, key: &str) -> Option<bool> {
+    match prop(node, key) {
+        Value::Bool(b) => Some(*b),
+        _ => None,
+    }
+}
+
+/// `props[key]` present at all (not `Undefined`) — for "is `open`
+/// controlled?" checks.
+pub fn prop_present(node: &ResolvedNode, key: &str) -> bool {
+    !prop(node, key).is_undefined()
 }
 
 /// `props[key]` as an f64 — `Num` or a numeric `Str` ("12px" loses its unit
 /// the way `size="12px"` does on `we-icon`); anything else `None`.
-pub(crate) fn prop_num(node: &ResolvedNode, key: &str) -> Option<f64> {
+pub fn prop_num(node: &ResolvedNode, key: &str) -> Option<f64> {
     match prop(node, key) {
-        Some(Value::Num(n)) => Some(*n),
-        Some(Value::Str(s)) => {
+        Value::Num(n) => Some(*n),
+        Value::Str(s) => {
             let s = s.trim();
             s.parse::<f64>()
                 .ok()
@@ -57,12 +83,7 @@ pub(crate) fn prop_num(node: &ResolvedNode, key: &str) -> Option<f64> {
 }
 
 /// `props[key]` restricted to a word list — unknown words are a wrong type.
-#[allow(dead_code)]
-pub(crate) fn prop_enum<'a>(
-    node: &'a ResolvedNode,
-    key: &str,
-    allowed: &[&str],
-) -> Option<&'a str> {
+pub fn prop_enum<'a>(node: &'a ResolvedNode, key: &str, allowed: &[&'a str]) -> Option<&'a str> {
     prop_str(node, key).filter(|s| allowed.contains(s))
 }
 
@@ -72,7 +93,7 @@ pub(crate) fn prop_obj<'a>(
     key: &str,
 ) -> Option<&'a IndexMap<std::sync::Arc<str>, Value>> {
     match prop(node, key) {
-        Some(Value::Obj(o)) => Some(o.as_ref()),
+        Value::Obj(o) => Some(o.as_ref()),
         _ => None,
     }
 }
@@ -80,7 +101,7 @@ pub(crate) fn prop_obj<'a>(
 /// `props[key]` as a list.
 pub(crate) fn prop_list<'a>(node: &'a ResolvedNode, key: &str) -> Option<&'a Vec<Value>> {
     match prop(node, key) {
-        Some(Value::List(l)) => Some(l.as_ref()),
+        Value::List(l) => Some(l.as_ref()),
         _ => None,
     }
 }
@@ -112,6 +133,23 @@ pub(crate) fn label_of(node: &ResolvedNode) -> String {
         }
     }
     node.ty.to_string()
+}
+
+/// A part rect the layout gave `node` (`PaintCx::parts`), or `None`.
+pub fn part(cx: &PaintCx, node: &ResolvedNode, name: &'static str) -> Option<Rect> {
+    cx.parts.get(&(node.id.clone(), name)).copied()
+}
+
+/// The `size` DS prop → control height px (`--we-component-height-*`:
+/// xs 24, sm 28, md 34, lg 44, xl 56 — the themes' recorded scale, rounded).
+pub fn control_height(node: &ResolvedNode) -> f32 {
+    match prop_enum(node, "size", &["xs", "sm", "md", "lg", "xl"]).unwrap_or("md") {
+        "xs" => 24.0,
+        "sm" => 28.0,
+        "lg" => 44.0,
+        "xl" => 56.0,
+        _ => 34.0,
+    }
 }
 
 /// `Style::with_state` for the response's state — disabled beats active

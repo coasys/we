@@ -59,6 +59,16 @@ pub(crate) fn is_event_prop(key: &str) -> bool {
     key.len() > 2 && key.starts_with("on") && key.as_bytes()[2].is_ascii_uppercase()
 }
 
+/// `true` for a prop *value* that is a handler token (or a list of them) —
+/// callback props like `we-modal`'s `close`, which the Solid dispatcher
+/// resolves to a callable in any prop position, not just behind `on*`.
+/// Expressions (`{"$": …}`), queries and structural tokens produce
+/// [`HandlerToken::Other`] and stay props.
+fn is_callback_prop(json: &Json) -> bool {
+    let tokens = handler_tokens(json);
+    !tokens.is_empty() && tokens.iter().all(|t| !matches!(t, HandlerToken::Other(_)))
+}
+
 /// `true` for any object carrying a `$`-keyed token (`hasAnyToken` in the
 /// dispatcher): an expression, a handler token, a query. Objects with none are
 /// data and resolve recursively.
@@ -365,7 +375,7 @@ fn resolve_node(
             let mut handlers = IndexMap::new();
             if let Some(props) = props {
                 for (key, value) in props {
-                    if is_event_prop(key) {
+                    if is_event_prop(key) || is_callback_prop(value) {
                         handlers.insert(
                             key.as_str().into(),
                             HandlerRef {

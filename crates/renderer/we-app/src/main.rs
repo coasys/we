@@ -31,20 +31,24 @@ const DEFAULT_BUNDLE: &str = concat!(
 );
 
 #[cfg(not(target_arch = "wasm32"))]
+struct Args {
+    bundle: String,
+    snapshot: Option<String>,
+    route: String,
+    gallery: Gallery,
+}
+
+/// Which `--gallery` showcase to open (`none` → render the bundle).
+/// `style` is the token showcase, `widgets` the themed E5a set,
+/// `inputs` E5b's batch-2 showcase with its live event log.
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Default, PartialEq)]
 enum Gallery {
     #[default]
     None,
     Style,
     Widgets,
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-struct Args {
-    bundle: String,
-    snapshot: Option<String>,
-    route: String,
-    gallery: Gallery,
+    Inputs,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -77,17 +81,22 @@ fn parse_args() -> Args {
             "--gallery" => match rest.next().as_deref() {
                 Some("style") => args.gallery = Gallery::Style,
                 Some("widgets") => args.gallery = Gallery::Widgets,
-                other => panic!("--gallery needs a target (`style` or `widgets`): {other:?}"),
+                Some("inputs") => args.gallery = Gallery::Inputs,
+                other => {
+                    panic!("--gallery needs a target (`style`, `widgets` or `inputs`): {other:?}")
+                }
             },
             "--offline" => {}
             "--help" | "-h" => {
                 eprintln!(
-                    "usage: we-app [--bundle <path>] [--snapshot <path>] [--route <href>] [--offline] [--gallery style]\n\n\
+                    "usage: we-app [--bundle <path>] [--snapshot <path>] [--route <href>] [--offline] [--gallery style|widgets|inputs]\n\n\
                      --bundle <path>    bundle to render (default: the repo's bundles/coasys.bundle.json)\n\
                      --snapshot <path>  offline data: stores/queries/invokes as JSON\n\
                      --route <href>     initial routeStore path (default /)\n\
                      --offline          run with no executor — the only mode this stage has\n\
-                     --gallery <target>  `style`: tokens showcase · `widgets`: the E5a widget set"
+                     --gallery style    design-system showcase: roles, scales, radii, shadows\n\
+                     --gallery widgets  the E5a widget showcase, themed, schema-driven\n\
+                     --gallery inputs   the E5b widget showcase, painted through layout+paint"
                 );
                 std::process::exit(0);
             }
@@ -189,46 +198,43 @@ impl eframe::App for App {
     }
 }
 
-/// `we-app --gallery style` — the design-system showcase with its theme
-/// picker, over the recorded token tables.
+/// `we-app --gallery <style|widgets|inputs>` — the showcases: the style
+/// token table with its theme picker, the themed E5a widget page, or the
+/// E5b batch-2 page painted live.
 #[cfg(not(target_arch = "wasm32"))]
-fn run_gallery() -> eframe::Result<()> {
+fn run_gallery(kind: Gallery) -> eframe::Result<()> {
+    let (title, size, app): (&str, [f32; 2], Box<dyn eframe::App>) = match kind {
+        Gallery::Style => (
+            "we gallery — style",
+            [720.0, 900.0],
+            Box::new(we_app::gallery::GalleryApp::new()),
+        ),
+        Gallery::Widgets => (
+            "we gallery — widgets",
+            [900.0, 900.0],
+            Box::new(we_app::gallery::WidgetsApp::new()),
+        ),
+        Gallery::Inputs => (
+            "we gallery — inputs",
+            [720.0, 900.0],
+            Box::new(we_app::gallery_widgets::WidgetsGalleryApp::new()),
+        ),
+        Gallery::None => unreachable!(),
+    };
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
-            .with_title("we gallery — style")
-            .with_inner_size([720.0, 900.0]),
+            .with_title(title)
+            .with_inner_size(size),
         ..Default::default()
     };
-    eframe::run_native(
-        "we gallery — style",
-        options,
-        Box::new(|_cc| Ok(Box::new(we_app::gallery::GalleryApp::new()))),
-    )
-}
-
-/// `we-app --gallery widgets` — the widget showcase, same theme picker.
-#[cfg(not(target_arch = "wasm32"))]
-fn run_widget_gallery() -> eframe::Result<()> {
-    let options = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default()
-            .with_title("we gallery — widgets")
-            .with_inner_size([900.0, 900.0]),
-        ..Default::default()
-    };
-    eframe::run_native(
-        "we gallery — widgets",
-        options,
-        Box::new(|_cc| Ok(Box::new(we_app::gallery::WidgetsApp::new()))),
-    )
+    eframe::run_native(title, options, Box::new(|_cc| Ok(app)))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
     let args = parse_args();
-    match args.gallery {
-        Gallery::Style => return run_gallery(),
-        Gallery::Widgets => return run_widget_gallery(),
-        Gallery::None => {}
+    if args.gallery != Gallery::None {
+        return run_gallery(args.gallery);
     }
     run_native(args)
 }

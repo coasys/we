@@ -15,13 +15,18 @@
 mod containers;
 mod controls;
 pub mod defaults;
-mod edit;
+mod dnd;
+mod edit_state;
+pub mod event;
 mod feedback;
+mod inputs;
 mod layout;
 mod media;
+mod overlays;
 mod paint;
+mod pickers;
 mod placeholders;
-mod props;
+pub mod props;
 mod registry;
 mod text;
 mod tree;
@@ -36,11 +41,16 @@ use we_template::{NodeId, ResolvedNode};
 pub use containers::{Card, Column, Div, Grid, Lane, Row};
 pub use controls::Button;
 pub use defaults::StyleCx;
-pub use edit::EditState;
+pub use dnd::Sortable;
+pub use edit_state::EditState;
+pub use event as events;
 pub use feedback::{Alert, Badge, Divider, Skeleton, Tag, Tooltip};
+pub use inputs::{FormField, Input, NumberInput, Select, Slider, Switch, Textarea};
 pub use layout::{layout, Direction, Layout, PartSpec, Parts, PartsSpec, Pick, TextSpan, TreeCfg};
 pub use media::{install as install_media, AnimatedIcon, Avatar, AvatarStack, Icon, Image};
+pub use overlays::{DropdownMenu, Modal, Popover};
 pub use paint::paint;
+pub use pickers::{ColorPicker, DatePicker, IconPicker};
 pub use registry::Registry;
 pub use text::{
     format_date, format_relative, parse_date, text_job, Link, Text, Timestamp, Typewriter,
