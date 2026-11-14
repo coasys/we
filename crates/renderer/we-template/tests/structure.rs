@@ -258,7 +258,10 @@ fn gated_query_field_exists_empty_and_not_loaded() {
         "$queries": {
             "gated": { "entity": "E", "when": { "$": "false" } },
             "noEnt": { "where": { "a": 1 } },
-            "bound": { "entity": "E", "limit": { "$": "local.missing" } },
+            // `bound` asks a different entity than `scoped` — an un-gated
+            // bound would compile to the same empty IR as the widened scope
+            // and dedup into its cell, hiding the sabotage in pool.len().
+            "bound": { "entity": "B", "limit": { "$": "local.missing" } },
             "scoped": { "entity": "E", "scope": { "anchorId": { "$": "local.missing" } } }
         },
         "children": [
@@ -297,6 +300,6 @@ fn gated_query_field_exists_empty_and_not_loaded() {
     assert_eq!(
         rt.pool().len(),
         1,
-        "the unanchored scope must widen into a plain query, not gate"
+        "gated queries add no cells; the widened scope adds exactly one"
     );
 }
