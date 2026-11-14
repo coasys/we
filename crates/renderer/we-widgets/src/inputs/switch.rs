@@ -29,7 +29,12 @@ impl Widget for Switch {
             .unwrap_or_else(|| props::prop(node, "checked").truthy());
         let label = access_label(cx, node);
 
-        let switch_rect = Rect::from_center_size(rect.left_center(), Size::new(36.0, 20.0));
+        // The pill hugs the rect's left edge — `from_center_size` on
+        // `left_center` alone would park half of it outside the column.
+        let switch_rect = Rect::from_center_size(
+            rect.left_center() + egui::vec2(18.0, 0.0),
+            Size::new(36.0, 20.0),
+        );
         let response = cx.interact_label(
             switch_rect,
             &label,

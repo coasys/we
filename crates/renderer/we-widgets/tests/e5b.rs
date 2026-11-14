@@ -275,6 +275,31 @@ fn switch_emits_next_state() {
 }
 
 #[test]
+fn switch_pill_stays_inside_the_column() {
+    // A switch in a padded column: the pill must start at the column's
+    // inner edge, never spill left of it (it did — centred on the edge).
+    let mut col = node("Column", "col", props(&[("p", s("400"))]));
+    let sw = node(
+        "we-switch",
+        "sw",
+        props(&[("label", s("Enable")), ("checked", b(true))]),
+    );
+    col.children = vec![ResolvedChild::Node(Box::new(sw))];
+    let (mut h, _r) = rig(col);
+    h.run();
+    let col_rect = h.get_by_label("Column").rect();
+    let sw_rect = h.get_by_label("Enable").rect();
+    assert!(
+        sw_rect.min.x >= col_rect.min.x + 16.0 - 0.01,
+        "pill {sw_rect:?} must start at the column's inner edge {col_rect:?}"
+    );
+    assert!(
+        sw_rect.min.x >= col_rect.min.x && sw_rect.max.x <= col_rect.max.x,
+        "pill {sw_rect:?} must lie inside the column {col_rect:?}"
+    );
+}
+
+#[test]
 fn slider_drag_emits_oninput() {
     let mut sl = node(
         "we-slider",
