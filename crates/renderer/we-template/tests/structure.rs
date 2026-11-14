@@ -378,6 +378,45 @@ fn navigate_options_pass_through() {
     );
 }
 
+#[test]
+fn a_nested_route_redirect_propagates_to_a_navigate_op() {
+    // F4: a `redirect` on a NESTED route completes the match — the
+    // router's Navigate fires for the branch it completed. Treating the
+    // inner match as "no child matched" swallows it: the frame paints
+    // nothing and no navigation ever arrives.
+    let tmpl: BundleTemplate = serde_json::from_value(json!({
+        "id": "t", "meta": {}, "type": "Column",
+        "routes": [
+            { "path": "/app",
+              "children": [ { "type": "AppChrome" }, { "type": "$routes" } ],
+              "routes": [
+                  { "path": "/old", "redirect": "/new-home" },
+                  { "path": "/page", "children": [ { "type": "Page" } ] }
+              ] },
+            { "path": "/new-home", "children": [ { "type": "Home" } ] }
+        ],
+        "children": [{ "type": "$routes" }]
+    }))
+    .unwrap();
+
+    let (mut rt, mut host, screen) = app_rt(None, Some(tmpl), "/space/demo/app/old");
+    let root = rt.frame(&mut host, &screen).clone();
+    let ops = rt.take_ops();
+    let nav = ops.iter().find_map(|op| match op {
+        we_screen::ScreenOp::Navigate { to, replace, .. } => Some((to.clone(), *replace)),
+        _ => None,
+    });
+    assert_eq!(
+        nav,
+        Some(("/new-home".to_string(), true)),
+        "a nested redirect must queue a replace Navigate — ops: {ops:?}"
+    );
+    assert!(
+        find_ty(&root, "AppChrome").is_none(),
+        "the redirecting branch paints nothing while it navigates"
+    );
+}
+
 fn find_all_ty<'a>(node: &'a ResolvedNode, ty: &str, out: &mut Vec<&'a ResolvedNode>) {
     if node.ty.as_ref() == ty {
         out.push(node);

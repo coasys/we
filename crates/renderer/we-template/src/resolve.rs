@@ -539,13 +539,20 @@ fn match_routes<'a>(
             return Some(RouteMatch::Redirect(resolve_redirect(redirect, prefix)));
         }
         if let Some(children) = route.node.routes.as_deref() {
-            if let Some(RouteMatch::Chain(mut tail)) = match_routes(children, rest, &full) {
-                let mut chain = vec![MatchedRoute {
-                    route,
-                    full: full.clone(),
-                }];
-                chain.append(&mut tail);
-                return Some(RouteMatch::Chain(chain));
+            match match_routes(children, rest, &full) {
+                Some(RouteMatch::Chain(mut tail)) => {
+                    let mut chain = vec![MatchedRoute {
+                        route,
+                        full: full.clone(),
+                    }];
+                    chain.append(&mut tail);
+                    return Some(RouteMatch::Chain(chain));
+                }
+                // A nested redirect completed the branch — the Navigate it
+                // carries fires for this route. Only a `None` (no nested
+                // route matched) falls through to the outer siblings.
+                found @ Some(RouteMatch::Redirect(_)) => return found,
+                None => {}
             }
             if rest.is_empty() {
                 // A layout route still renders with an empty outlet — the
