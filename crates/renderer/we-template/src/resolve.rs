@@ -220,8 +220,9 @@ fn step(name: &str, nth: usize) -> String {
 
 /// The row keys an `$each` list gets: each row's `id` when every row is a
 /// plain object with a distinct string/number `id` (WE's `keyable` in
-/// keptRows.ts), else the row index — computed once for the whole list, not
-/// per row (the all-rows check would make that O(n²)).
+/// keptRows.ts). Rows that are not `id`-keyable carry their own identity —
+/// `<For>` keys by item, not position: primitives by value, containers by
+/// reference, and a `~n` occurrence suffix keeps duplicates distinct.
 fn each_keys(items: &[Value]) -> Vec<String> {
     let mut ids = Vec::with_capacity(items.len());
     let keyed = !items.is_empty() && {
@@ -234,9 +235,38 @@ fn each_keys(items: &[Value]) -> Vec<String> {
         })
     };
     if keyed {
-        ids
-    } else {
-        (0..items.len()).map(|i| i.to_string()).collect()
+        return ids;
+    }
+    let mut seen: HashMap<String, usize> = HashMap::with_capacity(items.len());
+    items
+        .iter()
+        .map(|item| {
+            let base = row_key(item);
+            let seen = seen.entry(base.clone()).or_insert(0);
+            let key = if *seen == 0 {
+                base
+            } else {
+                format!("{base}~{seen}")
+            };
+            *seen += 1;
+            key
+        })
+        .collect()
+}
+
+/// An unkeyed row's identity: `v:` + a type-tagged value for primitives,
+/// `r:` + the shared address for containers — the same `===`/reference
+/// reading Solid's `mapArray` gives its items.
+fn row_key(item: &Value) -> String {
+    match item {
+        Value::Str(s) => format!("v:s:{s}"),
+        Value::Num(n) => format!("v:n:{}", Value::Num(*n).js_string()),
+        Value::Bool(b) => format!("v:b:{b}"),
+        Value::Null => "v:null".into(),
+        Value::Undefined => "v:undefined".into(),
+        Value::Obj(o) => format!("r:{}", Arc::as_ptr(o) as usize),
+        Value::List(l) => format!("r:{}", Arc::as_ptr(l) as usize),
+        _ => format!("v:{}", item.to_text()),
     }
 }
 

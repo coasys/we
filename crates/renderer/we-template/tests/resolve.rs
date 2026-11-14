@@ -187,6 +187,99 @@ fn each_rows_keep_key_based_ids_when_a_row_is_inserted_first() {
 }
 
 #[test]
+fn unkeyed_primitive_rows_keep_state_when_an_earlier_row_leaves() {
+    // A2: `<For>` keys by item, never position. Primitive rows carry their
+    // value identity — deleting the first row must not hand the second
+    // row's seat (and its locals) a new identity.
+    let node = schema(json!({
+        "type": "Column",
+        "children": [{
+            "type": "$each",
+            "props": { "items": { "$": "rows" }, "as": "row" },
+            "children": [{
+                "type": "we-text",
+                "$localState": { "note": { "type": "string", "initial": { "$": "row" } } },
+                "props": { "text": { "$": "local.note" } }
+            }]
+        }]
+    }));
+    let list = |v: &[&str]| {
+        Value::List(Arc::new(v.iter().map(|s| Value::from(*s)).collect()))
+    };
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root("rows", list(&["a", "b"]));
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let first = rt.frame(&mut host, &screen).clone();
+    let mut first_ids = Vec::new();
+    ids(&first, &mut first_ids);
+    let b_id = first_ids.last().expect("row b must exist").clone();
+    locals.set(&b_id, "note", Value::from("B!"));
+
+    bag.set_root("rows", list(&["b"]));
+    let second = rt.frame(&mut host, &screen).clone();
+    let mut second_ids = Vec::new();
+    ids(&second, &mut second_ids);
+    assert_eq!(second_ids.len() - 1, 1, "one row must remain: {second_ids:?}");
+    assert!(
+        second_ids.contains(&b_id),
+        "row 'b' must keep its identity after 'a' leaves: {second_ids:?}"
+    );
+    let text = match second.children.last() {
+        Some(ResolvedChild::Node(n)) => n.props["text"].to_text().to_string(),
+        _ => panic!("row must be a node"),
+    };
+    assert_eq!(text, "B!", "row 'b' must keep its own local, not row 'a''s seat");
+}
+
+#[test]
+fn unkeyed_object_rows_key_by_reference() {
+    // Same for objects without an `id`: two passes over a list holding the
+    // same Arc rows — the survivor keeps its state even at a new index.
+    let node = schema(json!({
+        "type": "Column",
+        "children": [{
+            "type": "$each",
+            "props": { "items": { "$": "rows" }, "as": "row" },
+            "children": [{
+                "type": "we-text",
+                "$localState": { "note": { "type": "string", "initial": { "$": "row.n" } } },
+                "props": { "text": { "$": "local.note" } }
+            }]
+        }]
+    }));
+    let obj = |n: f64| {
+        Value::Obj(Arc::new(
+            [("n".into(), Value::Num(n))].into_iter().collect(),
+        ))
+    };
+    let rows_a = vec![obj(1.0), obj(2.0)];
+    let survivor = rows_a[1].clone();
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root("rows", Value::List(Arc::new(rows_a)));
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let first = rt.frame(&mut host, &screen).clone();
+    let mut first_ids = Vec::new();
+    ids(&first, &mut first_ids);
+    let b_id = first_ids.last().expect("row b must exist").clone();
+    locals.set(&b_id, "note", Value::from("two"));
+
+    // A fresh list that still holds the same row object.
+    bag.set_root("rows", Value::List(Arc::new(vec![survivor])));
+    let second = rt.frame(&mut host, &screen).clone();
+    let mut second_ids = Vec::new();
+    ids(&second, &mut second_ids);
+    assert!(
+        second_ids.contains(&b_id),
+        "the surviving row object must keep its identity: {second_ids:?}"
+    );
+    let text = match second.children.last() {
+        Some(ResolvedChild::Node(n)) => n.props["text"].to_text().to_string(),
+        _ => panic!("row must be a node"),
+    };
+    assert_eq!(text, "two");
+}
+
+#[test]
 fn local_state_survives_re_resolution() {
     // Seed once, write once, re-resolve: the value must still be there — and
     // `seed` must not clobber it on the next pass.
