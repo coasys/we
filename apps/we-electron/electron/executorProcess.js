@@ -143,8 +143,8 @@ export async function waitForExecutorReady(
   if (outcome === 'ready') return;
   throw new Error(
     outcome === 'gone'
-      ? `The executor exited before it was ready on port ${port}`
-      : `The executor on port ${port} was not ready after ${timeoutMs / 1000} s`,
+      ? `It stopped before it was ready (port ${port}).`
+      : `It didn't respond within ${timeoutMs / 1000} seconds (port ${port}).`,
   );
 }
 

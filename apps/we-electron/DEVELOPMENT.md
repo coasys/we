@@ -97,7 +97,7 @@ What the app does when the executor exits (`afterExecutorExit`):
 On the first start, before the window exists, 78 and 79 end in the "could not start" box with the
 reason, and 80 tries another port up to three times.
 
-Settings → Devices → This computer → Advanced → **Executor settings** lists the config file's keys,
+Settings → Devices → This computer → Advanced → **Startup settings** lists the config file's keys,
 offers a control for each one the executor lets this machine change, says a change takes effect at
 the next start, offers **Restart now** (`runtime.restart`), and shows the log tail. It goes through
 `RuntimeAdminPort` (`executorConfig`, `setExecutorConfig`, `restartExecutor`, `executorLogTail`);

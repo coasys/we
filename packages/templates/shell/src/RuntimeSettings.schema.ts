@@ -579,15 +579,26 @@ export const executorSettings: SchemaNode = {
           props: { gap: '200', ay: 'center' },
           children: [
             { type: 'we-icon', props: { name: 'sliders-horizontal', color: 'text-muted' } },
-            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Executor settings'] },
+            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Startup settings'] },
           ],
         },
         {
-          type: 'we-text',
-          props: { variant: 'footnote', color: 'text-muted' },
+          type: 'Column',
+          props: { gap: '0' },
           children: [
             {
-              $: 'runtimeStore.executorOnServer ? `Settings from ${runtimeStore.executorConfigFile} on the host. Changes apply at its next start.` : `What your data layer starts with, from ${runtimeStore.executorConfigFile}. A change takes effect at the next start.`',
+              type: 'we-text',
+              props: { variant: 'footnote', color: 'text-muted' },
+              children: [
+                {
+                  $: "runtimeStore.executorOnServer ? 'This file is on the host. Changes apply when the host restarts.' : `Changes apply when ${templateStore.brand.name} restarts.`",
+                },
+              ],
+            },
+            {
+              type: 'we-text',
+              props: { variant: 'footnote', fontFamily: 'mono', color: 'text-muted' },
+              children: [{ $: 'runtimeStore.executorConfigFile' }],
             },
           ],
         },
@@ -602,7 +613,7 @@ export const executorSettings: SchemaNode = {
                 {
                   type: 'we-text',
                   props: { variant: 'footnote' },
-                  children: ['Saved. It takes effect at the next start.'],
+                  children: ['Saved. Restart to apply.'],
                 },
                 {
                   type: 'we-button',
@@ -716,7 +727,7 @@ export const executorSettings: SchemaNode = {
             {
               type: 'we-button',
               props: {
-                text: { $: "local.showExecutorLog ? 'Refresh the log' : 'Show the log'" },
+                text: { $: "local.showExecutorLog ? 'Refresh log' : 'Show log'" },
                 size: 'sm',
                 variant: 'soft',
                 loading: { $: "'loadExecutorLogTail' in runtimeStore.pending" },
