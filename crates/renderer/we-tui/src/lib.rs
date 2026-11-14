@@ -96,6 +96,10 @@ pub struct TuiApp {
     /// Fields typed into since their last commit — Enter or blur sends
     /// `onChange` only for these, as we-egui's `dirty` field does.
     dirty: HashSet<NodeId>,
+    /// Each draft's baseline: the `value` prop it was typed against
+    /// (we-egui's `seen`). A prop that moves off it — and off the draft —
+    /// is an authoritative write, and the draft gives way.
+    seen: HashMap<NodeId, Value>,
     /// The first visible canvas line.
     pub scroll: u16,
     /// The last frame's content height, for scroll clamping.
@@ -116,6 +120,7 @@ impl TuiApp {
             focusables: Vec::new(),
             drafts: HashMap::new(),
             dirty: HashSet::new(),
+            seen: HashMap::new(),
             scroll: 0,
             content_height: 0,
             view_height: 0,
@@ -135,6 +140,7 @@ impl TuiApp {
             ..area
         };
         let root = self.session.resolve();
+        self.reconcile_drafts(&root);
         // Base fill first — the window keeps the theme's bg where content
         // doesn't reach.
         if let Some(bg) = tui_color(self.palette.bg(&self.theme), self.truecolor) {
@@ -260,6 +266,31 @@ impl TuiApp {
         }
     }
 
+    /// Keep a draft only while its field is mounted and its `value` prop
+    /// is the baseline it was typed against — or already says what the
+    /// draft says (an `onInput` that stores the text). Anything else is a
+    /// write from outside: the prop wins.
+    fn reconcile_drafts(&mut self, root: &ResolvedNode) {
+        let seen = &self.seen;
+        self.drafts.retain(|id, draft| {
+            let Some(node) = find_node(root, id) else {
+                return false;
+            };
+            let prop = node.props.get("value").cloned().unwrap_or(Value::Undefined);
+            seen.get(id).is_some_and(|b| b.strict_eq(&prop)) || *prop.to_text() == **draft
+        });
+        let drafts = &self.drafts;
+        self.seen.retain(|id, _| drafts.contains_key(id));
+        // A field that left the tree has nothing left to commit.
+        self.dirty.retain(|id| find_node(root, id).is_some());
+    }
+
+    /// Drop a field's draft and its baseline — after a commit.
+    fn drop_draft(&mut self, id: &NodeId) {
+        self.drafts.remove(id);
+        self.seen.remove(id);
+    }
+
     /// Move focus to `next`. Focus leaving a field is its blur: a field
     /// typed into since its last commit commits now.
     fn set_focus(&mut self, next: Option<NodeId>) {
@@ -284,24 +315,35 @@ impl TuiApp {
             self.dirty.remove(id);
             return;
         };
-        let text = self.drafts.get(id).cloned().unwrap_or_default();
+        // The draft, or — if an outside write replaced it mid-edit — what
+        // the field shows now.
+        let text = self
+            .drafts
+            .get(id)
+            .cloned()
+            .or_else(|| prop_text(&node))
+            .unwrap_or_default();
         if node.ty.as_ref() == "we-number-input" {
             match text.trim().parse::<f64>() {
                 Ok(v) if v.is_finite() => {
                     let min = we_layout::props::prop_num(&node, "min").unwrap_or(f64::NEG_INFINITY);
                     let max = we_layout::props::prop_num(&node, "max").unwrap_or(f64::INFINITY);
                     self.dirty.remove(id);
+                    self.drop_draft(id);
                     self.emit(id, "onChange", detail(Value::Num(v.max(min).min(max))));
                 }
                 _ => {
                     if blur {
                         self.dirty.remove(id);
-                        self.drafts.remove(id);
+                        self.drop_draft(id);
                     }
                 }
             }
         } else {
+            // A committed draft is done: the field shows the prop again,
+            // whatever the handler made of the text.
             self.dirty.remove(id);
+            self.drop_draft(id);
             self.emit(id, "onChange", detail(Value::Str(text.into())));
         }
     }
@@ -317,11 +359,16 @@ impl TuiApp {
         {
             return;
         }
+        let baseline = self
+            .node_at(id)
+            .and_then(|n| n.props.get("value").cloned())
+            .unwrap_or(Value::Undefined);
         let text = {
             let d = self.draft_of(id);
             edit(d);
             d.clone()
         };
+        self.seen.insert(id.clone(), baseline);
         self.dirty.insert(id.clone());
         if !number {
             self.emit(id, "onInput", detail(Value::Str(text.into())));
