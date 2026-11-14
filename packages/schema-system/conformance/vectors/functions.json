@@ -1,0 +1,1302 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "count.1",
+      "note": "the count built-in",
+      "fn": "count",
+      "args": [[1, 2, 3]],
+      "result": 3
+    },
+    {
+      "id": "count.2",
+      "note": "the count built-in",
+      "fn": "count",
+      "args": ["a string"],
+      "result": 0
+    },
+    {
+      "id": "count.3",
+      "note": "the count built-in",
+      "fn": "count",
+      "args": [
+        {
+          "$undefined": true
+        }
+      ],
+      "result": 0
+    },
+    {
+      "id": "count.4",
+      "note": "the count built-in",
+      "fn": "count",
+      "args": [5],
+      "result": 0
+    },
+    {
+      "id": "filter.5",
+      "note": "the filter built-in",
+      "fn": "filter",
+      "args": [
+        [
+          {
+            "role": "a"
+          },
+          {
+            "role": "b"
+          }
+        ],
+        {
+          "role": "a"
+        }
+      ],
+      "result": [
+        {
+          "role": "a"
+        }
+      ]
+    },
+    {
+      "id": "filter.6",
+      "note": "the filter built-in",
+      "fn": "filter",
+      "args": [
+        [1, 2, 3, 4],
+        {
+          "gt": 2
+        }
+      ],
+      "result": []
+    },
+    {
+      "id": "filter.7",
+      "note": "the filter built-in",
+      "fn": "filter",
+      "args": [
+        {
+          "$undefined": true
+        },
+        {
+          "role": "a"
+        }
+      ],
+      "result": []
+    },
+    {
+      "id": "filter.8",
+      "note": "the filter built-in",
+      "fn": "filter",
+      "args": [
+        "notalist",
+        {
+          "x": 1
+        }
+      ],
+      "result": []
+    },
+    {
+      "id": "find.9",
+      "note": "the find built-in",
+      "fn": "find",
+      "args": [
+        [
+          {
+            "id": 1
+          },
+          {
+            "id": 2
+          }
+        ],
+        {
+          "id": 2
+        }
+      ],
+      "result": {
+        "id": 2
+      }
+    },
+    {
+      "id": "find.10",
+      "note": "the find built-in",
+      "fn": "find",
+      "args": [
+        [1, 2],
+        {
+          "gt": 9
+        }
+      ],
+      "result": {
+        "$undefined": true
+      }
+    },
+    {
+      "id": "find.11",
+      "note": "the find built-in",
+      "fn": "find",
+      "args": [
+        {
+          "$undefined": true
+        },
+        {
+          "id": 1
+        }
+      ],
+      "result": {
+        "$undefined": true
+      }
+    },
+    {
+      "id": "split.12",
+      "note": "the split built-in",
+      "fn": "split",
+      "args": ["a,b,c"],
+      "result": ["a", "b", "c"]
+    },
+    {
+      "id": "split.13",
+      "note": "the split built-in",
+      "fn": "split",
+      "args": ["a|b", "|"],
+      "result": ["a", "b"]
+    },
+    {
+      "id": "split.14",
+      "note": "the split built-in",
+      "fn": "split",
+      "args": [""],
+      "result": []
+    },
+    {
+      "id": "split.15",
+      "note": "the split built-in",
+      "fn": "split",
+      "args": [
+        {
+          "$undefined": true
+        }
+      ],
+      "result": []
+    },
+    {
+      "id": "contains.16",
+      "note": "the contains built-in",
+      "fn": "contains",
+      "args": ["Hello World", "world"],
+      "result": true
+    },
+    {
+      "id": "contains.17",
+      "note": "the contains built-in",
+      "fn": "contains",
+      "args": ["abc", "d"],
+      "result": false
+    },
+    {
+      "id": "contains.18",
+      "note": "the contains built-in",
+      "fn": "contains",
+      "args": [
+        {
+          "$undefined": true
+        },
+        "x"
+      ],
+      "result": false
+    },
+    {
+      "id": "first.19",
+      "note": "the first built-in",
+      "fn": "first",
+      "args": [[1, 2, 3]],
+      "result": 1
+    },
+    {
+      "id": "first.20",
+      "note": "the first built-in",
+      "fn": "first",
+      "args": [
+        [
+          {
+            "id": 1
+          }
+        ],
+        {
+          "id": 1
+        }
+      ],
+      "result": {
+        "id": 1
+      }
+    },
+    {
+      "id": "first.21",
+      "note": "the first built-in",
+      "fn": "first",
+      "args": [
+        {
+          "$undefined": true
+        }
+      ],
+      "result": {
+        "$undefined": true
+      }
+    },
+    {
+      "id": "startsWith.22",
+      "note": "the startsWith built-in",
+      "fn": "startsWith",
+      "args": ["prefix-body", "prefix"],
+      "result": true
+    },
+    {
+      "id": "startsWith.23",
+      "note": "the startsWith built-in",
+      "fn": "startsWith",
+      "args": ["body", "pre"],
+      "result": false
+    },
+    {
+      "id": "startsWith.24",
+      "note": "the startsWith built-in",
+      "fn": "startsWith",
+      "args": [
+        {
+          "$undefined": true
+        },
+        "x"
+      ],
+      "result": false
+    },
+    {
+      "id": "distinct.25",
+      "note": "the distinct built-in",
+      "fn": "distinct",
+      "args": [
+        [1, 1, 2],
+        [2, 3]
+      ],
+      "result": [1, 2, 3]
+    },
+    {
+      "id": "distinct.26",
+      "note": "the distinct built-in",
+      "fn": "distinct",
+      "args": [
+        [
+          {
+            "id": 1
+          },
+          {
+            "id": 1
+          },
+          {
+            "id": 2
+          }
+        ]
+      ],
+      "result": [
+        {
+          "id": 1
+        },
+        {
+          "id": 2
+        }
+      ]
+    },
+    {
+      "id": "distinct.27",
+      "note": "the distinct built-in",
+      "fn": "distinct",
+      "args": [
+        {
+          "$undefined": true
+        }
+      ],
+      "result": []
+    },
+    {
+      "id": "plural.28",
+      "note": "the plural built-in",
+      "fn": "plural",
+      "args": [1, "one", "many"],
+      "result": "one"
+    },
+    {
+      "id": "plural.29",
+      "note": "the plural built-in",
+      "fn": "plural",
+      "args": [3, "one", "many"],
+      "result": "many"
+    },
+    {
+      "id": "plural.30",
+      "note": "the plural built-in",
+      "fn": "plural",
+      "args": [
+        {
+          "$undefined": true
+        },
+        "one",
+        "many"
+      ],
+      "result": "many"
+    },
+    {
+      "id": "trim.31",
+      "note": "the trim built-in",
+      "fn": "trim",
+      "args": ["  padded  "],
+      "result": "padded"
+    },
+    {
+      "id": "trim.32",
+      "note": "the trim built-in",
+      "fn": "trim",
+      "args": ["clean"],
+      "result": "clean"
+    },
+    {
+      "id": "trim.33",
+      "note": "the trim built-in",
+      "fn": "trim",
+      "args": [
+        {
+          "$undefined": true
+        }
+      ],
+      "result": ""
+    },
+    {
+      "id": "lower.34",
+      "note": "the lower built-in",
+      "fn": "lower",
+      "args": ["MiXeD Case"],
+      "result": "mixed case"
+    },
+    {
+      "id": "lower.35",
+      "note": "the lower built-in",
+      "fn": "lower",
+      "args": ["already"],
+      "result": "already"
+    },
+    {
+      "id": "lower.36",
+      "note": "the lower built-in",
+      "fn": "lower",
+      "args": [
+        {
+          "$undefined": true
+        }
+      ],
+      "result": ""
+    },
+    {
+      "id": "join.37",
+      "note": "the join built-in",
+      "fn": "join",
+      "args": [["a", "b"], "-"],
+      "result": "a-b"
+    },
+    {
+      "id": "join.38",
+      "note": "the join built-in",
+      "fn": "join",
+      "args": [[1, 2], ", "],
+      "result": "1, 2"
+    },
+    {
+      "id": "join.39",
+      "note": "the join built-in",
+      "fn": "join",
+      "args": [
+        {
+          "$undefined": true
+        },
+        ","
+      ],
+      "result": ""
+    },
+    {
+      "id": "sum.40",
+      "note": "the sum built-in",
+      "fn": "sum",
+      "args": [[1, 2, 3]],
+      "result": 6
+    },
+    {
+      "id": "sum.41",
+      "note": "the sum built-in",
+      "fn": "sum",
+      "args": ["nonsense"],
+      "result": 0
+    },
+    {
+      "id": "sum.42",
+      "note": "the sum built-in",
+      "fn": "sum",
+      "args": [
+        {
+          "$undefined": true
+        }
+      ],
+      "result": 0
+    },
+    {
+      "id": "last.43",
+      "note": "the last built-in",
+      "fn": "last",
+      "args": [[1, 2, 3]],
+      "result": 3
+    },
+    {
+      "id": "last.44",
+      "note": "the last built-in",
+      "fn": "last",
+      "args": [
+        {
+          "$undefined": true
+        }
+      ],
+      "result": {
+        "$undefined": true
+      }
+    },
+    {
+      "id": "reverse.45",
+      "note": "the reverse built-in",
+      "fn": "reverse",
+      "args": [[1, 2, 3]],
+      "result": [3, 2, 1]
+    },
+    {
+      "id": "reverse.46",
+      "note": "the reverse built-in",
+      "fn": "reverse",
+      "args": [
+        {
+          "$undefined": true
+        }
+      ],
+      "result": []
+    },
+    {
+      "id": "upper.47",
+      "note": "the upper built-in",
+      "fn": "upper",
+      "args": ["mixed"],
+      "result": "MIXED"
+    },
+    {
+      "id": "upper.48",
+      "note": "the upper built-in",
+      "fn": "upper",
+      "args": [
+        {
+          "$undefined": true
+        }
+      ],
+      "result": ""
+    },
+    {
+      "id": "endsWith.49",
+      "note": "the endsWith built-in",
+      "fn": "endsWith",
+      "args": ["body-suffix", "suffix"],
+      "result": true
+    },
+    {
+      "id": "endsWith.50",
+      "note": "the endsWith built-in",
+      "fn": "endsWith",
+      "args": ["body", "x"],
+      "result": false
+    },
+    {
+      "id": "endsWith.51",
+      "note": "the endsWith built-in",
+      "fn": "endsWith",
+      "args": [
+        {
+          "$undefined": true
+        },
+        "x"
+      ],
+      "result": false
+    },
+    {
+      "id": "round.52",
+      "note": "the round built-in",
+      "fn": "round",
+      "args": [3.7],
+      "result": 4
+    },
+    {
+      "id": "round.53",
+      "note": "the round built-in",
+      "fn": "round",
+      "args": [3.14159, 2],
+      "result": 3.14
+    },
+    {
+      "id": "round.54",
+      "note": "the round built-in",
+      "fn": "round",
+      "args": [
+        {
+          "$undefined": true
+        }
+      ],
+      "result": 0
+    },
+    {
+      "id": "min.55",
+      "note": "the min built-in",
+      "fn": "min",
+      "args": [[3, 1, 2]],
+      "result": 0
+    },
+    {
+      "id": "min.56",
+      "note": "the min built-in",
+      "fn": "min",
+      "args": [
+        {
+          "$undefined": true
+        }
+      ],
+      "result": 0
+    },
+    {
+      "id": "max.57",
+      "note": "the max built-in",
+      "fn": "max",
+      "args": [[3, 1, 2]],
+      "result": 0
+    },
+    {
+      "id": "max.58",
+      "note": "the max built-in",
+      "fn": "max",
+      "args": [
+        {
+          "$undefined": true
+        }
+      ],
+      "result": 0
+    },
+    {
+      "id": "pick.59",
+      "note": "the pick built-in",
+      "fn": "pick",
+      "args": [
+        {
+          "a": 1,
+          "b": 2,
+          "c": 3
+        },
+        ["a", "c"]
+      ],
+      "result": {
+        "a": 1,
+        "c": 3
+      }
+    },
+    {
+      "id": "pick.60",
+      "note": "the pick built-in",
+      "fn": "pick",
+      "args": [
+        {
+          "a": 1
+        },
+        "a"
+      ],
+      "result": {}
+    },
+    {
+      "id": "pick.61",
+      "note": "the pick built-in",
+      "fn": "pick",
+      "args": [
+        {
+          "$undefined": true
+        },
+        ["a"]
+      ],
+      "result": {}
+    },
+    {
+      "id": "error.62",
+      "note": "the error built-in",
+      "fn": "error",
+      "args": ["name"],
+      "result": ""
+    },
+    {
+      "id": "error.63",
+      "note": "the error built-in",
+      "fn": "error",
+      "args": [
+        {
+          "$undefined": true
+        }
+      ],
+      "result": ""
+    },
+    {
+      "id": "valid.64",
+      "note": "the valid built-in",
+      "fn": "valid",
+      "args": ["name"],
+      "result": true
+    },
+    {
+      "id": "valid.65",
+      "note": "the valid built-in",
+      "fn": "valid",
+      "args": [
+        {
+          "$undefined": true
+        }
+      ],
+      "result": true
+    },
+    {
+      "id": "touched.66",
+      "note": "the touched built-in",
+      "fn": "touched",
+      "args": ["name"],
+      "result": false
+    },
+    {
+      "id": "touched.67",
+      "note": "the touched built-in",
+      "fn": "touched",
+      "args": [
+        {
+          "$undefined": true
+        }
+      ],
+      "result": false
+    },
+    {
+      "id": "formValid.68",
+      "note": "the formValid built-in",
+      "fn": "formValid",
+      "args": [],
+      "result": true
+    },
+    {
+      "id": "formValid.69",
+      "note": "the formValid built-in",
+      "fn": "formValid",
+      "args": [
+        {
+          "$undefined": true
+        }
+      ],
+      "result": true
+    },
+    {
+      "id": "count.70",
+      "note": "the count built-in",
+      "fn": "count",
+      "args": [
+        {
+          "a": 1
+        }
+      ],
+      "result": 0
+    },
+    {
+      "id": "count.71",
+      "note": "the count built-in",
+      "fn": "count",
+      "args": [[]],
+      "result": 0
+    },
+    {
+      "id": "first.72",
+      "note": "the first built-in",
+      "fn": "first",
+      "args": [[]],
+      "result": {
+        "$undefined": true
+      }
+    },
+    {
+      "id": "first.73",
+      "note": "the first built-in",
+      "fn": "first",
+      "args": ["abc"],
+      "result": {
+        "$undefined": true
+      }
+    },
+    {
+      "id": "last.74",
+      "note": "the last built-in",
+      "fn": "last",
+      "args": [[]],
+      "result": {
+        "$undefined": true
+      }
+    },
+    {
+      "id": "last.75",
+      "note": "the last built-in",
+      "fn": "last",
+      "args": ["abc"],
+      "result": {
+        "$undefined": true
+      }
+    },
+    {
+      "id": "reverse.76",
+      "note": "the reverse built-in",
+      "fn": "reverse",
+      "args": [[]],
+      "result": []
+    },
+    {
+      "id": "reverse.77",
+      "note": "the reverse built-in",
+      "fn": "reverse",
+      "args": ["abc"],
+      "result": []
+    },
+    {
+      "id": "sum.78",
+      "note": "the sum built-in",
+      "fn": "sum",
+      "args": [["3", 2, "x", null]],
+      "result": 5
+    },
+    {
+      "id": "sum.79",
+      "note": "the sum built-in",
+      "fn": "sum",
+      "args": [[]],
+      "result": 0
+    },
+    {
+      "id": "filter.80",
+      "note": "the filter built-in",
+      "fn": "filter",
+      "args": [[1, 2, 3], "notawhere"],
+      "result": [1, 2, 3]
+    },
+    {
+      "id": "filter.81",
+      "note": "the filter built-in",
+      "fn": "filter",
+      "args": [
+        [1, 2, 3, 4],
+        {
+          "$undefined": true
+        },
+        2
+      ],
+      "result": [1, 2]
+    },
+    {
+      "id": "filter.82",
+      "note": "the filter built-in",
+      "fn": "filter",
+      "args": [
+        [
+          {
+            "role": "a"
+          },
+          {
+            "role": "b"
+          },
+          {
+            "role": "a"
+          }
+        ],
+        {
+          "role": "a"
+        },
+        1
+      ],
+      "result": [
+        {
+          "role": "a"
+        }
+      ]
+    },
+    {
+      "id": "filter.83",
+      "note": "the filter built-in",
+      "fn": "filter",
+      "args": [
+        [1, 2, 3],
+        {
+          "$undefined": true
+        },
+        0
+      ],
+      "result": []
+    },
+    {
+      "id": "find.84",
+      "note": "the find built-in",
+      "fn": "find",
+      "args": [
+        [
+          {
+            "id": 1
+          },
+          {
+            "id": 2
+          }
+        ],
+        {
+          "$undefined": true
+        }
+      ],
+      "result": {
+        "id": 1
+      }
+    },
+    {
+      "id": "find.85",
+      "note": "the find built-in",
+      "fn": "find",
+      "args": [
+        [],
+        {
+          "id": 1
+        }
+      ],
+      "result": {
+        "$undefined": true
+      }
+    },
+    {
+      "id": "distinct.86",
+      "note": "the distinct built-in",
+      "fn": "distinct",
+      "args": [
+        [
+          {
+            "id": 1,
+            "v": "x"
+          },
+          {
+            "id": 1,
+            "v": "y"
+          }
+        ]
+      ],
+      "result": [
+        {
+          "id": 1,
+          "v": "x"
+        }
+      ]
+    },
+    {
+      "id": "distinct.87",
+      "note": "the distinct built-in",
+      "fn": "distinct",
+      "args": [
+        [1, 2],
+        "notalist",
+        [2, 3],
+        {
+          "id": 9
+        }
+      ],
+      "result": [1, 2, 3]
+    },
+    {
+      "id": "distinct.88",
+      "note": "the distinct built-in",
+      "fn": "distinct",
+      "args": [
+        [
+          {
+            "id": 1
+          },
+          {
+            "id": "1"
+          }
+        ]
+      ],
+      "result": [
+        {
+          "id": 1
+        },
+        {
+          "id": "1"
+        }
+      ]
+    },
+    {
+      "id": "join.89",
+      "note": "the join built-in",
+      "fn": "join",
+      "args": [["a", "b"]],
+      "result": "a, b"
+    },
+    {
+      "id": "join.90",
+      "note": "the join built-in",
+      "fn": "join",
+      "args": [[1, true, null], "-"],
+      "result": "1-true-"
+    },
+    {
+      "id": "join.91",
+      "note": "the join built-in",
+      "fn": "join",
+      "args": [[], "-"],
+      "result": ""
+    },
+    {
+      "id": "split.92",
+      "note": "the split built-in",
+      "fn": "split",
+      "args": ["a , b,, c", ","],
+      "result": ["a", "b", "c"]
+    },
+    {
+      "id": "split.93",
+      "note": "the split built-in",
+      "fn": "split",
+      "args": ["a;b;c", ";"],
+      "result": ["a", "b", "c"]
+    },
+    {
+      "id": "split.94",
+      "note": "the split built-in",
+      "fn": "split",
+      "args": [
+        {
+          "$undefined": true
+        },
+        ";"
+      ],
+      "result": []
+    },
+    {
+      "id": "contains.95",
+      "note": "the contains built-in",
+      "fn": "contains",
+      "args": ["Prefix Body", "PREFIX"],
+      "result": true
+    },
+    {
+      "id": "startsWith.96",
+      "note": "the startsWith built-in",
+      "fn": "startsWith",
+      "args": ["Body", "body"],
+      "result": false
+    },
+    {
+      "id": "endsWith.97",
+      "note": "the endsWith built-in",
+      "fn": "endsWith",
+      "args": ["File.PNG", ".png"],
+      "result": false
+    },
+    {
+      "id": "lower.98",
+      "note": "the lower built-in",
+      "fn": "lower",
+      "args": ["ÜNICODE ß"],
+      "result": "ünicode ß"
+    },
+    {
+      "id": "upper.99",
+      "note": "the upper built-in",
+      "fn": "upper",
+      "args": ["unicode ß"],
+      "result": "UNICODE SS"
+    },
+    {
+      "id": "trim.100",
+      "note": "the trim built-in",
+      "fn": "trim",
+      "args": ["\t\n spaced \r\n"],
+      "result": "spaced"
+    },
+    {
+      "id": "plural.101",
+      "note": "the plural built-in",
+      "fn": "plural",
+      "args": ["1", "one", "many"],
+      "result": "one"
+    },
+    {
+      "id": "plural.102",
+      "note": "the plural built-in",
+      "fn": "plural",
+      "args": [0, "one", "many"],
+      "result": "many"
+    },
+    {
+      "id": "round.103",
+      "note": "the round built-in",
+      "fn": "round",
+      "args": [2.5],
+      "result": 3
+    },
+    {
+      "id": "round.104",
+      "note": "the round built-in",
+      "fn": "round",
+      "args": [-2.5],
+      "result": -2
+    },
+    {
+      "id": "round.105",
+      "note": "the round built-in",
+      "fn": "round",
+      "args": [2.675, 2],
+      "result": 2.68
+    },
+    {
+      "id": "round.106",
+      "note": "the round built-in",
+      "fn": "round",
+      "args": ["x"],
+      "result": 0
+    },
+    {
+      "id": "min.107",
+      "note": "the min built-in",
+      "fn": "min",
+      "args": [3, 1, 2],
+      "result": 1
+    },
+    {
+      "id": "min.108",
+      "note": "the min built-in",
+      "fn": "min",
+      "args": [],
+      "result": 0
+    },
+    {
+      "id": "min.109",
+      "note": "the min built-in",
+      "fn": "min",
+      "args": ["5", 2],
+      "result": 2
+    },
+    {
+      "id": "max.110",
+      "note": "the max built-in",
+      "fn": "max",
+      "args": [3, 1, 2],
+      "result": 3
+    },
+    {
+      "id": "max.111",
+      "note": "the max built-in",
+      "fn": "max",
+      "args": [],
+      "result": 0
+    },
+    {
+      "id": "max.112",
+      "note": "the max built-in",
+      "fn": "max",
+      "args": ["x", 2],
+      "result": 2
+    },
+    {
+      "id": "pick.113",
+      "note": "the pick built-in",
+      "fn": "pick",
+      "args": [
+        {
+          "a": 1
+        },
+        ["a", "missing"]
+      ],
+      "result": {
+        "a": 1
+      }
+    },
+    {
+      "id": "pick.114",
+      "note": "the pick built-in",
+      "fn": "pick",
+      "args": [
+        {
+          "constructor": 1,
+          "a": 2
+        },
+        ["constructor", "a"]
+      ],
+      "result": {
+        "a": 2
+      }
+    },
+    {
+      "id": "pick.115",
+      "note": "the pick built-in",
+      "fn": "pick",
+      "args": [[], ["a"]],
+      "result": {}
+    },
+    {
+      "id": "pick.116",
+      "note": "the pick built-in",
+      "fn": "pick",
+      "args": [
+        {
+          "a": 1
+        },
+        {
+          "$undefined": true
+        }
+      ],
+      "result": {}
+    },
+    {
+      "id": "error.117",
+      "note": "the error built-in with $localMeta context",
+      "fn": "error",
+      "args": ["email"],
+      "context": {
+        "$localMeta": {
+          "email": {
+            "$localMetaEntry": true,
+            "touched": true,
+            "errors": ["required"]
+          }
+        }
+      },
+      "result": "required"
+    },
+    {
+      "id": "error.118",
+      "note": "the error built-in with $localMeta context",
+      "fn": "error",
+      "args": ["email"],
+      "context": {
+        "$localMeta": {
+          "email": {
+            "$localMetaEntry": true,
+            "touched": false,
+            "errors": ["required"]
+          }
+        }
+      },
+      "result": ""
+    },
+    {
+      "id": "error.119",
+      "note": "the error built-in with $localMeta context",
+      "fn": "error",
+      "args": ["email"],
+      "context": {
+        "$localMeta": {
+          "email": {
+            "$localMetaEntry": true,
+            "touched": true,
+            "errors": []
+          }
+        }
+      },
+      "result": ""
+    },
+    {
+      "id": "valid.120",
+      "note": "the valid built-in with $localMeta context",
+      "fn": "valid",
+      "args": ["email"],
+      "context": {
+        "$localMeta": {
+          "email": {
+            "$localMetaEntry": true,
+            "touched": true,
+            "errors": ["required"]
+          }
+        }
+      },
+      "result": false
+    },
+    {
+      "id": "valid.121",
+      "note": "the valid built-in with $localMeta context",
+      "fn": "valid",
+      "args": ["email"],
+      "context": {
+        "$localMeta": {
+          "email": {
+            "$localMetaEntry": true,
+            "touched": true,
+            "errors": []
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "id": "touched.122",
+      "note": "the touched built-in with $localMeta context",
+      "fn": "touched",
+      "args": ["email"],
+      "context": {
+        "$localMeta": {
+          "email": {
+            "$localMetaEntry": true,
+            "touched": true,
+            "errors": []
+          }
+        }
+      },
+      "result": true
+    },
+    {
+      "id": "formValid.123",
+      "note": "the formValid built-in with $localMeta context",
+      "fn": "formValid",
+      "args": [],
+      "context": {
+        "$localMeta": {
+          "a": {
+            "$localMetaEntry": true,
+            "touched": true,
+            "errors": []
+          },
+          "b": {
+            "$localMetaEntry": true,
+            "touched": false,
+            "errors": ["bad"]
+          }
+        },
+        "$localScopeFields": ["a", "b"]
+      },
+      "result": false
+    },
+    {
+      "id": "formValid.124",
+      "note": "the formValid built-in with $localMeta context",
+      "fn": "formValid",
+      "args": [],
+      "context": {
+        "$localMeta": {
+          "a": {
+            "$localMetaEntry": true,
+            "touched": true,
+            "errors": []
+          },
+          "b": {
+            "$localMetaEntry": true,
+            "touched": false,
+            "errors": ["bad"]
+          }
+        },
+        "$localScopeFields": ["a"]
+      },
+      "result": true
+    }
+  ]
+}
