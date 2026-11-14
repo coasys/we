@@ -5,10 +5,12 @@ use we_store::QueryIr;
 
 #[test]
 fn where_survives_round_trip() {
-    let mut query = QueryIr::default();
-    query.where_ = Some(json!({"author": {"$eq": "did:agent:alice"}}));
-    query.order = Some(json!({"title": "asc"}));
-    query.limit = Some(20);
+    let query = QueryIr {
+        where_: Some(json!({"author": {"$eq": "did:agent:alice"}})),
+        order: Some(json!({"title": "asc"})),
+        limit: Some(20),
+        ..QueryIr::default()
+    };
 
     let wire = serde_json::to_value(&query).unwrap();
     assert_eq!(wire["where"], json!({"author": {"$eq": "did:agent:alice"}}));
