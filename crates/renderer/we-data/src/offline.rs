@@ -100,9 +100,10 @@ impl OfflineData {
         SnapshotQuerySource::new(self.bag.clone())
     }
 
-    /// A `FakeExecutor` that answers `model_query`/`model_subscribe` from the
-    /// snapshot's `queries` table (looked up by class name) and counts writes,
-    /// commits, flows and shape calls into `provenance.dropped`.
+    /// A `FakeExecutor` holding the snapshot's `queries` table. It answers
+    /// only requests it has learned — `note`/`note_pool` from pool cells, or
+    /// `teach` for a direct binding — and refuses the rest into
+    /// `provenance.dropped`, beside writes, commits, flows and shape calls.
     pub fn executor(&self) -> FakeExecutor {
         FakeExecutor::new()
             .with_queries(self.queries.clone())

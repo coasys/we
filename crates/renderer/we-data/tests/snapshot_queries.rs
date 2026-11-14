@@ -16,13 +16,13 @@ fn mini_json() -> serde_json::Value {
     serde_json::from_str(MINI).unwrap()
 }
 
-/// Compile `{"entity": "<entity>"}` so a pool cell with a real key exists —
+/// Compile a `$queries` descriptor so a pool cell with a real key exists —
 /// the name is noted the way `resolve` notes it on the cell.
-fn cell_named(pool: &QueryPool, entity: &str, name: &str, bag: &StoreBag) {
+fn cell_named(pool: &QueryPool, descriptor: serde_json::Value, name: &str, bag: &StoreBag) {
     let mut cache = ParseCache::new();
     let mut warnings = Vec::new();
     let compiled = compile_query(
-        &serde_json::json!({ "entity": entity }),
+        &descriptor,
         &Scope::default(),
         bag,
         &mut cache,
@@ -37,7 +37,12 @@ fn cell_named(pool: &QueryPool, entity: &str, name: &str, bag: &StoreBag) {
 fn source_returns_the_named_query_rows() {
     let bag = Arc::new(StoreBag::from_snapshot(&mini_json()).unwrap());
     let pool = QueryPool::new();
-    cell_named(&pool, "SignalType", "signalTypes", &bag);
+    cell_named(
+        &pool,
+        serde_json::json!({ "entity": "SignalType" }),
+        "signalTypes",
+        &bag,
+    );
 
     let source = SnapshotQuerySource::new(bag);
     source.note_pool(&pool);
@@ -55,7 +60,12 @@ fn source_returns_the_named_query_rows() {
 fn unlearned_key_loads() {
     let bag = Arc::new(StoreBag::from_snapshot(&mini_json()).unwrap());
     let pool = QueryPool::new();
-    cell_named(&pool, "SignalType", "signalTypes", &bag);
+    cell_named(
+        &pool,
+        serde_json::json!({ "entity": "SignalType" }),
+        "signalTypes",
+        &bag,
+    );
 
     let source = SnapshotQuerySource::new(bag);
     // No note_pool — the source has not learned the key → Loading.
@@ -70,7 +80,12 @@ fn unlearned_key_loads() {
 fn name_the_snapshot_lacks_loads() {
     let bag = Arc::new(StoreBag::from_snapshot(&mini_json()).unwrap());
     let pool = QueryPool::new();
-    cell_named(&pool, "Nope", "noSuchQuery", &bag);
+    cell_named(
+        &pool,
+        serde_json::json!({ "entity": "Nope" }),
+        "noSuchQuery",
+        &bag,
+    );
 
     let source = SnapshotQuerySource::new(bag);
     source.note_pool(&pool);
@@ -82,40 +97,146 @@ fn name_the_snapshot_lacks_loads() {
 }
 
 #[test]
-fn fake_executor_answers_model_query_from_the_fixture() {
+fn a_request_the_snapshot_did_not_answer_is_refused() {
     let data = OfflineData::from_snapshot(&mini_json(), None).unwrap();
     let executor = data.executor();
     let space = SpaceId::new("demo");
-    // Offline the executor knows only the snapshot's `queries` names — a
-    // `ClassSel` is looked up in that table by name.
-    let class = ClassSel::one("signalTypes");
-    let ir = QueryIr::default();
 
+    // `queries.signalTypes` is a `$queries` field name — the snapshot
+    // recorded it for one particular request (`order: {"name": "asc"}`).
+    // A `ClassSel` names entities, and `SignalType` with a bare IR is a
+    // different request than the one recorded; `Ok` would pretend the
+    // fixture could answer a question nobody asked.
+    let entity = pollster::block_on(executor.model_query(
+        &space,
+        ClassSel::one("SignalType"),
+        &QueryIr::default(),
+    ));
+    assert!(entity.is_err(), "a bare-IR entity read must be refused");
+
+    // Even under the recorded field name, a filter/limit makes a different
+    // request: `where id = sig-pin, limit 1` is not the recorded list.
+    let paged = QueryIr {
+        where_: Some(serde_json::json!({ "id": "sig-pin" })),
+        limit: Some(1),
+        ..QueryIr::default()
+    };
+    let filtered =
+        pollster::block_on(executor.model_query(&space, ClassSel::one("signalTypes"), &paged));
+    assert!(
+        filtered.is_err(),
+        "a page the fixture did not record must be refused"
+    );
+
+    // `model_subscribe` is the same contract — live or not, a request is
+    // answered or it is refused.
+    let live = pollster::block_on(executor.model_subscribe(
+        &space,
+        ClassSel::one("SignalType"),
+        &QueryIr::default(),
+    ));
+    assert!(live.is_err(), "an unrecorded subscription must be refused");
+}
+
+#[test]
+fn model_query_answers_the_request_the_cell_asked() {
+    let data = OfflineData::from_snapshot(&mini_json(), None).unwrap();
+    let executor = data.executor();
+    let space = SpaceId::new("demo");
+    let pool = QueryPool::new();
+    // A one-shot `subscribe: false` read — the request `model_query` makes.
+    cell_named(
+        &pool,
+        serde_json::json!({ "entity": "SignalType", "order": { "name": "asc" }, "subscribe": false }),
+        "signalTypes",
+        &data.bag,
+    );
+    executor.note_pool(&pool);
+
+    let cell = pool.cells().into_iter().next().unwrap();
     let rows =
-        pollster::block_on(executor.model_query(&space, class, &ir)).expect("model_query answers");
+        pollster::block_on(executor.model_query(&space, ClassSel::one("SignalType"), &cell.ir))
+            .expect("the learned request is answered");
     match rows {
         we_expr::Value::List(rows) => assert_eq!(rows.len(), 2),
         other => panic!("expected rows, got {other:?}"),
     }
-    assert_eq!(executor.invocations(), 1);
+    // A subscription for the same entity is a different request — `sub`
+    // differs in the pool key — and this one was never learned.
+    let live =
+        pollster::block_on(executor.model_subscribe(&space, ClassSel::one("SignalType"), &cell.ir));
+    assert!(live.is_err(), "the subscribed twin was not learned");
 }
 
 #[test]
-fn fake_executor_subscribe_opens_a_live_query_with_rows() {
+fn model_subscribe_opens_a_live_query_for_a_learned_request() {
     let data = OfflineData::from_snapshot(&mini_json(), None).unwrap();
     let executor = data.executor();
     let space = SpaceId::new("demo");
-    let class = ClassSel::one("signalTypes");
-    let ir = QueryIr::default();
+    let pool = QueryPool::new();
+    // `subscribe` defaults true — the request `model_subscribe` makes.
+    cell_named(
+        &pool,
+        serde_json::json!({ "entity": "SignalType", "order": { "name": "asc" } }),
+        "signalTypes",
+        &data.bag,
+    );
+    executor.note_pool(&pool);
 
-    let live = pollster::block_on(executor.model_subscribe(&space, class, &ir))
-        .expect("model_subscribe answers");
+    let cell = pool.cells().into_iter().next().unwrap();
+    let live =
+        pollster::block_on(executor.model_subscribe(&space, ClassSel::one("SignalType"), &cell.ir))
+            .expect("the learned subscription is answered");
     match live.result() {
         we_expr::Value::List(rows) => assert_eq!(rows.len(), 2),
         other => panic!("expected rows, got {other:?}"),
     }
     pollster::block_on(executor.dispose_query(&space, live.id())).unwrap();
     assert_eq!(executor.disposed(), vec![live.id().clone()]);
+}
+
+#[test]
+fn a_request_for_another_space_is_refused() {
+    let data = OfflineData::from_snapshot(&mini_json(), None).unwrap();
+    // The fixture speaks for `demo` — a call routed to `other`, or whose IR
+    // names another dataset on this space, is refused.
+    let executor = data.executor().for_space(SpaceId::new("demo"));
+    let pool = QueryPool::new();
+    cell_named(
+        &pool,
+        serde_json::json!({ "entity": "SignalType", "subscribe": false }),
+        "signalTypes",
+        &data.bag,
+    );
+    executor.note_pool(&pool);
+    let cell = pool.cells().into_iter().next().unwrap();
+
+    let wrong_space = pollster::block_on(executor.model_query(
+        &SpaceId::new("other"),
+        ClassSel::one("SignalType"),
+        &cell.ir,
+    ));
+    assert!(wrong_space.is_err(), "a call routed elsewhere is refused");
+
+    let mut ds_ir = cell.ir.clone();
+    ds_ir.dataset = Some("elsewhere".to_string());
+    let wrong_dataset = pollster::block_on(executor.model_query(
+        &SpaceId::new("demo"),
+        ClassSel::one("SignalType"),
+        &ds_ir,
+    ));
+    assert!(
+        wrong_dataset.is_err(),
+        "a dataset that disagrees with the space is refused"
+    );
+
+    // The right space with the right request still answers.
+    let rows = pollster::block_on(executor.model_query(
+        &SpaceId::new("demo"),
+        ClassSel::one("SignalType"),
+        &cell.ir,
+    ));
+    assert!(rows.is_ok(), "the fixture's own space answers");
 }
 
 #[test]

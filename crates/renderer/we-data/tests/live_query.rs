@@ -5,6 +5,7 @@ use std::future::Future;
 use std::pin::pin;
 use std::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
+use indexmap::IndexMap;
 use we_data::{ClassSel, Executor, FakeExecutor, LiveQuery, LiveQueryId, QueryIr, SpaceId};
 use we_expr::Value;
 
@@ -27,9 +28,22 @@ fn block_on<F: Future>(future: F) -> F::Output {
     }
 }
 
+/// An executor taught one request: `Task` subscribed with the default IR
+/// answers the empty `tasks` list.
+fn executor_for_tasks() -> FakeExecutor {
+    let mut queries = IndexMap::new();
+    queries.insert(
+        "tasks".to_string(),
+        Value::List(std::sync::Arc::new(Vec::new())),
+    );
+    let executor = FakeExecutor::new().with_queries(queries);
+    executor.teach(&ClassSel::one("Task"), true, &QueryIr::default(), "tasks");
+    executor
+}
+
 #[test]
 fn model_subscribe_carries_the_subscribed_reply() {
-    let executor = FakeExecutor::new();
+    let executor = executor_for_tasks();
     let space = SpaceId::from("space://main");
 
     let live =
@@ -58,7 +72,7 @@ fn record_lands_a_newer_revision() {
 
 #[test]
 fn dispose_ends_the_subscription_through_the_executor() {
-    let executor = FakeExecutor::new();
+    let executor = executor_for_tasks();
     let space = SpaceId::from("space://main");
 
     let live =
