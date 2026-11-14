@@ -51,3 +51,37 @@ fn negative_aggregate_results_round_like_js() {
     );
     assert_eq!(positive, json!(1.3), "mean of 1 and 1.5 — ties up");
 }
+
+/// `aggregateFor` (aggregate.ts:74): `!type.aggregate` treats every falsy
+/// aggregate as absent — `""` included — so the mode's default applies.
+/// A toggle with `aggregate: ""` counts heads; it does not average.
+#[test]
+fn an_empty_aggregate_is_absent() {
+    let tally = call(
+        "signalTally",
+        json!({
+            "signals": [{ "value": 1 }, { "value": 1 }],
+            "type": { "mode": "toggle", "aggregate": "" }
+        }),
+    );
+    assert_eq!(tally, json!(2), "toggle + '' aggregate → count");
+
+    // A named aggregate still wins, and 'count' on a non-toggle is still
+    // corrected to the mode's own.
+    let named = call(
+        "signalTally",
+        json!({
+            "signals": [{ "value": 2 }, { "value": 4 }],
+            "type": { "mode": "slider", "aggregate": "median" }
+        }),
+    );
+    assert_eq!(named, json!(3), "median of 2 and 4");
+    let corrected = call(
+        "signalTally",
+        json!({
+            "signals": [{ "value": 2 }, { "value": 4 }],
+            "type": { "mode": "slider", "aggregate": "count" }
+        }),
+    );
+    assert_eq!(corrected, json!(3), "'count' on a slider → mean");
+}

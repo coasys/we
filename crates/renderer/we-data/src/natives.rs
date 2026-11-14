@@ -261,8 +261,11 @@ fn reactors(options: &Value) -> Value {
     ])
 }
 
-/// `aggregateFor` — the type's own aggregate, with the two `count` corrections.
-fn aggregate_for(t: &Value) -> String {
+/// `aggregateFor` — the type's own aggregate, with the two `count`
+/// corrections. Every falsy `aggregate` is absent (`""` included), and a
+/// truthy non-string comes back untouched — the TS switch on its value
+/// would land on `default` either way.
+fn aggregate_for(t: &Value) -> Value {
     let mode = as_str(get(t, "mode"));
     let fallback = match mode {
         "toggle" => "count",
@@ -270,10 +273,13 @@ fn aggregate_for(t: &Value) -> String {
         "rating" | "slider" => "mean",
         _ => "count",
     };
-    match str_or(get(t, "aggregate")) {
-        None => fallback.to_string(),
-        Some("count") if mode != "toggle" => fallback.to_string(),
-        Some(a) => a.to_string(),
+    let aggregate = get(t, "aggregate");
+    if !aggregate.truthy()
+        || (matches!(aggregate, Value::Str(s) if s.as_ref() == "count") && mode != "toggle")
+    {
+        fallback.into()
+    } else {
+        aggregate.clone()
     }
 }
 
@@ -297,7 +303,9 @@ fn signal_tally(options: &Value) -> Value {
         return 0.into();
     }
     let round = |n: f64| js_round(n * 10.0) / 10.0;
-    match aggregate_for(type_).as_str() {
+    // The TS switch on the aggregate's value — string names hit their arm,
+    // anything else (a number, a list) lands on `default` — the mean.
+    match as_str(&aggregate_for(type_)) {
         "count" => rows.iter().filter(|v| **v != 0.0).count().into(),
         "sum" => rows.iter().sum::<f64>().into(),
         "median" => {
