@@ -20,6 +20,7 @@ import {
   remaining,
   type RevokeTarget,
   type Screen,
+  screenTurns,
   spreadWords,
   targetLine,
   wordNumber,
@@ -231,6 +232,45 @@ describe('the identity window', () => {
     void cancel();
     expect(sent).toBe(2);
     expect(windowSource).toContain('const cancel = oneAtATime(');
+  });
+
+  it("draws a wait's answer only while its screen is still shown and nothing was sent since", async () => {
+    const matched = {
+      screen: 'device-match' as const,
+      code: 'R7K Q2M',
+      did: 'did:scid:x',
+      needsAccept: true,
+      accepted: true,
+      confirmed: true,
+    };
+    const joined = { screen: 'joined' as const, did: 'did:scid:x', keyId: 'd2' };
+    // The device-match screen waits for the join; the person accepts while it waits.
+    for (const order of ['accept first', 'wait first']) {
+      const drawn: Screen[] = [];
+      const turn = screenTurns();
+      turn.mark(); // device-match drawn
+      const current = turn.hold(); // its wait-join sent
+      turn.mark(); // the accept sent
+      const wait = Promise.resolve(matched);
+      const accept = Promise.resolve(joined);
+      const draw = (screen: Screen) => {
+        turn.mark();
+        drawn.push(screen);
+      };
+      const waited = () => wait.then((screen) => current() && draw(screen));
+      const accepted = () => accept.then(draw);
+      if (order === 'accept first') await accepted().then(waited);
+      else await waited().then(accepted);
+      expect(drawn, order).toEqual([joined]);
+    }
+    // A wait whose screen is still shown is drawn.
+    const turn = screenTurns();
+    turn.mark();
+    const current = turn.hold();
+    expect(current()).toBe(true);
+    expect(windowSource).toMatch(/function waitFor[\s\S]*?const current = turn\.hold\(\);/);
+    expect(windowSource).toMatch(/async function run\([\s\S]*?turn\.mark\(\);/);
+    expect(windowSource).toMatch(/function draw\(screen: Screen\) \{[\s\S]*?turn\.mark\(\);/);
   });
 
   it('says what the words do: add and remove devices, restore the identity, replace the master key', () => {
