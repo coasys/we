@@ -24,22 +24,24 @@ wasm_bindgen_test_configure!(run_in_browser);
 #[ignore]
 async fn back_reports_the_first_href() {
     let mut history = BrowserHistory::new().expect("a window");
-    let start = history.current_href();
     history.push("#two");
+    // The callback reports the full address — pathname + search + hash —
+    // never the bare "#two" text pushed: capture what the bar shows.
+    let two = history.current_href();
     history.push("#three");
 
     let seen = Rc::new(RefCell::new(Vec::<String>::new()));
     let seen_in = seen.clone();
     history.on_popstate(move |href| seen_in.borrow_mut().push(href));
 
+    let moved = wait_event("popstate"); // armed before the ask — no race
     history.back();
-    // The move is the browser's: let it fire `popstate` before asserting.
-    wait_for_popstate().await;
+    moved.await;
 
     let seen = seen.borrow();
     assert!(
-        seen.iter().any(|href| href == "#two"),
-        "popstate should report the previous entry, saw {seen:?} (start {start})"
+        seen.iter().any(|href| *href == two),
+        "popstate should report the previous entry's address, saw {seen:?} (wanted {two})"
     );
 }
 
