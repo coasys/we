@@ -406,7 +406,7 @@ impl Parser {
     }
 
     fn ternary(&mut self) -> Result<Node, SyntaxError> {
-        let test = self.logical()?;
+        let test = self.or()?;
         if self.eat(&TokenKind::Question) {
             let consequent = self.expr()?;
             self.expect(&TokenKind::Colon, "`:` in the ternary")?;
@@ -421,23 +421,35 @@ impl Parser {
         }
     }
 
-    fn logical(&mut self) -> Result<Node, SyntaxError> {
-        let mut left = self.equality()?;
-        loop {
-            let op = if self.eat(&TokenKind::And) {
-                LogicalOp::And
-            } else if self.eat(&TokenKind::Or) {
-                LogicalOp::Or
-            } else {
-                return Ok(left);
-            };
-            let right = self.equality()?;
+    // The levels mirror the TS parser's precedence (`parser.ts` —
+    // `?:` · `??` · `||` · `&&` · `== !=` · comparison · `+ -` · `* / %` —
+    // so `!a || b && c` reads as `!a || (b && c)` (vector `print.precedence`).
+    // `??` and the arithmetic/comparison ops land here when E1 fills the
+    // grammar in.
+    fn or(&mut self) -> Result<Node, SyntaxError> {
+        let mut left = self.and()?;
+        while self.eat(&TokenKind::Or) {
+            let right = self.and()?;
             left = Node::Logical {
-                op,
+                op: LogicalOp::Or,
                 left: Box::new(left),
                 right: Box::new(right),
             };
         }
+        Ok(left)
+    }
+
+    fn and(&mut self) -> Result<Node, SyntaxError> {
+        let mut left = self.equality()?;
+        while self.eat(&TokenKind::And) {
+            let right = self.equality()?;
+            left = Node::Logical {
+                op: LogicalOp::And,
+                left: Box::new(left),
+                right: Box::new(right),
+            };
+        }
+        Ok(left)
     }
 
     fn equality(&mut self) -> Result<Node, SyntaxError> {

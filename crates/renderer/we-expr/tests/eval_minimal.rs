@@ -109,6 +109,40 @@ fn minimal_evaluator() {
     }
 }
 
+/// The `print.*` cases of `expressions.json` that pin operator precedence,
+/// ported to evaluation (the Rust side has no printer to compare `print`
+/// against): `!a || b && c` must read as `!a || (b && c)`, not
+/// `(!a || b) && c` — the fold one precedence level gives.
+#[test]
+fn vector_print_precedence() {
+    // Discriminating row first: a false !a is true, so `||` must not hand the
+    // `&&` an already-decided left — with c false the wrong fold answers false.
+    for a in [false, true] {
+        for b in [false, true] {
+            for c in [false, true] {
+                let env = MapEnv::new()
+                    .with_root("a", a)
+                    .with_root("b", b)
+                    .with_root("c", c);
+                let expr = parse("!a || b && c").unwrap();
+                let expected = !a || (b && c);
+                assert!(
+                    eval(&expr, &env).strict_eq(&expected.into()),
+                    "!a || b && c with a={a} b={b} c={c} read as (!a || b) && c"
+                );
+            }
+        }
+    }
+
+    // `print.parens` — parens still override: `(a || b) && c`.
+    let env = MapEnv::new()
+        .with_root("a", true)
+        .with_root("b", false)
+        .with_root("c", false);
+    let expr = parse("(a || b) && c").unwrap();
+    assert!(eval(&expr, &env).strict_eq(&false.into()));
+}
+
 #[test]
 fn syntax_errors() {
     for bad in ["", "1 ==", "(", "a.", "a[", "'unterminated", "a ? 1", "* 2"] {
