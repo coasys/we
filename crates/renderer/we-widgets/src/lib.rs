@@ -42,7 +42,9 @@ pub use layout::{layout, Direction, Layout, PartSpec, Parts, PartsSpec, Pick, Te
 pub use media::{install as install_media, AnimatedIcon, Avatar, AvatarStack, Icon, Image};
 pub use paint::paint;
 pub use registry::Registry;
-pub use text::{format_date, format_relative, parse_date, Link, Text, Timestamp, Typewriter};
+pub use text::{
+    format_date, format_relative, parse_date, text_job, Link, Text, Timestamp, Typewriter,
+};
 pub use tree::{Tree, TreeItem};
 pub use unknown::UnknownWidget;
 

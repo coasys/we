@@ -76,16 +76,9 @@ impl Widget for Video {
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         crate::containers::paint_container(cx, node, style, rect);
         if let Some(poster) = props::prop_text(node, "poster").filter(|p| !p.is_empty()) {
-            let img = egui::Image::new(egui::ImageSource::Uri(poster.to_string().into()))
-                .fit_to_exact_size(rect.size());
-            let mut child = cx.ui.new_child(
-                egui::UiBuilder::new()
-                    .max_rect(rect)
-                    .layout(*cx.ui.layout())
-                    .invisible(),
-            );
-            child.set_clip_rect(rect);
-            child.add(img);
+            egui::Image::new(egui::ImageSource::Uri(poster.to_string().into()))
+                .fit_to_exact_size(rect.size())
+                .paint_at(cx.ui, rect);
         } else {
             let p = cx.ui.painter();
             p.rect_filled(rect, 2.0, egui::Color32::BLACK.gamma_multiply(0.85));

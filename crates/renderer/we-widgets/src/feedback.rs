@@ -101,24 +101,8 @@ impl Widget for Badge {
         WidgetKind::Leaf
     }
     fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, avail: Size) -> Size {
-        let g = crate::text::text_job(&Self::text(node), style, cx.ctx, avail.x, true, None);
-        // The pill adds its px padding around the galley.
-        let view = view_of(cx.ctx);
-        let pad = props::px(
-            style.layout.padding.left.as_ref(),
-            FONT_PX,
-            ROOT_PX,
-            view.viewport,
-        )
-        .unwrap_or(6.0);
-        let vpad = props::px(
-            style.layout.padding.top.as_ref(),
-            FONT_PX,
-            ROOT_PX,
-            view.viewport,
-        )
-        .unwrap_or(1.0);
-        Size::new(g.size().x + pad * 2.0, g.size().y + vpad * 2.0)
+        // The content box is the galley — layout adds the padding outside it.
+        crate::text::text_job(&Self::text(node), style, cx.ctx, avail.x, true, None).size()
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         crate::containers::paint_container(cx, node, style, rect);
@@ -155,28 +139,13 @@ impl Widget for Tag {
     fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, avail: Size) -> Size {
         let mut s =
             crate::text::text_job(&Self::text(node), style, cx.ctx, avail.x, true, None).size();
-        let view = view_of(cx.ctx);
-        let pad = props::px(
-            style.layout.padding.left.as_ref(),
-            FONT_PX,
-            ROOT_PX,
-            view.viewport,
-        )
-        .unwrap_or(6.0);
-        let vpad = props::px(
-            style.layout.padding.top.as_ref(),
-            FONT_PX,
-            ROOT_PX,
-            view.viewport,
-        )
-        .unwrap_or(2.0);
-        s.x += pad * 2.0
-            + if props::prop_bool(node, "dismissible") {
-                14.0
-            } else {
-                0.0
-            };
-        s.y += vpad * 2.0;
+        // The × sits beside the label inside the content box; the padding
+        // itself lands outside (layout adds it).
+        s.x += if props::prop_bool(node, "dismissible") {
+            14.0
+        } else {
+            0.0
+        };
         s
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
@@ -239,12 +208,27 @@ impl Alert {
         if let Some(i) = props::prop_str(node, "icon").filter(|i| !i.is_empty()) {
             return i;
         }
-        match props::prop_str(node, "tone").unwrap_or("info") {
+        // ALERT_TONE_ICONS — `x-circle` for danger, the rest per status.
+        match props::prop_str(node, "tone").unwrap_or("accent") {
             "warning" => "warning",
-            "danger" => "warning-octagon",
+            "danger" => "x-circle",
             "success" => "check-circle",
             _ => "info",
         }
+    }
+
+    /// The icon → text gap — the DS default's `gap` (space-300).
+    fn gap(style: &Style, viewport: we_style::Size) -> f32 {
+        style
+            .layout
+            .gap
+            .and_then(|(_, col)| props::px(Some(&col), FONT_PX, ROOT_PX, viewport))
+            .unwrap_or(8.0)
+    }
+
+    /// The icon's slot in the row — glyph + the gap before the text.
+    fn icon_w(style: &Style, viewport: we_style::Size) -> f32 {
+        16.0 + Self::gap(style, viewport)
     }
 }
 
@@ -255,8 +239,27 @@ impl Widget for Alert {
     fn kind(&self) -> WidgetKind {
         WidgetKind::Container
     }
-    fn measure(&self, _cx: &MeasureCx, _n: &ResolvedNode, _s: &Style, _a: Size) -> Size {
-        Size::ZERO
+    fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, avail: Size) -> Size {
+        // Real node children flow themselves — the leaf case is the
+        // `text`-prop banner, whose content is the tone icon + wrapped text.
+        let has_children = node
+            .children
+            .iter()
+            .any(|c| matches!(c, we_template::ResolvedChild::Node(_)));
+        let Some(text) = props::prop_text(node, "text").filter(|_| !has_children) else {
+            return Size::ZERO;
+        };
+        let view = view_of(cx.ctx);
+        let icon_w = Self::icon_w(style, view.viewport);
+        let g = crate::text::text_job(
+            text,
+            style,
+            cx.ctx,
+            (avail.x - icon_w).max(1.0),
+            false,
+            None,
+        );
+        Size::new(icon_w + g.size().x, g.size().y.max(16.0))
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         let view = view_of(cx.ui.ctx());
@@ -282,7 +285,13 @@ impl Widget for Alert {
             rect.min + egui::vec2(pad.max(6.0), vpad),
             egui::vec2(icon_size, icon_size),
         );
-        let color = props::tone_color(style, "solid", props::text_color(style, cx.ui.ctx()));
+        // `soft` tints the icon like the text; `edge` paints it in the
+        // tone's own colour (alert.ts's iconColor).
+        let color = if props::prop_str(node, "variant") == Some("edge") {
+            props::tone_color(style, "solid", props::text_color(style, cx.ui.ctx()))
+        } else {
+            props::text_color(style, cx.ui.ctx())
+        };
         if let Some(glyph) = crate::media::phosphor(Self::icon_for(node)) {
             cx.ui.painter().text(
                 icon_rect.center(),
@@ -299,8 +308,16 @@ impl Widget for Alert {
             .any(|c| matches!(c, we_template::ResolvedChild::Node(_)));
         if !has_children {
             if let Some(text) = props::prop_text(node, "text") {
+                let gap = icon_rect.max.x + Self::gap(style, view.viewport);
+                let right = rect.max.x
+                    - pad
+                    - if props::prop_bool(node, "dismissible") {
+                        18.0
+                    } else {
+                        0.0
+                    };
                 let tx =
-                    Rect::from_min_max(egui::pos2(icon_rect.max.x + 8.0, rect.min.y), rect.max);
+                    Rect::from_min_max(egui::pos2(gap, rect.min.y), egui::pos2(right, rect.max.y));
                 let g = crate::text::text_job(
                     text,
                     style,

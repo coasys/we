@@ -230,7 +230,10 @@ pub fn text_job(
     let view = view_of(ctx);
     let font = props::font_id(style, FONT_PX, ROOT_PX, view.viewport);
     let color = props::text_color(style, ctx);
-    let nowrap = matches!(style.text.white_space, Some(we_style::WhiteSpace::Nowrap)) || truncate;
+    // `white-space: nowrap` gets an unbounded galley (it clips at the rect);
+    // `truncate` must NOT — the ellipsis only appears when the row overflows
+    // a finite `max_width`.
+    let nowrap = matches!(style.text.white_space, Some(we_style::WhiteSpace::Nowrap)) && !truncate;
     let break_anywhere = matches!(
         style.text.overflow_wrap,
         Some(we_style::OverflowWrap::Anywhere) | Some(we_style::OverflowWrap::BreakWord)

@@ -420,25 +420,26 @@ pub(crate) fn tone_tokens(style: &Style) -> Option<&str> {
     style.tone.as_ref().map(|t| t.name.as_ref())
 }
 
-/// Look a `tone`-scoped colour up through the node's own resolved vars, then
-/// the plain (untone'd) table — `tone` vars the theme doesn't define fall
-/// back to the untoned role, the cascade `var(--we-danger-bg, var(--we-role-bg))`
-/// writes. `kind` is `soft`/`solid`/`border`/`text`.
-///
-/// Since `resolve()` already substituted vars, we re-derive the var name and
-/// ask the tone's var table — which `Tone.vars` holds — for its value.
+/// Look a `tone`-scoped colour up through the node's own resolved vars —
+/// `Tone.vars` holds the re-pointed accent roles, already substituted to the
+/// tone family (`--we-role-accent-soft` is `danger-soft` under `tone:
+/// danger`). `kind` is `soft`/`solid`/`border`/`text` — the accent suffix,
+/// `solid` naming the bare `--we-role-accent`.
 pub(crate) fn tone_color(style: &Style, kind: &str, fallback: egui::Color32) -> egui::Color32 {
     let Some(tone) = &style.tone else {
         return fallback;
     };
-    for key in [
-        format!("--we-{}-{}", tone.name, kind),
-        format!("--we-role-{}", kind),
-    ] {
-        if let Some(v) = tone.vars.get(key.as_str()) {
-            if let Some(c) = we_style::eval_color(v) {
-                return color32(c);
-            }
+    let owned;
+    let key = match kind {
+        "solid" => "--we-role-accent",
+        kind => {
+            owned = format!("--we-role-accent-{kind}");
+            owned.as_str()
+        }
+    };
+    if let Some(v) = tone.vars.get(key) {
+        if let Some(c) = we_style::eval_color(v) {
+            return color32(c);
         }
     }
     fallback

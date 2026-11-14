@@ -209,21 +209,32 @@ fn type_defaults(bag: &mut Bag, node: &ResolvedNode) {
                         bag,
                         &[("bg", "transparent"), ("height", "auto"), ("r", "0")],
                     );
+                    // The bare host rule zeroes the base part's padding too.
+                    bag.insert(Arc::from("px"), v("0"));
                 }
                 _ => {
                     // solid — same table either way.
                     entries(bag, &[("bg", "accent"), ("color", "on-accent")]);
                 }
             }
-            // Size: font size + component height.
-            let (fs, h) = match size(node, "md") {
-                "xs" => ("100", "xs"),
-                "sm" => ("200", "sm"),
-                "lg" => ("500", "lg"),
-                "xl" => ("500", "xl"),
-                _ => ("300", "md"),
+            // Size: font size + component height + the [part='base'] padding
+            // cascade — `0 <x>` whose x falls through the theme override vars
+            // to the size tier's space token (button.ts's `--we-button-size-
+            // padding-x`). Vertical padding stays 0; the height is fixed.
+            let (fs, h, px) = match size(node, "md") {
+                "xs" => ("100", "xs", "var(--we-space-200)"),
+                "sm" => ("200", "sm", "var(--we-space-300)"),
+                "lg" => ("500", "lg", "var(--we-space-500)"),
+                "xl" => ("500", "xl", "var(--we-space-500)"),
+                _ => ("300", "md", "var(--we-space-400)"),
             };
             entries(bag, &[("fontSize", fs)]);
+            bag.insert(
+                Arc::from("px"),
+                v(&format!(
+                    "var(--we-theme-button-padding-x, var(--we-theme-control-padding-x, {px}))"
+                )),
+            );
             bag.insert(
                 Arc::from("height"),
                 v(&format!(
@@ -267,17 +278,25 @@ fn type_defaults(bag: &mut Bag, node: &ResolvedNode) {
                 (_, true) => entries(bag, &[("bg", "accent-soft"), ("color", "accent-text")]),
                 _ => entries(bag, &[("bg", "control-surface"), ("color", "text-muted")]),
             }
-            let (fs, h) = match size(node, "md") {
-                "xs" => ("100", "xs"),
-                "sm" => ("200", "sm"),
-                "lg" => ("500", "lg"),
-                "xl" => ("500", "xl"),
-                _ => ("300", "md"),
+            // Same padding cascade as the button, on the badge's own theme
+            // var (badge.ts's `--we-badge-size-padding-x`).
+            let (fs, h, px) = match size(node, "md") {
+                "xs" => ("100", "xs", "var(--we-space-200)"),
+                "sm" => ("200", "sm", "var(--we-space-300)"),
+                "lg" => ("500", "lg", "var(--we-space-500)"),
+                "xl" => ("500", "xl", "var(--we-space-500)"),
+                _ => ("300", "md", "var(--we-space-400)"),
             };
             let h = format!(
                 "calc(var(--we-component-height-{h}) + var(--we-theme-control-height-offset, 0px))"
             );
             entries(bag, &[("fontSize", fs)]);
+            bag.insert(
+                Arc::from("px"),
+                v(&format!(
+                    "var(--we-theme-badge-padding-x, var(--we-theme-control-padding-x, {px}))"
+                )),
+            );
             bag.insert(Arc::from("height"), v(&h));
             bag.insert(Arc::from("minWidth"), v(&h));
         }

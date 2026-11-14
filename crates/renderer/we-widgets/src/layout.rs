@@ -503,11 +503,37 @@ enum Ctx {
     Text(NodeId, Arc<str>),
 }
 
+/// The width/height `widget.measure` gets: taffy's `known` first (a stretch
+/// or final box already decided it), then the offered space — `MinContent`
+/// wraps as hard as possible, `MaxContent`/unset means the natural size.
+fn offered(known: Option<f32>, space: taffy::AvailableSpace) -> f32 {
+    if let Some(k) = known {
+        return k;
+    }
+    match space {
+        taffy::AvailableSpace::Definite(w) => w,
+        taffy::AvailableSpace::MinContent => 0.0,
+        taffy::AvailableSpace::MaxContent => f32::INFINITY,
+    }
+}
+
+/// An intrinsic axis a widget answered non-finitely (an unconstrained
+/// divider's length) never reaches taffy — `auto`/stretch decides instead.
+fn finite(v: f32) -> f32 {
+    if v.is_finite() {
+        v.max(0.0)
+    } else {
+        0.0
+    }
+}
+
 struct Builder<'a> {
     tree: TaffyTree<Ctx>,
     cx: &'a MeasureCx<'a>,
     registry: &'a Registry,
     scx: &'a StyleCx<'a>,
+    /// `id` → resolved node — the measure function re-finds its widget.
+    nodes: HashMap<NodeId, &'a ResolvedNode>,
     scroll: HashMap<NodeId, egui::Vec2>,
     clip: HashMap<NodeId, egui::Vec2>,
 }
@@ -519,7 +545,7 @@ impl<'a> Builder<'a> {
         &mut self,
         owner: &NodeId,
         spec: &PartSpec,
-        node: &ResolvedNode,
+        node: &'a ResolvedNode,
         tree: &TreeCfg,
         parent_h_definite: bool,
         main_indefinite: bool,
@@ -569,8 +595,8 @@ impl<'a> Builder<'a> {
     /// measured by the galley.
     fn child_node(
         &mut self,
-        owner: &ResolvedNode,
-        child: &ResolvedChild,
+        owner: &'a ResolvedNode,
+        child: &'a ResolvedChild,
         tree: &TreeCfg,
         parent_h_definite: bool,
         main_indefinite: bool,
@@ -611,7 +637,7 @@ impl<'a> Builder<'a> {
     /// `tree` is the nearest `we-tree` ancestor's config, if any.
     fn resolved_node(
         &mut self,
-        node: &ResolvedNode,
+        node: &'a ResolvedNode,
         tree: &TreeCfg,
         parent_h_definite: bool,
         main_indefinite: bool,
@@ -624,6 +650,7 @@ impl<'a> Builder<'a> {
         if matches!(style.layout.display, Some(WsDisplay::None)) {
             return None;
         }
+        self.nodes.insert(node.id.clone(), node);
 
         // Record scroll/clip axes on the layout output.
         let scrolls =
@@ -727,22 +754,11 @@ impl<'a> Builder<'a> {
             }
         };
         if kids.is_empty() {
-            // A leaf: the widget's measured size fills whatever the props did
-            // not pin down.
-            let want = widget.measure(
-                self.cx,
-                node,
-                &style,
-                Size::new(f32::INFINITY, f32::INFINITY),
-            );
-            // A `want` axis of 0 or non-finite means "no intrinsic size" —
-            // leave `auto` so `align-items` stretches it (divider, skeleton).
-            if s.size.width == taffy::Dimension::auto() && want.x.is_finite() && want.x > 0.0 {
-                s.size.width = taffy::Dimension::length(want.x);
-            }
-            if s.size.height == taffy::Dimension::auto() && want.y.is_finite() && want.y > 0.0 {
-                s.size.height = taffy::Dimension::length(want.y);
-            }
+            // A leaf: what the props leave `auto`, the widget's `measure`
+            // answers at compute time against the space taffy actually
+            // offers — padding/border land outside the content (CSS
+            // content-box measure) and wrapping text lays out at the width
+            // it is given, so `truncate`/`lines` have something to clamp to.
             Some(
                 self.tree
                     .new_leaf_with_context(s, Ctx::Node(node.id.clone()))
@@ -773,19 +789,86 @@ pub fn layout(
         cx,
         registry,
         scx,
+        nodes: HashMap::new(),
         scroll: HashMap::new(),
         clip: HashMap::new(),
     };
     let root_id = b
         .resolved_node(root, &TreeCfg::default(), false, true)
         .expect("root lays out");
-    let _ = b.tree.compute_layout(
+
+    // The root's containing block is the viewport: `width: auto` fills it —
+    // block-box behaviour, not a shrink-wrapped flex item. Same downward:
+    // `height: auto` still paints the whole viewport (`min-height: 100vh`),
+    // so a `bg` root covers the empty tail of a short panel.
+    let mut root_style = b.tree.style(root_id).unwrap().clone();
+    let mut touch = false;
+    if matches!(
+        root_style.size.width.expand(),
+        taffy::ExpandedDimension::Auto
+    ) {
+        root_style.size.width = taffy::Dimension::length(rect.width());
+        touch = true;
+    }
+    if matches!(
+        root_style.size.height.expand(),
+        taffy::ExpandedDimension::Auto
+    ) {
+        root_style.min_size.height = taffy::prelude::LengthPercentageAuto::length(rect.height());
+        touch = true;
+    }
+    if touch {
+        let _ = b.tree.set_style(root_id, root_style);
+    }
+
+    let Builder {
+        mut tree,
+        nodes,
+        scroll,
+        clip,
+        ..
+    } = b;
+    let _ = tree.compute_layout_with_measure(
         root_id,
         taffy::Size {
             width: AvailableSpace::Definite(rect.width()),
             // Height is content-sized: a WE panel scrolls, so `height: 100%`
             // children grow to their content rather than the viewport.
             height: AvailableSpace::MinContent,
+        },
+        |inputs, _taffy_id, ctx, style| {
+            let node = match ctx {
+                Some(Ctx::Node(id)) => nodes.get(id).copied(),
+                _ => None,
+            };
+            let Some(node) = node else {
+                // Text spans and decorative parts pin their size in the
+                // style — a zero measure leaves those sizes to rule.
+                return taffy::compute::compute_leaf_layout(
+                    inputs,
+                    style,
+                    |_, _| 0.0,
+                    |_, _| taffy::Size::ZERO,
+                );
+            };
+            let widget = registry.widget_for(&node.ty);
+            let wstyle = style_of(node, scx);
+            taffy::compute::compute_leaf_layout(
+                inputs,
+                style,
+                |_, _| 0.0,
+                |known, space| {
+                    let avail = Size::new(
+                        offered(known.width, space.width),
+                        offered(known.height, space.height),
+                    );
+                    let s = widget.measure(cx, node, &wstyle, avail);
+                    taffy::Size {
+                        width: finite(s.x),
+                        height: finite(s.y),
+                    }
+                },
+            )
         },
     );
 
@@ -794,10 +877,10 @@ pub fn layout(
         rects: HashMap::new(),
         parts: Parts::new(),
         texts: Vec::new(),
-        scroll: b.scroll,
-        clip: b.clip,
+        scroll,
+        clip,
     };
-    collect(&b.tree, root_id, rect.min, &mut out);
+    collect(&tree, root_id, rect.min, &mut out);
     if let Some(r) = out.rects.get(&root.id) {
         out.size = r.size();
     }

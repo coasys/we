@@ -4210,6 +4210,7 @@ dependencies = [
  "egui_extras",
  "egui_kittest",
  "indexmap",
+ "serde_json",
  "taffy",
  "we-expr",
  "we-style",

@@ -219,15 +219,10 @@ impl Widget for Image {
                 .fit_to_exact_size(rect.size())
                 .maintain_aspect_ratio(true), // contain
         };
-        // Paint inside a clipped child ui so cover doesn't bleed past `r`.
-        let mut child = cx.ui.new_child(
-            egui::UiBuilder::new()
-                .max_rect(rect)
-                .layout(*cx.ui.layout())
-                .invisible(),
-        );
-        child.set_clip_rect(rect);
-        child.add(img);
+        // `corner_radius` does `r`'s clip for us — a clipped child ui painted
+        // nothing anyway (`UiBuilder::invisible` fades the painter out).
+        img = img.corner_radius(egui::CornerRadius::same(r.round() as u8));
+        img.paint_at(cx.ui, rect);
         cx.label(rect, alt);
     }
 }
@@ -285,17 +280,11 @@ impl Avatar {
         p.rect_filled(rect, r, bg);
         match url.filter(|u| !u.is_empty()) {
             Some(u) => {
-                let img = egui::Image::new(image_source(u))
+                egui::Image::new(image_source(u))
                     .fit_to_exact_size(rect.size())
-                    .show_loading_spinner(false);
-                let mut child = ui.new_child(
-                    egui::UiBuilder::new()
-                        .max_rect(rect)
-                        .layout(*ui.layout())
-                        .invisible(),
-                );
-                child.set_clip_rect(rect);
-                child.add(img);
+                    .corner_radius(egui::CornerRadius::same(r.round() as u8))
+                    .show_loading_spinner(false)
+                    .paint_at(ui, rect);
             }
             None => {
                 let fs = (rect.height() * 0.38).clamp(8.0, 24.0);
@@ -524,17 +513,13 @@ impl Widget for AnimatedIcon {
         let src = props::prop_text(node, "src").unwrap_or("");
         let name = props::prop_str(node, "name").unwrap_or("");
         if !src.is_empty() {
-            let img = egui::Image::new(image_source(src))
+            egui::Image::new(image_source(src))
                 .fit_to_exact_size(egui::vec2(size, size))
-                .show_loading_spinner(false);
-            let mut child = cx.ui.new_child(
-                egui::UiBuilder::new()
-                    .max_rect(rect)
-                    .layout(*cx.ui.layout())
-                    .invisible(),
-            );
-            child.set_clip_rect(rect);
-            child.add(img);
+                .show_loading_spinner(false)
+                .paint_at(
+                    cx.ui,
+                    egui::Rect::from_center_size(rect.center(), egui::vec2(size, size)),
+                );
         } else {
             // Pulse alpha at ~1.4Hz on the frame clock.
             let t = cx.now * std::f64::consts::TAU * 1.4;

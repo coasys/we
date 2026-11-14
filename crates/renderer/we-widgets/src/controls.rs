@@ -14,16 +14,32 @@ use crate::{MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
 pub struct Button;
 
 impl Button {
-    /// `square` collapses to the size-token square — layout already applied
-    /// the size through `width`/`height`, so measure just answers it.
+    /// The content box's intrinsic size: the label galley, plus the spinner
+    /// and its gap while `loading` (a square button has no room for the
+    /// label — the spinner *is* the content there, same as button.ts).
     fn measure_label(node: &ResolvedNode, style: &Style, ctx: &egui::Context, avail: f32) -> Size {
-        let text = props::prop_text(node, "text")
+        let text = props::prop_text(node, "label")
+            .or_else(|| props::prop_text(node, "text"))
             .map(str::to_string)
             .unwrap_or_else(|| props::text_of(node));
+        let loading = props::prop_bool(node, "loading");
+        let square = props::prop_bool(node, "square");
+        if loading && square {
+            return Size::new(SPINNER + SPINNER, SPINNER + SPINNER);
+        }
         let g = crate::text::text_job(&text, style, ctx, avail.max(1.0), true, None);
-        g.size()
+        let mut s = g.size();
+        if loading {
+            s.x += SPINNER + SPINNER_GAP;
+        }
+        s
     }
 }
+
+/// The loading spinner's box — the icon slot (`--we-context-icon-size` ≈ 16).
+const SPINNER: f32 = 16.0;
+/// Space between the spinner and the label it precedes (`gap` ≈ space-200).
+const SPINNER_GAP: f32 = 8.0;
 
 impl Widget for Button {
     fn type_name(&self) -> &'static str {
@@ -45,7 +61,9 @@ impl Widget for Button {
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         let view = view_of(cx.ui.ctx());
-        let disabled = props::prop_bool(node, "disabled") || props::prop_bool(node, "loading");
+        let loading = props::prop_bool(node, "loading");
+        let square = props::prop_bool(node, "square");
+        let disabled = props::prop_bool(node, "disabled") || loading;
         let label = props::prop_text(node, "label")
             .or_else(|| props::prop_text(node, "text"))
             .map(str::to_string)
@@ -64,29 +82,44 @@ impl Widget for Button {
             view.viewport,
         );
         // Prop-text buttons paint their label centered; node children are
-        // painted by the walk inside the button's own row layout.
+        // painted by the walk inside the button's own row layout. Truncation
+        // answers at the content box — the padding is not label room.
         let has_node_children = node
             .children
             .iter()
             .any(|c| matches!(c, we_template::ResolvedChild::Node(_)));
-        if !has_node_children && !label.is_empty() {
-            let g =
-                crate::text::text_job(&label, &eff, cx.ui.ctx(), rect.width().max(1.0), true, None);
-            cx.ui.painter().galley(
-                egui::pos2(
-                    rect.center().x - g.size().x / 2.0,
-                    rect.center().y - g.size().y / 2.0,
-                ),
-                g,
-                props::text_color(&eff, cx.ui.ctx()),
-            );
-        }
-        // `loading` covers the content with a spinner — the primitive dims
-        // the button and swaps the icon.
-        if props::prop_bool(node, "loading") {
+        // `loading && square` shows the spinner alone — the square has no
+        // room for a label beside it.
+        let show_label = !(has_node_children || label.is_empty() || loading && square);
+        let spin_w = if loading {
+            SPINNER + if show_label { SPINNER_GAP } else { 0.0 }
+        } else {
+            0.0
+        };
+        let content_w = (rect.width()
+            - props::px(
+                eff.layout.padding.left.as_ref(),
+                FONT_PX,
+                ROOT_PX,
+                view.viewport,
+            )
+            .unwrap_or(0.0)
+            - props::px(
+                eff.layout.padding.right.as_ref(),
+                FONT_PX,
+                ROOT_PX,
+                view.viewport,
+            )
+            .unwrap_or(0.0))
+        .max(1.0);
+        let g = show_label
+            .then(|| crate::text::text_job(&label, &eff, cx.ui.ctx(), content_w, true, None));
+        let mut x =
+            rect.center().x - (spin_w + g.as_ref().map(|g| g.size().x).unwrap_or(0.0)) / 2.0;
+        if loading {
             let t = (cx.now * std::f64::consts::TAU * 1.6) as f32;
-            let r = rect.height().min(rect.width()) * 0.32;
-            let c = rect.center();
+            let r = SPINNER * 0.32;
+            let c = egui::pos2(x + SPINNER / 2.0, rect.center().y);
             let mut pts = Vec::with_capacity(13);
             for i in 0..12 {
                 let a = t + i as f32 * (std::f32::consts::TAU / 12.0);
@@ -103,6 +136,14 @@ impl Widget for Button {
                 );
             }
             cx.ui.ctx().request_repaint();
+            x += spin_w;
+        }
+        if let Some(g) = g {
+            cx.ui.painter().galley(
+                egui::pos2(x, rect.center().y - g.size().y / 2.0),
+                g,
+                props::text_color(&eff, cx.ui.ctx()),
+            );
         }
         if response.hovered() && !disabled {
             cx.ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
