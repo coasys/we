@@ -10,7 +10,7 @@
 #![cfg(target_arch = "wasm32")]
 #![allow(dead_code)]
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use wasm_bindgen::prelude::*;
@@ -34,9 +34,9 @@ async fn back_reports_the_first_href() {
     let seen_in = seen.clone();
     history.on_popstate(move |href| seen_in.borrow_mut().push(href));
 
-    let moved = wait_event("popstate"); // armed before the ask — no race
+    let moved = NextEvent::armed("popstate"); // armed before the ask — no race
     history.back();
-    moved.await;
+    moved.fired().await;
 
     let seen = seen.borrow();
     assert!(
@@ -66,20 +66,66 @@ fn window_errors() -> (
     (errors, listener)
 }
 
-/// Resolve on the next `name` event — the event itself is the deadline, not
-/// a guessed timeout.
-async fn wait_event(name: &str) {
-    let promise = js_sys::Promise::new(&mut |resolve, _| {
-        let cb = Closure::wrap(Box::new(move || {
-            let _ = resolve.call0(&JsValue::NULL);
-        }) as Box<dyn FnMut()>);
-        web_sys::window()
-            .unwrap()
-            .add_event_listener_with_callback(name, cb.as_ref().unchecked_ref())
-            .unwrap();
-        cb.forget();
-    });
-    wasm_bindgen_futures::JsFuture::from(promise).await.unwrap();
+/// A one-shot window listener, armed NOW — `armed` registers synchronously,
+/// so the listener really is in place before the call that fires the event
+/// (an `async fn`'s body would not run until the first `.await` poll —
+/// after `back()`). `fired` waits for the event, then unwires the listener
+/// and lets the Closure drop: a used waiter leaves nothing registered, and
+/// a dropped one cleans up too.
+struct NextEvent {
+    name: &'static str,
+    listener: Option<Closure<dyn FnMut()>>,
+    future: Option<wasm_bindgen_futures::JsFuture>,
+    /// Invocations so far — the leak probe: a listener that outlives its
+    /// promise keeps counting on every later event.
+    fires: Rc<Cell<u32>>,
+}
+
+impl NextEvent {
+    fn armed(name: &'static str) -> NextEvent {
+        let fires = Rc::new(Cell::new(0));
+        let mut listener = None;
+        let promise = js_sys::Promise::new(&mut |resolve, _| {
+            let fires_in = fires.clone();
+            let cb = Closure::wrap(Box::new(move || {
+                fires_in.set(fires_in.get() + 1);
+                let _ = resolve.call0(&JsValue::NULL);
+            }) as Box<dyn FnMut()>);
+            web_sys::window()
+                .unwrap()
+                .add_event_listener_with_callback(name, cb.as_ref().unchecked_ref())
+                .unwrap();
+            listener = Some(cb);
+        });
+        NextEvent {
+            name,
+            listener,
+            future: Some(wasm_bindgen_futures::JsFuture::from(promise)),
+            fires,
+        }
+    }
+
+    /// Wait for the event, then take the listener off the window — the
+    /// Closure drops with it rather than being forgotten.
+    async fn fired(mut self) -> Rc<Cell<u32>> {
+        self.future.take().unwrap().await.unwrap();
+        self.unwire();
+        self.fires.clone()
+    }
+
+    fn unwire(&mut self) {
+        if let Some(cb) = self.listener.take() {
+            let _ = web_sys::window()
+                .unwrap()
+                .remove_event_listener_with_callback(self.name, cb.as_ref().unchecked_ref());
+        }
+    }
+}
+
+impl Drop for NextEvent {
+    fn drop(&mut self) {
+        self.unwire();
+    }
 }
 
 /// Take an 'error' listener back off the window before its Closure dies —
@@ -107,9 +153,9 @@ async fn replacing_the_listener_retires_the_old_one() {
     let f = fired.clone();
     history.on_popstate(move |_| f.borrow_mut().push("second"));
 
-    let moved = wait_event("popstate"); // armed before the ask — no race
+    let moved = NextEvent::armed("popstate"); // armed before the ask — no race
     history.back();
-    moved.await;
+    moved.fired().await;
     wait_for_popstate().await; // and any 'error' the dead one raises
 
     assert_eq!(
@@ -141,9 +187,9 @@ async fn drop_unwires_the_listener() {
         // `history` dies here — the DOM listener must go with it, or the
         // next popstate calls a callback that no longer exists.
     }
-    let moved = wait_event("popstate");
+    let moved = NextEvent::armed("popstate");
     window.history().unwrap().back().unwrap();
-    moved.await;
+    moved.fired().await;
     wait_for_popstate().await;
 
     assert!(
@@ -158,8 +204,33 @@ async fn drop_unwires_the_listener() {
     );
     drop(errors);
     unwire_errors(&errors_listener);
-    // Put the address back for the next test in the binary.
+    // Put the address back for the next test in the binary — awaited: an
+    // un-awaited traversal is still in flight when the next test arms its
+    // listeners.
+    let restored = NextEvent::armed("popstate");
     window.history().unwrap().forward().unwrap();
+    restored.fired().await;
+}
+
+#[wasm_bindgen_test]
+#[ignore]
+async fn a_resolved_waiter_stops_listening() {
+    let mut history = BrowserHistory::new().expect("a window");
+    history.push("#w1");
+    history.push("#w2");
+
+    let waiter = NextEvent::armed("popstate");
+    history.back();
+    let fires = waiter.fired().await;
+    // Resolved and unwired: the next event must not reach it.
+    let gone = NextEvent::armed("popstate");
+    history.forward();
+    gone.fired().await;
+    assert_eq!(
+        fires.get(),
+        1,
+        "a resolved waiter kept listening — its Closure is still registered"
+    );
 }
 
 async fn wait_for_popstate() {
