@@ -19,7 +19,7 @@ export function toAd4mOptions(spec: { options?: (string | number)[]; vocabulary?
   if (spec.vocabulary !== undefined || spec.options === undefined || spec.options.length === 0) {
     return undefined;
   }
-  // `sh:in` holds the stored RDF term; AD4M stores a scalar as its string form, so a number option
-  // is its decimal repr, not the JSON number.
+  // The SDK's option type is `value: string`. A number value is stored `literal:number:N`, so the
+  // string kept is the decoded scalar's own form — what A1 compares `String(term)` against.
   return spec.options.map((value) => ({ value: String(value) }));
 }

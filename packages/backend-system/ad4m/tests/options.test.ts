@@ -7,7 +7,7 @@
  * floor and the real list is the space's own, so a fixed `sh:in` would reject a community's own
  * states (see options.ts — the rule lives in one place, shared by both compilers).
  */
-import type { SHACLShape } from '@coasys/ad4m';
+import { Literal, type SHACLShape } from '@coasys/ad4m';
 import type { EntityManifest } from '@we/backend-shared';
 import { CORE_MANIFEST } from '@we/entities/manifest';
 import { describe, expect, it } from 'vitest';
@@ -83,8 +83,12 @@ describe('the runtime compiler does the same for a module manifest', () => {
     expect(inOf(classes.Note, 'state')).toBeUndefined();
   });
 
-  it('carries a number option as its stored term — a string, not the JSON number', () => {
+  it('carries a number option as the decoded scalar’s string form', () => {
+    // The SDK's option type is `value: string`, and the stored term of a written `2` is
+    // `literal:number:2`, not `literal:string:2` — so A1 compares `String(term)` against `value`,
+    // where `term` is `Literal.fromUrl(target).get()` for a `literal:` target, else the target.
     expect(inOf(classes.Note, 'rating')).toEqual([{ value: '1' }, { value: '2' }, { value: '3' }]);
+    expect(String(Literal.fromUrl('literal:number:2').get())).toBe('2');
   });
 
   it('reports the same answer on the entries the port hands callers', () => {
