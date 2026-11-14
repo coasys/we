@@ -510,6 +510,34 @@ fn modal_escape_and_backdrop_emit_close() {
 }
 
 #[test]
+fn modal_centres_and_sizes_to_content() {
+    let (mut h, _r) = rig(modal_tree(true));
+    h.run();
+    let inside = h.get_by_label("Inside").rect();
+    // The dialog carries its title as its label.
+    let dialog = h.get_by_label("Dialog").rect();
+    // Centred in the 400×400 rig.
+    assert!(
+        (dialog.center().x - 200.0).abs() < 1.0
+            && (dialog.center().y - 200.0).abs() < 1.0,
+        "dialog not centred: {dialog:?}"
+    );
+    // Sized to its content, not a full-bleed bar: a gutter off every edge.
+    assert!(dialog.min.x > 0.0 && dialog.max.x < 400.0, "{dialog:?}");
+    // Taller than its content — padding and the title row are inside.
+    assert!(
+        dialog.height() > inside.height() + 80.0,
+        "dialog {dialog:?} vs content {inside:?}"
+    );
+    // …and the content sits below the title strip, inside the dialog.
+    assert!(dialog.contains_rect(inside));
+    assert!(
+        inside.min.y > dialog.min.y + 40.0,
+        "content {inside:?} overlaps the title strip of {dialog:?}"
+    );
+}
+
+#[test]
 fn modal_blocks_clicks_under_it() {
     let (mut h, r) = rig(modal_tree(true));
     h.run();

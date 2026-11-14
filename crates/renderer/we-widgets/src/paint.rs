@@ -149,6 +149,19 @@ fn overlay_host(node: &ResolvedNode, width: f32, children: Vec<ResolvedChild>) -
     }
 }
 
+/// The modal's padding as host-column props (`pt` additionally reserves
+/// the title strip), so `sub.size` lands as the full content box.
+fn modal_host(node: &ResolvedNode, width: f32, children: Vec<ResolvedChild>, mcx: &MeasureCx) -> ResolvedNode {
+    let pad = crate::Modal::pad(node) as f64;
+    let mut host = overlay_host(node, width, children);
+    for key in ["pl", "pr", "pb"] {
+        host.props.insert(key.into(), we_expr::Value::Num(pad));
+    }
+    let pt = pad + crate::Modal::title_strip(mcx, node).unwrap_or(0.0) as f64;
+    host.props.insert("pt".into(), we_expr::Value::Num(pt));
+    host
+}
+
 /// `sub`, shifted so its origin sits at `min`.
 fn translate_layout(sub: &Layout, delta: egui::Vec2) -> Layout {
     Layout {
@@ -175,7 +188,9 @@ fn translate_layout(sub: &Layout, delta: egui::Vec2) -> Layout {
     }
 }
 
-/// `we-modal`'s width for its `size` prop (`sm`/`md`/`lg`/`fullscreen`).
+/// `we-modal`'s width for its `size` prop (`sm`/`md`/`lg`/`fullscreen`) —
+/// the WE layout-token measures, clamped to `100dvw - 2*GUTTER` the way
+/// the element's `maxWidth` works out.
 fn modal_width(node: &ResolvedNode, screen: f32) -> f32 {
     let w = match node.props.get("size") {
         Some(we_expr::Value::Str(s)) => match s.as_ref() {
@@ -187,7 +202,7 @@ fn modal_width(node: &ResolvedNode, screen: f32) -> f32 {
         },
         _ => 640.0,
     };
-    w.min(screen)
+    w.min((screen - crate::Modal::GUTTER * 2.0).max(0.0))
 }
 
 /// The `placement` prop → an egui popup alignment (`bottom` default).
@@ -305,10 +320,16 @@ fn modal_overlay(
     let widget = w.registry.widget_for(&node.ty);
     let screen = ctx.content_rect();
     let width = modal_width(node, screen.width());
-    let host = overlay_host(node, width, floating);
     let mcx = MeasureCx::new(ctx);
+    let host = modal_host(node, width, floating, &mcx);
     let sub = crate::layout(&mcx, w.registry, &host, screen);
-    let content_size = sub.size.max(egui::vec2(width.min(200.0), 48.0));
+    // The dialog is sized by its content: `sub.size` is the padded host
+    // column — width, plus `pt` (pad + title strip) + children + `pb`.
+    // WE caps it at `maxHeight: calc(100dvh - 64px)`.
+    let content_size = egui::vec2(
+        width,
+        sub.size.y.min(screen.height() - 64.0).max(64.0),
+    );
     let content_rect = Rect::from_center_size(screen.center(), content_size);
     let origin = sub.rects.get(&host.id).map(|r| r.min).unwrap_or_default();
     let scratch = translate_layout(&sub, content_rect.min - origin);
