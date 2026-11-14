@@ -583,7 +583,8 @@ fn modal_blocks_clicks_under_it() {
 #[test]
 fn popover_opens_on_trigger_and_closes_outside() {
     let mut pop = node("we-popover", "pop", props(&[]));
-    let trig = node("we-button", "pop/trig", props(&[("label", s("Open pop"))]));
+    let mut trig = node("we-button", "pop/trig", props(&[("label", s("Open pop"))]));
+    trig.slot = Some(Arc::from("trigger"));
     let mut body = node("we-button", "pop/body", props(&[("label", s("Pop body"))]));
     body.slot = Some(Arc::from("content"));
     body.handlers = handlers(&["onClick"]);
