@@ -52,9 +52,13 @@ impl RendererApp {
         let locals = we_template::LocalState::new();
         let bag_for_host = bag.clone();
         let route_for_rev = route.clone();
+        // `$`-types the registry knows (`$lane`) resolve as components —
+        // the resolver asks before it stamps a `$todo:` placeholder.
+        let types: std::collections::HashSet<&'static str> = registry.type_names().collect();
         let runtime = Runtime::new(schema, template_id, bag, locals.clone(), move || {
             route_for_rev.version()
-        });
+        })
+        .with_dollar_types(move |ty| types.contains(ty));
         let host = StaticHost::new(route, bag_for_host, locals);
         Self {
             runtime,
@@ -90,8 +94,11 @@ impl RendererApp {
             .auto_shrink([false, true])
             .show(ui, |ui| {
                 let width = ui.available_width();
-                let rect = Rect::from_min_size(ui.cursor().min, vec2(width, 0.0));
                 let vp = ui.ctx().content_rect().size();
+                // The containing block is the viewport: `width` fills it and
+                // `vp.y` floors the root (`min-height: 100vh`) so a `bg`
+                // covers a short panel's tail.
+                let rect = Rect::from_min_size(ui.cursor().min, vec2(width, vp.y));
                 let scx = StyleCx {
                     tokens: &self.theme.tokens,
                     viewport: we_style::Size::new(vp.x, vp.y),

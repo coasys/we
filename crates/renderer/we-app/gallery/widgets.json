@@ -5,7 +5,7 @@
     { "type": "we-text", "props": { "text": "E5a widget gallery", "variant": "heading" } },
     {
       "type": "Card",
-      "props": { "p": "300", "gap": "200" },
+      "props": { "p": "300", "gap": "200", "maxWidth": 300 },
       "children": [
         { "type": "we-text", "props": { "text": "text: body + truncate + lines clamp" } },
         {
@@ -64,7 +64,12 @@
         },
         {
           "type": "we-image",
-          "props": { "src": "https://example.com/p.png", "alt": "remote image", "width": 96, "height": 54 }
+          "props": {
+            "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAAA2CAIAAAC3LQuFAAABC0lEQVR4nO2ZwQ2CUBAFxViB5WhrerI2y9EavBgOohnwf95qMnMkHP4ObyHsDqfDbSOf2VYf4NdREKAgQEGAggAFAQoCFAQoCFAQoCBAQcCu+gBPLtf99OL5eM+f5IWh9m/+rZcphaYqW2ymnUV3dqcmQV8XnI9SQYJa4pCPUlpQe4VhR37mgaigXg8/GaKcoL5VxRzZYoCCgJCgNToi02UmCFAQoCBAQYCCAAUBIUFrjCkyow8TBCgIyAnq2xGx0WI0Qb2qSg5ebTEgLaj94Yfn9gUJaqkwv9WoXBwumldU7Q4r30Hzay7crBavnkfczf8rfuYBBQEKAhQEKAhQEKAgQEGAggAFAQoCHhuTPTsKS8PhAAAAAElFTkSuQmCC", "width": 96, "height": 54,
+            "alt": "demo image",
+            "width": 96,
+            "height": 54
+          }
         }
       ]
     },
@@ -83,7 +88,11 @@
             { "type": "we-button", "props": { "text": "danger", "tone": "danger" } },
             { "type": "we-button", "props": { "text": "off", "disabled": true } },
             { "type": "we-button", "props": { "text": "busy", "loading": true } },
-            { "type": "we-button", "props": { "label": "square", "square": true, "icon": "x" } },
+            {
+              "type": "we-button",
+              "props": { "label": "close", "square": true },
+              "children": [{ "type": "we-icon", "props": { "name": "x" } }]
+            },
             { "type": "we-badge", "props": { "count": 3 } },
             { "type": "we-badge", "props": { "count": 120, "max": 99, "variant": "solid" } },
             { "type": "we-tag", "props": { "text": "a tag" } },
@@ -95,7 +104,7 @@
             }
           ]
         },
-        { "type": "we-alert", "props": { "text": "an info alert", "tone": "info" } },
+        { "type": "we-alert", "props": { "text": "an info alert", "tone": "accent" } },
         { "type": "we-alert", "props": { "text": "a danger alert", "tone": "danger", "dismissible": true } },
         { "type": "we-divider" },
         { "type": "we-divider", "props": { "variant": "dashed" } },
