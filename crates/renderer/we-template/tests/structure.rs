@@ -233,6 +233,70 @@ fn record_view_prefers_entity_kind_then_entity() {
 }
 
 #[test]
+fn a_query_reads_the_same_nodes_local_fields() {
+    // B1: a descriptor compiles against the node's effective scope —
+    // `local.kind` is a declared name, so `entity: {"$": "local.kind"}`
+    // compiles instead of gating forever.
+    let node = schema(json!({ "type": "Column",
+        "$localState": { "kind": { "type": "string", "initial": "Task" } },
+        "$queries": { "q": { "entity": { "$": "local.kind" } } },
+        "children": []
+    }));
+    let (mut rt, mut host, screen) = rig(node, StoreBag::new(), "/");
+    rt.frame(&mut host, &screen);
+    assert_eq!(
+        rt.pool().len(),
+        1,
+        "the query must compile against same-node locals, not gate"
+    );
+    let cell = rt.pool().cells().into_iter().next().unwrap();
+    assert!(
+        cell.key.as_str().contains("Task"),
+        "the compiled entity must be the local's value: {}",
+        cell.key.as_str()
+    );
+}
+
+#[test]
+fn a_query_reads_a_sibling_query_whichever_order() {
+    // B1: `cards` anchors on `first(local.board).gathers`. Declared before
+    // `board` on purpose — WE's forward accessors make order irrelevant:
+    // first read `[]` (wide), and once `board` lands the anchor narrows.
+    let node = schema(json!({ "type": "Column",
+        "$queries": {
+            "cards": { "entity": "Card", "scope": { "anchorId": { "$": "first(local.board).gathers" } } },
+            "board": { "entity": "Board" }
+        },
+        "children": []
+    }));
+    let bag = StoreBag::from_snapshot(&json!({
+        "stores": {},
+        "queries": { "board": [{ "id": "b1", "gathers": "g1" }] },
+        "invokes": {}
+    }))
+    .unwrap();
+    let (mut rt, mut host, screen) = rig(node, bag, "/");
+    rt.frame(&mut host, &screen); // board fills; cards compiled wide
+    rt.frame(&mut host, &screen); // cards re-resolves against board's rows
+    let anchored = rt.pool().cells().into_iter().any(|cell| {
+        cell.ir
+            .scope
+            .as_ref()
+            .and_then(|s| s.get("anchorId"))
+            .is_some_and(|a| a == &json!("g1"))
+    });
+    assert!(
+        anchored,
+        "cards must anchor to first(local.board).gathers once board lands: {:?}",
+        rt.pool()
+            .cells()
+            .iter()
+            .map(|c| c.key.as_str().to_string())
+            .collect::<Vec<_>>()
+    );
+}
+
+#[test]
 fn pool_dedups_only_identical_queries() {
     // Two nodes, same entity, different `where` → two cells. The sabotage
     // this guards: keying on the entity name alone would collide the reads.

@@ -18,7 +18,7 @@ use indexmap::IndexMap;
 use we_expr::{CallFn, Env, MapNamespace, Namespace, Value};
 use we_screen::ScreenState;
 
-use crate::query::QueryCell;
+use crate::query::QuerySlot;
 use crate::{LocalState, NodeId, Scope};
 
 /// What a `$localState` field declared, kept for the handler layer: the
@@ -38,23 +38,18 @@ pub struct FieldMeta {
     pub declared_initial: Value,
 }
 
-/// What a node declares on `local`: a writable `$localState` field, a
-/// read-only `$queries` cell, or a gated query's empty answer.
+/// What a node declares on `local`: a writable `$localState` field, or a
+/// read-only `$queries` cell slot filled as the query compiles.
 #[derive(Debug, Clone)]
 pub enum LocalDecl {
     /// `$localState` — the value lives in [`LocalState`], keyed by the
     /// declaring node's id.
     State(FieldMeta),
-    /// `$queries` — rows from the pool cell this entry compiled to.
-    Query(Arc<QueryCell>),
-    /// A `<name>Loaded` companion — `true` once the cell holds rows.
-    QueryLoaded(Arc<QueryCell>),
-    /// A query that did not compile this frame (`when` false, entity or a
-    /// bound unresolved): rows read `[]`, `Loaded` reads `false`.
-    Gated {
-        /// `true` for the `<name>Loaded` companion of a gated query.
-        loaded: bool,
-    },
+    /// `$queries` — rows from the cell the slot was bound to this pass
+    /// (`[]` until the query compiles — the gated answer).
+    Query(Arc<QuerySlot>),
+    /// A `<name>Loaded` companion — `true` once the bound cell holds rows.
+    QueryLoaded(Arc<QuerySlot>),
     /// A static answer — the snapshot's `queries` table before pooling, and
     /// what a `QuerySource` that has no opinion falls back to.
     Static(Value),
@@ -148,19 +143,12 @@ impl Namespace for LocalNs {
         }
         match self.owner(key) {
             Some((node, LocalDecl::State(_))) => self.state.get(node, key),
-            Some((_, LocalDecl::Query(cell))) => match cell.state() {
+            Some((_, LocalDecl::Query(slot))) => match slot.state() {
                 crate::query::QueryState::Rows(rows) => Value::List(rows),
                 crate::query::QueryState::Loading => Value::List(Arc::new(Vec::new())),
             },
-            Some((_, LocalDecl::QueryLoaded(cell))) => {
-                Value::Bool(matches!(cell.state(), crate::query::QueryState::Rows(_)))
-            }
-            Some((_, LocalDecl::Gated { loaded })) => {
-                if *loaded {
-                    Value::Bool(false)
-                } else {
-                    Value::List(Arc::new(Vec::new()))
-                }
+            Some((_, LocalDecl::QueryLoaded(slot))) => {
+                Value::Bool(matches!(slot.state(), crate::query::QueryState::Rows(_)))
             }
             Some((_, LocalDecl::Static(value))) => value.clone(),
             None => Value::Undefined,

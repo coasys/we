@@ -789,27 +789,23 @@ fn declare_locals(
         }
     }
 
+    // Forward-declare every query name before `local` binds — a sibling's
+    // `local.board` must be a declared read whichever order the queries
+    // compile in, exactly as WE's `forward` accessors look the real signal
+    // up at read time (`[]`/`false` until it exists).
+    let mut slots: IndexMap<Arc<str>, Arc<crate::query::QuerySlot>> = IndexMap::new();
     if let Some(queries) = &node.queries {
-        for (name, descriptor) in queries {
+        for name in queries.keys() {
             let name: Arc<str> = name.as_str().into();
-            match compile_query(descriptor, scope, cx.bag, cx.cache, cx.warnings) {
-                Some(compiled) => {
-                    let cell = cx.pool.cell(compiled.key.clone(), compiled.ir.clone());
-                    cell.note_name(name.clone());
-                    fields.insert(name.clone(), LocalDecl::Query(cell.clone()));
-                    fields.insert(format!("{name}Loaded").into(), LocalDecl::QueryLoaded(cell));
-                }
-                None => {
-                    fields.insert(name.clone(), LocalDecl::Gated { loaded: false });
-                    fields.insert(
-                        format!("{name}Loaded").into(),
-                        LocalDecl::Gated { loaded: true },
-                    );
-                }
-            }
+            let slot = Arc::new(crate::query::QuerySlot::default());
+            slots.insert(name.clone(), slot.clone());
+            fields.insert(name.clone(), LocalDecl::Query(slot.clone()));
+            fields.insert(format!("{name}Loaded").into(), LocalDecl::QueryLoaded(slot));
         }
     }
 
+    // `local` binds before queries compile — a descriptor reads this node's
+    // own `$localState` fields and its siblings' slots through it.
     let mut node_scope = scope.clone();
     let mut node_decls = decls.clone();
     if !fields.is_empty() {
@@ -823,6 +819,41 @@ fn declare_locals(
             "local",
             Value::namespace(LocalNs::new(cx.locals.clone(), node_decls.clone())),
         );
+    }
+
+    // Compile each query against `node_scope`, filling its slot. A query
+    // whose IR depends on a sibling's cell settles over repeats — and over
+    // frames once the sibling's rows land — so a bounded loop compiles
+    // until the set of produced cells is stable.
+    if let Some(queries) = &node.queries {
+        for _round in 0..4 {
+            let mut changed = false;
+            for (name, descriptor) in queries {
+                let name: Arc<str> = name.as_str().into();
+                let Some(slot) = slots.get(&name) else {
+                    continue;
+                };
+                match compile_query(descriptor, &node_scope, cx.bag, cx.cache, cx.warnings) {
+                    Some(compiled) => {
+                        let cell = cx.pool.cell(compiled.key.clone(), compiled.ir.clone());
+                        cell.note_name(name.clone());
+                        if slot.cell().is_none_or(|old| !Arc::ptr_eq(&old, &cell)) {
+                            slot.set(cell);
+                            changed = true;
+                        }
+                    }
+                    None => {
+                        if slot.cell().is_some() {
+                            slot.clear();
+                            changed = true;
+                        }
+                    }
+                }
+            }
+            if !changed {
+                break;
+            }
+        }
     }
     (node_scope, node_decls)
 }
