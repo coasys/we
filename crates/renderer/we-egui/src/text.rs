@@ -6,7 +6,7 @@ use we_expr::Value;
 use we_style::Style;
 use we_template::ResolvedNode;
 
-use crate::defaults::{view_of, FONT_PX, ROOT_PX};
+use crate::defaults::{base_family_of, view_of};
 use crate::props;
 use crate::{MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
 
@@ -228,7 +228,15 @@ pub fn text_job(
     lines: Option<usize>,
 ) -> std::sync::Arc<egui::Galley> {
     let view = view_of(ctx);
-    let font = props::font_id(style, FONT_PX, ROOT_PX, view.viewport);
+    let base_family = base_family_of(ctx);
+    let font = props::font_id(
+        style,
+        ctx,
+        base_family.as_deref(),
+        view.font_px,
+        view.root_px,
+        view.viewport,
+    );
     let color = props::text_color(style, ctx);
     // `white-space: nowrap` gets an unbounded galley (it clips at the rect);
     // `truncate` must NOT — the ellipsis only appears when the row overflows
@@ -291,8 +299,23 @@ fn underline(cx: &mut PaintCx, style: &Style, rect: Rect) {
         Some(we_style::TextDecoration::Underline)
     ) {
         let view = view_of(cx.ui.ctx());
-        let font = props::font_id(style, FONT_PX, ROOT_PX, view.viewport);
-        let h = props::line_height_px(style, &font, cx.ui.ctx(), FONT_PX, ROOT_PX, view.viewport);
+        let base_family = base_family_of(cx.ui.ctx());
+        let font = props::font_id(
+            style,
+            cx.ui.ctx(),
+            base_family.as_deref(),
+            view.font_px,
+            view.root_px,
+            view.viewport,
+        );
+        let h = props::line_height_px(
+            style,
+            &font,
+            cx.ui.ctx(),
+            view.font_px,
+            view.root_px,
+            view.viewport,
+        );
         cx.ui.painter().hline(
             rect.min.x..=rect.min.x + rect.width(),
             rect.min.y + h - 1.5,
@@ -341,7 +364,7 @@ impl Widget for Text {
         let view = view_of(cx.ui.ctx());
         // The galley lives in the content box — inside `rect`'s padding and
         // border (the same box `measure` wrapped it at).
-        let content_rect = props::content_rect(rect, style, FONT_PX, ROOT_PX, view, cx.cb_w);
+        let content_rect = props::content_rect(rect, style, view, cx.cb_w);
         let content = Self::content(node, style);
         let g = text_job(
             &content,
@@ -406,8 +429,7 @@ impl Widget for Link {
         // `text_of`'s prop text is the link's body — either way the rule
         // underlines the content box.
         if !label.is_empty() {
-            let content_rect =
-                props::content_rect(rect, &eff, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()), cx.cb_w);
+            let content_rect = props::content_rect(rect, &eff, view_of(cx.ui.ctx()), cx.cb_w);
             if node.children.is_empty() {
                 let g = text_job(&label, &eff, cx.ui.ctx(), content_rect.width(), false, None);
                 cx.ui.painter().add(egui::Shape::galley(
@@ -475,8 +497,7 @@ impl Widget for Timestamp {
             .map(|d| d.as_secs_f64())
             .unwrap_or(0.0);
         let text = Self::text(node, now_secs);
-        let content_rect =
-            props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()), cx.cb_w);
+        let content_rect = props::content_rect(rect, style, view_of(cx.ui.ctx()), cx.cb_w);
         let g = text_job(&text, style, cx.ui.ctx(), content_rect.width(), false, None);
         cx.ui.painter().add(egui::Shape::galley(
             content_rect.min,
@@ -595,8 +616,7 @@ impl Widget for Typewriter {
             .unwrap_or_default();
         let cycled: String = phrase.chars().take(n).collect();
 
-        let content_rect =
-            props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()), cx.cb_w);
+        let content_rect = props::content_rect(rect, style, view_of(cx.ui.ctx()), cx.cb_w);
         let g_fixed = text_job(
             &fixed,
             style,

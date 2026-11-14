@@ -15,14 +15,14 @@ fn snap(name: &str, open: bool, results: &mut SnapshotResults) {
     let e = edit.clone();
     let mut harness = Harness::builder()
         .with_size(egui::vec2(420.0, 720.0))
-        // Pinned raster inputs, same policy as `gallery.rs`: bundled
-        // fonts, 1px-per-point, CPU-preferred wgpu adapter, and the
+        // Pinned raster inputs, same policy as `gallery.rs`: the
+        // WE-installed fonts, 1px-per-point, CPU-preferred wgpu adapter, and the
         // calibrated comparison — threshold 0.05 in dify's raw
         // weighted-squared-YIQ units (any ≥1-level channel change fails a
         // non-AA pixel) with an 8px changed-area budget.
         .with_pixels_per_point(1.0)
         .with_context_setup(|ctx| {
-            ctx.set_fonts(egui::FontDefinitions::default());
+            we_egui::install_media(ctx);
             ctx.set_theme(egui::ThemePreference::Dark);
         })
         .wgpu()
@@ -59,7 +59,7 @@ fn widgets_open_modal_sizes_to_content() {
     let mut harness = Harness::builder()
         .with_size(egui::vec2(420.0, 720.0))
         .with_context_setup(|ctx| {
-            ctx.set_fonts(egui::FontDefinitions::default());
+            we_egui::install_media(ctx);
             ctx.set_theme(egui::ThemePreference::Dark);
         })
         .build_ui(move |ui| {
@@ -99,7 +99,7 @@ fn widgets_open_backdrop_covers_viewport() {
     let mut harness = Harness::builder()
         .with_size(egui::vec2(420.0, 720.0))
         .with_context_setup(|ctx| {
-            ctx.set_fonts(egui::FontDefinitions::default());
+            we_egui::install_media(ctx);
             ctx.set_theme(egui::ThemePreference::Dark);
         })
         .build_ui(move |ui| {

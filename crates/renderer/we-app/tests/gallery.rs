@@ -9,9 +9,9 @@ use we_app::gallery::{gallery_ui, load_theme_set};
 /// Every raster input that could vary across processes or machines,
 /// pinned per the re-review's determinism recommendation:
 ///
-/// - fonts: egui's bundled `FontDefinitions` with their fixed family
-///   order — no system-font discovery, no drift when egui's default set
-///   changes;
+/// - fonts: `install_media`'s set — egui's bundled faces plus the
+///   vendored WE webfonts, in a fixed family order — no system-font
+///   discovery, no drift when egui's default set changes;
 /// - scale: `pixels_per_point = 1.0`, so the pixel grid is the point grid;
 /// - backend: the wgpu test renderer — `egui_kittest`'s adapter selector
 ///   prefers the CPU adapter and its `RendererOptions` are `PREDICTABLE`,
@@ -35,9 +35,7 @@ fn pinned_harness(size: egui::Vec2) -> egui_kittest::HarnessBuilder {
     Harness::builder()
         .with_size(size)
         .with_pixels_per_point(1.0)
-        .with_context_setup(|ctx| {
-            ctx.set_fonts(egui::FontDefinitions::default());
-        })
+        .with_context_setup(we_egui::install_media)
         .wgpu()
         .with_options(SnapshotOptions::new().threshold(0.05).max_failed_pixels(8))
 }

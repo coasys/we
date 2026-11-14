@@ -2,7 +2,7 @@
 use we_style::Style;
 use we_template::ResolvedNode;
 
-use crate::defaults::{view_of, FONT_PX, ROOT_PX};
+use crate::defaults::view_of;
 use crate::props;
 use crate::{MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
 
@@ -83,9 +83,7 @@ impl Widget for Button {
             rect,
             &eff,
             props::text_color(&eff, cx.ui.ctx()),
-            FONT_PX,
-            ROOT_PX,
-            view.viewport,
+            view,
         );
         // `text`-prop buttons paint their label centered; children paint
         // themselves — node children in the walk, text children as spans —
@@ -102,7 +100,7 @@ impl Widget for Button {
         };
         // The label and spinner live in the content box — inside the
         // padding the measure left outside them (and any painted border).
-        let content = props::content_rect(rect, &eff, FONT_PX, ROOT_PX, view, cx.cb_w);
+        let content = props::content_rect(rect, &eff, view, cx.cb_w);
         let content_w = content.width().max(1.0);
         let g = show_label
             .then(|| crate::text::text_job(&label, &eff, cx.ui.ctx(), content_w, true, None));

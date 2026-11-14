@@ -76,6 +76,11 @@ fn theme_compare_dump() {
                 let app = app_for(&schema, theme);
                 let mut probe = Harness::builder()
                     .with_size(Vec2::new(*width, 4000.0))
+                    // Same pinned raster inputs as `gallery.rs`: the
+                    // WE-installed fonts (the theme's face shapes the
+                    // measure) and 1px-per-point.
+                    .with_pixels_per_point(1.0)
+                    .with_context_setup(we_egui::install_media)
                     .build_ui_state(
                         move |ui, app: &mut we_app::RendererApp| {
                             app.frame_body(ui);
@@ -90,6 +95,8 @@ fn theme_compare_dump() {
             let app = app_for(&schema, theme);
             let mut harness = Harness::builder()
                 .with_size(Vec2::new(*width, height))
+                .with_pixels_per_point(1.0)
+                .with_context_setup(we_egui::install_media)
                 .build_ui_state(|ui, app: &mut we_app::RendererApp| app.frame_body(ui), app);
             // Same settle loop as the widgets snapshots: animated widgets
             // request repaints, images decode on a loader thread.

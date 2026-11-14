@@ -156,16 +156,15 @@ fn patched<'a>(style: &'a Style, patch: &StylePatch) -> std::borrow::Cow<'a, Sty
 /// dropped value. `ch`/`ex`/`lh` take `layout::dim_px`'s font-metric
 /// approximations so paint agrees with the space taffy offered measure —
 /// the shared `Dimension::resolve` policy.
-fn inset_px(
-    d: &Option<Dimension>,
-    font_px: f32,
-    root_px: f32,
-    view: crate::defaults::ViewportCx,
-    base: Option<f32>,
-) -> f32 {
+fn inset_px(d: &Option<Dimension>, view: crate::defaults::ViewportCx, base: Option<f32>) -> f32 {
     match d.as_ref() {
         Some(d) => d
-            .resolve(Some(base.unwrap_or(0.0)), font_px, root_px, view.viewport)
+            .resolve(
+                Some(base.unwrap_or(0.0)),
+                view.font_px,
+                view.root_px,
+                view.viewport,
+            )
             .unwrap_or(0.0),
         None => 0.0,
     }
@@ -181,15 +180,15 @@ fn inset_px(
 pub(crate) fn content_rect(
     rect: egui::Rect,
     style: &Style,
-    font_px: f32,
-    root_px: f32,
     view: crate::defaults::ViewportCx,
     base: Option<f32>,
 ) -> egui::Rect {
     let pad = &style.layout.padding;
     let bor = &style.paint.borders;
-    let p = |d: &Option<Dimension>| inset_px(d, font_px, root_px, view, base);
-    let bw = |s: &Option<we_style::BorderSide>| border_side_px(s, font_px, root_px, view.viewport);
+    let p = |d: &Option<Dimension>| inset_px(d, view, base);
+    let bw = |s: &Option<we_style::BorderSide>| {
+        border_side_px(s, view.font_px, view.root_px, view.viewport)
+    };
     let min = rect.min + egui::vec2(p(&pad.left) + bw(&bor.left), p(&pad.top) + bw(&bor.top));
     let max = rect.max
         - egui::vec2(
@@ -261,13 +260,18 @@ pub(crate) fn paint_box(
     rect: egui::Rect,
     style: &Style,
     current_color: egui::Color32,
-    font_px: f32,
-    root_px: f32,
-    viewport: Size,
+    view: crate::defaults::ViewportCx,
 ) {
     let opacity = style.paint.opacity.unwrap_or(1.0).clamp(0.0, 1.0);
     let fade = |c: egui::Color32| c.gamma_multiply(opacity);
-    let radius = radius_px(&style.paint.radius, rect, font_px, root_px, viewport);
+    let viewport = view.viewport;
+    let radius = radius_px(
+        &style.paint.radius,
+        rect,
+        view.font_px,
+        view.root_px,
+        viewport,
+    );
 
     // Shadows under the box: egui has shadows only as widgets; paint a soft
     // offset rect per layer (inset shadows are skipped — noted in NOTES).
@@ -276,15 +280,19 @@ pub(crate) fn paint_box(
             if s.inset {
                 continue;
             }
-            let dx = s.dx.to_px(font_px, root_px, viewport).unwrap_or(0.0);
-            let dy = s.dy.to_px(font_px, root_px, viewport).unwrap_or(0.0);
+            let dx =
+                s.dx.to_px(view.font_px, view.root_px, viewport)
+                    .unwrap_or(0.0);
+            let dy =
+                s.dy.to_px(view.font_px, view.root_px, viewport)
+                    .unwrap_or(0.0);
             let spread = s
                 .spread
-                .and_then(|d| d.to_px(font_px, root_px, viewport))
+                .and_then(|d| d.to_px(view.font_px, view.root_px, viewport))
                 .unwrap_or(0.0);
             let blur = s
                 .blur
-                .and_then(|d| d.to_px(font_px, root_px, viewport))
+                .and_then(|d| d.to_px(view.font_px, view.root_px, viewport))
                 .unwrap_or(0.0);
             let color = s.color.map(color32).unwrap_or(current_color);
             let r = rect.translate(egui::vec2(dx, dy)).expand(spread);
@@ -325,7 +333,7 @@ pub(crate) fn paint_box(
         }
         let width = side
             .width
-            .and_then(|d| d.to_px(font_px, root_px, viewport))
+            .and_then(|d| d.to_px(view.font_px, view.root_px, viewport))
             .unwrap_or(3.0); // CSS `medium`
         if width <= 0.0 {
             continue;
@@ -364,19 +372,33 @@ pub(crate) fn paint_box(
     }
 }
 
-/// A `FontId` for the style's text props — family resolves to Proportional
-/// or Monospace; the WE stacks name fonts egui does not ship, so a stack
-/// containing "mono" maps to `Monospace`, everything else `Proportional`.
-pub(crate) fn font_id(style: &Style, font_px: f32, root_px: f32, viewport: Size) -> egui::FontId {
+/// A `FontId` for the style's text props — the node's `font-family` stack
+/// first (its first entry naming a registered WE family — `DM Sans`,
+/// `Mozilla Text`, `Boldonse`, `VT323`, `Bricolage Grotesque` — resolves to
+/// that family), else the theme's base `base_family`, else egui's generics.
+/// `base_family` is what the web's `:root { font-family }` declares; nodes
+/// without an explicit stack inherit it. `ctx` grounds `fonts::resolve`'s
+/// installed-family check.
+pub(crate) fn font_id(
+    style: &Style,
+    ctx: &egui::Context,
+    base_family: Option<&str>,
+    font_px: f32,
+    root_px: f32,
+    viewport: Size,
+) -> egui::FontId {
     let size = style
         .text
         .font_size
         .and_then(|d| d.to_px(font_px, root_px, viewport))
         .unwrap_or(font_px);
-    let family = match style.text.font_family.as_deref() {
-        Some(f) if f.contains("mono") || f.contains("Mono") => egui::FontFamily::Monospace,
-        _ => egui::FontFamily::Proportional,
-    };
+    let family = style
+        .text
+        .font_family
+        .as_deref()
+        .or(base_family)
+        .map(|stack| crate::fonts::resolve(ctx, stack, style.text.font_weight))
+        .unwrap_or(egui::FontFamily::Proportional);
     egui::FontId::new(size, family)
 }
 
@@ -584,8 +606,6 @@ mod tests {
         let r = content_rect(
             egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(200.0, 100.0)),
             &style,
-            14.0,
-            16.0,
             crate::defaults::ViewportCx::default(),
             None, // a content-driven containing block — the cyclic rule
         );

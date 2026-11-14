@@ -316,8 +316,10 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
                     p.set_clip_rect(w.clip.unwrap_or(w.base_clip));
                     let font = props::font_id(
                         style,
-                        crate::defaults::FONT_PX,
-                        crate::defaults::ROOT_PX,
+                        w.ui.ctx(),
+                        w.scx.tokens.get("--we-font-family"),
+                        crate::defaults::font_px(w.scx),
+                        crate::defaults::root_px(w.scx),
                         w.scx.viewport,
                     );
                     p.text(
@@ -582,8 +584,10 @@ fn overlay_contents(
         }
         let font = props::font_id(
             style,
-            crate::defaults::FONT_PX,
-            crate::defaults::ROOT_PX,
+            w.ui.ctx(),
+            w.scx.tokens.get("--we-font-family"),
+            crate::defaults::font_px(w.scx),
+            crate::defaults::root_px(w.scx),
             w.scx.viewport,
         );
         inner.ui.painter().text(

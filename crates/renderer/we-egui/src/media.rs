@@ -6,7 +6,7 @@ use we_expr::Value;
 use we_style::Style;
 use we_template::ResolvedNode;
 
-use crate::defaults::{view_of, FONT_PX, ROOT_PX};
+use crate::defaults::{view_of, ViewportCx};
 use crate::props;
 use crate::{MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
 
@@ -16,14 +16,16 @@ mod icon_names;
 pub(crate) use icon_names::phosphor_glyph as phosphor;
 
 /// Install the fonts and loaders the media widgets need: the three Phosphor
-/// variants (`regular` also rides along as a proportional-text fallback)
-/// and egui_extras' image loader set (http/https/file/bytes, gif included).
-/// Idempotent — `frame_body` calls it every frame; only the first installs.
-/// `data:` URIs are decoded by `image_source` straight into
+/// variants (`regular` also rides along as a proportional-text fallback),
+/// the WE webfonts, and egui_extras' image loader set (http/https/file/
+/// bytes, gif included). Idempotent — `frame_body` calls it every frame;
+/// only the first installs (the flag is *persisted*: a temp flag would
+/// clear at frame end and reinstall — woff2 decode + a new glyph atlas —
+/// every frame). `data:` URIs are decoded by `image_source` straight into
 /// `ImageSource::Bytes`, no custom loader needed.
 pub fn install(ctx: &egui::Context) {
     const INSTALLED: &str = "we-egui::media-installed";
-    if ctx.data_mut(|d| d.get_temp::<bool>(egui::Id::unique(INSTALLED))) == Some(true) {
+    if ctx.data_mut(|d| d.get_persisted::<bool>(egui::Id::unique(INSTALLED))) == Some(true) {
         return;
     }
     let mut fonts = egui::FontDefinitions::default();
@@ -38,9 +40,10 @@ pub fn install(ctx: &egui::Context) {
         "phosphor-fill",
         egui_phosphor::Variant::Fill.font_bytes(),
     );
+    crate::fonts::install(&mut fonts);
     ctx.set_fonts(fonts);
     egui_extras::install_image_loaders(ctx);
-    ctx.data_mut(|d| d.insert_temp(egui::Id::unique(INSTALLED), true));
+    ctx.data_mut(|d| d.insert_persisted(egui::Id::unique(INSTALLED), true));
 }
 
 /// A node's `src` → the source egui loads. `data:*;base64,…` decodes inline
@@ -95,10 +98,10 @@ fn unescape(s: &str) -> String {
 pub struct Icon;
 
 impl Icon {
-    fn size_px(node: &ResolvedNode, style: &Style, viewport: we_style::Size) -> f32 {
+    fn size_px(node: &ResolvedNode, style: &Style, view: ViewportCx) -> f32 {
         if let Some(v) = node.props.get("size") {
             if let Some(d) = props::dim_of(v) {
-                if let Some(px) = d.to_px(FONT_PX, ROOT_PX, viewport) {
+                if let Some(px) = d.to_px(view.font_px, view.root_px, view.viewport) {
                     return px;
                 }
             }
@@ -126,7 +129,7 @@ impl Icon {
         style
             .text
             .font_size
-            .and_then(|d| d.to_px(FONT_PX, ROOT_PX, viewport))
+            .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
             .unwrap_or(16.0)
     }
 
@@ -147,19 +150,19 @@ impl Widget for Icon {
         WidgetKind::Leaf
     }
     fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, _avail: Size) -> Size {
-        let s = Self::size_px(node, style, view_of(cx.ctx).viewport);
+        let s = Self::size_px(node, style, view_of(cx.ctx));
         Size::new(s, s)
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         let view = view_of(cx.ui.ctx());
-        let size = Self::size_px(node, style, view.viewport);
+        let size = Self::size_px(node, style, view);
         let name = props::prop_str(node, "name").unwrap_or("");
         let color = props::prop_str(node, "color")
             .and_then(we_style::eval_color)
             .map(props::color32)
             .unwrap_or_else(|| props::text_color(style, cx.ui.ctx()));
         cx.ui.painter().text(
-            props::content_rect(rect, style, FONT_PX, ROOT_PX, view, cx.cb_w).center(),
+            props::content_rect(rect, style, view, cx.cb_w).center(),
             egui::Align2::CENTER_CENTER,
             icon_names::phosphor_glyph(name).unwrap_or("?"),
             egui::FontId::new(size, Self::family(node)),
@@ -196,11 +199,11 @@ impl Widget for Image {
         let view = view_of(cx.ctx);
         let w = props::dim_prop(node, "width")
             .or(style.layout.width)
-            .and_then(|d| d.to_px(FONT_PX, ROOT_PX, view.viewport))
+            .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
             .unwrap_or(avail.x.min(64.0));
         let h = props::dim_prop(node, "height")
             .or(style.layout.height)
-            .and_then(|d| d.to_px(FONT_PX, ROOT_PX, view.viewport))
+            .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
             .unwrap_or(w);
         Size::new(w, h)
     }
@@ -208,9 +211,15 @@ impl Widget for Image {
         let view = view_of(cx.ui.ctx());
         let src = props::prop_text(node, "src").unwrap_or("");
         let alt = props::prop_text(node, "alt").unwrap_or(src);
-        let r = props::radius_px(&style.paint.radius, rect, FONT_PX, ROOT_PX, view.viewport);
+        let r = props::radius_px(
+            &style.paint.radius,
+            rect,
+            view.font_px,
+            view.root_px,
+            view.viewport,
+        );
         // The image is the element's content — it paints inside the padding.
-        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view, cx.cb_w);
+        let content = props::content_rect(rect, style, view, cx.cb_w);
         if src.is_empty() {
             // A broken img: bordered slot + alt text, as the browser draws.
             cx.ui.painter().rect_stroke(
@@ -301,7 +310,13 @@ impl Avatar {
         ring: Option<f32>,
     ) {
         let view = view_of(ui.ctx());
-        let r = props::radius_px(&style.paint.radius, rect, FONT_PX, ROOT_PX, view.viewport);
+        let r = props::radius_px(
+            &style.paint.radius,
+            rect,
+            view.font_px,
+            view.root_px,
+            view.viewport,
+        );
         let bg = style
             .paint
             .bg
@@ -366,7 +381,7 @@ impl Widget for Avatar {
             node,
             style,
             // The avatar is the element's content — inside the padding.
-            props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()), cx.cb_w),
+            props::content_rect(rect, style, view_of(cx.ui.ctx()), cx.cb_w),
             props::prop_text(node, "url"),
             &Self::initials(node),
             ring,
@@ -452,8 +467,7 @@ impl Widget for AvatarStack {
         Size::new(w, size)
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
-        let content =
-            props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()), cx.cb_w);
+        let content = props::content_rect(rect, style, view_of(cx.ui.ctx()), cx.cb_w);
         let size = content.height();
         let max = props::prop_num(node, "max").unwrap_or(5.0) as usize;
         let overlap = props::prop_num(node, "overlap").unwrap_or(0.35) as f32;
@@ -558,18 +572,18 @@ impl Widget for AnimatedIcon {
     }
     fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, _style: &Style, _a: Size) -> Size {
         // `size` may be a number or a `"24px"`/`"1.5em"` dim.
+        let view = view_of(cx.ctx);
         let s = props::px(
             props::dim_prop(node, "size").as_ref(),
-            FONT_PX,
-            ROOT_PX,
-            view_of(cx.ctx).viewport,
+            view.font_px,
+            view.root_px,
+            view.viewport,
         )
         .unwrap_or(20.0);
         Size::new(s, s)
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
-        let content =
-            props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()), cx.cb_w);
+        let content = props::content_rect(rect, style, view_of(cx.ui.ctx()), cx.cb_w);
         let size = content.height().min(content.width());
         let src = props::prop_text(node, "src").unwrap_or("");
         let name = props::prop_str(node, "name").unwrap_or("");

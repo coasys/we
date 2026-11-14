@@ -5,7 +5,7 @@ use we_expr::Value;
 use we_style::Style;
 use we_template::ResolvedNode;
 
-use crate::defaults::{view_of, FONT_PX, ROOT_PX};
+use crate::defaults::{view_of, ViewportCx};
 use crate::props;
 use crate::{
     Direction, MeasureCx, PaintCx, PartSpec, PartsSpec, Pick, Rect, Size, Widget, WidgetKind,
@@ -108,8 +108,7 @@ impl Widget for Badge {
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         crate::containers::paint_container(cx, node, style, rect);
-        let content =
-            props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()), cx.cb_w);
+        let content = props::content_rect(rect, style, view_of(cx.ui.ctx()), cx.cb_w);
         let text = Self::text(node);
         // Children (the default slot) paint as spans; the galley covers the
         // `count`/`text`-prop pill — painting both would draw the count twice.
@@ -174,8 +173,7 @@ impl Widget for Tag {
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         crate::containers::paint_container(cx, node, style, rect);
-        let content =
-            props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()), cx.cb_w);
+        let content = props::content_rect(rect, style, view_of(cx.ui.ctx()), cx.cb_w);
         let text = Self::text(node);
         let g = crate::text::text_job(&text, style, cx.ui.ctx(), content.width(), true, None);
         let dismissible = props::prop_bool(node, "dismissible");
@@ -254,17 +252,17 @@ impl Alert {
     }
 
     /// The icon → text gap — the DS default's `gap` (space-300).
-    fn gap(style: &Style, viewport: we_style::Size) -> f32 {
+    fn gap(style: &Style, view: ViewportCx) -> f32 {
         style
             .layout
             .gap
-            .and_then(|(_, col)| props::px(Some(&col), FONT_PX, ROOT_PX, viewport))
+            .and_then(|(_, col)| props::px(Some(&col), view.font_px, view.root_px, view.viewport))
             .unwrap_or(8.0)
     }
 
     /// The icon's slot in the row — glyph + the gap before the text.
-    fn icon_w(style: &Style, viewport: we_style::Size) -> f32 {
-        ICON_PX + Self::gap(style, viewport)
+    fn icon_w(style: &Style, view: ViewportCx) -> f32 {
+        ICON_PX + Self::gap(style, view)
     }
 }
 
@@ -304,7 +302,7 @@ impl Widget for Alert {
             return Size::ZERO;
         };
         let view = view_of(cx.ctx);
-        let icon_w = Self::icon_w(style, view.viewport);
+        let icon_w = Self::icon_w(style, view);
         let g = crate::text::text_job(
             text,
             style,
@@ -321,7 +319,7 @@ impl Widget for Alert {
         // The tone icon and the text sit inside the content box — the same
         // inset layout keeps outside the measured content — with the icon's
         // 6px floor; children flow in their `content` part instead.
-        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view, cx.cb_w);
+        let content = props::content_rect(rect, style, view, cx.cb_w);
         let pad = (content.min.x - rect.min.x).max(6.0);
         let icon_rect = props::part(cx, node, "icon").unwrap_or_else(|| {
             Rect::from_min_size(
@@ -349,7 +347,7 @@ impl Widget for Alert {
         // child (the web component's slot) flows in the `content` part.
         if node.children.is_empty() {
             if let Some(text) = props::prop_text(node, "text") {
-                let gap = icon_rect.max.x + Self::gap(style, view.viewport);
+                let gap = icon_rect.max.x + Self::gap(style, view);
                 let right = content.max.x
                     - if props::prop_bool(node, "dismissible") {
                         18.0
@@ -421,7 +419,7 @@ impl Widget for Skeleton {
                 let s = props::dim_prop(node, "size")
                     .or(style.layout.height)
                     .or(style.layout.width)
-                    .and_then(|d| d.to_px(FONT_PX, ROOT_PX, view.viewport))
+                    .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
                     .unwrap_or(40.0);
                 Size::new(s, s)
             }
@@ -431,7 +429,7 @@ impl Widget for Skeleton {
                 0.0,
                 props::dim_prop(node, "height")
                     .or(style.layout.height)
-                    .and_then(|d| d.to_px(FONT_PX, ROOT_PX, view.viewport))
+                    .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
                     .unwrap_or(60.0),
             ),
             // A line stretches (the web component's default is a 100%×20px
@@ -440,7 +438,7 @@ impl Widget for Skeleton {
                 0.0,
                 props::dim_prop(node, "height")
                     .or(style.layout.height)
-                    .and_then(|d| d.to_px(FONT_PX, ROOT_PX, view.viewport))
+                    .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
                     .unwrap_or(20.0),
             ),
         }
@@ -450,7 +448,13 @@ impl Widget for Skeleton {
         let variant = props::prop_str(node, "variant").unwrap_or("line");
         let r = match variant {
             "circle" => rect.height() / 2.0,
-            "block" => props::radius_px(&style.paint.radius, rect, FONT_PX, ROOT_PX, view.viewport),
+            "block" => props::radius_px(
+                &style.paint.radius,
+                rect,
+                view.font_px,
+                view.root_px,
+                view.viewport,
+            ),
             _ => (rect.height() / 2.0).min(4.0),
         };
         let base = style
@@ -501,7 +505,7 @@ impl Widget for Divider {
     fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, _s: &Style, avail: Size) -> Size {
         let view = view_of(cx.ctx);
         let t = props::dim_prop(node, "thickness")
-            .and_then(|d| d.to_px(FONT_PX, ROOT_PX, view.viewport))
+            .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
             .unwrap_or(1.0);
         let _ = avail;
         if props::prop_str(node, "orientation") == Some("vertical") {
@@ -527,11 +531,11 @@ impl Widget for Divider {
             })
             .unwrap_or_else(|| cx.ui.visuals().widgets.noninteractive.bg_stroke.color);
         let t = props::dim_prop(node, "thickness")
-            .and_then(|d| d.to_px(FONT_PX, ROOT_PX, view.viewport))
+            .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
             .unwrap_or(1.0);
         let vertical = props::prop_str(node, "orientation") == Some("vertical");
         // The line is the element's content — it sits inside the padding.
-        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view, cx.cb_w);
+        let content = props::content_rect(rect, style, view, cx.cb_w);
         let (a, b) = if vertical {
             (
                 egui::pos2(content.center().x, content.min.y),

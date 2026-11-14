@@ -19,6 +19,7 @@ mod dnd;
 mod edit_state;
 pub mod event;
 mod feedback;
+mod fonts;
 mod inputs;
 mod layout;
 mod media;

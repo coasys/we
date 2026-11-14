@@ -57,16 +57,14 @@ fn widget_gallery_snapshots_per_theme() {
         let app = WidgetsApp::app_for(&set, &id);
         let mut harness = Harness::builder()
             .with_size(egui::Vec2::new(820.0, 1600.0))
-            // Pinned raster inputs, same policy as `gallery.rs`: bundled
-            // fonts in fixed family order, 1px-per-point, the
+            // Pinned raster inputs, same policy as `gallery.rs`: the
+            // WE-installed fonts in fixed family order, 1px-per-point, the
             // CPU-preferred wgpu adapter, and the calibrated comparison —
             // threshold 0.05 in dify's raw weighted-squared-YIQ units
             // (any ≥1-level channel change fails a non-AA pixel) with an
             // 8px changed-area budget.
             .with_pixels_per_point(1.0)
-            .with_context_setup(|ctx| {
-                ctx.set_fonts(egui::FontDefinitions::default());
-            })
+            .with_context_setup(we_egui::install_media)
             .wgpu()
             .with_options(SnapshotOptions::new().threshold(0.05).max_failed_pixels(8))
             .build_ui_state(|ui, app: &mut we_app::RendererApp| app.frame_body(ui), app);

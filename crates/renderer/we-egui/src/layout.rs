@@ -8,7 +8,7 @@ use std::sync::Arc;
 use we_style::Style;
 use we_template::{NodeId, ResolvedNode};
 
-use crate::defaults::{store_view, StyleCx, FONT_PX, ROOT_PX};
+use crate::defaults::{font_px, root_px, store_view, StyleCx};
 use crate::{MeasureCx, Rect, Registry, Size};
 
 /// `(node, part)` → rect — a widget's virtual chrome.
@@ -80,7 +80,14 @@ impl<'a> we_layout::Measure for EguiMeasure<'a> {
     fn measure_text(&self, _owner: &ResolvedNode, style: &Style, text: &str) -> we_layout::Size {
         // Text is measured in its owner's font — `layout_no_wrap` matches the
         // paint path's single-line spans.
-        let font = crate::props::font_id(style, FONT_PX, ROOT_PX, self.scx.viewport);
+        let font = crate::props::font_id(
+            style,
+            self.cx.ctx,
+            self.scx.tokens.get("--we-font-family"),
+            font_px(self.scx),
+            root_px(self.scx),
+            self.scx.viewport,
+        );
         let galley = self
             .cx
             .ctx
