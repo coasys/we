@@ -1,0 +1,35 @@
+# The egui/Rust renderer for WE's template language — a second client, beside the
+# Solid one, that runs a WE bundle. Own workspace beside `crates/custody`, with its
+# own Cargo.lock; nothing here is published.
+#
+# Dependency direction, never the other way:
+#   we-expr <- we-screen <- we-template <- we-store <- we-widgets <- we-app
+#   we-style depends on we-expr only; we-ad4m depends on we-store.
+# we-expr, we-screen, we-template, we-store and we-style must build for
+# wasm32-unknown-unknown and must not depend on tokio.
+[workspace]
+resolver = "2"
+members = [
+    "we-expr",
+]
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+# `preserve_order` makes serde_json::Map an IndexMap, so object key order survives
+# a JSON round trip — the template language's objects keep insertion order, as in JS.
+serde_json = { version = "1", features = ["preserve_order"] }
+indexmap = { version = "2", features = ["serde"] }
+thiserror = "2"
+async-trait = "0.1"
+egui = "0.37"
+eframe = "0.37"
+taffy = "0.15"
+egui_kittest = "0.37"
+
+we-expr = { path = "we-expr" }
+we-screen = { path = "we-screen" }
+we-template = { path = "we-template" }
+we-store = { path = "we-store" }
+we-style = { path = "we-style" }
+we-widgets = { path = "we-widgets" }
+we-ad4m = { path = "we-ad4m" }
