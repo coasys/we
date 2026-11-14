@@ -753,14 +753,10 @@ fn emit_fan(poly: &[ClipVert], out: &mut egui::epaint::Mesh) {
     }
 }
 
-/// `mesh ∩ poly ∩ rect` as a new mesh — `ears` are the polygon's
-/// triangulation, `rect_planes` the border box's inward half-planes.
-fn clip_mesh(
-    mesh: &egui::epaint::Mesh,
-    ears: &[[egui::Pos2; 3]],
-    sign: f32,
-    rect_planes: &[Plane; 4],
-) -> egui::epaint::Mesh {
+/// `mesh ∩ poly` as a new mesh — `ears` are the polygon's triangulation.
+/// The border box only placed the polygon's points; it is no second crop
+/// (an outer shadow or an overflowing child inside the polygon stays).
+fn clip_mesh(mesh: &egui::epaint::Mesh, ears: &[[egui::Pos2; 3]], sign: f32) -> egui::epaint::Mesh {
     let mut out = egui::epaint::Mesh {
         texture_id: mesh.texture_id,
         ..Default::default()
@@ -778,7 +774,7 @@ fn clip_mesh(
             })
             .collect();
         for ear in ears {
-            let piece = clip_planes(&clip_planes(&t, &ear_planes(ear, sign)), rect_planes);
+            let piece = clip_planes(&t, &ear_planes(ear, sign));
             emit_fan(&piece, &mut out);
         }
     }
@@ -790,17 +786,19 @@ fn clip_mesh(
 /// after `paint_node` finishes the subtree. egui clips to rectangles
 /// only, so the polygon is applied to geometry: each queued shape is
 /// tessellated with the frame's own settings and every triangle is cut
-/// against the polygon's ears and the border box, then written back in
-/// place (a `Shape::Vec` keeps painting order when a shape becomes
-/// several meshes — e.g. chrome on the atlas texture plus glyphs on the
-/// font texture). `PaintCallback` primitives cannot be cut; they pass
-/// through with their rectangular clip like CSS's fixed-position escape.
+/// against the polygon's ears, then written back in place (a `Shape::Vec`
+/// keeps painting order when a shape becomes several meshes — e.g. chrome
+/// on the atlas texture plus glyphs on the font texture). The cut is
+/// `polygon ∩` the clip rect each shape already carries (its ancestors'
+/// rectangular clips) — the border box only placed the polygon's points.
+/// `PaintCallback` primitives cannot be cut and are currently DROPPED, even
+/// when wholly inside the polygon (no built-in widget emits one; the
+/// policy is an open follow-up).
 pub(crate) fn apply_clip(
     ctx: &egui::Context,
     layer: egui::LayerId,
     start: usize,
     region: &ClipRegion,
-    rect: egui::Rect,
 ) {
     let pts = match region {
         ClipRegion::None => return,
@@ -828,12 +826,6 @@ pub(crate) fn apply_clip(
         .map(|t| [pts[t[0] as usize], pts[t[1] as usize], pts[t[2] as usize]])
         .collect();
     let sign = if signed_area(pts) >= 0.0 { 1.0 } else { -1.0 };
-    let rect_planes: [Plane; 4] = [
-        (egui::pos2(rect.min.x, 0.0), egui::vec2(1.0, 0.0)),
-        (egui::pos2(rect.max.x, 0.0), egui::vec2(-1.0, 0.0)),
-        (egui::pos2(0.0, rect.min.y), egui::vec2(0.0, 1.0)),
-        (egui::pos2(0.0, rect.max.y), egui::vec2(0.0, -1.0)),
-    ];
     let ppp = ctx.pixels_per_point();
     let options = ctx.tessellation_options(|o| *o);
     let tex_size = ctx.fonts(|f| f.font_image_size());
@@ -865,7 +857,7 @@ pub(crate) fn apply_clip(
                                 v.pos = transform.mul_pos(v.pos);
                             }
                         }
-                        let m = clip_mesh(&m, &ears, sign, &rect_planes);
+                        let m = clip_mesh(&m, &ears, sign);
                         if !m.indices.is_empty() {
                             shapes.push(egui::Shape::mesh(m));
                         }

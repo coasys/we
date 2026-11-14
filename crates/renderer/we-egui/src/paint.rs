@@ -557,7 +557,7 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
             Some(c) => crate::props::clip_region_of(c.as_ref(), rect, view),
             None => crate::props::clip_region(style, rect, view),
         };
-        crate::props::apply_clip(w.ui.ctx(), w.ui.layer_id(), start, &clip, rect);
+        crate::props::apply_clip(w.ui.ctx(), w.ui.layer_id(), start, &clip);
     }
 
     // DOM bubble: an authored `onClick` fires child-first — after every

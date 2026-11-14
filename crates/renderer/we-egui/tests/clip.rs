@@ -1,6 +1,8 @@
 //! `clip-path: polygon(…)` — the clip only removes pixels from the
 //! element's normal output (background, borders, shadows, children); it
-//! never authorizes geometry outside the border box, and a degenerate
+//! adds none. The border box is the reference box the polygon's
+//! coordinates resolve against, not an extra crop: output outside the box
+//! but inside the polygon (an outer shadow, overflow) stays. A degenerate
 //! polygon clips everything.
 use std::cell::RefCell;
 use std::sync::Arc;
@@ -83,10 +85,13 @@ fn bounds(shapes: &[egui::epaint::ClippedShape]) -> egui::Rect {
 
 /// The cyberpunk button slab — `polygon(-15px 0%, calc(100% + 15px) 0%,
 /// calc(100% + 15px) 100%, 20px 100%, -15px calc(100% - 35px))`. The
-/// overhanging coordinates only mean "open on that side": the painted
-/// output is still the element's, so nothing lands outside the border box.
+/// overhanging coordinates add no paint: the clip only removes pixels, and
+/// this button's own output (background, border, label — no shadow, no
+/// overflow) lies in its border box, so nothing lands outside it. (Output
+/// that does fall outside the box survives where the polygon covers it —
+/// see `an_expanded_polygon_keeps_shadow_and_overflow_outside_the_border_box`.)
 #[test]
-fn polygon_clip_keeps_the_element_inside_its_border_box() {
+fn the_slab_overhang_adds_no_paint() {
     let styles = obj(&[
         (
             "clip-path",
@@ -110,7 +115,7 @@ fn polygon_clip_keeps_the_element_inside_its_border_box() {
             && b.max.x <= rect.max.x + 0.6
             && b.min.y >= rect.min.y - 0.6
             && b.max.y <= rect.max.y + 0.6,
-        "painted bounds {b:?} must stay inside the border box {rect:?}"
+        "this button paints nothing outside its border box: bounds {b:?} vs {rect:?}"
     );
 }
 
@@ -408,4 +413,60 @@ fn cyberpunk_hover_and_press_open_the_clipped_corner() {
             alpha_at(&f, corner(&f))
         );
     }
+}
+
+/// The border box is only the polygon's reference box, never a second
+/// crop: a polygon reaching 20px past every edge keeps the element's outer
+/// shadow and an overflowing child where they fall inside the polygon,
+/// though outside the border box — and still cuts what lies beyond it.
+#[test]
+fn an_expanded_polygon_keeps_shadow_and_overflow_outside_the_border_box() {
+    let styles = obj(&[
+        (
+            "clip-path",
+            s("polygon(-20px -20px, calc(100% + 20px) -20px, calc(100% + 20px) calc(100% + 20px), -20px calc(100% + 20px))"),
+        ),
+        ("background-color", s("#00f0ff")),
+        ("box-shadow", s("0 0 0 10px #ff0000")),
+        ("width", s("160px")),
+        ("height", s("60px")),
+        ("margin", s("40px")),
+    ]);
+    let mut n = node("Column", "c", &[("styles", styles)]);
+    n.children = vec![ResolvedChild::Node(Box::new(node(
+        "Column",
+        "c/wide",
+        &[(
+            "styles",
+            obj(&[
+                ("background-color", s("#00ff00")),
+                ("width", s("240px")),
+                ("height", s("20px")),
+                ("flex-shrink", s("0")),
+            ]),
+        )],
+    )))];
+    let f = frame(&n, "", Pointer::Rest);
+    let r = f.rect;
+    // The shadow's spread ring, 5px left of the border box.
+    let shadow = egui::pos2(r.min.x - 5.0, r.center().y);
+    assert!(
+        alpha_at(&f, shadow) > 0.9,
+        "the outer shadow inside the polygon survives: {}",
+        alpha_at(&f, shadow)
+    );
+    // The child's overflow, 10px right of the border box (inside the polygon).
+    let overflow = egui::pos2(r.max.x + 10.0, r.min.y + 10.0);
+    assert!(
+        alpha_at(&f, overflow) > 0.9,
+        "the overflowing child inside the polygon survives: {}",
+        alpha_at(&f, overflow)
+    );
+    // Beyond the polygon (30px right of the box) the child is cut.
+    let beyond = egui::pos2(r.max.x + 30.0, r.min.y + 10.0);
+    assert!(
+        alpha_at(&f, beyond) < 0.01,
+        "the child beyond the polygon is cut: {}",
+        alpha_at(&f, beyond)
+    );
 }
