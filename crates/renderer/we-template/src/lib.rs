@@ -41,7 +41,7 @@ pub use node::{RouteNode, SchemaChild, SchemaNode};
 pub use query::{
     compile_query, compile_request, compiled_to_cell, prune_where, query_descriptor,
     scope_anchored, CompileCx, Compiled, CompiledQuery, DatasetHandle, DatasetSel, QueryCell,
-    QueryIr, QueryKey, QueryPool, QueryRequest, QuerySource, QueryState, RESERVED_IR_KEYS,
+    QueryIr, QueryKey, QueryPool, QueryRequest, QuerySource, QueryState, SlotRef, RESERVED_IR_KEYS,
 };
 pub use resolve::{resolve, NoParts, PartSource, ResolveCx};
 pub use resolved::{

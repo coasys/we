@@ -11,6 +11,7 @@
 //! The pool ([`QueryPool`]) shares one cell per [`QueryKey`] — the full IR,
 //! not just the entity (the subscription pool's "keyed by what is asked,
 //! never by the object asking").
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
@@ -22,6 +23,7 @@ use we_expr::{ParseCache, Value};
 use crate::resolve::{eval_json, eval_str};
 use crate::resolved::Scope;
 use crate::scope::StoreBag;
+use crate::NodeId;
 
 /// A compiled query — the `$query` descriptor after expressions are resolved
 /// (`QueryDescriptor` in `types.ts`, compiled for the backend's query IR).
@@ -180,6 +182,13 @@ pub struct CompileCx<'a> {
     pub warnings: &'a mut Vec<Arc<str>>,
 }
 
+impl CompileCx<'_> {
+    /// Whether the slot a compile read through has loaded.
+    pub fn slot_loaded(&self, slot: &SlotRef) -> bool {
+        slot.loaded()
+    }
+}
+
 impl<'a> CompileCx<'a> {
     pub fn new(
         bag: &'a StoreBag,
@@ -250,6 +259,75 @@ impl QuerySlot {
             .map(|cell| cell.state())
             .unwrap_or(QueryState::Loading)
     }
+}
+
+/// A query slot's identity: the node that declared it and the `$queries`
+/// field name. Every value read out of a slot — `local.<q>` rows,
+/// `local.<q>Loaded` — and every scope binding derived from one carries it,
+/// so "this compile read an unloaded slot" is decided by which slot was read,
+/// whatever name or alias the expression used to reach it. Equality and hash
+/// are the identity; the slot handle answers whether it has loaded.
+#[derive(Clone, Debug)]
+pub struct SlotRef {
+    pub node: NodeId,
+    pub name: Arc<str>,
+    slot: Arc<QuerySlot>,
+}
+
+impl SlotRef {
+    pub fn new(node: NodeId, name: Arc<str>, slot: Arc<QuerySlot>) -> Self {
+        Self { node, name, slot }
+    }
+
+    /// The slot's bound cell holds rows (or an error, reported as loaded).
+    pub fn loaded(&self) -> bool {
+        matches!(self.slot.state(), QueryState::Rows(_))
+    }
+}
+
+impl PartialEq for SlotRef {
+    fn eq(&self, other: &Self) -> bool {
+        self.node == other.node && self.name == other.name
+    }
+}
+impl Eq for SlotRef {}
+impl std::hash::Hash for SlotRef {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.node.hash(state);
+        self.name.hash(state);
+    }
+}
+
+thread_local! {
+    /// The slot reads of the evaluation being observed, innermost observer
+    /// on top. `None` when nothing observes.
+    static SLOT_READS: RefCell<Option<Vec<SlotRef>>> = const { RefCell::new(None) };
+}
+
+/// Record that an evaluation read through `slot`. A no-op unless something
+/// is observing ([`observe_slots`]).
+pub(crate) fn note_slot_read(slot: &SlotRef) {
+    SLOT_READS.with(|reads| {
+        if let Some(reads) = reads.borrow_mut().as_mut() {
+            if !reads.contains(slot) {
+                reads.push(slot.clone());
+            }
+        }
+    });
+}
+
+/// Run `f`, returning what it returned and every query slot it read. An
+/// enclosing observer sees the same reads.
+pub(crate) fn observe_slots<R>(f: impl FnOnce() -> R) -> (R, Vec<SlotRef>) {
+    let outer = SLOT_READS.with(|reads| reads.borrow_mut().replace(Vec::new()));
+    let out = f();
+    let mine = SLOT_READS
+        .with(|reads| std::mem::replace(&mut *reads.borrow_mut(), outer))
+        .unwrap_or_default();
+    for slot in &mine {
+        note_slot_read(slot);
+    }
+    (out, mine)
 }
 
 /// One cell in the pool — shared by every node asking the same question.
@@ -621,8 +699,20 @@ pub fn compile_query(
 /// Compile one `$queries` entry against `scope` into a typed request.
 /// `Gated` is the answer a `when`-false, an unresolved entity, or an
 /// unresolved bound gives in WE before the first rows land.
+///
+/// `Provisional` when the compile read a query slot that has not loaded —
+/// through `local.<q>`, `local.<q>Loaded`, or any alias bound from them. An
+/// operand left unresolved by such a read would widen the query for a frame
+/// (`pruneUnresolvedWhere`); not sending it is the one declared change from
+/// TS, whose final state is the same. An operand unresolved for any other
+/// reason still widens.
 pub fn compile_request(query: &Json, scope: &Scope, cx: &mut CompileCx) -> Compiled {
-    match compile_inner(query, scope, cx.bag, cx.cache, cx.warnings) {
+    let (request, reads) =
+        observe_slots(|| compile_inner(query, scope, cx.bag, cx.cache, cx.warnings));
+    match request {
+        Some(request) if reads.iter().any(|slot| !cx.slot_loaded(slot)) => {
+            Compiled::Provisional(request)
+        }
         Some(request) => Compiled::Ready(request),
         None => Compiled::Gated,
     }
