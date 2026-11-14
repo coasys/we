@@ -28,6 +28,10 @@ impl Env for ScopedEnv<'_> {
     fn call(&self, name: &str, args: &[Value]) -> Value {
         self.parent.call(name, args)
     }
+
+    fn read_observer(&self) -> Option<&crate::ReadObserver<'_>> {
+        self.parent.read_observer()
+    }
 }
 
 pub(crate) fn eval_macro(
@@ -37,15 +41,16 @@ pub(crate) fn eval_macro(
     body: &Node,
     env: &dyn Env,
     depth: usize,
+    obs: Option<&crate::ReadObserver<'_>>,
 ) -> Value {
-    let receiver = crate::eval::eval_node(receiver, env, depth + 1).settle();
+    let receiver = crate::eval::eval_node(receiver, env, depth + 1, obs).settle();
     match name {
         // `filter` on a list keeps elements whose body is truthy; a
         // non-list filters to `[]`.
         MacroName::Filter => match &receiver {
             Value::List(items) => items
                 .iter()
-                .filter(|item| run_body(item, variable, body, env, depth).truthy())
+                .filter(|item| run_body(item, variable, body, env, depth, obs).truthy())
                 .cloned()
                 .collect::<Vec<Value>>()
                 .into(),
@@ -57,10 +62,10 @@ pub(crate) fn eval_macro(
         MacroName::Map => match &receiver {
             Value::List(items) => items
                 .iter()
-                .map(|item| run_body(item, variable, body, env, depth))
+                .map(|item| run_body(item, variable, body, env, depth, obs))
                 .collect::<Vec<Value>>()
                 .into(),
-            Value::Obj(_) => run_body(&receiver, variable, body, env, depth),
+            Value::Obj(_) => run_body(&receiver, variable, body, env, depth, obs),
             _ => Vec::<Value>::new().into(),
         },
         // `find` returns the first element whose body is truthy, `undefined`
@@ -68,7 +73,7 @@ pub(crate) fn eval_macro(
         MacroName::Find => match &receiver {
             Value::List(items) => items
                 .iter()
-                .find(|item| run_body(item, variable, body, env, depth).truthy())
+                .find(|item| run_body(item, variable, body, env, depth, obs).truthy())
                 .cloned()
                 .unwrap_or(Value::Undefined),
             _ => Value::Undefined,
@@ -77,25 +82,32 @@ pub(crate) fn eval_macro(
         MacroName::Exists => match &receiver {
             Value::List(items) => items
                 .iter()
-                .any(|item| run_body(item, variable, body, env, depth).truthy())
+                .any(|item| run_body(item, variable, body, env, depth, obs).truthy())
                 .into(),
             _ => Value::Bool(false),
         },
         MacroName::All => match &receiver {
             Value::List(items) => items
                 .iter()
-                .all(|item| run_body(item, variable, body, env, depth).truthy())
+                .all(|item| run_body(item, variable, body, env, depth, obs).truthy())
                 .into(),
             _ => Value::Bool(true),
         },
     }
 }
 
-fn run_body(item: &Value, variable: &str, body: &Node, env: &dyn Env, depth: usize) -> Value {
+fn run_body(
+    item: &Value,
+    variable: &str,
+    body: &Node,
+    env: &dyn Env,
+    depth: usize,
+    obs: Option<&crate::ReadObserver<'_>>,
+) -> Value {
     let scoped = ScopedEnv {
         parent: env,
         variable,
         value: item,
     };
-    crate::eval::eval_node(body, &scoped, depth + 1).settle()
+    crate::eval::eval_node(body, &scoped, depth + 1, obs).settle()
 }

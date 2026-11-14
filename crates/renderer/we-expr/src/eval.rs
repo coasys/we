@@ -5,6 +5,14 @@
 //! namespace in a value position is `undefined`), `&&`/`||` answer with
 //! booleans, `==` is `===`, `in` is `Array.includes` (SameValueZero), and a
 //! division or modulo by zero is `0`.
+//!
+//! The read observer: an [`Env`] may answer [`Env::read_observer`] — every
+//! read the evaluator performs is then reported to it once, as
+//! `(path, effective value)`: `store`, `store.items`, `items.0.sig`,
+//! `local.draft[0]` (an index is the evaluated index's `String` form). The
+//! reported value is the one the expression sees — an accessor's answer,
+//! invoked once per syntactic read. An env leaving the default `None` pays
+//! only the check: no path strings are built, nothing is reported.
 use crate::ast::*;
 use crate::{Env, Expr, Value};
 
@@ -17,10 +25,15 @@ const MAX_EVAL_DEPTH: usize = 100;
 /// arithmetic on a non-number is arithmetic on `0`, and every read that cannot
 /// be honoured is `Undefined`.
 pub fn eval(expr: &Expr, env: &dyn Env) -> Value {
-    eval_node(&expr.root, env, 0).settle()
+    eval_node(&expr.root, env, 0, env.read_observer()).settle()
 }
 
-pub(crate) fn eval_node(node: &Node, env: &dyn Env, depth: usize) -> Value {
+pub(crate) fn eval_node(
+    node: &Node,
+    env: &dyn Env,
+    depth: usize,
+    obs: Option<&crate::ReadObserver<'_>>,
+) -> Value {
     if depth > MAX_EVAL_DEPTH {
         return Value::Undefined;
     }
@@ -37,29 +50,26 @@ pub(crate) fn eval_node(node: &Node, env: &dyn Env, depth: usize) -> Value {
                 match part {
                     TemplateNode::Text(t) => out.push_str(t),
                     TemplateNode::Hole(inner) => {
-                        out.push_str(&eval_node(inner, env, depth + 1).settle().to_text());
+                        out.push_str(&eval_node(inner, env, depth + 1, obs).settle().to_text());
                     }
                 }
             }
             out.into()
         }
-        Node::Ident(name) => env
-            .root(name)
-            .map(|v| v.read_value())
-            .unwrap_or(Value::Undefined),
+        Node::Ident(name) => eval_ident(name, env, obs),
         Node::Member { object, property } => {
-            // The object of a read is NOT a value position — a namespace is
-            // still a bag here, not `undefined`.
-            let base = eval_node(object, env, depth + 1);
-            read_property(&base, property)
+            let (base, base_path) = eval_base(object, env, depth + 1, obs);
+            let path = base_path.map(|p| format!("{p}.{property}"));
+            read_property(&base, property, path.as_deref(), obs)
         }
         Node::Index { object, index } => {
-            let base = eval_node(object, env, depth + 1);
-            let index = eval_node(index, env, depth + 1).settle();
-            read_index(&base, &index)
+            let (base, base_path) = eval_base(object, env, depth + 1, obs);
+            let index = eval_node(index, env, depth + 1, obs).settle();
+            let path = base_path.map(|p| format!("{p}.{}", index.js_string()));
+            read_index(&base, &index, path.as_deref(), obs)
         }
         Node::Unary { op, operand } => {
-            let operand = eval_node(operand, env, depth + 1).settle();
+            let operand = eval_node(operand, env, depth + 1, obs).settle();
             match op {
                 UnaryOp::Not => Value::Bool(!operand.truthy()),
                 UnaryOp::Neg => (-operand.to_number()).into(),
@@ -68,17 +78,17 @@ pub(crate) fn eval_node(node: &Node, env: &dyn Env, depth: usize) -> Value {
         Node::Logical { op, left, right } => {
             // `&&`/`||` answer with a boolean, not an operand as JavaScript
             // does — `??` is the value-picker.
-            let left = eval_node(left, env, depth + 1).settle();
+            let left = eval_node(left, env, depth + 1, obs).settle();
             match op {
-                LogicalOp::And => {
-                    Value::Bool(left.truthy() && eval_node(right, env, depth + 1).settle().truthy())
-                }
-                LogicalOp::Or => {
-                    Value::Bool(left.truthy() || eval_node(right, env, depth + 1).settle().truthy())
-                }
+                LogicalOp::And => Value::Bool(
+                    left.truthy() && eval_node(right, env, depth + 1, obs).settle().truthy(),
+                ),
+                LogicalOp::Or => Value::Bool(
+                    left.truthy() || eval_node(right, env, depth + 1, obs).settle().truthy(),
+                ),
                 LogicalOp::Nullish => {
                     if matches!(left, Value::Undefined | Value::Null) {
-                        eval_node(right, env, depth + 1)
+                        eval_node(right, env, depth + 1, obs)
                     } else {
                         left
                     }
@@ -86,8 +96,8 @@ pub(crate) fn eval_node(node: &Node, env: &dyn Env, depth: usize) -> Value {
             }
         }
         Node::Binary { op, left, right } => {
-            let left = eval_node(left, env, depth + 1).settle();
-            let right = eval_node(right, env, depth + 1).settle();
+            let left = eval_node(left, env, depth + 1, obs).settle();
+            let right = eval_node(right, env, depth + 1, obs).settle();
             eval_binary(*op, &left, &right)
         }
         Node::Conditional {
@@ -95,10 +105,10 @@ pub(crate) fn eval_node(node: &Node, env: &dyn Env, depth: usize) -> Value {
             consequent,
             alternate,
         } => {
-            if eval_node(test, env, depth + 1).settle().truthy() {
-                eval_node(consequent, env, depth + 1)
+            if eval_node(test, env, depth + 1, obs).settle().truthy() {
+                eval_node(consequent, env, depth + 1, obs)
             } else {
-                eval_node(alternate, env, depth + 1)
+                eval_node(alternate, env, depth + 1, obs)
             }
         }
         Node::Call {
@@ -108,10 +118,10 @@ pub(crate) fn eval_node(node: &Node, env: &dyn Env, depth: usize) -> Value {
         } => {
             let mut argv: Vec<Value> = Vec::with_capacity(args.len() + 1);
             if let Some(receiver) = receiver {
-                argv.push(eval_node(receiver, env, depth + 1).settle());
+                argv.push(eval_node(receiver, env, depth + 1, obs).settle());
             }
             for a in args {
-                argv.push(eval_node(a, env, depth + 1).settle());
+                argv.push(eval_node(a, env, depth + 1, obs).settle());
             }
             call_function(callee, &argv, env)
         }
@@ -120,11 +130,11 @@ pub(crate) fn eval_node(node: &Node, env: &dyn Env, depth: usize) -> Value {
             receiver,
             variable,
             body,
-        } => crate::macros::eval_macro(*name, receiver, variable, body, env, depth),
+        } => crate::macros::eval_macro(*name, receiver, variable, body, env, depth, obs),
         Node::List(items) => {
             let items: Vec<Value> = items
                 .iter()
-                .map(|i| eval_node(i, env, depth + 1).settle())
+                .map(|i| eval_node(i, env, depth + 1, obs).settle())
                 .collect();
             items.into()
         }
@@ -133,11 +143,58 @@ pub(crate) fn eval_node(node: &Node, env: &dyn Env, depth: usize) -> Value {
             for (key, value) in props {
                 object.insert(
                     key.as_str().into(),
-                    eval_node(value, env, depth + 1).settle(),
+                    eval_node(value, env, depth + 1, obs).settle(),
                 );
             }
             object.into()
         }
+    }
+}
+
+/// The object of a member/index read is NOT a value position — a namespace
+/// is still a bag there, not `undefined` — and when it is itself a named
+/// chain (`store`, `store.items`, `items.0`), the read through it reports
+/// under that chain's own path. Anything else — a call's answer, a literal —
+/// has no name: reads through it are the caller's own inputs and compose no
+/// path.
+fn eval_base(
+    node: &Node,
+    env: &dyn Env,
+    depth: usize,
+    obs: Option<&crate::ReadObserver<'_>>,
+) -> (Value, Option<String>) {
+    if depth > MAX_EVAL_DEPTH {
+        return (Value::Undefined, None);
+    }
+    match node {
+        Node::Ident(name) => (eval_ident(name, env, obs), Some(name.clone())),
+        Node::Member { object, property } => {
+            let (base, base_path) = eval_base(object, env, depth + 1, obs);
+            let path = base_path.map(|p| format!("{p}.{property}"));
+            (read_property(&base, property, path.as_deref(), obs), path)
+        }
+        Node::Index { object, index } => {
+            let (base, base_path) = eval_base(object, env, depth + 1, obs);
+            let index = eval_node(index, env, depth + 1, obs).settle();
+            let path = base_path.map(|p| format!("{p}.{}", index.js_string()));
+            (read_index(&base, &index, path.as_deref(), obs), path)
+        }
+        other => (eval_node(other, env, depth, obs), None),
+    }
+}
+
+/// A bare root name: bound, `readValue`'d, and reported under its own name.
+/// An unbound name is `Undefined` and not a read.
+fn eval_ident(name: &str, env: &dyn Env, obs: Option<&crate::ReadObserver<'_>>) -> Value {
+    match env.root(name) {
+        Some(root) => {
+            let value = root.read_value();
+            if let Some(observe) = obs {
+                observe(name, &value);
+            }
+            value
+        }
+        None => Value::Undefined,
     }
 }
 
@@ -211,11 +268,18 @@ fn call_function(callee: &str, args: &[Value], env: &dyn Env) -> Value {
 /// evaluate.ts): the denied names first, then a namespace's `get`, then the
 /// value's own data — a string answering only `length`, a list `length` and
 /// numeric keys, an object its own keys. Anything else is `Undefined`.
-fn read_property(object: &Value, property: &str) -> Value {
+/// `path` is the read's name when the object stood for one — the observer
+/// hears `path → value` once, with the effective answer.
+fn read_property(
+    object: &Value,
+    property: &str,
+    path: Option<&str>,
+    obs: Option<&crate::ReadObserver<'_>>,
+) -> Value {
     if crate::DENIED_PROPERTIES.contains(&property) {
         return Value::Undefined;
     }
-    match object {
+    let value = match object {
         Value::Namespace(ns) => ns.get(property).read_value(),
         Value::Undefined | Value::Null => Value::Undefined,
         Value::Str(s) => {
@@ -241,19 +305,25 @@ fn read_property(object: &Value, property: &str) -> Value {
                 Value::Undefined
             }
         }
-    }
+    };
+    observe_read(value, path, obs)
 }
 
 /// `object[index]` (`readIndex` in evaluate.ts). A numeric index reaches only
 /// a list's elements and a string's UTF-16 code units — an object answers its
 /// named keys through a *string* index alone, so `obj[1]` is `Undefined`
 /// while `obj["1"]` can hit.
-fn read_index(object: &Value, index: &Value) -> Value {
+fn read_index(
+    object: &Value,
+    index: &Value,
+    path: Option<&str>,
+    obs: Option<&crate::ReadObserver<'_>>,
+) -> Value {
     if matches!(object, Value::Undefined | Value::Null) {
-        return Value::Undefined;
+        return observe_read(Value::Undefined, path, obs);
     }
     if let Value::Num(n) = index {
-        return match object {
+        let value = match object {
             Value::List(l) => {
                 if n.fract() == 0.0 && *n >= 0.0 {
                     l.get(*n as usize)
@@ -271,6 +341,16 @@ fn read_index(object: &Value, index: &Value) -> Value {
                 .unwrap_or(Value::Undefined),
             _ => Value::Undefined,
         };
+        return observe_read(value, path, obs);
     }
-    read_property(object, &index.js_string())
+    read_property(object, &index.js_string(), path, obs)
+}
+
+/// A read's exit: when both a path and an observer exist, the observer hears
+/// `path → value` once; the read's answer is untouched either way.
+fn observe_read(value: Value, path: Option<&str>, obs: Option<&crate::ReadObserver<'_>>) -> Value {
+    if let (Some(path), Some(observe)) = (path, obs) {
+        observe(path, &value);
+    }
+    value
 }
