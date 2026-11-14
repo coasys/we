@@ -114,7 +114,7 @@ pub fn control_height(node: &ResolvedNode) -> f32 {
 }
 
 /// `Style::with_state` for the response's state — disabled beats active
-/// beats hover, the CSS order.
+/// beats focus beats hover, the CSS order.
 pub(crate) fn state_style<'a>(
     style: &'a Style,
     response: &egui::Response,
@@ -131,6 +131,11 @@ pub(crate) fn state_style<'a>(
             return patched(style, p);
         }
     }
+    if response.has_focus() {
+        if let Some(p) = &style.focus {
+            return patched(style, p);
+        }
+    }
     if response.hovered() {
         if let Some(p) = &style.hover {
             return patched(style, p);
@@ -141,7 +146,7 @@ pub(crate) fn state_style<'a>(
 
 /// The pre-tier style with a state patch applied — `Style::with_state`
 /// without the Option dance.
-fn patched<'a>(style: &'a Style, patch: &StylePatch) -> std::borrow::Cow<'a, Style> {
+pub(crate) fn patched<'a>(style: &'a Style, patch: &StylePatch) -> std::borrow::Cow<'a, Style> {
     let mut out = style.pretier.as_deref().unwrap_or(style).clone();
     out.apply(patch);
     std::borrow::Cow::Owned(out)
@@ -272,6 +277,15 @@ pub(crate) fn paint_box(
         view.root_px,
         viewport,
     );
+
+    // A `clip-path: polygon(…)` replaces the whole chrome path — CSS
+    // clips the element's entire painted output (bg, borders, shadows,
+    // radius), so the polygon IS the box: fill it, stroke its edges, and
+    // paint nothing else (the shadows the clip would cut anyway).
+    if let Some(points) = clip_points(style, rect, view) {
+        paint_clipped(painter, rect, &points, style, current_color, view);
+        return;
+    }
 
     // Shadows under the box: egui has shadows only as widgets; paint a soft
     // offset rect per layer (inset layers paint over the bg below).
@@ -475,6 +489,231 @@ fn paint_inset_layer(
             }
         }
     }
+}
+
+/// The resolved `clip-path: polygon(…)` points in widget space, or `None`
+/// for `clip-path: none`/no clip. Per CSS the reference box is the
+/// element's border box: x percentages resolve against its width, y
+/// against its height (`calc(…)` mixes go through [`Dimension::resolve`]).
+fn clip_points(
+    style: &Style,
+    rect: egui::Rect,
+    view: crate::defaults::ViewportCx,
+) -> Option<Vec<egui::Pos2>> {
+    let Some(we_style::ClipPath::Polygon(points)) = style.paint.clip.as_ref() else {
+        return None;
+    };
+    let points: Vec<egui::Pos2> = points
+        .iter()
+        .map(|(x, y)| {
+            egui::pos2(
+                rect.min.x
+                    + x.resolve(
+                        Some(rect.width()),
+                        view.font_px,
+                        view.root_px,
+                        view.viewport,
+                    )
+                    .unwrap_or(0.0),
+                rect.min.y
+                    + y.resolve(
+                        Some(rect.height()),
+                        view.font_px,
+                        view.root_px,
+                        view.viewport,
+                    )
+                    .unwrap_or(0.0),
+            )
+        })
+        .collect();
+    // Drop consecutive duplicates and a repeated closing corner —
+    // declared polygons (cyberpunk's) repeat points.
+    let mut deduped: Vec<egui::Pos2> = Vec::with_capacity(points.len());
+    for p in points {
+        if deduped.last().is_none_or(|last| last.distance(p) > 0.01) {
+            deduped.push(p);
+        }
+    }
+    if deduped.len() > 1 && deduped[0].distance(*deduped.last().unwrap()) <= 0.01 {
+        deduped.pop();
+    }
+    (deduped.len() >= 3).then_some(deduped)
+}
+
+/// Paint the clipped box: the polygon IS the painted shape. The fill is an
+/// ear-clipped mesh (epaint's own path fill only fans convex polygons; the
+/// cyberpunk notches are concave), and each border side strokes the
+/// polygon edge(s) nearest its box edge, inset by half the width so the
+/// stroke lands inside the clip like CSS `border` under `clip-path`.
+fn paint_clipped(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    points: &[egui::Pos2],
+    style: &Style,
+    current_color: egui::Color32,
+    view: crate::defaults::ViewportCx,
+) {
+    let opacity = style.paint.opacity.unwrap_or(1.0).clamp(0.0, 1.0);
+    let fade = |c: egui::Color32| c.gamma_multiply(opacity);
+    if let Some(bg) = style.paint.bg {
+        let mut mesh = egui::epaint::Mesh::default();
+        let color = fade(color32(bg));
+        mesh.vertices = points
+            .iter()
+            .map(|&pos| egui::epaint::Vertex {
+                pos,
+                uv: egui::epaint::WHITE_UV,
+                color,
+            })
+            .collect();
+        mesh.indices = triangulate(points);
+        painter.add(egui::Shape::mesh(mesh));
+    }
+
+    // [top, right, bottom, left] border styles per edge index.
+    let sides = [
+        &style.paint.borders.top,
+        &style.paint.borders.right,
+        &style.paint.borders.bottom,
+        &style.paint.borders.left,
+    ];
+    let side_px = |side: &Option<we_style::BorderSide>| -> f32 {
+        side.as_ref()
+            .and_then(|s| s.width)
+            .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
+            .unwrap_or(3.0)
+    };
+    // The box edge a polygon vertex belongs to — nearest by perpendicular
+    // distance (a vertex on the corner counts for either; the edge match
+    // below uses the *edge's* dominant direction to break the tie).
+    let nearest = |p: egui::Pos2| -> usize {
+        [
+            (p.y - rect.min.y).abs(),
+            (rect.max.x - p.x).abs(),
+            (rect.max.y - p.y).abs(),
+            (p.x - rect.min.x).abs(),
+        ]
+        .into_iter()
+        .enumerate()
+        .min_by(|(_, a), (_, b)| a.total_cmp(b))
+        .map(|(i, _)| i)
+        .unwrap()
+    };
+    let center = egui::pos2(
+        points.iter().map(|p| p.x).sum::<f32>() / points.len() as f32,
+        points.iter().map(|p| p.y).sum::<f32>() / points.len() as f32,
+    );
+    for i in 0..points.len() {
+        let a = points[i];
+        let b = points[(i + 1) % points.len()];
+        if a.distance(b) < 0.01 {
+            continue; // repeated corner (declared polygons sometimes do)
+        }
+        let (sa, sb) = (nearest(a), nearest(b));
+        let pick = if sa == sb {
+            sa
+        } else {
+            // An edge spanning two box edges (a clipped corner's diagonal)
+            // strokes with the wider of the two sides; equal widths pick
+            // the side matching the edge's dominant direction so e.g. a
+            // horizontal top-notch cut paints with the top border.
+            let (wa, wb) = (side_px(sides[sa]), side_px(sides[sb]));
+            if (wa - wb).abs() > 0.5 {
+                if wa > wb {
+                    sa
+                } else {
+                    sb
+                }
+            } else {
+                let horizontal = (b.x - a.x).abs() >= (b.y - a.y).abs();
+                [sa, sb]
+                    .into_iter()
+                    .find(|s| horizontal == (s % 2 == 0))
+                    .unwrap_or(sa)
+            }
+        };
+        let Some(side) = sides[pick].as_ref() else {
+            continue;
+        };
+        if matches!(
+            side.kind,
+            we_style::BorderKind::None | we_style::BorderKind::Hidden
+        ) {
+            continue;
+        }
+        let width = side
+            .width
+            .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
+            .unwrap_or(3.0);
+        if width <= 0.0 {
+            continue;
+        }
+        let color = side.color.map(color32).unwrap_or(current_color);
+        let d = (b - a).normalized();
+        let mut n = egui::vec2(d.y, -d.x);
+        if (center - a).dot(n) < 0.0 {
+            n = -n;
+        }
+        let off = n * (width * 0.5);
+        painter.line_segment([a + off, b + off], egui::Stroke::new(width, fade(color)));
+    }
+}
+
+/// Ear-clipping triangulation of a simple polygon — index triples into
+/// `points` (consecutive-duplicate-free, as `clip_points` returns).
+/// Orientation-agnostic: the signed area fixes the winding. A non-simple
+/// input falls back to a fan so something still paints.
+fn triangulate(pts: &[egui::Pos2]) -> Vec<u32> {
+    let n = pts.len();
+    if n < 3 {
+        return Vec::new();
+    }
+    let area: f32 = (0..n)
+        .map(|i| {
+            let (a, b) = (pts[i], pts[(i + 1) % n]);
+            a.x * b.y - b.x * a.y
+        })
+        .sum::<f32>()
+        * 0.5;
+    let sign = if area >= 0.0 { 1.0 } else { -1.0 };
+    let cross = |a: egui::Pos2, b: egui::Pos2, c: egui::Pos2| {
+        (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x)
+    };
+    let inside = |p: egui::Pos2, a: egui::Pos2, b: egui::Pos2, c: egui::Pos2| {
+        cross(a, b, p) * sign > 1e-6 && cross(b, c, p) * sign > 1e-6 && cross(c, a, p) * sign > 1e-6
+    };
+    let mut idx: Vec<u32> = (0..n as u32).collect();
+    let mut out = Vec::with_capacity((n - 2) * 3);
+    while idx.len() > 3 {
+        let m = idx.len();
+        let mut clipped = false;
+        for i in 0..m {
+            let (ia, ib, ic) = (idx[(i + m - 1) % m], idx[i], idx[(i + 1) % m]);
+            let (a, b, c) = (pts[ia as usize], pts[ib as usize], pts[ic as usize]);
+            if cross(a, b, c) * sign <= 0.0 {
+                continue; // reflex or degenerate — not an ear
+            }
+            if idx
+                .iter()
+                .any(|&iv| iv != ia && iv != ib && iv != ic && inside(pts[iv as usize], a, b, c))
+            {
+                continue;
+            }
+            out.extend([ia, ib, ic]);
+            idx.remove(i);
+            clipped = true;
+            break;
+        }
+        if !clipped {
+            // Not simple (self-intersecting/degenerate) — fan so something paints.
+            for i in 1..idx.len() - 1 {
+                out.extend([idx[0], idx[i], idx[i + 1]]);
+            }
+            return out;
+        }
+    }
+    out.extend([idx[0], idx[1], idx[2]]);
+    out
 }
 
 /// A `FontId` for the style's text props — the node's `font-family` stack
@@ -826,5 +1065,143 @@ mod tests {
                 assert!(top.is_some() && left.is_some(), "pressed dark {s:?}");
             }
         }
+    }
+
+    /// The cyberpunk button slab — `clip_points` resolves its `px`/`%`/
+    /// `calc()` mix against the border box: `-15px 0%` overhangs left,
+    /// `calc(100% + 15px)` right, the bottom edge cuts to `(20px, h)`.
+    #[test]
+    fn clip_points_resolves_the_button_slab() {
+        let mut style = Style::default();
+        style.paint.clip = Some(we_layout::theme_css::cyberpunk_button_clip().clone());
+        let rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(120.0, 36.0));
+        let points = clip_points(&style, rect, crate::defaults::ViewportCx::default()).unwrap();
+        let expect = [
+            (-15.0, 0.0),
+            (135.0, 0.0),
+            (135.0, 36.0),
+            (20.0, 36.0),
+            (-15.0, 1.0),
+        ];
+        assert_eq!(points.len(), expect.len());
+        for (p, (x, y)) in points.iter().zip(expect) {
+            assert!(
+                (p.x - x).abs() < 0.01 && (p.y - y).abs() < 0.01,
+                "want ({x},{y}), got {p:?}"
+            );
+        }
+        // `clip-path: none` (the hover swap) resolves to no points.
+        let mut style = Style::default();
+        style.paint.clip = Some(we_style::ClipPath::None);
+        assert!(clip_points(&style, rect, crate::defaults::ViewportCx::default()).is_none());
+    }
+
+    /// `triangulate` ear-clips: the mesh covers exactly the polygon —
+    /// the button slab's cut corner stays unpainted (the web's clip
+    /// does the same), and the concave input notch isn't filled over
+    /// the way epaint's convex fan would fill it.
+    #[test]
+    fn triangulate_covers_the_polygon_and_not_the_cut_corner() {
+        let tri_area = |a: egui::Pos2, b: egui::Pos2, c: egui::Pos2| {
+            ((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)).abs() * 0.5
+        };
+        let in_tri = |p: egui::Pos2, a: egui::Pos2, b: egui::Pos2, c: egui::Pos2| {
+            let whole = tri_area(a, b, c);
+            let parts = tri_area(p, b, c) + tri_area(a, p, c) + tri_area(a, b, p);
+            whole > 1e-6 && (whole - parts).abs() < 1e-3
+        };
+        let shoelace = |pts: &[egui::Pos2]| {
+            (0..pts.len())
+                .map(|i| {
+                    let (a, b) = (pts[i], pts[(i + 1) % pts.len()]);
+                    a.x * b.y - b.x * a.y
+                })
+                .sum::<f32>()
+                .abs()
+                * 0.5
+        };
+
+        // The button slab on a 120×36 box, resolved above.
+        let slab = [
+            egui::pos2(-15.0, 0.0),
+            egui::pos2(135.0, 0.0),
+            egui::pos2(135.0, 36.0),
+            egui::pos2(20.0, 36.0),
+            egui::pos2(-15.0, 1.0),
+        ];
+        let tris = triangulate(&slab);
+        assert_eq!(tris.len(), (slab.len() - 2) * 3);
+        let covered: f32 = tris
+            .chunks(3)
+            .map(|t| {
+                tri_area(
+                    slab[t[0] as usize],
+                    slab[t[1] as usize],
+                    slab[t[2] as usize],
+                )
+            })
+            .sum();
+        assert!(
+            (covered - shoelace(&slab)).abs() < 0.01,
+            "mesh covers the polygon: {covered} vs {}",
+            shoelace(&slab)
+        );
+        // The cut corner — inside the element's border box but outside
+        // the clip — is covered by no triangle: left unpainted.
+        let cut = egui::pos2(10.0, 34.0);
+        assert!(
+            !tris.chunks(3).any(|t| in_tri(
+                cut,
+                slab[t[0] as usize],
+                slab[t[1] as usize],
+                slab[t[2] as usize]
+            )),
+            "the bottom-left cut corner must stay unpainted"
+        );
+
+        // The concave input notch — a convex fan would span the 60%/80%
+        // dips; every ear-clipped triangle's centroid stays inside.
+        let notch = [
+            egui::pos2(0.0, 5.0),
+            egui::pos2(5.0, 0.0),
+            egui::pos2(115.0, 0.0),
+            egui::pos2(120.0, 5.0),
+            egui::pos2(200.0, 5.0),
+            egui::pos2(200.0, 55.0),
+            egui::pos2(195.0, 57.0),
+            egui::pos2(157.0, 57.0),
+            egui::pos2(155.0, 60.0),
+            egui::pos2(0.0, 60.0),
+        ];
+        let tris = triangulate(&notch);
+        assert_eq!(tris.len(), (notch.len() - 2) * 3);
+        let covered: f32 = tris
+            .chunks(3)
+            .map(|t| {
+                tri_area(
+                    notch[t[0] as usize],
+                    notch[t[1] as usize],
+                    notch[t[2] as usize],
+                )
+            })
+            .sum();
+        assert!(
+            (covered - shoelace(&notch)).abs() < 0.01,
+            "mesh covers the concave polygon: {covered} vs {}",
+            shoelace(&notch)
+        );
+        // A point in the top notch (x=150, y=3 — under the 60% dip on
+        // the left of the notch, above it nothing paints past x≈120)
+        // stays unpainted.
+        let dip = egui::pos2(150.0, 2.0);
+        assert!(
+            !tris.chunks(3).any(|t| in_tri(
+                dip,
+                notch[t[0] as usize],
+                notch[t[1] as usize],
+                notch[t[2] as usize]
+            )),
+            "the top notch must stay unpainted"
+        );
     }
 }

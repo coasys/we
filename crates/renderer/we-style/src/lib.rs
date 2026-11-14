@@ -31,9 +31,9 @@ pub mod transition;
 pub use color::{eval_color, Color};
 pub use css_value::{eval_dimension, eval_math};
 pub use props::{
-    build_layout_decls, build_state_fragment_decls, emitted_for, eval_box_shadow, eval_decls,
-    interactive_decls, is_design_prop, is_interactive_prop, merge_props, resolve, DeclValue, Decls,
-    EvalCx, EvalResult, StyleInput,
+    build_layout_decls, build_state_fragment_decls, emitted_for, eval_box_shadow, eval_clip_path,
+    eval_decls, interactive_decls, is_design_prop, is_interactive_prop, merge_props, resolve,
+    DeclValue, Decls, EvalCx, EvalResult, StyleInput,
 };
 pub use shorthand::{state_bag_filled, tier_bag_of, with_box_sides_filled, Bag, Tier};
 pub use style::*;

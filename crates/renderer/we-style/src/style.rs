@@ -422,6 +422,19 @@ pub struct Shadow {
     pub color: Option<Color>,
 }
 
+/// `clip-path`: `none` — which a state patch can set to *clear* a base
+/// clip — or a `polygon()` of points. Each point is `(x, y)` dimensions:
+/// `x` resolves against the box's width, `y` against its height (the CSS
+/// `reference-box` percentages), with `calc()` mixes allowed.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ClipPath {
+    /// `clip-path: none` — paints unclipped; a patch's way to say
+    /// "the base clip does not apply in this state".
+    None,
+    /// `polygon(x1 y1, x2 y2, …)` — the point list in declaration order.
+    Polygon(Vec<(Dimension, Dimension)>),
+}
+
 /// `transform`: the parts we can apply, plus whatever else the authored value
 /// carried (`scale(0.96)` and friends stay in `rest` for the painter).
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -588,6 +601,10 @@ pub struct PaintStyle {
     pub radius: Edges<Option<Dimension>>,
     /// `box-shadow` layers, in order. `Some(vec![])` is an explicit `none`.
     pub shadows: Option<Vec<Shadow>>,
+    /// `clip-path` — `None` (the field) means unclipped;
+    /// `Some(ClipPath::None)` is the explicit declaration, which a state
+    /// patch uses to remove a base clip.
+    pub clip: Option<ClipPath>,
     pub opacity: Option<f32>,
     pub z_index: Option<ZIndex>,
     pub cursor: Option<Cursor>,
@@ -841,6 +858,9 @@ impl PaintStyle {
         merge_edge!(dst.radius, self.radius);
         if self.shadows.is_some() {
             dst.shadows = self.shadows.clone();
+        }
+        if self.clip.is_some() {
+            dst.clip = self.clip.clone();
         }
         if self.opacity.is_some() {
             dst.opacity = self.opacity;

@@ -42,12 +42,27 @@ impl Widget for Input {
         let is_password =
             matches!(props::prop(node, "type"), we_expr::Value::Str(s) if s.as_ref() == "password");
 
+        // The TextEdit's persistent id, fixed on the widget below — the
+        // chrome paints before `put`, so focus has to be read through it
+        // directly (`:focus-within` styles: cyberpunk's accent border).
+        let wid = cx.ui.make_persistent_id((node.id.as_str(), "we-input"));
+        let chrome_style = if cx.ui.ctx().memory(|m| m.has_focus(wid)) {
+            match &style.focus {
+                Some(p) => props::patched(style, p),
+                None => std::borrow::Cow::Borrowed(style),
+            }
+        } else {
+            std::borrow::Cow::Borrowed(style)
+        };
+        let style: &Style = &chrome_style;
+
         // Chrome that comes from the resolved style — the theme's part
         // rule (retro's white bevelled well) or authored `styles` —
         // replaces egui's own TextEdit frame; an unstyled field keeps it.
         let view = crate::defaults::view_of(cx.ui.ctx());
         let chrome = style.paint.bg.is_some()
             || style.paint.shadows.as_ref().is_some_and(|s| !s.is_empty())
+            || style.paint.clip.is_some()
             || style.paint.borders.as_slice().iter().any(|b| {
                 b.as_ref().is_some_and(|s| {
                     !matches!(
@@ -67,7 +82,7 @@ impl Widget for Input {
         }
 
         let mut widget = TextEdit::singleline(&mut text)
-            .id_salt(node.id.as_str())
+            .id(wid)
             .desired_width(rect.width())
             // Centre the text block in the field — the theme's atom
             // alignment is LEFT_TOP, which parks the text high inside a

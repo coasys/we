@@ -163,7 +163,7 @@ pub fn style_of(node: &ResolvedNode, scx: &StyleCx) -> Style {
     let mut style = we_style::resolve(&bag, &input);
     // The theme's component stylesheet — `[data-we-theme='x'] x::part(*)`
     // rules a var read cannot carry — lands over the resolved bags.
-    crate::theme_css::apply(scx.theme, node, &mut style);
+    crate::theme_css::apply(scx, node, &mut style);
     style
 }
 

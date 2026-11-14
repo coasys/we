@@ -16,8 +16,13 @@
 //! - `[disabled]`'s `text-shadow` — parsed but unpainted, same gap list.
 use std::sync::LazyLock;
 
-use we_style::{eval_box_shadow, eval_color, BorderKind, Color, Shadow, Style};
+use we_style::{
+    eval_box_shadow, eval_clip_path, eval_color, BorderKind, BorderSide, ClipPath, Color,
+    Dimension, Edges, Shadow, Style,
+};
 use we_template::ResolvedNode;
+
+use crate::defaults::StyleCx;
 
 /// `retro/index.css`'s raised Win95 face — four inset layers every
 /// bevelled part shares: white top/left over a lighter second edge,
@@ -71,14 +76,59 @@ fn square(style: &mut Style) {
     style.paint.radius = we_style::Edges::new(zero, zero, zero, zero);
 }
 
+/// `cyberpunk/index.css`'s `we-button::part(base)` slab — corners cut,
+/// the whole face leaning right; `:hover` drops the clip (`clip-path:
+/// none`) back to the plain box.
+const CYBERPUNK_BUTTON_CLIP: &str = "polygon(-15px 0%, calc(100% + 15px) 0%, \
+     calc(100% + 15px) 100%, 20px 100%, -15px calc(100% - 35px))";
+
+/// `we-input::part(base)` — the notched field outline: the top dips at
+/// 60%, the bottom at 80%, corner cuts everywhere else.
+const CYBERPUNK_INPUT_CLIP: &str = "polygon(0 5px, 5px 0, calc(60% - 5px) 0, \
+     60% 5px, 100% 5px, 100% calc(100% - 5px), \
+     calc(100% - 5px) calc(100% - 3px), calc(80% - 3px) calc(100% - 3px), \
+     calc(80% - 5px) calc(100% - 0px), 0 calc(100% - 0px), \
+     0% calc(100% - 0px))";
+
+static CYBERPUNK_BUTTON: LazyLock<ClipPath> =
+    LazyLock::new(|| eval_clip_path(CYBERPUNK_BUTTON_CLIP).expect("clip CSS parses"));
+static CYBERPUNK_INPUT: LazyLock<ClipPath> =
+    LazyLock::new(|| eval_clip_path(CYBERPUNK_INPUT_CLIP).expect("clip CSS parses"));
+
+/// The button slab — exported so the painter tests assert against the
+/// theme's own declaration.
+pub fn cyberpunk_button_clip() -> &'static ClipPath {
+    &CYBERPUNK_BUTTON
+}
+
+/// The notched field outline.
+pub fn cyberpunk_input_clip() -> &'static ClipPath {
+    &CYBERPUNK_INPUT
+}
+
+/// A `var(--we-*)` colour — the recorded tables hold literals, so `get`
+/// plus `eval_color` is the whole lookup.
+fn var_color(scx: &StyleCx, name: &str) -> Option<Color> {
+    scx.tokens.get(name).and_then(eval_color)
+}
+
 /// `style_of`'s last pass: the component rules `theme`'s stylesheet
 /// declares, over whatever the bags resolved. The stylesheet's
 /// `!important` decls are unconditional (authored props lose there too);
 /// its plain decls sit where the part's own would — also unconditional,
-/// since the rule replaces the part's var-read entirely.
-pub(crate) fn apply(theme: &str, node: &ResolvedNode, style: &mut Style) {
-    if theme == "retro" {
-        retro(node, style)
+/// since the rule replaces the part's var-read entirely. The rules land
+/// on `pretier` too — state patches rebuild from it, and the stylesheet
+/// holds under states the same way the CSS does.
+pub(crate) fn apply(scx: &StyleCx, node: &ResolvedNode, style: &mut Style) {
+    let themed = |style: &mut Style| match scx.theme {
+        "retro" => retro(node, style),
+        "cyberpunk" => cyberpunk(scx, node, style),
+        _ => {}
+    };
+    themed(style);
+    // `pretier` carries the same rules — state patches rebuild from it.
+    if let Some(pretier) = style.pretier.as_deref_mut() {
+        themed(pretier);
     }
 }
 
@@ -118,6 +168,50 @@ fn retro(node: &ResolvedNode, style: &mut Style) {
         "we-modal" => {
             style.paint.bg = Some(color("silver"));
             style.paint.shadows = Some(retro_bevel().to_vec());
+        }
+        _ => {}
+    }
+}
+
+fn cyberpunk(scx: &StyleCx, node: &ResolvedNode, style: &mut Style) {
+    match node.ty.as_ref() {
+        // we-button::part(base): the clip-path slab; `:hover` swaps it
+        // for `clip-path: none` — an authored hover patch still wins its
+        // slot (the rule is not `!important`).
+        "we-button" => {
+            style.paint.clip = Some(CYBERPUNK_BUTTON.clone());
+            let patch = style.hover.get_or_insert_with(Box::default);
+            if patch.paint.clip.is_none() {
+                patch.paint.clip = Some(ClipPath::None);
+            }
+        }
+        // we-input::part(base): `height: 60px; font-size: 16px` — then
+        // the layered borders collapse to solid accent-200 at 10/2/10/2
+        // (`border: 10px solid` then left/right 2px and the
+        // `border-color` line wins them all), the notched clip, and
+        // `:focus-within` recolouring every side accent-500.
+        "we-input" => {
+            style.layout.height = Some(Dimension::Px(60.0));
+            style.text.font_size = Some(Dimension::Px(16.0));
+            let c200 = var_color(scx, "--we-color-accent-200");
+            let side = |width: f32| {
+                Some(BorderSide {
+                    width: Some(Dimension::Px(width)),
+                    kind: BorderKind::Solid,
+                    color: c200,
+                })
+            };
+            style.paint.borders = Edges::new(side(10.0), side(2.0), side(10.0), side(2.0));
+            style.paint.clip = Some(CYBERPUNK_INPUT.clone());
+            if let Some(c500) = var_color(scx, "--we-color-accent-500") {
+                let patch = style.focus.get_or_insert_with(Box::default);
+                patch.paint.borders = style.paint.borders.map(|s| {
+                    s.as_ref().map(|b| BorderSide {
+                        color: Some(c500),
+                        ..b.clone()
+                    })
+                });
+            }
         }
         _ => {}
     }
