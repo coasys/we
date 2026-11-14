@@ -5,7 +5,7 @@
 //! itself — one item, one event.
 use we_expr::Value;
 use we_style::Style;
-use we_template::ResolvedNode;
+use we_template::{ResolvedChild, ResolvedNode};
 
 use crate::props;
 use crate::{
@@ -34,6 +34,94 @@ impl Widget for DropdownMenu {
 
     fn measure(&self, _cx: &MeasureCx, _node: &ResolvedNode, _style: &Style, _avail: Size) -> Size {
         Size::new(0.0, 0.0)
+    }
+
+    /// A childless menu generates its trigger — DropdownMenu.solid.tsx's
+    /// `trigger()`: a `soft` we-button whose text is `triggerLabel`
+    /// (`"Options"` without an icon; icon-only — `square`, named by
+    /// `triggerTitle ?? "Options"` — when an icon stands alone), wrapped
+    /// in a bottom `we-tooltip` when `triggerTitle` is set. An authored
+    /// child is the trigger instead and nothing is generated.
+    fn synthesized_children(&self, node: &ResolvedNode) -> Vec<ResolvedChild> {
+        if !node.children.is_empty() {
+            return Vec::new();
+        }
+        let icon = props::prop_text(node, "triggerIcon");
+        // `label()`: an icon turns an absent label into icon-only rather
+        // than "icon, followed by the word Options".
+        let label = match icon {
+            Some(_) => props::prop_str(node, "triggerLabel").unwrap_or_default(),
+            None => props::prop_str(node, "triggerLabel").unwrap_or("Options"),
+        };
+        let icon_only = icon.is_some() && label.is_empty();
+        let title = props::prop_text(node, "triggerTitle");
+        let base = node.id.as_str();
+
+        let mut bprops: indexmap::IndexMap<std::sync::Arc<str>, Value> = Default::default();
+        let take = |k: &str| node.props.get(k).filter(|v| !v.is_undefined()).cloned();
+        bprops.insert(
+            "variant".into(),
+            take("triggerVariant").unwrap_or_else(|| Value::Str("soft".into())),
+        );
+        if let Some(v) = take("size") {
+            bprops.insert("size".into(), v.clone());
+        }
+        if let Some(v) = take("triggerTone") {
+            bprops.insert("tone".into(), v.clone());
+        }
+        if icon_only {
+            bprops.insert("square".into(), Value::Bool(true));
+            // `label`, not `aria-label`, reaches the inner button — the
+            // icon-only trigger's accessible name.
+            bprops.insert(
+                "label".into(),
+                Value::Str(title.unwrap_or("Options").into()),
+            );
+        }
+        let mut bchildren: Vec<ResolvedChild> = Vec::new();
+        if let Some(name) = icon {
+            let mut iprops: indexmap::IndexMap<std::sync::Arc<str>, Value> = Default::default();
+            iprops.insert("name".into(), Value::Str(name.into()));
+            bchildren.push(ResolvedChild::Node(Box::new(ResolvedNode {
+                id: format!("{base}/~t/b/i").into(),
+                ty: "we-icon".into(),
+                props: iprops,
+                handlers: Default::default(),
+                slot: None,
+                children: Vec::new(),
+                transition: None,
+            })));
+        }
+        if !label.is_empty() {
+            bchildren.push(ResolvedChild::Text(label.into()));
+        }
+        let button = ResolvedNode {
+            id: format!("{base}/~t/b").into(),
+            ty: "we-button".into(),
+            props: bprops,
+            handlers: Default::default(),
+            slot: None,
+            children: bchildren,
+            transition: None,
+        };
+        match title {
+            // `we-tooltip` takes the trigger slot, the button sits inside.
+            Some(content) => {
+                let mut tprops: indexmap::IndexMap<std::sync::Arc<str>, Value> = Default::default();
+                tprops.insert("content".into(), Value::Str(content.into()));
+                tprops.insert("placement".into(), Value::Str("bottom".into()));
+                vec![ResolvedChild::Node(Box::new(ResolvedNode {
+                    id: format!("{base}/~t").into(),
+                    ty: "we-tooltip".into(),
+                    props: tprops,
+                    handlers: Default::default(),
+                    slot: None,
+                    children: vec![ResolvedChild::Node(Box::new(button))],
+                    transition: None,
+                }))]
+            }
+            None => vec![ResolvedChild::Node(Box::new(button))],
+        }
     }
 
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, _rect: Rect) {

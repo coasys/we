@@ -85,7 +85,13 @@ fn rig(root: ResolvedNode) -> (Harness<'static>, Rig) {
     let (e, d, n) = (events.clone(), edit.clone(), root.clone());
     let harness = Harness::builder()
         .with_size(egui::vec2(400.0, 400.0))
-        .with_context_setup(|ctx| ctx.set_fonts(egui::FontDefinitions::default()))
+        // Generated triggers may carry an icon — the media fonts keep a
+        // missing glyph a paint detail, not a panic.
+        .allow_missing_glyphs()
+        .with_context_setup(|ctx| {
+            ctx.set_fonts(egui::FontDefinitions::default());
+            we_egui::install_media(ctx);
+        })
         .build_ui(move |ui| {
             let cx = MeasureCx::new(ui.ctx());
             let n = n.borrow();
@@ -695,6 +701,78 @@ fn dropdown_menu_item_fires_once_and_closes() {
     };
     assert!(m.get("id").is_some_and(|v| v.strict_eq(&s("edit"))));
     assert!(!r.edit.borrow().is_open(&NodeId::from("menu")));
+}
+
+/// B3 — a childless DropdownMenu gets the generated we-button trigger
+/// (DropdownMenu.solid.tsx:441–463): a `triggerIcon` makes it icon-only
+/// (`square`), so the accessible name is `triggerTitle`; the bundle's two
+/// childless menus ("Who is on this", "Start a workflow on this") are
+/// exactly this shape.
+#[test]
+fn childless_dropdown_menu_generates_an_icon_trigger() {
+    let mut menu = node(
+        "DropdownMenu",
+        "menu",
+        props(&[
+            (
+                "items",
+                Value::List(Arc::new(vec![Value::Obj(Arc::new(props(&[
+                    ("id", s("edit")),
+                    ("label", s("Edit")),
+                ])))])),
+            ),
+            ("triggerIcon", s("user-plus")),
+            ("triggerTitle", s("Who is on this")),
+        ]),
+    );
+    menu.handlers = handlers(&["onSelect"]);
+    let (mut h, r) = rig(menu);
+    h.run();
+    // The generated icon-only trigger: clickable, named by the title.
+    h.get_by_label("Who is on this").click();
+    h.run();
+    assert!(r.edit.borrow().is_open(&NodeId::from("menu")));
+    h.get_by_label("Edit").click();
+    h.run();
+    let sel = details(&r, "onSelect");
+    let Some(Value::Obj(m)) = sel.last() else {
+        panic!("onSelect did not fire: {sel:?}")
+    };
+    assert!(m.get("id").is_some_and(|v| v.strict_eq(&s("edit"))));
+    assert!(!r.edit.borrow().is_open(&NodeId::from("menu")));
+}
+
+/// B3 — no icon, no children: the trigger is a labeled soft button whose
+/// text is `triggerLabel ?? 'Options'` (DropdownMenu.solid.tsx:417).
+#[test]
+fn childless_dropdown_menu_generates_a_labeled_trigger() {
+    let mut menu = node(
+        "DropdownMenu",
+        "menu",
+        props(&[
+            (
+                "items",
+                Value::List(Arc::new(vec![Value::Obj(Arc::new(props(&[
+                    ("id", s("go")),
+                    ("label", s("Go")),
+                ])))])),
+            ),
+            ("triggerLabel", s("Actions")),
+        ]),
+    );
+    menu.handlers = handlers(&["onSelect"]);
+    let (mut h, r) = rig(menu);
+    h.run();
+    h.get_by_label("Actions").click();
+    h.run();
+    assert!(r.edit.borrow().is_open(&NodeId::from("menu")));
+    h.get_by_label("Go").click();
+    h.run();
+    let sel = details(&r, "onSelect");
+    let Some(Value::Obj(m)) = sel.last() else {
+        panic!("onSelect did not fire: {sel:?}")
+    };
+    assert!(m.get("id").is_some_and(|v| v.strict_eq(&s("go"))));
 }
 
 // ---------- pickers + sortable -------------------------------------------

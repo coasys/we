@@ -343,9 +343,12 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
     }
 
     // Children paint under this node's computed style: inherited text
-    // fields and the composed opacity flow down the recursion.
+    // fields and the composed opacity flow down the recursion. Synthesized
+    // children (the widget's generated content) join the authored ones —
+    // the layout pass already gave them rects.
     let saved_inh = w.inh.replace(style.clone());
-    for child in &node.children {
+    let extra = widget.synthesized_children(node);
+    for child in node.children.iter().chain(extra.iter()) {
         match child {
             ResolvedChild::Node(n) => paint_node(w, n),
             ResolvedChild::Text(t) => {
@@ -394,10 +397,18 @@ fn overlay_open(w: &Walk<'_>, node: &ResolvedNode) -> bool {
 }
 
 /// The resolved children that got no layout rect — they were not picked by
-/// the widget's `parts_spec` and belong on the overlay layer.
+/// the widget's `parts_spec` and belong on the overlay layer. Synthesized
+/// children are included: one the spec leaves unpicked floats like an
+/// authored child would.
 fn floating_children(w: &Walk<'_>, node: &ResolvedNode) -> Vec<ResolvedChild> {
     node.children
         .iter()
+        .chain(
+            w.registry
+                .widget_for(&node.ty)
+                .synthesized_children(node)
+                .iter(),
+        )
         .filter(|c| match c {
             ResolvedChild::Node(n) => !w.layout.rects.contains_key(&n.id),
             ResolvedChild::Text(_) => true,

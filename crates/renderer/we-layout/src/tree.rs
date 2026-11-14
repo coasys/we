@@ -596,6 +596,11 @@ struct Builder<'a> {
     scx: &'a StyleCx<'a>,
     /// `id` → resolved node — the measure function re-finds its widget.
     nodes: HashMap<NodeId, &'a ResolvedNode>,
+    /// Widget-synthesized children (`Measure::synthesized_children`),
+    /// materialized before the build so `&'a` borrows out of the arena
+    /// satisfy `nodes` — `extra_map` maps an owner's id to its slice.
+    extra: &'a [ResolvedChild],
+    extra_map: &'a HashMap<NodeId, std::ops::Range<usize>>,
     /// `id` → the node's *effective* style — its own resolved style with
     /// the parent's inherited text fields and the opacity product folded
     /// in (CSS's computed-style cascade). The measure pass uses these so
@@ -607,12 +612,15 @@ struct Builder<'a> {
 
 impl<'a> Builder<'a> {
     /// A part → a taffy node: `pick` children inside, nested parts inside, or
-    /// an empty fixed box.
+    /// an empty fixed box. `extra` is the owner's synthesized children —
+    /// indistinguishable from authored ones to a pick.
+    #[allow(clippy::too_many_arguments)]
     fn part_node(
         &mut self,
         owner: &NodeId,
         spec: &PartSpec,
         node: &'a ResolvedNode,
+        extra: &'a [ResolvedChild],
         tree: &TreeCfg,
         parent_h_definite: bool,
         main_indefinite: bool,
@@ -621,14 +629,19 @@ impl<'a> Builder<'a> {
     ) -> Option<TaffyId> {
         let mut kids = Vec::new();
         if let Some(pick) = &spec.pick {
-            for child in node.children.iter().filter(|c| match (pick, c) {
-                (Pick::Default, ResolvedChild::Node(n)) => n.slot.is_none(),
-                (Pick::Default, ResolvedChild::Text(_)) => true,
-                (Pick::Named(want), ResolvedChild::Node(n)) => {
-                    n.slot.as_deref() == Some(want.as_ref())
-                }
-                (Pick::Named(_), ResolvedChild::Text(_)) => false,
-            }) {
+            for child in node
+                .children
+                .iter()
+                .chain(extra.iter())
+                .filter(|c| match (pick, c) {
+                    (Pick::Default, ResolvedChild::Node(n)) => n.slot.is_none(),
+                    (Pick::Default, ResolvedChild::Text(_)) => true,
+                    (Pick::Named(want), ResolvedChild::Node(n)) => {
+                        n.slot.as_deref() == Some(want.as_ref())
+                    }
+                    (Pick::Named(_), ResolvedChild::Text(_)) => false,
+                })
+            {
                 if let Some(k) = self.child_node(
                     node,
                     child,
@@ -647,6 +660,7 @@ impl<'a> Builder<'a> {
                 owner,
                 sub,
                 node,
+                extra,
                 tree,
                 parent_h_definite,
                 main_indefinite,
@@ -809,6 +823,14 @@ impl<'a> Builder<'a> {
         // the slot (`Suppressed`) instead of laying out as spans.
         let tc = self.m.text_children(node);
         let mut spec = self.m.parts_spec(node);
+        // The widget's synthesized children (a component's generated
+        // content — `Measure::synthesized_children`) join the authored
+        // ones for every pick and the plain children walk.
+        let extra: &'a [ResolvedChild] = self
+            .extra_map
+            .get(&node.id)
+            .map(|r| &self.extra[r.clone()])
+            .unwrap_or(&[]);
         // `caret="end"` on the tree reorders the item's caret part to the row's
         // end; `lead` pads the row's left edge — part order/insets are
         // layout's call, and only it can see the ancestor.
@@ -841,6 +863,7 @@ impl<'a> Builder<'a> {
                             &node.id,
                             part,
                             node,
+                            extra,
                             &tree,
                             h_definite,
                             main_indefinite,
@@ -857,6 +880,7 @@ impl<'a> Builder<'a> {
                 ) && !h_definite;
                 node.children
                     .iter()
+                    .chain(extra.iter())
                     .filter_map(|c| {
                         self.child_node(node, c, &tree, h_definite, main_indefinite, tc, &style)
                     })
@@ -897,6 +921,13 @@ pub trait Measure {
     fn text_children(&self, _node: &ResolvedNode) -> TextChildren {
         TextChildren::Leaves
     }
+    /// Children the widget itself renders — a component's generated
+    /// content (the DropdownMenu's fallback trigger). Layout collects them
+    /// once per build and treats them exactly like authored children:
+    /// part picks see them, they get rects, and they recurse.
+    fn synthesized_children(&self, _node: &ResolvedNode) -> Vec<ResolvedChild> {
+        Vec::new()
+    }
     /// The size a leaf wants in `avail` room, at the content box (padding
     /// and border land outside — taffy offers the content box).
     fn measure(&self, node: &ResolvedNode, style: &Style, avail: Size) -> Size;
@@ -933,6 +964,26 @@ pub fn layout_shrink(m: &dyn Measure, scx: &StyleCx, root: &ResolvedNode, rect: 
     layout_impl(m, scx, root, rect, false)
 }
 
+/// Fill `extra`/`map` with `node`'s synthesized children and recurse into
+/// its authored children — see `layout_impl` for why the arena exists.
+fn collect_synth(
+    node: &ResolvedNode,
+    m: &dyn Measure,
+    extra: &mut Vec<ResolvedChild>,
+    map: &mut HashMap<NodeId, std::ops::Range<usize>>,
+) {
+    let start = extra.len();
+    extra.extend(m.synthesized_children(node));
+    if extra.len() > start {
+        map.insert(node.id.clone(), start..extra.len());
+    }
+    for child in &node.children {
+        if let ResolvedChild::Node(n) = child {
+            collect_synth(n, m, extra, map);
+        }
+    }
+}
+
 fn layout_impl(
     m: &dyn Measure,
     scx: &StyleCx,
@@ -940,11 +991,33 @@ fn layout_impl(
     rect: Rect,
     viewport_root: bool,
 ) -> Layout {
+    // Synthesized children live in an arena outliving the build: `&'a`
+    // borrows into `extra` satisfy `nodes`, so a generated child is
+    // indistinguishable from an authored one downstream. `extra` is
+    // iterated while it grows — nested synthesis (a generated subtree
+    // whose nodes generate children of their own) is covered; the clone
+    // is only a probe, since the arena can't lend its own entries while
+    // it grows.
+    let (mut extra, mut extra_map) = (Vec::new(), HashMap::new());
+    collect_synth(root, m, &mut extra, &mut extra_map);
+    let mut i = 0;
+    while i < extra.len() {
+        let probe = match &extra[i] {
+            ResolvedChild::Node(n) => Some((**n).clone()),
+            ResolvedChild::Text(_) => None,
+        };
+        if let Some(n) = probe {
+            collect_synth(&n, m, &mut extra, &mut extra_map);
+        }
+        i += 1;
+    }
     let mut b = Builder {
         tree: TaffyTree::new(),
         m,
         scx,
         nodes: HashMap::new(),
+        extra: &extra,
+        extra_map: &extra_map,
         styles: HashMap::new(),
         scroll: HashMap::new(),
         clip: HashMap::new(),

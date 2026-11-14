@@ -36,7 +36,7 @@ use std::sync::Arc;
 
 use we_expr::Value;
 use we_style::Style;
-use we_template::{NodeId, ResolvedNode};
+use we_template::{NodeId, ResolvedChild, ResolvedNode};
 
 pub use containers::{Card, Column, Div, Grid, Lane, Row};
 pub use controls::Button;
@@ -219,5 +219,13 @@ pub trait Widget: Send + Sync {
     /// `Suppressed` drops every child (a `text` prop replaces the slot).
     fn text_children(&self, _node: &ResolvedNode) -> TextChildren {
         TextChildren::Leaves
+    }
+    /// Children the widget itself renders — a component's generated
+    /// content (the DropdownMenu's fallback `we-button` trigger when the
+    /// authored node is childless). They lay out and paint exactly like
+    /// authored children: part picks see them, they get ids and rects,
+    /// and the paint walk recurses into them.
+    fn synthesized_children(&self, _node: &ResolvedNode) -> Vec<ResolvedChild> {
+        Vec::new()
     }
 }

@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use we_style::Style;
-use we_template::{NodeId, ResolvedNode};
+use we_template::{NodeId, ResolvedChild, ResolvedNode};
 
 use crate::defaults::{store_view, StyleCx, FONT_PX, ROOT_PX};
 use crate::{MeasureCx, Rect, Registry, Size};
@@ -71,6 +71,12 @@ impl<'a> we_layout::Measure for EguiMeasure<'a> {
 
     fn text_children(&self, node: &ResolvedNode) -> we_layout::TextChildren {
         self.registry.widget_for(&node.ty).text_children(node)
+    }
+
+    fn synthesized_children(&self, node: &ResolvedNode) -> Vec<ResolvedChild> {
+        self.registry
+            .widget_for(&node.ty)
+            .synthesized_children(node)
     }
 
     fn measure_text(
