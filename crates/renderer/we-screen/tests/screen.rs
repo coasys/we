@@ -605,6 +605,72 @@ fn encoded_dot_segments_resolve_at_the_url_boundary() {
     assert_eq!(s.nav.href(), "/space/abc/%2e%2e%2e/z");
 }
 
+#[test]
+fn page_identity_keeps_the_trailing_slash() {
+    // A shared link with a trailing slash lands verbatim in `url.pathname`,
+    // and `routeStore.page()` builds identity on `currentPath` — not on
+    // slash-joined segments (`PresenceStore.tsx:443` compares a peer's
+    // focus path to it exactly; the remembered-search map keys on it too).
+    let mut s = screen(
+        json!({ "params": { "id": { "type": "id", "identity": true } } }),
+        "/space/abc/board",
+    );
+    s.apply(ScreenOp::Open {
+        href: "/space/abc/record/CollectionBlock/?id=ad4m://obj/x".to_string(),
+    });
+    assert_eq!(
+        s.nav.href(),
+        "/space/abc/record/CollectionBlock/?id=ad4m://obj/x"
+    );
+    assert_eq!(s.nav.current_path(), "/space/abc/record/CollectionBlock/");
+    assert_eq!(
+        s.nav.page_identity(),
+        "/space/abc/record/CollectionBlock/?id=ad4m://obj/x"
+    );
+    // Route segments still read filtered — the page renders the same; it
+    // is the identity that differs, and the no-slash spelling is another
+    // page.
+    assert_eq!(
+        s.nav.segments().join("/"),
+        "space/abc/record/CollectionBlock"
+    );
+    s.apply(ScreenOp::Open {
+        href: "/space/abc/record/CollectionBlock?id=ad4m://obj/x".to_string(),
+    });
+    assert_eq!(
+        s.nav.page_identity(),
+        "/space/abc/record/CollectionBlock?id=ad4m://obj/x"
+    );
+}
+
+#[test]
+fn the_pathname_keeps_interior_empties_and_keys_remembered_search() {
+    // `new URL` keeps interior empty segments verbatim — only dots resolve.
+    // The pathname carries them; the filtered route segments do not.
+    let mut s = screen(json!({ "params": {} }), "/");
+    s.apply(ScreenOp::Open {
+        href: "/a/b/?sort=top".to_string(),
+    });
+    assert_eq!(s.nav.current_path(), "/a/b/");
+    s.apply(ScreenOp::Open {
+        href: "/elsewhere".to_string(),
+    });
+    // A bare-path navigate restores the query remembered under that exact
+    // pathname (rule 4 — the remembered-search map is keyed on it).
+    s.apply(ScreenOp::Navigate {
+        to: "/a/b/".to_string(),
+        query: None,
+        base_depth: None,
+        replace: false,
+    });
+    assert_eq!(s.nav.href(), "/a/b/?sort=top");
+    s.apply(ScreenOp::Open {
+        href: "/a//b".to_string(),
+    });
+    assert_eq!(s.nav.current_path(), "/a//b");
+    assert_eq!(s.nav.segments().join("/"), "a/b");
+}
+
 // --- JS semantics: JSON.stringify property order --------------------------
 
 #[test]
