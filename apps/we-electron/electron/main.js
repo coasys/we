@@ -282,13 +282,13 @@ async function waitForGraphQL(port, proc) {
 
   const outcome = await waitUntilReady(answers, { gone: () => proc.exitCode !== null || proc.signalCode !== null });
   if (outcome === 'ready') {
-    console.log(`GraphQL server on port ${port} is ready`);
+    console.log(`API on port ${port} is ready`);
     return;
   }
   throw new Error(
     outcome === 'gone'
-      ? `The executor exited before its GraphQL server on port ${port} was ready`
-      : `GraphQL server on port ${port} not ready after 60 s`,
+      ? `The executor exited before its API on port ${port} was ready`
+      : `API on port ${port} not ready after 60 s`,
   );
 }
 
