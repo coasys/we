@@ -24,6 +24,7 @@ mod natives;
 mod offline;
 mod provenance;
 mod query_source;
+mod route;
 mod storemap;
 
 pub use executor::{
@@ -35,5 +36,6 @@ pub use natives::run_host_function;
 pub use offline::OfflineData;
 pub use provenance::{Provenance, ProvenanceReport};
 pub use query_source::SnapshotQuerySource;
+pub use route::{RouteCaptures, RouteQuerySource};
 pub use storemap::{MemberKind, MemberRow, StoreMap};
 pub use we_template::StoreBag;

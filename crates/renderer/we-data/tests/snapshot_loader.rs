@@ -60,3 +60,85 @@ fn unsupported_versions_are_refused() {
     StoreMap::parse(r#"{"members": {}}"#).expect("unversioned map parses as 0");
     assert!(StoreMap::parse(r#"{"version": 2, "members": {}}"#).is_err());
 }
+
+/// `meta.format` is the C2a recorder's version gate (`we-snapshot@2`); the
+/// top-level `version` stays for the older fixtures. A format this reader does
+/// not know is refused, and a `@2` document's `routes` must hold route
+/// captures — the per-route truth a route loader reads.
+#[test]
+fn the_snapshot_format_is_gated() {
+    let route = json!({
+        "path": "/space/demo",
+        "members": { "sessionStore": {} },
+        "queries": [
+            { "name": "calls", "scope": "template.routes[/calls]", "dataset": "demo",
+              "request": { "entity": "CollectionBlock" }, "rows": [] },
+            { "name": "card", "scope": "template.meta.panels[inspector].node", "dataset": "demo",
+              "descriptor": { "limit": 1 }, "skipped": "when" }
+        ]
+    });
+    OfflineData::from_snapshot(
+        &json!({ "meta": { "format": "we-snapshot@2" }, "routes": { "index": route } }),
+        None,
+    )
+    .expect("we-snapshot@2 loads");
+    for (label, doc) in [
+        (
+            "an unknown format",
+            json!({ "meta": { "format": "we-snapshot@3" } }),
+        ),
+        (
+            "a format that is not text",
+            json!({ "meta": { "format": 2 } }),
+        ),
+        (
+            "@2 routes as a list",
+            json!({ "meta": { "format": "we-snapshot@2" }, "routes": ["/space/demo"] }),
+        ),
+        (
+            "@2 route members as a list",
+            json!({ "meta": { "format": "we-snapshot@2" },
+                    "routes": { "index": { "members": [], "queries": [] } } }),
+        ),
+        (
+            "@2 queries as a name map",
+            json!({ "meta": { "format": "we-snapshot@2" },
+                    "routes": { "index": { "members": {}, "queries": { "calls": [] } } } }),
+        ),
+        (
+            "a capture without a scope",
+            json!({ "meta": { "format": "we-snapshot@2" },
+                    "routes": { "index": { "members": {}, "queries": [
+                        { "name": "calls", "dataset": "demo", "rows": [] }
+                    ] } } }),
+        ),
+        (
+            "a capture with two outcomes",
+            json!({ "meta": { "format": "we-snapshot@2" },
+                    "routes": { "index": { "members": {}, "queries": [
+                        { "name": "calls", "scope": "s", "dataset": "demo",
+                          "request": { "entity": "X" }, "rows": [], "skipped": "when" }
+                    ] } } }),
+        ),
+        (
+            "a capture with no outcome",
+            json!({ "meta": { "format": "we-snapshot@2" },
+                    "routes": { "index": { "members": {}, "queries": [
+                        { "name": "calls", "scope": "s", "dataset": "demo",
+                          "request": { "entity": "X" } }
+                    ] } } }),
+        ),
+        (
+            "answered rows without the request they answer",
+            json!({ "meta": { "format": "we-snapshot@2" },
+                    "routes": { "index": { "members": {}, "queries": [
+                        { "name": "calls", "scope": "s", "dataset": "demo", "rows": [] }
+                    ] } } }),
+        ),
+    ] {
+        assert!(
+            OfflineData::from_snapshot(&doc, None).is_err(),
+            "{label} should be refused"
+        );
+    }
+}

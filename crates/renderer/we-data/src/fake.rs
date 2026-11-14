@@ -41,7 +41,7 @@ use crate::executor::{
     ClassSel, ClassShape, Executor, ExecutorError, FlowCall, LiveQuery, LiveQueryId, QueryIr,
     Result, SpaceId, Write,
 };
-use crate::Provenance;
+use crate::{Provenance, RouteCaptures};
 
 /// An `Executor` with nothing behind it: every call counts itself, reads
 /// answer the rows a fixture gave for exactly this request (or are refused
@@ -67,6 +67,10 @@ pub struct FakeExecutor {
     /// never carries the flag.
     require_bound: RwLock<bool>,
     provenance: RwLock<Option<Provenance>>,
+    /// A route's captures ([`OfflineData::from_route`](crate::OfflineData::from_route)):
+    /// when set, a request is answered by its dataset + request identity
+    /// against them, and the name table plays no part.
+    captures: RwLock<Option<Arc<RouteCaptures>>>,
 }
 
 impl FakeExecutor {
@@ -78,6 +82,12 @@ impl FakeExecutor {
     /// are looked up against once their names are learned.
     pub fn with_queries(self, queries: IndexMap<String, Value>) -> Self {
         *self.queries.write().unwrap() = queries;
+        self
+    }
+
+    /// Answer from one route's captures, bound by request identity.
+    pub fn with_captures(self, captures: Arc<RouteCaptures>) -> Self {
+        *self.captures.write().unwrap() = Some(captures);
         self
     }
 
@@ -221,6 +231,19 @@ impl FakeExecutor {
                     what()
                 )));
             }
+        }
+        if let Some(captures) = self.captures.read().unwrap().clone() {
+            return match captures.rows_for_request(class, q) {
+                Some(rows) => Ok(Value::List(rows)),
+                None => {
+                    self.dropped(&what());
+                    Err(ExecutorError::Unsupported(format!(
+                        "{}: route {} recorded no answer for this request",
+                        what(),
+                        captures.route()
+                    )))
+                }
+            };
         }
         let name = self
             .names
