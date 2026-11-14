@@ -7156,6 +7156,19 @@
         "executorRestartPending": {
           "type": "boolean"
         },
+        "executorConfigFile": {
+          "type": "string"
+        },
+        "executorConfigRows": {
+          "type": "array",
+          "properties": ["id", "key", "value", "kind", "choice", "editable", "note"]
+        },
+        "executorLogTail": {
+          "type": "string"
+        },
+        "canRestartExecutor": {
+          "type": "boolean"
+        },
         "pendingConsent": {
           "type": "object",
           "properties": ["kind", "title", "message", "app", "peerId"]
@@ -7215,6 +7228,8 @@
         "importDatabase",
         "setMcpPort",
         "restartExecutor",
+        "setExecutorConfigValue",
+        "loadExecutorLogTail",
         "approveConsent",
         "denyConsent",
         "dismissConsentSecret"
@@ -7237,6 +7252,7 @@
         "loadAuthorizedApps",
         "loadNetworkMetrics",
         "loadPeerInfos",
+        "loadExecutorLogTail",
         "dismissConsentSecret"
       ],
       "destructive": [
@@ -7276,7 +7292,8 @@
         "setMcpEnabled",
         "setLogLevel",
         "removeLogLevel",
-        "setMcpPort"
+        "setMcpPort",
+        "setExecutorConfigValue"
       ]
     },
     {
@@ -9741,6 +9758,11 @@
           "doc": "Writes a message straight into the space, outside any call — with its marks, when the composer gave any."
         },
         {
+          "name": "showCallTranscripts",
+          "kind": "state",
+          "doc": "Whether this reader asked the Feed to draw the lines calls spoke — off until they do, in this space only."
+        },
+        {
           "name": "showMoreFeed",
           "kind": "action",
           "doc": "Grows the Feed’s window by a page.",
@@ -9798,6 +9820,13 @@
           "description": "A notice when a bot writes in the space while you are not reading the Feed.",
           "type": "boolean",
           "levels": ["agent"]
+        },
+        {
+          "key": "showCallTranscripts",
+          "label": "Show call transcripts",
+          "description": "Draw the lines calls spoke in this space’s Feed, among the written ones.",
+          "type": "boolean",
+          "levels": ["agent-in-space"]
         }
       ],
       "activities": {},

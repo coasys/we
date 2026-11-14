@@ -3,6 +3,7 @@ import { datasetAddressedBy } from '@shared/datasetIdentity';
 import { collectionFacts } from '@shared/destructiveFacts';
 import { involvementOptimism } from '@shared/involvementOptimism';
 import { linkNewMentions, type MentionWriter, prepareMentionUpdate } from '@shared/lineMentions';
+import { findEntityRows, subscribeEntityRows } from '@shared/recordsRead';
 import { appFrame, declareAppEdges, declareAppFrame } from '@shared/registries/appFrame';
 import { HOST_PART_SLOTS } from '@shared/registries/hostParts';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
@@ -486,28 +487,12 @@ export default function TemplateProvider() {
       findEntities: async (entity, query, options) => {
         const p = moduleTarget(options?.dataset);
         if (!p) return [];
-        const Model = getEntity(entity) as unknown as {
-          findAll: (perspective: unknown, opts: unknown) => Promise<Record<string, unknown>[]>;
-        };
-        return (await Model.findAll(p, withinAsParent(query))) ?? [];
+        return findEntityRows(entity, p, withinAsParent(query));
       },
       subscribeEntities: (entity, query, cb, options) => {
         const p = moduleTarget(options?.dataset);
         if (!p) return () => {};
-        const Model = getEntity(entity) as unknown as {
-          query: (
-            perspective: unknown,
-            opts: unknown,
-          ) => { subscribe: (cb: (rows: Record<string, unknown>[]) => void) => Promise<unknown>; dispose: () => void };
-        };
-        const subscription = Model.query(p, withinAsParent(query));
-        void subscription.subscribe(cb).then(
-          (rows) => cb(rows as Record<string, unknown>[]),
-          (error: unknown) => {
-            console.warn(`module host: subscription to ${entity} failed`, error);
-          },
-        );
-        return () => subscription.dispose();
+        return subscribeEntityRows(entity, p, withinAsParent(query), cb);
       },
     }),
   );

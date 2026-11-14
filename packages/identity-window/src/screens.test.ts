@@ -16,8 +16,8 @@ const IDENTITY_CSP = policy.trim();
 describe('the identity window', () => {
   it('says what a revocation does, and promises nothing about earlier signatures', () => {
     const lead = heading({ screen: 'revoke-confirm', keyId: 'd2', passphrase: false, error: null }).lead;
-    expect(lead).toContain('when they next read your key log');
-    expect(lead).toContain('can also stop counting as yours');
+    expect(lead).toContain("A computer that's offline learns this when it reconnects");
+    expect(lead).toContain('may no longer show as yours');
     expect(lead).not.toContain('stays valid');
   });
 
@@ -33,13 +33,13 @@ describe('the identity window', () => {
   });
 
   it('names the device on the approve card when it gave a hint', () => {
-    expect(heading({ screen: 'match', code: 'R7K Q2M', hint: 'server b' }).title).toBe('Add server b?');
-    expect(heading({ screen: 'match', code: 'R7K Q2M', hint: null }).title).toBe('Add this device?');
+    expect(heading({ screen: 'match', code: 'R7K Q2M', hint: 'server b' }).title).toBe('Link server b?');
+    expect(heading({ screen: 'match', code: 'R7K Q2M', hint: null }).title).toBe('Link this device?');
   });
 
   it('says what the words do today, and promises no restore or replacement this app cannot run', () => {
     const lead = heading({ screen: 'show-words', words: [] }).lead;
-    expect(lead).toContain('adds and removes your devices');
+    expect(lead).toContain('links and removes your devices');
     expect(lead).not.toMatch(/stolen|replace|restore everything/);
   });
 
@@ -50,7 +50,7 @@ describe('the identity window', () => {
       message: 'The identity store holds a different log for did:scid:coasys:1:Qm.',
     };
     expect(heading(refused).lead).toContain('different log');
-    expect(heading(refused).lead).toContain('Trying again will not change that');
+    expect(heading(refused).lead).toContain("Trying again won't help");
     expect(isLast(refused)).toBe(false);
   });
 

@@ -222,7 +222,7 @@ export function IdentityStoreProvider(props: ParentProps) {
   async function open(change: IdentityChange): Promise<IdentityChangeOutcome> {
     const identity = port();
     const refused = !identity?.change
-      ? 'This computer cannot change your identity.'
+      ? "This computer can't change your identity."
       : // Refused here as well as by the backend, so nothing opens on a change that cannot run.
         changeBlocked();
     if (refused || !identity?.change) {
