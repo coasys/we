@@ -106,7 +106,8 @@ impl Widget for Badge {
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         crate::containers::paint_container(cx, node, style, rect);
-        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()));
+        let content =
+            props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()), cx.cb_w);
         let text = Self::text(node);
         let g = crate::text::text_job(&text, style, cx.ui.ctx(), content.width(), true, None);
         // The galley centers in the pill's content box.
@@ -151,7 +152,8 @@ impl Widget for Tag {
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         crate::containers::paint_container(cx, node, style, rect);
-        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()));
+        let content =
+            props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()), cx.cb_w);
         let text = Self::text(node);
         let g = crate::text::text_job(&text, style, cx.ui.ctx(), content.width(), true, None);
         let dismissible = props::prop_bool(node, "dismissible");
@@ -270,7 +272,7 @@ impl Widget for Alert {
         // inset layout keeps outside the measured content — with the icon's
         // 6px floor; children flow after it.
         let icon_size = 16.0;
-        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view);
+        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view, cx.cb_w);
         let pad = (content.min.x - rect.min.x).max(6.0);
         let icon_rect = Rect::from_min_size(
             egui::pos2(rect.min.x + pad, content.min.y),
@@ -476,7 +478,7 @@ impl Widget for Divider {
             .unwrap_or(1.0);
         let vertical = props::prop_str(node, "orientation") == Some("vertical");
         // The line is the element's content — it sits inside the padding.
-        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view);
+        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view, cx.cb_w);
         let (a, b) = if vertical {
             (
                 egui::pos2(content.center().x, content.min.y),

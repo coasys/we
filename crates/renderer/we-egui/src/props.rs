@@ -140,21 +140,26 @@ fn patched<'a>(style: &'a Style, patch: &StylePatch) -> std::borrow::Cow<'a, Sty
     std::borrow::Cow::Owned(out)
 }
 
-/// An inset edge (`padding`/`border` width) in px — `Percent` resolves
-/// against the container width (CSS's containing-block inline size); `ch`/
-/// `ex`/`lh` take `layout::dim_px`'s font-metric approximations so paint
-/// agrees with the space taffy offered measure.
+/// An inset edge (`padding`/`border` width) in px — `Percent` (and the
+/// percent term of a `calc()`) resolves against `base`, the containing
+/// block's content width — CSS puts every edge's percentage on the CB
+/// *width*. `base` is `None` when layout found it content-driven: the
+/// CSS cyclic fallback zeroes the *percent term* and keeps the rest —
+/// the same `resolve(Some(0))` answer layout's `lp` gave taffy, not a
+/// dropped value. `ch`/`ex`/`lh` take `layout::dim_px`'s font-metric
+/// approximations so paint agrees with the space taffy offered measure —
+/// the shared `Dimension::resolve` policy.
 fn inset_px(
     d: &Option<Dimension>,
     font_px: f32,
     root_px: f32,
     view: crate::defaults::ViewportCx,
+    base: Option<f32>,
 ) -> f32 {
     match d.as_ref() {
-        Some(Dimension::Percent(p)) => p * view.container_width,
-        Some(Dimension::Ch(v)) | Some(Dimension::Ex(v)) => v * 0.5 * font_px,
-        Some(Dimension::Lh(v)) => v * 1.4 * font_px,
-        Some(d) => d.to_px(font_px, root_px, view.viewport).unwrap_or(0.0),
+        Some(d) => d
+            .resolve(Some(base.unwrap_or(0.0)), font_px, root_px, view.viewport)
+            .unwrap_or(0.0),
         None => 0.0,
     }
 }
@@ -164,16 +169,19 @@ fn inset_px(
 /// taffy offers `widget.measure` (it pre-subtracts this inset). Leaf
 /// widgets paint their glyphs/images/icons inside it; `paint_box` chrome —
 /// bg, borders, shadows — stays on `rect`. Interaction keeps `rect`.
+/// `base` is the containing-block width [`Layout::bases`] recorded —
+/// the same value layout resolved percent terms against.
 pub(crate) fn content_rect(
     rect: egui::Rect,
     style: &Style,
     font_px: f32,
     root_px: f32,
     view: crate::defaults::ViewportCx,
+    base: Option<f32>,
 ) -> egui::Rect {
     let pad = &style.layout.padding;
     let bor = &style.paint.borders;
-    let p = |d: &Option<Dimension>| inset_px(d, font_px, root_px, view);
+    let p = |d: &Option<Dimension>| inset_px(d, font_px, root_px, view, base);
     let bw = |s: &Option<we_style::BorderSide>| border_side_px(s, font_px, root_px, view.viewport);
     let min = rect.min + egui::vec2(p(&pad.left) + bw(&bor.left), p(&pad.top) + bw(&bor.top));
     let max = rect.max
@@ -215,10 +223,16 @@ pub(crate) fn radius_px(
     let mut n = 0;
     for side in radius.as_slice() {
         let Some(d) = side else { continue };
-        let v = match d {
-            Dimension::Percent(p) => p * rect.width().min(rect.height()),
-            other => other.to_px(font_px, root_px, viewport).unwrap_or(0.0),
-        };
+        // Corners read percent against the box's short side — the base
+        // is known, so a calc sum resolves fully.
+        let v = d
+            .resolve(
+                Some(rect.width().min(rect.height())),
+                font_px,
+                root_px,
+                viewport,
+            )
+            .unwrap_or(0.0);
         sum += v;
         n += 1;
     }
@@ -463,9 +477,6 @@ pub(crate) fn tone_tokens(style: &Style) -> Option<&str> {
 /// danger`). `kind` is `soft`/`solid`/`border`/`text` — the accent suffix,
 /// `solid` naming the bare `--we-role-accent`.
 pub(crate) fn tone_color(style: &Style, kind: &str, fallback: egui::Color32) -> egui::Color32 {
-    let Some(tone) = &style.tone else {
-        return fallback;
-    };
     let owned;
     let key = match kind {
         "solid" => "--we-role-accent",
@@ -474,7 +485,10 @@ pub(crate) fn tone_color(style: &Style, kind: &str, fallback: egui::Color32) -> 
             owned.as_str()
         }
     };
-    if let Some(v) = tone.vars.get(key) {
+    // The element's custom-property scope — its own `tone`'s re-pointings or
+    // an ancestor's, inherited the way the DOM's `var(--we-role-accent)`
+    // would see them.
+    if let Some(v) = style.scope.get(key) {
         if let Some(c) = we_style::eval_color(v) {
             return color32(c);
         }
@@ -533,4 +547,45 @@ pub(crate) fn we_id(node: &ResolvedNode) -> Option<String> {
 #[allow(dead_code)]
 pub(crate) fn label(cx: &mut PaintCx, rect: egui::Rect, text: &str) {
     cx.label(rect, text);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The CSS cyclic-percentage fallback zeroes a `calc`'s *percent*
+    /// term and keeps the rest — layout's `lp` resolves it against base
+    /// `0`. `Layout::bases` reports a content-driven (indefinite) base
+    /// as `None`; paint must apply the same fallback, not drop the
+    /// whole value.
+    #[test]
+    fn content_rect_indefinite_base_keeps_calc_fixed_terms() {
+        let edge = || {
+            Some(Dimension::Calc(we_style::Calc {
+                percent: 0.1,
+                px: 16.0,
+                ..Default::default()
+            }))
+        };
+        let mut style = Style::default();
+        style.layout.padding = Edges {
+            top: edge(),
+            right: edge(),
+            bottom: edge(),
+            left: edge(),
+        };
+        let r = content_rect(
+            egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(200.0, 100.0)),
+            &style,
+            14.0,
+            16.0,
+            crate::defaults::ViewportCx::default(),
+            None, // a content-driven containing block — the cyclic rule
+        );
+        assert_eq!(
+            r.min.x, 16.0,
+            "cyclic calc padding keeps its 16px term (percent → 0), got {r:?}"
+        );
+        assert_eq!(r.width(), 200.0 - 32.0, "both sides inset 16px");
+    }
 }

@@ -217,6 +217,7 @@ pub fn widgets_ui(
         tokens: theme.tokens.as_ref(),
         viewport: we_style::Size::new(rect.width(), rect.height()),
         container_width: rect.width(),
+        ..StyleCx::empty()
     };
     let lay = layout(&cx, &scx, &reg, tree, rect);
     paint(ui, &reg, &scx, tree, &lay, events, edit, now);

@@ -44,6 +44,7 @@ fn content_height(ctx: &egui::Context, app: &mut we_app::RendererApp, width: f32
         tokens: &app.theme.tokens,
         viewport: we_style::Size::new(width, 1.0),
         container_width: width,
+        ..StyleCx::empty()
     };
     let l = layout(
         &mcx,

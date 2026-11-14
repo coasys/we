@@ -14,6 +14,7 @@
 //! exactly what the CSS mechanism would.
 
 use std::sync::Arc;
+use std::sync::LazyLock;
 
 use indexmap::IndexMap;
 use we_expr::Value;
@@ -894,23 +895,19 @@ fn eval_edges(
 ) -> Edges<Option<Dimension>> {
     let s = cx.subst(value);
     let parts = top_level_parts(&s);
-    if parts.len() != 4 {
-        // A shorthand WE always emits as four slots; anything else is
-        // authored text we could not read — one unsupported, no sides.
-        r.bad(css, value);
-        return Edges::default();
-    }
-    let mut out = Edges::default();
-    for (i, slot) in [&mut out.top, &mut out.right, &mut out.bottom, &mut out.left]
-        .iter_mut()
-        .enumerate()
-    {
-        match eval_dimension(parts[i]) {
-            Some(d) => **slot = Some(d),
-            None => r.bad(css, value),
+    // A shorthand is atomic: a guaranteed-invalid slot (an undeclared var,
+    // an unreadable part) invalidates the whole declaration — nothing lands
+    // and one unsupported entry reports it, the way CSS drops the decl.
+    let read = |i: usize| eval_dimension(parts.get(i).unwrap_or(&""));
+    match (read(0), read(1), read(2), read(3)) {
+        (Some(top), Some(right), Some(bottom), Some(left)) if parts.len() == 4 => {
+            Edges::new(Some(top), Some(right), Some(bottom), Some(left))
+        }
+        _ => {
+            r.bad(css, value);
+            Edges::default()
         }
     }
-    out
 }
 
 fn eval_display(text: &str) -> Option<Display> {
@@ -1681,10 +1678,16 @@ pub struct StyleInput<'a> {
     pub viewport: Size,
     pub font_px: f32,
     pub root_px: f32,
+    /// The custom properties inherited from the resolved ancestors — empty
+    /// for a root. CSS custom-property inheritance is the mechanism: a
+    /// parent's `--we-*` decls (a `tone`'s re-pointings, a `styles` hatch's
+    /// verbatim entries) scope every descendant's `var()`.
+    pub inherited: &'a IndexMap<Arc<str>, Arc<str>>,
 }
 
 impl<'a> StyleInput<'a> {
     pub fn new(tokens: &'a TokenTable, direction: Direction) -> Self {
+        static EMPTY: LazyLock<IndexMap<Arc<str>, Arc<str>>> = LazyLock::new(IndexMap::new);
         Self {
             tokens,
             direction,
@@ -1692,6 +1695,7 @@ impl<'a> StyleInput<'a> {
             viewport: Size::new(0.0, 0.0),
             font_px: 14.0,
             root_px: 16.0,
+            inherited: &EMPTY,
         }
     }
 
@@ -1753,16 +1757,17 @@ fn state_patch(
     base_decls: &Decls,
     direction: Direction,
     cx: &EvalCx,
-    tone_vars: &IndexMap<Arc<str>, Arc<str>>,
+    scope: &IndexMap<Arc<str>, Arc<str>>,
 ) -> StylePatch {
     let filled = state_bag_filled(bag, props);
     let filled = with_resting_shadow(&filled, props);
     let mut fragment = build_state_fragment_decls(&filled, direction);
     fragment = with_border_sides(&fragment, base_decls);
     fragment = interactive_decls(&fragment);
-    // The element's `tone` vars scope every decl on it — a state's
-    // `bg: accent-soft` re-points the same way the base decls did.
-    let ev = eval_decls_scoped(&fragment, cx, tone_vars);
+    // The element's custom-property scope (inherited ∪ own) scopes every
+    // decl on it — a state's `bg: accent-soft` re-points the same way the
+    // base decls did.
+    let ev = eval_decls_scoped(&fragment, cx, scope);
     StylePatch {
         layout: ev.layout,
         text: ev.text,
@@ -1778,7 +1783,13 @@ fn state_patch(
 pub fn resolve(props: &Bag, input: &StyleInput) -> Style {
     let cx = input.cx();
     let base_decls = with_border_sides(&build_layout_decls(props, input.direction), &Decls::new());
-    let base = eval_decls(&base_decls, &cx);
+    let base = eval_decls_scoped(&base_decls, &cx, input.inherited);
+
+    // The scope descendants inherit: everything the ancestors handed down,
+    // overlaid by this element's own `--we-*` decls (already substituted
+    // against that same scope).
+    let mut scope = input.inherited.clone();
+    scope.extend(base.tone_vars.iter().map(|(k, v)| (k.clone(), v.clone())));
 
     let mut style = Style {
         layout: base.layout.clone(),
@@ -1786,6 +1797,7 @@ pub fn resolve(props: &Bag, input: &StyleInput) -> Style {
         paint: base.paint.clone(),
         transitions: base.transitions.clone(),
         unsupported: base.unsupported.clone(),
+        scope,
         ..Style::default()
     };
 
@@ -1825,7 +1837,7 @@ pub fn resolve(props: &Bag, input: &StyleInput) -> Style {
                 &base_decls,
                 input.direction,
                 &cx,
-                &base.tone_vars,
+                &style.scope,
             )));
         }
         if let Some(bag) = props.get("hoverProps").and_then(|v| match v {
@@ -1838,7 +1850,7 @@ pub fn resolve(props: &Bag, input: &StyleInput) -> Style {
                 &base_decls,
                 input.direction,
                 &cx,
-                &base.tone_vars,
+                &style.scope,
             )));
         }
         if let Some(bag) = props.get("activeProps").and_then(|v| match v {
@@ -1851,7 +1863,7 @@ pub fn resolve(props: &Bag, input: &StyleInput) -> Style {
                 &base_decls,
                 input.direction,
                 &cx,
-                &base.tone_vars,
+                &style.scope,
             )));
         }
         if let Some(bag) = props.get("disabledProps").and_then(|v| match v {
@@ -1864,7 +1876,7 @@ pub fn resolve(props: &Bag, input: &StyleInput) -> Style {
                 &base_decls,
                 input.direction,
                 &cx,
-                &base.tone_vars,
+                &style.scope,
             )));
         }
     }
@@ -1890,7 +1902,7 @@ pub fn resolve(props: &Bag, input: &StyleInput) -> Style {
             let mut fragment = build_state_fragment_decls(&bag, input.direction);
             fragment = with_border_sides(&fragment, &base_decls);
             fragment = interactive_decls(&fragment);
-            let ev = eval_decls_scoped(&fragment, &cx, &base.tone_vars);
+            let ev = eval_decls_scoped(&fragment, &cx, &style.scope);
             ev.layout.merge_into(&mut style.layout);
             ev.text.merge_into(&mut style.text);
             ev.paint.merge_into(&mut style.paint);

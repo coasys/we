@@ -22,13 +22,19 @@ pub const FONT_PX: f32 = 14.0;
 pub const ROOT_PX: f32 = 16.0;
 
 /// What a style resolution needs beyond the bag: the theme's token table,
-/// the viewport for `vw`/`vh`, and the container width the `*UpProps` tiers
-/// resolve against.
+/// the viewport for `vw`/`vh`, the container width the `*UpProps` tiers
+/// resolve against, and the custom-property scope the resolved ancestors
+/// hand down (CSS custom-property inheritance — a `tone`/`styles` node's
+/// `--we-*` decls scope every descendant's `var()`).
 #[derive(Clone, Copy)]
 pub struct StyleCx<'a> {
     pub tokens: &'a TokenTable,
     pub viewport: we_style::Size,
     pub container_width: f32,
+    /// The ancestors' custom-property scope — empty for a layout root.
+    /// [`layout`](crate::layout) reseeds it from each node's resolved
+    /// [`Style::scope`] as it descends.
+    pub scope: &'a IndexMap<Arc<str>, Arc<str>>,
 }
 
 impl<'a> StyleCx<'a> {
@@ -37,10 +43,12 @@ impl<'a> StyleCx<'a> {
     /// nothing). Tests that want real colours hand a real table.
     pub fn empty() -> Self {
         static EMPTY: LazyLock<TokenTable> = LazyLock::new(|| TokenTable::new(IndexMap::new()));
+        static EMPTY_SCOPE: LazyLock<IndexMap<Arc<str>, Arc<str>>> = LazyLock::new(IndexMap::new);
         Self {
             tokens: &EMPTY,
             viewport: we_style::Size::new(0.0, 0.0),
             container_width: 0.0,
+            scope: &EMPTY_SCOPE,
         }
     }
 }
@@ -122,6 +130,7 @@ pub fn style_of(node: &ResolvedNode, scx: &StyleCx) -> Style {
     input.viewport = scx.viewport;
     input.font_px = FONT_PX;
     input.root_px = ROOT_PX;
+    input.inherited = scx.scope;
     we_style::resolve(&bag, &input)
 }
 
