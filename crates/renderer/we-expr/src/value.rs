@@ -1,15 +1,20 @@
 //! [`Value`]: every value a template expression can hold.
 //!
 //! JSON round-trips go through [`Value::to_json`]/[`Value::from_json`], which
-//! carry the four markers the shared conformance vectors use for the values
-//! plain JSON cannot hold (`packages/schema-system/conformance`, task C1):
+//! carry the markers the shared conformance vectors use for the values
+//! plain JSON cannot hold (`packages/schema-system/conformance`, task C1 —
+//! `src/encode.ts`):
 //!
-//! | marker                | decodes to                        |
-//! |-----------------------|-----------------------------------|
-//! | `{"$undefined":true}` | [`Value::Undefined`]              |
-//! | `{"$nan":true}`       | [`Value::Num(NAN)`]               |
-//! | `{"$namespace":{…}}`  | [`Value::Namespace`] over a map   |
-//! | `{"$callable":"…"}`   | [`Value::Callable`] of that name  |
+//! | marker                      | decodes to                          |
+//! |-----------------------------|-------------------------------------|
+//! | `{"$undefined":true}`       | [`Value::Undefined`]                |
+//! | `{"$nan":true}`             | [`Value::Num(NAN)`]                 |
+//! | `{"$number":"-0"}`          | [`Value::Num(-0.0)`]                |
+//! | `{"$number":"±Infinity"}`   | [`Value::Num(±INFINITY)`]           |
+//! | `{"$namespace":{…}}`        | [`Value::Namespace`] over a map     |
+//! | `{"$namespace":true}`       | an opaque namespace (no members)    |
+//! | `{"$callable":"…"}`         | [`Value::Callable`] of that name    |
+//! | `{"$localMetaEntry":true,…}`| a field's `{touched, errors}` meta  |
 use std::fmt;
 use std::sync::Arc;
 
@@ -258,9 +263,9 @@ impl Value {
     }
 
     /// The JSON encoding shared with the conformance vectors: plain JSON, with
-    /// the four markers for the values JSON cannot hold. Object key order is
-    /// kept. A non-finite number that is not `NaN` writes `null`, as
-    /// `JSON.stringify` does.
+    /// the markers for the values JSON cannot hold. Object key order is kept.
+    /// A whole number writes as a JSON integer, as `JSON.stringify` prints
+    /// `2` for `2.0`; `-0` and the infinities carry the `$number` marker.
     pub fn to_json(&self) -> serde_json::Value {
         match self {
             Value::Undefined => marker("$undefined", true.into()),
@@ -269,10 +274,20 @@ impl Value {
             Value::Num(n) => {
                 if n.is_nan() {
                     marker("$nan", true.into())
-                } else if n.is_finite() {
-                    (*n).into()
+                } else if *n == 0.0 && n.is_sign_negative() {
+                    // `-0` — JSON prints `0`, but `1/-0` is `-Infinity`.
+                    marker("$number", "-0".into())
+                } else if !n.is_finite() {
+                    marker(
+                        "$number",
+                        if *n > 0.0 { "Infinity" } else { "-Infinity" }.into(),
+                    )
+                } else if n.fract() == 0.0 && n.abs() <= 9_007_199_254_740_992.0 {
+                    // A whole number within `Number.MAX_SAFE_INTEGER` writes as
+                    // a JSON integer — `2`, not `2.0`.
+                    (*n as i64).into()
                 } else {
-                    serde_json::Value::Null
+                    (*n).into()
                 }
             }
             Value::Str(s) => s.as_ref().into(),
@@ -285,12 +300,17 @@ impl Value {
                 serde_json::Value::Object(map)
             }
             Value::Namespace(ns) => {
-                let inner = ns
+                let inner: serde_json::Map<String, serde_json::Value> = ns
                     .keys()
                     .iter()
                     .map(|k| (k.to_string(), ns.get(k).to_json()))
                     .collect();
-                marker("$namespace", serde_json::Value::Object(inner))
+                // `encode.ts`: a namespace with no enumerable members is opaque.
+                if inner.is_empty() {
+                    marker("$namespace", true.into())
+                } else {
+                    marker("$namespace", serde_json::Value::Object(inner))
+                }
             }
             Value::Callable(c) => marker("$callable", c.name().into()),
         }
@@ -298,7 +318,9 @@ impl Value {
 
     /// The inverse of [`Value::to_json`]. A marker is only read when it is the
     /// object's only key, so a record that happens to carry one of these names
-    /// beside its own fields decodes as an ordinary object.
+    /// beside its own fields decodes as an ordinary object — `$localMetaEntry`
+    /// excepted: `encode.ts` reads it wherever the key appears, beside
+    /// `touched` and `errors`.
     pub fn from_json(json: &serde_json::Value) -> Value {
         match json {
             serde_json::Value::Null => Value::Null,
@@ -308,11 +330,26 @@ impl Value {
             serde_json::Value::Array(a) => {
                 Value::List(Arc::new(a.iter().map(Value::from_json).collect()))
             }
+            serde_json::Value::Object(o) if o.contains_key("$localMetaEntry") => {
+                local_meta_entry(o)
+            }
             serde_json::Value::Object(o) if o.len() == 1 => {
                 if o.get("$undefined") == Some(&serde_json::Value::Bool(true)) {
                     Value::Undefined
                 } else if o.get("$nan") == Some(&serde_json::Value::Bool(true)) {
                     Value::Num(f64::NAN)
+                } else if let Some(serde_json::Value::String(text)) = o.get("$number") {
+                    // `-0`, `Infinity`, `-Infinity`; anything else is `Number(t)`
+                    // — including a bigint's digits.
+                    let n = match text.as_str() {
+                        "Infinity" => f64::INFINITY,
+                        "-Infinity" => f64::NEG_INFINITY,
+                        other => other.parse::<f64>().unwrap_or(f64::NAN),
+                    };
+                    Value::Num(n)
+                } else if o.get("$namespace") == Some(&serde_json::Value::Bool(true)) {
+                    // An opaque namespace: nothing to enumerate, `get` misses.
+                    Value::Namespace(Arc::new(MapNamespace::new(IndexMap::new())))
                 } else if let Some(serde_json::Value::Object(bag)) = o.get("$namespace") {
                     Value::Namespace(Arc::new(MapNamespace::new(
                         bag.iter()
@@ -328,6 +365,26 @@ impl Value {
             serde_json::Value::Object(o) => obj_from_map(o),
         }
     }
+}
+
+/// `{"$localMetaEntry": true, touched, errors}` — a form field's meta, in the
+/// shape the `error`/`valid`/`touched`/`formValid` built-ins read it: an
+/// object whose `touched` and `errors` call without arguments (`encode.ts`'s
+/// `decodeValue`). Re-encoding it writes the callables' `$callable` markers,
+/// as `encodeValue` does for the TS functions.
+fn local_meta_entry(o: &serde_json::Map<String, serde_json::Value>) -> Value {
+    Value::Obj(Arc::new(
+        ["touched", "errors"]
+            .into_iter()
+            .map(|key| {
+                let value = o.get(key).map(Value::from_json).unwrap_or(Value::Undefined);
+                (
+                    Arc::from(key),
+                    Value::Callable(CallableRef::new(key, move |_| value.clone())),
+                )
+            })
+            .collect(),
+    ))
 }
 
 fn obj_from_map(o: &serde_json::Map<String, serde_json::Value>) -> Value {
