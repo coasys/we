@@ -743,7 +743,7 @@ mod tests {
     /// Lal's P2 at 564d9aaa0. `write_noted` made the metadata note durable before the entry,
     /// so a crash between the two in an identity's first `establish_epoch` (a first restore on
     /// a computer not linked yet) left the identity noted with no entry: lost, and the way back
-    /// it names, "Replace my master key", refuses on a computer that is not linked. With the
+    /// it names, "Replace master key", refuses on a computer that is not linked. With the
     /// entry written first, that crash leaves nothing of the identity: a fresh start, and the
     /// restore goes on. Here the epochs file's write fails once, after whatever is written
     /// before it: its temp name is taken by a directory.

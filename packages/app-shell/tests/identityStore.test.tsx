@@ -497,15 +497,15 @@ describe('deviceStore', () => {
     await flush();
     await flush();
     expect(deviceStore.devices().map((d) => [d.label, d.master])).toEqual([
-      ['Desktop', 'Holds the master key'],
-      ['Laptop', 'Master key offered, not yet taken'],
+      ['Desktop', 'Has master key'],
+      ['Laptop', 'Master key sent'],
     ]);
     expect(deviceStore.requests()).toEqual([
       {
         id: 'r1',
         kind: 'send-master',
         title: 'Laptop asks for the master key',
-        detail: 'With it, that device can add and remove your devices too.',
+        detail: 'It could then add and remove devices.',
       },
     ]);
     expect(deviceStore.canAskMaster()).toBe(false);
@@ -559,7 +559,7 @@ describe('deviceStore', () => {
     expect(deviceStore.requests().map((r) => r.id)).toEqual(['r1']);
   });
 
-  it('offers "Show my code" on a computer of no identity, and reads the identity once it joined', async () => {
+  it('offers "Show code" on a computer of no identity, and reads the identity once it joined', async () => {
     const b = backend({ did: null, events: [], devices: [] });
     const changes: IdentityChange[] = [];
     setPorts({
@@ -585,7 +585,7 @@ describe('deviceStore', () => {
     expect(deviceStore.canShowCode()).toBe(false);
   });
 
-  it('offers "Use my 12 words" beside "Show my code", and reads the identity it restored', async () => {
+  it('offers "Restore with recovery phrase" beside "Show code", and reads the identity it restored', async () => {
     const b = backend({ did: null, events: [], devices: [] });
     const changes: IdentityChange[] = [];
     let state: IdentityCustodyView = { ...NO_CUSTODY, unlock: 'os' };
@@ -657,7 +657,7 @@ describe('deviceStore', () => {
     await flush();
     await flush();
     const d2 = () => deviceStore.devices().find((d) => d.keyId === 'd2')!;
-    expect(d2().master).toContain('replace your master key');
+    expect(d2().master).toContain('Replace it to lock this device out');
     expect(d2().replaceMaster).toBe(true);
     // Not keeping the master key is the point: the lost device kept it.
     expect(deviceStore.canManage()).toBe(false);
