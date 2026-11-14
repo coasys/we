@@ -14,6 +14,11 @@ import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// The calendar host sources read the process timezone for `month` parsing and `isToday` — a vector
+// recorded behind UTC would differ from one recorded on it. Pin UTC so the recorder and the tests
+// agree wherever they run; the vitest configs pin it for the test side the same way.
+process.env.TZ = 'UTC';
+
 import { hostSourceBag } from '../../../app-shell/src/shared/sources/index.ts';
 import {
   evaluateExpression,
@@ -59,6 +64,7 @@ const EXPR_NOTES: [RegExp, string][] = [
   [/^print\./, 'the printer: parse(source) → printExpression reproduces this string'],
   [/^op\./, 'an operator or grammar rule, pinned against a stub env'],
   [/^eval\./, 'evaluation over the named env'],
+  [/^env\./, 'a buildEnvironment root rule, under a callback context'],
   [/^bundle\./, 'an expression lifted verbatim from bundles/coasys.bundle.json, over the stock env'],
 ];
 const noteFor = (id: string, table: [RegExp, string][], fallback: string) =>

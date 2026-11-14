@@ -13,7 +13,7 @@
  *    `stock` environment — a small stand-in for the stores they name, so member reads land on data
  *    rather than `undefined`.
  */
-import type { EncodedValue } from '../encode';
+import type { ExpressionEnvSpec } from '../evalEnv';
 import { BUNDLE_EXPRESSIONS } from './bundleExpressions';
 
 export interface ExpressionCase {
@@ -24,12 +24,17 @@ export interface ExpressionCase {
   env?: string;
 }
 
-/** Shared environments, addressable by name so 250 cases do not each carry a copy. */
-export const EXPRESSION_ENVS: Record<string, Record<string, EncodedValue>> = {
+/**
+ * Shared environments, addressable by name so 250 cases do not each carry a copy. A spec decodes
+ * to the `stores` bag and `context` `buildEnvironment` sees in the renderer — so stores are plain
+ * data (the tagging rule reads their members), `local` entries become `context.$local` accessors,
+ * and `event`/`arg`/`result` stay plain data for `callbackValue` to wrap.
+ */
+export const EXPRESSION_ENVS: Record<string, ExpressionEnvSpec> = {
   /** The stores and row bindings the bundle corpus names, as one fixed fixture. */
   stock: {
-    spaceStore: {
-      $namespace: {
+    stores: {
+      spaceStore: {
         members: [
           { id: 'did:a', role: 'admin', name: 'Ada' },
           { id: 'did:b', role: 'member', name: 'Bram' },
@@ -41,9 +46,7 @@ export const EXPRESSION_ENVS: Record<string, Record<string, EncodedValue>> = {
         offeredInvolvementTypes: [{ id: 'it:1', semantic: 'assignee' }],
         currentSpace: { id: 'sp:1', name: 'Coasys' },
       },
-    },
-    recordStore: {
-      $namespace: {
+      recordStore: {
         creatableEntities: [
           {
             value: 'NoteBlock',
@@ -57,56 +60,70 @@ export const EXPRESSION_ENVS: Record<string, Record<string, EncodedValue>> = {
         ],
         displays: { TaskBlock: { title: 'name', label: 'Task', icon: 'task' } },
       },
-    },
-    routeStore: {
-      $namespace: {
+      routeStore: {
         params: { view: 'canvas', id: 'we://a-call', cardType: 'SignalType', card: 'sig:1', channel: 'ch:1' },
         templateSegments: ['channels'],
       },
-    },
-    workflowStore: {
-      $namespace: {
+      workflowStore: {
         startable: [{ name: 'review', label: 'Review', entities: ['TaskBlock'] }],
         recordWorkflows: { 'row:1': [{ workflow: 'review' }] },
         open: { $undefined: true },
       },
-    },
-    modules: {
-      $namespace: {
+      modules: {
         transcribe: {
           changedIds: ['row:1'],
           pendingProposals: [{ id: 'row:1', fields: [{ name: 'text', value: 'x' }] }],
         },
       },
+      datasetStore: { currentDatasetCid: 'we://ds' },
+      $me: { did: 'did:me' },
     },
-    datasetStore: { $namespace: { currentDatasetCid: 'we://ds' } },
     local: {
-      $namespace: {
-        search: 'ta',
-        typeSearch: '',
-        changesOpen: false,
-        link: [{ source: 'we://s', sourceType: 'TaskBlock', target: 'we://t', targetType: 'TextBlock' }],
-        voices: 'did:a=50',
-        monthOffset: 2,
-      },
+      search: 'ta',
+      typeSearch: '',
+      changesOpen: false,
+      link: [{ source: 'we://s', sourceType: 'TaskBlock', target: 'we://t', targetType: 'TextBlock' }],
+      voices: 'did:a=50',
+      monthOffset: 2,
     },
-    me: { did: 'did:me' },
-    arg: { $namespace: { detail: { key: 'Enter' }, value: 'x', id: 'r:1', kind: 'assignee' } },
-    event: { $namespace: { detail: 'e:1' } },
-    item: { role: 'admin', id: 'we://another', n: 2, ok: false },
-    row: { $namespace: { id: 'row:1', name: 'Row', signals: [] } },
-    post: { $namespace: { title: 'Hello', done: false, count: 3, tags: ['a'] } },
-    sig: { $namespace: { id: 'sig:1', aggregate: 'sum' } },
-    voice: { $namespace: { did: 'did:a', weight: 50 } },
-    items: [
-      { n: 1, ok: true },
-      { n: 2, ok: false },
-    ],
-    rows: [{ kids: [1, 2] }, { kids: [] }, { kids: [3] }],
-    x: 'outer',
-    nothing: { $undefined: true },
-    missing: { $undefined: true },
-    list: ['a', 'x', 'b'],
+    context: {
+      arg: { detail: { key: 'Enter' }, value: 'x', id: 'r:1', kind: 'assignee' },
+      event: { detail: 'e:1' },
+      item: { role: 'admin', id: 'we://another', n: 2, ok: false },
+      row: { id: 'row:1', name: 'Row', signals: [] },
+      post: { title: 'Hello', done: false, count: 3, tags: ['a'] },
+      sig: { id: 'sig:1', aggregate: 'sum' },
+      voice: { did: 'did:a', weight: 50 },
+      items: [
+        { n: 1, ok: true },
+        { n: 2, ok: false },
+      ],
+      rows: [{ kids: [1, 2] }, { kids: [] }, { kids: [3] }],
+      x: 'outer',
+      nothing: { $undefined: true },
+      missing: { $undefined: true },
+      list: ['a', 'x', 'b'],
+    },
+  },
+  /**
+   * Every root rule, exercised while a callback context is present: `local` accessors, `event` /
+   * `result` / `arg`-falling-back-to-`event` through `callbackValue` (including a function the
+   * callback handed over), `$`-prefixed context keys skipped, and function globals invoked.
+   */
+  callback: {
+    stores: {
+      $me: { did: 'did:me' },
+      $clock: { $thunk: 'tick:tock' },
+      $item: { role: 'global-shadowed' },
+      counter: { value: 7, fn: { $thunk: 'unreachable' } },
+    },
+    local: { page: 2, dirty: false },
+    context: {
+      event: { id: 'ev:9', detail: { key: 'Enter' }, save: { $callable: 'save' }, tick: { $accessor: 'sig:1' } },
+      result: { id: 'res:1', done: { $callable: 'done' } },
+      $item: { role: 'skipped' },
+      item: { role: 'visible' },
+    },
   },
 };
 
@@ -185,7 +202,33 @@ export const EXPRESSION_CASES: ExpressionCase[] = [
   C('eval.where-miss', "find(items, { name: 'Zed' }).name", 'where'),
   C('eval.where-range', "filter(events, { startDate: { gte: '2026-09-15', lt: '2026-10-01' } }).map(e, e.id)", 'where'),
   C('eval.where-numeric', 'filter(events, { seats: { gt: 5 } }).map(e, e.id)', 'where'),
+  // `month: 8` is the numeric edge — `new Date(8)` lands in January 1970 only under the pinned
+  // TZ=UTC. The ISO cases are the explicit spellings: mid-month parses to August under any zone,
+  // and a local-time noon never date-shifts at all. All use past months, so `isToday` can never
+  // flip a vector when the calendar catches up.
   C('eval.host-source', 'calendarMonth({ month: 8 })'),
+  C('eval.host-source-month-iso', "calendarMonth({ month: '2025-08-15' })"),
+  C('eval.host-source-month-noon', "calendarMonth({ month: '2025-08-01T12:00:00' })"),
+  C('eval.host-source-month-offset', "calendarMonth({ month: '2025-08-15', offset: 3, weekStartsOn: 1 })"),
+
+  /* --- the real environment's root rules, each under a callback context ------------------- */
+  C('env.local-accessor', 'local.page + 1', 'callback'),
+  C('env.local-undeclared', 'local.nope', 'callback'),
+  C('env.callback-member', 'event.detail.key', 'callback'),
+  C('env.callback-fn-read', 'event.save', 'callback'),
+  C('env.callback-accessor', 'event.tick', 'callback'),
+  C('env.callback-raw', 'event', 'callback'),
+  C('env.arg-fallback', 'arg.id', 'callback'),
+  C('env.arg-direct', 'arg.id', 'stock'),
+  C('env.result-root', 'result.id', 'callback'),
+  C('env.result-fn', 'result.done', 'callback'),
+  C('env.dollar-key-skipped', '$item.role', 'callback'),
+  C('env.context-key', 'item.role', 'callback'),
+  C('env.function-global', 'clock', 'callback'),
+  C('env.object-global', 'me.did', 'callback'),
+  C('env.store-member', 'counter.value', 'callback'),
+  C('env.store-fn-refused', 'counter.fn', 'callback'),
+  C('env.local-with-callback', "local.dirty ? 'd' : event.id", 'callback'),
 
   /* --- systematic: operators the corpus must pin ---------------------------------------- */
   C('op.mod', '7 % 3'),
@@ -273,8 +316,8 @@ export const EXPRESSION_CASES: ExpressionCase[] = [
 /* Extra named environments the ported cases need. */
 Object.assign(EXPRESSION_ENVS, {
   keyed: {
-    store: {
-      $namespace: {
+    stores: {
+      store: {
         byId: {
           $namespace: {
             'we://a-call': { targets: ['we://a-call'], canExtract: true },
@@ -284,24 +327,28 @@ Object.assign(EXPRESSION_ENVS, {
         },
       },
     },
-    item: { id: 'we://another' },
+    context: { item: { id: 'we://another' } },
   },
   where: {
-    items: [{ name: 'Anna', tags: ['a'] }, { name: 'Bob' }],
-    events: [
-      { id: 'a', startDate: '2026-09-14', seats: 4 },
-      { id: 'b', startDate: '2026-09-30T18:00', seats: '12' },
-      { id: 'c', startDate: '2026-10-02', seats: 20 },
-    ],
+    context: {
+      items: [{ name: 'Anna', tags: ['a'] }, { name: 'Bob' }],
+      events: [
+        { id: 'a', startDate: '2026-09-14', seats: 4 },
+        { id: 'b', startDate: '2026-09-30T18:00', seats: '12' },
+        { id: 'c', startDate: '2026-10-02', seats: 20 },
+      ],
+    },
   },
   distinct: {
-    found: [{ __subjectClass: 'TaskBlock' }, { __subjectClass: 'EventBlock' }, { __subjectClass: 'TaskBlock' }],
-    placements: [{ nodeType: 'NoteBlock' }, { nodeType: 'EventBlock' }],
-    a: [{ id: 1, v: 'x' }],
-    b: [
-      { id: 1, v: 'y' },
-      { id: 2, v: 'z' },
-    ],
-    nothing: { $undefined: true },
+    context: {
+      found: [{ __subjectClass: 'TaskBlock' }, { __subjectClass: 'EventBlock' }, { __subjectClass: 'TaskBlock' }],
+      placements: [{ nodeType: 'NoteBlock' }, { nodeType: 'EventBlock' }],
+      a: [{ id: 1, v: 'x' }],
+      b: [
+        { id: 1, v: 'y' },
+        { id: 2, v: 'z' },
+      ],
+      nothing: { $undefined: true },
+    },
   },
 });

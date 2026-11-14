@@ -2,8 +2,8 @@
   "version": 1,
   "envs": {
     "stock": {
-      "spaceStore": {
-        "$namespace": {
+      "stores": {
+        "spaceStore": {
           "members": [
             {
               "id": "did:a",
@@ -35,10 +35,8 @@
             "id": "sp:1",
             "name": "Coasys"
           }
-        }
-      },
-      "recordStore": {
-        "$namespace": {
+        },
+        "recordStore": {
           "creatableEntities": [
             {
               "value": "NoteBlock",
@@ -64,10 +62,8 @@
               "icon": "task"
             }
           }
-        }
-      },
-      "routeStore": {
-        "$namespace": {
+        },
+        "routeStore": {
           "params": {
             "view": "canvas",
             "id": "we://a-call",
@@ -76,10 +72,8 @@
             "channel": "ch:1"
           },
           "templateSegments": ["channels"]
-        }
-      },
-      "workflowStore": {
-        "$namespace": {
+        },
+        "workflowStore": {
           "startable": [
             {
               "name": "review",
@@ -97,10 +91,8 @@
           "open": {
             "$undefined": true
           }
-        }
-      },
-      "modules": {
-        "$namespace": {
+        },
+        "modules": {
           "transcribe": {
             "changedIds": ["row:1"],
             "pendingProposals": [
@@ -115,114 +107,149 @@
               }
             ]
           }
-        }
-      },
-      "datasetStore": {
-        "$namespace": {
+        },
+        "datasetStore": {
           "currentDatasetCid": "we://ds"
+        },
+        "$me": {
+          "did": "did:me"
         }
       },
       "local": {
-        "$namespace": {
-          "search": "ta",
-          "typeSearch": "",
-          "changesOpen": false,
-          "link": [
-            {
-              "source": "we://s",
-              "sourceType": "TaskBlock",
-              "target": "we://t",
-              "targetType": "TextBlock"
-            }
-          ],
-          "voices": "did:a=50",
-          "monthOffset": 2
-        }
+        "search": "ta",
+        "typeSearch": "",
+        "changesOpen": false,
+        "link": [
+          {
+            "source": "we://s",
+            "sourceType": "TaskBlock",
+            "target": "we://t",
+            "targetType": "TextBlock"
+          }
+        ],
+        "voices": "did:a=50",
+        "monthOffset": 2
       },
-      "me": {
-        "did": "did:me"
-      },
-      "arg": {
-        "$namespace": {
+      "context": {
+        "arg": {
           "detail": {
             "key": "Enter"
           },
           "value": "x",
           "id": "r:1",
           "kind": "assignee"
-        }
-      },
-      "event": {
-        "$namespace": {
+        },
+        "event": {
           "detail": "e:1"
-        }
-      },
-      "item": {
-        "role": "admin",
-        "id": "we://another",
-        "n": 2,
-        "ok": false
-      },
-      "row": {
-        "$namespace": {
+        },
+        "item": {
+          "role": "admin",
+          "id": "we://another",
+          "n": 2,
+          "ok": false
+        },
+        "row": {
           "id": "row:1",
           "name": "Row",
           "signals": []
-        }
-      },
-      "post": {
-        "$namespace": {
+        },
+        "post": {
           "title": "Hello",
           "done": false,
           "count": 3,
           "tags": ["a"]
-        }
-      },
-      "sig": {
-        "$namespace": {
+        },
+        "sig": {
           "id": "sig:1",
           "aggregate": "sum"
-        }
-      },
-      "voice": {
-        "$namespace": {
+        },
+        "voice": {
           "did": "did:a",
           "weight": 50
+        },
+        "items": [
+          {
+            "n": 1,
+            "ok": true
+          },
+          {
+            "n": 2,
+            "ok": false
+          }
+        ],
+        "rows": [
+          {
+            "kids": [1, 2]
+          },
+          {
+            "kids": []
+          },
+          {
+            "kids": [3]
+          }
+        ],
+        "x": "outer",
+        "nothing": {
+          "$undefined": true
+        },
+        "missing": {
+          "$undefined": true
+        },
+        "list": ["a", "x", "b"]
+      }
+    },
+    "callback": {
+      "stores": {
+        "$me": {
+          "did": "did:me"
+        },
+        "$clock": {
+          "$thunk": "tick:tock"
+        },
+        "$item": {
+          "role": "global-shadowed"
+        },
+        "counter": {
+          "value": 7,
+          "fn": {
+            "$thunk": "unreachable"
+          }
         }
       },
-      "items": [
-        {
-          "n": 1,
-          "ok": true
-        },
-        {
-          "n": 2,
-          "ok": false
-        }
-      ],
-      "rows": [
-        {
-          "kids": [1, 2]
-        },
-        {
-          "kids": []
-        },
-        {
-          "kids": [3]
-        }
-      ],
-      "x": "outer",
-      "nothing": {
-        "$undefined": true
+      "local": {
+        "page": 2,
+        "dirty": false
       },
-      "missing": {
-        "$undefined": true
-      },
-      "list": ["a", "x", "b"]
+      "context": {
+        "event": {
+          "id": "ev:9",
+          "detail": {
+            "key": "Enter"
+          },
+          "save": {
+            "$callable": "save"
+          },
+          "tick": {
+            "$accessor": "sig:1"
+          }
+        },
+        "result": {
+          "id": "res:1",
+          "done": {
+            "$callable": "done"
+          }
+        },
+        "$item": {
+          "role": "skipped"
+        },
+        "item": {
+          "role": "visible"
+        }
+      }
     },
     "keyed": {
-      "store": {
-        "$namespace": {
+      "stores": {
+        "store": {
           "byId": {
             "$namespace": {
               "we://a-call": {
@@ -241,76 +268,82 @@
           }
         }
       },
-      "item": {
-        "id": "we://another"
+      "context": {
+        "item": {
+          "id": "we://another"
+        }
       }
     },
     "where": {
-      "items": [
-        {
-          "name": "Anna",
-          "tags": ["a"]
-        },
-        {
-          "name": "Bob"
-        }
-      ],
-      "events": [
-        {
-          "id": "a",
-          "startDate": "2026-09-14",
-          "seats": 4
-        },
-        {
-          "id": "b",
-          "startDate": "2026-09-30T18:00",
-          "seats": "12"
-        },
-        {
-          "id": "c",
-          "startDate": "2026-10-02",
-          "seats": 20
-        }
-      ]
+      "context": {
+        "items": [
+          {
+            "name": "Anna",
+            "tags": ["a"]
+          },
+          {
+            "name": "Bob"
+          }
+        ],
+        "events": [
+          {
+            "id": "a",
+            "startDate": "2026-09-14",
+            "seats": 4
+          },
+          {
+            "id": "b",
+            "startDate": "2026-09-30T18:00",
+            "seats": "12"
+          },
+          {
+            "id": "c",
+            "startDate": "2026-10-02",
+            "seats": 20
+          }
+        ]
+      }
     },
     "distinct": {
-      "found": [
-        {
-          "__subjectClass": "TaskBlock"
-        },
-        {
-          "__subjectClass": "EventBlock"
-        },
-        {
-          "__subjectClass": "TaskBlock"
+      "context": {
+        "found": [
+          {
+            "__subjectClass": "TaskBlock"
+          },
+          {
+            "__subjectClass": "EventBlock"
+          },
+          {
+            "__subjectClass": "TaskBlock"
+          }
+        ],
+        "placements": [
+          {
+            "nodeType": "NoteBlock"
+          },
+          {
+            "nodeType": "EventBlock"
+          }
+        ],
+        "a": [
+          {
+            "id": 1,
+            "v": "x"
+          }
+        ],
+        "b": [
+          {
+            "id": 1,
+            "v": "y"
+          },
+          {
+            "id": 2,
+            "v": "z"
+          }
+        ],
+        "nothing": {
+          "$undefined": true
         }
-      ],
-      "placements": [
-        {
-          "nodeType": "NoteBlock"
-        },
-        {
-          "nodeType": "EventBlock"
-        }
-      ],
-      "a": [
-        {
-          "id": 1,
-          "v": "x"
-        }
-      ],
-      "b": [
-        {
-          "id": 1,
-          "v": "y"
-        },
-        {
-          "id": 2,
-          "v": "z"
-        }
-      ],
-      "nothing": {
-        "$undefined": true
       }
     }
   },
@@ -1159,6 +1192,1067 @@
         }
       ],
       "print": "calendarMonth({ month: 8 })"
+    },
+    {
+      "id": "eval.host-source-month-iso",
+      "note": "evaluation over the named env",
+      "source": "calendarMonth({ month: '2025-08-15' })",
+      "result": [
+        {
+          "date": "2025-07-27",
+          "day": 27,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-07-28",
+          "day": 28,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-07-29",
+          "day": 29,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-07-30",
+          "day": 30,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-07-31",
+          "day": 31,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-01",
+          "day": 1,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-02",
+          "day": 2,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-03",
+          "day": 3,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-04",
+          "day": 4,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-05",
+          "day": 5,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-06",
+          "day": 6,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-07",
+          "day": 7,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-08",
+          "day": 8,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-09",
+          "day": 9,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-10",
+          "day": 10,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-11",
+          "day": 11,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-12",
+          "day": 12,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-13",
+          "day": 13,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-14",
+          "day": 14,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-15",
+          "day": 15,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-16",
+          "day": 16,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-17",
+          "day": 17,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-18",
+          "day": 18,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-19",
+          "day": 19,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-20",
+          "day": 20,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-21",
+          "day": 21,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-22",
+          "day": 22,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-23",
+          "day": 23,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-24",
+          "day": 24,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-25",
+          "day": 25,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-26",
+          "day": 26,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-27",
+          "day": 27,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-28",
+          "day": 28,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-29",
+          "day": 29,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-30",
+          "day": 30,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-31",
+          "day": 31,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-09-01",
+          "day": 1,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-09-02",
+          "day": 2,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-09-03",
+          "day": 3,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-09-04",
+          "day": 4,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-09-05",
+          "day": 5,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-09-06",
+          "day": 6,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 6
+        }
+      ],
+      "print": "calendarMonth({ month: '2025-08-15' })"
+    },
+    {
+      "id": "eval.host-source-month-noon",
+      "note": "evaluation over the named env",
+      "source": "calendarMonth({ month: '2025-08-01T12:00:00' })",
+      "result": [
+        {
+          "date": "2025-07-27",
+          "day": 27,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-07-28",
+          "day": 28,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-07-29",
+          "day": 29,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-07-30",
+          "day": 30,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-07-31",
+          "day": 31,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-01",
+          "day": 1,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-02",
+          "day": 2,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-03",
+          "day": 3,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-04",
+          "day": 4,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-05",
+          "day": 5,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-06",
+          "day": 6,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-07",
+          "day": 7,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-08",
+          "day": 8,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-09",
+          "day": 9,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-10",
+          "day": 10,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-11",
+          "day": 11,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-12",
+          "day": 12,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-13",
+          "day": 13,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-14",
+          "day": 14,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-15",
+          "day": 15,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-16",
+          "day": 16,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-17",
+          "day": 17,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-18",
+          "day": 18,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-19",
+          "day": 19,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-20",
+          "day": 20,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-21",
+          "day": 21,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-22",
+          "day": 22,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-23",
+          "day": 23,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-24",
+          "day": 24,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-08-25",
+          "day": 25,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-08-26",
+          "day": 26,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-08-27",
+          "day": 27,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-08-28",
+          "day": 28,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-08-29",
+          "day": 29,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-08-30",
+          "day": 30,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-08-31",
+          "day": 31,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-09-01",
+          "day": 1,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-09-02",
+          "day": 2,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-09-03",
+          "day": 3,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-09-04",
+          "day": 4,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-09-05",
+          "day": 5,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-09-06",
+          "day": 6,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 6
+        }
+      ],
+      "print": "calendarMonth({ month: '2025-08-01T12:00:00' })"
+    },
+    {
+      "id": "eval.host-source-month-offset",
+      "note": "evaluation over the named env",
+      "source": "calendarMonth({ month: '2025-08-15', offset: 3, weekStartsOn: 1 })",
+      "result": [
+        {
+          "date": "2025-10-27",
+          "day": 27,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-10-28",
+          "day": 28,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-10-29",
+          "day": 29,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-10-30",
+          "day": 30,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-10-31",
+          "day": 31,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-11-01",
+          "day": 1,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-11-02",
+          "day": 2,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-11-03",
+          "day": 3,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-11-04",
+          "day": 4,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-11-05",
+          "day": 5,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-11-06",
+          "day": 6,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-11-07",
+          "day": 7,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-11-08",
+          "day": 8,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-11-09",
+          "day": 9,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-11-10",
+          "day": 10,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-11-11",
+          "day": 11,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-11-12",
+          "day": 12,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-11-13",
+          "day": 13,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-11-14",
+          "day": 14,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-11-15",
+          "day": 15,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-11-16",
+          "day": 16,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-11-17",
+          "day": 17,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-11-18",
+          "day": 18,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-11-19",
+          "day": 19,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-11-20",
+          "day": 20,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-11-21",
+          "day": 21,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-11-22",
+          "day": 22,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-11-23",
+          "day": 23,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-11-24",
+          "day": 24,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-11-25",
+          "day": 25,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-11-26",
+          "day": 26,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-11-27",
+          "day": 27,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-11-28",
+          "day": 28,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-11-29",
+          "day": 29,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-11-30",
+          "day": 30,
+          "inMonth": true,
+          "isToday": false,
+          "weekday": 0
+        },
+        {
+          "date": "2025-12-01",
+          "day": 1,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 1
+        },
+        {
+          "date": "2025-12-02",
+          "day": 2,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 2
+        },
+        {
+          "date": "2025-12-03",
+          "day": 3,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 3
+        },
+        {
+          "date": "2025-12-04",
+          "day": 4,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 4
+        },
+        {
+          "date": "2025-12-05",
+          "day": 5,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 5
+        },
+        {
+          "date": "2025-12-06",
+          "day": 6,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 6
+        },
+        {
+          "date": "2025-12-07",
+          "day": 7,
+          "inMonth": false,
+          "isToday": false,
+          "weekday": 0
+        }
+      ],
+      "print": "calendarMonth({ month: '2025-08-15', offset: 3, weekStartsOn: 1 })"
+    },
+    {
+      "id": "env.local-accessor",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "local.page + 1",
+      "env": "callback",
+      "result": 3,
+      "print": "local.page + 1"
+    },
+    {
+      "id": "env.local-undeclared",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "local.nope",
+      "env": "callback",
+      "result": {
+        "$undefined": true
+      },
+      "print": "local.nope"
+    },
+    {
+      "id": "env.callback-member",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "event.detail.key",
+      "env": "callback",
+      "result": "Enter",
+      "print": "event.detail.key"
+    },
+    {
+      "id": "env.callback-fn-read",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "event.save",
+      "env": "callback",
+      "result": {
+        "$callable": "bound"
+      },
+      "print": "event.save"
+    },
+    {
+      "id": "env.callback-accessor",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "event.tick",
+      "env": "callback",
+      "result": "sig:1",
+      "print": "event.tick"
+    },
+    {
+      "id": "env.callback-raw",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "event",
+      "env": "callback",
+      "result": {
+        "id": "ev:9",
+        "detail": {
+          "key": "Enter"
+        },
+        "save": {
+          "$callable": "save"
+        },
+        "tick": {
+          "$callable": "anonymous"
+        }
+      },
+      "print": "event"
+    },
+    {
+      "id": "env.arg-fallback",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "arg.id",
+      "env": "callback",
+      "result": "ev:9",
+      "print": "arg.id"
+    },
+    {
+      "id": "env.arg-direct",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "arg.id",
+      "env": "stock",
+      "result": "r:1",
+      "print": "arg.id"
+    },
+    {
+      "id": "env.result-root",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "result.id",
+      "env": "callback",
+      "result": "res:1",
+      "print": "result.id"
+    },
+    {
+      "id": "env.result-fn",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "result.done",
+      "env": "callback",
+      "result": {
+        "$callable": "bound"
+      },
+      "print": "result.done"
+    },
+    {
+      "id": "env.dollar-key-skipped",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "$item.role",
+      "env": "callback",
+      "result": "global-shadowed",
+      "print": "$item.role"
+    },
+    {
+      "id": "env.context-key",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "item.role",
+      "env": "callback",
+      "result": "visible",
+      "print": "item.role"
+    },
+    {
+      "id": "env.function-global",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "clock",
+      "env": "callback",
+      "result": "tick:tock",
+      "print": "clock"
+    },
+    {
+      "id": "env.object-global",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "me.did",
+      "env": "callback",
+      "result": "did:me",
+      "print": "me.did"
+    },
+    {
+      "id": "env.store-member",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "counter.value",
+      "env": "callback",
+      "result": 7,
+      "print": "counter.value"
+    },
+    {
+      "id": "env.store-fn-refused",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "counter.fn",
+      "env": "callback",
+      "result": {
+        "$undefined": true
+      },
+      "print": "counter.fn"
+    },
+    {
+      "id": "env.local-with-callback",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "local.dirty ? 'd' : event.id",
+      "env": "callback",
+      "result": "ev:9",
+      "print": "local.dirty ? 'd' : event.id"
     },
     {
       "id": "op.mod",
@@ -2253,7 +3347,12 @@
       "source": "arg",
       "env": "stock",
       "result": {
-        "$undefined": true
+        "detail": {
+          "key": "Enter"
+        },
+        "value": "x",
+        "id": "r:1",
+        "kind": "assignee"
       },
       "print": "arg"
     },
@@ -2263,7 +3362,8 @@
       "source": "sig",
       "env": "stock",
       "result": {
-        "$undefined": true
+        "id": "sig:1",
+        "aggregate": "sum"
       },
       "print": "sig"
     },
@@ -2309,7 +3409,7 @@
       "source": "event",
       "env": "stock",
       "result": {
-        "$undefined": true
+        "detail": "e:1"
       },
       "print": "event"
     },
