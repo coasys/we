@@ -511,7 +511,7 @@ impl Widget for Link {
             !disabled,
             None,
         );
-        let eff = props::state_style(style, &response, disabled);
+        let eff = cx.state_style(style, &response, disabled);
         if !disabled && response.clicked() {
             cx.emit(
                 &node.id,

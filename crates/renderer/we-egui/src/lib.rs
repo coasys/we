@@ -118,6 +118,12 @@ pub struct PaintCx<'a> {
     pub(crate) events: &'a mut Vec<WidgetEvent>,
     pub(crate) hits: &'a mut HitLog,
     pub(crate) clicks: &'a mut ClickLog,
+    /// The `clip-path` the widget actually painted with, once it resolved
+    /// its interactive state ([`PaintCx::state_style`]) — `None` when it
+    /// reported none, and the walk clips with the resting style. The walk
+    /// cuts the subtree's output after it paints, so it must use the same
+    /// state (cyberpunk's `:hover { clip-path: none }`).
+    pub(crate) state_clip: Option<Option<we_style::ClipPath>>,
 }
 
 /// The click-sensing rects the frame has reported so far: `activated` —
@@ -180,7 +186,29 @@ impl<'a> PaintCx<'a> {
             events,
             hits,
             clicks,
+            state_clip: None,
         }
+    }
+
+    /// The style for the response's state ([`crate::props::state_style`]),
+    /// recording its `clip-path` for the walk's clip pass — every widget
+    /// that paints a state-dependent chrome resolves it through here.
+    pub(crate) fn state_style<'s>(
+        &mut self,
+        style: &'s we_style::Style,
+        response: &egui::Response,
+        disabled: bool,
+    ) -> std::borrow::Cow<'s, we_style::Style> {
+        let eff = crate::props::state_style(style, response, disabled);
+        self.report_state(&eff);
+        eff
+    }
+
+    /// Record the state-resolved style a widget painted with (for a widget
+    /// that resolves its state without a [`egui::Response`] — the input's
+    /// `:focus-within`).
+    pub(crate) fn report_state(&mut self, eff: &we_style::Style) {
+        self.state_clip = Some(eff.paint.clip.clone());
     }
 
     /// Report user input on `node`'s handler — `cx.emit(&node.id, "onClick",

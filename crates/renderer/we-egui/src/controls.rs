@@ -120,7 +120,7 @@ impl Widget for Button {
         );
         // NOTE: `expanded` has no egui 0.37 WidgetInfo field — the disclosure
         // state reaches tests through the caret/children instead.
-        let eff = props::state_style(style, &response, disabled);
+        let eff = cx.state_style(style, &response, disabled);
         props::paint_box(
             cx.ui.painter(),
             rect,

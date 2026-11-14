@@ -267,3 +267,145 @@ fn polygon_clip_keeps_the_rectangular_borders_only() {
             .collect::<Vec<_>>()
     );
 }
+
+// ---------- Round D: pixel coverage, pointer state --------------------------
+
+/// Where the pointer is when the frame is sampled.
+#[derive(Clone, Copy, PartialEq)]
+enum Pointer {
+    Rest,
+    /// Over the root's centre.
+    Hover,
+    /// Over the root's centre with the primary button held.
+    Press,
+}
+
+/// The tessellated frame: what the GPU would draw for the node's layer,
+/// plus the root's rect. `theme` names the `data-we-theme` the component
+/// stylesheet keys on.
+struct Frame {
+    rect: egui::Rect,
+    prims: Vec<egui::epaint::ClippedPrimitive>,
+}
+
+fn frame(root: &ResolvedNode, theme: &str, pointer: Pointer) -> Frame {
+    let registry = Registry::with_builtins();
+    let out = RefCell::new((egui::Rect::NOTHING, Vec::new()));
+    let mut harness = egui_kittest::Harness::new_ui(|ui| {
+        let ctx = ui.ctx().clone();
+        we_egui::install_media(&ctx);
+        let mut scx = StyleCx::empty();
+        scx.theme = theme;
+        let lay = layout(
+            &MeasureCx::new(&ctx),
+            &scx,
+            &registry,
+            root,
+            egui::Rect::from_min_size(ui.cursor().min, egui::vec2(400.0, 600.0)),
+        );
+        let rect = lay
+            .rects
+            .get(&root.id)
+            .copied()
+            .unwrap_or(egui::Rect::NOTHING);
+        let mut events = Vec::new();
+        let mut edit = EditState::default();
+        paint(ui, &registry, &scx, root, &lay, &mut events, &mut edit, 0.0);
+        let layer = ui.layer_id();
+        let shapes: Vec<egui::epaint::ClippedShape> = ctx.graphics(|g| {
+            g.get(layer)
+                .map(|list| list.all_entries().cloned().collect())
+                .unwrap_or_default()
+        });
+        let prims = ctx.tessellate(shapes, 1.0);
+        *out.borrow_mut() = (rect, prims);
+    });
+    harness.run_steps(2);
+    if pointer != Pointer::Rest {
+        let at = out.borrow().0.center();
+        harness.event(egui::Event::PointerMoved(at));
+        harness.run_steps(2);
+        if pointer == Pointer::Press {
+            harness.event(egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Primary,
+                pressed: true,
+                modifiers: egui::Modifiers::NONE,
+            });
+            harness.run_steps(2);
+        }
+    }
+    let (rect, prims) = out.borrow().clone();
+    Frame { rect, prims }
+}
+
+/// The opacity the frame paints at `p` — the highest interpolated vertex
+/// alpha of any triangle covering it (0 = nothing drawn there). Glyph quads
+/// count by their quad, which is what "the text survives" means.
+fn alpha_at(f: &Frame, p: egui::Pos2) -> f32 {
+    let mut best = 0.0f32;
+    for cp in &f.prims {
+        if !cp.clip_rect.contains(p) {
+            continue;
+        }
+        let egui::epaint::Primitive::Mesh(m) = &cp.primitive else {
+            continue;
+        };
+        for t in m.indices.chunks_exact(3) {
+            let [a, b, c] = [0, 1, 2].map(|i| m.vertices[t[i] as usize]);
+            let d = (b.pos - a.pos).x * (c.pos - a.pos).y - (b.pos - a.pos).y * (c.pos - a.pos).x;
+            if d.abs() < 1e-6 {
+                continue;
+            }
+            let w1 = ((b.pos - p).x * (c.pos - p).y - (b.pos - p).y * (c.pos - p).x) / d;
+            let w2 = ((c.pos - p).x * (a.pos - p).y - (c.pos - p).y * (a.pos - p).x) / d;
+            let w3 = 1.0 - w1 - w2;
+            if w1 >= -1e-4 && w2 >= -1e-4 && w3 >= -1e-4 {
+                let alpha =
+                    (w1 * a.color.a() as f32 + w2 * b.color.a() as f32 + w3 * c.color.a() as f32)
+                        / 255.0;
+                best = best.max(alpha);
+            }
+        }
+    }
+    best
+}
+
+fn cyberpunk_button() -> ResolvedNode {
+    let styles = obj(&[
+        ("background-color", s("#00f0ff")),
+        ("height", s("40px")),
+        ("width", s("160px")),
+    ]);
+    node("we-button", "b", &[("label", s("ARM")), ("styles", styles)])
+}
+
+/// cyberpunk/index.css: the button slab is clipped at rest — its
+/// bottom-left corner is cut away — and `:hover` sets `clip-path: none`.
+/// A press is `:hover` + `:active` in CSS (the active rule says nothing
+/// about the clip), so the corner stays open while held. The walk must
+/// clip with the state the widget painted, not the resting style.
+#[test]
+fn cyberpunk_hover_and_press_open_the_clipped_corner() {
+    let n = cyberpunk_button();
+    let rest = frame(&n, "cyberpunk", Pointer::Rest);
+    let corner = |f: &Frame| egui::pos2(f.rect.min.x + 3.0, f.rect.max.y - 3.0);
+    let middle = |f: &Frame| f.rect.center() + egui::vec2(30.0, 8.0);
+    assert!(
+        alpha_at(&rest, middle(&rest)) > 0.9,
+        "the slab paints at rest"
+    );
+    assert!(
+        alpha_at(&rest, corner(&rest)) < 0.01,
+        "at rest the bottom-left corner is cut: {}",
+        alpha_at(&rest, corner(&rest))
+    );
+    for (p, name) in [(Pointer::Hover, "hover"), (Pointer::Press, "press")] {
+        let f = frame(&n, "cyberpunk", p);
+        assert!(
+            alpha_at(&f, corner(&f)) > 0.9,
+            "{name}: `clip-path: none` paints the corner: {}",
+            alpha_at(&f, corner(&f))
+        );
+    }
+}

@@ -121,8 +121,11 @@ pub fn control_height(node: &ResolvedNode) -> f32 {
     }
 }
 
-/// `Style::with_state` for the response's state — disabled beats active
-/// beats focus beats hover, the CSS order.
+/// `Style::with_state` for the response's state. Disabled stands alone;
+/// otherwise `:hover` applies while the pointer is over the widget and
+/// `:active` over it while pressed — a press is both in CSS, so an active
+/// patch silent on a property keeps hover's value (cyberpunk's
+/// `:hover { clip-path: none }` holds while held). `:focus` composes last.
 pub(crate) fn state_style<'a>(
     style: &'a Style,
     response: &egui::Response,
@@ -133,18 +136,26 @@ pub(crate) fn state_style<'a>(
             Some(p) => patched(style, p),
             None => std::borrow::Cow::Borrowed(style),
         }
-    } else if response.is_pointer_button_down_on() {
-        match &style.active {
-            Some(p) => patched(style, p),
-            None => std::borrow::Cow::Borrowed(style),
-        }
-    } else if response.hovered() {
-        match &style.hover {
-            Some(p) => patched(style, p),
-            None => std::borrow::Cow::Borrowed(style),
-        }
     } else {
-        std::borrow::Cow::Borrowed(style)
+        let down = response.is_pointer_button_down_on();
+        let hover = response
+            .hovered()
+            .then_some(style.hover.as_deref())
+            .flatten();
+        let active = down.then_some(style.active.as_deref()).flatten();
+        match (hover, active) {
+            (None, None) => std::borrow::Cow::Borrowed(style),
+            (h, a) => {
+                let mut out = style.pretier.as_deref().unwrap_or(style).clone();
+                if let Some(h) = h {
+                    out.apply(h);
+                }
+                if let Some(a) = a {
+                    out.apply(a);
+                }
+                std::borrow::Cow::Owned(out)
+            }
+        }
     };
     // `:focus` composes with the resting state — the ring paints on top of
     // hover/active chrome. A disabled button never takes focus.
@@ -541,12 +552,21 @@ fn paint_inset_layer(
 /// against its height (`calc(…)` mixes go through [`Dimension::resolve`]).
 /// The result may be degenerate — under three distinct points or zero
 /// area — which the caller reads as "clip everything", not "no clip".
+#[cfg(test)]
 fn clip_points(
     style: &Style,
     rect: egui::Rect,
     view: crate::defaults::ViewportCx,
 ) -> Option<Vec<egui::Pos2>> {
-    let Some(we_style::ClipPath::Polygon(points)) = style.paint.clip.as_ref() else {
+    clip_points_of(style.paint.clip.as_ref(), rect, view)
+}
+
+fn clip_points_of(
+    clip: Option<&we_style::ClipPath>,
+    rect: egui::Rect,
+    view: crate::defaults::ViewportCx,
+) -> Option<Vec<egui::Pos2>> {
+    let Some(we_style::ClipPath::Polygon(points)) = clip else {
         return None;
     };
     let points: Vec<egui::Pos2> = points
@@ -605,10 +625,20 @@ pub(crate) fn clip_region(
     rect: egui::Rect,
     view: crate::defaults::ViewportCx,
 ) -> ClipRegion {
-    if !matches!(style.paint.clip, Some(we_style::ClipPath::Polygon(_))) {
+    clip_region_of(style.paint.clip.as_ref(), rect, view)
+}
+
+/// [`clip_region`] for a bare `clip-path` value — the state-resolved one a
+/// widget reported painting with.
+pub(crate) fn clip_region_of(
+    clip: Option<&we_style::ClipPath>,
+    rect: egui::Rect,
+    view: crate::defaults::ViewportCx,
+) -> ClipRegion {
+    if !matches!(clip, Some(we_style::ClipPath::Polygon(_))) {
         return ClipRegion::None;
     }
-    match clip_points(style, rect, view) {
+    match clip_points_of(clip, rect, view) {
         Some(pts) if pts.len() >= 3 && signed_area(&pts).abs() > 0.5 => ClipRegion::Polygon(pts),
         _ => ClipRegion::All,
     }

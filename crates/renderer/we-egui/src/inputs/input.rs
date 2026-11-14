@@ -80,6 +80,7 @@ impl Widget for Input {
         } else {
             std::borrow::Cow::Borrowed(style)
         };
+        cx.report_state(&chrome_style);
         let style: &Style = &chrome_style;
 
         // Chrome that comes from the resolved style — the theme's part
