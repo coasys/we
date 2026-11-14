@@ -296,3 +296,39 @@ fn p2_4_distinct_set_identity() {
         json!(1)
     );
 }
+
+/// `filter`'s `limit` slices only `typeof limit === 'number' && limit >= 0`
+/// — anything else (undefined, a numeric string, null, negative, NaN)
+/// leaves the whole list.
+#[test]
+fn p2_5_filter_limit_type_gate() {
+    let env = MapEnv::new();
+    let items = list(&[1.into(), 2.into()]);
+    let where_ = obj(&[]);
+    for (limit, name) in [
+        (Value::Undefined, "undefined"),
+        (Value::Null, "null"),
+        ((-1).into(), "-1"),
+        ("1".into(), "'1'"),
+        (f64::NAN.into(), "NaN"),
+    ] {
+        assert_eq!(
+            call_json("filter", &[items.clone(), where_.clone(), limit], &env),
+            json!([1, 2]),
+            "filter limit {name} must not truncate"
+        );
+    }
+    // A real numeric limit still slices — and `slice(0, 1.7)` floors.
+    assert_eq!(
+        call_json("filter", &[items.clone(), where_.clone(), 1.into()], &env),
+        json!([1])
+    );
+    assert_eq!(
+        call_json("filter", &[items.clone(), where_.clone(), 1.7.into()], &env),
+        json!([1])
+    );
+    assert_eq!(
+        call_json("filter", &[items, where_, 0.into()], &env),
+        json!([])
+    );
+}

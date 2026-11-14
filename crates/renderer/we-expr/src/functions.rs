@@ -90,17 +90,20 @@ fn count(args: &[Value], _env: &dyn Env) -> Value {
 }
 
 /// `filter(list, where?, limit?)` — items matching the where-object; a
-/// non-object `where` filters nothing, and `limit` truncates.
+/// non-object `where` filters nothing. `limit` keeps the first N, but only
+/// when it is a real `number >= 0` (`typeof limit === 'number' && limit
+/// >= 0` in `functions.ts`) — an `undefined`, negative, string or NaN limit
+/// leaves the whole matched list.
 fn filter(args: &[Value], _env: &dyn Env) -> Value {
     let list = arg(args, 0);
     let Some(items) = as_list(&list) else {
         return Vec::<Value>::new().into();
     };
     let where_ = arg(args, 1);
-    let limit = args
-        .get(2)
-        .map(|v| v.to_number().max(0.0) as usize)
-        .unwrap_or(usize::MAX);
+    let limit = match args.get(2) {
+        Some(Value::Num(n)) if *n >= 0.0 => *n as usize,
+        _ => usize::MAX,
+    };
     items
         .iter()
         .filter(|i| !matches!(where_, Value::Obj(_)) || matches_where(i, &where_))
