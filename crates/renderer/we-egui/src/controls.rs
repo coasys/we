@@ -7,21 +7,27 @@ use crate::props;
 use crate::{MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
 
 /// `we-button` — variant + size come through `Style`; `disabled`, `loading`,
-/// `square`, `href`, `expanded`, `label` are widget props. Children (icon +
+/// `square`, `href`, `expanded`, `text` are widget props. Children (icon +
 /// text nodes) flow inside its row layout. Clicks emit `onClick` with
-/// `{detail:{}}`; a `href` with no handler opens the URL.
+/// `{detail:{}}`; a `href` with no handler opens the URL. `label` is the
+/// accessible name — an aria-label on the web component, never its text.
 #[derive(Debug, Default)]
 pub struct Button;
 
 impl Button {
+    /// What the button shows: `text`, else the default slot's words. The web
+    /// component's `label` names it for a screen reader only.
+    fn visible_text(node: &ResolvedNode) -> String {
+        props::prop_text(node, "text")
+            .map(str::to_string)
+            .unwrap_or_else(|| props::children_text(node))
+    }
+
     /// The content box's intrinsic size: the label galley, plus the spinner
     /// and its gap while `loading` (a square button has no room for the
     /// label — the spinner *is* the content there, same as button.ts).
     fn measure_label(node: &ResolvedNode, style: &Style, ctx: &egui::Context, avail: f32) -> Size {
-        let text = props::prop_text(node, "label")
-            .or_else(|| props::prop_text(node, "text"))
-            .map(str::to_string)
-            .unwrap_or_else(|| props::text_of(node));
+        let text = Self::visible_text(node);
         let loading = props::prop_bool(node, "loading");
         let square = props::prop_bool(node, "square");
         if loading && square {
@@ -64,11 +70,11 @@ impl Widget for Button {
         let loading = props::prop_bool(node, "loading");
         let square = props::prop_bool(node, "square");
         let disabled = props::prop_bool(node, "disabled") || loading;
-        let label = props::prop_text(node, "label")
-            .or_else(|| props::prop_text(node, "text"))
+        let label = Self::visible_text(node);
+        let a11y = props::prop_text(node, "label")
             .map(str::to_string)
-            .unwrap_or_else(|| props::text_of(node));
-        let response = cx.interact_label(rect, &label, egui::Role::Button, &node.id, "base");
+            .unwrap_or_else(|| label.clone());
+        let response = cx.interact_label(rect, &a11y, egui::Role::Button, &node.id, "base");
         // NOTE: `expanded` has no egui 0.37 WidgetInfo field — the disclosure
         // state reaches tests through the caret/children instead.
         let eff = props::state_style(style, &response, disabled);
@@ -81,16 +87,14 @@ impl Widget for Button {
             ROOT_PX,
             view.viewport,
         );
-        // Prop-text buttons paint their label centered; node children are
-        // painted by the walk inside the button's own row layout. Truncation
-        // answers at the content box — the padding is not label room.
-        let has_node_children = node
-            .children
-            .iter()
-            .any(|c| matches!(c, we_template::ResolvedChild::Node(_)));
+        // `text`-prop buttons paint their label centered; children paint
+        // themselves — node children in the walk, text children as spans —
+        // so a galley on top would draw the words twice. Truncation answers
+        // at the content box — the padding is not label room.
+        let has_children = !node.children.is_empty();
         // `loading && square` shows the spinner alone — the square has no
         // room for a label beside it.
-        let show_label = !(has_node_children || label.is_empty() || loading && square);
+        let show_label = !(has_children || label.is_empty() || loading && square);
         let spin_w = if loading {
             SPINNER + if show_label { SPINNER_GAP } else { 0.0 }
         } else {

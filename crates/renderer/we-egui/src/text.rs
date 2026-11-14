@@ -402,15 +402,20 @@ impl Widget for Link {
                 cx.ui.ctx().open_url(egui::OpenUrl::new_tab(href));
             }
         }
+        // Children paint themselves (the default slot's spans); with none,
+        // `text_of`'s prop text is the link's body — either way the rule
+        // underlines the content box.
         if !label.is_empty() {
             let content_rect =
                 props::content_rect(rect, &eff, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()), cx.cb_w);
-            let g = text_job(&label, &eff, cx.ui.ctx(), content_rect.width(), false, None);
-            cx.ui.painter().add(egui::Shape::galley(
-                content_rect.min,
-                g,
-                egui::Color32::PLACEHOLDER,
-            ));
+            if node.children.is_empty() {
+                let g = text_job(&label, &eff, cx.ui.ctx(), content_rect.width(), false, None);
+                cx.ui.painter().add(egui::Shape::galley(
+                    content_rect.min,
+                    g,
+                    egui::Color32::PLACEHOLDER,
+                ));
+            }
             underline(cx, &eff, content_rect);
         }
         if response.hovered() && !disabled {

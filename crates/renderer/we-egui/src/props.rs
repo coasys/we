@@ -60,14 +60,10 @@ pub(crate) fn prop_list<'a>(node: &'a ResolvedNode, key: &str) -> Option<&'a Vec
     }
 }
 
-/// The display text: `text`, then `label`, then `value`, then concatenated
-/// text children — what the primitives render in that order.
-pub(crate) fn text_of(node: &ResolvedNode) -> String {
-    for key in ["text", "label", "value"] {
-        if let Some(s) = prop_text(node, key) {
-            return s.to_string();
-        }
-    }
+/// Just the text children, concatenated — the default slot's words on the
+/// web component, which never sees the `label`/`value` props `text_of`
+/// falls back to.
+pub(crate) fn children_text(node: &ResolvedNode) -> String {
     node.children
         .iter()
         .filter_map(|c| match c {
@@ -76,6 +72,17 @@ pub(crate) fn text_of(node: &ResolvedNode) -> String {
         })
         .collect::<Vec<_>>()
         .join("")
+}
+
+/// The display text: `text`, then `label`, then `value`, then concatenated
+/// text children — what the primitives render in that order.
+pub(crate) fn text_of(node: &ResolvedNode) -> String {
+    for key in ["text", "label", "value"] {
+        if let Some(s) = prop_text(node, key) {
+            return s.to_string();
+        }
+    }
+    children_text(node)
 }
 
 /// The AccessKit label: `label` prop, falling back to `alt`/`name`/type.

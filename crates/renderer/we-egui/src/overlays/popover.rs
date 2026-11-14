@@ -23,10 +23,16 @@ impl Widget for Popover {
     }
 
     fn parts_spec(&self, _node: &ResolvedNode) -> Option<PartsSpec> {
-        // `trigger` is the anchor child; everything else floats.
+        // `slot="trigger"` is the anchor child — the web component has no
+        // default slot. Everything else floats (its `content` slot, plus
+        // any un-slotted children the web side would drop entirely).
         Some(PartsSpec {
             direction: Direction::Column,
-            parts: vec![PartSpec::group("trigger", Pick::Default, Direction::Column)],
+            parts: vec![PartSpec::group(
+                "trigger",
+                Pick::Named("trigger".into()),
+                Direction::Column,
+            )],
         })
     }
 

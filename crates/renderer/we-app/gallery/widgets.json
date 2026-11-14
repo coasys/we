@@ -23,12 +23,12 @@
             "lines": 2
           }
         },
-        { "type": "we-link", "props": { "text": "a link", "href": "https://example.com" } },
+        { "type": "we-link", "props": { "href": "https://example.com" }, "children": ["a link"] },
         { "type": "we-timestamp", "props": { "value": "2026-06-24T10:30:00Z" } },
         { "type": "we-timestamp", "props": { "value": "2026-06-24T10:30:00Z", "relative": true } },
         {
           "type": "we-typewriter",
-          "props": { "text": "type: ", "phrases": ["first", "second phrase"], "cursor": true }
+          "props": { "text": "type: ", "phrases": ["first", "second phrase"] }
         }
       ]
     },
@@ -41,22 +41,22 @@
           "type": "Row",
           "props": { "gap": "200", "ay": "center" },
           "children": [
-            { "type": "we-icon", "props": { "name": "rocket", "size": 24 } },
-            { "type": "we-icon", "props": { "name": "bell", "size": 24, "weight": "fill" } },
-            { "type": "we-animated-icon", "props": { "name": "circle-notch", "size": 24 } },
-            { "type": "we-avatar", "props": { "name": "Ada Lovelace", "size": 32 } },
-            { "type": "we-avatar", "props": { "initials": "GH", "size": 32, "ring": true } },
+            { "type": "we-icon", "props": { "name": "rocket", "size": "sm" } },
+            { "type": "we-icon", "props": { "name": "bell", "size": "sm", "weight": "fill" } },
+            { "type": "we-animated-icon", "props": { "name": "spinner", "size": "sm" } },
+            { "type": "we-avatar", "props": { "initials": "AL", "size": "sm" } },
+            { "type": "we-avatar", "props": { "initials": "GH", "size": "sm", "ringColor": "accent" } },
             {
               "type": "AvatarStack",
               "props": {
-                "size": 28,
+                "size": "sm",
                 "max": 3,
                 "avatars": [
-                  { "id": "a", "label": "Ada Lovelace" },
-                  { "id": "b", "label": "Grace Hopper" },
-                  { "id": "c", "label": "Edsger Dijkstra" },
-                  { "id": "d", "label": "Alan Turing" },
-                  { "id": "e", "label": "Katherine Johnson" }
+                  { "initials": "AL" },
+                  { "initials": "GH" },
+                  { "initials": "ED" },
+                  { "initials": "AT" },
+                  { "initials": "KJ" }
                 ]
               }
             }
@@ -65,7 +65,9 @@
         {
           "type": "we-image",
           "props": {
-            "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAAA2CAIAAAC3LQuFAAABC0lEQVR4nO2ZwQ2CUBAFxViB5WhrerI2y9EavBgOohnwf95qMnMkHP4ObyHsDqfDbSOf2VYf4NdREKAgQEGAggAFAQoCFAQoCFAQoCBAQcCu+gBPLtf99OL5eM+f5IWh9m/+rZcphaYqW2ymnUV3dqcmQV8XnI9SQYJa4pCPUlpQe4VhR37mgaigXg8/GaKcoL5VxRzZYoCCgJCgNToi02UmCFAQoCBAQYCCAAUBIUFrjCkyow8TBCgIyAnq2xGx0WI0Qb2qSg5ebTEgLaj94Yfn9gUJaqkwv9WoXBwumldU7Q4r30Hzay7crBavnkfczf8rfuYBBQEKAhQEKAhQEKAgQEGAggAFAQoCHhuTPTsKS8PhAAAAAElFTkSuQmCC", "width": 96, "height": 54,
+            "src": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAAA2CAIAAAC3LQuFAAABC0lEQVR4nO2ZwQ2CUBAFxViB5WhrerI2y9EavBgOohnwf95qMnMkHP4ObyHsDqfDbSOf2VYf4NdREKAgQEGAggAFAQoCFAQoCFAQoCBAQcCu+gBPLtf99OL5eM+f5IWh9m/+rZcphaYqW2ymnUV3dqcmQV8XnI9SQYJa4pCPUlpQe4VhR37mgaigXg8/GaKcoL5VxRzZYoCCgJCgNToi02UmCFAQoCBAQYCCAAUBIUFrjCkyow8TBCgIyAnq2xGx0WI0Qb2qSg5ebTEgLaj94Yfn9gUJaqkwv9WoXBwumldU7Q4r30Hzay7crBavnkfczf8rfuYBBQEKAhQEKAhQEKAgQEGAggAFAQoCHhuTPTsKS8PhAAAAAElFTkSuQmCC",
+            "width": 96,
+            "height": 54,
             "alt": "demo image",
             "width": 96,
             "height": 54
@@ -93,10 +95,10 @@
               "props": { "label": "close", "square": true },
               "children": [{ "type": "we-icon", "props": { "name": "x" } }]
             },
-            { "type": "we-badge", "props": { "count": 3 } },
-            { "type": "we-badge", "props": { "count": 120, "max": 99, "variant": "solid" } },
-            { "type": "we-tag", "props": { "text": "a tag" } },
-            { "type": "we-tag", "props": { "text": "dismissible", "dismissible": true } },
+            { "type": "we-badge", "children": ["3"] },
+            { "type": "we-badge", "props": { "variant": "solid" }, "children": ["99+"] },
+            { "type": "we-tag", "children": ["a tag"] },
+            { "type": "we-tag", "props": { "dismissible": true }, "children": ["dismissible"] },
             {
               "type": "we-tooltip",
               "props": { "content": "tip text", "placement": "bottom" },
@@ -104,12 +106,12 @@
             }
           ]
         },
-        { "type": "we-alert", "props": { "text": "an info alert", "tone": "accent" } },
-        { "type": "we-alert", "props": { "text": "a danger alert", "tone": "danger", "dismissible": true } },
+        { "type": "we-alert", "props": { "tone": "accent" }, "children": ["an info alert"] },
+        { "type": "we-alert", "props": { "tone": "danger", "dismissible": true }, "children": ["a danger alert"] },
         { "type": "we-divider" },
         { "type": "we-divider", "props": { "variant": "dashed" } },
-        { "type": "we-skeleton", "props": { "variant": "line" } },
-        { "type": "we-skeleton", "props": { "variant": "block", "height": 40 } }
+        { "type": "we-skeleton" },
+        { "type": "we-skeleton", "props": { "styles": { "height": "40px" } } }
       ]
     },
     {
@@ -154,13 +156,14 @@
           "children": [
             {
               "type": "we-tree-item",
-              "props": { "label": "parent", "value": "a", "open": true },
+              "props": { "value": "a", "open": true },
               "children": [
-                { "type": "we-tree-item", "props": { "label": "child one", "value": "b" }, "slot": "children" },
-                { "type": "we-tree-item", "props": { "label": "child two", "value": "c" }, "slot": "children" }
+                "parent",
+                { "type": "we-tree-item", "props": { "value": "b" }, "slot": "children", "children": ["child one"] },
+                { "type": "we-tree-item", "props": { "value": "c" }, "slot": "children", "children": ["child two"] }
               ]
             },
-            { "type": "we-tree-item", "props": { "label": "sibling", "value": "d" } }
+            { "type": "we-tree-item", "props": { "value": "d" }, "children": ["sibling"] }
           ]
         }
       ]

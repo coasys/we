@@ -336,14 +336,14 @@
             { "type": "we-button", "props": { "text": "outline", "variant": "outline" } },
             { "type": "we-button", "props": { "text": "ghost", "variant": "ghost" } },
             { "type": "we-button", "props": { "text": "danger", "tone": "danger" } },
-            { "type": "we-badge", "props": { "count": 3 } },
-            { "type": "we-tag", "props": { "text": "a tag" } },
+            { "type": "we-badge", "children": ["3"] },
+            { "type": "we-tag", "children": ["a tag"] },
             { "type": "we-switch", "props": { "checked": true } },
-            { "type": "we-avatar", "props": { "name": "Ada Lovelace", "size": 32 } }
+            { "type": "we-avatar", "props": { "initials": "AL", "size": "sm" } }
           ]
         },
-        { "type": "we-alert", "props": { "text": "an info alert", "tone": "accent" } },
-        { "type": "we-alert", "props": { "text": "a danger alert", "tone": "danger" } },
+        { "type": "we-alert", "props": { "tone": "accent" }, "children": ["an info alert"] },
+        { "type": "we-alert", "props": { "tone": "danger" }, "children": ["a danger alert"] },
         { "type": "we-divider" },
         { "type": "we-input", "props": { "placeholder": "type here", "value": "" } },
         {
@@ -352,13 +352,14 @@
           "children": [
             {
               "type": "we-tree-item",
-              "props": { "label": "parent", "value": "a", "open": true },
+              "props": { "value": "a", "open": true },
               "children": [
-                { "type": "we-tree-item", "props": { "label": "child one", "value": "b" }, "slot": "children" },
-                { "type": "we-tree-item", "props": { "label": "child two", "value": "c" }, "slot": "children" }
+                "parent",
+                { "type": "we-tree-item", "props": { "value": "b" }, "slot": "children", "children": ["child one"] },
+                { "type": "we-tree-item", "props": { "value": "c" }, "slot": "children", "children": ["child two"] }
               ]
             },
-            { "type": "we-tree-item", "props": { "label": "sibling", "value": "d" } }
+            { "type": "we-tree-item", "props": { "value": "d" }, "children": ["sibling"] }
           ]
         }
       ]

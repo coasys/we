@@ -59,6 +59,9 @@ pub struct PartSpec {
     pub indent: f32,
     /// Align-items override for a part (e.g. `ay` on the tree row).
     pub align: Option<ItemAlign>,
+    /// `flex-grow` along the part's main axis — the alert's content part
+    /// fills what the icon leaves, so a trailing part docks at the far edge.
+    pub flex_grow: f32,
     pub parts: Vec<PartSpec>,
 }
 
@@ -74,6 +77,7 @@ impl PartSpec {
             min_height: 0.0,
             indent: 0.0,
             align: None,
+            flex_grow: 0.0,
             parts: vec![],
         }
     }
@@ -89,6 +93,7 @@ impl PartSpec {
             min_height: 0.0,
             indent: 0.0,
             align: None,
+            flex_grow: 0.0,
             parts: vec![],
         }
     }
@@ -104,6 +109,7 @@ impl PartSpec {
             min_height: 0.0,
             indent: 0.0,
             align: None,
+            flex_grow: 0.0,
             parts,
         }
     }
@@ -111,6 +117,12 @@ impl PartSpec {
     /// Leading space inside the part (the tree's indent).
     pub fn indented(mut self, px: f32) -> Self {
         self.indent = px;
+        self
+    }
+
+    /// `flex-grow` — the part claims the row's leftover space.
+    pub fn growing(mut self, v: f32) -> Self {
+        self.flex_grow = v;
         self
     }
 
@@ -797,6 +809,7 @@ fn part_style(spec: &PartSpec) -> taffy::Style {
             bottom: LengthPercentage::length(0.0),
         },
         flex_shrink: 0.0,
+        flex_grow: spec.flex_grow,
         ..Default::default()
     }
 }

@@ -202,25 +202,9 @@ impl Widget for TreeItem {
                 .painter()
                 .rect_filled(row, 4.0, visuals.widgets.hovered.bg_fill);
         }
-        // The `label`/`value` prop is the row text when the default slot
-        // holds no children (real content children paint in the label part).
-        let has_default_children = node.children.iter().any(|c| match c {
-            ResolvedChild::Node(n) => n.slot.is_none(),
-            ResolvedChild::Text(_) => true,
-        });
-        if !has_default_children {
-            if let Some(label_rect) = cx.parts.get(&(node.id.clone(), "label")).copied() {
-                // The empty label group has no width — the text runs to the
-                // row's end, unwrapped (the caret part leads it).
-                let wrap = (row.max.x - label_rect.min.x).max(1.0);
-                let g = crate::text::text_job(&label, style, cx.ui.ctx(), wrap, true, None);
-                cx.ui.painter().galley(
-                    egui::pos2(label_rect.min.x, label_rect.center().y - g.size().y / 2.0),
-                    g,
-                    props::text_color(style, cx.ui.ctx()),
-                );
-            }
-        }
+        // The web component's row text is the default slot's content alone
+        // — `label` is not a property it declares. Slot content paints in
+        // the `label` part; a prop-only item is an empty row, as on the web.
         if Self::expandable(node) {
             // The caret — ▸ closed / ▾ open; its own click toggles open.
             if let Some(caret) = cx.parts.get(&(node.id.clone(), "caret")).copied() {

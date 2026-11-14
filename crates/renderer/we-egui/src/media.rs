@@ -104,11 +104,22 @@ impl Icon {
             }
             match v {
                 Value::Num(n) => return *n as f32,
-                Value::Str(s) => {
-                    if let Ok(n) = s.parse::<f64>() {
-                        return n as f32;
+                Value::Str(s) => match s.as_ref() {
+                    // The `size` token scale the web component's `size`
+                    // attribute selects (`--we-size-*`).
+                    "xxs" => return 12.0,
+                    "xs" => return 16.0,
+                    "sm" => return 24.0,
+                    "md" => return 32.0,
+                    "lg" => return 40.0,
+                    "xl" => return 48.0,
+                    "xxl" => return 64.0,
+                    _ => {
+                        if let Ok(n) = s.parse::<f64>() {
+                            return n as f32;
+                        }
                     }
-                }
+                },
                 _ => {}
             }
         }
@@ -232,13 +243,31 @@ impl Widget for Image {
 // ── we-avatar ────────────────────────────────────────────────────────────
 
 /// `we-avatar` — an image or initials in a rounded slot. `initials` shows
-/// when `url` is empty; `ring`/`ringWidth` paint an accent ring.
+/// when `url` is empty; `ring`/`ringColor`/`ringWidth` paint an accent ring.
 #[derive(Debug, Default)]
 pub struct Avatar;
 
+/// The `--we-avatar-size-*` scale the web component's `size` attribute
+/// selects, or a bare number/`"Npx"` for a raw size. `default` is each
+/// caller's own fallback.
+fn avatar_size_px(node: &ResolvedNode, default: f32) -> f32 {
+    match props::prop_str(node, "size") {
+        Some("xxs") => 16.0,
+        Some("xs") => 24.0,
+        Some("sm") => 32.0,
+        Some("md") => 40.0,
+        Some("lg") => 48.0,
+        Some("xl") => 64.0,
+        Some("xxl") => 80.0,
+        _ => props::prop_num(node, "size")
+            .map(|n| n as f32)
+            .unwrap_or(default),
+    }
+}
+
 impl Avatar {
     pub(crate) fn size_px(node: &ResolvedNode) -> f32 {
-        props::prop_num(node, "size").unwrap_or(40.0) as f32
+        avatar_size_px(node, 40.0)
     }
 
     pub(crate) fn initials(node: &ResolvedNode) -> String {
@@ -322,7 +351,12 @@ impl Widget for Avatar {
         Size::new(s, s)
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
-        let ring = if props::prop_bool(node, "ring") {
+        // `ringColor` (a tone or colour) is the web component's spelling of
+        // "draw a ring" — its tone picks the colour, which the accent stroke
+        // here approximates.
+        let ringed =
+            props::prop_bool(node, "ring") || props::prop_text(node, "ringColor").is_some();
+        let ring = if ringed {
             Some(props::prop_num(node, "ringWidth").unwrap_or(2.0) as f32)
         } else {
             props::prop_num(node, "ringWidth").map(|w| w as f32)
@@ -349,7 +383,9 @@ impl Widget for Avatar {
 #[derive(Debug, Default)]
 pub struct AvatarStack;
 
-/// One entry's (id, label, url) from the `avatars` list.
+/// One entry's (id, label, url) from the `avatars` list — the web
+/// component's `AvatarInfo` reads `initials`/`image`/`hash`; `name`/`url`
+/// stay accepted spellings.
 fn stack_entry(v: &Value, ix: usize) -> (String, String, Option<String>) {
     if let Value::Obj(o) = v {
         let id = o
@@ -357,12 +393,14 @@ fn stack_entry(v: &Value, ix: usize) -> (String, String, Option<String>) {
             .map(|v| v.js_string())
             .unwrap_or_else(|| format!("avatar-{ix}"));
         let label = o
-            .get("label")
+            .get("initials")
+            .or_else(|| o.get("label"))
             .or_else(|| o.get("name"))
             .map(|v| v.js_string())
             .unwrap_or_else(|| id.clone());
         let url = o
-            .get("url")
+            .get("image")
+            .or_else(|| o.get("url"))
             .or_else(|| o.get("src"))
             .map(|v| v.js_string())
             .filter(|s| !s.is_empty());
@@ -373,11 +411,15 @@ fn stack_entry(v: &Value, ix: usize) -> (String, String, Option<String>) {
 }
 
 impl AvatarStack {
-    /// Dedup'd entries, in order.
+    /// Dedup'd entries, in order. The web component reads `items`; `avatars`
+    /// and `users` are accepted spellings.
     fn entries(node: &ResolvedNode) -> Vec<(String, String, Option<String>)> {
         let mut seen = std::collections::BTreeSet::new();
         let mut out = Vec::new();
-        if let Some(list) = props::prop_list(node, "avatars") {
+        let list = props::prop_list(node, "items")
+            .or_else(|| props::prop_list(node, "avatars"))
+            .or_else(|| props::prop_list(node, "users"));
+        if let Some(list) = list {
             for (i, v) in list.iter().enumerate() {
                 let e = stack_entry(v, i);
                 if seen.insert(e.0.clone()) {
@@ -397,7 +439,7 @@ impl Widget for AvatarStack {
         WidgetKind::Leaf
     }
     fn measure(&self, _cx: &MeasureCx, node: &ResolvedNode, _style: &Style, _a: Size) -> Size {
-        let size = props::prop_num(node, "size").unwrap_or(32.0) as f32;
+        let size = avatar_size_px(node, 32.0);
         let max = props::prop_num(node, "max").unwrap_or(5.0) as usize;
         let overlap = props::prop_num(node, "overlap").unwrap_or(0.35) as f32;
         let n = Self::entries(node).len();
@@ -427,15 +469,20 @@ impl Widget for AvatarStack {
         } else {
             content.min.x
         };
-        // The slot glyph is the label's initials — the full name stays the
-        // AccessKit label and the click payload.
+        // The slot glyph is the label's initials — an `initials` entry
+        // already is them; a full name takes its words' first letters.
         let initials_of = |label: &str| -> String {
-            label
-                .split_whitespace()
-                .filter_map(|w| w.chars().next())
-                .take(2)
-                .collect::<String>()
-                .to_uppercase()
+            let mut words = label.split_whitespace();
+            if let (Some(_), None) = (words.next(), words.next()) {
+                label.chars().take(2).collect::<String>().to_uppercase()
+            } else {
+                label
+                    .split_whitespace()
+                    .filter_map(|w| w.chars().next())
+                    .take(2)
+                    .collect::<String>()
+                    .to_uppercase()
+            }
         };
         for (i, (id, label, url)) in entries.iter().take(max).enumerate() {
             let slot = Rect::from_min_size(
@@ -509,8 +556,15 @@ impl Widget for AnimatedIcon {
     fn kind(&self) -> WidgetKind {
         WidgetKind::Leaf
     }
-    fn measure(&self, _cx: &MeasureCx, node: &ResolvedNode, _style: &Style, _a: Size) -> Size {
-        let s = props::prop_num(node, "size").unwrap_or(20.0) as f32;
+    fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, _style: &Style, _a: Size) -> Size {
+        // `size` may be a number or a `"24px"`/`"1.5em"` dim.
+        let s = props::px(
+            props::dim_prop(node, "size").as_ref(),
+            FONT_PX,
+            ROOT_PX,
+            view_of(cx.ctx).viewport,
+        )
+        .unwrap_or(20.0);
         Size::new(s, s)
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {

@@ -41,11 +41,11 @@ fn b(v: bool) -> Value {
     Value::Bool(v)
 }
 
-fn btn(id: &str, label: &str) -> ResolvedChild {
+fn btn(id: &str, text: &str) -> ResolvedChild {
     ResolvedChild::Node(Box::new(node(
         "we-button",
         id,
-        props(&[("label", s(label))]),
+        props(&[("text", s(text))]),
         vec![],
     )))
 }
@@ -71,13 +71,20 @@ pub fn widgets_tree(open: bool) -> ResolvedNode {
     let mut body_node = node(
         "we-button",
         "g/pop/body",
-        props(&[("label", s("Popover body"))]),
+        props(&[("text", s("Popover body"))]),
         vec![],
     );
     body_node.slot = Some(Arc::from("content"));
+    let mut trig = node(
+        "we-button",
+        "g/pop/trig",
+        props(&[("text", s("Popover"))]),
+        vec![],
+    );
+    trig.slot = Some(Arc::from("trigger"));
     let mut pop = node("we-popover", "g/pop", props(&[]), vec![]);
     pop.children = vec![
-        btn("g/pop/trig", "Popover"),
+        ResolvedChild::Node(Box::new(trig)),
         ResolvedChild::Node(Box::new(body_node)),
     ];
 
@@ -106,7 +113,7 @@ pub fn widgets_tree(open: bool) -> ResolvedNode {
         sort.children.push(ResolvedChild::Node(Box::new(node(
             "we-button",
             &format!("g/sort/{i}"),
-            props(&[("weId", s(id)), ("label", s(&format!("Row {id}")))]),
+            props(&[("weId", s(id)), ("text", s(&format!("Row {id}")))]),
             vec![],
         ))));
     }
@@ -173,11 +180,7 @@ pub fn widgets_tree(open: bool) -> ResolvedNode {
                 "g/date",
                 &[("label", s("Date")), ("value", s("2026-01-15"))],
             ),
-            leaf(
-                "we-color-picker",
-                "g/color",
-                &[("label", s("Color")), ("value", s("#3b82f6"))],
-            ),
+            leaf("we-color-picker", "g/color", &[("value", s("#3b82f6"))]),
             leaf(
                 "we-icon-picker",
                 "g/icon",
