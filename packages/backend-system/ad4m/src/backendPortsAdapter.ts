@@ -43,6 +43,7 @@ import { compileManifest, manifestToEntries } from './manifestCompiler';
 import { createAd4mModelAdmin } from './modelAdminAdapter';
 import { createAd4mShapeStore } from './nativeShapes';
 import { installParentByRelation } from './parentByRelation';
+import { createAd4mPersonPort } from './personPort';
 import { buildEntityClasses, buildEntityManifest, getForeignShacl } from './perspectiveHelpers';
 import { createAd4mReferencePort } from './referencePort';
 import { registerDeclaredRelations } from './relationPredicates';
@@ -243,6 +244,8 @@ export function createAd4mBackendPorts(
     // The key log and the device list, as the executor's identity module holds them, and changes to
     // them through the host's custody service where it runs one.
     identity: createAd4mIdentityPort(backendClient, options.custody),
+    // Who each device key speaks for: a person's posts from every computer they use are one author.
+    persons: createAd4mPersonPort(backendClient),
     // Per-dataset like interpretation: every operation names the space the call is in.
     call: createAd4mCallPort(),
     ephemeral,

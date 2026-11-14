@@ -51,6 +51,7 @@ import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import { modelMark } from './modelMark.ts';
 import { peopleFilter } from './peopleFilter.ts';
+import { isMe, profileOf } from './profileOf.ts';
 import { signalDisplay } from './signalDisplay.ts';
 import {
   answerButton,
@@ -75,15 +76,20 @@ const BOARD = 'first(local.board)';
   before the board is worked out rather than after, so every count, the Unplaced column and the people
   filter agree about what is on the board.
 */
-const VIEW = `arrangedBoard({ board: first(local.board), columns: local.columns, records: ${withoutHiddenSuggestions('local.pool')}, states: spaceStore.taskStates, involvements: local.involvements, kinds: spaceStore.involvementTypes, people: local.boardPeople, show: local.boardGrouped ? 'rows' : (local.boardShow == 'hide' ? 'hide' : 'dim'), awaitingMe: local.boardAwaiting, me: me.did, only: local.boardOnlySource ? first(local.boardOnlySource).extracted : null, onlyShow: local.boardOnlyShow })`;
+const VIEW = `arrangedBoard({ board: first(local.board), columns: local.columns, records: ${withoutHiddenSuggestions('local.pool')}, states: spaceStore.taskStates, involvements: local.involvements, kinds: spaceStore.involvementTypes, people: local.boardPeople, show: local.boardGrouped ? 'rows' : (local.boardShow == 'hide' ? 'hide' : 'dim'), awaitingMe: local.boardAwaiting, profiles: profileStore.profiles, me: me.dids, only: local.boardOnlySource ? first(local.boardOnlySource).extracted : null, onlyShow: local.boardOnlyShow })`;
 
 /**
  * Who is on each card — the `involvement` host function over the board's own involvement query.
  *
  * Read by the card for its faces and its assign menu. The board's filtering reads the same rows
  * through `arrangedBoard`, so a card is never dimmed for somebody its faces say is on it.
+ *
+ * `profiles` folds a person's device keys into one: each holder carries `person`, which is what a
+ * face is drawn by, so somebody who took one card on their laptop and another on their desktop is
+ * one face on both. `did` stays the key the involvement was written under.
  */
-const PEOPLE = 'involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did })';
+const PEOPLE =
+  'involvement({ rows: local.involvements, types: spaceStore.involvementTypes, profiles: profileStore.profiles, me: me.dids })';
 
 /** What the card in scope carries of it: `{ people, responsible, reviewing, pairs, … }`, or nothing. */
 const ON = (as: string) => `${PEOPLE}.byNode[${as}.id]`;
@@ -505,7 +511,7 @@ function cardPeople(as: string, entity: string, edge?: string): SchemaNode {
   const faces = `${on}.people.filter(p, !p.reflexive)`;
   const doing = `${on}.people.filter(p, !p.reflexive && p.semantic != 'reviewing')`;
   const checking = `${on}.people.filter(p, !p.reflexive && p.semantic == 'reviewing')`;
-  const face = (did: string) => `find(profileStore.profiles, { did: ${did} })`;
+  const face = (did: string) => profileOf(did);
 
   /** A tooltip whose content is nodes — see `peopleTooltip` for why the slot is on a native div. */
   const hovercard = (content: SchemaNode[], trigger: SchemaNode): SchemaNode => ({
@@ -547,14 +553,16 @@ function cardPeople(as: string, entity: string, edge?: string): SchemaNode {
                     type: 'AvatarStack',
                     props: {
                       size: 'xs',
-                      avatars: { $: `[{ image: ${face('holder.did')}.avatar, hash: holder.did, tone: holder.tone }]` },
+                      avatars: {
+                        $: `[{ image: ${face('holder.person')}.avatar, hash: holder.person, tone: holder.tone }]`,
+                      },
                     },
                   },
                   {
                     type: 'we-text',
                     props: {
                       fontSize: '200',
-                      text: { $: `holder.did == me.did ? 'You' : ${face('holder.did')}.name` },
+                      text: { $: `${isMe('holder.person')} ? 'You' : ${face('holder.person')}.name` },
                     },
                   },
                 ],
@@ -576,7 +584,7 @@ function cardPeople(as: string, entity: string, edge?: string): SchemaNode {
           size: 'xs',
           max,
           ...(edge ? { edge } : {}),
-          avatars: { $: `${people}.map(p, { image: ${face('p.did')}.avatar, hash: p.did, tone: p.tone })` },
+          avatars: { $: `${people}.map(p, { image: ${face('p.person')}.avatar, hash: p.person, tone: p.tone })` },
         },
       }),
     },
@@ -592,7 +600,7 @@ function cardPeople(as: string, entity: string, edge?: string): SchemaNode {
       searchable: true,
       searchPlaceholder: 'Find a member',
       items: {
-        $: `involvementMenu({ node: ${as}.id, entity: '${entity}', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: ${as}.assignee })`,
+        $: `involvementMenu({ node: ${as}.id, entity: '${entity}', rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.dids, said: ${as}.assignee })`,
       },
       // A toggle reports the state it had before the press; "Assign to me" carries none, which reads as on.
       onSelect: {
@@ -956,7 +964,7 @@ function waitingLine(waiting: string, as: string): SchemaNode {
             type: 'AvatarStack',
             props: {
               avatars: {
-                $: 'wait.approvers.map(d, { image: find(profileStore.profiles, { did: d }).avatar, hash: d })',
+                $: `wait.approvers.map(d, { image: ${profileOf('d')}.avatar, hash: d })`,
               },
               max: 3,
               size: 'xs',
@@ -1461,7 +1469,7 @@ const NOBODY = "'nobody'";
  */
 function personRows(opts: TaskBoardOptions): SchemaNode {
   const gutter = '180px';
-  const name = 'find(profileStore.profiles, { did: person }).name';
+  const name = `${profileOf('person')}.name`;
   return {
     type: 'Column',
     props: { gap: '300', ay: 'start' },
@@ -1509,7 +1517,7 @@ function personRows(opts: TaskBoardOptions): SchemaNode {
                         type: 'we-avatar',
                         props: {
                           size: 'sm',
-                          image: { $: 'find(profileStore.profiles, { did: person }).avatar' },
+                          image: { $: `${profileOf('person')}.avatar` },
                           hash: { $: 'person' },
                         },
                       },
@@ -1525,7 +1533,7 @@ function personRows(opts: TaskBoardOptions): SchemaNode {
                           fontWeight: 'semibold',
                           truncate: true,
                           text: {
-                            $: `person == ${NOBODY} ? 'Nobody yet' : person == me.did ? ${name} + ' (you)' : ${name}`,
+                            $: `person == ${NOBODY} ? 'Nobody yet' : ${isMe('person')} ? ${name} + ' (you)' : ${name}`,
                           },
                         },
                       },

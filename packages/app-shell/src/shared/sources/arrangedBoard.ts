@@ -79,6 +79,7 @@
  */
 import { fillForSemantic, iconForSemantic } from '@we/template-kit';
 
+import { byAnyDid } from '../personProfile';
 import { type TaskMoveCard, taskMoveCard, type TaskWorkflowView, workflowStateOf } from '../taskWorkflow';
 import {
   involvement,
@@ -113,6 +114,13 @@ export interface ArrangedBoardOptions {
   kinds?: InvolvementKindInput[] | null;
   /** The DIDs of the people chosen. Empty means nobody is chosen, and nothing is filtered. */
   people?: string[] | null;
+  /**
+   * `profileStore.profiles` — one entry per person with the device keys seen for them. Given, the
+   * people filter, the rows and `involved` speak in persons: somebody on two computers is one face,
+   * and choosing them finds the cards either computer took. See `involvement`'s option of the same
+   * name.
+   */
+  profiles?: unknown;
   /** How cards nobody chosen is on are drawn — `dim` (the default), `hide`, or `rows`. See above. */
   show?: string | null;
   /**
@@ -122,8 +130,8 @@ export interface ArrangedBoardOptions {
   only?: string[] | null;
   /** How the cards outside `only` are drawn — `dim` or `hide`. Anything else narrows nothing. */
   onlyShow?: string | null;
-  /** The viewer's DID, so `involved` can lead with them. */
-  me?: string | null;
+  /** The viewer — `me.dids` (this device first) or one DID — so `involved` can lead with them. */
+  me?: string | readonly string[] | null;
   /** Involvements written and not yet seen — see `involvementOptimism`. Supplied by the host. */
   pendingInvolvements?: readonly PendingInvolvement[] | null;
   /**
@@ -443,7 +451,19 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
     runs exactly the code it ran before this existed.
   */
   const show: ArrangedBoard['show'] = options?.show === 'hide' || options?.show === 'rows' ? options.show : 'dim';
-  const people = [...new Set(asRows<string>(options?.people).filter((did) => typeof did === 'string' && did))];
+  // A chosen device key (an address written before people were folded) is its person.
+  const known = byAnyDid<{ did?: unknown; devices?: unknown }>(options?.profiles);
+  const asPerson = (did: string) => {
+    const person = known.get(did)?.did;
+    return typeof person === 'string' && person ? person : did;
+  };
+  const people = [
+    ...new Set(
+      asRows<string>(options?.people)
+        .filter((did) => typeof did === 'string' && did)
+        .map(asPerson),
+    ),
+  ];
   const filtering = people.length > 0;
   const chosen = new Set(people);
   const everyoneOn = involvement({
@@ -451,6 +471,7 @@ export function arrangedBoard(options: ArrangedBoardOptions | null | undefined):
     types: options?.kinds ?? null,
     pending: options?.pendingInvolvements ?? null,
     me: options?.me ?? null,
+    profiles: options?.profiles ?? null,
   });
   const on = everyoneOn.byNode;
   const peopleOn = (record: CardRow) => on[record.id]?.dids ?? [];

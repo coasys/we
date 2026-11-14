@@ -22,7 +22,7 @@ const ROWS = { $: `tally({ votes: local.votes, options: block.options, pending: 
  * Both halves, or the press is half-drawn: the bars would move while the choice stayed unselected,
  * which reads as somebody else's vote arriving rather than as your own registering.
  */
-const MY_VOTE = `(${PENDING}.option ?? local.votes.find(v, v.author == me.did).option)`;
+const MY_VOTE = `(${PENDING}.option ?? local.votes.find(v, v.author in me.dids).option)`;
 /** Whether counts are shown: the community says so, the agent has voted, or the poll is closed. */
 const REVEAL = `modules.polls.revealBeforeVoting || ${MY_VOTE} || block.closed`;
 

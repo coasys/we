@@ -513,6 +513,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     // — this only reads the cache, so exposing it would add a second spelling that silently answers
     // nothing for anybody who has not been fetched yet.
     profileFor: WIRING,
+    // Host plumbing for grouping authors by person in code. A template reaches the same answer
+    // through `$agent` (`author.did` is the person) and `$me.person` / `$me.dids`.
+    personOf: WIRING,
     ownProfile: state('identity'),
     ownProfileLoaded: state('identity'),
     fetchProfile: ambient('identity'),

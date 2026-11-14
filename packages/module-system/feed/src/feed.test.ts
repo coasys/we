@@ -318,6 +318,21 @@ describe('grouping and naming', () => {
     expect(groups).toHaveLength(2);
   });
 
+  it("groups one person's work from two computers as one, keeping the signing device on the row", () => {
+    const records = [
+      { row: { id: 'a', createdAt: t(0), author: 'did:key:laptop' }, entity: 'TaskBlock' },
+      { row: { id: 'b', createdAt: t(0.5), author: 'did:key:desktop' }, entity: 'TaskBlock' },
+    ];
+    // Without a person to answer, two keys are two authors.
+    expect(groupActivity(records, new Map())).toHaveLength(2);
+
+    const personOf = (author: string) => (author.startsWith('did:key:') ? 'did:scid:robin' : author);
+    const groups = groupActivity(records, new Map(), new Set(), personOf);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].items.map((i) => i.id)).toEqual(['a', 'b']);
+    expect(groups[0].author).toBe('did:key:laptop');
+  });
+
   it('names a kind of record the way a sentence would', () => {
     expect(nounFor('TaskBlock', 2)).toBe('tasks');
     expect(nounFor('EventBlock', 1)).toBe('event');

@@ -606,6 +606,13 @@ export interface ModuleIdentity {
   avatar?: string;
   /** `bot` when the agent's own profile says it is one; absent when it says nothing. */
   kind?: 'bot' | 'person';
+  /**
+   * The person this id speaks for, when it is one of their devices: a record's author is the device
+   * that signed it, and one person writing from two computers is two authors and one person. Absent
+   * when the id is its own person. Group or compare by `person ?? id`; `name` and `avatar` are
+   * already the person's.
+   */
+  person?: string;
 }
 
 /**

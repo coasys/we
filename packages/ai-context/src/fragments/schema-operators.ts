@@ -336,9 +336,9 @@ Examples:
 { "$": "filter(local.tasks, { dueDate: { gte: local.weekStart, lt: local.weekEnd } })" }
 { "$": "find(local.signalTypes, { slug: 'like' }).id" }                                — undefined when nothing matches
 { "$": "count(local.rows) > 0 && local.searchText != ''" }
-{ "$": "item.author == me.did ? 'mine' : 'theirs'" }
+{ "$": "item.author in me.dids ? 'mine' : 'theirs'" }
 { "$": "\`\${count(spaceStore.members)} \${plural(count(spaceStore.members), 'Member', 'Members')}\`" }
-{ "$": "spaceStore.members.filter(m, m.did != me.did).map(m, m.handle).join(', ')" }
+{ "$": "spaceStore.members.filter(m, !(m.did in me.dids)).map(m, m.handle).join(', ')" }
 { "$": "post.author in spaceStore.mutedDids" }
 
 Rules:
@@ -423,7 +423,7 @@ Backend-neutral identity & dataset refs — prefer these over backend-store path
   A host store's dataset accessor (e.g. \`dataset: 'datasetStore.marketplaceDataset'\`) works as a dataset value too.
   When passing a dataset to a *component prop* rather than a query, append \`.handle\` — component props take the
   backend's own dataset handle: { "dataset": { "$": "datasetStore.currentDataset.handle" } }.
-- me — the current agent's identity object. Use me.did for their DID (ownership checks, author filters, e.g. { "$": "post.author == me.did" }); me.handle / me.avatar for profile fields once loaded.
+- me — the current agent's identity object. me.did is this computer's device key, which is what a record's author holds and what a $query author filter matches. A person may write from several computers: me.dids is every device key that writes as them, so ownership checks read { "$": "post.author in me.dids" } (a post from my other computer is mine), and me.person is the person (inside $agent, author.did is the person, so 'is this me' is { "$": "author.did == me.person" }). me.handle / me.avatar for profile fields once loaded.
 
 Eager-loading relations with include (most common relational pattern):
 include hydrates related model instances in the same query — no extra fetches needed.

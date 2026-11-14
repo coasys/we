@@ -27,6 +27,14 @@ export interface AgentBylineOptions {
   /** Stack the name above the timestamp rather than running them along one line. */
   stacked?: boolean;
   nameColor?: string;
+  /**
+   * Expression source for what the backend said about the author's signature — a row's `verdict`,
+   * e.g. `'mention.verdict'`. `cantCheck` (the author's key log has not reached this computer) and
+   * `flagged` (signed by a device before it was removed, arriving after) draw a quiet mark after the
+   * name; anything else, absence included, draws nothing. A refused signature never reaches a
+   * template, so there is nothing to draw for it. See {@link verdictMark}.
+   */
+  verdict?: string;
   /** Anything after the name — a badge, a menu, a role. */
   children?: SchemaNode[];
 }
@@ -92,6 +100,7 @@ export function agentByline(opts: AgentBylineOptions): SchemaNode {
     },
     children: [{ $: `${as}.name` }],
   };
+  const mark: SchemaNode[] = opts.verdict ? [verdictMark(opts.verdict)] : [];
   const time: SchemaNode[] =
     opts.timestamp !== undefined
       ? [
@@ -141,7 +150,7 @@ export function agentByline(opts: AgentBylineOptions): SchemaNode {
                 type: 'Column',
                 props: { gap: '100' },
                 children: [
-                  { type: 'Row', props: { ay: 'center', gap: '200' }, children: [name, ...time] },
+                  { type: 'Row', props: { ay: 'center', gap: '200' }, children: [name, ...mark, ...time] },
                   ...(opts.children ?? []),
                 ],
               },
@@ -155,8 +164,46 @@ export function agentByline(opts: AgentBylineOptions): SchemaNode {
             // lets the name inside it be cut. Without it a flex item is never asked, and the
             // ellipsis never arrives.
             props: { ay: 'center', gap: opts.compact ? '200' : '300', minWidth: '0' },
-            children: [avatar, name, ...time, ...(opts.children ?? [])],
+            children: [avatar, name, ...mark, ...time, ...(opts.children ?? [])],
           },
     ],
+  };
+}
+
+/** What each verdict a byline marks says, on hover and to a screen reader. */
+export const VERDICT_WORDS = {
+  cantCheck: 'Author not confirmed yet',
+  flagged: 'From a removed device',
+} as const;
+
+/**
+ * The quiet mark beside an author whose signature the backend could not confirm: a faint icon with
+ * the reason in its tooltip. Small and muted on purpose — `cantCheck` is usually a key log still on
+ * its way, not an accusation — and absent for every verdict but the two it names.
+ *
+ * `verdict` is expression source for the row's verdict (`'mention.verdict'`).
+ */
+export function verdictMark(verdict: string): SchemaNode {
+  const words = `(${verdict} == 'flagged' ? '${VERDICT_WORDS.flagged}' : "${VERDICT_WORDS.cantCheck}")`;
+  return {
+    type: '$if',
+    props: {
+      condition: { $: `${verdict} == 'cantCheck' || ${verdict} == 'flagged'` },
+      then: {
+        type: 'we-tooltip',
+        props: { content: { $: words } },
+        children: [
+          {
+            type: 'we-icon',
+            props: {
+              name: { $: `${verdict} == 'flagged' ? 'warning' : 'question'` },
+              size: 'xs',
+              color: 'text-faint',
+              flexShrink: '0',
+            },
+          },
+        ],
+      },
+    },
   };
 }

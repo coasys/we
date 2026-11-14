@@ -32,8 +32,10 @@ const words = (as: string) => {
   return JSON.parse(`"${text![1]}"`) as string;
 };
 
-const me = { did: 'did:me' };
-const author = { did: 'did:me', name: 'Me' };
+// The run was started on my other computer: `$agent` answers its author as my person, so it is "you"
+// although this computer's key is not the one that signed.
+const me = { did: 'did:key:this-computer', person: 'did:me', dids: ['did:key:this-computer', 'did:key:other'] };
+const author = { did: 'did:me', name: 'Me', device: 'did:key:other' };
 
 describe('the model mark', () => {
   it('is on a record a run made, and not on one a person made', () => {

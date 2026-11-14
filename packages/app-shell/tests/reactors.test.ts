@@ -31,6 +31,22 @@ describe('the roster behind a reaction', () => {
     expect(people.map((p) => p.did)).toEqual(['did:me', 'did:stranger', 'did:anna', 'did:ben']);
   });
 
+  it("counts a reaction from any of the reader's devices as theirs", () => {
+    // `me.dids` is every device key that writes as this person; a reaction from the other computer
+    // leads too, and is the one they can act on.
+    const fromOtherComputer = [{ author: 'did:me-laptop', value: 1 }, ...signals.filter((s) => s.author !== 'did:me')];
+    const { people } = reactors({ signals: fromOtherComputer, profiles, me: ['did:me', 'did:me-laptop'] });
+    expect(people[0]).toMatchObject({ did: 'did:me-laptop', mine: true });
+    expect(people.filter((p) => p.mine)).toHaveLength(1);
+  });
+
+  it("finds a reactor's face through their person entry when the signal names a device", () => {
+    // `profileStore.profiles` holds one entry per person; the signal names the computer that signed.
+    const persons = [{ did: 'did:scid:anna', name: 'Anna', avatar: 'anna.png', devices: ['did:anna-phone'] }];
+    const { people } = reactors({ signals: [{ author: 'did:anna-phone', value: 5 }], profiles: persons, me: 'did:me' });
+    expect(people[0]).toMatchObject({ did: 'did:anna-phone', name: 'Anna', avatar: 'anna.png' });
+  });
+
   it('keeps somebody whose profile has not arrived, with their DID to draw a face from', () => {
     /*
       A cache miss is not an absence: they reacted. Dropping them would make the list disagree with

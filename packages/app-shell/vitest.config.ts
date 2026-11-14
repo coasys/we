@@ -18,6 +18,8 @@ const SOLID_TESTS = [
   'tests/accountStore.test.tsx',
   'tests/identityStore.test.tsx',
   'tests/profileStore.test.tsx',
+  // Mounts the real profile store: a person resolved after a fetch must redraw the author.
+  'tests/personAuthors.test.tsx',
   // Counts effect re-runs through a real provider. The node project resolves solid-js to its SSR
   // build, where `createEffect` never runs again — so every count would be 1 and the test would
   // pass whether or not the cache is fine-grained, which is the one thing it exists to tell apart.

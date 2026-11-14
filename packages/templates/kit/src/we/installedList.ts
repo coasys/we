@@ -135,8 +135,8 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                     type: '$if',
                     props: {
                       condition: opts.sectionWhen
-                        ? expr`spaceStore.currentSpace.author == me.did && ${opts.key} != ${{ $: `spaceStore.currentSpace.${opts.defaultField}` }} && !(${{ $: opts.sectionWhen }})`
-                        : expr`spaceStore.currentSpace.author == me.did && ${opts.key} != ${{ $: `spaceStore.currentSpace.${opts.defaultField}` }}`,
+                        ? expr`spaceStore.currentSpace.author in me.dids && ${opts.key} != ${{ $: `spaceStore.currentSpace.${opts.defaultField}` }} && !(${{ $: opts.sectionWhen }})`
+                        : expr`spaceStore.currentSpace.author in me.dids && ${opts.key} != ${{ $: `spaceStore.currentSpace.${opts.defaultField}` }}`,
                       then: {
                         type: 'we-button',
                         props: {
@@ -187,7 +187,7 @@ export function installedList(opts: InstalledListOptions): SchemaNode {
                     type: '$if',
                     props: {
                       condition: {
-                        $: `${opts.as}.author == me.did || spaceStore.canAdministerCurrentSpace`,
+                        $: `${opts.as}.author in me.dids || spaceStore.canAdministerCurrentSpace`,
                       },
                       then: {
                         type: 'we-button',

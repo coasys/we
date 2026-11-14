@@ -5,7 +5,9 @@ import { callParamToWrite } from '@shared/callOnScreen';
 import {
   CONTAINER_ACTIVITY_QUERY,
   type ContainerActivity,
+  type MentionRow,
   mentionsOf,
+  mergeMentions,
   unreadContainerIds,
 } from '@shared/containerActivity';
 import { datasetAddressedBy } from '@shared/datasetIdentity';
@@ -38,6 +40,7 @@ import {
   type SettingValue,
   writeSetting,
 } from '@shared/moduleSettings';
+import { onePerPerson } from '@shared/personProfile';
 import { resolveRecordRef } from '@shared/recordNavigation';
 import { withDerivedIds } from '@shared/registries/derivedIds';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
@@ -897,8 +900,13 @@ export interface SpaceStore {
    * most recent. A backend without references falls back to filtering the space's containers, which
    * misses lines.
    */
-  /** `createdAt` is the backend's comparable timestamp (epoch millis in the AD4M lane). */
-  myMentions: Accessor<{ id: string; author: string; createdAt: number }[]>;
+  /**
+   * `createdAt` is the backend's comparable timestamp (epoch millis in the AD4M lane). `author` is
+   * the device that signed. `verdict` is present only where the backend could not confirm that
+   * device spoke for its person — `cantCheck` or `flagged`, which a byline draws as a quiet mark
+   * (`agentByline({ verdict })`); a refused signature is never a row at all.
+   */
+  myMentions: Accessor<MentionRow[]>;
   /**
    * Put a file somewhere the space can reference, and return the URL that points at it.
    *
@@ -3116,7 +3124,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   async function labelsFor(dids: string[]): Promise<(did: string) => string> {
     await Promise.all([...new Set(dids)].map((did) => profileStore.fetchProfile(did).catch(() => undefined)));
     return (did: string): string => {
-      const profile = profileStore.profiles().find((entry) => entry.did === did.replace('did://', ''));
+      const profile = profileStore.profileFor(did.replace('did://', ''));
       return profile ? displayName(profile, did) : did;
     };
   }
@@ -4178,6 +4186,7 @@ export function SpaceStoreProvider(props: ParentProps) {
   const involvements = createInvolvementActions({
     dataset: () => datasetStore.currentDataset()?.handle,
     me: () => session.me()?.did,
+    mine: () => session.me()?.dids,
     types: () => involvementTypes(),
     notify: (message) => toastService.error(message),
     ...involvementOptimism.ports,
@@ -5317,27 +5326,50 @@ export function SpaceStoreProvider(props: ParentProps) {
     the next. A backend that cannot answer falls back to filtering the container read, which is what
     this was.
   */
-  const [mentionRows, setMentionRows] = createSignal<{ id: string; author: string; createdAt: number }[] | null>(null);
+  /*
+    Every DID a mention of this agent can name: this device, the person's other devices (a mention
+    written before they were linked, or picked from a list keyed by device), and the person, which a
+    member list one entry per person now offers. One lookup each, merged.
+  */
+  const myMentionDids = createMemo(
+    () => {
+      const me = session.me();
+      return me?.dids?.length ? me.dids : me?.did ? [me.did] : [];
+    },
+    undefined,
+    { equals: (a, b) => a.join() === b.join() },
+  );
+  const [mentionRows, setMentionRows] = createSignal<MentionRow[] | null>(null);
   createEffect(() => {
     const ds = datasetStore.currentDataset();
-    const did = session.me()?.did;
+    const dids = myMentionDids();
     const references = session.backendPorts()?.references;
     void activityRows();
     setMentionRows(null);
-    if (!ds || !did || !references) return;
-    void references
-      .referrers(ds.handle, { relation: 'mentions' }, did, { limit: 50 })
-      .then((rows) => {
+    if (!ds || !dids.length || !references) return;
+    void Promise.all(dids.map((did) => references.referrers(ds.handle, { relation: 'mentions' }, did, { limit: 50 })))
+      .then((answers) => {
         if (datasetStore.currentDataset() !== ds) return;
-        setMentionRows(rows.map((row) => ({ id: row.id, author: row.author, createdAt: Date.parse(row.at) || 0 })));
+        setMentionRows(
+          mergeMentions(
+            answers.map((rows) =>
+              rows.map((row) => ({
+                id: row.id,
+                author: row.author,
+                createdAt: Date.parse(row.at) || 0,
+                ...(row.verdict ? { verdict: row.verdict } : {}),
+              })),
+            ),
+          ),
+        );
       })
       .catch((error: unknown) => console.warn('SpaceStore: could not read who mentions this agent', error));
   });
   const myMentions = createMemo(() => {
-    const did = session.me()?.did;
     const found = mentionRows();
     if (found) return found;
-    return did ? mentionsOf(activityRows(), did) : [];
+    const dids = myMentionDids();
+    return dids.length ? mentionsOf(activityRows(), dids) : [];
   });
 
   /**
@@ -6311,13 +6343,12 @@ export function SpaceStoreProvider(props: ParentProps) {
       });
   });
 
-  // Map memberDids to cached AgentProfileSummary entries
-  const members = createMemo<AgentProfileSummary[]>(() => {
-    const cached = profileStore.profiles();
-    return memberDids()
-      .map((did) => cached.find((a) => a.did === did))
-      .filter((a): a is AgentProfileSummary => a != null);
-  });
+  /*
+    The member keys as people: one entry per person, its `did` the person and its `devices` the keys
+    that joined for them, so somebody on two computers is one member. A key whose profile has not
+    arrived is left out until it does, as before.
+  */
+  const members = createMemo<AgentProfileSummary[]>(() => onePerPerson(memberDids(), profileStore.profileFor));
 
   /**
    * The space this route points at is one the agent has not joined — as a settled fact, not a

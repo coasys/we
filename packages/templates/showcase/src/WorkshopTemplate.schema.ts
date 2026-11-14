@@ -82,6 +82,7 @@ import {
   peopleAtPath,
   peopleFilter,
   peopleRow,
+  profileOf,
   recordFormModal,
   signalDisplay,
   suggestedChanges,
@@ -1185,7 +1186,7 @@ const ROW_IS_MINE = 'call.id == modules.call.callRecordId';
  */
 const ROW_FACES =
   `${ROW_LIVE_CALL} ? ${ROW_LIVE_CALL}.faces.map(f, { image: f.image, hash: f.hash, initials: f.initials, tone: 'success' }) ` +
-  ': call.participants.map(m, { image: find(profileStore.profiles, { did: m }).avatar, hash: m })';
+  `: call.participants.map(m, { image: ${profileOf('m')}.avatar, hash: m })`;
 
 /**
  * The calls, as a panel — how you change which call every other surface is about.
@@ -2466,7 +2467,8 @@ const kanbanRoute: RouteSchema = {
  * Who is on each event — the same host function the board's cards read, over the calendar's own
  * involvement query.
  */
-const ON_EVENTS = 'involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did })';
+const ON_EVENTS =
+  'involvement({ rows: local.involvements, types: spaceStore.involvementTypes, profiles: profileStore.profiles, me: me.dids })';
 
 /** Whether anybody chosen in the people filter is going to, or might go to, the event named. */
 const MATCHES = (as: string) => `${ON_EVENTS}.byNode[${as}.id].dids.exists(d, d in local.calendarPeople)`;
@@ -3232,7 +3234,7 @@ const calendarRoute: RouteSchema = {
                       show: 'calendarShow',
                       // Whoever has answered an event this call produced, the viewer first.
                       faces: {
-                        $: 'involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did, nodes: local.events.map(e, e.id) }).dids',
+                        $: 'involvement({ rows: local.involvements, types: spaceStore.involvementTypes, profiles: profileStore.profiles, me: me.dids, nodes: local.events.map(e, e.id) }).dids',
                       },
                       matched: { $: `count(local.events.filter(e, ${MATCHES('e')}))` },
                       total: { $: 'count(local.events)' },

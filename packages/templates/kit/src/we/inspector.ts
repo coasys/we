@@ -11,6 +11,7 @@ import type { SchemaNode, SchemaProp } from '@we/schema-shared';
 
 import { discussionSection } from './discussion.ts';
 import { linkedRecords } from './linkedRecords.ts';
+import { isMe, profileOf } from './profileOf.ts';
 import { signalDisplay } from './signalDisplay.ts';
 import { newSignalTypeButton } from './signalTypeForm.ts';
 import { answerButton, suggestedChanges, UNCONFIRMED } from './suggestions.ts';
@@ -850,7 +851,7 @@ const linkEnds: SchemaNode = {
 
 /** Who is on the record in the inspector — the `involvement` host function over the panel's own query. */
 const ON_ROW =
-  'involvement({ rows: local.involvements, types: spaceStore.involvementTypes, me: me.did }).byNode[row.id]';
+  'involvement({ rows: local.involvements, types: spaceStore.involvementTypes, profiles: profileStore.profiles, me: me.dids }).byNode[row.id]';
 
 /** The kinds of part this record's entity is offered — a task's Assigned and Reviewing, an event's answers. */
 const ROW_KINDS = PEOPLE_KINDS;
@@ -911,7 +912,7 @@ const peopleSection: SchemaNode = {
                   searchable: true,
                   searchPlaceholder: 'Find a member',
                   items: {
-                    $: `involvementMenu({ node: row.id, entity: ${CARD_TYPE}, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.did, said: row.assignee })`,
+                    $: `involvementMenu({ node: row.id, entity: ${CARD_TYPE}, rows: local.involvements, types: spaceStore.offeredInvolvementTypes, members: spaceStore.members, profiles: profileStore.profiles, me: me.dids, said: row.assignee })`,
                   },
                   onSelect: {
                     $invoke: 'spaceStore.setInvolvement',
@@ -957,7 +958,7 @@ const peopleSection: SchemaNode = {
                                   props: {
                                     size: 'xs',
                                     avatars: {
-                                      $: '[{ image: find(profileStore.profiles, { did: holder.did }).avatar, hash: holder.did, tone: holder.tone }]',
+                                      $: `[{ image: ${profileOf('holder.person')}.avatar, hash: holder.person, tone: holder.tone }]`,
                                     },
                                   },
                                 },
@@ -969,7 +970,7 @@ const peopleSection: SchemaNode = {
                                     minWidth: '0',
                                     truncate: true,
                                     text: {
-                                      $: "holder.did == me.did ? find(profileStore.profiles, { did: holder.did }).name + ' (you)' : find(profileStore.profiles, { did: holder.did }).name",
+                                      $: `${isMe('holder.person')} ? ${profileOf('holder.person')}.name + ' (you)' : ${profileOf('holder.person')}.name`,
                                     },
                                   },
                                 },
@@ -977,7 +978,7 @@ const peopleSection: SchemaNode = {
                                   type: '$if',
                                   props: {
                                     // Anybody may take somebody off an assignment; only you may withdraw your own answer.
-                                    condition: { $: '!holder.reflexive || holder.did == me.did' },
+                                    condition: { $: `!holder.reflexive || ${isMe('holder.did')}` },
                                     then: {
                                       type: 'we-tooltip',
                                       props: {
@@ -1121,7 +1122,7 @@ const originLine: SchemaNode = {
                       $:
                         `row.extractedFrom || row.id in first(local.inspectedCall).extracted ? \`Extracted from the conversation · run by \${author.name} · \` : ` +
                         `generatedRun({ record: row }) ? \`Written by AI · run by \${author.name} · \` : ` +
-                        "`Added by ${author.did == me.did ? 'you' : author.name} · `",
+                        "`Added by ${author.did == me.person ? 'you' : author.name} · `",
                     },
                     { type: 'we-timestamp', props: { value: { $: 'row.createdAt' }, relative: true, fontSize: '100' } },
                   ],

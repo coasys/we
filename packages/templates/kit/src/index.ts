@@ -65,7 +65,7 @@ export { moveTaskMenu, PENDING, taskBoard, taskBoardLoading, taskCard } from './
 export type { CardSelection, TaskBoardOptions, TaskCardOptions } from './we/taskBoard.ts';
 export { adminSection } from './we/adminSection.ts';
 export type { AdminSectionOptions } from './we/adminSection.ts';
-export { agentByline } from './we/agentByline.ts';
+export { agentByline, VERDICT_WORDS, verdictMark } from './we/agentByline.ts';
 export type { AgentBylineOptions } from './we/agentByline.ts';
 export { installedList } from './we/installedList.ts';
 export type { InstalledListOptions } from './we/installedList.ts';
@@ -132,6 +132,7 @@ export { peopleFilter } from './we/peopleFilter.ts';
 export type { PeopleFilterOptions } from './we/peopleFilter.ts';
 export { peopleAtPath } from './we/peopleAtPath.ts';
 export { peopleRow } from './we/peopleRow.ts';
+export { isMe, profileOf } from './we/profileOf.ts';
 export { typePicker, typePickerLists } from './we/typePicker.ts';
 export type { TypePickerOptions } from './we/typePicker.ts';
 export {

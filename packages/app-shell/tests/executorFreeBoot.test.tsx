@@ -628,6 +628,38 @@ describe('what the backend can do with an identity', () => {
     // The next person to sign in on this screen is not owed the last one's answer.
     expect(stores.session.identityCapabilities().devices).toBe(false);
   }, 10000);
+
+  it('keeps who I am across my devices when the key log cannot be read for a moment', async () => {
+    const PERSON = 'did:scid:coasys:1:QmTestPerson';
+    let storeDown = false;
+    onPorts = (ports) => {
+      ports.identity = {
+        capabilities: async () => ({ devices: true }) as never,
+        status: async () => {
+          if (storeDown) throw new Error('identity store unavailable');
+          return { did: PERSON } as never;
+        },
+        devices: async () => [
+          { keyId: 'k1', sign: 'z6MkTestThisDevice', thisDevice: true, addedSeq: 0, revokedSeq: null },
+          { keyId: 'k2', sign: 'z6MkTestOtherDevice', thisDevice: false, addedSeq: 1, revokedSeq: null },
+        ],
+      } as never;
+    };
+    const stores = mountShell();
+    await ready(stores);
+    const did = 'did:test:james';
+    await vi.waitFor(() => expect(stores.session.me()?.person).toBe(PERSON));
+    const mine = [did, 'did:key:z6MkTestThisDevice', 'did:key:z6MkTestOtherDevice', PERSON];
+    expect(stores.session.me()?.dids).toEqual(mine);
+
+    storeDown = true;
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await stores.session.refreshMe();
+    warn.mockRestore();
+    // Still the person, and my other device's posts still mine.
+    expect(stores.session.me()?.person).toBe(PERSON);
+    expect(stores.session.me()?.dids).toEqual(mine);
+  }, 10000);
 });
 
 describe('a boot that cannot reach the backend', () => {

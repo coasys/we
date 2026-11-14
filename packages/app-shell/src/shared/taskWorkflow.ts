@@ -48,6 +48,7 @@ import type {
 } from '@we/backend-shared';
 import { allowedMoves, itemFor, trace, tracing } from '@we/backend-shared';
 
+import { selfDids } from './personProfile';
 import { toDefinition } from './workflowLanes';
 import { involvementRole } from './workflowViews';
 
@@ -238,26 +239,32 @@ export interface TaskMoveCard {
  * judges each vote as of when it was cast — so for a moment after somebody is taken off a task the
  * count on the card can differ from the backend's. Where the card sits is always the backend's
  * answer; this only says how close a move is.
+ *
+ * `me` is `me.dids` (this device first) or one DID. An approval given from any of the viewer's
+ * computers is theirs (`mine`); whether one more would count is asked of this device, since this
+ * device is what would sign it and the backend judges the signer.
  */
 export function taskMoveCard(
   view: TaskWorkflowView | null | undefined,
   taskId: string,
   holders: (kind: string) => readonly string[],
-  me: string | null | undefined,
+  me: string | readonly string[] | null | undefined,
 ): TaskMoveCard | undefined {
   const move = openMoveOf(view, taskId);
   if (!move || !view) return undefined;
+  const self = selfDids(me);
+  const signer = [...self][0];
   const rule = view.rules[move.to] ?? { approvals: 1, approverKind: '' };
   const eligible = rule.approverKind ? new Set(holders(rule.approverKind)) : null;
   const counts = (did: string) => !eligible || eligible.has(did);
-  const mine = Boolean(me && move.approvers.includes(me));
+  const mine = move.approvers.some((did) => self.has(did));
   return {
     to: move.to,
     approvers: move.approvers,
     counted: move.approvers.filter(counts).length,
     needs: rule.approvals,
     mine,
-    canApprove: Boolean(me && !mine && counts(me)),
+    canApprove: Boolean(signer && !mine && counts(signer)),
     approverKind: rule.approverKind,
   };
 }

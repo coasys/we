@@ -156,12 +156,14 @@ export type { NameableProperty } from './recordName';
 export { ANONYMOUS_AGENT_NAME, displayName, isProfileEmpty } from './profileTypes';
 export type { AgentProfileSummary, PublishProfileFields } from './profileTypes';
 export type {
+  AuthorVerdict,
   BackendPorts,
   BackendPortsContext,
   DataBindingDeps,
   EntityHintState,
   ProfileDirectoryPort,
   ReferencePort,
+  Referrer,
   SchemaPort,
   UploadFile,
 } from './backendPorts';

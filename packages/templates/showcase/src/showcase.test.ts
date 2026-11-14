@@ -1900,7 +1900,8 @@ describe('the workshop inspector’s people', () => {
     expect(inspector).toContain('"$invoke":"spaceStore.setInvolvement"');
     // Your own answer is withdrawn, never somebody else's.
     expect(inspector).toContain('"$invoke":"spaceStore.respondTo","args":[{"$":"row.id"},""]');
-    expect(inspector).toContain('!holder.reflexive || holder.did == me.did');
+    // Mine from any of my computers: an answer my laptop gave is withdrawn from the desktop too.
+    expect(inspector).toContain('!holder.reflexive || holder.did in me.dids');
   });
 
   it('says where the record came from, which a card’s face no longer does', () => {
