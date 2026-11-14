@@ -54,8 +54,10 @@ pub enum RootSpec {
 
 /// A bundle's renderable pieces.
 pub struct AppSpec {
-    /// `bundle.app` — the chrome every route renders inside.
-    pub app: Option<SchemaNode>,
+    /// `bundle.app` — the chrome every route renders inside; its
+    /// `meta.frame` declares the bands it occupies (the rest is the
+    /// content viewport the mounted page fills).
+    pub app: Option<BundleTemplate>,
     /// The space template (`display.template` names it, else the first) —
     /// its `routes`, `meta.panels`, `meta.recordViews`.
     pub template: Option<BundleTemplate>,
@@ -218,7 +220,11 @@ impl Runtime {
     /// nothing for the landing.
     fn mounts_for<'a>(spec: &'a RootSpec, screen: &ScreenState, ready: bool) -> Vec<Mount<'a>> {
         let chrome = |spec: &'a AppSpec| Mount {
-            node: spec.app.as_ref().unwrap_or_else(|| empty_node()),
+            node: spec
+                .app
+                .as_ref()
+                .map(|t| &t.node)
+                .unwrap_or_else(|| empty_node()),
             id: "app".into(),
             template: None,
         };
@@ -295,11 +301,15 @@ impl Runtime {
             let mut warnings = Vec::new();
             let mut ops = Vec::new();
             let mut kept_filling = false;
+            // The leading resolved children that are the app chrome's —
+            // everything after them is content for the viewport wrapper.
+            let mut chrome_children = 0usize;
             for _ in 0..8 {
                 let mut round_live = HashSet::new();
                 let mut round_parents = HashMap::new();
                 warnings.clear();
                 children.clear();
+                chrome_children = 0;
                 for mount in &mounts {
                     let (routes, panels, record_views) = match mount.template {
                         Some(t) => (
@@ -330,12 +340,16 @@ impl Runtime {
                         dollar_type: &*self.dollar_type,
                         route_tail: &mut route_tail,
                     };
+                    let before = children.len();
                     children.extend(resolve::resolve(
                         mount.node,
                         &mount.id,
                         &Scope::default(),
                         &mut cx,
                     ));
+                    if mount.id.as_ref() == "app" {
+                        chrome_children = children.len() - before;
+                    }
                 }
                 live = round_live;
                 parents = round_parents;
@@ -354,16 +368,27 @@ impl Runtime {
             self.parents = parents;
             self.live = live;
 
+            // The app chrome's `meta.frame` declares the bands it
+            // occupies; the space the frame leaves is the content
+            // viewport — a fixed scroller the mounted page fills (the
+            // web's appViewport element). A bare landing gets it too.
+            if let RootSpec::App(spec) = &self.spec {
+                if chrome_children > 0 {
+                    let content = children.split_off(chrome_children);
+                    children.push(ResolvedChild::Node(Box::new(content_viewport(
+                        spec.app.as_ref(),
+                        content,
+                    ))));
+                }
+            }
             // A fragment, an op or the multi-mount root can answer several
             // children — the tree the frame paints always has one root, so
-            // wrap them.
+            // wrap them. The id names no mount: mount roots are `{id}:`,
+            // resolved children `{id}:{path}` — `root` cannot collide.
             let root = match children.as_slice() {
                 [ResolvedChild::Node(node)] => (**node).clone(),
                 _ => ResolvedNode {
-                    id: NodeId::new(format!(
-                        "{}:",
-                        mounts.first().map(|m| m.id.as_ref()).unwrap_or("root")
-                    )),
+                    id: NodeId::new("root"),
                     ty: "Column".into(),
                     props: IndexMap::new(),
                     handlers: IndexMap::new(),
@@ -527,6 +552,42 @@ struct Mount<'a> {
 fn empty_node() -> &'static SchemaNode {
     static EMPTY: std::sync::OnceLock<SchemaNode> = std::sync::OnceLock::new();
     EMPTY.get_or_init(SchemaNode::default)
+}
+
+/// `meta.frame`'s bands the chrome occupies → the box the content mounts
+/// fill: a fixed-position scroller offset by the frame (the web's
+/// appViewport). Children with `height: 100%` see a definite box through
+/// it; `overflowY: auto` keeps page scroll inside it. Missing edges → 0.
+fn content_viewport(app: Option<&BundleTemplate>, children: Vec<ResolvedChild>) -> ResolvedNode {
+    let edge = |key: &str| {
+        app.and_then(|t| t.meta.get("frame"))
+            .and_then(|f| f.get(key))
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.0)
+    };
+    let (l, t, r, b) = (edge("left"), edge("top"), edge("right"), edge("bottom"));
+    let px = |v: f64| Value::Str(format!("{v}px").into());
+    let calc = |unit: &str, v: f64| Value::Str(format!("calc(100{unit} - {v}px)").into());
+    ResolvedNode {
+        id: NodeId::new("frame"),
+        ty: "Column".into(),
+        props: [
+            ("position", Value::Str("fixed".into())),
+            ("left", px(l)),
+            ("top", px(t)),
+            ("width", calc("vw", l + r)),
+            ("height", calc("vh", t + b)),
+            ("overflowY", Value::Str("auto".into())),
+            ("bg", Value::Str("page".into())),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.into(), v))
+        .collect(),
+        handlers: IndexMap::new(),
+        slot: None,
+        children,
+        transition: None,
+    }
 }
 
 /// `sessionStore` readiness — `signInStep`/`bootState` reads `"ready"`; an

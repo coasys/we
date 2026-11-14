@@ -25,7 +25,7 @@ fn tree_snapshot_loads_and_marks_sidebar_members() {
 
     let locals = LocalState::new();
     let spec = AppSpec {
-        app: bundle.app.as_ref().map(|t| t.node.clone()),
+        app: bundle.app.clone(),
         template: bundle.templates.as_deref().and_then(|t| t.first()).cloned(),
         pages: bundle.pages.clone().unwrap_or_default(),
         boot: bundle.boot_screen.clone(),

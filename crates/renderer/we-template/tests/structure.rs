@@ -64,7 +64,7 @@ fn template(meta: serde_json::Value, node: serde_json::Value) -> BundleTemplate 
 }
 
 fn app_rt(
-    app: Option<SchemaNode>,
+    app: Option<BundleTemplate>,
     template: Option<BundleTemplate>,
     href: &str,
 ) -> (Runtime, StaticHost, ScreenState) {

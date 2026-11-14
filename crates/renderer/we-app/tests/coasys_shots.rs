@@ -168,7 +168,7 @@ fn app_for(truth: &Json, id: &str, theme: &we_style::Theme) -> Result<RendererAp
     let data = OfflineData::from_route(truth, id, Some(&map))?;
     let bundle = Bundle::parse(BUNDLE).map_err(|e| format!("bundle: {e}"))?;
     let spec = AppSpec {
-        app: bundle.app.as_ref().map(|t| t.node.clone()),
+        app: bundle.app.clone(),
         template: bundle.templates.as_deref().and_then(|t| t.first()).cloned(),
         pages: bundle.pages.clone().unwrap_or_default(),
         boot: bundle.boot_screen.clone(),
@@ -251,7 +251,7 @@ fn missed_captures(truth: &Json, id: &str) -> Vec<String> {
     };
     let bundle = Bundle::parse(BUNDLE).unwrap();
     let spec = AppSpec {
-        app: bundle.app.as_ref().map(|t| t.node.clone()),
+        app: bundle.app.clone(),
         template: bundle.templates.as_deref().and_then(|t| t.first()).cloned(),
         pages: bundle.pages.clone().unwrap_or_default(),
         boot: bundle.boot_screen.clone(),
