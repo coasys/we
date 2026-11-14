@@ -28,6 +28,10 @@ pub const CELL_PX: f32 = 8.0;
 /// The most lines a virtual canvas grows to — runaway content still dumps.
 const MAX_LINES: u16 = 4000;
 
+/// What a glyph wider than its whole line draws as — one cell, so the
+/// wrap always progresses.
+const TOO_WIDE: &str = "…";
+
 /// A cell-size pair — what [`Painter::measure`] returns.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct Dim {
@@ -802,6 +806,16 @@ impl<'a> Painter<'a> {
                     let mut rest = word;
                     while UnicodeWidthStr::width(rest) > width {
                         let (head, tail) = split_at_cells(rest, width);
+                        if head.is_empty() {
+                            // One glyph wider than the whole line (a CJK
+                            // char or emoji at width 1): it can never fit,
+                            // so it becomes a one-cell marker and the walk
+                            // moves past it — every turn consumes a char.
+                            let skip = rest.chars().next().map_or(rest.len(), char::len_utf8);
+                            lines.push(TOO_WIDE.to_string());
+                            rest = &rest[skip..];
+                            continue;
+                        }
                         lines.push(head.to_string());
                         rest = tail;
                     }
