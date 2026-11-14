@@ -93,6 +93,27 @@ function desktopOf(seed) {
   };
 }
 
+/**
+ * What the Tauri desktop app is called and installed as: `desktop.tauriId` when the seed sets it,
+ * else `<appId>.tauri`. `formerIdentifier` is `<appId>.tauri` when `tauriId` replaces it, so the app
+ * can move the folders the OS keyed by the identifier it had before (see `data_folder.rs` in
+ * `apps/we-tauri/src-tauri`); it is null otherwise.
+ */
+function tauriOf(seed) {
+  const desktop = desktopOf(seed);
+  const usual = `${desktop.appId}.tauri`;
+  const identifier = seed.desktop?.tauriId ?? usual;
+  return {
+    productName: desktop.productName,
+    identifier,
+    mainBinaryName: desktop.productName
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, ''),
+    formerIdentifier: identifier === usual ? null : usual,
+  };
+}
+
 /** How a message names the seed: its path from the repository root. */
 function seedLabel() {
   return path.relative(REPO_ROOT, seedPath());
@@ -108,5 +129,6 @@ module.exports = {
   generatedPath,
   generatedDir,
   desktopOf,
+  tauriOf,
   seedLabel,
 };
