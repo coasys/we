@@ -642,6 +642,88 @@ fn inline_query_tokens_flow_through_the_pool() {
 }
 
 #[test]
+fn a_deep_query_chain_settles_past_the_round_cap() {
+    // F3: five queries in order, each anchored on the next — qN asks
+    // `first(local.qN+1).kind`, q5 asks Task. With the Task cell already
+    // filled, a fresh resolve's slots climb one level per compile round;
+    // a chain deeper than the round count left the last query gated
+    // forever, and the runtime cached the partial tree.
+    struct Tasks;
+    impl we_template::QuerySource for Tasks {
+        fn rows(
+            &self,
+            _key: &we_template::QueryKey,
+            _ir: &we_template::QueryIr,
+        ) -> we_template::QueryState {
+            we_template::QueryState::Rows(Arc::new(vec![Value::from_json(
+                &json!({ "kind": "Task" }),
+            )]))
+        }
+    }
+    let node = schema(json!({ "type": "Column",
+        "$localState": { "kick": { "type": "string", "initial": "a" } },
+        "$queries": {
+            "q1": { "entity": { "$": "first(local.q2).kind" } },
+            "q2": { "entity": { "$": "first(local.q3).kind" } },
+            "q3": { "entity": { "$": "first(local.q4).kind" } },
+            "q4": { "entity": { "$": "first(local.q5).kind" } },
+            "q5": { "entity": "Task" }
+        },
+        "children": [
+            { "type": "we-text", "props": { "text": { "$": "local.q1.length" } } }
+        ]
+    }));
+    let locals = LocalState::new();
+    let bag = Arc::new(StoreBag::new());
+    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone())
+        .with_sources(Some(Arc::new(Tasks)), Arc::new(we_template::NoParts));
+    let mut host = StaticHost::new(bag, locals.clone());
+    let screen = screen("/");
+
+    rt.frame(&mut host, &screen); // Task cell fills; the lower chain binds
+                                  // A new resolve — same state, fresh slots — must climb the whole
+                                  // chain: `local.q1` reads the one Task row, not the gated [].
+    let root_id = rt.resolved().unwrap().id.clone();
+    locals.set(&root_id, "kick", Value::from("b"));
+    let root = rt.frame(&mut host, &screen).clone();
+    let text = find_ty(&root, "we-text")
+        .and_then(|n| n.props.get("text"))
+        .cloned()
+        .unwrap_or(Value::Undefined);
+    assert!(
+        text.strict_eq(&Value::from(1.0)),
+        "q1 must settle to the Task rows — got {text:?}"
+    );
+}
+
+#[test]
+fn a_mutual_query_cycle_settles_as_gated_not_hung() {
+    // F3's other half: a dependency cycle must not spin. `qa` reads `qb`,
+    // `qb` reads `qa` — each sees the other's `[]` and gates, the same
+    // answer TS's forward accessors give.
+    let node = schema(json!({ "type": "Column",
+        "$queries": {
+            "qa": { "entity": { "$": "first(local.qb).kind" } },
+            "qb": { "entity": { "$": "first(local.qa).kind" } }
+        },
+        "children": [
+            { "type": "we-text", "props": { "text": { "$": "local.qa.length" } } }
+        ]
+    }));
+    let (mut rt, mut host, screen) = rig(node, StoreBag::new(), "/");
+    let root = rt.frame(&mut host, &screen).clone();
+    let text = find_ty(&root, "we-text")
+        .and_then(|n| n.props.get("text"))
+        .cloned()
+        .unwrap_or(Value::Undefined);
+    assert!(
+        text.strict_eq(&Value::from(0.0)),
+        "a mutual cycle gates to [] like TS's forward reads — got {text:?}"
+    );
+    assert!(rt.pool().is_empty(), "gated queries never reach the pool");
+}
+
+#[test]
 fn pool_dedups_only_identical_queries() {
     // Two nodes, same entity, different `where` → two cells. The sabotage
     // this guards: keying on the entity name alone would collide the reads.

@@ -289,6 +289,7 @@ impl Runtime {
             let mut parents = HashMap::new();
             let mut warnings = Vec::new();
             let mut ops = Vec::new();
+            let mut kept_filling = false;
             for _ in 0..8 {
                 let mut round_live = HashSet::new();
                 let mut round_parents = HashMap::new();
@@ -332,7 +333,8 @@ impl Runtime {
                 }
                 live = round_live;
                 parents = round_parents;
-                if !self.fill_queries() {
+                kept_filling = self.fill_queries();
+                if !kept_filling {
                     break;
                 }
             }
@@ -374,6 +376,12 @@ impl Runtime {
                 self.locals.version(),
                 self.pool.revision(),
             ));
+            // Every pass filled a cell — a deeper dependency chain may still
+            // be climbing. Bump the pool past what `last` recorded so the
+            // next frame re-resolves instead of caching this partial tree.
+            if kept_filling {
+                self.pool.bump();
+            }
         }
         self.resolved.as_ref().unwrap()
     }

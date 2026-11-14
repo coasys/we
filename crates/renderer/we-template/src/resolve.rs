@@ -1097,10 +1097,14 @@ fn declare_locals(
 
     // Compile each query against `node_scope`, filling its slot. A query
     // whose IR depends on a sibling's cell settles over repeats — and over
-    // frames once the sibling's rows land — so a bounded loop compiles
-    // until the set of produced cells is stable.
+    // frames once the sibling's rows land — so the loop compiles until the
+    // set of produced cells is stable. An acyclic graph needs at most one
+    // round per level plus a quiet round to notice; anything still moving
+    // past that is a cycle — keep the last state and warn, never spin.
     if let Some(queries) = &node.queries {
-        for _round in 0..4 {
+        let max_rounds = queries.len() + 1;
+        let mut settled = false;
+        for _round in 0..max_rounds {
             let mut changed = false;
             for (name, descriptor) in queries {
                 let name: Arc<str> = name.as_str().into();
@@ -1125,7 +1129,18 @@ fn declare_locals(
                 }
             }
             if !changed {
+                settled = true;
                 break;
+            }
+        }
+        if !settled {
+            let message: Arc<str> = format!(
+                "$queries at {} did not settle in {max_rounds} rounds — a dependency cycle",
+                id.as_str()
+            )
+            .into();
+            if !cx.warnings.iter().any(|w| w == &message) {
+                cx.warnings.push(message);
             }
         }
     }
