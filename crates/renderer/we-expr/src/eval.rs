@@ -4,9 +4,10 @@ use crate::{Env, Value, DENIED_PROPERTIES};
 
 /// Evaluate `expr` against `env`. Never fails: a missing name is `Undefined`,
 /// arithmetic on a non-number is arithmetic on `0`, and every read that cannot
-/// be honoured is `Undefined`.
+/// be honoured is `Undefined`. The result is settled — `evaluateExpression` in
+/// `evaluate.ts` — so a bare store or function is `Undefined`, not a value.
 pub fn eval(expr: &Expr, env: &dyn Env) -> Value {
-    eval_node(&expr.root, env)
+    eval_node(&expr.root, env).settle()
 }
 
 fn eval_node(node: &Node, env: &dyn Env) -> Value {
@@ -66,10 +67,21 @@ fn eval_node(node: &Node, env: &dyn Env) -> Value {
     }
 }
 
+/// `readValue` in evaluate.ts: a tagged accessor would unwrap and a tagged
+/// callback pass through; there are no tags yet, so the one refusal that
+/// applies is a bare function read out of data — `Undefined`.
+fn read_value(value: Value) -> Value {
+    match value {
+        Value::Callable(_) => Value::Undefined,
+        value => value,
+    }
+}
+
 /// `object[property]` as a template may read it (`readProperty` in evaluate.ts):
 /// the denied names first, then a namespace's `get`, then the value's own
 /// data — a string answering only `length`, a list `length` and numeric keys,
-/// an object its own keys. Anything else is `Undefined`.
+/// an object its own keys — each member through [`read_value`]. Anything else
+/// is `Undefined`.
 fn read_property(object: &Value, property: &str) -> Value {
     if DENIED_PROPERTIES.contains(&property) {
         return Value::Undefined;
@@ -77,6 +89,7 @@ fn read_property(object: &Value, property: &str) -> Value {
     if let Value::Namespace(ns) = object {
         return ns.get(property);
     }
+    let object = &read_value(object.clone());
     match object {
         Value::Undefined | Value::Null => Value::Undefined,
         Value::Str(s) => {
@@ -87,12 +100,19 @@ fn read_property(object: &Value, property: &str) -> Value {
             }
         }
         Value::Bool(_) | Value::Num(_) | Value::Callable(_) => Value::Undefined,
-        Value::Obj(o) => o.get(property).cloned().unwrap_or(Value::Undefined),
+        Value::Obj(o) => o
+            .get(property)
+            .cloned()
+            .map(read_value)
+            .unwrap_or(Value::Undefined),
         Value::List(l) => {
             if property == "length" {
                 l.len().into()
             } else if let Ok(index) = property.parse::<usize>() {
-                l.get(index).cloned().unwrap_or(Value::Undefined)
+                l.get(index)
+                    .cloned()
+                    .map(read_value)
+                    .unwrap_or(Value::Undefined)
             } else {
                 Value::Undefined
             }
@@ -106,6 +126,7 @@ fn read_property(object: &Value, property: &str) -> Value {
 /// named keys through a *string* index alone, so `obj[1]` is `Undefined` while
 /// `obj["1"]` can hit.
 fn read_index(object: &Value, index: &Value) -> Value {
+    let object = &read_value(object.clone());
     if matches!(object, Value::Undefined | Value::Null) {
         return Value::Undefined;
     }
@@ -113,7 +134,10 @@ fn read_index(object: &Value, index: &Value) -> Value {
         return match object {
             Value::List(l) => {
                 if n.fract() == 0.0 && *n >= 0.0 {
-                    l.get(*n as usize).cloned().unwrap_or(Value::Undefined)
+                    l.get(*n as usize)
+                        .cloned()
+                        .map(read_value)
+                        .unwrap_or(Value::Undefined)
                 } else {
                     Value::Undefined
                 }

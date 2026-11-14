@@ -237,11 +237,13 @@ impl Value {
     }
 
     /// The value fit to leave the evaluator (`settle` in `evaluate.ts`): a
-    /// namespace in a value position is `Undefined`; everything else is itself.
-    /// Callback payloads arrive already unwrapped, so there is no raw case here.
+    /// namespace in a value position is `Undefined`, and so is a callable —
+    /// `readValue` refuses a function that is not a tagged callback or a
+    /// reactive accessor. There are no tags yet; when a host can hand over a
+    /// callback callable, this is where the distinction lands.
     pub fn settle(&self) -> Value {
         match self {
-            Value::Namespace(_) => Value::Undefined,
+            Value::Namespace(_) | Value::Callable(_) => Value::Undefined,
             _ => self.clone(),
         }
     }

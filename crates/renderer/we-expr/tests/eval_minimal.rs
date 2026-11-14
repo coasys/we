@@ -2,7 +2,7 @@
 //! (`evaluate.ts` semantics), not from the implementation.
 use indexmap::IndexMap;
 use std::sync::Arc;
-use we_expr::{eval, parse, MapEnv, MapNamespace, ParseCache, Value};
+use we_expr::{eval, parse, CallableRef, MapEnv, MapNamespace, ParseCache, Value};
 
 fn obj(entries: &[(&str, Value)]) -> Value {
     Value::Obj(Arc::new(
@@ -141,6 +141,40 @@ fn vector_print_precedence() {
         .with_root("c", false);
     let expr = parse("(a || b) && c").unwrap();
     assert!(eval(&expr, &env).strict_eq(&false.into()));
+}
+
+/// `eval.ns-bare` and `eval.ns-fn-member` from `expressions.json`: `eval`
+/// settles its result, so a store bag — or a bare function — in a value
+/// position is `Undefined` (`settle`/`readValue` in evaluate.ts).
+#[test]
+fn vector_eval_ns_bare() {
+    let store = MapNamespace::new(IndexMap::from([
+        ("root".into(), "space://root".into()),
+        (
+            "logout".into(),
+            Value::Callable(CallableRef::named("logout")),
+        ),
+    ]));
+    let env = MapEnv::new()
+        .with_root("spaceStore", store)
+        .with_root("cb", Value::Callable(CallableRef::named("cb")));
+    for source in ["spaceStore", "spaceStore.logout", "cb"] {
+        let expr = parse(source).unwrap();
+        assert!(
+            eval(&expr, &env).is_undefined(),
+            "{source} should settle to Undefined"
+        );
+    }
+    // The members still read — settling is not a veil over the namespace.
+    let expr = parse("spaceStore.root").unwrap();
+    assert!(eval(&expr, &env).strict_eq(&"space://root".into()));
+    // And a callable read out of plain data is refused the same way.
+    let env = MapEnv::new().with_root(
+        "bag",
+        obj(&[("save", Value::Callable(CallableRef::named("save")))]),
+    );
+    let expr = parse("bag.save").unwrap();
+    assert!(eval(&expr, &env).is_undefined());
 }
 
 #[test]
