@@ -1096,7 +1096,31 @@ fn bases_eq(a: &HashMap<NodeId, NodeBases>, b: &HashMap<NodeId, NodeBases>) -> b
 /// against the bases the previous pass measured, until the bases stop
 /// moving (or the cap). A tree with no percent `calc()` runs exactly one
 /// pass, as before.
+///
+/// The root's containing block is the viewport: `width: auto` fills it —
+/// block-box behaviour, not a shrink-wrapped flex item. Same downward:
+/// `height: auto` still paints the whole viewport (`min-height: 100vh`),
+/// so a `bg` root covers the empty tail of a short panel.
 pub fn layout(m: &dyn Measure, scx: &StyleCx, root: &ResolvedNode, rect: Rect) -> Layout {
+    layout_impl(m, scx, root, rect, true)
+}
+
+/// The same walk for a subtree that is not the page root — the overlay
+/// pass's synthetic host column is the caller. `width: auto` still fills
+/// `rect` (a block box fills its containing block), but `height: auto`
+/// stays content-sized: the `min-height: 100vh` floor is the page root's
+/// alone, so `sub.size` is the real content box a dialog centres.
+pub fn layout_shrink(m: &dyn Measure, scx: &StyleCx, root: &ResolvedNode, rect: Rect) -> Layout {
+    layout_impl(m, scx, root, rect, false)
+}
+
+fn layout_impl(
+    m: &dyn Measure,
+    scx: &StyleCx,
+    root: &ResolvedNode,
+    rect: Rect,
+    viewport_root: bool,
+) -> Layout {
     let mut cb_of = HashMap::new();
     let mut bases: HashMap<NodeId, NodeBases> = HashMap::new();
     let mut out = Layout {
@@ -1141,7 +1165,8 @@ pub fn layout(m: &dyn Measure, scx: &StyleCx, root: &ResolvedNode, rect: Rect) -
         // it — block-box behaviour, not a shrink-wrapped flex item. Same
         // downward: `height: auto` still paints the whole viewport
         // (`min-height: 100vh`), so a `bg` root covers the empty tail of a
-        // short panel.
+        // short panel. `viewport_root` withholds that floor: a floating
+        // host's `auto` height is its content.
         let mut root_style = b.tree.style(root_id).unwrap().clone();
         let mut touch = false;
         if matches!(
@@ -1151,10 +1176,12 @@ pub fn layout(m: &dyn Measure, scx: &StyleCx, root: &ResolvedNode, rect: Rect) -
             root_style.size.width = taffy::Dimension::length(rect.width());
             touch = true;
         }
-        if matches!(
-            root_style.size.height.expand(),
-            taffy::ExpandedDimension::Auto
-        ) {
+        if viewport_root
+            && matches!(
+                root_style.size.height.expand(),
+                taffy::ExpandedDimension::Auto
+            )
+        {
             root_style.min_size.height =
                 taffy::prelude::LengthPercentageAuto::length(rect.height());
             touch = true;

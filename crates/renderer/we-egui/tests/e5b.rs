@@ -538,6 +538,13 @@ fn modal_centres_and_sizes_to_content() {
     );
     // Sized to its content, not a full-bleed bar: a gutter off every edge.
     assert!(dialog.min.x > 0.0 && dialog.max.x < 400.0, "{dialog:?}");
+    // …and off the vertical edges too — the dialog is content + chrome, not
+    // the viewport less 64px (which is what a `min-height: 100vh` floor on
+    // the overlay's host column made it: ~340 tall here, still "centred").
+    assert!(
+        dialog.height() < inside.height() + 200.0,
+        "dialog not sized to content: {dialog:?} vs content {inside:?}"
+    );
     // Taller than its content — padding and the title row are inside.
     assert!(
         dialog.height() > inside.height() + 80.0,

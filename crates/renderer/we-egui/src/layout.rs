@@ -92,17 +92,41 @@ pub fn layout(
     root: &ResolvedNode,
     rect: Rect,
 ) -> Layout {
+    run(cx, scx, registry, root, rect, false)
+}
+
+/// The same, for a subtree that is not the page root — the overlay pass's
+/// synthetic host column, whose `auto` height must be its content's, not
+/// the `min-height: 100vh` floor `layout` gives the page root.
+pub fn layout_shrink(
+    cx: &MeasureCx,
+    scx: &StyleCx,
+    registry: &Registry,
+    root: &ResolvedNode,
+    rect: Rect,
+) -> Layout {
+    run(cx, scx, registry, root, rect, true)
+}
+
+fn run(
+    cx: &MeasureCx,
+    scx: &StyleCx,
+    registry: &Registry,
+    root: &ResolvedNode,
+    rect: Rect,
+    shrink: bool,
+) -> Layout {
     store_view(cx.ctx, scx);
     let m = EguiMeasure { cx, scx, registry };
-    let out = we_layout::layout(
-        &m,
-        scx,
-        root,
-        we_layout::Rect::from_min_size(
-            we_layout::Pos2::new(rect.min.x, rect.min.y),
-            we_layout::Vec2::new(rect.width(), rect.height()),
-        ),
+    let rect = we_layout::Rect::from_min_size(
+        we_layout::Pos2::new(rect.min.x, rect.min.y),
+        we_layout::Vec2::new(rect.width(), rect.height()),
     );
+    let out = if shrink {
+        we_layout::layout_shrink(&m, scx, root, rect)
+    } else {
+        we_layout::layout(&m, scx, root, rect)
+    };
     let r = |r: we_layout::Rect| {
         egui::Rect::from_min_size(
             egui::pos2(r.min.x, r.min.y),
