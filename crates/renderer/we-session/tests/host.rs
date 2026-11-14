@@ -185,6 +185,23 @@ fn out_of_order_completions() {
 }
 
 #[test]
+fn completions_in_one_drain_run_in_arrival_order() {
+    let (mut s, log) = session(lifecycle_node(), true);
+    let root = s.resolve();
+    s.dispatch(&root.id, "onTap", Value::Null);
+    s.dispatch(&root.id, "onTap", Value::Null);
+    let (a, b) = (completer(&log, 0), completer(&log, 1));
+    b.complete(Ok(Value::Str("b".into())));
+    a.complete(Ok(Value::Str("a".into())));
+    s.resolve();
+    assert_eq!(
+        local(&s, &root.id, "log"),
+        "ba",
+        "both settle in one drain, in the order they arrived"
+    );
+}
+
+#[test]
 fn double_complete_is_ignored() {
     let (mut s, log) = session(lifecycle_node(), true);
     let root = s.resolve();
