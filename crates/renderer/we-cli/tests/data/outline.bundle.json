@@ -1,0 +1,61 @@
+{
+  "format": "we-bundle",
+  "formatVersion": 1,
+  "id": "cli-outline-test",
+  "version": "0.0.0",
+  "name": "CLI outline test",
+  "templates": [
+    {
+      "id": "cli-outline",
+      "meta": {
+        "panels": [
+          {
+            "id": "tree",
+            "node": {
+              "type": "Column",
+              "children": [
+                {
+                  "type": "GraphView",
+                  "props": {
+                    "nodes": [
+                      { "id": "a", "type": "step", "label": "Draft" },
+                      { "id": "b", "type": "step", "label": "Review" }
+                    ],
+                    "edges": [
+                      { "id": "e1", "source": "a", "target": "b", "type": "next" }
+                    ]
+                  }
+                },
+                {
+                  "type": "we-textarea",
+                  "props": {
+                    "label": "Notes",
+                    "value": "first line\nsecond line\nthird line"
+                  }
+                },
+                {
+                  "type": "BlockComposer",
+                  "props": {
+                    "blocks": [
+                      { "_type": "block", "text": "Hello world" },
+                      {
+                        "_type": "collection",
+                        "children": [
+                          { "_type": "block", "text": "Nested item" }
+                        ]
+                      }
+                    ]
+                  }
+                },
+                {
+                  "type": "we-widget-9000",
+                  "props": { "label": "Strange fruit" }
+                }
+              ]
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

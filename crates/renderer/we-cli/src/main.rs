@@ -52,13 +52,19 @@ fn tree_schema(bundle: &Bundle) -> SchemaNode {
 /// print inline).
 fn outline(node: &ResolvedNode, depth: usize, out: &mut String) {
     let label = we_catalog::text_fallback(node);
-    let label = label.lines().next().unwrap_or("");
-    out.push_str(&"  ".repeat(depth));
+    let indent = "  ".repeat(depth);
+    out.push_str(&indent);
     out.push_str(node.ty.as_ref());
-    if !label.is_empty() {
-        out.push_str(&format!("  {label}"));
+    // The whole fallback, not just its first line — a graph's outline, a
+    // block document, a multiline value all carry their following lines.
+    let mut lines = label.lines();
+    if let Some(first) = lines.next() {
+        out.push_str(&format!("  {first}"));
     }
     out.push('\n');
+    for line in lines {
+        out.push_str(&format!("{indent}  {line}\n"));
+    }
     for child in &node.children {
         match child {
             ResolvedChild::Node(n) => outline(n, depth + 1, out),
