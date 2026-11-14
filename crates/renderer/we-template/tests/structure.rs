@@ -369,6 +369,66 @@ fn navigate_options_pass_through() {
     );
 }
 
+fn find_all_ty<'a>(node: &'a ResolvedNode, ty: &str, out: &mut Vec<&'a ResolvedNode>) {
+    if node.ty.as_ref() == ty {
+        out.push(node);
+    }
+    for c in &node.children {
+        if let ResolvedChild::Node(n) = c {
+            find_all_ty(n, ty, out);
+        }
+    }
+}
+
+#[test]
+fn two_mounts_of_one_part_have_independent_identities() {
+    // B6: the mount's call site belongs in the part root — two instances of
+    // `editor` must not share NodeIds or local state.
+    struct Parts;
+    impl PartSource for Parts {
+        fn part(&self, id: &str) -> Option<Arc<SchemaNode>> {
+            (id == "editor").then(|| {
+                Arc::new(schema(json!({
+                    "type": "PartBody",
+                    "$localState": { "draft": { "initial": "seed" } },
+                    "children": [{ "type": "Text", "props": { "t": { "$": "local.draft" } } }]
+                })))
+            })
+        }
+    }
+    let node = schema(json!({ "type": "Column", "children": [
+        { "type": "$part", "props": { "id": "editor" } },
+        { "type": "$part", "props": { "id": "editor" } }
+    ]}));
+    let locals = LocalState::new();
+    let bag = Arc::new(StoreBag::new());
+    let mut rt =
+        Runtime::new(node, "test", bag.clone(), locals.clone()).with_sources(None, Arc::new(Parts));
+    let mut host = StaticHost::new(bag, locals.clone());
+    let screen = screen("/");
+
+    let root = rt.frame(&mut host, &screen).clone();
+    let mut bodies = Vec::new();
+    find_all_ty(&root, "PartBody", &mut bodies);
+    assert_eq!(bodies.len(), 2);
+    assert_ne!(
+        bodies[0].id, bodies[1].id,
+        "two mounts of one part must not share a root id"
+    );
+
+    // Editing one mount's local must leave the other mount's alone.
+    locals.set(&bodies[0].id, "draft", Value::from("A"));
+    let root = rt.frame(&mut host, &screen).clone();
+    let mut bodies = Vec::new();
+    find_all_ty(&root, "PartBody", &mut bodies);
+    let read = |b: &ResolvedNode| match &b.children[0] {
+        ResolvedChild::Node(t) => t.props.get("t").cloned().unwrap_or(Value::Undefined),
+        _ => Value::Undefined,
+    };
+    assert!(read(bodies[0]).strict_eq(&Value::from("A")));
+    assert!(read(bodies[1]).strict_eq(&Value::from("seed")));
+}
+
 #[test]
 fn record_view_prefers_entity_kind_then_entity() {
     let tmpl = template(

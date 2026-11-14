@@ -630,15 +630,21 @@ fn resolve_node(
                 .and_then(|i| i.as_str())
                 .unwrap_or_default();
             match cx.parts.part(id) {
-                Some(part_node) => resolve_node(
-                    &part_node,
-                    scope,
-                    parent,
-                    &format!("part:{id}"),
-                    "",
-                    decls,
-                    cx,
-                ),
+                Some(part_node) => {
+                    // The call site goes into the part root — two mounts of
+                    // the same part (or one per `$each` row) must not share
+                    // NodeIds, locals, or `parents` entries.
+                    let site = format!("{root}:{path}");
+                    resolve_node(
+                        &part_node,
+                        scope,
+                        parent,
+                        &format!("part:{id}@{site}"),
+                        "",
+                        decls,
+                        cx,
+                    )
+                }
                 // The module is not here: a `$part` placeholder carrying the
                 // id — PartFrame's stand-in.
                 None => {
