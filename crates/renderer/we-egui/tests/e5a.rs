@@ -606,10 +606,10 @@ fn avatar_initials_derive_first_and_last_letters() {
 /// `renderContent`.
 #[test]
 fn avatar_image_prop_supplies_the_picture() {
-    // A 1px svg — the point is an Image shape, not a decode. (PNG is not a
+    // A real, decodable picture: a 4px red square svg. (PNG is not a
     // registered loader in this workspace: egui_extras' `image` dep is
     // default-features=false — `webp`/`svg` are what load.)
-    const SVG: &str = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3C/svg%3E";
+    const SVG: &str = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='4' height='4'%3E%3Crect width='4' height='4' fill='red'/%3E%3C/svg%3E";
     let av = node(
         "we-avatar",
         "a",
@@ -619,17 +619,37 @@ fn avatar_image_prop_supplies_the_picture() {
             ("hash", s("did:key:z6Mk")),
         ],
     );
-    let (_layout, shapes) = painted_shapes(&av, 400.0);
-    // The image branch ran when a texture mesh or the loader's ⚠ placeholder
-    // is what was painted — either way it is the `image` prop being read.
-    let image_path = shapes.iter().any(|s| match s {
-        egui::Shape::Mesh(m) => m.texture_id != egui::TextureId::default(),
-        egui::Shape::Text(t) => t.galley.text().contains('⚠'),
+    let (layout, shapes) = painted_shapes(&av, 400.0);
+    // F9: only a DECODED picture counts — a texture mesh covering the face.
+    // The loader's ⚠ error glyph is a failed image, not proof of one.
+    assert!(
+        !shapes
+            .iter()
+            .any(|s| matches!(s, egui::Shape::Text(t) if t.galley.text().contains('⚠'))),
+        "the picture must decode, not paint the loader's error glyph: {shapes:?}"
+    );
+    let face = layout.rects.get(&NodeId::from("a")).copied().unwrap();
+    let textured = shapes.iter().any(|s| match s {
+        egui::Shape::Mesh(m) => {
+            m.texture_id != egui::TextureId::default()
+                && !m.vertices.is_empty()
+                && egui::Rect::from_points(&m.vertices.iter().map(|v| v.pos).collect::<Vec<_>>())
+                    .intersect(face)
+                    .area()
+                    > 0.5 * face.area()
+        }
+        // egui paints a fitted image as a textured rect brush.
+        egui::Shape::Rect(r) => {
+            r.brush
+                .as_ref()
+                .is_some_and(|b| b.fill_texture_id != egui::TextureId::default())
+                && r.rect.intersect(face).area() > 0.5 * face.area()
+        }
         _ => false,
     });
     assert!(
-        image_path,
-        "an `image` prop must reach the image loader: {shapes:?}"
+        textured,
+        "an `image` prop must paint a loaded texture over the face {face:?}: {shapes:?}"
     );
     assert!(
         !shapes
@@ -637,6 +657,49 @@ fn avatar_image_prop_supplies_the_picture() {
             .any(|s| matches!(s, egui::Shape::Text(t) if t.galley.text().contains("NL"))),
         "the picture covers the initials — none are drawn: {shapes:?}"
     );
+}
+
+/// A broken picture is not a picture — the strengthened assertion above
+/// must not accept it (negative control for F9).
+#[test]
+fn avatar_broken_image_is_not_a_loaded_texture() {
+    let av = node(
+        "we-avatar",
+        "a",
+        &[("image", s("data:image/svg+xml,not-an-svg"))],
+    );
+    let (_layout, shapes) = painted_shapes(&av, 400.0);
+    assert!(
+        !shapes.iter().any(|s| match s {
+            egui::Shape::Mesh(m) =>
+                m.texture_id != egui::TextureId::default() && !m.vertices.is_empty(),
+            egui::Shape::Rect(r) => r
+                .brush
+                .as_ref()
+                .is_some_and(|b| b.fill_texture_id != egui::TextureId::default()),
+            _ => false,
+        }),
+        "a failed decode must not produce a texture mesh: {shapes:?}"
+    );
+}
+
+/// The identicon cells an avatar painted: filled rects strictly inside the
+/// face (the disc itself is the face-sized rect and is excluded).
+fn identicon_cells(hash: &str) -> Vec<egui::Rect> {
+    let av = node("we-avatar", "a", &[("hash", s(hash))]);
+    let (layout, shapes) = painted_shapes(&av, 400.0);
+    let face = layout.rects.get(&NodeId::from("a")).copied().unwrap();
+    let mut cells: Vec<egui::Rect> = shapes
+        .iter()
+        .filter_map(|s| match s {
+            egui::Shape::Rect(r) if r.fill.a() > 0 => Some(r.rect),
+            _ => None,
+        })
+        .filter(|r| face.contains_rect(*r) && r.area() < 0.25 * face.area())
+        .map(|r| r.translate(-face.min.to_vec2()))
+        .collect();
+    cells.sort_by(|a, b| (a.min.y, a.min.x).partial_cmp(&(b.min.y, b.min.x)).unwrap());
+    cells
 }
 
 /// A2 — with no image and no initials, `hash` draws the generated pattern
@@ -650,6 +713,20 @@ fn avatar_falls_back_to_hash_pattern_then_icon() {
     assert!(
         !shapes.iter().any(|s| matches!(s, egui::Shape::Text(_))),
         "a hashed avatar draws a pattern, not letters or a glyph: {shapes:?}"
+    );
+    // F9: the pattern is real geometry — non-empty, stable per seed and
+    // different between seeds (jdenticon's contract; the cell set is ours).
+    let a = identicon_cells("did:key:z6Mk");
+    assert!(!a.is_empty(), "the hash pattern paints cells");
+    assert_eq!(
+        a,
+        identicon_cells("did:key:z6Mk"),
+        "same seed, same pattern"
+    );
+    let others = ["did:key:z6Mo", "did:key:abc", "did:key:xyz"];
+    assert!(
+        others.iter().any(|h| identicon_cells(h) != a),
+        "different seeds give different patterns"
     );
     // icon → a single glyph galley; default is `user`.
     for props in [vec![("icon", s("camera"))], vec![]] {

@@ -57,8 +57,27 @@ fn image_source(uri: &str) -> egui::ImageSource<'static> {
             unescape(payload).into_bytes()
         };
         if !bytes.is_empty() {
+            // egui_extras' loaders pick a decoder by the URI's extension
+            // (`SvgLoader` gates on `has_extension(uri, "svg")`), which a
+            // `data:` URI never has — key the bytes under a stable
+            // `bytes://` name carrying the mime's extension instead.
+            let mime = meta.split(';').next().unwrap_or("");
+            let ext = match mime {
+                "image/svg+xml" => "svg",
+                "image/png" => "png",
+                "image/jpeg" | "image/jpg" => "jpg",
+                "image/gif" => "gif",
+                "image/webp" => "webp",
+                "image/bmp" => "bmp",
+                _ => "bin",
+            };
+            let mut h: u64 = 0xcbf29ce484222325;
+            for b in uri.as_bytes() {
+                h ^= *b as u64;
+                h = h.wrapping_mul(0x100000001b3);
+            }
             return egui::ImageSource::Bytes {
-                uri: uri.to_string().into(),
+                uri: format!("bytes://we-data-{h:016x}.{ext}").into(),
                 bytes: bytes.into(),
             };
         }
