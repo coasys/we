@@ -3,7 +3,7 @@
  *
  * A bot is added in two halves, each where it must happen. Its key joins the person's key log where
  * the master key is kept ("Add a bot" opens the identity window, which shows an offer); its agent is
- * made here from that offer ("Make the bot"), and the backend answers a match code, which the person
+ * made here from that offer ("Create bot"), and the backend answers a match code, which the person
  * checks in the identity window, and the bot's credential, shown once.
  *
  * Every word on a row comes worded from `botStore`, so these nodes only arrange. Nothing here is
@@ -90,7 +90,7 @@ const createdCard: SchemaNode = {
           {
             type: 'we-text',
             props: { fontWeight: 'semibold' },
-            children: [{ $: '`${botStore.created.name} is made`' }],
+            children: [{ $: '`${botStore.created.name} created`' }],
           },
         ],
       },
@@ -105,11 +105,11 @@ const createdCard: SchemaNode = {
         props: { variant: 'footnote', color: 'text-muted' },
         children: [
           {
-            $: '`Check that the identity window shows the same code, then add the bot there before ${botStore.created.confirmBy}. Until then it can do nothing.`',
+            $: "`Check the identity window shows the same code, then choose Add there before ${botStore.created.confirmBy}. The bot can't do anything until then.`",
           },
         ],
       },
-      sectionTitle('Its credential'),
+      sectionTitle('Access token'),
       {
         type: 'Row',
         props: { gap: '200', ay: 'center', p: '200', bg: 'surface-sunken', r: 'control' },
@@ -129,8 +129,8 @@ const createdCard: SchemaNode = {
                   variant: 'ghost',
                   size: 'sm',
                   square: true,
-                  label: 'Copy the credential',
-                  onClick: { $invoke: 'clipboard.copy', args: [{ $: 'botStore.created.token' }, 'Credential'] },
+                  label: 'Copy token',
+                  onClick: { $invoke: 'clipboard.copy', args: [{ $: 'botStore.created.token' }, 'Token'] },
                 },
                 children: [{ type: 'we-icon', props: { name: 'copy' } }],
               },
@@ -142,7 +142,7 @@ const createdCard: SchemaNode = {
         type: 'we-alert',
         props: { tone: 'warning' },
         children: [
-          'This is shown once. Give it to the program that runs the bot and keep it like a password: whoever has it acts as the bot. It is not kept here.',
+          "You won't see this token again. Paste it into the program that runs the bot, and keep it secret: anyone with it can use the bot.",
         ],
       },
       {
@@ -152,7 +152,7 @@ const createdCard: SchemaNode = {
           {
             type: 'we-button',
             props: { variant: 'soft', size: 'sm', onClick: { $invoke: 'botStore.dismissCreated' } },
-            children: ['I have saved it'],
+            children: ["I've saved it"],
           },
         ],
       },
@@ -169,19 +169,17 @@ const makeBotCard: SchemaNode = {
   },
   children: [
     card([
-      { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Make a bot from an offer'] },
+      { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Create bot from setup code'] },
       {
         type: 'we-text',
         props: { variant: 'footnote', color: 'text-muted' },
-        children: [
-          '“Add a bot” on a computer that keeps your master key shows an offer. Paste it here and name the bot.',
-        ],
+        children: ['Choose Add a bot on a device that has your master key, then paste the setup code here.'],
       },
       {
         type: 'we-textarea',
         props: {
-          label: 'Offer',
-          placeholder: 'Paste the offer',
+          label: 'Setup code',
+          placeholder: 'Paste setup code',
           rows: 2,
           value: { $: 'local.botOffer' },
           onInput: { $setLocal: 'botOffer', value: { $: 'event.detail' } },
@@ -191,7 +189,7 @@ const makeBotCard: SchemaNode = {
         type: 'we-input',
         props: {
           label: 'Name',
-          placeholder: 'What the bot is called',
+          placeholder: 'Meeting notes bot',
           value: { $: 'local.botName' },
           onInput: { $setLocal: 'botName', value: { $: 'event.detail' } },
         },
@@ -224,7 +222,7 @@ const makeBotCard: SchemaNode = {
                 ],
               },
             },
-            children: ['Make the bot'],
+            children: ['Create bot'],
           },
         ],
       },
@@ -278,7 +276,7 @@ const botList: SchemaNode = {
     else: {
       type: 'we-text',
       props: { color: 'text-muted', loading: { $: '!botStore.loaded' } },
-      children: ['You have no bots yet.'],
+      children: ['No bots yet'],
     },
   },
 };
@@ -289,7 +287,7 @@ const listView: SchemaNode = {
   children: [
     heading(
       'Bots',
-      'Bots act for you with keys of their own, only in the spaces you give them, and give a reason for each thing they write.',
+      'Bots work only in the spaces you choose and give a reason for everything they write.',
       addBotButton,
     ),
     problem("botStore.error != ''", 'botStore.error'),
@@ -298,7 +296,7 @@ const listView: SchemaNode = {
     makeBotCard,
     footnote(
       'lock',
-      'A bot signs as itself, never as you. Each write and join it makes here, and each call refused, is logged; its reads are not.',
+      'Bots never write as you. Activity shows what they write, join or were blocked from, but not what they read.',
     ),
   ],
 };
@@ -326,7 +324,7 @@ const spaceChoice: SchemaNode = {
         then: {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-muted' },
-          children: ['Not one of your spaces here'],
+          children: ['Not on this computer'],
         },
       },
     },
@@ -355,7 +353,7 @@ const actionChoice: SchemaNode = {
         then: {
           type: 'we-text',
           props: { variant: 'footnote', color: 'text-muted' },
-          children: ['Its key may not'],
+          children: ['Not chosen when added'],
         },
       },
     },
@@ -367,7 +365,7 @@ const grantEditor: SchemaNode = {
   props: {
     condition: { $: 'botStore.editor && !botStore.selected.revoked' },
     then: card([
-      { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['What it may do'] },
+      { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Permissions'] },
       /*
         A grant change does not go through the identity window: any app session holding
         `agent:UPDATE` may widen a grant or resume a bot, as `bot.setGrant` allows. Said here so the
@@ -377,7 +375,7 @@ const grantEditor: SchemaNode = {
         type: 'we-text',
         props: { variant: 'footnote', color: 'text-muted' },
         children: [
-          'WE, and any other app you connected with permission to change your identity, can change this grant or resume a paused bot without asking you again.',
+          "This app, and any other app you've allowed to manage your identity, can change these permissions or resume the bot without asking you.",
         ],
       },
       sectionTitle('Spaces'),
@@ -399,7 +397,7 @@ const grantEditor: SchemaNode = {
           else: {
             type: 'we-text',
             props: { variant: 'footnote', color: 'text-muted' },
-            children: ['A bot can only be given a shared space, and you have none here yet.'],
+            children: ['No shared spaces yet. Bots can only work in shared spaces.'],
           },
         },
       },
@@ -473,13 +471,13 @@ const stateCard: SchemaNode = {
   props: {
     condition: { $: '!botStore.selected.revoked' },
     then: card([
-      { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Pause or revoke'] },
+      { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Pause or remove'] },
       {
         type: 'we-text',
         props: { variant: 'footnote', color: 'text-muted' },
         children: [
           {
-            $: "botStore.selected.paused ? 'Paused: this computer refuses its next call until you resume it. Its grant is kept. A stream it already opened runs on until it ends.' : 'Pause makes this computer refuse its next call and keeps its grant. Revoke ends its sessions here for good.'",
+            $: "botStore.selected.paused ? 'Paused. It can\\'t do anything until you resume it, but anything it already started runs to the end.' : 'Pausing stops the bot and keeps its permissions. Removing stops it for good.'",
           },
         ],
       },
@@ -522,7 +520,7 @@ const stateCard: SchemaNode = {
               disabled: { $: 'botStore.saving' },
               onClick: { $setLocal: 'confirmRevokeBot', value: true },
             },
-            children: [{ type: 'we-icon', props: { name: 'prohibit' } }, 'Revoke…'],
+            children: [{ type: 'we-icon', props: { name: 'prohibit' } }, 'Remove bot…'],
           },
         ],
       },
@@ -530,9 +528,7 @@ const stateCard: SchemaNode = {
     else: {
       type: 'we-alert',
       props: { tone: 'danger' },
-      children: [
-        'Revoked for good. It can do nothing again, and its grant can never change. To use a bot again, add a new one.',
-      ],
+      children: ["This bot is removed and can't be resumed. To use a bot again, add a new one."],
     },
   },
 };
@@ -584,7 +580,7 @@ const activityLog: SchemaNode = {
         else: {
           type: 'we-text',
           props: { color: 'text-muted', loading: { $: '!botStore.activityLoaded' } },
-          children: ['No recorded activity yet.'],
+          children: ['No activity yet'],
         },
       },
     },
@@ -601,7 +597,7 @@ const activityLog: SchemaNode = {
             loading: { $: 'botStore.loadingOlder' },
             onClick: { $invoke: 'botStore.loadOlder' },
           },
-          children: ['Load older'],
+          children: ['Show older'],
         },
       },
     },
@@ -641,10 +637,10 @@ const detailView: SchemaNode = {
     confirmModal({
       open: { $: 'local.confirmRevokeBot' },
       close: { $setLocal: 'confirmRevokeBot', value: false },
-      title: { $: '`Revoke ${botStore.selected.name}?`' },
-      body: 'This computer ends its sessions and refuses every call from it, for good. Its key stays in your key log until you remove it under Devices, and other computers trust that log, not this grant. This is final: a revoked bot cannot be resumed.',
-      detail: 'To use a bot again, add a new one. Its activity log is kept.',
-      confirmLabel: 'Revoke for good',
+      title: { $: '`Remove ${botStore.selected.name}?`' },
+      body: "It stops working on this computer for good and can't be resumed. Its activity stays.",
+      detail: 'On other computers, its key works until it ends. To use a bot again, add a new one.',
+      confirmLabel: 'Remove',
       confirm: { $invoke: 'botStore.revoke' },
     }),
   ],

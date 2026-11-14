@@ -94,6 +94,15 @@ const styles = css`
     pointer-events: none;
   }
 
+  /*
+    The hidden input below is placed in this box. Without it the input belongs to the nearest
+    positioned box outside the switch, and focusing the switch scrolls that box (in Space settings,
+    the dock frame, which cannot scroll back) instead of the scroll area the switch is drawn in.
+  */
+  [part='base'] {
+    position: relative;
+  }
+
   input[part='native'] {
     position: absolute;
     width: 1px;

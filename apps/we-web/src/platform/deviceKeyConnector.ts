@@ -187,9 +187,7 @@ export class KeyLoginUnreachable extends Error {
     readonly url: string,
     readonly cause: unknown,
   ) {
-    super(
-      `This phone is offline, or ${hostOf(url)} cannot be reached. It is still signed in with its device key: try again once it is back online.`,
-    );
+    super(`Can’t reach ${hostOf(url)}. Check that this phone is online, then try again. It stays signed in.`);
     this.name = 'KeyLoginUnreachable';
   }
 }
@@ -198,7 +196,7 @@ function hostOf(url: string): string {
   try {
     return new URL(url).host;
   } catch {
-    return 'the executor';
+    return 'the host';
   }
 }
 
@@ -301,13 +299,11 @@ export function createDeviceKeyConnector(deps: DeviceKeyConnectorDeps = defaultD
   return {
     async initialize(ctx): Promise<BackendInitResult> {
       if ((deps.skipKeyLogin ?? takeEndedTooSoon)()) {
-        throw new KeyLoginRefused(
-          'The last key session ended as soon as it opened, so this phone did not sign in again.',
-        );
+        throw new KeyLoginRefused('Signed out right after signing in. Try again.');
       }
       const target = await keyLoginTarget(deps);
       if (!target) {
-        throw new KeyLoginRefused('This phone has no device key in an identity, or no executor to sign in to with it.');
+        throw new KeyLoginRefused('This phone isn’t linked to a host yet.');
       }
       const { plugin, url } = target;
 
@@ -331,7 +327,9 @@ export function createDeviceKeyConnector(deps: DeviceKeyConnectorDeps = defaultD
         // Offline, or the executor out of reach: said on the boot screen, with a way to try again.
         if (error instanceof KeyLoginUnreachable) throw error;
         // Not known there, or refused: handed back to the connection choice, with the reason.
-        throw new KeyLoginRefused(`${hostOf(url)} did not sign this phone in: ${errorText(error)}`, { cause: error });
+        throw new KeyLoginRefused(`${hostOf(url)} didn’t accept this phone’s sign-in (${errorText(error)}).`, {
+          cause: error,
+        });
       }
 
       // The client WE keeps, opened with the key session's token. Nothing is written to
@@ -343,11 +341,11 @@ export function createDeviceKeyConnector(deps: DeviceKeyConnectorDeps = defaultD
         status = await client.agent.status();
       } catch (error) {
         client.close();
-        throw new Error(`The executor at ${url} did not accept the key session: ${errorText(error)}`);
+        throw new Error(`${hostOf(url)} didn’t accept this phone’s sign-in (${errorText(error)}).`);
       }
       if (!status.isInitialized || !status.isUnlocked) {
         client.close();
-        throw new Error(`The executor at ${url} did not accept the key session: its agent is locked`);
+        throw new Error(`${hostOf(url)} didn’t accept this phone’s sign-in (its agent is locked).`);
       }
 
       // A session that ends by itself is told once, and logging out is not an ending.

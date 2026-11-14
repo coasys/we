@@ -67,7 +67,7 @@ export type Screen =
       keyId: string;
       /** The key log let the device keep the master key, so it may still hold a valid one. */
       mayHoldMaster: boolean;
-      /** Whether "Also replace my master key" starts ticked: when the device may hold a copy. */
+      /** Whether "Also replace master key" starts ticked: when the device may hold a copy. */
       rotate: boolean;
       passphrase: boolean;
       error: string | null;
@@ -104,9 +104,9 @@ export type BotAction = 'read' | 'write' | 'join';
 
 /** The actions a bot may be given, in the order the window lists them, with what each lets it do. */
 export const BOT_ACTIONS: ReadonlyArray<{ action: BotAction; label: string }> = [
-  { action: 'read', label: 'Read the spaces you give it' },
-  { action: 'write', label: 'Write in them, with a reason each time' },
-  { action: 'join', label: 'Join the spaces you give it' },
+  { action: 'read', label: 'Allow reading spaces' },
+  { action: 'write', label: 'Allow writing, with a reason each time' },
+  { action: 'join', label: 'Allow joining spaces' },
 ];
 
 /** How long a bot's key lives when the person does not choose, and the longest it may. */
@@ -148,16 +148,21 @@ export interface RestoreDevice {
  */
 export type RevokeTarget = { keyId: string; fingerprint: string; recordName: string | null; mayHoldMaster: boolean };
 
-/** Why revoking a device the log let keep the master key does not take that key from it. */
-const MAY_HOLD_MASTER =
-  'A revoke does not change your master key: replace your master key to stop it from adding and removing your devices.';
+/**
+ * Why revoking a device the log let keep the master key does not take that key from it: `who` may
+ * still hold it, and only replacing the master key stops it adding and removing devices. `fix` says
+ * how to replace it from where the person is.
+ */
+function mayHoldMaster(who: string, fix = 'Replace your master key afterwards.'): string {
+  return `${who} may still have your master key, and this doesn't take it back. ${fix}`;
+}
 
 /** One key of a revoke request, as its card lists it. */
 export function targetLine(target: RevokeTarget): string {
   return [
     `${target.keyId} · key ${target.fingerprint}`,
-    ...(target.recordName ? [`your record calls it ${target.recordName}`] : []),
-    ...(target.mayHoldMaster ? ['may still hold a valid master key'] : []),
+    ...(target.recordName ? [`listed as “${target.recordName}”`] : []),
+    ...(target.mayHoldMaster ? ['may have master key'] : []),
   ].join(' · ');
 }
 
@@ -227,8 +232,8 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
   switch (screen.screen) {
     case 'show-words':
       return {
-        title: 'Your 12 words',
-        lead: 'These words make your master key: it adds and removes your devices. Write them on paper and keep them: with them you can restore your identity on a new computer, and replace your master key when a device that keeps it is lost. You see them only during this setup, and nobody but you ever sees them.',
+        title: 'Save your recovery phrase',
+        lead: 'Write down these 12 words in order and keep them safe. You need them to restore your identity or replace your master key. You only see them once.',
       };
     case 'confirm-words':
       return {
@@ -238,7 +243,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
     case 'set-passphrase':
       return {
         title: 'Protect your master key with a passphrase',
-        lead: 'This computer keeps your master key behind a passphrase. You type it for each change to your identity: adding a device, revoking one.',
+        lead: 'This computer keeps your master key behind a passphrase. You type it for each change to your identity: adding or removing a device.',
       };
     case 'enter-passphrase':
       return {
@@ -248,7 +253,7 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
     case 'identity-ready':
       return {
         title: 'Your identity exists now',
-        lead: 'It belongs to you, and it runs where you say. Your 12 words make your master key. The devices that serve you sign for you, and never change your keys.',
+        lead: 'It belongs to you, and it runs where you say. Your recovery phrase makes your master key. The devices that serve you sign for you, and never change your keys.',
       };
     case 'offer':
       return {
@@ -265,82 +270,77 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
         title: 'Device added',
         lead: [
           `Your key log records it as entry #${screen.seq}.`,
-          ...(screen.masterSent ? ['The master key waits for it there: it takes the key when it next unlocks.'] : []),
+          ...(screen.masterSent ? ['It gets the master key the next time it unlocks.'] : []),
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
       };
     case 'enter-code':
       return {
-        title: 'Scan or paste a code',
-        lead: 'On the new device, choose “Show my code”. Copy the link it shows and paste it here.',
+        title: 'Enter code',
+        lead: 'On the new device, choose Show code. Copy the link it shows and paste it here.',
       };
     case 'enter-offer':
       return {
-        title: 'Join your identity',
-        lead: 'On a device that has your identity, choose “Add a device”. Scan the QR code it shows, or paste its link here.',
+        title: `Link this ${noun}`,
+        lead: 'On your computer, go to Settings > Devices, choose Link a device and scan the code it shows.',
       };
     case 'code-sent':
       return {
         title: 'Waiting for your device',
-        lead: 'The new device was sent an offer. Once it accepts, both devices show the same code.',
+        lead: 'When the new device answers, both devices show the same code.',
       };
     case 'device-code':
       return {
-        title: 'Show my code',
-        lead: 'On a device of your identity, choose “Scan or paste a code”, then scan this QR code or paste the link. Send it there another way if you need to, such as a message to yourself.',
+        title: `Link this ${noun}`,
+        lead: 'On your other device, go to Settings > Devices, choose Enter code and paste this link.',
       };
     case 'device-match':
       return deviceMatch(screen, noun);
     case 'joined':
       return {
-        title: 'This device is one of yours now',
-        lead: 'To add or remove devices, use a device that has your master key.',
+        title: `This ${noun} is linked`,
+        lead: "It doesn't have the master key, so it can't add or remove devices.",
       };
     case 'master-taken':
       return {
-        title: 'This device keeps your master key',
-        lead: ['It can add and remove your devices now.', ...(screen.note ? [screen.note] : [])].join(' '),
+        title: `This ${noun} has the master key`,
+        lead: ['It can now add and remove devices.', ...(screen.note ? [screen.note] : [])].join(' '),
       };
     case 'request':
       return screen.kind === 'send-master'
         ? {
-            title: `Device ${screen.keyId} (key ${screen.fingerprint}) asks for the master key — send it?`,
-            lead: `Your record calls it ${screen.device}. Check that the device shows the code ${screen.code} and the same key. With the master key, it can add and remove your devices too. Send it only if you asked for it there.`,
+            title: `Send master key to ${screen.keyId}?`,
+            lead: `Listed as “${screen.device}”. Check that the device shows the same code and key. With the master key, it can add and remove devices. Send it only if you asked for it on that device.`,
           }
         : revokeRequest(screen);
     case 'request-answered':
       return screen.kind === 'send-master'
         ? {
             title: 'Master key sent',
-            lead: [
-              `It waits for ${screen.device}, which takes it when it next unlocks.`,
-              ...(screen.note ? [screen.note] : []),
-            ].join(' '),
-          }
-        : {
-            title: 'Devices revoked',
-            lead: [`${screen.device} asked, and your key log records it.`, ...(screen.note ? [screen.note] : [])].join(
+            lead: [`${screen.device} gets it the next time it unlocks.`, ...(screen.note ? [screen.note] : [])].join(
               ' ',
             ),
+          }
+        : {
+            title: 'Devices removed',
+            lead: [`${screen.device} asked for this.`, ...(screen.note ? [screen.note] : [])].join(' '),
           };
     case 'asked':
       return {
-        title: 'Asked for the master key',
-        lead: `A device that holds it shows your request, from ${screen.keyId} (key ${screen.fingerprint}) with the code ${screen.code}. Check both match there. When you send it from there, choose “Take the master key” here.`,
+        title: 'Master key requested',
+        lead: 'On a device that has it, go to Settings > Devices and review the request. Check that it shows this code. Then choose Accept master key here.',
       };
     case 'rename':
-      return { title: 'Name this device', lead: 'The name is for you. Only your own devices read it.' };
+      return { title: 'Rename device', lead: 'Only your devices can see this name.' };
     case 'renamed':
-      return { title: `Named ${screen.name}`, lead: 'Your devices show this name from now on.' };
+      return { title: `Renamed to ${screen.name}`, lead: 'All your devices show the new name.' };
     case 'revoke-confirm':
       return {
-        title: `Revoke the key ${screen.keyId}?`,
+        title: `Remove ${screen.keyId}?`,
         lead: [
           'Do this for a device you lost or no longer use. Your key log records that its key no longer acts as you, and the key can never be added back. Other computers apply this when they next read your key log, so one that is offline can accept the key for a while. Some things it signed before can also stop counting as yours.',
           ...(screen.mayHoldMaster
-            ? [
-                `Your key log let this device keep your master key, so it may still hold a valid master key. ${MAY_HOLD_MASTER} “Also replace my master key” does that with this revoke, and needs your 12 words.`,
-              ]
+            ? [mayHoldMaster('This device', 'Replace your master key to stop it adding and removing devices.')]
             : []),
         ].join(' '),
       };
@@ -348,79 +348,79 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
       return wordsHeading(screen.purpose);
     case 'restore-devices':
       return {
-        title: 'Lock out lost devices',
+        title: 'Remove lost devices',
         lead: [
-          'These are the devices of your identity. Tick each one you lost or no longer use: it is revoked, and your master key is replaced, so a copy it kept stops working. This computer becomes one of your devices and keeps the new master key.',
+          'Select each device you lost or no longer use. Your master key is replaced, and this computer gets the new one.',
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
       };
     case 'master-replaced':
       return {
-        title: 'Your master key is replaced',
+        title: 'Master key replaced',
         lead: [
-          `This computer keeps master key #${screen.index}. Copies of the one before it no longer add or remove devices, on any device.`,
+          'This computer has the new master key. The old one no longer works on any device.',
           ...(screen.revoked.length ? [`Also removed: ${devices(screen.revoked.length)}.`] : []),
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
       };
     case 'master-not-kept':
       return {
-        title: 'Your master key is replaced, but this computer could not keep the new key',
+        title: 'New master key not saved',
         lead: [
-          `Master key #${screen.index} is now your master key, and copies of the one before it no longer add or remove devices. ${screen.reason}`,
+          `Your master key was replaced and the old one no longer works, but this computer couldn't save the new one. ${screen.reason}`,
           ...(screen.revoked.length ? [`Also removed: ${devices(screen.revoked.length)}.`] : []),
           ...(screen.note ? [screen.note] : []),
-          'Type your 12 words again to replace it once more with a key this computer keeps.',
+          'Enter your recovery phrase again to replace it with one this computer saves.',
         ].join(' '),
       };
     case 'restore-not-linked':
       return {
-        title: 'Your identity is restored, but this computer is not linked yet',
+        title: "This computer isn't linked yet",
         lead: [
-          `Your master key is replaced. ${screen.reason}`,
+          `Your identity was restored and your master key replaced. ${screen.reason}`,
           ...(screen.revoked.length ? [`Removed: ${devices(screen.revoked.length)}.`] : []),
-          'Try again to add this computer as one of your devices; your 12 words are not needed for that.',
+          "Try again to link this computer. You don't need your recovery phrase again.",
         ].join(' '),
       };
     case 'restored':
       return {
-        title: `Restored as ${screen.name}`,
+        title: 'Identity restored',
         lead: [
-          'This computer has your new master key.',
+          `This computer is linked as ${screen.name} and has the new master key.`,
           ...(screen.revoked.length ? [`Removed: ${devices(screen.revoked.length)}.`] : []),
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
       };
     case 'remove-master':
       return {
-        title: 'Remove my master key from this computer?',
-        lead: 'This computer stops keeping your master key. It stays one of your devices and still signs for you. Your other devices that keep a copy, and your 12 words, still add and remove devices.',
+        title: 'Remove master key from this computer?',
+        lead: 'This computer stays linked. Your other devices with the master key, and your recovery phrase, can still add and remove devices.',
       };
     case 'master-removed':
       return {
-        title: 'This computer no longer keeps your master key',
-        lead: 'It still signs for you. To add or remove devices, use a device that keeps your master key, or your 12 words.',
+        title: 'Master key removed',
+        lead: 'This computer stays linked. To add or remove devices, use a device with the master key or your recovery phrase.',
       };
     case 'bot-scope':
       return {
         title: 'Add a bot',
-        lead: 'A bot acts for you with a key of its own. Choose what that key may ever do, and for how long. Later you choose which spaces it may act in, and you can pause or revoke it at any time.',
+        lead: 'Choose what this bot can do and for how long. You choose its spaces later, and can pause or remove it at any time.',
       };
     case 'bot-offer':
       return {
-        title: 'Give this offer to the bot',
-        lead: `Copy the offer. In WE, open Settings → Bots, choose “Make the bot”, and paste it there. A bot on another computer takes it with \`bot.createAgent\`. Its key may ${actionsLine(screen.can)} until ${day(screen.keyExpires)}.`,
+        title: 'Copy setup code',
+        lead: `Paste it in Settings → Bots on the computer that runs the bot. It can ${actionsLine(screen.can)} until ${day(screen.keyExpires)}.`,
       };
     case 'bot-match':
       return {
         title: screen.name ? `Add ${screen.name}?` : 'Add this bot?',
-        lead: 'Check that the place where you made the bot shows the same code. Your computer lets the bot act only in the spaces you give it, within what this key allows, and it never speaks for you.',
+        lead: 'Check the code matches the one in Settings → Bots.',
       };
     case 'bot-added':
       return {
         title: `${screen.name} added`,
         lead: [
-          `Added at #${screen.seq}. Choose what it can do on the Bots page.`,
+          "It can't do anything yet. Choose its spaces in Settings → Bots.",
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
       };
@@ -428,33 +428,33 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
       return { title: 'Device removed', lead: `Removed at #${screen.seq}.` };
     case 'pending-refused':
       return {
-        title: 'Your identity could not be published',
-        lead: `${screen.message} Trying again will not change that. Discard it, and this computer stops trying and goes on to make a new identity where it can. Its master key stays on this computer.`,
+        title: "Your identity couldn't be published",
+        lead: `${screen.message} Trying again won't change that. Discard it, and this computer stops trying and goes on to make a new identity where it can. Its master key stays on this computer.`,
       };
     case 'failed':
-      return { title: 'That did not work', lead: screen.message };
+      return { title: 'Something went wrong', lead: screen.message };
   }
 }
 
 /** The words entry's lead, by what the words are for. */
 function wordsHeading(purpose: WordsPurpose): { title: string; lead: string } {
-  const type = 'Type your 12 words from your paper, in order.';
+  const type = 'Enter your 12 words in order.';
   switch (purpose) {
     case 'replace':
       return {
-        title: 'Replace my master key',
-        lead: `${type} They make your next master key, which this computer keeps. Copies of the one you have now stop working, on every device that keeps one.`,
+        title: 'Replace master key',
+        lead: `${type} This computer gets the new master key, and the old one stops working on every device.`,
       };
     case 'restore':
       return {
-        title: 'Use my 12 words',
-        lead: `${type} This computer finds the identity they make, and becomes one of its devices.`,
+        title: 'Restore with recovery phrase',
+        lead: `${type} This computer is then linked to your identity.`,
       };
     case 'revoke':
     case 'answer':
       return {
-        title: 'Your 12 words replace your master key',
-        lead: `${type} The revoke also replaces your master key, and only your words can make the next one.`,
+        title: 'Enter recovery phrase',
+        lead: `This also replaces your master key. ${type}`,
       };
   }
 }
@@ -470,33 +470,33 @@ function deviceMatch(
   if (!screen.needsAccept) {
     return {
       title: 'Check the code',
-      lead: `Your other device shows a code too. When they match, confirm there. This ${noun} then joins your identity.`,
+      lead: 'If it matches the code on your other device, confirm there.',
     };
   }
   if (screen.accepted) {
     return {
       title: 'Confirm on your other device',
-      lead: `You confirmed here. This ${noun} joins your identity once your other device confirms too.`,
+      lead: `This ${noun} is linked once you confirm there too.`,
     };
   }
   return {
     title: 'Is this your identity?',
     lead: screen.confirmed
-      ? 'Your other device confirmed. Check that the code matches the one it showed, then confirm here too.'
-      : 'Check that the code matches the one on your other device. Then confirm here and there.',
+      ? 'Your other device confirmed. If the code matches, confirm here too.'
+      : 'If the code matches your other device, confirm on both.',
   };
 }
 
 /** What the code card says under the identity while it waits, if anything. */
 export function deviceMatchNote(screen: Extract<Screen, { screen: 'device-match' }>): string | null {
-  if (!screen.needsAccept) return 'Waiting for you to confirm on your other device…';
+  if (!screen.needsAccept) return 'Waiting for your other device…';
   if (screen.accepted) return 'Waiting for your other device…';
-  return screen.confirmed ? null : 'Waiting for you to confirm here and on your other device…';
+  return screen.confirmed ? null : 'Waiting for both devices…';
 }
 
 /**
  * What the code card does: whether it waits for the join (`wait-join`) and whether it offers
- * “This is my identity” (`accept`). After an accept, the accept itself waits for the join: the
+ * “Confirm” (`accept`). After an accept, the accept itself waits for the join: the
  * custody service answered the wait that was out with the accepted card, so no other is asked for.
  */
 export function deviceMatchActions(screen: Extract<Screen, { screen: 'device-match' }>): {
@@ -513,18 +513,12 @@ export function deviceMatchActions(screen: Extract<Screen, { screen: 'device-mat
 function revokeRequest(screen: Extract<Screen, { screen: 'request' }>): { title: string; lead: string } {
   const holders = screen.targets.filter((t) => t.mayHoldMaster).map((t) => t.keyId);
   return {
-    title: `Device ${screen.keyId} (key ${screen.fingerprint}) asks to revoke ${screen.targets
-      .map((t) => `${t.keyId} (key ${t.fingerprint})`)
-      .join(', ')}`,
+    title: `Remove ${screen.targets.map((t) => t.keyId).join(', ')}?`,
     lead: [
-      `Your record calls the asking device ${screen.device}. Check that it shows the code ${screen.code} and the same key.`,
-      'Each revoked device stops acting as you, and can never be added back.',
-      ...(holders.length
-        ? [
-            `Your key log let ${holders.join(', ')} keep your master key, so ${holders.join(', ')} may still hold a valid master key. ${MAY_HOLD_MASTER}`,
-          ]
-        : []),
-      'Confirm only if you asked for this there.',
+      `Asked by ${screen.keyId}, listed as “${screen.device}”. Check that it shows the same code and key.`,
+      'Removed devices lose access to your identity for good.',
+      ...(holders.length ? [mayHoldMaster(holders.join(', '))] : []),
+      'Remove only if you asked for this on that device.',
     ].join(' '),
   };
 }

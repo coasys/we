@@ -120,9 +120,9 @@ answers their requests.
   `master-keys.json`, sealed by a second Keystore key (`MasterKeystoreKey.kt`) that needs a strong
   biometric for every use (auth timeout 0, invalidated by a new enrolment). Each seal and each open
   is one `BiometricPrompt` with the cipher as its `CryptoObject` (`BiometricMasterSealer.kt`), titled
-  with what the key is about to do ("Add a device to your identity"). The device key's sealer is
+  with what the key is about to do ("Confirm it's you to link a device"). The device key's sealer is
   unchanged, so a key login never prompts. The master key is kept only at `strongbox` or `tee`. At
-  `software` (an emulator) the phone asks first ("Keep your master key without secure hardware?"),
+  `software` (an emulator) the phone asks first ("Keep master key without a secure chip?"),
   and keeps it only if the person agrees. The vault keeps the rules of WE's desktop vault
   (`crates/custody`): each change is decided and written under one lock, the kept key never goes
   back a generation, a forget is a compare-and-delete on the index or on the **custody epoch**,
@@ -145,8 +145,8 @@ answers their requests.
 
 - **What the phone can do.**
   - Join by an offer link, scanned or pasted.
-  - Ask for the master key, and take it when it is sent (Settings shows "Your master key was sent
-    here" from the store inbox, `masterWaiting`).
+  - Ask for the master key, and take it when it is sent (Settings shows "Master key sent to this
+    phone" from the store inbox, `masterWaiting`).
   - As the holder: add a device by the `coasys:device:1:` code it shows (scan or paste, a ticket in
     its pre-join inbox, the match code, then the add).
   - Send the master key to a device that asked, and answer a revoke request.

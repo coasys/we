@@ -12,9 +12,9 @@ const DAY = 86_400;
 
 /** The actions in the order the page lists them, with what each lets a bot do. */
 export const BOT_ACTION_LABELS: ReadonlyArray<{ action: BotAction; label: string }> = [
-  { action: 'read', label: 'Read' },
-  { action: 'write', label: 'Write, with a reason each time' },
-  { action: 'join', label: 'Join' },
+  { action: 'read', label: 'Allow reading' },
+  { action: 'write', label: 'Allow writing, with a reason each time' },
+  { action: 'join', label: 'Allow joining' },
 ];
 
 /** A date as the page shows it, in the person's own locale. */
@@ -65,7 +65,7 @@ export interface BotRow {
   did: string;
   name: string;
   state: BotGrantState;
-  /** 'Active', 'Paused', 'Revoked', or 'Not confirmed yet' while its key is not in the log. */
+  /** 'Active', 'Paused', 'Removed', or 'Not confirmed' while its key is not in the log. */
   status: string;
   statusTone: 'success' | 'warning' | 'danger' | 'neutral';
   /** What the key log says of its key, and until when. */
@@ -80,14 +80,16 @@ export interface BotRow {
   keyValid: boolean;
 }
 
+/** What a bot whose key is not in the key log yet waits for. */
+const CONFIRM_MATCH = 'Confirm the match code in the identity window';
+
 function keyLine(key: BotKeyView | null): { line: string; tone: BotRow['keyTone'] } {
-  if (!key)
-    return { line: 'Key not confirmed yet: confirm the match code in the identity window', tone: 'warning-text' };
+  if (!key) return { line: CONFIRM_MATCH, tone: 'warning-text' };
   const until = key.expires === null ? '' : ` until ${dateOf(key.expires)}`;
   switch (key.verdict) {
     case 'valid':
       // "Its key", never the key id: that is for the key log.
-      return { line: `Key valid${until} · may ${key.can.join(', ') || 'nothing'}`, tone: 'text-muted' };
+      return { line: `Key valid${until} · allows ${key.can.join(', ') || 'nothing'}`, tone: 'text-muted' };
     case 'expired':
       return {
         line: `Key expired${key.expires === null ? '' : ` on ${dateOf(key.expires)}`}`,
@@ -96,17 +98,14 @@ function keyLine(key: BotKeyView | null): { line: string; tone: BotRow['keyTone'
     case 'revoked':
       return { line: 'Key removed', tone: 'danger-text' };
     case 'not-in-log':
-      return {
-        line: 'Key not in your key log yet: confirm the match code in the identity window',
-        tone: 'warning-text',
-      };
+      return { line: CONFIRM_MATCH, tone: 'warning-text' };
   }
 }
 
 function grantLine(bot: BotView): string {
   const { grant } = bot;
-  if (grant.state === 'revoked') return 'Revoked for good: this computer refuses it';
-  if (!grant.spaces.length || !grant.can.length) return 'May do nothing yet: give it spaces';
+  if (grant.state === 'revoked') return "Can't do anything";
+  if (!grant.spaces.length || !grant.can.length) return 'No permissions yet';
   const spaces = grant.spaces.length === 1 ? '1 space' : `${grant.spaces.length} spaces`;
   const until = grant.expires === null ? '' : ` · until ${dateOf(grant.expires)}`;
   return `${spaces} · ${grant.can.join(', ')}${until}`;
@@ -118,22 +117,22 @@ export function botRow(bot: BotView): BotRow {
   const state = bot.grant.state;
   const [status, statusTone]: [string, BotRow['statusTone']] =
     state === 'revoked'
-      ? ['Revoked', 'danger']
+      ? ['Removed', 'danger']
       : state === 'paused'
         ? ['Paused', 'warning']
         : keyValid
           ? ['Active', 'success']
-          : ['Not confirmed yet', 'neutral'];
+          : ['Not confirmed', 'neutral'];
   return {
     did: bot.did,
-    name: bot.name || 'A bot',
+    name: bot.name || 'Unnamed bot',
     state,
     status,
     statusTone,
     keyLine: key.line,
     keyTone: key.tone,
     grantLine: grantLine(bot),
-    created: `Made ${dateOf(bot.createdAt)}`,
+    created: `Added ${dateOf(bot.createdAt)}`,
     paused: state === 'paused',
     revoked: state === 'revoked',
     keyValid,
@@ -185,11 +184,11 @@ export const toggleAction = (draft: GrantDraft, action: BotAction): GrantDraft =
 export function draftProblem(draft: GrantDraft, key: BotKeyView | null): string {
   const days = draft.days.trim();
   if (days && !(/^\d+$/.test(days) && Number(days) >= 1 && Number(days) <= 3650)) {
-    return 'Type the number of days, from 1, or leave it empty for no end but the key’s.';
+    return 'Enter 1 to 3650 days, or leave it empty.';
   }
-  if (draft.spaces.length > 100) return 'A grant names at most 100 spaces.';
+  if (draft.spaces.length > 100) return 'Choose up to 100 spaces.';
   const outside = key ? draft.can.filter((a) => !key.can.includes(a)) : [];
-  if (outside.length) return `Its key may not ${outside.join(' or ')}. Add the bot again for a key that may.`;
+  if (outside.length) return `This bot can't ${outside.join(' or ')}. To allow it, add the bot again.`;
   return '';
 }
 
@@ -210,28 +209,28 @@ export function draftEnds(draft: GrantDraft, key: BotKeyView | null, now: number
   const days = draft.days.trim();
   const ends = days && /^\d+$/.test(days) ? now + Number(days) * DAY : draft.expires;
   const keyEnds = key?.expires ?? null;
-  if (ends === null) return keyEnds === null ? 'No end set.' : `Ends with its key, on ${dateOf(keyEnds)}.`;
-  if (keyEnds !== null && keyEnds < ends) return `Its key ends first, on ${dateOf(keyEnds)}.`;
+  if (ends === null) return keyEnds === null ? 'No end set.' : `Ends on ${dateOf(keyEnds)}, when its key ends.`;
+  if (keyEnds !== null && keyEnds < ends) return `Ends on ${dateOf(keyEnds)}, when its key ends.`;
   return `Ends on ${dateOf(ends)}.`;
 }
 
 /** Why a call was refused, in words. Unknown codes are shown as they came. */
 const REFUSALS: Record<string, string> = {
-  'reason-required': 'It gave no reason',
-  'bot-grant': 'Not in its grant',
+  'reason-required': 'No reason given',
+  'bot-grant': 'Not allowed',
   'bot-paused': 'Paused',
-  'bot-revoked': 'Revoked',
-  'bot-expired': 'Its grant had ended',
-  'not-in-can': 'Its grant does not allow that action',
-  'bot-unbound': 'Its key was not in your key log',
-  'invalid:not-in-scope': 'Its key may not do that',
+  'bot-revoked': 'Removed',
+  'bot-expired': 'Permissions had ended',
+  'not-in-can': 'Action not allowed',
+  'bot-unbound': 'Not confirmed',
+  'invalid:not-in-scope': "Key doesn't allow this",
 };
 
 export interface ActivityRow {
   id: number;
   when: string;
   allowed: boolean;
-  /** 'Allowed', or why it was refused. */
+  /** 'Allowed', or 'Blocked: ' and why. */
   outcome: string;
   /** What it did: 'write in Garden club', 'read', 'agent.status'. */
   what: string;
@@ -248,7 +247,7 @@ export function activityRow(entry: BotActivityView, spaces: GrantSpace[]): Activ
     id: entry.id,
     when: momentOf(entry.at),
     allowed: entry.allowed,
-    outcome: entry.allowed ? 'Allowed' : `Refused: ${REFUSALS[entry.refusal ?? ''] ?? entry.refusal ?? 'refused'}`,
+    outcome: entry.allowed ? 'Allowed' : `Blocked: ${REFUSALS[entry.refusal ?? ''] ?? entry.refusal ?? 'blocked'}`,
     what,
     reason: entry.reason ? `“${entry.reason}”` : 'No reason given',
   };

@@ -176,11 +176,15 @@ describe('createDeviceKeyConnector', () => {
     const { createDeviceKeyConnector } = await import('./deviceKeyConnector');
     agent.status.mockResolvedValueOnce({ isInitialized: true, isUnlocked: false });
     const connector = createDeviceKeyConnector({ plugin, keyHost: () => 'https://b.example' });
-    await expect(connector.initialize(ctx)).rejects.toThrow(/did not accept the key session: its agent is locked/);
+    await expect(connector.initialize(ctx)).rejects.toThrow(
+      'b.example didn’t accept this phone’s sign-in (its agent is locked).',
+    );
     expect(clients.at(-1)?.closed).toBe(true);
 
     agent.status.mockRejectedValueOnce(new Error('RPC error 401: unauthorized'));
-    await expect(connector.initialize(ctx)).rejects.toThrow(/did not accept the key session: RPC error 401/);
+    await expect(connector.initialize(ctx)).rejects.toThrow(
+      'b.example didn’t accept this phone’s sign-in (RPC error 401: unauthorized).',
+    );
     expect(clients.at(-1)?.closed).toBe(true);
   });
 
@@ -228,7 +232,9 @@ describe('createDeviceKeyConnector', () => {
         const failed = await connector.initialize(ctx).catch((e: unknown) => e);
         expect(failed).toBeInstanceOf(KeyLoginUnreachable);
         expect((failed as Error).message).toContain('b.example');
-        expect((failed as Error).message).toContain('offline');
+        expect((failed as Error).message).toBe(
+          'Can’t reach b.example. Check that this phone is online, then try again. It stays signed in.',
+        );
         // Doubling waits, capped, for the minute and no longer.
         expect(time.waits.slice(0, 5)).toEqual([1_000, 2_000, 4_000, 8_000, 15_000]);
         expect(Math.max(...time.waits)).toBe(RETRY_MAX_MS);
@@ -251,7 +257,9 @@ describe('createDeviceKeyConnector', () => {
       const connector = createDeviceKeyConnector({ plugin, keyHost: () => 'https://b.example', ...time });
       const failed = await connector.initialize(ctx).catch((e: unknown) => e);
       expect(failed).toBeInstanceOf(KeyLoginRefused);
-      expect((failed as Error).message).toBe('b.example did not sign this phone in: RPC error 403: not-known');
+      expect((failed as Error).message).toBe(
+        'b.example didn’t accept this phone’s sign-in (RPC error 403: not-known).',
+      );
       expect((failed as Error).cause).toBe(refusal);
       expect(time.waits).toEqual([]);
     });

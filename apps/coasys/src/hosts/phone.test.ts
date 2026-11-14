@@ -72,7 +72,7 @@ describe('the phone identity source', () => {
     expect((await phoneIdentitySource(plugin(refusal('NoKeys')), nav()).state()).did).toBeNull();
     expect((await phoneIdentitySource(plugin(refusal('NoIdentity')), nav()).state()).did).toBeNull();
     await expect(phoneIdentitySource(plugin(refusal('StoreDown')), nav()).state()).rejects.toThrow(
-      /cannot reach your identity store: StoreDown/,
+      'Can’t load your devices. Try again later. (StoreDown)',
     );
   });
 
@@ -198,7 +198,9 @@ describe('the phone host', () => {
     expect(online.isUnreachable?.(new TypeError('Failed to fetch'))).toBe(true);
     expect(online.isUnreachable?.(new Error('The key was refused'))).toBe(false);
     // A key login the executor refused goes back to the choice; anything else does not.
-    expect(online.isRefused?.(new KeyLoginRefused('b.example did not sign this phone in: not-known'))).toBe(true);
+    expect(online.isRefused?.(new KeyLoginRefused('b.example didn’t accept this phone’s sign-in (not-known).'))).toBe(
+      true,
+    );
     expect(online.isRefused?.(new KeyLoginUnreachable(KEY_HOST, null))).toBe(false);
     expect(online.isRefused?.(new Error('The key was refused'))).toBe(false);
     const offline = phoneBaseHost({ plugin: plugin(), fallback, nav: nav(), online: () => false });

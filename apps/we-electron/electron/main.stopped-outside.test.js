@@ -206,7 +206,8 @@ describe.skipIf(process.platform === 'win32' || !existsSync(join(here, 'seed-csp
       expect(state.messageBoxes).toHaveLength(1);
       const [, box] = state.messageBoxes[0];
       expect(box.message).toBe('WE stopped');
-      expect(box.detail).toMatch(/stopped outside the app/);
+      expect(box.detail).toMatch(/Another program stopped it/);
+      expect(box.detail).toMatch(/Start it again from the window or the tray menu/);
       expect(box.detail).toMatch(/Log file: .*executor-0\.log/);
       // The window stays on what it shows: nothing was started to reload it onto.
       expect(state.windows[0].loads).toHaveLength(1);
