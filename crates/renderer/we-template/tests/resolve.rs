@@ -163,11 +163,11 @@ fn each_rows_keep_key_based_ids_when_a_row_is_inserted_first() {
     ids(&first, &mut first_ids);
     let a = first_ids
         .iter()
-        .find(|i| i.as_str().ends_with("#a"))
+        .find(|i| i.as_str().ends_with("#ks:1:a"))
         .cloned();
     let b = first_ids
         .iter()
-        .find(|i| i.as_str().ends_with("#b"))
+        .find(|i| i.as_str().ends_with("#ks:1:b"))
         .cloned();
     let (a, b) = (a.expect("row a must exist"), b.expect("row b must exist"));
 
@@ -175,7 +175,7 @@ fn each_rows_keep_key_based_ids_when_a_row_is_inserted_first() {
     let second = rt.frame(&mut host, &screen).clone();
     let mut second_ids = Vec::new();
     ids(&second, &mut second_ids);
-    assert!(second_ids.iter().any(|i| i.as_str().ends_with("#z")));
+    assert!(second_ids.iter().any(|i| i.as_str().ends_with("#ks:1:z")));
     assert!(
         second_ids.contains(&a),
         "row 'a' must keep its id after the insert: {second_ids:?}"
@@ -282,6 +282,162 @@ fn unkeyed_object_rows_key_by_reference() {
         _ => panic!("row must be a node"),
     };
     assert_eq!(text, "two");
+}
+
+#[test]
+fn duplicate_primitive_rows_get_distinct_identities() {
+    // F1: `<For>` maps by item — `["a", "a", "a~1"]` is three mounts, and
+    // the occurrence suffix is data of its own, never text that can bleed
+    // into a row's value. The old `v:s:` + `~n` encoding gave the second
+    // "a" and the literal "a~1" the same NodeId — aliased locals.
+    let node = schema(json!({
+        "type": "Column",
+        "children": [{
+            "type": "$each",
+            "props": { "items": { "$": "rows" }, "as": "row" },
+            "children": [{
+                "type": "we-text",
+                "$localState": { "note": { "type": "string", "initial": "" } },
+                "props": { "text": { "$": "local.note" } }
+            }]
+        }]
+    }));
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root(
+        "rows",
+        Value::List(Arc::new(
+            ["a", "a", "a~1"].iter().map(|s| Value::from(*s)).collect(),
+        )),
+    );
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag);
+    let root = rt.frame(&mut host, &screen).clone();
+    let mut all_ids = Vec::new();
+    ids(&root, &mut all_ids);
+    let rows: Vec<NodeId> = all_ids
+        .iter()
+        .filter(|i| i.as_str().contains('#'))
+        .cloned()
+        .collect();
+    assert_eq!(rows.len(), 3, "three rows must mount: {all_ids:?}");
+    let unique: std::collections::HashSet<&NodeId> = rows.iter().collect();
+    assert_eq!(
+        unique.len(),
+        3,
+        "each row's identity must be its own: {all_ids:?}"
+    );
+
+    // The aliasing had teeth: a write under one row's id must not be
+    // readable under another's.
+    locals.set(&rows[1], "note", Value::from("second a"));
+    assert!(
+        locals.get(&rows[2], "note").strict_eq(&Value::from("")),
+        "a write on the second \"a\" must not land on the \"a~1\" row: {:?}",
+        locals.get(&rows[2], "note")
+    );
+}
+
+#[test]
+fn mixed_id_types_stay_on_the_keyed_path() {
+    // F1: TS `keyable` tests `Set<string|number>` — `{id: 1}` and
+    // `{id: "1"}` are DISTINCT ids, so the list stays keyed. The old
+    // encoding stringified both to "1", declared a duplicate and fell
+    // back to reference keys — a fresh record with the same id remounted
+    // instead of keeping the row's mount.
+    let node = schema(json!({
+        "type": "Column",
+        "children": [{
+            "type": "$each",
+            "props": { "items": { "$": "rows" }, "as": "row" },
+            "children": [{ "type": "RowItem" }]
+        }]
+    }));
+    let row = |id: Value| Value::Obj(Arc::new([("id".into(), id)].into_iter().collect()));
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root(
+        "rows",
+        Value::List(Arc::new(vec![row(Value::Num(1.0)), row(Value::from("1"))])),
+    );
+    let (mut rt, mut host, _locals, screen) = rig_arc(node, bag.clone());
+    let first = rt.frame(&mut host, &screen).clone();
+    let mut first_ids = Vec::new();
+    ids(&first, &mut first_ids);
+
+    // Same ids, fresh objects — a keyed list keeps its mounts.
+    bag.set_root(
+        "rows",
+        Value::List(Arc::new(vec![row(Value::Num(1.0)), row(Value::from("1"))])),
+    );
+    let second = rt.frame(&mut host, &screen).clone();
+    let mut second_ids = Vec::new();
+    ids(&second, &mut second_ids);
+    assert_eq!(
+        second_ids, first_ids,
+        "fresh records with the same typed ids must keep their mounts"
+    );
+    assert!(
+        !second_ids.iter().any(|i| i.as_str().ends_with("#1")
+            && second_ids
+                .iter()
+                .filter(|j| j.as_str().ends_with("#1"))
+                .count()
+                > 1),
+        "the two ids must not collapse onto one key: {second_ids:?}"
+    );
+}
+
+#[test]
+fn a_keyed_id_cannot_alias_an_item_key() {
+    // F1: a keyed `{id: "v:s:a"}` and a primitive `"a"` are different items;
+    // TS's keyed and item branches never hand them one mount. Swapping the
+    // keyed row for the primitive must produce a different identity — the
+    // old encoding mapped both to `v:s:a` and reused the row's local.
+    let node = schema(json!({
+        "type": "Column",
+        "children": [{
+            "type": "$each",
+            "props": { "items": { "$": "rows" }, "as": "row" },
+            "children": [{
+                "type": "we-text",
+                "$localState": { "note": { "type": "string", "initial": "" } },
+                "props": { "text": { "$": "local.note" } }
+            }]
+        }]
+    }));
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root(
+        "rows",
+        Value::List(Arc::new(vec![Value::Obj(Arc::new(
+            [("id".into(), Value::from("v:s:a"))].into_iter().collect(),
+        ))])),
+    );
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let first = rt.frame(&mut host, &screen).clone();
+    let mut first_ids = Vec::new();
+    ids(&first, &mut first_ids);
+    let keyed_row = first_ids
+        .iter()
+        .find(|i| i.as_str().contains('#'))
+        .expect("the keyed row must mount")
+        .clone();
+    locals.set(&keyed_row, "note", Value::from("keyed row"));
+
+    bag.set_root("rows", Value::List(Arc::new(vec![Value::from("a")])));
+    let second = rt.frame(&mut host, &screen).clone();
+    let mut second_ids = Vec::new();
+    ids(&second, &mut second_ids);
+    let item_row = second_ids
+        .iter()
+        .find(|i| i.as_str().contains('#'))
+        .expect("the primitive row must mount")
+        .clone();
+    assert_ne!(
+        item_row, keyed_row,
+        "a primitive row must not inherit a keyed row's identity"
+    );
+    assert!(
+        locals.get(&item_row, "note").strict_eq(&Value::from("")),
+        "the primitive row starts at its own initial, not the keyed row's edit"
+    );
 }
 
 #[test]

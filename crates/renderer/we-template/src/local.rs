@@ -8,8 +8,9 @@
 //! the resolved tree and dies with it ([`LocalState::retain`]), and a write
 //! that changes nothing — `===` — does not count as a change.
 use std::collections::{HashMap, HashSet};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, Weak};
 
+use indexmap::IndexMap;
 use we_expr::Value;
 
 use crate::NodeId;
@@ -32,9 +33,48 @@ struct Inner {
     /// the tracking effect's previous reading. Fields whose `initial` is a
     /// literal never get an entry, so a static seed never resets.
     initials: HashMap<(NodeId, Arc<str>), Value>,
+    /// `$each` node → its container rows' reference identities — held so a
+    /// row's key is the live allocation, never a reusable address.
+    each_refs: HashMap<NodeId, RefIds>,
     /// Bumped by [`LocalState::set`] when a write changes a field — one of the
     /// three counters that decide whether the next frame re-resolves.
     version: u64,
+}
+
+/// Per-`$each` reference memory: the sequence number each row allocation
+/// was first seen at. The map's key is the row's data address; the stored
+/// [`Weak`] answers whether that address still means the same allocation —
+/// a freed address can never hand a different row the old row's number
+/// (Solid's reference identity, kept across resolves).
+#[derive(Debug, Default)]
+struct RefIds {
+    next: usize,
+    objs: HashMap<usize, (usize, Weak<IndexMap<Arc<str>, Value>>)>,
+    lists: HashMap<usize, (usize, Weak<Vec<Value>>)>,
+}
+
+impl RefIds {
+    /// The allocation's sequence — fresh when the address is unknown, and
+    /// also fresh when its previous occupant died: the new allocation at
+    /// that address is a different row, not the old one back again.
+    fn of<T>(next: &mut usize, map: &mut HashMap<usize, (usize, Weak<T>)>, arc: &Arc<T>) -> usize {
+        let ptr = Arc::as_ptr(arc) as usize;
+        if let Some((seq, weak)) = map.get(&ptr) {
+            if weak.upgrade().is_some() {
+                return *seq;
+            }
+        }
+        let seq = *next;
+        *next += 1;
+        map.insert(ptr, (seq, Arc::downgrade(arc)));
+        seq
+    }
+
+    /// Drop entries whose allocation is gone — dead memory, not identity.
+    fn prune(&mut self) {
+        self.objs.retain(|_, (_, w)| w.upgrade().is_some());
+        self.lists.retain(|_, (_, w)| w.upgrade().is_some());
+    }
 }
 
 impl LocalState {
@@ -125,6 +165,21 @@ impl LocalState {
         }
     }
 
+    /// The `$each` at `node`: the identity sequence this container row's
+    /// allocation holds — stable while the allocation is, and never
+    /// inherited by a different allocation that later reuses the address.
+    pub fn row_ref(&self, node: &NodeId, item: &Value) -> usize {
+        let Ok(mut inner) = self.inner.write() else {
+            return 0;
+        };
+        let refs = inner.each_refs.entry(node.clone()).or_default();
+        match item {
+            Value::Obj(o) => RefIds::of(&mut refs.next, &mut refs.objs, o),
+            Value::List(l) => RefIds::of(&mut refs.next, &mut refs.lists, l),
+            _ => 0,
+        }
+    }
+
     /// `$touch` — mark the field edited (WE: `setTouched` for validation).
     /// Bumps the version; a touched state can flip a guard.
     pub fn touch(&self, node: &NodeId, field: &str) {
@@ -160,6 +215,10 @@ impl LocalState {
             inner.fields.retain(|(node, _), _| live.contains(node));
             inner.touched.retain(|(node, _)| live.contains(node));
             inner.initials.retain(|(node, _), _| live.contains(node));
+            inner.each_refs.retain(|node, _| live.contains(node));
+            for refs in inner.each_refs.values_mut() {
+                refs.prune();
+            }
         }
     }
 }

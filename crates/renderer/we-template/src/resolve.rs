@@ -242,19 +242,26 @@ fn step(name: &str, nth: usize) -> String {
     }
 }
 
-/// The row keys an `$each` list gets: each row's `id` when every row is a
-/// plain object with a distinct string/number `id` (WE's `keyable` in
-/// keptRows.ts). Rows that are not `id`-keyable carry their own identity —
-/// `<For>` keys by item, not position: primitives by value, containers by
-/// reference, and a `~n` occurrence suffix keeps duplicates distinct.
-fn each_keys(items: &[Value]) -> Vec<String> {
+/// The row keys an `$each` list gets — a typed identity, so two different
+/// rows can never land on the same [`NodeId`]:
+///
+/// - every row a plain object with a distinct, typed `id` → the keyed
+///   path (WE's `keyable` in keptRows.ts): `ks`/`kn` + the id — a
+///   `Set<string | number>` distinguishes `1` from `"1"`, so the encoding
+///   must too, and a keyed row can never alias a same-text item row.
+/// - otherwise the item path (`<For>`'s mapArray): `i` + a type tag and
+///   the value — a string carries its byte length ahead of its bytes, so
+///   no value text can bleed into the `~n` occurrence suffix — while
+///   containers take a reference sequence from [`LocalState::row_ref`],
+///   keyed by the row's live allocation, never a reusable address.
+fn each_keys(items: &[Value], id: &NodeId, cx: &ResolveCx) -> Vec<String> {
     let mut ids = Vec::with_capacity(items.len());
     let keyed = !items.is_empty() && {
         let mut seen = HashSet::with_capacity(items.len());
         items.iter().all(|item| {
-            row_id(item).is_some_and(|id| {
-                ids.push(id.clone());
-                seen.insert(id)
+            row_id(item).is_some_and(|key| {
+                ids.push(key.clone());
+                seen.insert(key)
             })
         })
     };
@@ -265,7 +272,7 @@ fn each_keys(items: &[Value]) -> Vec<String> {
     items
         .iter()
         .map(|item| {
-            let base = row_key(item);
+            let base = row_key(item, id, cx);
             let seen = seen.entry(base.clone()).or_insert(0);
             let key = if *seen == 0 {
                 base
@@ -278,27 +285,32 @@ fn each_keys(items: &[Value]) -> Vec<String> {
         .collect()
 }
 
-/// An unkeyed row's identity: `v:` + a type-tagged value for primitives,
-/// `r:` + the shared address for containers — the same `===`/reference
-/// reading Solid's `mapArray` gives its items.
-fn row_key(item: &Value) -> String {
+/// An unkeyed row's item identity: the type tag, then the value — a
+/// string's byte length ahead of it, so value text stays inside the field
+/// it belongs to. Containers answer the allocation's sequence within this
+/// `$each` (`r:5`-style, but weak-held).
+fn row_key(item: &Value, id: &NodeId, cx: &ResolveCx) -> String {
     match item {
-        Value::Str(s) => format!("v:s:{s}"),
-        Value::Num(n) => format!("v:n:{}", Value::Num(*n).js_string()),
-        Value::Bool(b) => format!("v:b:{b}"),
-        Value::Null => "v:null".into(),
-        Value::Undefined => "v:undefined".into(),
-        Value::Obj(o) => format!("r:{}", Arc::as_ptr(o) as usize),
-        Value::List(l) => format!("r:{}", Arc::as_ptr(l) as usize),
-        _ => format!("v:{}", item.to_text()),
+        Value::Str(s) => format!("is:{}:{}", s.len(), s),
+        Value::Num(n) => format!("in:{}", Value::Num(*n).js_string()),
+        Value::Bool(b) => format!("ib:{b}"),
+        Value::Null => "inull".into(),
+        Value::Undefined => "iundef".into(),
+        Value::Obj(_) | Value::List(_) => format!("ir:{}", cx.locals.row_ref(id, item)),
+        other => {
+            let text = other.to_text();
+            format!("ix:{}:{}", text.len(), text)
+        }
     }
 }
 
+/// A row's keyed identity — `ks`/`kn` namespaces a string and a number id
+/// apart, and `k…` apart from every `i…` item key.
 fn row_id(item: &Value) -> Option<String> {
     let Value::Obj(o) = item else { return None };
     match o.get("id") {
-        Some(Value::Str(s)) => Some(s.to_string()),
-        Some(Value::Num(n)) => Some(Value::Num(*n).js_string()),
+        Some(Value::Str(s)) => Some(format!("ks:{}:{}", s.len(), s)),
+        Some(Value::Num(n)) => Some(format!("kn:{}", Value::Num(*n).js_string())),
         _ => None,
     }
 }
@@ -572,7 +584,11 @@ fn resolve_node(
                 .and_then(|a| a.as_str())
                 .unwrap_or("item");
             let row_step = step(&step_name(row_schema), 0);
-            let keys = each_keys(&rows);
+            // The node mounts its own id — it holds the rows' reference
+            // memory (`row_ref`) across resolves, so `retain` must keep it.
+            cx.live.insert(id.clone());
+            cx.parents.insert(id.clone(), parent.clone());
+            let keys = each_keys(&rows, &id, cx);
             let mut out = Vec::with_capacity(rows.len());
             for (index, item) in rows.iter().enumerate() {
                 let mut row_scope = scope.clone();
