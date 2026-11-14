@@ -20,10 +20,13 @@
  *
  * Output:
  * - `fixtures/coasys/snapshot.json` — `{ meta, stores, queries, invokes, routes }`. `routes.<id>`
- *   is the primary shape — per-route truth: params, member values, query answers keyed by the
- *   full resolved request, skipped queries marked as skipped. The flat `stores`/`queries`/
- *   `invokes` tables are exactly the landing route's capture (`meta.flatScope`), kept for
- *   consumers that only know the flat shape — see `fixtures/coasys/README.md`.
+ *   is the primary shape — per-route truth: params, member values, and one query capture per
+ *   declaration, each carrying its `scope` (the `$queries` node's canonical path in the
+ *   bundle), the resolved `dataset` it ran against, and the resolved `request` — or the
+ *   authored `descriptor` for skipped/failed entries. The flat `stores`/`queries`/`invokes`
+ *   tables are a lossy projection of the landing route's capture (`meta.flatScope`, `null`
+ *   when it was not recorded), kept for consumers that only know the flat shape — see
+ *   `fixtures/coasys/README.md`.
  * - `target/coasys-web/<route>-<theme>.png` — one per route × theme.
  *
  * Environment:
@@ -233,24 +236,45 @@ function memberPaths(expr, out, surface) {
 }
 
 /**
+ * The path segment one array element occupies in the canonical scope path. An element that names
+ * itself — a route's `path`, a panel's or page's `id` — names its segment (`routes[/calls]`,
+ * `panels[inspector]`); anything else is positional (`children[3]`). Stable across runs because
+ * the bundle is data; the id/path form also survives a sibling being inserted before it.
+ */
+function arraySegment(key, element, index) {
+  if (element && typeof element === 'object' && !Array.isArray(element)) {
+    if (typeof element.id === 'string') return `${key}[${element.id}]`;
+    if (typeof element.path === 'string') return `${key}[${element.path}]`;
+  }
+  return `${key}[${index}]`;
+}
+
+/**
  * Walk one schema surface collecting everything the capture needs:
  * `{ $ }` expression strings (member paths), `$invoke` targets, `$queries` maps and `$agent` uses.
+ *
+ * `path` is the canonical declaration path of `node` inside the bundle — `template.meta.panels[…]`,
+ * `template.routes[…]`, `pages[…]`, `app.…` — seeded so the same node gets the same scope id
+ * whether the scan reached it through its own surface (`route:/calls`) or through the recursive
+ * `root` walk that passes over it on the way past. A `$queries` entry's identity is that path;
+ * `scope` on the capture records it so a consumer can bind each answer to its declaration.
  */
-function scanSurface(node, bag, surface) {
+function scanSurface(node, bag, surface, path) {
   if (node === null || node === undefined) return;
   if (Array.isArray(node)) {
-    for (const item of node) scanSurface(item, bag, surface);
+    for (const item of node) scanSurface(item, bag, surface, path);
     return;
   }
   if (typeof node !== 'object') return;
   for (const [key, value] of Object.entries(node)) {
     if (key === '$queries' && value && typeof value === 'object') {
       // Every descriptor per name — two surfaces ask `signalTypes` with different sorts, and a
-      // name-keyed map silently kept the last. Identity is the resolved request, decided at run
-      // time; the scan keeps them all.
+      // name-keyed map silently kept the last. Identity is the declaration site (scope) plus the
+      // resolved request, decided at run time; the scan keeps them all.
+      const scope = path.join('.');
       for (const [name, descriptor] of Object.entries(value)) {
         const list = bag.queries.get(name) ?? [];
-        list.push({ descriptor, surface });
+        list.push({ descriptor, surface, scope });
         bag.queries.set(name, list);
       }
       continue;
@@ -268,23 +292,47 @@ function scanSurface(node, bag, surface) {
         memberPaths(typeof node.props.did === 'string' ? node.props.did : node.props.did?.$, bag.members, surface);
       bag.agents.add(node.props?.as ?? 'agent');
     }
-    scanSurface(value, bag, surface);
+    if (Array.isArray(value)) {
+      for (let i = 0; i < value.length; i += 1) {
+        scanSurface(value[i], bag, surface, [...path, arraySegment(key, value[i], i)]);
+      }
+    } else {
+      scanSurface(value, bag, surface, [...path, key]);
+    }
   }
 }
 
-/** The bundle's surfaces keyed the way the route table names them. */
+/**
+ * The bundle's surfaces keyed the way the route table names them, each with the canonical
+ * scope path the scan seeds — the same path the recursive `root` walk computes for the same
+ * node, so a declaration's identity does not depend on which surface discovered it.
+ */
 function surfacesOf(bundle) {
   const out = new Map();
   const space = bundle.templates?.find((t) => (t.meta?.role ?? 'shell') !== 'view') ?? bundle.templates?.[0];
   // The template object IS the root schema node ({type, props, children} at top level).
-  out.set('root', space);
-  for (const panel of space?.meta?.panels ?? []) out.set(`panel:${panel.id}`, panel.node ?? panel);
-  for (const route of space?.routes ?? []) out.set(`route:${route.path}`, route);
-  for (const [key, view] of Object.entries(space?.meta?.recordViews ?? {})) out.set(`recordView:${key}`, view);
-  for (const page of bundle.pages ?? []) out.set(`page:${page.id}`, page);
+  out.set('root', { node: space, scope: ['template'] });
+  for (const panel of space?.meta?.panels ?? []) {
+    out.set(`panel:${panel.id}`, {
+      node: panel.node ?? panel,
+      scope: ['template', 'meta', `panels[${panel.id}]`, ...(panel.node ? ['node'] : [])],
+    });
+  }
+  for (const route of space?.routes ?? []) {
+    out.set(`route:${route.path}`, { node: route, scope: ['template', `routes[${route.path}]`] });
+  }
+  for (const [key, view] of Object.entries(space?.meta?.recordViews ?? {})) {
+    out.set(`recordView:${key}`, { node: view, scope: ['template', 'meta', 'recordViews', key] });
+  }
+  for (const page of bundle.pages ?? []) out.set(`page:${page.id}`, { node: page, scope: [`pages[${page.id}]`] });
   if (bundle.app) {
-    out.set('app', bundle.app);
-    for (const panel of bundle.app.meta?.panels ?? []) out.set(`panel:app:${panel.id}`, panel.node ?? panel);
+    out.set('app', { node: bundle.app, scope: ['app'] });
+    for (const panel of bundle.app.meta?.panels ?? []) {
+      out.set(`panel:app:${panel.id}`, {
+        node: panel.node ?? panel,
+        scope: ['app', 'meta', `panels[${panel.id}]`, ...(panel.node ? ['node'] : [])],
+      });
+    }
   }
   return out;
 }
@@ -356,7 +404,7 @@ for (const route of ROUTES) {
   if (args.routes && !args.routes.split(',').includes(route.id)) continue;
   const bag = { members: new Map(), invokes: new Set(), queries: new Map(), agents: new Set() };
   for (const name of route.surfaces) {
-    for (const surface of surfaceFor(surfaces, name)) scanSurface(surface, bag, name);
+    for (const surface of surfaceFor(surfaces, name)) scanSurface(surface.node, bag, name, surface.scope);
   }
   wanted.set(route.id, bag);
 }
@@ -429,12 +477,13 @@ const snapshot = {
     fixture: info.fixture,
     dataset: info.datasetId,
     /*
-      `stores`/`queries`/`invokes` hold exactly this route's capture — the landing route — for
-      the consumers that only know the flat shape. Per-route truth lives in `routes.<id>`; read
-      it there. `captureTheme` is set from the first route's applied theme, asserted equal on
-      every route.
+      `stores`/`queries`/`invokes` repeat this one route's capture — the landing route — for
+      the consumers that only know the flat shape; `null` when a `--routes` subset left the
+      landing route out, in which case the flat tables stay empty rather than name a scope
+      they do not hold. Per-route truth lives in `routes.<id>`; read it there. `captureTheme`
+      is set from the first route's applied theme, asserted equal on every route.
     */
-    flatScope: 'index',
+    flatScope: null,
   },
   stores: {},
   queries: {},
@@ -526,45 +575,70 @@ for (const route of ROUTES) {
   /*
     Queries — every descriptor the surfaces declare, resolved the way `runQuery` resolves it now.
 
-    An answer's identity is the *resolved request* (entity + scope/where/sort/limit), not the
-    local name: the tree's `signalTypes` sorts by name and the inspector's does not, and those
-    are different answers to different questions. Descriptors resolving to the same request
-    dedup to one capture (keeping their surfaces). A descriptor the renderer would not run —
-    `when` false, unanchored scope — is recorded as `skipped`, never as an answered empty list;
-    a real empty answer keeps `rows: []` and the two stay distinguishable.
+    A capture's identity is its declaration plus what the bridge resolved: `scope` — the
+    canonical path of the `$queries` node in the bundle — the `dataset` the query ran
+    against, and the resolved `request`. Not the local name: the tree's `signalTypes` sorts
+    by name and the inspector's does not, and those are different answers to different
+    questions. One capture per declaration per route — a same-named query under another
+    declaration (`scope`), or against another dataset, is asked and recorded separately and
+    never reuses these rows. `surfaces` says which of the route's scanned surfaces declare
+    it — the static scan reaches a declaration both through its own surface and through the
+    recursive `root` walk.
+
+    A descriptor the renderer would not run — `when` false, unanchored scope — is recorded
+    as `skipped`, never as an answered empty list; a real empty answer keeps `rows: []` and
+    the two stay distinguishable. Skipped and failed captures keep the authored `descriptor`
+    beside whatever of the `request` resolved, so the capture names the question even when
+    there is no answer to bind.
   */
-  const captures = new Map(); // dedup key → capture
-  for (const [name, entries] of [...bag.queries].sort(([a], [b]) => a.localeCompare(b))) {
-    for (const { descriptor, surface } of entries) {
-      const result = await ev((d) => window.__weRecord.runQuery(d), descriptor);
-      let key;
-      let capture;
-      if (result.ok && !result.skipped) {
-        key = `${name}\n${JSON.stringify(canon(result.request))}`;
-        capture = captures.get(key) ?? { name, request: result.request, rows: result.rows, surfaces: [] };
-      } else if (result.ok) {
-        key = `${name}\nskipped:${result.skipped}\n${JSON.stringify(canon(result.request ?? descriptor))}`;
-        capture = captures.get(key) ?? {
-          name,
-          skipped: result.skipped,
-          ...(result.request !== undefined ? { request: result.request } : {}),
-          surfaces: [],
-        };
-      } else {
-        key = `${name}\nfailed:${result.reason}\n${JSON.stringify(canon(descriptor))}`;
-        capture = captures.get(key) ?? { name, failed: result.reason, surfaces: [] };
-        const seen = notCaptured.get(`$queries.${name}`) ?? { reason: result.reason, routes: [] };
-        seen.routes.push(route.id);
-        notCaptured.set(`$queries.${name}`, seen);
-      }
-      capture.surfaces = [...new Set([...capture.surfaces, surface])].sort();
-      captures.set(key, capture);
+  const declared = new Map(); // `${scope}\n${name}` — one declaration → { descriptor, scope, name, surfaces }
+  for (const [name, entries] of bag.queries) {
+    for (const { descriptor, surface, scope } of entries) {
+      const key = `${scope}\n${name}`;
+      const entry = declared.get(key) ?? { descriptor, scope, name, surfaces: new Set() };
+      entry.surfaces.add(surface);
+      declared.set(key, entry);
     }
   }
-  const queries = [...captures.values()].sort(
+  const queries = [];
+  for (const { descriptor, scope, name, surfaces } of [...declared.values()].sort(
+    (a, b) => a.scope.localeCompare(b.scope) || a.name.localeCompare(b.name),
+  )) {
+    const result = await ev((d) => window.__weRecord.runQuery(d), descriptor);
+    const surfacesList = [...surfaces].sort();
+    const identity = { name, scope, dataset: result.dataset ?? null };
+    if (result.ok && !result.skipped) {
+      queries.push({ ...identity, request: result.request, rows: result.rows, surfaces: surfacesList });
+      continue;
+    }
+    if (result.ok) {
+      queries.push({
+        ...identity,
+        skipped: result.skipped,
+        ...(result.request !== undefined ? { request: result.request } : {}),
+        descriptor,
+        surfaces: surfacesList,
+      });
+      continue;
+    }
+    queries.push({
+      ...identity,
+      failed: result.reason,
+      ...(result.request !== undefined ? { request: result.request } : {}),
+      descriptor,
+      surfaces: surfacesList,
+    });
+    const seen = notCaptured.get(`$queries.${name}`) ?? { reason: result.reason, routes: [] };
+    seen.routes.push(route.id);
+    notCaptured.set(`$queries.${name}`, seen);
+  }
+  queries.sort(
     (a, b) =>
       a.name.localeCompare(b.name) ||
-      JSON.stringify(canon(a.request ?? null)).localeCompare(JSON.stringify(canon(b.request ?? null))),
+      a.scope.localeCompare(b.scope) ||
+      JSON.stringify(canon(a.request ?? a.descriptor ?? null)).localeCompare(
+        JSON.stringify(canon(b.request ?? b.descriptor ?? null)),
+      ),
   );
 
   // $agent — the person page's profile load.
@@ -602,27 +676,54 @@ for (const route of ROUTES) {
 }
 
 /*
-  The flat tables are exactly the landing route's capture — nothing merged across routes, no
-  placeholders for questions a route never asked. They exist for consumers that only know
-  `{stores, queries, invokes}`; `routes.<id>` is the truth and `meta.flatScope` says which
-  route the tables repeat.
+  The flat tables are a lossy projection of the landing route's capture alone — nothing merged
+  across routes, no placeholders for questions a route never asked: `queries` keeps only the
+  first answered request per name (a `{name: rows}` table cannot hold two answers honestly —
+  part of why the real data lives in `routes`), `invokes` only the targets that one route
+  declares. They exist for consumers that only know `{stores, queries, invokes}`;
+  `meta.flatScope` says which route they repeat — `null` when a `--routes` subset left it
+  out, and then the tables stay empty rather than claim a scope they do not hold.
 */
-const landing = snapshot.routes[snapshot.meta.flatScope];
+const landing = snapshot.routes.index;
+snapshot.meta.flatScope = landing ? 'index' : null;
 if (landing) {
   snapshot.stores = canon(landing.members);
   const flatQueries = {};
   for (const capture of landing.queries) {
-    // First request per name wins — a `{name: rows}` table cannot hold two answers honestly,
-    // which is part of why the real data lives in `routes`.
+    // First answered request per name wins — the projection cannot hold more than that.
     if (capture.rows === undefined || capture.name in flatQueries) continue;
     flatQueries[capture.name] = capture.rows;
   }
   snapshot.queries = canon(flatQueries);
+  snapshot.invokes = canon(Object.fromEntries(landing.invokeTargets.map((t) => [t, null])));
 }
 snapshot.meta.captureTheme = baselineTheme?.resolved ?? null;
-snapshot.invokes = canon(
-  Object.fromEntries([...new Set([...wanted.values()].flatMap((b) => [...b.invokes]))].sort().map((t) => [t, null])),
-);
+
+/*
+  The contract a reader binds on: every capture — answered, skipped or failed — names its
+  declaration (`scope`), the resolved `dataset`, and the question it answered or would have
+  asked (`request`, or the authored `descriptor` where resolution could not finish). Checked
+  before photography and writing, so a capture a consumer cannot bind fails the run rather
+  than the snapshot.
+*/
+for (const [routeId, routeCapture] of Object.entries(snapshot.routes)) {
+  for (const capture of routeCapture.queries ?? []) {
+    const at = `routes.${routeId}.queries['${capture.name}']`;
+    const states = ['rows', 'skipped', 'failed'].filter((k) => capture[k] !== undefined);
+    if (typeof capture.scope !== 'string' || !capture.scope) throw new Error(`${at}: no declaration scope`);
+    if (!('dataset' in capture)) throw new Error(`${at}: no resolved dataset`);
+    if (states.length !== 1) {
+      throw new Error(`${at}: exactly one of rows/skipped/failed — found ${states.join('+') || 'none'}`);
+    }
+    if (capture.rows !== undefined && capture.request === undefined) {
+      throw new Error(`${at}: answered capture has no resolved request`);
+    }
+    if ((capture.skipped !== undefined || capture.failed !== undefined) && capture.descriptor === undefined) {
+      throw new Error(`${at}: ${capture.skipped ?? 'failed'} capture has no authored descriptor`);
+    }
+    if (!Array.isArray(capture.surfaces)) throw new Error(`${at}: no surfaces`);
+  }
+}
 
 // ─── Pass 2 — photography ─────────────────────────────────────────────────────
 // The data is already recorded; themes may change freely here. After every switch the *applied*

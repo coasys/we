@@ -230,14 +230,16 @@ export function RecorderBridge() {
     };
 
     /**
-     * One `$queries` entry, run the way `runQuery` does. Answers
-     * `{ ok, rows | skipped | error }`; rows are serialised model instances.
+     * One `$queries` entry, run the way `runQuery` does. Every outcome — answered,
+     * skipped or failed — reports the identity the capture binds to: `dataset`, the
+     * resolved dataset's id, and `request`, the resolved request, whenever they can
+     * be computed. Rows are serialised model instances.
      */
     const runQuery = async (descriptor: Json, context: Json = {}) => {
-      try {
-        const { entity, subscribe: _sub, dataset: datasetPath, include, when, ...params } = descriptor;
+      const { entity, subscribe: _sub, dataset: datasetPath, include, when, ...params } = descriptor;
 
-        let p: unknown = null;
+      let p: unknown = null;
+      try {
         if (typeof datasetPath === 'string' && datasetPath) {
           let target: unknown = stores;
           for (const part of datasetPath.split('.')) target = (target as Json)?.[part];
@@ -247,10 +249,46 @@ export function RecorderBridge() {
           const currentDataset = stores.$currentDataset as (() => unknown) | undefined;
           p = typeof currentDataset === 'function' ? currentDataset() : null;
         }
-        if (!p) return { ok: false as const, reason: 'no-dataset' };
+      } catch {
+        p = null;
+      }
+      // Which dataset the answer belongs to — the handle's own id when it carries one
+      // (the in-memory backend's does), a string handle itself, else nothing claimable.
+      const dataset =
+        typeof p === 'string'
+          ? p
+          : p && typeof p === 'object' && typeof (p as { id?: unknown }).id === 'string'
+            ? (p as { id: string }).id
+            : null;
+      if (!p) return { ok: false as const, reason: 'no-dataset', dataset };
 
+      /**
+       * The request as it resolved — the question this capture names, whatever its state.
+       * Best-effort for skipped/failed entries: a descriptor whose tokens exist only inside
+       * a row context resolves to less than the authored form or to nothing, and the authored
+       * `descriptor` the recorder keeps is then the record of what was asked.
+       */
+      const resolveRequest = (): Json | undefined => {
+        try {
+          const resolved = deepResolveTokens(params, stores, context) as Json;
+          if (resolved.where && typeof resolved.where === 'object') {
+            const pruned = pruneUnresolvedWhere(resolved.where as Json);
+            if (pruned) resolved.where = pruned;
+            else delete resolved.where;
+          }
+          const name =
+            typeof entity === 'string' ? entity : (deepResolveTokens(entity, stores, context) as string | undefined);
+          const request = { ...(name !== undefined ? { entity: name } : {}), ...resolved };
+          return Object.keys(request).length ? request : undefined;
+        } catch {
+          return undefined;
+        }
+      };
+
+      try {
         if (when !== undefined && !deepResolveTokens(when, stores, context)) {
-          return { ok: true as const, skipped: 'when' };
+          const request = resolveRequest();
+          return { ok: true as const, skipped: 'when', dataset, ...(request ? { request } : {}) };
         }
 
         const resolvedParams = deepResolveTokens(params, stores, context) as Json;
@@ -259,37 +297,48 @@ export function RecorderBridge() {
           if (pruned) resolvedParams.where = pruned;
           else delete resolvedParams.where;
         }
-        // An unanchored scope is treated as a falsy `when` by the renderer — not asked at all.
-        if (resolvedParams.scope !== undefined && !scopeIsAnchored(resolvedParams.scope)) {
-          return { ok: true as const, skipped: 'unanchored-scope', request: resolvedParams };
-        }
-        if (include !== undefined) resolvedParams.include = deepResolveTokens(include, stores, context);
-
         const entityName =
           typeof entity === 'string' ? entity : (deepResolveTokens(entity, stores, context) as string | undefined);
-        if (!entityName) return { ok: false as const, reason: 'no-entity' };
+        // An unanchored scope is treated as a falsy `when` by the renderer — not asked at all.
+        if (resolvedParams.scope !== undefined && !scopeIsAnchored(resolvedParams.scope)) {
+          return {
+            ok: true as const,
+            skipped: 'unanchored-scope',
+            dataset,
+            request: { ...(entityName !== undefined ? { entity: entityName } : {}), ...resolvedParams },
+          };
+        }
+        if (include !== undefined) resolvedParams.include = deepResolveTokens(include, stores, context);
+        if (!entityName) {
+          return { ok: false as const, reason: 'no-entity', dataset, request: { ...resolvedParams } };
+        }
 
         const adapter = stores.$queryAdapter;
-        if (typeof adapter !== 'object' || adapter === null) return { ok: false as const, reason: 'no-query-adapter' };
-        const routed = routeQuery({ entity: entityName, ...resolvedParams }, adapter as never);
-        if (!routed.ok) return { ok: false as const, reason: `routed-error: ${routed.error}` };
+        const request = { entity: entityName, ...resolvedParams };
+        if (typeof adapter !== 'object' || adapter === null) {
+          return { ok: false as const, reason: 'no-query-adapter', dataset, request };
+        }
+        const routed = routeQuery(request, adapter as never);
+        if (!routed.ok) {
+          return { ok: false as const, reason: `routed-error: ${routed.error}`, dataset, request };
+        }
 
         const getEntity = stores.$getEntity as
           ((name: string) => { findAll(d: unknown, o: Json): Promise<Row[]> }) | undefined;
         const getEntityForDataset = stores.$getEntityForDataset as
           ((name: string, d: unknown) => { findAll(d: unknown, o: Json): Promise<Row[]> } | undefined) | undefined;
-        if (!getEntity) return { ok: false as const, reason: 'no-get-entity' };
+        if (!getEntity) return { ok: false as const, reason: 'no-get-entity', dataset, request };
         const Model = getEntityForDataset?.(entityName, p) ?? getEntity(entityName);
         const rows = await Model.findAll(p, routed.options as Json);
         const normalise = rows.map((row) => ({ id: (row as { id?: unknown }).id, ...(row as Row) }));
         const s = serializable(normalise);
-        if (!s.ok) return { ok: false as const, reason: `serialize: ${s.reason}` };
+        if (!s.ok) return { ok: false as const, reason: `serialize: ${s.reason}`, dataset, request };
         // The full resolved request the answer belongs to — the identity a snapshot keys on,
         // not the local query name: two surfaces asking `signalTypes` with different sorts are
         // two different questions.
-        return { ok: true as const, request: { entity: entityName, ...resolvedParams }, rows: s.value as Row[] };
+        return { ok: true as const, dataset, request, rows: s.value as Row[] };
       } catch (error) {
-        return { ok: false as const, reason: `threw: ${(error as Error).message}` };
+        return { ok: false as const, reason: `threw: ${(error as Error).message}`, dataset };
       }
     };
 
