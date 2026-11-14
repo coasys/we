@@ -183,6 +183,37 @@ fn p2_2_round_ts_digits_and_signed_zero() {
         call_json("round", &[1.into(), 1e21.into()], &env),
         json!({ "$nan": true })
     );
+    // N1: `Math.round` decides on the real fractional part — it does NOT
+    // round an intermediate `x + 0.5` first.
+    // The representable predecessor of 0.5: `x + 0.5` is exactly 1, so
+    // floor(x + 0.5) gives 1 where Math.round gives 0.
+    assert_eq!(
+        call_json("round", &[0.49999999999999994.into()], &env),
+        json!(0)
+    );
+    // An already-integral double above 2^52 stays itself; `x + 0.5` ties to
+    // the adjacent *even* integer, which is a different answer.
+    assert_eq!(
+        call_json("round", &[4503599627370497f64.into()], &env),
+        json!(4503599627370497i64)
+    );
+    assert_eq!(
+        call_json("round", &[(-4503599627370497f64).into()], &env),
+        json!(-4503599627370497i64)
+    );
+    // The halves, checked against TS: -0.5 → -0 and -2.5 → -2 (above),
+    // 2.5 → 3.
+    assert_eq!(call_json("round", &[2.5.into()], &env), json!(3));
+    // With digits — `0.49999999999999994 * 10` is `4.999999999999999` →
+    // Math.round → 5 → 0.5; `1.005 * 100` is `100.49999999999999` → 1.
+    assert_eq!(
+        call_json("round", &[0.49999999999999994.into(), 1.into()], &env),
+        json!(0.5)
+    );
+    assert_eq!(
+        call_json("round", &[1.005.into(), 2.into()], &env),
+        json!(1)
+    );
 }
 
 /// Every text built-in starts with `asText(arg)` — a number, a list, a bool

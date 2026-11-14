@@ -379,14 +379,19 @@ fn round(args: &[Value], _env: &dyn Env) -> Value {
     (js_round(n * factor) / factor).into()
 }
 
-/// `Math.round` — `floor(x + 0.5)` halves toward +∞, but a zero result keeps
-/// `x`'s sign (`Math.round(-0.1)` is `-0`, not `+0`), and a non-finite `x`
-/// rounds to itself.
+/// `Math.round` — the integral value nearest `x`, halves toward +∞. The
+/// decision reads the real fractional part, NOT `floor(x + 0.5)`: that
+/// addition rounds first (`0.49999999999999994 + 0.5` is exactly 1;
+/// `4503599627370497 + 0.5` ties to the even 4503599627370498). `x - x.floor()`
+/// is exact — integral inputs and every |x| ≥ 2^52 give 0 — so a zero result
+/// keeps `x`'s sign (`Math.round(-0.5)` is `-0`), and a non-finite `x` rounds
+/// to itself.
 fn js_round(x: f64) -> f64 {
     if !x.is_finite() {
         return x;
     }
-    let rounded = (x + 0.5).floor();
+    let down = x.floor();
+    let rounded = if x - down >= 0.5 { down + 1.0 } else { down };
     if rounded == 0.0 && x.is_sign_negative() {
         -0.0
     } else {
