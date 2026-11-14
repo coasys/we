@@ -152,12 +152,12 @@ describe('the phone custody host', () => {
 
   it('blocks changes on a phone that cannot reach its store, or was removed', async () => {
     const offline = await phoneCustodyHost(plugin({ status: refusal('Rpc', 'store-unavailable') })).publicState();
-    expect(offline.blocked).toMatch(/cannot reach your identity store: store-unavailable/);
+    expect(offline.blocked).toMatch(/Can’t load your devices\. Try again later\. \(store-unavailable\)/);
     expect(offline.thisDevice).toEqual({ keyId: null, kind: 'phone-app' });
 
     const removed = plugin({ status: status({ revoked: 7 }) });
     const state = await phoneCustodyHost(removed).publicState();
-    expect(state.blocked).toMatch(/removed from your identity/);
+    expect(state.blocked).toMatch(/This phone was removed/);
     expect(state.did).toBe(DID);
     expect(removed.devices).not.toHaveBeenCalled();
   });

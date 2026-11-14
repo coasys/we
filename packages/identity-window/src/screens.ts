@@ -271,8 +271,8 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
       };
     case 'enter-offer':
       return {
-        title: 'Join your identity',
-        lead: 'On a device that has your identity, choose “Add a device”. Scan the QR code it shows, or paste its link here.',
+        title: `Link this ${noun}`,
+        lead: 'On your computer, go to Settings > Devices and choose “Link a device”. Scan the code it shows.',
       };
     case 'code-sent':
       return {
@@ -288,12 +288,12 @@ export function heading(screen: Screen, noun: DeviceNoun = 'computer'): { title:
       return deviceMatch(screen, noun);
     case 'joined':
       return {
-        title: 'This device is one of yours now',
+        title: `This ${noun} is linked`,
         lead: `It signs for you as ${screen.keyId}. It does not hold your master key, so it cannot add or remove devices.`,
       };
     case 'master-taken':
       return {
-        title: 'This device keeps your master key',
+        title: `This ${noun} has the master key`,
         lead: ['It can add and remove your devices now.', ...(screen.note ? [screen.note] : [])].join(' '),
       };
     case 'request':

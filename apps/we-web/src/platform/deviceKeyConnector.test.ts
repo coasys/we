@@ -241,7 +241,7 @@ describe('createDeviceKeyConnector', () => {
         const failed = await connector.initialize(ctx).catch((e: unknown) => e);
         expect(failed).toBeInstanceOf(KeyLoginUnreachable);
         expect((failed as Error).message).toContain('b.example');
-        expect((failed as Error).message).toContain('offline');
+        expect((failed as Error).message).toContain('online');
         expect(ordinary.initialize).not.toHaveBeenCalled();
         // Doubling waits, capped, for the minute and no longer.
         expect(time.waits.slice(0, 5)).toEqual([1_000, 2_000, 4_000, 8_000, 15_000]);

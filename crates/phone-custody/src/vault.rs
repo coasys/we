@@ -164,17 +164,17 @@ impl From<MasterSealError> for VaultError {
 /// The sentence the biometric prompt shows for each use.
 fn prompt_for(why: MasterUse) -> &'static str {
     match why {
-        MasterUse::Link => "Add a device to your identity",
-        MasterUse::Revoke => "Revoke a device of your identity",
-        MasterUse::SendMaster => "Send your master key to your device",
+        MasterUse::Link => "Confirm it's you to link a device",
+        MasterUse::Revoke => "Confirm it's you to remove a device",
+        MasterUse::SendMaster => "Confirm it's you to send the master key",
         // The master key signs the private record itself: re-attesting the recovery key after a
         // rotation, which a device's own write of the record waits for.
-        MasterUse::Record => "Update your identity's private record",
+        MasterUse::Record => "Confirm it's you to update your devices",
     }
 }
 
-const PROMPT_KEEP: &str = "Keep your master key on this phone";
-const PROMPT_STAGE: &str = "Keep your new master key on this phone";
+const PROMPT_KEEP: &str = "Confirm it's you to keep the master key on this phone";
+const PROMPT_STAGE: &str = "Confirm it's you to keep the new master key on this phone";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]

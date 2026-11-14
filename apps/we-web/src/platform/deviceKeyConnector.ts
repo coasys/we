@@ -192,9 +192,7 @@ export class KeyLoginUnreachable extends Error {
     readonly url: string,
     readonly cause: unknown,
   ) {
-    super(
-      `This phone is offline, or ${hostOf(url)} cannot be reached. It is still signed in with its device key: try again once it is back online.`,
-    );
+    super(`Can’t reach ${hostOf(url)}. Check that this phone is online, then try again. It stays signed in.`);
     this.name = 'KeyLoginUnreachable';
   }
 }
@@ -203,7 +201,7 @@ function hostOf(url: string): string {
   try {
     return new URL(url).host;
   } catch {
-    return 'the executor';
+    return 'the host';
   }
 }
 
@@ -351,7 +349,7 @@ export function createDeviceKeyConnector(
       core.token = session.token;
       const client = await core.connect();
       if (core.authState !== 'authenticated') {
-        throw new Error(`The executor at ${url} did not accept the key session (${core.authState})`);
+        throw new Error(`${hostOf(url)} didn’t accept this phone’s sign-in (${core.authState}).`);
       }
 
       // A session that ends by itself is told once, and logging out is not an ending.

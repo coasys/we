@@ -311,7 +311,7 @@ describe('adding a device by the code it shows', () => {
           scanCode: [
             { text: 'coasys:device:1:x' },
             refusal('Cancelled', 'the scan was cancelled'),
-            refusal('CameraDenied', 'the camera was not allowed; paste the code instead'),
+            refusal('CameraDenied', 'Allow camera access to scan, or paste the code.'),
           ],
         }),
         leave: () => {},
@@ -319,7 +319,7 @@ describe('adding a device by the code it shows', () => {
     );
     expect(await scanning.scan!('coasys:device:1:')).toBe('coasys:device:1:x');
     expect(await scanning.scan!('coasys:device:1:')).toBeNull();
-    await expect(scanning.scan!('coasys:device:1:')).rejects.toThrow('paste the code instead');
+    await expect(scanning.scan!('coasys:device:1:')).rejects.toThrow('paste the code');
   });
 });
 
@@ -348,7 +348,7 @@ describe('the master key on the phone', () => {
         plugin: plugin({
           takeMaster: refusal(
             'NoBiometrics',
-            'set up a fingerprint or face unlock on this phone to keep the master key here',
+            'Set up fingerprint or face unlock to keep the master key on this phone.',
           ),
         }),
         leave: () => {},
@@ -356,7 +356,7 @@ describe('the master key on the phone', () => {
     );
     expect(await transport.start()).toEqual({
       screen: 'failed',
-      message: 'set up a fingerprint or face unlock on this phone to keep the master key here',
+      message: 'Set up fingerprint or face unlock to keep the master key on this phone.',
     });
   });
 
@@ -521,7 +521,7 @@ describe('naming and revoking a device', () => {
     });
     const rotate = await transport.step({ kind: 'revoke', rotate: true });
     expect(rotate).toMatchObject({ screen: 'revoke-confirm', keyId: 'd1' });
-    expect((rotate as { error: string }).error).toContain('12 words');
+    expect((rotate as { error: string }).error).toContain('recovery phrase');
     expect(calls.map(([m]) => m)).not.toContain('revoke');
 
     expect(await transport.step({ kind: 'revoke', rotate: false })).toEqual({ screen: 'revoked', keyId: 'd1', seq: 5 });

@@ -146,8 +146,9 @@ describe('the identity window', () => {
     expect(heading({ screen: 'enter-code', error: null }).title).toBe('Scan or paste a code');
     // The phone joins by the offer a device of the identity shows; the screen is not a last one.
     const join = { screen: 'enter-offer', error: null } as const;
-    expect(heading(join).title).toBe('Join your identity');
-    expect(heading(join).lead).toContain('Add a device');
+    expect(heading(join).title).toBe('Link this computer');
+    expect(heading(join, 'phone').title).toBe('Link this phone');
+    expect(heading(join).lead).toContain('Link a device');
     expect(isLast(join)).toBe(false);
     expect(heading({ screen: 'device-code', code: 'coasys:device:1:x', qrSvg: '', expires: 0 }).title).toBe(
       'Show my code',

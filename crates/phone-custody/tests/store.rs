@@ -534,7 +534,7 @@ fn the_phone_takes_the_master_key_the_computer_sent_it() {
     assert_eq!(taken.note, None);
     assert_eq!(
         phone.master.prompts(),
-        vec!["Keep your master key on this phone"]
+        vec!["Confirm it's you to keep the master key on this phone"]
     );
     assert_eq!(phone.identity.status().unwrap().master_index, Some(0));
 
@@ -707,7 +707,7 @@ fn the_phone_answers_a_request_behind_the_prompt() {
     assert_eq!(answered.device, "Laptop");
     assert_eq!(
         phone.master.prompts().last().map(String::as_str),
-        Some("Send your master key to your device")
+        Some("Confirm it's you to send the master key")
     );
 
     let taken = world
@@ -801,8 +801,8 @@ fn a_take_while_the_record_waits_for_reattestation_marks_the_phone_with_the_mast
     assert_eq!(
         phone.master.prompts(),
         vec![
-            "Keep your master key on this phone",
-            "Update your identity's private record"
+            "Confirm it's you to keep the master key on this phone",
+            "Confirm it's you to update your devices"
         ]
     );
     assert_eq!(phone.identity.take_master(false).unwrap(), None);
@@ -891,7 +891,7 @@ fn a_mark_a_cancelled_take_still_owes_is_made_by_a_take_after_a_restart() {
     assert_eq!(repaired.note, None, "the mark was made");
     assert_eq!(
         phone.master.prompts()[2..],
-        ["Update your identity's private record".to_string()]
+        ["Confirm it's you to update your devices".to_string()]
     );
     assert!(!restarted.master_waiting().unwrap());
     assert_eq!(restarted.take_master(false).unwrap(), None);

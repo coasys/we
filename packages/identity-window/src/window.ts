@@ -259,7 +259,7 @@ function scanInto(prefix: string, field: HTMLInputElement, go: () => unknown): {
       problem.hidden = false;
     }
   };
-  return { buttons: [button('Scan the QR code', read, 'primary')], problem: [problem] };
+  return { buttons: [button('Scan code', read, 'primary')], problem: [problem] };
 }
 
 function body(screen: Screen): Child[] {
@@ -351,9 +351,8 @@ function body(screen: Screen): Child[] {
       ];
     }
     case 'enter-offer': {
-      const link = textField('The offer link', '', 'coasys:offer:1:…');
-      const host =
-        screen.host === undefined ? null : textField('The executor this device signs in to', screen.host, 'https://…');
+      const link = textField('Link', '', 'coasys:offer:1:…');
+      const host = screen.host === undefined ? null : textField('Host address', screen.host, 'https://…');
       if (host) host.input.type = 'url';
       const go = () =>
         step({ kind: 'offer', link: link.input.value.trim(), ...(host ? { host: host.input.value.trim() } : {}) }, [

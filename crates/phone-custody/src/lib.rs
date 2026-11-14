@@ -124,7 +124,7 @@ pub enum PhoneKeyError {
     #[error("the fingerprint prompt was cancelled")]
     Cancelled,
     /// The phone has no biometric enrolled, so it cannot keep or use a master key.
-    #[error("set up a fingerprint or face unlock on this phone to keep the master key here")]
+    #[error("Set up fingerprint or face unlock to keep the master key on this phone.")]
     NoBiometrics,
     /// A biometric enrolled since the master key was kept invalidated the key that sealed it:
     /// the phone must be sent the master key again.
