@@ -34,7 +34,7 @@ export interface KeyLogRow {
   position: string;
   /** A Phosphor icon name. */
   icon: string;
-  /** "Created your identity", "Added d2", "Revoked d2". */
+  /** "Created identity", "Added d2", "Revoked d2". */
   title: string;
   /** The keys the event names, "d1 · This computer". */
   detail: string;
@@ -52,7 +52,7 @@ export interface DeviceRow {
   addedSeq: number;
   /** The seq of the event that revoked it, or `null` while it is valid. */
   revokedSeq: number | null;
-  /** "This computer", or "Device d2". */
+  /** "This computer", the record's name, or "Unnamed device". */
   label: string;
   /** "d1 · added at #0" */
   subtitle: string;
@@ -61,7 +61,7 @@ export interface DeviceRow {
   revoked: boolean;
   /** Neither revoked nor past the end the key log gives it. */
   valid: boolean;
-  /** "Valid", "Removed at #2", or "Expired on 3 Dec 2026". */
+  /** "Active", "Removed at #2", or "Expired on 3 Dec 2026". */
   status: string;
   /** Whether a revoke may be offered: a valid key that is not this computer's. */
   canRevoke: boolean;
@@ -150,7 +150,7 @@ export function keyLogRows(
   /** What this device is called: "This phone" on a phone ({@link custodyDevice}). */
   thisLabel: string = THIS_COMPUTER,
 ): KeyLogRow[] {
-  const name = (id: string) => (id === thisKeyId ? thisLabel : id);
+  const name = (id: string) => (id === thisKeyId ? thisLabel.toLowerCase() : id);
   return events
     .slice()
     .sort((a, b) => b.seq - a.seq)
@@ -164,7 +164,7 @@ export function keyLogRows(
       switch (event.op) {
         case 'incept':
           icon = 'sparkle';
-          title = 'Created your identity';
+          title = 'Created identity';
           detail = event.added.length ? `with ${listed(event.added.map((k) => k.id))}` : '';
           break;
         case 'add':
@@ -180,7 +180,7 @@ export function keyLogRows(
         case 'rotate':
           icon = 'arrows-clockwise';
           title = 'Replaced the master key';
-          detail = 'with your 12 words';
+          detail = 'with your recovery phrase';
           break;
       }
       return {
@@ -297,7 +297,7 @@ export function deviceRows(
           ? `Removed at #${device.revokedSeq}`
           : expired
             ? `Expired on ${dateOf(device.expires as number)}`
-            : 'Valid',
+            : 'Active',
         // Ending an expired key for good is still the key log's to record.
         canRevoke: !revoked && !device.thisDevice,
         name,

@@ -761,7 +761,7 @@ function identitySession() {
 function openIdentityWindow({ onClosed }) {
   const win = new BrowserWindow({
     // The app's own name, whichever build this is (WE, or a white-labelled one); the page names none.
-    title: `${app.getName()} — your identity`,
+    title: `${app.getName()} — Identity`,
     icon: windowIcon(),
     width: 480,
     height: 640,
