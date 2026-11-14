@@ -164,3 +164,39 @@ fn only_the_reads_that_happened_are_reported() {
     assert!(value.strict_eq(&Value::from(1.0)));
     assert_eq!(paths(&log), ["cond", "a"]);
 }
+
+#[test]
+fn a_pick_carries_the_selected_chains_name() {
+    // `(cond ? a.obj : b.obj).x` and `(m ?? a.obj).x` — a value pick
+    // selects a chain; the read through it reports under the selected
+    // name.
+    let obj = Value::from(MapNamespace::new(
+        [(
+            "obj".into(),
+            Value::Obj(Arc::new(
+                [("x".into(), Value::from(7.0))].into_iter().collect(),
+            )),
+        )]
+        .into_iter()
+        .collect(),
+    ));
+    let (env, log) = observed(
+        MapEnv::new()
+            .with_root("cond", Value::Bool(false))
+            .with_root("a", obj.clone())
+            .with_root("b", obj.clone())
+            .with_root("m", Value::Null),
+    );
+    let value = eval(&parse("(cond ? a.obj : b.obj).x").unwrap(), &env);
+    assert!(value.strict_eq(&Value::from(7.0)));
+    assert_eq!(paths(&log), ["cond", "b", "b.obj", "b.obj.x"]);
+
+    let log_taken = log.borrow().len();
+    let value = eval(&parse("(m ?? a.obj).x").unwrap(), &env);
+    assert!(value.strict_eq(&Value::from(7.0)));
+    let rest: Vec<String> = log.borrow()[log_taken..]
+        .iter()
+        .map(|(p, _)| p.clone())
+        .collect();
+    assert_eq!(rest, ["m", "a", "a.obj", "a.obj.x"]);
+}

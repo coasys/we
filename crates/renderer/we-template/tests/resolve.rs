@@ -2018,6 +2018,108 @@ fn a_parent_swap_sharing_the_child_resets_a_fresh_container_initial() {
 }
 
 #[test]
+fn an_initial_tracks_a_member_below_a_conditional_pick() {
+    // R5-1: `(true ? store.item : store.other).sig` — the pick selects the
+    // object, and the `.sig` accessor beneath it is the memo's dep: TS
+    // invokes it inside the memo. Dropping the path at the pick leaves
+    // only `store.item` recorded, so sig A→B looks unmoved and the edit
+    // survives where TS resets.
+    use std::sync::RwLock;
+    let sig = Arc::new(RwLock::new(Value::from("A")));
+    let sig_read = sig.clone();
+    let item = Value::Obj(Arc::new(
+        [(
+            "sig".into(),
+            Value::Callable(we_expr::CallableRef::accessor("sig", move |_| {
+                sig_read.read().unwrap().clone()
+            })),
+        )]
+        .into_iter()
+        .collect(),
+    ));
+    let store = Value::from(we_expr::MapNamespace::new(
+        [
+            ("item".into(), item),
+            (
+                "other".into(),
+                Value::Obj(Arc::new(indexmap::IndexMap::new())),
+            ),
+        ]
+        .into_iter()
+        .collect(),
+    ));
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "name": { "type": "string", "initial": { "$": "(true ? store.item : store.other).sig" } } },
+        "children": []
+    }));
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root("store", store.clone());
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+    assert!(locals.get(&owner, "name").strict_eq(&Value::from("A")));
+
+    locals.set(&owner, "name", Value::from("typed"));
+    locals.touch(&owner, "name");
+    *sig.write().unwrap() = Value::from("B");
+    bag.set_root("store", store); // wake a frame
+    let _ = rt.frame(&mut host, &screen).clone();
+    assert!(
+        locals.get(&owner, "name").strict_eq(&Value::from("B")),
+        "the initial must follow the accessor below the pick: {:?}",
+        locals.get(&owner, "name")
+    );
+    assert!(!locals.is_touched(&owner, "name"));
+}
+
+#[test]
+fn an_initial_tracks_a_member_below_a_nullish_pick() {
+    // R5-1, the `??` twin: `(store.missing ?? store.item).sig` — the
+    // nullish selects `item` (missing is undefined); `.sig` beneath the
+    // pick is the dep.
+    use std::sync::RwLock;
+    let sig = Arc::new(RwLock::new(Value::from("A")));
+    let sig_read = sig.clone();
+    let item = Value::Obj(Arc::new(
+        [(
+            "sig".into(),
+            Value::Callable(we_expr::CallableRef::accessor("sig", move |_| {
+                sig_read.read().unwrap().clone()
+            })),
+        )]
+        .into_iter()
+        .collect(),
+    ));
+    let store = Value::from(we_expr::MapNamespace::new(
+        [("item".into(), item)].into_iter().collect(),
+    ));
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "name": { "type": "string", "initial": { "$": "(store.missing ?? store.item).sig" } } },
+        "children": []
+    }));
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root("store", store.clone());
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+    assert!(locals.get(&owner, "name").strict_eq(&Value::from("A")));
+
+    locals.set(&owner, "name", Value::from("typed"));
+    locals.touch(&owner, "name");
+    *sig.write().unwrap() = Value::from("B");
+    bag.set_root("store", store); // wake a frame
+    let _ = rt.frame(&mut host, &screen).clone();
+    assert!(
+        locals.get(&owner, "name").strict_eq(&Value::from("B")),
+        "the initial must follow the accessor below the ?? pick: {:?}",
+        locals.get(&owner, "name")
+    );
+    assert!(!locals.is_touched(&owner, "name"));
+}
+
+#[test]
 fn an_initial_tracks_through_an_accessor_returned_list() {
     // R4-4: `store.items` is an ACCESSOR answering the same list L on
     // every call; L[0].sig is an accessor too. `store.items[0].sig` runs

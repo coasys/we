@@ -154,9 +154,10 @@ pub(crate) fn eval_node(
 /// The object of a member/index read is NOT a value position — a namespace
 /// is still a bag there, not `undefined` — and when it is itself a named
 /// chain (`store`, `store.items`, `items.0`), the read through it reports
-/// under that chain's own path. Anything else — a call's answer, a literal —
-/// has no name: reads through it are the caller's own inputs and compose no
-/// path.
+/// under that chain's own path. A value pick — `? :`, `??` — carries the
+/// chain it selects: `(cond ? store.a : store.b).x` reads as `store.a.x`.
+/// Anything else — a call's answer, a literal — has no name: reads through
+/// it are the caller's own inputs and compose no path.
 fn eval_base(
     node: &Node,
     env: &dyn Env,
@@ -178,6 +179,35 @@ fn eval_base(
             let index = eval_node(index, env, depth + 1, obs).settle();
             let path = base_path.map(|p| format!("{p}.{}", index.js_string()));
             (read_index(&base, &index, path.as_deref(), obs), path)
+        }
+        Node::Conditional {
+            test,
+            consequent,
+            alternate,
+        } => {
+            // The selected arm may itself be a named chain — the read
+            // through the pick keeps its name.
+            if eval_node(test, env, depth + 1, obs).settle().truthy() {
+                eval_base(consequent, env, depth + 1, obs)
+            } else {
+                eval_base(alternate, env, depth + 1, obs)
+            }
+        }
+        Node::Logical {
+            op: LogicalOp::Nullish,
+            left,
+            right,
+        } => {
+            // `??` settles its left for the pick (the answer eval_node
+            // gives — a namespace reads as its raw); the selected value
+            // keeps the name it was read under.
+            let (value, path) = eval_base(left, env, depth + 1, obs);
+            let value = value.settle();
+            if matches!(value, Value::Undefined | Value::Null) {
+                eval_base(right, env, depth + 1, obs)
+            } else {
+                (value, path)
+            }
         }
         other => (eval_node(other, env, depth, obs), None),
     }
