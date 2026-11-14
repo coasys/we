@@ -6438,7 +6438,8 @@
             "canRevoke",
             "name",
             "holdsMaster",
-            "master"
+            "master",
+            "replaceMaster"
           ]
         },
         "devicesLoaded": {
@@ -6454,6 +6455,15 @@
           "type": "boolean"
         },
         "canAskMaster": {
+          "type": "boolean"
+        },
+        "canReplaceMaster": {
+          "type": "boolean"
+        },
+        "canRestore": {
+          "type": "boolean"
+        },
+        "canRemoveMaster": {
           "type": "boolean"
         },
         "masterWaiting": {
@@ -6476,7 +6486,10 @@
         "askMaster",
         "answerRequest",
         "rename",
-        "revoke"
+        "revoke",
+        "replaceMaster",
+        "restore",
+        "removeMaster"
       ],
       "ambient": ["refresh"],
       "needsArgs": ["answerRequest", "rename", "revoke"]

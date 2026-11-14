@@ -411,8 +411,8 @@ async fn make_identity(custody: &CustodyHandle) -> String {
         panic!("no confirm-words")
     };
     let answers = [
-        words[positions[0] - 1].clone(),
-        words[positions[1] - 1].clone(),
+        words[positions[0] - 1].clone().into(),
+        words[positions[1] - 1].clone().into(),
     ];
     let set = custody.step(StepInput::Words { answers }).await.unwrap();
     assert!(
@@ -476,8 +476,8 @@ async fn make_link_and_revoke_through_the_custody_service() {
         matches!(&again, Screen::ConfirmWords { positions: p, error: Some(_) } if *p == positions)
     );
     let answers = [
-        words[positions[0] - 1].clone(),
-        words[positions[1] - 1].clone(),
+        words[positions[0] - 1].clone().into(),
+        words[positions[1] - 1].clone().into(),
     ];
     let set = shown.record(&custody.step(StepInput::Words { answers }).await.unwrap());
     assert!(
@@ -635,6 +635,7 @@ async fn make_link_and_revoke_through_the_custody_service() {
     let wrong = shown.record(
         &custody
             .step(StepInput::Revoke {
+                rotate: false,
                 passphrase: Some("still not the passphrase".into()),
             })
             .await
@@ -647,6 +648,7 @@ async fn make_link_and_revoke_through_the_custody_service() {
     let revoked = shown.record(
         &custody
             .step(StepInput::Revoke {
+                rotate: false,
                 passphrase: Some(PASSPHRASE.into()),
             })
             .await
@@ -902,6 +904,7 @@ async fn a_desktop_executor_takes_its_first_link_as_its_operator() {
     );
     let revoked = holder
         .step(StepInput::Revoke {
+            rotate: false,
             passphrase: Some(PASSPHRASE.into()),
         })
         .await

@@ -1,7 +1,7 @@
 /** The key log and device list in Settings' words. */
 import { describe, expect, it } from 'vitest';
 
-import { deviceRows, keyLogRows, requestRows, shortDid, shortHash } from '../src/shared/identityRows';
+import { deviceRows, keyLogRows, lastRotation, requestRows, shortDid, shortHash } from '../src/shared/identityRows';
 
 const REVOKED_HOLDER = 'Still has your master key. Replace it to lock this device out.';
 /** Where only the key log speaks: it let the device keep the master key, and the record is gone. */
@@ -105,6 +105,30 @@ describe('deviceRows', () => {
     // A revoked device the log never let keep the master key carries no warning.
     const server = deviceRows([keys[0], { ...keys[1], revokedSeq: 2 }], [], []);
     expect(server[1].master).toBe('');
+    expect(server[1].replaceMaster).toBe(false);
+    expect(revoked[1].replaceMaster).toBe(true);
+  });
+
+  it('stops warning once the master key was replaced at or after the revoke', () => {
+    const keys = [
+      { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, revokedSeq: null },
+      { keyId: 'd2', sign: 'z', thisDevice: false, addedSeq: 1, revokedSeq: 2 },
+    ];
+    const stillListed = [{ keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'yes' as const }];
+    // A rotation before the revoke left d2 a copy of the new key: the warning stands.
+    expect(deviceRows(keys, stillListed, ['d2'], 1)[1]).toMatchObject({ replaceMaster: true });
+    // The same event (a revoke that also replaced it), or a later one, shuts the copy out.
+    for (const seq of [2, 3]) {
+      expect(deviceRows(keys, stillListed, ['d2'], seq)[1]).toMatchObject({ master: '', replaceMaster: false });
+    }
+    expect(
+      lastRotation([
+        { seq: 0, op: 'incept' },
+        { seq: 3, op: 'rotate' },
+        { seq: 4, op: 'add' },
+      ]),
+    ).toBe(3);
+    expect(lastRotation([{ seq: 0, op: 'incept' }])).toBeNull();
   });
 });
 

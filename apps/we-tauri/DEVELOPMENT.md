@@ -60,7 +60,8 @@ over the `identity_flow_*` commands, built from `identity/` by `vite.identity.co
 The main window may only open it on a step and read public custody state (`identity_open`,
 `identity_public_state`); `build.rs` declares every command in an app manifest so none is callable
 without a capability. The steps it opens — making the identity, linking a device either way, taking,
-asking for and sending the master key, naming and revoking a device — are the custody service's
+asking for and sending the master key, naming and revoking a device, replacing the master key and
+restoring the identity with the 12 words, removing the master key from this computer on log out — are the custody service's
 (`crates/custody/README.md`, "Devices and the master key").
 
 The network names the identity store, not WE: the executor's bootstrap seed carries it, and the

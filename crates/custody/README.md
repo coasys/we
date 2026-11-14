@@ -68,11 +68,34 @@ step can wait for minutes while `cancel` and `publicState` are answered. When st
 step is cancelled and the process exits 0, so it never outlives its host; a bad configuration exits 2.
 Log lines go to stderr and carry no secret.
 
+A request line is at most 64 KiB (`MAX_LINE`); a longer one is answered `"line too long"` with
+`"id": null`, and the line after it is read as usual.
+
 **What is wiped, and what is not.** The master key, the seed and the words are held in `Secret`s and
 `Zeroizing` buffers inside this crate, wiped when the step that made them ends. A word or a passphrase
-the person types is copied before it gets here — by the window, the host's IPC, the JSON line and
-serde — and those copies are not this crate's to wipe; it moves each into a `Secret` on arrival, so it
-keeps no copy of its own past the step.
+the person types reaches the sidecar in a request line, and from there the copies this crate makes
+are wiped (the exceptions are listed below): the line is read into a buffer allocated once and wiped (`sidecar::Lines`), its params are
+read from the line's own text with no intermediate JSON value, and the step input holds each secret
+in a `TypedSecret`, which wipes itself when dropped — when the step reads it, refuses it, is
+cancelled before reading it, or the input is malformed. `tests/step_input_wipe.rs` replaces the
+allocator and checks that no block freed while the sidecar serves still holds the secret. The Tauri
+app's command takes the same `StepInput`, so the copy custody keeps is wiped there too.
+
+The copies made before the sidecar have no such guarantee, and cannot be given one:
+
+- **The identity window.** The words and the passphrase are the values of `<input>` fields in a web
+  view. The window empties the fields when a step leaves them, but the JavaScript strings, the DOM's
+  copies and anything the engine kept are freed by its garbage collector, never wiped.
+- **The host's IPC.** The Electron app sends the step input over IPC to its main process, which
+  writes it to the sidecar's stdin as a JavaScript string; the Tauri app's command arguments arrive
+  as a JSON message that Tauri parses before the command sees it. Both are the runtime's copies,
+  freed when it chooses.
+- **Below the line buffer.** Tokio reads stdin through buffers of its own (the `BufReader` and the
+  blocking stdin reader's), which are reused and freed at exit, not wiped.
+- **An escaped string.** serde_json unescapes a string with a `\` escape in it into a scratch buffer
+  of its own, and an internally tagged input is buffered once to find its `kind`: a word list has no
+  escapes and is borrowed from the line, but a passphrase with a `"` or a `\` in it leaves an
+  unescaped copy in that scratch buffer.
 
 ## The identity store
 
@@ -138,15 +161,129 @@ incept only; the master key stays where it rests.
 
 The steps the main window may open (`IdentityStep`) besides `create` and `revoke`:
 
-| Step             | Where                          | What it does                                                                               |
-| ---------------- | ------------------------------ | ------------------------------------------------------------------------------------------ |
-| `add-device`     | a computer with the master key | gives a server an offer link (QR and text), then the match code, then signs the `add`      |
-| `scan-device`    | a computer with the master key | "Enter code": takes the `coasys:device:1:…` code a new device shows and sends it the offer |
-| `show-code`      | a computer of no identity yet  | "Show code": its device code as a QR code and a copyable link, until a holder links it     |
-| `take-master`    | a linked device                | "Accept master key": keeps the master key another device sent here                         |
-| `ask-master`     | a linked device                | "Ask for master key": posts a `send-master` request for a holder to answer                 |
-| `answer-request` | a computer with the master key | answers another device's `send-master` or `confirm-revoke` request, on the person's yes    |
-| `rename`         | a computer with the master key | names a device in the identity's private record                                            |
+| Step             | Where                          | What it does                                                                                                      |
+| ---------------- | ------------------------------ | ----------------------------------------------------------------------------------------------------------------- |
+| `add-device`     | a computer with the master key | gives a server an offer link (QR and text), then the match code, then signs the `add`                             |
+| `scan-device`    | a computer with the master key | "Enter code": takes the `coasys:device:1:…` code a new device shows and sends it the offer                        |
+| `show-code`      | a computer of no identity yet  | "Show code": its device code as a QR code and a copyable link, until a holder links it                            |
+| `take-master`    | a linked device                | "Accept master key": keeps the master key another device sent here                                                |
+| `ask-master`     | a linked device                | "Ask for master key": posts a `send-master` request for a holder to answer                                        |
+| `answer-request` | a computer with the master key | answers another device's `send-master` or `confirm-revoke` request, on the person's yes                           |
+| `rename`         | a computer with the master key | names a device in the identity's private record                                                                   |
+| `replace-master` | a device of the identity       | "Replace master key": takes the 12 words and publishes a `rotate`; this computer keeps the new key                |
+| `restore`        | a computer of no identity yet  | "Restore with recovery phrase": finds the identity, ticks its devices to lock out, rotates and adds this computer |
+| `remove-master`  | a computer with the master key | on sign out: forgets this computer's copy of the master key; refused when it is the only copy                     |
+
+`revoke` carries `rotate`: "Also replace master key", ticked by default when the key log says the
+device revoked may still hold the master key (`mayHoldMaster`, below). A revoke alone leaves that copy valid; with the choice the window takes the 12
+words and publishes one `rotate` that revokes the device and replaces the master key, so the revoked
+copy signs nothing any more.
+
+The 12 words are typed into twelve fields (a paste fills them from the field it lands in). A word
+that is not in the list is refused by its position only ("Word 3 isn't a recovery phrase word"), never by
+what was typed, and no suggestion is made; words of another identity, or no identity, are refused
+without publishing anything. Once a step leaves the words screen the fields are emptied and no
+later screen, log line or reply carries a word.
+
+After a rotation the other devices that kept the master key hold a replaced one. Each `publicState`
+compares the master index this computer keeps with the log's: a replaced key is swapped for the
+current one waiting in the inbox (`refresh_master`), or forgotten and the current one asked for
+from a holder (`send-master`). A log read behind never makes it forget a current key. The current
+master key sealed to each holder goes on the same retry list as a link's push (`pending-pushes.json`).
+
+**Each kept master key carries its index.** The index can be read without an unlock and cannot be
+changed separately from the key. A sealed item has it in its header, inside the AEAD's associated
+data, so an item whose index was edited does not open. A keychain item has it as an attribute
+(`coasys-master-index:<n>`) written in the same `SecItemAdd` as the key. An item kept before the
+index was stored with the key answers `null`, and the log decides. `publicState` reports
+`holdsMaster: { index }`.
+
+**A rotation stages the new key before it publishes.** The new master key goes to a staged slot
+beside the kept one (`coasys.identity.staged/<scid>`; `<scid>.staged.bin` in the folder), in the
+same store and sealed the same way. Once the `rotate` is published, the staged key is promoted over
+the kept one in one store operation: a rename of the file, one `SecItemUpdate`, or a copy and a
+delete in the Secret Service. If the publish is refused, the staged key is discarded — only the one
+that rotation staged. Each stage carries the staging flow's token beside its index, authenticated the
+same way: in a sealed item's header (`coasys-custody/3`), or after the index in the keychain comment
+(`coasys-master-index:<n>;owner:<hex>`). A rotation's discard names its token and leaves a key
+another app staged since. A newer stage replaces any staged key, whoever staged it. A key staged
+before tokens were kept has none, and only a read whose log is past it discards it. A read that
+forgets a replaced kept key (the log is past it and no key waits in the inbox) leaves the staged slot
+alone, since a rotation's publish may be on its way. `remove-master` (the logout) forgets the kept
+key and discards a staged key at or behind the log's current master, which the next read would
+otherwise promote or keep, bringing back the key just removed; a staged key ahead of the log is
+another app's rotation in flight and stays for its owner. That rule is the identity client's
+(`remove_master`); the service removes nothing after it.
+
+**Every write and read of the slots is made under the custody folder's lock** (`pending-incepts.lock`,
+an advisory lock every current build takes): store, stage, promote, discard and forget, and the public
+reads `master_index`, `staged_index`, `holds` and `needs_passphrase_for`. A read on another handle
+therefore waits out a write under way rather than seeing it half done (the keychain replaces an item
+by delete, then add). The vault's own steps, which already hold the lock, read through lock-free
+helpers; the lock is never taken twice.
+
+**A key prepared for one store is written only to that kind of store.** The Argon2id seal is slow, so
+the key is made ready — sealed, or kept as it is for a store that unlocks itself — before the lock is
+taken. Under the lock the vault asks again where the key would land; if that changed (the keychain
+became unreachable, or another build kept this identity in a file meanwhile), it prepares the key
+again for where it lands now, or refuses when there is no passphrase to seal it with. As defence in
+depth, a store that keeps only sealed items (the file, the Secret Service) refuses an unsealed one
+outright, so the raw master never reaches a file.
+
+**The custody epoch** (the ad4m client's `custody_epoch`) changes with every change of the kept key. It
+is kept in `custody-epochs.json` as a random 32-bit incarnation drawn when the identity's entry is
+made, and a checked count (it errors rather than wraps), so within one incarnation it never repeats.
+Entries are never dropped, so a forget leaves its count behind. An identity's entry is made with its
+first stage or its first change of the kept key, whichever comes first, so a second identity restored
+into a folder that already counts another's is an ordinary first entry, and so is each identity a
+build before epochs kept here. `custody-metadata.json` records which notes the folder has made and,
+per note, each identity it has made an entry for; it is written after the note it records, both
+durably, so a stop between the two leaves an entry that is there and not yet listed, read as it is
+(and listed with its next change), never a listed identity with no entry. A note it lists that
+has gone (`custody-epochs.json`, `record-seen.json`), or an entry gone for an identity it lists, is an
+**error**, never a fresh start, because a counter that started again could match a removal that read
+the old value and delete custody installed since; an identity it does not list simply has no entry
+yet. `DesktopVault::recover_custody_epoch` is the explicit recovery: it makes a new entry in a fresh
+incarnation, so a value read before the loss matches again only if the new incarnation happens to
+equal the old one — a 1 in 2³² chance per recovery, improbable but not impossible, and the chance
+adds up over many recoveries of one identity. The same holds when the epochs file and its note are
+lost together: the folder then looks as if it never counted, and the next entry is a fresh
+incarnation. Neither is rollback protection against a whole custody folder restored or deleted.
+
+The person reaches that recovery with their 12 words: through **"Replace master key"** on a
+computer linked to the identity, and through **"Restore with recovery phrase"** on one not linked
+yet (where "Replace master key" is refused) — before the restore's rotation stages, and again before each
+"Try again" at linking after it. When the identity's epoch is lost, the step first checks that the
+typed words make the log's current master (the check the client's `rotate` makes before it
+publishes), then recovers the epoch, then goes on. Words that are not the identity's recover
+nothing, and another identity's lost epoch stays lost. Any step that stops on a lost epoch says what
+happened and names both steps. Forgetting a record's high-water mark (`record_seen_reset`) is likewise explicit, and
+leaves a mark that it was reset rather than lost; it is also how a lost `record-seen.json` (or one
+identity's mark in it) is repaired, one identity at a time: another identity's mark that went with
+the file stays an error until it is reset too.
+
+The epoch is bumped, durably, **before** the key is written, under the same lock. A write that then
+fails may still have bumped it, so the epoch can change when the kept key did not. The client's
+contract says the epoch changes "never otherwise"; this is a deliberate reading of it: a spurious
+change costs a removal one more read (it answers `Kept`), while an epoch written after the key could
+let a crash between the two leave a newer key under an old epoch, which a stale removal would delete.
+
+Promoting can fail after the publish, for example when the keychain refuses the update or the unlock
+is cancelled. The key **was** replaced all the same. The window says so ("New master key not saved",
+`master-not-kept`), and "Enter recovery phrase" rotates once more and keeps that
+key. A staged key left by a failed promote is promoted the next time `publicState` reads the key log
+and finds its index current. Every app on the computer shares this folder, so a read may meet a
+rotation in flight: a staged index ahead of the log is left alone until its publish lands, and only
+a staged index behind the log is discarded. Promotion is tied to the master index, which the words
+make deterministic. The staged key is not checked against the log's commitment, and reading a
+sealed item's index while locked does not check its tag: that guards against a split write, not
+against tampering.
+
+Restore works the same way: the rotation is published first. If adding this computer fails after
+that, the window says the identity is restored but this computer is not linked yet
+(`restore-not-linked`), and "Try again" adds it from the same flow. No screen after a publish says
+"Nothing changed". Neither screen is a step's last: closing the window cancels what is waiting, and
+the rotation stands.
 
 On the match screen of a link the person names the new device, names this computer too when the
 private record does not list it yet, and — for a device that may keep it (a desktop app, not a
@@ -180,7 +317,28 @@ fingerprint of its signing key; a `confirm-revoke` card names each key it would 
 log does not list. Whether a device **may still hold a valid master key** — on that card and on the
 `revoke` step's confirmation (`mayHoldMaster`) — is the log's too: it made the identity, or the
 claim it joined with said `canKeepMaster`. A record saying `holdsMaster: false` does not hide that,
-and a revoke does not change the master key, so the person is told to replace it.
+and a revoke does not change the master key, so the person is told to replace it. A `confirm-revoke`
+request that also asks to replace the master key goes on, after the yes, to the 12 words, and the
+answer is one `rotate` that revokes the targets and replaces the key.
+
+## Known limits
+
+- **A device's key is linkable to its identity.** The executor's `identity.keyOwner` answers which
+  identity a public key belongs to, and the identity store's public-key index answers the same to
+  anyone who asks it. A device key used elsewhere can be traced back to the person's identity; no
+  unlinkability between a person's devices, or between a device and its identity, is claimed.
+- **Restore's default lock-out ticks are a hint.** Which devices `restore` ticks to lock out by
+  default comes from the private record's `kind` for each device (`locked_out_by_default` in the
+  identity client: an app, or a device the record does not name, is ticked; a server, a community
+  host, Coasys cloud or a bot is not), and any linked device can write the private record, so a
+  device that calls itself a server starts unticked. The person sees every device and decides; the
+  default is not proof of what a device is.
+- **Removing the master key is logical removal, not secure erasure.** `remove-master` deletes the
+  item, and a staged one at or behind the log, from the keychain or the Secret Service, or unlinks the encrypted files. The bytes may stay on
+  the disk, in the store's database or in a backup until overwritten. They are encrypted (sealed
+  under the passphrase, or under the keychain's own protection), so what remains is as strong as
+  that protection, not gone.
+- **Copies of what the person types** outside this process are not wiped (above, under the sidecar).
 
 ## Testing
 
@@ -189,6 +347,10 @@ cd crates/custody
 cargo test                       # vault, sealing, screens, the sidecar, command table, the executor boundary
 ```
 
+The word steps (replace, restore, revoke with the replace, remove on sign out, the stale-master
+refresh) are tested against a canned executor in `service.rs`: each test also checks that no word
+of the phrase, and nothing typed, reaches a screen or a published event.
+
 It builds against the ad4m commit WE pins, by git (`Cargo.toml`; `tests/boundary.rs` fails if that
 rev and `package.json`'s pin differ). Against a local ad4m checkout at that commit:
 
@@ -196,8 +358,11 @@ rev and `package.json`'s pin differ). Against a local ad4m checkout at that comm
 A=<ad4m>; P='patch."https://github.com/coasys/ad4m"'
 cargo test --config "$P.ad4m-identity-client.path=\"$A/ad4m-identity-client\"" \
   --config "$P.ad4m-identity-core.path=\"$A/ad4m-identity-core\"" \
-  --config "$P.ad4m-client.path=\"$A/rust-client\""
+  --config "$P.ad4m-client.path=\"$A/rust-client\"" \
+  --config "$P.ad4m-ldk.path=\"$A/ad4m-ldk/rust\""
 ```
+
+A patched build rewrites `Cargo.lock`'s `source` lines; restore it before committing.
 
 The end-to-end test runs the three flows against a real identity-store and real executors, and a
 desktop executor (`--custody-channel`, the custody credential on stdin, no `--operator`) whose first

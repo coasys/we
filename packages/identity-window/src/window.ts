@@ -6,7 +6,8 @@
  *
  * Plain DOM with `textContent` only — no template engine, no `innerHTML` — so the window's CSP can
  * forbid every script but its own and every string sink (`require-trusted-types-for 'script'`).
- * Fields are cleared once their call returns.
+ * Fields are cleared once their call returns, except the 12 words: a refused phrase stays in its
+ * fields so the person corrects the word named, and they are cleared once any other screen comes.
  */
 import '@we/tokens/css/color';
 import 'virtual:we-identity-theme.css';
@@ -18,8 +19,10 @@ import {
   heading,
   isLast,
   oneAtATime,
+  refusedField,
   remaining,
   type Screen,
+  spreadWords,
   type StepInput,
   targetLine,
   wordNumber,
@@ -45,6 +48,8 @@ export interface IdentityTransport {
 let host: IdentityTransport;
 let root: HTMLElement;
 let offerTimer: number | undefined;
+/** The 12 word fields while the words entry is up, so a refusal keeps what was typed. */
+let wordFields: HTMLInputElement[] | null = null;
 
 type Child = Node | string;
 
@@ -164,6 +169,50 @@ function waitFor(input: StepInput) {
 
 function errorLine(error: string | null): Child[] {
   return error ? [el('p', { className: 'error', textContent: error })] : [];
+}
+
+/**
+ * The 12 word fields, numbered as the words grid numbers them. A whole phrase pasted into any field
+ * spreads over the fields from there. The words never leave the fields but in the step that sends
+ * them.
+ */
+function wordsEntry(position: number | null): { fields: HTMLInputElement[]; grid: HTMLElement } {
+  const fields =
+    wordFields ??
+    Array.from({ length: 12 }, (_, i) => {
+      const input = el('input', { type: 'text', autocomplete: 'off' });
+      input.spellcheck = false;
+      input.setAttribute('autocapitalize', 'none');
+      input.setAttribute('aria-label', `Word ${i + 1}`);
+      return input;
+    });
+  fields.forEach((input, i) => {
+    input.onpaste = (event) => {
+      const spread = spreadWords(event.clipboardData?.getData('text') ?? '', i);
+      if (!spread.length) return;
+      event.preventDefault();
+      for (const [at, word] of spread) fields[at].value = word;
+    };
+    // `aria-invalid` is a token, not a boolean attribute: present and empty would mean "true" to some
+    // readers and nothing to others, so the refused field says "true" and the others carry none.
+    if (refusedField(position, i)) input.setAttribute('aria-invalid', 'true');
+    else input.removeAttribute('aria-invalid');
+  });
+  wordFields = fields;
+  const grid = el(
+    'div',
+    { className: 'words' },
+    ...fields.map((input, i) =>
+      el('label', { className: 'word' }, el('span', { className: 'n', textContent: wordNumber(i) }), input),
+    ),
+  );
+  return { fields, grid };
+}
+
+/** Empties the word fields and lets them go. */
+function forgetWords() {
+  for (const input of wordFields ?? []) input.value = '';
+  wordFields = null;
 }
 
 /** Who asks, as both devices show it: the request's code, and the asking key from the key log. */
@@ -343,13 +392,88 @@ function body(screen: Screen): Child[] {
     }
     case 'revoke-confirm': {
       const p = screen.passphrase ? secretField('Passphrase') : null;
-      const go = () => step({ kind: 'revoke', ...(p ? { passphrase: p.input.value } : {}) }, p ? [p.input] : []);
+      const rotate = el('input', { type: 'checkbox' });
+      rotate.checked = screen.rotate;
+      const go = () =>
+        step(
+          { kind: 'revoke', rotate: rotate.checked, ...(p ? { passphrase: p.input.value } : {}) },
+          p ? [p.input] : [],
+        );
       return [
+        el('label', { className: 'check' }, rotate, 'Also replace master key'),
+        el('p', {
+          className: 'note',
+          textContent: "Any copy this device has stops working. You'll enter your recovery phrase next.",
+        }),
         ...(p ? [p.label] : []),
         ...errorLine(screen.error),
         el('div', { className: 'row' }, button('Remove', go, 'danger'), button('Cancel', cancel)),
       ];
     }
+    case 'enter-words': {
+      const { fields, grid } = wordsEntry(screen.position);
+      const go = () => step({ kind: 'twelve-words', words: fields.map((f) => f.value.trim()).join(' ') });
+      return [
+        grid,
+        ...errorLine(screen.error),
+        el('div', { className: 'row' }, button('Continue', go, 'primary'), button('Cancel', cancel)),
+      ];
+    }
+    case 'restore-devices': {
+      const ticks = screen.devices.map((d) => {
+        const box = el('input', { type: 'checkbox' });
+        box.checked = d.lockOut;
+        return { keyId: d.keyId, box, label: d.name ? `${d.name} (${d.keyId})` : d.keyId };
+      });
+      const name = textField('Name for this computer', '', 'Home desktop');
+      const go = () =>
+        step({
+          kind: 'lock-out',
+          keyIds: ticks.filter((t) => t.box.checked).map((t) => t.keyId),
+          name: typed(name.input),
+        });
+      return [
+        el('div', { className: 'link', textContent: screen.did }),
+        ...ticks.map((t) => el('label', { className: 'check' }, t.box, `Remove ${t.label}`)),
+        name.label,
+        el('div', { className: 'row' }, button('Restore', go, 'primary'), button('Cancel', cancel)),
+      ];
+    }
+    case 'remove-master':
+      return [
+        ...errorLine(screen.error),
+        el(
+          'div',
+          { className: 'row' },
+          button('Remove', () => step({ kind: 'remove' }), 'danger'),
+          button('Cancel', cancel),
+        ),
+      ];
+    case 'master-not-kept':
+      // The rotation stands: closing leaves it, and trying again needs the words once more.
+      return [
+        el(
+          'div',
+          { className: 'row' },
+          button('Enter recovery phrase', () => step({ kind: 'try-again' }), 'primary'),
+          button('Close', cancel),
+        ),
+      ];
+    case 'restore-not-linked':
+      return [
+        el('div', { className: 'link', textContent: screen.did }),
+        el(
+          'div',
+          { className: 'row' },
+          button('Try again', () => step({ kind: 'try-again' }), 'primary'),
+          button('Close', cancel),
+        ),
+      ];
+    case 'restored':
+      return [el('div', { className: 'link', textContent: screen.did })];
+    case 'master-replaced':
+    case 'master-removed':
+      return [];
     case 'pending-refused':
       return [
         el('div', { className: 'link', textContent: screen.did }),
@@ -384,11 +508,16 @@ function draw(screen: Screen) {
     window.clearInterval(offerTimer);
     offerTimer = undefined;
   }
+  if (screen.screen !== 'enter-words') forgetWords();
   const { title, lead } = heading(screen);
   const parts: Child[] = [el('h1', { textContent: title }), el('p', { textContent: lead }), ...body(screen)];
   if (isLast(screen)) parts.push(el('div', { className: 'row' }, button('Done', finish, 'primary')));
   root.replaceChildren(...parts);
-  root.querySelector<HTMLInputElement>('input:not([type=checkbox])')?.focus();
+  // A refused word's field first, else the first field.
+  (
+    root.querySelector<HTMLInputElement>('input[aria-invalid="true"]') ??
+    root.querySelector<HTMLInputElement>('input:not([type=checkbox])')
+  )?.focus();
 }
 
 /** Draws the window into this page and starts its step. */

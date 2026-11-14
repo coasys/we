@@ -1,6 +1,7 @@
 /**
  * DeviceStore — the devices that speak for the person: linking one, naming one, revoking one, and
- * who keeps the master key.
+ * who keeps the master key; and the 12 words typed back in, to replace the master key or restore the
+ * identity on a computer of none.
  *
  * Reads `IdentityPort.devices` (the device keys the key log lists) and names them from the private
  * record the custody view carries (`IdentityCustodyView.devices`), with who keeps the master key and
@@ -11,7 +12,7 @@
  * Chrome tier only (`devices` in `templateSurface.ts`): a space template never sees a person's
  * devices.
  */
-import { type DeviceRow, deviceRows, type RequestRow, requestRows } from '@shared/identityRows';
+import { type DeviceRow, deviceRows, lastRotation, type RequestRow, requestRows } from '@shared/identityRows';
 import type { DeviceKeyView, IdentityChangeOutcome } from '@we/backend-shared';
 import {
   type Accessor,
@@ -42,6 +43,18 @@ export interface DeviceStore {
   canShowCode: Accessor<boolean>;
   /** "Ask for master key": a device of the identity that does not keep it, nor has it waiting. */
   canAskMaster: Accessor<boolean>;
+  /**
+   * "Replace master key" can be offered: a device of the identity, where the custody service takes
+   * the 12 words. It need not keep the master key: replacing it is how a lost holder is shut out.
+   */
+  canReplaceMaster: Accessor<boolean>;
+  /**
+   * "Restore with recovery phrase" can be offered: this computer can take the words, and speaks for
+   * no identity.
+   */
+  canRestore: Accessor<boolean>;
+  /** "Remove master key from this computer?" can be asked on sign out: it keeps one. */
+  canRemoveMaster: Accessor<boolean>;
   /** A master key another device sent waits here: "Accept master key". */
   masterWaiting: Accessor<boolean>;
   /** What other devices asked, waiting for an answer from a device that keeps the master key. */
@@ -64,8 +77,14 @@ export interface DeviceStore {
   answerRequest: (id: string) => Promise<IdentityChangeOutcome>;
   /** Names the device `keyId`. */
   rename: (keyId: string) => Promise<IdentityChangeOutcome>;
-  /** Revokes the device key `keyId`. */
+  /** Revokes the device key `keyId`; the window offers to replace the master key too. */
   revoke: (keyId: string) => Promise<IdentityChangeOutcome>;
+  /** Replaces the master key from the 12 words; this computer keeps the new one. */
+  replaceMaster: () => Promise<IdentityChangeOutcome>;
+  /** Restores the identity of the 12 words on this computer, locking out the devices picked. */
+  restore: () => Promise<IdentityChangeOutcome>;
+  /** Stops keeping the master key on this computer; refused when it is the only copy. */
+  removeMaster: () => Promise<IdentityChangeOutcome>;
 }
 
 const DeviceStoreContext = createContext<DeviceStore>();
@@ -123,7 +142,11 @@ export function DeviceStoreProvider(props: ParentProps) {
   }
 
   const names = () => identity.custody()?.devices ?? [];
-  const rows = createMemo(() => deviceRows(raw(), names(), identity.custody()?.revokedHolders ?? []));
+  const rows = createMemo(() =>
+    deviceRows(raw(), names(), identity.custody()?.revokedHolders ?? [], lastRotation(identity.keyLog())),
+  );
+  // The words go to the custody service, which the `recoveryWords` capability says is here.
+  const words = () => session.identityCapabilities().recoveryWords && identity.canChange();
   const linking = () => session.identityCapabilities().linkDevice && identity.canChange();
   const canManage = () => linking() && !!identity.did() && !!identity.custody()?.holdsMaster;
   const masterWaiting = () => !!identity.custody()?.masterWaiting;
@@ -140,6 +163,9 @@ export function DeviceStoreProvider(props: ParentProps) {
       !identity.thisDeviceRevoked() &&
       !identity.custody()?.holdsMaster &&
       !masterWaiting(),
+    canReplaceMaster: () => words() && !!identity.did() && !!identity.keyId() && !identity.thisDeviceRevoked(),
+    canRestore: () => words() && identity.statusLoaded() && !identity.did() && !identity.custody()?.holdsMaster,
+    canRemoveMaster: () => linking() && !!identity.did() && !!identity.custody()?.holdsMaster,
     masterWaiting,
     requests: createMemo(() =>
       canManage() ? requestRows(identity.custody()?.requests ?? [], names(), identity.keyId() || null) : [],
@@ -154,6 +180,9 @@ export function DeviceStoreProvider(props: ParentProps) {
     answerRequest: (id: string) => step(() => identity.open({ kind: 'answer-request', id })),
     rename: (keyId: string) => step(() => identity.open({ kind: 'rename', keyId })),
     revoke: (keyId: string) => step(() => identity.open({ kind: 'revoke', keyId })),
+    replaceMaster: () => step(() => identity.open({ kind: 'replace-master' })),
+    restore: () => step(() => identity.open({ kind: 'restore' })),
+    removeMaster: () => step(() => identity.open({ kind: 'remove-master' })),
   };
 
   return <DeviceStoreContext.Provider value={store}>{props.children}</DeviceStoreContext.Provider>;

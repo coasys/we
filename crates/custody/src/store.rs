@@ -17,7 +17,66 @@
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
-use ad4m_identity_client::VaultError;
+use ad4m_identity_client::{StageToken, VaultError};
+
+/// What an item kept as it is ([`StoreKind::unlocks_itself`]) carries beside its bytes as public
+/// attributes, written in the same store operation as the bytes: its master index, and for a
+/// staged key the token of the flow that staged it. Neither is secret; both are read with no
+/// unlock. A sealed item carries the same in its own authenticated header
+/// ([`crate::seal::sealed_index`], [`crate::seal::sealed_owner`]).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ItemTag {
+    pub index: u32,
+    pub owner: Option<StageToken>,
+}
+
+/// The prefix of the comment a keychain item kept with its [`ItemTag`] carries.
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+const INDEX_COMMENT: &str = "coasys-master-index:";
+/// Between the index and the owner token in that comment.
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+const OWNER_COMMENT: &str = ";owner:";
+
+/// The keychain comment (`kSecAttrComment`) that carries `tag`: `coasys-master-index:<n>`, and
+/// `;owner:<32 hex digits>` after it for a staged key. One attribute, so it is written in the
+/// same `SecItemAdd` as the key.
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+fn tag_comment(tag: &ItemTag) -> String {
+    let mut comment = format!("{INDEX_COMMENT}{}", tag.index);
+    if let Some(owner) = tag.owner {
+        comment.push_str(OWNER_COMMENT);
+        for byte in owner.0 {
+            comment.push_str(&format!("{byte:02x}"));
+        }
+    }
+    comment
+}
+
+/// The [`ItemTag`] a keychain comment carries. `None` when it carries no index (an item kept
+/// before the index was); an owner that does not read as a token is no owner, so the key is
+/// one only a discard naming no owner forgets.
+#[cfg_attr(not(any(target_os = "macos", test)), allow(dead_code))]
+fn comment_tag(comment: &str) -> Option<ItemTag> {
+    let rest = comment.strip_prefix(INDEX_COMMENT)?;
+    let (index, owner) = match rest.split_once(OWNER_COMMENT) {
+        Some((index, owner)) => (index, Some(owner)),
+        None => (rest, None),
+    };
+    let owner = owner.and_then(|hex| {
+        let mut token = [0u8; 16];
+        if hex.len() != 32 || !hex.is_ascii() {
+            return None;
+        }
+        for (at, byte) in token.iter_mut().enumerate() {
+            *byte = u8::from_str_radix(&hex[2 * at..2 * at + 2], 16).ok()?;
+        }
+        Some(StageToken(token))
+    });
+    Some(ItemTag {
+        index: index.parse().ok()?,
+        owner,
+    })
+}
 
 /// Which kind of store holds an item, and so how the person unlocks it. Asked per item
 /// ([`SecretStore::kind_of`]): two identities on one computer can rest in different kinds.
@@ -60,11 +119,72 @@ pub trait SecretStore: Send + Sync {
     fn reachable(&self) -> bool {
         true
     }
+    /// [`put`](SecretStore::put), with `tag` kept as public attributes of the item, written in
+    /// the same operation as the bytes, for a store that keeps its items as they are
+    /// ([`StoreKind::unlocks_itself`]): what [`tag_of`](SecretStore::tag_of) reads back with
+    /// no unlock. A sealed item carries its tag in its own authenticated header
+    /// ([`crate::seal::sealed_index`]) and goes through `put`; what comes here is the item as
+    /// it is — the raw master key — so a store that keeps only sealed items (the file, the
+    /// Secret Service) refuses it, which is this default. Only a store that unlocks itself
+    /// overrides it.
+    fn put_tagged(&self, name: &str, bytes: &[u8], tag: &ItemTag) -> Result<(), VaultError> {
+        let _ = (name, bytes, tag);
+        Err(refused_unsealed(self.kind()))
+    }
+    /// The tag [`put_tagged`](SecretStore::put_tagged) kept with the item `name`, read without
+    /// the item's bytes (no unlock, no prompt). `None` when the item is absent, or was kept
+    /// without one, or the store keeps none.
+    fn tag_of(&self, name: &str) -> Result<Option<ItemTag>, VaultError> {
+        let _ = name;
+        Ok(None)
+    }
+    /// The item `from` becomes the item `to`, replacing it, with its attribute, and `from` is
+    /// gone. `NotFound` when `from` is absent. Copies then deletes: a crash between leaves the
+    /// same bytes under both names. A store that can rename without reading the bytes (the
+    /// keychain, whose read prompts) does so.
+    fn rename(&self, from: &str, to: &str) -> Result<(), VaultError> {
+        let bytes = zeroize::Zeroizing::new(self.get(from)?.ok_or(VaultError::NotFound)?);
+        match self.tag_of(from)? {
+            Some(tag) => self.put_tagged(to, &bytes, &tag)?,
+            None => self.put(to, &bytes)?,
+        }
+        self.delete(from)
+    }
 }
 
-/// The item's name for an identity.
+/// A store that keeps only sealed items was handed one as it is ([`SecretStore::put_tagged`]).
+fn refused_unsealed(kind: StoreKind) -> VaultError {
+    VaultError::Unavailable(format!(
+        "the {kind:?} store keeps only sealed master keys; an unsealed one was refused"
+    ))
+}
+
+/// The item's name for an identity: its kept master key.
 pub fn item_name(scid: &str) -> String {
-    format!("coasys.identity/{scid}")
+    format!("{KEPT_PREFIX}{scid}")
+}
+
+/// The name of the master key a rotation staged for an identity before its publish
+/// (`Vault::stage_master`): a second slot beside the kept one, in the same store.
+pub fn staged_name(scid: &str) -> String {
+    format!("{STAGED_PREFIX}{scid}")
+}
+
+const KEPT_PREFIX: &str = "coasys.identity/";
+const STAGED_PREFIX: &str = "coasys.identity.staged/";
+
+/// The file stem a name is kept under beside the sealed files: `<scid>` for a kept item,
+/// `<scid>.staged` for a staged one (a scid is base58, so it has no dot of its own).
+fn stem(name: &str) -> String {
+    match name.strip_prefix(STAGED_PREFIX) {
+        Some(scid) => format!("{scid}.staged"),
+        None => name.rsplit('/').next().unwrap_or(name).to_string(),
+    }
+}
+
+/// The kept item a staged name stands beside; `None` for any other name.
+fn kept_beside(name: &str) -> Option<String> {
+    name.strip_prefix(STAGED_PREFIX).map(item_name)
 }
 
 // ─── File ───────────────────────────────────────────────────────────────────────
@@ -80,9 +200,8 @@ impl FileStore {
     }
 
     fn path(&self, name: &str) -> PathBuf {
-        // `coasys.identity/<scid>`: a scid is base58, so the file name is the part after the slash.
-        let file = name.rsplit('/').next().unwrap_or(name);
-        self.dir.join(format!("{file}.bin"))
+        // `coasys.identity/<scid>` is `<scid>.bin`, its staged slot `<scid>.staged.bin`.
+        self.dir.join(format!("{}.bin", stem(name)))
     }
 }
 
@@ -127,7 +246,9 @@ impl SecretStore for FileStore {
         let mut file = options.open(&tmp).map_err(io)?;
         file.write_all(bytes).map_err(io)?;
         file.sync_all().map_err(io)?;
-        std::fs::rename(&tmp, &path).map_err(io)
+        std::fs::rename(&tmp, &path).map_err(io)?;
+        // `Ok` means durable: the name too, not only the bytes.
+        sync_dir(&self.dir).map_err(io)
     }
 
     fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
@@ -149,16 +270,32 @@ impl SecretStore for FileStore {
     fn delete(&self, name: &str) -> Result<(), VaultError> {
         match std::fs::remove_file(self.path(name)) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(io(e)),
-            _ => Ok(()),
+            Err(_) => Ok(()),
+            Ok(()) => sync_dir(&self.dir).map_err(io),
+        }
+    }
+
+    /// One `rename(2)`: the file under `to` is the old one or the new one, never neither. The
+    /// folder is synced after it, so a promote answered `Ok` is still a promote after a crash.
+    fn rename(&self, from: &str, to: &str) -> Result<(), VaultError> {
+        match std::fs::rename(self.path(from), self.path(to)) {
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Err(VaultError::NotFound),
+            other => {
+                other.map_err(io)?;
+                sync_dir(&self.dir).map_err(io)
+            }
         }
     }
 }
 
 // ─── Memory (tests) ─────────────────────────────────────────────────────────────
 
+/// An item's bytes and the index attribute kept with them.
+type MemoryItem = (Vec<u8>, Option<ItemTag>);
+
 #[derive(Default)]
 pub struct MemoryStore {
-    items: std::sync::Mutex<std::collections::HashMap<String, Vec<u8>>>,
+    items: std::sync::Mutex<std::collections::HashMap<String, MemoryItem>>,
     kind: Option<StoreKind>,
 }
 
@@ -179,7 +316,7 @@ impl MemoryStore {
     pub fn all_bytes(&self) -> Vec<u8> {
         self.items
             .lock()
-            .map(|m| m.values().flatten().copied().collect())
+            .map(|m| m.values().flat_map(|(bytes, _)| bytes).copied().collect())
             .unwrap_or_default()
     }
 }
@@ -195,8 +332,27 @@ impl SecretStore for MemoryStore {
         self.items
             .lock()
             .map_err(|_| VaultError::Unavailable("poisoned".into()))?
-            .insert(name.into(), bytes.to_vec());
+            .insert(name.into(), (bytes.to_vec(), None));
         Ok(())
+    }
+    /// As the store it stands in for: kept only as a keychain is.
+    fn put_tagged(&self, name: &str, bytes: &[u8], tag: &ItemTag) -> Result<(), VaultError> {
+        if !self.kind().unlocks_itself() {
+            return Err(refused_unsealed(self.kind()));
+        }
+        self.items
+            .lock()
+            .map_err(|_| VaultError::Unavailable("poisoned".into()))?
+            .insert(name.into(), (bytes.to_vec(), Some(*tag)));
+        Ok(())
+    }
+    fn tag_of(&self, name: &str) -> Result<Option<ItemTag>, VaultError> {
+        Ok(self
+            .items
+            .lock()
+            .map_err(|_| VaultError::Unavailable("poisoned".into()))?
+            .get(name)
+            .and_then(|(_, tag)| *tag))
     }
     fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
         Ok(self
@@ -204,7 +360,7 @@ impl SecretStore for MemoryStore {
             .lock()
             .map_err(|_| VaultError::Unavailable("poisoned".into()))?
             .get(name)
-            .cloned())
+            .map(|(bytes, _)| bytes.clone()))
     }
     fn contains(&self, name: &str) -> Result<bool, VaultError> {
         Ok(self
@@ -404,10 +560,11 @@ mod keychain_store {
         AccessControlOptions, PasswordOptions,
     };
     use security_framework_sys::item::{
-        kSecAttrAccount, kSecAttrService, kSecClass, kSecClassGenericPassword, kSecMatchLimit,
-        kSecReturnAttributes, kSecUseAuthenticationUI, kSecUseDataProtectionKeychain,
+        kSecAttrAccount, kSecAttrComment, kSecAttrService, kSecClass, kSecClassGenericPassword,
+        kSecMatchLimit, kSecReturnAttributes, kSecUseAuthenticationUI,
+        kSecUseDataProtectionKeychain,
     };
-    use security_framework_sys::keychain_item::SecItemCopyMatching;
+    use security_framework_sys::keychain_item::{SecItemCopyMatching, SecItemUpdate};
 
     use super::*;
 
@@ -474,6 +631,71 @@ mod keychain_store {
             set_generic_password_options(bytes, options).map_err(unavailable)
         }
 
+        /// The tag as the item's comment (`kSecAttrComment`, [`tag_comment`]), added in the same
+        /// `SecItemAdd` as the bytes: an attribute, so it is read with no prompt ([`tag_of`]),
+        /// and only this app's access group can write it.
+        fn put_tagged(&self, name: &str, bytes: &[u8], tag: &ItemTag) -> Result<(), VaultError> {
+            self.delete(name)?;
+            let mut options = item(name);
+            options.set_access_control_options(AccessControlOptions::USER_PRESENCE);
+            options.set_comment(&tag_comment(tag));
+            set_generic_password_options(bytes, options).map_err(unavailable)
+        }
+
+        fn tag_of(&self, name: &str) -> Result<Option<ItemTag>, VaultError> {
+            let (status, comment) = probe(name);
+            match status {
+                0 => Ok(comment.as_deref().and_then(comment_tag)),
+                // Kept, but even its attributes need the person: it cannot tell.
+                ERR_SEC_INTERACTION_NOT_ALLOWED | ERR_SEC_ITEM_NOT_FOUND => Ok(None),
+                code => Err(unavailable(Error::from_code(code))),
+            }
+        }
+
+        /// The staged item's account becomes the kept one's (`SecItemUpdate` of an attribute),
+        /// so the key is never read out of the keychain and the move asks for no presence.
+        fn rename(&self, from: &str, to: &str) -> Result<(), VaultError> {
+            if !self.contains(from)? {
+                return Err(VaultError::NotFound);
+            }
+            self.delete(to)?;
+            let query: Vec<(CFString, CFType)> = unsafe {
+                vec![
+                    (
+                        CFString::wrap_under_get_rule(kSecClass),
+                        CFString::wrap_under_get_rule(kSecClassGenericPassword).into_CFType(),
+                    ),
+                    (
+                        CFString::wrap_under_get_rule(kSecAttrService),
+                        CFString::new(SERVICE).into_CFType(),
+                    ),
+                    (
+                        CFString::wrap_under_get_rule(kSecAttrAccount),
+                        CFString::new(from).into_CFType(),
+                    ),
+                    (
+                        CFString::wrap_under_get_rule(kSecUseDataProtectionKeychain),
+                        CFBoolean::true_value().into_CFType(),
+                    ),
+                ]
+            };
+            let change: Vec<(CFString, CFType)> = unsafe {
+                vec![(
+                    CFString::wrap_under_get_rule(kSecAttrAccount),
+                    CFString::new(to).into_CFType(),
+                )]
+            };
+            let query = CFDictionary::from_CFType_pairs(&query);
+            let change = CFDictionary::from_CFType_pairs(&change);
+            match unsafe {
+                SecItemUpdate(query.as_concrete_TypeRef(), change.as_concrete_TypeRef())
+            } {
+                0 => Ok(()),
+                ERR_SEC_ITEM_NOT_FOUND => Err(VaultError::NotFound),
+                code => Err(unavailable(Error::from_code(code))),
+            }
+        }
+
         fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
             match generic_password(item(name)) {
                 Ok(bytes) => Ok(Some(bytes)),
@@ -517,6 +739,11 @@ mod keychain_store {
     /// that exists but would need the person to read even this much answers
     /// errSecInteractionNotAllowed.
     pub(super) fn probe_status(name: &str) -> i32 {
+        probe(name).0
+    }
+
+    /// [`probe_status`], and the item's comment when the keychain answered its attributes.
+    fn probe(name: &str) -> (i32, Option<String>) {
         let pairs: Vec<(CFString, CFType)> = unsafe {
             vec![
                 (
@@ -552,11 +779,19 @@ mod keychain_store {
         let query = CFDictionary::from_CFType_pairs(&pairs);
         let mut found: CFTypeRef = std::ptr::null();
         let status = unsafe { SecItemCopyMatching(query.as_concrete_TypeRef(), &mut found) };
+        let mut comment = None;
         if !found.is_null() {
             // A +1 reference to the attributes dictionary; dropping the wrapper releases it.
-            drop(unsafe { CFType::wrap_under_create_rule(found) });
+            let attributes = unsafe { CFType::wrap_under_create_rule(found) };
+            if let Some(dict) = attributes.downcast::<CFDictionary>() {
+                let key = unsafe { CFString::wrap_under_get_rule(kSecAttrComment) };
+                if let Some(value) = dict.find(key.as_CFTypeRef().cast()) {
+                    let value = unsafe { CFType::wrap_under_get_rule(*value) };
+                    comment = value.downcast::<CFString>().map(|s| s.to_string());
+                }
+            }
         }
-        status
+        (status, comment)
     }
 }
 
@@ -646,9 +881,20 @@ impl PlacedStore {
         }
     }
 
-    /// The side that holds `name`, or the one it goes to when it is new.
+    /// The side that holds `name`, or the one it goes to when it is new. A new staged key goes to
+    /// the side of the kept item it stands beside, so it is sealed (or not) as that item is, and
+    /// its promote is a move within one store: a key staged on the keychain, unsealed, never lands
+    /// in a file.
     fn side(&self, name: &str) -> Result<&dyn SecretStore, VaultError> {
-        Ok(self.holder(name)?.unwrap_or(self.for_new()))
+        if let Some(held) = self.holder(name)? {
+            return Ok(held);
+        }
+        if let Some(kept) = kept_beside(name) {
+            if let Some(held) = self.holder(&kept)? {
+                return Ok(held);
+            }
+        }
+        Ok(self.for_new())
     }
 }
 
@@ -681,6 +927,39 @@ impl SecretStore for PlacedStore {
             Some(side) => side.delete(name),
             None => Ok(()),
         }
+    }
+
+    fn put_tagged(&self, name: &str, bytes: &[u8], tag: &ItemTag) -> Result<(), VaultError> {
+        self.side(name)?.put_tagged(name, bytes, tag)
+    }
+
+    fn tag_of(&self, name: &str) -> Result<Option<ItemTag>, VaultError> {
+        match self.holder(name)? {
+            Some(side) => side.tag_of(name),
+            None => Ok(None),
+        }
+    }
+
+    /// Within the side that holds `from` when `to` is absent or on that side too; across sides
+    /// only by copy (both sides hold the same bytes for a sealed item).
+    fn rename(&self, from: &str, to: &str) -> Result<(), VaultError> {
+        let from_side = self.holder(from)?.ok_or(VaultError::NotFound)?;
+        let to_side = self.side(to)?;
+        if std::ptr::addr_eq(from_side, to_side) {
+            return from_side.rename(from, to);
+        }
+        if from_side.kind().unlocks_itself() != to_side.kind().unlocks_itself() {
+            return Err(VaultError::Unavailable(
+                "a staged master key and the kept one are in stores that keep them differently"
+                    .into(),
+            ));
+        }
+        let bytes = zeroize::Zeroizing::new(from_side.get(from)?.ok_or(VaultError::NotFound)?);
+        match from_side.tag_of(from)? {
+            Some(tag) => to_side.put_tagged(to, &bytes, &tag)?,
+            None => to_side.put(to, &bytes)?,
+        }
+        from_side.delete(from)
     }
 }
 
@@ -744,8 +1023,19 @@ impl Reconnecting {
     }
 
     fn marker(&self, name: &str) -> PathBuf {
-        let file = name.rsplit('/').next().unwrap_or(name);
-        self.markers.join(format!("{file}.platform"))
+        self.markers.join(format!("{}.platform", stem(name)))
+    }
+
+    fn mark(&self, name: &str) -> Result<(), VaultError> {
+        std::fs::create_dir_all(&self.markers).map_err(io)?;
+        std::fs::write(self.marker(name), b"").map_err(io)
+    }
+
+    fn unmark(&self, name: &str) -> Result<(), VaultError> {
+        match std::fs::remove_file(self.marker(name)) {
+            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(io(e)),
+            _ => Ok(()),
+        }
     }
 
     fn marked(&self, name: &str) -> Result<bool, VaultError> {
@@ -780,8 +1070,28 @@ impl SecretStore for Reconnecting {
     fn put(&self, name: &str, bytes: &[u8]) -> Result<(), VaultError> {
         let connected = self.reach()?;
         self.on(&connected, |store| store.put(name, bytes))?;
-        std::fs::create_dir_all(&self.markers).map_err(io)?;
-        std::fs::write(self.marker(name), b"").map_err(io)
+        self.mark(name)
+    }
+
+    fn put_tagged(&self, name: &str, bytes: &[u8], tag: &ItemTag) -> Result<(), VaultError> {
+        let connected = self.reach()?;
+        self.on(&connected, |store| store.put_tagged(name, bytes, tag))?;
+        self.mark(name)
+    }
+
+    fn tag_of(&self, name: &str) -> Result<Option<ItemTag>, VaultError> {
+        match self.reach() {
+            Ok(connected) => self.on(&connected, |store| store.tag_of(name)),
+            Err(why) => self.unreached(name, why, None),
+        }
+    }
+
+    fn rename(&self, from: &str, to: &str) -> Result<(), VaultError> {
+        let connected = self.reach()?;
+        // Marked before the move, so a crash leaves a marker beside whichever name holds it.
+        self.mark(to)?;
+        self.on(&connected, |store| store.rename(from, to))?;
+        self.unmark(from)
     }
 
     fn get(&self, name: &str) -> Result<Option<Vec<u8>>, VaultError> {
@@ -803,10 +1113,7 @@ impl SecretStore for Reconnecting {
             Ok(connected) => self.on(&connected, |store| store.delete(name))?,
             Err(why) => self.unreached(name, why, ())?,
         }
-        match std::fs::remove_file(self.marker(name)) {
-            Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(io(e)),
-            _ => Ok(()),
-        }
+        self.unmark(name)
     }
 
     fn reachable(&self) -> bool {
@@ -888,6 +1195,40 @@ mod tests {
         assert_eq!(store.get(&name).unwrap(), None);
     }
 
+    /// An item kept as it is (`put_tagged`, for a store that unlocks itself) is the raw master
+    /// key: a store that keeps only sealed items refuses it rather than writing it down, whoever
+    /// asks — the file, a memory store standing in for one, and a placed store whose new items
+    /// go to the file.
+    #[test]
+    fn a_store_of_sealed_items_refuses_an_item_kept_as_it_is() {
+        let dir = tempfile::tempdir().unwrap();
+        let custody = dir.path().join("custody");
+        let name = item_name("QmScid");
+        let tag = ItemTag {
+            index: 0,
+            owner: None,
+        };
+        let raw = [9u8; 32];
+        let file = FileStore::new(&custody);
+        assert!(matches!(
+            file.put_tagged(&name, &raw, &tag),
+            Err(VaultError::Unavailable(_))
+        ));
+        assert!(!custody.join("QmScid.bin").exists());
+        let placed = PlacedStore::new(Box::new(FileStore::new(&custody)), None);
+        assert!(placed.put_tagged(&name, &raw, &tag).is_err());
+        assert!(!custody.join("QmScid.bin").exists());
+        for kind in [StoreKind::File, StoreKind::SecretService, StoreKind::Memory] {
+            let memory = MemoryStore::as_kind(kind);
+            assert!(memory.put_tagged(&name, &raw, &tag).is_err(), "{kind:?}");
+            assert!(memory.all_bytes().is_empty());
+        }
+        // The keychain keeps it, with its tag.
+        let keychain = MemoryStore::as_kind(StoreKind::Keychain);
+        keychain.put_tagged(&name, &raw, &tag).unwrap();
+        assert_eq!(keychain.tag_of(&name).unwrap(), Some(tag));
+    }
+
     #[test]
     fn a_file_store_says_whether_it_holds_an_item_without_reading_it() {
         let dir = tempfile::tempdir().unwrap();
@@ -942,6 +1283,40 @@ mod tests {
         assert!(!store.contains(&item_name("QmOther")).unwrap());
         store.delete(&name).unwrap();
         assert!(!store.contains(&name).unwrap());
+    }
+
+    /// The keychain keeps an item's tag in its comment: the index alone for a kept key, and the
+    /// staging flow's token after it for a staged one. A comment written before tokens were
+    /// kept reads as a tag with no owner; an owner that does not read as a token is none.
+    #[test]
+    fn the_keychain_comment_carries_the_index_and_the_owner() {
+        let kept = ItemTag {
+            index: 3,
+            owner: None,
+        };
+        assert_eq!(tag_comment(&kept), "coasys-master-index:3");
+        assert_eq!(comment_tag(&tag_comment(&kept)), Some(kept));
+        let mut token = [0u8; 16];
+        token[0] = 0xab;
+        token[15] = 0x01;
+        let staged = ItemTag {
+            index: 4,
+            owner: Some(StageToken(token)),
+        };
+        assert_eq!(
+            tag_comment(&staged),
+            "coasys-master-index:4;owner:ab000000000000000000000000000001"
+        );
+        assert_eq!(comment_tag(&tag_comment(&staged)), Some(staged));
+        assert_eq!(
+            comment_tag("coasys-master-index:4;owner:not-a-token"),
+            Some(ItemTag {
+                index: 4,
+                owner: None
+            })
+        );
+        assert_eq!(comment_tag("coasys-master-index:x;owner:"), None);
+        assert_eq!(comment_tag("another app's comment"), None);
     }
 
     /// One keyring behind a connection that can be down: every connect reaches the same items.

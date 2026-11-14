@@ -1531,6 +1531,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     canManage: state('devices'),
     canShowCode: state('devices'),
     canAskMaster: state('devices'),
+    canReplaceMaster: state('devices'),
+    canRestore: state('devices'),
+    canRemoveMaster: state('devices'),
     masterWaiting: state('devices'),
     requests: state('devices'),
     error: state('devices'),
@@ -1543,6 +1546,9 @@ export const TEMPLATE_SURFACE: Record<string, Record<string, Classification>> = 
     answerRequest: action('devices'),
     rename: action('devices'),
     revoke: action('devices'),
+    replaceMaster: action('devices'),
+    restore: action('devices'),
+    removeMaster: action('devices'),
   },
 
   /*

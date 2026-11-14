@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 // The policy as `vite.js` writes it into the built page.
 import policy from '../csp.txt?raw';
+import css from './identity.css?raw';
 import indexSource from './index.ts?raw';
 import {
   deviceMatchActions,
@@ -13,9 +14,11 @@ import {
   heading,
   isLast,
   oneAtATime,
+  refusedField,
   remaining,
   type RevokeTarget,
   type Screen,
+  spreadWords,
   targetLine,
   wordNumber,
 } from './screens';
@@ -26,7 +29,7 @@ const IDENTITY_CSP = policy.trim();
 
 describe('the identity window', () => {
   it('says what a revocation does, and promises nothing about earlier signatures', () => {
-    const confirm = { screen: 'revoke-confirm' as const, keyId: 'd2', passphrase: false, error: null };
+    const confirm = { screen: 'revoke-confirm' as const, keyId: 'd2', rotate: false, passphrase: false, error: null };
     const lead = heading({ ...confirm, mayHoldMaster: false }).lead;
     expect(lead).toContain('when they next read your key log');
     expect(lead).toContain('can also stop counting as yours');
@@ -38,6 +41,7 @@ describe('the identity window', () => {
       screen: 'revoke-confirm',
       keyId: 'd2',
       mayHoldMaster: true,
+      rotate: true,
       passphrase: false,
       error: null,
     }).lead;
@@ -201,10 +205,154 @@ describe('the identity window', () => {
     expect(windowSource).toContain('const cancel = oneAtATime(');
   });
 
-  it('says what the words do today, and promises no restore or replacement this app cannot run', () => {
+  it('says what the words do: add and remove devices, restore the identity, replace the master key', () => {
     const lead = heading({ screen: 'show-words', words: [] }).lead;
-    expect(lead).toContain('adds and removes your devices');
-    expect(lead).not.toMatch(/stolen|replace|restore everything/);
+    expect(lead).toContain('restore your identity');
+    expect(lead).toContain('replace your master key');
+    // Nothing this app cannot do: the words bring back no stolen data and no other keys.
+    expect(lead).not.toMatch(/stolen|restore everything/);
+  });
+
+  it('titles the words entry by what the words are for', () => {
+    const entry = { screen: 'enter-words' as const, error: null, position: null };
+    expect(heading({ ...entry, purpose: 'replace' }).title).toBe('Replace master key');
+    expect(heading({ ...entry, purpose: 'restore' }).title).toBe('Restore with recovery phrase');
+    expect(heading({ ...entry, purpose: 'revoke' }).lead).toContain('also replaces your master key');
+    expect(heading({ ...entry, purpose: 'answer' }).lead).toContain('12 words');
+    expect(isLast({ ...entry, purpose: 'replace' })).toBe(false);
+  });
+
+  it('spreads a pasted phrase over the word fields from the one it was pasted into', () => {
+    const twelve = Array.from({ length: 12 }, (_, i) => `w${i + 1}`).join(' ');
+    expect(spreadWords(twelve, 0)).toHaveLength(12);
+    expect(spreadWords(`  ${twelve}\n`, 0)[11]).toEqual([11, 'w12']);
+    // From field 10 on, only three fields are left.
+    expect(spreadWords(twelve, 9)).toEqual([
+      [9, 'w1'],
+      [10, 'w2'],
+      [11, 'w3'],
+    ]);
+    // One word is an ordinary paste.
+    expect(spreadWords('abandon', 4)).toEqual([]);
+  });
+
+  it('says what replacing, restoring and removing the master key did', () => {
+    const replaced = heading({ screen: 'master-replaced', index: 1, revoked: ['d2'], note: null });
+    expect(replaced.title).toBe('Master key replaced');
+    expect(replaced.lead).toContain('The old one no longer works on any device.');
+    expect(replaced.lead).toContain('Also removed: d2.');
+    expect(heading({ screen: 'master-replaced', index: 2, revoked: [], note: 'Late.' }).lead).not.toContain('removed');
+    const restored = heading({
+      screen: 'restored',
+      did: 'did:scid:coasys:1:Qm',
+      name: 'Laptop',
+      keyId: 'd3',
+      revoked: ['d1'],
+      note: null,
+    });
+    expect(restored.title).toBe('Identity restored');
+    expect(restored.lead).toContain('linked as Laptop');
+    expect(restored.lead).toContain('Removed: d1.');
+    expect(heading({ screen: 'master-removed' }).title).toBe('Master key removed');
+    expect(heading({ screen: 'remove-master', error: null }).lead).toContain(
+      'your recovery phrase, can still add and remove',
+    );
+    const devices = heading({
+      screen: 'restore-devices',
+      did: 'did:scid:coasys:1:Qm',
+      devices: [],
+      note: "Couldn't read your device list, so devices show without names.",
+    }).lead;
+    expect(devices).toContain('Select each device you lost');
+    expect(devices).toContain("Couldn't read your device list, so devices show without names.");
+  });
+
+  it('says the key is replaced even when this computer could not keep it, and offers to try again', () => {
+    const notKept: Screen = {
+      screen: 'master-not-kept',
+      index: 2,
+      revoked: ['d2'],
+      reason: 'The unlock was cancelled.',
+      note: null,
+    };
+    const { title, lead } = heading(notKept);
+    expect(title).toBe('New master key not saved');
+    expect(lead).toContain('the old one no longer works');
+    expect(lead).toContain('The unlock was cancelled.');
+    expect(lead).toContain('Also removed: d2.');
+    expect(lead).toContain('Enter your recovery phrase again');
+    const notLinked: Screen = {
+      screen: 'restore-not-linked',
+      did: 'did:scid:coasys:1:Qm',
+      revoked: ['d1'],
+      reason: 'Key storage error: locked.',
+    };
+    expect(heading(notLinked).title).toBe("This computer isn't linked yet");
+    expect(heading(notLinked).lead).toContain('Removed: d1.');
+    expect(heading(notLinked).lead).toContain('Key storage error: locked.');
+    // After a publish, never "Nothing changed".
+    for (const screen of [notKept, notLinked]) {
+      expect(`${heading(screen).title} ${heading(screen).lead}`).not.toMatch(/nothing (was )?changed/i);
+      // Not a last screen: Done would end the step as done, and closing would not cancel the wait.
+      expect(isLast(screen), screen.screen).toBe(false);
+    }
+    // Each offers its try-again, and Close cancels the step that waits for it.
+    expect(windowSource).toMatch(
+      /case 'master-not-kept':[\s\S]*?step\(\{ kind: 'try-again' \}\)[\s\S]*?button\('Close', cancel\)/,
+    );
+    expect(windowSource).toMatch(
+      /case 'restore-not-linked':[\s\S]*?step\(\{ kind: 'try-again' \}\)[\s\S]*?button\('Close', cancel\)/,
+    );
+  });
+
+  it('marks only the refused word field invalid, with a token value, and draws it', () => {
+    expect(Array.from({ length: 12 }, (_, i) => refusedField(3, i))).toEqual(
+      Array.from({ length: 12 }, (_, i) => i === 2),
+    );
+    expect(Array.from({ length: 12 }, (_, i) => refusedField(null, i)).some(Boolean)).toBe(false);
+    // `aria-invalid` is set to "true" or removed, never toggled empty; focus and style read "true".
+    expect(windowSource).not.toMatch(/toggleAttribute\('aria-invalid'/);
+    expect(windowSource).toContain("input.setAttribute('aria-invalid', 'true')");
+    expect(windowSource).toContain("input.removeAttribute('aria-invalid')");
+    expect(windowSource).toContain(`root.querySelector<HTMLInputElement>('input[aria-invalid="true"]')`);
+    expect(css).toMatch(
+      /input\[aria-invalid='true'\] \{[^}]*border-color: var\(--danger\)[^}]*outline: 2px solid var\(--danger\)/,
+    );
+  });
+
+  it('fits three word fields to a row however narrow the window', () => {
+    expect(css).toMatch(/\.words \{[^}]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+    expect(css).toMatch(/\.word input \{[^}]*min-width: 0;[^}]*width: 100%;/);
+  });
+
+  it('keeps each field inside its box: padding and border count in its width', () => {
+    // A word field at `width: 100%` without it is its padding and border wider than its card, and
+    // runs over the next one.
+    expect(css).toMatch(/\.word input \{[^}]*box-sizing: border-box;/);
+    expect(css).toMatch(/input\[type='text'\],\s*input\[type='password'\] \{[^}]*box-sizing: border-box;/);
+  });
+
+  it('puts a word field beside its number, so the twelve fit the 640 px window', () => {
+    expect(css).toMatch(/label\.word \{[^}]*flex-direction: row;/);
+  });
+
+  it('never draws the 12 words on a screen after the words entry', () => {
+    // The window draws only what a screen carries: none of the later screens has a field for words.
+    const later: Screen[] = [
+      {
+        screen: 'enter-words',
+        purpose: 'restore',
+        error: "Word 3 isn't a recovery phrase word. Check its spelling.",
+        position: 3,
+      },
+      { screen: 'restore-devices', did: 'did:scid:coasys:1:Qm', devices: [], note: null },
+      { screen: 'master-replaced', index: 1, revoked: [], note: null },
+      { screen: 'restored', did: 'did:scid:coasys:1:Qm', name: 'Laptop', keyId: 'd3', revoked: [], note: null },
+      { screen: 'master-removed' },
+    ];
+    for (const screen of later) expect(Object.keys(screen)).not.toContain('words');
+    // The fields are emptied as soon as another screen is drawn.
+    expect(windowSource).toMatch(/if \(screen\.screen !== 'enter-words'\) forgetWords\(\);/);
   });
 
   it('names why a kept identity can never be published, and waits for the person to discard it', () => {
@@ -229,6 +377,16 @@ describe('the identity window', () => {
       { screen: 'request-answered' as const, kind: 'send-master' as const, device: 'Phone', note: null },
       { screen: 'asked' as const, keyId: 'd2', fingerprint: 'AbCd 1234', code: 'R7K Q2M' },
       { screen: 'renamed' as const, keyId: 'd2', name: 'Laptop' },
+      { screen: 'master-replaced' as const, index: 1, revoked: [], note: null },
+      {
+        screen: 'restored' as const,
+        did: 'did:scid:coasys:1:Qm',
+        name: 'Laptop',
+        keyId: 'd3',
+        revoked: [],
+        note: null,
+      },
+      { screen: 'master-removed' as const },
     ]) {
       expect(isLast(last), last.screen).toBe(true);
     }
@@ -238,6 +396,8 @@ describe('the identity window', () => {
       { screen: 'device-code' as const, code: '', qrSvg: '', expires: 0 },
       { screen: 'device-match' as const, code: '', did: '', needsAccept: false, accepted: false, confirmed: false },
       { screen: 'device-match' as const, code: '', did: '', needsAccept: true, accepted: true, confirmed: false },
+      { screen: 'restore-devices' as const, did: '', devices: [], note: null },
+      { screen: 'remove-master' as const, error: null },
     ]) {
       expect(isLast(waiting), waiting.screen).toBe(false);
     }

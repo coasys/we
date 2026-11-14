@@ -3107,12 +3107,15 @@ DatasetStore:
 
 DeviceStore:
 - State:
-  - devices: { keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke, name, holdsMaster, master }[] — the device keys of the person's key log, valid first and this computer on top, named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' or 'Device d2'; `name` the record's name or empty; `status` 'Valid' or 'Revoked at #2'; `canRevoke` is a valid key that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Holds the master key', 'Master key offered, not yet taken', or empty). A revoked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it ('Still holds a valid master key — replace your master key', 'May still hold a valid master key — replace your master key'): a revoke leaves a copy of the master key valid. Draw `master` in a warning tone unless `holdsMaster` is 'yes'
+  - devices: { keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke, name, holdsMaster, master, replaceMaster }[] — the device keys of the person's key log, valid first and this computer on top, named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' or 'Device d2'; `name` the record's name or empty; `status` 'Valid' or 'Revoked at #2'; `canRevoke` is a valid key that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Holds the master key', 'Master key offered, not yet taken', or empty). A revoked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it ('Still holds a valid master key — replace your master key', 'May still hold a valid master key — replace your master key'): a revoke leaves a copy of the master key valid, until the master key is replaced: a rotation at or after the revoke clears the warning. `replaceMaster` is true on a row that warns: offer replaceMaster there, where canReplaceMaster. Draw `master` in a warning tone unless `holdsMaster` is 'yes'
   - devicesLoaded: boolean — the list has been read once
   - validCount: number — how many keys are valid
   - canManage: boolean — linking (scanDevice, addDevice), Rename, Revoke and answering requests can be offered: this computer keeps the master key of the identity
-  - canShowCode: boolean — "Show my code" can be offered: this computer can join an identity and speaks for none yet
+  - canShowCode: boolean — "Show code" can be offered: this computer can join an identity and speaks for none yet
   - canAskMaster: boolean — "Ask for the master key" can be offered: a device of the identity that does not keep the master key and has none waiting
+  - canReplaceMaster: boolean — "Replace master key" can be offered: a valid device of the identity where the 12 words can be typed. It need not keep the master key: replacing it shuts out a lost device that kept one
+  - canRestore: boolean — "Restore with recovery phrase" can be offered: this computer can take the words and speaks for no identity yet. Offer it beside "Show code"
+  - canRemoveMaster: boolean — this computer keeps the master key: on log out, offer "Also remove my master key from this computer"
   - masterWaiting: boolean — a master key another device sent waits here: offer "Take the master key"
   - requests: { id, kind, title, detail }[] — what the person's other devices asked and is waiting for an answer, while this computer keeps the master key; empty otherwise. `kind` is 'send-master' or 'confirm-revoke'; `title` names the device that asked ('Laptop asks for the master key')
   - error: string — why the last read failed, or empty
@@ -3120,12 +3123,15 @@ DeviceStore:
   - refresh(): reads the device list again
   - addDevice(): adds a server by an offer link — the backend asks the person wherever it keeps the master key (on the desktop: the offer link and QR code, then the match code, then the confirmation that signs it). Resolves with the outcome; the list is read again
   - scanDevice(): "Scan or paste a code" — adds a device by the code it shows: the person pastes it, both show a match code, and the confirmation names the device and may let it keep the master key
-  - showCode(): "Show my code" — on a computer of no identity yet, shows its code (QR and link) until a device of the identity adds it
+  - showCode(): "Show code" — on a computer of no identity yet, shows its code (QR and link) until a device of the identity adds it
   - takeMaster(): "Take the master key" — keeps the master key another device sent here
   - askMaster(): "Ask for the master key" — asks the devices that keep it to send it here; one answers from its own requests
   - answerRequest(id: string): answers that request of another device, once the person says yes where the master key is kept (send the master key, or revoke the devices it names)
   - rename(keyId: string): names that device, in the private record only the identity’s devices read
-  - revoke(keyId: string): revokes that device key, once the person confirms it where the master key is kept. Resolves with the outcome
+  - revoke(keyId: string): revokes that device key, once the person confirms it where the master key is kept; the confirmation offers "Also replace my master key" (ticked when the device kept a copy), which asks for the 12 words. Resolves with the outcome
+  - replaceMaster(): "Replace master key" — asks for the 12 words where the custody service runs and publishes the next master key, which this computer keeps; every copy kept until now stops counting. Resolves with the outcome
+  - restore(): "Restore with recovery phrase" — on a computer of no identity, asks for the words, lists the identity's devices to lock out, and makes this computer a device of it that keeps the new master key. Resolves with the outcome
+  - removeMaster(): stops keeping the master key on this computer, once the person confirms it; refused, with the reason, when this computer keeps the only copy. Resolves 'done' only when it was removed
 
 EditorStore:
 - State:

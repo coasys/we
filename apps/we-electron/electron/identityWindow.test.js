@@ -255,6 +255,9 @@ describe('the identity window', () => {
       { kind: 'show-code' },
       { kind: 'take-master' },
       { kind: 'ask-master' },
+      { kind: 'replace-master' },
+      { kind: 'restore' },
+      { kind: 'remove-master' },
       { kind: 'answer-request', id: 'r1' },
       { kind: 'rename', keyId: 'd2' },
     ]) {

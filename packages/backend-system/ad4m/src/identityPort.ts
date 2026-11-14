@@ -58,8 +58,11 @@ export interface Ad4mCustodyHost {
 /** The custody service's public state, as it answers `publicState`. */
 export interface Ad4mCustodyState {
   did: string | null;
-  /** The index of the master key held here, if one is. */
-  holdsMaster: { index: number } | null;
+  /**
+   * A master key is held here, with the index its item carries (`null` when the item does not say:
+   * one kept before the index was kept with it).
+   */
+  holdsMaster: { index: number | null } | null;
   unlock: 'os' | 'passphrase' | null;
   /**
    * Why no change can run here: the executor reports no identity store (its network names none),
@@ -215,11 +218,13 @@ export function createAd4mIdentityPort(backendClient: unknown, custody?: Ad4mCus
       }
       // The log and the device list come from the executor. Changing either needs the master key,
       // which only the custody service holds: without one, this computer reads and changes nothing.
+      // The custody service also takes the 12 words back, to replace the master key or restore.
       return {
         ...NO_IDENTITY_CAPABILITIES,
         keyLog: true,
         devices: true,
         masterKey: !!custody,
+        recoveryWords: !!custody,
         linkDevice: !!custody,
       };
     },
