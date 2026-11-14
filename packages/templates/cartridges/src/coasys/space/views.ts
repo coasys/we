@@ -3,7 +3,7 @@ import { FLOWS_LOCALS, lineComposer, workflowsPage } from '@we/template-kit';
 
 import { viewBar } from './bar.ts';
 import { groupRoutes } from './groups.ts';
-import { liveDot } from './marks.ts';
+import { exportTranscriptButton, liveDot } from './marks.ts';
 import { CHANNEL, groupPath, IN_ROOT_EXPR } from './paths.ts';
 import { personRoute } from './person.ts';
 import { dnaRoute } from './socialDna.ts';
@@ -297,8 +297,8 @@ const MINE = `modules.call.callRecordId == ${CALL_ID}`;
  * The end of a call's bar: Live while it runs, and the transcript to take away.
  *
  * The badge is `sm` so it stands the height of the Page / Canvas switch beside it rather than over
- * it. The export is offered whether the call is running or over, and to everyone: it reads the
- * shared record and writes to the reader's own device, so there is nobody else's account involved.
+ * it. The export is offered whether the call is running or over, to everyone — see
+ * `exportTranscriptButton`.
  */
 export const callBarAside = (callId: string): SchemaNode[] => [
   {
@@ -308,23 +308,7 @@ export const callBarAside = (callId: string): SchemaNode[] => [
       then: { type: 'we-badge', props: { tone: 'success', size: 'sm' }, children: [liveDot, 'Live'] },
     },
   },
-  {
-    type: 'we-tooltip',
-    props: { content: 'Export the transcript', placement: 'bottom' },
-    children: [
-      {
-        type: 'we-button',
-        props: {
-          variant: 'ghost',
-          size: 'md',
-          square: true,
-          label: 'Export the transcript',
-          onClick: { $invoke: 'spaceStore.exportCallTranscript', args: [{ $: callId }] },
-        },
-        children: [{ type: 'we-icon', props: { name: 'download-simple' } }],
-      },
-    ],
-  },
+  exportTranscriptButton(callId),
 ];
 
 /**
