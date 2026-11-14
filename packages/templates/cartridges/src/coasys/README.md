@@ -69,7 +69,7 @@ workshop.
 The identity pages in Settings (security, devices, bots, plan) are WE's own, drawn as "Coming soon"
 until a backend reports it can do them. Lit up so far: the key log (Security → Key log) and the
 device list, read from the executor's `identity.*` calls, and — on the desktop app, whose shell
-keeps the master key — Add a device and Revoke, which open the shell's identity window.
+keeps the master key — Link a device and Remove, which open the shell's identity window.
 
 Two screens come before a space. WE's sign-in form, which `boot.ts` places, gets a session. Then,
 once the session is ready, the first run (`firstRun.ts`) sits over the rail while

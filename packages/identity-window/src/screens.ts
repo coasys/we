@@ -211,44 +211,44 @@ export function heading(screen: Screen): { title: string; lead: string } {
   switch (screen.screen) {
     case 'show-words':
       return {
-        title: 'Your 12 words',
-        lead: 'Write these words down in order and keep them safe. You need them to restore your identity or replace your master key. You only see them once.',
+        title: 'Save your recovery phrase',
+        lead: 'Write down these 12 words in order. They make your master key, which links and removes your devices. You need them to restore your identity or replace your master key. Only you see them, and only now.',
       };
     case 'confirm-words':
       return {
-        title: 'Check two words',
-        lead: `Type words ${screen.positions[0]} and ${screen.positions[1]} from your paper, to check your copy. Two words are picked at random each time.`,
+        title: 'Confirm your recovery phrase',
+        lead: `Enter words ${screen.positions[0]} and ${screen.positions[1]}.`,
       };
     case 'set-passphrase':
       return {
-        title: 'Protect your master key with a passphrase',
-        lead: 'This computer keeps your master key behind a passphrase. You type it for each change to your identity: adding a device, revoking one.',
+        title: 'Create a passphrase',
+        lead: "It protects your master key on this computer. You'll enter it each time you link or remove a device.",
       };
     case 'enter-passphrase':
       return {
-        title: 'Unlock your master key',
-        lead: 'Type the passphrase this computer keeps your master key behind.',
+        title: 'Unlock master key',
+        lead: 'Enter your passphrase.',
       };
     case 'identity-ready':
       return {
-        title: 'Your identity exists now',
-        lead: 'It belongs to you, and it runs where you say. Your 12 words make your master key. The devices that serve you sign for you, and never change your keys.',
+        title: 'Identity created',
+        lead: 'This computer is your first device.',
       };
     case 'offer':
       return {
-        title: 'Send this link to your device',
-        lead: 'Copy the link and send it to your device another way, such as a message to yourself. Then open it there, or give it to `ad4m-executor claim`. A device with a camera can scan the QR code.',
+        title: 'Link a device',
+        lead: 'Scan the QR code with your other device, or copy the link and open it there. For a host, run `ad4m-executor claim` with the link.',
       };
     case 'match':
       return {
-        title: screen.hint ? `Add ${screen.hint}?` : 'Add this device?',
-        lead: `Check that ${screen.hint ?? 'the device'} shows the same code.`,
+        title: screen.hint ? `Link ${screen.hint}?` : 'Link this device?',
+        lead: 'Check that the code matches on both devices.',
       };
     case 'linked':
       return {
-        title: 'Device added',
+        title: 'Device linked',
         lead: [
-          `Your key log records it as entry #${screen.seq}.`,
+          `It's entry #${screen.seq} in your key log.`,
           ...(screen.masterSent ? ['It gets the master key the next time it unlocks.'] : []),
           ...(screen.note ? [screen.note] : []),
         ].join(' '),
@@ -312,7 +312,7 @@ export function heading(screen: Screen): { title: string; lead: string } {
       return {
         title: `Remove ${screen.keyId}?`,
         lead: [
-          'Do this for a device you lost or no longer use. Your key log records that its key no longer acts as you, and the key can never be added back. Other computers apply this when they next read your key log, so one that is offline can accept the key for a while. Some things it signed before can also stop counting as yours.',
+          "Do this for a device you lost or no longer use. It loses access to your identity and can't be linked again. A computer that's offline learns this when it reconnects. Some things it added before may no longer show as yours.",
           ...(screen.mayHoldMaster
             ? [mayHoldMaster('This device', 'Replace your master key to stop it adding and removing devices.')]
             : []),
@@ -399,14 +399,14 @@ export function heading(screen: Screen): { title: string; lead: string } {
         ].join(' '),
       };
     case 'revoked':
-      return { title: `${screen.keyId} revoked`, lead: `Your key log records it as entry #${screen.seq}.` };
+      return { title: `${screen.keyId} removed`, lead: `It's entry #${screen.seq} in your key log.` };
     case 'pending-refused':
       return {
-        title: 'Your identity could not be published',
-        lead: `${screen.message} Trying again will not change that. Discard it, and this computer stops trying and goes on to make a new identity where it can. Its master key stays on this computer.`,
+        title: "Couldn't publish your identity",
+        lead: `${screen.message} Trying again won't help. Discard it to stop trying. This computer then makes a new identity if it can. The old master key stays on this computer.`,
       };
     case 'failed':
-      return { title: 'That did not work', lead: screen.message };
+      return { title: 'Something went wrong', lead: screen.message };
   }
 }
 
