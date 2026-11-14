@@ -1132,7 +1132,9 @@ impl<'a> Builder<'a> {
                 Some(Position::Relative) => taffy::Position::Relative,
                 Some(Position::Absolute) | Some(Position::Fixed) | Some(Position::Sticky) => {
                     // `fixed` and `sticky` behave as absolute in a retained
-                    // canvas — noted in NOTES.
+                    // canvas — noted in NOTES. This is the one CSS
+                    // deviation: a browser keeps a sticky item in flow. The
+                    // grid recipe's `n_items` follows this mapping.
                     taffy::Position::Absolute
                 }
                 _ => taffy::Position::Relative,
@@ -1642,7 +1644,9 @@ impl<'a> Builder<'a> {
         // an `absolute`/`fixed`/`sticky` child maps to taffy's
         // `Position::Absolute`: still a taffy child, but out of flow, so
         // it makes no track either. Counting either splits the row
-        // shares too thin.
+        // shares too thin. Sticky is in flow in CSS; it is excluded here
+        // because the recipe must predict the tracks taffy builds, and the
+        // adapter's `position` mapping above sends sticky to Absolute.
         let n_items = || -> usize {
             node.children
                 .iter()
