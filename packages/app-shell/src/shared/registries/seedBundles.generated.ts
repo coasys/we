@@ -32953,7 +32953,7 @@ export const seedBundles: Bundle[] = [
                           type: 'we-alert',
                           props: { tone: 'warning' },
                           children: [
-                            'Couldn’t publish your identity. Coasys tries again each time it starts. To try now, choose Create new identity. Your recovery phrase stays the same.',
+                            'Couldn’t publish your identity. Coasys tries again each time it starts. To try now, choose Create new identity: it publishes the same identity, with the same recovery phrase.',
                           ],
                         },
                       },
