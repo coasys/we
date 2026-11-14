@@ -4569,6 +4569,7 @@ dependencies = [
  "we-data",
  "we-expr",
  "we-screen",
+ "we-session",
  "we-style",
  "we-template",
  "we-widgets",
@@ -4634,6 +4635,16 @@ dependencies = [
  "wasm-bindgen-test",
  "we-expr",
  "web-sys",
+]
+
+[[package]]
+name = "we-session"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+ "we-expr",
+ "we-screen",
+ "we-template",
 ]
 
 [[package]]

@@ -20,7 +20,8 @@ use std::sync::Arc;
 
 use egui::{vec2, Color32, Rect, RichText, Vec2};
 use we_screen::ScreenState;
-use we_template::{ResolvedNode, Runtime, SchemaNode, StaticHost, StoreBag};
+use we_session::Session;
+use we_template::{ResolvedNode, SchemaNode, StoreBag};
 use we_widgets::{
     install_media, layout, paint, EditState, Layout, MeasureCx, Registry, StyleCx, WidgetEvent,
 };
@@ -28,11 +29,8 @@ use we_widgets::{
 /// One frame's plumbing: the app wires host ↔ runtime ↔ registry; tests drive
 /// `frame_body` through `egui_kittest::Harness::new_ui`.
 pub struct RendererApp {
-    pub runtime: Runtime,
-    pub host: StaticHost,
-    /// The address and chrome — `routeStore`/`shellStore` reads answer from
-    /// here; screen ops land here.
-    pub screen: ScreenState,
+    /// Runtime + host + screen — the frontend-independent session.
+    pub session: Session,
     pub registry: Registry,
     /// The theme `style_of` resolves against — `main` loads `dark` from the
     /// recorded tables; tests default to the empty table.
@@ -55,18 +53,13 @@ impl RendererApp {
         screen: ScreenState,
         registry: Registry,
     ) -> Self {
-        let locals = we_template::LocalState::new();
-        let bag_for_host = bag.clone();
         // `$`-types the registry knows (`$lane`) resolve as components —
         // the resolver asks before it stamps a `$todo:` placeholder.
         let types: std::collections::HashSet<&'static str> = registry.type_names().collect();
-        let runtime = Runtime::new(schema, template_id, bag, locals.clone())
+        let session = Session::new(schema, template_id, bag, screen)
             .with_dollar_types(move |ty| types.contains(ty));
-        let host = StaticHost::new(bag_for_host, locals);
         Self {
-            runtime,
-            host,
-            screen,
+            session,
             registry,
             theme: we_style::Theme::empty("dark", we_style::Polarity::Dark),
             edit: EditState::default(),
@@ -91,21 +84,8 @@ impl RendererApp {
             we_style::Polarity::Light => egui::Visuals::light(),
         });
 
-        // A resolve can queue a redirect; applying it bumps the version, so
-        // the next `frame` resolves the tree it landed on. A few rounds in
-        // case a redirect lands on another.
-        let mut resolved = self.runtime.frame(&mut self.host, &self.screen).clone();
-        for _ in 0..8 {
-            let ops = self.runtime.take_ops();
-            if ops.is_empty() {
-                break;
-            }
-            for op in ops {
-                self.screen.apply(op);
-            }
-            resolved = self.runtime.frame(&mut self.host, &self.screen).clone();
-        }
-        let stats = self.runtime.stats().clone();
+        let resolved = self.session.resolve();
+        let stats = self.session.stats().clone();
 
         egui::ScrollArea::vertical()
             .auto_shrink([false, true])
@@ -156,8 +136,7 @@ impl RendererApp {
             value,
         } in events
         {
-            self.runtime
-                .dispatch(&mut self.host, &mut self.screen, &node, &handler, value);
+            self.session.dispatch(&node, &handler, value);
         }
     }
 
@@ -177,7 +156,7 @@ impl RendererApp {
                             stats.last_resolve,
                             stats.nodes,
                             unknown.len(),
-                            self.host.dropped.len(),
+                            self.session.host.dropped.len(),
                         ))
                         .monospace()
                         .size(11.0),
@@ -230,7 +209,7 @@ impl Shell {
                 self.panel.frame_body(ui);
             });
         egui::CentralPanel::default().show(ui, |ui| {
-            let route = self.panel.screen.nav.current_path();
+            let route = self.panel.session.screen.nav.current_path();
             ui.centered_and_justified(|ui| {
                 ui.label(format!("view: {route}"));
             });

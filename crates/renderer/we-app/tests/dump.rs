@@ -50,7 +50,7 @@ fn dump() {
     let mut harness =
         egui_kittest::Harness::new_ui_state(|ui, app: &mut RendererApp| app.frame_body(ui), app);
     harness.run();
-    let root = harness.state().runtime.resolved().unwrap().clone();
+    let root = harness.state().session.runtime.resolved().unwrap().clone();
     let mut m = BTreeMap::new();
     let mut ids = Vec::new();
     census(&root, &mut m, &mut ids);

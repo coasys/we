@@ -13,7 +13,7 @@ use we_app::gallery::{load_theme_set, WidgetsApp};
 fn gallery_resolves_every_node() {
     let set = load_theme_set();
     let mut app = WidgetsApp::app_for(&set, "light");
-    let resolved = app.runtime.frame(&mut app.host, &app.screen).clone();
+    let resolved = app.session.resolve().clone();
     let mut unknown = Vec::new();
     let mut lanes = 0usize;
     fn walk(

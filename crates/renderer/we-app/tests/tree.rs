@@ -83,7 +83,7 @@ fn clicking_a_row_changes_routestore_params() {
         app("/space/demo?view=canvas"),
     );
     harness.run();
-    assert!(harness.state().screen.nav.param("dna").is_none());
+    assert!(harness.state().session.screen.nav.param("dna").is_none());
     // "Social DNA" carries value "group|dna"; in canvas view its onSelect
     // runs routeStore.setParam("dna", "all"). The full evaluator resolves
     // enough rows to push it below the fold — scroll it into view first.
@@ -92,7 +92,7 @@ fn clicking_a_row_changes_routestore_params() {
     harness.run();
     harness.get_by_label("group|dna").click();
     harness.run();
-    assert_eq!(harness.state().screen.nav.param("dna"), Some("all"));
+    assert_eq!(harness.state().session.screen.nav.param("dna"), Some("all"));
 }
 
 #[test]
@@ -102,10 +102,10 @@ fn a_frame_without_input_does_not_resolve_again() {
         app("/space/demo?view=canvas"),
     );
     harness.run();
-    let resolves = harness.state().runtime.stats().resolves;
+    let resolves = harness.state().session.runtime.stats().resolves;
     // kittest already ran several frames; none of them bumped the count.
     harness.run();
-    assert_eq!(harness.state().runtime.stats().resolves, resolves);
+    assert_eq!(harness.state().session.runtime.stats().resolves, resolves);
 }
 
 #[test]
@@ -116,7 +116,7 @@ fn node_count_and_resolve_time() {
     );
     harness.run();
     assert!(
-        harness.state().runtime.stats().nodes > 100,
+        harness.state().session.runtime.stats().nodes > 100,
         "tree panel should resolve ~200 nodes"
     );
 }
