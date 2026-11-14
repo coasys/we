@@ -1113,6 +1113,73 @@ fn scroll_inner_consumes_then_chains_to_parent() {
     );
 }
 
+/// F3 — the outer scrollable extent must stop at the inner scroller's
+/// viewport: content the inner clips is the inner's own scroll room,
+/// not the outer's. With the leaked union the outer extent includes the
+/// inner's hidden 300px and a wheel chained at the inner's max scrolls
+/// the outer into blank space.
+#[test]
+fn scroll_outer_extent_stops_at_the_inner_viewport() {
+    // inner 40px scroller over 300px content + a 40px pad inside a
+    // 100px outer scroller → the true outer extent is 80px: nothing for
+    // the outer to scroll.
+    let mut outer = node(
+        "Column",
+        "o",
+        &[("height", Value::Num(100.0)), ("overflowY", s("auto"))],
+    );
+    let mut inner_scroller = scroll_col("o/i", 40.0, 300.0);
+    inner_scroller
+        .props
+        .insert("flexShrink".into(), Value::Num(0.0));
+    child(&mut outer, inner_scroller);
+    child(
+        &mut outer,
+        node(
+            "Column",
+            "o/pad",
+            &[
+                ("height", Value::Num(40.0)),
+                ("flexShrink", Value::Num(0.0)),
+            ],
+        ),
+    );
+    let rig = paint_rig(outer, |harness, lay, _| {
+        let extent = lay.scroll_content.get(&NodeId::from("o")).unwrap();
+        let outer_r = lay.rects.get(&NodeId::from("o")).unwrap();
+        assert!(
+            extent.height() <= outer_r.height() + 1.0,
+            "inner content must not leak into the outer extent: {} > {}",
+            extent.height(),
+            outer_r.height(),
+        );
+        // The visible part still counts: the extent reaches the pad.
+        let pad_r = lay.rects.get(&NodeId::from("o/pad")).unwrap();
+        assert!(
+            (extent.max.y - pad_r.max.y).abs() < 1.0,
+            "visible overflow must still count: extent.max.y={} pad.max.y={}",
+            extent.max.y,
+            pad_r.max.y,
+        );
+        // Behavior: wheel to the inner's max, then keep wheeling — the
+        // chained delta must die, not scroll the inner out of view.
+        let r = lay.rects.get(&NodeId::from("o/i")).copied().unwrap();
+        harness.hover_at(r.center());
+        for _ in 0..10 {
+            wheel_down(harness, 40.0);
+        }
+    });
+    assert!(
+        (scroll_y(&rig.edit, "o/i") - 260.0).abs() < 1.0,
+        "inner reaches its own max"
+    );
+    assert_eq!(
+        scroll_y(&rig.edit, "o"),
+        0.0,
+        "outer content fits — chained wheel has nothing to scroll"
+    );
+}
+
 // ---------- A5: we-button child flow is an inline row -------------------
 
 /// A5 — TS button.ts renders children inside `display:flex;

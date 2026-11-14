@@ -1140,6 +1140,12 @@ fn layout_impl(
 /// The union of every descendant rect and descendant-owned text span —
 /// the scrollable content box (`node` itself contributes only its
 /// children's geometry, so the base rect is their union).
+///
+/// The walk carries a visible window: a descendant that clips or
+/// scrolls on an axis (`overflow: hidden|clip|auto|scroll`) bounds its
+/// subtree's visible reach on that axis to its own box — inner overflow
+/// is the inner scroller's own extent, never an ancestor's. `node`
+/// bounds nothing: this *is* its scrollable extent.
 fn scroll_content_rect(out: &Layout, node: &ResolvedNode) -> Option<Rect> {
     let mut acc: Option<Rect> = None;
     fn union(acc: &mut Option<Rect>, r: Rect) {
@@ -1154,38 +1160,59 @@ fn scroll_content_rect(out: &Layout, node: &ResolvedNode) -> Option<Rect> {
             None => r,
         });
     }
-    let mut stack: Vec<&ResolvedNode> = Vec::new();
-    for child in &node.children {
-        match child {
-            ResolvedChild::Node(n) => {
-                if let Some(r) = out.rects.get(&n.id) {
-                    union(&mut acc, *r);
-                }
-                stack.push(n);
-            }
-            ResolvedChild::Text(_) => {}
+    // `window` after `id`'s own overflow boundary: clipped axes are
+    // limited to `r` (the node's box), unbounded axes pass through.
+    fn bound(out: &Layout, id: &NodeId, r: Rect, window: Rect) -> Rect {
+        let axes = Vec2::new(
+            out.scroll
+                .get(id)
+                .map_or(0.0, |a| a.x)
+                .max(out.clip.get(id).map_or(0.0, |a| a.x)),
+            out.scroll
+                .get(id)
+                .map_or(0.0, |a| a.y)
+                .max(out.clip.get(id).map_or(0.0, |a| a.y)),
+        );
+        let mut w = window;
+        if axes.x > 0.0 {
+            w.min.x = w.min.x.max(r.min.x);
+            w.max.x = w.max.x.min(r.max.x);
         }
-    }
-    for span in &out.texts {
-        if span.node == node.id {
-            union(&mut acc, span.rect);
+        if axes.y > 0.0 {
+            w.min.y = w.min.y.max(r.min.y);
+            w.max.y = w.max.y.min(r.max.y);
         }
+        w
     }
-    while let Some(n) = stack.pop() {
+    fn intersect(a: Rect, b: Rect) -> Option<Rect> {
+        let min = Pos2::new(a.min.x.max(b.min.x), a.min.y.max(b.min.y));
+        let max = Pos2::new(a.max.x.min(b.max.x), a.max.y.min(b.max.y));
+        (max.x >= min.x && max.y >= min.y).then_some(Rect { min, max })
+    }
+    let unbounded = Rect {
+        min: Pos2::new(f32::NEG_INFINITY, f32::NEG_INFINITY),
+        max: Pos2::new(f32::INFINITY, f32::INFINITY),
+    };
+    let mut stack: Vec<(&ResolvedNode, Rect)> = vec![(node, unbounded)];
+    while let Some((n, window)) = stack.pop() {
         for child in &n.children {
             match child {
                 ResolvedChild::Node(c) => {
-                    if let Some(r) = out.rects.get(&c.id) {
-                        union(&mut acc, *r);
-                    }
-                    stack.push(c);
+                    let cr = match out.rects.get(&c.id).and_then(|r| intersect(*r, window)) {
+                        Some(r) => r,
+                        None => continue,
+                    };
+                    union(&mut acc, cr);
+                    stack.push((c, bound(out, &c.id, cr, window)));
                 }
                 ResolvedChild::Text(_) => {}
             }
         }
         for span in &out.texts {
             if span.node == n.id {
-                union(&mut acc, span.rect);
+                if let Some(r) = intersect(span.rect, window) {
+                    union(&mut acc, r);
+                }
             }
         }
     }
