@@ -437,6 +437,22 @@ fn resolve_node(
         return vec![ResolvedChild::Text(value.to_text())];
     }
 
+    // Every declaring node — widget, structure op or fragment — establishes
+    // its `local` scope and its fields' lifetime before the structure it
+    // names is interpreted (`RenderSchema` declares first, then branches).
+    // A node that flattens away still owns the fields it declared.
+    let declares = node.local_state.is_some() || node.queries.is_some();
+    let id = cx.node_id(root, path);
+    let (node_scope, node_decls) = if declares {
+        cx.live.insert(id.clone());
+        cx.parents.insert(id.clone(), parent.clone());
+        declare_locals(node, &id, scope, decls, cx)
+    } else {
+        (scope.clone(), Arc::clone(decls))
+    };
+    let scope = &node_scope;
+    let decls = &node_decls;
+
     let props = node.props.as_ref();
     match node.ty.as_deref() {
         Some("$if") => {
@@ -604,7 +620,6 @@ fn resolve_node(
             let id = cx.node_id(root, path);
             cx.live.insert(id.clone());
             cx.parents.insert(id.clone(), parent.clone());
-            let (node_scope, node_decls) = declare_locals(node, &id, scope, decls, cx);
 
             let mut resolved_props = IndexMap::new();
             let mut handlers = IndexMap::new();

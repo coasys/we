@@ -270,6 +270,57 @@ fn unsupported_ops_become_todo_placeholders() {
 }
 
 #[test]
+fn declarations_on_structure_nodes_still_bind_local() {
+    // A1: `RenderSchema` declares `$localState`/`$queries` before it
+    // interprets structure — a fragment (no `type`), an `$each`, an `$if`
+    // that declares still hands its subtree a `local`. The node flattens
+    // into its parent but owns its fields' scope and lifetime.
+    let node = schema(json!({
+        "type": "Column",
+        "children": [
+            {
+                "$localState": { "frag": { "type": "string", "initial": "f" } },
+                "children": [
+                    { "type": "we-text", "props": { "text": { "$": "local.frag" } } }
+                ]
+            },
+            {
+                "type": "$each",
+                "$localState": { "shared": { "type": "string", "initial": "s" } },
+                "props": { "items": [1, 2], "as": "row" },
+                "children": [
+                    { "type": "we-text", "props": { "text": { "$": "local.shared" } } }
+                ]
+            },
+            {
+                "type": "$if",
+                "$localState": { "cond": { "type": "string", "initial": "c" } },
+                "props": {
+                    "condition": true,
+                    "then": { "type": "we-text", "props": { "text": { "$": "local.cond" } } }
+                }
+            }
+        ]
+    }));
+    let (mut rt, mut host, _locals, screen) = rig(node, StoreBag::new());
+    let root = rt.frame(&mut host, &screen).clone();
+    let mut texts = Vec::new();
+    collect_texts(&root, &mut texts);
+    assert_eq!(texts, vec!["f", "s", "s", "c"], "every declaring node's local must bind: {texts:?}");
+}
+
+fn collect_texts(node: &ResolvedNode, out: &mut Vec<String>) {
+    if node.ty.as_ref() == "we-text" {
+        out.push(node.props["text"].to_text().to_string());
+    }
+    for c in &node.children {
+        if let ResolvedChild::Node(n) = c {
+            collect_texts(n, out);
+        }
+    }
+}
+
+#[test]
 fn a_callback_prop_resolves_as_a_handler() {
     // `we-modal`'s `close` is a callback prop, not an `on*` prop — the Solid
     // dispatcher resolves handler tokens in any prop position into callables.
