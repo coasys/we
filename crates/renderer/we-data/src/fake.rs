@@ -15,8 +15,9 @@
 //! and the full IR — so a `model_query` and a `model_subscribe` asking the
 //! same question are different requests, as they are in the pool.
 //! [`FakeExecutor::for_space`] binds the space the fixture speaks for; a
-//! call routed elsewhere, or whose `dataset` names another space than the
-//! one it is called on, is refused too.
+//! call routed elsewhere, or a cell whose `dataset` named another space
+//! than the one it is called on, is refused too (unlearned), and so is an IR
+//! carrying a reserved authority name ([`QueryIr::reserved_key`]).
 //!
 //! An answered request returns the recorded rows as they stand — a named,
 //! already-resolved snapshot result is not filtered a second time (TS does
@@ -98,8 +99,7 @@ impl FakeExecutor {
     }
 
     /// Declare the space this fake speaks for: requests routed to a
-    /// different `SpaceId` — or carrying a `dataset` that disagrees with
-    /// the `SpaceId` they arrive on — are refused.
+    /// different `SpaceId` are refused.
     pub fn for_space(self, space: SpaceId) -> Self {
         *self.space.write().unwrap() = Some(space);
         self
@@ -150,7 +150,7 @@ impl FakeExecutor {
         name: impl Into<Arc<str>>,
     ) {
         if let Ok(mut names) = self.names.write() {
-            names.insert(request_key(class, ir, subscribe), name.into());
+            names.insert(request_key(class, ir, subscribe, None), name.into());
         }
     }
 
@@ -221,19 +221,17 @@ impl FakeExecutor {
                 )));
             }
         }
-        // A `dataset` the IR already resolved must name the space the call
-        // routes to — anything else is an inconsistent request.
-        if let Some(dataset) = &q.dataset {
-            if dataset != space.as_str() {
-                self.dropped(&what());
-                return Err(ExecutorError::Unsupported(format!(
-                    "{}: dataset {dataset} on {space:?}",
-                    what()
-                )));
-            }
+        // The IR never selects a dataset: the call's space does. An IR
+        // carrying an authority-bearing name is refused, not interpreted.
+        if let Some(reserved) = q.reserved_key() {
+            self.dropped(&what());
+            return Err(ExecutorError::Unsupported(format!(
+                "{}: reserved `{reserved}` in the IR on {space:?}",
+                what()
+            )));
         }
         if let Some(captures) = self.captures.read().unwrap().clone() {
-            return match captures.rows_for_request(class, q) {
+            return match captures.rows_for_request(space, class, q) {
                 Some(rows) => Ok(Value::List(rows)),
                 None => {
                     self.dropped(&what());
@@ -245,11 +243,14 @@ impl FakeExecutor {
                 }
             };
         }
-        let name = self
-            .names
-            .read()
-            .ok()
-            .and_then(|names| names.get(&request_key(class, q, subscribe)).cloned());
+        let name = self.names.read().ok().and_then(|names| {
+            // A cell that named this space as its dataset, or one that
+            // read its mount's own space — both are this request.
+            names
+                .get(&request_key(class, q, subscribe, Some(space.as_str())))
+                .or_else(|| names.get(&request_key(class, q, subscribe, None)))
+                .cloned()
+        });
         let Some(name) = name else {
             self.dropped(&what());
             return Err(ExecutorError::Unsupported(format!(
@@ -277,7 +278,7 @@ impl FakeExecutor {
 /// `compile_query` builds the [`QueryKey`] from, so a request matches the
 /// cell that asked it exactly: same entities, same union, same dataset,
 /// same `subscribe`, same IR — or it is not the same request.
-fn request_key(class: &ClassSel, q: &QueryIr, subscribe: bool) -> String {
+fn request_key(class: &ClassSel, q: &QueryIr, subscribe: bool, dataset: Option<&str>) -> String {
     let mut key_obj = JsonMap::new();
     key_obj.insert(
         "e".to_string(),
@@ -295,7 +296,9 @@ fn request_key(class: &ClassSel, q: &QueryIr, subscribe: bool) -> String {
     );
     key_obj.insert(
         "ds".to_string(),
-        q.dataset.clone().map(Json::String).unwrap_or(Json::Null),
+        dataset
+            .map(|d| Json::String(d.to_string()))
+            .unwrap_or(Json::Null),
     );
     key_obj.insert("sub".to_string(), Json::Bool(subscribe));
     key_obj.insert(

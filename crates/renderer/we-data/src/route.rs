@@ -388,9 +388,10 @@ impl RouteCaptures {
     }
 
     /// The recorded rows for an executor request — the same identity a pool
-    /// cell's key carries.
+    /// cell's key carries, in the dataset of the call's space.
     pub(crate) fn rows_for_request(
         &self,
+        space: &SpaceId,
         class: &ClassSel,
         q: &QueryIr,
     ) -> Option<Arc<Vec<Value>>> {
@@ -399,10 +400,12 @@ impl RouteCaptures {
             Ok(Json::Object(ir)) => request_rest(&ir),
             _ => Json::Object(JsonMap::new()),
         };
+        // The IR names no dataset: the call's space is the dataset — never
+        // the collection's default, which may be another space or none.
         self.lookup(
             &entities,
             matches!(class, ClassSel::Many(_)),
-            q.dataset.clone(),
+            Some(space.as_str().to_string()),
             &rest,
         )
     }

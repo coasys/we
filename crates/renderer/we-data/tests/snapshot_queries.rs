@@ -219,7 +219,9 @@ fn a_request_for_another_space_is_refused() {
     assert!(wrong_space.is_err(), "a call routed elsewhere is refused");
 
     let mut ds_ir = cell.ir.clone();
-    ds_ir.dataset = Some("elsewhere".to_string());
+    ds_ir
+        .extra
+        .insert("dataset".to_string(), serde_json::json!("elsewhere"));
     let wrong_dataset = pollster::block_on(executor.model_query(
         &SpaceId::new("demo"),
         ClassSel::one("SignalType"),
