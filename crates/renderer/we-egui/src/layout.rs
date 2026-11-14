@@ -26,6 +26,9 @@ pub struct Layout {
     pub texts: Vec<TextSpan>,
     /// Nodes with `overflow: auto|scroll` — which axes scroll at paint.
     pub scroll: HashMap<NodeId, egui::Vec2>,
+    /// Each scroll node's content extent — union of all descendant rects
+    /// and their text spans, in base coordinates.
+    pub scroll_content: HashMap<NodeId, Rect>,
     /// Nodes with `overflow: hidden|clip` — children clip to their rect.
     pub clip: HashMap<NodeId, egui::Vec2>,
 }
@@ -173,6 +176,11 @@ fn run(
             .scroll
             .into_iter()
             .map(|(k, v)| (k, egui::vec2(v.x, v.y)))
+            .collect(),
+        scroll_content: out
+            .scroll_content
+            .into_iter()
+            .map(|(k, v)| (k, r(v)))
             .collect(),
         clip: out
             .clip

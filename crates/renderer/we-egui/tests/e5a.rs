@@ -850,19 +850,24 @@ fn tooltip_content_slot_never_enters_page_layout() {
 }
 
 /// Galleys + `Layout` + `EditState` across ALL paint layers — the page
-/// helper only reads the widget's own layer; overlays paint on their own.
-struct TooltipRig {
+/// helpers only read the widget's own layer; overlays paint on their own.
+struct PaintRig {
     layout: Layout,
     edit: EditState,
     texts: Vec<(egui::Pos2, String)>,
 }
 
 /// Paint `root` inside the harness, then drain every layer's galley texts.
-/// `interact` runs pointer steps between frames when given.
-fn tooltip_rig(
+/// `interact` runs input steps between frames; it can run extra frames and
+/// inspect the live `EditState` through the cell it is handed.
+fn paint_rig(
     root: ResolvedNode,
-    interact: impl FnOnce(&mut egui_kittest::Harness<'_>, &Layout),
-) -> TooltipRig {
+    interact: impl FnOnce(
+        &mut egui_kittest::Harness<'_>,
+        &Layout,
+        &std::cell::RefCell<Option<EditState>>,
+    ),
+) -> PaintRig {
     let registry = Registry::with_builtins();
     let tokens = tokens();
     let out = std::cell::RefCell::new(None);
@@ -908,12 +913,15 @@ fn tooltip_rig(
         });
     });
     harness.run();
-    let lay = lay_cell.borrow();
-    interact(&mut harness, lay.as_ref().expect("layout ran"));
-    drop(lay);
+    // Move the snapshot out — `interact` may run frames that refill the cell.
+    let snapshot = lay_cell.borrow_mut().take().expect("layout ran");
+    interact(&mut harness, &snapshot, &out);
+    if lay_cell.borrow().is_none() {
+        *lay_cell.borrow_mut() = Some(snapshot);
+    }
     harness.run();
     harness.run();
-    let rig = TooltipRig {
+    let rig = PaintRig {
         layout: lay_cell.borrow_mut().take().unwrap(),
         edit: out.borrow_mut().take().unwrap_or_default(),
         texts: texts.borrow().clone(),
@@ -925,7 +933,10 @@ fn tooltip_rig(
 /// the floating layer (the overlay pass), not the page.
 #[test]
 fn tooltip_open_prop_shows_the_slotted_content() {
-    let rig = tooltip_rig(tooltip_node("t", &[("open", Value::Bool(true))]), |_, _| {});
+    let rig = paint_rig(
+        tooltip_node("t", &[("open", Value::Bool(true))]),
+        |_, _, _| {},
+    );
     assert!(
         rig.texts.iter().any(|(_, t)| t.contains("tip body")),
         "an open tooltip shows its slotted content: {:?}",
@@ -940,9 +951,9 @@ fn tooltip_open_prop_shows_the_slotted_content() {
 /// children provide).
 #[test]
 fn tooltip_hover_opens_the_bubble() {
-    let rig = tooltip_rig(
+    let rig = paint_rig(
         tooltip_node("t", &[("content", s("phrase"))]),
-        |harness, lay| {
+        |harness, lay, _| {
             let b = lay.rects.get(&NodeId::from("t/b")).copied().unwrap();
             harness.hover_at(b.center());
         },
@@ -968,7 +979,7 @@ fn tooltip_content_prop_is_the_slot_fallback() {
         &mut tip,
         node("we-button", "t/b", &[("text", s("hover me"))]),
     );
-    let rig = tooltip_rig(tip, |harness, lay| {
+    let rig = paint_rig(tip, |harness, lay, _| {
         let b = lay.rects.get(&NodeId::from("t/b")).copied().unwrap();
         harness.hover_at(b.center());
     });
@@ -976,6 +987,125 @@ fn tooltip_content_prop_is_the_slot_fallback() {
         rig.texts.iter().any(|(_, t)| t.contains("just text")),
         "a prop-only tooltip shows its content text: {:?}",
         rig.texts
+    );
+}
+
+// ---------- A4: custom scroll offsets -----------------------------------
+
+/// The stored `_scroll` scratch y-offset for `id`.
+fn scroll_y(edit: &EditState, id: &str) -> f64 {
+    match edit.field(&NodeId::from(id), "_scroll") {
+        Value::Obj(o) => match o.get("y") {
+            Some(Value::Num(n)) => *n,
+            _ => 0.0,
+        },
+        _ => 0.0,
+    }
+}
+
+fn wheel_down(harness: &mut egui_kittest::Harness<'_>, px: f32) {
+    harness.event(egui::Event::MouseWheel {
+        unit: egui::MouseWheelUnit::Point,
+        delta: egui::vec2(0.0, -px),
+        phase: egui::TouchPhase::Move,
+        source: egui::MouseWheelSource::Wheel,
+        modifiers: egui::Modifiers::NONE,
+    });
+    harness.run();
+}
+
+/// A fixed-height scroll Column around a taller NON-SHRINKING inner
+/// Column (flexShrink:0 — without it flexbox shrinks the child to fit,
+/// and there is nothing to scroll).
+fn scroll_col(id: &str, h: f64, inner_h: f64) -> ResolvedNode {
+    let mut col = node(
+        "Column",
+        id,
+        &[("height", Value::Num(h)), ("overflowY", s("auto"))],
+    );
+    child(
+        &mut col,
+        node(
+            "Column",
+            &format!("{id}/in"),
+            &[
+                ("height", Value::Num(inner_h)),
+                ("flexShrink", Value::Num(0.0)),
+            ],
+        ),
+    );
+    col
+}
+
+/// A4 — egui's `smooth_scroll_delta` is content motion: scrolling down is
+/// a negative y, so the stored offset must grow by `-delta`, not `+delta`.
+#[test]
+fn scroll_wheel_down_advances_the_offset() {
+    let rig = paint_rig(scroll_col("c", 60.0, 300.0), |harness, lay, _| {
+        let r = lay.rects.get(&NodeId::from("c")).copied().unwrap();
+        harness.hover_at(r.center());
+        wheel_down(harness, 40.0);
+    });
+    let y = scroll_y(&rig.edit, "c");
+    assert!(
+        y > 0.0,
+        "wheel-down must advance the scroll offset, got {y}"
+    );
+}
+
+/// A4 — the consumed delta dies in the inner container: a wheel over the
+/// inner scroller moves it, not its scroll ancestor; once the inner hits
+/// its max the same wheel chains outward.
+#[test]
+fn scroll_inner_consumes_then_chains_to_parent() {
+    // outer 100px tall scrolling an inner scroller + tall pad; the inner
+    // (40px viewport, 300px content → max 260) sits at the outer's top.
+    let mut outer = node(
+        "Column",
+        "o",
+        &[("height", Value::Num(100.0)), ("overflowY", s("auto"))],
+    );
+    let mut inner_scroller = scroll_col("o/i", 40.0, 300.0);
+    inner_scroller
+        .props
+        .insert("flexShrink".into(), Value::Num(0.0));
+    child(&mut outer, inner_scroller);
+    child(
+        &mut outer,
+        node(
+            "Column",
+            "o/pad",
+            &[
+                ("height", Value::Num(400.0)),
+                ("flexShrink", Value::Num(0.0)),
+            ],
+        ),
+    );
+    let rig = paint_rig(outer, |harness, lay, edit| {
+        let r = lay.rects.get(&NodeId::from("o/i")).copied().unwrap();
+        harness.hover_at(r.center());
+        wheel_down(harness, 40.0);
+        let (inner, outer) = {
+            let e = edit.borrow();
+            let e = e.as_ref().unwrap();
+            (scroll_y(e, "o/i"), scroll_y(e, "o"))
+        };
+        assert!(inner > 0.0, "the inner scroller must scroll: {inner}");
+        assert_eq!(outer, 0.0, "the inner must consume the wheel: {outer}");
+        // Now run the inner to its max and past — the excess chains up.
+        for _ in 0..10 {
+            wheel_down(harness, 40.0);
+        }
+    });
+    let inner = scroll_y(&rig.edit, "o/i");
+    let outer = scroll_y(&rig.edit, "o");
+    assert!(
+        (inner - 260.0).abs() < 1.0,
+        "the inner clamps at its content max: {inner}"
+    );
+    assert!(
+        outer > 0.0,
+        "wheel past the inner's max chains to the parent: {outer}"
     );
 }
 

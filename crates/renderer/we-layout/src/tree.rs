@@ -182,6 +182,10 @@ pub struct Layout {
     pub texts: Vec<TextSpan>,
     /// Nodes with `overflow: auto|scroll` — which axes scroll at paint.
     pub scroll: HashMap<NodeId, Vec2>,
+    /// Each scroll node's content extent: the union of every descendant's
+    /// rect and owned text span, in base coordinates (unions *all*
+    /// descendants — a child's own overflow reaches past the child's box).
+    pub scroll_content: HashMap<NodeId, Rect>,
     /// Nodes with `overflow: hidden|clip` — children clip to their rect.
     pub clip: HashMap<NodeId, Vec2>,
 }
@@ -991,13 +995,76 @@ fn layout_impl(
         parts: Parts::new(),
         texts: Vec::new(),
         scroll,
+        scroll_content: HashMap::new(),
         clip,
     };
     collect(&tree, root_id, rect.min, &mut out);
+    for id in out.scroll.keys().cloned().collect::<Vec<_>>() {
+        if let Some(node) = nodes.get(&id) {
+            if let Some(r) = scroll_content_rect(&out, *node) {
+                out.scroll_content.insert(id, r);
+            }
+        }
+    }
     if let Some(r) = out.rects.get(&root.id) {
         out.size = r.size();
     }
     out
+}
+
+/// The union of every descendant rect and descendant-owned text span —
+/// the scrollable content box (`node` itself contributes only its
+/// children's geometry, so the base rect is their union).
+fn scroll_content_rect(out: &Layout, node: &ResolvedNode) -> Option<Rect> {
+    let mut acc: Option<Rect> = None;
+    fn union(acc: &mut Option<Rect>, r: Rect) {
+        *acc = Some(match acc.take() {
+            Some(a) => Rect::from_min_size(
+                Pos2::new(a.min.x.min(r.min.x), a.min.y.min(r.min.y)),
+                Vec2::new(
+                    a.max.x.max(r.max.x) - a.min.x.min(r.min.x),
+                    a.max.y.max(r.max.y) - a.min.y.min(r.min.y),
+                ),
+            ),
+            None => r,
+        });
+    }
+    let mut stack: Vec<&ResolvedNode> = Vec::new();
+    for child in &node.children {
+        match child {
+            ResolvedChild::Node(n) => {
+                if let Some(r) = out.rects.get(&n.id) {
+                    union(&mut acc, *r);
+                }
+                stack.push(n);
+            }
+            ResolvedChild::Text(_) => {}
+        }
+    }
+    for span in &out.texts {
+        if span.node == node.id {
+            union(&mut acc, span.rect);
+        }
+    }
+    while let Some(n) = stack.pop() {
+        for child in &n.children {
+            match child {
+                ResolvedChild::Node(c) => {
+                    if let Some(r) = out.rects.get(&c.id) {
+                        union(&mut acc, *r);
+                    }
+                    stack.push(c);
+                }
+                ResolvedChild::Text(_) => {}
+            }
+        }
+        for span in &out.texts {
+            if span.node == n.id {
+                union(&mut acc, span.rect);
+            }
+        }
+    }
+    acc
 }
 
 /// Walk the computed tree into the flat [`Layout`].

@@ -144,74 +144,122 @@ fn write_scroll(edit: &mut EditState, node: &NodeId, pos: egui::Vec2) {
 }
 
 /// Advance the scroll offset from pointer input over `rect`, clamped to the
-/// content's overflow (`content` is the union of children rects).
+/// content's overflow. egui's `smooth_scroll_delta` is *content* motion —
+/// wheel-down is negative y, so the stored viewport offset grows by
+/// `-delta` (`scroll_area.rs` applies the same `delta: -scroll_delta`
+/// inversion). Axes the wheel actually moved get zeroed so no ancestor or
+/// sibling re-spends the delta; an axis a deeper scroller can still take
+/// chains to it untouched.
 fn scroll_input(
-    ui: &mut egui::Ui,
-    edit: &mut EditState,
-    node: &NodeId,
+    w: &mut Walk<'_>,
+    node: &ResolvedNode,
     rect: egui::Rect,
     axes: egui::Vec2,
-    content: egui::Rect,
 ) -> egui::Vec2 {
-    let mut pos = scroll_pos(edit, node);
+    let mut pos = scroll_pos(w.edit, &node.id);
+    let content = w
+        .layout
+        .scroll_content
+        .get(&node.id)
+        .copied()
+        .unwrap_or(rect);
     let max = egui::vec2(
         (content.width() - rect.width()).max(0.0),
         (content.height() - rect.height()).max(0.0),
     );
     if max.x <= 0.0 && max.y <= 0.0 {
         if pos != egui::Vec2::ZERO {
-            write_scroll(edit, node, egui::Vec2::ZERO);
+            write_scroll(w.edit, &node.id, egui::Vec2::ZERO);
         }
         return egui::Vec2::ZERO;
     }
-    let id = ui.scope_id().with(("we-scroll", node.as_str()));
-    if ui.interact(rect, id, egui::Sense::hover()).hovered() {
-        let delta = ui.input(|i| i.smooth_scroll_delta);
-        pos += egui::vec2(delta.x * axes.x, delta.y * axes.y);
+    // The pointer rides over the scrolled children, which win egui's
+    // widget-level hover — ask the layer whether the point is in the box.
+    if !w.ui.rect_contains_pointer(rect) {
+        return pos;
     }
-    pos.x = pos.x.clamp(0.0, max.x);
-    pos.y = pos.y.clamp(0.0, max.y);
-    if pos != scroll_pos(edit, node) {
-        write_scroll(edit, node, pos);
+    let delta = w.ui.input(|i| i.smooth_scroll_delta);
+    if delta == egui::Vec2::ZERO {
+        return pos;
+    }
+    let mut used = egui::Vec2::ZERO;
+    for d in 0..2 {
+        if delta[d] == 0.0 || axes[d] == 0.0 {
+            continue;
+        }
+        // A deeper scrollable under the pointer that can still take this
+        // axis claims it — chain-to-parent, like egui's wheel physics.
+        if deeper_can_scroll(w, node, d, delta[d]) {
+            continue;
+        }
+        let next = (pos[d] - delta[d]).clamp(0.0, max[d]);
+        if next != pos[d] {
+            pos[d] = next;
+            used[d] = 1.0;
+        }
+    }
+    if used != egui::Vec2::ZERO {
+        w.ui.input_mut(|i| {
+            for d in 0..2 {
+                if used[d] != 0.0 {
+                    i.smooth_scroll_delta[d] = 0.0;
+                }
+            }
+        });
+        write_scroll(w.edit, &node.id, pos);
     }
     pos
 }
 
-/// The union of this node's children rects — its scroll content.
-fn content_rect(layout: &Layout, node: &ResolvedNode) -> egui::Rect {
-    let mut out: Option<egui::Rect> = None;
-    let mut extend = |r: egui::Rect| match &mut out {
-        Some(o) => *o = o.union(r),
-        None => out = Some(r),
+/// `true` when a scrollable *descendant* of `node` under the pointer can
+/// still move on `axis` in `delta`'s direction — it claims the axis and
+/// `node` chains.
+fn deeper_can_scroll(w: &Walk<'_>, node: &ResolvedNode, axis: usize, delta: f32) -> bool {
+    let Some(p) = w.ui.input(|i| i.pointer.interact_pos()) else {
+        return false;
     };
+    // Only descendants can be deeper — ancestors share the pointer's rect.
+    let mut deeper: std::collections::HashSet<&NodeId> = Default::default();
+    let mut stack: Vec<&ResolvedNode> = Vec::new();
     for child in &node.children {
-        match child {
-            ResolvedChild::Node(n) => {
-                if let Some(r) = layout.rects.get(&n.id) {
-                    extend(*r);
-                }
-            }
-            ResolvedChild::Text(t) => {
-                for span in &layout.texts {
-                    if span.node == node.id && span.text.as_ref() == t.as_ref() {
-                        extend(span.rect);
-                    }
-                }
+        if let ResolvedChild::Node(n) = child {
+            stack.push(n);
+        }
+    }
+    while let Some(n) = stack.pop() {
+        deeper.insert(&n.id);
+        for child in &n.children {
+            if let ResolvedChild::Node(c) = child {
+                stack.push(c);
             }
         }
     }
-    for ((owner, _name), r) in &layout.parts {
-        if owner == &node.id {
-            extend(*r);
+    let pos = scroll_pos(w.edit, &node.id);
+    for (cid, caxes) in &w.layout.scroll {
+        if !deeper.contains(cid) || caxes[axis] == 0.0 {
+            continue;
+        }
+        let Some(base) = w.layout.rects.get(cid) else {
+            continue;
+        };
+        // Descendants live in `node`'s content space — painted rect is the
+        // base rect minus the ancestors' offsets and `node`'s own.
+        let eff = base.translate(-w.offset - pos);
+        if !eff.contains(p) {
+            continue;
+        }
+        let cpos = scroll_pos(w.edit, cid);
+        let ccontent = w.layout.scroll_content.get(cid).copied().unwrap_or(*base);
+        let cmax = egui::vec2(
+            (ccontent.width() - eff.width()).max(0.0),
+            (ccontent.height() - eff.height()).max(0.0),
+        );
+        let next = (cpos[axis] - delta).clamp(0.0, cmax[axis]);
+        if next != cpos[axis] {
+            return true;
         }
     }
-    out.unwrap_or_else(|| {
-        layout
-            .rects
-            .get(&node.id)
-            .copied()
-            .unwrap_or(egui::Rect::NOTHING)
-    })
+    false
 }
 
 /// Every part rect shifted by `delta` — the scrolled subtree's view.
@@ -275,14 +323,7 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
     // the scrolling axes.
     let saved_offset = w.offset;
     if let Some(axes) = w.layout.scroll.get(&node.id).copied() {
-        let pos = scroll_input(
-            w.ui,
-            w.edit,
-            &node.id,
-            rect,
-            axes,
-            content_rect(w.layout, node),
-        );
+        let pos = scroll_input(w, node, rect, axes);
         w.offset += egui::vec2(pos.x * axes.x, pos.y * axes.y);
         let r = axis_clip(rect, axes);
         w.clip = Some(match w.clip {
@@ -418,6 +459,11 @@ fn translate_layout(sub: &Layout, delta: egui::Vec2) -> Layout {
             })
             .collect(),
         scroll: sub.scroll.clone(),
+        scroll_content: sub
+            .scroll_content
+            .iter()
+            .map(|(k, r)| (k.clone(), r.translate(delta)))
+            .collect(),
         clip: sub.clip.clone(),
     }
 }
