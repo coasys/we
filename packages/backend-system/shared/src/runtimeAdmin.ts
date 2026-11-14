@@ -82,6 +82,51 @@ export interface InstalledLanguage {
   system: boolean;
 }
 
+/**
+ * The backend's config file: what its next start reads.
+ *
+ * Only a backend this connection operates on this machine answers it — the person running their
+ * own executor from the desktop app. `file` is null for a backend started without one, which then
+ * takes no writes.
+ */
+export interface ExecutorConfig {
+  /** The file's path, or null when the backend was started without a config file. */
+  file: string | null;
+  /** A write since this start waits for the next one. */
+  restartPending: boolean;
+  /** Every key the backend lets be written, with what the file holds for it. */
+  entries: ExecutorConfigEntry[];
+}
+
+export interface ExecutorConfigEntry {
+  key: string;
+  /**
+   * The type of value the key takes, known whether or not the file holds one: a key left to its
+   * default arrives with no value to tell it by. `object` is a nested setting a single control
+   * cannot edit, and a key whose type the backend does not say.
+   */
+  kind: 'boolean' | 'number' | 'text' | 'object';
+  /** What the file holds, or undefined when it leaves the key to its default. */
+  value: unknown;
+  /**
+   * Who may change it: `anywhere` (any operator), or `this-machine` (only an operator on the
+   * backend's own machine — paths, listeners, ports).
+   */
+  writableFrom: 'anywhere' | 'this-machine';
+  /**
+   * A flag or an environment variable of this start sets the key, so the file's value is not what
+   * runs, and a write is refused.
+   */
+  pinned: boolean;
+}
+
+/** What a config write did: every key not in `refused` is written. */
+export interface ExecutorConfigWrite {
+  restartPending: boolean;
+  /** `reason` is the backend's own word (`local-only`, `pinned-by-config`, `invalid`, `unknown-key`). */
+  refused: { key: string; reason: string; detail?: string }[];
+}
+
 export interface RuntimeAdminPort {
   // ── Languages ───────────────────────────────────────────────────────────────
   languages?(): Promise<InstalledLanguage[]>;
@@ -119,6 +164,23 @@ export interface RuntimeAdminPort {
   /** The peer-discovery records this node holds, for out-of-band exchange when discovery fails. */
   peerInfos?(): Promise<PeerRecords>;
   addPeerInfos?(infos: string[]): Promise<void>;
+
+  // ── The backend's own process ─────────────────────────────────────────────────────────
+  /** Its config file. See {@link ExecutorConfig}. */
+  executorConfig?(): Promise<ExecutorConfig>;
+  /**
+   * Write keys to the config file (`unset` returns them to their default). They take effect at the
+   * next start. Keys the backend will not write come back in `refused`, with why.
+   */
+  setExecutorConfig?(set: Record<string, unknown>, unset?: string[]): Promise<ExecutorConfigWrite>;
+  /**
+   * Ask the backend to stop and be started again with the same arguments by whatever supervises it.
+   * Only meaningful where something does: a caller offers it only where the host says it starts
+   * the backend (`ExecutorHost`).
+   */
+  restartExecutor?(): Promise<void>;
+  /** The newest `lines` lines of this run's log, oldest first. */
+  executorLogTail?(lines: number): Promise<string[]>;
 
   // ── External apps holding credentials ───────────────────────────────────────
   authorizedApps?(): Promise<AuthorizedApp[]>;

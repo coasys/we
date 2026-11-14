@@ -638,7 +638,7 @@ const aiSetupStep: SchemaNode = {
  * A switch in progress, whichever screen it was started from.
  *
  * Switching runs entirely before the reload — kill the executor, respawn it against the other
- * directory, wait for GraphQL — several seconds during which the screen would otherwise look
+ * directory, wait for it to be ready — several seconds during which the screen would otherwise look
  * unresponsive.
  *
  * Hoisted per rule 1, and for a second reason: a switch is not a boot state. It can begin from

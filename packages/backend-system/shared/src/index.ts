@@ -195,6 +195,9 @@ export type {
 export type {
   AuthorizedApp,
   ConsentRequest,
+  ExecutorConfig,
+  ExecutorConfigEntry,
+  ExecutorConfigWrite,
   InstalledLanguage,
   PeerRecords,
   RuntimeAdminPort,

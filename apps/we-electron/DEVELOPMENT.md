@@ -62,6 +62,57 @@ damaged. Clear the quarantine flag after moving the app to Applications:
 xattr -cr /Applications/WE.app
 ```
 
+## The executor: how the app runs it
+
+The app starts the person's AD4M executor as a child process and supervises it by the executor's
+run contract (ad4m `rust-executor/src/exit.rs`, `docs-src/pages/developer-guides/executor-config.mdx`).
+The arguments are `executorArgs` in `electron/executorProcess.js`:
+
+- `--watch-stdin true`: stdin is a pipe the app holds open and never writes. Closing it stops the
+  executor gracefully (exit 0); that is how Quit, an account switch and a restart stop it. If the
+  app dies, the OS closes the pipe and the executor stops with it. SIGTERM, then SIGKILL, only if it
+  has not gone within 10 s (`stopChild`).
+- `--config <data folder>/executor-config.json`: the executor's settings. The app creates the file
+  the first time it starts an executor on a data folder, mode 0600, from the MCP and log settings an
+  older build kept in the account registry, with `auto_permit_cap_requests: true` (what an executor
+  without a config file does). After that the file is the executor's: the settings page writes it
+  through `runtime.setConfig`, and a change takes effect at the next start. Port, data folder, log
+  folder and the dapp server stay flags, so the executor reports them as pinned.
+- `--log-dir <data folder>/logs`: the executor's own log, one file per run, five runs kept
+  (`executor-0.log` is this run). `runtime.logTail` reads it. `ad4m.log` (below) keeps this app's
+  `HOST` lines and what the executor still prints to stdout.
+- `--custody-channel true`: opens `identity.custodyStatus` to the custody service beside it.
+
+What the app does when the executor exits (`afterExecutorExit`):
+
+| Code               | Meaning                                | The app                                                                                                                                  |
+| ------------------ | -------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+| 0                  | stopped on request                     | nothing more                                                                                                                             |
+| 75                 | `runtime.restart`                      | starts it again at once with the same arguments (port and credential), and reloads the window                                            |
+| 78                 | config or a flag refused               | does not restart; shows the executor's last lines and the config file to fix                                                             |
+| 79                 | another executor holds the data folder | does not restart; says so                                                                                                                |
+| 80                 | port taken                             | starts it again on a new port                                                                                                            |
+| other, or a signal | crash                                  | starts it again after 1 s, 2 s, 4 s … up to 30 s; the count starts over after a minute up; after 6 crashes in a row it stops and says so |
+
+On the first start, before the window exists, 78 and 79 end in the "could not start" box with the
+reason, and 80 tries another port up to three times.
+
+Settings → Devices → This computer → Advanced → **Startup settings** lists the config file's keys,
+offers a control for each one the executor lets this machine change, says a change takes effect at
+the next start, offers **Restart now** (`runtime.restart`), and shows the log tail. It goes through
+`RuntimeAdminPort` (`executorConfig`, `setExecutorConfig`, `restartExecutor`, `executorLogTail`);
+the MCP and log-level controls above it write the same file.
+
+### The tray icon and closing the window
+
+Closing the main window hides it; the app and its executor keep running. The tray icon's menu has
+"Open <product>" and "Quit <product>"; Quit stops the executor (stdin closes) and quits. On macOS
+the app leaves the Dock while the window is hidden, and a click on the Dock icon opens it again. On
+Linux the icon is a StatusNotifierItem and shows only while a tray host owns
+`org.kde.StatusNotifierWatcher` on the session bus; without one (GNOME without an AppIndicator
+extension, no session bus) closing the window quits the app, as Quit does, and the app logs
+`[tray] No tray host …`. See `electron/tray.js`.
+
 ## The identity: custody and the identity window
 
 The person's master key never rests in the executor or in a web view. This app runs the custody
@@ -226,6 +277,8 @@ printed at startup (`[main] Executor log: …`).
   build traces nothing until `localStorage.setItem('we:trace', '<scopes>')` (scopes in
   `installConsoleTrace.ts`). The Electron host copies them; the Tauri host does not yet.
 - Each file stops at 50 MB and says so. Raise detail with the per-crate log levels in Settings.
+- The executor's own log is in `<data folder>/logs/executor-<n>.log` (see "The executor: how the
+  app runs it").
 
 The Tauri host writes the same files by the same rules. See `electron/executorLog.js`.
 

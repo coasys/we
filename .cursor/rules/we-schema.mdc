@@ -3376,6 +3376,10 @@ RuntimeStore:
   - mcpEnabled: boolean — whether the backend serves MCP on its next start
   - mcpPort: number — the port MCP is served on
   - executorRestartPending: boolean — settings were changed that the running backend has not picked up
+  - executorConfigFile: string — the path of the config file the backend started with, where this app may write it (the desktop app’s own executor); empty otherwise. Gate the config rows on it
+  - executorConfigRows: { id, key, value, kind, choice, editable, note }[] — every key of that file: value ready to show (empty when the file leaves the key to its default, "Default" for a fixed one), kind the control it takes, from the key’s type rather than its value (boolean | number | text, or fixed for one only shown), choice for a boolean key’s three-way select (default | on | off, default while the file leaves it to the backend), editable, and note saying why one is not (a flag of this start sets it) or that it is changed only from this computer
+  - executorLogTail: string — the newest lines of this run’s backend log, oldest first. Empty until loadExecutorLogTail runs
+  - canRestartExecutor: boolean — the host starts the backend, so a restart can be offered
   - pendingConsent: ConsentRequest | null — a request awaiting the user's decision (kind: 'capability' | 'trust', title, message, app, peerId)
   - consentSecret: string — a code an approval returned, to be relayed to the asking app
 - Actions:
@@ -3428,7 +3432,9 @@ RuntimeStore:
   - exportDatabase(): asks for a file, then has the backend write everything to it
   - importDatabase(): asks for a file, then has the backend read it back in
   - setMcpPort(port: number): sets the MCP port. The host refuses one outside 1024-65535
-  - restartExecutor(): starts the backend over so written settings take effect. Does not return
+  - restartExecutor(): starts the backend over so written settings take effect — where it keeps a config file, by asking it to restart, and the app starts it again with the same arguments and reloads. Does not return
+  - setExecutorConfigValue(key: string, value): writes one key of the config file — a row’s key and the control’s value (event.detail); an empty value returns it to its default. Takes effect at the next start. A refused key lands in error with the backend’s reason
+  - loadExecutorLogTail(): reads the newest lines of the backend’s log into executorLogTail
   - approveConsent(): grants the pending request
   - denyConsent(): declines the pending request
   - dismissConsentSecret(): clears the confirmation code display
