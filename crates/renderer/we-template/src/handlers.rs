@@ -446,7 +446,13 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
                 }
                 return;
             }
-            let done = cx.calls.mint();
+            let Some(done) = cx.calls.mint() else {
+                // Every call id has been used: refuse rather than reuse one
+                // an outstanding call may still hold.
+                cx.warnings
+                    .push(format!("$invoke {target}: call ids exhausted; not run").into());
+                return;
+            };
             let call = done.call_id();
             let request = ActionRequest {
                 origin: Origin {

@@ -112,18 +112,29 @@ impl CompletionQueue {
 
 /// Core's side of the call ids: mints a [`CallId`] and its [`Completer`]
 /// per action, and owns the queue completions land in.
-#[derive(Default)]
 pub struct CallBook {
-    next: u64,
+    /// The next id to hand out; `None` once `u64::MAX` has been minted.
+    next: Option<u64>,
     queue: Arc<CompletionQueue>,
 }
 
+impl Default for CallBook {
+    fn default() -> Self {
+        Self {
+            next: Some(0),
+            queue: Arc::default(),
+        }
+    }
+}
+
 impl CallBook {
-    /// The next call's completer — ids count up from 0.
-    pub(crate) fn mint(&mut self) -> Completer {
-        let call = CallId(self.next);
-        self.next += 1;
-        Completer::new(call, self.queue.clone())
+    /// The next call's completer — ids count up from 0 and are unique for
+    /// the book's life: after `u64::MAX` the book is exhausted and answers
+    /// `None` rather than wrapping onto an id an outstanding call may hold.
+    pub(crate) fn mint(&mut self) -> Option<Completer> {
+        let call = self.next?;
+        self.next = call.checked_add(1);
+        Some(Completer::new(CallId(call), self.queue.clone()))
     }
 
     pub(crate) fn drain(&self) -> VecDeque<(CallId, Result<Value, Value>)> {
@@ -167,6 +178,26 @@ mod tests {
     use super::*;
 
     fn assert_send_sync<T: Send + Sync>() {}
+
+    /// Review P3: the last id is minted once; after it the book is
+    /// exhausted and never wraps to reuse an id an outstanding call holds.
+    #[test]
+    fn call_ids_never_repeat_at_exhaustion() {
+        let mut book = CallBook {
+            next: Some(u64::MAX - 1),
+            ..CallBook::default()
+        };
+        let ids: Vec<Option<CallId>> = (0..4).map(|_| book.mint().map(|c| c.call_id())).collect();
+        assert_eq!(
+            ids,
+            [
+                Some(CallId(u64::MAX - 1)),
+                Some(CallId(u64::MAX)),
+                None,
+                None
+            ]
+        );
+    }
 
     #[test]
     fn completer_crosses_threads() {
