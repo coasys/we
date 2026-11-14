@@ -114,9 +114,7 @@ impl Env for MapEnv {
 /// ```
 pub fn callback_value(value: &Value) -> Value {
     match value {
-        Value::Obj(_) => Value::Namespace(Arc::new(CallbackNamespace {
-            raw: value.clone(),
-        })),
+        Value::Obj(_) => Value::Namespace(Arc::new(CallbackNamespace { raw: value.clone() })),
         _ => value.clone(),
     }
 }
@@ -145,9 +143,7 @@ impl Namespace for CallbackNamespace {
                 // callback-tagged — `readValue` lets it through. (`bound` is
                 // the name JavaScript reports for the bound function, and
                 // what the vectors re-encode.)
-                _ => Value::Callable(CallableRef::callback("bound", move |args| {
-                    c.call(args)
-                })),
+                _ => Value::Callable(CallableRef::callback("bound", move |args| c.call(args))),
             },
             member => callback_value(&member),
         }

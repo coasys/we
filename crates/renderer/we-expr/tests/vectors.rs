@@ -9,8 +9,7 @@ use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use we_expr::{
-    callback_value, eval, parse, print, CallableRef, Env, MapEnv, Namespace, Value,
-    CALL_TIME_ROOTS,
+    callback_value, eval, parse, print, CallableRef, Env, MapEnv, Namespace, Value, CALL_TIME_ROOTS,
 };
 
 #[derive(Deserialize)]
@@ -145,9 +144,7 @@ impl Namespace for LocalNamespace {
         match self.local.get(key) {
             Some(held) => {
                 let held = held.clone();
-                Value::Callable(CallableRef::accessor("anonymous", move |_| {
-                    held.clone()
-                }))
+                Value::Callable(CallableRef::accessor("anonymous", move |_| held.clone()))
             }
             None => Value::Undefined,
         }

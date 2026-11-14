@@ -446,9 +446,7 @@ impl Value {
                     // `markReactive(() => v)` — an accessor `readValue` calls.
                     // The decode's own marker is `$callable` on the way out.
                     let held = Value::from_json(payload);
-                    Value::Callable(CallableRef::accessor("anonymous", move |_| {
-                        held.clone()
-                    }))
+                    Value::Callable(CallableRef::accessor("anonymous", move |_| held.clone()))
                 } else if let Some(payload) = o.get("$thunk") {
                     // An untagged `() => v` — a host global's getter; the env
                     // invokes it for the root's value, and `readValue` refuses
