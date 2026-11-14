@@ -31,8 +31,9 @@ describe('the identity window', () => {
   it('says what a revocation does, and promises nothing about earlier signatures', () => {
     const confirm = { screen: 'revoke-confirm' as const, keyId: 'd2', rotate: false, passphrase: false, error: null };
     const lead = heading({ ...confirm, mayHoldMaster: false }).lead;
-    expect(lead).toContain('when they next read your key log');
-    expect(lead).toContain('can also stop counting as yours');
+    expect(lead).toContain("A computer that's offline learns this when it reconnects");
+    expect(lead).toContain('may no longer show as yours');
+    expect(lead).not.toContain('stays valid');
     expect(lead).not.toContain('master key');
   });
 
@@ -64,8 +65,8 @@ describe('the identity window', () => {
 
   it('names the device on the approve card when it gave a hint', () => {
     const match = { screen: 'match' as const, code: 'R7K Q2M', canKeep: false, ownName: false };
-    expect(heading({ ...match, hint: 'server b' }).title).toBe('Add server b?');
-    expect(heading({ ...match, hint: null }).title).toBe('Add this device?');
+    expect(heading({ ...match, hint: 'server b' }).title).toBe('Link server b?');
+    expect(heading({ ...match, hint: null }).title).toBe('Link this device?');
   });
 
   it('asks the holder by key whether to send the master key, and the revoke request names each key from the log', () => {
@@ -119,7 +120,7 @@ describe('the identity window', () => {
     expect(linked).toContain('It gets the master key the next time it unlocks.');
     expect(linked).toContain('Its name is not saved yet.');
     expect(heading({ screen: 'linked', seq: 3, masterSent: false, note: null }).lead).toBe(
-      'Your key log records it as entry #3.',
+      "It's entry #3 in your key log.",
     );
   });
 
@@ -207,6 +208,7 @@ describe('the identity window', () => {
 
   it('says what the words do: add and remove devices, restore the identity, replace the master key', () => {
     const lead = heading({ screen: 'show-words', words: [] }).lead;
+    expect(lead).toContain('links and removes your devices');
     expect(lead).toContain('restore your identity');
     expect(lead).toContain('replace your master key');
     // Nothing this app cannot do: the words bring back no stolen data and no other keys.
@@ -362,7 +364,7 @@ describe('the identity window', () => {
       message: 'The identity store holds a different log for did:scid:coasys:1:Qm.',
     };
     expect(heading(refused).lead).toContain('different log');
-    expect(heading(refused).lead).toContain('Trying again will not change that');
+    expect(heading(refused).lead).toContain("Trying again won't help");
     expect(isLast(refused)).toBe(false);
   });
 
