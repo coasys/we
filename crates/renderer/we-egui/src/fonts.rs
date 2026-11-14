@@ -118,6 +118,43 @@ pub(crate) fn install(fonts: &mut egui::FontDefinitions) {
             .or_default()
             .push(file.to_string());
     }
+    // Every CSS stack ends in a generic, and a glyph the named face lacks
+    // falls through to it (VT323 has no U+2192). Each family's chain is its
+    // own faces then the generic's: `X` for a stack ending in a sans/serif/
+    // system generic (`Proportional`), `X, monospace` for one naming a mono
+    // entry. The primary face still sets the metrics — epaint reads them
+    // off the chain's first face — so only previously missing glyphs move.
+    let tail = |g: egui::FontFamily| fonts.families.get(&g).cloned().unwrap_or_default();
+    let (prop, mono) = (
+        tail(egui::FontFamily::Proportional),
+        tail(egui::FontFamily::Monospace),
+    );
+    for family in FAMILIES {
+        let own = fonts
+            .families
+            .get(&egui::FontFamily::Name(Arc::from(*family)))
+            .cloned()
+            .unwrap_or_default();
+        fonts.families.insert(
+            egui::FontFamily::Name(Arc::from(Chain::key_of(&[family], true).as_str())),
+            chained(&own, &mono),
+        );
+        fonts.families.insert(
+            egui::FontFamily::Name(Arc::from(*family)),
+            chained(&own, &prop),
+        );
+    }
+}
+
+/// `head` then every face of `tail` not already in it.
+fn chained(head: &[String], tail: &[String]) -> Vec<String> {
+    let mut out = head.to_vec();
+    for f in tail {
+        if !out.contains(f) {
+            out.push(f.clone());
+        }
+    }
+    out
 }
 
 /// Strip one CSS stack entry: `'DM Sans'` → `DM Sans`; `system-ui` stays.
@@ -136,49 +173,109 @@ fn is_mono(entry: &str) -> bool {
     e.contains("mono") || e == "consolas" || e == "menlo" || e == "courier" || e == "courier new"
 }
 
-/// The egui family a CSS `font-family` stack resolves to: the first entry
-/// that names a WE family *with faces installed* (`has_face`), then
-/// anything mono, then the generic/platform entries → `Proportional`.
-/// Skipping uninstalled names is the CSS behaviour — a face that didn't
-/// load falls through to the next stack entry.
+/// What a CSS `font-family` stack resolves to: the WE families it names
+/// *with faces installed* (`has_face`), in stack order, and whether its
+/// generic is mono. Skipping uninstalled names is the CSS behaviour — a
+/// face that didn't load falls through to the next stack entry — and no
+/// later entry is dropped: each one is a further link of the chain.
+struct Chain {
+    names: Vec<String>,
+    mono: bool,
+}
+
+impl Chain {
+    fn of(stack: &str, weight: Option<f32>, has_face: impl Fn(&str) -> bool) -> Self {
+        let mut names: Vec<String> = Vec::new();
+        let mut mono = false;
+        for entry in stack.split(',') {
+            let name = unquote(entry);
+            if let Some(base) = FAMILIES.iter().find(|f| f.eq_ignore_ascii_case(name)) {
+                if !has_face(base) {
+                    continue;
+                }
+                // A weight-specific face would register as `"<base> Bold"`
+                // (none ship — variable files can't instance under ab_glyph).
+                let bold = format!("{base} Bold");
+                let pick = if weight.is_some_and(|w| w >= 600.0) && has_face(&bold) {
+                    bold
+                } else {
+                    base.to_string()
+                };
+                if !names.contains(&pick) {
+                    names.push(pick);
+                }
+            } else if is_mono(name) {
+                mono = true;
+            }
+        }
+        Self { names, mono }
+    }
+
+    /// The registered family name of a chain: the lone family itself for a
+    /// sans/system stack, `"X, monospace"` for a mono one, the names joined
+    /// for several. A `", "` never occurs in a face's own name.
+    fn key_of(names: &[&str], mono: bool) -> String {
+        let mut k = names.join(", ");
+        if mono {
+            k.push_str(", monospace");
+        }
+        k
+    }
+
+    fn key(&self) -> Option<String> {
+        if self.names.is_empty() {
+            return None;
+        }
+        let names: Vec<&str> = self.names.iter().map(String::as_str).collect();
+        Some(Self::key_of(&names, self.mono))
+    }
+
+    /// The generic the stack ends in.
+    fn generic(&self) -> egui::FontFamily {
+        if self.mono {
+            egui::FontFamily::Monospace
+        } else {
+            egui::FontFamily::Proportional
+        }
+    }
+
+    /// The single-name chain `install` registers for the first family —
+    /// right until a several-name chain is registered.
+    fn first(&self) -> egui::FontFamily {
+        match self.names.first() {
+            Some(n) => egui::FontFamily::Name(Arc::from(Self::key_of(&[n], self.mono).as_str())),
+            None => self.generic(),
+        }
+    }
+}
+
+/// The egui family a CSS `font-family` stack resolves to — the chain of
+/// its installed WE families then its generic (see [`Chain`]); egui's
+/// generic alone when it names none.
 pub(crate) fn family_named(
     stack: &str,
     weight: Option<f32>,
     has_face: impl Fn(&str) -> bool,
 ) -> egui::FontFamily {
-    let mut mono = false;
-    for entry in stack.split(',') {
-        let name = unquote(entry);
-        if let Some(base) = FAMILIES.iter().find(|f| f.eq_ignore_ascii_case(name)) {
-            if !has_face(base) {
-                continue;
-            }
-            // A weight-specific face would register as `"<base> Bold"`
-            // (none ship — variable files can't instance under ab_glyph).
-            if weight.is_some_and(|w| w >= 600.0) {
-                let bold = format!("{base} Bold");
-                if has_face(&bold) {
-                    return egui::FontFamily::Name(Arc::from(bold.as_str()));
-                }
-            }
-            return egui::FontFamily::Name(Arc::from(*base));
-        }
-        if is_mono(name) {
-            mono = true; // keep scanning — an earlier real face still wins
-        }
-    }
-    if mono {
-        egui::FontFamily::Monospace
-    } else {
-        egui::FontFamily::Proportional
+    let chain = Chain::of(stack, weight, has_face);
+    match chain.key() {
+        Some(k) => egui::FontFamily::Name(Arc::from(k.as_str())),
+        None => chain.generic(),
     }
 }
 
 /// `family_named` against the context's installed families — an `install`
 /// that never ran (headless tests) makes every WE name fall through to
 /// egui's generics instead of resolving to an empty family.
+///
+/// A stack naming several WE families needs a chain `install` could not
+/// foresee: it is added to the font definitions the first time it is seen
+/// (each named family's own faces in stack order, then the generic's) and
+/// this pass uses the first family's chain; egui swaps the definitions in
+/// before the next pass, or at once if no text was laid out yet.
 pub(crate) fn resolve(ctx: &egui::Context, stack: &str, weight: Option<f32>) -> egui::FontFamily {
-    ctx.fonts(|f| {
+    const PENDING: &str = "we-egui::font-chains-pending";
+    let (family, register) = ctx.fonts(|f| {
         let installed: std::collections::BTreeSet<Arc<str>> = f
             .families()
             .into_iter()
@@ -187,8 +284,52 @@ pub(crate) fn resolve(ctx: &egui::Context, stack: &str, weight: Option<f32>) -> 
                 _ => None,
             })
             .collect();
-        family_named(stack, weight, |name| installed.contains(name))
-    })
+        let chain = Chain::of(stack, weight, |name| installed.contains(name));
+        let Some(key) = chain.key() else {
+            return (chain.generic(), None);
+        };
+        if installed.contains(key.as_str()) {
+            return (egui::FontFamily::Name(Arc::from(key.as_str())), None);
+        }
+        let defs = f.definitions();
+        let generic = defs
+            .families
+            .get(&chain.generic())
+            .cloned()
+            .unwrap_or_default();
+        let mut list: Vec<String> = Vec::new();
+        for name in &chain.names {
+            // A family's own faces: its registered chain less the
+            // proportional tail `install` appended.
+            let own = defs
+                .families
+                .get(&egui::FontFamily::Name(Arc::from(name.as_str())))
+                .map(|l| {
+                    let prop = defs.families.get(&egui::FontFamily::Proportional);
+                    l.iter()
+                        .filter(|face| !prop.is_some_and(|p| p.contains(face)))
+                        .cloned()
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            list = chained(&list, &own);
+        }
+        let mut next = defs.clone();
+        next.families.insert(
+            egui::FontFamily::Name(Arc::from(key.as_str())),
+            chained(&list, &generic),
+        );
+        (chain.first(), Some((key, next)))
+    });
+    if let Some((key, defs)) = register {
+        let id = egui::Id::new((PENDING, key.as_str()));
+        if ctx.data_mut(|d| d.get_temp::<bool>(id)).is_none() {
+            ctx.data_mut(|d| d.insert_temp(id, true));
+            ctx.set_fonts(defs);
+            ctx.request_repaint();
+        }
+    }
+    family
 }
 
 #[cfg(test)]
@@ -203,7 +344,11 @@ mod tests {
         );
         assert_eq!(
             family_named("'VT323', monospace", None, |_| true),
-            egui::FontFamily::Name(Arc::from("VT323"))
+            egui::FontFamily::Name(Arc::from("VT323, monospace"))
+        );
+        assert_eq!(
+            family_named("'VT323', 'DM Sans', sans-serif", None, |_| true),
+            egui::FontFamily::Name(Arc::from("VT323, DM Sans"))
         );
         assert_eq!(
             family_named(
