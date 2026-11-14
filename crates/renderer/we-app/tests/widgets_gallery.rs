@@ -63,8 +63,8 @@ fn widgets_open_backdrop_covers_viewport() {
         image.pixels().all(|p| p.0[3] == 255),
         "viewport has transparent pixels under the backdrop"
     );
-    let corners = [(2, 2), (w - 3, 2), (2, h - 3), (w - 3, h - 3)]
-        .map(|(x, y)| image.get_pixel(x, y).0);
+    let corners =
+        [(2, 2), (w - 3, 2), (2, h - 3), (w - 3, h - 3)].map(|(x, y)| image.get_pixel(x, y).0);
     let [r, g, b, _] = corners[0];
     for c in corners {
         assert!(

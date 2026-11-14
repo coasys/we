@@ -518,8 +518,7 @@ fn modal_centres_and_sizes_to_content() {
     let dialog = h.get_by_label("Dialog").rect();
     // Centred in the 400×400 rig.
     assert!(
-        (dialog.center().x - 200.0).abs() < 1.0
-            && (dialog.center().y - 200.0).abs() < 1.0,
+        (dialog.center().x - 200.0).abs() < 1.0 && (dialog.center().y - 200.0).abs() < 1.0,
         "dialog not centred: {dialog:?}"
     );
     // Sized to its content, not a full-bleed bar: a gutter off every edge.

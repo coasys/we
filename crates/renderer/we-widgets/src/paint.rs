@@ -151,7 +151,12 @@ fn overlay_host(node: &ResolvedNode, width: f32, children: Vec<ResolvedChild>) -
 
 /// The modal's padding as host-column props (`pt` additionally reserves
 /// the title strip), so `sub.size` lands as the full content box.
-fn modal_host(node: &ResolvedNode, width: f32, children: Vec<ResolvedChild>, mcx: &MeasureCx) -> ResolvedNode {
+fn modal_host(
+    node: &ResolvedNode,
+    width: f32,
+    children: Vec<ResolvedChild>,
+    mcx: &MeasureCx,
+) -> ResolvedNode {
     let pad = crate::Modal::pad(node) as f64;
     let mut host = overlay_host(node, width, children);
     for key in ["pl", "pr", "pb"] {
@@ -326,10 +331,7 @@ fn modal_overlay(
     // The dialog is sized by its content: `sub.size` is the padded host
     // column — width, plus `pt` (pad + title strip) + children + `pb`.
     // WE caps it at `maxHeight: calc(100dvh - 64px)`.
-    let content_size = egui::vec2(
-        width,
-        sub.size.y.min(screen.height() - 64.0).max(64.0),
-    );
+    let content_size = egui::vec2(width, sub.size.y.min(screen.height() - 64.0).max(64.0));
     let content_rect = Rect::from_center_size(screen.center(), content_size);
     let origin = sub.rects.get(&host.id).map(|r| r.min).unwrap_or_default();
     let scratch = translate_layout(&sub, content_rect.min - origin);
