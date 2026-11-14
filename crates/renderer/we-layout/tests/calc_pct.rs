@@ -577,6 +577,88 @@ fn calc_child_of_shrunk_flex_item_reads_used_size() {
     );
 }
 
+/// A `display:none` child produces no grid item — the row recipe must
+/// count laid-out children, not `node.children.len()`.
+#[test]
+fn grid_row_recipe_skips_hidden_children() {
+    // 400px-tall Grid, one column, no gap: one visible + one `display:
+    // none` child → the single 1fr row occupies 400px, so the visible
+    // `calc(50% - 5px)` height is 195. Counting the hidden child makes
+    // it a 2-row recipe → 95.
+    let mut grid = node(
+        "Grid",
+        "grid",
+        &[("columns", Value::from(1.0)), ("height", Value::from("400px"))],
+    );
+    grid.children = vec![
+        ResolvedChild::Node(Box::new(node(
+            "Column",
+            "v",
+            &[
+                ("height", Value::from("calc(50% - 5px)")),
+                ("width", Value::from("10px")),
+            ],
+        ))),
+        ResolvedChild::Node(Box::new(node(
+            "Column",
+            "h",
+            &[
+                ("display", Value::from("none")),
+                ("height", Value::from("10px")),
+                ("width", Value::from("10px")),
+            ],
+        ))),
+    ];
+    let mut root = node("Column", "r", &[]);
+    root.children = vec![ResolvedChild::Node(Box::new(grid))];
+
+    let out = run(&root, 400.0, 400.0);
+    let v = rect(&out, "v");
+    assert!(
+        (v.height() - 195.0).abs() < 0.5,
+        "one visible item = one 400px row: 0.5·400−5 = 195, got {v:?}"
+    );
+}
+
+/// A `minChildWidth` grid's rows follow the *measured* column count:
+/// `ceil(items / cols)` `1fr` shares of the grid's content height.
+#[test]
+fn grid_autofill_row_recipe_reads_measured_columns() {
+    // 400px-tall, 400px-wide Grid with `minChildWidth: 100` and two
+    // items → 4 columns, ceil(2/4) = 1 row of 400px → `calc(50% - 5px)`
+    // height is 195. No recipe (the old `None` arm) leaves it cyclic —
+    // auto height → the 10px intrinsic.
+    let mut grid = node(
+        "Grid",
+        "grid",
+        &[
+            ("minChildWidth", Value::from(100.0)),
+            ("height", Value::from("400px")),
+        ],
+    );
+    grid.children = vec![
+        ResolvedChild::Node(Box::new(node(
+            "Column",
+            "v",
+            &[("height", Value::from("calc(50% - 5px)"))],
+        ))),
+        ResolvedChild::Node(Box::new(node(
+            "Column",
+            "w",
+            &[("height", Value::from("10px"))],
+        ))),
+    ];
+    let mut root = node("Column", "r", &[]);
+    root.children = vec![ResolvedChild::Node(Box::new(grid))];
+
+    let out = run(&root, 400.0, 400.0);
+    let v = rect(&out, "v");
+    assert!(
+        (v.height() - 195.0).abs() < 0.5,
+        "4 cols of 100 → 1 row of 400: 0.5·400−5 = 195, got {v:?}"
+    );
+}
+
 /// An absolutely-positioned child's containing block is its positioned
 /// ancestor's *padding* box: `p: calc(10% + 16px)` inside a `relative`
 /// 400px parent padded 40 resolves against 400 (56px), not the 320px

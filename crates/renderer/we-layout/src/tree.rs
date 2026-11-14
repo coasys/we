@@ -490,6 +490,17 @@ enum CbSrc {
     /// An auto-fill grid cell — the column count comes from the measured
     /// width: `floor((content + gap) / (min + gap))`.
     AutoCell { node: NodeId, min: f32, gap: f32 },
+    /// An auto-fill grid *row* — the row count is `ceil(items / cols)`
+    /// where `cols` follows the same measured-width formula as
+    /// [`CbSrc::AutoCell`]; the share is `(content.y − (rows−1)·gap_y) /
+    /// rows`.
+    AutoRows {
+        node: NodeId,
+        min: f32,
+        gap_x: f32,
+        gap_y: f32,
+        items: usize,
+    },
 }
 
 /// Where a node's deferred bases read back — per-axis sources plus the
@@ -509,6 +520,15 @@ enum GridAxis {
     Counted { count: u32, gap: f32 },
     /// `repeat(auto-fill, minmax(min, 1fr))` — count from the used width.
     AutoFill { min: f32, gap: f32 },
+    /// The rows an `AutoFill` column recipe implies — `ceil(items /
+    /// measured columns)` `1fr` shares; statically unknowable, so the
+    /// cell base defers to the measured box.
+    AutoRows {
+        min: f32,
+        gap_x: f32,
+        gap_y: f32,
+        items: usize,
+    },
 }
 
 /// The grid axes a `Grid` node's children resolve against.
@@ -598,10 +618,11 @@ fn lp_px(v: LengthPercentage) -> Option<f32> {
 
 /// The grid cell recipes a `Grid` node's children resolve against:
 /// `columns`/`template` (a `repeat(N, 1fr)`) give a static track count,
-/// `minChildWidth` gives the auto-fill `min`, anything else — or a row
-/// axis whose count depends on the unresolved column count — is
-/// `None`, and that axis's percent bases fall back to `Indefinite`.
-/// `n_items` is the node's child count (auto rows split evenly).
+/// `minChildWidth` gives the auto-fill `min` (its row recipe reads the
+/// measured column count back), anything else — or a row axis whose
+/// count stays unknowable — is `None`, and that axis's percent bases
+/// fall back to `Indefinite`. `n_items` is the *laid-out* child count
+/// (auto rows split evenly).
 fn grid_axes(node: &ResolvedNode, s: &taffy::Style, n_items: usize) -> GridAxes {
     let gap_x = lp_px(s.gap.width);
     let gap_y = lp_px(s.gap.height);
@@ -630,6 +651,14 @@ fn grid_axes(node: &ResolvedNode, s: &taffy::Style, n_items: usize) -> GridAxes 
             count: n_items.div_ceil(*count as usize).max(1) as u32,
             gap,
         }),
+        Some(GridAxis::AutoFill { min, gap: gap_x }) => {
+            gap_y.map(|gap_y| GridAxis::AutoRows {
+                min: *min,
+                gap_x: *gap_x,
+                gap_y,
+                items: n_items.max(1),
+            })
+        }
         _ => None,
     };
     GridAxes { x, y }
@@ -1417,6 +1446,26 @@ impl<'a> Builder<'a> {
                             gap: *gap,
                         },
                     ),
+                    Some(GridAxis::AutoRows {
+                        min,
+                        gap_x,
+                        gap_y,
+                        items,
+                    }) => (
+                        // The row count needs the measured column count —
+                        // statically unknowable, knowable once measured.
+                        match cb {
+                            AxisBase::Indefinite => AxisBase::Indefinite,
+                            _ => AxisBase::Deferred,
+                        },
+                        CbSrc::AutoRows {
+                            node: parent.clone().unwrap(),
+                            min: *min,
+                            gap_x: *gap_x,
+                            gap_y: *gap_y,
+                            items: *items,
+                        },
+                    ),
                     _ => (
                         AxisBase::Indefinite,
                         CbSrc::Box {
@@ -1560,14 +1609,27 @@ impl<'a> Builder<'a> {
             pf.pb
         };
         let is_grid = matches!(s.display, Display::Grid);
-        let n_items = node.children.len();
+        // The grid recipe counts items taffy actually lays out — a
+        // `display: none` child is skipped below and makes no track;
+        // counting it splits the row shares too thin.
+        let n_items = || -> usize {
+            node.children
+                .iter()
+                .filter(|c| match c {
+                    ResolvedChild::Text(_) => true,
+                    ResolvedChild::Node(n) => {
+                        !matches!(style_of(n, &scoped).layout.display, Some(WsDisplay::None))
+                    }
+                })
+                .count()
+        };
         let kids: Vec<TaffyId> = match spec {
             Some(spec) => {
                 s.flex_direction = match spec.direction {
                     Direction::Row => FlexDirection::Row,
                     Direction::Column => FlexDirection::Column,
                 };
-                let ga = is_grid.then(|| grid_axes(node, &s, n_items));
+                let ga = is_grid.then(|| grid_axes(node, &s, n_items()));
                 let pf = ParentFrame {
                     id: Some(&node.id),
                     cb: own.content,
@@ -1588,7 +1650,7 @@ impl<'a> Builder<'a> {
                     FlexDirection::Row | FlexDirection::RowReverse => Direction::Row,
                     _ => Direction::Column,
                 };
-                let ga = is_grid.then(|| grid_axes(node, &s, n_items));
+                let ga = is_grid.then(|| grid_axes(node, &s, n_items()));
                 let pf = ParentFrame {
                     id: Some(&node.id),
                     cb: own.content,
@@ -1692,6 +1754,19 @@ fn cb_px(
                 .floor()
                 .max(1.0);
             (c.x - (n - 1.0) * gap).max(0.0) / n
+        }),
+        CbSrc::AutoRows {
+            node,
+            min,
+            gap_x,
+            gap_y,
+            items,
+        } => boxes.get(node).map(|(c, _)| {
+            let cols = ((c.x + gap_x) / (min + gap_x).max(f32::EPSILON))
+                .floor()
+                .max(1.0);
+            let rows = (*items as f32 / cols).ceil().max(1.0);
+            (c.y - (rows - 1.0) * gap_y).max(0.0) / rows
         }),
     }
 }
