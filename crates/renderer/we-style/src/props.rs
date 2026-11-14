@@ -894,23 +894,19 @@ fn eval_edges(
 ) -> Edges<Option<Dimension>> {
     let s = cx.subst(value);
     let parts = top_level_parts(&s);
-    if parts.len() != 4 {
-        // A shorthand WE always emits as four slots; anything else is
-        // authored text we could not read — one unsupported, no sides.
-        r.bad(css, value);
-        return Edges::default();
-    }
-    let mut out = Edges::default();
-    for (i, slot) in [&mut out.top, &mut out.right, &mut out.bottom, &mut out.left]
-        .iter_mut()
-        .enumerate()
-    {
-        match eval_dimension(parts[i]) {
-            Some(d) => **slot = Some(d),
-            None => r.bad(css, value),
+    // A shorthand is atomic: a guaranteed-invalid slot (an undeclared var,
+    // an unreadable part) invalidates the whole declaration — nothing lands
+    // and one unsupported entry reports it, the way CSS drops the decl.
+    let read = |i: usize| eval_dimension(parts.get(i).unwrap_or(&""));
+    match (read(0), read(1), read(2), read(3)) {
+        (Some(top), Some(right), Some(bottom), Some(left)) if parts.len() == 4 => {
+            Edges::new(Some(top), Some(right), Some(bottom), Some(left))
+        }
+        _ => {
+            r.bad(css, value);
+            Edges::default()
         }
     }
-    out
 }
 
 fn eval_display(text: &str) -> Option<Display> {
