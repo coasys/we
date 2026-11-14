@@ -470,3 +470,42 @@ fn an_expanded_polygon_keeps_shadow_and_overflow_outside_the_border_box() {
         alpha_at(&f, beyond)
     );
 }
+
+/// `polygon(0 0, 100px 0, 100px 100px, 50px 50px, 0 100px)` — a square
+/// with a triangular notch cut up from the bottom edge to its centre. The
+/// notch vertex lies exactly on the diagonal of the first candidate ear,
+/// which must block that ear; otherwise two ears cover the whole square and
+/// the notch fills in. Checked in both windings.
+#[test]
+fn a_concave_notch_stays_empty_in_both_windings() {
+    for pts in [
+        "polygon(0 0, 100px 0, 100px 100px, 50px 50px, 0 100px)",
+        "polygon(0 100px, 50px 50px, 100px 100px, 100px 0, 0 0)",
+    ] {
+        let styles = obj(&[
+            ("clip-path", s(pts)),
+            ("background-color", s("#00f0ff")),
+            ("width", s("100px")),
+            ("height", s("100px")),
+        ]);
+        let n = node("Column", "c", &[("styles", styles)]);
+        let f = frame(&n, "", Pointer::Rest);
+        let at = |x: f32, y: f32| alpha_at(&f, f.rect.min + egui::vec2(x, y));
+        for (x, y) in [(50.0, 90.0), (50.0, 65.0), (40.0, 80.0), (60.0, 80.0)] {
+            assert!(
+                at(x, y) < 0.01,
+                "{pts}: the notch at ({x}, {y}) is empty: {}",
+                at(x, y)
+            );
+        }
+        for (x, y) in [
+            (50.0, 30.0),
+            (10.0, 90.0),
+            (90.0, 90.0),
+            (90.0, 10.0),
+            (10.0, 10.0),
+        ] {
+            assert!(at(x, y) > 0.9, "{pts}: ({x}, {y}) is painted: {}", at(x, y));
+        }
+    }
+}

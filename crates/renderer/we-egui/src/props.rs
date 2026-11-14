@@ -894,8 +894,23 @@ fn triangulate(pts: &[egui::Pos2]) -> Vec<u32> {
     let cross = |a: egui::Pos2, b: egui::Pos2, c: egui::Pos2| {
         (b.x - a.x) * (c.y - b.y) - (b.y - a.y) * (c.x - b.x)
     };
-    let inside = |p: egui::Pos2, a: egui::Pos2, b: egui::Pos2, c: egui::Pos2| {
-        cross(a, b, p) * sign > 1e-6 && cross(b, c, p) * sign > 1e-6 && cross(c, a, p) * sign > 1e-6
+    // A vertex blocks an ear when it lies inside the ear OR on its
+    // boundary — notably on the a–c diagonal the ear would cut along
+    // (`polygon(0 0, 100px 0, 100px 100px, 50px 50px, 0 100px)`: the notch
+    // vertex sits on the first ear's diagonal; ignoring it fills the
+    // notch). Signed distances with a small tolerance keep collinear cases
+    // stable; a vertex at the same point as a, b or c (a polygon touching
+    // itself) does not block, or no ear could ever be cut.
+    let dist = |a: egui::Pos2, b: egui::Pos2, p: egui::Pos2| {
+        cross(a, b, p) * sign / (b - a).length().max(1e-6)
+    };
+    let blocks = |p: egui::Pos2, a: egui::Pos2, b: egui::Pos2, c: egui::Pos2| {
+        const EPS: f32 = 1e-3;
+        let same = |q: egui::Pos2| p.distance(q) <= EPS;
+        !(same(a) || same(b) || same(c))
+            && dist(a, b, p) >= -EPS
+            && dist(b, c, p) >= -EPS
+            && dist(c, a, p) >= -EPS
     };
     let mut idx: Vec<u32> = (0..n as u32).collect();
     let mut out = Vec::with_capacity((n - 2) * 3);
@@ -910,7 +925,7 @@ fn triangulate(pts: &[egui::Pos2]) -> Vec<u32> {
             }
             if idx
                 .iter()
-                .any(|&iv| iv != ia && iv != ib && iv != ic && inside(pts[iv as usize], a, b, c))
+                .any(|&iv| iv != ia && iv != ib && iv != ic && blocks(pts[iv as usize], a, b, c))
             {
                 continue;
             }
