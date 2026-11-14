@@ -161,6 +161,35 @@ pub fn layout_shrink(
     run(cx, scx, registry, root, rect, true, parent)
 }
 
+/// Register every font chain the tree will be measured in before the
+/// first text is — the theme's base stack and each node's own resolved
+/// `font-family` — so no several-name stack is measured or painted in a
+/// provisional chain on the frame it appears (`fonts::prepare`). A stack
+/// that only an ancestor's scoped `var()` produces is not seen here; it
+/// still registers on first `resolve` and lands a pass later.
+fn prepare_fonts(ctx: &egui::Context, scx: &StyleCx, root: &ResolvedNode) {
+    fn walk(node: &ResolvedNode, scx: &StyleCx, out: &mut Vec<(String, Option<f32>)>) {
+        let st = crate::defaults::style_of(node, scx);
+        if let Some(f) = st.text.font_family.as_deref() {
+            let entry = (f.to_string(), st.text.font_weight);
+            if !out.contains(&entry) {
+                out.push(entry);
+            }
+        }
+        for child in &node.children {
+            if let we_template::ResolvedChild::Node(n) = child {
+                walk(n, scx, out);
+            }
+        }
+    }
+    let mut stacks: Vec<(String, Option<f32>)> = Vec::new();
+    if let Some(base) = scx.tokens.get("--we-font-family") {
+        stacks.push((base.to_string(), None));
+    }
+    walk(root, scx, &mut stacks);
+    crate::fonts::prepare(ctx, stacks.iter().map(|(s, w)| (s.as_str(), *w)));
+}
+
 #[allow(clippy::too_many_arguments)]
 fn run(
     cx: &MeasureCx,
@@ -172,6 +201,7 @@ fn run(
     parent: Option<&Style>,
 ) -> Layout {
     store_view(cx.ctx, scx);
+    prepare_fonts(cx.ctx, scx, root);
     let m = EguiMeasure { cx, scx, registry };
     let rect = we_layout::Rect::from_min_size(
         we_layout::Pos2::new(rect.min.x, rect.min.y),

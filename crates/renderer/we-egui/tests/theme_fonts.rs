@@ -406,3 +406,123 @@ fn retro_font_reaches_textarea_select_and_number_input() {
         );
     }
 }
+
+/// Two stacks no chain exists for yet, appearing in one pass after text
+/// has already been laid out (earlier frames, and a plain text first in
+/// this tree): both must resolve to their own several-name chains on the
+/// FIRST frame they are drawn — no provisional first-family pass, and
+/// neither registration overwriting the other — and stay that way.
+#[test]
+fn two_new_stacks_in_one_pass_resolve_on_their_first_frame() {
+    let plain = node("we-text", "p", &[("text", "PLAIN")]);
+    let styled = |id: &str, text: &str, stack: &str| {
+        let mut n = node("we-text", id, &[("text", text)]);
+        let mut st = IndexMap::new();
+        st.insert(Arc::<str>::from("font-family"), we_expr::Value::from(stack));
+        n.props
+            .insert(Arc::from("styles"), we_expr::Value::from(st));
+        n
+    };
+    let mut before = node("Column", "root", &[]);
+    before.children = vec![ResolvedChild::Node(Box::new(plain.clone()))];
+    let mut after = node("Column", "root", &[]);
+    after.children = vec![
+        ResolvedChild::Node(Box::new(plain)),
+        ResolvedChild::Node(Box::new(styled(
+            "a",
+            "AAA",
+            "'VT323', 'DM Sans', sans-serif",
+        ))),
+        ResolvedChild::Node(Box::new(styled(
+            "b",
+            "BBB",
+            "'VT323', 'Boldonse', sans-serif",
+        ))),
+    ];
+    let registry = Registry::with_builtins();
+    let table = we_style::TokenTable::new(IndexMap::new());
+    let frame = std::cell::Cell::new(0usize);
+    let seen: RefCell<Vec<Vec<(String, egui::FontFamily)>>> = RefCell::new(Vec::new());
+    let mut harness = egui_kittest::Harness::new_ui(|ui| {
+        let ctx = ui.ctx().clone();
+        we_egui::install_media(&ctx);
+        let n = frame.get();
+        frame.set(n + 1);
+        let root = if n < 3 { &before } else { &after };
+        let mut scx = StyleCx::empty();
+        scx.tokens = &table;
+        let lay = layout(
+            &MeasureCx::new(&ctx),
+            &scx,
+            &registry,
+            root,
+            egui::Rect::from_min_size(ui.cursor().min, egui::vec2(400.0, 600.0)),
+        );
+        let mut events = Vec::new();
+        let mut edit = EditState::default();
+        paint(ui, &registry, &scx, root, &lay, &mut events, &mut edit, 0.0);
+        let layer = ui.layer_id();
+        let runs = ctx.graphics(|g| {
+            g.get(layer)
+                .map(|list| {
+                    list.all_entries()
+                        .filter_map(|cs| match &cs.shape {
+                            egui::Shape::Text(t) => t.galley.job.sections.first().map(|s| {
+                                (t.galley.job.text.clone(), s.format.font_id.family.clone())
+                            }),
+                            _ => None,
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        });
+        seen.borrow_mut().push(runs);
+    });
+    harness.run_steps(6);
+    let seen = seen.borrow();
+    let first_after = seen
+        .iter()
+        .position(|runs| runs.iter().any(|(t, _)| t == "AAA"))
+        .expect("the styled texts were drawn");
+    let a = egui::FontFamily::Name(Arc::from("VT323, DM Sans"));
+    let b = egui::FontFamily::Name(Arc::from("VT323, Boldonse"));
+    for (i, runs) in seen.iter().enumerate().skip(first_after) {
+        assert_eq!(
+            family_of(runs, "AAA"),
+            a,
+            "frame {i} (first is {first_after}): {runs:?}"
+        );
+        assert_eq!(
+            family_of(runs, "BBB"),
+            b,
+            "frame {i} (first is {first_after}): {runs:?}"
+        );
+    }
+}
+
+/// CSS tries a stack's entries in the order written, generics included:
+/// `monospace, 'VT323'` leads with the monospace faces, and
+/// `'VT323', sans-serif, monospace` falls back to the sans faces before the
+/// mono ones.
+#[test]
+fn generic_entries_keep_their_place_in_the_stack() {
+    let n = node("we-text", "t", &[("text", "A")]);
+    let (fam, _, chain) = coverage(&n, "monospace, 'VT323'", 'A', false);
+    assert_eq!(
+        chain.first().map(String::as_str),
+        Some("Hack"),
+        "{fam:?}: monospace is tried first: {chain:?}"
+    );
+    assert!(
+        chain.iter().any(|f| f == "vt323-latin"),
+        "VT323 follows: {chain:?}"
+    );
+    let (fam, _, chain) = coverage(&n, "'VT323', sans-serif, monospace", 'A', false);
+    let at = |face: &str| chain.iter().position(|f| f == face);
+    assert!(
+        at("vt323-latin") == Some(0)
+            && at("Ubuntu-Light").is_some()
+            && at("Ubuntu-Light") < at("Hack"),
+        "{fam:?}: VT323, then the sans faces, then the mono ones: {chain:?}"
+    );
+}
