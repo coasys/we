@@ -60,6 +60,11 @@ pub enum LocalDecl {
 #[derive(Debug, Clone)]
 pub struct LocalScope {
     pub node: NodeId,
+    /// The node authored `$localState` at all — even `{}`. WE assigns
+    /// `context.$localScopeFields` inside `if (node.$localState)`, so an
+    /// explicit-empty block truncates the scope list to `[]` where an
+    /// absent key inherits the enclosing scope's.
+    pub declared_state: bool,
     pub fields: IndexMap<Arc<str>, LocalDecl>,
 }
 
@@ -96,21 +101,17 @@ impl LocalNs {
         })
     }
 
-    /// The `State` fields the innermost `$localState` declared — the scope a
-    /// `$resetLocal`/`$touch "$all"` acts on. A `$queries`-only node extends
-    /// `local` without moving `$localScopeFields`, so the search walks back
-    /// to the nearest scope that declared state (WE's `scopeFields` array
-    /// is only assigned inside the `$localState` block).
+    /// The `State` fields the innermost `$localState` block declared — the
+    /// scope a `$resetLocal`/`$touch "$all"` acts on. The search walks back
+    /// to the nearest scope whose node authored `$localState`: a
+    /// `$queries`-only node inherits the enclosing list, an explicit-empty
+    /// `$localState` truncates it to `[]` (WE assigns `scopeFields` inside
+    /// `if (node.$localState)` — it does not merge).
     fn scope_fields(&self) -> Vec<Value> {
         self.decls
             .iter()
             .rev()
-            .find(|inner| {
-                inner
-                    .fields
-                    .values()
-                    .any(|d| matches!(d, LocalDecl::State(_)))
-            })
+            .find(|inner| inner.declared_state)
             .map(|inner| {
                 inner
                     .fields

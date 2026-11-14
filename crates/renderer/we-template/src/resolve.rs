@@ -1086,13 +1086,17 @@ fn declare_locals(
     }
 
     // `local` binds before queries compile — a descriptor reads this node's
-    // own `$localState` fields and its siblings' slots through it.
+    // own `$localState` fields and its siblings' slots through it. An
+    // explicit-empty `$localState` pushes a field-less scope on purpose:
+    // `local.$fields` truncates there (WE assigns `scopeFields` inside
+    // `if (node.$localState)`), it does not inherit the enclosing list.
     let mut node_scope = scope.clone();
     let mut node_decls = decls.clone();
-    if !fields.is_empty() {
+    if node.local_state.is_some() || !fields.is_empty() {
         let mut chain = (**decls).clone();
         chain.push(LocalScope {
             node: id.clone(),
+            declared_state: node.local_state.is_some(),
             fields,
         });
         node_decls = Arc::new(chain);

@@ -648,6 +648,60 @@ fn a_local_state_handler_bumps_exactly_one_counter() {
 }
 
 #[test]
+fn an_empty_local_state_scope_truncates_touch_all() {
+    // F5: TS assigns `context.$localScopeFields` inside
+    // `if (node.$localState)` — an explicit `{}` yields `[]`, so a
+    // `$touch "$all"` under it marks nothing; an absent key inherits the
+    // enclosing scope's fields.
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "draft": { "type": "string", "initial": "keep" } },
+        "children": [
+            { "type": "EmptyScope",
+              "$localState": {},
+              "props": { "onTap": { "$touch": "$all" } } },
+            { "type": "PlainChild",
+              "props": { "onTap": { "$touch": "$all" } } }
+        ]
+    }));
+    let (mut rt, mut host, locals, mut screen) = rig(node, StoreBag::new());
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+    let mut all_ids = Vec::new();
+    let mut all_tys = Vec::new();
+    ids(&root, &mut all_ids);
+    types(&root, &mut all_tys);
+    let id_of = |ty: &str| all_ids[all_tys.iter().position(|t| t == ty).unwrap()].clone();
+
+    // The explicit-empty scope owns no fields — `$all` marks nothing.
+    rt.dispatch(
+        &mut host,
+        &mut screen,
+        &id_of("EmptyScope"),
+        "onTap",
+        Value::Null,
+    );
+    assert!(
+        !locals.is_touched(&owner, "draft"),
+        "an explicit-empty $localState truncates the scope — draft must stay untouched"
+    );
+
+    // The sibling without the key inherits the Column's scope — `$all`
+    // marks its `draft`.
+    rt.dispatch(
+        &mut host,
+        &mut screen,
+        &id_of("PlainChild"),
+        "onTap",
+        Value::Null,
+    );
+    assert!(
+        locals.is_touched(&owner, "draft"),
+        "absent $localState inherits — $all marks the parent's fields"
+    );
+}
+
+#[test]
 fn a_second_frame_without_input_does_not_resolve_again() {
     // The cache is the contract: same revisions → same tree object.
     let node = schema(json!({
