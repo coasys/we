@@ -60,7 +60,9 @@ impl ClassSel {
 /// and the E6 compiler fill them.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct QueryIr {
-    #[serde(skip_serializing_if = "Option::is_none")]
+    /// `where` on the wire — `where_` is only the Rust-legal field name.
+    /// Without the rename the executor drops every filter.
+    #[serde(rename = "where", skip_serializing_if = "Option::is_none")]
     pub where_: Option<serde_json::Value>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub order: Option<serde_json::Value>,
@@ -117,23 +119,80 @@ pub struct ClassShape {
     pub shape: serde_json::Value,
 }
 
-/// A live subscription's ticket.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
-pub struct LiveQueryId(pub u64);
+/// A live subscription's ticket — the `subscriptionId` the client picked for
+/// `modelSubscribe` ([A-Za-z0-9-], 1–64 chars on the wire) and the one
+/// `disposeQuery` takes back.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct LiveQueryId(Arc<str>);
 
-/// A live query's handle. Dropping it ends the subscription; updates arrive
-/// through the channel E7 adds.
+impl LiveQueryId {
+    pub fn new(id: impl Into<Arc<str>>) -> Self {
+        Self(id.into())
+    }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+impl fmt::Display for LiveQueryId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.0)
+    }
+}
+impl From<&str> for LiveQueryId {
+    fn from(s: &str) -> Self {
+        Self::new(s)
+    }
+}
+impl From<String> for LiveQueryId {
+    fn from(s: String) -> Self {
+        Self::new(s)
+    }
+}
+
+/// A live query's handle — `modelSubscribe`'s reply, `PerspectiveSubscribed`
+/// on the wire: the subscription's id, its first result and the revision that
+/// result describes. `result()` stays the initial result until E7's update
+/// channel lands `query-subscription-update`s through [`LiveQuery::record`];
+/// `dispose` ends the subscription through the executor that opened it.
 #[derive(Debug)]
 pub struct LiveQuery {
     id: LiveQueryId,
+    result: Value,
+    revision: u64,
 }
 
 impl LiveQuery {
-    pub fn new(id: LiveQueryId) -> Self {
-        Self { id }
+    /// `modelSubscribe`'s three fields.
+    pub fn new(id: LiveQueryId, result: Value, revision: u64) -> Self {
+        Self {
+            id,
+            result,
+            revision,
+        }
     }
-    pub fn id(&self) -> LiveQueryId {
-        self.id
+    /// The `subscriptionId` — `disposeQuery`'s handle.
+    pub fn id(&self) -> &LiveQueryId {
+        &self.id
+    }
+    /// The latest result — the initial result until updates land.
+    pub fn result(&self) -> &Value {
+        &self.result
+    }
+    /// The revision the latest result describes.
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+    /// An update or resync resolved to a whole result: record the new
+    /// revision and the result it describes. The diff-merge itself is E7's.
+    pub fn record(&mut self, result: Value, revision: u64) {
+        self.result = result;
+        self.revision = revision;
+    }
+    /// `perspective.disposeQuery {uuid, subscriptionId}`: end the
+    /// subscription through the executor that opened it. Consumes the
+    /// handle — a disposed query is gone.
+    pub async fn dispose(self, space: &SpaceId, executor: &dyn Executor) -> Result<bool> {
+        executor.dispose_query(space, &self.id).await
     }
 }
 
@@ -166,7 +225,10 @@ pub type Result<T> = std::result::Result<T, ExecutorError>;
 ///         Ok(Value::Null)
 ///     }
 ///     async fn model_subscribe(&self, _s: &SpaceId, _c: ClassSel, _q: &QueryIr) -> Result<LiveQuery> {
-///         Ok(LiveQuery::new(we_store::LiveQueryId(0)))
+///         Ok(LiveQuery::new(we_store::LiveQueryId::new("sub-1"), Value::Null, 0))
+///     }
+///     async fn dispose_query(&self, _s: &SpaceId, _id: &we_store::LiveQueryId) -> Result<bool> {
+///         Ok(true)
 ///     }
 ///     async fn write(&self, _s: &SpaceId, _w: we_store::Write) -> Result<Value> { Ok(Value::Null) }
 ///     async fn commit(&self, _s: &SpaceId, _w: Vec<we_store::Write>) -> Result<()> { Ok(()) }
@@ -180,12 +242,16 @@ pub type Result<T> = std::result::Result<T, ExecutorError>;
 pub trait Executor {
     async fn model_query(&self, space: &SpaceId, class: ClassSel, query: &QueryIr)
         -> Result<Value>;
+    /// `perspective.modelSubscribe` — the reply carries the client's
+    /// `subscriptionId`, the initial result and its revision.
     async fn model_subscribe(
         &self,
         space: &SpaceId,
         class: ClassSel,
         query: &QueryIr,
     ) -> Result<LiveQuery>;
+    /// `perspective.disposeQuery {uuid, subscriptionId}` — end a live query.
+    async fn dispose_query(&self, space: &SpaceId, id: &LiveQueryId) -> Result<bool>;
     /// One validated write.
     async fn write(&self, space: &SpaceId, write: Write) -> Result<Value>;
     /// Several writes as one step — a `command` row.

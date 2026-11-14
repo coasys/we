@@ -18,16 +18,16 @@ we-expr  <-  we-screen  <-  we-template  <-  we-store  <-  we-widgets  <-  we-ap
 we-style depends on we-expr only; we-ad4m depends on we-store.
 ```
 
-| crate | what it is |
-|---|---|
-| `we-expr` | `Value`, `Namespace`, `Env`, `parse`/`eval`/`ParseCache` — the value layer. No egui, no I/O, wasm-clean. |
-| `we-screen` | `ScreenState`, `Navigator`, the back stack (task E2). |
+| crate         | what it is                                                                                                                  |
+| ------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `we-expr`     | `Value`, `Namespace`, `Env`, `parse`/`eval`/`ParseCache` — the value layer. No egui, no I/O, wasm-clean.                    |
+| `we-screen`   | `ScreenState`, `Navigator`, the back stack (task E2).                                                                       |
 | `we-template` | Bundle + `SchemaNode` serde types, `ResolvedNode`/`ResolvedChild`/`NodeId`, handler tokens, `Host`, the normal-form writer. |
-| `we-store` | The `Executor` trait the store bag talks through, plus `FakeExecutor`. No egui, no I/O, wasm-clean. |
-| `we-style` | `Style` — design-system props resolved under the theme (task E4). |
-| `we-widgets` | The `Widget` contract, `MeasureCx`/`PaintCx`, `Registry`, the red unknown-widget box. The only crate that needs egui. |
-| `we-ad4m` | `Executor` over `ad4m-client` (task E7). |
-| `we-app` | The eframe binary: window, menus, OS integration. |
+| `we-store`    | The `Executor` trait the store bag talks through, plus `FakeExecutor`. No egui, no I/O, wasm-clean.                         |
+| `we-style`    | `Style` — design-system props resolved under the theme (task E4).                                                           |
+| `we-widgets`  | The `Widget` contract, `MeasureCx`/`PaintCx`, `Registry`, the red unknown-widget box. The only crate that needs egui.       |
+| `we-ad4m`     | `Executor` over `ad4m-client` (task E7).                                                                                    |
+| `we-app`      | The eframe binary: window, menus, OS integration.                                                                           |
 
 ## Running
 

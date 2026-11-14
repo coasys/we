@@ -19,6 +19,7 @@
 mod bundle;
 mod handler;
 mod node;
+mod order;
 mod resolved;
 
 pub use bundle::{

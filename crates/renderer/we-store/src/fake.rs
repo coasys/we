@@ -1,6 +1,7 @@
 //! [`FakeExecutor`]: the executor that answers from memory — empty for now,
 //! fed by `fixtures/coasys/fixture.json` once E6 lands.
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex};
 
 use we_expr::Value;
 
@@ -10,11 +11,16 @@ use crate::executor::{
 };
 
 /// An `Executor` with nothing behind it: every read answers empty, every
-/// call counts itself (the debug panel's "calls dropped" counter) and does
-/// nothing else. E6 teaches it to answer queries from `fixture.json`.
+/// call counts itself (the debug panel's "calls dropped" counter) and a
+/// `model_subscribe` opens a real [`LiveQuery`] — a fresh `subscriptionId`,
+/// an empty initial result at revision 0 — whose `dispose` lands in
+/// [`FakeExecutor::disposed`]. E6 teaches it to answer queries from
+/// `fixture.json`.
 #[derive(Debug, Default)]
 pub struct FakeExecutor {
     invocations: AtomicU64,
+    subscriptions: AtomicU64,
+    disposed: Mutex<Vec<LiveQueryId>>,
 }
 
 impl FakeExecutor {
@@ -27,6 +33,11 @@ impl FakeExecutor {
         self.invocations.load(Ordering::Relaxed)
     }
 
+    /// The subscriptions `dispose_query` has ended, in order.
+    pub fn disposed(&self) -> Vec<LiveQueryId> {
+        self.disposed.lock().unwrap().clone()
+    }
+
     fn tick(&self) {
         self.invocations.fetch_add(1, Ordering::Relaxed);
     }
@@ -36,12 +47,23 @@ impl FakeExecutor {
 impl Executor for FakeExecutor {
     async fn model_query(&self, _s: &SpaceId, _c: ClassSel, _q: &QueryIr) -> Result<Value> {
         self.tick();
-        Ok(Value::List(std::sync::Arc::new(vec![])))
+        Ok(Value::List(Arc::new(vec![])))
     }
 
     async fn model_subscribe(&self, _s: &SpaceId, _c: ClassSel, _q: &QueryIr) -> Result<LiveQuery> {
         self.tick();
-        Ok(LiveQuery::new(LiveQueryId(0)))
+        let n = self.subscriptions.fetch_add(1, Ordering::Relaxed);
+        Ok(LiveQuery::new(
+            LiveQueryId::new(format!("fake-{n}")),
+            Value::List(Arc::new(vec![])),
+            0,
+        ))
+    }
+
+    async fn dispose_query(&self, _s: &SpaceId, id: &LiveQueryId) -> Result<bool> {
+        self.tick();
+        self.disposed.lock().unwrap().push(id.clone());
+        Ok(true)
     }
 
     async fn write(&self, _s: &SpaceId, _w: Write) -> Result<Value> {

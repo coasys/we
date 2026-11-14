@@ -4,12 +4,36 @@
 //! `packages/schema-system/shared/src/types.ts`. Anything else — a handler
 //! token in a `children` list, a key a newer schema version adds — lands in
 //! [`SchemaNode::extra`] and serializes straight back out, so parsing never
-//! loses a field.
+//! loses a field. Key order is part of the data: serde impls are hand-written
+//! ([`crate::order`]) so an authored `{id, type, meta, props, children}` keeps
+//! its `meta` where the author put it instead of flattening to the end.
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
+
+use crate::order::{field, ordered_object, push, required, rest_of, serialize_ordered};
 
 /// A raw JSON object whose key order survives (`serde_json` is built with
 /// `preserve_order`).
 pub type JsonMap = serde_json::Map<String, serde_json::Value>;
+
+/// The wire names [`SchemaNode`] knows, in declaration order — what splits
+/// `extra` off, and the write order for a node built in code.
+const NODE_FIELDS: &[&str] = &[
+    "id",
+    "key",
+    "type",
+    "props",
+    "slots",
+    "slot",
+    "routes",
+    "children",
+    "theme",
+    "styles",
+    "$localState",
+    "$queries",
+    "$defs",
+    "forkedFrom",
+    "forkedPart",
+];
 
 /// One node of the authored tree.
 ///
@@ -18,47 +42,42 @@ pub type JsonMap = serde_json::Map<String, serde_json::Value>;
 /// structure-op arguments like `condition`/`then`/`items`, handler tokens —
 /// sits in [`SchemaNode::props`] as raw JSON; the resolver reads it, not this
 /// type.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default)]
 pub struct SchemaNode {
     /// The node's permanent identity, when an author gave it one.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub id: Option<String>,
     /// Names the node among its siblings.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub key: Option<String>,
-    #[serde(rename = "type", skip_serializing_if = "Option::is_none")]
+    /// Renamed at serde: `type` on the wire.
     pub ty: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub props: Option<JsonMap>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub slots: Option<JsonMapOfNodes>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub slot: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub routes: Option<Vec<RouteNode>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub children: Option<Vec<SchemaChild>>,
     /// Scoped theme overrides, kept raw (`ThemeOverrides` lives in `@we/themes`).
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub theme: Option<serde_json::Value>,
     /// Raw CSS escape hatch, kept raw.
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub styles: Option<JsonMap>,
-    #[serde(rename = "$localState", skip_serializing_if = "Option::is_none")]
+    /// Renamed at serde: `$localState` on the wire.
     pub local_state: Option<JsonMap>,
-    #[serde(rename = "$queries", skip_serializing_if = "Option::is_none")]
+    /// Renamed at serde: `$queries` on the wire.
     pub queries: Option<JsonMap>,
-    #[serde(rename = "$defs", skip_serializing_if = "Option::is_none")]
+    /// Renamed at serde: `$defs` on the wire.
     pub defs: Option<JsonMapOfNodes>,
-    #[serde(rename = "forkedFrom", skip_serializing_if = "Option::is_none")]
+    /// Renamed at serde: `forkedFrom` on the wire.
     pub forked_from: Option<String>,
-    #[serde(rename = "forkedPart", skip_serializing_if = "Option::is_none")]
+    /// Renamed at serde: `forkedPart` on the wire.
     pub forked_part: Option<serde_json::Value>,
     /// Every key this file does not name — including the `$`-keyed operator
     /// tokens that appear in `children`. Kept verbatim; dropping this field
     /// drops template data.
-    #[serde(flatten)]
     pub extra: JsonMap,
+    /// The authored key sequence, recorded at parse so the node writes its
+    /// keys back where the author put them. Empty for a node built in code —
+    /// it writes in declaration order. See [`crate::order`].
+    #[doc(hidden)]
+    pub key_order: Vec<String>,
 }
 
 /// A map of nodes — `slots`, `$defs` — key order kept.
@@ -74,6 +93,53 @@ impl SchemaNode {
             return None;
         }
         self.extra.get("$")?.as_str()
+    }
+}
+
+impl Serialize for SchemaNode {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut named = Vec::with_capacity(NODE_FIELDS.len());
+        push(&mut named, "id", &self.id);
+        push(&mut named, "key", &self.key);
+        push(&mut named, "type", &self.ty);
+        push(&mut named, "props", &self.props);
+        push(&mut named, "slots", &self.slots);
+        push(&mut named, "slot", &self.slot);
+        push(&mut named, "routes", &self.routes);
+        push(&mut named, "children", &self.children);
+        push(&mut named, "theme", &self.theme);
+        push(&mut named, "styles", &self.styles);
+        push(&mut named, "$localState", &self.local_state);
+        push(&mut named, "$queries", &self.queries);
+        push(&mut named, "$defs", &self.defs);
+        push(&mut named, "forkedFrom", &self.forked_from);
+        push(&mut named, "forkedPart", &self.forked_part);
+        serialize_ordered(&self.key_order, named, &self.extra, serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for SchemaNode {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let (key_order, map) = ordered_object(deserializer)?;
+        Ok(SchemaNode {
+            id: field::<D, _>(&map, "id")?,
+            key: field::<D, _>(&map, "key")?,
+            ty: field::<D, _>(&map, "type")?,
+            props: field::<D, _>(&map, "props")?,
+            slots: field::<D, _>(&map, "slots")?,
+            slot: field::<D, _>(&map, "slot")?,
+            routes: field::<D, _>(&map, "routes")?,
+            children: field::<D, _>(&map, "children")?,
+            theme: field::<D, _>(&map, "theme")?,
+            styles: field::<D, _>(&map, "styles")?,
+            local_state: field::<D, _>(&map, "$localState")?,
+            queries: field::<D, _>(&map, "$queries")?,
+            defs: field::<D, _>(&map, "$defs")?,
+            forked_from: field::<D, _>(&map, "forkedFrom")?,
+            forked_part: field::<D, _>(&map, "forkedPart")?,
+            extra: rest_of(&map, NODE_FIELDS),
+            key_order,
+        })
     }
 }
 
@@ -113,13 +179,47 @@ impl Serialize for SchemaChild {
 
 /// A route entry (`RouteSchema` in `types.ts`): a node with a path, and
 /// optionally a redirect or a keep-alive flag.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default)]
 pub struct RouteNode {
     pub path: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
     pub redirect: Option<String>,
-    #[serde(rename = "keepAlive", skip_serializing_if = "Option::is_none")]
+    /// Renamed at serde: `keepAlive` on the wire.
     pub keep_alive: Option<bool>,
-    #[serde(flatten)]
+    /// The route's node body — everything `path`/`redirect`/`keepAlive` is
+    /// not. Its own `key_order` keeps its keys in authored order inside it.
     pub node: SchemaNode,
+    /// Authored key order across the whole route object — [`SchemaNode::key_order`].
+    #[doc(hidden)]
+    pub key_order: Vec<String>,
+}
+
+/// The route-level keys — the rest of the object is the node body.
+const ROUTE_FIELDS: &[&str] = &["path", "redirect", "keepAlive"];
+
+impl Serialize for RouteNode {
+    fn serialize<S: Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+        let mut named = Vec::with_capacity(ROUTE_FIELDS.len());
+        crate::order::push_required(&mut named, "path", &self.path);
+        push(&mut named, "redirect", &self.redirect);
+        push(&mut named, "keepAlive", &self.keep_alive);
+        let serde_json::Value::Object(node) = crate::order::json(&self.node) else {
+            unreachable!("a node serializes to an object");
+        };
+        serialize_ordered(&self.key_order, named, &node, serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for RouteNode {
+    fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+        let (key_order, map) = ordered_object(deserializer)?;
+        let node = SchemaNode::deserialize(serde_json::Value::Object(rest_of(&map, ROUTE_FIELDS)))
+            .map_err(serde::de::Error::custom)?;
+        Ok(RouteNode {
+            path: required::<D, _>(&map, "path")?,
+            redirect: field::<D, _>(&map, "redirect")?,
+            keep_alive: field::<D, _>(&map, "keepAlive")?,
+            node,
+            key_order,
+        })
+    }
 }
