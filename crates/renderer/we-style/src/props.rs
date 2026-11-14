@@ -873,6 +873,11 @@ fn eval_dimension_decl(
     css: &str,
     value: &DeclValue,
 ) -> Option<Dimension> {
+    // A number on a length prop is px — the DOM's own rule for
+    // `style.maxWidth = 300` (`eval_dimension` only takes unitless `0`).
+    if let DeclValue::Num(n) = value {
+        return Some(Dimension::Px(*n as f32));
+    }
     let s = cx.subst(value);
     let d = eval_dimension(&s);
     if d.is_none() {
@@ -1316,6 +1321,43 @@ fn eval_bg_image(text: &str) -> Option<BgImage> {
 
 /// Evaluate one declaration map against the theme's token table.
 pub fn eval_decls(decls: &Decls, cx: &EvalCx) -> EvalResult {
+    eval_decls_scoped(decls, cx, &IndexMap::new())
+}
+
+/// [`eval_decls`] inside the element's var scope: `--we-*` custom properties
+/// the decls set (a `tone` writes 13) overlay `inherited` and the theme for
+/// every `var()` substitution — an element's own custom properties win for
+/// the declarations on it, the same way CSS scopes them. `bg: accent-soft`
+/// under `tone: danger` answers `danger-soft`, not `accent-soft`.
+fn eval_decls_scoped(
+    decls: &Decls,
+    cx: &EvalCx,
+    inherited: &IndexMap<Arc<str>, Arc<str>>,
+) -> EvalResult {
+    let has_own = decls.keys().any(|k| k.starts_with("--we-"));
+    let merged;
+    let scoped;
+    let cx = if !has_own && inherited.is_empty() {
+        cx
+    } else {
+        let mut vars: IndexMap<Arc<str>, Arc<str>> = cx
+            .tokens
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        vars.extend(inherited.iter().map(|(k, v)| (k.clone(), v.clone())));
+        for (k, v) in decls.iter().filter(|(k, _)| k.starts_with("--we-")) {
+            vars.insert(k.clone(), Arc::from(v.text().as_str()));
+        }
+        merged = TokenTable::new(vars);
+        scoped = EvalCx {
+            tokens: &merged,
+            viewport: cx.viewport,
+            font_px: cx.font_px,
+            root_px: cx.root_px,
+        };
+        &scoped
+    };
     let mut r = EvalResult::default();
     for (css, value) in decls {
         let css = css.as_ref();
@@ -1711,13 +1753,16 @@ fn state_patch(
     base_decls: &Decls,
     direction: Direction,
     cx: &EvalCx,
+    tone_vars: &IndexMap<Arc<str>, Arc<str>>,
 ) -> StylePatch {
     let filled = state_bag_filled(bag, props);
     let filled = with_resting_shadow(&filled, props);
     let mut fragment = build_state_fragment_decls(&filled, direction);
     fragment = with_border_sides(&fragment, base_decls);
     fragment = interactive_decls(&fragment);
-    let ev = eval_decls(&fragment, cx);
+    // The element's `tone` vars scope every decl on it — a state's
+    // `bg: accent-soft` re-points the same way the base decls did.
+    let ev = eval_decls_scoped(&fragment, cx, tone_vars);
     StylePatch {
         layout: ev.layout,
         text: ev.text,
@@ -1780,6 +1825,7 @@ pub fn resolve(props: &Bag, input: &StyleInput) -> Style {
                 &base_decls,
                 input.direction,
                 &cx,
+                &base.tone_vars,
             )));
         }
         if let Some(bag) = props.get("hoverProps").and_then(|v| match v {
@@ -1792,6 +1838,7 @@ pub fn resolve(props: &Bag, input: &StyleInput) -> Style {
                 &base_decls,
                 input.direction,
                 &cx,
+                &base.tone_vars,
             )));
         }
         if let Some(bag) = props.get("activeProps").and_then(|v| match v {
@@ -1804,6 +1851,7 @@ pub fn resolve(props: &Bag, input: &StyleInput) -> Style {
                 &base_decls,
                 input.direction,
                 &cx,
+                &base.tone_vars,
             )));
         }
         if let Some(bag) = props.get("disabledProps").and_then(|v| match v {
@@ -1816,6 +1864,7 @@ pub fn resolve(props: &Bag, input: &StyleInput) -> Style {
                 &base_decls,
                 input.direction,
                 &cx,
+                &base.tone_vars,
             )));
         }
     }
@@ -1841,7 +1890,7 @@ pub fn resolve(props: &Bag, input: &StyleInput) -> Style {
             let mut fragment = build_state_fragment_decls(&bag, input.direction);
             fragment = with_border_sides(&fragment, &base_decls);
             fragment = interactive_decls(&fragment);
-            let ev = eval_decls(&fragment, &cx);
+            let ev = eval_decls_scoped(&fragment, &cx, &base.tone_vars);
             ev.layout.merge_into(&mut style.layout);
             ev.text.merge_into(&mut style.text);
             ev.paint.merge_into(&mut style.paint);
