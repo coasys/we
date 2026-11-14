@@ -27,6 +27,7 @@ serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 indexmap = { version = "2", features = ["serde"] }
 thiserror = "2"
+log = "0.4"
 async-trait = "0.1"
 egui = "0.37"
 eframe = "0.37"

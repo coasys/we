@@ -6,10 +6,12 @@
 //! No egui, no I/O, no tokio: this crate builds for `wasm32-unknown-unknown`.
 #![forbid(unsafe_code)]
 
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn placeholder() {
-        // Replaced by E2's vector tests (`paths.json`, `navigation.json`).
-    }
-}
+mod js;
+mod location;
+mod path;
+mod query;
+
+pub use js::{js_json_eq, js_json_stringify, param_text, plain_value};
+pub use location::{Location, Route};
+pub use path::{is_relative_path, resolve_path, template_root_depth, PathBase, SPACE_ROUTE_DEPTH};
+pub use query::{encode_pair, parse_query, query_string, query_string_pairs};
