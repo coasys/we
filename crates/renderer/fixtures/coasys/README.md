@@ -18,32 +18,57 @@ cargo run -p we-app -- dump --snapshot fixtures/coasys/snapshot.json --route '/s
 ## Snapshot shape
 
 `meta` — `{ format: 'we-snapshot@2', fixture, dataset, flatScope, captureTheme }`.
-`flatScope` names the route the flat tables repeat (`index`); `captureTheme` is the theme
-every route was recorded under (asserted identical per route).
+`format` is the version gate a reader checks before trusting the layout — E6 round 3
+reads it; there is deliberately no top-level `version` field. `flatScope` names the
+route the flat tables repeat (`index`, or `null` when a `--routes` subset left it out —
+the flat tables are then empty on purpose); `captureTheme` is the theme every route was
+recorded under (asserted identical per route).
 
 **`routes.<id>` — the primary shape.** Per-route truth: `web`/`rust` paths, `path`,
 `params`, `theme` (the theme that capture ran under), the resolved `members` tree,
-`queries`, `agents` (`$agent` profiles), `absent` (members that evaluated `undefined` —
+`queries`, `agents` (`$agent` profiles), `absent` (members that did not read back a
+value — `undefined` at runtime, filtered out by the surface's tier, or unserializable;
 not a capture failure), and `invokeTargets` (the `$invoke` strings the surfaces declare).
 
-`routes.<id>.queries` is a **list of captures**, not a name-keyed table — a query's
-identity is its resolved request, not its local name:
+`routes.<id>.queries` is a **list of captures**, one per `$queries` declaration the
+route's surfaces carry. A query's identity is its declaration site plus its resolved
+request, not its local name — the tree's `signalTypes` sorts by name and the
+inspector's does not. Every capture — answered, skipped or failed — carries the same
+identity fields:
 
-- `{ name, request, rows, surfaces }` — an answered query. `request` is the resolved
-  descriptor the renderer handed the adapter (entity + scope/where/sort/limit/include).
-  Two same-named queries with different requests are different answers and record
-  separately — the tree's `signalTypes` sorts by name, the inspector's does not.
-- `{ name, skipped, request?, surfaces }` — a descriptor the renderer would _not_ run on
-  this route (`when` false or `unanchored-scope`). No `rows`: skipped means never asked,
-  which is not the same as an answered `rows: []`.
-- `{ name, failed, surfaces }` — a descriptor that threw (`no-entity`, `no-dataset`, …).
+- `name` — the local query name (`local.<name>` in the template).
+- `scope` — the declaration site: the canonical path of the `$queries`-holding node
+  inside the bundle, e.g. `template.meta.panels[inspector].node`,
+  `template.routes[/calls]`, `pages[about]`. `scope` + `name` names the declaration; a
+  same-named query under another `scope` is another capture.
+- `dataset` — the resolved dataset identity the bridge ran the query against
+  (`preview-coasys`); `null` when resolution failed before a dataset existed.
+- `request` — the resolved request handed the query adapter (entity +
+  where/scope/order/limit/include), when resolution produced one.
+- `surfaces` — which of the route's scanned surfaces declare it. The scan is static
+  over the declared tree, not an observation of only-mounted surfaces: `root`
+  recursion reaches panel, route and recordView declarations wherever they sit, so a
+  route's capture list can name declarations its own `route:` surface does not mount —
+  `scope` says where the declaration actually lives.
 
-**Flat tables (`stores`/`queries`/`invokes`) — legacy, landing route only.** Exactly
-`routes.index`'s capture: `stores` is its `members` tree, `queries` a `{name: rows}` map
-of its answered captures (first request per name — a name-keyed table cannot hold two
-answers honestly, which is part of why the real data lives in `routes`), `invokes` the
-union of declared targets (`<target>: null` — none fire during a passive render). Read
-`routes.<id>` instead; E6 does.
+Then exactly one outcome:
+
+- `rows` — an answered query (a real empty answer keeps `rows: []`).
+- `skipped: 'when' | 'unanchored-scope'` — a descriptor the renderer would _not_ run
+  on this route. No `rows`: skipped means never asked, which is not an answered empty
+  list.
+- `failed` — a descriptor that threw (`no-entity`, `no-dataset`, …).
+
+Skipped and failed captures also carry `descriptor` — the authored descriptor as
+written in the bundle — beside whatever of `request` resolved.
+
+**Flat tables (`stores`/`queries`/`invokes`) — legacy, landing route only.** A lossy
+projection of `routes.index`'s capture: `stores` is its `members` tree, `queries` a
+`{name: rows}` map of the **first answered capture per name** (a name-keyed table
+cannot hold the tree's and the inspector's two `signalTypes` answers — part of why the
+real data lives in `routes`), `invokes` the index route's declared targets
+(`<target>: null` — none fire during a passive render). When a `--routes` subset
+excludes index, `meta.flatScope` is `null` and the flat tables are empty.
 
 ## Routes
 
@@ -71,9 +96,11 @@ union of declared targets (`<target>: null` — none fire during a passive rende
 ## Regenerating
 
 ```sh
-crates/renderer/scripts/record-coasys.sh                  # snapshot + 60 PNGs (10 routes × 6 themes)
-node record-coasys.mjs --themes dark,light --routes index # subsets are fine; capture is unchanged
-sha256sum crates/renderer/fixtures/coasys/snapshot.json   # deterministic: see NOTES-c2a.md
+crates/renderer/scripts/record-coasys.sh                            # snapshot + 60 PNGs (10 routes × 6 themes)
+node crates/renderer/scripts/record-coasys.mjs --themes dark,light  # a theme subset is fine; captured data is unchanged
+node crates/renderer/scripts/record-coasys.mjs --routes index,call  # a routes subset changes the snapshot:
+                                                                    #   omitting index leaves meta.flatScope null and the flat tables empty
+sha256sum crates/renderer/fixtures/coasys/snapshot.json             # deterministic: see NOTES-c2a.md
 ```
 
 Requirements: a dev-built `apps/we-preview` (the script starts `vite` itself) with the
