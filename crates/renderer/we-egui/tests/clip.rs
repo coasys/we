@@ -148,8 +148,8 @@ fn degenerate_polygon_paints_nothing() {
 /// sitting in the clipped half leaves no glyphs behind.
 #[test]
 fn polygon_clip_removes_child_text() {
-    // Left half open, right half closed: the "SHOWN" span sits left of the
-    // cut; a second we-text ("HIDDEN") lays out in the clipped half.
+    // Left half open, right half closed: a Row sets "SHOWN" in a 100px
+    // cell left of the cut and "HIDDEN" after it, in the clipped half.
     let styles = obj(&[
         (
             "clip-path",
@@ -157,22 +157,22 @@ fn polygon_clip_removes_child_text() {
         ),
         ("background-color", s("#00f0ff")),
         ("width", s("200px")),
-        ("height", s("80px")),
-        ("padding", s("4px")),
-        ("display", s("flex")),
-        ("gap", s("8px")),
+        ("height", s("40px")),
     ]);
-    let mut n = node("Column", "c", &[("styles", styles)]);
-    n.children = vec![
-        ResolvedChild::Node(Box::new(node("we-text", "shown", &[("text", s("SHOWN"))]))),
-        ResolvedChild::Node(Box::new(node(
+    let mut n = node("Row", "c", &[("styles", styles)]);
+    let cell = |id: &str, text: &str, w: &str| {
+        node(
             "we-text",
-            "hid",
+            id,
             &[
-                ("text", s("HIDDEN")),
-                ("styles", obj(&[("margin-left", s("90px"))])),
+                ("text", s(text)),
+                ("styles", obj(&[("width", s(w)), ("flex-shrink", s("0"))])),
             ],
-        ))),
+        )
+    };
+    n.children = vec![
+        ResolvedChild::Node(Box::new(cell("shown", "SHOWN", "100px"))),
+        ResolvedChild::Node(Box::new(cell("hid", "HIDDEN", "100px"))),
     ];
     let (_rect, shapes) = painted(&n);
     let texts: Vec<String> = shapes
@@ -186,6 +186,45 @@ fn polygon_clip_removes_child_text() {
         !texts.iter().any(|t| t.contains("HIDDEN")),
         "the clipped-away text survives: {texts:?}"
     );
+    // Pixel coverage, not shape kinds (a text tessellated without clipping
+    // would pass the check above): no glyph quad paints in the closed half
+    // of HIDDEN's row, and SHOWN's glyphs paint in the open half. Glyphs
+    // are told from the background by colour.
+    let f = frame(&n, "", Pointer::Rest);
+    let bg = egui::Color32::from_rgb(0x00, 0xf0, 0xff);
+    let glyph = |p: egui::Pos2| alpha_where(&f, p, |c| c != bg);
+    let cut = f.rect.min.x + f.rect.width() * 0.5;
+    let hid = f.rects[&NodeId::from("hid")];
+    let shown = f.rects[&NodeId::from("shown")];
+    let grid = |r: egui::Rect, x0: f32| {
+        let mut v = Vec::new();
+        let mut x = x0;
+        while x < r.max.x {
+            let mut y = r.min.y + 1.0;
+            while y < r.max.y {
+                v.push(egui::pos2(x, y));
+                y += 1.0;
+            }
+            x += 1.0;
+        }
+        v
+    };
+    let leaked: Vec<egui::Pos2> = grid(hid, cut + 1.0)
+        .into_iter()
+        .filter(|&p| glyph(p) > 0.01)
+        .collect();
+    assert!(
+        leaked.is_empty(),
+        "glyph pixels in the clipped half: {:?}",
+        &leaked[..leaked.len().min(8)]
+    );
+    assert!(
+        grid(shown, shown.min.x).into_iter().any(|p| glyph(p) > 0.5),
+        "SHOWN's glyphs paint in the open half"
+    );
+    // And the background itself stops at the cut.
+    assert!(alpha_at(&f, egui::pos2(cut - 4.0, f.rect.max.y - 4.0)) > 0.9);
+    assert!(alpha_at(&f, egui::pos2(cut + 4.0, f.rect.max.y - 4.0)) < 0.01);
 }
 
 /// Every vertex the subtree emitted — meshes unpacked; galleys/paths would
@@ -271,6 +310,30 @@ fn polygon_clip_keeps_the_rectangular_borders_only() {
             .filter(|p| p.y < rect.min.y + 4.5)
             .collect::<Vec<_>>()
     );
+    // Vertices alone cannot prove no triangle SPANS a forbidden region (a
+    // big triangle has no vertex inside it), so sample the rasterised
+    // coverage on a 1px grid: in the notch zone nothing paints above the
+    // notch edge (y < 4) or below the border (y 11..15), and the 5..10
+    // strip is solid.
+    let f = frame(&n, "", Pointer::Rest);
+    let r = f.rect;
+    let w = r.width();
+    let mut x = r.min.x + 0.62 * w;
+    while x < r.max.x - 3.0 {
+        for dy in [0.5, 1.5, 2.5, 3.5, 11.5, 12.5, 13.5, 14.5] {
+            let p = egui::pos2(x, r.min.y + dy);
+            assert!(
+                alpha_at(&f, p) < 0.01,
+                "paint at {p:?} in the notch zone (dy {dy}): {}",
+                alpha_at(&f, p)
+            );
+        }
+        for dy in [6.0, 7.5, 9.0] {
+            let p = egui::pos2(x, r.min.y + dy);
+            assert!(alpha_at(&f, p) > 0.9, "the border strip at {p:?}");
+        }
+        x += 1.0;
+    }
 }
 
 // ---------- Round D: pixel coverage, pointer state --------------------------
@@ -291,11 +354,16 @@ enum Pointer {
 struct Frame {
     rect: egui::Rect,
     prims: Vec<egui::epaint::ClippedPrimitive>,
+    rects: std::collections::HashMap<NodeId, egui::Rect>,
 }
 
 fn frame(root: &ResolvedNode, theme: &str, pointer: Pointer) -> Frame {
     let registry = Registry::with_builtins();
-    let out = RefCell::new((egui::Rect::NOTHING, Vec::new()));
+    let out = RefCell::new((
+        egui::Rect::NOTHING,
+        Vec::new(),
+        std::collections::HashMap::new(),
+    ));
     let mut harness = egui_kittest::Harness::new_ui(|ui| {
         let ctx = ui.ctx().clone();
         we_egui::install_media(&ctx);
@@ -323,7 +391,7 @@ fn frame(root: &ResolvedNode, theme: &str, pointer: Pointer) -> Frame {
                 .unwrap_or_default()
         });
         let prims = ctx.tessellate(shapes, 1.0);
-        *out.borrow_mut() = (rect, prims);
+        *out.borrow_mut() = (rect, prims, lay.rects.clone());
     });
     harness.run_steps(2);
     if pointer != Pointer::Rest {
@@ -340,14 +408,20 @@ fn frame(root: &ResolvedNode, theme: &str, pointer: Pointer) -> Frame {
             harness.run_steps(2);
         }
     }
-    let (rect, prims) = out.borrow().clone();
-    Frame { rect, prims }
+    let (rect, prims, rects) = out.borrow().clone();
+    Frame { rect, prims, rects }
 }
 
 /// The opacity the frame paints at `p` — the highest interpolated vertex
 /// alpha of any triangle covering it (0 = nothing drawn there). Glyph quads
 /// count by their quad, which is what "the text survives" means.
 fn alpha_at(f: &Frame, p: egui::Pos2) -> f32 {
+    alpha_where(f, p, |_| true)
+}
+
+/// [`alpha_at`] counting only triangles whose vertices all pass `keep` —
+/// e.g. not the background's colour, to find a glyph over a filled box.
+fn alpha_where(f: &Frame, p: egui::Pos2, keep: impl Fn(egui::Color32) -> bool) -> f32 {
     let mut best = 0.0f32;
     for cp in &f.prims {
         if !cp.clip_rect.contains(p) {
@@ -358,6 +432,9 @@ fn alpha_at(f: &Frame, p: egui::Pos2) -> f32 {
         };
         for t in m.indices.chunks_exact(3) {
             let [a, b, c] = [0, 1, 2].map(|i| m.vertices[t[i] as usize]);
+            if !(keep(a.color) && keep(b.color) && keep(c.color)) {
+                continue;
+            }
             let d = (b.pos - a.pos).x * (c.pos - a.pos).y - (b.pos - a.pos).y * (c.pos - a.pos).x;
             if d.abs() < 1e-6 {
                 continue;
