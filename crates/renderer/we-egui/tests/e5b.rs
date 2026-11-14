@@ -1304,3 +1304,198 @@ fn sortable_drop_emits_new_order() {
     let got: Vec<String> = order.iter().map(|v| v.js_string()).collect();
     assert_eq!(got, vec!["1".to_string(), "2".to_string(), "0".to_string()]);
 }
+
+/// B8 — select.ts:438 `_select` early-returns on a disabled option: the
+/// row renders (dimmed, `aria-disabled`) but chooses nothing — the same
+/// click on a live option still emits.
+#[test]
+fn select_disabled_option_cannot_be_chosen() {
+    let mut sel = node(
+        "we-select",
+        "sel",
+        props(&[
+            ("label", s("Pick")),
+            ("value", s("")),
+            (
+                "options",
+                Value::List(Arc::new(vec![
+                    Value::Obj(Arc::new(props(&[("value", s("a")), ("label", s("Alpha"))]))),
+                    Value::Obj(Arc::new(props(&[
+                        ("value", s("b")),
+                        ("label", s("Beta")),
+                        ("disabled", b(true)),
+                    ]))),
+                ])),
+            ),
+        ]),
+    );
+    sel.handlers = handlers(&["onChange"]);
+    let (mut h, r) = rig(sel);
+    h.run();
+    h.get_by_label("Pick").click();
+    h.run();
+    h.get_by_label("Beta").click();
+    h.run();
+    assert!(
+        details(&r, "onChange").is_empty(),
+        "a disabled option selects nothing"
+    );
+    h.get_by_label("Alpha").click();
+    h.run();
+    assert_detail(&r, "onChange", s("a"));
+}
+
+/// B8 — a group is a heading whose own press only collapses it
+/// (DropdownMenu.solid renderGroup): the entries under it carry the
+/// selections, the caption never does.
+#[test]
+fn menu_group_is_a_heading_not_an_action() {
+    let mut menu = node(
+        "DropdownMenu",
+        "menu",
+        props(&[(
+            "items",
+            Value::List(Arc::new(vec![
+                Value::Obj(Arc::new(props(&[
+                    ("type", s("group")),
+                    ("id", s("crew")),
+                    ("label", s("Crew")),
+                    (
+                        "items",
+                        Value::List(Arc::new(vec![Value::Obj(Arc::new(props(&[
+                            ("id", s("ana")),
+                            ("label", s("Ana")),
+                        ])))])),
+                    ),
+                ]))),
+                Value::Obj(Arc::new(props(&[("id", s("go")), ("label", s("Go"))]))),
+            ])),
+        )]),
+    );
+    menu.handlers = handlers(&["onSelect"]);
+    let trig = node("we-button", "menu/trig", props(&[("label", s("Menu"))]));
+    menu.children = vec![ResolvedChild::Node(Box::new(trig))];
+    let (mut h, r) = rig(menu);
+    h.run();
+    h.get_by_label("Menu").click();
+    h.run();
+    // The caption collapses the group — it selects nothing.
+    h.get_by_label("Crew").click();
+    h.run();
+    assert!(
+        details(&r, "onSelect").is_empty(),
+        "a group heading is not an action"
+    );
+    assert!(
+        h.query_by_label("Ana").is_none(),
+        "collapsed: the group's items leave the list"
+    );
+    assert!(r.edit.borrow().is_open(&NodeId::from("menu")));
+    // Re-open the group; the entry under it selects.
+    h.get_by_label("Crew").click();
+    h.run();
+    h.get_by_label("Ana").click();
+    h.run();
+    let sel = details(&r, "onSelect");
+    let Some(Value::Obj(m)) = sel.last() else {
+        panic!("onSelect did not fire: {sel:?}")
+    };
+    assert!(m.get("id").is_some_and(|v| v.strict_eq(&s("ana"))));
+    assert!(!r.edit.borrow().is_open(&NodeId::from("menu")));
+}
+
+/// B8 — toggles keep the menu open (handleToggle never calls closeMenu)
+/// and onSelect reports `checked` as it was *before* the press — the
+/// bundle's handler flips it back (`!arg.checked`).
+#[test]
+fn menu_toggle_stays_open_and_reports_pre_press_checked() {
+    let mut menu = node(
+        "DropdownMenu",
+        "menu",
+        props(&[(
+            "items",
+            Value::List(Arc::new(vec![Value::Obj(Arc::new(props(&[
+                ("type", s("toggle")),
+                ("id", s("pin")),
+                ("label", s("Pinned")),
+                ("checked", b(true)),
+            ])))])),
+        )]),
+    );
+    menu.handlers = handlers(&["onSelect"]);
+    let trig = node("we-button", "menu/trig", props(&[("label", s("Menu"))]));
+    menu.children = vec![ResolvedChild::Node(Box::new(trig))];
+    let (mut h, r) = rig(menu);
+    h.run();
+    h.get_by_label("Menu").click();
+    h.run();
+    h.get_by_label("Pinned").click();
+    h.run();
+    let sel = details(&r, "onSelect");
+    let Some(Value::Obj(m)) = sel.last() else {
+        panic!("toggle did not report onSelect: {sel:?}")
+    };
+    assert!(
+        m.get("id").is_some_and(|v| v.strict_eq(&s("pin"))),
+        "payload is the item: {m:?}"
+    );
+    assert!(
+        m.get("checked").is_some_and(|v| v.strict_eq(&b(true))),
+        "checked reports the pre-press state: {m:?}"
+    );
+    assert!(
+        r.edit.borrow().is_open(&NodeId::from("menu")),
+        "a toggle must not close the menu"
+    );
+}
+
+/// B8 — `hidden` entries hold their place off the list; `searchable` adds
+/// the filter field (solid `matches`): labels narrow case-insensitively
+/// and dividers stand down while a needle is active.
+#[test]
+fn menu_search_filters_and_hidden_stays_out() {
+    let mut menu = node(
+        "DropdownMenu",
+        "menu",
+        props(&[
+            ("searchable", b(true)),
+            ("searchPlaceholder", s("Find a member")),
+            (
+                "items",
+                Value::List(Arc::new(vec![
+                    Value::Obj(Arc::new(props(&[("id", s("a")), ("label", s("Alpha"))]))),
+                    Value::Obj(Arc::new(props(&[("type", s("divider"))]))),
+                    Value::Obj(Arc::new(props(&[("id", s("b")), ("label", s("Beta"))]))),
+                    Value::Obj(Arc::new(props(&[
+                        ("id", s("h")),
+                        ("label", s("Ghost")),
+                        ("hidden", b(true)),
+                    ]))),
+                ])),
+            ),
+        ]),
+    );
+    menu.handlers = handlers(&["onSelect"]);
+    let trig = node("we-button", "menu/trig", props(&[("label", s("Menu"))]));
+    menu.children = vec![ResolvedChild::Node(Box::new(trig))];
+    let (mut h, _r) = rig(menu);
+    h.run();
+    h.get_by_label("Menu").click();
+    h.run();
+    assert!(
+        h.query_by_label("Ghost").is_none(),
+        "a hidden entry is off the list"
+    );
+    // The search field narrows the list — only Alpha survives "alp".
+    h.get_by_label("Find a member").click();
+    h.get_by_label("Find a member").type_text("alp");
+    h.run();
+    assert!(
+        h.query_by_label("Alpha").is_some(),
+        "the matching entry stays"
+    );
+    assert!(
+        h.query_by_label("Beta").is_none(),
+        "non-matching entries filter out"
+    );
+}

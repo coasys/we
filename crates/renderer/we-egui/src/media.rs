@@ -359,6 +359,12 @@ impl Rings {
     }
 }
 
+/// A menu item's avatar rings — `prop:ringColor` is the only band the
+/// DropdownMenu sets, on an `xs` face (`DropdownMenu.solid.tsx:232`).
+pub(crate) fn menu_rings(ctx: &egui::Context, tone: Option<&str>) -> Rings {
+    Rings::resolve(ctx, None, tone, None, true)
+}
+
 /// The deterministic stand-in for `toSvg(hash)` (jdenticon): a 5×5
 /// left-mirrored cell grid keyed by the hash's FNV-1a bits, in a seeded
 /// saturated hue on the sunken disc. The contract it keeps — stable and
