@@ -77,6 +77,17 @@ type Cell = Result<(f64, f64), String>;
 /// A route's resolve report and its main-area ink per theme.
 type Report = (&'static str, Resolved, Vec<(String, f64)>);
 
+/// The types `we_egui::placeholders::register` registers as grey boxes.
+const PLACEHOLDERS: &[&str] = &[
+    "GraphView",
+    "BlockComposer",
+    "EditableImage",
+    "we-location-picker",
+    "we-file-upload",
+    "AgentChat",
+    "AgentChatSheet",
+];
+
 const W: u32 = 1280;
 const H: u32 = 800;
 /// Height of the label strip above each side-by-side.
@@ -109,6 +120,9 @@ struct Resolved {
     nodes: usize,
     unknown: BTreeSet<String>,
     todo: BTreeSet<String>,
+    /// Registered stand-ins (`Placeholder` in we-egui) that draw a grey box
+    /// naming the stage that replaces them.
+    placeholders: BTreeSet<String>,
     warnings: Vec<String>,
     missed: Vec<String>,
     loading: usize,
@@ -126,7 +140,14 @@ fn walk(node: &ResolvedNode, registry: &Registry, in_outlet: bool, out: &mut Res
     if node.ty.starts_with("$todo") {
         out.todo.insert(node.ty.to_string());
     } else if registry.widget_for(&node.ty).type_name() == "__unknown__" {
-        out.unknown.insert(node.ty.to_string());
+        // A `$part` is only findable by the part it names.
+        let part = match node.props.get("id") {
+            Some(we_expr::Value::Str(id)) if node.ty.as_ref() == "$part" => format!("({id})"),
+            _ => String::new(),
+        };
+        out.unknown.insert(format!("{}{part}", node.ty));
+    } else if PLACEHOLDERS.contains(&node.ty.as_ref()) {
+        out.placeholders.insert(node.ty.to_string());
     }
     for child in &node.children {
         match child {
@@ -442,7 +463,46 @@ fn coasys_shots() {
                     continue;
                 }
             };
-            let (rust, app) = render(app);
+            // A panic inside the renderer is a finding, not the end of the
+            // run: record it, draw the web half beside an empty Rust half,
+            // and inspect the tree resolved without egui.
+            let rendered = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| render(app)));
+            let (rust, app) = match rendered {
+                Ok(pair) => pair,
+                Err(payload) => {
+                    let msg = payload
+                        .downcast_ref::<String>()
+                        .cloned()
+                        .or_else(|| payload.downcast_ref::<&str>().map(|s| s.to_string()))
+                        .unwrap_or_else(|| "non-string panic".into());
+                    let msg = msg.lines().next().unwrap_or("").to_string();
+                    problems.push(format!(
+                        "{route}-{theme_id}: the Rust render panicked: {msg}"
+                    ));
+                    if report.is_none() {
+                        if let Ok(mut app) = app_for(&truth, route, theme) {
+                            app.session.resolve();
+                            let mut r = inspect(&truth, route, &app);
+                            r.missed = missed_captures(&truth, route);
+                            r.error = Some(format!("render panicked: {msg}"));
+                            report = Some(r);
+                        }
+                    }
+                    if let Ok(web) = load_web(&web_dir, route, theme_id) {
+                        let blank = RgbaImage::from_pixel(W, H, Rgba([60, 0, 0, 255]));
+                        side_by_side(
+                            &web,
+                            &blank,
+                            &format!("{route} · {theme_id} · RUST RENDER PANICKED (see index.md)"),
+                            true,
+                        )
+                        .save(cmp_dir.join(format!("{route}-{theme_id}.png")))
+                        .expect("write compare png");
+                    }
+                    row.push(Err(msg));
+                    continue;
+                }
+            };
             rust.save(rust_dir.join(format!("{route}-{theme_id}.png")))
                 .expect("write rust png");
             let ink = main_area_ink(&rust);
@@ -539,7 +599,7 @@ fn coasys_shots() {
         for (t, cell) in themes.iter().zip(row) {
             match cell {
                 Ok((px, st)) => write!(md, " [{px:.1} / {st:.1}]({route}-{t}.png) |").unwrap(),
-                Err(_) => write!(md, " **error** |").unwrap(),
+                Err(_) => write!(md, " [**failed**]({route}-{t}.png) |").unwrap(),
             }
         }
         writeln!(md).unwrap();
@@ -557,15 +617,15 @@ fn coasys_shots() {
     writeln!(md, "\n## What each route resolved to\n").unwrap();
     writeln!(
         md,
-        "| route | path | nodes | outlet nodes / texts | unknown | `$todo` | warnings | loading | missed | main-area ink % (per theme) |"
+        "| route | path | nodes | outlet nodes / texts | unknown | `$todo` | placeholders | warnings | loading | missed | main-area ink % (per theme) |"
     )
     .unwrap();
-    writeln!(md, "|---|---|---|---|---|---|---|---|---|---|").unwrap();
+    writeln!(md, "|---|---|---|---|---|---|---|---|---|---|---|").unwrap();
     for (route, r, inks) in &reports {
         let inks: Vec<String> = inks.iter().map(|(t, i)| format!("{t} {i:.0}")).collect();
         writeln!(
             md,
-            "| {route} | `{}` | {} | {} / {} | {} | {} | {} | {} | {} | {} |",
+            "| {route} | `{}` | {} | {} / {} | {} | {} | {} | {} | {} | {} | {} |",
             r.path,
             r.nodes,
             r.outlet_nodes,
@@ -579,6 +639,15 @@ fn coasys_shots() {
                 "—".into()
             } else {
                 r.todo.iter().cloned().collect::<Vec<_>>().join(", ")
+            },
+            if r.placeholders.is_empty() {
+                "—".into()
+            } else {
+                r.placeholders
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
             },
             r.warnings.len(),
             r.loading,
