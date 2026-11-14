@@ -254,3 +254,155 @@ fn noto_symbols_reach_single_and_several_name_chains() {
         }
     }
 }
+
+/// Every text run on every layer of the last frame — popups included —
+/// after clicking the centre of `click` (a node id) when given.
+fn all_runs(
+    root: &ResolvedNode,
+    tokens: &[(&str, &str)],
+    theme: &str,
+    click: Option<&str>,
+) -> Vec<(String, egui::FontFamily)> {
+    let registry = Registry::with_builtins();
+    let table = we_style::TokenTable::new(
+        tokens
+            .iter()
+            .map(|(k, v)| (Arc::from(*k), Arc::from(*v)))
+            .collect(),
+    );
+    let target = RefCell::new(egui::Rect::NOTHING);
+    let mut edit = EditState::default();
+    let mut harness = egui_kittest::Harness::new_ui(|ui| {
+        let ctx = ui.ctx().clone();
+        we_egui::install_media(&ctx);
+        let mut scx = StyleCx::empty();
+        scx.tokens = &table;
+        scx.theme = theme;
+        let lay = layout(
+            &MeasureCx::new(&ctx),
+            &scx,
+            &registry,
+            root,
+            egui::Rect::from_min_size(ui.cursor().min, egui::vec2(400.0, 600.0)),
+        );
+        if let Some(id) = click {
+            if let Some(r) = lay.rects.get(&NodeId::from(id)) {
+                *target.borrow_mut() = *r;
+            }
+        }
+        let mut events = Vec::new();
+        paint(ui, &registry, &scx, root, &lay, &mut events, &mut edit, 0.0);
+    });
+    harness.run_steps(2);
+    if click.is_some() {
+        let at = target.borrow().center();
+        for pressed in [true, false] {
+            harness.event(egui::Event::PointerButton {
+                pos: at,
+                button: egui::PointerButton::Primary,
+                pressed,
+                modifiers: egui::Modifiers::NONE,
+            });
+            harness.run();
+        }
+        harness.run_steps(2);
+    }
+    fn texts(s: &egui::Shape, out: &mut Vec<(String, egui::FontFamily)>) {
+        match s {
+            egui::Shape::Text(t) => {
+                if let Some(sec) = t.galley.job.sections.first() {
+                    out.push((t.galley.job.text.clone(), sec.format.font_id.family.clone()));
+                }
+            }
+            egui::Shape::Vec(v) => v.iter().for_each(|s| texts(s, out)),
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    for cs in &harness.output().shapes {
+        texts(&cs.shape, &mut out);
+    }
+    out
+}
+
+fn obj_list(items: &[(&str, &str)]) -> we_expr::Value {
+    we_expr::Value::List(Arc::new(
+        items
+            .iter()
+            .map(|(label, value)| {
+                let mut m = IndexMap::new();
+                m.insert(Arc::<str>::from("label"), we_expr::Value::from(*label));
+                m.insert(Arc::<str>::from("value"), we_expr::Value::from(*value));
+                we_expr::Value::from(m)
+            })
+            .collect(),
+    ))
+}
+
+/// The rest of the form text: a form field's error, a textarea, a select
+/// (its shown value and, opened, its option rows) and a number input (the
+/// editor and the − / + labels). The TS controls are `font: inherit`.
+fn form_controls() -> ResolvedNode {
+    let mut root = node("Column", "root", &[]);
+    let mut f = node(
+        "we-form-field",
+        "ff",
+        &[("label", "LABEL"), ("error", "ERRTEXT")],
+    );
+    f.children = vec![ResolvedChild::Node(Box::new(node(
+        "we-input",
+        "ff/in",
+        &[("value", "HELLO")],
+    )))];
+    let area = node("we-textarea", "ta", &[("value", "AREATEXT")]);
+    let mut sel = node("we-select", "sel", &[("value", "a")]);
+    sel.props.insert(
+        Arc::from("options"),
+        obj_list(&[("ALPHAOPT", "a"), ("BETAOPT", "b")]),
+    );
+    let mut num = node("we-number-input", "num", &[]);
+    num.props
+        .insert(Arc::from("value"), we_expr::Value::Num(7.0));
+    root.children = [f, area, sel, num]
+        .into_iter()
+        .map(|n| ResolvedChild::Node(Box::new(n)))
+        .collect();
+    root
+}
+
+#[test]
+fn retro_font_reaches_textarea_select_and_number_input() {
+    let vt = egui::FontFamily::Name(Arc::from("VT323, monospace"));
+    let retro = [("--we-font-family", "'VT323', monospace")];
+    let open = all_runs(&form_controls(), &retro, "retro", Some("sel"));
+    let every = |runs: &[(String, egui::FontFamily)], text: &str| -> Vec<egui::FontFamily> {
+        runs.iter()
+            .filter(|(t, _)| t == text)
+            .map(|(_, f)| f.clone())
+            .collect()
+    };
+    assert!(
+        every(&open, "ALPHAOPT").len() >= 2 && !every(&open, "BETAOPT").is_empty(),
+        "the select opened (trigger + option rows): {open:?}"
+    );
+    for text in ["ERRTEXT", "AREATEXT", "ALPHAOPT", "BETAOPT", "7", "-", "+"] {
+        let fams = every(&open, text);
+        assert!(
+            !fams.is_empty() && fams.iter().all(|f| *f == vt),
+            "{text} is set in VT323 everywhere: {fams:?}; runs {open:?}"
+        );
+    }
+    // Closed, the select's shown value is the trigger's own text.
+    let closed = all_runs(&form_controls(), &retro, "retro", None);
+    assert_eq!(family_of(&closed, "ALPHAOPT"), vt, "the shown value");
+    // A theme without a font: every one stays proportional (the number
+    // editor included — egui's default TextEdit face is Proportional).
+    let plain = all_runs(&form_controls(), &[], "", Some("sel"));
+    for text in ["ERRTEXT", "AREATEXT", "ALPHAOPT", "BETAOPT", "7", "-", "+"] {
+        let fams = every(&plain, text);
+        assert!(
+            !fams.is_empty() && fams.iter().all(|f| *f == egui::FontFamily::Proportional),
+            "{text} stays proportional: {fams:?}"
+        );
+    }
+}

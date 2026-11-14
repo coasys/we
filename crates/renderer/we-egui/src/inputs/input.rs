@@ -18,7 +18,7 @@ impl Input {
     /// The field's font: egui's body size in the theme's family — the
     /// web input is `font: inherit`, so a themed face reaches the text.
     fn font(style: &Style, ctx: &egui::Context) -> egui::FontId {
-        egui::FontId::new(egui::FontId::default().size, props::text_family(style, ctx))
+        props::control_font(style, ctx)
     }
 
     fn line_height(cx: &MeasureCx, style: &Style) -> f32 {

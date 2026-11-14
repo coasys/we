@@ -994,6 +994,22 @@ pub(crate) fn text_family(style: &Style, ctx: &egui::Context) -> egui::FontFamil
         .unwrap_or(egui::FontFamily::Proportional)
 }
 
+/// A form control's own text face — egui's default control size in the
+/// family [`text_family`] resolves (`font: inherit` on the web controls).
+/// One place for every field, so a textarea, a select and a number input
+/// measure and paint in the face the input does.
+pub(crate) fn control_font(style: &Style, ctx: &egui::Context) -> egui::FontId {
+    egui::FontId::new(egui::FontId::default().size, text_family(style, ctx))
+}
+
+/// [`control_font`] at egui's `Body` size — the size a bare `TextEdit`
+/// paints at, which the textarea and the number editor always used. Only
+/// the family changes; an unthemed field looks exactly as before.
+pub(crate) fn editor_font(style: &Style, ctx: &egui::Context) -> egui::FontId {
+    let size = ctx.global_style().text_styles[&egui::TextStyle::Body].size;
+    egui::FontId::new(size, text_family(style, ctx))
+}
+
 /// Line height in px: `line-height` ratio × font size, a length directly, or
 /// egui's natural row height for `normal`.
 pub(crate) fn line_height_px(
