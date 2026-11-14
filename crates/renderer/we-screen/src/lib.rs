@@ -10,8 +10,10 @@ mod js;
 mod location;
 mod path;
 mod query;
+mod schema;
 
 pub use js::{js_json_eq, js_json_stringify, param_text, plain_value};
 pub use location::{Location, Route};
 pub use path::{is_relative_path, resolve_path, template_root_depth, PathBase, SPACE_ROUTE_DEPTH};
 pub use query::{encode_pair, parse_query, query_string, query_string_pairs};
+pub use schema::{ParamDecl, ParamType, ParamValue, ScreenSchema};
