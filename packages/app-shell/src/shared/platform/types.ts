@@ -194,7 +194,7 @@ export interface PlatformAdapter {
   isDevelopment: boolean;
 
   // Platform identifier
-  platform: 'web' | 'electron' | 'tauri';
+  platform: 'web' | 'electron' | 'tauri' | 'gpui';
 
   /**
    * Local account management, when the host can offer it. Absent on web — the boot screen

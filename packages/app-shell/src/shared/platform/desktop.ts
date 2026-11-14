@@ -10,7 +10,8 @@
 import type { AccountHost, AppConfig, ExecutorHost, HostFileSaver, PlatformAdapter, ScreenSourceHost } from './types';
 
 export interface DesktopPlatformOptions {
-  platform: 'electron' | 'tauri';
+  /** Which desktop host; `gpui` is the GPUI shell spike (`apps/we-gpui`). Nothing branches on it. */
+  platform: 'electron' | 'tauri' | 'gpui';
   /** Auto-generated seed app id → local HTTP port mapping. */
   portMap: Record<string, number>;
   /** Read at access time so bundler-injected DEV flags stay live. */
