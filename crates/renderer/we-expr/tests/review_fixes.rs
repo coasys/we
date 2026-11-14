@@ -643,3 +643,53 @@ fn p3_12_host_result_is_not_settled_early() {
         json!({"$undefined": true})
     );
 }
+
+/// `readValue` runs on the *base* of `.`/`[]` — TS `readProperty`/`readIndex`
+/// read the object before the member lookup, so a host call that returns a
+/// tagged accessor is traversed through its data. (Returning a namespace or
+/// plain data without settling stays raw — this is `readValue`, not
+/// `settle`.)
+#[test]
+fn n2_accessor_return_is_read_before_property_and_index() {
+    // An accessor holding a data object.
+    let env = MapEnv::new().with_function("lookup", |_| {
+        Value::Callable(CallableRef::accessor("sig", |_| obj(&[("x", 42.into())])))
+    });
+    assert_eq!(
+        eval(&parse("lookup().x").unwrap(), &env).to_json(),
+        json!(42)
+    );
+    assert_eq!(
+        eval(&parse("lookup()['x']").unwrap(), &env).to_json(),
+        json!(42)
+    );
+    // …and in a value position the accessor's own value is what settles.
+    assert_eq!(
+        eval(&parse("lookup()").unwrap(), &env).to_json(),
+        json!({"x": 42})
+    );
+
+    // An accessor holding a list — a numeric index reaches its element.
+    let env = MapEnv::new().with_function("lookup", |_| {
+        Value::Callable(CallableRef::accessor("sig", |_| list(&[42.into()])))
+    });
+    assert_eq!(
+        eval(&parse("lookup()[0]").unwrap(), &env).to_json(),
+        json!(42)
+    );
+
+    // An accessor holding a namespace — `.x` still reads the bag.
+    let env = MapEnv::new().with_function("lookup", |_| {
+        Value::Callable(CallableRef::accessor("sig", |_| {
+            Value::namespace(MapNamespace::new(IndexMap::from([("x".into(), 42.into())])))
+        }))
+    });
+    assert_eq!(
+        eval(&parse("lookup().x").unwrap(), &env).to_json(),
+        json!(42)
+    );
+    assert_eq!(
+        eval(&parse("lookup()").unwrap(), &env).to_json(),
+        json!({"$undefined": true})
+    );
+}

@@ -362,14 +362,19 @@ fn call_function(callee: &str, args: &[Value], env: &dyn Env) -> Value {
 }
 
 /// `object[property]` as a template may read it (`readProperty` in
-/// evaluate.ts): the denied names first, then a namespace's `get`, then the
-/// value's own data — a string answering only `length`, a list `length` and
-/// numeric keys, an object its own keys. Anything else is `Undefined`.
+/// evaluate.ts): the denied names first, then a namespace's `get` — checked
+/// on the object as handed over AND again on what `readValue` reads, since
+/// an accessor can hold a namespace — then the value's own data: a string
+/// answering only `length`, a list `length` and numeric keys, an object its
+/// own keys. Anything else is `Undefined`.
 fn read_property(object: &Value, property: &str) -> Value {
     if crate::DENIED_PROPERTIES.contains(&property) {
         return Value::Undefined;
     }
-    match object {
+    if let Value::Namespace(ns) = object {
+        return ns.get(property).read_value();
+    }
+    match object.read_value() {
         Value::Namespace(ns) => ns.get(property).read_value(),
         Value::Undefined | Value::Null => Value::Undefined,
         Value::Str(s) => {
@@ -398,16 +403,19 @@ fn read_property(object: &Value, property: &str) -> Value {
     }
 }
 
-/// `object[index]` (`readIndex` in evaluate.ts). A numeric index reaches only
-/// a list's elements and a string's UTF-16 code units — an object answers its
-/// named keys through a *string* index alone, so `obj[1]` is `Undefined`
-/// while `obj["1"]` can hit.
+/// `object[index]` (`readIndex` in evaluate.ts): the object is `readValue`'d
+/// first — a host call's accessor answer is traversed through its data, and a
+/// namespace still reads through `read_property`. A numeric index reaches
+/// only a list's elements and a string's UTF-16 code units — an object
+/// answers its named keys through a *string* index alone, so `obj[1]` is
+/// `Undefined` while `obj["1"]` can hit.
 fn read_index(object: &Value, index: &Value) -> Value {
-    if matches!(object, Value::Undefined | Value::Null) {
+    let base = object.read_value();
+    if matches!(base, Value::Undefined | Value::Null) {
         return Value::Undefined;
     }
     if let Value::Num(n) = index {
-        return match object {
+        return match base {
             Value::List(l) => {
                 if n.fract() == 0.0 && *n >= 0.0 {
                     l.get(*n as usize)
@@ -426,5 +434,5 @@ fn read_index(object: &Value, index: &Value) -> Value {
             _ => Value::Undefined,
         };
     }
-    read_property(object, &index.js_string())
+    read_property(&base, &index.js_string())
 }
