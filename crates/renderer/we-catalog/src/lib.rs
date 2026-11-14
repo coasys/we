@@ -341,7 +341,7 @@ pub static CATALOG: &[CatalogEntry] = &[
         "BlockComposer",
         "Block composer",
         Role::RichText,
-        &["blocks"],
+        &["editorState"],
         &[],
     ),
     e(
@@ -930,32 +930,88 @@ fn graph_edge_label(edge: &Value, names: &std::collections::HashMap<String, Stri
     }
 }
 
-/// A `blocks` document → its plain text, one line per block, marks dropped
-/// (flattened — the "rich text keeps its plain text" contract). A list of
-/// blocks or a `{_type:"document", children:[…]}` wrapper both read.
+/// A composition → its plain text, one line per block, marks dropped
+/// (flattened — the "rich text keeps its plain text" contract). The prop
+/// is the composer's real one, `editorState` — `blocks` stays as a compat
+/// read — and the value is decoded the way `decodeEditorState` decodes:
+/// a bare block array, a `{_type:"document", blocks:[…]}` wrapper, a
+/// `data:…;base64,…` or raw JSON string, or a `{data_base64}` file.
 fn block_lines(node: &ResolvedNode) -> Vec<String> {
     let mut out = Vec::new();
-    match prop(node, "blocks") {
-        Value::List(blocks) => {
-            for b in blocks.iter() {
+    let state = [prop(node, "editorState"), prop(node, "blocks")]
+        .into_iter()
+        .find(|v| !matches!(v, Value::Undefined));
+    match state.and_then(content_blocks) {
+        Some(blocks) => {
+            for b in &blocks {
                 block_line(b, 0, &mut out);
             }
         }
-        Value::Obj(o) => {
-            if let Some(Value::List(children)) = o.get("children") {
-                for b in children.iter() {
-                    block_line(b, 0, &mut out);
-                }
-            }
-        }
-        _ => out.extend(non_empty(text_of(node))),
+        None => out.extend(non_empty(text_of(node))),
     }
     out
 }
 
+/// Whatever a stored composition arrives as → its blocks —
+/// `decodeEditorState`/`contentFromValue` (block-system shared/utils.ts).
+/// A `{_type:"document", blocks:[…]}` reads `blocks` (`children` only as
+/// a compat read); a bare array must be `isContentBlockArray` — every
+/// element an object carrying a string `_type`.
+fn content_blocks(value: &Value) -> Option<Vec<Value>> {
+    match value {
+        Value::Obj(o) => {
+            // `{data_base64, file_type}` — the unresolved file object.
+            if let Some(Value::Str(b64)) = o.get("data_base64") {
+                let s = String::from_utf8(b64_decode(b64)?).ok()?;
+                return json_value(&s).and_then(|v| content_blocks(&v));
+            }
+            let inner =
+                if matches!(o.get("_type"), Some(Value::Str(t)) if t.as_ref() == "document") {
+                    o.get("blocks")
+                } else {
+                    None
+                }
+                .or_else(|| o.get("children"));
+            match inner {
+                Some(Value::List(blocks)) => Some(blocks.to_vec()),
+                _ => None,
+            }
+        }
+        Value::Str(s) => {
+            // `data:…;base64,…` decodes; anything else goes to the JSON
+            // parse raw — a bad parse is `null`, not a composition.
+            let json = if s.starts_with("data:") && s.contains(";base64,") {
+                let (_, b64) = s.split_once(";base64,")?;
+                String::from_utf8(b64_decode(b64)?).ok()?
+            } else {
+                s.to_string()
+            };
+            json_value(&json).and_then(|v| content_blocks(&v))
+        }
+        Value::List(blocks) => blocks
+            .iter()
+            .all(|b| matches!(b, Value::Obj(o) if matches!(o.get("_type"), Some(Value::Str(_)))))
+            .then(|| blocks.to_vec()),
+        _ => None,
+    }
+}
+
+/// A JSON string → a `Value` — `JSON.parse` inside `decodeEditorState`.
+fn json_value(s: &str) -> Option<Value> {
+    serde_json::from_str::<serde_json::Value>(s)
+        .ok()
+        .map(|v| Value::from_json(&v))
+}
+
+fn b64_decode(s: &str) -> Option<Vec<u8>> {
+    use base64::Engine as _;
+    base64::engine::general_purpose::STANDARD.decode(s).ok()
+}
+
 /// One block: a text block's `text` (or its span children's text joined),
-/// a collection's children one level deeper, a custom block's type marker
-/// plus whatever caption/alt/name it carries.
+/// a collection's `content` or a document's `blocks` one level deeper
+/// (the canonical fields — `children` stays only as a compat read), a
+/// custom block's type marker plus whatever caption/alt/name it carries.
 fn block_line(block: &Value, depth: usize, out: &mut Vec<String>) {
     let indent = "  ".repeat(depth);
     let Value::Obj(o) = block else {
@@ -971,7 +1027,13 @@ fn block_line(block: &Value, depth: usize, out: &mut Vec<String>) {
     let children = o.get("children");
     match ty {
         Some("collection") | Some("document") => {
-            if let Some(Value::List(children)) = children {
+            let nested = if ty == Some("collection") {
+                o.get("content")
+            } else {
+                o.get("blocks")
+            }
+            .or_else(|| children);
+            if let Some(Value::List(children)) = nested {
                 for b in children.iter() {
                     block_line(b, depth + 1, out);
                 }

@@ -185,14 +185,29 @@ fn block_composer_flattens_its_document() {
                         ]),
                     ),
                 ]),
+                // A real nested collection — the fixture verbatim from
+                // converter.test.ts ("nests a collection as a node with
+                // children"). Canonical shape: `content`, not `children`.
                 obj(&[
                     ("_type", Value::from("collection")),
+                    ("_key", Value::from("c")),
+                    ("layout", Value::from("row")),
+                    ("columnCount", Value::Num(3.0)),
                     (
-                        "children",
-                        list(vec![obj(&[
-                            ("_type", Value::from("block")),
-                            ("text", Value::from("Nested item")),
-                        ])]),
+                        "content",
+                        list(vec![
+                            obj(&[
+                                ("_type", Value::from("block")),
+                                ("_key", Value::from("x")),
+                                ("style", Value::from("normal")),
+                                ("text", Value::from("inside")),
+                            ]),
+                            obj(&[
+                                ("_type", Value::from("image")),
+                                ("_key", Value::from("y")),
+                                ("src", Value::from("z")),
+                            ]),
+                        ]),
                     ),
                 ]),
                 obj(&[
@@ -204,8 +219,66 @@ fn block_composer_flattens_its_document() {
     );
     assert_eq!(
         fallback(&n),
-        "Hello world\nSecond para\n  Nested item\n[image] a diagram"
+        "Hello world\nSecond para\n  inside\n  [image]\n[image] a diagram"
     );
+}
+
+#[test]
+fn block_composer_reads_a_document_wrapper() {
+    // The prop the composer actually reads is `editorState`
+    // (types.ts:22-24), and a `ContentDocument` wrapper —
+    // `{_type:'document', blocks:[…]}` — is what `onSave` hands back
+    // (content.ts:74-77); `decodeEditorState` accepts it (utils.ts:62).
+    let n = node(
+        "BlockComposer",
+        &[(
+            "editorState",
+            obj(&[
+                ("_type", Value::from("document")),
+                (
+                    "blocks",
+                    list(vec![
+                        obj(&[
+                            ("_type", Value::from("block")),
+                            ("text", Value::from("Doc body")),
+                        ]),
+                        obj(&[
+                            ("_type", Value::from("collection")),
+                            (
+                                "content",
+                                list(vec![obj(&[
+                                    ("_type", Value::from("block")),
+                                    ("text", Value::from("deep")),
+                                ])]),
+                            ),
+                        ]),
+                    ]),
+                ),
+            ]),
+        )],
+    );
+    assert_eq!(fallback(&n), "Doc body\n  deep");
+}
+
+#[test]
+fn block_composer_decodes_a_stored_editor_state() {
+    // What a resolved file field actually reads as: the Portable Text
+    // projection under a `data:…;base64` URI (the decodeEditorState
+    // string form — utils.ts:41-55). This URI was produced by the real
+    // `toPortableText` (content.ts) over
+    //   [block "Stored post",
+    //    collection{content: [block "archived words"]}]
+    // — spans and a nested canonical collection.
+    let n = node(
+        "BlockComposer",
+        &[(
+            "editorState",
+            Value::from(
+                "data:application/json;base64,W3siX3R5cGUiOiJibG9jayIsInRleHQiOiJTdG9yZWQgcG9zdCIsIl9rZXkiOiJiMSIsInN0eWxlIjoibm9ybWFsIiwiY2hpbGRyZW4iOlt7Il90eXBlIjoic3BhbiIsIl9rZXkiOiJzMSIsInRleHQiOiJTdG9yZWQgcG9zdCIsIm1hcmtzIjpbXX1dLCJtYXJrRGVmcyI6W119LHsiX3R5cGUiOiJjb2xsZWN0aW9uIiwiX2tleSI6ImsiLCJsYXlvdXQiOiJncmlkIiwiY29udGVudCI6W3siX3R5cGUiOiJibG9jayIsInRleHQiOiJhcmNoaXZlZCB3b3JkcyIsIl9rZXkiOiJiMSIsInN0eWxlIjoibm9ybWFsIiwiY2hpbGRyZW4iOlt7Il90eXBlIjoic3BhbiIsIl9rZXkiOiJzMSIsInRleHQiOiJhcmNoaXZlZCB3b3JkcyIsIm1hcmtzIjpbXX1dLCJtYXJrRGVmcyI6W119XX1d",
+            ),
+        )],
+    );
+    assert_eq!(fallback(&n), "Stored post\n  archived words");
 }
 
 #[test]

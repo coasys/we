@@ -36,15 +36,20 @@
                 {
                   "type": "BlockComposer",
                   "props": {
-                    "blocks": [
-                      { "_type": "block", "text": "Hello world" },
-                      {
-                        "_type": "collection",
-                        "children": [
-                          { "_type": "block", "text": "Nested item" }
-                        ]
-                      }
-                    ]
+                    "editorState": {
+                      "_type": "document",
+                      "blocks": [
+                        { "_type": "block", "text": "Hello world" },
+                        {
+                          "_type": "collection",
+                          "_key": "c1",
+                          "layout": "row",
+                          "content": [
+                            { "_type": "block", "text": "Nested item" }
+                          ]
+                        }
+                      ]
+                    }
                   }
                 },
                 {
