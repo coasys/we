@@ -3703,6 +3703,7 @@ name = "we-screen"
 version = "0.1.0"
 dependencies = [
  "indexmap",
+ "log",
  "serde",
  "serde_json",
  "we-expr",
