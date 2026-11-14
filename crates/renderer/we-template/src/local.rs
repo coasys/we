@@ -28,6 +28,10 @@ struct Inner {
     /// Fields `$touch` has marked — validation reads ("field was edited").
     /// Cleared when the owning node leaves the tree.
     touched: HashSet<(NodeId, Arc<str>)>,
+    /// The last-evaluated `initial` of each token-object-initial field —
+    /// the tracking effect's previous reading. Fields whose `initial` is a
+    /// literal never get an entry, so a static seed never resets.
+    initials: HashMap<(NodeId, Arc<str>), Value>,
     /// Bumped by [`LocalState::set`] when a write changes a field — one of the
     /// three counters that decide whether the next frame re-resolves.
     version: u64,
@@ -91,6 +95,36 @@ impl LocalState {
         }
     }
 
+    /// The tracking effect WE runs for a token-object `initial`: when the
+    /// evaluated source moves between passes — the first read included —
+    /// the field takes the new value and `touched` clears. Called at
+    /// resolve with this pass's evaluated initial; literal initials never
+    /// enter, so a static seed keeps whatever the field holds.
+    pub fn follow_initial(&self, node: &NodeId, field: &str, evaluated: Value) {
+        if let Ok(mut inner) = self.inner.write() {
+            let key = (node.clone(), field.into());
+            if inner
+                .initials
+                .get(&key)
+                .is_some_and(|prev| prev.strict_eq(&evaluated))
+            {
+                return;
+            }
+            inner.initials.insert(key.clone(), evaluated.clone());
+            let changed = match inner.fields.get(&key) {
+                Some(old) => !old.strict_eq(&evaluated),
+                None => true,
+            };
+            if changed {
+                inner.fields.insert(key.clone(), evaluated);
+                inner.version += 1;
+            }
+            if inner.touched.remove(&key) {
+                inner.version += 1;
+            }
+        }
+    }
+
     /// `$touch` — mark the field edited (WE: `setTouched` for validation).
     /// Bumps the version; a touched state can flip a guard.
     pub fn touch(&self, node: &NodeId, field: &str) {
@@ -125,6 +159,7 @@ impl LocalState {
         if let Ok(mut inner) = self.inner.write() {
             inner.fields.retain(|(node, _), _| live.contains(node));
             inner.touched.retain(|(node, _)| live.contains(node));
+            inner.initials.retain(|(node, _), _| live.contains(node));
         }
     }
 }

@@ -300,6 +300,68 @@ fn local_state_survives_re_resolution() {
 }
 
 #[test]
+fn an_expression_initial_follows_its_source() {
+    // A4: a token-object `initial` is tracked — when the source moves the
+    // field resets to the new value and `touched` clears (SchemaRenderer's
+    // tracking effect). An unrelated re-resolve must not clobber an edit.
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "name": { "type": "string", "initial": { "$": "store.name" } } },
+        "children": [{ "type": "we-text", "props": { "text": { "$": "local.name" } } }]
+    }));
+    let store = |name: &str| {
+        Value::Obj(Arc::new(
+            [("name".into(), Value::from(name))].into_iter().collect(),
+        ))
+    };
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root("store", store("A"));
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+    assert!(locals.get(&owner, "name").strict_eq(&Value::from("A")));
+
+    // An unrelated pass leaves a user edit alone.
+    locals.set(&owner, "name", Value::from("edited"));
+    locals.touch(&owner, "name");
+    let _ = rt.frame(&mut host, &screen).clone();
+    assert!(locals.get(&owner, "name").strict_eq(&Value::from("edited")));
+    assert!(locals.is_touched(&owner, "name"));
+
+    // The source moving resets the field — even over an edit — and untouches.
+    bag.set_root("store", store("B"));
+    let _ = rt.frame(&mut host, &screen).clone();
+    assert!(
+        locals.get(&owner, "name").strict_eq(&Value::from("B")),
+        "dynamic initial must follow its source: {:?}",
+        locals.get(&owner, "name")
+    );
+    assert!(!locals.is_touched(&owner, "name"));
+}
+
+#[test]
+fn a_dollar_string_initial_stays_literal() {
+    // A4 sub-point: `initial: "$store.name"`. TS's `resolveInitial` calls
+    // `resolveProp`, which has no `$`-string branch — the dispatcher's final
+    // pass-through returns it unchanged (dispatcher.ts: only `{ $: … }`
+    // objects are expressions). Literal in TS, literal here.
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "name": { "type": "string", "initial": "$store.name" } },
+        "children": [{ "type": "we-text", "props": { "text": { "$": "local.name" } } }]
+    }));
+    let bag = StoreBag::new();
+    bag.set_root("store", Value::Obj(Arc::new(
+        [("name".into(), Value::from("A"))].into_iter().collect(),
+    )));
+    let (mut rt, mut host, locals, screen) = rig(node, bag);
+    let root = rt.frame(&mut host, &screen).clone();
+    assert!(locals
+        .get(&root.id, "name")
+        .strict_eq(&Value::from("$store.name")));
+}
+
+#[test]
 fn a_local_state_handler_bumps_exactly_one_counter() {
     // `$setLocal` on a declared field: local revision +1, screen and data
     // revisions untouched.

@@ -770,6 +770,13 @@ fn declare_locals(
                 url_raw,
             );
             cx.locals.seed(id, &field, seeded);
+            // A token-object `initial` keeps tracking its source: when the
+            // evaluation moves the field resets to it and `touched` clears —
+            // the effect `RenderSchema` mounts next to the signal.
+            if spec.get("initial").is_some_and(has_any_token) {
+                cx.locals
+                    .follow_initial(id, &field, declared_initial.clone());
+            }
             fields.insert(
                 field.clone(),
                 LocalDecl::State(FieldMeta {
