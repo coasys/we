@@ -32,9 +32,11 @@ mod where_match;
 pub use ast::{CALL_TIME_ROOTS, WELL_KNOWN_ROOTS};
 pub use env::{callback_value, Env, MapEnv, ReadObserver};
 pub use eval::eval;
+pub use functions::js_round;
 pub use parse::{parse, Expr, ParseCache, Span, SyntaxError};
 pub use print::print;
 pub use value::{
-    CallFn, CallableKind, CallableRef, MapNamespace, Namespace, Value, DENIED_PROPERTIES,
+    is_js_whitespace, js_trim, CallFn, CallableKind, CallableRef, MapNamespace, Namespace, Value,
+    DENIED_PROPERTIES,
 };
 pub use where_match::{as_text, matches_where};

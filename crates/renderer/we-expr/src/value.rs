@@ -515,12 +515,40 @@ pub(crate) fn canonical_index(key: &str) -> Option<usize> {
     (index.to_string() == key).then_some(index)
 }
 
+/// The ECMAScript whitespace set — WhiteSpace plus the line terminators:
+/// `String.prototype.trim` and `Number(string)` both cut this list and
+/// only this list. It differs from [`char::is_whitespace`] (Unicode
+/// `White_Space`) twice: the BOM `U+FEFF` is whitespace in JS but not in
+/// `White_Space`, and `U+0085` NEL is `White_Space` but not a JS space
+/// separator.
+pub fn is_js_whitespace(c: char) -> bool {
+    matches!(
+        c,
+        '\u{9}'
+            | '\u{A}'
+            | '\u{B}'
+            | '\u{C}'
+            | '\u{D}'
+            | '\u{20}'
+            | '\u{A0}'
+            | '\u{FEFF}'
+            | '\u{1680}'
+            | '\u{2000}'
+            ..='\u{200A}' | '\u{2028}' | '\u{2029}' | '\u{202F}' | '\u{205F}' | '\u{3000}'
+    )
+}
+
+/// `String.prototype.trim()` — cut the JS whitespace off both ends.
+pub fn js_trim(s: &str) -> &str {
+    s.trim_matches(is_js_whitespace)
+}
+
 /// `Number(string)` — the spellings JavaScript accepts that Rust's `f64`
 /// parser does not (`"0x…"` hex, `"0b…"`/`"0o…"`, a BigInt `"…n"` which reads
 /// `NaN`, `"+Infinity"`), and the spellings Rust accepts that JavaScript does
 /// not (`"inf"`, `"nan"` in any case). An empty or all-whitespace string is 0.
 pub(crate) fn js_number_str(s: &str) -> f64 {
-    let t = s.trim();
+    let t = js_trim(s);
     if t.is_empty() {
         return 0.0;
     }
