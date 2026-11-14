@@ -206,6 +206,10 @@ describe('requestRows', () => {
       'Laptop asks for the master key',
       'Laptop asks to remove This computer, d3',
     ]);
+    // A removal revokes the device key; a copy of the master key stays valid until it is replaced.
+    expect(rows[1].detail).toBe(
+      'Their device keys stop working. A device with your master key keeps access until you replace it.',
+    );
   });
 });
 
