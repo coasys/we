@@ -119,7 +119,7 @@ export const EXPRESSION_ENVS: Record<string, ExpressionEnvSpec> = {
     },
     local: { page: 2, dirty: false },
     context: {
-      event: { id: 'ev:9', detail: { key: 'Enter' }, save: { $callable: 'save' } },
+      event: { id: 'ev:9', detail: { key: 'Enter' }, save: { $callable: 'save' }, tick: { $accessor: 'sig:1' } },
       result: { id: 'res:1', done: { $callable: 'done' } },
       $item: { role: 'skipped' },
       item: { role: 'visible' },
@@ -216,6 +216,7 @@ export const EXPRESSION_CASES: ExpressionCase[] = [
   C('env.local-undeclared', 'local.nope', 'callback'),
   C('env.callback-member', 'event.detail.key', 'callback'),
   C('env.callback-fn-read', 'event.save', 'callback'),
+  C('env.callback-accessor', 'event.tick', 'callback'),
   C('env.callback-raw', 'event', 'callback'),
   C('env.arg-fallback', 'arg.id', 'callback'),
   C('env.arg-direct', 'arg.id', 'stock'),

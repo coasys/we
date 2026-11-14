@@ -15,7 +15,7 @@ import { decodeValue, type EncodedValue } from './encode';
 export interface ExpressionEnvSpec {
   /**
    * The store bag: `spaceStore` → a store namespace (members read by the tagging rule),
-   * `$me`/`$clock` → host globals — a plain object is the value itself, a `{$accessor: …}`
+   * `$me`/`$clock` → host globals — a plain object is the value itself, a `{$thunk: …}`
    * function is invoked to get it.
    */
   stores?: Record<string, EncodedValue>;

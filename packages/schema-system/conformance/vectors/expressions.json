@@ -228,6 +228,9 @@
           },
           "save": {
             "$callable": "save"
+          },
+          "tick": {
+            "$accessor": "sig:1"
           }
         },
         "result": {
@@ -2133,6 +2136,14 @@
       "print": "event.save"
     },
     {
+      "id": "env.callback-accessor",
+      "note": "a buildEnvironment root rule, under a callback context",
+      "source": "event.tick",
+      "env": "callback",
+      "result": "sig:1",
+      "print": "event.tick"
+    },
+    {
       "id": "env.callback-raw",
       "note": "a buildEnvironment root rule, under a callback context",
       "source": "event",
@@ -2144,6 +2155,9 @@
         },
         "save": {
           "$callable": "save"
+        },
+        "tick": {
+          "$callable": "anonymous"
         }
       },
       "print": "event"
