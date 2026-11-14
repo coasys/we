@@ -1369,7 +1369,9 @@ async fn follow_link<R: ExecutorRpc>(
                         record::write(executor, unlocking, did, &[change], &RANDOM).await
                     {
                         log::warn!("custody: this computer was not listed in the record: {e}");
-                        notes.push("This computer's name wasn't saved. Rename it in Settings > Devices.");
+                        notes.push(
+                            "This computer's name wasn't saved. Rename it in Settings > Devices.",
+                        );
                     }
                 }
                 if let Err(e) = &linked.record {
@@ -1644,8 +1646,19 @@ async fn show_code_on<R: ExecutorRpc>(
         let input = match next_input_or_cancel(vault, address, rx, reply).await {
             Ok(input) => input,
             Err(cancel) => {
-                return cancel_claim(executor, claim.as_ref(), cancel, vault, address, rx, reply)
-                    .await
+                return cancel_claim(
+                    executor,
+                    claim.as_ref(),
+                    Cancelled {
+                        cancel,
+                        waiting: None,
+                    },
+                    vault,
+                    address,
+                    rx,
+                    reply,
+                )
+                .await
             }
         };
         match input {
@@ -1661,8 +1674,7 @@ async fn show_code_on<R: ExecutorRpc>(
                         return answer(
                             reply,
                             Ok(Screen::Failed {
-                                message: "The code expired. Show a new code to try again."
-                                    .into(),
+                                message: "The code expired. Show a new code to try again.".into(),
                             }),
                         )
                     }
@@ -1714,8 +1726,24 @@ async fn show_code_on<R: ExecutorRpc>(
             }
             StepInput::Accept if claim.as_ref().is_some_and(Claim::awaits_accept) => {
                 let claim = claim.as_mut().expect("checked above");
-                if let Err(screen) = accept_join(executor, claim).await {
-                    return answer(reply, Ok(screen));
+                match accept_or_cancel(executor, claim, vault, address, rx).await {
+                    Err(cancel) => {
+                        return cancel_claim(
+                            executor,
+                            Some(claim),
+                            Cancelled {
+                                cancel,
+                                waiting: None,
+                            },
+                            vault,
+                            address,
+                            rx,
+                            reply,
+                        )
+                        .await
+                    }
+                    Ok(Err(screen)) => return answer(reply, Ok(screen)),
+                    Ok(Ok(())) => {}
                 }
                 let screen = match follow_claim(executor, claim, vault, address, rx, reply).await {
                     Err(cancel) => {
@@ -1817,10 +1845,8 @@ async fn follow_claim<R: ExecutorRpc>(
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
-) -> Result<Screen, Option<CancelReply>> {
-    let closed = || Screen::Failed {
-        message: "The other device didn't confirm in time. Show a new code to try again.".into(),
-    };
+) -> Result<Screen, Cancelled> {
+    let closed = claim_closed;
     let mut next_poll = tokio::time::Instant::now();
     loop {
         if claim.deadline <= CLOCK.now() {
@@ -1843,8 +1869,13 @@ async fn follow_claim<R: ExecutorRpc>(
             join = poll => Some(join),
             request = rx.recv() => {
                 match request {
-                    None => return Err(None),
-                    Some(Request::Cancel(r)) => return Err(Some(r)),
+                    None => return Err(Cancelled::default()),
+                    Some(Request::Cancel(r)) => {
+                        return Err(Cancelled {
+                            cancel: Some(r),
+                            waiting: None,
+                        })
+                    }
                     Some(Request::Public(r)) => {
                         let _ = r.send(public_state(vault, address).await);
                     }
@@ -1852,10 +1883,18 @@ async fn follow_claim<R: ExecutorRpc>(
                         let _ = r.send(Err(CustodyError::Busy));
                     }
                     Some(Request::Step(StepInput::Accept, r)) if claim.awaits_accept() => {
-                        if let Err(screen) = accept_join(executor, claim).await {
-                            answer(reply, Ok(screen.clone()));
-                            *reply = Some(r);
-                            return Ok(screen);
+                        match accept_or_cancel(executor, claim, vault, address, rx).await {
+                            // The wait and the accept are both cut short: the cancel answers both.
+                            Err(cancel) => {
+                                let waiting = reply.replace(r);
+                                return Err(Cancelled { cancel, waiting });
+                            }
+                            Ok(Err(screen)) => {
+                                answer(reply, Ok(screen.clone()));
+                                *reply = Some(r);
+                                return Ok(screen);
+                            }
+                            Ok(Ok(())) => {}
                         }
                         answer(reply, Ok(claim.screen()));
                         *reply = Some(r);
@@ -1918,27 +1957,73 @@ async fn follow_claim<R: ExecutorRpc>(
     }
 }
 
-/// The person accepts the identity of `claim` here: the executor may record it as its operator once
-/// the holder confirms. `identity.acceptJoin` `{ offerId }` → `{ accepted: true }` is new in
+/// The person accepts the identity of `offer_id` here: the executor may record it as its operator
+/// once the holder confirms. `identity.acceptJoin` `{ offerId }` → `{ accepted: true }` is new in
 /// coasys/ad4m#1635 and not in the client this crate pins yet, so it is called by name.
 async fn accept_join<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
-    claim: &mut Claim,
+    offer_id: &str,
 ) -> Result<(), Screen> {
     match executor
         .rpc()
-        .call("identity.acceptJoin", json!({ "offerId": claim.offer_id }))
+        .call("identity.acceptJoin", json!({ "offerId": offer_id }))
         .await
     {
-        Ok(_) => {
-            claim.accepted = true;
-            Ok(())
-        }
+        Ok(_) => Ok(()),
         Err(e) if e.code == 409 && e.message.starts_with("cancelled") => Err(cancelled_here()),
         Err(e) if e.code == 404 => Err(Screen::Failed {
             message: "This link has closed. Show a new code to try again.".into(),
         }),
         Err(e) => Err(failed(&ClientError::Rpc(e))),
+    }
+}
+
+/// [`accept_join`] while the window can still cancel: the accept is cut off at the claim's
+/// deadline, and a cancel that arrives meanwhile ends the wait (`Err`, with the cancel's reply for
+/// [`cancel_claim`], which ends the executor's claim before it answers). `Public` is answered in
+/// passing, and anything else refused. `Ok` holds what the accept came to; accepted, the claim
+/// says so.
+async fn accept_or_cancel<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    claim: &mut Claim,
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+) -> Result<Result<(), Screen>, Option<CancelReply>> {
+    let offer_id = claim.offer_id.clone();
+    let left = Duration::from_secs(claim.deadline.saturating_sub(CLOCK.now()));
+    let accepting = tokio::time::timeout(left, accept_join(executor, &offer_id));
+    tokio::pin!(accepting);
+    loop {
+        tokio::select! {
+            accepted = &mut accepting => {
+                return Ok(match accepted {
+                    Ok(Ok(())) => {
+                        claim.accepted = true;
+                        Ok(())
+                    }
+                    Ok(Err(screen)) => Err(screen),
+                    Err(_) => Err(claim_closed()),
+                });
+            }
+            request = rx.recv() => match request {
+                None => return Err(None),
+                Some(Request::Cancel(r)) => return Err(Some(r)),
+                Some(Request::Public(r)) => {
+                    let _ = r.send(public_state(vault, address).await);
+                }
+                Some(Request::Start(_, r) | Request::Step(_, r)) => {
+                    let _ = r.send(Err(CustodyError::Busy));
+                }
+            },
+        }
+    }
+}
+
+/// What a claim the holder did not confirm before its deadline ends with.
+fn claim_closed() -> Screen {
+    Screen::Failed {
+        message: "The other device didn't confirm in time. Show a new code to try again.".into(),
     }
 }
 
@@ -1986,16 +2071,23 @@ const CANCEL_WAIT: Duration = Duration::from_secs(10);
 /// waiting on the claim are answered alike: `None`/`NoStep` once it ended, else the screen to show.
 /// A cancel that arrives while the executor is asked is the same cancel and gets the same answer:
 /// answered later by the idle service, its `None` would close a window that should show the join.
+/// The main window's state is answered once the cancel is: its lookup is several calls to the
+/// executor, which would otherwise hold the cancel past [`CANCEL_WAIT`].
 async fn cancel_claim<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
     claim: Option<&Claim>,
-    cancel: Option<CancelReply>,
+    cancelled: Cancelled,
     vault: &DesktopVault,
     address: &ExecutorAddress,
     rx: &mut Rx,
     reply: &mut Reply,
 ) {
+    let Cancelled {
+        cancel,
+        mut waiting,
+    } = cancelled;
     let mut cancels: Vec<CancelReply> = cancel.into_iter().collect();
+    let mut publics = Vec::new();
     let instead = match claim {
         Some(claim) => {
             let ending = cancel_join(executor, &claim.offer_id);
@@ -2005,9 +2097,7 @@ async fn cancel_claim<R: ExecutorRpc>(
                     instead = &mut ending => break instead,
                     Some(request) = rx.recv() => match request {
                         Request::Cancel(r) => cancels.push(r),
-                        Request::Public(r) => {
-                            let _ = r.send(public_state(vault, address).await);
-                        }
+                        Request::Public(r) => publics.push(r),
                         Request::Start(_, r) | Request::Step(_, r) => {
                             let _ = r.send(Err(CustodyError::Busy));
                         }
@@ -2018,9 +2108,25 @@ async fn cancel_claim<R: ExecutorRpc>(
         None => None,
     };
     answer(reply, instead.clone().ok_or(CustodyError::NoStep));
+    answer(&mut waiting, instead.clone().ok_or(CustodyError::NoStep));
     for cancel in cancels {
         let _ = cancel.send(instead.clone());
     }
+    if !publics.is_empty() {
+        let state = public_state(vault, address).await;
+        for r in publics {
+            let _ = r.send(state.clone());
+        }
+    }
+}
+
+/// A cancel of a claim, for [`cancel_claim`]: the cancel's own reply (`None` once the window
+/// closed), and a request it cut short beside the step's own (the wait for the join an accept
+/// arrived beside), answered the same.
+#[derive(Default)]
+struct Cancelled {
+    cancel: Option<CancelReply>,
+    waiting: Reply,
 }
 
 /// What a cancel that came too late shows: `Joined`, from the claim's `identity.joinStatus`, or in
@@ -2200,8 +2306,7 @@ async fn take_master_on<R: ExecutorRpc>(
             Ok(Some(taken)) => Screen::MasterTaken {
                 note: taken.record.err().map(|e| {
                     log::warn!("custody: the record does not mark this computer yet: {e}");
-                    "Your device list shows this after its next change."
-                        .to_string()
+                    "Your device list shows this after its next change.".to_string()
                 }),
                 did: taken.did,
             },
@@ -2416,8 +2521,7 @@ async fn answer_on<R: ExecutorRpc>(
                         kind,
                         device: device.clone(),
                         note: record.map(|_| {
-                            "Your device list shows this after its next change."
-                                .to_string()
+                            "Your device list shows this after its next change.".to_string()
                         }),
                     }),
                 );
@@ -3840,6 +3944,211 @@ mod tests {
                 "{screen:?}"
             );
         }
+    }
+
+    /// An accept the executor does not answer leaves the window able to cancel: the cancel ends
+    /// the executor's claim and is answered, and the accept with it, without waiting on the accept.
+    #[tokio::test]
+    async fn a_cancel_while_the_accept_stalls_ends_the_claim() {
+        tokio::time::pause();
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.acceptJoin", json!({ "accepted": true }));
+        executor
+            .rpc()
+            .delay("identity.acceptJoin", Duration::from_secs(3600));
+        executor
+            .rpc()
+            .answer("identity.cancelJoin", json!({ "cancelled": true }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let (_, answered) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(7200),
+                show_code_on(&executor, events, &vault, &address, &mut rx, &mut reply)
+            ),
+            tokio::time::timeout(Duration::from_secs(7200), async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                let (tx, accepted) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::Accept, tx))
+                    .unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let asked = tokio::time::Instant::now();
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                let cancelled = cancelled.await.unwrap();
+                (asked.elapsed(), cancelled, accepted.await.unwrap())
+            })
+        );
+        let (took, cancelled, accepted) = answered.expect("the cancel was answered");
+        assert!(took < CANCEL_WAIT, "{took:?}");
+        assert_eq!(cancelled, None);
+        assert!(
+            matches!(accepted, Err(CustodyError::NoStep)),
+            "{accepted:?}"
+        );
+        assert_eq!(
+            executor.rpc().called("identity.cancelJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+    }
+
+    /// The same, for an accept sent while a wait for the join is out: the cancel answers both.
+    #[tokio::test]
+    async fn a_cancel_while_an_accept_beside_a_wait_stalls_answers_both() {
+        tokio::time::pause();
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "claimed" }));
+        executor
+            .rpc()
+            .answer("identity.acceptJoin", json!({ "accepted": true }));
+        executor
+            .rpc()
+            .delay("identity.acceptJoin", Duration::from_secs(3600));
+        executor
+            .rpc()
+            .answer("identity.cancelJoin", json!({ "cancelled": true }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let (_, answered) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(7200),
+                show_code_on(&executor, events, &vault, &address, &mut rx, &mut reply)
+            ),
+            tokio::time::timeout(Duration::from_secs(7200), async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                let (tx, waited) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::WaitJoin, tx))
+                    .unwrap();
+                let (tx, accepted) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::Accept, tx))
+                    .unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let asked = tokio::time::Instant::now();
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                let cancelled = cancelled.await.unwrap();
+                (
+                    asked.elapsed(),
+                    cancelled,
+                    waited.await.unwrap(),
+                    accepted.await.unwrap(),
+                )
+            })
+        );
+        let (took, cancelled, waited, accepted) = answered.expect("the cancel was answered");
+        assert!(took < CANCEL_WAIT, "{took:?}");
+        assert_eq!(cancelled, None);
+        assert!(matches!(waited, Err(CustodyError::NoStep)), "{waited:?}");
+        assert!(
+            matches!(accepted, Err(CustodyError::NoStep)),
+            "{accepted:?}"
+        );
+        assert_eq!(
+            executor.rpc().called("identity.cancelJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+    }
+
+    /// An accept that never answers ends with the claim's deadline, saying the link closed.
+    #[tokio::test]
+    async fn an_accept_that_stalls_ends_at_the_claims_deadline() {
+        tokio::time::pause();
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.acceptJoin", json!({ "accepted": true }));
+        executor
+            .rpc()
+            .delay("identity.acceptJoin", Duration::from_secs(100_000));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let asked = tokio::time::Instant::now();
+        let ((), accepted) = tokio::join!(
+            show_code_on(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                window.step(StepInput::Accept).await
+            }
+        );
+        let took = asked.elapsed();
+        assert!(
+            took <= Duration::from_secs(OFFER_TTL_S + CONFIRM_GRACE_S + 1),
+            "{took:?}"
+        );
+        assert!(
+            matches!(&accepted, Screen::Failed { message } if message.contains("didn't confirm in time")),
+            "{accepted:?}"
+        );
+    }
+
+    /// The main window asking for the state while a cancel waits on the executor does not hold
+    /// the cancel: one whose executor connection stalls is answered once the cancel was.
+    #[tokio::test]
+    async fn a_state_request_during_a_cancel_does_not_hold_the_cancel() {
+        // Accepts connections and never answers the WebSocket handshake.
+        let stalled = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = ExecutorAddress {
+            url: format!("http://{}", stalled.local_addr().unwrap()),
+            credential: Arc::from("x"),
+        };
+        // On the real clock: the stalled handshake is real I/O, which a paused clock does not
+        // advance past.
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        executor
+            .rpc()
+            .answer("identity.cancelJoin", json!({ "cancelled": true }));
+        executor
+            .rpc()
+            .delay("identity.cancelJoin", Duration::from_millis(200));
+        let claim = Claim {
+            offer_id: "o1".into(),
+            did: "did:scid:x".into(),
+            code: "AAA BBB".into(),
+            needs_accept: true,
+            deadline: CLOCK.now() + 300,
+            accepted: false,
+            confirmed: false,
+        };
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let (waiting_tx, waiting) = oneshot::channel();
+        let mut reply: Reply = Some(waiting_tx);
+        let (public_tx, _public) = oneshot::channel();
+        tx.send(Request::Public(public_tx)).unwrap();
+        // The state request is answered after the cancel, so the step itself is cut off here.
+        let (_, waited) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(3),
+                cancel_claim(
+                    &executor,
+                    Some(&claim),
+                    Cancelled::default(),
+                    &vault,
+                    &address,
+                    &mut rx,
+                    &mut reply,
+                )
+            ),
+            tokio::time::timeout(Duration::from_secs(2), waiting)
+        );
+        let waited = waited
+            .expect("the cancel was answered while the state request stalled")
+            .unwrap();
+        assert!(matches!(waited, Err(CustodyError::NoStep)), "{waited:?}");
+        drop(stalled);
     }
 
     /// A cancel that reaches the executor after the claim bound (409 `already-joined`) does not
