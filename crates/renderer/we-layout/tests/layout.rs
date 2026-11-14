@@ -22,7 +22,13 @@ impl Measure for TestMeasure {
         Size::new(avail.x.min(10.0), avail.y.min(10.0))
     }
 
-    fn measure_text(&self, _owner: &ResolvedNode, _style: &we_style::Style, _text: &str) -> Size {
+    fn measure_text(
+        &self,
+        _owner: &ResolvedNode,
+        _style: &we_style::Style,
+        _text: &str,
+        _avail: Size,
+    ) -> Size {
         Size::new(10.0, 10.0)
     }
 }

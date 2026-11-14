@@ -136,6 +136,28 @@ pub struct PartsSpec {
     pub parts: Vec<PartSpec>,
 }
 
+/// What a widget does with a node's resolved children — the answer
+/// [`Measure::text_children`] returns per node.
+///
+/// `Leaves` is the common case: text children become shrinkable text
+/// leaves laid out beside element children (a button's icon + label) and
+/// element children recurse. `Owned` absorbs the text children into the
+/// widget's own content — no spans are emitted; the widget measures and
+/// paints them itself (the `we-text` `this.text ?? <slot>` case, or a
+/// text-only `we-button`). `Suppressed` is the slot-suppression case: a
+/// `text` prop replaces *every* child (TS `this.text ? <span> : <slot>`)
+/// so none of them lays out at all.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextChildren {
+    /// Text children lay out as [`Ctx::Text`] leaves; element children recurse.
+    Leaves,
+    /// Text children are the widget's content — no leaves; element
+    /// children still lay out.
+    Owned,
+    /// Every child is suppressed — a prop replaced the whole slot.
+    Suppressed,
+}
+
 /// Tree state passed parent → item: caret side, leading indent, and the
 /// selected marker. Carried through layout (props live on `we-tree`, parts
 /// live on `we-tree-item`).
@@ -570,6 +592,7 @@ impl<'a> Builder<'a> {
         tree: &TreeCfg,
         parent_h_definite: bool,
         main_indefinite: bool,
+        tc: TextChildren,
     ) -> Option<TaffyId> {
         let mut kids = Vec::new();
         if let Some(pick) = &spec.pick {
@@ -581,16 +604,21 @@ impl<'a> Builder<'a> {
                 }
                 (Pick::Named(_), ResolvedChild::Text(_)) => false,
             }) {
-                if let Some(k) =
-                    self.child_node(node, child, tree, parent_h_definite, main_indefinite)
-                {
+                if let Some(k) = self.child_node(
+                    node,
+                    child,
+                    tree,
+                    parent_h_definite,
+                    main_indefinite,
+                    tc,
+                ) {
                     kids.push(k);
                 }
             }
         }
         for sub in &spec.parts {
             if let Some(k) =
-                self.part_node(owner, sub, node, tree, parent_h_definite, main_indefinite)
+                self.part_node(owner, sub, node, tree, parent_h_definite, main_indefinite, tc)
             {
                 kids.push(k);
             }
@@ -612,8 +640,10 @@ impl<'a> Builder<'a> {
         }
     }
 
-    /// A resolved child → a taffy node: nodes recurse, text becomes a leaf
-    /// measured by the galley.
+    /// A resolved child → a taffy node: nodes recurse; a text child becomes
+    /// a shrinkable leaf measured through the measure pass — unless the
+    /// owner's [`TextChildren`] answer absorbs or suppresses it.
+    #[allow(clippy::too_many_arguments)]
     fn child_node(
         &mut self,
         owner: &'a ResolvedNode,
@@ -621,25 +651,37 @@ impl<'a> Builder<'a> {
         tree: &TreeCfg,
         parent_h_definite: bool,
         main_indefinite: bool,
+        tc: TextChildren,
     ) -> Option<TaffyId> {
         match child {
             ResolvedChild::Node(node) => {
+                if tc == TextChildren::Suppressed {
+                    return None;
+                }
                 self.resolved_node(node, tree, parent_h_definite, main_indefinite)
             }
             ResolvedChild::Text(text) => {
-                // Text is measured in its owner's font — `layout_no_wrap`
-                // matches the paint path's single-line spans.
+                if tc != TextChildren::Leaves {
+                    return None;
+                }
+                // The span lays out like CSS anonymous flex text: `auto`
+                // size answered by the measure pass at whatever width is
+                // offered (so wrap/truncate see it), allowed to shrink, but
+                // never below the MinContent floor the frontend answers
+                // (the longest word — or the ellipsis when the owner
+                // truncates). The old leaf pinned max-content and refused
+                // to shrink, so a long title ran over the row's action.
                 let style = style_of(owner, self.scx);
-                let size = self.m.measure_text(owner, &style, text);
+                let min = self.m.measure_text(owner, &style, text, Size::ZERO);
                 Some(
                     self.tree
                         .new_leaf_with_context(
                             taffy::Style {
-                                size: taffy::Size {
-                                    width: taffy::Dimension::length(size.x),
-                                    height: taffy::Dimension::length(size.y),
+                                min_size: taffy::Size {
+                                    width: LengthPercentageAuto::length(min.x),
+                                    height: LengthPercentageAuto::auto(),
                                 },
-                                flex_shrink: 0.0,
+                                flex_shrink: 1.0,
                                 ..Default::default()
                             },
                             Ctx::Text(owner.id.clone(), text.clone()),
@@ -725,6 +767,10 @@ impl<'a> Builder<'a> {
             Ed::Percent(_) => parent_h_definite,
             _ => false,
         };
+        // What the widget does with the node's resolved children — text
+        // children may be the widget's own content (`Owned`) or dropped with
+        // the slot (`Suppressed`) instead of laying out as spans.
+        let tc = self.m.text_children(node);
         let mut spec = self.m.parts_spec(node);
         // `caret="end"` on the tree reorders the item's caret part to the row's
         // end; `lead` pads the row's left edge — part order/insets are
@@ -754,7 +800,15 @@ impl<'a> Builder<'a> {
                 spec.parts
                     .iter()
                     .filter_map(|part| {
-                        self.part_node(&node.id, part, node, &tree, h_definite, main_indefinite)
+                        self.part_node(
+                            &node.id,
+                            part,
+                            node,
+                            &tree,
+                            h_definite,
+                            main_indefinite,
+                            tc,
+                        )
                     })
                     .collect()
             }
@@ -765,7 +819,9 @@ impl<'a> Builder<'a> {
                 ) && !h_definite;
                 node.children
                     .iter()
-                    .filter_map(|c| self.child_node(node, c, &tree, h_definite, main_indefinite))
+                    .filter_map(|c| {
+                        self.child_node(node, c, &tree, h_definite, main_indefinite, tc)
+                    })
                     .collect()
             }
         };
@@ -791,18 +847,27 @@ impl<'a> Builder<'a> {
 }
 
 /// What a frontend supplies so [`layout`] can size the tree — the widget's
-/// parts breakdown, a leaf's intrinsic size, and a text run's single-line
-/// size. All answers are in the frontend's own unit (egui: px).
+/// parts breakdown, its answer for text children, a leaf's intrinsic size,
+/// and a text run's size. All answers are in the frontend's own unit
+/// (egui: px).
 pub trait Measure {
     /// The virtual chrome `node` needs laid out — `None` (the usual) lays
     /// children out directly.
     fn parts_spec(&self, node: &ResolvedNode) -> Option<PartsSpec>;
+    /// What `node`'s widget does with its resolved children — the default
+    /// leaves text children as spans and recurses element children.
+    fn text_children(&self, _node: &ResolvedNode) -> TextChildren {
+        TextChildren::Leaves
+    }
     /// The size a leaf wants in `avail` room, at the content box (padding
     /// and border land outside — taffy offers the content box).
     fn measure(&self, node: &ResolvedNode, style: &Style, avail: Size) -> Size;
-    /// A text child's single-line size in its owner's resolved style —
-    /// matches the paint path's single-line spans.
-    fn measure_text(&self, owner: &ResolvedNode, owner_style: &Style, text: &str) -> Size;
+    /// A text child's size in its owner's resolved style, in `avail` room.
+    /// `avail.x <= 0` is the MinContent query — the floor under the
+    /// shrinkable span: the longest unbreakable run, or the ellipsis when
+    /// the owner truncates.
+    fn measure_text(&self, owner: &ResolvedNode, owner_style: &Style, text: &str, avail: Size)
+        -> Size;
 }
 
 /// Lay out `root` inside `rect` — the frame calls this when the resolve
@@ -887,13 +952,14 @@ fn layout_impl(
             height: AvailableSpace::MinContent,
         },
         |inputs, _taffy_id, ctx, style| {
-            let node = match ctx {
-                Some(Ctx::Node(id)) => nodes.get(id).copied(),
+            let measured = match ctx {
+                Some(Ctx::Node(id)) => nodes.get(id).map(|n| (*n, None)),
+                Some(Ctx::Text(id, text)) => nodes.get(id).map(|n| (*n, Some(text.clone()))),
                 _ => None,
             };
-            let Some(node) = node else {
-                // Text spans and decorative parts pin their size in the
-                // style — a zero measure leaves those sizes to rule.
+            let Some((node, text)) = measured else {
+                // Decorative parts pin their size in the style — a zero
+                // measure leaves those sizes to rule.
                 return taffy::compute::compute_leaf_layout(
                     inputs,
                     style,
@@ -908,7 +974,10 @@ fn layout_impl(
                 |_, _| 0.0,
                 |_known, space| {
                     let avail = Size::new(offered(space.width), offered(space.height));
-                    let s = m.measure(node, &wstyle, avail);
+                    let s = match &text {
+                        Some(t) => m.measure_text(node, &wstyle, t, avail),
+                        None => m.measure(node, &wstyle, avail),
+                    };
                     taffy::Size {
                         width: finite(s.x),
                         height: finite(s.y),

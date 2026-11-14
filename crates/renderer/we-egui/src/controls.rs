@@ -4,7 +4,7 @@ use we_template::ResolvedNode;
 
 use crate::defaults::{view_of, FONT_PX, ROOT_PX};
 use crate::props;
-use crate::{MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
+use crate::{MeasureCx, PaintCx, Rect, Size, TextChildren, Widget, WidgetKind};
 
 /// `we-button` — variant + size come through `Style`; `disabled`, `loading`,
 /// `square`, `href`, `expanded`, `label` are widget props. Children (icon +
@@ -48,13 +48,21 @@ impl Widget for Button {
     fn kind(&self) -> WidgetKind {
         WidgetKind::Container
     }
+    /// `this.text ? <span> : <slot>`: a `text` prop replaces every child
+    /// (the icon too); text-only children are the painted label; element
+    /// children flow in the button's own row.
+    fn text_children(&self, node: &ResolvedNode) -> TextChildren {
+        if props::prop_text(node, "text").is_some() {
+            TextChildren::Suppressed
+        } else if props::has_node_children(node) {
+            TextChildren::Leaves
+        } else {
+            TextChildren::Owned
+        }
+    }
     fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, avail: Size) -> Size {
-        // Only the text child participates — a child node flows itself.
-        let has_node_children = node
-            .children
-            .iter()
-            .any(|c| matches!(c, we_template::ResolvedChild::Node(_)));
-        if has_node_children {
+        // `Leaves` implies element children — a container, not a leaf.
+        if matches!(self.text_children(node), TextChildren::Leaves) {
             return Size::ZERO;
         }
         Self::measure_label(node, style, cx.ctx, avail.x)
@@ -81,16 +89,14 @@ impl Widget for Button {
             ROOT_PX,
             view.viewport,
         );
-        // Prop-text buttons paint their label centered; node children are
-        // painted by the walk inside the button's own row layout. Truncation
-        // answers at the content box — the padding is not label room.
-        let has_node_children = node
-            .children
-            .iter()
-            .any(|c| matches!(c, we_template::ResolvedChild::Node(_)));
+        // Owned/suppressed buttons paint their label centered; `Leaves`
+        // children are painted by the walk inside the button's own row
+        // layout. Truncation answers at the content box — the padding is
+        // not label room.
+        let leaves = matches!(self.text_children(node), TextChildren::Leaves);
         // `loading && square` shows the spinner alone — the square has no
         // room for a label beside it.
-        let show_label = !(has_node_children || label.is_empty() || loading && square);
+        let show_label = !(leaves || label.is_empty() || loading && square);
         let spin_w = if loading {
             SPINNER + if show_label { SPINNER_GAP } else { 0.0 }
         } else {

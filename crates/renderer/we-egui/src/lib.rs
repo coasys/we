@@ -57,7 +57,7 @@ pub use text::{
 };
 pub use tree::{Tree, TreeItem};
 pub use unknown::UnknownWidget;
-pub use we_layout::{Direction, PartSpec, PartsSpec, Pick, TreeCfg};
+pub use we_layout::{Direction, PartSpec, PartsSpec, Pick, TextChildren, TreeCfg};
 
 /// `style_of` for callers (the gallery's swatches, tests).
 pub use defaults::style_of;
@@ -212,5 +212,12 @@ pub trait Widget: Send + Sync {
     /// children group. `None` (the default) → children inside `rect`.
     fn parts_spec(&self, _node: &ResolvedNode) -> Option<PartsSpec> {
         None
+    }
+    /// What the widget does with the node's text children — the default
+    /// leaves them as spans laid out beside element children. `Owned` makes
+    /// them the widget's own galley (`we-text`'s `text ?? <slot>` content);
+    /// `Suppressed` drops every child (a `text` prop replaces the slot).
+    fn text_children(&self, _node: &ResolvedNode) -> TextChildren {
+        TextChildren::Leaves
     }
 }

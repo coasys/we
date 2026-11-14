@@ -8,7 +8,7 @@ use we_template::ResolvedNode;
 
 use crate::defaults::{view_of, FONT_PX, ROOT_PX};
 use crate::props;
-use crate::{MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
+use crate::{MeasureCx, PaintCx, Rect, Size, TextChildren, Widget, WidgetKind};
 
 // ── date math ────────────────────────────────────────────────────────────
 
@@ -326,6 +326,18 @@ impl Widget for Text {
     fn kind(&self) -> WidgetKind {
         WidgetKind::Leaf
     }
+    /// `this.text ?? <slot>`: a `text` prop replaces every child; only text
+    /// children are the galley's content; element children flow beside
+    /// their text spans.
+    fn text_children(&self, node: &ResolvedNode) -> TextChildren {
+        if props::prop_text(node, "text").is_some() {
+            TextChildren::Suppressed
+        } else if props::has_node_children(node) {
+            TextChildren::Leaves
+        } else {
+            TextChildren::Owned
+        }
+    }
     fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, avail: Size) -> Size {
         measure_text(
             cx,
@@ -338,25 +350,27 @@ impl Widget for Text {
         )
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
-        let view = view_of(cx.ui.ctx());
-        // The galley lives in the content box — inside `rect`'s padding and
-        // border (the same box `measure` wrapped it at).
-        let content_rect = props::content_rect(rect, style, FONT_PX, ROOT_PX, view);
         let content = Self::content(node, style);
-        let g = text_job(
-            &content,
-            style,
-            cx.ui.ctx(),
-            content_rect.width(),
-            props::prop_bool(node, "truncate"),
-            props::prop_num(node, "lines").map(|n| n.max(1.0) as usize),
-        );
-        cx.ui.painter().add(egui::Shape::galley(
-            content_rect.min,
-            g,
-            egui::Color32::PLACEHOLDER,
-        ));
-        underline(cx, style, content_rect);
+        if !matches!(self.text_children(node), TextChildren::Leaves) {
+            let view = view_of(cx.ui.ctx());
+            // The galley lives in the content box — inside `rect`'s padding
+            // and border (the same box `measure` wrapped it at).
+            let content_rect = props::content_rect(rect, style, FONT_PX, ROOT_PX, view);
+            let g = text_job(
+                &content,
+                style,
+                cx.ui.ctx(),
+                content_rect.width(),
+                props::prop_bool(node, "truncate"),
+                props::prop_num(node, "lines").map(|n| n.max(1.0) as usize),
+            );
+            cx.ui.painter().add(egui::Shape::galley(
+                content_rect.min,
+                g,
+                egui::Color32::PLACEHOLDER,
+            ));
+            underline(cx, style, content_rect);
+        }
         cx.label(rect, &content);
     }
 }
@@ -375,6 +389,15 @@ impl Widget for Link {
     }
     fn kind(&self) -> WidgetKind {
         WidgetKind::Container
+    }
+    /// A text-only link's children are its galley; with element children
+    /// the text runs stay spans inside it (link.ts renders `<slot>` only).
+    fn text_children(&self, node: &ResolvedNode) -> TextChildren {
+        if props::has_node_children(node) {
+            TextChildren::Leaves
+        } else {
+            TextChildren::Owned
+        }
     }
     fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, avail: Size) -> Size {
         measure_text(cx, node, style, avail, &props::text_of(node), false, None)
@@ -402,7 +425,13 @@ impl Widget for Link {
                 cx.ui.ctx().open_url(egui::OpenUrl::new_tab(href));
             }
         }
-        if !label.is_empty() {
+        // The galley is the link's own text — an absorbed text child or a
+        // `text`/`label` prop; under `Leaves` the span paints it instead.
+        let prop_text = props::prop_text(node, "text").is_some()
+            || props::prop_text(node, "label").is_some()
+            || props::prop_text(node, "value").is_some();
+        let own = !matches!(self.text_children(node), TextChildren::Leaves);
+        if !label.is_empty() && (own || prop_text) {
             let content_rect =
                 props::content_rect(rect, &eff, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()));
             let g = text_job(&label, &eff, cx.ui.ctx(), content_rect.width(), false, None);

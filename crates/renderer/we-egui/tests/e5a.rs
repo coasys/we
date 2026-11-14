@@ -321,6 +321,176 @@ fn padded_text_measures_and_paints_the_content_box() {
     );
 }
 
+/// A `we-text` whose content arrives as a text *child* — the bundle's
+/// dominant shape (TS `this.text ?? <slot>`), not the `text` prop.
+fn child_text_node(id: &str, text: &str, props: &[(&str, Value)]) -> ResolvedNode {
+    let mut n = node("we-text", id, props);
+    n.children.push(ResolvedChild::Text(Arc::from(text)));
+    n
+}
+
+/// Layout + paint `root`; returns the layout and `(pos, text)` of every
+/// painted galley.
+fn painted_galley_texts(root: &ResolvedNode, width: f32) -> (Layout, Vec<(egui::Pos2, String)>) {
+    let registry = Registry::with_builtins();
+    let tokens = tokens();
+    let scx = StyleCx {
+        tokens: &tokens,
+        ..StyleCx::empty()
+    };
+    let out = std::cell::RefCell::new(None);
+    let mut harness = egui_kittest::Harness::new_ui(|ui| {
+        let ctx = ui.ctx().clone();
+        let cx = MeasureCx::new(&ctx);
+        let lay = layout(
+            &cx,
+            &scx,
+            &registry,
+            root,
+            egui::Rect::from_min_size(ui.cursor().min, egui::vec2(width, 800.0)),
+        );
+        let mut events = Vec::new();
+        let mut edit = EditState::default();
+        paint(ui, &registry, &scx, root, &lay, &mut events, &mut edit, 0.0);
+        let layer = ui.layer_id();
+        let galleys: Vec<(egui::Pos2, String)> = ctx.graphics(|g| {
+            g.get(layer)
+                .map(|list| {
+                    list.all_entries()
+                        .filter_map(|cs| match &cs.shape {
+                            egui::Shape::Text(t) => Some((t.pos, t.galley.text().to_string())),
+                            _ => None,
+                        })
+                        .collect()
+                })
+                .unwrap_or_default()
+        });
+        *out.borrow_mut() = Some((lay, galleys));
+    });
+    harness.run();
+    let out = out.borrow_mut().take().expect("rendered");
+    out
+}
+
+/// A1 — the same words via the `text` prop and via a text child must lay out
+/// identically (TS `this.text ?? <slot>`: the child is the content, not an
+/// anonymous box beside it).
+#[test]
+fn child_text_matches_the_text_prop_geometry() {
+    let mut col = node("Column", "c", &[("width", s("120px"))]);
+    child(
+        &mut col,
+        node(
+            "we-text",
+            "c/a",
+            &[("text", s("wrap wrap wrap wrap wrap wrap"))],
+        ),
+    );
+    child(
+        &mut col,
+        child_text_node("c/b", "wrap wrap wrap wrap wrap wrap", &[]),
+    );
+    let layout = lay_out(&col, 400.0);
+    let a = layout.rects.get(&NodeId::from("c/a")).copied().unwrap();
+    let b = layout.rects.get(&NodeId::from("c/b")).copied().unwrap();
+    assert!(
+        (a.size() - b.size()).length() < 0.5,
+        "child text must lay out like the text prop: {a:?} vs {b:?}"
+    );
+    // The child text is the widget's own galley — no second span leaks into
+    // `layout.texts` (that second owner is what double-painted).
+    assert!(
+        !layout
+            .texts
+            .iter()
+            .any(|t| t.node == NodeId::from("c/b")),
+        "absorbed child text must not also emit a span: {:?}",
+        layout
+            .texts
+            .iter()
+            .map(|t| (&t.node, &t.text))
+            .collect::<Vec<_>>()
+    );
+}
+
+/// A1 — `truncate` on a `we-text` with a text child must clamp at the row's
+/// offered width (a raw nonshrinking span runs over the row and covers the
+/// action beside it).
+#[test]
+fn truncated_child_text_stays_inside_a_narrow_row() {
+    let mut row = node(
+        "Row",
+        "r",
+        &[("direction", s("row")), ("width", s("200px"))],
+    );
+    child(
+        &mut row,
+        child_text_node(
+            "r/t",
+            "a much longer line than the row allows",
+            &[("truncate", Value::Bool(true))],
+        ),
+    );
+    child(&mut row, node("we-button", "r/b", &[("text", s("act"))]));
+    let layout = lay_out(&row, 400.0);
+    let t = layout.rects.get(&NodeId::from("r/t")).copied().unwrap();
+    let b = layout.rects.get(&NodeId::from("r/b")).copied().unwrap();
+    assert!(
+        t.max.x <= 200.5,
+        "truncated child text must not overrun the 200px row: {t:?}"
+    );
+    assert!(
+        t.max.x <= b.min.x + 0.5,
+        "the title must not cover the action: {t:?} vs {b:?}"
+    );
+}
+
+/// A1 — `lines: 2` clamps child text the way `lines_clamp_holds_two_rows`
+/// clamps the prop path.
+#[test]
+fn lines_clamp_applies_to_child_text() {
+    let mut col = node("Column", "c", &[("width", s("120px"))]);
+    child(
+        &mut col,
+        child_text_node(
+            "c/t",
+            "wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap wrap",
+            &[("lines", Value::Num(2.0))],
+        ),
+    );
+    let layout = lay_out(&col, 400.0);
+    let t = layout.rects.get(&NodeId::from("c/t")).copied().unwrap();
+    assert!(
+        t.height() > 30.0 && t.height() < 60.0,
+        "lines: 2 on child text must wrap and clamp at two rows: {t:?}"
+    );
+}
+
+/// A1 — the child text paints exactly once, and transformed: `uppercase`
+/// turns it into the galley TS renders, and only one galley carries it.
+#[test]
+fn child_text_paints_once_and_transformed() {
+    let mut col = node("Column", "c", &[]);
+    child(
+        &mut col,
+        child_text_node("c/t", "a child label", &[("uppercase", Value::Bool(true))]),
+    );
+    let (_layout, galleys) = painted_galley_texts(&col, 400.0);
+    let hits: Vec<_> = galleys
+        .iter()
+        .filter(|(_, t)| t.to_lowercase().contains("a child label"))
+        .collect();
+    assert_eq!(
+        hits.len(),
+        1,
+        "child text must paint once — the widget's galley, not a raw span: {galleys:?}"
+    );
+    assert!(
+        hits[0].1.contains("A CHILD LABEL"),
+        "uppercase must reach the painted galley: {galleys:?}"
+    );
+}
+
 #[test]
 fn lane_keeps_its_authored_width() {
     let mut row = node(

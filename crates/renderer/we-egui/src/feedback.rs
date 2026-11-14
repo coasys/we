@@ -7,7 +7,7 @@ use we_template::ResolvedNode;
 
 use crate::defaults::{view_of, FONT_PX, ROOT_PX};
 use crate::props;
-use crate::{MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
+use crate::{MeasureCx, PaintCx, Rect, Size, TextChildren, Widget, WidgetKind};
 
 // ── we-tooltip ───────────────────────────────────────────────────────────
 
@@ -100,6 +100,15 @@ impl Widget for Badge {
     fn kind(&self) -> WidgetKind {
         WidgetKind::Leaf
     }
+    /// Text-only children are the pill's galley (badge.ts renders `<slot>`);
+    /// with element children the text runs stay spans.
+    fn text_children(&self, node: &ResolvedNode) -> TextChildren {
+        if props::has_node_children(node) {
+            TextChildren::Leaves
+        } else {
+            TextChildren::Owned
+        }
+    }
     fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, avail: Size) -> Size {
         // The content box is the galley — layout adds the padding outside it.
         crate::text::text_job(&Self::text(node), style, cx.ctx, avail.x, true, None).size()
@@ -108,12 +117,21 @@ impl Widget for Badge {
         crate::containers::paint_container(cx, node, style, rect);
         let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()));
         let text = Self::text(node);
-        let g = crate::text::text_job(&text, style, cx.ui.ctx(), content.width(), true, None);
-        // The galley centers in the pill's content box.
-        let pos = content.center() - g.size() / 2.0;
-        cx.ui
-            .painter()
-            .add(egui::Shape::galley(pos, g, egui::Color32::PLACEHOLDER));
+        // The pill's galley is its own content — the absorbed child text or
+        // prop-supplied text; under `Leaves` the span paints it instead.
+        let own = !matches!(self.text_children(node), TextChildren::Leaves)
+            || node.props.contains_key("count")
+            || props::prop_text(node, "text").is_some()
+            || props::prop_text(node, "label").is_some()
+            || props::prop_text(node, "value").is_some();
+        if !text.is_empty() && own {
+            let g = crate::text::text_job(&text, style, cx.ui.ctx(), content.width(), true, None);
+            // The galley centers in the pill's content box.
+            let pos = content.center() - g.size() / 2.0;
+            cx.ui
+                .painter()
+                .add(egui::Shape::galley(pos, g, egui::Color32::PLACEHOLDER));
+        }
         cx.label(rect, &text);
     }
 }
@@ -137,6 +155,15 @@ impl Widget for Tag {
     fn kind(&self) -> WidgetKind {
         WidgetKind::Leaf
     }
+    /// Text-only children are the pill's galley (tag.ts renders `<slot>`);
+    /// with element children the text runs stay spans.
+    fn text_children(&self, node: &ResolvedNode) -> TextChildren {
+        if props::has_node_children(node) {
+            TextChildren::Leaves
+        } else {
+            TextChildren::Owned
+        }
+    }
     fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, avail: Size) -> Size {
         let mut s =
             crate::text::text_job(&Self::text(node), style, cx.ctx, avail.x, true, None).size();
@@ -153,17 +180,26 @@ impl Widget for Tag {
         crate::containers::paint_container(cx, node, style, rect);
         let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()));
         let text = Self::text(node);
-        let g = crate::text::text_job(&text, style, cx.ui.ctx(), content.width(), true, None);
+        // The tag's galley is its own content — the absorbed child text or
+        // prop-supplied text; under `Leaves` the span paints it instead.
+        let own = !matches!(self.text_children(node), TextChildren::Leaves)
+            || props::prop_text(node, "text").is_some()
+            || props::prop_text(node, "label").is_some()
+            || props::prop_text(node, "value").is_some();
+        let g = (own && !text.is_empty())
+            .then(|| crate::text::text_job(&text, style, cx.ui.ctx(), content.width(), true, None));
         let dismissible = props::prop_bool(node, "dismissible");
         // Text + optional × centered as a pair inside the content box.
-        let left = content.center().x - (g.size().x + if dismissible { 14.0 } else { 0.0 }) / 2.0;
-        let gy = content.center().y - g.size().y / 2.0;
-        let gw = g.size().x;
-        cx.ui.painter().add(egui::Shape::galley(
-            egui::pos2(left, gy),
-            g,
-            egui::Color32::PLACEHOLDER,
-        ));
+        let gw = g.as_ref().map(|g| g.size().x).unwrap_or(0.0);
+        let left = content.center().x - (gw + if dismissible { 14.0 } else { 0.0 }) / 2.0;
+        let gy = content.center().y - g.as_ref().map(|g| g.size().y).unwrap_or(0.0) / 2.0;
+        if let Some(g) = g {
+            cx.ui.painter().add(egui::Shape::galley(
+                egui::pos2(left, gy),
+                g,
+                egui::Color32::PLACEHOLDER,
+            ));
+        }
         if dismissible {
             let x_rect = Rect::from_center_size(
                 egui::pos2(left + gw + 8.0 + 5.0, content.center().y),

@@ -299,19 +299,27 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
                 if let Some(span) = text_span(w.layout, &node.id, t) {
                     let mut p = w.ui.painter().clone();
                     p.set_clip_rect(w.clip.unwrap_or(w.base_clip));
-                    let font = props::font_id(
+                    // The same galley layout measured: wrapped at the span's
+                    // width, the owner's transform and `truncate`/`lines`
+                    // clamps applied — never a raw overflow line.
+                    let text = props::transform_text(
                         &style,
-                        crate::defaults::FONT_PX,
-                        crate::defaults::ROOT_PX,
-                        w.scx.viewport,
+                        t,
+                        props::prop_bool(node, "uppercase"),
                     );
-                    p.text(
+                    let g = crate::text::text_job(
+                        &text,
+                        &style,
+                        w.ui.ctx(),
+                        span.width().max(1.0),
+                        props::prop_bool(node, "truncate"),
+                        props::prop_num(node, "lines").map(|n| n.max(1.0) as usize),
+                    );
+                    p.add(egui::Shape::galley(
                         span.translate(-w.offset).min,
-                        egui::Align2::LEFT_TOP,
-                        t.as_ref(),
-                        font,
-                        props::text_color(&style, w.ui),
-                    );
+                        g,
+                        egui::Color32::PLACEHOLDER,
+                    ));
                 }
             }
         }
@@ -536,19 +544,20 @@ fn overlay_contents(
         if span.node != node.id {
             continue;
         }
-        let font = props::font_id(
+        let text = props::transform_text(&style, &span.text, props::prop_bool(node, "uppercase"));
+        let g = crate::text::text_job(
+            &text,
             &style,
-            crate::defaults::FONT_PX,
-            crate::defaults::ROOT_PX,
-            w.scx.viewport,
+            inner.ui.ctx(),
+            span.rect.width().max(1.0),
+            props::prop_bool(node, "truncate"),
+            props::prop_num(node, "lines").map(|n| n.max(1.0) as usize),
         );
-        inner.ui.painter().text(
+        inner.ui.painter().add(egui::Shape::galley(
             span.rect.min,
-            egui::Align2::LEFT_TOP,
-            span.text.as_ref(),
-            font,
-            props::text_color(&style, inner.ui.ctx()),
-        );
+            g,
+            egui::Color32::PLACEHOLDER,
+        ));
     }
     for child in &node.children {
         if let ResolvedChild::Node(n) = child {

@@ -60,6 +60,14 @@ pub(crate) fn prop_list<'a>(node: &'a ResolvedNode, key: &str) -> Option<&'a Vec
     }
 }
 
+/// Any element child (not text) — the "real children" check the
+/// text-painting widgets share.
+pub(crate) fn has_node_children(node: &ResolvedNode) -> bool {
+    node.children
+        .iter()
+        .any(|c| matches!(c, we_template::ResolvedChild::Node(_)))
+}
+
 /// The display text: `text`, then `label`, then `value`, then concatenated
 /// text children — what the primitives render in that order.
 pub(crate) fn text_of(node: &ResolvedNode) -> String {

@@ -66,16 +66,53 @@ impl<'a> we_layout::Measure for EguiMeasure<'a> {
         we_layout::Size::new(s.x, s.y)
     }
 
-    fn measure_text(&self, _owner: &ResolvedNode, style: &Style, text: &str) -> we_layout::Size {
-        // Text is measured in its owner's font — `layout_no_wrap` matches the
-        // paint path's single-line spans.
+    fn text_children(&self, node: &ResolvedNode) -> we_layout::TextChildren {
+        self.registry.widget_for(&node.ty).text_children(node)
+    }
+
+    fn measure_text(
+        &self,
+        owner: &ResolvedNode,
+        style: &Style,
+        text: &str,
+        avail: we_layout::Size,
+    ) -> we_layout::Size {
+        let text = crate::props::transform_text(
+            style,
+            text,
+            crate::props::prop_bool(owner, "uppercase"),
+        );
+        let truncate = crate::props::prop_bool(owner, "truncate");
+        let lines = crate::props::prop_num(owner, "lines").map(|n| n.max(1.0) as usize);
         let font = crate::props::font_id(style, FONT_PX, ROOT_PX, self.scx.viewport);
-        let galley = self
-            .cx
-            .ctx
-            .fonts_mut(|f| f.layout_no_wrap(text.to_string(), font, egui::Color32::WHITE));
-        let size = galley.size();
-        we_layout::Size::new(size.x, size.y)
+        if avail.x <= 0.0 {
+            // MinContent: CSS's automatic minimum — the longest unbreakable
+            // run, or the ellipsis when the owner truncates.
+            let probe = if truncate {
+                "…".to_string()
+            } else {
+                text.split_whitespace()
+                    .max_by(|a, b| a.len().cmp(&b.len()))
+                    .unwrap_or("")
+                    .to_string()
+            };
+            let g = self
+                .cx
+                .ctx
+                .fonts_mut(|f| f.layout_no_wrap(probe, font, egui::Color32::WHITE));
+            return we_layout::Size::new(g.size().x, g.size().y);
+        }
+        // The same galley `paint` draws: wrapped at the offered width, the
+        // owner's transform and `truncate`/`lines` clamps applied.
+        let g = crate::text::text_job(
+            &text,
+            style,
+            self.cx.ctx,
+            avail.x,
+            truncate,
+            lines,
+        );
+        we_layout::Size::new(g.size().x, g.size().y)
     }
 }
 
