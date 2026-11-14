@@ -5,7 +5,7 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 use serde_json::json;
-use we_expr::{eval, parse, CallableRef, Env, MapEnv, Value};
+use we_expr::{eval, parse, CallableRef, Env, MapEnv, MapNamespace, Value};
 
 fn obj(entries: &[(&str, Value)]) -> Value {
     let mut m: IndexMap<Arc<str>, Value> = IndexMap::new();
@@ -592,4 +592,23 @@ fn p3_11_parse_cache_is_bounded() {
         let _ = cache.parse(&format!("x{i}"));
     }
     assert!(cache.len() <= 4000, "cache grew to {}", cache.len());
+}
+
+/// A host function's result settles only at a value boundary — TS returns
+/// the raw call result, so a namespace it hands back can still be
+/// traversed. `lookup().x` is 42 in TS.
+#[test]
+fn p3_12_host_result_is_not_settled_early() {
+    let env = MapEnv::new().with_function("lookup", |_| {
+        Value::namespace(MapNamespace::new(IndexMap::from([("x".into(), 42.into())])))
+    });
+    assert_eq!(
+        eval(&parse("lookup().x").unwrap(), &env).to_json(),
+        json!(42)
+    );
+    // In a value position the same namespace still settles to undefined.
+    assert_eq!(
+        eval(&parse("lookup()").unwrap(), &env).to_json(),
+        json!({"$undefined": true})
+    );
 }

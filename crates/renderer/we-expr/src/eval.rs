@@ -350,12 +350,14 @@ fn same_value_zero(a: &Value, b: &Value) -> bool {
 }
 
 /// The call dispatcher — a built-in first, then the environment's `call`, as
-/// `callFunction` in `evaluate.ts`.
+/// `callFunction` in `evaluate.ts`. The result is NOT settled here: a
+/// namespace a host function returns stays traversable through `.`/`[]` —
+/// settle happens at the value boundaries above, as `evaluate.ts` does.
 fn call_function(callee: &str, args: &[Value], env: &dyn Env) -> Value {
     if let Some(f) = crate::functions::lookup(callee) {
         f(args, env)
     } else {
-        env.call(callee, args).settle()
+        env.call(callee, args)
     }
 }
 
