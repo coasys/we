@@ -2321,8 +2321,9 @@ fn layout_impl(
 /// The walk carries a visible window: a descendant that clips or
 /// scrolls on an axis (`overflow: hidden|clip|auto|scroll`) bounds its
 /// subtree's visible reach on that axis to its own box — inner overflow
-/// is the inner scroller's own extent, never an ancestor's. `node`
-/// bounds nothing: this *is* its scrollable extent.
+/// is the inner scroller's own extent, never an ancestor's. A box that
+/// clips nothing never prunes its subtree, even outside the window.
+/// `node` bounds nothing: this *is* its scrollable extent.
 fn scroll_content_rect(out: &Layout, node: &ResolvedNode) -> Option<Rect> {
     let mut acc: Option<Rect> = None;
     fn union(acc: &mut Option<Rect>, r: Rect) {
@@ -2375,12 +2376,23 @@ fn scroll_content_rect(out: &Layout, node: &ResolvedNode) -> Option<Rect> {
         for child in &n.children {
             match child {
                 ResolvedChild::Node(c) => {
-                    let cr = match out.rects.get(&c.id).and_then(|r| intersect(*r, window)) {
-                        Some(r) => r,
-                        None => continue,
+                    let Some(r) = out.rects.get(&c.id).copied() else {
+                        continue;
                     };
-                    union(&mut acc, cr);
-                    stack.push((c, bound(out, &c.id, cr, window)));
+                    // Each box contributes only what the window shows…
+                    if let Some(cr) = intersect(r, window) {
+                        union(&mut acc, cr);
+                    }
+                    // …but a box that clips nothing passes the window on
+                    // unchanged even when its own rect misses it: an
+                    // absolute or overflowing descendant can reach back
+                    // in. Only a clipping box bounds its subtree, by its
+                    // full rect on its clipped axes; an empty window
+                    // means nothing below can show.
+                    let w = bound(out, &c.id, r, window);
+                    if w.min.x <= w.max.x && w.min.y <= w.max.y {
+                        stack.push((c, w));
+                    }
                 }
                 ResolvedChild::Text(_) => {}
             }

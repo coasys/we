@@ -1307,6 +1307,85 @@ fn scroll_inner_consumes_then_chains_to_parent() {
     );
 }
 
+/// R5 — a visible-overflow box that lies outside a clip window can still
+/// hold a descendant that reaches back into it. Here a Y-clipped 100px
+/// wrapper holds a box at y=150 whose absolute child sits at y=50 and
+/// runs 1000px wide: visible through the wrapper, so the outer
+/// X-scroller must be able to reach it. Pruning the y=150 box (its own
+/// rect misses the window, but it clips nothing) dropped the child.
+#[test]
+fn scroll_extent_keeps_overflow_reentering_a_clip_window() {
+    let mut outer = node(
+        "Column",
+        "o",
+        &[
+            ("width", Value::Num(200.0)),
+            ("height", Value::Num(300.0)),
+            ("overflowX", s("auto")),
+        ],
+    );
+    let mut wrap = node(
+        "Column",
+        "o/w",
+        &[
+            ("height", Value::Num(100.0)),
+            ("overflowY", s("hidden")),
+            ("flexShrink", Value::Num(0.0)),
+        ],
+    );
+    child(
+        &mut wrap,
+        node(
+            "Column",
+            "o/w/sp",
+            &[
+                ("height", Value::Num(150.0)),
+                ("flexShrink", Value::Num(0.0)),
+            ],
+        ),
+    );
+    let mut mid = node(
+        "Column",
+        "o/w/m",
+        &[
+            ("height", Value::Num(20.0)),
+            ("position", s("relative")),
+            ("flexShrink", Value::Num(0.0)),
+        ],
+    );
+    child(
+        &mut mid,
+        node(
+            "Column",
+            "o/w/m/a",
+            &[
+                ("position", s("absolute")),
+                ("top", s("-100px")),
+                ("left", Value::Num(0.0)),
+                ("width", Value::Num(1000.0)),
+                ("height", Value::Num(20.0)),
+            ],
+        ),
+    );
+    child(&mut wrap, mid);
+    child(&mut outer, wrap);
+    let lay = lay_out(&outer, 400.0);
+    let o = *lay.rects.get(&NodeId::from("o")).unwrap();
+    let a = *lay.rects.get(&NodeId::from("o/w/m/a")).unwrap();
+    let w = *lay.rects.get(&NodeId::from("o/w")).unwrap();
+    assert!(
+        a.min.y >= w.min.y && a.max.y <= w.max.y && a.max.x > o.max.x + 500.0,
+        "fixture: the absolute child is inside the wrapper's y window and wide ({a:?} in {w:?})"
+    );
+    let extent = lay.scroll_content.get(&NodeId::from("o")).unwrap();
+    assert!(
+        (extent.max.x - a.max.x).abs() < 1.0,
+        "the visible re-entering overflow reaches the outer extent: {} vs {}",
+        extent.max.x,
+        a.max.x
+    );
+}
+
 /// F3 — the outer scrollable extent must stop at the inner scroller's
 /// viewport: content the inner clips is the inner's own scroll room,
 /// not the outer's. With the leaked union the outer extent includes the
