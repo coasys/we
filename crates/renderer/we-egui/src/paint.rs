@@ -71,11 +71,14 @@ pub fn paint(
         base_parts,
         parts_buf: None,
         overlays: Vec::new(),
+        overlay_stack: Vec::new(),
+        frame: std::rc::Rc::new(std::cell::RefCell::new(Vec::new())),
         inh: None,
         hits: crate::HitLog::default(),
     };
     paint_node(&mut w, root);
     paint_overlays(&mut w);
+    finish_overlays(&mut w);
 }
 
 /// The walk's shared state — everything but the node being painted.
@@ -103,8 +106,15 @@ struct Walk<'a> {
     /// `Overlay` nodes met in the walk, in tree order — painted after it.
     /// Each entry carries the node's *parent* style context (what `w.inh`
     /// held at encounter) so the deferred pass recomputes the same
-    /// effective style.
-    overlays: Vec<(ResolvedNode, Option<Style>)>,
+    /// effective style, and the overlay ancestor chain (outermost first)
+    /// the dismissal pass uses to shield parents from child-popup clicks.
+    overlays: Vec<(ResolvedNode, Option<Style>, Vec<NodeId>)>,
+    /// The chain of overlays this walk paints inside — the entry's own id
+    /// appended when `overlay_contents` recurses.
+    overlay_stack: Vec<NodeId>,
+    /// Every overlay painted this frame, DFS order — the dismissal pass
+    /// reads it once all of them exist (`Rc` so inner walks share it).
+    frame: std::rc::Rc<std::cell::RefCell<Vec<FrameOverlay>>>,
     /// The parent's computed style — text fields inherit down the walk
     /// and `opacity` composes (`defaults::effective` merges them; the
     /// builder's measure pass applies the same rule).
@@ -112,6 +122,25 @@ struct Walk<'a> {
     /// Interactive hit surface reported by widgets so far — an overlay
     /// trigger's activation is read from it after the subtree paints.
     hits: crate::HitLog,
+}
+
+/// One overlay that painted this frame — what the dismissal pass needs:
+/// its rect, its trigger anchor, its overlay ancestry (`stack`, outermost
+/// first) and how a dismiss reaches it.
+struct FrameOverlay {
+    rect: egui::Rect,
+    /// The trigger rect — clicks on it toggle, never dismiss.
+    anchor: Option<egui::Rect>,
+    /// Overlay ancestor ids (outermost first) — a click inside a painted
+    /// descendant is inside this overlay's logical containment, matching
+    /// the DOM where the child panel lives inside the parent's tree.
+    stack: Vec<NodeId>,
+    /// `close`/`onClose` the node declared, resolved once at record time.
+    close: Option<&'static str>,
+    /// A modal closes only through its handler (its `open` is always
+    /// prop-driven); popups also carry an internal flag.
+    modal: bool,
+    id: NodeId,
 }
 
 /// `rect` clipped on the axes `axes` marks — the other axis unbounded.
@@ -354,7 +383,8 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
     }
     let widget = w.registry.widget_for(&node.ty);
     if widget.kind() == WidgetKind::Overlay {
-        w.overlays.push((node.clone(), w.inh.clone()));
+        w.overlays
+            .push((node.clone(), w.inh.clone(), w.overlay_stack.clone()));
     }
     w.ancestors.push(node.id.clone());
 
@@ -478,11 +508,24 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
     w.ancestors.pop();
 }
 
-/// `true` when the overlay should paint: a controlled `open` prop wins, else
-/// the widget's internal flag in [`EditState`].
-fn overlay_open(w: &Walk<'_>, node: &ResolvedNode) -> bool {
+/// `true` when the overlay should paint. `open` is element state the prop
+/// syncs on CHANGE, not a per-frame lock: TS writes `this.open = false`
+/// on a dismiss even when a binding feeds the property, and the binding
+/// only re-asserts when its value flips. The remembered prop value lives
+/// in `_open_prop`; a change re-syncs the internal flag, otherwise the
+/// flag (trigger toggles, dismissals) wins.
+fn overlay_open(w: &mut Walk<'_>, node: &ResolvedNode) -> bool {
     match node.props.get("open") {
-        Some(v) if !v.is_undefined() => v.truthy(),
+        Some(v) if !v.is_undefined() => {
+            let pv = v.truthy();
+            let last = w.edit.field(&node.id, "_open_prop");
+            if !matches!(last, we_expr::Value::Bool(_)) || last.truthy() != pv {
+                w.edit.set_open(&node.id, pv);
+                w.edit
+                    .set_field(&node.id, "_open_prop", we_expr::Value::Bool(pv));
+            }
+            w.edit.is_open(&node.id)
+        }
         _ => w.edit.is_open(&node.id),
     }
 }
@@ -619,7 +662,7 @@ fn rect_align(node: &ResolvedNode) -> egui::RectAlign {
 /// overlay's children are pushed during its paint and run after it.
 fn paint_overlays(w: &mut Walk<'_>) {
     while !w.overlays.is_empty() {
-        let (node, parent_inh) = w.overlays.remove(0);
+        let (node, parent_inh, stack) = w.overlays.remove(0);
         if !overlay_open(w, &node) {
             continue;
         }
@@ -628,9 +671,78 @@ fn paint_overlays(w: &mut Walk<'_>) {
         // A "trigger" part makes this an anchored popup; without one the
         // node is a centred modal.
         match w.base_parts.get(&(node.id.clone(), "trigger")).copied() {
-            Some(anchor) => anchored_overlay(w, &ctx, &node, anchor, floating, parent_inh),
-            None => modal_overlay(w, &ctx, &node, floating, parent_inh),
+            Some(anchor) => anchored_overlay(w, &ctx, &node, anchor, floating, parent_inh, stack),
+            None => modal_overlay(w, &ctx, &node, floating, parent_inh, stack),
         }
+    }
+}
+
+/// After the whole overlay pass: dismissal, scoped like the DOM's —
+/// `openOverlays`/`isTopmostOverlay` in overlay-element.ts. One Escape
+/// belongs to the topmost painted overlay; an outside click light-
+/// dismisses every popup it landed clear of, where "inside" covers a
+/// popup's rect, its trigger and any painted descendant's rect.
+fn finish_overlays(w: &mut Walk<'_>) {
+    let frame = std::mem::take(&mut *w.frame.borrow_mut());
+    if frame.is_empty() {
+        return;
+    }
+    let (click, pos, escape) = w.ui.input(|i| {
+        (
+            i.pointer.any_click(),
+            i.pointer.interact_pos(),
+            i.key_pressed(egui::Key::Escape),
+        )
+    });
+    // The last painted is on top — only it hears Escape.
+    if escape {
+        if let Some(entry) = frame.last() {
+            request_close(w, entry);
+        }
+    }
+    if click {
+        if let Some(p) = pos {
+            for entry in &frame {
+                if entry.modal {
+                    // Modal outside clicks are the backdrop's own
+                    // response, already handled in `modal_overlay`.
+                    continue;
+                }
+                let inside = entry.rect.contains(p)
+                    || entry.anchor.is_some_and(|a| a.contains(p))
+                    || frame
+                        .iter()
+                        .any(|b| b.stack.contains(&entry.id) && b.rect.contains(p));
+                if !inside {
+                    request_close(w, entry);
+                }
+            }
+        }
+    }
+}
+
+/// One overlay's dismiss: a modal emits its `close`/`onClose` like the
+/// backdrop and Escape always did; a popup drops its internal open flag
+/// — controlled or not, matching the DOM element's own `this.open = false`
+/// — and a declared close handler hears the request either way.
+fn request_close(w: &mut Walk<'_>, entry: &FrameOverlay) {
+    if entry.modal {
+        if let Some(name) = entry.close {
+            w.events.push(WidgetEvent {
+                node: entry.id.clone(),
+                handler: name.into(),
+                value: events::empty(),
+            });
+        }
+        return;
+    }
+    w.edit.set_open(&entry.id, false);
+    if let Some(name) = entry.close {
+        w.events.push(WidgetEvent {
+            node: entry.id.clone(),
+            handler: name.into(),
+            value: events::empty(),
+        });
     }
 }
 
@@ -686,6 +798,15 @@ fn overlay_contents(
         base_parts,
         parts_buf: None,
         overlays: Vec::new(),
+        // A nested overlay queued inside this one descends from it — the
+        // chain the dismissal pass shields ancestor dismissal with.
+        overlay_stack: w
+            .overlay_stack
+            .iter()
+            .cloned()
+            .chain(std::iter::once(node.id.clone()))
+            .collect(),
+        frame: w.frame.clone(),
         inh: Some(style.clone()),
         // The overlay layer is its own hit surface: activations inside a
         // popup serve nested triggers, never the page walk's.
@@ -745,7 +866,8 @@ fn modal_slot(c: &ResolvedChild) -> &str {
 
 /// The `we-modal` path: `egui::Modal` draws the backdrop and centres the
 /// content; its layer blocks input below (egui marks it `top_modal_layer`).
-/// Escape or a backdrop click emits the node's `close`/`onClose`.
+/// A backdrop click emits the node's `close`/`onClose` here; Escape is the
+/// frame dismissal pass's job (the topmost overlay owns it).
 ///
 /// modal.ts:143–189: only the default slot scrolls. `header`/`footer`
 /// slot children pin outside the scroller — the DOM puts them in base
@@ -758,6 +880,7 @@ fn modal_overlay(
     node: &ResolvedNode,
     floating: Vec<ResolvedChild>,
     parent_inh: Option<Style>,
+    stack: Vec<NodeId>,
 ) {
     let widget = w.registry.widget_for(&node.ty);
     let screen = ctx.content_rect();
@@ -869,6 +992,9 @@ fn modal_overlay(
     };
     let content_size = egui::vec2(width, sub.size.y.min(cap));
     let content_rect = Rect::from_center_size(screen.center(), content_size);
+    // Frame-log slot claimed before `show` — popups nested inside the
+    // sheet record during it and must sort after their ancestor.
+    let at = w.frame.borrow().len();
     let origin = sub.rects.get(&host.id).map(|r| r.min).unwrap_or_default();
     let scratch = translate_layout(&sub, content_rect.min - origin);
 
@@ -887,9 +1013,22 @@ fn modal_overlay(
             );
         });
 
-    if resp.backdrop_response.clicked()
-        || (resp.is_top_modal && ctx.input(|i| i.key_pressed(egui::Key::Escape)))
-    {
+    // Log the painted sheet so the frame dismissal pass can scope Escape
+    // to the topmost overlay. Descendants painted during `show` already
+    // recorded themselves — this sheet belongs under them, at `at`.
+    w.frame.borrow_mut().insert(
+        at,
+        FrameOverlay {
+            rect: resp.response.rect,
+            anchor: None,
+            stack,
+            close: close_handler(node),
+            modal: true,
+            id: node.id.clone(),
+        },
+    );
+
+    if resp.backdrop_response.clicked() {
         if let Some(name) = close_handler(node) {
             w.events.push(WidgetEvent {
                 node: node.id.clone(),
@@ -901,8 +1040,8 @@ fn modal_overlay(
 }
 
 /// The anchored path (`we-popover`, `DropdownMenu`): an [`egui::Popup`]
-/// under the trigger's rect. A click outside it or Escape flips the
-/// internal flag in [`EditState`] — a controlled `open` prop overrides.
+/// under the trigger's rect. Dismissal is the frame pass's job — this
+/// records the painted rect so an outside click knows what's inside.
 fn anchored_overlay(
     w: &mut Walk<'_>,
     ctx: &egui::Context,
@@ -910,16 +1049,32 @@ fn anchored_overlay(
     anchor: Rect,
     floating: Vec<ResolvedChild>,
     parent_inh: Option<Style>,
+    stack: Vec<NodeId>,
 ) {
     let widget = w.registry.widget_for(&node.ty);
-    let width = anchor.width().max(160.0);
+    let screen = ctx.content_rect();
+    // The host's width is the anchor's, but Floating UI's
+    // `shift({padding:8})` keeps the panel inside the viewport rather
+    // than flipping it — an egui popup wider than the screen loses its
+    // preferred alignment and flips above the trigger, so cap the width
+    // at what fits (margin + frame padding slack).
+    let width = anchor
+        .width()
+        .max(160.0)
+        .min((screen.width() - 24.0).max(48.0));
     let host = overlay_host(node, width, floating);
     let mcx = MeasureCx::new(ctx);
     // Same floating-host rule as the modal: `auto` height is the content's,
     // not floored to the anchor's rect.
     let sub = crate::layout_shrink(&mcx, w.scx, w.registry, &host, anchor);
-    let size = sub.size.max(egui::vec2(width, 4.0));
+    let size = sub
+        .size
+        .max(egui::vec2(width, 4.0))
+        .min((screen.size() - egui::vec2(16.0, 16.0)).max(egui::vec2(48.0, 32.0)));
 
+    // Frame-log slot claimed before `show` — popups nested inside this
+    // one record during it and must sort after their ancestor.
+    let at = w.frame.borrow().len();
     let inner = egui::Popup::new(
         w.ui.scope_id().with((node.id.as_str(), "popup")),
         ctx.clone(),
@@ -948,19 +1103,20 @@ fn anchored_overlay(
         );
     });
 
-    // Internal open state lives in EditState — the prop-less popovers and
-    // menus close on an outside click or Escape (the click still reaches
-    // what it landed on, like the TS document listener).
-    let controlled = matches!(node.props.get("open"), Some(v) if !v.is_undefined());
-    if !controlled {
-        if let Some(resp) = inner {
-            let pos = ctx.input(|i| i.pointer.interact_pos());
-            let outside = ctx.input(|i| i.pointer.any_click())
-                && pos.is_some_and(|p| !resp.response.rect.contains(p) && !anchor.contains(p));
-            let escape = ctx.input(|i| i.key_pressed(egui::Key::Escape));
-            if outside || escape {
-                w.edit.set_open(&node.id, false);
-            }
-        }
+    // Log the painted popup for the frame dismissal pass — its rect,
+    // trigger anchor and ancestry tell an outside click what's inside.
+    // `at` keeps it beneath the descendants its `show` recorded.
+    if let Some(resp) = inner {
+        w.frame.borrow_mut().insert(
+            at,
+            FrameOverlay {
+                rect: resp.response.rect,
+                anchor: Some(anchor),
+                stack,
+                close: close_handler(node),
+                modal: false,
+                id: node.id.clone(),
+            },
+        );
     }
 }

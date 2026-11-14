@@ -1671,3 +1671,182 @@ fn modal_tab_focus_scrolls_offscreen_field_into_view() {
     };
     assert!(y > 0.0, "the scroller must follow focus, got {y}");
 }
+
+/// B10 — overlay-element.ts keeps an `openOverlays` stack: a click inside
+/// a nested child popup is inside the parent's logical containment and
+/// must not light-dismiss the parent just because it landed outside the
+/// parent's rectangle.
+#[test]
+fn nested_popup_click_keeps_parent_open() {
+    let mut outer = node("we-popover", "outer", props(&[]));
+    let otrig = node("we-button", "outer/trig", props(&[("label", s("Outer"))]));
+    let mut body = node("Column", "outer/body", props(&[]));
+    body.slot = Some(Arc::from("content"));
+    let mut inner = node("we-popover", "inner", props(&[]));
+    let itrig = node("we-button", "inner/trig", props(&[("label", s("Inner"))]));
+    let mut item = node(
+        "we-button",
+        "inner/item",
+        props(&[("label", s("Inner item"))]),
+    );
+    item.slot = Some(Arc::from("content"));
+    inner.children = vec![
+        ResolvedChild::Node(Box::new(itrig)),
+        ResolvedChild::Node(Box::new(item)),
+    ];
+    body.children = vec![ResolvedChild::Node(Box::new(inner))];
+    outer.children = vec![
+        ResolvedChild::Node(Box::new(otrig)),
+        ResolvedChild::Node(Box::new(body)),
+    ];
+    let (mut h, r) = rig(outer);
+    h.run();
+    h.get_by_label("Outer").click();
+    h.run();
+    h.get_by_label("Inner").click();
+    h.run();
+    assert!(h.query_by_label("Inner item").is_some());
+    // A click inside the child's popup — outside the parent's rect — is
+    // still inside the parent's containment: neither closes. The child's
+    // panel anchors below its trigger (which sits inside the parent),
+    // so a click just under it lands inside the child but below the
+    // parent's bounds. (The a11y rect for popup children is unreliable —
+    // click by coordinate.)
+    let inner_trig = h.get_by_label("Inner").rect();
+    let inside_child = egui::pos2(inner_trig.center().x, inner_trig.max.y + 20.0);
+    h.drag_at(inside_child);
+    h.step();
+    h.drop_at(inside_child);
+    h.run();
+    assert!(
+        r.edit.borrow().is_open(&NodeId::from("inner")),
+        "a click inside the child popup keeps it open"
+    );
+    assert!(
+        r.edit.borrow().is_open(&NodeId::from("outer")),
+        "a click inside the child popup must not dismiss the parent"
+    );
+    // A click clear of the whole stack light-dismisses the family.
+    h.drag_at(egui::pos2(390.0, 390.0));
+    h.step();
+    h.drop_at(egui::pos2(390.0, 390.0));
+    h.run();
+    assert!(!r.edit.borrow().is_open(&NodeId::from("inner")));
+    assert!(!r.edit.borrow().is_open(&NodeId::from("outer")));
+}
+
+/// B10 — one Escape belongs to the topmost overlay only
+/// (`isTopmostOverlay`): it closes the child, not the whole chain.
+#[test]
+fn escape_closes_only_the_topmost_popup() {
+    let mut outer = node("we-popover", "outer", props(&[]));
+    let otrig = node("we-button", "outer/trig", props(&[("label", s("Outer"))]));
+    let mut body = node("Column", "outer/body", props(&[]));
+    body.slot = Some(Arc::from("content"));
+    let mut inner = node("we-popover", "inner", props(&[]));
+    let itrig = node("we-button", "inner/trig", props(&[("label", s("Inner"))]));
+    let mut item = node(
+        "we-button",
+        "inner/item",
+        props(&[("label", s("Inner item"))]),
+    );
+    item.slot = Some(Arc::from("content"));
+    inner.children = vec![
+        ResolvedChild::Node(Box::new(itrig)),
+        ResolvedChild::Node(Box::new(item)),
+    ];
+    body.children = vec![ResolvedChild::Node(Box::new(inner))];
+    outer.children = vec![
+        ResolvedChild::Node(Box::new(otrig)),
+        ResolvedChild::Node(Box::new(body)),
+    ];
+    let (mut h, r) = rig(outer);
+    h.run();
+    h.get_by_label("Outer").click();
+    h.run();
+    h.get_by_label("Inner").click();
+    h.run();
+    h.key_press(egui::Key::Escape);
+    h.run();
+    assert!(
+        !r.edit.borrow().is_open(&NodeId::from("inner")),
+        "Escape dismisses the topmost popup"
+    );
+    assert!(
+        r.edit.borrow().is_open(&NodeId::from("outer")),
+        "Escape must not fall through to the parent"
+    );
+    h.key_press(egui::Key::Escape);
+    h.run();
+    assert!(
+        !r.edit.borrow().is_open(&NodeId::from("outer")),
+        "the next Escape reaches the parent once it is topmost"
+    );
+}
+
+/// B10 — `open` is element state the prop syncs on change, not a lock:
+/// Escape on a controlled popover still dismisses it (the DOM element
+/// writes `this.open = false`), and a declared `close` handler hears
+/// the request.
+#[test]
+fn controlled_popover_escape_dismisses_and_requests_close() {
+    let mut pop = node("we-popover", "cpop", props(&[("open", b(true))]));
+    pop.handlers = handlers(&["close"]);
+    let trig = node("we-button", "cpop/trig", props(&[("label", s("Trig"))]));
+    let mut body = node("we-button", "cpop/body", props(&[("label", s("Body"))]));
+    body.slot = Some(Arc::from("content"));
+    pop.children = vec![
+        ResolvedChild::Node(Box::new(trig)),
+        ResolvedChild::Node(Box::new(body)),
+    ];
+    let (mut h, r) = rig(pop);
+    h.run();
+    assert!(h.query_by_label("Body").is_some());
+    h.key_press(egui::Key::Escape);
+    h.run();
+    assert_eq!(
+        details(&r, "close").len(),
+        1,
+        "a controlled popover's dismiss requests `close`"
+    );
+    assert!(
+        h.query_by_label("Body").is_none(),
+        "the element's local open state drops like the DOM property"
+    );
+}
+
+/// B10 — a popup over a modal is the topmost overlay: Escape belongs to
+/// it and must not also run the modal's `close` underneath.
+#[test]
+fn escape_over_modal_closes_popup_not_modal() {
+    let mut modal = node(
+        "we-modal",
+        "m",
+        props(&[("open", b(true)), ("title", s("T"))]),
+    );
+    modal.handlers = handlers(&["close"]);
+    let mut pop = node("we-popover", "m/p", props(&[]));
+    let trig = node("we-button", "m/p/trig", props(&[("label", s("Trig"))]));
+    let mut body = node("we-button", "m/p/body", props(&[("label", s("Body"))]));
+    body.slot = Some(Arc::from("content"));
+    pop.children = vec![
+        ResolvedChild::Node(Box::new(trig)),
+        ResolvedChild::Node(Box::new(body)),
+    ];
+    modal.children = vec![ResolvedChild::Node(Box::new(pop))];
+    let (mut h, r) = rig(modal);
+    h.run();
+    h.get_by_label("Trig").click();
+    h.run();
+    assert!(h.query_by_label("Body").is_some());
+    h.key_press(egui::Key::Escape);
+    h.run();
+    assert!(
+        !r.edit.borrow().is_open(&NodeId::from("m/p")),
+        "the topmost popup takes the Escape"
+    );
+    assert!(
+        details(&r, "close").is_empty(),
+        "the modal under the popup must not hear the same Escape"
+    );
+}
