@@ -18,11 +18,19 @@ use we_app::gallery::{gallery_ui, load_theme_set};
 ///   i.e. a deterministic software rasterizer rather than whatever GPU
 ///   the host happens to have.
 ///
-/// The comparison keeps kittest's AA-aware per-pixel YIQ tolerance
-/// (`0.6`) and adds a strict changed-area budget: 8 of 1,094,400 pixels
-/// may differ — enough for raster speckle, far below the ~8k-px phase
-/// shift this harness once recorded, and below what a moved border or
-/// missing glyph would change.
+/// The comparison is calibrated from dify 0.8.0's actual comparator:
+/// `egui_kittest` passes `threshold` to `dify::diff::get_results` as the
+/// raw per-pixel gate — the maximum weighted squared YIQ distance
+/// (`0.5053·Δy² + 0.299·Δi² + 0.1957·Δq²`, max 35215) a non-AA pixel may
+/// move before it counts as failed. It is NOT dify-cli's normalized
+/// `[0,1]` knob (that one is squared × 35215 inside `dify::run`). In
+/// these units `0.05` fails any pixel channel change of ≥1 level (the
+/// smallest nonzero delta, a 1-level blue shift, is 0.0565) — i.e. the
+/// per-pixel policy is "byte-identical modulo AA", and AA-classified
+/// edge pixels are exempted by dify regardless. `max_failed_pixels(8)`
+/// is then the changed-area budget for raster speckle: far below the
+/// ~8k-px phase shift this harness once recorded (max 29 channel
+/// levels, Δ≈425 ≫ 0.05), a moved border, or a missing glyph.
 fn pinned_harness(size: egui::Vec2) -> egui_kittest::HarnessBuilder {
     Harness::builder()
         .with_size(size)
@@ -31,7 +39,7 @@ fn pinned_harness(size: egui::Vec2) -> egui_kittest::HarnessBuilder {
             ctx.set_fonts(egui::FontDefinitions::default());
         })
         .wgpu()
-        .with_options(SnapshotOptions::new().threshold(0.6).max_failed_pixels(8))
+        .with_options(SnapshotOptions::new().threshold(0.05).max_failed_pixels(8))
 }
 
 #[test]
