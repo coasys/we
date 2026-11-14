@@ -3,9 +3,9 @@
 # own Cargo.lock; nothing here is published.
 #
 # Dependency direction, never the other way:
-#   we-expr <- we-screen <- we-template <- we-data <- we-widgets <- we-app
+#   we-expr <- we-screen <- we-template <- we-data <- we-layout <- we-widgets <- we-app
 #   we-style depends on we-expr only; we-ad4m depends on we-data.
-# we-expr, we-screen, we-template, we-data and we-style must build for
+# we-expr, we-screen, we-template, we-data, we-style and we-layout must build for
 # wasm32-unknown-unknown and must not depend on tokio.
 [workspace]
 resolver = "2"
@@ -15,6 +15,7 @@ members = [
     "we-template",
     "we-data",
     "we-style",
+    "we-layout",
     "we-widgets",
     "we-ad4m",
     "we-app",
@@ -42,5 +43,6 @@ we-screen = { path = "we-screen" }
 we-template = { path = "we-template" }
 we-data = { path = "we-data" }
 we-style = { path = "we-style" }
+we-layout = { path = "we-layout" }
 we-widgets = { path = "we-widgets" }
 we-ad4m = { path = "we-ad4m" }

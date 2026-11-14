@@ -1,0 +1,13 @@
+[package]
+name = "we-layout"
+version = "0.1.0"
+edition = "2021"
+description = "Frontend-independent Taffy layout over a resolved tree — measuring goes through the frontend's Measure impl"
+publish = false
+
+[dependencies]
+we-expr.workspace = true
+we-style.workspace = true
+we-template.workspace = true
+taffy.workspace = true
+indexmap.workspace = true

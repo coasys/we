@@ -4600,6 +4600,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "we-layout"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "taffy",
+ "we-expr",
+ "we-style",
+ "we-template",
+]
+
+[[package]]
 name = "we-screen"
 version = "0.1.0"
 dependencies = [
@@ -4652,6 +4663,7 @@ dependencies = [
  "serde_json",
  "taffy",
  "we-expr",
+ "we-layout",
  "we-style",
  "we-template",
 ]

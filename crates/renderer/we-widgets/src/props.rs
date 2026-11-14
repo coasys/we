@@ -14,22 +14,8 @@ use we_template::{NodeId, ResolvedNode};
 
 use crate::{PaintCx, Rect};
 
-/// The resolved DS-prop bag style resolution reads — what `props` becomes
-/// after the widget's defaults and the `style`/`styles` escape hatches merge.
-pub(crate) type Bag = IndexMap<std::sync::Arc<str>, Value>;
-
-/// `props[key]` or `Undefined`.
-pub fn prop<'a>(node: &'a ResolvedNode, key: &str) -> &'a Value {
-    node.props.get(key).unwrap_or(&Value::Undefined)
-}
-
-/// `props[key]` as a string — `Str` only; anything else is a wrong type.
-pub(crate) fn prop_str<'a>(node: &'a ResolvedNode, key: &str) -> Option<&'a str> {
-    match prop(node, key) {
-        Value::Str(s) => Some(s.as_ref()),
-        _ => None,
-    }
-}
+pub(crate) use we_layout::props::{border_side_px, prop_bool, prop_str};
+pub use we_layout::props::{prop, prop_num};
 
 /// A string prop, owned; `Num`/`Bool` coerce through their JS text form the
 /// way a DOM attribute would, anything else is `None`.
@@ -44,12 +30,6 @@ pub fn prop_string(node: &ResolvedNode, key: &str) -> Option<String> {
 /// Non-empty `props[key]` as a string.
 pub(crate) fn prop_text<'a>(node: &'a ResolvedNode, key: &str) -> Option<&'a str> {
     prop_str(node, key).filter(|s| !s.is_empty())
-}
-
-/// `props[key]` truthy — `Bool` and `Num` read directly; `Str` the way the
-/// resolver leaves tokens; anything else `false`.
-pub(crate) fn prop_bool(node: &ResolvedNode, key: &str) -> bool {
-    prop(node, key).truthy()
 }
 
 /// A boolean prop — `Bool` only; a string `"true"` does not coerce (wrong
@@ -67,35 +47,9 @@ pub fn prop_present(node: &ResolvedNode, key: &str) -> bool {
     !prop(node, key).is_undefined()
 }
 
-/// `props[key]` as an f64 — `Num` or a numeric `Str` ("12px" loses its unit
-/// the way `size="12px"` does on `we-icon`); anything else `None`.
-pub fn prop_num(node: &ResolvedNode, key: &str) -> Option<f64> {
-    match prop(node, key) {
-        Value::Num(n) => Some(*n),
-        Value::Str(s) => {
-            let s = s.trim();
-            s.parse::<f64>()
-                .ok()
-                .or_else(|| s.strip_suffix("px").and_then(|p| p.parse().ok()))
-        }
-        _ => None,
-    }
-}
-
 /// `props[key]` restricted to a word list — unknown words are a wrong type.
 pub fn prop_enum<'a>(node: &'a ResolvedNode, key: &str, allowed: &[&'a str]) -> Option<&'a str> {
     prop_str(node, key).filter(|s| allowed.contains(s))
-}
-
-/// `props[key]` as an object (the `style`/`styles` bags, `avatars` rows).
-pub(crate) fn prop_obj<'a>(
-    node: &'a ResolvedNode,
-    key: &str,
-) -> Option<&'a IndexMap<std::sync::Arc<str>, Value>> {
-    match prop(node, key) {
-        Value::Obj(o) => Some(o.as_ref()),
-        _ => None,
-    }
 }
 
 /// `props[key]` as a list.
@@ -184,28 +138,6 @@ fn patched<'a>(style: &'a Style, patch: &StylePatch) -> std::borrow::Cow<'a, Sty
     let mut out = style.pretier.as_deref().unwrap_or(style).clone();
     out.apply(patch);
     std::borrow::Cow::Owned(out)
-}
-
-/// One border side's painted width in px — the inset it adds inside the
-/// border box. `none`/`hidden`/absent sides inset 0; a painting side with
-/// no width is CSS `medium` (3px — `paint_box`'s rule).
-pub(crate) fn border_side_px(
-    side: &Option<we_style::BorderSide>,
-    font_px: f32,
-    root_px: f32,
-    viewport: Size,
-) -> f32 {
-    let Some(side) = side else { return 0.0 };
-    if matches!(
-        side.kind,
-        we_style::BorderKind::None | we_style::BorderKind::Hidden
-    ) {
-        return 0.0;
-    }
-    side.width
-        .as_ref()
-        .and_then(|d| d.to_px(font_px, root_px, viewport))
-        .unwrap_or(3.0)
 }
 
 /// An inset edge (`padding`/`border` width) in px — `Percent` resolves
