@@ -344,6 +344,18 @@ fn set_param_falls_to_the_declared_push_default() {
         push: Some(false),
     });
     assert_eq!(s.nav.depth(), 2);
+    // And a param with no declared push replaces — `routeStore.setParam`'s
+    // own default (nav.set-param-replace, in op form).
+    let mut s2 = screen(
+        json!({ "params": { "sel": { "type": "string" } } }),
+        "/space/abc/board",
+    );
+    s2.apply(ScreenOp::SetParam {
+        name: "sel".to_string(),
+        value: Some("r:1".to_string()),
+        push: None,
+    });
+    assert_eq!(s2.nav.depth(), 1);
 }
 
 #[test]
