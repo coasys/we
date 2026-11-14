@@ -7,8 +7,13 @@ publish = false
 
 [dependencies]
 eframe.workspace = true
+egui.workspace = true
+serde_json.workspace = true
 we-template.workspace = true
 we-widgets.workspace = true
 we-style.workspace = true
 we-store.workspace = true
 we-expr.workspace = true
+
+[dev-dependencies]
+egui_kittest = { workspace = true, features = ["snapshot", "wgpu"] }

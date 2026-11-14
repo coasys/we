@@ -52,11 +52,29 @@ fn run_native(bundle_path: &str) -> eframe::Result<()> {
     eframe::run_native(&title, options, Box::new(|_cc| Ok(Box::new(ScaffoldApp))))
 }
 
+/// `we-app --gallery style` — the design-system showcase with its theme
+/// picker, over the recorded token tables.
+#[cfg(not(target_arch = "wasm32"))]
+fn run_gallery() -> eframe::Result<()> {
+    let options = eframe::NativeOptions {
+        viewport: eframe::egui::ViewportBuilder::default()
+            .with_title("we gallery — style")
+            .with_inner_size([720.0, 900.0]),
+        ..Default::default()
+    };
+    eframe::run_native(
+        "we gallery — style",
+        options,
+        Box::new(|_cc| Ok(Box::new(we_app::gallery::GalleryApp::new()))),
+    )
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 fn main() -> eframe::Result<()> {
     // Two flags by hand: `--bundle <path>` and `--offline` (the only mode this
     // stage has). No clap for this.
     let mut bundle = DEFAULT_BUNDLE.to_string();
+    let mut gallery = false;
     let mut args = std::env::args().skip(1);
     while let Some(arg) = args.next() {
         match arg.as_str() {
@@ -65,17 +83,25 @@ fn main() -> eframe::Result<()> {
                     .next()
                     .unwrap_or_else(|| panic!("--bundle needs a path"));
             }
+            "--gallery" => match args.next().as_deref() {
+                Some("style") => gallery = true,
+                other => panic!("--gallery needs a target (only `style` exists): {other:?}"),
+            },
             "--offline" => {}
             "--help" | "-h" => {
                 eprintln!(
-                    "usage: we-app [--bundle <path>] [--offline]\n\n\
+                    "usage: we-app [--bundle <path>] [--offline] [--gallery style]\n\n\
                      --bundle <path>  bundle to render (default: the repo's bundles/coasys.bundle.json)\n\
-                     --offline        run with no executor — the only mode this stage has"
+                     --offline        run with no executor — the only mode this stage has\n\
+                     --gallery style  design-system showcase: roles, scales, radii, shadows"
                 );
                 return Ok(());
             }
             other => panic!("unknown flag {other:?}"),
         }
+    }
+    if gallery {
+        return run_gallery();
     }
     run_native(&bundle)
 }
