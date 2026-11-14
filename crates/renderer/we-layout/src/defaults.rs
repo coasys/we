@@ -315,6 +315,22 @@ fn type_defaults(bag: &mut Bag, node: &ResolvedNode) {
         }
         "we-avatar" => {
             entries(bag, &[("flex", "0 0 auto")]);
+            // `:host` pins both dims to `--we-avatar-size`, and the tier
+            // rules point it at `--we-avatar-size-{tier}` — without them a
+            // `stretch` parent widens the face (the TS element's own
+            // width/height are what stop it, not `flex`). A tier name reads
+            // its var; a custom size is a CSS length/number.
+            let dim = match node.props.get("size") {
+                Some(Value::Str(s)) => match s.as_ref() {
+                    t @ ("xxs" | "xs" | "sm" | "md" | "lg" | "xl" | "xxl") => {
+                        format!("var(--we-avatar-size-{t})")
+                    }
+                    other => other.to_string(),
+                },
+                Some(Value::Num(n)) => format!("{n}px"),
+                _ => "var(--we-avatar-size, var(--we-avatar-size-md))".to_string(),
+            };
+            entries(bag, &[("width", &dim), ("height", &dim)]);
         }
         "we-text" => {
             // Variant table — display face for headings.

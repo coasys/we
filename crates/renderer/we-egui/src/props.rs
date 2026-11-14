@@ -435,8 +435,69 @@ pub(crate) fn dim_prop(node: &ResolvedNode, key: &str) -> Option<Dimension> {
     node.props.get(key).and_then(dim_of)
 }
 
+/// A `--we-*` token's computed text as a colour — `tokens_of` holds the
+/// frame's table (stashed by `store_view`). `var()`s inside the value are
+/// substituted first, then `eval_color` parses the result.
+pub(crate) fn token_color(ctx: &egui::Context, name: &str) -> Option<egui::Color32> {
+    let tokens = crate::defaults::tokens_of(ctx)?;
+    let raw = tokens.get(name)?;
+    let resolved = tokens.substitute(raw);
+    we_style::eval_color(&resolved).map(color32)
+}
+
+/// A `--we-role-{role}` colour — how a widget prop that names a role
+/// (`ringColor: "border-strong"`) resolves against the frame's theme.
+pub(crate) fn role_color(ctx: &egui::Context, role: &str) -> Option<egui::Color32> {
+    token_color(ctx, &format!("--we-role-{role}"))
+}
+
+/// A `--we-*` token's value as px — `--we-avatar-size-md` → 40.
+pub(crate) fn token_px(
+    ctx: &egui::Context,
+    name: &str,
+    font_px: f32,
+    root_px: f32,
+    viewport: Size,
+) -> Option<f32> {
+    let tokens = crate::defaults::tokens_of(ctx)?;
+    let raw = tokens.get(name)?;
+    let resolved = tokens.substitute(raw);
+    we_style::eval_dimension(&resolved)
+        .and_then(|d| d.to_px(font_px, root_px, viewport))
+}
+
+/// The port of `seededHue`/`seededFill` in `shared/seededColor.ts`: FNV-1a
+/// over UTF-16 code units quantized to twelve hues, then the theme's own
+/// 100/700 ramp steps at that hue — the pair `initialsFill` sets. `None`
+/// without a token table (the ramp's lightness/saturation come from it).
+pub(crate) fn seeded_fill(ctx: &egui::Context, seed: &str) -> Option<(egui::Color32, egui::Color32)> {
+    let tokens = crate::defaults::tokens_of(ctx)?;
+    let num = |name: &str, dflt: f32| -> f32 {
+        tokens
+            .get(name)
+            .and_then(|v| tokens.substitute(v).parse::<f32>().ok())
+            .unwrap_or(dflt)
+    };
+    let sat = num("--we-color-saturation", 97.0) / 100.0;
+    // FNV-1a, `Math.imul` semantics — the same hash, twelve buckets.
+    let mut h: u32 = 0x811c9dc5;
+    for u in seed.encode_utf16() {
+        h ^= u as u32;
+        h = h.wrapping_mul(0x01000193);
+    }
+    let hue = (h % 12) as f32 * 30.0;
+    let step = |lightness: f32| -> Option<egui::Color32> {
+        let chroma = sat * 0.18 * 2.0 * lightness.min(1.0 - lightness).max(0.0);
+        we_style::eval_color(&format!("oklch({lightness} {chroma} {hue})")).map(color32)
+    };
+    let bg = step(num("--we-color-lightness-100", 0.925))?;
+    let fg = step(num("--we-color-lightness-700", 0.42))?;
+    Some((bg, fg))
+}
+
 /// The accent colour: style's `bg` when a solid variant set it, else the
 /// tone's `solid` var, else `bg` — used for rings, badges and counts.
+#[allow(dead_code)]
 pub(crate) fn accent_color(style: &Style, ctx: &egui::Context) -> egui::Color32 {
     tone_color(
         style,

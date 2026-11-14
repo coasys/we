@@ -4,6 +4,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use egui_kittest::kittest::Queryable;
 use indexmap::IndexMap;
 use we_egui::{layout, paint, EditState, Layout, MeasureCx, Registry, StyleCx};
 use we_expr::Value;
@@ -40,6 +41,19 @@ fn tokens() -> we_style::TokenTable {
     we_style::TokenTable::from_json(&json).unwrap()
 }
 
+
+/// The media fonts + tofu policy the icon/identicon/image paths need —
+/// a missing glyph is a paint detail, not a test failure.
+fn harness_ui<'a>(
+    run: impl FnMut(&mut egui::Ui) + 'a,
+) -> egui_kittest::Harness<'a> {
+    egui_kittest::Harness::builder()
+        // The image loader's ⚠ has no glyph in the test fonts — a paint
+        // detail, not a failure. install_media supplies the rest.
+        .allow_missing_glyphs()
+        .with_context_setup(|ctx| we_egui::install_media(ctx))
+        .build_ui(run)
+}
 fn lay_out(root: &ResolvedNode, width: f32) -> Layout {
     let registry = Registry::with_builtins();
     let tokens = tokens();
@@ -48,7 +62,7 @@ fn lay_out(root: &ResolvedNode, width: f32) -> Layout {
         ..StyleCx::empty()
     };
     let out = std::cell::RefCell::new(None);
-    let mut harness = egui_kittest::Harness::new_ui(|ui| {
+    let mut harness = harness_ui(|ui| {
         let cx = MeasureCx::new(ui.ctx());
         *out.borrow_mut() = Some(layout(
             &cx,
@@ -188,7 +202,7 @@ fn truncate_ellipsizes_the_galley() {
         ..StyleCx::empty()
     };
     let out = std::cell::RefCell::new(None);
-    let mut harness = egui_kittest::Harness::new_ui(|ui| {
+    let mut harness = harness_ui(|ui| {
         let cx = MeasureCx::new(ui.ctx());
         let style = we_egui::style_of(&text, &scx);
         let widget = registry.widget_for(&text.ty);
@@ -249,7 +263,7 @@ fn painted_galleys(root: &ResolvedNode, width: f32) -> (Layout, Vec<egui::Pos2>)
         ..StyleCx::empty()
     };
     let out = std::cell::RefCell::new(None);
-    let mut harness = egui_kittest::Harness::new_ui(|ui| {
+    let mut harness = harness_ui(|ui| {
         let ctx = ui.ctx().clone();
         let cx = MeasureCx::new(&ctx);
         let lay = layout(
@@ -339,7 +353,7 @@ fn painted_galley_texts(root: &ResolvedNode, width: f32) -> (Layout, Vec<(egui::
         ..StyleCx::empty()
     };
     let out = std::cell::RefCell::new(None);
-    let mut harness = egui_kittest::Harness::new_ui(|ui| {
+    let mut harness = harness_ui(|ui| {
         let ctx = ui.ctx().clone();
         let cx = MeasureCx::new(&ctx);
         let lay = layout(
@@ -489,6 +503,331 @@ fn child_text_paints_once_and_transformed() {
         hits[0].1.contains("A CHILD LABEL"),
         "uppercase must reach the painted galley: {galleys:?}"
     );
+}
+
+// ---------- A2: we-avatar props ----------------------------------------
+
+/// Every painted shape on `root`'s layer — the galley helper's sibling for
+/// the avatar's non-text content (image, identicon cells, ring strokes).
+fn painted_shapes(root: &ResolvedNode, width: f32) -> (Layout, Vec<egui::Shape>) {
+    let registry = Registry::with_builtins();
+    let tokens = tokens();
+    let scx = StyleCx {
+        tokens: &tokens,
+        ..StyleCx::empty()
+    };
+    let out = std::cell::RefCell::new(None);
+    let mut harness = harness_ui(|ui| {
+        let ctx = ui.ctx().clone();
+        let cx = MeasureCx::new(&ctx);
+        let lay = layout(
+            &cx,
+            &scx,
+            &registry,
+            root,
+            egui::Rect::from_min_size(ui.cursor().min, egui::vec2(width, 800.0)),
+        );
+        let mut events = Vec::new();
+        let mut edit = EditState::default();
+        paint(ui, &registry, &scx, root, &lay, &mut events, &mut edit, 0.0);
+        let layer = ui.layer_id();
+        let shapes: Vec<egui::Shape> = ctx.graphics(|g| {
+            g.get(layer)
+                .map(|list| {
+                    list.all_entries()
+                        .map(|cs| cs.shape.clone())
+                        .collect()
+                })
+                .unwrap_or_default()
+        });
+        *out.borrow_mut() = Some((lay, shapes));
+    });
+    harness.run();
+    let out = out.borrow_mut().take().expect("rendered");
+    out
+}
+
+/// A2 — `size` is the TS tier vocabulary, not a bare number:
+/// `avatarSize` in `1-tokens/src/size.ts` and the `size=` attribute rules in
+/// avatar.ts. Custom sizes are CSS lengths; numbers are px.
+#[test]
+fn avatar_size_tiers_resolve_to_the_ts_scale() {
+    let cases: Vec<(Value, f32)> = vec![
+        (s("xxs"), 16.0),
+        (s("xs"), 24.0),
+        (s("sm"), 32.0),
+        (s("md"), 40.0),
+        (s("lg"), 48.0),
+        (s("xl"), 64.0),
+        (s("xxl"), 80.0),
+        (s("20px"), 20.0),
+        (Value::Num(20.0), 20.0),
+    ];
+    let mut col = node("Column", "c", &[]);
+    for (i, (size, _)) in cases.iter().enumerate() {
+        child(&mut col, node("we-avatar", &format!("c/a{i}"), &[("size", size.clone())]));
+    }
+    let layout = lay_out(&col, 400.0);
+    for (i, (_, want)) in cases.iter().enumerate() {
+        let r = layout
+            .rects
+            .get(&NodeId::from(format!("c/a{i}").as_str()))
+            .copied()
+            .unwrap();
+        assert!(
+            (r.width() - want).abs() < 0.5 && (r.height() - want).abs() < 0.5,
+            "size #{i} should be {want}px: {r:?}"
+        );
+    }
+    // No `size` at all → `--we-avatar-size` = md = 40px.
+    let layout = lay_out(&node("we-avatar", "a", &[]), 400.0);
+    let r = layout.rects.get(&NodeId::from("a")).copied().unwrap();
+    assert!(
+        (r.width() - 40.0).abs() < 0.5,
+        "the default avatar is md = 40px: {r:?}"
+    );
+}
+
+/// A2 — `initials` is a name to *derive* letters from (`derivedInitials` in
+/// avatar.ts): first char of the first word plus first char of the last,
+/// uppercase; a single word gives one letter. It is not a literal string —
+/// "Nico Luck" paints "NL", never "Nic".
+#[test]
+fn avatar_initials_derive_first_and_last_letters() {
+    for (init, want) in [("Nico Luck", "NL"), ("Flux", "F"), (" ada  b. ", "AB")] {
+        let av = node("we-avatar", "a", &[("initials", s(init))]);
+        let (_layout, galleys) = painted_galley_texts(&av, 400.0);
+        assert!(
+            galleys.iter().any(|(_, t)| t.trim() == want),
+            "{init:?} should paint {want:?}: {galleys:?}"
+        );
+        assert!(
+            !galleys.iter().any(|(_, t)| t.trim() == init.trim()),
+            "the initials prop is a source string, not the literal letters: {galleys:?}"
+        );
+    }
+}
+
+/// A2 — `image` is the picture prop (avatar.ts `this.image`; `url`/`src`
+/// are accepted spellings), and a picture outranks initials and hash in
+/// `renderContent`.
+#[test]
+fn avatar_image_prop_supplies_the_picture() {
+    // A 1px svg — the point is an Image shape, not a decode. (PNG is not a
+    // registered loader in this workspace: egui_extras' `image` dep is
+    // default-features=false — `webp`/`svg` are what load.)
+    const SVG: &str = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3C/svg%3E";
+    let av = node(
+        "we-avatar",
+        "a",
+        &[
+            ("image", s(SVG)),
+            ("initials", s("Nico Luck")),
+            ("hash", s("did:key:z6Mk")),
+        ],
+    );
+    let (_layout, shapes) = painted_shapes(&av, 400.0);
+    // The image branch ran when a texture mesh or the loader's ⚠ placeholder
+    // is what was painted — either way it is the `image` prop being read.
+    let image_path = shapes.iter().any(|s| match s {
+        egui::Shape::Mesh(m) => m.texture_id != egui::TextureId::default(),
+        egui::Shape::Text(t) => t.galley.text().contains('⚠'),
+        _ => false,
+    });
+    assert!(
+        image_path,
+        "an `image` prop must reach the image loader: {shapes:?}"
+    );
+    assert!(
+        !shapes
+            .iter()
+            .any(|s| matches!(s, egui::Shape::Text(t) if t.galley.text().contains("NL"))),
+        "the picture covers the initials — none are drawn: {shapes:?}"
+    );
+}
+
+/// A2 — with no image and no initials, `hash` draws the generated pattern
+/// (jdenticon) — glyphs and `?`s never appear; with neither, the `icon`
+/// prop (default `user`) paints the glyph.
+#[test]
+fn avatar_falls_back_to_hash_pattern_then_icon() {
+    // hash only → pattern cells on the disc, zero text shapes.
+    let av = node("we-avatar", "a", &[("hash", s("did:key:z6Mk"))]);
+    let (_layout, shapes) = painted_shapes(&av, 400.0);
+    assert!(
+        !shapes.iter().any(|s| matches!(s, egui::Shape::Text(_))),
+        "a hashed avatar draws a pattern, not letters or a glyph: {shapes:?}"
+    );
+    // icon → a single glyph galley; default is `user`.
+    for props in [
+        vec![("icon", s("camera"))],
+        vec![],
+    ] {
+        let av = node("we-avatar", "a", &props);
+        let (_layout, galleys) = painted_galley_texts(&av, 400.0);
+        let glyph = galleys
+            .iter()
+            .find(|(_, t)| t.trim().chars().count() == 1)
+            .map(|(_, t)| t.trim().to_string());
+        assert!(
+            glyph.is_some() && glyph.as_deref() != Some("?"),
+            "empty avatar falls back to the icon glyph: {galleys:?}"
+        );
+    }
+}
+
+/// A2 — `initialsFill` seeds the generated disc colour from `hash || initials`
+/// (`seededFill`): two avatars with the same letters and different hashes
+/// wear different fills.
+#[test]
+fn avatar_initials_fill_is_seeded_by_the_hash() {
+    let mut col = node("Column", "c", &[]);
+    child(
+        &mut col,
+        node(
+            "we-avatar",
+            "c/a",
+            &[("initials", s("Nico Luck")), ("hash", s("did:key:a"))],
+        ),
+    );
+    child(
+        &mut col,
+        node(
+            "we-avatar",
+            "c/b",
+            &[("initials", s("Nico Luck")), ("hash", s("did:key:b"))],
+        ),
+    );
+    let (layout, shapes) = painted_shapes(&col, 400.0);
+    let fill_at = |id: &str| -> egui::Color32 {
+        let r = layout.rects.get(&NodeId::from(id)).copied().unwrap();
+        shapes
+            .iter()
+            .find_map(|s| match s {
+                egui::Shape::Rect(fr) if fr.rect.contains(r.center()) => Some(fr.fill),
+                _ => None,
+            })
+            .unwrap_or_default()
+    };
+    let (a, b) = (fill_at("c/a"), fill_at("c/b"));
+    assert_ne!(
+        a, b,
+        "different hashes must seed different fills (seededFill): {a:?} {b:?}"
+    );
+    assert!(
+        a.to_normalized_gamma_f32()[3] > 0.9,
+        "the fill is opaque — the generated bg, not no fill at all"
+    );
+}
+
+/// A2 — `avatarInnerRings`: `ringColor` resolves tones through the role
+/// tokens (`avatarToneColor` → `--we-role-{tone}`), any other string is a
+/// CSS colour; `ringWidth` is a CSS length inside the edge.
+#[test]
+fn avatar_ring_paints_the_resolved_role_color() {
+    let av = node(
+        "we-avatar",
+        "a",
+        &[
+            ("ringColor", s("success")),
+            ("ringWidth", s("3px")),
+            ("initials", s("Nico Luck")),
+        ],
+    );
+    let (_layout, shapes) = painted_shapes(&av, 400.0);
+    let want = props_color32("oklch(0.75 0.229405 145)");
+    assert!(
+        shapes.iter().any(|s| match s {
+            // `painter.rect_stroke` emits a stroked RectShape.
+            egui::Shape::Rect(r) => r.stroke.width > 0.5 && stroke_is(r.stroke.color, want),
+            _ => false,
+        }),
+        "ringColor: success must paint a --we-role-success stroke: {shapes:?}"
+    );
+}
+
+fn props_color32(css: &str) -> egui::Color32 {
+    let c = we_style::eval_color(css).expect("eval");
+    let [r, g, b, a] = c.to_premultiplied();
+    egui::Color32::from_rgba_premultiplied(
+        (r * 255.0) as u8,
+        (g * 255.0) as u8,
+        (b * 255.0) as u8,
+        (a * 255.0) as u8,
+    )
+}
+
+fn stroke_is(got: egui::Color32, want: egui::Color32) -> bool {
+    let d = |a: u8, b: u8| (a as i32 - b as i32).abs();
+    d(got.r(), want.r()) <= 2 && d(got.g(), want.g()) <= 2 && d(got.b(), want.b()) <= 2
+}
+
+/// A2 — `clickable` renders a button (avatar.ts): it emits the node's
+/// `onClick`; a plain avatar emits nothing.
+#[test]
+fn clickable_avatar_emits_onclick() {
+    let mut col = node("Column", "c", &[]);
+    let mut av = node(
+        "we-avatar",
+        "c/a",
+        &[
+            ("initials", s("Nico Luck")),
+            ("clickable", Value::Bool(true)),
+        ],
+    );
+    av.handlers = handlers_list(&["onClick"]);
+    child(&mut col, av);
+    let registry = Registry::with_builtins();
+    let tokens = tokens();
+    let events = std::rc::Rc::new(std::cell::RefCell::new(Vec::new()));
+    let ev = events.clone();
+    let mut harness = harness_ui(move |ui| {
+        let cx = MeasureCx::new(ui.ctx());
+        let scx = StyleCx {
+            tokens: &tokens,
+            ..StyleCx::empty()
+        };
+        let lay = layout(
+            &cx,
+            &scx,
+            &registry,
+            &col,
+            egui::Rect::from_min_size(ui.cursor().min, egui::vec2(400.0, 800.0)),
+        );
+        let mut edit = EditState::default();
+        paint(
+            ui,
+            &registry,
+            &scx,
+            &col,
+            &lay,
+            &mut ev.borrow_mut(),
+            &mut edit,
+            0.0,
+        );
+    });
+    harness.run();
+    harness.get_by_label("NL").click();
+    harness.run();
+    assert!(
+        events.borrow().iter().any(|e| e.handler.as_ref() == "onClick"),
+        "a clickable avatar emits onClick: {:?}",
+        events.borrow()
+    );
+}
+
+fn handlers_list(list: &[&str]) -> IndexMap<Arc<str>, we_template::HandlerRef> {
+    list.iter()
+        .map(|k| {
+            (
+                Arc::from(*k),
+                we_template::HandlerRef {
+                    tokens: vec![],
+                    scope: Default::default(),
+                },
+            )
+        })
+        .collect()
 }
 
 #[test]
