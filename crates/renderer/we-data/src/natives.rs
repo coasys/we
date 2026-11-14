@@ -460,12 +460,14 @@ fn signal_types_by_use(options: &Value) -> Value {
             .unwrap_or(0.0)
     };
     // Settled order first; a type it never saw goes after all it did.
-    let settled: Vec<&str> = as_list(get(options, "order"))
+    // `new Map(settled.map((id, at) => [id, at]))` — a repeated id keeps
+    // its last index, like every other Map the sources build.
+    let rank: IndexMap<&str, usize> = as_list(get(options, "order"))
         .iter()
-        .filter_map(|id| str_or(id))
+        .enumerate()
+        .filter_map(|(at, id)| str_or(id).map(|id| (id, at)))
         .collect();
-    let placed =
-        |t: &Value| str_or(get(t, "id")).and_then(|id| settled.iter().position(|s| *s == id));
+    let placed = |t: &Value| str_or(get(t, "id")).and_then(|id| rank.get(id).copied());
     let mut ordered = types;
     ordered.sort_by(|a, b| match (placed(a), placed(b)) {
         (Some(l), Some(r)) => l.cmp(&r),

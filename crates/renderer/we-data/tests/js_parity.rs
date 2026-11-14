@@ -236,3 +236,25 @@ fn weight_text_parses_like_js_number() {
     // And plain text still parses.
     assert_eq!(voices_for("did:a=25")[0]["weight"], json!(25));
 }
+
+/// The settled `order` ranks come from `new Map(settled.map((id, at) =>
+/// [id, at]))` (signalTypesByUse.ts:82) — a duplicate id keeps its LAST
+/// index, so `["a","b","a"]` ranks a=2, b=1 and orders [b, a].
+#[test]
+fn duplicate_settled_ids_take_their_last_rank() {
+    let out = call(
+        "signalTypesByUse",
+        json!({
+            "types": [{ "id": "a", "name": "A" }, { "id": "b", "name": "B" }],
+            "signals": [],
+            "order": ["a", "b", "a"]
+        }),
+    );
+    let ids: Vec<&str> = out
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|t| t["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, vec!["b", "a"], "a's last index is 2, after b's 1");
+}
