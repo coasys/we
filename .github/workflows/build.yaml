@@ -426,6 +426,12 @@ jobs:
       - name: wasm32 check
         run: cargo check --locked --target wasm32-unknown-unknown
 
+      # The core crates must stay UI-toolkit-free — a TUI/CLI frontend
+      # reuses them. The script greps the resolved trees for
+      # egui/eframe/winit/tokio, transitive edges included.
+      - name: Core crates stay egui-free
+        run: scripts/check-egui-free.sh
+
       - name: Save the cargo cache
         if: github.ref == 'refs/heads/dev'
         uses: actions/cache/save@v6
