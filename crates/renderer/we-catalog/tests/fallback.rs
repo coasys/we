@@ -374,6 +374,29 @@ fn select_falls_back_to_placeholder_when_nothing_matches() {
 }
 
 #[test]
+fn select_without_a_match_or_placeholder_shows_nothing() {
+    // `_displayValue` is '' when no option matches (select.ts:423-425)
+    // and the egui paint defaults `shown` to "" — a stale stored id
+    // paints nothing, so the catalog must not announce it either.
+    let n = node(
+        "we-select",
+        &[
+            ("label", Value::from("Fruit")),
+            (
+                "options",
+                list(vec![obj(&[
+                    ("value", Value::from("a")),
+                    ("label", Value::from("Apple")),
+                ])]),
+            ),
+            ("value", Value::from("stale-db-id")),
+        ],
+    );
+    assert_eq!(fallback(&n), "Fruit");
+    assert_eq!(we_catalog::describe(&n).state, None);
+}
+
+#[test]
 fn tree_item_reports_expanded_state() {
     let n = node(
         "we-tree-item",

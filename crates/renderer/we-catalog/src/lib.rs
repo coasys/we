@@ -697,10 +697,10 @@ fn select_shown(node: &ResolvedNode) -> Option<String> {
             }
         }
     }
-    prop_string(node, "placeholder").or_else(|| match value {
-        v if !matches!(v, Value::Undefined | Value::Null) => Some(v.js_string()),
-        _ => None,
-    })
+    // No match and no placeholder: the control paints nothing
+    // (select.ts `_displayValue` is '', egui `shown` defaults) — a stale
+    // stored id is not announced.
+    prop_string(node, "placeholder")
 }
 
 /// A picker/select `value` prop as text state — `None` for unset.
