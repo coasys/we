@@ -157,7 +157,7 @@ describe('identityStore', () => {
     await flush();
     expect(identity.did()).toBe(DID);
     expect(identity.keyId()).toBe('d1');
-    expect(identity.keyLog().map((r) => r.title)).toEqual(['Added d2', 'Created your identity']);
+    expect(identity.keyLog().map((r) => r.title)).toEqual(['Added d2', 'Created identity']);
     expect(identity.keyLog()[1].detail).toBe('with d1 · This computer');
     expect(identity.keyLog()[1].thisComputer).toBe(true);
     expect(b.calls).toContain(`log:${DID}`);
@@ -215,7 +215,7 @@ describe('identityStore', () => {
     expect(c.changes).toEqual([{ kind: 'create' }]);
     expect(identity.did()).toBe(DID);
     expect(identity.needsFirstRun()).toBe(false);
-    expect(identity.keyLog().map((r) => r.title)).toEqual(['Created your identity']);
+    expect(identity.keyLog().map((r) => r.title)).toEqual(['Created identity']);
     expect(identity.custody()?.holdsMaster).toBe(true);
     expect(deviceStore.devices().map((d) => d.label)).toEqual(['This computer']);
   });
@@ -429,7 +429,7 @@ describe('deviceStore', () => {
     expect(c.changes).toEqual([{ kind: 'revoke', keyId: 'd2' }]);
     expect(deviceStore.devices().find((d) => d.keyId === 'd2')).toMatchObject({
       revoked: true,
-      status: 'Revoked at #2',
+      status: 'Removed at #2',
     });
     expect(deviceStore.validCount()).toBe(1);
     expect(identity.keyLog()[0].title).toBe('Revoked d2');
