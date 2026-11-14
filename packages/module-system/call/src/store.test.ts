@@ -352,6 +352,8 @@ describe('transport and device lifetime', () => {
        * presence from one that did not.
        */
       reactive?: boolean;
+      /** What the machine answers when asked for devices; by default, a microphone every time. */
+      getUserMedia?: (constraints: MediaStreamConstraints) => Promise<MediaStream>;
     } = {},
   ) {
     const tracked = options.reactive ? trackingReactivity() : null;
@@ -503,7 +505,7 @@ describe('transport and device lifetime', () => {
           },
         },
         media: {
-          getUserMedia: async () => mic,
+          getUserMedia: options.getUserMedia ?? (async () => mic),
           getDisplayMedia: async () => {
             throw new Error('no screen here');
           },
@@ -677,6 +679,64 @@ describe('transport and device lifetime', () => {
 
     store.leave();
     expect(published).toEqual([mic, null]);
+  });
+
+  /*
+    A phone whose app had no microphone permission joined with neither camera nor microphone, and
+    unmuting never brought audio back. The controller now keeps whichever device is granted and asks
+    again on unmute; what the store owes on top is saying so, because a missing microphone — unlike
+    a missing camera — is invisible to the person it belongs to.
+  */
+  describe('a microphone that is refused while the camera is granted', () => {
+    const cameraOnly = () => {
+      let allowAudio = false;
+      const camera = { kind: 'video', enabled: true, readyState: 'live', stop() {}, addEventListener() {} };
+      const microphone = { kind: 'audio', enabled: true, readyState: 'live', stop() {}, addEventListener() {} };
+      const harness = callable({
+        getUserMedia: async (constraints) => {
+          if (constraints.audio && !allowAudio) throw new Error('NotAllowedError');
+          return new MediaStream([(constraints.audio ? microphone : camera) as unknown as MediaStreamTrack]);
+        },
+      });
+      return { ...harness, grant: () => (allowAudio = true) };
+    };
+
+    it('joins with the camera, muted, and says the microphone could not be reached', async () => {
+      const { store } = cameraOnly();
+
+      await store.startCall();
+      await Promise.resolve();
+
+      expect(store.media()).toMatchObject({ audioEnabled: false, videoEnabled: true });
+      expect(store.problem()).toMatch(/microphone/);
+      expect(store.problem()).not.toMatch(/camera/);
+    });
+
+    it('says so again when unmuting is refused', async () => {
+      const { store } = cameraOnly();
+      await store.startCall();
+      await Promise.resolve();
+      store.dismissProblem();
+
+      await store.toggleAudio();
+
+      expect(store.media().audioEnabled).toBe(false);
+      expect(store.problem()).toMatch(/microphone/);
+    });
+
+    it('unmutes, and clears the message, once the permission has been granted', async () => {
+      const { store, grant, published } = cameraOnly();
+      await store.startCall();
+      await Promise.resolve();
+
+      grant();
+      await store.toggleAudio();
+
+      expect(store.media().audioEnabled).toBe(true);
+      expect(store.problem()).toBeNull();
+      // The stream with the microphone in it is what the transcriber is handed.
+      expect((published.at(-1) as MediaStream | null)?.getAudioTracks()).toHaveLength(1);
+    });
   });
 
   it('refuses to join on a host that lends no peer connections, and writes nothing', async () => {

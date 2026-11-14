@@ -226,6 +226,52 @@ describe('the compact bar', () => {
     }
   });
 
+  /*
+    On a phone the row still overflowed after the first fold, and `safe center` aligns an overflowing
+    row to its start — so the control pushed off the right edge was hang-up, the last one. What was
+    left to fold was the relay readout, the quality button and the settings gear: everything the
+    settings popover already says or offers.
+  */
+  it('takes the relay readout, the quality button and the settings gear out of the row at that tier', () => {
+    const readout = walk(slotNodes()).find(
+      (node) => node.type === 'we-tooltip' && props(node).content === 'Peer-to-peer mesh',
+    ) as SchemaNode;
+    const gear = walk(slotNodes()).find(
+      (node) => node.type === 'we-button' && JSON.stringify(props(node).onClick)?.includes('settingsOpen'),
+    ) as SchemaNode;
+
+    for (const [name, node] of [
+      ['topology readout', readout],
+      ['quality button', buttonFor('modules.call.cycleQuality')],
+      ['settings gear', gear],
+    ] as const) {
+      expect(node, name).toBeDefined();
+      expect(
+        tierGates(node).map((gate) => props(gate).condition),
+        name,
+      ).toEqual([ROOMY]);
+    }
+  });
+
+  it('opens the call settings from the menu once the gear has folded into it', () => {
+    const entry = entries().find((candidate) => candidate.id === 'call-settings') as MenuEntry & {
+      onAction?: unknown;
+    };
+    expect(entry?.hidden).toEqual(ROOMY);
+    expect(entry?.onAction).toEqual({ $setLocal: 'settingsOpen', value: true });
+
+    // The state the line sets has to be in the menu's scope, so it is declared above the menu — on
+    // the bar — rather than on the popover beside it, where the menu could not reach it.
+    const holder = (lineage(slotNodes(), inCall()) ?? []).find(
+      (node) => (node as { $localState?: Record<string, unknown> }).$localState?.settingsOpen,
+    );
+    expect(holder).toBeDefined();
+    const body = walk(holder).find(
+      (node) => node.type === '$if' && JSON.stringify(props(node).condition) === '{"$":"local.settingsOpen"}',
+    );
+    expect(body).toBeDefined();
+  });
+
   it('never folds mute, camera or hang-up', () => {
     // They are the call. A menu between a person and their microphone is one step too many at the
     // moment they need it.
