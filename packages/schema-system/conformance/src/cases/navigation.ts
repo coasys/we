@@ -106,10 +106,15 @@ export const NAVIGATION_CASES: NavigationScriptCase[] = [
   ),
 
   /* rule 5: same-target navigation is a no-op — no entry, no move */
-  S('nav.same-target', 'rule 5: navigating to the current path is a no-op — no entry, no move', '/space/abc/board', [
-    { op: 'navigate', args: { to: '/space/abc/board' } },
-    { op: 'navigate', args: { to: '.' } },
-  ]),
+  S(
+    'nav.same-target',
+    "rule 5: navigating to the current path is a no-op — no entry, no move; '.' is not the current path, it resolves to the template root",
+    '/space/abc/board',
+    [
+      { op: 'navigate', args: { to: '/space/abc/board' } },
+      { op: 'navigate', args: { to: '.' } },
+    ],
+  ),
 
   /* rule 6: remembered query — a bare path back restores what was last seen there */
   S(
@@ -174,6 +179,12 @@ export const NAVIGATION_CASES: NavigationScriptCase[] = [
     { op: 'sync_param', args: { name: 'q', value: 'x', initial: '', type: 'string', push: true } },
     { op: 'back' },
   ]),
+  S(
+    'nav.sync-replace',
+    'rule 9: syncParam without push rewrites the entry — depth stays and back cannot undo the write',
+    '/space/abc/board',
+    [{ op: 'sync_param', args: { name: 'q', value: 'x', initial: '', type: 'string' } }, { op: 'back' }],
+  ),
   S(
     'nav.local-precedence',
     'rule 9: mount-time precedence is URL param > persisted > declared initial',
