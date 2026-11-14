@@ -182,10 +182,17 @@ fn alpha_channel(s: &str) -> Option<f32> {
 /// `rgb(199, 201, 220)`, `rgba(199,201,220,.08)` and `rgb(199 201 220 / .08)`.
 fn parse_rgb(args: &str) -> Option<Color> {
     let parts: Vec<f32> = if args.contains(',') {
-        split_top_commas(args)
-            .iter()
-            .map(|p| rgb_channel(p))
-            .collect::<Option<_>>()?
+        let p = split_top_commas(args);
+        if p.len() < 3 || p.len() > 4 {
+            return None;
+        }
+        let mut v: Vec<f32> = p[..3].iter().map(|c| rgb_channel(c)).collect::<Option<_>>()?;
+        // The 4th comma argument is an `<alpha-value>` — `50%` is 0.5, not
+        // an RGB channel's 127.5.
+        if let Some(a) = p.get(3) {
+            v.push(alpha_channel(a)?);
+        }
+        v
     } else {
         let slash = split_slash(args);
         let head: Vec<f32> = top_level_parts(slash[0])

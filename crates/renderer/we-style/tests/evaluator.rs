@@ -155,6 +155,49 @@ fn clamp_reversed_bounds() {
 }
 
 #[test]
+fn rgba_percent_alpha() {
+    // The 4th comma argument of legacy `rgba()` is an `<alpha-value>` —
+    // `50%` is 0.5, not an RGB channel's 127.5 clamped to opaque.
+    assert_eq!(
+        eval_color("rgba(255, 0, 0, 50%)"),
+        Some(Color {
+            r: 1.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.5
+        })
+    );
+    assert_eq!(
+        eval_color("rgb(255, 0, 0, 25%)"),
+        Some(Color {
+            r: 1.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.25
+        })
+    );
+    // Number alpha and the modern slash form are unchanged.
+    assert_eq!(
+        eval_color("rgba(255, 0, 0, 0.5)"),
+        Some(Color {
+            r: 1.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.5
+        })
+    );
+    assert_eq!(
+        eval_color("rgb(255 0 0 / 50%)"),
+        Some(Color {
+            r: 1.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.5
+        })
+    );
+}
+
+#[test]
 fn var_forms() {
     // declared var substitutes
     assert_eq!(dim("var(--we-space-300)"), px(12.0));
