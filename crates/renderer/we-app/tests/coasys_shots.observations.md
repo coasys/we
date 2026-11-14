@@ -5,16 +5,13 @@ them when the renderer moves; the table above is regenerated, this list is not.
 
 ### On every route
 
-- **Black band under the app.** The Rust frame stops at about y=570 and leaves the
-  rest of the 800px viewport transparent, drawn here on black. The web root fills the
-  viewport (`min-height`). This band is most of the pixel score: about 32 on the light
-  themes (`light`, `retro`) and 5–10 on the dark ones. Compare dark against dark before
-  reading anything into a score.
-- **A grey "AgentChatSheet · stage 5" bar across the top**, about 50px high, pushes the
-  whole app down. The web app draws nothing there: the sheet is closed.
-- **The left icon rail is missing**: the Coasys logo, the sparkle (AI) button, the space
-  avatar "MC" with its selected state, `+`, the link button, settings at the bottom and
-  the "PU" avatar. The Rust app starts at the space header.
+- **The left icon rail is present** (Coasys logo, sparkle/AI button, space avatar
+  "MC", `+`, link, settings gear, "PU" avatar at the bottom) since the abs-percent
+  containing-block fix; it is narrower than the web's 72px + tree band and its icons
+  sit slightly differently.
+- **The "MC" rail avatar uses the wrong colours**: pink/red initials in Rust where
+  the web draws olive-green with dark initials (light) or dark-green with
+  yellow-green initials (dark themes).
 - **The tree panel is narrower and not as tall.** It is about 210px wide, against 220px of
   tree inside 280px on the web. Rows are shorter (19px against 28px), the text is about
   2px smaller, and the space "SPACE" heading and its rows are indented differently.
@@ -39,9 +36,8 @@ them when the renderer moves; the table above is regenerated, this list is not.
 - **Glow and cyberpunk backgrounds**: the web's glow page has a purple-to-blue
   gradient (`surfaceImages`); Rust paints the flat surface colour. Cyberpunk's clipped
   card corners and the overline "SPACE" label are absent.
-- **"Start a call"** has the right fill but sits under the tree, about 460px from the top.
-  On the web it is pinned to the bottom of the sidebar. The bottom of the sidebar
-  (settings, avatar) is missing with the rail.
+- **"Start a call"** is now pinned to the bottom of the sidebar as on the web
+  (the rail and bottom controls exist now); its width differs slightly.
 
 ### Per route
 
@@ -78,16 +74,16 @@ them when the renderer moves; the table above is regenerated, this list is not.
   columns where the web has three. Each section's last odd card wraps alone. "relates
   to" is drawn as a white card that spills **left over the tree panel's edge**.
   "Agree"'s description "Same page." and "blocks"' description are overdrawn by the card
-  below them. Involvement is cut off at the frame's bottom edge, beneath which the black band
-  starts mid-content.
+  below them. Involvement now reaches the viewport's bottom edge like the web.
 - **person**: the closest to the web in structure: the breadcrumb "People › Mara
   Ellison", the hero band, the "ME" avatar square, the name, the handle, the bio and the
   DID. The Rust avatar is teal on mint where the web is purple on lavender. On retro the
   web sets everything in monospace, Rust only the name and breadcrumb. The bio is larger
   in Rust. The "People" link in the breadcrumb is not underlined/boxed as on retro web.
-- **about**: **the Rust render panics on every theme**: `No glyph for "→" (U+2192)
-  in Proportional` from epaint. The installed fonts (Ubuntu-Light, phosphor,
-  egui-icons) have no arrow, and the landing page's text carries seven of them. The
-  web shows the coasys landing page (hero "We are building a global brain.", the two
-  buttons, the globe video). In Rust there is no picture. The tree resolves (151 nodes),
-  so this is a font-coverage bug in the painter, not a resolve failure.
+- **about**: renders on every theme now (the vendored Noto symbol fallbacks cover
+  the `→`s; anything still missing draws as tofu rather than panicking). The hero
+  heading, body copy, both buttons and the "Coasys film" tile all draw, but the
+  layout is wrong: the header row (logo, nav links, GitHub badge) overlaps the
+  centered "We are building a global brain." title, the globe image/video is a
+  flat card, and light/retro score ~70 because the page paints its own dark
+  surface while the Rust side uses the theme's light page colour.
