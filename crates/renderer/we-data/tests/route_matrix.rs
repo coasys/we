@@ -94,17 +94,38 @@ fn row_names(rows: &[Value]) -> Vec<&str> {
 }
 
 /// `name → cell state` for every cell the resolve created — the pool's own
-/// record of which `$queries` ran and how they were answered.
+/// record of which `$queries` ran and how they were answered. Two cells
+/// answering to one local name (two declarations asking different questions)
+/// must agree: a name is not an identity, so one cell must not stand in for
+/// the other and hide a mismatch.
 fn cells(session: &Session) -> IndexMap<String, QueryState> {
-    let mut by_name = IndexMap::new();
+    let mut by_name: IndexMap<String, (String, QueryState)> = IndexMap::new();
     for cell in session.runtime.pool().cells() {
-        if let Some(name) = cell.first_name() {
-            by_name
-                .entry(name.to_string())
-                .or_insert_with(|| cell.state());
+        let Some(name) = cell.first_name() else {
+            continue;
+        };
+        let state = cell.state();
+        match by_name.get(name.as_ref()) {
+            Some((key, held)) => assert_eq!(
+                state_json(held),
+                state_json(&state),
+                "query {name}: two cells disagree — {key} vs {}",
+                cell.key.as_str()
+            ),
+            None => {
+                by_name.insert(name.to_string(), (cell.key.as_str().to_string(), state));
+            }
         }
     }
-    by_name
+    by_name.into_iter().map(|(n, (_, s))| (n, s)).collect()
+}
+
+/// A cell state as comparable JSON — `null` while Loading.
+fn state_json(state: &QueryState) -> serde_json::Value {
+    match state {
+        QueryState::Loading => serde_json::Value::Null,
+        QueryState::Rows(rows) => rows.iter().map(Value::to_json).collect(),
+    }
 }
 
 /// The loaded rows of the named query — panics naming the query when it
