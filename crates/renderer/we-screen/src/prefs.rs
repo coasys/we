@@ -2,8 +2,57 @@
 //! file on desktop (screen-state.md §4.7, rule 10). Keys are plain strings;
 //! values are JSON text, exactly what the app stored.
 
-use std::collections::HashMap;
+use std::cell::RefCell;
+use std::collections::{BTreeMap, HashMap};
 use std::path::PathBuf;
+
+/// Tier 4 as `ScreenState` holds it: the parsed values on top of whichever
+/// [`PrefStore`] the platform supplied (screen-state.md §4.5). Reads go to
+/// the store once, then to the map; a stored text that is not JSON reads as
+/// absent — a corrupt entry is nobody's preference.
+pub struct DevicePrefs {
+    store: Box<dyn PrefStore>,
+    values: RefCell<BTreeMap<String, serde_json::Value>>,
+}
+
+impl DevicePrefs {
+    /// Preferences over `store` — `MemoryPrefs`, `FilePrefs`, localStorage.
+    pub fn new(store: Box<dyn PrefStore>) -> DevicePrefs {
+        DevicePrefs {
+            store,
+            values: RefCell::new(BTreeMap::new()),
+        }
+    }
+
+    /// The stored value for `key`, or `None`.
+    pub fn get(&self, key: &str) -> Option<serde_json::Value> {
+        if let Some(v) = self.values.borrow().get(key) {
+            return Some(v.clone());
+        }
+        let v: serde_json::Value = self
+            .store
+            .get(key)
+            .and_then(|text| serde_json::from_str(&text).ok())?;
+        self.values.borrow_mut().insert(key.to_string(), v.clone());
+        Some(v)
+    }
+
+    /// Write `value` under `key` — `None` removes it. The store holds the
+    /// JSON text; a no-change write is a no-op.
+    pub fn set(&mut self, key: &str, value: Option<&serde_json::Value>) -> crate::Changed {
+        let text = value.map(|v| serde_json::to_string(v).unwrap_or_default());
+        let changed = self.store.set(key, text.as_deref());
+        match value {
+            Some(v) => {
+                self.values.borrow_mut().insert(key.to_string(), v.clone());
+            }
+            None => {
+                self.values.borrow_mut().remove(key);
+            }
+        }
+        changed
+    }
+}
 
 /// Where device preferences live.
 pub trait PrefStore {

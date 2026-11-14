@@ -89,11 +89,7 @@ impl Navigator {
                 root,
             },
         );
-        let written = opts
-            .query
-            .as_ref()
-            .map(|q| query_string(q))
-            .unwrap_or_default();
+        let written = opts.query.as_ref().map(query_string).unwrap_or_default();
         let path = if written.is_empty() {
             resolved
         } else {
