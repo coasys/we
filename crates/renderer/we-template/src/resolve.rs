@@ -78,6 +78,10 @@ pub struct ResolveCx<'a> {
     /// props/meta and would otherwise re-deserialize on every pass. The
     /// bundle outlives the runtime, so its `Json` addresses are stable.
     pub node_memo: &'a mut HashMap<usize, Arc<SchemaNode>>,
+    /// The matched chain tail a `$routes` outlet continues — pushed while a
+    /// route step's body resolves (empty inside the leaf's body), popped
+    /// after. `None` at the template's own `$routes` node.
+    pub route_tail: &'a mut Vec<Vec<MatchedRoute<'a>>>,
 }
 
 impl ResolveCx<'_> {
@@ -335,15 +339,27 @@ fn stub(did: &str) -> Value {
     Value::Obj(Arc::new(o))
 }
 
-/// A route table match: the route whose pattern the segments satisfy.
+/// One step of a matched route chain: the route plus the accumulated path
+/// it matched under (`fullPath` in `buildRoutes`) — its node identity and
+/// its `$nav.baseDepth` both come from it.
+#[derive(Debug, Clone)]
+pub struct MatchedRoute<'a> {
+    pub route: &'a RouteNode,
+    /// `prefix + pattern` — template-relative (`/settings/profile`).
+    pub full: String,
+}
+
+/// A route table match: the chain of routes the segments satisfy,
+/// outermost layout first.
 ///
 /// Rules (`routeMatching.ts` + `buildRoutes`): `:` binds any one segment,
 /// `*` is the catch-all (only consulted after everything else), a layout
-/// route recurses into its own `routes` with the remainder, and a leaf
-/// needs the segments spent.
+/// route recurses into its own `routes` with the remainder — and still
+/// renders when nothing is left to descend into — and a leaf needs the
+/// segments spent.
 enum RouteMatch<'a> {
-    /// A route's node, matched — the accumulated path for the step.
-    Node(&'a RouteNode, String),
+    /// The matched chain — each step's `$routes` outlet holds the next.
+    Chain(Vec<MatchedRoute<'a>>),
     /// A `*` or an explicit `redirect` — queue a replace navigation.
     Redirect(String),
 }
@@ -371,20 +387,33 @@ fn match_routes<'a>(
         if !met {
             continue;
         }
-        let full = format!("{prefix}/{pattern}");
+        let full = if pattern.is_empty() {
+            prefix.to_string()
+        } else {
+            format!("{prefix}/{pattern}")
+        };
         let rest = &segments[parts.len()..];
         if let Some(redirect) = &route.redirect {
             return Some(RouteMatch::Redirect(resolve_redirect(redirect, prefix)));
         }
         if let Some(children) = route.node.routes.as_deref() {
-            if let Some(found) = match_routes(children, rest, &full) {
-                return Some(found);
+            if let Some(RouteMatch::Chain(mut tail)) = match_routes(children, rest, &full) {
+                let mut chain = vec![MatchedRoute {
+                    route,
+                    full: full.clone(),
+                }];
+                chain.append(&mut tail);
+                return Some(RouteMatch::Chain(chain));
             }
-            // A layout route is a page only through one of its own.
+            if rest.is_empty() {
+                // A layout route still renders with an empty outlet — the
+                // router mounts the parent alone.
+                return Some(RouteMatch::Chain(vec![MatchedRoute { route, full }]));
+            }
             continue;
         }
         if rest.is_empty() {
-            return Some(RouteMatch::Node(route, full));
+            return Some(RouteMatch::Chain(vec![MatchedRoute { route, full }]));
         }
     }
     // No pattern matched: the catch-all, which here means its redirect.
@@ -392,7 +421,10 @@ fn match_routes<'a>(
         if let Some(redirect) = &route.redirect {
             return Some(RouteMatch::Redirect(resolve_redirect(redirect, prefix)));
         }
-        return Some(RouteMatch::Node(route, format!("{prefix}/*")));
+        return Some(RouteMatch::Chain(vec![MatchedRoute {
+            route,
+            full: format!("{prefix}/*"),
+        }]));
     }
     None
 }
@@ -985,6 +1017,14 @@ fn resolve_routes(
     decls: &Arc<Vec<LocalScope>>,
     cx: &mut ResolveCx,
 ) -> Vec<ResolvedChild> {
+    // Inside a route body, `$routes` is the outlet the router injects —
+    // the chain's tail continues here, at this node's own position
+    // (`node.type === '$routes'` → `children ?? null`).
+    if let Some(tail) = cx.route_tail.last() {
+        let tail = tail.clone();
+        return resolve_chain(&tail, scope, parent, root, path, decls, cx);
+    }
+
     let segments = cx.screen.nav.template_segments();
 
     // The host's record route — `/record/:entity` — is mounted beside the
@@ -997,9 +1037,8 @@ fn resolve_routes(
         return vec![];
     };
     match match_routes(routes, segments, "") {
-        Some(RouteMatch::Node(route, _matched)) => {
-            let route_path = format!("{path}/r:{}", route.path.trim_matches('/'));
-            resolve_node(&route.node, scope, parent, root, &route_path, decls, cx)
+        Some(RouteMatch::Chain(chain)) => {
+            resolve_chain(&chain, scope, parent, root, path, decls, cx)
         }
         Some(RouteMatch::Redirect(to)) => {
             // `*` and explicit redirects replace — the address was nobody's
@@ -1016,6 +1055,37 @@ fn resolve_routes(
         }
         None => vec![],
     }
+}
+
+/// One chain step: the route's node resolved with `$nav.baseDepth` bound —
+/// the route's depth in the address is the base a relative
+/// `routeStore.navigate` climbs from (`routeContext` in buildRoutes). Its
+/// body resolves with the remaining tail on the stack, so a `{type:
+/// "$routes"}` inside it holds the next level.
+fn resolve_chain<'a>(
+    chain: &[MatchedRoute<'a>],
+    scope: &Scope,
+    parent: &NodeId,
+    root: &str,
+    path: &str,
+    decls: &Arc<Vec<LocalScope>>,
+    cx: &mut ResolveCx<'a>,
+) -> Vec<ResolvedChild> {
+    let Some((head, tail)) = chain.split_first() else {
+        return vec![];
+    };
+    let depth = we_screen::template_root_depth(&cx.screen.nav.current_path())
+        + head.full.split('/').filter(|s| !s.is_empty()).count();
+    let mut nav = IndexMap::new();
+    nav.insert("baseDepth".into(), Value::Num(depth as f64));
+    let mut step_scope = scope.clone();
+    step_scope.bind("$nav", Value::Obj(Arc::new(nav)));
+
+    let route_path = format!("{path}/r:{}", head.full.trim_start_matches('/'));
+    cx.route_tail.push(tail.to_vec());
+    let out = resolve_node(&head.route.node, &step_scope, parent, root, &route_path, decls, cx);
+    cx.route_tail.pop();
+    out
 }
 
 /// The record route's body (`recordRouteBody`): each `meta.recordViews`

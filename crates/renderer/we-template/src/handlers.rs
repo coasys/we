@@ -135,19 +135,57 @@ fn write_local(scope: &Scope, owner: &NodeId, field: &str, value: Value, cx: &mu
     }
 }
 
+/// The `$nav.baseDepth` a route step bound — the route's depth in the
+/// address, the base a relative navigate climbs from.
+fn nav_base_depth(scope: &Scope) -> Option<usize> {
+    match scope.get("$nav") {
+        Some(Value::Obj(o)) => match o.get("baseDepth") {
+            Some(Value::Num(n)) if *n >= 0.0 => Some(*n as usize),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
 /// A `$invoke` target's [`ScreenOp`], when it names one — the store map's
 /// `screen` rows, in the names a template writes. `None` → the host answers.
-fn screen_op(target: &str, args: &[Value], screen: &ScreenState) -> Option<ScreenOp> {
+fn screen_op(target: &str, args: &[Value], scope: &Scope, screen: &ScreenState) -> Option<ScreenOp> {
     let arg = |i: usize| args.get(i).cloned().unwrap_or(Value::Undefined);
     let text = |v: &Value| -> String { v.js_string() };
     match target {
-        "routeStore.navigate" => Some(ScreenOp::Navigate {
-            to: text(&arg(0)),
-            query: None,
-            // The template's own root — a relative `to` resolves from it.
-            base_depth: Some(template_root_depth(&screen.nav.current_path())),
-            replace: false,
-        }),
+        "routeStore.navigate" => {
+            // The options object rides beside `to` — `{query, replace, base}`
+            // — and `$nav.baseDepth` merges on top at call time
+            // (invoke.ts): the route the handler sits in wins.
+            let mut query = None;
+            let mut replace = false;
+            let mut base = None;
+            if let Value::Obj(opts) = arg(1) {
+                if let Some(Value::Obj(q)) = opts.get("query") {
+                    query = Some(
+                        q.iter()
+                            .map(|(k, v)| (k.to_string(), v.clone()))
+                            .collect(),
+                    );
+                }
+                if let Some(Value::Obj(b)) = opts.get("base") {
+                    if let Some(Value::Num(d)) = b.get("depth") {
+                        base = Some(*d as usize);
+                    }
+                }
+                replace = opts.get("replace").is_some_and(Value::truthy);
+            }
+            Some(ScreenOp::Navigate {
+                to: text(&arg(0)),
+                query,
+                base_depth: Some(
+                    nav_base_depth(scope)
+                        .or(base)
+                        .unwrap_or_else(|| template_root_depth(&screen.nav.current_path())),
+                ),
+                replace,
+            })
+        }
         "routeStore.setParam" | "routeStore.setUrlParam" => Some(ScreenOp::SetParam {
             name: text(&arg(0)),
             value: match arg(1) {
@@ -340,7 +378,7 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
             };
             // A `screen` row applies straight to the screen state — the
             // store map's answer for routeStore/shellStore/themeStore.
-            if let Some(op) = screen_op(target, &evaluated, cx.screen) {
+            if let Some(op) = screen_op(target, &evaluated, scope, cx.screen) {
                 cx.screen.apply(op);
                 return;
             }

@@ -303,6 +303,7 @@ impl Runtime {
                         ),
                         None => (None, None, None),
                     };
+                    let mut route_tail = Vec::new();
                     let mut cx = ResolveCx {
                         bag: self.bag.as_ref(),
                         host,
@@ -320,6 +321,7 @@ impl Runtime {
                         warnings: &mut warnings,
                         node_memo: &mut self.node_memo,
                         dollar_type: &*self.dollar_type,
+                        route_tail: &mut route_tail,
                     };
                     children.extend(resolve::resolve(
                         mount.node,

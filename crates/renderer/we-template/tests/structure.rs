@@ -267,6 +267,109 @@ fn animate_keeps_locals_across_close_and_reopen() {
 }
 
 #[test]
+fn nested_routes_render_layout_ancestors_and_the_leaf() {
+    // B4: buildRoutes renders each matched layout with its `$routes` outlet
+    // holding the next level — a leaf match alone must not drop the chrome.
+    let tmpl: BundleTemplate = serde_json::from_value(json!({
+        "id": "t", "meta": {}, "type": "Column",
+        "routes": [
+            { "path": "/settings",
+              "children": [ { "type": "Header" }, { "type": "$routes" } ],
+              "routes": [ { "path": "/profile", "children": [ { "type": "ProfileForm" } ] } ] },
+            { "path": "/a",
+              "children": [ { "type": "AChrome" }, { "type": "$routes" } ],
+              "routes": [ { "path": "/detail", "children": [ { "type": "DetailPage" } ] } ] },
+            { "path": "/b",
+              "children": [ { "type": "BChrome" }, { "type": "$routes" } ],
+              "routes": [ { "path": "/detail", "children": [ { "type": "DetailPage" } ] } ] }
+        ],
+        "children": [{ "type": "$routes" }]
+    }))
+    .unwrap();
+
+    let (mut rt, mut host, screen) = app_rt(None, Some(tmpl.clone()), "/space/demo/settings/profile");
+    let root = rt.frame(&mut host, &screen).clone();
+    assert!(
+        find_ty(&root, "Header").is_some(),
+        "the layout's own chrome must render"
+    );
+    let leaf = find_ty(&root, "ProfileForm").expect("the leaf route renders");
+    assert!(
+        leaf.id.as_str().contains("r:settings"),
+        "the leaf's identity carries the full matched path: {}",
+        leaf.id.as_str()
+    );
+
+    // Same leaf name under two layouts → distinct identities, no aliasing.
+    let (mut rt, mut host, screen) = app_rt(None, Some(tmpl.clone()), "/space/demo/a/detail");
+    let root_a = rt.frame(&mut host, &screen).clone();
+    let id_a = find_ty(&root_a, "DetailPage").unwrap().id.clone();
+    assert!(find_ty(&root_a, "AChrome").is_some());
+
+    let (mut rt, mut host, screen) = app_rt(None, Some(tmpl), "/space/demo/b/detail");
+    let root_b = rt.frame(&mut host, &screen).clone();
+    let id_b = find_ty(&root_b, "DetailPage").unwrap().id.clone();
+    assert!(find_ty(&root_b, "BChrome").is_some());
+    assert_ne!(id_a, id_b, "/a/detail and /b/detail must not share an id");
+}
+
+#[test]
+fn a_route_relative_navigate_uses_its_own_base_depth() {
+    // B4: `routeStore.navigate` from inside a route resolves `..` against
+    // the route's depth (`$nav.baseDepth` merged at call time), not the
+    // template root — `../wall` from /settings/profile is a sibling route.
+    let tmpl: BundleTemplate = serde_json::from_value(json!({
+        "id": "t", "meta": {}, "type": "Column",
+        "routes": [
+            { "path": "/settings",
+              "children": [ { "type": "$routes" } ],
+              "routes": [ { "path": "/profile", "children": [{
+                  "type": "ProfileForm",
+                  "props": { "onTap": { "$invoke": "routeStore.navigate", "args": ["../wall"] } }
+              }] } ] }
+        ],
+        "children": [{ "type": "$routes" }]
+    }))
+    .unwrap();
+    let (mut rt, mut host, mut screen) = app_rt(None, Some(tmpl), "/space/demo/settings/profile");
+    let root = rt.frame(&mut host, &screen).clone();
+    let form = find_ty(&root, "ProfileForm").unwrap().id.clone();
+    rt.dispatch(&mut host, &mut screen, &form, "onTap", Value::Null);
+    assert_eq!(
+        screen.nav.current_path(),
+        "/space/demo/settings/wall",
+        "../ climbs one route level — not to the template root"
+    );
+}
+
+#[test]
+fn navigate_options_pass_through() {
+    // The second arg's `query` and `replace` reach the op, and `$nav` still
+    // merges the base — the call TS makes is `(to, options)`.
+    let tmpl: BundleTemplate = serde_json::from_value(json!({
+        "id": "t", "meta": {}, "type": "Column",
+        "routes": [
+            { "path": "/home", "children": [{
+                "type": "Home",
+                "props": { "onTap": { "$invoke": "routeStore.navigate",
+                    "args": ["./detail", { "query": { "id": "42" }, "replace": true }] } }
+            }] }
+        ],
+        "children": [{ "type": "$routes" }]
+    }))
+    .unwrap();
+    let (mut rt, mut host, mut screen) = app_rt(None, Some(tmpl), "/space/demo/home");
+    let root = rt.frame(&mut host, &screen).clone();
+    let home = find_ty(&root, "Home").unwrap().id.clone();
+    rt.dispatch(&mut host, &mut screen, &home, "onTap", Value::Null);
+    assert_eq!(
+        screen.nav.param("id"),
+        Some("42"),
+        "the options' query must be written for the target"
+    );
+}
+
+#[test]
 fn record_view_prefers_entity_kind_then_entity() {
     let tmpl = template(
         json!({ "recordViews": {
