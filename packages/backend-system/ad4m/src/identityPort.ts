@@ -17,6 +17,7 @@
  */
 import type { Ad4mClient } from '@coasys/ad4m';
 import {
+  type AddServerOutcome,
   type DeviceKeyView,
   type IdentityCapabilities,
   type IdentityChange,
@@ -29,8 +30,19 @@ import {
   type KeyLogStoreBehind,
   type KeyLogView,
   NO_IDENTITY_CAPABILITIES,
+  type ServingSessionEnded,
+  type ServingView,
+  THIS_COMPUTER_ID,
 } from '@we/backend-shared';
 
+import {
+  type ConnectRemote,
+  type KeySession,
+  KeySessionError,
+  type KeySessionSigner,
+  normalizeServerAddress,
+  tryKeyLogin,
+} from './keySession';
 import { recordMissingMethod } from './missingMethods';
 
 /** The slice of the SDK client this port uses — the whole of it, so a test can stand one in. */
@@ -65,6 +77,35 @@ export interface Ad4mCustodyState {
    * or one it trusts no key for, so it would refuse everything the custody service publishes.
    */
   blocked?: string | null;
+}
+
+/**
+ * The servers this account can be served by, as the host keeps them: a desktop host keeps them in
+ * its account registry, beside the account, so the choice survives a restart and is the account's
+ * own. Addresses are origins (`https://host:port`), as {@link normalizeServerAddress} makes them.
+ */
+export interface Ad4mServerHost {
+  list(): Promise<{ servers: { address: string; name: string }[]; serving: string | null }>;
+  add(server: { address: string; name: string }): Promise<void>;
+  remove(address: string): Promise<void>;
+  /**
+   * Serves the account from `address` (`null`: this computer) from the next start, and starts the
+   * app over. A renderer that reloads does not resolve.
+   */
+  choose(address: string | null): Promise<void>;
+}
+
+/** Which device serves this session, as the connector found it at start. */
+export interface Ad4mServing {
+  host: Ad4mServerHost;
+  /** This computer's executor, which signs logins to a server. */
+  signer: KeySessionSigner;
+  /** The session on the server serving this one, or `null` when this computer serves it. */
+  current: { session: KeySession; name: string } | null;
+  /** Why the chosen server does not serve this session, when it does not. */
+  problem: string | null;
+  /** How a client on a server is opened; the SDK's, outside tests. */
+  connect?: ConnectRemote;
 }
 
 type Raw = Record<string, unknown>;
@@ -166,13 +207,18 @@ export function readDevices(value: unknown): DeviceKeyView[] {
   });
 }
 
-export function createAd4mIdentityPort(backendClient: unknown, custody?: Ad4mCustodyHost): IdentityPort {
+export function createAd4mIdentityPort(
+  backendClient: unknown,
+  custody?: Ad4mCustodyHost,
+  serving?: Ad4mServing,
+): IdentityPort {
   const client = backendClient as IdentityClientLike & Partial<Ad4mClient>;
 
   const port: IdentityPort = {
     async capabilities(): Promise<IdentityCapabilities> {
+      let status: IdentityStatusView;
       try {
-        await client.identity.status();
+        status = readIdentityStatus(await client.identity.status());
       } catch (error) {
         recordMissingMethod(error);
         return NO_IDENTITY_CAPABILITIES;
@@ -185,6 +231,9 @@ export function createAd4mIdentityPort(backendClient: unknown, custody?: Ad4mCus
         devices: true,
         masterKey: !!custody,
         linkDevice: !!custody,
+        // A server lets this computer in by its device key speaking for an identity: a key that
+        // speaks for nobody yet logs in nowhere.
+        switchDevice: !!serving && status.did !== null,
       };
     },
 
@@ -214,5 +263,90 @@ export function createAd4mIdentityPort(backendClient: unknown, custody?: Ad4mCus
     port.custody = async () => readCustody(await custody.publicState());
     port.change = (change) => custody.open(change);
   }
+  if (serving) Object.assign(port, servingMembers(serving));
   return port;
+}
+
+/** The name a server is listed under: its host, which is what a person typed. */
+function serverName(address: string): string {
+  return new URL(address).host;
+}
+
+/** `serving`, `addServer`, `removeServer`, `serveFrom` and `onSessionEnded`, over the host's list. */
+function servingMembers(
+  serving: Ad4mServing,
+): Required<Pick<IdentityPort, 'serving' | 'addServer' | 'removeServer' | 'serveFrom' | 'onSessionEnded'>> {
+  const { host, signer, current } = serving;
+  const servedBy = current?.session.address ?? null;
+
+  // The end is kept, so a listener that arrives after it (a settings page opened later) hears it.
+  let ended: ServingSessionEnded | null = null;
+  const listeners = new Set<(ended: ServingSessionEnded) => void>();
+  current?.session.onEnded((reason) => {
+    ended = { reason, id: current.session.address, name: current.name };
+    for (const listener of [...listeners]) listener(ended);
+  });
+
+  return {
+    async serving(): Promise<ServingView> {
+      const { servers } = await host.list();
+      return {
+        devices: [
+          { id: THIS_COMPUTER_ID, name: 'This computer', address: null, current: servedBy === null },
+          ...servers.map((server) => ({
+            id: server.address,
+            name: server.name,
+            address: server.address,
+            current: server.address === servedBy,
+          })),
+        ],
+        role: current?.session.role ?? null,
+        problem: serving.problem,
+      };
+    },
+
+    async addServer(address: string): Promise<AddServerOutcome> {
+      let origin: string;
+      try {
+        origin = normalizeServerAddress(address);
+      } catch (error) {
+        const refusal = error as KeySessionError;
+        return { ok: false, reason: refusal.reason, message: refusal.message };
+      }
+      const { servers } = await host.list();
+      if (servers.some((server) => server.address === origin)) return { ok: true, id: origin };
+      // Kept only once it lets this computer in: a server that does not is not one of the person's.
+      try {
+        await tryKeyLogin(signer, origin, serving.connect ? { connect: serving.connect } : {});
+      } catch (error) {
+        if (error instanceof KeySessionError) return { ok: false, reason: error.reason, message: error.message };
+        throw error;
+      }
+      await host.add({ address: origin, name: serverName(origin) });
+      return { ok: true, id: origin };
+    },
+
+    async removeServer(id: string) {
+      if (id === servedBy) throw new Error('This host is in use. Switch to another device first.');
+      await host.remove(id);
+    },
+
+    async serveFrom(id: string) {
+      const address = id === THIS_COMPUTER_ID ? null : id;
+      if (address !== null) {
+        const { servers } = await host.list();
+        if (!servers.some((server) => server.address === address)) throw new Error(`Can't find the host ${id}.`);
+      }
+      // Already served from there, and nothing went wrong getting there: nothing to start over.
+      if (address === servedBy && serving.problem === null && ended === null) return;
+      await current?.session.close();
+      await host.choose(address);
+    },
+
+    onSessionEnded(listener) {
+      listeners.add(listener);
+      if (ended) listener(ended);
+      return () => listeners.delete(listener);
+    },
+  };
 }

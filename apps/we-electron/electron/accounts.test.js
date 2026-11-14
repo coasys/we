@@ -471,3 +471,87 @@ describe('the registry file shared with the tauri host', () => {
     expect(active.id).toBe(defaultPath);
   });
 });
+
+describe('servers — which device serves the account', () => {
+  const HOME = 'https://192.168.1.20:12000';
+
+  it('keeps each account its own list, and its choice, across a restart', () => {
+    registry.addServer({ address: `${HOME}/`, name: 'home' });
+    registry.chooseServer(HOME);
+    expect(registry.servers()).toEqual({ servers: [{ address: HOME, name: 'home' }], serving: HOME });
+
+    // Another account starts with none.
+    registry.create();
+    expect(registry.servers()).toEqual({ servers: [], serving: null });
+
+    registry.select(defaultPath);
+    expect(createAccountRegistry({ configDir, defaultPath }).servers().serving).toBe(HOME);
+  });
+
+  it('names a server by its host when no name is given, and keeps one entry per address', () => {
+    registry.addServer({ address: HOME });
+    registry.addServer({ address: HOME, name: 'again' });
+    expect(registry.servers().servers).toEqual([{ address: HOME, name: '192.168.1.20:12000' }]);
+  });
+
+  it('switches back to this computer', () => {
+    registry.addServer({ address: HOME });
+    registry.chooseServer(HOME);
+    registry.chooseServer(null);
+    expect(registry.servers().serving).toBeNull();
+  });
+
+  it('refuses what is not an http address, a server it does not list, and removing the one serving', () => {
+    expect(() => registry.addServer({ address: 'file:///etc/passwd' })).toThrow(/http/);
+    expect(() => registry.addServer({ address: 'not a url' })).toThrow(/address/);
+    expect(() => registry.chooseServer('http://elsewhere:1')).toThrow(/Can't find that host/);
+    registry.addServer({ address: HOME });
+    registry.chooseServer(HOME);
+    expect(() => registry.removeServer(HOME)).toThrow(/Switch to another device first/);
+    registry.chooseServer(null);
+    registry.removeServer(HOME);
+    expect(registry.servers().servers).toEqual([]);
+  });
+
+  it('refuses plain http to another computer, and keeps it for this one', () => {
+    for (const address of [
+      'http://192.168.1.20:12000',
+      'http://my-server.example:12000',
+      'http://localhost.evil.example',
+    ]) {
+      expect(() => registry.addServer({ address })).toThrow(/https:\/\//);
+    }
+    registry.addServer({ address: 'http://127.0.0.1:12100/' });
+    registry.addServer({ address: 'http://[::1]:12100' });
+    registry.addServer({ address: 'http://localhost:12100' });
+    expect(registry.servers().servers.map((s) => s.address)).toEqual([
+      'http://127.0.0.1:12100',
+      'http://[::1]:12100',
+      'http://localhost:12100',
+    ]);
+  });
+
+  it('never serves from a stored plain-http entry, and lets it be removed while chosen', () => {
+    const old = 'http://192.168.1.20:12000';
+    registry.addServer({ address: HOME });
+    registry.chooseServer(HOME);
+    // An entry written before the rule, as an older build stored it.
+    const file = join(defaultPath, 'we-accounts', 'registry.json');
+    const state = JSON.parse(readFileSync(file, 'utf8'));
+    state.accounts = state.accounts.map((a) => ({ ...a, servers: [{ address: old, name: 'old' }], serving: old }));
+    writeFileSync(file, JSON.stringify(state), 'utf8');
+    registry = createAccountRegistry({ configDir, defaultPath });
+
+    // Still listed and still chosen, so the renderer can say why it is not dialled.
+    expect(registry.servers()).toEqual({ servers: [{ address: old, name: 'old' }], serving: old });
+    expect(() => registry.chooseServer(old)).toThrow(/https:\/\//);
+    registry.removeServer(old);
+    expect(registry.servers()).toEqual({ servers: [], serving: null });
+  });
+
+  it('keeps the account’s name and picture when its servers change', () => {
+    registry.setDisplay(defaultPath, { name: 'Ada' });
+    registry.addServer({ address: HOME });
+    expect(registry.list()[0].name).toBe('Ada');
+  });
+});

@@ -94,6 +94,45 @@ export function uniqueName(base, taken = []) {
 }
 
 /**
+ * A server's address as the registry keeps it: its origin, `https://host:port`. Throws on anything
+ * that is not an http(s) address, so nothing else is ever handed to the renderer as a server, and on
+ * plain `http://` to anything but this computer: the session token travels in the socket's URL, so
+ * over `ws://` it would cross the network unencrypted.
+ */
+export function serverOrigin(address) {
+  let url;
+  try {
+    url = new URL(String(address));
+  } catch {
+    throw new Error('Enter a host address, like https://host.example:12000.');
+  }
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') throw new Error('A host address starts with https://.');
+  if (!isEncryptedOrLocal(url)) {
+    throw new Error(`${url.host} uses http://, which isn't encrypted. Use its https:// address.`);
+  }
+  return url.origin;
+}
+
+/**
+ * Whether a server address may be dialled: https, or http to this computer (localhost, 127.0.0.0/8,
+ * ::1). An entry stored before this rule existed is kept, so it can be removed, but never served from.
+ */
+export function isEncryptedOrLocal(url) {
+  if (url.protocol === 'https:') return true;
+  if (url.protocol !== 'http:') return false;
+  const host = url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  return host === 'localhost' || host === '::1' || /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/.test(host);
+}
+
+function diallable(address) {
+  try {
+    return isEncryptedOrLocal(new URL(String(address)));
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Whether a path holds an AD4M agent, by the markers `init` writes.
  *
  * The guard on deletion: a registry entry is a path, and a path is not proof that anything of
@@ -253,6 +292,16 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
     }
   }
 
+  /** Rewrites one account's entry, creating it when the scan found the account but nothing named it. */
+  function updateEntry(path, change) {
+    const state = read();
+    const entry = state.accounts.find((a) => a.path === path) ?? { path, name: '' };
+    const next = change(entry);
+    const listed = state.accounts.some((a) => a.path === path);
+    const accounts = listed ? state.accounts.map((a) => (a.path === path ? next : a)) : [...state.accounts, next];
+    write({ ...state, accounts });
+  }
+
   migrateLegacyLayout();
 
   return {
@@ -408,6 +457,57 @@ export function createAccountRegistry({ configDir, defaultPath, defaultName = 'M
           if (trimmed) delete next.provisional;
           return next;
         }),
+      });
+    },
+
+    /**
+     * The servers the signed-in account can be served by, and the one it is served by (`null`:
+     * this computer). Kept on the account's entry, so each account has its own and the choice
+     * survives a restart. The renderer proves a server lets this computer in before adding it; this
+     * only keeps the list.
+     */
+    servers() {
+      const entry = read().accounts.find((a) => a.path === this.resolveActivePath()) ?? {};
+      const servers = Array.isArray(entry.servers) ? entry.servers : [];
+      return { servers, serving: servers.some((s) => s.address === entry.serving) ? entry.serving : null };
+    },
+
+    addServer({ address, name } = {}) {
+      const origin = serverOrigin(address);
+      const label = typeof name === 'string' && name.trim() ? name.trim() : new URL(origin).host;
+      updateEntry(this.resolveActivePath(), (entry) => {
+        const servers = Array.isArray(entry.servers) ? entry.servers : [];
+        if (servers.some((s) => s.address === origin)) return entry;
+        return { ...entry, servers: [...servers, { address: origin, name: label }] };
+      });
+    },
+
+    removeServer(address) {
+      updateEntry(this.resolveActivePath(), (entry) => {
+        // A stored entry that may not be dialled serves nobody (the app stays on this computer), so
+        // it can be removed even while it is the one chosen.
+        if (entry.serving === address && diallable(address)) {
+          throw new Error('This host is in use. Switch to another device first.');
+        }
+        const rest = { ...entry, servers: (entry.servers ?? []).filter((s) => s.address !== address) };
+        if (rest.serving === address) delete rest.serving;
+        return rest;
+      });
+    },
+
+    /** Serve the account from `address` from the next start; `null` is this computer. */
+    chooseServer(address) {
+      updateEntry(this.resolveActivePath(), (entry) => {
+        if (address === null) {
+          const rest = { ...entry };
+          delete rest.serving;
+          return rest;
+        }
+        if (!(entry.servers ?? []).some((s) => s.address === address)) throw new Error("Can't find that host.");
+        if (!diallable(address)) {
+          throw new Error("That host uses http://, which isn't encrypted. Add its https:// address.");
+        }
+        return { ...entry, serving: address };
       });
     },
 

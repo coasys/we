@@ -964,6 +964,16 @@ handle('accounts-display', (_event, id, display) => accounts.setDisplay(id, disp
 handle('accounts-select', (_event, id) => accounts.select(id));
 handle('accounts-remove', (_event, id) => accounts.remove(id));
 
+// ── Which device serves the account ──────────────────────────────────────────
+// The signed-in account's servers, kept on its registry entry. The renderer logs in to a server with
+// this computer's device key before adding it, and reloads after choosing one: the connector reads
+// the choice at start, so nothing here touches the executor.
+
+handle('servers-list', () => accounts.servers());
+handle('servers-add', (_event, server) => accounts.addServer(server));
+handle('servers-remove', (_event, address) => accounts.removeServer(address));
+handle('servers-choose', (_event, address) => accounts.chooseServer(address ?? null));
+
 /**
  * Make the newly selected account take effect.
  *

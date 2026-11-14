@@ -34,7 +34,7 @@ import { createAd4mCallPort } from './callPort';
 import { installClearOnEmpty } from './clearOnEmpty';
 import { installContainmentPredicate } from './containment';
 import { Space } from './entities';
-import { type Ad4mCustodyHost, createAd4mIdentityPort } from './identityPort';
+import { type Ad4mCustodyHost, type Ad4mServing, createAd4mIdentityPort } from './identityPort';
 import { createAd4mInterpretationPort } from './interpretationAdapter';
 import { readInterpretationHints, resetInterpretationHints, writeInterpretationHints } from './interpretationHints';
 import { type Ad4mHttpConnection, createAd4mLanguageModelPort } from './languageModelPort';
@@ -168,6 +168,17 @@ export interface Ad4mConnectionOptions {
    * executor. The identity port signs changes through it; without it, the identity is read-only.
    */
   custody?: Ad4mCustodyHost;
+  /**
+   * Which device serves this session, where the host lets the person choose (see `keySession.ts`).
+   * The identity port then lists the devices and switches between them.
+   */
+  serving?: Ad4mServing;
+  /**
+   * The client the identity port reads through, when it is not `backendClient`: on a server, the
+   * key log and the device list are still this computer's executor's — it holds this device's key,
+   * and it is what signs the next login.
+   */
+  identityClient?: unknown;
 }
 
 export function createAd4mBackendPorts(
@@ -242,7 +253,7 @@ export function createAd4mBackendPorts(
     references: createAd4mReferencePort(),
     // The key log and the device list, as the executor's identity module holds them, and changes to
     // them through the host's custody service where it runs one.
-    identity: createAd4mIdentityPort(backendClient, options.custody),
+    identity: createAd4mIdentityPort(options.identityClient ?? backendClient, options.custody, options.serving),
     // Per-dataset like interpretation: every operation names the space the call is in.
     call: createAd4mCallPort(),
     ephemeral,

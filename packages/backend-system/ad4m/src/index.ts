@@ -63,7 +63,18 @@ export {
   createAd4mSchemaPort,
 } from './backendPortsAdapter';
 export { type Ad4mHttpConnection, createAd4mLanguageModelPort } from './languageModelPort';
-export type { Ad4mCustodyHost, Ad4mCustodyState } from './identityPort';
+export type { Ad4mCustodyHost, Ad4mCustodyState, Ad4mServerHost, Ad4mServing } from './identityPort';
+export {
+  type ConnectRemote,
+  type KeySession,
+  KeySessionError,
+  type KeySessionRemote,
+  type KeySessionRole,
+  type KeySessionSigner,
+  normalizeServerAddress,
+  openKeySession,
+  tryKeyLogin,
+} from './keySession';
 export { connectToLocalExecutor, createLocalAd4mConnector, type LocalExecutorConnection } from './localExecutor';
 export { createAd4mTranscriptionPort } from './transcriptionAdapter';
 export {

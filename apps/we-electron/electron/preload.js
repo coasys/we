@@ -32,6 +32,15 @@ contextBridge.exposeInMainWorld('electron', {
   removeAccount: (id) => ipcRenderer.invoke('accounts-remove', id),
   applyAccountSelection: () => ipcRenderer.invoke('accounts-apply'),
 
+  // The signed-in account's servers, and which device serves it. A choice takes effect at the next
+  // start of the renderer, which the connector's `choose` does by reloading.
+  servers: {
+    list: () => ipcRenderer.invoke('servers-list'),
+    add: (server) => ipcRenderer.invoke('servers-add', server),
+    remove: (address) => ipcRenderer.invoke('servers-remove', address),
+    choose: (address) => ipcRenderer.invoke('servers-choose', address),
+  },
+
   // Start the executor over (a new port and credential) and reload the window.
   restartExecutor: () => ipcRenderer.invoke('executor-restart'),
   chooseFile: (options) => ipcRenderer.invoke('executor-choose-file', options),
