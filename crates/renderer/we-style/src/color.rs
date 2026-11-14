@@ -447,9 +447,20 @@ fn parse_color_mix(args: &str) -> Option<Color> {
             let (l, a, b) = if am > 0.0 {
                 let (l, x) = (lw / am, xw / am);
                 if polar {
-                    // hue takes the shorter arc; degrees → radians for trig
+                    // CSS Color 4 powerless components: a hue whose chroma
+                    // is ~zero is missing, and a missing component takes
+                    // the other endpoint's value — an achromatic colour's
+                    // arbitrary h must not drag the mix off the chromatic
+                    // endpoint's hue. (x1/x2 are the endpoint chromas.)
+                    const POWERLESS: f32 = 1e-3;
                     let dh = (((y2 - y1) % 360.0) + 540.0) % 360.0 - 180.0;
-                    let h = (y1 + dh * w2).to_radians();
+                    let h = match (x1 < POWERLESS, x2 < POWERLESS) {
+                        (true, true) => 0.0,
+                        (true, false) => y2,
+                        (false, true) => y1,
+                        (false, false) => y1 + dh * w2,
+                    };
+                    let h = h.to_radians();
                     (l, x * h.cos(), x * h.sin())
                 } else {
                     (l, x, (y1 * c1.a * w1 + y2 * c2.a * w2) / am)

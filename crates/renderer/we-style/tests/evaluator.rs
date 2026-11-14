@@ -308,6 +308,65 @@ fn color_mix_accepted_spaces_match_spec() {
     );
 }
 
+/// Powerless/missing components (CSS Color 4 §12.4): in a polar space a
+/// colour whose chroma is ~0 has a powerless hue — it becomes missing and
+/// the interpolation takes the other endpoint's hue instead of dragging
+/// the result toward the achromatic colour's arbitrary h=0. Headless
+/// Chrome 146 (`getComputedStyle`, the oracle):
+///
+/// ```text
+/// color-mix(in oklch, transparent, oklch(0.6 0.1 200)) → oklch(0.6 0.1 200 / 0.5)
+/// color-mix(in oklch, black, oklch(0.6 0.1 200))       → oklch(0.3 0.05 200)
+/// color-mix(in oklch, white, oklch(0.6 0.1 200))       → oklch(0.799997 0.0500249 200)
+/// color-mix(in oklch, rgb(0 0 0 / 0.5), oklch(0.6 0.1 200))
+///     → oklch(0.399478 0.0665796 200 / 0.75098)
+/// ```
+#[test]
+fn color_mix_powerless_hue() {
+    // transparent carries the chromatic endpoint whole, at half alpha.
+    let end = eval_color("oklch(0.6 0.1 200)").unwrap();
+    let m = eval_color("color-mix(in oklch, transparent, oklch(0.6 0.1 200))").unwrap();
+    assert!(
+        (m.r - end.r).abs() < 1e-3
+            && (m.g - end.g).abs() < 1e-3
+            && (m.b - end.b).abs() < 1e-3
+            && (m.a - 0.5).abs() < 1e-3,
+        "transparent's hue is powerless — endpoint survives: {m:?} vs {end:?}"
+    );
+
+    // opaque achromatic endpoints: L/C interpolate, hue stays 200 — not
+    // the 120°/280° the achromatic h=0 would drag to.
+    let expect = eval_color("oklch(0.3 0.05 200)").unwrap();
+    let m = eval_color("color-mix(in oklch, black, oklch(0.6 0.1 200))").unwrap();
+    assert!(
+        (m.r - expect.r).abs() < 5e-3
+            && (m.g - expect.g).abs() < 5e-3
+            && (m.b - expect.b).abs() < 5e-3,
+        "black's hue is powerless: {m:?} vs {expect:?}"
+    );
+    let expect = eval_color("oklch(0.8 0.05 200)").unwrap();
+    let m = eval_color("color-mix(in oklch, white, oklch(0.6 0.1 200))").unwrap();
+    assert!(
+        (m.r - expect.r).abs() < 5e-3
+            && (m.g - expect.g).abs() < 5e-3
+            && (m.b - expect.b).abs() < 5e-3,
+        "white's hue is powerless: {m:?} vs {expect:?}"
+    );
+
+    // unequal alpha: semi-transparent black still has zero chroma, so the
+    // hue still comes from the oklch endpoint (Chrome's 0.75098 alpha is
+    // its own round-trip; the spec's is 0.5*0.5 + 1.0*0.5 = 0.75).
+    let expect = eval_color("oklch(0.4 0.0667 200)").unwrap();
+    let m = eval_color("color-mix(in oklch, rgb(0 0 0 / 0.5), oklch(0.6 0.1 200))").unwrap();
+    assert!(
+        (m.r - expect.r).abs() < 8e-3
+            && (m.g - expect.g).abs() < 8e-3
+            && (m.b - expect.b).abs() < 8e-3
+            && (m.a - 0.75).abs() < 1e-2,
+        "semi-transparent black's hue is still powerless: {m:?} vs {expect:?}"
+    );
+}
+
 #[test]
 fn unsupported_forms_stay_unsupported() {
     // things the crate must not guess — they land in `unsupported`
