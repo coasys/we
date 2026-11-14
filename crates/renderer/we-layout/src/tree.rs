@@ -1157,8 +1157,11 @@ impl<'a> Builder<'a> {
         let auto_h = matches!(s.size.height.expand(), Ed::Auto);
         let ml = lpa_base(s.margin.left, ncx.cb.0);
         let mr = lpa_base(s.margin.right, ncx.cb.0);
-        let mt = lpa_base(s.margin.top, ncx.cb.1);
-        let mb = lpa_base(s.margin.bottom, ncx.cb.1);
+        // Every margin edge's percent resolves against the CB *width* —
+        // margins share padding's inline-base rule (CSS2.1 §8.3); the
+        // taffy margin adapter gets `cbx` for all four edges already.
+        let mt = lpa_base(s.margin.top, ncx.cb.0);
+        let mb = lpa_base(s.margin.bottom, ncx.cb.0);
         // A *declared* main size is the flex base, not the used size —
         // `flex-shrink`/`grow` can still move it, and CSS §flexbox calls
         // the flexed result definite for a child's % — so read it back.

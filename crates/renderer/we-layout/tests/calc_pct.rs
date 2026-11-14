@@ -659,6 +659,52 @@ fn grid_autofill_row_recipe_reads_measured_columns() {
     );
 }
 
+/// Percentage *margins* share padding's rule: every edge resolves
+/// against the containing block's *width* (CSS2.1 §8.3) — including
+/// `margin-top`/`bottom`. The taffy adapter already does that; the
+/// static box derivation must too.
+#[test]
+fn calc_vertical_percent_margins_use_cb_width() {
+    // 400px-wide, 200px-tall Row, cross-stretched auto-height child
+    // with `my: 10%`: margins are 40px each (10% of the 400 *width*),
+    // leaving 120 — not the 160 a height-based derivation invents.
+    // (The Row's `flexShrink:0` keeps its declared height a static
+    // `Definite` so the margin bug shows as the wrong number, not a
+    // collapsed `Indefinite`.)
+    let mut child = node("Column", "c", &[("my", Value::from("10%"))]);
+    child.children = vec![ResolvedChild::Node(Box::new(node(
+        "Column",
+        "g",
+        &[
+            ("height", Value::from("calc(100% - 10px)")),
+            ("width", Value::from("10px")),
+        ],
+    )))];
+    let mut row = node(
+        "Row",
+        "r",
+        &[
+            ("height", Value::from("200px")),
+            ("flexShrink", Value::from("0")),
+        ],
+    );
+    row.children = vec![ResolvedChild::Node(Box::new(child))];
+    let mut root = node("Column", "root", &[]);
+    root.children = vec![ResolvedChild::Node(Box::new(row))];
+
+    let out = run(&root, 400.0, 400.0);
+    let c = rect(&out, "c");
+    assert!(
+        (c.height() - 120.0).abs() < 0.5,
+        "stretched height = 200 − 2×40 = 120, got {c:?}"
+    );
+    let g = rect(&out, "g");
+    assert!(
+        (g.height() - 110.0).abs() < 0.5,
+        "grandchild height = 100%·120 − 10 = 110, got {g:?}"
+    );
+}
+
 /// An absolutely-positioned child's containing block is its positioned
 /// ancestor's *padding* box: `p: calc(10% + 16px)` inside a `relative`
 /// 400px parent padded 40 resolves against 400 (56px), not the 320px
