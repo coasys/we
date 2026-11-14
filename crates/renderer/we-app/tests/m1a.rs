@@ -141,3 +141,30 @@ fn app_root_fills_the_viewport_and_offsets_the_frame() {
         "the space Row fills the content viewport at 100%: {r:?}"
     );
 }
+
+/// Fix 4 — a `position: fixed` child's `height: 100%` resolves against
+/// the positioned containing block (the viewport), not its in-flow
+/// parent's zero-height static box. The app rail is exactly that shape.
+#[test]
+fn fixed_children_span_the_viewport_height() {
+    let (root, lay) = app_layout("index");
+    let mut fixed = Vec::new();
+    find(
+        &root,
+        &|n| {
+            lay.styles
+                .get(&n.id)
+                .is_some_and(|s| s.layout.position == Some(we_style::Position::Fixed))
+        },
+        &mut fixed,
+    );
+    assert!(!fixed.is_empty(), "the rail + frame are fixed");
+    for n in &fixed {
+        let r = lay.rects.get(&n.id).copied().unwrap();
+        assert!(
+            r.height() > 799.0,
+            "fixed {} must span the viewport height, got {r:?}",
+            n.id.as_str()
+        );
+    }
+}
