@@ -15,8 +15,15 @@ use crate::{events, MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
 pub struct Input;
 
 impl Input {
-    fn line_height(cx: &MeasureCx) -> f32 {
-        cx.ctx.fonts_mut(|f| f.row_height(&egui::FontId::default()))
+    /// The field's font: egui's body size in the theme's family — the
+    /// web input is `font: inherit`, so a themed face reaches the text.
+    fn font(style: &Style, ctx: &egui::Context) -> egui::FontId {
+        egui::FontId::new(egui::FontId::default().size, props::text_family(style, ctx))
+    }
+
+    fn line_height(cx: &MeasureCx, style: &Style) -> f32 {
+        let font = Self::font(style, cx.ctx);
+        cx.ctx.fonts_mut(|f| f.row_height(&font))
     }
 }
 
@@ -29,8 +36,8 @@ impl Widget for Input {
         WidgetKind::Leaf
     }
 
-    fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, _style: &Style, avail: Size) -> Size {
-        let h = props::control_height(node).max(Self::line_height(cx) + 10.0);
+    fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, avail: Size) -> Size {
+        let h = props::control_height(node).max(Self::line_height(cx, style) + 10.0);
         Size::new(avail.x.min(220.0), h)
     }
 
@@ -102,6 +109,7 @@ impl Widget for Input {
 
         let mut widget = TextEdit::singleline(buffer)
             .id(wid)
+            .font(Self::font(style, cx.ui.ctx()))
             .desired_width(rect.width())
             // Centre the text block in the field — the theme's atom
             // alignment is LEFT_TOP, which parks the text high inside a

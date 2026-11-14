@@ -916,6 +916,22 @@ pub(crate) fn font_id(
     egui::FontId::new(size, family)
 }
 
+/// The family a widget's own text is set in — the node's `font-family`
+/// stack, else the theme's stashed base family (`font: inherit` on the web
+/// controls), else egui's `Proportional`. For widgets that keep their own
+/// type size (`we-input`'s field text, `we-form-field`'s label rows) and
+/// only inherit the face.
+pub(crate) fn text_family(style: &Style, ctx: &egui::Context) -> egui::FontFamily {
+    let base = crate::defaults::base_family_of(ctx);
+    style
+        .text
+        .font_family
+        .as_deref()
+        .or(base.as_deref())
+        .map(|stack| crate::fonts::resolve(ctx, stack, style.text.font_weight))
+        .unwrap_or(egui::FontFamily::Proportional)
+}
+
 /// Line height in px: `line-height` ratio × font size, a length directly, or
 /// egui's natural row height for `normal`.
 pub(crate) fn line_height_px(

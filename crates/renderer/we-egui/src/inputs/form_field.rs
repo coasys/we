@@ -64,8 +64,11 @@ impl Widget for FormField {
         Size::new(avail.x, avail.y.min(160.0))
     }
 
-    fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, _rect: Rect) {
+    fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, _rect: Rect) {
         let visuals = cx.ui.visuals().clone();
+        // The rows keep their sizes but inherit the theme's face, as the
+        // web label/description/error do.
+        let family = props::text_family(style, cx.ui.ctx());
         if let Some(l) = props::prop_string(node, "label") {
             // Hand the label to the slotted control for AccessKit, and
             // paint the label row at the top of the field.
@@ -79,7 +82,7 @@ impl Widget for FormField {
                     lr.min,
                     egui::Align2::LEFT_TOP,
                     l,
-                    egui::FontId::default(),
+                    egui::FontId::new(egui::FontId::default().size, family.clone()),
                     visuals.text_color(),
                 );
             }
@@ -92,7 +95,7 @@ impl Widget for FormField {
                     dr.min,
                     egui::Align2::LEFT_TOP,
                     d,
-                    egui::FontId::proportional(11.0),
+                    egui::FontId::new(11.0, family.clone()),
                     visuals.weak_text_color(),
                 );
             }
@@ -103,7 +106,7 @@ impl Widget for FormField {
                     er.min,
                     egui::Align2::LEFT_TOP,
                     e,
-                    egui::FontId::proportional(11.0),
+                    egui::FontId::new(11.0, family),
                     visuals.error_fg_color,
                 );
             }
