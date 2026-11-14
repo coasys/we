@@ -20,6 +20,12 @@ export type EntityManifestProperty = {
   interpretationHint?: string;
   /** This property is the entity's interpretation dedup key — see `PropertySchema.identity`. */
   identity?: boolean;
+  /**
+   * Closed set of allowed values — see `PropertySchema.options`. SHACL carries them as `sh:in`,
+   * in the same `{ value, label? }` form AD4M's decorator takes, so an entry reads them
+   * identically whether it was projected from a declaration or read back off a stored shape.
+   */
+  options?: { value: string; label?: string }[];
   /** Relations only: the members are in a chosen order — see `RelationSchema.ordered`. */
   ordered?: boolean;
   /**

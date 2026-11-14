@@ -17,7 +17,10 @@ export class CalloutBlock extends WeNode {
   text: string = '';
 
   /** Which kind of callout — the colour and default glyph `CalloutDisplay` draws. */
-  @Property({ through: 'we://variant' })
+  @Property({
+    through: 'we://variant',
+    options: [{ value: 'info' }, { value: 'warning' }, { value: 'error' }, { value: 'success' }],
+  })
   variant: string = 'info';
 
   /** A glyph of its own, instead of the variant's. */

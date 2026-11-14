@@ -239,6 +239,9 @@ export function buildEntityManifest(shapes: ForeignShape[]): EntityManifestEntry
         ...(p.relationKind?.startsWith('belongsTo') && { reverse: true }),
         ...(p.interpretationHint !== undefined && { interpretationHint: p.interpretationHint }),
         ...(p.identity ? { identity: true } : {}),
+        // `sh:in` is the same `{ value, label? }` form the entry carries as `options` — a shape read
+        // back from storage keeps its closed value set the way a declared one has it.
+        ...(p.in !== undefined && p.in.length > 0 ? { options: p.in } : {}),
       })),
   }));
 }

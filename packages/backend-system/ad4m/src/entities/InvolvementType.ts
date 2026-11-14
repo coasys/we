@@ -85,7 +85,16 @@ export class InvolvementType extends WeNode {
   color: string = '';
 
   /** What this kind means to anything that never learned this community's words — see above. */
-  @Property({ through: 'we://semantic' })
+  @Property({
+    through: 'we://semantic',
+    options: [
+      { value: 'responsible' },
+      { value: 'reviewing' },
+      { value: 'committed' },
+      { value: 'interested' },
+      { value: 'declined' },
+    ],
+  })
   semantic: InvolvementSemantic = 'responsible';
 
   /** Only the agent it is about may write it, and each agent holds at most one — see above. */
