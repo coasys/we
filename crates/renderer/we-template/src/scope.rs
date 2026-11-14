@@ -206,6 +206,10 @@ impl Env for ScopeEnv<'_> {
 #[derive(Default)]
 pub struct StoreBag {
     roots: RwLock<IndexMap<Arc<str>, Value>>,
+    /// The value each screen-mounted name held before the first
+    /// `bind_screen` wrapped it — the stable layer under the overlay,
+    /// so re-binds replace the overlay rather than stack it.
+    screen_bases: RwLock<IndexMap<Arc<str>, Value>>,
     functions: RwLock<HashMap<Arc<str>, CallFn>>,
     queries: RwLock<IndexMap<Arc<str>, Value>>,
     invokes: RwLock<HashMap<String, Value>>,
@@ -247,12 +251,39 @@ impl StoreBag {
         self.version.load(Ordering::Relaxed)
     }
 
-    /// Bind a root name (a store namespace, or a plain value).
+    /// Bind a root name (a store namespace, or a plain value). A real
+    /// replacement: the captured screen base goes with it, so the next
+    /// `bind_screen` re-anchors its overlay on the new root.
     pub fn set_root(&self, name: &str, value: Value) {
+        if let Ok(mut bases) = self.screen_bases.write() {
+            bases.shift_remove(name);
+        }
+        self.bind_root(name, value);
+    }
+
+    /// Write a root without touching its captured screen base —
+    /// `bind_screen`'s own write path, so the overlay it installs never
+    /// becomes the layer the next one reads back.
+    fn bind_root(&self, name: &str, value: Value) {
         if let Ok(mut roots) = self.roots.write() {
             roots.insert(name.into(), value);
         }
         self.version.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// The layer a screen overlay wraps: the value captured before the
+    /// first `bind_screen` for this name, or today's root if none was
+    /// ever bound.
+    fn screen_base(&self, name: &str) -> Value {
+        if let Ok(mut bases) = self.screen_bases.write() {
+            if let Some(v) = bases.get(name) {
+                return v.clone();
+            }
+            let v = self.root(name).unwrap_or(Value::Undefined);
+            bases.insert(name.into(), v.clone());
+            return v;
+        }
+        self.root(name).unwrap_or(Value::Undefined)
     }
 
     /// Register a function (`Env::call` reaches it).
@@ -420,8 +451,11 @@ impl Namespace for SpaceStoreNs {
 /// changed root.
 pub fn bind_screen(bag: &StoreBag, screen: &ScreenState) {
     let sb = screen.bag();
-    let route_base = bag.root("routeStore").unwrap_or(Value::Undefined);
-    bag.set_root(
+    // One overlay over the captured base — a re-bind replaces the overlay,
+    // it never wraps the last one (each screen revision used to stack
+    // another MergedNs, so reads traversed every snapshot ever mounted).
+    let route_base = bag.screen_base("routeStore");
+    bag.bind_root(
         "routeStore",
         Value::namespace(MergedNs {
             overlay: sb.get("nav"),
@@ -437,8 +471,8 @@ pub fn bind_screen(bag: &StoreBag, screen: &ScreenState) {
             ],
         }),
     );
-    let shell_base = bag.root("shellStore").unwrap_or(Value::Undefined);
-    bag.set_root(
+    let shell_base = bag.screen_base("shellStore");
+    bag.bind_root(
         "shellStore",
         Value::namespace(MergedNs {
             overlay: sb.get("shell"),
@@ -457,8 +491,8 @@ pub fn bind_screen(bag: &StoreBag, screen: &ScreenState) {
             ],
         }),
     );
-    let theme_base = bag.root("themeStore").unwrap_or(Value::Undefined);
-    bag.set_root(
+    let theme_base = bag.screen_base("themeStore");
+    bag.bind_root(
         "themeStore",
         Value::namespace(MergedNs {
             overlay: sb.get("theme"),
@@ -469,9 +503,9 @@ pub fn bind_screen(bag: &StoreBag, screen: &ScreenState) {
             owned: &["themeFork"],
         }),
     );
-    let base = bag.root("spaceStore").unwrap_or(Value::Undefined);
+    let base = bag.screen_base("spaceStore");
     let space_path = sb.get("nav").read_key("spacePath");
-    bag.set_root(
+    bag.bind_root(
         "spaceStore",
         Value::namespace(SpaceStoreNs { base, space_path }),
     );
@@ -489,5 +523,63 @@ impl ReadKey for Value {
             Value::Namespace(ns) => ns.get(key),
             _ => Value::Undefined,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use we_screen::{ScreenOp, ScreenSchema, ScreenState};
+
+    fn themed_screen(theme: Option<&str>) -> ScreenState {
+        let mut screen = ScreenState::desktop(ScreenSchema::default(), "/");
+        if let Some(t) = theme {
+            screen.apply(ScreenOp::SetCurrentTheme {
+                theme: t.to_string(),
+            });
+        }
+        screen
+    }
+
+    fn read(root: &StoreBag, store: &str, key: &str) -> Value {
+        match root.root(store) {
+            Some(Value::Namespace(ns)) => ns.get(key),
+            _ => Value::Undefined,
+        }
+    }
+
+    #[test]
+    fn rebinding_replaces_the_overlay_instead_of_stacking() {
+        // B10: each bind wraps the captured base — never the previous
+        // overlay. The semantic case: theme X bound, then a screen with no
+        // theme — `currentThemeId` must fall back to the STORE's answer,
+        // not the stale X overlay.
+        let bag = StoreBag::from_snapshot(&serde_json::json!({
+            "stores": { "themeStore": {
+                "builtInThemes": ["a", "b"],
+                "currentThemeId": "store-theme"
+            } },
+            "queries": {}, "invokes": {}
+        }))
+        .unwrap();
+
+        bind_screen(&bag, &themed_screen(Some("screen-a")));
+        assert!(read(&bag, "themeStore", "currentThemeId").strict_eq(&Value::from("screen-a")));
+
+        // A screen that carries no theme: the store's answer shows again.
+        bind_screen(&bag, &themed_screen(None));
+        assert!(
+            read(&bag, "themeStore", "currentThemeId").strict_eq(&Value::from("store-theme")),
+            "an un-themed screen must reveal the base store's theme, not the last overlay: {:?}",
+            read(&bag, "themeStore", "currentThemeId")
+        );
+        assert!(
+            matches!(read(&bag, "themeStore", "builtInThemes"), Value::List(_)),
+            "store members read through the single overlay"
+        );
+
+        // And re-mounting a theme works the same on the stable base.
+        bind_screen(&bag, &themed_screen(Some("screen-b")));
+        assert!(read(&bag, "themeStore", "currentThemeId").strict_eq(&Value::from("screen-b")));
     }
 }
