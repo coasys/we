@@ -216,9 +216,12 @@ impl Env for TrackEnv<'_> {
     fn root(&self, name: &str) -> Option<Value> {
         let value = self.inner.root(name)?;
         Some(match &value {
-            // A namespace is a conduit — its member reads are the deps;
-            // the wrapper itself is rebuilt every pass and must not be one.
-            Value::Namespace(_) => Value::namespace(TrackNs {
+            // A namespace or object is a conduit — its member reads are the
+            // deps (`surface.tier`, not `surface`); the wrapper itself is
+            // rebuilt every pass and must not be one. A bare whole read
+            // records nothing — reading the bag subscribes to nothing,
+            // which is exactly what a TS proxy does inside a memo.
+            Value::Namespace(_) | Value::Obj(_) => Value::namespace(TrackNs {
                 path: name.into(),
                 inner: value.clone(),
                 deps: self.deps.clone(),
@@ -237,9 +240,11 @@ impl Env for TrackEnv<'_> {
     }
 }
 
-/// The namespace wrapper member reads go through — each `get` records
-/// `path.key → value`, and a namespace member wraps deeper so
-/// `store.a.b` lands under `store.a.b`, not under `store` alone.
+/// The member-read recorder — each `get` records `path.key → value`, and
+/// a container member wraps deeper so `store.a.b` lands under
+/// `store.a.b`, not under `store` alone. It stands in for both namespace
+/// and object bases: reads keep `read_property`'s own semantics (member
+/// lookup, `Undefined` for a miss).
 #[derive(Debug)]
 struct TrackNs {
     path: Arc<str>,
@@ -249,12 +254,13 @@ struct TrackNs {
 
 impl Namespace for TrackNs {
     fn get(&self, key: &str) -> Value {
-        let Value::Namespace(inner) = &self.inner else {
-            return Value::Undefined;
+        let value = match &self.inner {
+            Value::Namespace(inner) => inner.get(key),
+            Value::Obj(inner) => inner.get(key).cloned().unwrap_or(Value::Undefined),
+            _ => Value::Undefined,
         };
-        let value = inner.get(key);
         let path: Arc<str> = format!("{}.{}", self.path, key).into();
-        if matches!(value, Value::Namespace(_)) {
+        if matches!(value, Value::Namespace(_) | Value::Obj(_)) {
             return Value::namespace(TrackNs {
                 path,
                 inner: value,
@@ -276,6 +282,7 @@ impl Namespace for TrackNs {
     fn keys(&self) -> Vec<Arc<str>> {
         match &self.inner {
             Value::Namespace(inner) => inner.keys(),
+            Value::Obj(inner) => inner.keys().cloned().collect(),
             _ => Vec::new(),
         }
     }
@@ -283,7 +290,7 @@ impl Namespace for TrackNs {
     fn raw(&self) -> Option<Value> {
         match &self.inner {
             Value::Namespace(inner) => inner.raw(),
-            _ => None,
+            _ => Some(self.inner.clone()),
         }
     }
 }

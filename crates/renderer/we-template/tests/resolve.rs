@@ -749,6 +749,93 @@ fn an_initial_resets_when_a_query_result_is_refilled_equal_content() {
 }
 
 #[test]
+fn an_unread_surface_member_change_keeps_a_derived_initial() {
+    // R2: `{"$":"[surface.tier]"}` reads only `tier`. Reporting a new
+    // `width` changes the surface box but not the memo's inputs — the
+    // store's per-key `tier` signal never fires — so the edit survives.
+    // Recording `surface` whole made width a dep: the re-evaluated fresh
+    // list then `!==`'d and wiped the edit. `tier` moving still resets.
+    let node = schema(json!({
+        "type": "Column",
+        "children": [{
+            "type": "$surface",
+            "children": [{
+                "type": "Row",
+                "$localState": { "sel": { "type": "array", "initial": { "$": "[surface.tier]" } } },
+                "children": []
+            }]
+        }]
+    }));
+    let mut screen = screen();
+    screen.apply(we_screen::ScreenOp::SetSurface {
+        id: "test:/$surface0".into(),
+        width: 400.0,
+        tier: "base".into(),
+    });
+    let (mut rt, mut host, locals, _unused) = rig(node, StoreBag::new());
+    let _ = rt.frame(&mut host, &screen).clone();
+    let row = NodeId::new("test:/$surface0/Row0");
+    match locals.get(&row, "sel") {
+        Value::List(items) => assert_eq!(
+            items
+                .first()
+                .and_then(|v| v.to_json().as_str().map(String::from)),
+            Some("base".to_string()),
+            "sel seeds [surface.tier]"
+        ),
+        other => panic!("sel must seed a list: {other:?}"),
+    }
+
+    locals.set(
+        &row,
+        "sel",
+        Value::List(Arc::new(vec![Value::from("mine")])),
+    );
+    locals.touch(&row, "sel");
+
+    // An unread member moving is no input of this initial — the edit stays.
+    screen.apply(we_screen::ScreenOp::SetSurface {
+        id: "test:/$surface0".into(),
+        width: 401.0,
+        tier: "base".into(),
+    });
+    let _ = rt.frame(&mut host, &screen).clone();
+    match locals.get(&row, "sel") {
+        Value::List(items) => assert_eq!(
+            items
+                .first()
+                .and_then(|v| v.to_json().as_str().map(String::from)),
+            Some("mine".to_string()),
+            "a width report must not reset an initial that only reads tier"
+        ),
+        other => panic!("sel must stay a list: {other:?}"),
+    }
+    assert!(locals.is_touched(&row, "sel"), "a kept edit stays touched");
+
+    // The read member moving resets — the dep is granular, not absent.
+    screen.apply(we_screen::ScreenOp::SetSurface {
+        id: "test:/$surface0".into(),
+        width: 401.0,
+        tier: "md".into(),
+    });
+    let _ = rt.frame(&mut host, &screen).clone();
+    match locals.get(&row, "sel") {
+        Value::List(items) => assert_eq!(
+            items
+                .first()
+                .and_then(|v| v.to_json().as_str().map(String::from)),
+            Some("md".to_string()),
+            "tier moving resets to the new initial"
+        ),
+        other => panic!("sel must stay a list: {other:?}"),
+    }
+    assert!(
+        !locals.is_touched(&row, "sel"),
+        "a real reset clears touched"
+    );
+}
+
+#[test]
 fn a_dollar_string_initial_stays_literal() {
     // A4 sub-point: `initial: "$store.name"`. TS's `resolveInitial` calls
     // `resolveProp`, which has no `$`-string branch — the dispatcher's final
