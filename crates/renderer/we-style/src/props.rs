@@ -636,6 +636,7 @@ pub fn is_interactive_prop(css_prop: &str) -> bool {
             | "border-bottom"
             | "border-left"
             | "box-shadow"
+            | "clip-path"
             | "transform"
             | "cursor"
             | "pointer-events"
@@ -1280,7 +1281,10 @@ fn eval_shadow_layer(text: &str) -> Option<Shadow> {
     })
 }
 
-fn eval_box_shadow(text: &str) -> Option<Vec<Shadow>> {
+/// A `box-shadow` list: one [`Shadow`] per comma-separated layer.
+/// `none` resolves to the empty list; any unparseable layer fails the
+/// whole value (CSS's all-or-nothing declaration rule).
+pub fn eval_box_shadow(text: &str) -> Option<Vec<Shadow>> {
     let t = text.trim();
     if t.eq_ignore_ascii_case("none") {
         return Some(Vec::new());
@@ -1289,6 +1293,42 @@ fn eval_box_shadow(text: &str) -> Option<Vec<Shadow>> {
         .iter()
         .map(|layer| eval_shadow_layer(layer.trim()))
         .collect()
+}
+
+/// A `clip-path` value: `none` or `polygon(x y, x y, …)` — each point two
+/// `<length-percentage>` terms (a `calc()` is one term; `top_level_parts`
+/// keeps its parens whole). An optional fill-rule first arg (`evenodd` /
+/// `nonzero`) is consumed and ignored — the painter triangulates, where
+/// the rule only shows on self-intersecting paths. `inset()`/`circle()`/
+/// `path()`/`url()` stay unsupported — `None`.
+pub fn eval_clip_path(text: &str) -> Option<ClipPath> {
+    let t = text.trim();
+    if t.eq_ignore_ascii_case("none") {
+        return Some(ClipPath::None);
+    }
+    let inner = t
+        .strip_prefix("polygon(")
+        .or_else(|| t.strip_prefix("polygon ("))
+        .and_then(|s| s.strip_suffix(')'))?;
+    let mut args = split_top_commas(inner);
+    if matches!(
+        args.first().map(|a| a.trim()),
+        Some("evenodd") | Some("nonzero")
+    ) {
+        args.remove(0);
+    }
+    if args.is_empty() {
+        return None;
+    }
+    // Under three points the polygon is degenerate — it parses (CSS keeps
+    // it) but clips the element's whole output; the painter decides.
+    args.iter()
+        .map(|point| match top_level_parts(point).as_slice() {
+            [x, y] => Some((eval_dimension(x)?, eval_dimension(y)?)),
+            _ => None,
+        })
+        .collect::<Option<Vec<(Dimension, Dimension)>>>()
+        .map(ClipPath::Polygon)
 }
 
 /// The `background-image` decl — `url()`, a gradient, or the faded
@@ -1631,6 +1671,13 @@ fn eval_decls_scoped(
                 let s = cx.subst(value);
                 match eval_box_shadow(&s) {
                     Some(shadows) => r.paint.shadows = Some(shadows),
+                    None => r.bad(css, value),
+                }
+            }
+            "clip-path" => {
+                let s = cx.subst(value);
+                match eval_clip_path(&s) {
+                    Some(clip) => r.paint.clip = Some(clip),
                     None => r.bad(css, value),
                 }
             }

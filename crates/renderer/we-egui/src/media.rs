@@ -17,12 +17,14 @@ pub(crate) use icon_names::phosphor_glyph as phosphor;
 
 /// Install the fonts and loaders the media widgets need: the three Phosphor
 /// variants (`regular` also rides along as a proportional-text fallback),
-/// the vendored Noto symbol subsets as text fallbacks for the non-ASCII the
-/// bundles use (arrows, chevrons, circled digits — OFL in `fonts/OFL.txt`,
-/// source and subset recipe in `fonts/README.md`),
-/// and egui_extras' image loader set (http/https/file/bytes, gif included).
-/// Idempotent — `frame_body` calls it every frame; only the first installs.
-/// `data:` URIs are decoded by `image_source` straight into
+/// the WE webfonts, the vendored Noto symbol subsets as text fallbacks for
+/// the non-ASCII the bundles use (arrows, chevrons, circled digits — OFL in
+/// `fonts/OFL.txt`, source and subset recipe in `fonts/README.md`), and
+/// egui_extras' image loader set (http/https/file/bytes, gif included).
+/// Idempotent — `frame_body` calls it every frame; only the first installs
+/// (the flag is *persisted*: a temp flag would clear at frame end and
+/// reinstall — woff2 decode + a new glyph atlas — every frame). `data:` URIs
+/// are decoded by `image_source` straight into
 /// `ImageSource::Bytes`, no custom loader needed.
 ///
 /// Policy-neutral: this never touches `MissingGlyphPolicy`. Whether a glyph
@@ -32,7 +34,7 @@ pub(crate) use icon_names::phosphor_glyph as phosphor;
 /// frame, since `frame_body` calls this before it lays out.
 pub fn install(ctx: &egui::Context) {
     const INSTALLED: &str = "we-egui::media-installed";
-    if ctx.data_mut(|d| d.get_temp::<bool>(egui::Id::unique(INSTALLED))) == Some(true) {
+    if ctx.data_mut(|d| d.get_persisted::<bool>(egui::Id::unique(INSTALLED))) == Some(true) {
         return;
     }
     let mut fonts = egui::FontDefinitions::default();
@@ -48,7 +50,9 @@ pub fn install(ctx: &egui::Context) {
         egui_phosphor::Variant::Fill.font_bytes(),
     );
     // Symbols and arrows the Ubuntu/Phosphor set lacks → Noto Sans Symbols
-    // subsets, appended last so they only fill gaps.
+    // subsets, appended last so they only fill gaps — and BEFORE
+    // `fonts::install`, which copies these generic lists into every named
+    // family's chain (`VT323` = own faces + Proportional's list).
     fonts.font_data.insert(
         "noto-sans-symbols".to_owned(),
         Arc::new(egui::FontData::from_static(include_bytes!(
@@ -67,9 +71,10 @@ pub fn install(ctx: &egui::Context) {
             "noto-sans-symbols-2".to_owned(),
         ]);
     }
+    crate::fonts::install(&mut fonts);
     ctx.set_fonts(fonts);
     egui_extras::install_image_loaders(ctx);
-    ctx.data_mut(|d| d.insert_temp(egui::Id::unique(INSTALLED), true));
+    ctx.data_mut(|d| d.insert_persisted(egui::Id::unique(INSTALLED), true));
 }
 
 /// A node's `src` → the source egui loads. `data:*;base64,…` decodes inline
@@ -143,27 +148,38 @@ fn unescape(s: &str) -> String {
 pub struct Icon;
 
 impl Icon {
-    fn size_px(node: &ResolvedNode, style: &Style, viewport: we_style::Size) -> f32 {
+    fn size_px(node: &ResolvedNode, style: &Style, view: ViewportCx) -> f32 {
         if let Some(v) = node.props.get("size") {
             if let Some(d) = props::dim_of(v) {
-                if let Some(px) = d.to_px(FONT_PX, ROOT_PX, viewport) {
+                if let Some(px) = d.to_px(view.font_px, view.root_px, view.viewport) {
                     return px;
                 }
             }
             match v {
                 Value::Num(n) => return *n as f32,
-                Value::Str(s) => {
-                    if let Ok(n) = s.parse::<f64>() {
-                        return n as f32;
+                Value::Str(s) => match s.as_ref() {
+                    // The `size` token scale the web component's `size`
+                    // attribute selects (`--we-size-*`).
+                    "xxs" => return 12.0,
+                    "xs" => return 16.0,
+                    "sm" => return 24.0,
+                    "md" => return 32.0,
+                    "lg" => return 40.0,
+                    "xl" => return 48.0,
+                    "xxl" => return 64.0,
+                    _ => {
+                        if let Ok(n) = s.parse::<f64>() {
+                            return n as f32;
+                        }
                     }
-                }
+                },
                 _ => {}
             }
         }
         style
             .text
             .font_size
-            .and_then(|d| d.to_px(FONT_PX, ROOT_PX, viewport))
+            .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
             .unwrap_or(16.0)
     }
 
@@ -184,12 +200,12 @@ impl Widget for Icon {
         WidgetKind::Leaf
     }
     fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, _avail: Size) -> Size {
-        let s = Self::size_px(node, style, view_of(cx.ctx).viewport);
+        let s = Self::size_px(node, style, view_of(cx.ctx));
         Size::new(s, s)
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         let view = view_of(cx.ui.ctx());
-        let size = Self::size_px(node, style, view.viewport);
+        let size = Self::size_px(node, style, view);
         let name = props::prop_str(node, "name").unwrap_or("");
         let color = props::prop_str(node, "color")
             .and_then(we_style::eval_color)
@@ -198,7 +214,7 @@ impl Widget for Icon {
         // `opacity` covers the glyph like any painted content.
         let color = props::faded(style, color);
         cx.ui.painter().text(
-            props::content_rect(rect, style, FONT_PX, ROOT_PX, view, cx.cb_w).center(),
+            props::content_rect(rect, style, view, cx.cb_w).center(),
             egui::Align2::CENTER_CENTER,
             icon_names::phosphor_glyph(name).unwrap_or("?"),
             egui::FontId::new(size, Self::family(node)),
@@ -235,11 +251,11 @@ impl Widget for Image {
         let view = view_of(cx.ctx);
         let w = props::dim_prop(node, "width")
             .or(style.layout.width)
-            .and_then(|d| d.to_px(FONT_PX, ROOT_PX, view.viewport))
+            .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
             .unwrap_or(avail.x.min(64.0));
         let h = props::dim_prop(node, "height")
             .or(style.layout.height)
-            .and_then(|d| d.to_px(FONT_PX, ROOT_PX, view.viewport))
+            .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
             .unwrap_or(w);
         Size::new(w, h)
     }
@@ -247,9 +263,15 @@ impl Widget for Image {
         let view = view_of(cx.ui.ctx());
         let src = props::prop_text(node, "src").unwrap_or("");
         let alt = props::prop_text(node, "alt").unwrap_or(src);
-        let r = props::radius_px(&style.paint.radius, rect, FONT_PX, ROOT_PX, view.viewport);
+        let r = props::radius_px(
+            &style.paint.radius,
+            rect,
+            view.font_px,
+            view.root_px,
+            view.viewport,
+        );
         // The image is the element's content — it paints inside the padding.
-        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view, cx.cb_w);
+        let content = props::content_rect(rect, style, view, cx.cb_w);
         if src.is_empty() {
             // A broken img: bordered slot + alt text, as the browser draws.
             cx.ui.painter().rect_stroke(
@@ -522,7 +544,13 @@ impl Avatar {
     ) {
         let ctx = ui.ctx().clone();
         let view = view_of(&ctx);
-        let r = props::radius_px(&style.paint.radius, rect, FONT_PX, ROOT_PX, view.viewport);
+        let r = props::radius_px(
+            &style.paint.radius,
+            rect,
+            view.font_px,
+            view.root_px,
+            view.viewport,
+        );
         let sunken = || {
             style
                 .paint
@@ -531,9 +559,35 @@ impl Avatar {
                 .or_else(|| props::role_color(&ctx, "surface-sunken"))
                 .unwrap_or_else(|| ui.visuals().widgets.noninteractive.bg_fill)
         };
+        // CSS order for the base part: its background (the face's disc —
+        // seeded for initials, sunken for an identicon or icon, none for a
+        // picture: `has-image` drops it), then the theme's chrome over it
+        // (retro's inset bevel, borders), then the content — the letters,
+        // the identicon, the glyph or the picture.
+        let disc = match face {
+            Face::Image(_) => None,
+            Face::Initials(_, seed) => Some(
+                props::seeded_fill(&ctx, seed)
+                    .unwrap_or_else(|| (sunken(), props::text_color(style, &ctx))),
+            ),
+            Face::Hash(_) | Face::Icon(_) => Some((sunken(), props::text_color(style, &ctx))),
+        };
+        let mut chrome = style.clone();
+        chrome.paint.bg = disc.map(|(bg, _)| {
+            let [r, g, b, a] = bg.to_normalized_gamma_f32();
+            // Color32 is premultiplied; the style colour is straight.
+            let un = |c: f32| if a > 0.0 { (c / a).min(1.0) } else { 0.0 };
+            we_style::Color::new(un(r), un(g), un(b), a)
+        });
+        props::paint_box(
+            ui.painter(),
+            rect,
+            &chrome,
+            props::text_color(style, &ctx),
+            view,
+        );
         let p = ui.painter().with_clip_rect(rect);
         match face {
-            // `has-image` drops the disc — a picture covers it entirely.
             Face::Image(u) => {
                 egui::Image::new(image_source(u))
                     .fit_to_exact_size(rect.size())
@@ -541,10 +595,8 @@ impl Avatar {
                     .show_loading_spinner(false)
                     .paint_at(ui, rect);
             }
-            Face::Initials(letters, seed) => {
-                let (bg, fg) = props::seeded_fill(&ctx, seed)
-                    .unwrap_or_else(|| (sunken(), props::text_color(style, &ctx)));
-                p.rect_filled(rect, r, bg);
+            Face::Initials(letters, _) => {
+                let fg = disc.map(|(_, fg)| fg).unwrap_or(egui::Color32::PLACEHOLDER);
                 // 0.4× the disc — 0.5× for a lone letter (the optical lift).
                 let fs = rect.height()
                     * if letters.chars().count() == 1 {
@@ -561,11 +613,9 @@ impl Avatar {
                 );
             }
             Face::Hash(h) => {
-                p.rect_filled(rect, r, sunken());
                 paint_identicon(&p, rect, h, &ctx);
             }
             Face::Icon(name) => {
-                p.rect_filled(rect, r, sunken());
                 p.text(
                     rect.center(),
                     egui::Align2::CENTER_CENTER,
@@ -594,7 +644,7 @@ impl Widget for Avatar {
         let ctx = cx.ui.ctx().clone();
         let view = view_of(&ctx);
         let size = Self::size_px(node, &ctx, view);
-        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view, cx.cb_w);
+        let content = props::content_rect(rect, style, view, cx.cb_w);
         let width_raw = match props::prop(node, "ringWidth") {
             Value::Str(s) => Some(s.to_string()),
             Value::Num(n) => Some(n.to_string()),
@@ -716,7 +766,10 @@ impl AvatarStack {
     fn entries(node: &ResolvedNode) -> Vec<StackEntry> {
         let mut seen = std::collections::BTreeSet::new();
         let mut out = Vec::new();
-        if let Some(list) = props::prop_list(node, "avatars") {
+        let list = props::prop_list(node, "items")
+            .or_else(|| props::prop_list(node, "avatars"))
+            .or_else(|| props::prop_list(node, "users"));
+        if let Some(list) = list {
             for (i, v) in list.iter().enumerate() {
                 let e = stack_entry(v, i);
                 if seen.insert(e.id.clone()) {
@@ -751,7 +804,7 @@ impl Widget for AvatarStack {
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         let ctx = cx.ui.ctx().clone();
         let view = view_of(&ctx);
-        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view, cx.cb_w);
+        let content = props::content_rect(rect, style, view, cx.cb_w);
         let size = content.height();
         let max = props::prop_num(node, "max").unwrap_or(5.0) as usize;
         let overlap = props::prop_num(node, "overlap").unwrap_or(0.35) as f32;
@@ -844,13 +897,20 @@ impl Widget for AnimatedIcon {
     fn kind(&self) -> WidgetKind {
         WidgetKind::Leaf
     }
-    fn measure(&self, _cx: &MeasureCx, node: &ResolvedNode, _style: &Style, _a: Size) -> Size {
-        let s = props::prop_num(node, "size").unwrap_or(20.0) as f32;
+    fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, _style: &Style, _a: Size) -> Size {
+        // `size` may be a number or a `"24px"`/`"1.5em"` dim.
+        let view = view_of(cx.ctx);
+        let s = props::px(
+            props::dim_prop(node, "size").as_ref(),
+            view.font_px,
+            view.root_px,
+            view.viewport,
+        )
+        .unwrap_or(20.0);
         Size::new(s, s)
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
-        let content =
-            props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()), cx.cb_w);
+        let content = props::content_rect(rect, style, view_of(cx.ui.ctx()), cx.cb_w);
         let size = content.height().min(content.width());
         let src = props::prop_text(node, "src").unwrap_or("");
         let name = props::prop_str(node, "name").unwrap_or("");

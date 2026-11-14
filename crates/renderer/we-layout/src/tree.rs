@@ -16,7 +16,7 @@ use we_expr::Value;
 use we_style::{Dimension, Display as WsDisplay, ItemAlign, Overflow, Position, Style, Wrap};
 use we_template::{NodeId, ResolvedChild, ResolvedNode};
 
-use crate::defaults::{direction_of, effective, style_of, StyleCx, FONT_PX, ROOT_PX};
+use crate::defaults::{direction_of, effective, font_px, root_px, style_of, StyleCx};
 use crate::{Pos2, Rect, Size, Vec2};
 
 /// A virtual sub-rectangle layout computed for a widget — the caret, row and
@@ -59,6 +59,9 @@ pub struct PartSpec {
     pub indent: f32,
     /// Align-items override for a part (e.g. `ay` on the tree row).
     pub align: Option<ItemAlign>,
+    /// `flex-grow` along the part's main axis — the alert's content part
+    /// fills what the icon leaves, so a trailing part docks at the far edge.
+    pub flex_grow: f32,
     /// `gap` between the part's children (the button's icon–label space).
     pub column_gap: f32,
     pub parts: Vec<PartSpec>,
@@ -76,6 +79,7 @@ impl PartSpec {
             min_height: 0.0,
             indent: 0.0,
             align: None,
+            flex_grow: 0.0,
             column_gap: 0.0,
             parts: vec![],
         }
@@ -92,6 +96,7 @@ impl PartSpec {
             min_height: 0.0,
             indent: 0.0,
             align: None,
+            flex_grow: 0.0,
             column_gap: 0.0,
             parts: vec![],
         }
@@ -108,6 +113,7 @@ impl PartSpec {
             min_height: 0.0,
             indent: 0.0,
             align: None,
+            flex_grow: 0.0,
             column_gap: 0.0,
             parts,
         }
@@ -116,6 +122,12 @@ impl PartSpec {
     /// Leading space inside the part (the tree's indent).
     pub fn indented(mut self, px: f32) -> Self {
         self.indent = px;
+        self
+    }
+
+    /// `flex-grow` — the part claims the row's leftover space.
+    pub fn growing(mut self, v: f32) -> Self {
+        self.flex_grow = v;
         self
     }
 
@@ -243,7 +255,12 @@ pub struct TextSpan {
 /// A length in px, the way `Dimension::resolve` folds it without a percent
 /// base — `ch`/`ex`/`lh` included, by the shared approximations.
 fn dim_px(d: &Dimension, scx: &StyleCx) -> Option<f32> {
-    d.resolve(None, FONT_PX, ROOT_PX, scx.viewport)
+    d.resolve(
+        None,
+        crate::defaults::font_px(scx),
+        crate::defaults::root_px(scx),
+        scx.viewport,
+    )
 }
 
 // ── Percent bases ─────────────────────────────────────────────────────────
@@ -672,7 +689,12 @@ fn main_pick(main: Direction, cb: (AxisBase, AxisBase)) -> AxisBase {
 /// A resolved border side's px — always definite (border widths never
 /// carry percent).
 fn border_px(side: &Option<we_style::BorderSide>, scx: &StyleCx) -> f32 {
-    crate::props::border_side_px(side, FONT_PX, ROOT_PX, scx.viewport)
+    crate::props::border_side_px(
+        side,
+        crate::defaults::font_px(scx),
+        crate::defaults::root_px(scx),
+        scx.viewport,
+    )
 }
 
 /// A resolved `LengthPercentage` as px — `None` while it is still a
@@ -798,8 +820,8 @@ fn parse_template(tpl: &str) -> Option<Vec<taffy::GridTemplateComponent<String>>
 fn border_lp(side: &Option<we_style::BorderSide>, scx: &StyleCx) -> LengthPercentage {
     LengthPercentage::length(crate::props::border_side_px(
         side,
-        FONT_PX,
-        ROOT_PX,
+        crate::defaults::font_px(scx),
+        crate::defaults::root_px(scx),
         scx.viewport,
     ))
 }
@@ -846,6 +868,7 @@ fn part_style(spec: &PartSpec) -> taffy::Style {
             bottom: LengthPercentage::length(0.0),
         },
         flex_shrink: 0.0,
+        flex_grow: spec.flex_grow,
         ..Default::default()
     }
 }
@@ -951,8 +974,13 @@ impl<'a> Builder<'a> {
     fn pct_calc(&mut self, c: &we_style::Calc, b: PctBase) -> PctCalc {
         match self.pct_px(b) {
             Some(v) => PctCalc::Px(
-                c.resolve(Some(v), FONT_PX, ROOT_PX, self.scx.viewport)
-                    .unwrap_or(0.0),
+                c.resolve(
+                    Some(v),
+                    font_px(self.scx),
+                    root_px(self.scx),
+                    self.scx.viewport,
+                )
+                .unwrap_or(0.0),
             ),
             None if b.base == AxisBase::Indefinite => PctCalc::Cyclic,
             None => PctCalc::Percent(c.percent),
@@ -999,8 +1027,13 @@ impl<'a> Builder<'a> {
                 PctCalc::Px(v) => LengthPercentage::length(v),
                 PctCalc::Percent(p) => LengthPercentage::percent(p),
                 PctCalc::Cyclic => LengthPercentage::length(
-                    c.resolve(Some(0.0), FONT_PX, ROOT_PX, self.scx.viewport)
-                        .unwrap_or(0.0),
+                    c.resolve(
+                        Some(0.0),
+                        font_px(self.scx),
+                        root_px(self.scx),
+                        self.scx.viewport,
+                    )
+                    .unwrap_or(0.0),
                 ),
             },
             Some(d) => dim_px(d, self.scx)
@@ -1052,8 +1085,13 @@ impl<'a> Builder<'a> {
                 PctCalc::Px(v) => LengthPercentageAuto::length(v),
                 PctCalc::Percent(p) => LengthPercentageAuto::percent(p),
                 PctCalc::Cyclic => LengthPercentageAuto::length(
-                    c.resolve(Some(0.0), FONT_PX, ROOT_PX, self.scx.viewport)
-                        .unwrap_or(0.0),
+                    c.resolve(
+                        Some(0.0),
+                        font_px(self.scx),
+                        root_px(self.scx),
+                        self.scx.viewport,
+                    )
+                    .unwrap_or(0.0),
                 ),
             },
             Some(d) => dim_px(d, self.scx)
@@ -1077,8 +1115,13 @@ impl<'a> Builder<'a> {
                 PctCalc::Px(v) => LengthPercentage::length(v),
                 PctCalc::Percent(p) => LengthPercentage::percent(p),
                 PctCalc::Cyclic => LengthPercentage::length(
-                    c.resolve(Some(0.0), FONT_PX, ROOT_PX, self.scx.viewport)
-                        .unwrap_or(0.0),
+                    c.resolve(
+                        Some(0.0),
+                        font_px(self.scx),
+                        root_px(self.scx),
+                        self.scx.viewport,
+                    )
+                    .unwrap_or(0.0),
                 ),
             },
             Some(d) => dim_px(d, self.scx)

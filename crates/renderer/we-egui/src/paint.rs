@@ -457,6 +457,25 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
         }
     };
     let parts = w.parts_buf.as_ref().unwrap_or(&w.base_parts);
+    // `clip-path: polygon(…)` clips the element's whole painted output —
+    // chrome, children, spans — to the polygon (resolved against the border
+    // box). egui clips to rectangles only, so the walk marks where the
+    // node's paint starts and rewrites the queued shapes when the subtree
+    // completes. A state patch can add or drop the clip (cyberpunk's
+    // `:hover { clip-path: none }`), so any clip in the base or a patch
+    // marks, and the region comes from the state the widget painted.
+    let may_clip = style.paint.clip.is_some()
+        || [&style.hover, &style.active, &style.focus, &style.disabled]
+            .into_iter()
+            .any(|p| p.as_ref().is_some_and(|p| p.paint.clip.is_some()));
+    let clip_mark = may_clip.then(|| {
+        w.ui.ctx().graphics(|g| {
+            g.get(w.ui.layer_id())
+                .map(|list| list.next_idx().0)
+                .unwrap_or(0)
+        })
+    });
+    let state_clip;
     {
         let mut cx = PaintCx {
             ui: w.ui,
@@ -468,8 +487,10 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
             ancestors: &w.ancestors[..w.ancestors.len() - 1],
             hits: &mut w.hits,
             clicks: &mut w.clicks,
+            state_clip: None,
         };
         widget.paint(&mut cx, node, style, rect);
+        state_clip = cx.state_clip.take();
     }
 
     // Scroll container: children translate by the stored offset and clip on
@@ -526,6 +547,17 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
                 }
             }
         }
+    }
+
+    // The subtree's output is queued — cut it to the clip polygon of the
+    // state the widget painted in (the resting style when it reported none).
+    if let Some(start) = clip_mark {
+        let view = crate::defaults::view_of(w.ui.ctx());
+        let clip = match state_clip {
+            Some(c) => crate::props::clip_region_of(c.as_ref(), rect, view),
+            None => crate::props::clip_region(style, rect, view),
+        };
+        crate::props::apply_clip(w.ui.ctx(), w.ui.layer_id(), start, &clip);
     }
 
     // DOM bubble: an authored `onClick` fires child-first — after every
@@ -1119,6 +1151,7 @@ fn overlay_contents(
             ancestors: &ancestors,
             hits: &mut inner.hits,
             clicks: &mut inner.clicks,
+            state_clip: None,
         };
         widget.paint(&mut cx, node, &style, content_rect);
     }

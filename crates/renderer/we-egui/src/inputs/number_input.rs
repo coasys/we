@@ -39,8 +39,9 @@ impl Widget for NumberInput {
         Size::new(avail.x.min(140.0), props::control_height(node))
     }
 
-    fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, rect: Rect) {
+    fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         let (min, max, step) = bounds(node);
+        let font = props::control_font(style, cx.ui.ctx());
         let disabled = disabled(node);
         reconcile_num(cx.edit, node);
         let mut text = shown_num(cx.edit, node);
@@ -85,7 +86,7 @@ impl Widget for NumberInput {
                 r.center(),
                 egui::Align2::CENTER_CENTER,
                 glyph,
-                egui::FontId::default(),
+                font.clone(),
                 visuals.text_color(),
             );
         }
@@ -95,6 +96,7 @@ impl Widget for NumberInput {
             TextEdit::singleline(&mut text)
                 .id_salt(node.id.as_str())
                 .desired_width(field.width())
+                .font(props::editor_font(style, cx.ui.ctx()))
                 // Fill the field so the row reads as one control, and
                 // centre the text block in it (WE's `text-align: center`
                 // on the native input) — the theme styles the atom

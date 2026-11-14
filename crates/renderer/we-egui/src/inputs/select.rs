@@ -72,17 +72,14 @@ impl Widget for Select {
         WidgetKind::Leaf
     }
 
-    fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, _style: &Style, avail: Size) -> Size {
+    fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, avail: Size) -> Size {
+        let font = props::control_font(style, cx.ctx);
         let w = options(node)
             .iter()
             .map(|o| {
                 cx.ctx
                     .fonts_mut(|f| {
-                        f.layout_no_wrap(
-                            o.label.clone(),
-                            egui::FontId::default(),
-                            egui::Color32::WHITE,
-                        )
+                        f.layout_no_wrap(o.label.clone(), font.clone(), egui::Color32::WHITE)
                     })
                     .size()
                     .x
@@ -92,8 +89,9 @@ impl Widget for Select {
         Size::new(avail.x.min(w), props::control_height(node))
     }
 
-    fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, _style: &Style, rect: Rect) {
+    fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         let opts = options(node);
+        let font = props::control_font(style, cx.ui.ctx());
         let value = props::prop(node, "value");
         let current = opts.iter().find(|o| o.value.strict_eq(value));
         let is_placeholder = current.is_none();
@@ -127,7 +125,7 @@ impl Widget for Select {
             egui::pos2(rect.min.x + 8.0, rect.center().y),
             egui::Align2::LEFT_CENTER,
             shown,
-            egui::FontId::default(),
+            font.clone(),
             if is_placeholder {
                 visuals.weak_text_color()
             } else {
@@ -156,14 +154,18 @@ impl Widget for Select {
             .show(|ui| {
                 ui.set_min_width(rect.width());
                 if opts.is_empty() {
-                    ui.weak("no options");
+                    ui.label(egui::RichText::new("no options").font(font.clone()).weak());
                 }
                 let mut last_group: Option<&str> = None;
                 for opt in &opts {
                     // select.ts:641 — a heading when the group name changes
                     // from the previous rendered option's.
                     if opt.group.is_some() && opt.group.as_deref() != last_group {
-                        ui.weak(opt.group.as_deref().unwrap_or_default());
+                        ui.label(
+                            egui::RichText::new(opt.group.as_deref().unwrap_or_default())
+                                .font(font.clone())
+                                .weak(),
+                        );
                     }
                     last_group = opt.group.as_deref();
                     let text = match &opt.icon {
@@ -173,7 +175,10 @@ impl Widget for Select {
                     let mut picked = false;
                     ui.add_enabled_ui(!opt.disabled, |ui| {
                         picked = ui
-                            .selectable_label(opt.value.strict_eq(value), text)
+                            .selectable_label(
+                                opt.value.strict_eq(value),
+                                egui::RichText::new(text).font(font.clone()),
+                            )
                             .clicked();
                     });
                     if picked {
