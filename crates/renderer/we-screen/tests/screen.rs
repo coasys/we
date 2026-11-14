@@ -436,6 +436,57 @@ fn fragment_navigation_replaces_the_old_fragment() {
 }
 
 #[test]
+fn interior_dot_segments_resolve_at_the_url_boundary() {
+    // The edge.double-dot-seg input, end to end: resolve_path answers
+    // literally (paths.json pins that), and the navigation boundary —
+    // new URL('/space/abc/board/a/../b', href) — lands on /space/abc/board/b.
+    let mut s = screen(
+        json!({ "params": { "id": { "type": "id", "identity": true } } }),
+        "/space/abc/board?id=ad4m://obj/x",
+    );
+    assert_eq!(
+        s.nav.resolve(
+            "a/../b",
+            we_screen::PathBase { depth: 3, root: 2 }
+        ),
+        "/space/abc/board/a/../b"
+    );
+    s.apply(ScreenOp::Navigate {
+        to: "a/../b".to_string(),
+        query: None,
+        base_depth: Some(3),
+        replace: false,
+    });
+    assert_eq!(s.nav.href(), "/space/abc/board/b");
+    assert_eq!(s.nav.segments().join("/"), "space/abc/board/b");
+    assert_eq!(s.nav.page_identity(), "/space/abc/board/b");
+    // Back returns to the queried board.
+    assert_eq!(s.apply(ScreenOp::Back), Changed::Yes);
+    assert_eq!(s.nav.href(), "/space/abc/board?id=ad4m://obj/x");
+}
+
+#[test]
+fn open_and_traverse_normalize_the_location() {
+    // The same boundary covers every way a location arrives: a deep link,
+    // a --route flag, a popstate — replaceState parses the text too.
+    let mut s = screen(json!({ "params": {} }), "/space/abc/board");
+    s.apply(ScreenOp::Open {
+        href: "/x/../y?k=v".to_string(),
+    });
+    assert_eq!(s.nav.href(), "/y?k=v");
+    // `..` cannot climb above the root.
+    s.apply(ScreenOp::Open {
+        href: "/a/../../b".to_string(),
+    });
+    assert_eq!(s.nav.href(), "/b");
+    // And `.` segments drop the same way.
+    s.apply(ScreenOp::Open {
+        href: "/a/./b".to_string(),
+    });
+    assert_eq!(s.nav.href(), "/a/b");
+}
+
+#[test]
 fn bag_reads_the_template_names_as_strings() {
     use we_expr::{Namespace, Value};
     let mut s = screen(

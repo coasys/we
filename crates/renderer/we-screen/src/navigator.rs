@@ -126,6 +126,10 @@ impl Navigator {
         };
 
         let location = Location::parse(&landed);
+        // The stack holds the address the bar would show — `new URL`
+        // resolves `.`/`..` before `pushState`, so `back()` can only ever
+        // land on the canonical form.
+        let landed = location.href();
         let changed = !opts.replace || location != self.location;
         if opts.replace {
             self.history.replace(&landed);
@@ -191,7 +195,9 @@ impl Navigator {
     pub fn open(&mut self, href: &str) -> Changed {
         let location = Location::parse(href);
         let changed = location != self.location;
-        self.history.replace(href);
+        // `replaceState` parses the text too — the entry holds the canonical
+        // address the bar shows, not the written one.
+        self.history.replace(&location.href());
         self.location = location;
         self.report();
         if changed {

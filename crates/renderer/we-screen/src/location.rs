@@ -38,7 +38,9 @@ impl Location {
     /// Parse `pathname + search + hash` — the shape `href()` writes, and the
     /// shape a `popstate` report or a `--route` flag carries.
     pub fn parse(href: &str) -> Location {
+        // An empty fragment reports no hash at all — `url.hash` reads ''.
         let (before_hash, fragment) = match href.split_once('#') {
+            Some((rest, "")) => (rest, None),
             Some((rest, frag)) => (rest, Some(frag.to_string())),
             None => (href, None),
         };
@@ -46,12 +48,22 @@ impl Location {
             Some((p, q)) => (p, q),
             None => (before_hash, ""),
         };
+        // A parsed URL never holds dot segments — `new URL` resolves `.` and
+        // `..` when the address is written, `..` clamped at the root. The
+        // pure `resolve_path` keeps them literal on purpose (paths.json);
+        // this is the boundary that resolves them.
+        let mut segments: Vec<String> = Vec::new();
+        for seg in path.split('/').filter(|s| !s.is_empty()) {
+            match seg {
+                "." => {}
+                ".." => {
+                    segments.pop();
+                }
+                s => segments.push(s.to_string()),
+            }
+        }
         Location {
-            segments: path
-                .split('/')
-                .filter(|s| !s.is_empty())
-                .map(str::to_string)
-                .collect(),
+            segments,
             params: parse_query(query),
             fragment,
         }
