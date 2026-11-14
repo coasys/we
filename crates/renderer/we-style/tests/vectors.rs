@@ -201,6 +201,70 @@ fn all_cases() -> serde_json::Value {
     serde_json::from_str(&text).unwrap()
 }
 
+fn bag(key: &str, value: &str) -> Bag {
+    [(Arc::from(key), Value::Str(Arc::from(value)))]
+        .into_iter()
+        .collect()
+}
+
+/// Ground truth against the recorded `light` table. The numbers below are
+/// what the browser computed, so this pins the whole pipeline — prop →
+/// emitted declaration → `var()` substitution → field evaluation — to values
+/// that are known independently of any vector.
+#[test]
+fn known_token_values_light() {
+    use we_style::{Dimension, Easing, ZIndex};
+
+    let tokens = token_table("light");
+    let input = StyleInput::new(&tokens, Direction::Row);
+
+    // The table itself records resolved values — spot-check the raw strings.
+    assert_eq!(tokens.get("--we-space-400"), Some("16px"));
+    assert_eq!(tokens.get("--we-radius-pill"), Some("9999px"));
+    assert_eq!(tokens.get("--we-radius-full"), Some("50%"));
+    assert_eq!(tokens.get("--we-font-weight-700"), Some("700"));
+
+    // space-400 flows through `p` → `padding: var(--we-space-400)` → 16px.
+    let s = we_style::resolve(&bag("p", "400"), &input);
+    assert_eq!(s.layout.padding.top, Some(Dimension::Px(16.0)));
+
+    // The radius scale is distinct and strictly increasing.
+    for (token, px) in [
+        ("100", 2.0),
+        ("200", 4.0),
+        ("300", 6.0),
+        ("400", 8.0),
+        ("500", 12.0),
+        ("600", 16.0),
+    ] {
+        let s = we_style::resolve(&bag("r", token), &input);
+        assert_eq!(
+            s.paint.radius.top,
+            Some(Dimension::Px(px)),
+            "radius-{token} should be {px}px"
+        );
+    }
+    // pill is the capsule token; full is the circle token.
+    let s = we_style::resolve(&bag("r", "pill"), &input);
+    assert_eq!(s.paint.radius.top, Some(Dimension::Px(9999.0)));
+    let s = we_style::resolve(&bag("r", "full"), &input);
+    assert_eq!(s.paint.radius.top, Some(Dimension::Percent(0.5)));
+
+    // Weights are numbers, not lengths.
+    let s = we_style::resolve(&bag("fontWeight", "700"), &input);
+    assert_eq!(s.text.font_weight, Some(700.0));
+
+    // Durations and easings resolve out of the transition shorthand.
+    let s = we_style::resolve(&bag("transition", "opacity 300 ease-out"), &input);
+    assert_eq!(s.transitions.len(), 1);
+    assert_eq!(s.transitions[0].duration_ms, Some(250.0));
+    assert_eq!(s.transitions[0].easing, Easing::EaseOut);
+
+    // Named z layers resolve to their recorded numbers.
+    let s = we_style::resolve(&bag("zIndex", "modal"), &input);
+    assert_eq!(s.paint.z_index, Some(ZIndex::Value(300)));
+}
+
 #[test]
 fn style_vectors() {
     let json = all_cases();
