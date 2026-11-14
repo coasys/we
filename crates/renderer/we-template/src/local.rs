@@ -87,25 +87,19 @@ impl RefIds {
 }
 
 /// Whether this pass's tracked reads differ from the previous pass's —
-/// same names in the same order with equivalent values. A value compares
-/// like the signal's `===`, with one relaxation: a fresh container holding
-/// identical content counts as unchanged — the resolver rebuilds a few
-/// scope objects (`$nav`, the surface box) every pass, where TS keeps one
-/// object alive. The consequence of a wrong "unchanged" is a kept user
-/// edit, never a lost one.
+/// same names in the same order, each `===` the value it recorded. The
+/// comparison is JavaScript-strict, identity and all: a fresh container
+/// holding identical content IS a moved dependency — the store key fired —
+/// so an equal-content replacement still resets. What must not move are
+/// the reads the port rebuilds itself (`routeStore.segments`, a pending
+/// query's `[]`, the surface box); the producers keep those identities
+/// stable so this comparison can stay honest.
 fn deps_moved(prev: &TrackedDeps, next: &TrackedDeps) -> bool {
     prev.len() != next.len()
         || prev
             .iter()
             .zip(next)
-            .any(|((n1, v1), (n2, v2))| n1 != n2 || !dep_eq(v1, v2))
-}
-
-fn dep_eq(a: &Value, b: &Value) -> bool {
-    a.strict_eq(b)
-        || (matches!(a, Value::Obj(_) | Value::List(_))
-            && matches!(b, Value::Obj(_) | Value::List(_))
-            && a.to_json() == b.to_json())
+            .any(|((n1, v1), (n2, v2))| n1 != n2 || !v1.strict_eq(v2))
 }
 
 impl LocalState {

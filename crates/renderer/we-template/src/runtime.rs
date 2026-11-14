@@ -95,6 +95,9 @@ pub struct Runtime {
     /// Parsed embedded sub-schemas (`$if` branches, panel bodies, record
     /// views) — raw `Json` address → node, valid for the bundle's lifetime.
     node_memo: HashMap<usize, Arc<SchemaNode>>,
+    /// Scope objects interned by content across passes (`$surface`, `$nav`)
+    /// — a same-content rebuild keeps its identity, like WE's stores do.
+    value_memo: HashMap<Arc<str>, Value>,
     stats: Stats,
 }
 
@@ -127,6 +130,7 @@ impl Runtime {
             live: HashSet::new(),
             parents: HashMap::new(),
             node_memo: HashMap::new(),
+            value_memo: HashMap::new(),
             stats: Stats::default(),
         }
     }
@@ -158,6 +162,7 @@ impl Runtime {
             live: HashSet::new(),
             parents: HashMap::new(),
             node_memo: HashMap::new(),
+            value_memo: HashMap::new(),
             stats: Stats::default(),
         }
     }
@@ -321,6 +326,7 @@ impl Runtime {
                         parents: &mut round_parents,
                         warnings: &mut warnings,
                         node_memo: &mut self.node_memo,
+                        value_memo: &mut self.value_memo,
                         dollar_type: &*self.dollar_type,
                         route_tail: &mut route_tail,
                     };

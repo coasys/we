@@ -83,9 +83,28 @@ pub struct ResolveCx<'a> {
     /// route step's body resolves (empty inside the leaf's body), popped
     /// after. `None` at the template's own `$routes` node.
     pub route_tail: &'a mut Vec<Vec<MatchedRoute<'a>>>,
+    /// Scope values the resolver rebuilds each pass but that must keep one
+    /// identity while their content holds — the `$surface` box and `$nav`
+    /// are a store/context WE keeps alive across renders. Keyed by their
+    /// scope slot (`$surface:<node>`, `$nav:<route>`); [`ResolveCx::memo_value`]
+    /// interns by content.
+    pub value_memo: &'a mut HashMap<Arc<str>, Value>,
 }
 
 impl ResolveCx<'_> {
+    /// `candidate` interned to `slot`: while a rebuild's content holds, the
+    /// SAME value answers — the scope object WE keeps alive across renders.
+    /// Changed content swaps the allocation, the way a store write does.
+    fn memo_value(&mut self, slot: Arc<str>, candidate: Value) -> Value {
+        match self.value_memo.get(&slot) {
+            Some(held) if crate::scope::content_eq(held, &candidate) => held.clone(),
+            _ => {
+                self.value_memo.insert(slot, candidate.clone());
+                candidate
+            }
+        }
+    }
+
     fn node_id(&self, root: &str, path: &str) -> NodeId {
         NodeId::new(format!("{root}:{path}"))
     }
@@ -242,8 +261,14 @@ impl Namespace for TrackNs {
                 deps: self.deps.clone(),
             });
         }
-        if let Ok(mut deps) = self.deps.lock() {
-            deps.push((path, value.clone()));
+        // A `$`-member is the port's own plumbing (`local.$fields`,
+        // `local.$decl:*`, `local.$owner:*`) — it rebuilds on demand, so
+        // recording it would register a dependency that moves every pass.
+        // It still answers; it is just not a reactive input.
+        if !key.starts_with('$') {
+            if let Ok(mut deps) = self.deps.lock() {
+                deps.push((path, value.clone()));
+            }
         }
         value
     }
@@ -854,7 +879,16 @@ fn resolve_node(
             surface.insert("width".into(), Value::Num(measure.width));
             surface.insert("tier".into(), Value::Str(measure.tier.into()));
             let mut surface_scope = node_scope.clone();
-            surface_scope.bind(as_key.as_ref(), Value::Obj(Arc::new(surface)));
+            // The same box across resolves until a measure lands — WE's
+            // `createSurface` keeps one store alive, and a tracked initial
+            // reading `surface` must not see a fresh identity every pass.
+            surface_scope.bind(
+                as_key.as_ref(),
+                cx.memo_value(
+                    format!("$surface:{id}").into(),
+                    Value::Obj(Arc::new(surface)),
+                ),
+            );
 
             let mut resolved_props = IndexMap::new();
             let mut handlers = IndexMap::new();
@@ -1350,9 +1384,14 @@ fn resolve_chain<'a>(
     let mut nav = IndexMap::new();
     nav.insert("baseDepth".into(), Value::Num(depth as f64));
     let mut step_scope = scope.clone();
-    step_scope.bind("$nav", Value::Obj(Arc::new(nav)));
-
     let route_path = format!("{path}/r:{}", head.full.trim_start_matches('/'));
+    step_scope.bind(
+        "$nav",
+        cx.memo_value(
+            format!("$nav:{route_path}").into(),
+            Value::Obj(Arc::new(nav)),
+        ),
+    );
     cx.route_tail.push(tail.to_vec());
     let out = resolve_node(
         &head.route.node,

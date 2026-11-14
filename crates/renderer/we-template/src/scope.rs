@@ -12,7 +12,7 @@
 //!   read lazily so a re-resolve picks up writes.
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use indexmap::IndexMap;
 use we_expr::{CallFn, Env, MapNamespace, Namespace, Value};
@@ -158,7 +158,7 @@ impl Namespace for LocalNs {
             Some((node, LocalDecl::State(_))) => self.state.get(node, key),
             Some((_, LocalDecl::Query(slot))) => match slot.state() {
                 crate::query::QueryState::Rows(rows) => Value::List(rows),
-                crate::query::QueryState::Loading => Value::List(Arc::new(Vec::new())),
+                crate::query::QueryState::Loading => Value::List(empty_rows()),
             },
             Some((_, LocalDecl::QueryLoaded(slot))) => {
                 Value::Bool(matches!(slot.state(), crate::query::QueryState::Rows(_)))
@@ -173,6 +173,97 @@ impl Namespace for LocalNs {
             .iter()
             .flat_map(|scope| scope.fields.keys().cloned())
             .collect()
+    }
+}
+
+/// One `[]` for every pending query. A Loading cell's rows are a stable
+/// empty list — WE's `[]` initial keeps its allocation until rows land —
+/// where a fresh `[]` per read would look like a dependency that always
+/// moves to a tracked `initial`.
+fn empty_rows() -> Arc<Vec<Value>> {
+    static EMPTY: OnceLock<Arc<Vec<Value>>> = OnceLock::new();
+    EMPTY.get_or_init(|| Arc::new(Vec::new())).clone()
+}
+
+/// `===`, relaxed once for the port's own rebuilds: two containers holding
+/// the same content count as one identity. This is the producer side of
+/// `deps_moved`'s strict compare — a member a TS memo stands for emits
+/// only when its answer differs, not when a rebuild allocated it again —
+/// so equal content inherits the predecessor's allocation rather than
+/// pretending the memo fired.
+pub(crate) fn content_eq(a: &Value, b: &Value) -> bool {
+    a.strict_eq(b)
+        || (matches!(a, Value::Obj(_) | Value::List(_))
+            && matches!(b, Value::Obj(_) | Value::List(_))
+            && a.to_json() == b.to_json())
+}
+
+/// The member-read identity TS's screen accessors guarantee. `segments`,
+/// `templateSegments`, `collapsedLanes`, `themeFork` recompute from screen
+/// state on every bind (fresh allocations each `get`), but while their
+/// content holds the SAME value must answer — `===` on a rebuilt-but-equal
+/// read says "moved" where the memo it stands for never emitted.
+/// [`StableNs`] memoizes each member's first answer for the bind's
+/// lifetime, and inherits the previous bind's allocation while the content
+/// is unchanged — a param-only navigation keeps `segments` identical, the
+/// way `createMemo` does.
+#[derive(Debug)]
+struct StableNs {
+    inner: Value,
+    /// The previous bind's root — its `get` answers with ITS canonical
+    /// allocations, so equal content inherits identity across binds.
+    prev: Option<Value>,
+    cache: Mutex<HashMap<Arc<str>, Value>>,
+}
+
+impl StableNs {
+    fn wrap(inner: Value, prev: Option<Value>) -> Value {
+        Value::namespace(StableNs {
+            inner,
+            prev,
+            cache: Mutex::new(HashMap::new()),
+        })
+    }
+}
+
+impl Namespace for StableNs {
+    fn get(&self, key: &str) -> Value {
+        if let Some(v) = self.cache.lock().ok().and_then(|c| c.get(key).cloned()) {
+            return v;
+        }
+        let new = match &self.inner {
+            Value::Namespace(ns) => ns.get(key),
+            _ => Value::Undefined,
+        };
+        let value = match &self.prev {
+            Some(Value::Namespace(prev)) => {
+                let old = prev.get(key);
+                if content_eq(&old, &new) {
+                    old
+                } else {
+                    new
+                }
+            }
+            _ => new,
+        };
+        if let Ok(mut cache) = self.cache.lock() {
+            cache.insert(key.into(), value.clone());
+        }
+        value
+    }
+
+    fn keys(&self) -> Vec<Arc<str>> {
+        match &self.inner {
+            Value::Namespace(ns) => ns.keys(),
+            _ => Vec::new(),
+        }
+    }
+
+    fn raw(&self) -> Option<Value> {
+        match &self.inner {
+            Value::Namespace(ns) => ns.raw(),
+            _ => None,
+        }
     }
 }
 
@@ -455,60 +546,78 @@ pub fn bind_screen(bag: &StoreBag, screen: &ScreenState) {
     // One overlay over the captured base — a re-bind replaces the overlay,
     // it never wraps the last one (each screen revision used to stack
     // another MergedNs, so reads traversed every snapshot ever mounted).
+    // `StableNs` hands each member a stable identity while its content
+    // holds — the previous bind's root supplies the allocations to inherit.
     let route_base = bag.screen_base("routeStore");
+    let route_prev = bag.root("routeStore");
     bag.bind_root(
         "routeStore",
-        Value::namespace(MergedNs {
-            overlay: sb.get("nav"),
-            base: route_base,
-            owned: &[
-                "params",
-                "templateSegments",
-                "segments",
-                "currentPath",
-                "page",
-                "href",
-                "spacePath",
-            ],
-        }),
+        StableNs::wrap(
+            Value::namespace(MergedNs {
+                overlay: sb.get("nav"),
+                base: route_base,
+                owned: &[
+                    "params",
+                    "templateSegments",
+                    "segments",
+                    "currentPath",
+                    "page",
+                    "href",
+                    "spacePath",
+                ],
+            }),
+            route_prev,
+        ),
     );
     let shell_base = bag.screen_base("shellStore");
+    let shell_prev = bag.root("shellStore");
     bag.bind_root(
         "shellStore",
-        Value::namespace(MergedNs {
-            overlay: sb.get("shell"),
-            base: shell_base,
-            owned: &[
-                "activeShellView",
-                "spaceSettingsOpen",
-                "spaceSettingsTab",
-                "collapsedLanes",
-                "layoutDirty",
-                "panelsHidden",
-                "panelMaximised",
-                "createSpaceOpen",
-                "joinSpaceOpen",
-                "panels",
-            ],
-        }),
+        StableNs::wrap(
+            Value::namespace(MergedNs {
+                overlay: sb.get("shell"),
+                base: shell_base,
+                owned: &[
+                    "activeShellView",
+                    "spaceSettingsOpen",
+                    "spaceSettingsTab",
+                    "collapsedLanes",
+                    "layoutDirty",
+                    "panelsHidden",
+                    "panelMaximised",
+                    "createSpaceOpen",
+                    "joinSpaceOpen",
+                    "panels",
+                ],
+            }),
+            shell_prev,
+        ),
     );
     let theme_base = bag.screen_base("themeStore");
+    let theme_prev = bag.root("themeStore");
     bag.bind_root(
         "themeStore",
-        Value::namespace(MergedNs {
-            overlay: sb.get("theme"),
-            base: theme_base,
-            // `themeFork` is always the screen's call (`null` = no fork);
-            // an unset `currentThemeId` reads Undefined and defers to the
-            // store's answer.
-            owned: &["themeFork"],
-        }),
+        StableNs::wrap(
+            Value::namespace(MergedNs {
+                overlay: sb.get("theme"),
+                base: theme_base,
+                // `themeFork` is always the screen's call (`null` = no fork);
+                // an unset `currentThemeId` reads Undefined and defers to the
+                // store's answer.
+                owned: &["themeFork"],
+            }),
+            theme_prev,
+        ),
     );
     let base = bag.screen_base("spaceStore");
+    let space_prev = bag.root("spaceStore");
     let space_path = sb.get("nav").read_key("spacePath");
     bag.bind_root(
         "spaceStore",
-        Value::namespace(SpaceStoreNs { base, space_path }),
+        StableNs::wrap(
+            Value::namespace(SpaceStoreNs { base, space_path }),
+            space_prev,
+        ),
     );
 }
 

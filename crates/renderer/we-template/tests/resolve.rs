@@ -593,6 +593,162 @@ fn a_derived_initial_resets_only_when_its_source_moves() {
 }
 
 #[test]
+fn an_initial_resets_when_a_store_list_is_replaced_equal_content() {
+    // R1: `{"$":"store.items"}` — `items` answers a NEW list with identical
+    // content. TS's per-key store signal fires on `!==` (identity, not
+    // content), the memo emits, the field resets and untouches. The F2
+    // content-relaxation must apply only to allocations the resolver
+    // rebuilds itself (`$nav`, the surface box) — a store member is a real
+    // dependency, and a real dependency moving means reset.
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "sel": { "type": "array", "initial": { "$": "store.items" } } },
+        "children": []
+    }));
+    let list = |xs: &[&str]| Value::List(Arc::new(xs.iter().map(|s| Value::from(*s)).collect()));
+    let store = |items: Value| {
+        Value::from(we_expr::MapNamespace::new(
+            [("items".into(), items)].into_iter().collect(),
+        ))
+    };
+    let bag = Arc::new(StoreBag::new());
+    bag.set_root("store", store(list(&["a"])));
+    let (mut rt, mut host, locals, screen) = rig_arc(node, bag.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+
+    locals.set(&owner, "sel", list(&["typed"]));
+    locals.touch(&owner, "sel");
+    bag.set_root("store", store(list(&["a"]))); // equal content, new identity
+    let _ = rt.frame(&mut host, &screen).clone();
+    match locals.get(&owner, "sel") {
+        Value::List(items) => assert_eq!(
+            items
+                .first()
+                .and_then(|v| v.to_json().as_str().map(String::from)),
+            Some("a".to_string()),
+            "an equal-content replacement still resets (identity moved)"
+        ),
+        other => panic!("sel must stay a list: {other:?}"),
+    }
+    assert!(
+        !locals.is_touched(&owner, "sel"),
+        "a real reset clears touched"
+    );
+}
+
+#[test]
+fn an_initial_resets_when_an_enclosing_local_list_is_replaced() {
+    // R1, enclosing-local variant: the parent declares `src`, the child's
+    // initial reads `local.src`. `locals.set` a new list of equal content —
+    // a new signal value identity — the child resets.
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": { "src": { "type": "array", "initial": ["a"] } },
+        "children": [{
+            "type": "Row",
+            "$localState": { "sel": { "type": "array", "initial": { "$": "local.src" } } },
+            "children": []
+        }]
+    }));
+    let list = |xs: &[&str]| Value::List(Arc::new(xs.iter().map(|s| Value::from(*s)).collect()));
+    let (mut rt, mut host, locals, screen) = rig(node, StoreBag::new());
+    let root = rt.frame(&mut host, &screen).clone();
+    let parent = root.id.clone();
+    let child = NodeId::new("test:/Row0");
+    match locals.get(&child, "sel") {
+        Value::List(items) => assert_eq!(items.len(), 1, "sel seeded from local.src"),
+        other => panic!("sel must seed a list: {other:?}"),
+    }
+
+    locals.set(&child, "sel", list(&["typed"]));
+    locals.touch(&child, "sel");
+    locals.set(&parent, "src", list(&["a"])); // equal content, new identity
+    let _ = rt.frame(&mut host, &screen).clone();
+    match locals.get(&child, "sel") {
+        Value::List(items) => assert_eq!(
+            items
+                .first()
+                .and_then(|v| v.to_json().as_str().map(String::from)),
+            Some("a".to_string()),
+            "an equal-content replacement still resets (identity moved)"
+        ),
+        other => panic!("sel must stay a list: {other:?}"),
+    }
+    assert!(
+        !locals.is_touched(&child, "sel"),
+        "a real reset clears touched"
+    );
+}
+
+#[test]
+fn an_initial_resets_when_a_query_result_is_refilled_equal_content() {
+    // R1, query variant: `{"$":"local.q"}` reads the cell's rows. A refill
+    // carrying the same rows under a new allocation — what a live
+    // subscription's update delivers — still resets.
+    struct Rows;
+    impl we_template::QuerySource for Rows {
+        fn rows(
+            &self,
+            _key: &we_template::QueryKey,
+            _ir: &we_template::QueryIr,
+        ) -> we_template::QueryState {
+            we_template::QueryState::Rows(Arc::new(vec![Value::from_json(&json!({ "id": "r1" }))]))
+        }
+    }
+    let node = schema(json!({
+        "type": "Column",
+        "$queries": { "q": { "entity": "E" } },
+        "children": [{
+            "type": "Row",
+            "$localState": { "sel": { "type": "array", "initial": { "$": "local.q" } } },
+            "children": []
+        }]
+    }));
+    let locals = LocalState::new();
+    let bag = Arc::new(StoreBag::new());
+    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone())
+        .with_sources(Some(Arc::new(Rows)), Arc::new(we_template::NoParts));
+    let mut host = StaticHost::new(bag, locals.clone());
+    let screen = screen();
+    let _ = rt.frame(&mut host, &screen).clone();
+    let child = NodeId::new("test:/Row0");
+    match locals.get(&child, "sel") {
+        Value::List(items) => assert_eq!(items.len(), 1, "sel seeded from local.q"),
+        other => panic!("sel must seed a list: {other:?}"),
+    }
+
+    locals.set(
+        &child,
+        "sel",
+        Value::List(Arc::new(vec![Value::from_json(&json!({ "id": "mine" }))])),
+    );
+    locals.touch(&child, "sel");
+    // A refill: a fresh rows allocation, identical content.
+    let cell = rt.pool().cells().into_iter().next().unwrap();
+    cell.fill(we_template::QueryState::Rows(Arc::new(vec![
+        Value::from_json(&json!({ "id": "r1" })),
+    ])));
+    rt.pool().bump();
+    let _ = rt.frame(&mut host, &screen).clone();
+    match locals.get(&child, "sel") {
+        Value::List(items) => assert_eq!(
+            items.first().and_then(|v| v
+                .to_json()
+                .get("id")
+                .and_then(|i| i.as_str().map(String::from))),
+            Some("r1".to_string()),
+            "an equal-content refill still resets (identity moved)"
+        ),
+        other => panic!("sel must stay a list: {other:?}"),
+    }
+    assert!(
+        !locals.is_touched(&child, "sel"),
+        "a real reset clears touched"
+    );
+}
+
+#[test]
 fn a_dollar_string_initial_stays_literal() {
     // A4 sub-point: `initial: "$store.name"`. TS's `resolveInitial` calls
     // `resolveProp`, which has no `$`-string branch — the dispatcher's final
