@@ -1553,6 +1553,12 @@ fn menu_escape_restores_focus_through_a_trigger_wrapper() {
     h.run();
     h.get_by_label("Menu").click();
     h.run();
+    // Focus moves into the menu first — otherwise focus never left the
+    // trigger and the assertion below proves nothing about restoring it.
+    h.get_by_label("Edit").focus();
+    h.run();
+    assert!(h.get_by_label("Edit").is_focused(), "focus is on the item");
+    assert!(!h.get_by_label("Menu").is_focused(), "focus left the trigger");
     h.key_press(egui::Key::Escape);
     h.run();
     assert!(
