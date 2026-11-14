@@ -7,21 +7,32 @@
 //! `==`/`!=` are strict, `&&`/`||` answer with booleans rather than operands,
 //! and a namespace (a store bag) is `Undefined` in a value position.
 //!
-//! The evaluator here is the minimal one E0 ships: literals, names, member and
-//! index access, `==`, `!=`, `!`, `&&`, `||`, the ternary and parentheses —
-//! enough for the first resolver to pick a `$if` branch. The public entry
-//! points — [`parse`], [`eval`], [`Expr`] and [`ParseCache`] — are final; E1
-//! replaces the grammar inside them, not the signatures.
+//! The full language is here: the whole `lexer.ts`/`parser.ts` grammar
+//! (conditionals, `??`, comparisons and `in`, arithmetic, calls, the five
+//! comprehension macros, list/object literals, backtick templates), the
+//! built-in function library of `functions.ts`, the `where.ts` matcher, and
+//! the `printer.ts` canonical printer. The public entry points are the ones
+//! E0 fixed: [`parse`], [`eval`], [`Expr`], [`ParseCache`], [`Value`], [`Env`].
 //!
 //! No egui, no I/O, no tokio: this crate builds for `wasm32-unknown-unknown`.
 #![forbid(unsafe_code)]
 
+mod ast;
 mod env;
 mod eval;
+mod functions;
+mod lexer;
+mod macros;
 mod parse;
+mod parser;
+mod print;
 mod value;
+mod where_match;
 
+pub use ast::{CALL_TIME_ROOTS, WELL_KNOWN_ROOTS};
 pub use env::{Env, MapEnv};
 pub use eval::eval;
 pub use parse::{parse, Expr, ParseCache, Span, SyntaxError};
+pub use print::print;
 pub use value::{CallFn, CallableRef, MapNamespace, Namespace, Value, DENIED_PROPERTIES};
+pub use where_match::{as_text, matches_where};
