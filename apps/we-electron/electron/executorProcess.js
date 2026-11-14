@@ -43,9 +43,48 @@ import http from 'http';
  * Log levels are not here: they are `log_config` in the executor's config file
  * ({@link initialExecutorConfig}). An inherited `RUST_LOG` still reaches the executor and wins over
  * the file — someone who exported one before launching is debugging something specific.
+ *
+ * A custody credential is never passed on ({@link withoutCustodyCredential}): the executor refuses to
+ * start (78) with one in its environment, and reads it only from stdin ({@link custodyCredentialLine}).
  */
 export function executorEnv(env = process.env) {
-  return { ...env };
+  return withoutCustodyCredential(env);
+}
+
+/**
+ * The variables a custody credential could be in. None reaches a child of this app: a process's
+ * environment is a file (`/proc/<pid>/environ`; `ps eww` on macOS) that the admin credential the
+ * renderer holds can read through an executor call. The first two the executor refuses outright;
+ * the last is how an external executor's credential reaches this process (`main.js`).
+ */
+export const CUSTODY_CREDENTIAL_VARS = Object.freeze([
+  'AD4M_CUSTODY_CREDENTIAL',
+  'AD4M_CUSTODY_CREDENTIAL_FILE',
+  'WE_EXTERNAL_AD4M_CUSTODY_CREDENTIAL',
+]);
+
+/** A copy of `env` without {@link CUSTODY_CREDENTIAL_VARS}. */
+export function withoutCustodyCredential(env) {
+  const copy = { ...env };
+  for (const name of CUSTODY_CREDENTIAL_VARS) delete copy[name];
+  return copy;
+}
+
+/**
+ * The first thing written to the stdin of an executor started with `--custody-channel` (and of the
+ * custody sidecar): the custody credential and a newline. The executor waits for it before it starts
+ * anything, keeps it only in memory, and exits 78 for a line that is blank, missing (stdin closed
+ * first) or the admin credential. Generated afresh by this app at every start, and never the admin
+ * credential, which the renderer holds: the custody channel exists to keep the renderer out of it.
+ */
+export function custodyCredentialLine(custodyCredential, adminCredential) {
+  if (typeof custodyCredential !== 'string' || !custodyCredential.trim() || /[\r\n]/.test(custodyCredential)) {
+    throw new Error('[we] the custody channel needs a credential of one non-blank line');
+  }
+  if (custodyCredential === adminCredential) {
+    throw new Error('[we] the custody channel needs a credential of its own, not the admin credential');
+  }
+  return `${custodyCredential}\n`;
 }
 
 /** How long a start waits for the executor to answer ready, and how long one probe of it may take. */
@@ -302,11 +341,13 @@ export async function startWithPortRetry(startOnce, { samePort = false, appUp, a
  *
  * - `--watch-stdin true`: it stops (exit 0) when its stdin closes. This app holds the pipe open
  *   and closes it to stop the executor; if the app dies, the OS closes it, and the executor ends
- *   with the app.
+ *   with the app. The one thing written to it is the custody credential's line, first
+ *   ({@link custodyCredentialLine}).
  * - `--log-dir`: the executor keeps its own log, one file per run, five runs
  *   (`executor-0.log` is this run), which `runtime.logTail` reads.
  * - `--config`: the file `runtime.setConfig` writes and the next start reads.
- * - `--custody-channel`: opens `identity.custodyStatus` to the custody service beside it.
+ * - `--custody-channel`: opens `identity.custodyStatus` to the custody service beside it. Its
+ *   credential is the first line of stdin, never an argument or a variable.
  *
  * The admin credential is in the environment (`executorSpawnEnv`), not here: an argument is visible
  * to every user of the computer through `ps`.

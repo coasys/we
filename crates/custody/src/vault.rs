@@ -9,10 +9,11 @@
 //! Every read and write is logged by kind only (`custody: read for Link`), never with contents.
 //!
 //! Beside the master keys the vault keeps the incept of an identity `create` made here until its
-//! publish is confirmed ([`PendingIncepts`]): public data, so in a file rather than the secret store.
+//! publish is confirmed, and the retry list of master-key pushes to other devices
+//! ([`PendingIncepts`]): public data, so in files rather than the secret store.
 
 use ad4m_identity_client::vault::KeySigner;
-use ad4m_identity_client::{MasterUse, Secret, Unlocked, Vault, VaultError};
+use ad4m_identity_client::{MasterUse, PendingPush, Secret, Unlocked, Vault, VaultError};
 use ad4m_identity_core::Event;
 use zeroize::Zeroizing;
 
@@ -181,6 +182,31 @@ impl Vault for Unlocking<'_> {
     fn incept_published(&self, scid: &str) -> Result<(), VaultError> {
         log::info!("custody: forget published incept");
         self.vault.pending.forget(scid)
+    }
+
+    fn keep_push(&self, push: &PendingPush) -> Result<(), VaultError> {
+        log::info!("custody: keep a master-key push on the retry list");
+        self.vault.pending.keep_push(push)
+    }
+
+    fn pending_pushes(&self) -> Result<Vec<PendingPush>, VaultError> {
+        self.vault.pending.pushes()
+    }
+
+    fn push_done(&self, push: &PendingPush) -> Result<(), VaultError> {
+        log::info!("custody: forget a master-key push");
+        self.vault.pending.push_done(push)
+    }
+
+    /// In the custody folder beside the pending lists ([`PendingIncepts::record_seen`]): a
+    /// version number per identity, no secret, so not in the secret store.
+    fn record_seen(&self, scid: &str, version: u64) -> Result<Option<u64>, VaultError> {
+        self.vault.pending.record_seen(scid, version)
+    }
+
+    fn record_seen_reset(&self, scid: &str) -> Result<(), VaultError> {
+        log::info!("custody: reset a record's high-water mark");
+        self.vault.pending.record_seen_reset(scid)
     }
 }
 

@@ -50,9 +50,13 @@ export function identityFile(url, dir) {
 
 /** The steps the main window may ask for, as `we_custody::IdentityStep` reads them. */
 function isIdentityStep(step) {
-  if (step?.kind === 'create' || step?.kind === 'add-device') return true;
-  return step?.kind === 'revoke' && typeof step.keyId === 'string';
+  if (PLAIN_STEPS.has(step?.kind)) return true;
+  if (step?.kind === 'answer-request') return typeof step.id === 'string';
+  return (step?.kind === 'revoke' || step?.kind === 'rename') && typeof step.keyId === 'string';
 }
+
+/** The steps that name nothing but their kind. */
+const PLAIN_STEPS = new Set(['create', 'add-device', 'scan-device', 'show-code', 'take-master', 'ask-master']);
 
 /**
  * `custody()` is the running sidecar's client, or null; it changes when the executor restarts.
@@ -144,11 +148,17 @@ export function createIdentity({ custody, openWindow }) {
       return shown(of, await ask(of, 'step', { input }));
     },
 
-    /** Cancels the step and closes the window. */
+    /**
+     * Cancels the step and closes the window, once custody says the step ended (`null`). A step that
+     * could not be ended (a new device that had already joined, a cancel the executor did not
+     * confirm) answers the screen to show instead, and the window stays.
+     */
     async cancel() {
       const of = run;
-      await cancelStep(service());
+      const instead = await cancelStep(service());
+      if (instead) return shown(of, instead);
       close(of);
+      return null;
     },
 
     /** Closes the window after the step's last screen. */

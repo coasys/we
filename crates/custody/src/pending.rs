@@ -10,20 +10,107 @@
 //! whole through a temp file so a crash leaves the previous list. The file is removed when the list
 //! empties.
 //!
+//! Beside it, the same way, the **retry list of master-key pushes** (`<dir>/pending-pushes.json`):
+//! a master key this computer is putting into another device's inbox (the person chose "Keep the
+//! master key on this device" while linking it, or said yes to its request) is listed here before
+//! the put and forgotten once the store takes it, so a push the app did not see through is tried
+//! again at the next start and unlock (`flows::master::retry_pushes`). Each entry is an identity and
+//! a device key id: no secret — every try seals the master key current then.
+//!
+//! And the **record high-water marks** (`<dir>/record-seen.json`, [`Vault::record_seen`]): for each
+//! identity the highest version of its private record this computer opened, so a store serving
+//! back an older version is refused. Public numbers, no secret.
+//!
+//! That one is not a list that may empty: what it holds is what a missing one would undo (a
+//! rolled-back record taken as the first). So the file is never removed once written, an
+//! identity's entry in it never leaves (a reset mark is kept as a reset), and the folder notes it
+//! in `<dir>/custody-metadata.json` before it is first written. A noted file that is gone has been
+//! lost, not never written: reading it is an error, never an empty start. The metadata notes each
+//! identity too, before its entry in the file is first written, so an entry missing for a noted
+//! identity is the same loss, one entry at a time, while an identity never noted simply has none
+//! yet: its entry is made with its first read.
+//!
 //! The folder is shared by every desktop app and build on this computer, and two can run at once (a
 //! WE build and a white-labelled one each hold their own single-instance lock). So each read and
 //! each read-modify-write holds an advisory lock on `<dir>/pending-incepts.lock` for its length,
 //! across processes — the in-process mutex alone let two services each write back a list without
-//! the other's incept.
+//! the other's incept. Every list takes that one lock.
+//!
+//! [`Vault::record_seen`]: ad4m_identity_client::Vault::record_seen
 
+use std::collections::BTreeMap;
 use std::path::PathBuf;
 use std::sync::Mutex;
 
-use ad4m_identity_client::VaultError;
+use ad4m_identity_client::{PendingPush, VaultError};
 use ad4m_identity_core::Event;
+use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 
 /// The file's name inside the custody folder.
 pub const FILE_NAME: &str = "pending-incepts.json";
+
+/// The retry list's file inside the custody folder.
+pub const PUSHES_FILE_NAME: &str = "pending-pushes.json";
+
+/// The record high-water marks' file inside the custody folder.
+pub const SEEN_FILE_NAME: &str = "record-seen.json";
+
+/// The file in the custody folder that notes which of the files that must not go missing
+/// (the record marks) have been written.
+pub const METADATA_FILE_NAME: &str = "custody-metadata.json";
+
+/// What [`METADATA_FILE_NAME`] holds.
+#[derive(Default, Serialize, Deserialize)]
+struct Metadata {
+    version: u32,
+    /// The files written in this folder that must exist from then on.
+    written: Vec<String>,
+    /// Per file of [`written`](Self::written), the identities an entry was made for in it,
+    /// noted before the entry is written: an entry missing for one of them has been lost; one
+    /// missing for an identity never noted was never made. Absent in metadata written before
+    /// identities were noted (an identity whose entry is in the file is found there all the
+    /// same, and is noted with the file's next change).
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    entries: BTreeMap<String, Vec<String>>,
+}
+
+/// The format of [`METADATA_FILE_NAME`].
+const FORMAT: u32 = 1;
+
+/// The highest version of an identity's private record opened on this computer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Seen {
+    pub scid: String,
+    /// `None` after [`PendingIncepts::record_seen_reset`]: the reset is kept, not the entry
+    /// dropped, so a reset is never confused with marks lost.
+    pub version: Option<u64>,
+}
+
+/// A file that must not go missing, as read, with the identities noted as having an entry in it
+/// ([`Metadata::entries`]).
+enum Noted<T> {
+    Read(T, Vec<String>),
+    /// Never written in this folder.
+    Never,
+    /// Written, and gone.
+    Lost(Vec<String>),
+}
+
+/// The lists a memory store keeps (tests).
+#[derive(Default)]
+pub struct Lists {
+    incepts: Vec<Event>,
+    pushes: Vec<PendingPush>,
+    seen: Vec<Seen>,
+}
+
+/// What a lost file's error says after its name.
+const LOST_FILE: &str = "was written in this custody folder and is gone";
+
+fn lost_file(file: &str) -> VaultError {
+    unavailable(format!("{file} {LOST_FILE}; it is not started again empty"))
+}
 
 /// The lock every process holds while it reads or changes the file.
 const LOCK_NAME: &str = "pending-incepts.lock";
@@ -45,12 +132,12 @@ fn lock_folder(dir: &std::path::Path, exclusive: bool) -> Result<std::fs::File, 
     Ok(file)
 }
 
-/// Where the pending incepts are kept.
+/// Where the pending incepts, and the retry list of master-key pushes, are kept.
 pub enum PendingIncepts {
-    /// `<dir>/pending-incepts.json`: what the app uses.
+    /// `<dir>/pending-incepts.json` and `<dir>/pending-pushes.json`: what the app uses.
     File { dir: PathBuf, lock: Mutex<()> },
     /// Kept only as long as the value (tests).
-    Memory(Mutex<Vec<Event>>),
+    Memory(Mutex<Lists>),
 }
 
 fn unavailable(why: impl std::fmt::Display) -> VaultError {
@@ -67,79 +154,305 @@ impl PendingIncepts {
     }
 
     pub fn memory() -> Self {
-        PendingIncepts::Memory(Mutex::new(Vec::new()))
+        PendingIncepts::Memory(Mutex::new(Lists::default()))
     }
 
     /// The kept incepts.
     pub fn list(&self) -> Result<Vec<Event>, VaultError> {
-        match self {
-            PendingIncepts::File { dir, lock } => {
-                let _held = lock.lock().map_err(|_| unavailable("lock poisoned"))?;
-                let _shared = lock_folder(dir, false)?;
-                read(dir)
-            }
-            PendingIncepts::Memory(events) => Ok(events
-                .lock()
-                .map_err(|_| unavailable("lock poisoned"))?
-                .clone()),
-        }
+        self.read_one(FILE_NAME, |m| m.incepts.clone())
     }
 
     /// Keeps `incept`, replacing a kept incept of the same identity.
     pub fn keep(&self, incept: &Event) -> Result<(), VaultError> {
-        self.change(|events| {
-            events.retain(|e| e.scid != incept.scid);
-            events.push(incept.clone());
-        })
+        self.change(
+            FILE_NAME,
+            |m| &mut m.incepts,
+            |events: &mut Vec<Event>| {
+                events.retain(|e| e.scid != incept.scid);
+                events.push(incept.clone());
+            },
+        )
     }
 
     /// Forgets the incept of `scid`; nothing to do when none is kept.
     pub fn forget(&self, scid: &str) -> Result<(), VaultError> {
-        self.change(|events| events.retain(|e| e.scid != scid))
+        self.change(
+            FILE_NAME,
+            |m| &mut m.incepts,
+            |events: &mut Vec<Event>| events.retain(|e| e.scid != scid),
+        )
     }
 
-    fn change(&self, edit: impl FnOnce(&mut Vec<Event>)) -> Result<(), VaultError> {
+    /// The master-key pushes kept and not yet confirmed sent.
+    pub fn pushes(&self) -> Result<Vec<PendingPush>, VaultError> {
+        self.read_one(PUSHES_FILE_NAME, |m| m.pushes.clone())
+    }
+
+    /// Keeps `push` on the retry list; keeping one already listed is no change.
+    pub fn keep_push(&self, push: &PendingPush) -> Result<(), VaultError> {
+        self.change(
+            PUSHES_FILE_NAME,
+            |m| &mut m.pushes,
+            |pushes: &mut Vec<PendingPush>| {
+                if !pushes.contains(push) {
+                    pushes.push(push.clone());
+                }
+            },
+        )
+    }
+
+    /// Forgets `push`; nothing to do when it is not listed.
+    pub fn push_done(&self, push: &PendingPush) -> Result<(), VaultError> {
+        self.change(
+            PUSHES_FILE_NAME,
+            |m| &mut m.pushes,
+            |pushes: &mut Vec<PendingPush>| pushes.retain(|p| p != push),
+        )
+    }
+
+    /// Notes `version` of `scid`'s record as opened and answers the highest version opened before
+    /// it (`None` before the first). The mark only rises. One read-modify-write under the lock, so
+    /// two apps noting at once keep the higher.
+    ///
+    /// Marks this folder wrote and lost (the file gone, or unreadable, or the entry of an
+    /// identity the folder noted as marked gone from it) are an error, never `None`: an older
+    /// record that still verifies would be taken as the first.
+    pub fn record_seen(&self, scid: &str, version: u64) -> Result<Option<u64>, VaultError> {
+        self.change_noted(
+            SEEN_FILE_NAME,
+            false,
+            |m| &mut m.seen,
+            |seen: &mut Vec<Seen>, noted: &[String]| match seen.iter_mut().find(|s| s.scid == scid)
+            {
+                Some(mark) => {
+                    let before = mark.version;
+                    mark.version = Some(before.map_or(version, |before| before.max(version)));
+                    Ok(before)
+                }
+                None if noted.iter().any(|s| s == scid) => Err(unavailable(format!(
+                    "the record mark of {scid} was made in this custody folder and is gone; \
+                     only a reset starts it again"
+                ))),
+                None => {
+                    seen.push(Seen {
+                        scid: scid.to_string(),
+                        version: Some(version),
+                    });
+                    Ok(None)
+                }
+            },
+        )
+    }
+
+    /// Forgets the record versions of `scid` opened so far. Kept as a reset ([`Seen::version`]
+    /// `None`), so the next [`record_seen`](Self::record_seen) answers `None` on purpose.
+    ///
+    /// Also the way back from marks lost (the file gone, or `scid`'s entry): the file is
+    /// written again with this reset in it. Only `scid`'s: another identity's mark that went
+    /// with the file stays lost until it is reset too.
+    pub fn record_seen_reset(&self, scid: &str) -> Result<(), VaultError> {
+        self.change_noted(
+            SEEN_FILE_NAME,
+            true,
+            |m| &mut m.seen,
+            |seen: &mut Vec<Seen>, _: &[String]| {
+                match seen.iter_mut().find(|s| s.scid == scid) {
+                    Some(mark) => mark.version = None,
+                    None => seen.push(Seen {
+                        scid: scid.to_string(),
+                        version: None,
+                    }),
+                }
+                Ok(())
+            },
+        )
+    }
+
+    fn read_one<T: DeserializeOwned>(
+        &self,
+        file: &str,
+        memory: impl FnOnce(&Lists) -> Vec<T>,
+    ) -> Result<Vec<T>, VaultError> {
+        match self {
+            PendingIncepts::File { dir, lock } => {
+                let _held = lock.lock().map_err(|_| unavailable("lock poisoned"))?;
+                let _shared = lock_folder(dir, false)?;
+                read(dir, file)
+            }
+            PendingIncepts::Memory(lists) => Ok(memory(
+                &*lists.lock().map_err(|_| unavailable("lock poisoned"))?,
+            )),
+        }
+    }
+
+    fn change<T: Serialize + DeserializeOwned, R>(
+        &self,
+        file: &str,
+        memory: impl FnOnce(&mut Lists) -> &mut Vec<T>,
+        edit: impl FnOnce(&mut Vec<T>) -> R,
+    ) -> Result<R, VaultError> {
         match self {
             PendingIncepts::File { dir, lock } => {
                 let _held = lock.lock().map_err(|_| unavailable("lock poisoned"))?;
                 let _exclusive = lock_folder(dir, true)?;
-                let mut events = read(dir)?;
-                edit(&mut events);
-                write(dir, &events)
+                let mut items = read(dir, file)?;
+                let answer = edit(&mut items);
+                write(dir, file, &items)?;
+                Ok(answer)
             }
-            PendingIncepts::Memory(events) => {
-                edit(&mut *events.lock().map_err(|_| unavailable("lock poisoned"))?);
-                Ok(())
+            PendingIncepts::Memory(lists) => Ok(edit(memory(
+                &mut *lists.lock().map_err(|_| unavailable("lock poisoned"))?,
+            ))),
+        }
+    }
+
+    /// [`change`](Self::change) for the record marks, a file that must not go missing
+    /// ([`read_noted`]): a lost one is an error (or, `recovering`, started again with nothing
+    /// in it), and the file is kept even when the list empties. `edit` is given the identities
+    /// the folder noted as marked, so it can tell a lost entry from one never made.
+    fn change_noted<R>(
+        &self,
+        file: &str,
+        recovering: bool,
+        memory: impl FnOnce(&mut Lists) -> &mut Vec<Seen>,
+        edit: impl FnOnce(&mut Vec<Seen>, &[String]) -> Result<R, VaultError>,
+    ) -> Result<R, VaultError> {
+        match self {
+            PendingIncepts::File { dir, lock } => {
+                let _held = lock.lock().map_err(|_| unavailable("lock poisoned"))?;
+                let _exclusive = lock_folder(dir, true)?;
+                let (mut items, noted) = match read_noted(dir, file)? {
+                    Noted::Read(items, noted) => (items, noted),
+                    Noted::Never => (Vec::new(), Vec::new()),
+                    Noted::Lost(noted) if recovering => (Vec::new(), noted),
+                    Noted::Lost(_) => return Err(lost_file(file)),
+                };
+                let answer = edit(&mut items, &noted)?;
+                let scids: Vec<String> = items.iter().map(|s| s.scid.clone()).collect();
+                write_noted(dir, file, &scids, &items)?;
+                Ok(answer)
+            }
+            PendingIncepts::Memory(lists) => {
+                let mut lists = lists.lock().map_err(|_| unavailable("lock poisoned"))?;
+                let items = memory(&mut lists);
+                let noted: Vec<String> = items.iter().map(|s| s.scid.clone()).collect();
+                edit(items, &noted)
             }
         }
     }
 }
 
-fn read(dir: &std::path::Path) -> Result<Vec<Event>, VaultError> {
-    match std::fs::read(dir.join(FILE_NAME)) {
+/// `file`, one that must not go missing once written: [`Noted::Lost`] when the folder's
+/// metadata says it was written and it is not there. With it, the identities the metadata notes
+/// as having an entry in it. Read under the folder's lock; metadata that cannot be read is an
+/// error either way.
+fn read_noted<T: DeserializeOwned>(
+    dir: &std::path::Path,
+    file: &str,
+) -> Result<Noted<T>, VaultError> {
+    let noted = metadata(dir)?;
+    let entries = noted.entries.get(file).cloned().unwrap_or_default();
+    match std::fs::read(dir.join(file)) {
+        Ok(bytes) => serde_json::from_slice(&bytes)
+            .map(|value| Noted::Read(value, entries))
+            .map_err(unavailable),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+            if noted.written.iter().any(|f| f == file) {
+                Ok(Noted::Lost(entries))
+            } else {
+                Ok(Noted::Never)
+            }
+        }
+        Err(e) => Err(unavailable(e)),
+    }
+}
+
+/// Writes `file`, one that must not go missing, holding entries for `scids`, noting the file and
+/// each identity in the folder's metadata first: noted and durable before the file is, so neither
+/// the file nor an entry in it is ever there unnoted (the metadata a file that predates it never
+/// had is written with its next change). A noted identity is never dropped from the metadata.
+fn write_noted<T: Serialize + ?Sized>(
+    dir: &std::path::Path,
+    file: &str,
+    scids: &[String],
+    value: &T,
+) -> Result<(), VaultError> {
+    let mut noted = metadata(dir)?;
+    let mut changed = false;
+    if !noted.written.iter().any(|f| f == file) {
+        noted.written.push(file.to_string());
+        changed = true;
+    }
+    let entries = noted.entries.entry(file.to_string()).or_default();
+    for scid in scids {
+        if !entries.contains(scid) {
+            entries.push(scid.clone());
+            changed = true;
+        }
+    }
+    if changed {
+        noted.version = FORMAT;
+        write_bytes(
+            dir,
+            METADATA_FILE_NAME,
+            &serde_json::to_vec(&noted).map_err(unavailable)?,
+        )?;
+    }
+    write_bytes(dir, file, &serde_json::to_vec(value).map_err(unavailable)?)
+}
+
+/// The folder's [`Metadata`]: none written yet when its file is absent; unreadable is an error.
+fn metadata(dir: &std::path::Path) -> Result<Metadata, VaultError> {
+    match std::fs::read(dir.join(METADATA_FILE_NAME)) {
+        Ok(bytes) => {
+            let metadata: Metadata = serde_json::from_slice(&bytes).map_err(unavailable)?;
+            if metadata.version != FORMAT {
+                return Err(unavailable(format!(
+                    "custody metadata in format {}, not {FORMAT}",
+                    metadata.version
+                )));
+            }
+            Ok(metadata)
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Metadata::default()),
+        Err(e) => Err(unavailable(e)),
+    }
+}
+
+fn read<T: DeserializeOwned>(dir: &std::path::Path, file: &str) -> Result<Vec<T>, VaultError> {
+    match std::fs::read(dir.join(file)) {
         Ok(bytes) => serde_json::from_slice(&bytes).map_err(unavailable),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(Vec::new()),
         Err(e) => Err(unavailable(e)),
     }
 }
 
-fn write(dir: &std::path::Path, events: &[Event]) -> Result<(), VaultError> {
-    use std::io::Write;
-    let path = dir.join(FILE_NAME);
+fn write<T: Serialize>(dir: &std::path::Path, file: &str, events: &[T]) -> Result<(), VaultError> {
+    let path = dir.join(file);
     if events.is_empty() {
         return match std::fs::remove_file(&path) {
             Err(e) if e.kind() != std::io::ErrorKind::NotFound => Err(unavailable(e)),
-            _ => Ok(()),
+            Err(_) => Ok(()),
+            Ok(()) => crate::store::sync_dir(dir).map_err(unavailable),
         };
     }
+    write_bytes(dir, file, &serde_json::to_vec(events).map_err(unavailable)?)
+}
+
+/// Writes `bytes` as `<dir>/<file>`, whole through a temp file, durable when it answers.
+fn write_bytes(dir: &std::path::Path, file: &str, bytes: &[u8]) -> Result<(), VaultError> {
+    use std::io::Write;
+    let path = dir.join(file);
     std::fs::create_dir_all(dir).map_err(unavailable)?;
-    let bytes = serde_json::to_vec(events).map_err(unavailable)?;
     // Its own temp name per process, so two writers never share one half-written file.
     let tmp = path.with_extension(format!("json.{}.tmp", std::process::id()));
     let mut file = std::fs::File::create(&tmp).map_err(unavailable)?;
-    file.write_all(&bytes).map_err(unavailable)?;
+    file.write_all(bytes).map_err(unavailable)?;
     file.sync_all().map_err(unavailable)?;
-    std::fs::rename(&tmp, &path).map_err(unavailable)
+    std::fs::rename(&tmp, &path).map_err(unavailable)?;
+    // The rename too, not only the bytes: a mark noted and answered must not come back lower
+    // after a power loss, or an older record would pass where a newer one was opened.
+    crate::store::sync_dir(dir).map_err(unavailable)
 }
 
 #[cfg(test)]
@@ -223,5 +536,140 @@ mod tests {
         let text = String::from_utf8(bytes.clone()).unwrap();
         assert!(!bytes.windows(32).any(|w| w == master.to_bytes()));
         assert!(!text.contains(&bs58::encode(master.to_bytes()).into_string()));
+    }
+
+    #[test]
+    fn the_retry_list_keeps_each_push_once_beside_the_incepts() {
+        let dir = tempfile::tempdir().unwrap();
+        let push = |key_id: &str| PendingPush {
+            scid: "QmA".into(),
+            key_id: key_id.into(),
+        };
+        let pending = PendingIncepts::file(dir.path());
+        pending.keep(&incept(4)).unwrap();
+        pending.keep_push(&push("d2")).unwrap();
+        pending.keep_push(&push("d3")).unwrap();
+        // Kept again before its put passed: still once.
+        pending.keep_push(&push("d2")).unwrap();
+        drop(pending);
+
+        let reopened = PendingIncepts::file(dir.path());
+        assert_eq!(reopened.pushes().unwrap(), vec![push("d2"), push("d3")]);
+        // The two lists are apart: forgetting a push leaves the incept, and the other way round.
+        reopened.push_done(&push("d2")).unwrap();
+        reopened.forget(&incept(4).scid).unwrap();
+        assert_eq!(reopened.pushes().unwrap(), vec![push("d3")]);
+        reopened.push_done(&push("d3")).unwrap();
+        reopened.push_done(&push("d3")).unwrap();
+        assert!(PendingIncepts::file(dir.path())
+            .pushes()
+            .unwrap()
+            .is_empty());
+        assert!(!dir.path().join(PUSHES_FILE_NAME).exists());
+
+        let memory = PendingIncepts::memory();
+        memory.keep_push(&push("d2")).unwrap();
+        memory.keep_push(&push("d2")).unwrap();
+        assert_eq!(memory.pushes().unwrap(), vec![push("d2")]);
+        assert!(memory.list().unwrap().is_empty());
+    }
+
+    #[test]
+    fn the_record_high_water_mark_rises_only_and_survives_reopening() {
+        let dir = tempfile::tempdir().unwrap();
+        let pending = PendingIncepts::file(dir.path());
+        assert_eq!(pending.record_seen("QmA", 1).unwrap(), None);
+        assert_eq!(pending.record_seen("QmA", 3).unwrap(), Some(1));
+        drop(pending);
+        let reopened = PendingIncepts::file(dir.path());
+        // Under the mark: answers the mark, which does not fall.
+        assert_eq!(reopened.record_seen("QmA", 2).unwrap(), Some(3));
+        assert_eq!(reopened.record_seen("QmA", 3).unwrap(), Some(3));
+        assert_eq!(reopened.record_seen("QmB", 1).unwrap(), None);
+        reopened.record_seen_reset("QmA").unwrap();
+        assert_eq!(reopened.record_seen("QmA", 2).unwrap(), None);
+        // The other lists are apart.
+        assert!(reopened.list().unwrap().is_empty());
+        assert!(reopened.pushes().unwrap().is_empty());
+
+        let memory = PendingIncepts::memory();
+        assert_eq!(memory.record_seen("QmA", 4).unwrap(), None);
+        assert_eq!(memory.record_seen("QmA", 2).unwrap(), Some(4));
+    }
+
+    /// Lal's review of we#431: after version 20 was opened here, the marks' file disappears (a
+    /// partial clean-up, an incomplete restore of the folder). Read as no marks at all, an older
+    /// record that still verifies would be taken as the first ever opened. Lost marks are an
+    /// error; only a reset forgets one.
+    #[test]
+    fn lost_record_marks_are_an_error_and_only_a_reset_forgets_one() {
+        let dir = tempfile::tempdir().unwrap();
+        let pending = PendingIncepts::file(dir.path());
+        assert_eq!(pending.record_seen("QmA", 20).unwrap(), None);
+        std::fs::remove_file(dir.path().join(SEEN_FILE_NAME)).unwrap();
+        let rolled_back = pending.record_seen("QmA", 10);
+        assert!(rolled_back.is_err(), "{rolled_back:?}");
+        // A new handle (the next start) the same.
+        assert!(PendingIncepts::file(dir.path())
+            .record_seen("QmA", 10)
+            .is_err());
+        // And a file that cannot be read.
+        std::fs::write(dir.path().join(SEEN_FILE_NAME), b"not json").unwrap();
+        assert!(pending.record_seen("QmA", 10).is_err());
+
+        // A reset is kept as a reset: what follows starts again, and the file stays.
+        let dir = tempfile::tempdir().unwrap();
+        let pending = PendingIncepts::file(dir.path());
+        assert_eq!(pending.record_seen("QmA", 20).unwrap(), None);
+        pending.record_seen_reset("QmA").unwrap();
+        assert!(dir.path().join(SEEN_FILE_NAME).exists());
+        assert_eq!(pending.record_seen("QmA", 10).unwrap(), None);
+        assert_eq!(pending.record_seen("QmA", 9).unwrap(), Some(10));
+        // A folder that never kept marks has none to lose.
+        let fresh = tempfile::tempdir().unwrap();
+        assert_eq!(
+            PendingIncepts::file(fresh.path())
+                .record_seen("QmA", 3)
+                .unwrap(),
+            None
+        );
+    }
+
+    /// Lal's review of we#431 at 0d4501589: a reset is the way back from a lost marks file, so
+    /// it does not fail on the read that lost it. It writes the file again with its reset;
+    /// another identity's mark that went with the file is still lost, not a first opening.
+    #[test]
+    fn a_reset_repairs_a_lost_marks_file_for_its_identity_only() {
+        let dir = tempfile::tempdir().unwrap();
+        let pending = PendingIncepts::file(dir.path());
+        pending.record_seen("QmA", 20).unwrap();
+        pending.record_seen("QmB", 7).unwrap();
+        std::fs::remove_file(dir.path().join(SEEN_FILE_NAME)).unwrap();
+        assert!(pending.record_seen("QmA", 10).is_err());
+
+        pending.record_seen_reset("QmA").unwrap();
+        assert!(dir.path().join(SEEN_FILE_NAME).exists());
+        assert_eq!(pending.record_seen("QmA", 10).unwrap(), None);
+        assert_eq!(pending.record_seen("QmA", 9).unwrap(), Some(10));
+        let other = pending.record_seen("QmB", 3);
+        assert!(other.is_err(), "a lost mark taken as a first: {other:?}");
+        pending.record_seen_reset("QmB").unwrap();
+        assert_eq!(pending.record_seen("QmB", 3).unwrap(), None);
+        // An identity never marked has nothing to lose.
+        assert_eq!(pending.record_seen("QmC", 1).unwrap(), None);
+
+        // One entry gone from a file that is there: the same.
+        std::fs::write(
+            dir.path().join(SEEN_FILE_NAME),
+            serde_json::to_vec(&[Seen {
+                scid: "QmA".into(),
+                version: Some(10),
+            }])
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(pending.record_seen("QmB", 3).is_err());
+        pending.record_seen_reset("QmB").unwrap();
+        assert_eq!(pending.record_seen("QmB", 3).unwrap(), None);
     }
 }

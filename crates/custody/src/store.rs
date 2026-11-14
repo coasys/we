@@ -90,6 +90,19 @@ fn io(e: std::io::Error) -> VaultError {
     VaultError::Unavailable(format!("custody file: {e}"))
 }
 
+/// Makes the entries of `dir` durable: a file renamed into it or removed from it is renamed or
+/// removed after a crash too. Syncing the file before its rename makes its bytes durable, not the
+/// directory entry that names it; until the directory is synced, a power loss can leave the old
+/// name (POSIX `fsync(2)` of the directory; ext4 commits it with the journal, seconds later). A
+/// no-op where a directory cannot be opened to sync (Windows, whose `MoveFileEx` the rename is).
+pub(crate) fn sync_dir(dir: &std::path::Path) -> std::io::Result<()> {
+    #[cfg(unix)]
+    std::fs::File::open(dir)?.sync_all()?;
+    #[cfg(not(unix))]
+    let _ = dir;
+    Ok(())
+}
+
 impl SecretStore for FileStore {
     fn kind(&self) -> StoreKind {
         StoreKind::File

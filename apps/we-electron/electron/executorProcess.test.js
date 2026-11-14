@@ -13,6 +13,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import {
   afterExecutorExit,
   crashBackoff,
+  CUSTODY_CREDENTIAL_VARS,
+  custodyCredentialLine,
   executorArgs,
   executorEnv,
   executorHealthy,
@@ -25,6 +27,7 @@ import {
   stopProcess,
   waitForExecutorReady,
   waitUntilReady,
+  withoutCustodyCredential,
 } from './executorProcess.js';
 
 describe('crashBackoff', () => {
@@ -211,6 +214,39 @@ describe('outputTail', () => {
   });
 });
 
+describe('custodyCredentialLine', () => {
+  it('is the credential and a newline, the first thing written to the executor’s stdin', () => {
+    expect(custodyCredentialLine('the-custody-credential', 'the-admin-credential')).toBe('the-custody-credential\n');
+  });
+
+  // The executor refuses each of these with 78; refusing them here says why before it starts.
+  it('refuses a missing, blank, multi-line or admin-equal credential', () => {
+    for (const bad of [undefined, null, '', '   ', 'two\nlines', 'cr\r']) {
+      expect(() => custodyCredentialLine(bad, 'admin')).toThrow();
+    }
+    expect(() => custodyCredentialLine('same', 'same')).toThrow();
+  });
+});
+
+describe('withoutCustodyCredential', () => {
+  it('drops every variable a custody credential could be in, and nothing else', () => {
+    const env = {
+      PATH: '/bin',
+      AD4M_CUSTODY_CREDENTIAL: 'a',
+      AD4M_CUSTODY_CREDENTIAL_FILE: 'b',
+      WE_EXTERNAL_AD4M_CUSTODY_CREDENTIAL: 'c',
+    };
+    expect(withoutCustodyCredential(env)).toEqual({ PATH: '/bin' });
+    // A copy: the environment it was given is left as it was.
+    expect(env.AD4M_CUSTODY_CREDENTIAL).toBe('a');
+    expect(CUSTODY_CREDENTIAL_VARS).toEqual([
+      'AD4M_CUSTODY_CREDENTIAL',
+      'AD4M_CUSTODY_CREDENTIAL_FILE',
+      'WE_EXTERNAL_AD4M_CUSTODY_CREDENTIAL',
+    ]);
+  });
+});
+
 describe('outputClosed', () => {
   // A refused start says why in its last line, and `exit` can come before that line is read.
   // Node emits `exit` and `close` in that order, and stdio may still be open at `exit`: a process
@@ -243,6 +279,12 @@ describe('executorEnv', () => {
   // Nothing the executor reads: `--watch-stdin` is what ends it with this app, not a variable.
   it('adds nothing to the inherited environment', () => {
     expect(executorEnv({ PATH: '/bin' })).toEqual({ PATH: '/bin' });
+  });
+
+  it('passes no custody credential on', () => {
+    expect(executorEnv({ PATH: '/bin', AD4M_CUSTODY_CREDENTIAL: 'x', AD4M_CUSTODY_CREDENTIAL_FILE: 'y' })).toEqual({
+      PATH: '/bin',
+    });
   });
 
   it('passes an inherited RUST_LOG through', () => {

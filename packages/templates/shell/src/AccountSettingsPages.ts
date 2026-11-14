@@ -18,6 +18,8 @@ import {
   identityProblem,
   keyLogSummary,
   makeIdentityCard,
+  masterKeyCards,
+  requestList,
 } from './IdentitySettingsPages.ts';
 import { profileEditor } from './Profile.schema.ts';
 import { mcpServer } from './RuntimeSettings.schema.ts';
@@ -327,6 +329,8 @@ export const devicesPage: SchemaNode = {
     heading('Devices', 'The devices that act as you: this one, and any you link.'),
     identityProblem,
     thisDeviceRow,
+    requestList,
+    ...masterKeyCards,
     comingSoon({
       available: can('devices'),
       icon: 'devices',
@@ -341,7 +345,8 @@ export const devicesPage: SchemaNode = {
       available: { $: 'deviceStore.canManage' },
       icon: 'qr-code',
       title: 'Link a device',
-      description: 'Sign another computer in as you, with a link from this one. You confirm a match code on both.',
+      description:
+        'Enter the code the new device shows, or send a link to a server. You check a matching code on both.',
       preview: [actions('Link a device')],
       children: [{ type: 'Row', children: [addDeviceButton] }],
     }),

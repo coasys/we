@@ -12,7 +12,18 @@ import '@we/tokens/css/color';
 import 'virtual:we-identity-theme.css';
 import './identity.css';
 
-import { heading, isLast, remaining, type Screen, type StepInput, wordNumber } from './screens';
+import {
+  deviceMatchActions,
+  deviceMatchNote,
+  heading,
+  isLast,
+  oneAtATime,
+  remaining,
+  type Screen,
+  type StepInput,
+  targetLine,
+  wordNumber,
+} from './screens';
 
 /**
  * How the window reaches the custody service: the four calls the host's main process answers for
@@ -21,8 +32,12 @@ import { heading, isLast, remaining, type Screen, type StepInput, wordNumber } f
 export interface IdentityTransport {
   start(): Promise<Screen>;
   step(input: StepInput): Promise<Screen>;
-  /** Ends the step and closes the window. */
-  cancel(): Promise<void>;
+  /**
+   * Ends the step and closes the window: `null`. A step that could not be ended (a new device that had
+   * already joined, a cancel the identity service did not confirm) answers the screen to show instead,
+   * and the window stays.
+   */
+  cancel(): Promise<Screen | null>;
   /** Closes the window after the step's last screen. */
   finish(): Promise<void>;
 }
@@ -76,21 +91,87 @@ const step = (input: StepInput, clear: HTMLInputElement[] = []) => run(() => hos
 /*
   Cancel and Done close the window through the host. Where the host cannot be reached (its custody
   service has stopped), the window says so and closes itself, rather than leaving a button that does
-  nothing and a window the person has to close by hand.
+  nothing and a window the person has to close by hand. A cancel that could not end the step answers
+  the screen to show instead, and the window stays on it. While a cancel is out the window's buttons
+  are off, and a second click answers the cancel already sent rather than sending another.
 */
-async function leave(call: () => Promise<void>) {
+async function leave(call: () => Promise<Screen | null | void>) {
   try {
-    await call();
+    const instead = await call();
+    if (instead) draw(instead);
   } catch (error) {
     draw({ screen: 'failed', message: String(error) });
     window.close();
   }
 }
-const cancel = () => void leave(() => host.cancel());
+const cancel = oneAtATime(() => {
+  for (const b of Array.from(root.querySelectorAll('button'))) b.disabled = true;
+  return leave(() => host.cancel());
+});
 const finish = () => void leave(() => host.finish());
+
+function textField(label: string, value = '', placeholder = ''): { label: HTMLLabelElement; input: HTMLInputElement } {
+  const input = el('input', { type: 'text', autocomplete: 'off', placeholder });
+  input.value = value;
+  return { label: el('label', {}, label, input), input };
+}
+
+/** The trimmed text of `input`, or nothing when it is blank. */
+function typed(input: HTMLInputElement | null): string | undefined {
+  const text = input?.value.trim();
+  return text ? text : undefined;
+}
+
+/**
+ * A code or link the other device needs, as a QR code and as text with a copy button, and how long it
+ * still works.
+ */
+function shareable(text: string, qrSvg: string, alt: string, expires: number, waiting: string): Child[] {
+  const qr = el('img', { className: 'qr' });
+  qr.alt = alt;
+  qr.src = `data:image/svg+xml;utf8,${encodeURIComponent(qrSvg)}`;
+  return [
+    qr,
+    el('div', { className: 'link', textContent: text }),
+    el(
+      'div',
+      { className: 'row' },
+      button('Copy the link', () => void navigator.clipboard?.writeText(text)),
+      button('Cancel', cancel),
+    ),
+    countdown(expires, waiting),
+  ];
+}
+
+/** "Works once, for 4:52 · Waiting…", ticking. */
+function countdown(expires: number, waiting: string): HTMLParagraphElement {
+  const left = el('p', { className: 'note' });
+  const tick = () => (left.textContent = `Works once, for ${remaining(expires, Date.now() / 1000)} · ${waiting}`);
+  tick();
+  offerTimer = window.setInterval(tick, 1000);
+  return left;
+}
+
+/**
+ * Asks the custody service to wait for what the other device does next, once this screen is drawn,
+ * leaving the buttons live so the person can still copy or cancel while it waits.
+ */
+function waitFor(input: StepInput) {
+  queueMicrotask(() => {
+    void host.step(input).then(draw, (error: unknown) => draw({ screen: 'failed', message: String(error) }));
+  });
+}
 
 function errorLine(error: string | null): Child[] {
   return error ? [el('p', { className: 'error', textContent: error })] : [];
+}
+
+/** Who asks, as both devices show it: the request's code, and the asking key from the key log. */
+function whoAsks(screen: { keyId: string; fingerprint: string; code: string }): Child[] {
+  return [
+    el('div', { className: 'code', textContent: screen.code }),
+    el('p', { className: 'note', textContent: `${screen.keyId} · key ${screen.fingerprint}` }),
+  ];
 }
 
 function body(screen: Screen): Child[] {
@@ -154,37 +235,77 @@ function body(screen: Screen): Child[] {
         el('div', { className: 'row' }, button('Unlock', go, 'primary'), button('Cancel', cancel)),
       ];
     }
-    case 'offer': {
-      const qr = el('img', { className: 'qr' });
-      qr.alt = 'QR code of the offer link';
-      qr.src = `data:image/svg+xml;utf8,${encodeURIComponent(screen.qrSvg)}`;
-      const left = el('p', { className: 'note' });
-      const tick = () =>
-        (left.textContent = `Works once, for ${remaining(screen.expires, Date.now() / 1000)} · Waiting for your device…`);
-      tick();
-      offerTimer = window.setInterval(tick, 1000);
-      // The claim can come at any moment: ask the custody service to wait for it now, leaving the
-      // buttons live so the person can still copy the link or cancel while it waits.
-      queueMicrotask(() => {
-        void host
-          .step({ kind: 'wait-claim' })
-          .then(draw, (error: unknown) => draw({ screen: 'failed', message: String(error) }));
-      });
+    case 'offer':
+      // The claim can come at any moment: wait for it now.
+      waitFor({ kind: 'wait-claim' });
+      return shareable(
+        screen.link,
+        screen.qrSvg,
+        'QR code of the offer link',
+        screen.expires,
+        'Waiting for your device…',
+      );
+    case 'enter-code': {
+      const code = textField('Code', '', 'coasys:device:1:…');
+      const go = () => step({ kind: 'code', code: code.input.value.trim() }, [code.input]);
       return [
-        qr,
-        el('div', { className: 'link', textContent: screen.link }),
-        el(
-          'div',
-          { className: 'row' },
-          button('Copy the link', () => void navigator.clipboard?.writeText(screen.link)),
-          button('Cancel', cancel),
-        ),
-        left,
+        code.label,
+        ...errorLine(screen.error),
+        el('div', { className: 'row' }, button('Continue', go, 'primary'), button('Cancel', cancel)),
       ];
     }
-    case 'match':
+    case 'code-sent':
+      waitFor({ kind: 'wait-claim' });
+      return [
+        el('div', { className: 'row' }, button('Cancel', cancel)),
+        countdown(screen.expires, 'Waiting for your device…'),
+      ];
+    case 'device-code':
+      // A device of the identity can link this one at any moment: wait for it now.
+      waitFor({ kind: 'wait-link' });
+      return shareable(
+        screen.code,
+        screen.qrSvg,
+        'QR code for this computer',
+        screen.expires,
+        'Waiting for your other device…',
+      );
+    case 'device-match': {
+      const actions = deviceMatchActions(screen);
+      if (actions.wait) waitFor({ kind: 'wait-join' });
+      const note = deviceMatchNote(screen);
+      const accept = actions.accept ? [button('Confirm', () => step({ kind: 'accept' }), 'primary')] : [];
       return [
         el('div', { className: 'code', textContent: screen.code }),
+        el('div', { className: 'link', textContent: screen.did }),
+        ...(note ? [el('p', { className: 'note', textContent: note })] : []),
+        el('div', { className: 'row' }, ...accept, button('Cancel', cancel)),
+      ];
+    }
+    case 'match': {
+      const name = textField('Device name', screen.hint ?? '', 'Work laptop');
+      const own = screen.ownName ? textField('Name for this computer', '', 'Home desktop') : null;
+      const keep = screen.canKeep ? el('input', { type: 'checkbox' }) : null;
+      const confirm = () =>
+        step({
+          kind: 'confirm',
+          name: typed(name.input),
+          keepMaster: keep?.checked ?? false,
+          thisName: typed(own?.input ?? null),
+        });
+      return [
+        el('div', { className: 'code', textContent: screen.code }),
+        name.label,
+        ...(own ? [own.label] : []),
+        ...(keep
+          ? [
+              el('label', { className: 'check' }, keep, 'Send it the master key'),
+              el('p', {
+                className: 'note',
+                textContent: 'It can then add and remove devices. Choose this only for a device you keep safe.',
+              }),
+            ]
+          : []),
         el('p', { textContent: 'It will be able to' }),
         el(
           'ul',
@@ -193,20 +314,40 @@ function body(screen: Screen): Child[] {
           el('li', { textContent: 'Join your identity’s spaces' }),
         ),
         el('p', { className: 'note', textContent: 'Add only a device you run or have in front of you.' }),
-        el(
-          'div',
-          { className: 'row' },
-          button('Add it', () => step({ kind: 'confirm' }), 'primary'),
-          button('Deny', cancel),
-        ),
+        el('div', { className: 'row' }, button('Add it', confirm, 'primary'), button('Deny', cancel)),
       ];
+    }
+    case 'request': {
+      const p = screen.passphrase ? secretField('Passphrase') : null;
+      const go = () => step({ kind: 'answer', ...(p ? { passphrase: p.input.value } : {}) }, p ? [p.input] : []);
+      const yes = screen.kind === 'send-master' ? button('Send', go, 'primary') : button('Remove', go, 'danger');
+      return [
+        ...whoAsks(screen),
+        ...(screen.kind === 'confirm-revoke'
+          ? [el('ul', {}, ...screen.targets.map((t) => el('li', { textContent: targetLine(t) })))]
+          : []),
+        ...(p ? [p.label] : []),
+        ...errorLine(screen.error),
+        el('p', { className: 'note', textContent: 'Not now keeps the request open until it expires.' }),
+        el('div', { className: 'row' }, yes, button('Not now', cancel)),
+      ];
+    }
+    case 'rename': {
+      const name = textField('Name', screen.name);
+      const go = () => step({ kind: 'name', name: name.input.value.trim() });
+      return [
+        name.label,
+        ...errorLine(screen.error),
+        el('div', { className: 'row' }, button('Save', go, 'primary'), button('Cancel', cancel)),
+      ];
+    }
     case 'revoke-confirm': {
       const p = screen.passphrase ? secretField('Passphrase') : null;
       const go = () => step({ kind: 'revoke', ...(p ? { passphrase: p.input.value } : {}) }, p ? [p.input] : []);
       return [
         ...(p ? [p.label] : []),
         ...errorLine(screen.error),
-        el('div', { className: 'row' }, button('Revoke', go, 'danger'), button('Cancel', cancel)),
+        el('div', { className: 'row' }, button('Remove', go, 'danger'), button('Cancel', cancel)),
       ];
     }
     case 'pending-refused':
@@ -224,8 +365,15 @@ function body(screen: Screen): Child[] {
         el('div', { className: 'link', textContent: screen.did }),
         el('p', { className: 'note', textContent: `This computer is ${screen.keyId} in your key log.` }),
       ];
+    case 'joined':
+    case 'master-taken':
+      return [el('div', { className: 'link', textContent: screen.did })];
+    case 'asked':
+      return whoAsks(screen);
     case 'linked':
     case 'revoked':
+    case 'request-answered':
+    case 'renamed':
     case 'failed':
       return [];
   }

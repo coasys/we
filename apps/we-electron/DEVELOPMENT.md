@@ -68,7 +68,8 @@ The app starts the person's AD4M executor as a child process and supervises it b
 run contract (ad4m `rust-executor/src/exit.rs`, `docs-src/pages/developer-guides/executor-config.mdx`).
 The arguments are `executorArgs` in `electron/executorProcess.js`:
 
-- `--watch-stdin true`: stdin is a pipe the app holds open and never writes. Closing it stops the
+- `--watch-stdin true`: stdin is a pipe the app holds open after writing one line to it, the custody
+  credential (below). Closing it stops the
   executor gracefully (exit 0); that is how Quit, an account switch and a restart stop it. If the
   app dies, the OS closes the pipe and the executor stops with it. SIGTERM, then SIGKILL, only if it
   has not gone within 10 s (`stopChild`).
@@ -81,7 +82,15 @@ The arguments are `executorArgs` in `electron/executorProcess.js`:
 - `--log-dir <data folder>/logs`: the executor's own log, one file per run, five runs kept
   (`executor-0.log` is this run). `runtime.logTail` reads it. `ad4m.log` (below) keeps this app's
   `HOST` lines and what the executor still prints to stdout.
-- `--custody-channel true`: opens `identity.custodyStatus` to the custody service beside it.
+- `--custody-channel true`: opens `identity.custodyStatus` to the custody service beside it. That
+  service connects with the **custody credential**, which the app makes afresh at every start beside
+  the admin credential and which is never the same as it. The executor reads it from the first line
+  of its stdin, which the app writes right after the spawn, before waiting for the executor to
+  answer (`custodyCredentialLine`). It is never an argument and never in the environment: the window's
+  admin credential could read an environment back through the executor (`/proc/<pid>/environ`), and
+  the custody guard exists to keep the window away from `identity.takeMaster`. The executor refuses
+  to start (78, not restarted) with `AD4M_CUSTODY_CREDENTIAL` or `AD4M_CUSTODY_CREDENTIAL_FILE` set,
+  so the app strips both from every child's environment (`withoutCustodyCredential`).
 
 What the app does when the executor exits (`afterExecutorExit`):
 
@@ -96,6 +105,31 @@ What the app does when the executor exits (`afterExecutorExit`):
 
 On the first start, before the window exists, 78 and 79 end in the "could not start" box with the
 reason, and 80 tries another port up to three times.
+
+### An executor already running (external mode)
+
+With `WE_EXTERNAL_AD4M_PORT` and `WE_EXTERNAL_AD4M_TOKEN` set, the app starts no executor and uses
+the one on that port with that admin credential. Identity needs a third value,
+`WE_EXTERNAL_AD4M_CUSTODY_CREDENTIAL`, the credential that executor's custody channel admits; without
+it identity is off. The app reads it once, deletes it from its own environment, strips it from every
+child it starts, and hands it to the custody sidecar on the sidecar's stdin only. It never passes it
+to the executor: **whoever runs that executor delivers the same value to it**, as the first line of
+its stdin, with `--custody-channel true` and with neither `AD4M_CUSTODY_CREDENTIAL` nor
+`AD4M_CUSTODY_CREDENTIAL_FILE` in its environment (it refuses to start otherwise). For example, with
+a credential different from the admin one:
+
+```bash
+CUSTODY=$(uuidgen)
+mkfifo /tmp/we-custody-in
+( echo "$CUSTODY"; exec sleep infinity ) > /tmp/we-custody-in &   # holds stdin open
+AD4M_ADMIN_CREDENTIAL=<admin> ad4m-executor run --custody-channel true --watch-stdin true … < /tmp/we-custody-in &
+WE_EXTERNAL_AD4M_PORT=<port> WE_EXTERNAL_AD4M_TOKEN=<admin> WE_EXTERNAL_AD4M_CUSTODY_CREDENTIAL="$CUSTODY" pnpm electron:dev
+```
+
+External mode is for development. Its one weakness: the app's own initial environment
+(`/proc/<pid>/environ` of the Electron main process) still holds the variable it was started with,
+since deleting it changes only what children inherit. A started executor has no such leftover — the
+app makes its custody credential itself and never puts it in an environment.
 
 Settings → Devices → This computer → Advanced → **Startup settings** lists the config file's keys,
 offers a control for each one the executor lets this machine change, says a change takes effect at
@@ -121,7 +155,8 @@ protocol, the identity store settings and how to test it are in `crates/custody/
 with the Tauri app, which links the same crate.
 
 - **The sidecar** (`electron/custodySidecar.js`) starts once the executor answers, against its port,
-  with the admin credential in its environment and never on its command line. It stops with the
+  with the custody credential as the first line of its stdin — never on its command line or in its
+  environment, and the admin credential does not reach it at all. It stops with the
   executor (an account switch, a settings restart, quitting), and exits on its own when this process
   goes, because its stdin closes. In development it is the crate's release build
   (`crates/custody/target/release/we-custody`); packaged, `resources/we-custody` beside the executor.
@@ -138,6 +173,11 @@ with the Tauri app, which links the same crate.
   ended) and read public custody state (`identity-public-state`). One identity window at a time:
   asking again focuses it and starts nothing; closing it mid-step cancels the step. `ipcSender.js`
   answers each channel for its own window only. No word, passphrase or key reaches the main window.
+- **The steps** it may open are the custody service's (`crates/custody/README.md`, "Devices and the
+  master key"): make the identity, add a server by link, scan or paste a new device's code, show
+  this computer's code, take or ask for the master key, answer another device's request, name a
+  device, revoke one. `identityWindow.js` refuses any other step, and a step that names a device or
+  a request without one.
 
 The network names the identity store, not WE: the executor's bootstrap seed carries it, and the
 mainnet seed's store serves the app with no configuration. To use another store, set it in the

@@ -37,9 +37,16 @@ ended — never a screen. See each app's `DEVELOPMENT.md`.
 
 ## The sidecar
 
-`we-custody --executor-port <port> [--custody-dir <dir>]`, with the executor's admin credential in
-`AD4M_ADMIN_CREDENTIAL` (never an argument: `ps` shows arguments to every user). It takes no
-identity store setting: it asks the executor which store it uses, as below. It speaks lines of JSON on stdin and stdout
+`we-custody --executor-port <port> [--custody-dir <dir>]`. It reaches the executor with the
+**custody credential** — the one the executor's `--custody-channel` admits, distinct from the admin
+credential the app's window gets — and reads it from the **first line of its stdin**, before any
+request. Never an argument (`ps` shows arguments to every user) and never the environment (a process's
+`/proc/<pid>/environ` is readable through the executor by whoever holds the admin credential): the
+sidecar refuses to start with `AD4M_CUSTODY_CREDENTIAL` or `AD4M_CUSTODY_CREDENTIAL_FILE` set, or
+without a non-blank first line ending in a newline (exit 2). The executor takes the same credential
+the same way: started with `--custody-channel`, it reads the first line of its own stdin and exits 78
+if either variable is set. It takes no identity store setting: it asks the executor which store it
+uses, as below. After the credential line it speaks lines of JSON on stdin and stdout
 (`src/sidecar.rs`):
 
 ```text
@@ -127,6 +134,54 @@ key log, a different log under its identifier, an event it calls invalid) is sho
 when the person next makes an identity, with "Discard it" to forget it. Discarding forgets the
 incept only; the master key stays where it rests.
 
+## Devices and the master key
+
+The steps the main window may open (`IdentityStep`) besides `create` and `revoke`:
+
+| Step             | Where                          | What it does                                                                               |
+| ---------------- | ------------------------------ | ------------------------------------------------------------------------------------------ |
+| `add-device`     | a computer with the master key | gives a server an offer link (QR and text), then the match code, then signs the `add`      |
+| `scan-device`    | a computer with the master key | "Enter code": takes the `coasys:device:1:…` code a new device shows and sends it the offer |
+| `show-code`      | a computer of no identity yet  | "Show code": its device code as a QR code and a copyable link, until a holder links it     |
+| `take-master`    | a linked device                | "Accept master key": keeps the master key another device sent here                         |
+| `ask-master`     | a linked device                | "Ask for master key": posts a `send-master` request for a holder to answer                 |
+| `answer-request` | a computer with the master key | answers another device's `send-master` or `confirm-revoke` request, on the person's yes    |
+| `rename`         | a computer with the master key | names a device in the identity's private record                                            |
+
+On the match screen of a link the person names the new device, names this computer too when the
+private record does not list it yet, and — for a device that may keep it (a desktop app, not a
+server) — chooses "Send it the master key". The `add` is published first; the device's
+entry in the private record and, if chosen, the master key sealed to the device's inbox follow it.
+What did not happen yet is said on the last screen (`Linked.note`):
+
+- **The master key** a device was given waits in `<custody dir>/pending-pushes.json` until the store
+  took it. The list is retried each time a link or an answer unlocks this computer's master key, and
+  when `publicState` finds the key held in a store that unlocks itself.
+- **The private record** (names, kinds, who keeps the master key) is written after each link,
+  revoke, rename and answer; the client merges a write that raced another device's. A write that
+  fails is said on the last screen and not retried: the device shows by its key id until it is
+  named, and `rename` writes its whole entry when the record lacks one.
+
+On the device, a master key waiting in its inbox is taken by `publicState` without asking where the
+store unlocks itself (the macOS keychain): the key is then behind the OS unlock like any other, and
+the device marks itself a holder in the private record. A sealed store (a passphrase file, the Linux
+Secret Service) needs the passphrase, so there the person takes it with `take-master`, which asks
+for one, or a new one when this computer keeps no master key yet.
+
+`publicState` carries what the Devices page draws: `devices` (the private record's names, kinds and
+`holdsMaster`: `true`, `false` or `"offered"`), `requests` (what other devices asked, never their
+signed parts) and `masterWaiting`. Saying no to a request is closing the window: the request waits
+until it expires.
+
+What a card or a confirmation says about a device comes from the key log, never from the private
+record, which any linked device can write. A request card names who asks by its key id and the
+fingerprint of its signing key; a `confirm-revoke` card names each key it would revoke the same way
+(`targets`), with the record's name only beside it ("listed as “…”"), and refuses a key the
+log does not list. Whether a device **may still hold a valid master key** — on that card and on the
+`revoke` step's confirmation (`mayHoldMaster`) — is the log's too: it made the identity, or the
+claim it joined with said `canKeepMaster`. A record saying `holdsMaster: false` does not hide that,
+and a revoke does not change the master key, so the person is told to replace it.
+
 ## Testing
 
 ```sh
@@ -144,8 +199,10 @@ cargo test --config "$P.ad4m-identity-client.path=\"$A/ad4m-identity-client\"" \
   --config "$P.ad4m-client.path=\"$A/rust-client\""
 ```
 
-The end-to-end test runs the three flows against a real identity-store and two real executors; see
-the header of `tests/live.rs` for what it needs:
+The end-to-end test runs the three flows against a real identity-store and real executors, and a
+desktop executor (`--custody-channel`, the custody credential on stdin, no `--operator`) whose first
+link records its operator, after which another identity's offer is refused `first-link`; see the
+header of `tests/live.rs` for what it needs:
 
 ```sh
 CUSTODY_LIVE=1 AD4M_REPO=<ad4m> cargo test --features cheap-kdf --test live -- --nocapture

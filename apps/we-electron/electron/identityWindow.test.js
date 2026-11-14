@@ -100,7 +100,7 @@ describe('the identity window', () => {
     const { identity, calls } = setup({ start: WORDS, cancel: null });
     const outcome = identity.open({ kind: 'create' });
     await identity.start();
-    await identity.cancel();
+    expect(await identity.cancel()).toBeNull();
     await expect(outcome).resolves.toBe('cancelled');
     expect(calls.map(([m]) => m)).toContain('cancel');
     expect(identity.window()).toBeNull();
@@ -191,6 +191,39 @@ describe('the identity window', () => {
     expect(calls.map(([m]) => m)).toEqual(['start', 'cancel', 'cancel']);
   });
 
+  it('keeps the window open until custody answers the cancel, and shows a join the cancel came too late for', async () => {
+    // The device's add lands while custody is still ending its claim: the cancel answers the join.
+    const JOINED = { screen: { screen: 'joined', did: 'did:scid:coasys:1:Qm', keyId: 'd2' }, outcome: 'done' };
+    const cancel = held();
+    const { identity, windows } = setup({ start: WORDS, cancel: () => cancel.answer });
+    const outcome = identity.open({ kind: 'show-code' });
+    await identity.start();
+    const cancelling = identity.cancel();
+    await flush();
+    expect(windows[0].isDestroyed()).toBe(false);
+
+    cancel.release(JOINED);
+    expect(await cancelling).toEqual(JOINED.screen);
+    expect(windows[0].isDestroyed()).toBe(false);
+    // The main window hears the step was done, not cancelled.
+    await identity.finish();
+    await expect(outcome).resolves.toBe('done');
+  });
+
+  it('keeps the window on a cancel custody could not confirm', async () => {
+    const unconfirmed = {
+      screen: { screen: 'failed', message: 'The identity service on this computer did not confirm the cancel.' },
+      outcome: 'failed',
+    };
+    const { identity, windows } = setup({ start: WORDS, cancel: unconfirmed });
+    const outcome = identity.open({ kind: 'show-code' });
+    await identity.start();
+    expect(await identity.cancel()).toEqual(unconfirmed.screen);
+    expect(windows[0].isDestroyed()).toBe(false);
+    await identity.finish();
+    await expect(outcome).resolves.toBe('failed');
+  });
+
   it('reports a failed step as failed', async () => {
     const failed = { screen: { screen: 'failed', message: 'no' }, outcome: 'failed' };
     const { identity } = setup({ start: failed });
@@ -202,10 +235,37 @@ describe('the identity window', () => {
 
   it('refuses a step it does not know, before any window opens', async () => {
     const { identity, windows } = setup();
-    for (const step of [undefined, { kind: 'export-key' }, { kind: 'revoke' }, { kind: 'revoke', keyId: 2 }]) {
+    for (const step of [
+      undefined,
+      { kind: 'export-key' },
+      { kind: 'revoke' },
+      { kind: 'revoke', keyId: 2 },
+      { kind: 'rename' },
+      { kind: 'answer-request' },
+      { kind: 'answer-request', id: 7 },
+    ]) {
       await expect(identity.open(step)).rejects.toThrow('not an identity step');
     }
     expect(windows).toHaveLength(0);
+  });
+
+  it('runs each device step the custody service knows', async () => {
+    for (const step of [
+      { kind: 'scan-device' },
+      { kind: 'show-code' },
+      { kind: 'take-master' },
+      { kind: 'ask-master' },
+      { kind: 'answer-request', id: 'r1' },
+      { kind: 'rename', keyId: 'd2' },
+    ]) {
+      const { identity, calls, windows } = setup({ start: READY });
+      const outcome = identity.open(step);
+      expect(await identity.start()).toEqual(READY.screen);
+      await identity.finish();
+      await expect(outcome).resolves.toBe('done');
+      expect(calls).toEqual([['start', { step }]]);
+      expect(windows).toHaveLength(1);
+    }
   });
 
   it('starts nothing when no step was asked for', async () => {

@@ -109,8 +109,29 @@ export interface IdentityPort {
   change?(change: IdentityChange): Promise<IdentityChangeOutcome>;
 }
 
-/** A change to the identity, signed by the master key. */
-export type IdentityChange = { kind: 'create' } | { kind: 'add-device' } | { kind: 'revoke'; keyId: string };
+/**
+ * A change to the identity, or a step toward one, run where the master key is kept.
+ *
+ * - `create`: make the identity.
+ * - `add-device`: give a server an offer link.
+ * - `scan-device`: add a device by the code it shows.
+ * - `show-code`: on a computer of no identity yet, show its code for a device of the identity to add.
+ * - `take-master`: keep the master key another device sent here.
+ * - `ask-master`: ask a device that keeps the master key to send it here.
+ * - `answer-request`: answer what another device asked (send the master key, revoke devices).
+ * - `rename`: name a device, in the private record only its devices read.
+ * - `revoke`: revoke a device.
+ */
+export type IdentityChange =
+  | { kind: 'create' }
+  | { kind: 'add-device' }
+  | { kind: 'scan-device' }
+  | { kind: 'show-code' }
+  | { kind: 'take-master' }
+  | { kind: 'ask-master' }
+  | { kind: 'answer-request'; id: string }
+  | { kind: 'rename'; keyId: string }
+  | { kind: 'revoke'; keyId: string };
 
 /** How a change ended: made, abandoned by the person, or refused along the way. */
 export type IdentityChangeOutcome = 'done' | 'cancelled' | 'failed';
@@ -125,6 +146,43 @@ export interface IdentityCustodyView {
   unlock: 'os' | 'passphrase' | null;
   /** Why no change can be made here, in words a person reads; `null` when one can. */
   blocked: string | null;
+  /**
+   * The devices the identity's private record names, which only its devices can read. Empty before
+   * the first one is named, and where the record cannot be read now.
+   */
+  devices: DeviceNameView[];
+  /**
+   * The revoked keys that may still hold a valid master key, as the key log says: it let them keep
+   * the master key, and none has replaced it since. A revoke leaves a copy of the master key valid,
+   * and the private record drops a revoked key's entry, so only the log keeps this.
+   */
+  revokedHolders: string[];
+  /** What other devices asked and is waiting for an answer from a device that keeps the master key. */
+  requests: DeviceRequestView[];
+  /** A master key another device sent waits for this computer to take it. */
+  masterWaiting: boolean;
+}
+
+/** A device as the private record names it. */
+export interface DeviceNameView {
+  keyId: string;
+  name: string;
+  /** `desktop-app`, `server`, … as the record says. */
+  kind: string;
+  /** Whether it keeps the master key: yes, no, or sent and not yet taken. */
+  holdsMaster: 'yes' | 'no' | 'offered';
+}
+
+/** A request of another device, waiting for an answer. */
+export interface DeviceRequestView {
+  id: string;
+  kind: 'send-master' | 'confirm-revoke';
+  /** The key id of the device that asked. */
+  by: string;
+  /** For `confirm-revoke`: the keys it asks to revoke. */
+  keyIds: string[];
+  /** Unix seconds. */
+  expires: number;
 }
 
 /** Two different events at one place in a log, as the backend recorded them. */

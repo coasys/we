@@ -6427,7 +6427,19 @@
       "state": {
         "devices": {
           "type": "array",
-          "properties": ["keyId", "label", "subtitle", "icon", "thisDevice", "revoked", "status", "canRevoke"]
+          "properties": [
+            "keyId",
+            "label",
+            "subtitle",
+            "icon",
+            "thisDevice",
+            "revoked",
+            "status",
+            "canRevoke",
+            "name",
+            "holdsMaster",
+            "master"
+          ]
         },
         "devicesLoaded": {
           "type": "boolean"
@@ -6438,13 +6450,36 @@
         "canManage": {
           "type": "boolean"
         },
+        "canShowCode": {
+          "type": "boolean"
+        },
+        "canAskMaster": {
+          "type": "boolean"
+        },
+        "masterWaiting": {
+          "type": "boolean"
+        },
+        "requests": {
+          "type": "array",
+          "properties": ["id", "kind", "title", "detail"]
+        },
         "error": {
           "type": "string"
         }
       },
-      "actions": ["refresh", "addDevice", "revoke"],
+      "actions": [
+        "refresh",
+        "addDevice",
+        "scanDevice",
+        "showCode",
+        "takeMaster",
+        "askMaster",
+        "answerRequest",
+        "rename",
+        "revoke"
+      ],
       "ambient": ["refresh"],
-      "needsArgs": ["revoke"]
+      "needsArgs": ["answerRequest", "rename", "revoke"]
     },
     {
       "name": "editorStore",

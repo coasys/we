@@ -3107,14 +3107,24 @@ DatasetStore:
 
 DeviceStore:
 - State:
-  - devices: { keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke }[] — the device keys of the person's key log, valid first and this computer on top. `label` is 'This computer' or 'Device d2' (devices have no names yet); `status` 'Valid' or 'Revoked at #2'; `canRevoke` is a valid key that is not this computer's
+  - devices: { keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, status, canRevoke, name, holdsMaster, master }[] — the device keys of the person's key log, valid first and this computer on top, named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' or 'Device d2'; `name` the record's name or empty; `status` 'Valid' or 'Revoked at #2'; `canRevoke` is a valid key that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Holds the master key', 'Master key offered, not yet taken', or empty). A revoked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it ('Still holds a valid master key — replace your master key', 'May still hold a valid master key — replace your master key'): a revoke leaves a copy of the master key valid. Draw `master` in a warning tone unless `holdsMaster` is 'yes'
   - devicesLoaded: boolean — the list has been read once
   - validCount: number — how many keys are valid
-  - canManage: boolean — Add a device and Revoke can be offered: this computer keeps the master key of the identity
+  - canManage: boolean — linking (scanDevice, addDevice), Rename, Revoke and answering requests can be offered: this computer keeps the master key of the identity
+  - canShowCode: boolean — "Show my code" can be offered: this computer can join an identity and speaks for none yet
+  - canAskMaster: boolean — "Ask for the master key" can be offered: a device of the identity that does not keep the master key and has none waiting
+  - masterWaiting: boolean — a master key another device sent waits here: offer "Take the master key"
+  - requests: { id, kind, title, detail }[] — what the person's other devices asked and is waiting for an answer, while this computer keeps the master key; empty otherwise. `kind` is 'send-master' or 'confirm-revoke'; `title` names the device that asked ('Laptop asks for the master key')
   - error: string — why the last read failed, or empty
 - Actions:
   - refresh(): reads the device list again
-  - addDevice(): adds a device — the backend asks the person wherever it keeps the master key (on the desktop: the offer link and QR code, then the match code, then the confirmation that signs it). Resolves with the outcome; the list is read again
+  - addDevice(): adds a server by an offer link — the backend asks the person wherever it keeps the master key (on the desktop: the offer link and QR code, then the match code, then the confirmation that signs it). Resolves with the outcome; the list is read again
+  - scanDevice(): "Scan or paste a code" — adds a device by the code it shows: the person pastes it, both show a match code, and the confirmation names the device and may let it keep the master key
+  - showCode(): "Show my code" — on a computer of no identity yet, shows its code (QR and link) until a device of the identity adds it
+  - takeMaster(): "Take the master key" — keeps the master key another device sent here
+  - askMaster(): "Ask for the master key" — asks the devices that keep it to send it here; one answers from its own requests
+  - answerRequest(id: string): answers that request of another device, once the person says yes where the master key is kept (send the master key, or revoke the devices it names)
+  - rename(keyId: string): names that device, in the private record only the identity’s devices read
   - revoke(keyId: string): revokes that device key, once the person confirms it where the master key is kept. Resolves with the outcome
 
 EditorStore:
@@ -3198,14 +3208,14 @@ IdentityStore:
   - keyLogLoaded: boolean — the log has been read once
   - forked: boolean — the backend found two different logs for this identity
   - fork: { seq, ours, theirs } | null — where they part
-  - custody: { did, holdsMaster, unlock, blocked } | null — whether this computer can sign changes, as public facts: whether it keeps a master key (`holdsMaster`, a boolean), how that key unlocks ('os' for the computer's own prompt, or 'passphrase'), and why no change can run, if one cannot (`blocked`). Null where the backend cannot change an identity from here
+  - custody: { did, holdsMaster, unlock, blocked, devices, revokedHolders, requests, masterWaiting } | null — whether this computer can sign changes, as public facts: whether it keeps a master key (`holdsMaster`, a boolean), how that key unlocks ('os' for the computer's own prompt, or 'passphrase'), why no change can run, if one cannot (`blocked`), the devices the private record names (`devices`: { keyId, name, kind, holdsMaster: 'yes' | 'no' | 'offered' }[]), the revoked key ids the key log says may still hold a valid master key (`revokedHolders`), what other devices asked (`requests`: { id, kind, by, keyIds, expires }[]), and whether a master key waits here to be taken (`masterWaiting`). deviceStore words all of these for a page. Null where the backend cannot change an identity from here
   - needsFirstRun: boolean — ask the first-run question now: this computer can sign changes, this device speaks for nobody, and "Start now" was not chosen for this account on this computer. Still true where changeBlocked is set, so the person learns why; offer "Start now" then
   - busy: boolean — a change is running
   - lastOutcome: 'done' | 'cancelled' | 'failed' | '' — how the last change ended
   - error: string — why the last read or change failed, ready to show, or empty. A change never rejects: it resolves "failed" and the reason is here, so draw it beside the control that asked
 - Actions:
   - refresh(): reads the status, the key log and the custody state again
-  - open(change: { kind: 'create' } | { kind: 'add-device' } | { kind: 'revoke', keyId }): runs a change and resolves with its outcome once it ends; the backend asks the person itself, wherever it keeps the master key, and everything is read again then. Words, passphrases and keys never reach the app
+  - open(change: { kind: 'create' } | { kind: 'add-device' } | { kind: 'scan-device' } | { kind: 'show-code' } | { kind: 'take-master' } | { kind: 'ask-master' } | { kind: 'answer-request', id } | { kind: 'rename', keyId } | { kind: 'revoke', keyId }): runs a change and resolves with its outcome once it ends; the backend asks the person itself, wherever it keeps the master key, and everything is read again then. Words, passphrases and keys never reach the app
   - makeIdentity(): "Make my identity here" — runs `create`
   - startWithoutIdentity(): "Start now" — use this account without an identity; remembered for it on this computer, so the first-run question stops
 

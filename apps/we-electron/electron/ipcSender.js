@@ -25,6 +25,8 @@
  * nothing about the answer, and a bug in the app shows up as an error rather than as silence.
  */
 
+import { withoutCustodyCredential } from './executorProcess.js';
+
 /** Whether `event` came from `window`'s top frame, showing a document `isAppUrl` accepts. */
 export function isFromWindow(event, window, isAppUrl) {
   if (!event || !window || window.isDestroyed?.()) return false;
@@ -55,9 +57,13 @@ export function handleFromWindow(ipcMain, getWindow, isAppUrl, channel, handler)
  * The executor's environment for one start: the admin credential in `AD4M_ADMIN_CREDENTIAL`, never
  * on its command line. An argument is readable by every user of the computer through `ps`, and the
  * executor's own help says so; an environment is readable only by the same user (and root), the
- * boundary the credential is meant to have.
+ * boundary the admin credential is meant to have — it is the renderer's anyway.
+ *
+ * No custody credential, by any name, and none inherited ({@link withoutCustodyCredential}): that
+ * one must stay out of the renderer's reach, and the renderer's admin credential can read the
+ * executor's `/proc/<pid>/environ`. It goes on the executor's stdin (`custodyCredentialLine`).
  */
 export function executorSpawnEnv(baseEnv, credential) {
   if (!credential) throw new Error('[we] the executor needs an admin credential');
-  return { ...baseEnv, AD4M_ADMIN_CREDENTIAL: credential };
+  return { ...withoutCustodyCredential(baseEnv), AD4M_ADMIN_CREDENTIAL: credential };
 }

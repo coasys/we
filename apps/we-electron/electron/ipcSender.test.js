@@ -146,6 +146,25 @@ describe('the executor’s start', () => {
     expect(() => executorSpawnEnv({}, '')).toThrow();
   });
 
+  // The custody credential goes on the executor's stdin (`custodyCredentialLine`), never in its
+  // environment: `/proc/<pid>/environ` is a file the admin credential can read through the executor.
+  // One inherited from this process is not passed on either — the executor refuses to start (78)
+  // with `AD4M_CUSTODY_CREDENTIAL` or `AD4M_CUSTODY_CREDENTIAL_FILE` set.
+  it('carries no custody credential, and drops one it would inherit', () => {
+    const env = executorSpawnEnv(
+      {
+        PATH: '/bin',
+        AD4M_CUSTODY_CREDENTIAL: 'inherited',
+        AD4M_CUSTODY_CREDENTIAL_FILE: '/tmp/custody',
+        WE_EXTERNAL_AD4M_CUSTODY_CREDENTIAL: 'external',
+      },
+      'admin',
+      'custody',
+    );
+    expect(env).toEqual({ PATH: '/bin', AD4M_ADMIN_CREDENTIAL: 'admin' });
+    expect(Object.values(env)).not.toContain('custody');
+  });
+
   it('main.js puts no credential on the command line and registers no unchecked handler', () => {
     const main = readFileSync(join(here, 'main.js'), 'utf8');
     expect(main).not.toMatch(/['"]--admin-credential['"]/);

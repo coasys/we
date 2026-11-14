@@ -9,7 +9,8 @@
 //! - `publicState` → [`crate::CustodyPublic`]
 //! - `start` `{step}` → `{screen, outcome}`: the first [`crate::Screen`] of that step
 //! - `step` `{input}` → `{screen, outcome}`: the next screen
-//! - `cancel` → `null`, the open step ended and wiped
+//! - `cancel` → `null` once the open step ended and was wiped, or `{screen, outcome}` when it could
+//!   not be: the screen to show instead, and the window stays ([`CustodyHandle::cancel`])
 //!
 //! `outcome` is how the step ended ([`crate::StepOutcome`]) once a screen is its last, else `null`:
 //! the host keeps it for the main window, which never sees a screen.
@@ -18,9 +19,15 @@
 //! `cancel` and `publicState` are answered. When stdin closes the open step is cancelled and the
 //! process exits, so it never outlives its host.
 //!
-//! The admin credential comes from the environment (`AD4M_ADMIN_CREDENTIAL`, as the executor reads
-//! it), never from an argument, which every user of the computer can read through `ps`. No error
-//! here repeats what a request carried: a malformed step input could hold a passphrase.
+//! The custody credential (the one the executor's `--custody-channel` admits; distinct from the
+//! admin credential the main window holds, which the custody channel refuses) is the first line of
+//! stdin, before any request: the value, then a newline ([`read_credential`]). It is kept only in
+//! memory. Never an argument, which every user of the computer can read through `ps`, and never the
+//! environment: a process's environment is a readable file (`/proc/<pid>/environ`; `ps eww` on
+//! macOS), and the admin credential the renderer holds can read host files through the executor.
+//! `AD4M_CUSTODY_CREDENTIAL` or `AD4M_CUSTODY_CREDENTIAL_FILE` set refuses the start, as it does
+//! the executor's. No error here repeats what a request carried: a malformed step input could hold
+//! a passphrase.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -39,24 +46,28 @@ use crate::service::{
 use crate::store::system_store;
 use crate::{DesktopVault, PendingIncepts};
 
-/// The variable the admin credential arrives in.
-pub const CREDENTIAL_VAR: &str = "AD4M_ADMIN_CREDENTIAL";
+/// The variables a custody credential must never arrive in: set, they refuse the start.
+pub const REFUSED_VARS: [&str; 2] = ["AD4M_CUSTODY_CREDENTIAL", "AD4M_CUSTODY_CREDENTIAL_FILE"];
+
+/// Why the sidecar refuses to start without its credential line.
+pub const NO_CREDENTIAL: &str = "the custody credential must be the first line of stdin";
 
 /// How long a closing sidecar waits to send answers already on their way.
 const DRAIN: Duration = Duration::from_secs(5);
 
-/// What the sidecar runs with.
+/// What the sidecar runs with. The credential is not here: [`main`] reads it from stdin.
 #[derive(Debug)]
 pub struct Config {
-    pub executor: ExecutorAddress,
+    /// The executor's address, `http://127.0.0.1:<port>`.
+    pub executor_url: String,
     /// Where the master keys and pending incepts live: [`custody_dir`] unless `--custody-dir`.
     pub custody_dir: PathBuf,
 }
 
 impl Config {
-    /// Reads `--executor-port <port>` and `--custody-dir <dir>` from `args`, and the credential from
-    /// `env`. The identity store is not configured here: custody asks the executor which one it
-    /// uses (`identity.status`), as in the Tauri app.
+    /// Reads `--executor-port <port>` and `--custody-dir <dir>` from `args`, and refuses a custody
+    /// credential in `env` ([`REFUSED_VARS`]). The identity store is not configured here: custody
+    /// asks the executor which one it uses (`identity.status`), as in the Tauri app.
     pub fn parse(
         args: impl IntoIterator<Item = String>,
         env: impl Fn(&str) -> Option<String>,
@@ -79,38 +90,91 @@ impl Config {
             }
         }
         let port = port.ok_or("--executor-port is required")?;
-        let credential = env(CREDENTIAL_VAR)
-            .filter(|c| !c.is_empty())
-            .ok_or(format!("{CREDENTIAL_VAR} is not set"))?;
+        if let Some(var) = REFUSED_VARS.iter().find(|var| env(var).is_some()) {
+            return Err(format!(
+                "{var} is set: the custody credential is read only from the first line of stdin, \
+                 never from the environment"
+            ));
+        }
         let custody_dir = match dir {
             Some(dir) => dir,
             None => custody_dir(&dirs::home_dir().ok_or("no home folder")?),
         };
         Ok(Config {
-            executor: ExecutorAddress {
-                url: format!("http://127.0.0.1:{port}"),
-                admin_credential: Arc::from(credential.as_str()),
-            },
+            executor_url: format!("http://127.0.0.1:{port}"),
             custody_dir,
         })
     }
+
+    /// The executor's address, with the credential [`read_credential`] read.
+    pub fn executor(&self, credential: Arc<str>) -> ExecutorAddress {
+        ExecutorAddress {
+            url: self.executor_url.clone(),
+            credential,
+        }
+    }
 }
 
-/// Starts the custody service and answers stdin on stdout until stdin closes.
-pub fn main(config: Config) -> std::io::Result<()> {
-    let vault = DesktopVault::new(
-        system_store(config.custody_dir.clone()),
-        PendingIncepts::file(config.custody_dir),
-    );
-    let custody = spawn(vault, config.executor);
-    tokio::runtime::Builder::new_current_thread()
+/// Reads the custody credential, the first line of `input`: the value, then `\n` (a `\r` before it
+/// is dropped). Stdin closed before the line ends, a line that is empty or blank, or not UTF-8, is
+/// refused ([`NO_CREDENTIAL`]); the error never repeats what was read. Reads nothing past the
+/// line, so the requests after it stay in `input`.
+pub async fn read_credential<R: AsyncBufRead + Unpin>(input: &mut R) -> Result<Arc<str>, String> {
+    let mut line = zeroize::Zeroizing::new(Vec::new());
+    input
+        .read_until(b'\n', &mut line)
+        .await
+        .map_err(|e| format!("{NO_CREDENTIAL} (stdin: {})", e.kind()))?;
+    let Some(value) = line.strip_suffix(b"\n") else {
+        return Err(NO_CREDENTIAL.into());
+    };
+    let value = value.strip_suffix(b"\r").unwrap_or(value);
+    match std::str::from_utf8(value) {
+        Ok(value) if !value.trim().is_empty() => Ok(Arc::from(value)),
+        _ => Err(NO_CREDENTIAL.into()),
+    }
+}
+
+/// Why [`main`] stopped other than by stdin closing.
+#[derive(Debug)]
+pub enum Stopped {
+    /// No custody credential on stdin's first line: a configuration problem, as a bad argument is.
+    NoCredential(String),
+    Io(std::io::Error),
+}
+
+impl std::fmt::Display for Stopped {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Stopped::NoCredential(why) => f.write_str(why),
+            Stopped::Io(e) => e.fmt(f),
+        }
+    }
+}
+
+/// Reads the custody credential from stdin's first line, starts the custody service, and answers
+/// the rest of stdin on stdout until stdin closes.
+pub fn main(config: Config) -> Result<(), Stopped> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
-        .build()?
-        .block_on(serve(
-            custody,
-            tokio::io::BufReader::new(tokio::io::stdin()),
-            tokio::io::stdout(),
-        ))
+        .build()
+        .map_err(Stopped::Io)?;
+    runtime.block_on(async {
+        // One buffered reader for the credential and the requests after it: a second one could
+        // lose what the first had already buffered.
+        let mut input = tokio::io::BufReader::new(tokio::io::stdin());
+        let credential = read_credential(&mut input)
+            .await
+            .map_err(Stopped::NoCredential)?;
+        let vault = DesktopVault::new(
+            system_store(config.custody_dir.clone()),
+            PendingIncepts::file(config.custody_dir.clone()),
+        );
+        let custody = spawn(vault, config.executor(credential));
+        serve(custody, input, tokio::io::stdout())
+            .await
+            .map_err(Stopped::Io)
+    })
 }
 
 /// Answers each request line of `input` on `output`, until `input` ends.
@@ -217,10 +281,7 @@ async fn call(custody: &CustodyHandle, method: &str, params: Value) -> Result<Va
             let StepParams { input } = params_of(method, params)?;
             serde_json::to_value(Shown::of(custody.step(input).await.map_err(fail)?))
         }
-        "cancel" => {
-            custody.cancel().await;
-            Ok(Value::Null)
-        }
+        "cancel" => serde_json::to_value(custody.cancel().await.map(Shown::of)),
         _ => return Err(format!("unknown method `{method}`")),
     };
     result.map_err(|e| e.to_string())
@@ -263,7 +324,7 @@ mod tests {
             DesktopVault::new(Box::new(MemoryStore::new()), PendingIncepts::memory()),
             ExecutorAddress {
                 url: "http://127.0.0.1:9".into(),
-                admin_credential: Arc::from("x"),
+                credential: Arc::from("x"),
             },
         )
     }
@@ -369,22 +430,90 @@ mod tests {
     }
 
     #[test]
-    fn the_credential_comes_from_the_environment_and_the_rest_from_arguments() {
+    fn the_port_and_folder_come_from_arguments_and_nothing_from_the_environment() {
         let config = Config::parse(
             args(&["--executor-port", "12001", "--custody-dir", "/tmp/custody"]),
             env(&[
-                (CREDENTIAL_VAR, "the-credential"),
                 // Read by the executor, never by custody.
                 ("AD4M_IDENTITY_STORE_URL", "https://store.example"),
+                ("AD4M_ADMIN_CREDENTIAL", "the-admin-credential"),
             ]),
         )
         .unwrap();
-        assert_eq!(config.executor.url, "http://127.0.0.1:12001");
-        assert_eq!(&*config.executor.admin_credential, "the-credential");
-        assert!(!format!("{config:?}").contains("store.example"));
+        assert_eq!(config.executor_url, "http://127.0.0.1:12001");
         assert_eq!(config.custody_dir, PathBuf::from("/tmp/custody"));
-        // The credential never shows in a debug print either.
-        assert!(!format!("{config:?}").contains("the-credential"));
+        let shown = format!("{config:?}");
+        assert!(!shown.contains("store.example") && !shown.contains("the-admin-credential"));
+        // The credential never shows in a debug print of the address either.
+        let address = config.executor(Arc::from("the-credential"));
+        assert!(!format!("{address:?}").contains("the-credential"));
+    }
+
+    /// The executor's `--custody-channel` admits only its own credential, never the admin one the
+    /// main window holds: custody connects with the line on stdin, and an admin credential in the
+    /// environment is never taken for it — with no line, the start is refused.
+    #[tokio::test]
+    async fn custody_connects_with_the_custody_credential_not_the_admin_one() {
+        let config = Config::parse(
+            args(&["--executor-port", "1"]),
+            env(&[("AD4M_ADMIN_CREDENTIAL", "the-admin-credential")]),
+        )
+        .unwrap();
+        let mut stdin: &[u8] = b"the-custody-credential\n";
+        let credential = read_credential(&mut stdin).await.unwrap();
+        let address = config.executor(credential);
+        assert_eq!(&*address.credential, "the-custody-credential");
+        assert_eq!(address.url, "http://127.0.0.1:1");
+        let mut nothing: &[u8] = b"";
+        assert_eq!(
+            read_credential(&mut nothing).await.unwrap_err(),
+            NO_CREDENTIAL
+        );
+    }
+
+    /// The credential is the first line, and the requests after it are served from the same
+    /// reader: nothing past the line is read away.
+    #[tokio::test]
+    async fn the_credential_is_the_first_line_and_the_requests_follow_it() {
+        let mut input: &[u8] = b"the-credential\r\n{\"id\":1,\"method\":\"publicState\"}\n";
+        let credential = read_credential(&mut input).await.unwrap();
+        assert_eq!(&*credential, "the-credential");
+        let mut output = Vec::new();
+        serve(custody(), input, &mut output).await.unwrap();
+        let answer: Value = serde_json::from_slice(&output).unwrap();
+        assert_eq!(answer["id"], 1);
+        assert_eq!(answer["result"]["did"], Value::Null);
+    }
+
+    /// Stdin closed before the line ends, an empty or blank line, or one that is not UTF-8: refused,
+    /// with an error that repeats none of it.
+    #[tokio::test]
+    async fn a_missing_or_empty_credential_line_is_refused() {
+        for stdin in [
+            &b""[..],
+            b"secret-without-newline",
+            b"\n",
+            b"\r\n",
+            b"   \t\n{\"id\":1}\n",
+            b"\xff\xfesecret\n",
+        ] {
+            let mut input = stdin;
+            let refused = read_credential(&mut input).await.unwrap_err();
+            assert_eq!(refused, NO_CREDENTIAL, "{stdin:?}");
+        }
+    }
+
+    /// Never the environment: either variable set refuses the start, whatever its value.
+    #[test]
+    fn a_credential_in_the_environment_is_refused() {
+        for var in REFUSED_VARS {
+            let refused = Config::parse(args(&["--executor-port", "1"]), move |name: &str| {
+                (name == var).then(|| "the-credential".to_string())
+            })
+            .unwrap_err();
+            assert!(refused.starts_with(&format!("{var} is set")), "{refused}");
+            assert!(!refused.contains("the-credential"));
+        }
     }
 
     #[test]
@@ -396,17 +525,15 @@ mod tests {
                 "--admin-credential",
                 "the-credential",
             ]),
-            env(&[(CREDENTIAL_VAR, "x")]),
+            env(&[]),
         )
         .unwrap_err();
         assert_eq!(refused, "unknown argument `--admin-credential`");
-        let missing = Config::parse(args(&["--executor-port", "1"]), env(&[])).unwrap_err();
-        assert_eq!(missing, format!("{CREDENTIAL_VAR} is not set"));
     }
 
     #[test]
     fn the_executor_port_is_required_and_must_be_a_port() {
-        let with = |a: &[&str]| Config::parse(args(a), env(&[(CREDENTIAL_VAR, "x")]));
+        let with = |a: &[&str]| Config::parse(args(a), env(&[]));
         assert_eq!(with(&[]).unwrap_err(), "--executor-port is required");
         assert_eq!(
             with(&["--executor-port", "99999"]).unwrap_err(),
