@@ -148,7 +148,7 @@ impl Widget for Icon {
             .map(props::color32)
             .unwrap_or_else(|| props::text_color(style, cx.ui.ctx()));
         cx.ui.painter().text(
-            props::content_rect(rect, style, FONT_PX, ROOT_PX, view).center(),
+            props::content_rect(rect, style, FONT_PX, ROOT_PX, view, cx.cb_w).center(),
             egui::Align2::CENTER_CENTER,
             icon_names::phosphor_glyph(name).unwrap_or("?"),
             egui::FontId::new(size, Self::family(node)),
@@ -199,7 +199,7 @@ impl Widget for Image {
         let alt = props::prop_text(node, "alt").unwrap_or(src);
         let r = props::radius_px(&style.paint.radius, rect, FONT_PX, ROOT_PX, view.viewport);
         // The image is the element's content — it paints inside the padding.
-        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view);
+        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view, cx.cb_w);
         if src.is_empty() {
             // A broken img: bordered slot + alt text, as the browser draws.
             cx.ui.painter().rect_stroke(
@@ -332,7 +332,7 @@ impl Widget for Avatar {
             node,
             style,
             // The avatar is the element's content — inside the padding.
-            props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx())),
+            props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()), cx.cb_w),
             props::prop_text(node, "url"),
             &Self::initials(node),
             ring,
@@ -410,7 +410,8 @@ impl Widget for AvatarStack {
         Size::new(w, size)
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
-        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()));
+        let content =
+            props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()), cx.cb_w);
         let size = content.height();
         let max = props::prop_num(node, "max").unwrap_or(5.0) as usize;
         let overlap = props::prop_num(node, "overlap").unwrap_or(0.35) as f32;
@@ -513,7 +514,8 @@ impl Widget for AnimatedIcon {
         Size::new(s, s)
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
-        let content = props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()));
+        let content =
+            props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()), cx.cb_w);
         let size = content.height().min(content.width());
         let src = props::prop_text(node, "src").unwrap_or("");
         let name = props::prop_str(node, "name").unwrap_or("");

@@ -20,6 +20,10 @@ pub type Parts = HashMap<(NodeId, &'static str), Rect>;
 pub struct Layout {
     pub size: Size,
     pub rects: HashMap<NodeId, Rect>,
+    /// Each laid-out node's resolved style — scopes already applied; paint
+    /// reads these so a descendant's `var()` sees its ancestors' `tone`/
+    /// `styles` custom properties.
+    pub styles: HashMap<NodeId, Style>,
     /// `(node, part)` → rect — a widget's virtual chrome.
     pub parts: Parts,
     /// Text children in paint order, with the node they belong to.
@@ -28,6 +32,13 @@ pub struct Layout {
     pub scroll: HashMap<NodeId, egui::Vec2>,
     /// Nodes with `overflow: hidden|clip` — children clip to their rect.
     pub clip: HashMap<NodeId, egui::Vec2>,
+    /// The percent bases each node's `calc`/`%` terms resolved against —
+    /// `cb.0` is the containing-block width paint insets percent padding
+    /// against. Paint never rebuilds the base itself.
+    pub bases: HashMap<NodeId, we_layout::Bases>,
+    /// `true` when the deferred-base solve hit its pass cap still moving
+    /// — the returned build is honest but not settled.
+    pub unconverged: bool,
 }
 
 /// A text child and where it landed.
@@ -132,6 +143,7 @@ fn run(
     Layout {
         size: Size::new(out.size.x, out.size.y),
         rects: out.rects.into_iter().map(|(k, v)| (k, r(v))).collect(),
+        styles: out.styles,
         parts: out.parts.into_iter().map(|(k, v)| (k, r(v))).collect(),
         texts: out
             .texts
@@ -152,5 +164,7 @@ fn run(
             .into_iter()
             .map(|(k, v)| (k, egui::vec2(v.x, v.y)))
             .collect(),
+        bases: out.bases,
+        unconverged: out.unconverged,
     }
 }

@@ -7,11 +7,12 @@
 use std::sync::Arc;
 
 use indexmap::IndexMap;
-use we_style::{eval_color, eval_dimension, Color, Dimension, TokenTable};
+use we_style::{eval_color, eval_dimension, Calc, Color, Dimension, Size, TokenTable};
 
 fn table() -> TokenTable {
     TokenTable::new(
         [
+            ("--we-space-200", "8px"),
             ("--we-space-300", "12px"),
             ("--we-space-500", "20px"),
             ("--we-avatar-size-sm", "40px"),
@@ -77,6 +78,122 @@ fn calc_forms() {
     assert_eq!(
         dim("max(0px, calc(var(--we-space-300) - max(0px, calc(3px - var(--we-scrollbar-thumb-inset))) - var(--we-scrollbar-width)))"),
         px(1.0)
+    );
+}
+
+#[test]
+fn calc_mixed_units() {
+    // Metric-resolvable units combine; the terms stay symbolic and `to_px`
+    // folds them against the supplied metrics — `calc(72px - 2rem)` is 40px
+    // at a 16px root.
+    let d = dim("calc(72px - 2rem)").expect("px - rem resolves");
+    assert_eq!(
+        d.to_px(14.0, 16.0, Size::new(0.0, 0.0)),
+        Some(40.0),
+        "{d:?}"
+    );
+    // The bundle's railInset:
+    // calc((72px - 1px - 2rem) / 2 - var(--we-space-200)) = (71-32)/2 - 8 = 11.5
+    let d = dim("calc((72px - 1px - 2rem) / 2 - var(--we-space-200))").expect("railInset resolves");
+    assert_eq!(
+        d.to_px(14.0, 16.0, Size::new(0.0, 0.0)),
+        Some(11.5),
+        "{d:?}"
+    );
+    // `em` folds against font_px, viewport units against the viewport.
+    let d = dim("calc(2em + 4px)").expect("em + px resolves");
+    assert_eq!(d.to_px(14.0, 16.0, Size::new(0.0, 0.0)), Some(32.0));
+    let d = dim("calc(50vw - 10px)").expect("vw - px resolves");
+    assert_eq!(d.to_px(14.0, 16.0, Size::new(200.0, 100.0)), Some(90.0));
+
+    // Percent + length keeps both terms — layout owns the percent's base.
+    let d = dim("calc(100% - 2 * var(--we-space-300))").expect("pct - px resolves");
+    assert_eq!(
+        d,
+        Dimension::Calc(Calc {
+            percent: 1.0,
+            px: -24.0,
+            ..Calc::default()
+        })
+    );
+    // ..and the percent term is the part to_px cannot answer.
+    assert_eq!(d.to_px(14.0, 16.0, Size::new(200.0, 100.0)), None);
+    assert_eq!(
+        dim("calc(50% + 1rem)"),
+        Some(Dimension::Calc(Calc {
+            percent: 0.5,
+            rem: 1.0,
+            ..Calc::default()
+        }))
+    );
+
+    // Single-unit results still collapse to the scalar variants.
+    assert_eq!(dim("calc(2em * 3)"), Some(Dimension::Em(6.0)));
+    assert_eq!(dim("calc(50% * 2)"), Some(Dimension::Percent(1.0)));
+    assert_eq!(dim("calc(100% - 50%)"), Some(Dimension::Percent(0.5)));
+
+    // A number and a length do not mix — invalid in CSS too.
+    assert_eq!(dim("calc(2 + 3px)"), None);
+    // min/max/clamp still require comparable (same-unit) arguments — metrics
+    // cannot order mixed units at eval time.
+    assert_eq!(dim("max(2rem, 30px)"), None);
+}
+
+#[test]
+fn clamp_reversed_bounds() {
+    // CSS: clamp(min, preferred, max) = max(min, min(preferred, max)) — the
+    // minimum wins over a smaller maximum; it is valid CSS, not an error.
+    // Rust's f64::clamp would panic on lo > hi.
+    assert_eq!(dim("clamp(100px, 50px, 0px)"), px(100.0));
+    assert_eq!(dim("clamp(0px, 50px, 100px)"), px(50.0));
+    assert_eq!(dim("clamp(0px, 500px, 100px)"), px(100.0));
+    // nested expression with reversed bounds
+    assert_eq!(
+        dim("clamp(calc(80px + 20px), 50px, var(--we-nothing, 0px))"),
+        px(100.0)
+    );
+}
+
+#[test]
+fn rgba_percent_alpha() {
+    // The 4th comma argument of legacy `rgba()` is an `<alpha-value>` —
+    // `50%` is 0.5, not an RGB channel's 127.5 clamped to opaque.
+    assert_eq!(
+        eval_color("rgba(255, 0, 0, 50%)"),
+        Some(Color {
+            r: 1.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.5
+        })
+    );
+    assert_eq!(
+        eval_color("rgb(255, 0, 0, 25%)"),
+        Some(Color {
+            r: 1.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.25
+        })
+    );
+    // Number alpha and the modern slash form are unchanged.
+    assert_eq!(
+        eval_color("rgba(255, 0, 0, 0.5)"),
+        Some(Color {
+            r: 1.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.5
+        })
+    );
+    assert_eq!(
+        eval_color("rgb(255 0 0 / 50%)"),
+        Some(Color {
+            r: 1.0,
+            g: 0.0,
+            b: 0.0,
+            a: 0.5
+        })
     );
 }
 
@@ -148,6 +265,131 @@ fn color_forms() {
     assert!(
         c.a < 0.25 && c.a > 0.1,
         "18% wash keeps a light alpha: {c:?}"
+    );
+}
+
+#[test]
+fn color_mix_accepted_spaces_match_spec() {
+    // `srgb-linear` mixes in linear light: equal black/white is linear 0.5,
+    // which encodes to ≈0.735 sRGB — not the gamma-space 0.5 `srgb` gives.
+    let mid = eval_color("color-mix(in srgb-linear, black, white)").unwrap();
+    assert!(
+        (mid.r - 0.7354).abs() < 1e-3 && (mid.g - 0.7354).abs() < 1e-3,
+        "srgb-linear midpoint is linear light: {mid:?}"
+    );
+    let gamma = eval_color("color-mix(in srgb, black, white)").unwrap();
+    assert!((gamma.r - 0.5).abs() < 1e-6, "srgb stays gamma: {gamma:?}");
+
+    // oklch: a colour mixed with itself must stay itself. The buggy build fed
+    // the degree-valued hue straight to f32::cos/sin and shifted it.
+    let one = eval_color("oklch(0.6 0.1 200)").unwrap();
+    let mixed = eval_color("color-mix(in oklch, oklch(0.6 0.1 200), oklch(0.6 0.1 200))").unwrap();
+    assert!(
+        (mixed.r - one.r).abs() < 1e-3
+            && (mixed.g - one.g).abs() < 1e-3
+            && (mixed.b - one.b).abs() < 1e-3,
+        "identity mix preserves colour: {mixed:?} vs {one:?}"
+    );
+
+    // hue interpolates along the shorter arc: 350° and 10° meet at 0°,
+    // not through 180°.
+    let mixed = eval_color("color-mix(in oklch, oklch(0.6 0.1 350), oklch(0.6 0.1 10))").unwrap();
+    let expect = eval_color("oklch(0.6 0.1 0)").unwrap();
+    assert!(
+        (mixed.r - expect.r).abs() < 5e-3 && (mixed.g - expect.g).abs() < 5e-3,
+        "shorter-arc hue: {mixed:?} vs {expect:?}"
+    );
+
+    // percentages below 100% normalise for the colour and multiply the alpha.
+    let m = eval_color("color-mix(in srgb, red 30%, blue 30%)").unwrap();
+    assert!(
+        (m.r - 0.5).abs() < 1e-6 && (m.b - 0.5).abs() < 1e-6 && (m.a - 0.6).abs() < 1e-6,
+        "partial weights normalise colour, multiply alpha: {m:?}"
+    );
+}
+
+/// Powerless/missing components (CSS Color 4 §12.4): in a polar space a
+/// colour whose chroma is ~0 has a powerless hue — it becomes missing and
+/// the interpolation takes the other endpoint's hue instead of dragging
+/// the result toward the achromatic colour's arbitrary h=0. Headless
+/// Chrome 146 (`getComputedStyle`, the oracle):
+///
+/// ```text
+/// color-mix(in oklch, transparent, oklch(0.6 0.1 200)) → oklch(0.6 0.1 200 / 0.5)
+/// color-mix(in oklch, black, oklch(0.6 0.1 200))       → oklch(0.3 0.05 200)
+/// color-mix(in oklch, white, oklch(0.6 0.1 200))       → oklch(0.799997 0.0500249 200)
+/// color-mix(in oklch, rgb(0 0 0 / 0.5), oklch(0.6 0.1 200))
+///     → oklch(0.399478 0.0665796 200 / 0.75098)
+/// ```
+#[test]
+fn color_mix_powerless_hue() {
+    // transparent carries the chromatic endpoint whole, at half alpha.
+    let end = eval_color("oklch(0.6 0.1 200)").unwrap();
+    let m = eval_color("color-mix(in oklch, transparent, oklch(0.6 0.1 200))").unwrap();
+    assert!(
+        (m.r - end.r).abs() < 1e-3
+            && (m.g - end.g).abs() < 1e-3
+            && (m.b - end.b).abs() < 1e-3
+            && (m.a - 0.5).abs() < 1e-3,
+        "transparent's hue is powerless — endpoint survives: {m:?} vs {end:?}"
+    );
+
+    // opaque achromatic endpoints: L/C interpolate, hue stays 200 — not
+    // the 120°/280° the achromatic h=0 would drag to.
+    let expect = eval_color("oklch(0.3 0.05 200)").unwrap();
+    let m = eval_color("color-mix(in oklch, black, oklch(0.6 0.1 200))").unwrap();
+    assert!(
+        (m.r - expect.r).abs() < 5e-3
+            && (m.g - expect.g).abs() < 5e-3
+            && (m.b - expect.b).abs() < 5e-3,
+        "black's hue is powerless: {m:?} vs {expect:?}"
+    );
+    let expect = eval_color("oklch(0.8 0.05 200)").unwrap();
+    let m = eval_color("color-mix(in oklch, white, oklch(0.6 0.1 200))").unwrap();
+    assert!(
+        (m.r - expect.r).abs() < 5e-3
+            && (m.g - expect.g).abs() < 5e-3
+            && (m.b - expect.b).abs() < 5e-3,
+        "white's hue is powerless: {m:?} vs {expect:?}"
+    );
+
+    // unequal alpha: semi-transparent black still has zero chroma, so the
+    // hue still comes from the oklch endpoint (Chrome's 0.75098 alpha is
+    // its own round-trip; the spec's is 0.5*0.5 + 1.0*0.5 = 0.75).
+    let expect = eval_color("oklch(0.4 0.0667 200)").unwrap();
+    let m = eval_color("color-mix(in oklch, rgb(0 0 0 / 0.5), oklch(0.6 0.1 200))").unwrap();
+    assert!(
+        (m.r - expect.r).abs() < 8e-3
+            && (m.g - expect.g).abs() < 8e-3
+            && (m.b - expect.b).abs() < 8e-3
+            && (m.a - 0.75).abs() < 1e-2,
+        "semi-transparent black's hue is still powerless: {m:?} vs {expect:?}"
+    );
+
+    // The epsilon boundary (CSS Color 4: chroma < 0.000004 is powerless).
+    // 0.0005 chroma is *above* it — near-gray but still chromatic, so its
+    // hue is meaningful: the mix interpolates 60° → 200° on the shorter
+    // arc to ≈130° at ≈0.05025 chroma (the old 1e-3 threshold wrongly
+    // carried the 200° endpoint hue).
+    let expect = eval_color("oklch(0.6 0.05025 130)").unwrap();
+    let m = eval_color("color-mix(in oklch, oklch(0.6 0.0005 60), oklch(0.6 0.1 200))").unwrap();
+    assert!(
+        (m.r - expect.r).abs() < 5e-3
+            && (m.g - expect.g).abs() < 5e-3
+            && (m.b - expect.b).abs() < 5e-3,
+        "0.0005 chroma is not powerless — hue interpolates to ~130°: {m:?} vs {expect:?}"
+    );
+
+    // 0.0000005 chroma is *below* the epsilon — powerless, so the mix
+    // carries the chromatic endpoint's 200° hue (chroma still averages
+    // to ≈0.05).
+    let expect = eval_color("oklch(0.6 0.05 200)").unwrap();
+    let m = eval_color("color-mix(in oklch, oklch(0.6 0.0000005 60), oklch(0.6 0.1 200))").unwrap();
+    assert!(
+        (m.r - expect.r).abs() < 5e-3
+            && (m.g - expect.g).abs() < 5e-3
+            && (m.b - expect.b).abs() < 5e-3,
+        "0.0000005 chroma is powerless — endpoint's hue carries: {m:?} vs {expect:?}"
     );
 }
 

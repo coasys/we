@@ -94,6 +94,7 @@ fn rig(root: ResolvedNode) -> (Harness<'static>, Rig) {
                 tokens: &table,
                 viewport: we_style::Size::new(rect.width(), rect.height()),
                 container_width: rect.width(),
+                ..StyleCx::empty()
             };
             let lay = layout(&cx, &scx, &reg, &n, rect);
             // Events accumulate across frames — a later re-paint does not

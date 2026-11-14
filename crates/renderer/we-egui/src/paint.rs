@@ -231,10 +231,14 @@ fn text_span(layout: &Layout, node: &NodeId, text: &str) -> Option<egui::Rect> {
         .map(|s| s.rect)
 }
 
+/// Paint `node` and its children. Its containing-block width — the base
+/// percent edges and `calc()` terms resolve against — comes off
+/// [`Layout::bases`], the same value layout used.
 fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
     let Some(raw) = w.layout.rects.get(&node.id).copied() else {
         return;
     };
+    let cb_w = w.layout.bases.get(&node.id).and_then(|b| b.cb.0);
     let rect = raw.translate(-w.offset);
     if !rect.is_finite() {
         return;
@@ -257,7 +261,17 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
     }
     w.ui.set_clip_rect(w.clip.unwrap_or(w.base_clip));
 
-    let style = crate::defaults::style_of(node, w.scx);
+    // The style the layout walk resolved — a descendant's `var()`s already
+    // saw its ancestors' `tone`/`styles` custom properties. Re-resolving
+    // without that scope would lose them (the review's P2-2 residual).
+    let fallback;
+    let style = match w.layout.styles.get(&node.id) {
+        Some(s) => s,
+        None => {
+            fallback = crate::defaults::style_of(node, w.scx);
+            &fallback
+        }
+    };
     let parts = w.parts_buf.as_ref().unwrap_or(&w.base_parts);
     {
         let mut cx = PaintCx {
@@ -266,9 +280,10 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
             parts,
             edit: w.edit,
             now: w.now,
+            cb_w,
             ancestors: &w.ancestors[..w.ancestors.len() - 1],
         };
-        widget.paint(&mut cx, node, &style, rect);
+        widget.paint(&mut cx, node, style, rect);
     }
 
     // Scroll container: children translate by the stored offset and clip on
@@ -300,7 +315,7 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
                     let mut p = w.ui.painter().clone();
                     p.set_clip_rect(w.clip.unwrap_or(w.base_clip));
                     let font = props::font_id(
-                        &style,
+                        style,
                         crate::defaults::FONT_PX,
                         crate::defaults::ROOT_PX,
                         w.scx.viewport,
@@ -310,7 +325,7 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
                         egui::Align2::LEFT_TOP,
                         t.as_ref(),
                         font,
-                        props::text_color(&style, w.ui),
+                        props::text_color(style, w.ui),
                     );
                 }
             }
@@ -412,8 +427,11 @@ fn translate_layout(sub: &Layout, delta: egui::Vec2) -> Layout {
                 text: t.text.clone(),
             })
             .collect(),
+        styles: sub.styles.clone(),
         scroll: sub.scroll.clone(),
         clip: sub.clip.clone(),
+        bases: sub.bases.clone(),
+        unconverged: sub.unconverged,
     }
 }
 
@@ -483,6 +501,26 @@ fn close_handler(node: &ResolvedNode) -> Option<&'static str> {
     }
 }
 
+/// The overlay node's own style as the outer walk resolved it — its
+/// custom-property scope included, so a `tone` on a modal reaches its
+/// floating contents.
+fn overlay_style<'a>(layout: &'a Layout, node: &ResolvedNode) -> &'a we_style::Style {
+    layout
+        .styles
+        .get(&node.id)
+        .expect("an overlay node resolved a style in the outer walk")
+}
+
+/// The overlay's floating children resolve inside the overlay node's scope —
+/// in the DOM they are its descendants, so a `tone`/`styles` on the overlay
+/// element scopes their `var()`s.
+fn overlay_scx<'a>(layout: &'a Layout, scx: &StyleCx<'a>, node: &ResolvedNode) -> StyleCx<'a> {
+    StyleCx {
+        scope: &overlay_style(layout, node).scope,
+        ..*scx
+    }
+}
+
 /// The inner painting an overlay does inside its egui layer: the widget's
 /// second `paint` (marked by an `"overlay"` part rect), then the floating
 /// children at the scratch layout's rects, then anything they deferred.
@@ -516,6 +554,11 @@ fn overlay_contents(
         parts_buf: None,
         overlays: Vec::new(),
     };
+    // The floating children's containing block is the synthetic host
+    // column's content box — the seeded sub-layout already recorded it on
+    // each child's `bases`, which `paint_node` reads. The overlay node's
+    // own base stays the outer walk's, where it was laid out.
+    let outer_cb_w = w.layout.bases.get(&node.id).and_then(|b| b.cb.0);
     inner.ancestors.push(node.id.clone());
     {
         let ancestors = inner.ancestors[..inner.ancestors.len() - 1].to_vec();
@@ -525,19 +568,20 @@ fn overlay_contents(
             parts: &inner.base_parts,
             edit: inner.edit,
             now: inner.now,
+            cb_w: outer_cb_w,
             ancestors: &ancestors,
         };
-        widget.paint(&mut cx, node, &crate::style_of(node, w.scx), content_rect);
+        widget.paint(&mut cx, node, overlay_style(w.layout, node), content_rect);
     }
     // Text spans the synthetic host column owns (direct text children of the
     // overlay's floating set) — child-node spans paint inside `paint_node`.
-    let style = crate::style_of(node, w.scx);
+    let style = overlay_style(w.layout, node);
     for span in &scratch.texts {
         if span.node != node.id {
             continue;
         }
         let font = props::font_id(
-            &style,
+            style,
             crate::defaults::FONT_PX,
             crate::defaults::ROOT_PX,
             w.scx.viewport,
@@ -547,7 +591,7 @@ fn overlay_contents(
             egui::Align2::LEFT_TOP,
             span.text.as_ref(),
             font,
-            props::text_color(&style, inner.ui.ctx()),
+            props::text_color(style, inner.ui.ctx()),
         );
     }
     for child in &node.children {
@@ -575,7 +619,13 @@ fn modal_overlay(
     // Not the page root — the host's `auto` height is the content's, so
     // `sub.size` stays the dialog's real box (a `100vh` floor here made the
     // dialog fill the viewport).
-    let sub = crate::layout_shrink(&mcx, w.scx, w.registry, &host, screen);
+    let sub = crate::layout_shrink(
+        &mcx,
+        &overlay_scx(w.layout, w.scx, node),
+        w.registry,
+        &host,
+        screen,
+    );
     // The dialog is sized by its content: `sub.size` is the padded host
     // column — width, plus `pt` (pad + title strip) + children + `pb`.
     // WE caps it at `maxHeight: calc(100dvh - 64px)`.
@@ -619,7 +669,13 @@ fn anchored_overlay(
     let mcx = MeasureCx::new(ctx);
     // Same floating-host rule as the modal: `auto` height is the content's,
     // not floored to the anchor's rect.
-    let sub = crate::layout_shrink(&mcx, w.scx, w.registry, &host, anchor);
+    let sub = crate::layout_shrink(
+        &mcx,
+        &overlay_scx(w.layout, w.scx, node),
+        w.registry,
+        &host,
+        anchor,
+    );
     let size = sub.size.max(egui::vec2(width, 4.0));
 
     let inner = egui::Popup::new(

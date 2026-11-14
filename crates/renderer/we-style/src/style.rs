@@ -9,6 +9,8 @@
 use std::borrow::Cow;
 use std::sync::Arc;
 
+use indexmap::IndexMap;
+
 use crate::color::Color;
 use crate::transition::Transition;
 
@@ -52,12 +54,83 @@ pub enum Dimension {
     Ch(f32),
     Ex(f32),
     Lh(f32),
+    /// A `calc()` sum that did not collapse to one unit — `calc(100% - 24px)`
+    /// keeps a `percent` and a `px` term. Every term a scalar variant carries.
+    Calc(Calc),
+}
+
+/// The terms of a `calc()` linear combination — coefficients per unit;
+/// `percent` is a fraction (`1.0` is `100%`) as in [`Dimension::Percent`].
+/// `calc((72px - 2rem) / 2)` is `{ px: 36.0, rem: -1.0, .. }`.
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Calc {
+    pub px: f32,
+    pub percent: f32,
+    pub em: f32,
+    pub rem: f32,
+    pub vw: f32,
+    pub vh: f32,
+    pub vmin: f32,
+    pub vmax: f32,
+    pub ch: f32,
+    pub ex: f32,
+    pub lh: f32,
+}
+
+impl Calc {
+    /// The terms the metrics can fold — px + em + rem + the viewport units,
+    /// exactly as the scalar variants' `to_px` resolves them. `percent` and
+    /// the font-metric units (`ch`/`ex`/`lh`) stay out: the first belongs to
+    /// the container, the rest to the layout engine's approximations.
+    pub fn known_px(&self, font_px: f32, root_px: f32, viewport: Size) -> f32 {
+        self.px
+            + self.em * font_px
+            + self.rem * root_px
+            + self.vw / 100.0 * viewport.width
+            + self.vh / 100.0 * viewport.height
+            + self.vmin / 100.0 * viewport.width.min(viewport.height)
+            + self.vmax / 100.0 * viewport.width.max(viewport.height)
+    }
+
+    /// Pixels, when every term resolves — i.e. no `percent`, `ch`, `ex` or
+    /// `lh` remains.
+    pub fn to_px(&self, font_px: f32, root_px: f32, viewport: Size) -> Option<f32> {
+        if self.percent == 0.0 && self.ch == 0.0 && self.ex == 0.0 && self.lh == 0.0 {
+            Some(self.known_px(font_px, root_px, viewport))
+        } else {
+            None
+        }
+    }
+
+    /// Pixels given the containing-block base the `percent` term resolves
+    /// against — `None` when a percent term remains but no base was
+    /// supplied (the caller keeps a placeholder rather than guess). The
+    /// `ch`/`ex`/`lh` terms fold with the same approximations the layout
+    /// and paint consumers shared before this policy existed here:
+    /// `0.5 × font_px` for `ch`/`ex`, `1.4 × font_px` for `lh`.
+    pub fn resolve(
+        &self,
+        percent_base: Option<f32>,
+        font_px: f32,
+        root_px: f32,
+        viewport: Size,
+    ) -> Option<f32> {
+        let px = self.known_px(font_px, root_px, viewport)
+            + (self.ch + self.ex) * 0.5 * font_px
+            + self.lh * 1.4 * font_px;
+        if self.percent == 0.0 {
+            Some(px)
+        } else {
+            percent_base.map(|b| px + self.percent * b)
+        }
+    }
 }
 
 impl Dimension {
     /// Pixels, where the unit allows: `em` against `font_px`, `rem` against
     /// `root_px`, the viewport units against `viewport`. `Auto` and `Percent`
-    /// have no fixed answer — they are `None`.
+    /// have no fixed answer — they are `None`; a [`Calc`] answers only when
+    /// every term it carries does.
     pub fn to_px(&self, font_px: f32, root_px: f32, viewport: Size) -> Option<f32> {
         Some(match *self {
             Dimension::Px(v) => v,
@@ -67,11 +140,34 @@ impl Dimension {
             Dimension::Vh(v) => v / 100.0 * viewport.height,
             Dimension::Vmin(v) => v / 100.0 * viewport.width.min(viewport.height),
             Dimension::Vmax(v) => v / 100.0 * viewport.width.max(viewport.height),
+            Dimension::Calc(c) => return c.to_px(font_px, root_px, viewport),
             Dimension::Auto
             | Dimension::Percent(_)
             | Dimension::Ch(_)
             | Dimension::Ex(_)
             | Dimension::Lh(_) => return None,
+        })
+    }
+
+    /// Pixels given the base a percent resolves against — the
+    /// containing-block content width for box edges (per CSS, every edge's
+    /// `%` resolves against the CB *width*), or the property's axis base
+    /// for sizes. `None` stays `None`; a percent-bearing value with no base
+    /// stays unresolvable so no caller approximates a base silently.
+    pub fn resolve(
+        &self,
+        percent_base: Option<f32>,
+        font_px: f32,
+        root_px: f32,
+        viewport: Size,
+    ) -> Option<f32> {
+        Some(match *self {
+            Dimension::Percent(p) => return percent_base.map(|b| p * b),
+            Dimension::Ch(v) => v * 0.5 * font_px,
+            Dimension::Ex(v) => v * 0.5 * font_px,
+            Dimension::Lh(v) => v * 1.4 * font_px,
+            Dimension::Calc(c) => return c.resolve(percent_base, font_px, root_px, viewport),
+            _ => return self.to_px(font_px, root_px, viewport),
         })
     }
 }
@@ -547,6 +643,11 @@ pub struct Style {
     /// `text` or `variant`) — ignored by design, counted so a caller can show
     /// "resolve() saw N props it does not own".
     pub ignored_props: usize,
+    /// The element's custom-property scope — its ancestors' `--we-*` values
+    /// overlaid by its own (a `tone` writes 13; `styles` can write them
+    /// verbatim), already substituted. What its descendants' `var()`s see —
+    /// CSS custom-property inheritance hands this map down the DOM.
+    pub scope: IndexMap<Arc<str>, Arc<str>>,
 }
 
 impl Style {

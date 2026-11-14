@@ -341,7 +341,7 @@ impl Widget for Text {
         let view = view_of(cx.ui.ctx());
         // The galley lives in the content box — inside `rect`'s padding and
         // border (the same box `measure` wrapped it at).
-        let content_rect = props::content_rect(rect, style, FONT_PX, ROOT_PX, view);
+        let content_rect = props::content_rect(rect, style, FONT_PX, ROOT_PX, view, cx.cb_w);
         let content = Self::content(node, style);
         let g = text_job(
             &content,
@@ -404,7 +404,7 @@ impl Widget for Link {
         }
         if !label.is_empty() {
             let content_rect =
-                props::content_rect(rect, &eff, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()));
+                props::content_rect(rect, &eff, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()), cx.cb_w);
             let g = text_job(&label, &eff, cx.ui.ctx(), content_rect.width(), false, None);
             cx.ui.painter().add(egui::Shape::galley(
                 content_rect.min,
@@ -470,7 +470,8 @@ impl Widget for Timestamp {
             .map(|d| d.as_secs_f64())
             .unwrap_or(0.0);
         let text = Self::text(node, now_secs);
-        let content_rect = props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()));
+        let content_rect =
+            props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()), cx.cb_w);
         let g = text_job(&text, style, cx.ui.ctx(), content_rect.width(), false, None);
         cx.ui.painter().add(egui::Shape::galley(
             content_rect.min,
@@ -589,7 +590,8 @@ impl Widget for Typewriter {
             .unwrap_or_default();
         let cycled: String = phrase.chars().take(n).collect();
 
-        let content_rect = props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()));
+        let content_rect =
+            props::content_rect(rect, style, FONT_PX, ROOT_PX, view_of(cx.ui.ctx()), cx.cb_w);
         let g_fixed = text_job(
             &fixed,
             style,

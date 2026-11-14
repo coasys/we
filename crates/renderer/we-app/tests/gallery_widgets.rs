@@ -3,7 +3,7 @@
 //! panels take. Baselines live in `tests/snapshots/`; re-record with
 //! `UPDATE_SNAPSHOTS=1 cargo test -p we-app gallery_widgets`.
 
-use egui_kittest::{Harness, SnapshotResults};
+use egui_kittest::{Harness, SnapshotOptions, SnapshotResults};
 use we_app::gallery::{load_theme_set, WidgetsApp};
 
 /// The gallery's resolved tree paints every node — nothing lands on the
@@ -45,9 +45,10 @@ fn gallery_resolves_every_node() {
 #[test]
 fn widget_gallery_snapshots_per_theme() {
     let set = load_theme_set();
-    assert!(
-        !set.is_empty(),
-        "no token tables found at {}",
+    assert_eq!(
+        set.len(),
+        6,
+        "all six themes must snapshot (same pin as gallery.rs): {}",
         we_app::gallery::tokens_dir().display()
     );
     let mut results = SnapshotResults::new();
@@ -56,6 +57,18 @@ fn widget_gallery_snapshots_per_theme() {
         let app = WidgetsApp::app_for(&set, &id);
         let mut harness = Harness::builder()
             .with_size(egui::Vec2::new(820.0, 1600.0))
+            // Pinned raster inputs, same policy as `gallery.rs`: bundled
+            // fonts in fixed family order, 1px-per-point, the
+            // CPU-preferred wgpu adapter, and the calibrated comparison —
+            // threshold 0.05 in dify's raw weighted-squared-YIQ units
+            // (any ≥1-level channel change fails a non-AA pixel) with an
+            // 8px changed-area budget.
+            .with_pixels_per_point(1.0)
+            .with_context_setup(|ctx| {
+                ctx.set_fonts(egui::FontDefinitions::default());
+            })
+            .wgpu()
+            .with_options(SnapshotOptions::new().threshold(0.05).max_failed_pixels(8))
             .build_ui_state(|ui, app: &mut we_app::RendererApp| app.frame_body(ui), app);
         // The animated widgets request repaints — run a fixed few steps,
         // then step (with real time between) until image loads settle:
