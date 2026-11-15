@@ -35,12 +35,14 @@
 //! not move a pixel; a tree or pixel change that is not the task's stated
 //! purpose is a stop, not an update.
 //!
-//! Record mode — the only path that writes baselines — is
-//! `WE_RECORD_COASYS=1`, e.g.
-//! `WE_RECORD_COASYS=1 cargo test --locked -p we-app --test coasys_render -- pixel_index`.
-//! The gate forces `UPDATE_SNAPSHOTS` itself (`force` in record mode,
-//! `off` otherwise), so an inherited update variable can never turn a
-//! verify run into a rewrite.
+//! Record mode — the only path that writes baselines — is the operator's
+//! two flags together, e.g.
+//! `WE_RECORD_COASYS=1 UPDATE_SNAPSHOTS=force cargo test --locked -p we-app --test coasys_render -- pixel_index`.
+//! The gate *checks* `UPDATE_SNAPSHOTS`, never sets it — `set_var` from
+//! one test thread races the `getenv`s of every parallel test (and is
+//! `unsafe` under edition 2024). So: a verify run refuses an inherited
+//! update value instead of overwriting it, and a record run must export
+//! `force` itself (Lal P3).
 //!
 //! Clock: every pixel harness pins `we_egui`'s injected clock to
 //! `PINNED_NOW` — `we-timestamp`'s relative text and `we-date-picker`'s
@@ -336,25 +338,51 @@ fn assert_quiet(session: &mut Session) {
     );
 }
 
-/// The `UPDATE_SNAPSHOTS` the gate's snapshot calls run under: `force`
-/// in record mode (`WE_RECORD_COASYS=1`), `off` always otherwise — an
-/// inherited `UPDATE_SNAPSHOTS` can never rewrite a baseline during a
-/// verify run (Lal F3). Pure so the policy is testable without touching
-/// process env.
-fn gate_snapshot_env(record: Option<&str>) -> &'static str {
-    match record {
-        Some("1") | Some("on") | Some("true") | Some("force") => "force",
-        _ => "off",
+/// Whether this run verifies or records — the only two env combinations
+/// the gate accepts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SnapshotPolicy {
+    /// `UPDATE_SNAPSHOTS` absent or a kittest test value — kittest compares.
+    Verify,
+    /// `WE_RECORD_COASYS` truthy AND `UPDATE_SNAPSHOTS=force` exported —
+    /// the operator set kittest's update-all flag; a deliberate rewrite.
+    Record,
+}
+
+/// The env decision — check, never write (Lal P3). `std::env::set_var`
+/// from one test thread while others `getenv` — kittest's
+/// `Mode::from_env` reads `UPDATE_SNAPSHOTS` inside every `snapshot`
+/// call — is the glibc setenv/getenv race, `unsafe` under edition 2024.
+/// A `Once` would only narrow the window, not close it, so a conflicting
+/// env is a hard fail naming the fix instead of a silent overwrite.
+/// Verify needs no write at all: absent or a test value already runs
+/// kittest's `Test` mode. Pure so the policy is testable without
+/// touching process env.
+fn snapshot_policy(record: Option<&str>, update: Option<&str>) -> Result<SnapshotPolicy, String> {
+    let record = matches!(record, Some("1" | "on" | "true" | "force"));
+    match (record, update) {
+        (true, Some("force")) => Ok(SnapshotPolicy::Record),
+        (true, other) => Err(format!(
+            "{RECORD_ENV} asks to re-record baselines, but the gate never writes \
+             process env — export UPDATE_SNAPSHOTS=force yourself (found {other:?})"
+        )),
+        (false, None | Some("false" | "0" | "no" | "off")) => Ok(SnapshotPolicy::Verify),
+        (false, Some(value)) => Err(format!(
+            "inherited UPDATE_SNAPSHOTS={value:?} would turn this verify run into a \
+             baseline rewrite — unset it, or record on purpose with \
+             {RECORD_ENV}=1 UPDATE_SNAPSHOTS=force"
+        )),
     }
 }
 
-/// Set `UPDATE_SNAPSHOTS` for this test's snapshot calls, before any
-/// `harness.snapshot` reads it.
-fn enforce_snapshot_policy() {
-    std::env::set_var(
-        "UPDATE_SNAPSHOTS",
-        gate_snapshot_env(std::env::var(RECORD_ENV).ok().as_deref()),
-    );
+/// Check the env before `harness.snapshot` reads `UPDATE_SNAPSHOTS` —
+/// reads only, never writes.
+fn check_snapshot_policy() {
+    let record = std::env::var(RECORD_ENV).ok();
+    let update = std::env::var("UPDATE_SNAPSHOTS").ok();
+    if let Err(message) = snapshot_policy(record.as_deref(), update.as_deref()) {
+        panic!("{message}");
+    }
 }
 
 /// `init_host` plus the clock pin — every pixel harness's context setup.
@@ -424,11 +452,11 @@ fn tree_gate(id: &str, expected: &str) {
 }
 
 fn pixel_gate(id: &str, results: &mut SnapshotResults) {
+    check_snapshot_policy();
     let truth = truth();
     let app = app_for(&truth, id);
     let mut harness = pixel_harness(app);
     settle_frame(&mut harness);
-    enforce_snapshot_policy();
     harness.snapshot(format!("coasys_{id}"));
     results.extend_harness(&mut harness);
 }
@@ -512,6 +540,7 @@ pixel_tests! {
 /// the same flat snapshot the window's `--snapshot` loads.
 #[test]
 fn tree_panel() {
+    check_snapshot_policy();
     let truth = truth();
     let bundle = Bundle::parse(BUNDLE).expect("bundle parses");
     let schema: SchemaNode = serde_json::from_value(
@@ -551,22 +580,31 @@ fn tree_panel() {
         .with_options(SnapshotOptions::new().threshold(0.05).max_failed_pixels(8))
         .build_ui_state(|ui, shell: &mut Shell| shell.frame_body(ui), shell);
     settle_frame_shell(&mut harness);
-    enforce_snapshot_policy();
     harness.snapshot("coasys_tree_panel");
     let mut results = SnapshotResults::new();
     results.extend_harness(&mut harness);
     results.unwrap();
 }
 
-/// The env policy is a pure decision: only `WE_RECORD_COASYS` names
-/// record mode; every other value — including a stray inherited
-/// `UPDATE_SNAPSHOTS` — verifies (Lal F3).
+/// The env policy is a pure decision — and never a write (Lal P3).
+/// Verify accepts `UPDATE_SNAPSHOTS` absent or a kittest test value and
+/// refuses any other inherited value rather than overwrite it; record
+/// accepts only `WE_RECORD_COASYS` and `UPDATE_SNAPSHOTS=force` exported
+/// together.
 #[test]
-fn verify_path_forces_update_snapshots_off() {
-    assert_eq!(gate_snapshot_env(None), "off");
-    assert_eq!(gate_snapshot_env(Some("nonsense")), "off");
-    assert_eq!(gate_snapshot_env(Some("1")), "force");
-    assert_eq!(gate_snapshot_env(Some("force")), "force");
+fn snapshot_policy_checks_env_and_never_writes() {
+    use SnapshotPolicy::*;
+    assert_eq!(snapshot_policy(None, None), Ok(Verify));
+    for off in ["false", "0", "no", "off"] {
+        assert_eq!(snapshot_policy(None, Some(off)), Ok(Verify));
+    }
+    for update in ["1", "true", "yes", "on", "force", "nonsense"] {
+        assert!(snapshot_policy(None, Some(update)).is_err());
+    }
+    assert_eq!(snapshot_policy(Some("1"), Some("force")), Ok(Record));
+    for other in [None, Some("1"), Some("off"), Some("nonsense")] {
+        assert!(snapshot_policy(Some("1"), other).is_err());
+    }
 }
 
 /// The pinned clock is real, not decorative (Lal F2): re-pin "now" to an
