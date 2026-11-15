@@ -3,6 +3,8 @@
 //! panels take. Baselines live in `tests/snapshots/`; re-record with
 //! `UPDATE_SNAPSHOTS=1 cargo test -p we-app gallery_widgets`.
 
+#[path = "support/gate.rs"]
+mod gate;
 #[path = "support/gpu.rs"]
 mod gpu;
 
@@ -73,6 +75,7 @@ fn widget_gallery_snapshots_per_theme() {
             // animation would snapshot whatever frame the clock reached.
             .with_context_setup(|ctx| {
                 we_egui::install_media(ctx);
+                gate::setup(ctx);
                 we_egui::defaults::set_reduced_motion(ctx, true);
             })
             .wgpu()

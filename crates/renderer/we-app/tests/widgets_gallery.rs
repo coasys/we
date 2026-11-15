@@ -3,6 +3,8 @@
 //! live in `tests/snapshots/`; re-record with
 //! `UPDATE_SNAPSHOTS=1 cargo test -p we-app widgets_gallery`.
 
+#[path = "support/gate.rs"]
+mod gate;
 #[path = "support/gpu.rs"]
 mod gpu;
 
@@ -28,6 +30,7 @@ fn snap(name: &str, open: bool, results: &mut SnapshotResults) {
         .with_pixels_per_point(1.0)
         .with_context_setup(|ctx| {
             we_egui::install_media(ctx);
+            gate::setup(ctx);
             ctx.set_theme(egui::ThemePreference::Dark);
         })
         .wgpu()
@@ -66,6 +69,7 @@ fn widgets_open_modal_sizes_to_content() {
         .with_size(egui::vec2(420.0, 720.0))
         .with_context_setup(|ctx| {
             we_egui::install_media(ctx);
+            gate::setup(ctx);
             ctx.set_theme(egui::ThemePreference::Dark);
         })
         .build_ui(move |ui| {
@@ -104,6 +108,7 @@ fn render_widgets(open: bool, spots: &[(u32, u32); 4]) -> (Vec<u8>, [[u8; 4]; 4]
         .with_size(egui::vec2(420.0, 720.0))
         .with_context_setup(|ctx| {
             we_egui::install_media(ctx);
+            gate::setup(ctx);
             ctx.set_theme(egui::ThemePreference::Dark);
         })
         .build_ui(move |ui| {

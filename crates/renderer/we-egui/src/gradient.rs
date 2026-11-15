@@ -448,17 +448,52 @@ const CACHE_CAP: usize = 32;
 
 /// What a texture depends on: the value, the box's size in pixels (a
 /// texture is drawn wherever the box is), its corner radius, the fade, the
-/// pixel density and the metrics that resolve its lengths.
-fn key(text: &str, size: [usize; 2], radius: f32, opacity: f32, ppp: f32, m: Metrics) -> u64 {
+/// pixel density, whether alpha is stepped and the metrics that resolve its lengths.
+fn key(
+    text: &str,
+    size: [usize; 2],
+    radius: f32,
+    opacity: f32,
+    ppp: f32,
+    steps: bool,
+    m: Metrics,
+) -> u64 {
     use std::hash::{Hash, Hasher};
     let mut h = std::collections::hash_map::DefaultHasher::new();
     text.hash(&mut h);
     size.hash(&mut h);
+    steps.hash(&mut h);
     for f in [radius, opacity, ppp, m.viewport.width, m.viewport.height] {
         f.to_bits().hash(&mut h);
     }
     format!("{:?}", m.units).hash(&mut h);
     h.finish()
+}
+
+const ALPHA_STEPS_KEY: &str = "we-egui::gradient-alpha-steps";
+
+/// Round every gradient texel's alpha to a multiple of 3 on this ctx — see
+/// [`texel`] for why — or, with `false`, stop. Off unless a host asks: a
+/// pixel gate whose baselines must match across lavapipe versions turns it
+/// on, and production never does, since it costs the low-alpha washes two
+/// thirds of their levels (the Glow chrome haze at 0.05 peaks at α 12.75,
+/// five levels stepped against thirteen) and risks banding on a dark
+/// surface. Temp ctx data, like [`crate::pin_now`]: held for the ctx's
+/// life, never persisted.
+pub fn set_gradient_alpha_steps(ctx: &egui::Context, on: bool) {
+    ctx.data_mut(|d| {
+        let key = egui::Id::unique(ALPHA_STEPS_KEY);
+        if on {
+            d.insert_temp(key, true);
+        } else {
+            d.remove::<bool>(key);
+        }
+    });
+}
+
+fn alpha_steps(ctx: &egui::Context) -> bool {
+    ctx.data(|d| d.get_temp::<bool>(egui::Id::unique(ALPHA_STEPS_KEY)))
+        .unwrap_or(false)
 }
 
 /// Paint `text`'s gradient layers over `rect`, faded by `opacity`. Nothing
@@ -480,7 +515,8 @@ pub(crate) fn paint(
     }
     let size = [px.x as usize, px.y as usize];
     let id = egui::Id::unique("we-egui::gradient-cache");
-    let k = key(text, size, radius, opacity, ppp, m);
+    let steps = alpha_steps(ctx);
+    let k = key(text, size, radius, opacity, ppp, steps, m);
     let pass = ctx.cumulative_pass_nr();
     let cached = ctx.data_mut(|d| {
         let entry = d.get_temp_mut_or_default::<Cache>(id).0.get_mut(&k)?;
@@ -490,7 +526,7 @@ pub(crate) fn paint(
     let texture = match cached {
         Some(texture) => texture,
         None => {
-            let Some(image) = build(size, ppp, radius, text, opacity, m) else {
+            let Some(image) = build(size, ppp, radius, text, opacity, steps, m) else {
                 return;
             };
             let handle =
@@ -523,8 +559,10 @@ pub(crate) fn paint(
     );
 }
 
-/// A premultiplied colour, faded by `k`, as an 8-bit texel whose alpha is
-/// a multiple of 3 — the colour scaled with it, so it keeps its hue.
+/// A premultiplied colour, faded by `k`, as an 8-bit texel — with `steps`,
+/// one whose alpha is a multiple of 3, the colour scaled with it so it
+/// keeps its hue. Only a pixel gate asks for that
+/// ([`set_gradient_alpha_steps`]); without it every alpha level is kept.
 ///
 /// A translucent texel is blended over what is under it as
 /// `src + dst·(255−α)/255`, and lavapipe before mesa 26 divides by 255 as
@@ -536,9 +574,13 @@ pub(crate) fn paint(
 /// photograph as over a flat fill. It was a dozen pixels of the About
 /// film's darkened foot, one level apart between this machine's mesa and
 /// CI's.
-fn texel(c: [f32; 4], k: f32) -> egui::Color32 {
+fn texel(c: [f32; 4], k: f32, steps: bool) -> egui::Color32 {
     let alpha = (c[3] * k * 255.0).clamp(0.0, 255.0);
-    let stepped = (alpha / 3.0).round() * 3.0;
+    let stepped = if steps {
+        (alpha / 3.0).round() * 3.0
+    } else {
+        alpha.round()
+    };
     let scale = if alpha > 0.0 {
         k * stepped / alpha
     } else {
@@ -552,13 +594,14 @@ fn texel(c: [f32; 4], k: f32) -> egui::Color32 {
 /// `text` rasterised over a box of `size` pixels, each pixel the layers
 /// composited at its centre — `None` for a value with no layer this module
 /// understands. Geometry is in points, so lengths resolve as they do for
-/// the box.
+/// the box. `steps` is [`texel`]'s.
 fn build(
     size: [usize; 2],
     ppp: f32,
     radius: f32,
     text: &str,
     opacity: f32,
+    steps: bool,
     m: Metrics,
 ) -> Option<egui::ColorImage> {
     let [w, h] = size;
@@ -573,7 +616,7 @@ fn build(
         for i in 0..w {
             let p = egui::pos2((i as f32 + 0.5) / ppp, (j as f32 + 0.5) / ppp);
             let c = composite(&layers, rect, p);
-            pixels.push(texel(c, opacity * coverage(rect, radius, p)));
+            pixels.push(texel(c, opacity * coverage(rect, radius, p), steps));
         }
     }
     Some(egui::ColorImage {
@@ -672,6 +715,7 @@ mod tests {
             0.0,
             "linear-gradient(to right, black, white)",
             1.0,
+            false,
             m(),
         )
         .expect("parses");
@@ -692,12 +736,98 @@ mod tests {
         for step in 0..=1000 {
             let t = step as f32 / 1000.0;
             let c = [0.05 * t, 0.06 * t, 0.15 * t, 0.75 * t];
-            let px = texel(c, 1.0);
+            let px = texel(c, 1.0, true);
             let a = u32::from(px.a());
             assert_eq!(a % 3, 0, "{px:?}");
             assert!(px.r() <= px.a() && px.g() <= px.a() && px.b() <= px.a());
             for d in 0..=255u32 {
                 assert_eq!(old(d * (255 - a)), exact(d * (255 - a)), "d {d} a {a}");
+            }
+        }
+    }
+
+    /// The Glow chrome haze through `paint`, flag off and on: off (the
+    /// default, production) keeps every alpha level of the low wash; on
+    /// (a pixel gate) steps them all to multiples of 3.
+    #[test]
+    fn alpha_steps_only_when_the_ctx_asks() {
+        let text =
+            "radial-gradient(40vmax 40vmax at 0% 0%, rgba(117, 255, 190, 0.05), transparent 70%)";
+        let alphas = |steps: Option<bool>| {
+            let ctx = egui::Context::default();
+            if let Some(on) = steps {
+                set_gradient_alpha_steps(&ctx, on);
+            }
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                paint(
+                    ui.painter(),
+                    egui::Rect::from_min_size(egui::Pos2::ZERO, egui::vec2(400.0, 300.0)),
+                    0.0,
+                    text,
+                    1.0,
+                    m(),
+                );
+            });
+            let mut seen = std::collections::BTreeSet::new();
+            for d in out.textures_delta.set.values().flatten() {
+                let egui::ImageData::Color(img) = &d.image;
+                if img.size == [400, 300] {
+                    seen.extend(img.pixels.iter().map(|p| p.a()));
+                }
+            }
+            out.textures_delta.clear();
+            assert!(!seen.is_empty(), "the gradient was uploaded");
+            seen
+        };
+        let default = alphas(None);
+        assert!(default.iter().any(|a| a % 3 != 0), "{default:?}");
+        assert_eq!(default.last(), Some(&13), "peak 0.05·255 = 12.75");
+        assert!(default.len() > 10, "every level kept: {default:?}");
+        assert_eq!(alphas(Some(false)), default);
+        let stepped = alphas(Some(true));
+        assert!(stepped.iter().all(|a| a % 3 == 0), "{stepped:?}");
+    }
+
+    /// What a cache miss costs — one CPU raster of a box at a new size, as
+    /// every width step of a lane resize drag asks for. Timing, not a
+    /// check: `cargo test --release -p we-egui --lib miss_cost --
+    /// --ignored --nocapture` (`NOTES-glow.md`, "G5").
+    #[test]
+    #[ignore = "timing; run in release"]
+    fn miss_cost() {
+        let m = Metrics {
+            units: we_metrics::UnitMetrics::default(),
+            viewport: Size {
+                width: 1280.0,
+                height: 800.0,
+            },
+        };
+        let cases = [
+            ("about hero", "radial-gradient(circle 400px at calc(50% + min(50%, 720px) - 150px) 200px, rgba(117,255,190,.22), rgba(117,255,190,0)), radial-gradient(circle 550px at calc(50% - min(50%, 720px) + 200px) 650px, rgba(109,38,183,.55), rgba(109,38,183,0)), radial-gradient(70% 55% at 62% 0, rgba(117,255,190,.07), rgba(117,255,190,0)), linear-gradient(180deg, rgba(92,74,168,.12), rgba(19,21,51,0) 85%)"),
+            ("about band", "linear-gradient(180deg, rgba(92,74,168,0), rgba(92,74,168,.14))"),
+            ("film scrim", "linear-gradient(180deg, rgba(13,15,38,0), rgba(13,15,38,.75))"),
+            ("glow chrome haze", "radial-gradient(40vmax 40vmax at 0% 0%, rgba(117, 255, 190, 0.05), transparent 70%)"),
+            ("glow page orbs", "radial-gradient(45vmax 40vmax at 32% -12%, rgba(117, 255, 190, 0.15), transparent 70%), radial-gradient(50vmax 45vmax at 104% 112%, rgba(109, 38, 183, 0.24), transparent 70%), radial-gradient(40vmax 36vmax at -8% 110%, rgba(37, 40, 125, 0.3), transparent 70%)"),
+        ];
+        for (name, text) in cases {
+            for size in [[1280, 800], [1000, 800], [1000, 400]] {
+                for steps in [false, true] {
+                    // Widths walk one pixel per run, as a drag does; best
+                    // of the walk and its mean.
+                    let mut times = Vec::new();
+                    for dw in 0..40 {
+                        let t = std::time::Instant::now();
+                        let img = build([size[0] - dw, size[1]], 1.0, 0.0, text, 1.0, steps, m);
+                        std::hint::black_box(img);
+                        times.push(t.elapsed().as_secs_f64() * 1e3);
+                    }
+                    let mean = times.iter().sum::<f64>() / times.len() as f64;
+                    let min = times.iter().cloned().fold(f64::MAX, f64::min);
+                    println!(
+                        "{name:18} {:4}x{:<4} steps={steps:5} mean {mean:6.2} ms  min {min:6.2} ms",
+                        size[0], size[1]
+                    );
+                }
             }
         }
     }
