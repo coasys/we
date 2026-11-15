@@ -41,11 +41,11 @@ pub struct PendingCall {
     /// without it invalidates the call for good (`Runtime` drops it then),
     /// so a remount under the same id never runs these callbacks.
     pub node: NodeId,
-    /// The mount the call started under. The callbacks stamp it — a node
+    /// The frame the call started under. The callbacks stamp it — a node
     /// that survives a navigation (the chrome, say) must not let its
     /// `onSuccess` stamp the space the route moved to: the initiating
     /// authority survives into the callback (4.6.3).
-    pub mount: MountCx,
+    pub frame: crate::gate::Frame,
     pub scope: Scope,
     pub on_success: Option<Json>,
     pub on_error: Option<Json>,
@@ -77,6 +77,10 @@ pub struct HandlerCx<'a> {
     /// its stamped tier and space go onto every action the handler
     /// raises (E3c-7; stamping only).
     pub mount: &'a MountCx,
+    /// The panels/dialogs the handler's frame declared — carried into a
+    /// `PendingCall`'s frame so the callback's gated reads hold the same
+    /// set.
+    pub declared: &'a crate::gate::Declared,
     pub warnings: &'a mut Vec<Arc<str>>,
 }
 
@@ -482,7 +486,7 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
             if let Some(spec) = merge {
                 // `merge:` — shallow-merge evaluated members into the object
                 // the slot holds (`{...(current ?? {}), ...resolved}` in WE).
-                let evaluated = eval_json(spec, scope, cx.bag, cx.cache, cx.warnings);
+                let evaluated = eval_json(spec, scope, cx.bag.clone(), cx.cache, cx.warnings);
                 let slot = if path.is_empty() {
                     cx.locals.get(&owner, &head)
                 } else {
@@ -509,7 +513,7 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
             } else {
                 let v = value
                     .as_ref()
-                    .map(|v| eval_json(v, scope, cx.bag, cx.cache, cx.warnings))
+                    .map(|v| eval_json(v, scope, cx.bag.clone(), cx.cache, cx.warnings))
                     .unwrap_or(Value::Undefined);
                 write_at(scope, &owner, &head, &path, v, cx, "setLocal");
             }
@@ -543,7 +547,7 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
             };
             let member = value
                 .as_ref()
-                .map(|v| eval_json(v, scope, cx.bag, cx.cache, cx.warnings))
+                .map(|v| eval_json(v, scope, cx.bag.clone(), cx.cache, cx.warnings))
                 .unwrap_or(Value::Undefined);
             let slot = if path.is_empty() {
                 cx.locals.get(&owner, &head)
@@ -627,7 +631,13 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
                         .raw_initial
                         .as_ref()
                         .map(|raw| {
-                            eval_json(raw, &meta.initial_scope, cx.bag, cx.cache, cx.warnings)
+                            eval_json(
+                                raw,
+                                &meta.initial_scope,
+                                cx.bag.clone(),
+                                cx.cache,
+                                cx.warnings,
+                            )
                         })
                         .unwrap_or(Value::Undefined),
                     None => Value::Undefined,
@@ -648,9 +658,15 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
             let evaluated: Vec<Value> = match args {
                 Some(Json::Array(items)) => items
                     .iter()
-                    .map(|a| eval_json(a, scope, cx.bag, cx.cache, cx.warnings))
+                    .map(|a| eval_json(a, scope, cx.bag.clone(), cx.cache, cx.warnings))
                     .collect(),
-                Some(other) => vec![eval_json(other, scope, cx.bag, cx.cache, cx.warnings)],
+                Some(other) => vec![eval_json(
+                    other,
+                    scope,
+                    cx.bag.clone(),
+                    cx.cache,
+                    cx.warnings,
+                )],
                 None => vec![],
             };
             // A `screen` row applies straight to the screen state — the
@@ -692,7 +708,10 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
                         call,
                         PendingCall {
                             node: cx.node.clone(),
-                            mount: cx.mount.clone(),
+                            frame: crate::gate::Frame {
+                                auth: cx.mount.clone(),
+                                declared: cx.declared.clone(),
+                            },
                             scope: scope.clone(),
                             on_success: on_success.clone(),
                             on_error: on_error.clone(),
@@ -708,7 +727,7 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
             else_,
             ..
         } => {
-            let met = eval_json(condition, scope, cx.bag, cx.cache, cx.warnings);
+            let met = eval_json(condition, scope, cx.bag.clone(), cx.cache, cx.warnings);
             let branch = if met.truthy() { then } else { else_ };
             if let Some(branch) = branch {
                 for token in handler_tokens(branch) {
@@ -725,7 +744,15 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
 
 /// Fire `tokens` with `event` (and `arg`, the same value) bound on top of
 /// the captured scope.
+///
+/// The event value is a payload delivered INTO the handler's frame from
+/// outside it (Lal N1), so it takes the same deep delivery as query rows
+/// and completion results ([`crate::resolve::deliver`]): no namespace or
+/// callable survives at any depth, and a handle is tainted when the frame
+/// is below App. Done here, before binding, so a `$invoke` that captures
+/// this scope into a pending call captures the delivered value too.
 pub fn run(tokens: &[HandlerToken], scope: &Scope, event: Value, cx: &mut HandlerCx) {
+    let event = crate::resolve::deliver(&event, cx.mount.tier);
     let mut call_scope = scope.clone();
     call_scope.bind("event", event.clone());
     call_scope.bind("arg", event.clone());

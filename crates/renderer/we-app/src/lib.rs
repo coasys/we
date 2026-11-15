@@ -111,6 +111,7 @@ impl RendererApp {
         let spec = RootSpec::Single {
             node: Box::new(schema),
             cx: MountCx::explicit(template_id.into() as Arc<str>),
+            declared: we_template::Declared::default(),
         };
         let session =
             Session::offline(spec, bag, screen).with_dollar_types(move |ty| types.contains(ty));
@@ -347,9 +348,13 @@ pub fn coasys_app(
     let registry = Registry::with_builtins();
     let types: std::collections::HashSet<&'static str> = registry.type_names().collect();
     let mut app = RendererApp::new(placeholder, "coasys", data.bag.clone(), screen, registry);
-    app.session.runtime = Runtime::app(spec, data.bag.clone(), LocalState::new())
-        .with_sources(Some(data.source()), Arc::new(NoParts))
-        .with_dollar_types(move |ty| types.contains(ty));
+    // `set_runtime`, not a field write: the bag's legacy faces must read
+    // this runtime's `screen` view, not the one the session built.
+    app.session.set_runtime(
+        Runtime::app(spec, data.bag.clone(), LocalState::new())
+            .with_sources(Some(data.source()), Arc::new(NoParts))
+            .with_dollar_types(move |ty| types.contains(ty)),
+    );
     app.session.host = Box::new(StaticHost::new(data.bag.clone()));
     let set = gallery::load_theme_set();
     let (theme, fell_back) = set.theme(theme_id);

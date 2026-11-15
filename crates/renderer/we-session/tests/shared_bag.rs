@@ -21,6 +21,7 @@ fn spec() -> RootSpec {
     RootSpec::Single {
         node: Box::new(schema(json!({ "type": "Column", "children": [] }))),
         cx: MountCx::explicit("test"),
+        declared: we_template::Declared::default(),
     }
 }
 
@@ -180,6 +181,7 @@ fn a_query_reading_screen_claims_for_its_own_sessions_route() {
             "children": []
         }))),
         cx: MountCx::explicit("test"),
+        declared: we_template::Declared::default(),
     };
     let bag = Arc::new(StoreBag::new());
     let mut one = Session::offline(spec(), bag.clone(), screen("/one"));
