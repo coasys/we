@@ -9,10 +9,10 @@ runs `cargo test --locked` on a GPU-less `ubuntu-26.04` runner, with
 Every renderer-CI failure in the last 150 `CI` runs was read (8 failed renderer
 jobs). Two are SIGSEGVs, both today, both in `font_raster`, none anywhere else:
 
-| Run / job | Where it died |
-|---|---|
-| 43735703929 attempt 1, job 132877735949 (151e1ee77) | `running 3 tests`, then SIGSEGV 2.5 s later — no test reported |
-| 43740466029 attempt 1, job 132892285659 | `a_static_face_still_gets_the_synthesised_bold ... ok` at +0.5 s, SIGSEGV 1.9 s later with the other two tests still running |
+| Run / job                                           | Where it died                                                                                                                |
+| --------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| 43735703929 attempt 1, job 132877735949 (151e1ee77) | `running 3 tests`, then SIGSEGV 2.5 s later — no test reported                                                               |
+| 43740466029 attempt 1, job 132892285659             | `a_static_face_still_gets_the_synthesised_bold ... ok` at +0.5 s, SIGSEGV 1.9 s later with the other two tests still running |
 
 Both re-ran green unchanged.
 
@@ -27,7 +27,7 @@ What sets `font_raster` apart: every `shoot()` builds a fresh `Harness`, and
 egui_kittest's default renderer makes a new wgpu instance + device on the first
 `render()` and drops it with the harness. `font_raster` does that 16 times across
 3 test threads (6 + 2 + 8), so it is the binary with the most concurrent device
-creation *and destruction*. `coasys_render`, which runs before it and also renders
+creation _and destruction_. `coasys_render`, which runs before it and also renders
 in parallel, makes far fewer devices per thread and passed both times.
 
 ## Adapter
@@ -43,17 +43,17 @@ mesa 25.2.8. Binary: `target/debug/deps/font_raster-*` at `d64d5b482`, run
 directly in a loop (`VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.json`),
 default test threads unless noted.
 
-| # | Setup | Runs | SIGSEGV |
-|---|---|---|---|
-| 1 | host mesa 25.2.8 lavapipe, 32 cores | 200 | 0 |
-| 2 | as 1, `taskset -c 0,1` | 200 | 0 |
-| 3 | **CI's stack**: resolute (26.04) sysroot — glibc 2.43, mesa 26.0.8, LLVM 21 — run under its `ld-linux` with `--library-path`, `WGPU_BACKEND=vulkan`, `taskset -c 0-3` | 100 | 0 |
-| 4 | as 3, all wgpu backends (no `WGPU_BACKEND`) and mesa's EGL/llvmpipe from the sysroot (`__EGL_VENDOR_LIBRARY_FILENAMES`, `LIBGL_ALWAYS_SOFTWARE=1`, host implicit Vulkan layers disabled), as on a runner where EGL is mesa rather than nvidia | 100 | 0 |
-| 5 | temporary stress test (not committed): 16 threads × 8 harness renders each, fresh device per harness — host mesa | 30 (3 840 renders) | 0 |
-| 6 | as 5, CI's mesa 26.0.8 (setup 3) | 30 | 0 |
-| 7 | as 5, CI's mesa + EGL (setup 4) | 30 | 0 |
-| 8 | AddressSanitizer build (`RUSTC_BOOTSTRAP=1 -Zsanitizer=address`), host mesa | 30 | 0, no ASan report |
-| 9 | as 8, CI's mesa + EGL | 30 | 0, no ASan report |
+| #   | Setup                                                                                                                                                                                                                                         | Runs               | SIGSEGV           |
+| --- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------ | ----------------- |
+| 1   | host mesa 25.2.8 lavapipe, 32 cores                                                                                                                                                                                                           | 200                | 0                 |
+| 2   | as 1, `taskset -c 0,1`                                                                                                                                                                                                                        | 200                | 0                 |
+| 3   | **CI's stack**: resolute (26.04) sysroot — glibc 2.43, mesa 26.0.8, LLVM 21 — run under its `ld-linux` with `--library-path`, `WGPU_BACKEND=vulkan`, `taskset -c 0-3`                                                                         | 100                | 0                 |
+| 4   | as 3, all wgpu backends (no `WGPU_BACKEND`) and mesa's EGL/llvmpipe from the sysroot (`__EGL_VENDOR_LIBRARY_FILENAMES`, `LIBGL_ALWAYS_SOFTWARE=1`, host implicit Vulkan layers disabled), as on a runner where EGL is mesa rather than nvidia | 100                | 0                 |
+| 5   | temporary stress test (not committed): 16 threads × 8 harness renders each, fresh device per harness — host mesa                                                                                                                              | 30 (3 840 renders) | 0                 |
+| 6   | as 5, CI's mesa 26.0.8 (setup 3)                                                                                                                                                                                                              | 30                 | 0                 |
+| 7   | as 5, CI's mesa + EGL (setup 4)                                                                                                                                                                                                               | 30                 | 0                 |
+| 8   | AddressSanitizer build (`RUSTC_BOOTSTRAP=1 -Zsanitizer=address`), host mesa                                                                                                                                                                   | 30                 | 0, no ASan report |
+| 9   | as 8, CI's mesa + EGL                                                                                                                                                                                                                         | 30                 | 0, no ASan report |
 
 `--test-threads=1` was not looped: with no crash at default threads there was
 nothing for it to compare against.
@@ -84,10 +84,10 @@ alone, which would be the next lead.
 
 ## After the fix (`ffb07d383`)
 
-| Setup | Runs | SIGSEGV |
-|---|---|---|
-| host mesa, `taskset -c 0,1` | 100 | 0 |
-| CI's mesa + EGL (setup 4), `taskset -c 0-3` | 100 | 0 |
+| Setup                                       | Runs | SIGSEGV |
+| ------------------------------------------- | ---- | ------- |
+| host mesa, `taskset -c 0,1`                 | 100  | 0       |
+| CI's mesa + EGL (setup 4), `taskset -c 0-3` | 100  | 0       |
 
 These prove only that nothing broke: with no crash before, there is no rate to
 compare against. The real test is CI: a renderer job that crashes in a wgpu
