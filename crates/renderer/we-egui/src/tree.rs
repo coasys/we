@@ -265,29 +265,33 @@ impl Widget for TreeItem {
                     true,
                     None,
                 );
-                // A triangle, not a glyph — the kittest font set has no ▸/▾.
+                // tree.ts's chevron: `M3 1.5 L7 5 L3 8.5` in a 10px box
+                // centred in the caret, stroked 1.5px round in
+                // `text-faint`, and turned a quarter (`rotate(90deg)`) when
+                // the row is open. At the row's end it is faint (0.6).
                 let c = caret.center();
-                let (w, h) = (3.0, 4.0);
-                let points = if Self::open(node) {
-                    // Down-pointing.
-                    vec![
-                        c + egui::vec2(-w - 1.0, -h / 2.0),
-                        c + egui::vec2(w + 1.0, -h / 2.0),
-                        c + egui::vec2(0.0, h / 2.0 + 2.0),
-                    ]
-                } else {
-                    // Right-pointing.
-                    vec![
-                        c + egui::vec2(-w / 2.0, -h),
-                        c + egui::vec2(-w / 2.0, h),
-                        c + egui::vec2(w / 2.0 + 2.0, 0.0),
-                    ]
-                };
-                cx.ui.painter().add(egui::Shape::convex_polygon(
-                    points,
-                    visuals.weak_text_color(),
-                    egui::Stroke::NONE,
-                ));
+                let quarter = Self::open(node);
+                let points = [(-2.0, -3.5), (2.0, 0.0), (-2.0, 3.5)]
+                    .map(|(x, y): (f32, f32)| {
+                        if quarter {
+                            c + egui::vec2(-y, x)
+                        } else {
+                            c + egui::vec2(x, y)
+                        }
+                    })
+                    .to_vec();
+                let mut color = props::role_color(cx.ui.ctx(), "text-faint")
+                    .unwrap_or_else(|| visuals.weak_text_color());
+                let at_end = cx
+                    .parts
+                    .get(&(node.id.clone(), "label"))
+                    .is_some_and(|label| caret.min.x >= label.max.x);
+                if at_end {
+                    color = color.gamma_multiply(0.6);
+                }
+                cx.ui
+                    .painter()
+                    .add(egui::Shape::line(points, egui::Stroke::new(1.5, color)));
                 if caret_response.clicked() {
                     cx.emit(
                         &node.id,
