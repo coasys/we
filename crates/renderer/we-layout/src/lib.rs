@@ -9,6 +9,7 @@
 //! outside.
 #![forbid(unsafe_code)]
 
+pub mod animate;
 pub mod cells;
 pub mod counters;
 pub mod defaults;
