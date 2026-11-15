@@ -17,7 +17,7 @@
 //! `set_root("spaceStore", …)` then a screen change then a read answers
 //! the new base and the new screen fact together.
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, Weak};
 
 use we_expr::{Namespace, Value};
 use we_template::{ScreenView, StoreBag};
@@ -65,7 +65,11 @@ fn read_key(value: &Value, key: &str) -> Value {
 /// the new base on its very next read.
 #[derive(Debug)]
 struct MergedNs {
-    bag: Arc<StoreBag>,
+    /// `Weak`: the bag owns this face through `adapters` — a strong
+    /// backref would cycle (`StoreBag → face → bag`) and leak the whole
+    /// bag, once per dropped session. Upgraded on read; a face whose
+    /// bag is gone answers `Undefined` from the base side.
+    bag: Weak<StoreBag>,
     /// The bag root this face sits over (`routeStore`, …).
     name: &'static str,
     /// The [`ScreenView`] member this face overlays (`nav`/`shell`/`theme`).
@@ -85,13 +89,17 @@ impl Namespace for MergedNs {
             return self.canon.get(key, over);
         }
         read_key(
-            &self.bag.root_base(self.name).unwrap_or(Value::Undefined),
+            &self
+                .bag
+                .upgrade()
+                .and_then(|bag| bag.root_base(self.name))
+                .unwrap_or(Value::Undefined),
             key,
         )
     }
 
     fn keys(&self) -> Vec<Arc<str>> {
-        let mut keys = match self.bag.root_base(self.name) {
+        let mut keys = match self.bag.upgrade().and_then(|bag| bag.root_base(self.name)) {
             Some(Value::Namespace(ns)) => ns.keys(),
             _ => Vec::new(),
         };
@@ -112,7 +120,9 @@ impl Namespace for MergedNs {
 /// carry it because it changes with the route.
 #[derive(Debug)]
 struct SpaceStoreNs {
-    bag: Arc<StoreBag>,
+    /// `Weak` like [`MergedNs::bag`] — the face must never keep the bag
+    /// that owns it alive.
+    bag: Weak<StoreBag>,
     view: ScreenView,
     /// Canonical allocation for `spacePath` — the screen fact; every other
     /// member is the base store's data and reads live.
@@ -132,13 +142,21 @@ impl Namespace for SpaceStoreNs {
             return self.canon.get(key, self.space_path());
         }
         read_key(
-            &self.bag.root_base("spaceStore").unwrap_or(Value::Undefined),
+            &self
+                .bag
+                .upgrade()
+                .and_then(|bag| bag.root_base("spaceStore"))
+                .unwrap_or(Value::Undefined),
             key,
         )
     }
 
     fn keys(&self) -> Vec<Arc<str>> {
-        let mut keys = match self.bag.root_base("spaceStore") {
+        let mut keys = match self
+            .bag
+            .upgrade()
+            .and_then(|bag| bag.root_base("spaceStore"))
+        {
             Some(Value::Namespace(ns)) => ns.keys(),
             _ => Vec::new(),
         };
@@ -171,7 +189,7 @@ impl LegacyBindings {
     /// (each name holds exactly one face).
     pub fn install(bag: &Arc<StoreBag>, view: &ScreenView) -> Self {
         let route = MergedNs {
-            bag: bag.clone(),
+            bag: Arc::downgrade(bag),
             name: "routeStore",
             member: "nav",
             owned: &[
@@ -187,7 +205,7 @@ impl LegacyBindings {
             canon: Canon::default(),
         };
         let shell = MergedNs {
-            bag: bag.clone(),
+            bag: Arc::downgrade(bag),
             name: "shellStore",
             member: "shell",
             owned: &[
@@ -208,7 +226,7 @@ impl LegacyBindings {
         // `themeFork` is always the screen's call (`null` = no fork); an
         // unset `currentThemeId` reads Undefined and defers to the base.
         let theme = MergedNs {
-            bag: bag.clone(),
+            bag: Arc::downgrade(bag),
             name: "themeStore",
             member: "theme",
             owned: &["themeFork"],
@@ -221,7 +239,7 @@ impl LegacyBindings {
         bag.install_adapter(
             "spaceStore",
             Value::namespace(SpaceStoreNs {
-                bag: bag.clone(),
+                bag: Arc::downgrade(bag),
                 view: view.clone(),
                 canon: Canon::default(),
             }),
