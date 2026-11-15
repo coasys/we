@@ -146,6 +146,10 @@ impl Widget for TreeItem {
         let mut row_parts = Vec::new();
         if Self::expandable(node) {
             row_parts.push(PartSpec::fixed("caret", CARET_W, ROW_H));
+        } else {
+            // A leaf keeps the caret's room empty so its content lines up;
+            // layout drops it when the tree puts the caret at the end.
+            row_parts.push(PartSpec::fixed("caret-slot", CARET_W, ROW_H));
         }
         if Self::has_slot(node, "icon") {
             row_parts.push(
@@ -153,9 +157,12 @@ impl Widget for TreeItem {
                     .aligned(we_style::ItemAlign::Center),
             );
         }
+        // `[part='content']`: `flex: 1 1 auto` — the row's own content takes
+        // what the caret leaves, so a trailing count docks at the edge.
         row_parts.push(
             PartSpec::group("label", Pick::Default, Direction::Row)
-                .aligned(we_style::ItemAlign::Center),
+                .aligned(we_style::ItemAlign::Center)
+                .growing(1.0),
         );
         if Self::has_slot(node, "actions") {
             row_parts.push(
@@ -173,6 +180,7 @@ impl Widget for TreeItem {
                     Pick::Named("children".into()),
                     Direction::Column,
                 )
+                // Layout sets the indent from the tree's `caret`/`lead`.
                 .indented(INDENT),
             );
         }

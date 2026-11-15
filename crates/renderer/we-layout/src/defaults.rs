@@ -503,6 +503,20 @@ fn type_defaults(bag: &mut Bag, node: &ResolvedNode) {
                 entries(bag, &[("fontStyle", "italic")]);
             }
         }
+        "we-tree" | "we-tree-item" => {
+            // `STACKED`: rows stack, `space-100` apart unless the theme sets
+            // the tree's gap. A row's text is muted until it is lit.
+            entries(
+                bag,
+                &[
+                    ("direction", "column"),
+                    ("gap", "var(--we-theme-tree-gap, var(--we-space-100))"),
+                ],
+            );
+            if node.ty.as_ref() == "we-tree-item" {
+                entries(bag, &[("color", "text-muted")]);
+            }
+        }
         "we-divider" => {
             // The primitive defaults are CSS on the part; the thickness and
             // colour come out in paint.

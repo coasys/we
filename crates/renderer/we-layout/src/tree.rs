@@ -7,6 +7,7 @@
 //! (auto/scroll → scroll containers, hidden/clip → paint-time clipping),
 //! `aspect-ratio`, `display: none`, and `Grid`'s `columns`/`minChildWidth`
 //! as real grid tracks.
+use indexmap::IndexMap;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -64,6 +65,11 @@ pub struct PartSpec {
     pub flex_grow: f32,
     /// `gap` between the part's children (the button's icon–label space).
     pub column_gap: f32,
+    /// `row-gap` between the part's children — a column part's rows.
+    pub row_gap: f32,
+    /// Padding inside the part, `[top, right, bottom, left]`; `indent`
+    /// adds to the left edge.
+    pub padding: [f32; 4],
     pub parts: Vec<PartSpec>,
 }
 
@@ -81,6 +87,8 @@ impl PartSpec {
             align: None,
             flex_grow: 0.0,
             column_gap: 0.0,
+            row_gap: 0.0,
+            padding: [0.0; 4],
             parts: vec![],
         }
     }
@@ -98,6 +106,8 @@ impl PartSpec {
             align: None,
             flex_grow: 0.0,
             column_gap: 0.0,
+            row_gap: 0.0,
+            padding: [0.0; 4],
             parts: vec![],
         }
     }
@@ -115,6 +125,8 @@ impl PartSpec {
             align: None,
             flex_grow: 0.0,
             column_gap: 0.0,
+            row_gap: 0.0,
+            padding: [0.0; 4],
             parts,
         }
     }
@@ -191,6 +203,114 @@ pub struct TreeCfg {
     pub lead: f32,
     /// The tree's `selected` value — items compare it to their `value`.
     pub selected: Option<Value>,
+}
+
+/// `we-tree-item`'s caret box and its row's floor (`--we-tree-row-height`).
+const TREE_CARET: f32 = 16.0;
+const TREE_ROW_MIN: f32 = 32.0;
+
+/// The tree row's theme-driven lengths, resolved through the token table
+/// the way the primitive's stylesheet reads them.
+struct TreeMetrics {
+    /// `--we-theme-tree-padding`, else `space-100 space-200` — `[t, r, b, l]`.
+    pad: [f32; 4],
+    space_200: f32,
+    /// `--we-theme-tree-gap`, else `space-100` — the space between rows.
+    row_gap: f32,
+}
+
+impl TreeMetrics {
+    fn resolve(scx: &StyleCx) -> Self {
+        // A theme writes the padding as a shorthand (`calc(0.5rem) 10px`),
+        // which `p` cannot carry through a `var()` — expand it per side.
+        let theme_pad = scx
+            .scope
+            .get("--we-theme-tree-padding")
+            .map(|v| v.to_string())
+            .or_else(|| {
+                scx.tokens
+                    .get("--we-theme-tree-padding")
+                    .map(str::to_string)
+            });
+        let sides: [String; 4] = match theme_pad.as_deref().map(split_top_level) {
+            Some(v) if (1..=4).contains(&v.len()) => {
+                let at = |i: usize| v[i].clone();
+                match v.len() {
+                    1 => [at(0), at(0), at(0), at(0)],
+                    2 => [at(0), at(1), at(0), at(1)],
+                    3 => [at(0), at(1), at(2), at(1)],
+                    _ => [at(0), at(1), at(2), at(3)],
+                }
+            }
+            _ => [
+                "var(--we-space-100)".into(),
+                "var(--we-space-200)".into(),
+                "var(--we-space-100)".into(),
+                "var(--we-space-200)".into(),
+            ],
+        };
+        let mut props: IndexMap<Arc<str>, Value> = ["pt", "pr", "pb", "pl"]
+            .iter()
+            .zip(sides)
+            .map(|(k, v)| (Arc::from(*k), Value::Str(Arc::from(v.as_str()))))
+            .collect();
+        props.insert(
+            Arc::from("gap"),
+            Value::Str(Arc::from("var(--we-theme-tree-gap, var(--we-space-100))")),
+        );
+        props.insert(Arc::from("m"), Value::Str(Arc::from("var(--we-space-200)")));
+        let probe = ResolvedNode {
+            id: NodeId::from("$tree-metrics"),
+            ty: Arc::from("div"),
+            props,
+            handlers: IndexMap::new(),
+            slot: None,
+            children: vec![],
+            transition: None,
+        };
+        let style = crate::defaults::style_of(&probe, scx);
+        let px = |d: &Option<Dimension>| d.as_ref().and_then(|d| dim_px(d, scx)).unwrap_or(0.0);
+        let l = &style.layout;
+        Self {
+            pad: [
+                px(&l.padding.top),
+                px(&l.padding.right),
+                px(&l.padding.bottom),
+                px(&l.padding.left),
+            ],
+            space_200: px(&l.margin.left),
+            row_gap: l
+                .gap
+                .as_ref()
+                .and_then(|(r, _)| dim_px(r, scx))
+                .unwrap_or(0.0),
+        }
+    }
+}
+
+/// A CSS value split at top-level whitespace — `calc(a * b) 10px` is two.
+fn split_top_level(s: &str) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut cur = String::new();
+    let mut depth = 0usize;
+    for ch in s.chars() {
+        match ch {
+            '(' => depth += 1,
+            ')' => depth = depth.saturating_sub(1),
+            c if c.is_whitespace() && depth == 0 => {
+                if !cur.is_empty() {
+                    out.push(std::mem::take(&mut cur));
+                }
+                continue;
+            }
+            _ => {}
+        }
+        cur.push(ch);
+    }
+    if !cur.is_empty() {
+        out.push(cur);
+    }
+    out
 }
 
 /// The layout output: every resolved node's rect, every part rect, the text
@@ -864,13 +984,13 @@ fn part_style(spec: &PartSpec) -> taffy::Style {
         },
         gap: taffy::Size {
             width: LengthPercentage::length(spec.column_gap),
-            height: LengthPercentage::length(0.0),
+            height: LengthPercentage::length(spec.row_gap),
         },
         padding: taffy::Rect {
-            left: LengthPercentage::length(spec.indent),
-            right: LengthPercentage::length(0.0),
-            top: LengthPercentage::length(0.0),
-            bottom: LengthPercentage::length(0.0),
+            left: LengthPercentage::length(spec.indent + spec.padding[3]),
+            right: LengthPercentage::length(spec.padding[1]),
+            top: LengthPercentage::length(spec.padding[0]),
+            bottom: LengthPercentage::length(spec.padding[2]),
         },
         flex_shrink: 0.0,
         flex_grow: spec.flex_grow,
@@ -1467,7 +1587,14 @@ impl<'a> Builder<'a> {
             cb: (
                 spec.width
                     .map(|w| AxisBase::Definite((w - spec.indent).max(0.0)))
-                    .unwrap_or(AxisBase::Indefinite),
+                    // A growing part's width is the flex result — taffy's
+                    // to resolve a child's percent against (the tree row's
+                    // content holding a `width: 100%` Row).
+                    .unwrap_or(if spec.flex_grow > 0.0 {
+                        AxisBase::Deferred
+                    } else {
+                        AxisBase::Indefinite
+                    }),
                 spec.height
                     .map(AxisBase::Definite)
                     .unwrap_or(AxisBase::Indefinite),
@@ -1820,12 +1947,32 @@ impl<'a> Builder<'a> {
         // layout's call, and only it can see the ancestor.
         if node.ty.as_ref() == "we-tree-item" {
             if let Some(spec) = &mut spec {
+                let m = TreeMetrics::resolve(scx);
+                // A level indents by the caret and its gap — or, with the
+                // caret at the end, by the tree's `lead` (`--_step`).
+                let step = if tree.caret_end && tree.lead > 0.0 {
+                    tree.lead
+                } else {
+                    TREE_CARET + m.space_200
+                };
                 for part in &mut spec.parts {
-                    if part.name == "row" {
-                        if tree.caret_end {
-                            part.parts.sort_by_key(|p| p.name == "caret");
+                    match part.name {
+                        "row" => {
+                            if tree.caret_end {
+                                part.parts.retain(|p| p.name != "caret-slot");
+                                part.parts.sort_by_key(|p| p.name == "caret");
+                            }
+                            // The theme's tree padding, its start held at
+                            // `space-200` (`padding-inline-start`).
+                            part.padding = [m.pad[0], m.pad[1], m.pad[2], m.space_200];
+                            part.column_gap = m.space_200;
+                            part.min_height = part.min_height.max(TREE_ROW_MIN);
                         }
-                        part.indent += tree.lead;
+                        "children" => {
+                            part.indent = step;
+                            part.row_gap = m.row_gap;
+                        }
+                        _ => {}
                     }
                 }
             }
