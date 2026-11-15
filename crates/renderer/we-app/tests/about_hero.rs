@@ -3,6 +3,7 @@
 //! `eval_color` alone cannot read painted it white, and a phrase caught
 //! mid-delete painted nothing).
 use egui::Vec2;
+use egui_kittest::kittest::Queryable;
 use egui_kittest::Harness;
 use we_app::RendererApp;
 use we_template::{Bundle, ResolvedChild, ResolvedNode};
@@ -56,4 +57,82 @@ fn the_typewriter_phrase_is_painted_in_the_accent() {
         }
     }
     assert!(green > 200, "accent phrase pixels in the hero: {green}");
+}
+
+fn about(reduced: bool) -> Harness<'static, RendererApp> {
+    let bundle = Bundle::parse(BUNDLE).unwrap();
+    let (app, _) = we_app::coasys_app(&bundle, "about", "glow").unwrap();
+    let mut h = Harness::builder()
+        .with_size(Vec2::new(1280.0, 800.0))
+        .with_pixels_per_point(1.0)
+        .allow_missing_glyphs()
+        .with_context_setup(move |ctx| {
+            we_egui::install_media(ctx);
+            we_egui::defaults::set_reduced_motion(ctx, reduced);
+        })
+        .with_accessibility_check(false)
+        .build_ui_state(|ui, app: &mut RendererApp| app.frame_body(ui), app);
+    h.run_steps(6);
+    h
+}
+
+fn link<'n>(root: &'n ResolvedNode, href: &str) -> &'n ResolvedNode {
+    find(root, &|n| {
+        n.ty.as_ref() == "we-link"
+            && n.props.get("href").map(|v| v.js_string()).as_deref() == Some(href)
+    })
+    .unwrap_or_else(|| panic!("no link to {href}"))
+}
+
+fn kids(n: &ResolvedNode) -> Vec<&ResolvedNode> {
+    n.children
+        .iter()
+        .filter_map(|c| match c {
+            ResolvedChild::Node(c) => Some(&**c),
+            ResolvedChild::Text(_) => None,
+        })
+        .collect()
+}
+
+/// The header row (V2): `display: flex` on a `we-link` is a CSS row, so the
+/// wordmark sits beside the logo; an icon link's `label` is its name, not
+/// words drawn beside the icon; the GitHub pill's halves sit side by side.
+#[test]
+fn the_about_header_lays_out_as_one_row() {
+    let h = about(true);
+    let app = h.state();
+    let root = app.session.runtime.resolved().expect("resolved").clone();
+    let lay = app.layout().expect("laid out");
+
+    let brand = link(&root, "https://coasys.org");
+    let logo = kids(brand)[0];
+    let b = lay.rects[&brand.id];
+    let l = lay.rects[&logo.id];
+    assert!(
+        b.width() > l.width() + 60.0 && b.height() < l.height() + 4.0,
+        "the wordmark sits beside the logo: link {b:?}, logo {l:?}"
+    );
+
+    let discord = link(&root, "https://discord.gg/fYGVM66jEz");
+    let d = lay.rects[&discord.id];
+    assert!(
+        d.width() <= 30.0 && d.height() <= 30.0,
+        "Discord is its mark alone: {d:?}"
+    );
+    assert!(
+        h.query_all_by_label_contains("Discord").next().is_some(),
+        "the label still names it"
+    );
+
+    let gh = link(&root, "https://github.com/coasys/ad4m");
+    let halves = kids(gh);
+    let (a, z) = (lay.rects[&halves[0].id], lay.rects[&halves[1].id]);
+    assert!(
+        a.max.x <= z.min.x + 0.5,
+        "the pill's halves do not overlap: {a:?} {z:?}"
+    );
+    assert!(
+        lay.rects[&gh.id].height() <= 37.0,
+        "the pill is one 36px row"
+    );
 }

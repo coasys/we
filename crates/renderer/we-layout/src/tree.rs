@@ -1392,6 +1392,17 @@ impl<'a> Builder<'a> {
                 Some(we_style::FlexDirection::RowReverse) => FlexDirection::RowReverse,
                 Some(we_style::FlexDirection::ColumnReverse) => FlexDirection::ColumnReverse,
                 _ if direction_of(node) == we_style::Direction::Row => FlexDirection::Row,
+                // CSS: `display: flex` with no `flex-direction` is a row. A
+                // primitive host or an HTML element authored that way
+                // (`we-link` with `display: 'flex'` — a logo beside its
+                // wordmark) is one; a layout component (`Column`, `Card`)
+                // brings its own direction.
+                _ if matches!(l.display, Some(WsDisplay::Flex))
+                    && !node.props.contains_key("direction")
+                    && authors_css_flex(node) =>
+                {
+                    FlexDirection::Row
+                }
                 _ => FlexDirection::Column,
             },
             flex_wrap: match l.wrap {
@@ -2975,4 +2986,18 @@ fn collect(tree: &TaffyTree<Ctx>, id: TaffyId, origin: Pos2, out: &mut Layout) {
     for child in tree.children(id).unwrap_or_default() {
         collect(tree, child, rect.min, out);
     }
+}
+
+/// Whether `display: flex` on this node is CSS's own default row: the
+/// template authored it (`display: 'flex'`) on a primitive (`we-*`) or an
+/// HTML element, whose host brings no direction of its own. A capitalised
+/// layout component keeps the one it declares, and a primitive whose port
+/// lays its parts out as a flex column (`we-tree-item`) is not authored.
+fn authors_css_flex(node: &ResolvedNode) -> bool {
+    let ty = node.ty.as_ref();
+    let host = ty.starts_with("we-") || ty.chars().next().is_some_and(|c| c.is_ascii_lowercase());
+    host && node
+        .props
+        .get("display")
+        .is_some_and(|v| matches!(v.js_string().trim(), "flex" | "inline-flex"))
 }

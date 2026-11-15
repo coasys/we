@@ -490,6 +490,17 @@ impl Widget for Text {
 #[derive(Debug, Default)]
 pub struct Link;
 
+impl Link {
+    /// The words a link draws: `text`/`value` or its text children —
+    /// never `label`, which names it for assistive tech only.
+    fn shown(node: &ResolvedNode) -> String {
+        props::prop_text(node, "text")
+            .or_else(|| props::prop_text(node, "value"))
+            .map(str::to_string)
+            .unwrap_or_else(|| props::children_text(node))
+    }
+}
+
 impl Widget for Link {
     fn type_name(&self) -> &'static str {
         "we-link"
@@ -507,11 +518,14 @@ impl Widget for Link {
         }
     }
     fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, avail: Size) -> Size {
-        measure_text(cx, node, style, avail, &props::text_of(node), false, None)
+        measure_text(cx, node, style, avail, &Self::shown(node), false, None)
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         crate::containers::paint_container(cx, node, style, rect);
-        let label = props::text_of(node);
+        let shown = Self::shown(node);
+        let label = props::prop_text(node, "label")
+            .map(str::to_string)
+            .unwrap_or_else(|| shown.clone());
         let href = props::prop_text(node, "href")
             .or_else(|| props::prop_text(node, "to"))
             .unwrap_or("")
@@ -541,14 +555,15 @@ impl Widget for Link {
             }
         }
         // The galley is the link's own text — an absorbed text child or a
-        // `text`/`label` prop; under `Leaves` the span paints it instead.
-        let prop_text = props::prop_text(node, "text").is_some()
-            || props::prop_text(node, "label").is_some()
-            || props::prop_text(node, "value").is_some();
+        // `text`/`value` prop; under `Leaves` the span paints it instead.
+        // `label` is link.ts's `aria-label` only: an icon link's name, never
+        // drawn (drawn, "Discord" wrapped a letter a line beside its mark).
+        let prop_text =
+            props::prop_text(node, "text").is_some() || props::prop_text(node, "value").is_some();
         let own = !matches!(self.text_children(node), TextChildren::Leaves);
-        if !label.is_empty() && (own || prop_text) {
+        if !shown.is_empty() && (own || prop_text) {
             let content_rect = props::content_rect(rect, &eff, view_of(cx.ui.ctx()), cx.cb_w);
-            let g = text_job(&label, &eff, cx.ui.ctx(), content_rect.width(), false, None);
+            let g = text_job(&shown, &eff, cx.ui.ctx(), content_rect.width(), false, None);
             paint_galley(cx.ui.painter(), content_rect.min, g, &eff);
             underline(cx, &eff, content_rect);
         }
