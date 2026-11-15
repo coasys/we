@@ -20,6 +20,7 @@ members = [
     "we-session",
     "we-egui",
     "we-cli",
+    "we-tui",
     "we-ad4m",
     "we-app",
 ]
@@ -41,6 +42,9 @@ egui_kittest = "0.37"
 egui-pop-phosphor = { version = "0.15", default-features = false, features = ["regular", "bold", "fill"] }
 base64 = "0.22"
 egui_extras = { version = "0.37", default-features = false, features = ["image", "http", "webp", "svg"] }
+ratatui = "0.30.2"
+crossterm = "0.29.0"
+unicode-width = "0.2"
 
 we-expr = { path = "we-expr" }
 we-screen = { path = "we-screen" }
@@ -51,5 +55,6 @@ we-layout = { path = "we-layout" }
 we-catalog = { path = "we-catalog" }
 we-session = { path = "we-session" }
 we-cli = { path = "we-cli" }
+we-tui = { path = "we-tui" }
 we-egui = { path = "we-egui" }
 we-ad4m = { path = "we-ad4m" }
