@@ -527,6 +527,7 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
             edit: w.edit,
             now: w.now,
             cb_w,
+            lane: w.layout.lanes.get(&node.id).copied(),
             ancestors: &w.ancestors[..w.ancestors.len() - 1],
             hits: &mut w.hits,
             clicks: &mut w.clicks,
@@ -1277,6 +1278,7 @@ fn translate_layout(sub: &Layout, delta: egui::Vec2) -> Layout {
         clip: sub.clip.clone(),
         bases: sub.bases.clone(),
         unconverged: sub.unconverged,
+        lanes: sub.lanes.clone(),
     }
 }
 
@@ -1605,6 +1607,7 @@ fn overlay_contents(
             edit: inner.edit,
             now: inner.now,
             cb_w: outer_cb_w,
+            lane: None,
             ancestors: &ancestors,
             hits: &mut inner.hits,
             clicks: &mut inner.clicks,

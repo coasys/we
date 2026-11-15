@@ -112,19 +112,16 @@ container!(Grid, "Grid");
 container!(Card, "Card");
 container!(Div, "div");
 
-/// What a lane leaves the rest of its row when dragged wider
-/// (`PanelLane`'s `LANE_LEAVES_PX`).
-pub const LANE_LEAVES_PX: f32 = 360.0;
-
 /// `$lane` — a home lane. `collapsed` folds it away to nothing. `resize`
 /// (`start` | `end`) puts a drag handle on that edge alone — `end` for a
 /// column on the left, `start` for one on the right — and a drag emits
 /// `onResize` with the new width, measured from the width at the press
 /// (so a frame the layout lags does not lose pointer travel) and clamped
-/// to `minWidth` (120 absent) and `maxWidth`, and to what leaves the
-/// window [`LANE_LEAVES_PX`]. The resolver wires `onResize` to
+/// to the bounds layout measured ([`we_layout::lane::lane_bounds`]: its
+/// `minWidth`, `maxWidth`, and its row less the other lanes and
+/// [`we_layout::LANE_LEAVES_PX`]). The resolver wires `onResize` to
 /// `shellStore.setLaneWidth`, and layout reads the stored width back
-/// (`laneWidth`), as `PanelLane` does.
+/// (`laneWidth`) under the same bounds, as `PanelLane` does.
 #[derive(Debug, Default)]
 pub struct Lane;
 
@@ -235,15 +232,19 @@ impl Widget for Lane {
         ) {
             let travel = pointer.x - origin;
             let wanted = from + if start { -travel } else { travel };
-            let min = props::prop_num(node, "minWidth").unwrap_or(120.0) as f32;
-            let room = cx.ui.ctx().content_rect().width() - LANE_LEAVES_PX;
-            let max = props::prop_num(node, "maxWidth")
-                .map(|m| m as f32)
-                .unwrap_or(f32::INFINITY)
-                .min(room)
-                .max(min);
-            let width = wanted.clamp(min, max).round();
-            if (width - rect.width()).abs() >= 0.5 {
+            // The bounds layout measured — none for a lane laid out
+            // somewhere they were not (a hand-built test context).
+            let bounds = cx.lane.unwrap_or(we_layout::LaneBounds {
+                min: 0.0,
+                max: f32::INFINITY,
+            });
+            let width = bounds.clamp(wanted).round();
+            // A kept width drawn narrower than it is (the room shrank) is
+            // replaced by the width let go at, even where that is the
+            // width already drawn — `PanelLane` writes on release.
+            let kept = props::prop_num(node, "laneWidth").map(|k| k as f32);
+            if (width - rect.width()).abs() >= 0.5 || kept.is_some_and(|k| (k - width).abs() >= 0.5)
+            {
                 cx.emit(
                     &node.id,
                     "onResize",

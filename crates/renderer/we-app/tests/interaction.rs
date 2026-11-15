@@ -102,6 +102,89 @@ fn the_tree_lane_resizes_from_its_end_edge_and_keeps_the_width() {
     assert_eq!(lane_rect(&h, "tree").width(), 220.0);
 }
 
+/// The width shell state holds for the lane named `lane`.
+fn stored(h: &Harness<'_, RendererApp>, lane: &str) -> Option<u32> {
+    h.state()
+        .session
+        .screen()
+        .shell
+        .lanes
+        .get(lane)
+        .and_then(|l| l.width)
+}
+
+/// The laid-out rect of the row the lanes sit in.
+fn lane_row(harness: &Harness<'_, RendererApp>) -> Rect {
+    let app = harness.state();
+    let root = app.session.runtime.resolved().expect("resolved").clone();
+    let row = find(&root, &|n| {
+        n.children
+            .iter()
+            .any(|c| matches!(c, ResolvedChild::Node(c) if c.ty.as_ref() == "$lane"))
+    })
+    .expect("the lanes' row");
+    app.layout().expect("laid out").rects[&row.id]
+}
+
+/// A drag to either extreme stores the clamped width, not the pointer's:
+/// no narrower than `minWidth`, no wider than the row less the other lanes
+/// and what the main view keeps (`PanelLane.tsx` `measureRoom`/`clamp`).
+#[test]
+fn a_drag_to_either_extreme_stores_the_clamped_width() {
+    let mut h = harness(|_| {});
+    let lane = lane_rect(&h, "tree");
+    drag(&mut h, Pos2::new(lane.max.x, lane.center().y), -400.0);
+    assert_eq!(stored(&h, "tree"), Some(220), "held to minWidth");
+    assert_eq!(lane_rect(&h, "tree").width(), 220.0);
+    let lane = lane_rect(&h, "tree");
+    let room = lane_row(&h).width() - we_egui::LANE_LEAVES_PX;
+    drag(&mut h, Pos2::new(lane.max.x, lane.center().y), 2000.0);
+    assert_eq!(stored(&h, "tree"), Some(room as u32), "held to the room");
+    assert_eq!(lane_rect(&h, "tree").width(), room);
+}
+
+/// The inspector opening beside a wide tree takes its width out of the
+/// tree's room: the kept width is drawn clamped (and kept, so closing it
+/// gives the width back), and a drag with it open stores no more than fits.
+#[test]
+fn an_open_inspector_narrows_the_room_a_kept_width_is_drawn_in() {
+    let mut h = harness(|_| {});
+    let lane = lane_rect(&h, "tree");
+    drag(&mut h, Pos2::new(lane.max.x, lane.center().y), 500.0);
+    assert_eq!(stored(&h, "tree"), Some(780));
+    assert_eq!(lane_rect(&h, "tree").width(), 780.0);
+    h.state_mut()
+        .session
+        .apply_screen(ScreenOp::OpenTemplatePanel {
+            id: "inspector".into(),
+        });
+    h.run_steps(4);
+    let inspector = lane_rect(&h, "inspector");
+    assert_eq!(inspector.width(), 340.0, "{inspector:?}");
+    let room = lane_row(&h).width() - inspector.width() - we_egui::LANE_LEAVES_PX;
+    let tree = lane_rect(&h, "tree");
+    assert_eq!(tree.width(), room, "drawn clamped: {tree:?}");
+    assert_eq!(stored(&h, "tree"), Some(780), "the kept width stays");
+    assert!(tree.max.x <= inspector.min.x, "{tree:?} {inspector:?}");
+    drag(&mut h, Pos2::new(tree.max.x, tree.center().y), 300.0);
+    assert_eq!(stored(&h, "tree"), Some(room as u32), "held to the room");
+}
+
+/// A window made narrower clamps a kept width as it is laid out.
+#[test]
+fn a_narrower_window_clamps_a_kept_width() {
+    let mut h = harness(|_| {});
+    let lane = lane_rect(&h, "tree");
+    drag(&mut h, Pos2::new(lane.max.x, lane.center().y), 320.0);
+    assert_eq!(stored(&h, "tree"), Some(600));
+    h.set_size(Vec2::new(900.0, H));
+    h.run_steps(4);
+    let room = lane_row(&h).width() - we_egui::LANE_LEAVES_PX;
+    assert!(room < 600.0, "the narrow row has less room: {room}");
+    assert_eq!(lane_rect(&h, "tree").width(), room);
+    assert_eq!(stored(&h, "tree"), Some(600), "the kept width stays");
+}
+
 /// A slow frame: the release and a move well past it arrive in one frame.
 /// The width is where the button went up, not where the pointer went next.
 #[test]

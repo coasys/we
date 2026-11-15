@@ -45,6 +45,9 @@ pub struct Layout {
     /// `true` when the deferred-base solve hit its pass cap still moving
     /// — the returned build is honest but not settled.
     pub unconverged: bool,
+    /// Every home lane's bounds, measured on this layout — what a drag
+    /// resizing the lane clamps to ([`we_layout::lane::lane_bounds`]).
+    pub lanes: HashMap<NodeId, we_layout::LaneBounds>,
 }
 
 /// A text child and where it landed.
@@ -252,5 +255,6 @@ fn run(
             .collect(),
         bases: out.bases,
         unconverged: out.unconverged,
+        lanes: out.lanes,
     }
 }

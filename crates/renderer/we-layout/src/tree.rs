@@ -399,6 +399,9 @@ pub struct Layout {
     /// finish, not a detected cycle. The returned build is honest (its
     /// `bases` are the values it actually used) but not settled.
     pub unconverged: bool,
+    /// Every home lane's bounds ([`crate::lane::lane_bounds`]), measured on
+    /// this layout — what a drag resizing the lane clamps to.
+    pub lanes: HashMap<NodeId, crate::lane::LaneBounds>,
 }
 
 /// The resolved percent bases of one node — what its `calc(…% …)` and
@@ -2474,6 +2477,35 @@ fn layout_impl(
     parent: Option<&Style>,
     round: bool,
 ) -> Layout {
+    let mut out = layout_pass(m, scx, root, rect, viewport_root, parent, round);
+    let mut bounds = crate::lane::lane_bounds(root, &out);
+    // A kept lane width the row has no room for gives way (`PanelLane`
+    // draws `clamp(held)`): lay the clamped width out and measure again.
+    // One round settles a lane beside fixed ones; the cap bounds lanes
+    // that narrow each other.
+    let mut drawn: Option<ResolvedNode> = None;
+    for _ in 0..3 {
+        let Some(next) = crate::lane::clamp_kept_widths(drawn.as_ref().unwrap_or(root), &bounds)
+        else {
+            break;
+        };
+        out = layout_pass(m, scx, &next, rect, viewport_root, parent, round);
+        bounds = crate::lane::lane_bounds(&next, &out);
+        drawn = Some(next);
+    }
+    out.lanes = bounds;
+    out
+}
+
+fn layout_pass(
+    m: &dyn Measure,
+    scx: &StyleCx,
+    root: &ResolvedNode,
+    rect: Rect,
+    viewport_root: bool,
+    parent: Option<&Style>,
+    round: bool,
+) -> Layout {
     /// Deep acyclic chains settle in a handful of passes; the cap
     /// bounds whatever does not — a repeated measured state is cyclic
     /// and lands on the CSS fallback, while a chain still moving at
@@ -2497,6 +2529,7 @@ fn layout_impl(
         clip: HashMap::new(),
         bases: HashMap::new(),
         unconverged: false,
+        lanes: HashMap::new(),
     };
 
     // Synthesized children live in an arena outliving every build pass:
@@ -2707,6 +2740,7 @@ fn layout_impl(
                 .map(|(id, a)| (id.clone(), a.to_bases(id, &consumed, &vals, &new_vals)))
                 .collect(),
             unconverged: false,
+            lanes: HashMap::new(),
         };
         collect(&tree, root_id, rect.min, &mut next);
         place_pseudos(&mut next, pseudos, scx);

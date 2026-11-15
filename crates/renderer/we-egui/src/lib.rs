@@ -62,7 +62,9 @@ pub use text::{
 };
 pub use tree::{Tree, TreeItem};
 pub use unknown::UnknownWidget;
-pub use we_layout::{Direction, PartSpec, PartsSpec, Pick, TextChildren, TreeCfg};
+pub use we_layout::{
+    Direction, LaneBounds, PartSpec, PartsSpec, Pick, TextChildren, TreeCfg, LANE_LEAVES_PX,
+};
 
 /// `style_of` for callers (the gallery's swatches, tests).
 pub use defaults::style_of;
@@ -122,6 +124,10 @@ pub struct PaintCx<'a> {
     /// content-driven (the CSS cyclic fallback → `0`) or for a
     /// hand-built context in tests.
     pub cb_w: Option<f32>,
+    /// A home lane's bounds as layout measured them
+    /// ([`crate::layout::Layout::lanes`]) — what a drag resizing it clamps
+    /// to. `None` for any other node, or a hand-built context in tests.
+    pub(crate) lane: Option<we_layout::LaneBounds>,
     pub(crate) ancestors: &'a [NodeId],
     pub(crate) events: &'a mut Vec<WidgetEvent>,
     pub(crate) hits: &'a mut HitLog,
@@ -212,6 +218,7 @@ impl<'a> PaintCx<'a> {
             edit,
             now,
             cb_w: None,
+            lane: None,
             ancestors,
             events,
             hits,
