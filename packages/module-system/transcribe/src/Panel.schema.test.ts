@@ -52,6 +52,7 @@ function bareStore() {
     },
     state: markState,
     action: markAction,
+    selfIds: () => [],
     kernels: {},
   });
 }

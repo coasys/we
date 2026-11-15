@@ -32,7 +32,7 @@ export function createPollsStore(deps: ModuleStoreDeps) {
   const { signal, state, action } = deps;
   const records = deps.kernels.records;
   /** Every id that is me, this device first. Empty before login, which is a host with nobody to vote. */
-  const selves = (): string[] => deps.selfIds?.() ?? [];
+  const selves = (): string[] => deps.selfIds();
 
   /** The poll a vote is being written for, so its card can show the press landed. */
   const [voting, setVoting] = signal('');

@@ -64,6 +64,7 @@ export function fakeDeps(overrides: Partial<ModuleStoreDeps> = {}): ModuleStoreD
     state: markState,
     action: markAction,
     settings: () => ({}),
+    selfIds: () => [],
     kernels: {},
     ...overrides,
   };

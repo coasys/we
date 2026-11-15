@@ -698,7 +698,7 @@ export interface ModuleStoreDeps {
    * answer, a reaction — reading them by `selfId` alone shows my laptop's as somebody else's and lets
    * me add a second.
    */
-  selfIds?: () => string[];
+  selfIds: () => string[];
   /** The call record the address names, when the interface on screen is about one. `null` otherwise. */
   callOnScreen?: () => string | null;
   /**

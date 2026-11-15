@@ -14,7 +14,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { type CallConfigState, createCallStore } from './store';
 
-const baseDeps = { state: markState, action: markAction, kernels: {} } as const;
+const baseDeps = { state: markState, action: markAction, selfIds: () => [], kernels: {} } as const;
 
 /** The `call` kernel with only the policy half wired — what these tests are about. */
 function withCall(policy: Partial<CallKernel>) {

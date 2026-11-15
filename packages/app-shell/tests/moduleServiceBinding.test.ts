@@ -127,7 +127,7 @@ describe('a service published after the store was built', () => {
     const held = createRoot((disposer) => {
       const deps = solidDeps();
       const seen: { self: string | null; selves: string[] }[] = [];
-      createEffect(() => void seen.push({ self: deps.selfId?.() ?? null, selves: deps.selfIds?.() ?? [] }));
+      createEffect(() => void seen.push({ self: deps.selfId?.() ?? null, selves: deps.selfIds() }));
       return { disposer, seen };
     });
     await settled();
@@ -143,6 +143,20 @@ describe('a service published after the store was built', () => {
       self: 'did:key:phone',
       selves: ['did:key:phone', 'did:key:laptop', 'did:scid:me'],
     });
+    held.disposer();
+  });
+
+  it('gives this device as the whole list when the host knows only this device', async () => {
+    // A poll reads my vote through `selfIds`: an empty list here would make every press a new vote.
+    const held = createRoot((disposer) => {
+      const deps = solidDeps();
+      const seen: string[][] = [];
+      createEffect(() => void seen.push(deps.selfIds()));
+      return { disposer, seen };
+    });
+    provideModuleHostServices({ selfId: () => 'did:key:phone' });
+    await settled();
+    expect(held.seen.at(-1)).toEqual(['did:key:phone']);
     held.disposer();
   });
 });

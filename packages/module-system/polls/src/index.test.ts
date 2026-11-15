@@ -49,6 +49,7 @@ describe('the polls module', () => {
       },
       state: markState,
       action: markAction,
+      selfIds: () => [],
       kernels: {},
     });
     const surface = storeSurface(store);
