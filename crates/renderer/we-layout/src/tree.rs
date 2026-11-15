@@ -1602,7 +1602,28 @@ impl<'a> Builder<'a> {
         // height on that side (padding the content box out — the box is
         // placed in that band once the host has a rect); an absolute one
         // takes no room.
-        for p in crate::theme_css::pseudo_boxes(scx, node) {
+        //
+        // A generated box is the host's child in CSS: it resolves `var()`s in
+        // the host's own custom-property scope (a `styles` re-pointing on the
+        // heading reaches its line), inherits its text and `visibility`, and
+        // is composited under the host's opacity.
+        let boxes: Vec<_> = {
+            let host_scx = StyleCx {
+                scope: &style.scope,
+                ..*scx
+            };
+            crate::theme_css::pseudo_boxes(&host_scx, node)
+                .into_iter()
+                .map(|mut p| {
+                    p.style = effective(Some(&style), p.style);
+                    if p.style.paint.visibility.is_none() {
+                        p.style.paint.visibility = style.paint.visibility.clone();
+                    }
+                    p
+                })
+                .collect()
+        };
+        for p in boxes {
             let pl = &p.style.layout;
             if matches!(pl.display, Some(WsDisplay::None)) {
                 continue;

@@ -902,6 +902,17 @@ fn paint_pseudo(w: &mut Walk<'_>, node: &ResolvedNode, host: &Style, key: &'stat
     let Some(style) = w.layout.pseudo.get(&k) else {
         return;
     };
+    // Its style already carries the host's composed opacity and inherited
+    // `visibility` (layout folds them in), so a hidden or fully faded host
+    // paints no line.
+    if style.paint.opacity.is_some_and(|o| o <= 0.0)
+        || matches!(
+            style.paint.visibility,
+            Some(we_style::Visibility::Hidden | we_style::Visibility::Collapse)
+        )
+    {
+        return;
+    }
     let parts = w.parts_buf.as_ref().unwrap_or(&w.base_parts);
     let Some(rect) = parts.get(&k).copied() else {
         return;
