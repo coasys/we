@@ -17,6 +17,7 @@ import type {
 import { allowedMoves, approvalsFor, evidenceFor } from '@we/backend-shared';
 
 import { subjectOfEvidence } from './evidenceSubjects';
+import { selfDids } from './personProfile';
 import { stateLabelOf } from './workflowDraft';
 import { finalStates, toLanes, walkOf, type WorkflowLanes, type WorkflowSequenceRule } from './workflowLanes';
 
@@ -264,7 +265,7 @@ export interface RecordView {
     approvers: string[];
     needs: number;
     note: string;
-    /** The viewer has asked for it. */
+    /** The viewer has asked for it, from any of their devices. */
     mine: boolean;
   }[];
   walk: { name: string; label: string; at: 'done' | 'current' | 'ahead' }[];
@@ -294,10 +295,12 @@ export function recordView(
   model: WorkflowLanes,
   item: WorkflowItem,
   title: string,
-  me: string | undefined,
+  /** Every DID that is the viewer (`me.dids`), or one: an ask from their other computer is theirs. */
+  me: string | readonly string[] | undefined,
   labels: WorkflowLabels = defaultLabels,
 ): RecordView {
   const walk = walkOf(definition, model, item.state);
+  const selves = selfDids(me);
   return {
     record: item.record,
     title,
@@ -311,7 +314,7 @@ export function recordView(
       approvers: move.approvers,
       needs: approvalsFor(definition.states.find((s) => s.name === move.to)).count,
       note: move.note ?? '',
-      mine: Boolean(me && move.approvers.includes(me)),
+      mine: move.approvers.some((did) => selves.has(did)),
     })),
     walk: walk.steps.map((step) => ({ ...step, label: labels.state(step.name) })),
     next: walk.next.map((name) => ({ name, label: labels.state(name) })),

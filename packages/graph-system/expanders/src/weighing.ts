@@ -50,21 +50,26 @@ export function effectiveAggregate(aggregate?: string, mode?: string): Aggregate
  * An unattributed reaction is left out: nothing can be said about it — not whose it is, not whether the
  * reader has muted them, not whether it duplicates one already counted.
  */
-export function readVotes(rows: unknown, type: string): Vote[] | null {
+export function readVotes(rows: unknown, type: string, me?: string | readonly string[]): Vote[] | null {
   if (!type || !Array.isArray(rows)) return null;
-  const latest = new Map<string, { value: number; at: string }>();
+  // The reader's own DIDs (this device first): their devices are one voice, kept under the first.
+  const selves = typeof me === 'string' ? [me] : (me ?? []);
+  const latest = new Map<string, { value: number; at: string; id: string }>();
   for (const row of rows) {
     if (!row || typeof row !== 'object') continue;
     const signal = row as Record<string, unknown>;
     if (signal.signalTypeId !== type) continue;
-    const author = typeof signal.author === 'string' ? signal.author : '';
-    if (!author) continue;
+    const raw = typeof signal.author === 'string' ? signal.author : '';
+    if (!raw) continue;
+    const author = selves.includes(raw) ? selves[0] : raw;
     const value = Number(signal.value);
     const at = typeof signal.createdAt === 'string' ? signal.createdAt : '';
+    const id = typeof signal.id === 'string' || typeof signal.id === 'number' ? String(signal.id) : '';
     const held = latest.get(author);
-    // `>=` so a pair with no timestamps at all still settles on one of them rather than on neither.
-    if (held && held.at >= at) continue;
-    latest.set(author, { value: Number.isFinite(value) ? value : 0, at });
+    // Later wins; written at one moment, the larger id — the order `compareWritten` in the design
+    // system uses, so every reader keeps the same one whatever order the rows came in.
+    if (held && (held.at > at || (held.at === at && held.id >= id))) continue;
+    latest.set(author, { value: Number.isFinite(value) ? value : 0, at, id });
   }
   return [...latest].map(([author, entry]) => [author, entry.value]);
 }
@@ -99,8 +104,8 @@ export interface WeighSettings {
   mode?: string;
   /** DIDs whose reactions are ignored — a reader's muted list. */
   excludeAuthors?: string[];
-  /** Whose answer is the reader's own — what `weightMine` reports. */
-  me?: string;
+  /** Whose answer is the reader's own — what `weightMine` reports. One DID, or all of theirs (`me.dids`). */
+  me?: string | readonly string[];
   /** How much each person's voice counts — see {@link parseWeights}. */
   weights?: unknown;
 }
@@ -125,7 +130,8 @@ export function weighVotes(votes: readonly Vote[], settings: WeighSettings): Rec
   const muted = new Set(settings.excludeAuthors ?? []);
   const weights = parseWeights(settings.weights);
 
-  const mine = settings.me ? votes.find(([author]) => author === settings.me) : undefined;
+  const selves: readonly string[] = typeof settings.me === 'string' ? [settings.me] : (settings.me ?? []);
+  const mine = votes.find(([author]) => selves.includes(author));
   if (mine) about.weightMine = mine[1];
 
   const heard = votes
@@ -174,7 +180,7 @@ function weightedMedian(votes: { value: number; weight: number }[]): number {
 
 /** The whole of the old single-step API: a card's rows read and weighed at once. */
 export function weighSignals(rows: unknown, settings: WeighSettings): Record<string, GraphValue> {
-  const votes = readVotes(rows, settings.signalTypeId);
+  const votes = readVotes(rows, settings.signalTypeId, settings.me);
   return votes ? weighVotes(votes, settings) : {};
 }
 

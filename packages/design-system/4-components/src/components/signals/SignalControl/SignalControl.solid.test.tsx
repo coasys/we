@@ -45,6 +45,24 @@ describe('my reaction, from any of my computers', () => {
     expect(onSignal).toHaveBeenCalledWith(null);
   });
 
+  it('where two of my computers left a reaction, reads the newest, whichever order they are listed in', () => {
+    const vote = { icon: 'arrow-up', mode: 'vote', rangeMin: -1, rangeMax: 1 } as const;
+    const older = { signalTypeId: 'vote', value: 1, author: DESKTOP, id: 'r-desk', createdAt: 1000 };
+    const newer = { signalTypeId: 'vote', value: -1, author: LAPTOP, id: 'r-lap', createdAt: 2000 };
+    for (const signals of [
+      [older, newer],
+      [newer, older],
+    ]) {
+      const onSignal = vi.fn();
+      // "Vote up" over a newest of -1 changes the vote to +1; over +1 it would take it back.
+      press({ signalType: vote, signals, myDids: [DESKTOP, LAPTOP, PERSON], onSignal });
+      expect(onSignal).toHaveBeenCalledWith(1);
+      dispose?.();
+      dispose = undefined;
+      host?.remove();
+    }
+  });
+
   it("still reads somebody else's reaction as theirs", () => {
     const onSignal = vi.fn();
     press({

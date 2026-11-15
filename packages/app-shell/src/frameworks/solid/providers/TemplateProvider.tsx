@@ -790,14 +790,11 @@ export default function TemplateProvider() {
         which dropped a withdrawal hold the instant any other type on the same record drew: the heart
         came back on until the real data caught up. See `settleFromSignals`.
       */
-      if (typeof given.record === 'string' && typeof given.type === 'string' && typeof given.me === 'string') {
+      // `me` is `me.dids` from a template, or one DID.
+      const me = typeof given.me === 'string' || Array.isArray(given.me) ? (given.me as string | string[]) : null;
+      if (typeof given.record === 'string' && typeof given.type === 'string' && me) {
         queueMicrotask(() =>
-          signalOptimism.settleFromSignals(
-            given.record as string,
-            given.type as string,
-            given.me as string,
-            given.signals,
-          ),
+          signalOptimism.settleFromSignals(given.record as string, given.type as string, me, given.signals),
         );
       }
       return list;

@@ -61,6 +61,12 @@ describe('a change to the template on screen', () => {
     expect(remoteUpdateFor({ author: 'did:ana', me, editing: true, followOthers: false })).toBe('apply-editing');
   });
 
+  it('applies my own change from my other computer, given every DID that is me', () => {
+    const dids = ['did:key:desktop', 'did:key:laptop', 'did:scid:me'];
+    expect(remoteUpdateFor({ author: 'did:key:laptop', me: dids, editing: false, followOthers: false })).toBe('apply');
+    expect(remoteUpdateFor({ author: 'did:ana', me: dids, editing: false, followOthers: false })).toBe('offer');
+  });
+
   it('treats a save with no recorded author as somebody else’s', () => {
     expect(remoteUpdateFor({ author: undefined, me, editing: false, followOthers: false })).toBe('offer');
   });

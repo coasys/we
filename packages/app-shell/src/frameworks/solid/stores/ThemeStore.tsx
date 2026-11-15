@@ -1,6 +1,7 @@
 import { readBootSnapshot } from '@shared/bundles/bootSnapshot';
 import { readDeviceApp } from '@shared/bundles/deviceApp';
 import { offeredInPickers } from '@shared/devOnlyOffers';
+import { selfDids } from '@shared/personProfile';
 import { appTemplateRegistry } from '@shared/registries/appTemplates';
 import { seedBundleAppId, seedBundleApps } from '@shared/registries/seedBundles';
 import { devOnlyThemeIds, isValidThemeKey, themeRegistry } from '@shared/registries/themeRegistry';
@@ -1764,7 +1765,8 @@ export function ThemeStoreProvider(props: ParentProps) {
     const themeIcon = options.icon ?? base.icon;
 
     const existing = await Theme.findOne(marketplacePerspective, { where: { slug: themeSlug } });
-    if (existing && existing.author !== session.me()?.did) {
+    // Published from any of my devices is mine to update.
+    if (existing && !selfDids(session.me()?.dids ?? session.me()?.did).has(existing.author)) {
       toastService.error(`A theme with slug "${themeSlug}" already exists in the marketplace by a different author`);
       return false;
     }

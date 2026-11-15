@@ -34,9 +34,10 @@
  * Framework-neutral, per `CONVENTIONS.md`: which dataset, who is asking, the vocabulary and how a
  * failure reaches a person all arrive as `InvolvementDeps`.
  */
+import { newestWritten } from '@we/components/signals';
 import { type DatasetProxy, Involvement, type InvolvementSemantic, runEntityTransaction } from '@we/entities';
 
-import { replaceAcrossDevices } from './replaceAcrossDevices';
+import { keepNewestAcrossDevices, replaceAcrossDevices } from './replaceAcrossDevices';
 
 /** What `InvolvementType.semantic` may hold, in the reading order a list uses. */
 export const INVOLVEMENT_SEMANTICS: readonly InvolvementSemantic[] = [
@@ -227,6 +228,10 @@ export function createInvolvementActions(deps: InvolvementDeps): InvolvementActi
    * it: deleting a record another key wrote is a write a space's policy may refuse, and a refusal
    * inside the transaction would have cost the new answer with it. A refused one stays, and readers
    * still count me once, as my newest answer — see `replaceAcrossDevices`.
+   *
+   * Whether there is anything to write is judged against that newest answer, the one readers show,
+   * not against any answer of mine: a refused removal can leave an older "going" under a newer
+   * "maybe", and pressing going again has to write, or I read maybe for good.
    */
   async function respond(nodeId: string, kind: string): Promise<void> {
     const p = dataset();
@@ -247,39 +252,63 @@ export function createInvolvementActions(deps: InvolvementDeps): InvolvementActi
       let elsewhere: Involvement[] = [];
       try {
         // Mine from any of my computers — one answer per person, not one per device.
-        const held = (await Promise.all(selves(self).map((did) => heldBy(p, nodeId, did))))
-          .flat()
-          .filter((row) => answers.has(row.kind));
-        const stale = held.filter((row) => row.kind !== kind);
-        const own = stale.filter((row) => row.agent === self);
-        elsewhere = stale.filter((row) => row.agent !== self);
-        // The same answer from another of my computers still stands as mine; there is nothing to write.
-        const already = held.some((row) => row.kind === kind);
+        const mineNow = async () =>
+          (await Promise.all(selves(self).map((did) => heldBy(p, nodeId, did))))
+            .flat()
+            .filter((row) => answers.has(row.kind));
+        const held = await mineNow();
+        const own = held.filter((row) => row.agent === self);
+        const current = newestWritten(held);
+        if (kind && current?.kind === kind) {
+          // Already what I answer. This device's older rows lose to it and go; nothing is written, and
+          // nothing another computer wrote is touched.
+          const stale = own.filter((row) => row !== current);
+          if (stale.length) {
+            await runEntityTransaction(p, async (tx) => {
+              for (const row of stale) await row.delete(tx.batchId);
+            });
+          }
+          // Held on for this device, but the answer that stands may be my other computer's: then
+          // there is no row here for the hold to wait for.
+          const settle = current.agent === self ? done : release;
+          for (const slug of answers) settle?.(nodeId, self, slug);
+          return;
+        }
+        elsewhere = held.filter((row) => row.agent !== self);
         for (const row of elsewhere) if (row.agent) hold?.(nodeId, row.agent, row.kind, false);
-        if (own.length || (!already && kind)) {
+        // Assigned inside the transaction, so typed past the `undefined` it starts as.
+        let written = undefined as Awaited<ReturnType<typeof Involvement.create>> | undefined;
+        if (own.length || kind) {
           await runEntityTransaction(p, async (tx) => {
             for (const row of own) await row.delete(tx.batchId);
-            if (kind && !already) {
-              await Involvement.create(p, { agent: self, kind, node: [nodeId] }, { batchId: tx.batchId });
-            }
+            if (kind)
+              written = await Involvement.create(p, { agent: self, kind, node: [nodeId] }, { batchId: tx.batchId });
           });
         }
         for (const slug of answers) done?.(nodeId, self, slug);
+        const failure = 'SpaceStore: could not remove the answer from your other device';
         let refused = 0;
-        for (const row of elsewhere) {
-          const left = await replaceAcrossDevices(
-            [row],
-            'SpaceStore: could not remove the answer from your other device',
-          );
-          refused += left;
-          if (!row.agent) continue;
-          // A refused removal is still on the record, so what is on screen goes back to the data.
-          if (left) release?.(nodeId, row.agent, row.kind);
-          else done?.(nodeId, row.agent, row.kind);
+        if (written) {
+          // Read again: what another of my computers wrote meanwhile is judged too.
+          const removed = await keepNewestAcrossDevices(written, await mineNow(), failure);
+          for (const row of elsewhere) {
+            if (!row.agent) continue;
+            // One left standing is still on the record, so what is on screen goes back to the data.
+            if (removed.has(row.id)) done?.(nodeId, row.agent, row.kind);
+            else release?.(nodeId, row.agent, row.kind);
+          }
+        } else {
+          for (const row of elsewhere) {
+            const left = await replaceAcrossDevices([row], failure);
+            refused += left;
+            if (!row.agent) continue;
+            if (left) release?.(nodeId, row.agent, row.kind);
+            else done?.(nodeId, row.agent, row.kind);
+          }
         }
         // A new answer stands over a refused old one, since readers count my newest. A withdrawal
         // that left one standing did not happen.
-        if (refused && !kind) notify('Could not withdraw the answer you gave on another device');
+        if (refused) notify('Could not withdraw the answer you gave on another device');
       } catch (error) {
         for (const slug of answers) release?.(nodeId, self, slug);
         for (const row of elsewhere) if (row.agent) release?.(nodeId, row.agent, row.kind);

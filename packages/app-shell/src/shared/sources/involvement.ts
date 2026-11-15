@@ -22,8 +22,9 @@
  *   several device keys, and replacing what my laptop answered deletes a record another key wrote —
  *   which a space's policy may refuse (see `replaceAcrossDevices`). Of one person's reflexive answers
  *   to one record only the latest written counts, so a refused removal never shows a person both
- *   going and not, nor counts them twice. A held write is the newest of all; a row with no readable
- *   time loses to one that has it, and between two without, the later in the list wins.
+ *   going and not, nor counts them twice. Which is newest is `compareWritten`'s order — later
+ *   `createdAt`, then the larger id — the same one `respond` cleans up by, so every reader and every
+ *   device agrees whatever order the rows were listed in. A held write is the newest of all.
  * - **`dids` leaves out anybody who declined.** It is what a people filter matches on, and somebody
  *   who said they are not going is exactly the person a "who is coming" filter must not surface the
  *   event for.
@@ -34,11 +35,11 @@
  * a round trip later — the same arrangement `arrangedBoard` has with `boardOptimism`, for the same
  * reason. See `involvementOptimism`.
  */
+import { compareWritten } from '@we/components/signals';
 import type { InvolvementSemantic } from '@we/entities';
 
 import { relationId } from '../involvements';
 import { byAnyDid, selfDids } from '../personProfile';
-import { momentOf } from '../spaceRoles';
 
 export interface InvolvementRowInput {
   id?: string;
@@ -162,7 +163,10 @@ const SEMANTIC_KEYS: readonly InvolvementSemantic[] = [
 
 const asRows = <T>(value: unknown): T[] => (Array.isArray(value) ? (value as T[]) : []);
 
-/** Held writes applied to observed rows: an `on` adds the pair if absent, an `off` removes every copy. */
+/**
+ * Held writes applied to observed rows: an `on` stands in for the pair, as the newest write, whether or
+ * not it is stored yet; an `off` removes every copy.
+ */
 export function applyPendingInvolvements(
   rows: readonly InvolvementRowInput[],
   pending: readonly PendingInvolvement[] | null | undefined,
@@ -170,9 +174,12 @@ export function applyPendingInvolvements(
   if (!pending?.length) return [...rows];
   const key = (node: string, agent: string, kind: string) => `${node}\u0000${agent}\u0000${kind}`;
   const held = new Map(pending.map((p) => [key(p.node, p.agent, p.kind), p]));
-  const out = rows.filter((row) => {
+  // An older stored row of a held pair would lose to my other computer's newer answer, and show that
+  // until the write came back; the held one is what I just said.
+  const out = rows.flatMap((row) => {
     const entry = held.get(key(relationId(row.node), row.agent ?? '', row.kind ?? ''));
-    return !entry || entry.on;
+    if (!entry) return [row];
+    return entry.on ? [{ node: entry.node, agent: entry.agent, kind: entry.kind }] : [];
   });
   const present = new Set(out.map((row) => key(relationId(row.node), row.agent ?? '', row.kind ?? '')));
   for (const entry of pending) {
@@ -191,16 +198,14 @@ function newestAnswers(
   bySlug: ReadonlyMap<string, InvolvementKindInput>,
   personOf: (did: string) => string,
 ): Set<InvolvementRowInput> {
-  // A held row carries no id and no time: it is the write just made, so it is the newest there is.
-  const time = (row: InvolvementRowInput) =>
-    !row.id && row.createdAt === undefined ? Infinity : (momentOf(row.createdAt) ?? -Infinity);
+  // A held row carries no id and no time: it is the write just made, so `compareWritten` puts it newest.
   const newest = new Map<string, InvolvementRowInput>();
   for (const row of rows) {
     const node = relationId(row.node);
     if (!node || !row.agent || !bySlug.get(row.kind ?? '')?.reflexive) continue;
     const key = `${node}\u0000${personOf(row.agent)}`;
     const best = newest.get(key);
-    if (!best || time(row) >= time(best)) newest.set(key, row);
+    if (!best || compareWritten(row, best) > 0) newest.set(key, row);
   }
   return new Set(newest.values());
 }

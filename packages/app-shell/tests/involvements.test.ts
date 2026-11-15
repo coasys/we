@@ -118,6 +118,22 @@ describe('who is on each record', () => {
     expect(held.byNode.e1.people.map((p) => p.kind)).toEqual(['maybe']);
   });
 
+  it('picks the same answer of one person whatever order the rows came in, even written at one moment', () => {
+    const LAPTOP = 'did:key:ana-laptop';
+    const profiles = [{ did: 'did:scid:ana', devices: [ANA, LAPTOP] }];
+    const at = '2026-01-01T00:00:00.000Z';
+    const a = { id: 'a1', node: 'e1', agent: LAPTOP, kind: 'going', createdAt: at };
+    const b = { id: 'a2', node: 'e1', agent: ANA, kind: 'not-going', createdAt: at };
+    const untimed = [
+      { id: 'a1', node: 'e1', agent: LAPTOP, kind: 'going' },
+      { id: 'a2', node: 'e1', agent: ANA, kind: 'not-going' },
+    ];
+    for (const pair of [[a, b], [b, a], untimed, [...untimed].reverse()]) {
+      // The larger id wins a tie.
+      expect(involvement({ rows: pair, types, profiles }).byNode.e1.people.map((p) => p.kind)).toEqual(['not-going']);
+    }
+  });
+
   it('draws a duplicate left by two people pressing at once as one involvement', () => {
     const view = involvement({ rows: [...rows, { id: 'i5', node: 't1', agent: ANA, kind: 'assignee' }], types });
     expect(view.byNode.t1.people.filter((p) => p.did === ANA)).toHaveLength(1);
@@ -248,18 +264,36 @@ describe('the writes', () => {
   let writes: string[];
   /** Authors whose records the space's policy will not let this device delete. */
   let refused: Set<string>;
+  /** Every record written at one moment, so which is newer falls to the id. */
+  let sameTime: boolean;
+  /** Holds reads back until this many have arrived — two devices that each read before either writes. */
+  let gate: { size: number; arrived: number; open: () => void; opened: Promise<void> } | undefined;
+  const meet = (size: number) => {
+    let open = () => {};
+    const opened = new Promise<void>((resolve) => (open = resolve));
+    gate = { size, arrived: 0, open, opened };
+  };
 
   const Fake = {
-    findAll: async (_dataset: unknown, query?: { where?: { agent?: string } }) =>
-      table.filter((row) => !query?.where?.agent || row.agent === query.where.agent),
+    findAll: async (_dataset: unknown, query?: { where?: { agent?: string } }) => {
+      const waiting = gate;
+      if (waiting) {
+        if (++waiting.arrived >= waiting.size) {
+          gate = undefined;
+          waiting.open();
+        }
+        await waiting.opened;
+      }
+      return table.filter((row) => !query?.where?.agent || row.agent === query.where.agent);
+    },
     create: async (_dataset: unknown, fields: { agent: string; kind: string; node: string[] }) => {
       const row: Row = {
         id: `i${++serial}`,
         agent: fields.agent,
         kind: fields.kind,
         node: fields.node[0],
-        // A second apart, so which of two answers is newer is never a tie.
-        createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, serial)).toISOString(),
+        // A second apart, so which of two answers is newer is never a tie — unless the case asks.
+        createdAt: new Date(Date.UTC(2026, 0, 1, 0, 0, sameTime ? 0 : serial)).toISOString(),
         delete: async () => {
           if (refused.has(row.agent)) throw new Error('Refused by this space: deleting what another key wrote');
           table = table.filter((r) => r !== row);
@@ -286,6 +320,8 @@ describe('the writes', () => {
     notices = [];
     writes = [];
     refused = new Set();
+    sameTime = false;
+    gate = undefined;
     registerEntity('Involvement', Fake as unknown as EntityClass);
   });
   afterEach(() => unregisterEntity('Involvement'));
@@ -441,6 +477,70 @@ describe('the writes', () => {
       await mine().respond('e1', '');
       expect(table.map((r) => [r.agent, r.kind])).toEqual([[LAPTOP, 'not-going']]);
       expect(notices).toEqual(['Could not withdraw the answer you gave on another device']);
+    });
+
+    /** One of my computers: `self` signs, and the rest of me is the other computer and the person. */
+    const device = (self: string) =>
+      createInvolvementActions({
+        dataset: () => ({}),
+        me: () => self,
+        mine: () => [self, ...[ME, LAPTOP].filter((did) => did !== self), PERSON],
+        types: () => types,
+        notify: (message) => notices.push(message),
+      });
+    const myAnswer = () => involvement({ rows: table, types, me: [ME, LAPTOP, PERSON] }).answers.e1;
+
+    it('writes an answer I gave before again, when a newer one from my other computer stands over it', async () => {
+      // The laptop says going; the desktop says maybe and may not remove the laptop's row.
+      await device(LAPTOP).respond('e1', 'going');
+      refused.add(LAPTOP);
+      await device(ME).respond('e1', 'maybe');
+      expect(myAnswer()).toBe('maybe');
+      // Back on the laptop, going again. Its old "going" is still there, but it is not what I answer.
+      refused.clear();
+      refused.add(ME);
+      await device(LAPTOP).respond('e1', 'going');
+      expect(myAnswer()).toBe('going');
+      expect(table.map((r) => [r.agent, r.kind])).toEqual([
+        [ME, 'maybe'],
+        [LAPTOP, 'going'],
+      ]);
+    });
+
+    it('keeps exactly one answer when both computers change it at once, the one every reader shows', async () => {
+      for (const same of [false, true]) {
+        table = [];
+        sameTime = same;
+        await device(ME).respond('e1', 'maybe');
+        await device(LAPTOP).respond('e1', 'not-going');
+        refused.add(LAPTOP);
+        await device(ME).respond('e1', 'maybe');
+        refused.clear();
+        // Both rows stand: the desktop's maybe and the laptop's not-going. Each computer now reads
+        // both before either writes, and each writes and cleans up.
+        expect(table).toHaveLength(2);
+        meet(6);
+        await Promise.all([device(ME).respond('e1', 'going'), device(LAPTOP).respond('e1', 'not-going')]);
+        expect(table, same ? 'at one moment' : 'a second apart').toHaveLength(1);
+        const [left] = table;
+        expect(myAnswer()).toBe(left.kind);
+        const profiles = [{ did: PERSON, devices: [ME, LAPTOP] }, { did: ANA }];
+        const asAna = involvement({ rows: table, types, me: ANA, profiles });
+        expect(asAna.byNode.e1.people.map((p) => p.kind)).toEqual([left.kind]);
+      }
+    });
+
+    it('never leaves no answer when one computer already shows what it asks and the other changes it', async () => {
+      // The laptop said going, then the desktop said maybe (refused removal) — both stand, maybe is mine.
+      await device(LAPTOP).respond('e1', 'going');
+      refused.add(LAPTOP);
+      await device(ME).respond('e1', 'maybe');
+      refused.clear();
+      // The desktop asks for maybe, which already stands; the laptop asks for going. Each sees the other's.
+      meet(6);
+      await Promise.all([device(ME).respond('e1', 'maybe'), device(LAPTOP).respond('e1', 'going')]);
+      expect(table.map((r) => [r.agent, r.kind])).toEqual([[LAPTOP, 'going']]);
+      expect(myAnswer()).toBe('going');
     });
   });
 

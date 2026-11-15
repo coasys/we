@@ -81,11 +81,13 @@ export function collectionFeed(opts: CollectionFeedOptions): SchemaNode {
   const paged = pageSize !== null;
   const sizeField = `${opts.as}PageSize`;
 
+  // An author the caller names is ANDed with the mute filter below, which takes the `author` key.
+  const { author: named, ...where } = opts.where ?? {};
   const query: QueryStateField = {
     entity: 'CollectionBlock',
     where: {
       kind: opts.kind,
-      ...opts.where,
+      ...where,
       /*
         Muted authors, dropped in the query rather than after it.
 
@@ -94,6 +96,7 @@ export function collectionFeed(opts: CollectionFeedOptions): SchemaNode {
         backend, so anything removed afterwards is a hole in the page rather than a shorter list.
       */
       author: { not: { $: 'spaceStore.mutedDids' } },
+      ...(named !== undefined && { AND: [...((where.AND as unknown[] | undefined) ?? []), { author: named }] }),
     },
     order: { createdAt: opts.order ?? 'desc' },
     ...(paged && { limit: { $: `local.${sizeField}` } }),

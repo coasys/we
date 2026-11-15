@@ -123,3 +123,49 @@ export function tallySignals(type: SignalTypeData, signals: readonly SignalData[
 export function tallyEverything(signals: readonly SignalData[]): number {
   return signals.filter((s) => s.value !== 0).length;
 }
+
+/** A stored record, as far as which of two was written later goes. */
+export interface Written {
+  id?: unknown;
+  createdAt?: unknown;
+}
+
+const writtenAt = (row: Written): number => {
+  const at = row.createdAt;
+  if (typeof at === 'number') return Number.isFinite(at) ? at : -Infinity;
+  if (typeof at !== 'string' || !at) return -Infinity;
+  const ms = /^\d+$/.test(at) ? Number(at) : Date.parse(at);
+  return Number.isFinite(ms) ? ms : -Infinity;
+};
+
+const idOf = (row: Written): string => (typeof row.id === 'string' || typeof row.id === 'number' ? String(row.id) : '');
+
+/**
+ * Which of one person's records is their newest — above 0 when `a` is, below when `b` is.
+ *
+ * One person writes from several device keys, and an answer or a reaction is one per person, so
+ * where two of their records stand every reader must pick the same one, and a device cleaning up must
+ * agree with them on which one that is. Later `createdAt` wins; equal or unreadable times go to the
+ * larger id compared as a string, so the pick never depends on the order a backend listed the rows
+ * in. A row with neither an id nor a time is a write held on screen before it is stored — the newest
+ * there is.
+ *
+ * The times are each device's own clock, so a device whose clock runs behind loses to an older answer
+ * from one that runs ahead. That is a known limit: every reader still picks the same record.
+ */
+export function compareWritten(a: Written, b: Written): number {
+  const held = (row: Written) => !row.id && (row.createdAt === undefined || row.createdAt === null);
+  if (held(a) !== held(b)) return held(a) ? 1 : -1;
+  const at = writtenAt(a) - writtenAt(b);
+  if (at > 0 || at < 0) return at;
+  const ida = idOf(a);
+  const idb = idOf(b);
+  return ida === idb ? 0 : ida > idb ? 1 : -1;
+}
+
+/** The newest of these records under {@link compareWritten}, or undefined for none. */
+export function newestWritten<T extends Written>(rows: readonly T[]): T | undefined {
+  let best: T | undefined;
+  for (const row of rows) if (!best || compareWritten(row, best) > 0) best = row;
+  return best;
+}

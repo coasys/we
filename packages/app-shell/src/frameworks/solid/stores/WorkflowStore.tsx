@@ -240,7 +240,8 @@ export function WorkflowStoreProvider(props: ParentProps) {
   const port = () => (datasetStore.isWeSpace() ? (session.backendPorts()?.workflows ?? null) : null);
   const handle = () => datasetStore.currentDataset()?.handle;
   const datasetId = () => datasetStore.currentDataset()?.id ?? '';
-  const me = () => session.me()?.did;
+  // Every DID that is me: an ask made on my other computer is mine here too.
+  const me = () => session.me()?.dids ?? session.me()?.did;
 
   const available = () => Boolean(port() && handle());
   const capabilities = () => port()?.capabilities ?? null;

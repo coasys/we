@@ -228,8 +228,11 @@ export interface CanvasSeedOptions {
     mode?: string;
     /** DIDs whose reactions are ignored — a reader's muted list. */
     excludeAuthors?: string[];
-    /** The reader's DID, so each card also carries what they themselves gave — `weightMine`. */
-    me?: string;
+    /**
+     * The reader's DIDs (`me.dids`, this device first) or one DID, so each card also carries what they
+     * themselves gave — `weightMine` — and their devices count as one voice.
+     */
+    me?: string | readonly string[];
     /** The type's range, which a pretend person's made-up answers are drawn from — see `simulate`. */
     rangeMin?: number;
     rangeMax?: number;
@@ -363,8 +366,8 @@ export function placementPosition(row: Record<string, unknown>): Record<string, 
  * What each person answered on one card, for `derive` to weigh — see `weighing.ts`. Stamped as JSON because
  * a node's data holds only scalars; nothing but the seed's own `derive` reads it.
  */
-function answersOn(rows: unknown, type: string): Record<string, GraphValue> {
-  const votes = readVotes(rows, type);
+function answersOn(rows: unknown, type: string, me?: string | readonly string[]): Record<string, GraphValue> {
+  const votes = readVotes(rows, type, me);
   return votes ? { weightType: type, weightVotes: JSON.stringify(votes) } : {};
 }
 
@@ -771,7 +774,7 @@ export function canvasSeed(): SeedSource {
           // Beside the counts, and for the same reason they are before the canvas's own fields: a
           // weight is a fact about the record rather than about this canvas's arrangement of it.
           // What each person answered, weighed by `derive` — see `answersOn`.
-          ...(options.weigh?.signalTypeId ? answersOn(row.signals, options.weigh.signalTypeId) : {}),
+          ...(options.weigh?.signalTypeId ? answersOn(row.signals, options.weigh.signalTypeId, options.weigh.me) : {}),
           ...(typeColor ? { canvasTypeColor: typeColor } : {}),
           // Only when true, so a style rule matching `{ pending: true }` and one matching nothing
           // are the two states — an explicit `false` on every other card would make "not pending"

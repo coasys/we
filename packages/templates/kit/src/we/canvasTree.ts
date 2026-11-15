@@ -183,7 +183,7 @@ export const TREE_WEIGH: SchemaProp = {
     ` rangeMin: find(local.treeSignalTypes, { id: ${SIGNAL_IN_FORCE} }).rangeMin,` +
     ` rangeMax: find(local.treeSignalTypes, { id: ${SIGNAL_IN_FORCE} }).rangeMax,` +
     ` step: find(local.treeSignalTypes, { id: ${SIGNAL_IN_FORCE} }).step,` +
-    ` excludeAuthors: spaceStore.mutedDids, me: me.did } : null`,
+    ` excludeAuthors: spaceStore.mutedDids, me: me.dids } : null`,
 };
 
 /**

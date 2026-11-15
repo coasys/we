@@ -133,6 +133,29 @@ describe('a reaction drawn before it is stored', () => {
     expect(withdrawn).toEqual([{ author: 'did:them', signalTypeId: 'st-like', value: 5 }]);
   });
 
+  it('counts me once, as my newest, where two of my computers each left a reaction', () => {
+    const dids = ['did:desktop', 'did:laptop', 'did:scid:me'];
+    const them = { id: 's0', author: 'did:them', signalTypeId: 'st-like', value: 5 };
+    const older = { id: 's1', author: 'did:desktop', signalTypeId: 'st-like', value: 3, createdAt: 1000 };
+    const newer = { id: 's2', author: 'did:laptop', signalTypeId: 'st-like', value: 4, createdAt: 2000 };
+    for (const signals of [
+      [them, older, newer],
+      [newer, them, older],
+    ]) {
+      const read = reactions({ signals, record: 'post-1', type: 'st-like', me: dids, pending: [] });
+      expect(read).toHaveLength(2);
+      expect(read).toContain(newer);
+    }
+    // Written at the same moment, the larger id wins, whatever order the backend listed them in.
+    const tieA = { ...older, createdAt: 2000 };
+    for (const signals of [
+      [tieA, newer],
+      [newer, tieA],
+    ]) {
+      expect(reactions({ signals, record: 'post-1', type: 'st-like', me: dids })).toEqual([newer]);
+    }
+  });
+
   it('leaves everybody else’s alone', () => {
     const others = [
       { author: 'did:a', signalTypeId: 'st-like', value: 1 },

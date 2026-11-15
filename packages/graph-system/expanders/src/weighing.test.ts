@@ -90,6 +90,29 @@ describe('readVotes', () => {
     // Rows that were never read are not the same as nobody having answered.
     expect(readVotes(undefined, 't')).toBeNull();
   });
+
+  it('settles a tie in time on the larger id, whatever order the rows came in', () => {
+    const at = '2026-01-01T00:00:00.000Z';
+    const a = { id: 's1', signalTypeId: 't', value: 1, author: 'did:a', createdAt: at };
+    const b = { id: 's2', signalTypeId: 't', value: 4, author: 'did:a', createdAt: at };
+    expect(readVotes([a, b], 't')).toEqual([['did:a', 4]]);
+    expect(readVotes([b, a], 't')).toEqual([['did:a', 4]]);
+  });
+
+  it('counts the reader once across their devices, as their newest, and reports it as theirs', () => {
+    const me = ['did:desktop', 'did:laptop', 'did:scid:me'];
+    const rows = [
+      { id: 's1', signalTypeId: 't', value: 1, author: 'did:laptop', createdAt: '2026-02-01' },
+      { id: 's2', signalTypeId: 't', value: 5, author: 'did:desktop', createdAt: '2026-01-01' },
+      { id: 's3', signalTypeId: 't', value: 1, author: 'did:b', createdAt: '2026-01-01' },
+    ];
+    const votes = readVotes(rows, 't', me);
+    expect(votes).toEqual([
+      ['did:desktop', 1],
+      ['did:b', 1],
+    ]);
+    expect(weighVotes(votes ?? [], { signalTypeId: 't', me })).toMatchObject({ weight: 2, weightMine: 1 });
+  });
 });
 
 describe('pretend people', () => {

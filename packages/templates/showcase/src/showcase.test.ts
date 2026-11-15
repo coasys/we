@@ -2221,7 +2221,8 @@ describe('the workshop’s tree', () => {
     expect(canvas).toContain(`aggregate: find(local.treeSignalTypes, { id: (${inForce}) }).aggregate`);
     // And the mode, which is what a stored aggregate that cannot express it is read through.
     expect(canvas).toContain(`mode: find(local.treeSignalTypes, { id: (${inForce}) }).mode`);
-    expect(canvas).toContain('me: me.did');
+    // Every DID that is the reader, so their devices are one voice and the mark finds what they gave.
+    expect(canvas).toContain('me: me.dids }');
     // Muted authors left out, as they are on every other reaction surface here.
     expect(canvas).toContain('excludeAuthors: spaceStore.mutedDids');
   });

@@ -41,6 +41,8 @@
 import { datasetKindOf, formatRef, HERE } from '@we/backend-shared';
 import type { ContentBlock } from '@we/block-shared';
 
+import { selfDids } from './personProfile';
+
 /** One dropped thing, as a drag carries it. */
 export interface BringInItem {
   ref: { entity: string; id: string; dataset?: string };
@@ -60,8 +62,11 @@ export interface HeldDataset {
 export interface BringInContext {
   /** The space being dropped into, by the key a reference names it with. */
   hereKey: string;
-  /** Who is dropping — the only person whose posts are copied rather than quoted. */
-  me: string | undefined;
+  /**
+   * Who is dropping — the only person whose posts are copied rather than quoted. Every DID that is
+   * them (`me.dids`), or one: a post written on their other computer is theirs too.
+   */
+  me: string | readonly string[] | undefined;
   /** The dataset a reference's key names, if this agent holds it. */
   held: (key: string) => HeldDataset | null;
   /** A post's author and composition, read from where it is. */
@@ -111,7 +116,7 @@ export async function bringIn(
   const post = source && postId ? await ctx.readPost(source.handle, postId) : null;
 
   // ── A copy: the author's own ────────────────────────────────────────────────
-  const mine = kind === 'personal' || (!!ctx.me && post?.author === ctx.me);
+  const mine = kind === 'personal' || (!!post?.author && selfDids(ctx.me).has(post.author));
   if (source && post && mine) {
     const blocks = await ctx.copyable(source.handle, post.editorState, blockId);
     if (alone && blocks?.length === 1) {

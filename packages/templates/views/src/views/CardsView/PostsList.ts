@@ -114,7 +114,7 @@ export const postsList: SchemaNode = {
               */
               $myComments: {
                 from: 'thread',
-                where: { kind: 'reply', author: { $: 'me.did' } },
+                where: { kind: 'reply', author: { $: 'me.dids' } },
                 count: true,
               },
             },

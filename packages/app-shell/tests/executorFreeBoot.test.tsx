@@ -13,6 +13,7 @@
 import { render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
 import { createBlocks, registerCoreBlocks } from '@we/block-shared';
+import { newestWritten } from '@we/components/signals';
 import { toastService } from '@we/components/solid';
 import { AgentSettings, CollectionBlock, getEntity, Policy, Space, SpaceLandmark } from '@we/entities';
 import { type FeedFind, readFeedWindow } from '@we/module-feed';
@@ -133,7 +134,9 @@ import { type SpaceStore, SpaceStoreProvider, useSpaceStore } from '../src/frame
 import { NO_STARTER } from '../src/shared/bundles/bundleStarter';
 import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
 import { moduleRegistry } from '../src/shared/registries/moduleRegistry';
+import { keepNewestAcrossDevices } from '../src/shared/replaceAcrossDevices';
 import { provideSeed } from '../src/shared/seedRegistry';
+import { reactions } from '../src/shared/sources/signalTally';
 import { writeSpaceLandmark } from '../src/shared/spaceLandmarks';
 import { COMMUNITY_POLICY } from '../src/shared/spacePolicy';
 
@@ -1984,15 +1987,13 @@ describe('moving between spaces', () => {
 });
 
 describe('changing a reaction', () => {
-  it('edits the record in place, so a change keeps the reaction it changes', async () => {
+  it('writes the change as a new record in place of the old, so its time says when I last reacted', async () => {
     /*
-      A changed rating is the same person's same reaction, differently weighted, so it keeps its id
-      and its `createdAt`. It used to be removed and re-created, because an edit to a record read
-      through `include` reached no subscriber — the price was a flicker, the rating passing through
-      "nobody has rated this" on its way from three stars to four. A subscription now follows what
-      its query includes, so the edit is the write.
+      Which of one person's reactions counts is the newest by `createdAt` (`compareWritten`). An edit
+      in place kept the old time, so a change here lost to an older reaction my other computer left,
+      and two computers editing at once each deleted the other's. The swap is one transaction.
 
-      The rest is what an edit could still get wrong: one reaction of this type by this agent,
+      The rest is what the write could still get wrong: one reaction of this type by this agent,
       holding the new value — and a pair written twice heals on the next change instead of staying
       doubled.
     */
@@ -2032,8 +2033,8 @@ describe('changing a reaction', () => {
     // One reaction, the new value — not two rows where the reader finds the stale one first.
     expect(second).toHaveLength(1);
     expect(second[0].value).toBe(4);
-    // And the same record, edited.
-    expect(second[0].id).toBe(first[0].id);
+    // A new record, not the old one edited.
+    expect(second[0].id).not.toBe(first[0].id);
 
     // A pair somebody managed to write twice comes back to one on the next change.
     await (Signal as never as typeof Space).create(
@@ -2062,6 +2063,80 @@ describe('changing a reaction', () => {
     // And withdrawing is its own act, which removes the record rather than storing anything.
     await stores.spaces.withdrawSignal(subject.id, stars.id);
     expect(await mine()).toHaveLength(0);
+  }, 10000);
+
+  it('keeps one reaction, the last pressed, when my other computer changes it at the same time', async () => {
+    /*
+      Each computer reads both reactions before either writes, then each writes and cleans up. With
+      edits in place each deleted the other's and none was left; now each removes only what loses to
+      its own new record, so exactly one stands — the same one every reader shows.
+    */
+    const OTHER = 'did:key:z6MkTestOtherDevice';
+    onPorts = (ports) => {
+      ports.identity = {
+        capabilities: async () => ({ devices: true }) as never,
+        status: async () => ({ did: 'did:scid:coasys:1:QmTestPerson' }) as never,
+        devices: async () => [
+          { keyId: 'k1', sign: 'z6MkTestThisDevice', thisDevice: true, addedSeq: 0, revokedSeq: null },
+          { keyId: 'k2', sign: 'z6MkTestOtherDevice', thisDevice: false, addedSeq: 1, revokedSeq: null },
+        ],
+      } as never;
+    };
+    const stores = mountShell();
+    await ready(stores);
+    await vi.waitFor(() => expect(stores.session.me()?.dids).toContain(OTHER));
+    const dids = stores.session.me()!.dids ?? [];
+
+    await stores.spaces.createSpace('Two computers', 'x', 'personal', 'hidden');
+    const space = (await lifecycle.list()).find((d) => d.name === 'Two computers')!;
+    await stores.spaces.navigateToSpace(space.id);
+    await vi.waitFor(() => expect(stores.datasets.currentDataset()?.id).toBe(space.id));
+
+    const handle = space.handle as never;
+    type Row = { id: string; author: string; value: number; createdAt: string; delete: () => Promise<void> };
+    const Signal = getEntity('Signal')! as never as {
+      create: (h: unknown, data: object, options: object) => Promise<Row>;
+      findAll: (h: unknown, query: object) => Promise<Row[]>;
+    };
+    const SignalType = getEntity('SignalType')! as never as typeof Space;
+    const stars = await SignalType.create(handle, { name: 'Stars', slug: 'stars', mode: 'rating' } as never);
+    const subject = await CollectionBlock.create(handle, { kind: 'post', textContent: 'rate me' } as never);
+    const under = { parent: { id: subject.id, relation: 'signals' } };
+    const ago = (s: number) => new Date(Date.now() - s * 1000).toISOString();
+    const mine = () => Signal.findAll(handle, { ...under, where: { signalTypeId: stars.id, author: [...dids] } });
+
+    // This computer's reaction and the other's, both standing (a removal was refused once).
+    await Signal.create(handle, { signalTypeId: stars.id, value: 1, createdAt: ago(10) }, under);
+    const otherOld = await Signal.create(
+      handle,
+      { signalTypeId: stars.id, value: 2, author: OTHER, createdAt: ago(5) },
+      under,
+    );
+
+    // The other computer presses 3 while this one is between its read and its write; this one pressed 4 after.
+    let otherNew: Row | undefined;
+    const read = Signal.findAll;
+    const spy = vi.spyOn(Signal, 'findAll').mockImplementationOnce(async (h, query) => {
+      const seen = await read.call(Signal, h, query);
+      otherNew = await Signal.create(
+        handle,
+        { signalTypeId: stars.id, value: 3, author: OTHER, createdAt: ago(1) },
+        under,
+      );
+      await otherOld.delete();
+      return seen;
+    });
+    await stores.spaces.upsertSignal(subject.id, stars.id, 4);
+    spy.mockRestore();
+    // The other computer cleans up by the same rule, reading after its write.
+    await keepNewestAcrossDevices(otherNew!, await mine(), 'other computer');
+
+    const left = await mine();
+    expect(left.map((row) => row.value)).toEqual([4]);
+    // Every reader picks that one: the overlay and the control's own pick.
+    const signals = left.map((row) => ({ ...row, signalTypeId: stars.id }));
+    expect(reactions({ signals, me: dids }).map((row) => (row as Row).value)).toEqual([4]);
+    expect(newestWritten(signals)?.value).toBe(4);
   }, 10000);
 });
 

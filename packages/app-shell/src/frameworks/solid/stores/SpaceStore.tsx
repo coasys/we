@@ -40,7 +40,7 @@ import {
   type SettingValue,
   writeSetting,
 } from '@shared/moduleSettings';
-import { onePerPerson } from '@shared/personProfile';
+import { onePerPerson, selfDids } from '@shared/personProfile';
 import { resolveRecordRef } from '@shared/recordNavigation';
 import { withDerivedIds } from '@shared/registries/derivedIds';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
@@ -53,7 +53,7 @@ import {
 } from '@shared/registries/moduleRegistry';
 import { seedBundlePieces } from '@shared/registries/seedBundles';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
-import { replaceAcrossDevices } from '@shared/replaceAcrossDevices';
+import { keepNewestAcrossDevices, replaceAcrossDevices } from '@shared/replaceAcrossDevices';
 import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
 import { type SharingPickerOption, sharingPickerOptions } from '@shared/sharingOptions';
@@ -171,6 +171,7 @@ import {
   RelationshipType,
   Role,
   RoleGrant,
+  runEntityTransaction,
   Signal,
   SignalType,
   Space,
@@ -1344,7 +1345,8 @@ export function SpaceStoreProvider(props: ParentProps) {
     if (uuid === datasetStore.currentDataset()?.id && rolesLoaded()) {
       return administers(roleViews(), mePerson() ?? me ?? null, authorPerson() ?? space.author ?? null);
     }
-    return Boolean(me && space.author === me);
+    // Made from any of my devices.
+    return Boolean(space.author && selfDids(session.me()?.dids ?? me).has(space.author));
   }
 
   /**
@@ -2364,11 +2366,11 @@ export function SpaceStoreProvider(props: ParentProps) {
       const globalDs = datasetStore.globalDataset();
       const myDid = session.me()?.did;
       if (globalDs && myDid) {
-        // Only remove from global discovery if the current user is the author of that
-        // space entry — a peer who joined and later deletes their local copy should not
+        // Only remove from global discovery if the current user (from any of their devices) is the
+        // author of that space entry — a peer who joined and later deletes their local copy should not
         // affect the global listing.
         const spaceInGlobal = await Space.findOne(globalDs.handle, { where: { uuid } }).catch(() => null);
-        if (spaceInGlobal && spaceInGlobal.author === myDid) {
+        if (spaceInGlobal?.author && selfDids(session.me()?.dids ?? myDid).has(spaceInGlobal.author)) {
           await removeSpaceFromParent(uuid, globalDs.handle).catch((err) =>
             console.error('SpaceStore: removeSpaceFromParent on delete error', err),
           );
@@ -2586,7 +2588,8 @@ export function SpaceStoreProvider(props: ParentProps) {
       const node = await CollectionBlock.findOne(p, { where: { id: nodeId } });
       if (!node) return;
       if (attending) await node.addParticipants(me);
-      else await node.removeParticipants(me);
+      // Leaving takes off the entry each of my devices made, or the one from my laptop keeps me going.
+      else for (const did of selfDids(session.me()?.dids ?? me)) await node.removeParticipants(did);
     } catch (error) {
       console.error('SpaceStore: could not update attendance', error);
       toastService.error('Could not update your RSVP');
@@ -3041,55 +3044,57 @@ export function SpaceStoreProvider(props: ParentProps) {
       /*
         And mine from any of my computers (`me.dids`), since the control shows a reaction my laptop gave
         as mine: a press here that saw only this device's record would add a second reaction where I
-        meant to change or take back the first. This device's record is the one kept and edited; the
-        other device's goes after this one is written — see `replaceAcrossDevices`.
+        meant to change or take back the first. The other device's goes after this one is written — see
+        `replaceAcrossDevices`.
       */
-      const otherDevices = (session.me()?.dids ?? []).filter((did) => did !== myDid);
-      const [mine, elsewhere] = await Promise.all([
-        Signal.findAll(p, { parent: { id: nodeId, relation: 'signals' }, where: { signalTypeId, author: myDid } }),
-        otherDevices.length
-          ? Signal.findAll(p, {
-              parent: { id: nodeId, relation: 'signals' },
-              where: { signalTypeId, author: otherDevices },
-            })
-          : Promise.resolve([]),
-      ]);
+      const dids = [...new Set([myDid, ...(session.me()?.dids ?? [])])];
+      const read = () =>
+        Signal.findAll(p, { parent: { id: nodeId, relation: 'signals' }, where: { signalTypeId, author: dids } });
+      const all = await read();
+      const mine = all.filter((signal) => signal.author === myDid);
+      const elsewhere = all.filter((signal) => signal.author !== myDid);
 
       /*
-        Withdrawing a reaction removes the record; changing one edits it in place.
+        Withdrawing a reaction removes the record; changing one writes a new record and removes the
+        old in the same transaction.
 
-        In place, so it keeps the record's id and `createdAt` for what is plainly the same person's
-        same reaction differently weighted, and in one write. It used to be a remove and an add,
-        because an edit to a record read through `include` notified nobody: a subscription over the
-        reacted-to record was triggered by that record's own predicates and not by `we://value` on
-        the included Signal, so every reader went on showing the old number. The replacement touched
-        `we://signal` twice to be seen, at the cost of a flicker — a rating moved from 3 to 4 passed
-        through "nobody has rated this" for a round trip. A subscription now follows what its query
-        includes, so the edit is heard and the flicker has no reason left.
+        New rather than edited in place, because which of one person's reactions counts is the newest
+        by `createdAt` (`compareWritten`), and an edit keeps the old time: a change on this computer
+        would lose to an older reaction my other one left, and two computers editing at once would
+        each delete the other's, leaving none. One transaction, so a reader sees the swap as one
+        change rather than "nobody has reacted" for a round trip — and the hold covers the press.
 
-        Any further reactions of mine on this type are removed, so a pair that was written twice
-        heals on the next change rather than staying doubled for good.
+        Any further reactions of mine on this type go in that transaction too, so a pair that was
+        written twice heals on the next change rather than staying doubled for good.
 
         A withdrawal — `null` — removes the record rather than storing anything, which is what keeps a
         withdrawn reaction absent everywhere instead of being a row every count has to remember to
         exclude. A zero is an ordinary value and is stored like any other.
       */
       try {
-        const kept = value === null ? undefined : mine[0];
-        for (const signal of mine) if (signal !== kept) await signal.delete();
-        if (kept) {
-          kept.value = value as number;
-          await kept.save();
-        } else if (value !== null) {
-          await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, relation: 'signals' } });
+        // Assigned inside the transaction, so typed past the `undefined` it starts as.
+        let written = undefined as Awaited<ReturnType<typeof Signal.create>> | undefined;
+        if (mine.length || value !== null) {
+          await runEntityTransaction(p, async (tx) => {
+            for (const signal of mine) await signal.delete(tx.batchId);
+            if (value !== null) {
+              written = await Signal.create(
+                p,
+                { signalTypeId, value },
+                { parent: { id: nodeId, relation: 'signals' }, batchId: tx.batchId },
+              );
+            }
+          });
         }
-        const left = await replaceAcrossDevices(
-          elsewhere,
-          'SpaceStore: could not remove a reaction from your other device',
-        );
+        const failure = 'SpaceStore: could not remove a reaction from your other device';
+        // A change removes what loses to it, read again so a reaction my other computer gave meanwhile
+        // is judged too; a withdrawal removes what was there when pressed.
         // A changed reaction is stored whatever happened to the old one. A withdrawal that left one
         // standing did not do what was pressed, and says so.
-        if (left && value === null) toastService.error('Could not take back the reaction you gave on another device.');
+        if (written) await keepNewestAcrossDevices(written, await read(), failure);
+        else if (await replaceAcrossDevices(elsewhere, failure)) {
+          toastService.error('Could not take back the reaction you gave on another device.');
+        }
         // The write is back. Not a release — what retires a hold is the data moving — but it ends
         // the hold's exemption from what the next draw says. See `@we/optimism`.
         signalOptimism.done(nodeId, signalTypeId);

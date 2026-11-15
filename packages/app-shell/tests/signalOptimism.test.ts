@@ -43,6 +43,22 @@ describe('a reaction in flight', () => {
     expect(held()).toBeUndefined();
   });
 
+  it('settles on my newest across my devices, given every DID that is me', () => {
+    // Templates hand over `me.dids`. The laptop's older 1 does not answer a desktop hold of 3.
+    const dids = [me, 'did:laptop', 'did:scid:me'];
+    signalOptimism.hold('post-1', 'st-like', 3);
+    signalOptimism.done('post-1', 'st-like');
+    signalOptimism.settleFromSignals('post-1', 'st-like', dids, [
+      { id: 's1', author: 'did:laptop', signalTypeId: 'st-like', value: 1, createdAt: 1000 },
+    ]);
+    expect(held()).toMatchObject({ value: 3 });
+    signalOptimism.settleFromSignals('post-1', 'st-like', dids, [
+      { id: 's1', author: 'did:laptop', signalTypeId: 'st-like', value: 1, createdAt: 1000 },
+      { id: 's2', author: me, signalTypeId: 'st-like', value: 3, createdAt: 2000 },
+    ]);
+    expect(held()).toBeUndefined();
+  });
+
   it('is not released by a record whose reactions have not arrived', () => {
     /*
       An empty list read as data says this agent has not reacted — so a hold for a reaction reads as

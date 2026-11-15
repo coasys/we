@@ -19,6 +19,7 @@ import { createCallKernel } from '@shared/callKernel';
 import { sameDataset } from '@shared/datasetIdentity';
 import { hostListeners, hostSlot } from '@shared/hostSlot';
 import { gatherTranscriptTurns, type TurnRecord } from '@shared/interpretation/transcriptTurns';
+import { selfDids } from '@shared/personProfile';
 import { provideModuleHostServices } from '@shared/registries/moduleHostServices';
 import { moduleRegistry } from '@shared/registries/moduleRegistry';
 import { getSeed } from '@shared/seedRegistry';
@@ -1283,8 +1284,9 @@ export function DatasetStoreProvider(props: ParentProps) {
       if (!schemas?.dedupe) return '';
       const { removed, authors } = await schemas.dedupe(handle);
       if (removed === 0) return 'No duplicate SDNA links found.';
-      const myDid = session.me()?.did;
-      const authorList = authors.map((did) => (did === myDid ? `${did} (you)` : did)).join(', ');
+      // Any of my devices is me.
+      const mine = selfDids(session.me()?.dids ?? session.me()?.did);
+      const authorList = authors.map((did) => (mine.has(did) ? `${did} (you)` : did)).join(', ');
       const summary = `Removed ${removed} duplicate SDNA link(s) created by: ${authorList}`;
       trace('dataset', 'sdna:cleanup', { dataset: targetUuid, summary });
       return summary;

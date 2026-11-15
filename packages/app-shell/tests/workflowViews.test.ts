@@ -105,6 +105,22 @@ describe('recordView', () => {
   });
 });
 
+describe('an ask from my other computer', () => {
+  it('marks it as mine, given every DID that is me', () => {
+    const { model } = toLanes(proposal);
+    const item = {
+      record: 'p1',
+      state: 'vote',
+      waiting: [{ to: 'adopted', approvers: ['did:laptop'] }],
+      stalled: false,
+    };
+    expect(recordView(proposal, model, item, '', ['did:desktop', 'did:laptop', 'did:scid:me']).waiting[0].mine).toBe(
+      true,
+    );
+    expect(recordView(proposal, model, item, '', ['did:desktop']).waiting[0].mine).toBe(false);
+  });
+});
+
 describe('when a record started', () => {
   it('reads the time it entered the workflow as a date a timestamp shows', () => {
     const { model } = toLanes(proposal);

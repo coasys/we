@@ -4,7 +4,7 @@ import { POPOVER_DISMISS } from '@we/design-types';
 import { createSignal, For, Match, Show, Switch } from 'solid-js';
 
 import { Row } from '../../../frameworks/solid';
-import { GLYPH_SIZE, SIGNAL_GLYPH_WEIGHT, tallySignals } from '../aggregate';
+import { GLYPH_SIZE, newestWritten, SIGNAL_GLYPH_WEIGHT, tallySignals } from '../aggregate';
 import { CountMark } from '../CountMark/CountMark.solid';
 import type { SignalControlProps } from './SignalControl.types';
 
@@ -42,14 +42,11 @@ export function SignalControl(props: SignalControlProps) {
   /** Draft value while the slider thumb is being dragged — not persisted until release */
   const [sliderDraft, setSliderDraft] = createSignal<number | null>(null);
 
-  /** The current user's signal value derived from the signals array, from whichever of their devices gave it */
+  /** The current user's signal value: their newest, whichever of their devices gave it */
   const myValue = () => {
     if (props.preview) return previewValue();
-    for (const did of props.myDids ?? []) {
-      const mine = props.signals?.find((s) => s.author === did);
-      if (mine !== undefined) return mine.value;
-    }
-    return null;
+    const dids = props.myDids ?? [];
+    return newestWritten((props.signals ?? []).filter((s) => dids.includes(s.author)))?.value ?? null;
   };
 
   /** Unified reactive value */

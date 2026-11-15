@@ -325,7 +325,7 @@ export const mineSection: TemplateSchema & { id: string } = {
   },
   type: 'Column',
   props: { width: '100%' },
-  $queries: { loans: { ...openLoans, where: { status: [...OPEN], borrower: { $: 'me.did' } } } },
+  $queries: { loans: { ...openLoans, where: { status: [...OPEN], borrower: { $: 'me.dids' } } } },
   children: [
     {
       type: 'Column',
