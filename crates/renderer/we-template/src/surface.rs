@@ -67,7 +67,8 @@ pub struct SurfaceTable {
     /// these, so a key whose node left the resolved tree drops here.
     claimed: HashSet<SurfaceKey>,
     /// Generations mint upward forever within the runtime — a remount is
-    /// always a new one; reuse is how a stale report could land.
+    /// always a new one; reuse is how a stale report could land, so the
+    /// counter refuses at `u64::MAX` instead of wrapping.
     next_generation: u64,
     /// Bumped when a report changes `{width, tier}` — the dirty input.
     /// Pruning is not a move: the node that could read the entry is gone.
@@ -93,8 +94,13 @@ impl SurfaceTable {
             .entries
             .entry(key.clone())
             .or_insert_with(|| {
+                // Refuse exhaustion rather than wrap into a generation a
+                // stale report could still quote — the ticket counter's
+                // rule (Lal F6).
                 let generation = *next;
-                *next += 1;
+                *next = generation
+                    .checked_add(1)
+                    .expect("surface generations exhausted");
                 SurfaceEntry {
                     generation,
                     width: 0.0,
@@ -152,5 +158,34 @@ impl SurfaceTable {
     /// Live entries — the frame's claim set after commit.
     pub(crate) fn len(&self) -> usize {
         self.entries.len()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+
+    use super::*;
+
+    /// The generation counter refuses at `u64::MAX` rather than wrapping
+    /// into reuse — a report quoting an ancient generation can never land
+    /// on a new incarnation (Lal r2 P3, the tickets' F6 rule).
+    #[test]
+    fn generations_exhaust_instead_of_wrapping() {
+        let mut table = SurfaceTable {
+            next_generation: u64::MAX - 1,
+            ..SurfaceTable::default()
+        };
+        let a = table.claim(SurfaceKey::Host("a".into()));
+        assert_eq!(a.generation, u64::MAX - 1, "the last generation minted");
+        let hit = catch_unwind(AssertUnwindSafe(|| {
+            table.claim(SurfaceKey::Host("b".into()))
+        }));
+        assert!(hit.is_err(), "exhaustion refuses instead of wrapping");
+        assert!(
+            table.measure(&SurfaceKey::Host("b".into())).is_none(),
+            "no entry was minted"
+        );
+        assert_eq!(table.next_generation, u64::MAX, "the counter never wrapped");
     }
 }

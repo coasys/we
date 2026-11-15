@@ -168,3 +168,34 @@ fn egui_root_reading_its_own_surface_width_settles() {
         "the host is the slot — 1200 less the panel's 2×8 margin — whatever width the root picked"
     );
 }
+
+/// Lal r2 P3: the producer's `set` guard. A settled frame re-reports
+/// nothing — every report rides the inbox and wakes the session, so an
+/// unguarded walk would wake egui on every frame it paints, forever.
+#[test]
+fn egui_steady_frames_report_nothing() {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    let mut h = settled(
+        serde_json::json!({
+            "type": "Column",
+            "props": { "w": { "$": "surface.width" } },
+            "children": [{
+                "type": "$surface",
+                "props": { "px": "120px" },
+                "children": [{ "type": "Label", "props": { "w": { "$": "surface.width" } } }]
+            }]
+        }),
+        1000.0,
+    );
+    let wakes = Arc::new(AtomicUsize::new(0));
+    let w = wakes.clone();
+    h.state_mut().session.set_waker(Arc::new(move || {
+        w.fetch_add(1, Ordering::SeqCst);
+    }));
+    h.run_steps(5);
+    assert_eq!(
+        wakes.load(Ordering::SeqCst),
+        0,
+        "unmoved measures are not re-reported — nothing wakes the session"
+    );
+}
