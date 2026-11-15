@@ -3,6 +3,9 @@
 //! Baselines live in `tests/snapshots/`; re-record with
 //! `UPDATE_SNAPSHOTS=1 cargo test -p we-app gallery`.
 
+#[path = "support/gpu.rs"]
+mod gpu;
+
 use egui_kittest::{Harness, SnapshotOptions, SnapshotResults};
 use we_app::gallery::{gallery_ui, load_theme_set};
 
@@ -33,6 +36,7 @@ use we_app::gallery::{gallery_ui, load_theme_set};
 /// levels, Δ≈425 ≫ 0.05), a moved border, or a missing glyph.
 fn pinned_harness(size: egui::Vec2) -> egui_kittest::HarnessBuilder {
     Harness::builder()
+        .renderer(gpu::serial())
         .with_size(size)
         .with_pixels_per_point(1.0)
         .with_context_setup(we_egui::install_media)
