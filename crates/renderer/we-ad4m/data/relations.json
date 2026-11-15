@@ -1,0 +1,316 @@
+{
+  "AgentSettings": {
+    "hiddenTemplates": "we://hidden_template",
+    "installedThemes": "we://installed_theme",
+    "spaceTemplatePreferences": "we://space_template_preference"
+  },
+  "Amendment": {
+    "node": "we://amended_node",
+    "run": "we://amendment_run"
+  },
+  "AudioBlock": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "CalloutBlock": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "CodeBlock": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "CollectionBlock": {
+    "amendments": "we://amendment",
+    "arranges": "we://arranges",
+    "board": "we://board",
+    "children": "ad4m://has_child",
+    "extracted": "we://extracted",
+    "gathers": "we://gathers",
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "recognised": "we://recognised",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "DividerBlock": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "EdgeRoute": {
+    "connection": "we://routed_connection"
+  },
+  "EmbedBlock": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "EventBlock": {
+    "generatedBy": "we://generated_by",
+    "location": "we://location",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "FileBlock": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "ImageBlock": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "Involvement": {
+    "node": "we://involved_in"
+  },
+  "InvolvementType": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "LinkBlock": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "LocationBlock": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "ModelRun": {},
+  "MutedAgent": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "Placement": {
+    "node": "we://placed_node"
+  },
+  "Policy": {},
+  "ReadMarker": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "Relationship": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "source": "we://relationship_source",
+    "target": "we://relationship_target",
+    "thread": "we://thread"
+  },
+  "RelationshipType": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "Role": {},
+  "RoleGrant": {},
+  "Shape": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "Signal": {},
+  "SignalType": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "Space": {
+    "generatedBy": "we://generated_by",
+    "landmarks": "we://space_landmark",
+    "location": "we://location",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "root": "we://root",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "taskStates": "we://task_state_order",
+    "thread": "we://thread",
+    "typeStyles": "we://type_style"
+  },
+  "SpaceLandmark": {
+    "node": "we://landmark_node"
+  },
+  "SpacePreference": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "SpaceTemplatePreference": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "TagBlock": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "TaskBlock": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "TaskState": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "Template": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "screenshots": "we://screenshot",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "TextBlock": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "Theme": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "screenshots": "we://screenshot",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "Topic": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "TypeStyle": {},
+  "VideoBlock": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  },
+  "WeNode": {
+    "generatedBy": "we://generated_by",
+    "mentions": "we://mention",
+    "participants": "we://participant",
+    "responses": "we://response",
+    "runs": "we://model_run",
+    "signals": "we://signal",
+    "thread": "we://thread"
+  }
+}

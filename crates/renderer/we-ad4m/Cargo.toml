@@ -7,3 +7,28 @@ publish = false
 
 [dependencies]
 we-data.workspace = true
+we-template.workspace = true
+we-expr.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+indexmap.workspace = true
+log.workspace = true
+async-trait.workspace = true
+
+# The native transport: a WebSocket client and the runtime it runs on. Native
+# only — the crate compiles to an empty shell on wasm32, so the workspace's
+# wasm check stays green (`crates/renderer/Cargo.toml`: no tokio on wasm).
+#
+# `ad4m-client` from the approved, unmerged A4 + A5 work (branch
+# port/a5-rust-connect): typed modelQuery/modelSubscribe with reconnect, and
+# the Rust `ad4m-connect` flow. Move the rev when it merges.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+ad4m-client = { git = "https://github.com/coasys/ad4m.git", rev = "fb3e212b1550f4ef064921a0114b0c449a2a7cb8" }
+tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
+anyhow = "1"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+tempfile = "3"
+serde_json.workspace = true
+we-session.workspace = true
+we-screen.workspace = true

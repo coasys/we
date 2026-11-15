@@ -1,0 +1,182 @@
+//! A real executor for the live tests: spawn, connect, seed a perspective.
+//!
+//! The binary is `EXECUTOR_PATH`, as in `ad4m-client`'s own integration
+//! tests. Without it the tests print a skip and pass — unless
+//! `AD4M_REQUIRE_EXECUTOR=1`, which makes a missing binary a failure.
+//!
+//! Each executor gets its own temporary data directory and a free port, and
+//! is killed when the handle drops: these tests never touch an executor they
+//! did not start.
+#![allow(dead_code)]
+
+use std::path::PathBuf;
+use std::process::{Child, Command, Stdio};
+use std::time::{Duration, Instant};
+
+use serde_json::{json, Value};
+use we_ad4m::{Connection, Runtime};
+
+pub fn require_binary() -> Option<PathBuf> {
+    if let Ok(p) = std::env::var("EXECUTOR_PATH") {
+        let p = PathBuf::from(p);
+        assert!(p.exists(), "EXECUTOR_PATH does not exist: {}", p.display());
+        return Some(p);
+    }
+    assert!(
+        !std::env::var("AD4M_REQUIRE_EXECUTOR").is_ok_and(|v| v != "0" && !v.is_empty()),
+        "AD4M_REQUIRE_EXECUTOR is set but EXECUTOR_PATH is not"
+    );
+    eprintln!("SKIP: set EXECUTOR_PATH to an ad4m-executor binary to run the live tests");
+    None
+}
+
+fn free_port() -> u16 {
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port()
+}
+
+pub struct Executor {
+    child: Child,
+    pub url: String,
+    pub port: u16,
+    _data: tempfile::TempDir,
+}
+
+impl Drop for Executor {
+    fn drop(&mut self) {
+        let _ = self.child.kill();
+        let _ = self.child.wait();
+    }
+}
+
+/// A single-user executor with no admin credential: an anonymous loopback
+/// caller is the operator, so no capability request is needed.
+pub fn start_executor() -> Option<Executor> {
+    let binary = require_binary()?;
+    let data = tempfile::tempdir().unwrap();
+    let port = free_port();
+    let seed = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/bootstrapSeed.json");
+    let init = Command::new(&binary)
+        .args(["init", "--data-path"])
+        .arg(data.path())
+        .arg("--network-bootstrap-seed")
+        .arg(&seed)
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .expect("ad4m-executor init");
+    assert!(init.success(), "ad4m-executor init failed");
+    let log = std::env::var("WE_AD4M_EXECUTOR_LOG").ok();
+    let child = Command::new(&binary)
+        .arg("run")
+        .arg("--app-data-path")
+        .arg(data.path())
+        .args(["--port", &port.to_string()])
+        .args(["--run-holochain", "false"])
+        .args(["--language-language-only", "true"])
+        .args(["--run-dapp-server", "false"])
+        .arg("--insecure-no-admin-credential")
+        .env("AD4M_EXIT_WITH_PARENT", "true")
+        .stdout(Stdio::null())
+        .stderr(match &log {
+            Some(path) => Stdio::from(std::fs::File::create(path).unwrap()),
+            None => Stdio::null(),
+        })
+        .spawn()
+        .expect("spawn ad4m-executor");
+    Some(Executor {
+        child,
+        url: format!("http://127.0.0.1:{port}"),
+        port,
+        _data: data,
+    })
+}
+
+/// Poll the socket until the executor takes it.
+pub fn connect(rt: &Runtime, url: &str) -> Connection {
+    let deadline = Instant::now() + Duration::from_secs(120);
+    loop {
+        match rt.block_on(Connection::open(rt.handle(), url, "")) {
+            Ok(c) => return c,
+            Err(e) => {
+                assert!(
+                    Instant::now() < deadline,
+                    "executor did not come up in 120s: {e}"
+                );
+                std::thread::sleep(Duration::from_millis(500));
+            }
+        }
+    }
+}
+
+/// The smallest WE-shaped `CollectionBlock`: `kind` and `title` under WE's
+/// own predicates, so a template's `{ entity: "CollectionBlock", where:
+/// { kind: "post" } }` reads it as WE writes it.
+pub const COLLECTION_SDNA: &str = r#"{
+  "target_class": "we://CollectionBlock",
+  "constructor_actions": [
+    {"action": "addLink", "source": "this", "predicate": "we://kind", "target": "placeholder"}
+  ],
+  "properties": [
+    {"path": "we://kind", "name": "kind", "min_count": 1, "max_count": 1, "setter": [{"action": "setSingleTarget", "source": "this", "predicate": "we://kind", "target": "value"}]},
+    {"path": "we://title", "name": "title", "min_count": 0, "max_count": 1, "setter": [{"action": "setSingleTarget", "source": "this", "predicate": "we://title", "target": "value"}]}
+  ]
+}"#;
+
+/// Mint the agent, add a perspective, install `CollectionBlock`. Returns
+/// the perspective's uuid.
+pub fn seed_space(rt: &Runtime, conn: &Connection, name: &str) -> String {
+    let client = conn.client();
+    rt.block_on(async {
+        let status = client.agent.generate("passphrase".into()).await.unwrap();
+        assert!(status.is_unlocked);
+        let handle = client.perspectives.add(name.into()).await.unwrap();
+        conn.ws()
+            .call::<Value>(
+                "perspective.addSdna",
+                json!({
+                    "uuid": handle.uuid,
+                    "name": "CollectionBlock",
+                    "sdnaCode": "",
+                    "sdnaType": "subject_class",
+                    "shaclJson": COLLECTION_SDNA,
+                }),
+            )
+            .await
+            .unwrap();
+        handle.uuid
+    })
+}
+
+/// A post, written by another client as links: the constructor link
+/// (`we://kind`) and the title. Links rather than `perspective.instanceCreate`
+/// because the executor the tests run against may predate the validated
+/// write RPC (A3); the subscription answers to links either way.
+pub fn create_post(rt: &Runtime, conn: &Connection, uuid: &str, title: &str) {
+    use ad4m_client::literal::Literal;
+    use ad4m_client::types::LinkInput;
+    static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let base = format!("e7test://post/{}-{n}", std::process::id());
+    let client = conn.client();
+    rt.block_on(async {
+        for (predicate, value) in [("we://kind", "post"), ("we://title", title)] {
+            let target = Literal::from_string(value.to_string()).to_url().unwrap();
+            client
+                .perspectives
+                .add_link(
+                    uuid.to_string(),
+                    LinkInput {
+                        source: base.clone(),
+                        predicate: Some(predicate.to_string()),
+                        target,
+                    },
+                )
+                .await
+                .unwrap();
+        }
+    });
+}
