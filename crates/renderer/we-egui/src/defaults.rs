@@ -113,3 +113,42 @@ pub(crate) fn base_family_of(ctx: &egui::Context) -> Option<Arc<str>> {
 pub(crate) fn theme_of(ctx: &egui::Context) -> Option<Arc<str>> {
     ctx.data_mut(|d| d.get_temp::<Arc<str>>(egui::Id::unique(THEME_KEY)))
 }
+
+/// What the theme's stylesheet says about a part `node` does not expose
+/// as a node (the switch's `thumb`/`track`) — the same matcher
+/// [`style_of`] uses, asked at paint time from the stashed theme, tokens
+/// and viewport. `None` before the first frame, on a theme-less view, or
+/// where no rule matches.
+pub(crate) fn part_patch(
+    ctx: &egui::Context,
+    node: &we_template::ResolvedNode,
+    part: &str,
+) -> Option<we_style::StylePatch> {
+    let theme = theme_of(ctx)?;
+    let tokens = tokens_of(ctx).unwrap_or_default();
+    let view = view_of(ctx);
+    let scope = indexmap::IndexMap::new();
+    let scx = StyleCx {
+        tokens: &tokens,
+        theme: &theme,
+        viewport: view.viewport,
+        container_width: view.container_width,
+        scope: &scope,
+    };
+    we_layout::theme_css::part_style(&scx, node, part, None)
+}
+
+const MOTION_KEY: &str = "we-egui::reduced-motion";
+
+/// Ask for less motion: theme animations hold still (the resting frame)
+/// while it is set. A host wires it to the OS setting or the agent's
+/// `displayPreferences.motion`; nothing sets it by default.
+pub fn set_reduced_motion(ctx: &egui::Context, reduced: bool) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::unique(MOTION_KEY), reduced));
+}
+
+/// Whether [`set_reduced_motion`] asked for less motion.
+pub(crate) fn reduced_motion(ctx: &egui::Context) -> bool {
+    ctx.data_mut(|d| d.get_temp::<bool>(egui::Id::unique(MOTION_KEY)))
+        .unwrap_or(false)
+}

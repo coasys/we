@@ -1,303 +1,343 @@
-//! A theme's component *stylesheet* — the rules a theme's `index.css`
-//! writes against parts (`[data-we-theme='retro'] we-button::part(base)`)
-//! that the recorded token table cannot carry: vars alone never produced
-//! a bevel. Each rule lands on the resolved [`Style`] — bg, borders,
-//! shadows — where the part's own declaration would sit, gated on the
-//! theme id the way the `[data-we-theme='x']` selector gates it.
+//! A theme's component *stylesheet* — the rules its `index.css` writes
+//! against elements and parts (`[data-we-theme='retro']
+//! we-button::part(base)`) that the recorded token table cannot carry: vars
+//! alone never produced a bevel.
 //!
-//! Deliberately absent:
-//!
-//! - rules that address *parts* the element does not expose as nodes —
-//!   the switch's `thumb`/`track` and the modal's `close-button`. Those
-//!   ride `defaults::theme_of` in the widget's own painter, where the
-//!   part rect exists (`inputs/switch.rs` is the first consumer).
-//! - the `::after` dotted connectors (`we-menu-group`/`we-menu-item`) —
-//!   there is no pseudo-element painter; the gap list carries it.
-//! - `[disabled]`'s `text-shadow` — parsed but unpainted, same gap list.
-use std::sync::LazyLock;
+//! The rules are not transcribed here. [`we_style::stylesheet`] parses the
+//! theme's own CSS (the shipped `index.css`, or a sheet a user theme
+//! installed with [`install`]), and this module asks it, per node, what
+//! the host element and its `base` part match under the
+//! `[data-we-theme='<id>']` root — then lands the evaluated declarations on
+//! the resolved [`Style`] where the part's own declarations would sit.
+//! Parts that are not nodes (the switch's `thumb`/`track`, the modal's
+//! `close-button`) are asked through [`part_style`] by their painters, and
+//! `::before`/`::after` boxes through [`pseudo_boxes`].
+use std::sync::Arc;
 
-use we_style::{
-    eval_box_shadow, eval_clip_path, eval_color, BorderKind, BorderSide, ClipPath, Color,
-    Dimension, Edges, Shadow, Style,
+use we_expr::Value;
+use we_style::stylesheet::{
+    self, cascade, has_state, take_animation, Cascaded, Element, Matched, PseudoElement, Query,
+    State, Stylesheet,
 };
+use we_style::{EvalCx, EvalResult, StateKind, Style, StylePatch};
 use we_template::ResolvedNode;
 
-use crate::defaults::StyleCx;
+use crate::defaults::{font_px, root_px, StyleCx};
 
-/// `retro/index.css`'s raised Win95 face — four inset layers every
-/// bevelled part shares: white top/left over a lighter second edge,
-/// black bottom/right over grey.
-const RETRO_BEVEL_CSS: &str =
-    "inset -1px -1px #0a0a0a, inset 1px 1px #fff, inset -2px -2px grey, inset 2px 2px #dfdfdf";
+pub use we_style::stylesheet::{install, uninstall};
 
-/// `we-button::part(base):active` — the same four layers with light and
-/// dark swapped: the pressed-in look.
-const RETRO_BEVEL_PRESSED_CSS: &str =
-    "inset -1px -1px #fff, inset 1px 1px #0a0a0a, inset -2px -2px #dfdfdf, inset 2px 2px grey";
-
-static RETRO_BEVEL: LazyLock<Vec<Shadow>> =
-    LazyLock::new(|| eval_box_shadow(RETRO_BEVEL_CSS).expect("bevel CSS parses"));
-static RETRO_BEVEL_PRESSED: LazyLock<Vec<Shadow>> =
-    LazyLock::new(|| eval_box_shadow(RETRO_BEVEL_PRESSED_CSS).expect("bevel CSS parses"));
-
-/// The raised-face layers — exported for the part-level painters
-/// (the switch's track and thumb take the same four).
-pub fn retro_bevel() -> &'static [Shadow] {
-    &RETRO_BEVEL
+/// The stylesheet `theme` paints with — an installed one first, else the
+/// built-in theme's `index.css`.
+pub fn sheet(theme: &str) -> Option<Arc<Stylesheet>> {
+    stylesheet::for_theme(theme)
 }
 
-/// The `:active` swap.
-pub fn retro_bevel_pressed() -> &'static [Shadow] {
-    &RETRO_BEVEL_PRESSED
+/// A node's prop as the attribute the element reflects: a string as
+/// itself, `true` as present-and-empty, a number in its JS spelling;
+/// `false`/`null`/absent as no attribute. Lit reflects camelCase props as
+/// lowercase attributes, so the lookup ignores case.
+fn node_attr(node: &ResolvedNode, name: &str) -> Option<Arc<str>> {
+    let v = node
+        .props
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case(name))
+        .map(|(_, v)| v)?;
+    match v {
+        Value::Str(s) => Some(s.clone()),
+        Value::Bool(true) => Some(Arc::from("")),
+        Value::Bool(false) | Value::Null => None,
+        Value::Num(_) => Some(Arc::from(v.js_string().as_str())),
+        _ => None,
+    }
 }
 
-fn color(text: &str) -> Color {
-    eval_color(text).expect("theme_css colours are literal CSS")
-}
-
-/// `border: 0` — every side set to `none`.
-fn clear_borders(style: &mut Style) {
-    let none = we_style::BorderSide {
-        width: None,
-        kind: BorderKind::None,
-        color: None,
+/// Every rule `node` matches under `theme` for `parts` (`None` is the host)
+/// and `pseudo`.
+fn matched<'s>(
+    sheet: &'s Stylesheet,
+    theme: &str,
+    node: &ResolvedNode,
+    parts: &[Option<&str>],
+    pseudo: Option<PseudoElement>,
+) -> Vec<Matched<'s>> {
+    let attr = |n: &str| node_attr(node, n);
+    let el = Element {
+        ty: &node.ty,
+        attr: &attr,
     };
-    style.paint.borders = we_style::Edges::new(
-        Some(none.clone()),
-        Some(none.clone()),
-        Some(none.clone()),
-        Some(none),
-    );
+    let root_attr = |n: &str| (n == "data-we-theme").then(|| Arc::from(theme));
+    let root = Element {
+        ty: "",
+        attr: &root_attr,
+    };
+    let ancestors = [root];
+    let mut out = Vec::new();
+    for part in parts {
+        out.extend(sheet.matching(&Query {
+            element: &el,
+            ancestors: &ancestors,
+            part: *part,
+            pseudo,
+        }));
+    }
+    out
 }
 
-/// `border-radius: 0`.
-fn square(style: &mut Style) {
-    let zero = Some(we_style::Dimension::Px(0.0));
-    style.paint.radius = we_style::Edges::new(zero, zero, zero, zero);
+fn eval_cx<'a>(scx: &'a StyleCx) -> EvalCx<'a> {
+    EvalCx {
+        tokens: scx.tokens,
+        viewport: scx.viewport,
+        font_px: font_px(scx),
+        root_px: root_px(scx),
+    }
 }
 
-/// `cyberpunk/index.css`'s `we-button::part(base)` slab — corners cut,
-/// the whole face leaning right; `:hover` drops the clip (`clip-path:
-/// none`) back to the plain box.
-const CYBERPUNK_BUTTON_CLIP: &str = "polygon(-15px 0%, calc(100% + 15px) 0%, \
-     calc(100% + 15px) 100%, 20px 100%, -15px calc(100% - 35px))";
-
-/// `we-input::part(base)` — the notched field outline: the top dips at
-/// 60%, the bottom at 80%, corner cuts everywhere else.
-const CYBERPUNK_INPUT_CLIP: &str = "polygon(0 5px, 5px 0, calc(60% - 5px) 0, \
-     60% 5px, 100% 5px, 100% calc(100% - 5px), \
-     calc(100% - 5px) calc(100% - 3px), calc(80% - 3px) calc(100% - 3px), \
-     calc(80% - 5px) calc(100% - 0px), 0 calc(100% - 0px), \
-     0% calc(100% - 0px))";
-
-static CYBERPUNK_BUTTON: LazyLock<ClipPath> =
-    LazyLock::new(|| eval_clip_path(CYBERPUNK_BUTTON_CLIP).expect("clip CSS parses"));
-static CYBERPUNK_INPUT: LazyLock<ClipPath> =
-    LazyLock::new(|| eval_clip_path(CYBERPUNK_INPUT_CLIP).expect("clip CSS parses"));
-
-/// The button slab — exported so the painter tests assert against the
-/// theme's own declaration.
-pub fn cyberpunk_button_clip() -> &'static ClipPath {
-    &CYBERPUNK_BUTTON
+fn patch_of(ev: EvalResult) -> StylePatch {
+    StylePatch {
+        layout: ev.layout,
+        text: ev.text,
+        paint: ev.paint,
+        unsupported: ev.unsupported,
+        animation: None,
+    }
 }
 
-/// The notched field outline.
-pub fn cyberpunk_input_clip() -> &'static ClipPath {
-    &CYBERPUNK_INPUT
+/// One cascade evaluated: the normal declarations, then the important ones
+/// over them.
+fn evaluate(
+    c: &Cascaded,
+    scx: &StyleCx,
+    scope: &indexmap::IndexMap<Arc<str>, Arc<str>>,
+) -> (StylePatch, StylePatch) {
+    let cx = eval_cx(scx);
+    (
+        patch_of(we_style::eval_decls_in(&c.normal, &cx, scope)),
+        patch_of(we_style::eval_decls_in(&c.important, &cx, scope)),
+    )
 }
 
-/// A `var(--we-*)` colour — the recorded tables hold literals, so `get`
-/// plus `eval_color` is the whole lookup.
-fn var_color(scx: &StyleCx, name: &str) -> Option<Color> {
-    scx.tokens.get(name).and_then(eval_color)
+fn merge(patch: &StylePatch, into: &mut StylePatch) {
+    patch.layout.merge_into(&mut into.layout);
+    patch.text.merge_into(&mut into.text);
+    patch.paint.merge_into(&mut into.paint);
+    into.unsupported.extend(patch.unsupported.iter().cloned());
 }
 
-/// `style_of`'s last pass: the component rules `theme`'s stylesheet
-/// declares, over whatever the bags resolved. The stylesheet's
-/// `!important` decls are unconditional (authored props lose there too);
-/// its plain decls sit where the part's own would — also unconditional,
-/// since the rule replaces the part's var-read entirely. The rules land
-/// on `pretier` too — state patches rebuild from it, and the stylesheet
-/// holds under states the same way the CSS does.
+/// An important `border*` beats a state's `border-color`/`border-width`
+/// too — those would recolour or resize the sides the rule cleared.
+fn important_over(important: &StylePatch, patch: &mut StylePatch) {
+    merge(important, patch);
+    if !important.paint.borders.all_unset() {
+        patch.paint.border_color = None;
+        patch.paint.border_width = None;
+    }
+}
+
+const STATES: [(State, StateKind); 4] = [
+    (State::Hover, StateKind::Hover),
+    (State::Active, StateKind::Active),
+    (State::Focus, StateKind::Focus),
+    (State::Disabled, StateKind::Disabled),
+];
+
+fn slot(style: &mut Style, kind: StateKind) -> &mut Option<Box<StylePatch>> {
+    match kind {
+        StateKind::Hover => &mut style.hover,
+        StateKind::Active => &mut style.active,
+        StateKind::Focus => &mut style.focus,
+        StateKind::Disabled => &mut style.disabled,
+    }
+}
+
+/// `style_of`'s last pass: the rules the theme's stylesheet declares for
+/// the node's host element and its `base` part, over whatever the bags
+/// resolved.
+///
+/// - Resting rules land on the style and on `pretier` (state patches
+///   rebuild from it) — over the authored props, since an outer `::part`
+///   rule beats the part's own var-reading declaration.
+/// - A rule written for a state (`::part(base):active`) becomes that
+///   state's patch: the whole cascade in that state, with an authored
+///   state bag still winning the slots it sets.
+/// - `!important` declarations beat everything authored, state bags
+///   included.
+/// - `animation-*` resolves against the sheet's `@keyframes` onto
+///   [`Style::animation`] (or a state patch's).
 pub(crate) fn apply(scx: &StyleCx, node: &ResolvedNode, style: &mut Style) {
-    let themed = |style: &mut Style| match scx.theme {
-        "retro" => retro(node, style),
-        "cyberpunk" => cyberpunk(scx, node, style),
-        _ => {}
+    if scx.theme.is_empty() {
+        return;
+    }
+    let Some(sheet) = sheet(scx.theme) else {
+        return;
     };
-    themed(style);
-    // `pretier` carries the same rules — state patches rebuild from it.
+    let m = matched(&sheet, scx.theme, node, &[None, Some("base")], None);
+    if m.is_empty() {
+        return;
+    }
+    let scope = style.scope.clone();
+    let mut rest = cascade(&m, None);
+    let anim = take_animation(&mut rest, &sheet).map(Arc::new);
+    let (normal, important) = evaluate(&rest, scx, &scope);
+    let mut resting = normal;
+    merge(&important, &mut resting);
+    let land = |s: &mut Style| {
+        resting.layout.merge_into(&mut s.layout);
+        resting.text.merge_into(&mut s.text);
+        resting.paint.merge_into(&mut s.paint);
+        if anim.is_some() {
+            s.animation = anim.clone();
+        }
+    };
+    land(style);
     if let Some(pretier) = style.pretier.as_deref_mut() {
-        themed(pretier);
+        land(pretier);
+    }
+    style
+        .unsupported
+        .extend(resting.unsupported.iter().cloned());
+
+    for (state, kind) in STATES {
+        let slot = slot(style, kind);
+        if has_state(&m, state) {
+            let mut c = cascade(&m, Some(state));
+            let anim = take_animation(&mut c, &sheet).map(Arc::new);
+            let (mut patch, imp) = evaluate(&c, scx, &scope);
+            if let Some(authored) = slot.as_deref() {
+                merge(authored, &mut patch);
+            }
+            important_over(&imp, &mut patch);
+            patch.animation = anim;
+            *slot = Some(Box::new(patch));
+        } else if let Some(authored) = slot.as_deref_mut() {
+            important_over(&important, authored);
+        }
     }
 }
 
-fn retro(node: &ResolvedNode, style: &mut Style) {
-    match node.ty.as_ref() {
-        // we-button::part(base): `background: silver !important;
-        // color: #222 !important; border: 0 !important` + the bevel.
-        "we-button" => {
-            style.paint.bg = Some(color("silver"));
-            style.text.color = Some(color("#222"));
-            clear_borders(style);
-            // !important beats every non-important declaration, the
-            // `:hover`/`:active`/`:focus`/`:disabled` ones included — no
-            // state patch may change these three.
-            for patch in [
-                &mut style.hover,
-                &mut style.active,
-                &mut style.focus,
-                &mut style.disabled,
-            ]
-            .into_iter()
-            .flatten()
-            {
-                patch.paint.bg = None;
-                patch.text.color = None;
-                patch.paint.borders = we_style::Edges::default();
-                patch.paint.border_color = None;
-                patch.paint.border_width = None;
-            }
-            style.paint.shadows = Some(retro_bevel().to_vec());
-            // `:active` swaps the bevel — an authored `activeProps` shadow
-            // still wins its slot (the rule is not !important); the rest
-            // of an authored patch is kept.
-            let patch = style.active.get_or_insert_with(Box::default);
-            if patch.paint.shadows.is_none() {
-                patch.paint.shadows = Some(retro_bevel_pressed().to_vec());
-            }
-        }
-        // we-input::part(base): `background: white; border: 0` + the
-        // bevel (`:focus-within` repeats the same value — no swap).
-        "we-input" => {
-            style.paint.bg = Some(color("white"));
-            clear_borders(style);
-            style.paint.shadows = Some(retro_bevel().to_vec());
-        }
-        // we-avatar::part(base): `border-radius: 0; border: 0` + bevel.
-        "we-avatar" => {
-            square(style);
-            clear_borders(style);
-            style.paint.shadows = Some(retro_bevel().to_vec());
-        }
-        // we-modal::part(base): `background: silver` + bevel — the
-        // overlay chrome reads the style when its port lands (gap list
-        // #8); recording the rule now is what makes that land.
-        "we-modal" => {
-            style.paint.bg = Some(color("silver"));
-            style.paint.shadows = Some(retro_bevel().to_vec());
-        }
-        _ => {}
+/// What the theme's rules say about a part `node` does not expose as a
+/// node — the switch's `thumb`/`track`, the modal's `close-button` — in
+/// `state` (`None` at rest). `None` when no rule matches.
+pub fn part_style(
+    scx: &StyleCx,
+    node: &ResolvedNode,
+    part: &str,
+    state: Option<StateKind>,
+) -> Option<StylePatch> {
+    if scx.theme.is_empty() {
+        return None;
     }
+    let sheet = sheet(scx.theme)?;
+    let m = matched(&sheet, scx.theme, node, &[Some(part)], None);
+    if m.is_empty() {
+        return None;
+    }
+    let state = state.and_then(|k| STATES.iter().find(|(_, s)| *s == k).map(|(st, _)| *st));
+    let mut c = cascade(&m, state);
+    let anim = take_animation(&mut c, &sheet).map(Arc::new);
+    let (mut patch, imp) = evaluate(&c, scx, scx.scope);
+    merge(&imp, &mut patch);
+    patch.animation = anim;
+    Some(patch)
 }
 
-fn cyberpunk(scx: &StyleCx, node: &ResolvedNode, style: &mut Style) {
-    match node.ty.as_ref() {
-        // we-button::part(base): the clip-path slab; `:hover` swaps it
-        // for `clip-path: none` — an authored hover patch still wins its
-        // slot (the rule is not `!important`).
-        "we-button" => {
-            style.paint.clip = Some(CYBERPUNK_BUTTON.clone());
-            let patch = style.hover.get_or_insert_with(Box::default);
-            if patch.paint.clip.is_none() {
-                patch.paint.clip = Some(ClipPath::None);
+/// A generated `::before`/`::after` box: its key (`"::before"`), the part
+/// of the element it hangs off (`None` is the host), and its evaluated
+/// style.
+#[derive(Debug, Clone)]
+pub struct PseudoBox {
+    pub key: &'static str,
+    pub part: Option<&'static str>,
+    pub style: Style,
+}
+
+/// The `::before`/`::after` boxes the theme generates on `node` (its host
+/// and its `base` part). A box exists only where `content` is set and is
+/// not `none` — CSS's rule; `content: none` is how a theme removes the
+/// part's own pseudo-element, which [`suppressed_pseudos`] reports.
+pub fn pseudo_boxes(scx: &StyleCx, node: &ResolvedNode) -> Vec<PseudoBox> {
+    let mut out = Vec::new();
+    if scx.theme.is_empty() {
+        return out;
+    }
+    let Some(sheet) = sheet(scx.theme) else {
+        return out;
+    };
+    for pseudo in [PseudoElement::Before, PseudoElement::After] {
+        for part in [None, Some("base")] {
+            let m = matched(&sheet, scx.theme, node, &[part], Some(pseudo));
+            if m.is_empty() {
+                continue;
             }
-        }
-        // we-input::part(base): `height: 60px; font-size: 16px` — then
-        // the layered borders collapse to solid accent-200 at 10/2/10/2
-        // (`border: 10px solid` then left/right 2px and the
-        // `border-color` line wins them all), the notched clip, and
-        // `:focus-within` recolouring every side accent-500.
-        "we-input" => {
-            style.layout.height = Some(Dimension::Px(60.0));
-            style.text.font_size = Some(Dimension::Px(16.0));
-            let c200 = var_color(scx, "--we-color-accent-200");
-            let side = |width: f32| {
-                Some(BorderSide {
-                    width: Some(Dimension::Px(width)),
-                    kind: BorderKind::Solid,
-                    color: c200,
-                })
+            let mut c = cascade(&m, None);
+            let content = c.take("content");
+            if content.as_deref().is_none_or(|v| v.trim() == "none") {
+                continue;
+            }
+            let anim = take_animation(&mut c, &sheet).map(Arc::new);
+            let (normal, imp) = evaluate(&c, scx, scx.scope);
+            let mut p = normal;
+            merge(&imp, &mut p);
+            let style = Style {
+                layout: p.layout,
+                text: p.text,
+                paint: p.paint,
+                unsupported: p.unsupported,
+                animation: anim,
+                ..Style::default()
             };
-            style.paint.borders = Edges::new(side(10.0), side(2.0), side(10.0), side(2.0));
-            style.paint.clip = Some(CYBERPUNK_INPUT.clone());
-            if let Some(c500) = var_color(scx, "--we-color-accent-500") {
-                let patch = style.focus.get_or_insert_with(Box::default);
-                patch.paint.borders = style.paint.borders.map(|s| {
-                    s.as_ref().map(|b| BorderSide {
-                        color: Some(c500),
-                        ..b.clone()
-                    })
-                });
-            }
+            out.push(PseudoBox {
+                key: pseudo.key(),
+                part,
+                style,
+            });
         }
-        _ => {}
     }
+    out
+}
+
+/// The pseudo-elements a theme removes with `content: none` — the
+/// primitive's own decoration a painter should then leave out (retro's
+/// `we-tabs::part(base)::before`).
+pub fn suppressed_pseudos(
+    scx: &StyleCx,
+    node: &ResolvedNode,
+    part: Option<&str>,
+) -> Vec<PseudoElement> {
+    let mut out = Vec::new();
+    let Some(sheet) = (!scx.theme.is_empty()).then(|| sheet(scx.theme)).flatten() else {
+        return out;
+    };
+    for pseudo in [PseudoElement::Before, PseudoElement::After] {
+        let m = matched(&sheet, scx.theme, node, &[part], Some(pseudo));
+        if cascade(&m, None).get("content").as_deref().map(str::trim) == Some("none") {
+            out.push(pseudo);
+        }
+    }
+    out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use we_style::{eval_box_shadow, eval_clip_path, eval_color, BorderKind, Color};
 
-    #[test]
-    fn bevel_parses_to_the_css_layers() {
-        let layers = retro_bevel();
-        assert_eq!(layers.len(), 4);
-        assert!(layers.iter().all(|s| s.inset));
-        assert!(layers
-            .iter()
-            .all(|s| s.blur.is_none() && s.spread.is_none()));
-        // Light edges come from the +1/+1 and +2/+2 layers, dark from the
-        // negative ones — the pairing the test in props.rs asserts on
-        // geometry terms.
-        assert_eq!(layers[0].dx, we_style::Dimension::Px(-1.0));
-        assert_eq!(layers[1].dx, we_style::Dimension::Px(1.0));
-        assert_eq!(layers[2].dx, we_style::Dimension::Px(-2.0));
-        assert_eq!(layers[3].dx, we_style::Dimension::Px(2.0));
+    fn color(text: &str) -> Color {
+        eval_color(text).unwrap()
     }
 
-    #[test]
-    fn pressed_swaps_light_and_dark() {
-        let pressed = retro_bevel_pressed();
-        // The raised face's light edge (#fff at +1,+1) moves to the
-        // dark position (-1,-1) and vice versa.
-        assert_eq!(pressed[0].dx, we_style::Dimension::Px(-1.0));
-        assert_eq!(pressed[0].color, Some(eval_color("#fff").unwrap()));
-        assert_eq!(pressed[1].color, Some(eval_color("#0a0a0a").unwrap()));
-        assert_eq!(pressed[2].color, Some(eval_color("#dfdfdf").unwrap()));
-        assert_eq!(pressed[3].color, Some(eval_color("grey").unwrap()));
-    }
+    const RETRO_BEVEL: &str =
+        "inset -1px -1px #0a0a0a, inset 1px 1px #fff, inset -2px -2px grey, inset 2px 2px #dfdfdf";
+    const RETRO_PRESSED: &str =
+        "inset -1px -1px #fff, inset 1px 1px #0a0a0a, inset -2px -2px #dfdfdf, inset 2px 2px grey";
 
-    /// A retro button node with authored state bags that try to recolour
-    /// what the theme declares `!important`.
-    fn retro_button_with_states() -> ResolvedNode {
-        use std::sync::Arc;
-        let bag = |pairs: &[(&str, &str)]| {
-            we_expr::Value::from(
-                pairs
-                    .iter()
-                    .map(|(k, v)| (Arc::<str>::from(*k), we_expr::Value::from(*v)))
-                    .collect::<indexmap::IndexMap<Arc<str>, we_expr::Value>>(),
-            )
-        };
-        let paint = [
-            ("bg", "#ff0000"),
-            ("color", "#0000ff"),
-            ("border", "3px solid #00ff00"),
-        ];
+    fn node(ty: &str, props: &[(&str, Value)]) -> ResolvedNode {
         ResolvedNode {
-            id: we_template::NodeId::from("b"),
-            ty: Arc::from("we-button"),
-            props: [
-                ("label", we_expr::Value::from("OK")),
-                ("hoverProps", bag(&paint)),
-                ("activeProps", bag(&paint)),
-                ("focusProps", bag(&paint)),
-                ("disabledProps", bag(&paint)),
-            ]
-            .into_iter()
-            .map(|(k, v)| (Arc::<str>::from(k), v))
-            .collect(),
+            id: we_template::NodeId::from("n"),
+            ty: Arc::from(ty),
+            props: props
+                .iter()
+                .map(|(k, v)| (Arc::<str>::from(*k), v.clone()))
+                .collect(),
             handlers: indexmap::IndexMap::new(),
             slot: None,
             children: vec![],
@@ -305,19 +345,52 @@ mod tests {
         }
     }
 
+    fn themed(theme: &'static str) -> StyleCx<'static> {
+        let mut scx = StyleCx::empty();
+        scx.theme = theme;
+        scx
+    }
+
+    fn bag(pairs: &[(&str, &str)]) -> Value {
+        Value::from(
+            pairs
+                .iter()
+                .map(|(k, v)| (Arc::<str>::from(*k), Value::from(*v)))
+                .collect::<indexmap::IndexMap<Arc<str>, Value>>(),
+        )
+    }
+
+    /// A retro button node with authored state bags that try to recolour
+    /// what the theme declares `!important`.
+    fn retro_button_with_states() -> ResolvedNode {
+        let paint = [
+            ("bg", "#ff0000"),
+            ("color", "#0000ff"),
+            ("border", "3px solid #00ff00"),
+        ];
+        node(
+            "we-button",
+            &[
+                ("label", Value::from("OK")),
+                ("hoverProps", bag(&paint)),
+                ("activeProps", bag(&paint)),
+                ("focusProps", bag(&paint)),
+                ("disabledProps", bag(&paint)),
+            ],
+        )
+    }
+
     /// `background: silver !important; color: #222 !important; border: 0
     /// !important` — an !important declaration beats every non-important
     /// one, `:hover`/`:active`/`:focus`/`:disabled` bags included.
     #[test]
     fn important_retro_button_decls_survive_every_state() {
-        let mut scx = StyleCx::empty();
-        scx.theme = "retro";
-        let style = crate::defaults::style_of(&retro_button_with_states(), &scx);
+        let style = crate::defaults::style_of(&retro_button_with_states(), &themed("retro"));
         for kind in [
-            we_style::StateKind::Hover,
-            we_style::StateKind::Active,
-            we_style::StateKind::Focus,
-            we_style::StateKind::Disabled,
+            StateKind::Hover,
+            StateKind::Active,
+            StateKind::Focus,
+            StateKind::Disabled,
         ] {
             assert!(style.state(kind).is_some(), "{kind:?} bag resolved");
             let s = style.with_state(kind);
@@ -330,5 +403,147 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// `we-button::part(base):active` swaps the bevel; an authored
+    /// `activeProps` shadow still wins its slot (the rule is not
+    /// important).
+    #[test]
+    fn retro_pressed_bevel_on_active() {
+        let style = crate::defaults::style_of(&node("we-button", &[]), &themed("retro"));
+        assert_eq!(style.paint.shadows, eval_box_shadow(RETRO_BEVEL));
+        let active = style.with_state(StateKind::Active);
+        assert_eq!(active.paint.shadows, eval_box_shadow(RETRO_PRESSED));
+        assert_eq!(active.paint.bg, Some(color("silver")));
+        let authored = node("we-button", &[("activeProps", bag(&[("shadow", "none")]))]);
+        let style = crate::defaults::style_of(&authored, &themed("retro"));
+        let active = style.with_state(StateKind::Active);
+        assert_ne!(active.paint.shadows, eval_box_shadow(RETRO_PRESSED));
+    }
+
+    #[test]
+    fn retro_disabled_button_carries_text_shadow() {
+        let scx = themed("retro");
+        let plain = crate::defaults::style_of(&node("we-button", &[]), &scx);
+        assert_eq!(plain.paint.text_shadows, None);
+        let off =
+            crate::defaults::style_of(&node("we-button", &[("disabled", Value::Bool(true))]), &scx);
+        assert_eq!(off.paint.text_shadows, eval_box_shadow("1px 1px 0 #fff"));
+    }
+
+    #[test]
+    fn cyberpunk_rules_land_on_their_elements() {
+        let scx = themed("cyberpunk");
+        let button = crate::defaults::style_of(&node("we-button", &[]), &scx);
+        assert!(matches!(
+            button.paint.clip,
+            Some(we_style::ClipPath::Polygon(_))
+        ));
+        let hover = button.with_state(StateKind::Hover);
+        assert_eq!(hover.paint.clip, Some(we_style::ClipPath::None));
+        assert_eq!(hover.animation.as_ref().unwrap().duration_ms, 2000.0);
+        assert!(button.animation.is_none());
+        // The menu-item and tab clips the hand table never carried.
+        let tab = crate::defaults::style_of(&node("we-tab", &[]), &scx);
+        assert_eq!(
+            tab.paint.clip,
+            eval_clip_path("polygon(87% 0, 0 0, 0 50%, 13% 100%, 88% 100%, 100% 100%, 99% 16%)")
+        );
+        let item = crate::defaults::style_of(&node("we-menu-item", &[]), &scx);
+        assert!(item.paint.clip.is_some());
+        assert_eq!(item.layout.margin.right, Some(we_style::Dimension::Px(0.0)));
+        // Headings take the glitch, body text does not.
+        let h = crate::defaults::style_of(
+            &node("we-text", &[("variant", Value::from("heading-md"))]),
+            &scx,
+        );
+        assert_eq!(h.animation.as_ref().unwrap().name.as_ref(), "glitched");
+        assert_eq!(h.layout.display, Some(we_style::Display::Block));
+        let body =
+            crate::defaults::style_of(&node("we-text", &[("variant", Value::from("body"))]), &scx);
+        assert!(body.animation.is_none());
+    }
+
+    #[test]
+    fn cyberpunk_input_borders_collapse_and_recolour_on_focus() {
+        let mut vars = indexmap::IndexMap::new();
+        vars.insert(Arc::from("--we-color-accent-200"), Arc::from("#112233"));
+        vars.insert(Arc::from("--we-color-accent-500"), Arc::from("#445566"));
+        let tokens = we_style::TokenTable::new(vars);
+        let mut scx = themed("cyberpunk");
+        scx.tokens = Box::leak(Box::new(tokens));
+        let style = crate::defaults::style_of(&node("we-input", &[]), &scx);
+        let w = |s: &Option<we_style::BorderSide>| s.as_ref().unwrap().width;
+        let b = &style.paint.borders;
+        assert_eq!(w(&b.top), Some(we_style::Dimension::Px(10.0)));
+        assert_eq!(w(&b.left), Some(we_style::Dimension::Px(2.0)));
+        assert!(b
+            .as_slice()
+            .iter()
+            .all(|s| s.as_ref().unwrap().color == Some(color("#112233"))));
+        assert_eq!(style.layout.height, Some(we_style::Dimension::Px(60.0)));
+        let focus = style.with_state(StateKind::Focus);
+        assert!(focus
+            .paint
+            .borders
+            .as_slice()
+            .iter()
+            .all(|s| s.as_ref().unwrap().color == Some(color("#445566"))));
+    }
+
+    #[test]
+    fn parts_without_nodes_answer_through_part_style() {
+        let scx = themed("retro");
+        let switch = node("we-switch", &[]);
+        let thumb = part_style(&scx, &switch, "thumb", None).unwrap();
+        assert_eq!(thumb.paint.shadows, eval_box_shadow(RETRO_BEVEL));
+        assert!(part_style(&scx, &switch, "nope", None).is_none());
+        let modal = node("we-modal", &[]);
+        let close = part_style(&scx, &modal, "close-button", None).unwrap();
+        assert_eq!(close.paint.bg, Some(color("silver")));
+        assert!(part_style(&themed("dark"), &switch, "thumb", None).is_none());
+    }
+
+    #[test]
+    fn pseudo_boxes_need_content() {
+        let scx = themed("cyberpunk");
+        let h = node("we-text", &[("variant", Value::from("heading-lg"))]);
+        let boxes = pseudo_boxes(&scx, &h);
+        assert_eq!(boxes.len(), 1);
+        assert_eq!(boxes[0].key, "::after");
+        assert_eq!(
+            boxes[0].style.layout.height,
+            Some(we_style::Dimension::Px(10.0))
+        );
+        assert!(boxes[0].style.paint.clip.is_some());
+        assert!(pseudo_boxes(&scx, &node("we-text", &[])).is_empty());
+        let retro = themed("retro");
+        let item = pseudo_boxes(&retro, &node("we-menu-item", &[]));
+        assert_eq!(item.len(), 1);
+        assert_eq!(item[0].part, Some("base"));
+        assert_eq!(
+            item[0].style.layout.position,
+            Some(we_style::Position::Absolute)
+        );
+        // `content: none` generates nothing and is reported as a removal.
+        let tabs = node("we-tabs", &[]);
+        assert!(pseudo_boxes(&retro, &tabs).is_empty());
+        assert_eq!(
+            suppressed_pseudos(&retro, &tabs, Some("base")),
+            vec![PseudoElement::Before]
+        );
+    }
+
+    #[test]
+    fn installed_sheet_replaces_nothing_else() {
+        install(
+            "test-user-theme",
+            "[data-we-theme='test-user-theme'] we-badge::part(base) { background: #123456 }",
+        );
+        let style = crate::defaults::style_of(&node("we-badge", &[]), &themed("test-user-theme"));
+        assert_eq!(style.paint.bg, Some(color("#123456")));
+        uninstall("test-user-theme");
+        let style = crate::defaults::style_of(&node("we-badge", &[]), &themed("test-user-theme"));
+        assert_eq!(style.paint.bg, None);
     }
 }

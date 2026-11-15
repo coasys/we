@@ -54,22 +54,29 @@ impl Widget for Switch {
             visuals.widgets.inactive.bg_fill
         };
         // The theme's part rules reach the track/thumb where they are —
-        // no node addresses them. Retro's `we-switch::part(track|thumb)`:
-        // square faces carrying the Win95 bevel over the same fills.
-        let retro = crate::defaults::theme_of(cx.ui.ctx()).as_deref() == Some("retro");
+        // no node addresses them, so the painter asks the stylesheet for
+        // `we-switch::part(track|thumb)` (retro: square faces carrying the
+        // Win95 bevel over the same fills).
         let view = crate::defaults::view_of(cx.ui.ctx());
-        let bevel = |rect: Rect| {
-            if !retro {
-                return;
+        let track = crate::defaults::part_patch(cx.ui.ctx(), node, "track");
+        let thumb = crate::defaults::part_patch(cx.ui.ctx(), node, "thumb");
+        let corner = |p: &Option<we_style::StylePatch>, fallback: f32| {
+            p.as_ref()
+                .and_then(|p| p.paint.radius.top)
+                .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
+                .unwrap_or(fallback)
+        };
+        let shadows = |p: &Option<we_style::StylePatch>, rect: Rect| {
+            if let Some(layers) = p.as_ref().and_then(|p| p.paint.shadows.clone()) {
+                let mut part = Style::default();
+                part.paint.shadows = Some(layers);
+                props::paint_box(cx.ui.painter(), rect, &part, egui::Color32::WHITE, view);
             }
-            let mut part = Style::default();
-            part.paint.shadows = Some(we_layout::theme_css::retro_bevel().to_vec());
-            props::paint_box(cx.ui.painter(), rect, &part, egui::Color32::WHITE, view);
         };
         cx.ui
             .painter()
-            .rect_filled(switch_rect, if retro { 0.0 } else { 10.0 }, fill);
-        bevel(switch_rect);
+            .rect_filled(switch_rect, corner(&track, 10.0), fill);
+        shadows(&track, switch_rect);
         let knob_center = egui::pos2(
             if on {
                 switch_rect.max.x - 10.0
@@ -78,14 +85,14 @@ impl Widget for Switch {
             },
             switch_rect.center().y,
         );
-        if retro {
-            // The `part(thumb)` rule's square face — the web part is the
-            // 16px block at 2px insets, which this centre reproduces.
-            let thumb = Rect::from_center_size(knob_center, Size::new(16.0, 16.0));
+        // The web part is the 16px block at 2px insets, which this centre
+        // reproduces; its corner is the part rule's radius, round without.
+        if thumb.is_some() {
+            let thumb_rect = Rect::from_center_size(knob_center, Size::new(16.0, 16.0));
             cx.ui
                 .painter()
-                .rect_filled(thumb, 0.0, egui::Color32::WHITE);
-            bevel(thumb);
+                .rect_filled(thumb_rect, corner(&thumb, 8.0), egui::Color32::WHITE);
+            shadows(&thumb, thumb_rect);
         } else {
             cx.ui
                 .painter()
