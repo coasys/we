@@ -16,7 +16,9 @@ use indexmap::IndexMap;
 /// A theme's computed `--we-*` values, custom-property name → value text.
 #[derive(Debug, Clone, Default)]
 pub struct TokenTable {
-    vars: IndexMap<Arc<str>, Arc<str>>,
+    /// Shared, so a clone — what a cache keeps to compare against — is a
+    /// pointer, and two clones compare by it.
+    vars: Arc<IndexMap<Arc<str>, Arc<str>>>,
     /// [`Self::fingerprint`], worked out the first time it is asked for —
     /// the table never changes after it is built.
     fingerprint: std::sync::OnceLock<u64>,
@@ -25,7 +27,7 @@ pub struct TokenTable {
 impl TokenTable {
     pub fn new(vars: IndexMap<Arc<str>, Arc<str>>) -> Self {
         Self {
-            vars,
+            vars: Arc::new(vars),
             fingerprint: std::sync::OnceLock::new(),
         }
     }
@@ -37,12 +39,19 @@ impl TokenTable {
         *self.fingerprint.get_or_init(|| {
             use std::hash::{Hash, Hasher};
             let mut h = std::collections::hash_map::DefaultHasher::new();
-            for (k, v) in &self.vars {
+            for (k, v) in self.vars.iter() {
                 k.hash(&mut h);
                 v.hash(&mut h);
             }
             h.finish()
         })
+    }
+
+    /// Whether the two tables hold the same names and values, in order —
+    /// at once for a table and its clone, which share their contents.
+    pub fn same(&self, other: &TokenTable) -> bool {
+        Arc::ptr_eq(&self.vars, &other.vars)
+            || (self.fingerprint() == other.fingerprint() && *self.vars == *other.vars)
     }
 
     /// Parse a recorded table: `{ "theme": "dark", "vars": { "--we-…": "…" } }`.

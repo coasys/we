@@ -268,10 +268,19 @@ pub fn style_of(node: &ResolvedNode, scx: &StyleCx) -> Style {
     let Some(key) = style_key(node, scx) else {
         return resolve_style(node, scx);
     };
-    if let Some(hit) = STYLE_MEMO.with(|m| m.borrow().get(&key).cloned()) {
+    // A hit is served only where the inputs it was resolved from are the
+    // ones asked about: two inputs can share a 64-bit hash, and the hash
+    // says where to look, not what the answer is.
+    let hit = STYLE_MEMO.with(|m| {
+        let mut m = m.borrow_mut();
+        let entry = m.get_mut(&key)?;
+        entry.inputs_are(node, scx).then(|| entry.style.clone())
+    });
+    if let Some(hit) = hit {
         return hit;
     }
-    let style = resolve_style(node, scx);
+    let entry = memo_entry(node, scx);
+    let style = entry.style.clone();
     STYLE_MEMO.with(|m| {
         let mut m = m.borrow_mut();
         // A bound, not an eviction policy: a tree has a few hundred
@@ -280,7 +289,7 @@ pub fn style_of(node: &ResolvedNode, scx: &StyleCx) -> Style {
         if m.len() >= STYLE_MEMO_CAP {
             m.clear();
         }
-        m.insert(key, style.clone());
+        m.insert(key, entry);
     });
     style
 }
@@ -288,8 +297,96 @@ pub fn style_of(node: &ResolvedNode, scx: &StyleCx) -> Style {
 /// How many styles [`style_of`] keeps per thread before it starts over.
 const STYLE_MEMO_CAP: usize = 4096;
 
+/// A kept style and every input it was resolved from — what a lookup
+/// compares against before serving it.
+struct MemoEntry {
+    ty: Arc<str>,
+    props: IndexMap<Arc<str>, Value>,
+    tokens: TokenTable,
+    theme: Arc<str>,
+    sheets: u64,
+    viewport: [u32; 2],
+    container: u32,
+    metrics: [u32; 5],
+    scope: IndexMap<Arc<str>, Arc<str>>,
+    style: Style,
+}
+
+fn metric_bits(m: &UnitMetrics) -> [u32; 5] {
+    [m.root_px, m.font_px, m.ch_em, m.ex_em, m.lh_em].map(f32::to_bits)
+}
+
+fn viewport_bits(scx: &StyleCx) -> [u32; 2] {
+    [scx.viewport.width.to_bits(), scx.viewport.height.to_bits()]
+}
+
+impl MemoEntry {
+    /// Whether `node` under `scx` is what this style was resolved from.
+    /// A token table equal to the kept one but not a clone of it takes its
+    /// place, so the next hit compares a pointer.
+    fn inputs_are(&mut self, node: &ResolvedNode, scx: &StyleCx) -> bool {
+        let same = self.ty == node.ty
+            && self.sheets == we_style::stylesheet::installed_generation()
+            && *self.theme == *scx.theme
+            && self.viewport == viewport_bits(scx)
+            && self.container == scx.container_width.to_bits()
+            && self.metrics == metric_bits(&scx.metrics)
+            && self.props.len() == node.props.len()
+            && self
+                .props
+                .iter()
+                .zip(&node.props)
+                .all(|((ka, va), (kb, vb))| ka == kb && value_eq(va, vb))
+            && self.scope == *scx.scope
+            && self.tokens.same(scx.tokens);
+        if same {
+            self.tokens = scx.tokens.clone();
+        }
+        same
+    }
+}
+
+/// What the memo keeps for `node` under `scx`: its style, resolved, and
+/// the inputs it was resolved from.
+fn memo_entry(node: &ResolvedNode, scx: &StyleCx) -> MemoEntry {
+    MemoEntry {
+        ty: node.ty.clone(),
+        props: node.props.clone(),
+        tokens: scx.tokens.clone(),
+        theme: Arc::from(scx.theme),
+        sheets: we_style::stylesheet::installed_generation(),
+        viewport: viewport_bits(scx),
+        container: scx.container_width.to_bits(),
+        metrics: metric_bits(&scx.metrics),
+        scope: scx.scope.clone(),
+        style: resolve_style(node, scx),
+    }
+}
+
+/// The equality [`style_key`]'s hash stands for: the same shape, numbers
+/// by their bits. A callable or a namespace is never kept, so never
+/// compared.
+fn value_eq(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Undefined, Value::Undefined) | (Value::Null, Value::Null) => true,
+        (Value::Bool(x), Value::Bool(y)) => x == y,
+        (Value::Num(x), Value::Num(y)) => x.to_bits() == y.to_bits(),
+        (Value::Str(x), Value::Str(y)) => x == y,
+        (Value::List(x), Value::List(y)) => {
+            x.len() == y.len() && x.iter().zip(y.iter()).all(|(p, q)| value_eq(p, q))
+        }
+        (Value::Obj(x), Value::Obj(y)) => {
+            x.len() == y.len()
+                && x.iter()
+                    .zip(y.iter())
+                    .all(|((kp, p), (kq, q))| kp == kq && value_eq(p, q))
+        }
+        _ => false,
+    }
+}
+
 thread_local! {
-    static STYLE_MEMO: std::cell::RefCell<std::collections::HashMap<u64, Style>> =
+    static STYLE_MEMO: std::cell::RefCell<std::collections::HashMap<u64, MemoEntry>> =
         std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
@@ -803,4 +900,49 @@ pub(crate) fn card_defaults(bag: &mut Bag) {
             ("shadow", "var(--we-theme-shadow, none)"),
         ],
     );
+}
+
+#[cfg(test)]
+mod memo_tests {
+    use super::*;
+    use indexmap::IndexMap;
+
+    fn node(id: &str, width: &str) -> ResolvedNode {
+        let props: IndexMap<Arc<str>, we_expr::Value> =
+            [(Arc::from("width"), we_expr::Value::from(width))]
+                .into_iter()
+                .collect();
+        ResolvedNode {
+            id: we_template::NodeId::from(id),
+            ty: Arc::from("Column"),
+            props,
+            handlers: IndexMap::new(),
+            slot: None,
+            children: vec![],
+            transition: None,
+            surfaces: Default::default(),
+        }
+    }
+
+    /// What a 64-bit collision would leave in the memo: `a`'s style kept
+    /// under the hash `b`'s inputs make.
+    fn poison(b: &ResolvedNode, a: &ResolvedNode, scx: &StyleCx) {
+        let hash = style_key(b, scx).expect("hashable");
+        let entry = memo_entry(a, scx);
+        STYLE_MEMO.with(|m| m.borrow_mut().insert(hash, entry));
+    }
+
+    /// A hit is served only where the inputs it was resolved from are the
+    /// ones asked about — a hash alone does not decide it.
+    #[test]
+    fn a_colliding_hash_is_not_served_the_other_inputs_style() {
+        let scx = StyleCx::empty();
+        let (a, b) = (node("a", "100px"), node("b", "200px"));
+        poison(&b, &a, &scx);
+        assert_eq!(
+            style_of(&b, &scx).layout.width,
+            Some(we_style::Dimension::Px(200.0)),
+            "b's own width, not the colliding entry's"
+        );
+    }
 }
