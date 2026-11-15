@@ -166,6 +166,12 @@ fn the_text_starts_after_the_start_icon() {
     input.children = vec![ResolvedChild::Node(Box::new(icon))];
 
     let (text_left, icon) = painted_text(&input);
+    // Ink first: a placeholder that was never painted leaves the search
+    // at infinity, which every lower bound would pass.
+    assert!(
+        text_left.is_finite() && text_left < 240.0,
+        "no placeholder painted inside the field (left {text_left})"
+    );
     // The icon's `mr` 200 (8px) separates it from the text.
     assert!(
         text_left >= icon.max.x + 8.0 - 0.5,
