@@ -128,11 +128,9 @@ fn stops_of(args: &[&str], ray: f32, m: Metrics) -> Option<Vec<Stop>> {
         at[n - 1] = Some(1.0);
     }
     let mut prev = at[0].unwrap_or(0.0);
-    for a in at.iter_mut() {
-        if let Some(v) = a {
-            *v = v.max(prev);
-            prev = *v;
-        }
+    for v in at.iter_mut().flatten() {
+        *v = v.max(prev);
+        prev = *v;
     }
     let mut i = 0;
     while i < n {
