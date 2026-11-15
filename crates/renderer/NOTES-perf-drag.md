@@ -579,3 +579,127 @@ commit removed; that was fixed in place before the notes.
 - **The dedupe in P2-1 is per drag, not per handler result.** A handler that defers and later applies a
   width it was asked for is not asked again for the same width. That is intended (it already has the
   request), but it means a handler cannot rely on being re-asked to retry.
+
+## Round 5
+
+Lal's review of rounds 3 and 4, on top of `perf-merge-split` at 97a3fa7e3 (Data's trailer rewrite and the
+port/split 9f061fcaa merge). There is one commit per finding, plus one I found while matching the web.
+Each test's red output below is the test run without its fix. The round-4 headings above now carry the
+commit ids from after the rewrite.
+
+The two P2s are about the `$if` enter fade, which the Coasys bundle uses 30 times. Both now follow
+`ConditionalRenderer.tsx`:
+
+- **Its own condition:** each conditional starts from its own initial condition (`startVisible`) and fades
+  in only on a later false → true change.
+- **`then` only:** only the `then` content is wrapped; the `else` is `Show`'s fallback and never animates.
+- **One delay:** every effect starts after the first effect's delay.
+
+### R2-2: the else branch faded in (319f74bad)
+
+The resolver attached the transition to whichever branch it chose. It now attaches it to `then` only.
+
+Test: `if_enter_fade::true_to_false_draws_the_else_at_once`, a `$if` on a query param, true then false,
+with a non-empty `else`.
+
+    assertion `left == right` failed: the else is not faded in
+      left: Some(0.0)
+     right: Some(1.0)
+
+`if_enter_fade::false_to_true_fades_the_then_in` passes before and after. It guards the case that should
+fade.
+
+### R2-1: every conditional mounted after the first tree faded in (5fadc906a)
+
+`Transitions` skipped fades only on the very first tree it saw. A conditional's state now lives per
+conditional, keyed by the `$if`'s own node id:
+
+- **Resolver:** each `$if` with a transition records its condition each pass, false included. A false
+  `$if` with no `else` resolves to nothing, so nothing in the tree could carry its identity. The runtime
+  keeps the last pass's map as `Runtime::conditions()`.
+- **Branch:** the `then` branch's `Transition` carries its `$if`'s id (`site`).
+- **`Transitions::apply`:** takes the map and fades a `then` node only where its site was false in the
+  last tree it saw and is true now.
+
+A site seen for the first time starts as it is, wherever and whenever it appears: on the first tree, on a
+page navigated to, in a row that just mounted, or mounted again after leaving. That is a new
+`ConditionalRenderer` with its own `startVisible`. The global `started` flag and the set of entered nodes
+are gone.
+
+Test: `if_enter_fade::a_page_navigated_to_draws_its_true_conditional_at_once`. A `Navigate` op opens a
+page whose body (chosen by a plain `$if` on `routeStore.currentPath`, since a single-root mount reads no
+`routes`) holds a `$if` that is true from the start. With R2-2 fixed and R2-1 not:
+
+    assertion `left == right` failed: the conditional mounted true: its body is not faded in
+      left: Some(0.0)
+     right: Some(1.0)
+
+Unit tests in `we-layout/tests/transitions.rs`:
+
+- `a_conditional_turning_true_fades_its_then_in`: false → true fades, and fades again the next time.
+- `a_conditional_first_seen_true_is_drawn_at_once`: covers the first tree, a later tree, and mounting
+  again after leaving.
+
+The rail labels still fade on hover. Their `$if` starts false and turns true, and
+`rail_transition::the_rails_labels_fade_in_as_it_opens` passes.
+
+### The first effect's delay (a10dc3ef4, not one of Lal's findings)
+
+The web runs one `setTimeout` per config, with the first effect's delay, and `buildTransitionCSS` writes no
+delay into any effect's own transition. The fade here waited for its own delay instead. That differs only
+where the fade is not the first effect; the bundle's one delayed enter is a lone fade, where the two agree.
+
+Test: `transitions::a_fade_waits_for_the_first_effects_delay_not_its_own`, with
+`[reveal (delay 50ms), fade (100ms, delay 200ms)]`:
+
+    assertion failed: (opacity(&mut t, &with_label, &site(true), 1.1) - 0.5).abs() < 1e-3
+    (the fade waited its own 200ms instead of the reveal's 50ms)
+
+Still unlike the web: exit effects are not drawn. On the web, a `then` leaving with an exit transition stays
+mounted for the effect's length, and the `else` appears only after it. Here the `else` appears at once.
+
+### R2-3: store_view trusted the token fingerprint (20969912e)
+
+`store_view` now compares the stashed table with `TokenTable::same`, as the style memo does. A held clone
+shares its contents, so the usual answer is one pointer compare.
+
+The test needs two tables that collide. `TokenTable::colliding_with(vars, like)` builds one that claims
+another table's fingerprint; it is doc-hidden and exists only for such tests. Test:
+`we-egui defaults::store_view_tests::a_colliding_table_replaces_the_held_one`.
+
+    assertion `left == right` failed: the table the view was stored with, not the one held before
+      left: Some("red")
+     right: Some("blue")
+
+### R2-4: --connect missed the surface config (f8851f43a)
+
+The four windows each spelled out their `NativeOptions`, which is how `run_connected` lost a field.
+`we_app::window_options(title, size)` now builds them, `wgpu_options()` included, and every window takes
+it.
+
+Tests:
+
+- `present::every_window_takes_the_surface_config` checks that the binary builds no `NativeOptions` of its
+  own. Before the fix it listed all four windows, one of them `run_connected` at `main.rs:524`.
+- `present::window_options_carry_the_surface`.
+
+### Gates and drag frames
+
+At the round-5 head:
+
+- `cargo test --no-fail-fast` passes all 171 suites, the coasys pixel test unchanged.
+- clippy `-D warnings`, fmt, the wasm check and the egui-free script are green.
+- Each of the five commits builds and passes clippy on its own.
+
+Drag bench, glow, 1280x800, 200 frames, three alternating runs of 97a3fa7e3 against the round-5 head,
+CPU per frame (median):
+
+| case               | 97a3fa7e3    | round 5      |
+| ------------------ | ------------ | ------------ |
+| people drag, ppp 1 | 3.42–3.46 ms | 3.46–3.48 ms |
+| people drag, ppp 2 | 3.43–3.44 ms | 3.45–3.47 ms |
+| about rail, ppp 1  | 0.26–0.27 ms | 0.27 ms      |
+| about rail, ppp 2  | 0.26–0.27 ms | 0.26 ms      |
+
+No frame lagged the pointer in any run. Layout went from 1.30–1.31 ms to 1.32–1.33 ms, from copying the
+conditions map once per `apply`.
