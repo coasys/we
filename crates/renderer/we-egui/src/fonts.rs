@@ -61,6 +61,12 @@ fn ttf(woff2: &[u8]) -> egui::FontData {
 /// never drift from it — with x grid-fitting added to its instructions
 /// (see [`crate::pixel_grid`]).
 fn vt323() -> egui::FontData {
+    let sfnt = vt323_sfnt();
+    egui::FontData::from_owned(crate::pixel_grid::snap_x(&sfnt).unwrap_or(sfnt))
+}
+
+/// VT323 as the web loads it, decoded, before [`crate::pixel_grid`].
+fn vt323_sfnt() -> Vec<u8> {
     const VT323_TS: &str =
         include_str!("../../../../packages/design-system/2-themes/src/retro/vt323.ts");
     let woff2 = VT323_TS
@@ -69,8 +75,7 @@ fn vt323() -> egui::FontData {
         .and_then(|rest| rest.split('\'').next())
         .and_then(|b64| base64::engine::general_purpose::STANDARD.decode(b64).ok())
         .expect("retro/vt323.ts keeps a data:font/woff2;base64 payload");
-    let sfnt = wuff::decompress_woff2(&woff2).expect("vendored woff2 decodes");
-    egui::FontData::from_owned(crate::pixel_grid::snap_x(&sfnt).unwrap_or(sfnt))
+    wuff::decompress_woff2(&woff2).expect("vendored woff2 decodes")
 }
 
 /// Every shipped face file, by family — the latin file before the
@@ -569,6 +574,15 @@ pub(crate) fn resolve(ctx: &egui::Context, stack: &str, weight: Option<f32>) -> 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The shipped VT323 passes the rewriter's structural checks: a
+    /// stricter parser must not quietly fall back to the unfitted font.
+    #[test]
+    fn vt323_is_grid_fitted() {
+        let sfnt = vt323_sfnt();
+        let fitted = crate::pixel_grid::snap_x(&sfnt).expect("VT323 rewrites");
+        assert!(fitted.len() > sfnt.len());
+    }
 
     #[test]
     fn stacks_resolve() {
