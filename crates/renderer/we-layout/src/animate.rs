@@ -20,13 +20,23 @@
 //! - a value that cannot be interpolated as a length (`auto`, a percent,
 //!   a `calc()`) jumps;
 //! - with reduced motion asked for, everything jumps.
+//!
+//! A `$if`'s enter `fade` runs here too: a node carrying one that was not
+//! in the last tree fades its opacity in from 0 — never on the first frame
+//! anything is seen, which nothing mounted. The other enter effects
+//! (`reveal`, `slide`, `scale`) and every exit effect are not drawn yet:
+//! an exit needs the node kept after the resolve dropped it.
 use std::collections::HashMap;
 use std::sync::Arc;
 
 use indexmap::IndexMap;
 use we_expr::Value;
 use we_style::{ease, Easing, Style};
-use we_template::{NodeId, ResolvedChild, ResolvedNode};
+use we_template::{NodeId, ResolvedChild, ResolvedNode, TransitionKind};
+
+/// An enter effect with no duration of its own (`TransitionEffect` leaves
+/// it to the renderer; the web's `$if` uses 300).
+const DEFAULT_ENTER_MS: f64 = 300.0;
 
 use crate::defaults::{style_of, unit_metrics, StyleCx};
 
@@ -111,6 +121,12 @@ struct Slot {
 #[derive(Debug, Default)]
 pub struct Transitions {
     slots: HashMap<(NodeId, Prop), Slot>,
+    /// The nodes with an enter `fade` that were in the last tree — one
+    /// that is not was just mounted (a `$if` turning true) and fades in.
+    entered: std::collections::HashSet<NodeId>,
+    /// Whether a tree has been seen: what is there on the first frame was
+    /// not mounted by anything, and does not fade in.
+    started: bool,
 }
 
 impl Transitions {
@@ -126,7 +142,18 @@ impl Transitions {
     ) -> Option<ResolvedNode> {
         let mut seen = std::collections::HashSet::new();
         let mut shown: HashMap<NodeId, Vec<(Prop, f32)>> = HashMap::new();
-        self.walk(root, scx, now, reduced_motion, &mut seen, &mut shown);
+        let mut entered = std::collections::HashSet::new();
+        self.walk(
+            root,
+            scx,
+            now,
+            reduced_motion,
+            &mut seen,
+            &mut shown,
+            &mut entered,
+        );
+        self.entered = entered;
+        self.started = true;
         // A node that left the tree takes its tracks with it.
         self.slots.retain(|key, _| seen.contains(key));
         if shown.is_empty() {
@@ -145,6 +172,7 @@ impl Transitions {
             .any(|s| s.track.as_ref().is_some_and(|t| !t.done(now)))
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn walk(
         &mut self,
         node: &ResolvedNode,
@@ -153,8 +181,36 @@ impl Transitions {
         reduced: bool,
         seen: &mut std::collections::HashSet<(NodeId, Prop)>,
         shown: &mut HashMap<NodeId, Vec<(Prop, f32)>>,
+        entered: &mut std::collections::HashSet<NodeId>,
     ) {
         let style = style_of(node, scx);
+        // A `$if`'s enter `fade`: a node mounted since the last tree starts
+        // at opacity 0 and eases to its own.
+        let fade = node
+            .transition
+            .as_ref()
+            .and_then(|t| t.enter.as_ref())
+            .and_then(|e| e.iter().find(|e| e.kind == TransitionKind::Fade));
+        if let Some(fade) = fade {
+            entered.insert(node.id.clone());
+            if self.started && !self.entered.contains(&node.id) {
+                let target = Prop::Opacity.value(&style, scx).unwrap_or(1.0);
+                let duration = fade.duration.unwrap_or(DEFAULT_ENTER_MS) / 1000.0;
+                let track = (!reduced && duration > 0.0).then(|| Track {
+                    from: 0.0,
+                    to: target,
+                    start: now + fade.delay.unwrap_or(0.0) / 1000.0,
+                    duration,
+                    easing: fade
+                        .easing
+                        .as_deref()
+                        .and_then(we_style::parse_easing_text)
+                        .unwrap_or(Easing::Ease),
+                });
+                self.slots
+                    .insert((node.id.clone(), Prop::Opacity), Slot { target, track });
+            }
+        }
         for t in &style.transitions {
             for prop in Prop::ALL {
                 if t.property.as_ref() != prop.css() && t.property.as_ref() != "all" {
@@ -202,13 +258,29 @@ impl Transitions {
                 }
             }
         }
+        // The enter fade's track, where no CSS transition on opacity drew it.
+        let key = (node.id.clone(), Prop::Opacity);
+        if fade.is_some() && seen.insert(key.clone()) {
+            if let Some(slot) = self.slots.get_mut(&key) {
+                if let Some(track) = &slot.track {
+                    if track.done(now) {
+                        slot.track = None;
+                    } else {
+                        shown
+                            .entry(node.id.clone())
+                            .or_default()
+                            .push((Prop::Opacity, track.at(now)));
+                    }
+                }
+            }
+        }
         let child_scx = StyleCx {
             scope: &style.scope,
             ..*scx
         };
         for child in &node.children {
             if let ResolvedChild::Node(n) = child {
-                self.walk(n, &child_scx, now, reduced, seen, shown);
+                self.walk(n, &child_scx, now, reduced, seen, shown, entered);
             }
         }
     }

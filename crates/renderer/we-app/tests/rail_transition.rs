@@ -1,13 +1,15 @@
 //! The rail's `transition: width 300 ease-in-out` (250 ms under glow)
 //! plays out when hover widens it: the frames in between draw it at sizes
 //! between the two, eased; it ends exactly at the width the template asks
-//! for; and the app asks for frames only while it is moving.
+//! for; and the app asks for frames only while it is moving. Its labels,
+//! mounted by a `$if` as it opens, fade in (`RAIL_REVEAL`'s 150 ms fade).
 
 #[path = "support/frames.rs"]
 mod frames;
 
 use egui::{pos2, Event};
 use frames::Driver;
+use we_template::{ResolvedChild, ResolvedNode, TransitionKind};
 
 /// Run frames until the rail stops asking for them (or `cap` is hit),
 /// returning the rail's width on each and whether each asked for another.
@@ -73,4 +75,61 @@ fn hovering_the_rail_eases_it_open_and_stops_asking_for_frames() {
         widths.iter().filter(|w| **w > 72.0 && **w < 256.0).count() >= 10,
         "{widths:?}"
     );
+}
+
+/// The drawn opacity of every node a `$if` mounted with an enter fade.
+fn label_opacities(d: &Driver) -> Vec<f32> {
+    fn walk(n: &ResolvedNode, out: &mut Vec<we_template::NodeId>) {
+        let fades = n
+            .transition
+            .as_ref()
+            .and_then(|t| t.enter.as_ref())
+            .is_some_and(|e| e.iter().any(|e| e.kind == TransitionKind::Fade));
+        if fades {
+            out.push(n.id.clone());
+        }
+        for c in &n.children {
+            if let ResolvedChild::Node(c) = c {
+                walk(c, out);
+            }
+        }
+    }
+    let mut ids = Vec::new();
+    walk(d.app.session.runtime.resolved().unwrap(), &mut ids);
+    let layout = d.app.layout().unwrap();
+    ids.iter()
+        .filter_map(|id| layout.styles.get(id))
+        .map(|s| s.paint.opacity.unwrap_or(1.0))
+        .collect()
+}
+
+#[test]
+fn the_rails_labels_fade_in_as_it_opens() {
+    let mut d = Driver::new();
+    assert!(
+        label_opacities(&d).is_empty(),
+        "collapsed: no labels mounted"
+    );
+    d.frame(vec![Event::PointerMoved(pos2(30.0, 400.0))]);
+    // The hover's `$setLocal` lands in the next frame's resolve.
+    let mut first = label_opacities(&d);
+    for _ in 0..3 {
+        if !first.is_empty() {
+            break;
+        }
+        d.frame(vec![]);
+        first = label_opacities(&d);
+    }
+    assert!(!first.is_empty(), "the labels mounted");
+    assert!(
+        first.iter().all(|o| *o < 0.5),
+        "they start faint: {first:?}"
+    );
+    for _ in 0..30 {
+        if !d.frame(vec![]).repaint {
+            break;
+        }
+    }
+    let last = label_opacities(&d);
+    assert!(last.iter().all(|o| *o == 1.0), "and end opaque: {last:?}");
 }

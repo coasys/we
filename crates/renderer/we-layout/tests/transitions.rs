@@ -7,7 +7,9 @@ use indexmap::IndexMap;
 use we_expr::Value;
 use we_layout::animate::Transitions;
 use we_layout::defaults::{style_of, StyleCx};
-use we_template::{NodeId, ResolvedChild, ResolvedNode};
+use we_template::{
+    NodeId, ResolvedChild, ResolvedNode, Transition, TransitionEffect, TransitionKind,
+};
 
 fn rail(width: &str) -> ResolvedNode {
     let props: IndexMap<Arc<str>, Value> = [
@@ -106,4 +108,65 @@ fn only_the_node_that_changed_is_rewritten() {
         !tree.props.contains_key("styles"),
         "the parent is drawn as resolved"
     );
+}
+
+/// A row a `$if` mounts, carrying `enterTransition: { type: "fade",
+/// duration: 100 }`.
+fn label() -> ResolvedNode {
+    let mut n = rail("72px");
+    n.id = NodeId::from("label");
+    n.props.shift_remove("transition");
+    let fade = TransitionEffect {
+        kind: TransitionKind::Fade,
+        duration: Some(100.0),
+        easing: Some("linear".into()),
+        delay: None,
+        direction: None,
+        distance: None,
+        axis: None,
+        extra: Default::default(),
+    };
+    n.transition = Some(Transition {
+        enter: Some(vec![fade]),
+        exit: None,
+        open: None,
+    });
+    n
+}
+
+fn opacity(t: &mut Transitions, root: &ResolvedNode, now: f64) -> f32 {
+    let scx = StyleCx::empty();
+    let tree = t.apply(root, &scx, now, false);
+    let tree = tree.as_ref().unwrap_or(root);
+    let node = match tree.children.first() {
+        Some(ResolvedChild::Node(n)) => n,
+        _ => panic!("the label"),
+    };
+    style_of(node, &scx).paint.opacity.unwrap_or(1.0)
+}
+
+#[test]
+fn a_node_a_branch_mounts_fades_in_and_one_there_from_the_start_does_not() {
+    let mut root = rail("72px");
+    root.id = NodeId::from("root");
+    root.props.shift_remove("transition");
+    let with_label = {
+        let mut r = root.clone();
+        r.children.push(ResolvedChild::Node(Box::new(label())));
+        r
+    };
+    // There on the first tree: drawn as it is.
+    let mut t = Transitions::default();
+    assert_eq!(opacity(&mut t, &with_label, 0.0), 1.0);
+    // Mounted later: from 0, through the duration, to its own opacity.
+    let mut t = Transitions::default();
+    assert!(t.apply(&root, &StyleCx::empty(), 0.0, false).is_none());
+    assert_eq!(opacity(&mut t, &with_label, 1.0), 0.0);
+    assert!(t.running(1.0));
+    assert!((opacity(&mut t, &with_label, 1.05) - 0.5).abs() < 1e-3);
+    assert_eq!(opacity(&mut t, &with_label, 1.1), 1.0);
+    assert!(!t.running(1.1));
+    // Unmounted and mounted again: it fades in again.
+    assert!(t.apply(&root, &StyleCx::empty(), 2.0, false).is_none());
+    assert_eq!(opacity(&mut t, &with_label, 3.0), 0.0);
 }
