@@ -237,7 +237,59 @@ fn member_tiers(name: &str) -> Option<MemberTiers> {
     LEGACY_MEMBER_TIERS
         .iter()
         .find(|(n, _)| *n == name)
-        .map(|(_, rows)| MemberTiers::from_rows(rows))
+        .map(|(_, rows)| store_tiers(name, rows))
+}
+
+/// The `screen` member a face overlays for `store` — `routeStore` reads
+/// `nav`, `shellStore` `shell`, `themeStore` `theme`; `spaceStore`
+/// overlays `nav.spacePath` alone. `None`: not a screen-backed store.
+fn overlay_of(store: &str, member: &str) -> Option<&'static str> {
+    match store {
+        "routeStore" => Some("nav"),
+        "shellStore" => Some("shell"),
+        "themeStore" => Some("theme"),
+        "spaceStore" if member == "spacePath" => Some("nav"),
+        _ => None,
+    }
+}
+
+/// One store's table: the generated `templateSurface.ts` rows — except
+/// that every member a face answers from the screen is served through
+/// CORE's screen table (Lal F2; decision: core's screen table is the
+/// policy for every spelling). The stricter rule wins: a member either
+/// table refuses is refused, and a member both allow is allowed only at
+/// the higher of the two tiers. So `shellStore.activeShellView` (TS:
+/// Space, core: App) reads Undefined at Space, while TS's denials
+/// (`shellStore.panels`, absent from TS) stay denied.
+fn store_tiers(store: &str, rows: &[(&'static str, Tier)]) -> MemberTiers {
+    let screen = we_template::screen_tiers();
+    let mut table = MemberTiers::from_rows(rows);
+    for (member, rule) in table.members.iter_mut() {
+        let Some(overlay) = overlay_of(store, member) else {
+            continue;
+        };
+        let core = match screen.rule(overlay) {
+            Some(MemberRule::Container { members, .. }) => members.rule(member).cloned(),
+            _ => None,
+        };
+        let MemberRule::Member { tier: legacy } = *rule else {
+            continue;
+        };
+        *rule = match core {
+            // Not a screen fact core knows: the face's answer for it is
+            // the store's own data — the TS row stands.
+            None => continue,
+            Some(MemberRule::Member { tier }) => MemberRule::Member {
+                tier: tier.max(legacy),
+            },
+            Some(MemberRule::DeclaredIds { tier }) => MemberRule::DeclaredIds {
+                tier: tier.max(legacy),
+            },
+            // A container under an overlay is not a member a face serves.
+            Some(MemberRule::Container { .. }) => MemberRule::Member { tier: Tier::App },
+        };
+    }
+    table
 }
 
 /// `legacy`'s own member table: every compat store name is a container
@@ -252,7 +304,7 @@ fn legacy_tiers() -> MemberTiers {
                     Arc::from(*name),
                     MemberRule::Container {
                         tier: Tier::Space,
-                        members: MemberTiers::from_rows(rows),
+                        members: store_tiers(name, rows),
                     },
                 )
             })
