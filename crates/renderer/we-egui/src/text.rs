@@ -538,7 +538,8 @@ impl Widget for Link {
 // ── we-timestamp ─────────────────────────────────────────────────────────
 
 /// `we-timestamp` — `value` + `relative`/`relativeStyle`/`locale`/`dateStyle`.
-/// "Now" comes from `PaintCx::now` (epoch seconds), never the system clock.
+/// "Now" comes from the injected [`crate::clock`], never `PaintCx::now`
+/// (the frame clock) — a host pins it when a real date must not drift.
 #[derive(Debug, Default)]
 pub struct Timestamp;
 
@@ -579,12 +580,10 @@ impl Widget for Timestamp {
         measure_text(cx, node, style, avail, &sample, false, None)
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
-        // `cx.now` is the frame clock (seconds since start), not epoch —
-        // `relative` needs wall time.
-        let now_secs = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs_f64())
-            .unwrap_or(0.0);
+        // `relative` needs wall time — the injected clock (`now_secs`),
+        // pinned by a host that must not drift; `cx.now` is the frame
+        // clock (seconds since start), for animations only.
+        let now_secs = crate::clock::now_secs(cx.ui.ctx());
         let text = Self::text(node, now_secs);
         let content_rect = props::content_rect(rect, style, view_of(cx.ui.ctx()), cx.cb_w);
         let g = text_job(&text, style, cx.ui.ctx(), content_rect.width(), false, None);

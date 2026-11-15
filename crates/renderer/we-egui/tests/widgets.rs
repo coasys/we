@@ -118,6 +118,25 @@ fn timestamp_shows_date() {
     h.get_by_label("Jun 24, 2026");
 }
 
+/// "Now" is the ctx-stashed pin, not the wall clock — the render gate
+/// pins it so a checked-in oracle cannot drift (E3c-0, Lal F2).
+#[test]
+fn timestamp_relative_reads_the_pinned_clock() {
+    let n = node(
+        "we-timestamp",
+        "ts",
+        &[("value", s("2025-10-06T15:00:00Z")), ("relative", b(true))],
+    );
+    let (mut h, _) = render(n.clone());
+    we_egui::pin_now(&h.ctx, Some(1_759_795_200.0)); // 2025-10-07T00:00:00Z
+    h.run();
+    h.get_by_label("9 hours ago");
+    let (mut h, _) = render(n);
+    we_egui::pin_now(&h.ctx, Some(1_759_881_600.0)); // 2025-10-08T00:00:00Z
+    h.run();
+    h.get_by_label("yesterday");
+}
+
 #[test]
 fn typewriter_types_text() {
     let n = node(
