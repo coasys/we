@@ -18,7 +18,7 @@ use std::sync::{Arc, RwLock};
 
 use serde::{Deserialize, Serialize};
 use serde_json::Value as Json;
-use we_expr::{ParseCache, Value};
+use we_expr::{HandleKind, HandleRef, HandleTable, MountCx, ParseCache, SpaceHandle, Value};
 
 use crate::resolve::{eval_json, eval_str};
 use crate::resolved::Scope;
@@ -79,18 +79,22 @@ impl QueryIr {
     }
 }
 
-/// The dataset identity a key is made from: today's resolved `dataset`
-/// value as an opaque comparable string. E3c-7 replaces the inside with an
-/// interned handle without changing this API.
+/// The dataset identity a key is made from: an interned handle minted by
+/// the session's [`HandleTable`] (E3c-7). A template can name a dataset;
+/// only the table can make the handle one — a `DatasetHandle` outside the
+/// table's knowledge keys as `null`, never as a dataset.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct DatasetHandle(Arc<str>);
+pub struct DatasetHandle(HandleRef);
 
 impl DatasetHandle {
-    pub fn new(id: impl Into<Arc<str>>) -> Self {
-        Self(id.into())
+    /// Wrap a live handle — the table that minted it resolves the name at
+    /// key time.
+    pub fn from_handle(handle: HandleRef) -> Self {
+        Self(handle)
     }
 
-    pub fn as_str(&self) -> &str {
+    /// The wrapped handle.
+    pub fn handle(&self) -> &HandleRef {
         &self.0
     }
 }
@@ -98,10 +102,11 @@ impl DatasetHandle {
 /// Which dataset a request reads — the only dataset selector a request has.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum DatasetSel {
-    /// The mount's own space. Until mounts carry a space this keys as the
-    /// pull path always keyed a dataset-less read.
+    /// The mount's own space, resolved through `key`'s `here` before
+    /// hashing; with no mount space it keys as `null`.
     Here,
-    /// A dataset the template named (its resolved `dataset`).
+    /// A dataset the template named (its resolved `dataset`), held as an
+    /// interned handle.
     Named(DatasetHandle),
 }
 
@@ -127,10 +132,12 @@ impl QueryRequest {
     /// resolves to `here` (the mount's space) before hashing; with no mount
     /// space it keys as `null`, exactly as a dataset-less read always keyed,
     /// so a `Named` dataset can never collide with it whatever it is called.
-    pub fn key(&self, here: Option<&DatasetHandle>) -> QueryKey {
+    /// A handle `handles` did not mint — foreign or forged — keys as `null`
+    /// too: unknown identity resolves to nothing rather than to a name.
+    pub fn key(&self, here: Option<&SpaceHandle>, handles: &HandleTable) -> QueryKey {
         let ds = match &self.dataset {
-            DatasetSel::Here => here,
-            DatasetSel::Named(handle) => Some(handle),
+            DatasetSel::Here => here.map(SpaceHandle::handle),
+            DatasetSel::Named(handle) => Some(handle.handle()),
         };
         let mut key_obj = serde_json::Map::new();
         key_obj.insert(
@@ -145,7 +152,8 @@ impl QueryRequest {
         key_obj.insert("u".to_string(), Json::Bool(self.union));
         key_obj.insert(
             "ds".to_string(),
-            ds.map(|h| Json::String(h.as_str().to_string()))
+            ds.and_then(|h| handles.key(h))
+                .map(|k| Json::String(k.to_string()))
                 .unwrap_or(Json::Null),
         );
         key_obj.insert("sub".to_string(), Json::Bool(self.subscribe));
@@ -175,11 +183,18 @@ pub enum Compiled {
     Gated,
 }
 
-/// What a compile evaluates against besides the scope.
+/// What a compile evaluates against besides the scope — including the
+/// mount it runs under (whose space `Here` resolves to) and the table its
+/// dataset handles mint through.
 pub struct CompileCx<'a> {
     pub bag: &'a StoreBag,
     pub cache: &'a mut ParseCache,
     pub warnings: &'a mut Vec<Arc<str>>,
+    /// The mount the query compiles under — `Here` keys by its space.
+    pub mount: &'a MountCx,
+    /// The session's table — `dataset` values mint handles through it and
+    /// keying resolves handles back through it.
+    pub handles: &'a HandleTable,
 }
 
 impl CompileCx<'_> {
@@ -194,11 +209,15 @@ impl<'a> CompileCx<'a> {
         bag: &'a StoreBag,
         cache: &'a mut ParseCache,
         warnings: &'a mut Vec<Arc<str>>,
+        mount: &'a MountCx,
+        handles: &'a HandleTable,
     ) -> Self {
         Self {
             bag,
             cache,
             warnings,
+            mount,
+            handles,
         }
     }
 }
@@ -471,12 +490,12 @@ pub struct CompiledQuery {
 }
 
 /// The pull adapter: `Ready` is a cell to make; `Provisional` and `Gated`
-/// are no cell (the slot is cleared and answers `[]`/`false`). No mount
-/// space yet, so `Here` keys as a dataset-less read.
-pub fn compiled_to_cell(compiled: Compiled) -> Option<CompiledQuery> {
+/// are no cell (the slot is cleared and answers `[]`/`false`). `Here`
+/// resolves to the compiling mount's space before the key is hashed.
+pub fn compiled_to_cell(compiled: Compiled, cx: &CompileCx) -> Option<CompiledQuery> {
     match compiled {
         Compiled::Ready(request) => {
-            let key = request.key(None);
+            let key = request.key(cx.mount.space.as_ref(), cx.handles);
             Some(CompiledQuery {
                 entities: request.classes.to_vec(),
                 union: request.union,
@@ -682,18 +701,8 @@ pub fn query_descriptor(
 /// Compile one `$queries` entry against `scope` for the pull path —
 /// [`compile_request`] through [`compiled_to_cell`]. `None` → no cell: the
 /// field exists, its rows are `[]` and its `Loaded` flag reads `false`.
-pub fn compile_query(
-    query: &Json,
-    scope: &Scope,
-    bag: &StoreBag,
-    cache: &mut ParseCache,
-    warnings: &mut Vec<Arc<str>>,
-) -> Option<CompiledQuery> {
-    compiled_to_cell(compile_request(
-        query,
-        scope,
-        &mut CompileCx::new(bag, cache, warnings),
-    ))
+pub fn compile_query(query: &Json, scope: &Scope, cx: &mut CompileCx) -> Option<CompiledQuery> {
+    compiled_to_cell(compile_request(query, scope, cx), cx)
 }
 
 /// Compile one `$queries` entry against `scope` into a typed request.
@@ -707,8 +716,7 @@ pub fn compile_query(
 /// TS, whose final state is the same. An operand unresolved for any other
 /// reason still widens.
 pub fn compile_request(query: &Json, scope: &Scope, cx: &mut CompileCx) -> Compiled {
-    let (request, reads) =
-        observe_slots(|| compile_inner(query, scope, cx.bag, cx.cache, cx.warnings));
+    let (request, reads) = observe_slots(|| compile_inner(query, scope, cx));
     match request {
         Some(request) if reads.iter().any(|slot| !cx.slot_loaded(slot)) => {
             Compiled::Provisional(request)
@@ -718,13 +726,10 @@ pub fn compile_request(query: &Json, scope: &Scope, cx: &mut CompileCx) -> Compi
     }
 }
 
-fn compile_inner(
-    query: &Json,
-    scope: &Scope,
-    bag: &StoreBag,
-    cache: &mut ParseCache,
-    warnings: &mut Vec<Arc<str>>,
-) -> Option<QueryRequest> {
+fn compile_inner(query: &Json, scope: &Scope, cx: &mut CompileCx) -> Option<QueryRequest> {
+    let bag = cx.bag;
+    let cache = &mut *cx.cache;
+    let warnings = &mut *cx.warnings;
     let descriptor = query_descriptor(query, scope, bag, cache, warnings)?;
     let Json::Object(map) = &descriptor else {
         return None;
@@ -835,7 +840,18 @@ fn compile_inner(
             other => Value::from_json(other),
         };
         if !matches!(resolved, Value::Undefined | Value::Null) {
-            dataset_sel = DatasetSel::Named(DatasetHandle::new(resolved.js_string()));
+            // A handle the expression itself produced (a store answer that
+            // IS a handle) is used as-is; anything else the `dataset` value
+            // resolved to mints a dataset handle through the session's
+            // table — the template names a dataset, never forges one.
+            let handle = match &resolved {
+                Value::Namespace(ns) => ns
+                    .as_handle()
+                    .cloned()
+                    .unwrap_or_else(|| cx.handles.mint(HandleKind::Dataset, &resolved.js_string())),
+                _ => cx.handles.mint(HandleKind::Dataset, &resolved.js_string()),
+            };
+            dataset_sel = DatasetSel::Named(DatasetHandle::from_handle(handle));
         }
     }
 

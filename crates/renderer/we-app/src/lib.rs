@@ -24,7 +24,7 @@ use we_egui::{
 };
 use we_screen::ScreenState;
 use we_session::Session;
-use we_template::{ResolvedNode, RootSpec, SchemaNode, StaticHost, StoreBag};
+use we_template::{MountCx, ResolvedNode, RootSpec, SchemaNode, StaticHost, StoreBag};
 
 /// The production host's one-time context setup, called from eframe's
 /// creation callback: a glyph no installed font has draws as a tofu box —
@@ -69,7 +69,7 @@ impl RendererApp {
         let types: std::collections::HashSet<&'static str> = registry.type_names().collect();
         let spec = RootSpec::Single {
             node: Box::new(schema),
-            id: template_id.into(),
+            cx: MountCx::explicit(template_id.into() as Arc<str>),
         };
         let session =
             Session::offline(spec, bag, screen).with_dollar_types(move |ty| types.contains(ty));

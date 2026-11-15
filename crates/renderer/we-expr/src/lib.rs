@@ -23,6 +23,7 @@ mod eval;
 mod functions;
 mod lexer;
 mod macros;
+mod mount;
 mod parse;
 mod parser;
 mod print;
@@ -33,6 +34,9 @@ pub use ast::{CALL_TIME_ROOTS, WELL_KNOWN_ROOTS};
 pub use env::{callback_value, Env, MapEnv, ReadObserver};
 pub use eval::eval;
 pub use functions::js_round;
+pub use mount::{
+    BundleSlot, HandleKind, HandleRef, HandleTable, MountCx, MountId, Provenance, SpaceHandle, Tier,
+};
 pub use parse::{parse, Expr, ParseCache, Span, SyntaxError};
 pub use print::print;
 pub use value::{

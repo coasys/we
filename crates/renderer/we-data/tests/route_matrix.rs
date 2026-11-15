@@ -37,6 +37,7 @@ fn session(route: &str) -> (Session, OfflineData) {
     let data = OfflineData::from_snapshot(&json, Some(&map)).expect("offline data builds");
     let locals = LocalState::new();
     let spec = AppSpec {
+        bundle: bundle.name.clone().into(),
         app: bundle.app.clone(),
         template: bundle.templates.as_deref().and_then(|t| t.first()).cloned(),
         pages: bundle.pages.clone().unwrap_or_default(),

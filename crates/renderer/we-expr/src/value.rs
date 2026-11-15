@@ -63,6 +63,13 @@ pub trait Namespace: Send + Sync + fmt::Debug {
     fn decl(&self, _field: &str) -> Option<&dyn std::any::Any> {
         None
     }
+    /// The handle this namespace is, if it is one — an interned
+    /// [`crate::HandleRef`] a [`crate::HandleTable`] minted. `None` for
+    /// every ordinary namespace, so a store or a map can never pass
+    /// itself off as a handle.
+    fn as_handle(&self) -> Option<&crate::HandleRef> {
+        None
+    }
 }
 
 /// A namespace over an [`IndexMap`] — what `{"$namespace": {…}}` decodes to, and
@@ -304,7 +311,10 @@ impl Value {
                 .map(|v| v.to_text().to_string())
                 .collect::<Vec<_>>()
                 .join(","),
-            Value::Obj(_) | Value::Namespace(_) => "[object Object]".to_string(),
+            Value::Obj(_) => "[object Object]".to_string(),
+            // A handle has no string form — `${h}` is empty (`4.6.5`).
+            Value::Namespace(ns) if ns.as_handle().is_some() => String::new(),
+            Value::Namespace(_) => "[object Object]".to_string(),
             Value::Callable(c) => format!("function {}() {{ [native code] }}", c.name()),
         }
     }
@@ -354,7 +364,12 @@ impl Value {
             (Value::Str(a), Value::Str(b)) => a == b,
             (Value::List(a), Value::List(b)) => Arc::ptr_eq(a, b),
             (Value::Obj(a), Value::Obj(b)) => Arc::ptr_eq(a, b),
-            (Value::Namespace(a), Value::Namespace(b)) => Arc::ptr_eq(a, b),
+            (Value::Namespace(a), Value::Namespace(b)) => match (a.as_handle(), b.as_handle()) {
+                // `==` on handles is the interned identity, so two reads of
+                // the same handle — each a fresh namespace — are `===`.
+                (Some(x), Some(y)) => x == y,
+                _ => Arc::ptr_eq(a, b),
+            },
             (Value::Callable(a), Value::Callable(b)) => a.ptr_eq(b),
             _ => false,
         }
@@ -395,6 +410,10 @@ impl Value {
                     .map(|(k, v)| (k.to_string(), v.to_json()))
                     .collect();
                 serde_json::Value::Object(map)
+            }
+            Value::Namespace(ns) if ns.as_handle().is_some() => {
+                // `{"$handle": "space"}` — the kind, never the key or id.
+                marker("$handle", ns.as_handle().unwrap().kind().as_label().into())
             }
             Value::Namespace(ns) => {
                 let inner: serde_json::Map<String, serde_json::Value> = ns
