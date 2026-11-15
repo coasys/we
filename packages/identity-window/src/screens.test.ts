@@ -241,6 +241,10 @@ describe('the identity window', () => {
     turn.mark();
     const current = turn.hold();
     expect(current()).toBe(true);
+    // A cancel drops it: its answer may come while the cancel is out, and must not redraw live buttons.
+    turn.mark();
+    expect(current()).toBe(false);
+    expect(windowSource).toMatch(/const cancel = oneAtATime\(\(\) => \{\n  turn\.mark\(\);/);
     expect(windowSource).toMatch(/function waitFor[\s\S]*?const current = turn\.hold\(\);/);
     expect(windowSource).toMatch(/async function run\([\s\S]*?turn\.mark\(\);/);
     expect(windowSource).toMatch(/function draw\(screen: Screen\) \{[\s\S]*?turn\.mark\(\);/);
