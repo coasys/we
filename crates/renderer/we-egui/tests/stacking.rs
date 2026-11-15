@@ -178,6 +178,20 @@ fn a_high_z_inside_a_low_context_stays_under_a_higher_sibling() {
     assert_eq!(got[1], ["a", "a/c"], "the control: c outside b");
 }
 
+/// A higher z earlier in the tree still paints over a lower z after it:
+/// the z 2 box takes the click in the overlap, not the later z 1 one.
+#[test]
+fn a_higher_z_earlier_in_the_tree_takes_the_click() {
+    let a = boxed("a", "2", [0, 0, 200, 200]);
+    let b = boxed("b", "1", [100, 100, 200, 200]);
+    let (_, got) = clicks(
+        root(vec![a, b]),
+        &[egui::pos2(150.0, 150.0), egui::pos2(250.0, 250.0)],
+    );
+    assert_eq!(got[0], ["a"], "in the overlap");
+    assert_eq!(got[1], ["b"], "the control: b outside a");
+}
+
 /// A raised box inside a scroller is cut by the scroller's clip, and only
 /// blocks input where it shows: below the scroller, the box's hidden part
 /// does not keep a click from the sibling there.
