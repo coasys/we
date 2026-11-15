@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 we-expr.workspace = true
+we-metrics.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 indexmap.workspace = true
