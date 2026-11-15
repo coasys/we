@@ -126,9 +126,10 @@ fn nested_write_bumps_owner_revision() {
     let v0 = locals.version();
 
     rt.dispatch(&mut host, &mut screen, &owner, "onTap", Value::Null);
-    assert!(
-        locals.version() > v0,
-        "a nested write must bump the owner field's revision"
+    assert_eq!(
+        locals.version(),
+        v0 + 1,
+        "one nested write bumps the owner field's revision exactly once"
     );
 
     let root = rt.frame(&mut host, &screen).clone();
