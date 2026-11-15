@@ -105,6 +105,17 @@ fn coasys_app_renders_a_live_space() {
     // member's name, not the recorded space's, and nothing served from the
     // recording but the bundle's own themes and brand.
     assert!(report.unavailable.iter().any(|m| m == "spaceStore.members"));
+    // Facts of connected mode answer, rather than reading unavailable.
+    for fact in connected_facts() {
+        assert!(
+            !report.unavailable.contains(&fact),
+            "{fact} read unavailable"
+        );
+    }
+    assert!(report
+        .snapshot_served
+        .iter()
+        .any(|m| m == "sessionStore.signInStep"));
     let text = tree_text(&mut live);
     for name in recorded_names() {
         assert!(

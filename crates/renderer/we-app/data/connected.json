@@ -3,6 +3,7 @@
   "bundle": ["themeStore.builtInThemes", "themeStore.currentThemeId", "templateStore.brand"],
   "connected": {
     "sessionStore.bootState": "ready",
+    "sessionStore.signInStep": "ready",
     "identityStore.needsFirstRun": false,
     "spaceStore.canAdministerCurrentSpace": false
   }
