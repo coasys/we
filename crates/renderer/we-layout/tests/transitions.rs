@@ -284,3 +284,50 @@ fn reduced_motion_asked_mid_fade_shows_the_node() {
     assert_eq!(style_of(node, &scx).paint.opacity.unwrap_or(1.0), 1.0);
     assert!(!t.running(1.05));
 }
+
+/// The web starts every enter effect after the FIRST effect's delay — one
+/// timer for the config (`ConditionalRenderer.tsx:155-163`) — and puts no
+/// delay of its own in any effect's CSS transition (`buildTransitionCSS`).
+/// So a fade behind a reveal waits for the reveal's delay, and its own is
+/// not read.
+#[test]
+fn a_fade_waits_for_the_first_effects_delay_not_its_own() {
+    let (root, mut with_label) = trees();
+    let effect = |kind, delay: Option<f64>| TransitionEffect {
+        kind,
+        duration: Some(100.0),
+        easing: Some("linear".into()),
+        delay,
+        direction: None,
+        distance: None,
+        axis: None,
+        extra: Default::default(),
+    };
+    if let Some(ResolvedChild::Node(n)) = with_label.children.first_mut() {
+        n.transition = Some(Transition {
+            enter: Some(vec![
+                effect(TransitionKind::Reveal, Some(50.0)),
+                effect(TransitionKind::Fade, Some(200.0)),
+            ]),
+            exit: None,
+            open: None,
+            site: Some(NodeId::from("if")),
+        });
+    }
+    let mut t = Transitions::default();
+    assert!(t
+        .apply(&root, &site(false), &StyleCx::empty(), 0.0, false)
+        .is_none());
+    assert_eq!(opacity(&mut t, &with_label, &site(true), 1.0), 0.0);
+    assert_eq!(
+        opacity(&mut t, &with_label, &site(true), 1.05),
+        0.0,
+        "the reveal's 50ms"
+    );
+    assert!((opacity(&mut t, &with_label, &site(true), 1.1) - 0.5).abs() < 1e-3);
+    assert_eq!(
+        opacity(&mut t, &with_label, &site(true), 1.15),
+        1.0,
+        "not the fade's 200ms"
+    );
+}

@@ -201,6 +201,13 @@ impl Transitions {
             .and_then(|t| t.enter.as_ref())
             .and_then(|e| e.iter().find(|e| e.kind == TransitionKind::Fade));
         if let Some(fade) = fade {
+            let first_delay = node
+                .transition
+                .as_ref()
+                .and_then(|t| t.enter.as_ref())
+                .and_then(|e| e.first())
+                .and_then(|e| e.delay)
+                .unwrap_or(0.0);
             let site = node.transition.as_ref().and_then(|t| t.site.as_ref());
             if site.is_some_and(|s| entering.contains(s)) {
                 let target = Prop::Opacity.value(&style, scx).unwrap_or(1.0);
@@ -208,7 +215,11 @@ impl Transitions {
                 let track = (!reduced && duration > 0.0).then(|| Track {
                     from: 0.0,
                     to: target,
-                    start: now + fade.delay.unwrap_or(0.0) / 1000.0,
+                    // Every enter effect waits for the first one's delay —
+                    // one timer for the config on the web
+                    // (`ConditionalRenderer.tsx:155-163`), whose CSS
+                    // transitions carry no delay of their own.
+                    start: now + first_delay / 1000.0,
                     duration,
                     easing: fade
                         .easing
