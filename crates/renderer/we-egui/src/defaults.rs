@@ -57,10 +57,13 @@ pub(crate) fn store_view(ctx: &egui::Context, scx: &StyleCx) {
         // Shared, and copied in only when the table changed: every token a
         // widget reads at paint goes through `tokens_of`, and handing out a
         // copy of a theme's whole table per read cost a fifth of paint.
+        // Compared as the style memo compares it — a held copy shares the
+        // table's contents, so the usual answer is one pointer, and a
+        // fingerprint alone never decides it.
         let key = egui::Id::unique(TOKENS_KEY);
         let held = d
             .get_temp::<Arc<we_style::TokenTable>>(key)
-            .is_some_and(|t| t.fingerprint() == scx.tokens.fingerprint());
+            .is_some_and(|t| t.same(scx.tokens));
         if !held {
             d.insert_temp(key, Arc::new(scx.tokens.clone()));
         }
@@ -215,5 +218,52 @@ mod tests {
             },
         );
         assert_eq!(tokens_of(&ctx).unwrap().get("--we-role-text"), Some("blue"));
+    }
+}
+
+#[cfg(test)]
+mod store_view_tests {
+    use super::*;
+
+    fn table(value: &str) -> we_style::TokenTable {
+        we_style::TokenTable::new(
+            [(Arc::from("--we-x"), Arc::from(value))]
+                .into_iter()
+                .collect(),
+        )
+    }
+
+    /// A table with other contents is stashed in place of the held one,
+    /// even where its fingerprint says it is the same.
+    #[test]
+    fn a_colliding_table_replaces_the_held_one() {
+        let ctx = egui::Context::default();
+        let red = table("red");
+        let blue = we_style::TokenTable::colliding_with(
+            [(Arc::from("--we-x"), Arc::from("blue"))]
+                .into_iter()
+                .collect(),
+            &red,
+        );
+        assert_eq!(red.fingerprint(), blue.fingerprint());
+        store_view(
+            &ctx,
+            &StyleCx {
+                tokens: &red,
+                ..StyleCx::empty()
+            },
+        );
+        store_view(
+            &ctx,
+            &StyleCx {
+                tokens: &blue,
+                ..StyleCx::empty()
+            },
+        );
+        assert_eq!(
+            tokens_of(&ctx).expect("stashed").get("--we-x"),
+            Some("blue"),
+            "the table the view was stored with, not the one held before"
+        );
     }
 }

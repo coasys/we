@@ -47,6 +47,19 @@ impl TokenTable {
         })
     }
 
+    /// A table of `vars` claiming `like`'s fingerprint — what a 64-bit
+    /// collision would look like. Only for a test showing that a cache
+    /// never takes a fingerprint alone for the table ([`Self::same`]).
+    #[doc(hidden)]
+    pub fn colliding_with(vars: IndexMap<Arc<str>, Arc<str>>, like: &TokenTable) -> Self {
+        let fingerprint = std::sync::OnceLock::new();
+        let _ = fingerprint.set(like.fingerprint());
+        Self {
+            vars: Arc::new(vars),
+            fingerprint,
+        }
+    }
+
     /// Whether the two tables hold the same names and values, in order —
     /// at once for a table and its clone, which share their contents.
     pub fn same(&self, other: &TokenTable) -> bool {
