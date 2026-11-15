@@ -89,6 +89,23 @@ pub struct RendererApp {
     surface_sent: std::collections::HashMap<SurfaceTag, f32>,
     /// F12 — the resolve/paint counters overlay.
     pub debug: bool,
+    /// How long the last frame's stages took — the overlay prints them,
+    /// and a bench reads them without a profiler.
+    pub stages: Stages,
+}
+
+/// Wall time of each stage of the last [`RendererApp::frame_body`]: the
+/// resolve (a no-op when no revision moved), the layout (zero when the
+/// cache held — `laid_out` says which), paint, and running the events it
+/// produced.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct Stages {
+    pub resolve: std::time::Duration,
+    pub layout: std::time::Duration,
+    /// The layout cache missed and layout ran this frame.
+    pub laid_out: bool,
+    pub paint: std::time::Duration,
+    pub dispatch: std::time::Duration,
 }
 
 impl RendererApp {
@@ -119,6 +136,7 @@ impl RendererApp {
             layout_key: None,
             surface_sent: std::collections::HashMap::new(),
             debug: false,
+            stages: Stages::default(),
         }
     }
 
@@ -142,7 +160,12 @@ impl RendererApp {
         visuals.override_text_color = body_text_color(&self.theme.tokens);
         ui.ctx().set_visuals(visuals);
 
+        let started = std::time::Instant::now();
         let resolved = self.session.resolve();
+        self.stages = Stages {
+            resolve: started.elapsed(),
+            ..Stages::default()
+        };
         let stats = self.session.stats().clone();
 
         egui::ScrollArea::vertical()
@@ -172,9 +195,12 @@ impl RendererApp {
                     viewport: scx.viewport,
                 };
                 if self.layout_key.as_ref() != Some(&key) || self.layout.is_none() {
+                    let started = std::time::Instant::now();
                     let mcx = MeasureCx::new(ui.ctx());
                     self.layout = Some(layout(&mcx, &scx, &self.registry, &resolved, rect));
                     self.layout_key = Some(key);
+                    self.stages.layout = started.elapsed();
+                    self.stages.laid_out = true;
                 }
                 let l = self.layout.as_ref().unwrap();
                 ui.allocate_space(Vec2::new(width, l.size.y.max(1.0)));
@@ -203,6 +229,7 @@ impl RendererApp {
                     }
                 }
 
+                let started = std::time::Instant::now();
                 let mut events = Vec::new();
                 paint(
                     ui,
@@ -218,10 +245,13 @@ impl RendererApp {
                 // width — lands in the next resolve; without asking for
                 // that frame it waits for the next input, so a pointer that
                 // enters the rail and stops leaves it drawn collapsed.
+                self.stages.paint = started.elapsed();
+                let started = std::time::Instant::now();
                 if !events.is_empty() {
                     ui.ctx().request_repaint();
                 }
                 self.drain(events);
+                self.stages.dispatch = started.elapsed();
             });
 
         if self.debug {
@@ -269,6 +299,19 @@ impl RendererApp {
                         ))
                         .monospace()
                         .size(11.0),
+                    );
+                    let st = &self.stages;
+                    ui.label(
+                        RichText::new(format!(
+                            "resolve {:.1?}  ·  layout {:.1?}{}  ·  paint {:.1?}  ·  dispatch {:.1?}",
+                            st.resolve,
+                            st.layout,
+                            if st.laid_out { "" } else { " (cached)" },
+                            st.paint,
+                            st.dispatch,
+                        ))
+                        .monospace()
+                        .size(10.0),
                     );
                     if !unknown.is_empty() {
                         ui.label(

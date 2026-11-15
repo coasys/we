@@ -2666,6 +2666,7 @@ fn layout_pass(
             clip,
             ..
         } = b;
+        crate::counters::pass_built();
         let _ = tree.compute_layout_with_measure(
             root_id,
             taffy::Size {

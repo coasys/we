@@ -257,6 +257,7 @@ fn type_role(bag: &mut Bag, node: &ResolvedNode, tokens: &we_style::TokenTable) 
 /// The node's [`we_style::Style`] under `scx`'s theme — the single entry
 /// point layout, measure and paint share.
 pub fn style_of(node: &ResolvedNode, scx: &StyleCx) -> Style {
+    crate::counters::style_resolved();
     let mut bag = bag_for(node);
     type_role(&mut bag, node, scx.tokens);
     let mut input = StyleInput::new(scx.tokens, direction_of(node));

@@ -10,6 +10,7 @@
 #![forbid(unsafe_code)]
 
 pub mod cells;
+pub mod counters;
 pub mod defaults;
 mod geom;
 pub mod lane;
