@@ -252,6 +252,7 @@ fn screen_panels_are_filtered_to_declared_ids() {
     let declared = Declared {
         panels: Arc::from(["p-mine".into()]),
         dialogs: Arc::from([]),
+        lanes: Arc::from([]),
     };
     let roots =
         Roots::new(&layer, &bag).gated(&src, &gate, src.compat_roots(), space_auth(), declared);
@@ -791,14 +792,20 @@ fn query_rows_and_callback_payloads_carry_no_foreign_authority() {
 /// spelling). The two screen facts TS grants at Space AND a shipped
 /// Coasys template reads at Space — `layoutDirty` (templates/0 panel
 /// body) and `collapsedLanes` (templates/0 routes and record view) — are
-/// Space in core's own table; the rest of the chrome stays App.
+/// Space in core's own table, the lane list filtered to declared lanes
+/// (N2, `we-legacy/tests/lanes.rs`); the rest of the chrome stays App.
 #[test]
 fn the_core_screen_table_grants_what_space_templates_read() {
     let tiers = we_template::screen_tiers();
     let tier = |m: &str| match tiers.rule(m) {
-        Some(we_template::MemberRule::Member { tier }) => Some(*tier),
+        Some(we_template::MemberRule::Member { tier })
+        | Some(we_template::MemberRule::DeclaredLanes { tier }) => Some(*tier),
         _ => None,
     };
+    assert!(matches!(
+        tiers.rule("collapsedLanes"),
+        Some(we_template::MemberRule::DeclaredLanes { .. })
+    ));
     assert_eq!(tier("layoutDirty"), Some(Tier::Space));
     assert_eq!(tier("collapsedLanes"), Some(Tier::Space));
     for chrome in [
@@ -935,6 +942,7 @@ fn declared_ids_filter_plain_objects_and_refuse_lists() {
     let declared = Declared {
         panels: Arc::from(["p-mine".into()]),
         dialogs: Arc::from([]),
+        lanes: Arc::from([]),
     };
     let roots =
         Roots::new(&layer, &bag).gated(&src, &gate, src.compat_roots(), space_auth(), declared);

@@ -55,6 +55,9 @@ pub struct Declared {
     pub panels: Arc<[Arc<str>]>,
     /// `meta.dialogs` ids.
     pub dialogs: Arc<[Arc<str>]>,
+    /// The lanes the template owns: every `meta.panels[].home` (Lal N2 —
+    /// "undeclared lanes are App").
+    pub lanes: Arc<[Arc<str>]>,
 }
 
 impl Declared {
@@ -79,9 +82,18 @@ impl Declared {
                 _ => Arc::from([]),
             }
         };
+        let mut lanes: Vec<Arc<str>> = Vec::new();
+        if let Some(serde_json::Value::Array(items)) = meta.get("panels") {
+            for home in items.iter().filter_map(|i| i.get("home")?.as_str()) {
+                if !lanes.iter().any(|l| l.as_ref() == home) {
+                    lanes.push(home.into());
+                }
+            }
+        }
         Declared {
             panels: ids("panels"),
             dialogs: ids("dialogs"),
+            lanes: lanes.into(),
         }
     }
 }
@@ -146,6 +158,7 @@ struct ServeKey {
     tier: Tier,
     panels: Arc<[Arc<str>]>,
     dialogs: Arc<[Arc<str>]>,
+    lanes: Arc<[Arc<str>]>,
     inner: usize,
     /// The member table's identity (F7) — a tightened policy on the same
     /// inner Arc is a different key. Held alive by the cached wrapper.
@@ -263,6 +276,7 @@ impl Gate {
                     tier: auth.tier,
                     panels: declared.panels.clone(),
                     dialogs: declared.dialogs.clone(),
+                    lanes: declared.lanes.clone(),
                     inner: Arc::as_ptr(&inner) as *const () as usize,
                     policy: tiers.id(),
                 };
@@ -325,6 +339,9 @@ impl Gate {
             Some(MemberRule::DeclaredIds { tier }) if auth.tier >= *tier => {
                 MemberVerdict::Ids(declared_for(declared, member))
             }
+            Some(MemberRule::DeclaredLanes { tier }) if auth.tier >= *tier => {
+                MemberVerdict::Lanes(visible_lanes(auth, declared))
+            }
             Some(_) => {
                 self.deny(auth, format!("member:{member}"));
                 MemberVerdict::Deny
@@ -370,6 +387,21 @@ fn declared_for(declared: &Declared, member: &str) -> Arc<[Arc<str>]> {
     }
 }
 
+/// The lanes whose names and collapse state `auth` may see (Lal N2), or
+/// `None` for every lane. THE lane policy — every spelling of
+/// `collapsedLanes` (core `screen.shell.*`, the legacy `shellStore.*` and
+/// `legacy.shellStore.*` aliases) and the resolver's own `$panels`
+/// collapse check come through here. Today: the design rule "undeclared
+/// lanes are App" — App sees every lane, a lower frame only the lanes its
+/// template declared. Making lane names public would be `None` here.
+pub fn visible_lanes(auth: &MountCx, declared: &Declared) -> Option<Arc<[Arc<str>]>> {
+    if auth.tier >= Tier::App {
+        None
+    } else {
+        Some(declared.lanes.clone())
+    }
+}
+
 /// The gate's richer answer for a member access — what the filtering
 /// namespace does next.
 pub enum MemberVerdict {
@@ -381,13 +413,17 @@ pub enum MemberVerdict {
     Container(MemberTiers),
     /// Serve the member filtered to these declared ids.
     Ids(Arc<[Arc<str>]>),
+    /// Serve a list of lane names, kept to these lanes (`None`: every
+    /// lane) — see [`visible_lanes`].
+    Lanes(Option<Arc<[Arc<str>]>>),
 }
 
 // ── the screen member table ──────────────────────────────────────────
 
 /// `screen`'s member table (design 4.2): the space tier sees the route,
 /// the params, this template's own panels and dialogs, and the two layout
-/// facts Coasys' space template reads (`layoutDirty`, `collapsedLanes`);
+/// facts Coasys' space template reads (`layoutDirty`, and `collapsedLanes`
+/// kept to the lanes it declared — [`visible_lanes`]);
 /// overlays, dock, space settings and the theme fork are chrome's. The
 /// ONE screen policy (E3c-8a r2, F2): `we-legacy` serves every old
 /// spelling of a screen fact through this table. The same table is shared
@@ -435,9 +471,13 @@ fn build_screen_tiers() -> MemberTiers {
     // reset control, the lane toggles in its routes and record view) —
     // E3c-8a r2, F2. This table is the policy for every spelling: the
     // legacy aliases cannot grant more than it does.
-    for m in ["layoutDirty", "collapsedLanes"] {
-        nav_member(&mut shell, m);
-    }
+    nav_member(&mut shell, "layoutDirty");
+    // The list itself is filtered to the lanes the reading template
+    // declared (Lal N2: "undeclared lanes are App") — `visible_lanes`.
+    shell.insert(
+        Arc::from("collapsedLanes"),
+        MemberRule::DeclaredLanes { tier: Tier::Space },
+    );
     for m in [
         "activeShellView",
         "spaceSettingsOpen",
@@ -559,6 +599,21 @@ impl Namespace for FilteredNs {
                 };
                 self.memoized(key, src, || Value::namespace(DeclaredNs { inner: ns, ids }))
             }
+            MemberVerdict::Lanes(None) => self.inner.get(key),
+            // A lane list kept to the visible lanes; any other shape has
+            // no lane names to keep and is refused.
+            MemberVerdict::Lanes(Some(lanes)) => match self.inner.get(key) {
+                Value::List(items) => Value::List(Arc::new(
+                    items
+                        .iter()
+                        .filter(|i| {
+                            matches!(i, Value::Str(s) if lanes.iter().any(|l| l.as_ref() == s.as_ref()))
+                        })
+                        .cloned()
+                        .collect(),
+                )),
+                _ => Value::Undefined,
+            },
         }
     }
 
@@ -571,7 +626,8 @@ impl Namespace for FilteredNs {
             .filter(|(_, rule)| match rule {
                 MemberRule::Member { tier }
                 | MemberRule::Container { tier, .. }
-                | MemberRule::DeclaredIds { tier } => self.auth.tier >= *tier,
+                | MemberRule::DeclaredIds { tier }
+                | MemberRule::DeclaredLanes { tier } => self.auth.tier >= *tier,
             })
             .map(|(name, _)| name.clone())
             .collect()

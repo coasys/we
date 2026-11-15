@@ -140,6 +140,8 @@ pub struct Bound {
 /// - a [`MemberRule::DeclaredIds`] is an id→value map whose subkeys are
 ///   allowed only when the mount declared the id (`screen.panels`/`dialogs`
 ///   = this template's `meta.panels`/`meta.dialogs`);
+/// - a [`MemberRule::DeclaredLanes`] is a list of lane names filtered to
+///   the lanes the reading frame may see (`collapsedLanes`);
 /// - a member absent from the table is denied — `Undefined`, never a
 ///   blocked value.
 #[derive(Debug, Clone, Default)]
@@ -204,6 +206,14 @@ pub enum MemberRule {
     /// allowed only when declared.
     DeclaredIds {
         /// The lowest tier that may read the map at all.
+        tier: Tier,
+    },
+    /// A list of lane names (`collapsedLanes`) seen through the reading
+    /// frame's declared lanes (Lal N2): readable at `tier`, and which
+    /// names survive is [`crate::gate::visible_lanes`]'s answer — the one
+    /// place the lane policy lives.
+    DeclaredLanes {
+        /// The lowest tier that may read the list at all.
         tier: Tier,
     },
 }

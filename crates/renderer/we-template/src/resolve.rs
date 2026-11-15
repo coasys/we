@@ -1657,19 +1657,24 @@ fn resolve_panels(
         }
     }
 
-    // `shell.lanes[lane].collapsed` through the gate — lane collapse is a
-    // `collapsedLanes` member, app-tier furniture: a space authority is
-    // refused and the lane resolves expanded.
-    let collapsed = matches!(
-        cx.screen_read("collapsedLanes"),
-        crate::gate::MemberVerdict::Plain
-    ) && (cx
-        .screen
-        .shell
-        .lanes
-        .get(&lane)
-        .map(|l| l.collapsed)
-        .unwrap_or(false))
+    // `shell.lanes[lane].collapsed` through the gate — lane collapse is
+    // the `collapsedLanes` member, so this outlet shows its lane's state
+    // only where that list would name the lane: App sees every lane, a
+    // lower frame only the lanes its template declared
+    // (`gate::visible_lanes`, Lal N2). Anything else resolves expanded.
+    let lane_visible = match cx.screen_read("collapsedLanes") {
+        crate::gate::MemberVerdict::Lanes(None) => true,
+        crate::gate::MemberVerdict::Lanes(Some(lanes)) => lanes.iter().any(|l| **l == *lane),
+        _ => false,
+    };
+    let collapsed = lane_visible
+        && (cx
+            .screen
+            .shell
+            .lanes
+            .get(&lane)
+            .map(|l| l.collapsed)
+            .unwrap_or(false))
         || (props
             .and_then(|p| p.get("foldEmpty"))
             .and_then(|f| f.as_bool())

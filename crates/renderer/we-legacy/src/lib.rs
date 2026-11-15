@@ -302,6 +302,9 @@ fn store_tiers(store: &str, rows: &[(&'static str, Tier)]) -> MemberTiers {
             Some(MemberRule::DeclaredIds { tier }) => MemberRule::DeclaredIds {
                 tier: tier.max(legacy),
             },
+            Some(MemberRule::DeclaredLanes { tier }) => MemberRule::DeclaredLanes {
+                tier: tier.max(legacy),
+            },
             // A container under an overlay is not a member a face serves.
             Some(MemberRule::Container { .. }) => MemberRule::Member { tier: Tier::App },
         };

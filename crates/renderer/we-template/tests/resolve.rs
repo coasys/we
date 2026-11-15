@@ -2273,6 +2273,7 @@ fn a_synthesized_panels_conduit_is_not_a_dependency() {
             declared: we_template::Declared {
                 panels: Arc::from(["inspector".into()]),
                 dialogs: Arc::from([]),
+                lanes: Arc::from([]),
             },
         },
         bag.clone(),
