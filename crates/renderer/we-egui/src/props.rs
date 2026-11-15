@@ -1138,6 +1138,17 @@ pub(crate) fn role_color(ctx: &egui::Context, role: &str) -> Option<egui::Color3
     token_color(ctx, &format!("--we-role-{role}"))
 }
 
+/// An authored colour prop as `tokenVar('color', value)` reads it — a role
+/// (`accent-text`), a scale step (`teal-500`) or raw CSS — resolved against
+/// the frame's theme.
+pub(crate) fn color_token(ctx: &egui::Context, value: &str) -> Option<egui::Color32> {
+    let css = we_style::scales::token_var("color", Some(value), "", None);
+    match crate::defaults::tokens_of(ctx) {
+        Some(tokens) => we_style::eval_color(&tokens.substitute(&css)).map(color32),
+        None => we_style::eval_color(value).map(color32),
+    }
+}
+
 /// A `--we-*` token's value as px — `--we-avatar-size-md` → 40.
 pub(crate) fn token_px(
     ctx: &egui::Context,
