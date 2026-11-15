@@ -4,13 +4,13 @@
 //! re-exported so widget code keeps calling `crate::defaults::*`.
 use std::sync::Arc;
 
+pub(crate) use we_layout::defaults::unit_metrics;
 pub use we_layout::defaults::{effective, style_of, StyleCx};
-pub(crate) use we_layout::defaults::{font_px, root_px, FONT_PX, ROOT_PX};
 
 /// The frame-time unit context widgets get outside `style_of`: the viewport
-/// (for `vw`/`radius %`), the tier's container width, and the theme's font
-/// metrics — `font_px` is the `em`/`ch`/`ex`/`lh` basis and the size
-/// unstyled text falls back to, `root_px` the `rem` basis
+/// (for `vw`/`radius %`), the tier's container width, and the theme's unit
+/// metrics — `metrics.font_px` is the `em`/`ch`/`ex`/`lh` basis and the
+/// size unstyled text falls back to, `metrics.root_px` the `rem` basis
 /// (`--we-font-size-300` feeds both on the recorded themes: 16px most,
 /// 13 cyberpunk). `PaintCx`/`MeasureCx` are frozen, so `paint()`/`layout()`
 /// stash it on the egui `Context` once a frame — numbers only, no state.
@@ -19,19 +19,17 @@ pub(crate) use we_layout::defaults::{font_px, root_px, FONT_PX, ROOT_PX};
 pub(crate) struct ViewportCx {
     pub viewport: we_style::Size,
     pub container_width: f32,
-    pub font_px: f32,
-    pub root_px: f32,
+    pub metrics: we_metrics::UnitMetrics,
 }
 
-/// The unthemed answer before the first `layout`/`paint` — WE's body
-/// defaults, so an early `view_of` never reads a zero font metric.
+/// The unthemed answer before the first `layout`/`paint` — the default
+/// unit metrics, so an early `view_of` never reads a zero font metric.
 impl Default for ViewportCx {
     fn default() -> Self {
         Self {
             viewport: we_style::Size::new(0.0, 0.0),
             container_width: 0.0,
-            font_px: FONT_PX,
-            root_px: ROOT_PX,
+            metrics: we_metrics::UnitMetrics::default(),
         }
     }
 }
@@ -53,8 +51,7 @@ pub(crate) fn store_view(ctx: &egui::Context, scx: &StyleCx) {
                 scx.viewport.width,
                 scx.viewport.height,
                 scx.container_width,
-                font_px(scx),
-                root_px(scx),
+                unit_metrics(scx),
             ),
         );
         d.insert_temp(egui::Id::unique(TOKENS_KEY), scx.tokens.clone());
@@ -91,14 +88,15 @@ pub(crate) fn tokens_of(ctx: &egui::Context) -> Option<we_style::TokenTable> {
 /// The stashed view — the unthemed defaults before the first
 /// `layout`/`paint`.
 pub(crate) fn view_of(ctx: &egui::Context) -> ViewportCx {
-    ctx.data_mut(|d| d.get_temp::<(f32, f32, f32, f32, f32)>(egui::Id::unique(VIEW_KEY)))
-        .map(|(w, h, c, fp, rp)| ViewportCx {
-            viewport: we_style::Size::new(w, h),
-            container_width: c,
-            font_px: fp,
-            root_px: rp,
-        })
-        .unwrap_or_default()
+    ctx.data_mut(|d| {
+        d.get_temp::<(f32, f32, f32, we_metrics::UnitMetrics)>(egui::Id::unique(VIEW_KEY))
+    })
+    .map(|(w, h, c, metrics)| ViewportCx {
+        viewport: we_style::Size::new(w, h),
+        container_width: c,
+        metrics,
+    })
+    .unwrap_or_default()
 }
 
 /// The stashed base-family stack — `None` before the first frame and on a
@@ -133,6 +131,7 @@ pub(crate) fn part_patch(
         theme: &theme,
         viewport: view.viewport,
         container_width: view.container_width,
+        metrics: view.metrics,
         scope: &scope,
     };
     we_layout::theme_css::part_style(&scx, node, part, None)

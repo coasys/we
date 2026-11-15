@@ -76,7 +76,7 @@ fn resolve1(input: &StyleInput, key: &str, value: &str) -> Style {
 fn dim_px(d: we_style::Dimension, input: &StyleInput, percent_of: f32) -> Option<f32> {
     match d {
         we_style::Dimension::Percent(p) => Some(p * percent_of),
-        other => other.to_px(input.font_px, input.root_px, input.viewport),
+        other => other.to_px(&input.metrics, input.viewport),
     }
 }
 
@@ -209,7 +209,7 @@ pub fn gallery_ui(ui: &mut Ui, theme: &Theme) {
                 ui.monospace(format!("{t:>3}"));
                 match style.layout.gap.map(|(d, _)| d) {
                     Some(d) => {
-                        let px = d.to_px(input.font_px, input.root_px, input.viewport);
+                        let px = d.to_px(&input.metrics, input.viewport);
                         let w = px.unwrap_or(2.0).clamp(2.0, 300.0);
                         let (rect, _) =
                             ui.allocate_exact_size(Vec2::new(w, 12.0), egui::Sense::hover());
@@ -272,15 +272,11 @@ pub fn gallery_ui(ui: &mut Ui, theme: &Theme) {
                     let painter = ui.painter();
                     if let Some(shadows) = &style.paint.shadows {
                         for s in shadows {
-                            let dx =
-                                s.dx.to_px(input.font_px, input.root_px, input.viewport)
-                                    .unwrap_or(0.0);
-                            let dy =
-                                s.dy.to_px(input.font_px, input.root_px, input.viewport)
-                                    .unwrap_or(0.0);
+                            let dx = s.dx.to_px(&input.metrics, input.viewport).unwrap_or(0.0);
+                            let dy = s.dy.to_px(&input.metrics, input.viewport).unwrap_or(0.0);
                             let spread = s
                                 .spread
-                                .and_then(|d| d.to_px(input.font_px, input.root_px, input.viewport))
+                                .and_then(|d| d.to_px(&input.metrics, input.viewport))
                                 .unwrap_or(0.0);
                             let col = s
                                 .color

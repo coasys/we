@@ -36,7 +36,7 @@ pub use props::{
     eval_decls, eval_decls_in, interactive_decls, is_design_prop, is_interactive_prop, merge_props,
     resolve, DeclValue, Decls, EvalCx, EvalResult, StyleInput,
 };
-pub use shorthand::{state_bag_filled, tier_bag_of, with_box_sides_filled, Bag, Tier};
+pub use shorthand::{state_bag_filled, tier_bag_of, with_box_sides_filled, Bag};
 pub use style::*;
 pub use theme::{Polarity, Theme, ThemeSet};
 pub use tokens::{TokenTable, TokenTableError};

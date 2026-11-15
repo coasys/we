@@ -27,10 +27,11 @@ use crate::scales::{
     parse_transition_prop, resolve_font_family, resolve_font_weight, resolve_line_height,
     surface_image_decl, token_var, tone_variables, z_index_var, SemanticAxis,
 };
-use crate::shorthand::{state_bag_filled, tier_bag_of, Bag, Tier};
+use crate::shorthand::{state_bag_filled, tier_bag_of, Bag};
 use crate::style::*;
 use crate::tokens::TokenTable;
 use crate::transition::parse_transitions;
+use we_metrics::SizeTier;
 
 /// One emitted declaration value — `opacity: 0.5` keeps its number, the rest
 /// is text. `CSSStyleObject`'s `string | number`.
@@ -826,11 +827,10 @@ pub fn merge_props(primary: &Bag, secondary: &Bag) -> Bag {
 pub struct EvalCx<'a> {
     pub tokens: &'a TokenTable,
     pub viewport: Size,
-    /// What `1em` means where this style lands — the element's own font size
-    /// when known, else the theme's base (the caller decides; 14px is WE's).
-    pub font_px: f32,
-    /// What `1rem` means — the root font size the theme sets.
-    pub root_px: f32,
+    /// The unit metrics `em`/`rem`/`ch`/`ex`/`lh` resolve against — the
+    /// element's own font size in `font_px` when the caller knows it, else
+    /// the theme's base.
+    pub metrics: we_metrics::UnitMetrics,
 }
 
 impl<'a> EvalCx<'a> {
@@ -838,8 +838,7 @@ impl<'a> EvalCx<'a> {
         Self {
             tokens,
             viewport: Size::new(0.0, 0.0),
-            font_px: 14.0,
-            root_px: 16.0,
+            metrics: we_metrics::UnitMetrics::default(),
         }
     }
 
@@ -1414,8 +1413,7 @@ fn eval_decls_scoped(
         scoped = EvalCx {
             tokens: &merged,
             viewport: cx.viewport,
-            font_px: cx.font_px,
-            root_px: cx.root_px,
+            metrics: cx.metrics,
         };
         &scoped
     };
@@ -1756,17 +1754,17 @@ fn eval_decls_scoped(
 
 /// Everything resolution needs: the theme's table, the component's container
 /// direction, the viewport the tier and `vw`/`vh` resolve against, and the
-/// font metrics `em`/`rem`/`lh` mean.
+/// unit metrics `em`/`rem`/`ch`/`ex`/`lh` mean.
 pub struct StyleInput<'a> {
     pub tokens: &'a TokenTable,
     pub direction: Direction,
     /// Container width in px — decides which `*UpProps` tier applies.
-    /// `Tier::for_width` maps it; `Tier::Base` behaviour comes free by
-    /// passing `0`.
+    /// `SizeTier::for_width` maps it; `SizeTier::Base` behaviour comes free
+    /// by passing `0`.
     pub container_width: f32,
     pub viewport: Size,
-    pub font_px: f32,
-    pub root_px: f32,
+    /// The unit metrics — what `1em`/`1rem`/`1ch`/`1ex`/`1lh` mean.
+    pub metrics: we_metrics::UnitMetrics,
     /// The custom properties inherited from the resolved ancestors — empty
     /// for a root. CSS custom-property inheritance is the mechanism: a
     /// parent's `--we-*` decls (a `tone`'s re-pointings, a `styles` hatch's
@@ -1782,8 +1780,7 @@ impl<'a> StyleInput<'a> {
             direction,
             container_width: 0.0,
             viewport: Size::new(0.0, 0.0),
-            font_px: 14.0,
-            root_px: 16.0,
+            metrics: we_metrics::UnitMetrics::default(),
             inherited: &EMPTY,
         }
     }
@@ -1792,8 +1789,7 @@ impl<'a> StyleInput<'a> {
         EvalCx {
             tokens: self.tokens,
             viewport: self.viewport,
-            font_px: self.font_px,
-            root_px: self.root_px,
+            metrics: self.metrics,
         }
     }
 }
@@ -1973,11 +1969,11 @@ pub fn resolve(props: &Bag, input: &StyleInput) -> Style {
 
     // The active tier and the ones beneath it, ascending — `md` falls back
     // through `sm` to base, exactly as its var chain does.
-    let active = Tier::for_width(input.container_width);
-    if active != Tier::Base {
+    let active = SizeTier::for_width(input.container_width);
+    if active != SizeTier::Base {
         let mut applied = false;
         let mut pretier: Option<Box<Style>> = None;
-        for tier in [Tier::Sm, Tier::Md, Tier::Lg]
+        for tier in [SizeTier::Sm, SizeTier::Md, SizeTier::Lg]
             .iter()
             .copied()
             .take_while(|t| *t <= active)

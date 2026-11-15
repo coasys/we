@@ -866,7 +866,7 @@ fn animate(
         .layout
         .inset
         .left
-        .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
+        .and_then(|d| d.to_px(&view.metrics, view.viewport))
         .map(|v| format!("{v}px"));
     let base = move |prop: &str| match prop {
         "left" => left.clone(),
@@ -880,7 +880,7 @@ fn animate(
     let dx = decls
         .get("left")
         .and_then(|v| we_style::eval_dimension(&v.text()))
-        .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
+        .and_then(|d| d.to_px(&view.metrics, view.viewport))
         .unwrap_or(0.0);
     if sx != 0.0 || sy != 0.0 || dx != 0.0 {
         let (tx, ty) = (sx.to_radians().tan(), sy.to_radians().tan());

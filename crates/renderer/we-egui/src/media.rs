@@ -6,7 +6,7 @@ use we_expr::Value;
 use we_style::Style;
 use we_template::ResolvedNode;
 
-use crate::defaults::{tokens_of, view_of, ViewportCx, FONT_PX, ROOT_PX};
+use crate::defaults::{tokens_of, view_of, ViewportCx};
 use crate::props;
 use crate::{MeasureCx, PaintCx, Rect, Size, Widget, WidgetKind};
 
@@ -151,7 +151,7 @@ impl Icon {
     fn size_px(node: &ResolvedNode, style: &Style, view: ViewportCx) -> f32 {
         if let Some(v) = node.props.get("size") {
             if let Some(d) = props::dim_of(v) {
-                if let Some(px) = d.to_px(view.font_px, view.root_px, view.viewport) {
+                if let Some(px) = d.to_px(&view.metrics, view.viewport) {
                     return px;
                 }
             }
@@ -179,7 +179,7 @@ impl Icon {
         style
             .text
             .font_size
-            .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
+            .and_then(|d| d.to_px(&view.metrics, view.viewport))
             .unwrap_or(16.0)
     }
 
@@ -251,11 +251,11 @@ impl Widget for Image {
         let view = view_of(cx.ctx);
         let w = props::dim_prop(node, "width")
             .or(style.layout.width)
-            .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
+            .and_then(|d| d.to_px(&view.metrics, view.viewport))
             .unwrap_or(avail.x.min(64.0));
         let h = props::dim_prop(node, "height")
             .or(style.layout.height)
-            .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
+            .and_then(|d| d.to_px(&view.metrics, view.viewport))
             .unwrap_or(w);
         Size::new(w, h)
     }
@@ -263,13 +263,7 @@ impl Widget for Image {
         let view = view_of(cx.ui.ctx());
         let src = props::prop_text(node, "src").unwrap_or("");
         let alt = props::prop_text(node, "alt").unwrap_or(src);
-        let r = props::radius_px(
-            &style.paint.radius,
-            rect,
-            view.font_px,
-            view.root_px,
-            view.viewport,
-        );
+        let r = props::radius_px(&style.paint.radius, rect, &view.metrics, view.viewport);
         // The image is the element's content — it paints inside the padding.
         let content = props::content_rect(rect, style, view, cx.cb_w);
         if src.is_empty() {
@@ -388,6 +382,7 @@ impl Rings {
         edge_raw: Option<&str>,
         ring_raw: Option<&str>,
         width_raw: Option<&str>,
+        metrics: &we_metrics::UnitMetrics,
         small: bool,
     ) -> Self {
         // `--we-avatar-{ring,edge}-width`: 2px, 1.5px on xxs/xs faces.
@@ -395,7 +390,7 @@ impl Rings {
         let edge_w = dflt;
         let ring_w = width_raw
             .and_then(we_style::eval_dimension)
-            .and_then(|d| d.to_px(FONT_PX, ROOT_PX, we_style::Size::new(0.0, 0.0)))
+            .and_then(|d| d.to_px(metrics, we_style::Size::new(0.0, 0.0)))
             .unwrap_or(dflt);
         Self {
             edge: edge_raw
@@ -434,7 +429,8 @@ impl Rings {
 /// A menu item's avatar rings — `prop:ringColor` is the only band the
 /// DropdownMenu sets, on an `xs` face (`DropdownMenu.solid.tsx:232`).
 pub(crate) fn menu_rings(ctx: &egui::Context, tone: Option<&str>) -> Rings {
-    Rings::resolve(ctx, None, tone, None, true)
+    let view = view_of(ctx);
+    Rings::resolve(ctx, None, tone, None, &view.metrics, true)
 }
 
 /// The deterministic stand-in for `toSvg(hash)` (jdenticon): a 5×5
@@ -489,8 +485,7 @@ impl Avatar {
                     props::token_px(
                         ctx,
                         &format!("--we-avatar-size-{name}"),
-                        FONT_PX,
-                        ROOT_PX,
+                        &view.metrics,
                         view.viewport,
                     )
                     .unwrap_or(*px)
@@ -499,7 +494,7 @@ impl Avatar {
         match props::prop(node, "size") {
             Value::Str(s) => tier(s).unwrap_or_else(|| {
                 props::dim_prop(node, "size")
-                    .and_then(|d| d.to_px(FONT_PX, ROOT_PX, view.viewport))
+                    .and_then(|d| d.to_px(&view.metrics, view.viewport))
                     .unwrap_or_else(|| tier("md").unwrap_or(40.0))
             }),
             Value::Num(n) => *n as f32,
@@ -544,13 +539,7 @@ impl Avatar {
     ) {
         let ctx = ui.ctx().clone();
         let view = view_of(&ctx);
-        let r = props::radius_px(
-            &style.paint.radius,
-            rect,
-            view.font_px,
-            view.root_px,
-            view.viewport,
-        );
+        let r = props::radius_px(&style.paint.radius, rect, &view.metrics, view.viewport);
         let sunken = || {
             style
                 .paint
@@ -655,6 +644,7 @@ impl Widget for Avatar {
             props::prop_text(node, "edgeColor"),
             props::prop_text(node, "ringColor"),
             width_raw.as_deref(),
+            &view.metrics,
             size <= 24.0,
         );
         let face = Self::face(node);
@@ -822,6 +812,7 @@ impl Widget for AvatarStack {
             edge_raw,
             props::prop_text(node, "ringColor"),
             width_raw.as_deref(),
+            &view.metrics,
             size <= 24.0,
         );
         let step = size * (1.0 - overlap);
@@ -860,7 +851,7 @@ impl Widget for AvatarStack {
         if extra > 0 {
             let x = x0 + entries.len().min(max) as f32 * step;
             let slot = Rect::from_min_size(egui::pos2(x, content.min.y), egui::vec2(size, size));
-            let r = props::radius_px(&style.paint.radius, slot, FONT_PX, ROOT_PX, view.viewport);
+            let r = props::radius_px(&style.paint.radius, slot, &view.metrics, view.viewport);
             let p = cx.ui.painter().with_clip_rect(slot);
             p.rect_filled(
                 slot,
@@ -902,8 +893,7 @@ impl Widget for AnimatedIcon {
         let view = view_of(cx.ctx);
         let s = props::px(
             props::dim_prop(node, "size").as_ref(),
-            view.font_px,
-            view.root_px,
+            &view.metrics,
             view.viewport,
         )
         .unwrap_or(20.0);

@@ -238,8 +238,7 @@ pub fn text_job(
         style,
         ctx,
         base_family.as_deref(),
-        view.font_px,
-        view.root_px,
+        &view.metrics,
         view.viewport,
     );
     let opacity = style.paint.opacity.unwrap_or(1.0).clamp(0.0, 1.0);
@@ -249,8 +248,7 @@ pub fn text_job(
     format.italics = italic(style);
     if let Some(ls) = props::px(
         style.text.letter_spacing.as_ref(),
-        view.font_px,
-        view.root_px,
+        &view.metrics,
         view.viewport,
     ) {
         format.extra_letter_spacing = ls;
@@ -263,8 +261,7 @@ pub fn text_job(
             style,
             &font,
             ctx,
-            view.font_px,
-            view.root_px,
+            &view.metrics,
             view.viewport,
         ));
     }
@@ -369,18 +366,10 @@ fn underline(cx: &mut PaintCx, style: &Style, rect: Rect) {
             style,
             cx.ui.ctx(),
             base_family.as_deref(),
-            view.font_px,
-            view.root_px,
+            &view.metrics,
             view.viewport,
         );
-        let h = props::line_height_px(
-            style,
-            &font,
-            cx.ui.ctx(),
-            view.font_px,
-            view.root_px,
-            view.viewport,
-        );
+        let h = props::line_height_px(style, &font, cx.ui.ctx(), &view.metrics, view.viewport);
         cx.ui.painter().hline(
             rect.min.x..=rect.min.x + rect.width(),
             rect.min.y + h - 1.5,

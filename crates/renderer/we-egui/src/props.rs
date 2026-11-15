@@ -187,12 +187,7 @@ pub(crate) fn patched<'a>(style: &'a Style, patch: &StylePatch) -> std::borrow::
 fn inset_px(d: &Option<Dimension>, view: crate::defaults::ViewportCx, base: Option<f32>) -> f32 {
     match d.as_ref() {
         Some(d) => d
-            .resolve(
-                Some(base.unwrap_or(0.0)),
-                view.font_px,
-                view.root_px,
-                view.viewport,
-            )
+            .resolve(Some(base.unwrap_or(0.0)), &view.metrics, view.viewport)
             .unwrap_or(0.0),
         None => 0.0,
     }
@@ -214,9 +209,7 @@ pub(crate) fn content_rect(
     let pad = &style.layout.padding;
     let bor = &style.paint.borders;
     let p = |d: &Option<Dimension>| inset_px(d, view, base);
-    let bw = |s: &Option<we_style::BorderSide>| {
-        border_side_px(s, view.font_px, view.root_px, view.viewport)
-    };
+    let bw = |s: &Option<we_style::BorderSide>| border_side_px(s, &view.metrics, view.viewport);
     let min = rect.min + egui::vec2(p(&pad.left) + bw(&bor.left), p(&pad.top) + bw(&bor.top));
     let max = rect.max
         - egui::vec2(
@@ -238,10 +231,14 @@ pub(crate) fn color32(c: Color) -> egui::Color32 {
     )
 }
 
-/// A `Dimension` against font/root/viewport; `Auto`/`Percent` resolve in
+/// A `Dimension` against unit metrics/viewport; `Auto`/`Percent` resolve in
 /// layout, not here — callers take `None` as "not set".
-pub(crate) fn px(d: Option<&Dimension>, font_px: f32, root_px: f32, viewport: Size) -> Option<f32> {
-    d.and_then(|d| d.to_px(font_px, root_px, viewport))
+pub(crate) fn px(
+    d: Option<&Dimension>,
+    metrics: &we_metrics::UnitMetrics,
+    viewport: Size,
+) -> Option<f32> {
+    d.and_then(|d| d.to_px(metrics, viewport))
 }
 
 /// The resolved border-radius in px — corners averaged into one `f32` (egui
@@ -249,8 +246,7 @@ pub(crate) fn px(d: Option<&Dimension>, font_px: f32, root_px: f32, viewport: Si
 pub(crate) fn radius_px(
     radius: &Edges<Option<Dimension>>,
     rect: egui::Rect,
-    font_px: f32,
-    root_px: f32,
+    metrics: &we_metrics::UnitMetrics,
     viewport: Size,
 ) -> f32 {
     let mut sum = 0.0;
@@ -260,12 +256,7 @@ pub(crate) fn radius_px(
         // Corners read percent against the box's short side — the base
         // is known, so a calc sum resolves fully.
         let v = d
-            .resolve(
-                Some(rect.width().min(rect.height())),
-                font_px,
-                root_px,
-                viewport,
-            )
+            .resolve(Some(rect.width().min(rect.height())), metrics, viewport)
             .unwrap_or(0.0);
         sum += v;
         n += 1;
@@ -293,13 +284,7 @@ pub(crate) fn paint_box(
     let opacity = style.paint.opacity.unwrap_or(1.0).clamp(0.0, 1.0);
     let fade = |c: egui::Color32| c.gamma_multiply(opacity);
     let viewport = view.viewport;
-    let radius = radius_px(
-        &style.paint.radius,
-        rect,
-        view.font_px,
-        view.root_px,
-        viewport,
-    );
+    let radius = radius_px(&style.paint.radius, rect, &view.metrics, viewport);
 
     // `clip-path: polygon(…)` changes nothing here — the element paints
     // normally (radius, borders, shadows) and the paint walk clips the
@@ -312,19 +297,15 @@ pub(crate) fn paint_box(
             if s.inset {
                 continue;
             }
-            let dx =
-                s.dx.to_px(view.font_px, view.root_px, viewport)
-                    .unwrap_or(0.0);
-            let dy =
-                s.dy.to_px(view.font_px, view.root_px, viewport)
-                    .unwrap_or(0.0);
+            let dx = s.dx.to_px(&view.metrics, viewport).unwrap_or(0.0);
+            let dy = s.dy.to_px(&view.metrics, viewport).unwrap_or(0.0);
             let spread = s
                 .spread
-                .and_then(|d| d.to_px(view.font_px, view.root_px, viewport))
+                .and_then(|d| d.to_px(&view.metrics, viewport))
                 .unwrap_or(0.0);
             let blur = s
                 .blur
-                .and_then(|d| d.to_px(view.font_px, view.root_px, viewport))
+                .and_then(|d| d.to_px(&view.metrics, viewport))
                 .unwrap_or(0.0);
             let color = s.color.map(color32).unwrap_or(current_color);
             let r = rect.translate(egui::vec2(dx, dy)).expand(spread);
@@ -366,7 +347,7 @@ pub(crate) fn paint_box(
             ) =>
         {
             b.width
-                .and_then(|d| d.to_px(view.font_px, view.root_px, viewport))
+                .and_then(|d| d.to_px(&view.metrics, viewport))
                 .unwrap_or(3.0) // CSS `medium`, as the stroke below
                 .max(0.0)
         }
@@ -382,19 +363,15 @@ pub(crate) fn paint_box(
             if !s.inset {
                 continue;
             }
-            let dx =
-                s.dx.to_px(view.font_px, view.root_px, viewport)
-                    .unwrap_or(0.0);
-            let dy =
-                s.dy.to_px(view.font_px, view.root_px, viewport)
-                    .unwrap_or(0.0);
+            let dx = s.dx.to_px(&view.metrics, viewport).unwrap_or(0.0);
+            let dy = s.dy.to_px(&view.metrics, viewport).unwrap_or(0.0);
             let spread = s
                 .spread
-                .and_then(|d| d.to_px(view.font_px, view.root_px, viewport))
+                .and_then(|d| d.to_px(&view.metrics, viewport))
                 .unwrap_or(0.0);
             let blur = s
                 .blur
-                .and_then(|d| d.to_px(view.font_px, view.root_px, viewport))
+                .and_then(|d| d.to_px(&view.metrics, viewport))
                 .unwrap_or(0.0);
             let color = s.color.map(color32).unwrap_or(current_color);
             if padding_box.width() <= 0.0 || padding_box.height() <= 0.0 {
@@ -437,7 +414,7 @@ pub(crate) fn paint_box(
         }
         let width = side
             .width
-            .and_then(|d| d.to_px(view.font_px, view.root_px, viewport))
+            .and_then(|d| d.to_px(&view.metrics, viewport))
             .unwrap_or(3.0); // CSS `medium`
         if width <= 0.0 {
             continue;
@@ -574,21 +551,11 @@ fn clip_points_of(
         .map(|(x, y)| {
             egui::pos2(
                 rect.min.x
-                    + x.resolve(
-                        Some(rect.width()),
-                        view.font_px,
-                        view.root_px,
-                        view.viewport,
-                    )
-                    .unwrap_or(0.0),
+                    + x.resolve(Some(rect.width()), &view.metrics, view.viewport)
+                        .unwrap_or(0.0),
                 rect.min.y
-                    + y.resolve(
-                        Some(rect.height()),
-                        view.font_px,
-                        view.root_px,
-                        view.viewport,
-                    )
-                    .unwrap_or(0.0),
+                    + y.resolve(Some(rect.height()), &view.metrics, view.viewport)
+                        .unwrap_or(0.0),
             )
         })
         .collect();
@@ -1016,15 +983,14 @@ pub(crate) fn font_id(
     style: &Style,
     ctx: &egui::Context,
     base_family: Option<&str>,
-    font_px: f32,
-    root_px: f32,
+    metrics: &we_metrics::UnitMetrics,
     viewport: Size,
 ) -> egui::FontId {
     let size = style
         .text
         .font_size
-        .and_then(|d| d.to_px(font_px, root_px, viewport))
-        .unwrap_or(font_px);
+        .and_then(|d| d.to_px(metrics, viewport))
+        .unwrap_or(metrics.font_px);
     let family = style
         .text
         .font_family
@@ -1073,15 +1039,12 @@ pub(crate) fn line_height_px(
     style: &Style,
     font: &egui::FontId,
     ctx: &egui::Context,
-    font_px: f32,
-    root_px: f32,
+    metrics: &we_metrics::UnitMetrics,
     viewport: Size,
 ) -> f32 {
     match &style.text.line_height {
         Some(we_style::LineHeight::Ratio(r)) => font.size * r,
-        Some(we_style::LineHeight::Length(d)) => {
-            d.to_px(font_px, root_px, viewport).unwrap_or(font.size)
-        }
+        Some(we_style::LineHeight::Length(d)) => d.to_px(metrics, viewport).unwrap_or(font.size),
         _ => ctx.fonts_mut(|f| f.row_height(font)),
     }
 }
@@ -1163,14 +1126,13 @@ pub(crate) fn role_color(ctx: &egui::Context, role: &str) -> Option<egui::Color3
 pub(crate) fn token_px(
     ctx: &egui::Context,
     name: &str,
-    font_px: f32,
-    root_px: f32,
+    metrics: &we_metrics::UnitMetrics,
     viewport: Size,
 ) -> Option<f32> {
     let tokens = crate::defaults::tokens_of(ctx)?;
     let raw = tokens.get(name)?;
     let resolved = tokens.substitute(raw);
-    we_style::eval_dimension(&resolved).and_then(|d| d.to_px(font_px, root_px, viewport))
+    we_style::eval_dimension(&resolved).and_then(|d| d.to_px(metrics, viewport))
 }
 
 /// The port of `seededHue`/`seededFill` in `shared/seededColor.ts`: FNV-1a
@@ -1434,10 +1396,8 @@ mod tests {
         let button = themed_style("we-button", "retro");
         for s in button.paint.shadows.as_deref().unwrap() {
             let d = egui::vec2(
-                s.dx.to_px(view.font_px, view.root_px, view.viewport)
-                    .unwrap_or(0.0),
-                s.dy.to_px(view.font_px, view.root_px, view.viewport)
-                    .unwrap_or(0.0),
+                s.dx.to_px(&view.metrics, view.viewport).unwrap_or(0.0),
+                s.dy.to_px(&view.metrics, view.viewport).unwrap_or(0.0),
             );
             let InsetStrips::Strips([top, bottom, left, right]) =
                 inset_strips(rect, rect.translate(d))
@@ -1459,10 +1419,8 @@ mod tests {
         let pressed = button.with_state(we_style::StateKind::Active);
         for s in pressed.paint.shadows.as_deref().unwrap() {
             let d = egui::vec2(
-                s.dx.to_px(view.font_px, view.root_px, view.viewport)
-                    .unwrap_or(0.0),
-                s.dy.to_px(view.font_px, view.root_px, view.viewport)
-                    .unwrap_or(0.0),
+                s.dx.to_px(&view.metrics, view.viewport).unwrap_or(0.0),
+                s.dy.to_px(&view.metrics, view.viewport).unwrap_or(0.0),
             );
             let InsetStrips::Strips([top, bottom, left, right]) =
                 inset_strips(rect, rect.translate(d))

@@ -560,8 +560,8 @@ fn huge_spans_saturate_at_u16_max() {
 }
 
 /// `em` is not in the worked tree: a `2em` width is the font metric made
-/// visible — `UnitMetrics::default().font_px` is the number
-/// `we_layout::defaults::FONT_PX` stands in for today.
+/// visible — `UnitMetrics::default().font_px` is the number the deleted
+/// `we_layout::defaults` font constant stood in for.
 #[test]
 fn em_resolves_against_unit_metrics_font_px() {
     assert_eq!(UnitMetrics::default().font_px, 14.0);
