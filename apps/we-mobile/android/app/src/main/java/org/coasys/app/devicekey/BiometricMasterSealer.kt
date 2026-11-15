@@ -25,7 +25,7 @@ import uniffi.we_phone_custody.MasterSealer
  * `CryptoObject`, and waits; the Keystore unlocks that one cipher for that one operation when the
  * person's strong biometric matches, and the seal or open runs on it with the label as associated
  * data. The prompt's title is the sentence the Rust side passes, which says what the master key is
- * about to do ("Add a device to your identity").
+ * about to do ("Confirm it's you to link a device").
  *
  * The prompt is the framework's (`android.hardware.biometrics`, API 30 and up, the app's floor),
  * so it needs no AndroidX library and no `FragmentActivity`.
@@ -151,7 +151,6 @@ class BiometricMasterSealer(
       try {
         val prompt = BiometricPrompt.Builder(host)
           .setTitle(title)
-          .setDescription("Your master key opens only for your fingerprint or face, for this one step.")
           .setAllowedAuthenticators(BIOMETRIC_STRONG)
           .setConfirmationRequired(true)
           .setNegativeButton("Cancel", host.mainExecutor) { _, _ ->

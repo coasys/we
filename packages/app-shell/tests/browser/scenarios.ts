@@ -37,6 +37,7 @@ import {
   safeModeBanner,
   settingsTemplate,
   sidebar,
+  spaceSettingsPanel,
 } from '@we/template-shell';
 import { CALL_CHROME_BAND, themeLabTemplate, TREE_LOCALS, TREE_QUERIES, treeStrip } from '@we/template-showcase';
 import {
@@ -46,6 +47,7 @@ import {
   themeSides,
   withThemeSide,
 } from '@we/themes/presets';
+import { createSignal } from 'solid-js';
 
 import coasysBundle from '../../../../bundles/coasys.bundle.json';
 import fieldGuideBundle from '../../../../bundles/field-guide.bundle.json';
@@ -1958,6 +1960,22 @@ const shellSettings = (scale?: number): Scenario => {
     routes: _routes,
     ...settings
   } = settingsTemplate as SchemaNode & { meta?: unknown; routes?: unknown };
+  /*
+    A router that moves, so a case can go from a phone's list to a page and back. Opened on Devices,
+    as a link into Settings would open it; the stand-in page is drawn whatever the path.
+  */
+  const [path, setPath] = createSignal('/devices');
+  const routeStore = {
+    params: {},
+    templateSegments: [],
+    get currentPath() {
+      return path();
+    },
+    get segments() {
+      return path().split('/').filter(Boolean);
+    },
+    navigate: (to: string) => setPath(to),
+  };
   return {
     node: {
       type: 'Column',
@@ -1967,7 +1985,15 @@ const shellSettings = (scale?: number): Scenario => {
         sidebar,
         {
           type: 'Column',
-          props: { id: 'settings-frame', position: 'absolute', top: '0', left: '80px', right: '0', bottom: '0' },
+          // Where the app's frame puts a shell view: beside the 80px rail, or under a phone's 56px bar.
+          props: {
+            id: 'settings-frame',
+            position: 'absolute',
+            top: windowWidth < 640 ? '56px' : '0',
+            left: windowWidth < 640 ? '0' : '80px',
+            right: '0',
+            bottom: '0',
+          },
           children: [
             {
               type: '$surface',
@@ -1982,12 +2008,48 @@ const shellSettings = (scale?: number): Scenario => {
     stores: {
       sessionStore: { bootState: 'ready', devTools: false, devFeatures: false, isGuest: false },
       shellStore: { panelMaximised: false, activeShellView: 'settings', narrowWindow: windowWidth < 640 },
-      routeStore: { params: {}, currentPath: '/devices', segments: ['devices'], templateSegments: [] },
+      routeStore,
       templateStore: { brand: { name: 'WE' } },
       runtimeStore: { canManageAi: true, canManageApps: true },
       datasetStore: { marketplaceConfigured: false },
       appStore: { apps: [], appsWithWe: [], activeAppId: null },
       spaceStore: { mutedDids: [], currentSpace: { id: 'space-1' }, members: [], orderedSidebarItems: [] },
+    },
+  };
+};
+
+/**
+ * A space's settings panel, as a window of a given width shows it: on a phone covering the window
+ * (`PanelLane`'s `foldEmpty`), on a desktop in its 340px lane beside the space.
+ *
+ * The real `spaceSettingsPanel` over one space. Its sections read stores this harness does not
+ * mount, and what is measured is the frame around them: the tabs, or on a phone the list of
+ * sections and a section under Back. `scale` is the window's width, which `shellStore.narrowWindow`
+ * answers to.
+ */
+const spaceSettingsPanelScenario = (scale?: number): Scenario => {
+  const windowWidth = scale ?? 1280;
+  return {
+    node: {
+      type: 'Column',
+      props: {
+        id: 'space-settings',
+        width: windowWidth < 640 ? '100%' : '340px',
+        height: '100vh',
+        overflow: 'hidden',
+        bg: 'chrome',
+      },
+      children: [{ type: '$surface', props: { height: '100%' }, children: [spaceSettingsPanel] }],
+    },
+    tables: {},
+    stores: {
+      shellStore: { narrowWindow: windowWidth < 640, spaceSettingsTab: 'about', spaceSettingsFocus: '' },
+      datasetStore: { currentDataset: { id: 'space-1' } },
+      spaceStore: {
+        spaceList: [{ uuid: 'space-1', name: 'Club Business', kind: 'shared', isWeSpace: true, canAdminister: false }],
+      },
+      templateStore: { brand: { name: 'WE' } },
+      sessionStore: { bootState: 'ready', devTools: false, devFeatures: false, isGuest: false },
     },
   };
 };
@@ -2391,6 +2453,11 @@ const coasysLockup = (): Scenario => {
   const band = (node: unknown): SchemaNode | undefined => {
     if (!node || typeof node !== 'object') return undefined;
     const n = node as Record<string, unknown>;
+    // A desktop's rail: on a phone the mark is the Menu button in a bar, which signing in does not
+    // fade onto from the sign-in screen's corner.
+    const props = n.props as { condition?: unknown; else?: unknown } | undefined;
+    if (n.type === '$if' && JSON.stringify(props?.condition) === JSON.stringify({ $: 'shellStore.narrowWindow' }))
+      return band(props?.else);
     if (Array.isArray(n.children) && n.children.some(isMark)) return structuredClone(n) as SchemaNode;
     for (const v of Object.values(n)) {
       const found = Array.isArray(v) ? v.map(band).find(Boolean) : band(v);
@@ -2795,6 +2862,7 @@ export const scenarios: Record<string, (scale?: number) => Scenario> = {
   'tree:caret-end': treeCaretEnd,
   'rail:app': appRail,
   'shell:settings': shellSettings,
+  'shell:space-settings': spaceSettingsPanelScenario,
   'shell:landing': shellLanding,
   'coasys:tree-top': coasysTreeTop,
   'bundle:prompt': bundleInstallPrompt,

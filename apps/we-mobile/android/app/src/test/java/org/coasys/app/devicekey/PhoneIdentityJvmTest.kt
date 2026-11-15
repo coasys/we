@@ -158,7 +158,10 @@ class PhoneIdentityJvmTest {
     val down = assertThrows(TransportException.Failed::class.java) {
       StoreHttp.Transport.send(StoreRequest("GET", "http://127.0.0.1:$port/v1/logs/x", emptyList(), ByteArray(0)))
     }
-    assertTrue(down.reason, down.reason.contains("ConnectException"))
+    // The reason names the IOException. Which one depends on the host: usually a refused
+    // connection, but on a busy machine another process may take the freed port and answer or
+    // reset it.
+    assertTrue(down.reason, Regex("^\\w+(Exception|Error): .+").matches(down.reason))
 
     assertThrows(TransportException.Failed::class.java) {
       StoreHttp.Transport.send(StoreRequest("GET", "file:///etc/hostname", emptyList(), ByteArray(0)))
@@ -214,7 +217,7 @@ class PhoneIdentityJvmTest {
 
     // A store that answers 503: unreachable, the sentence the page shows as offline.
     val busy = assertThrows(PhoneKeyException.Unavailable::class.java) { identity.status() }
-    assertTrue(busy.message!!, busy.message!!.startsWith("the identity store is unreachable"))
+    assertTrue(busy.message!!, busy.message!!.startsWith("Can't connect."))
     val asked = seen.last()
     assertEquals("GET", asked.method)
     assertTrue(asked.path, asked.path.startsWith("/v1/logs/$scid"))

@@ -60,7 +60,7 @@ pub enum IdentityStep {
     Create,
     /// The holder adds a server by an offer link it gives.
     AddDevice,
-    /// The holder adds a device by the code that device shows ("Scan or paste a code").
+    /// The holder adds a device by the code that device shows ("Enter code").
     ScanDevice,
     /// This computer, a device of no identity yet, shows its code for a holder to scan.
     ShowCode,
@@ -85,10 +85,10 @@ pub enum IdentityStep {
     /// every other app that kept the old one is sent the new one.
     ReplaceMaster,
     /// On a computer of no identity: the 12 words give the identity back here, and lock out the
-    /// devices the person ticks ("Use my 12 words").
+    /// devices the person ticks ("Restore with recovery phrase").
     Restore,
-    /// Forgets this computer's copy of the master key ("Also remove my master key from this
-    /// computer", on log out). Refused while it is the only copy.
+    /// Forgets this computer's copy of the master key ("Remove master key from this computer?",
+    /// on sign out). Refused while it is the only copy.
     RemoveMaster,
     /// The holder adds a bot: picks what its key may ever do and until when, opens a bot offer
     /// for the executor that runs the bot to claim (`bot.createAgent`), and confirms the match
@@ -241,7 +241,7 @@ pub enum Screen {
         /// replaced.
         #[serde(rename = "mayHoldMaster")]
         may_hold_master: bool,
-        /// Whether "Also replace my master key" starts ticked: when the device may hold a copy.
+        /// Whether "Also replace master key" starts ticked: when the device may hold a copy.
         rotate: bool,
         passphrase: bool,
         error: Option<String>,
@@ -547,7 +547,7 @@ pub struct CustodyPublic {
     pub revoked_holders: Vec<String>,
     /// The requests of other devices waiting in the identity's box.
     pub requests: Vec<RequestView>,
-    /// A master key waits in this computer's inbox ("Take the master key").
+    /// A master key waits in this computer's inbox ("Accept master key").
     pub master_waiting: bool,
 }
 
@@ -600,8 +600,9 @@ pub struct RestoreDevice {
 pub struct ExecutorAddress {
     /// `http://127.0.0.1:<port>`
     pub url: String,
-    /// The credential custody calls the executor with: the custody credential where the executor
-    /// runs `--custody-channel` (the sidecar's), else the admin credential (Tauri, no custody channel).
+    /// The credential custody calls the executor with: the custody credential the executor's custody
+    /// channel admits (the sidecar's on Electron, `with_custody_channel`'s on Tauri), never the admin
+    /// credential the main window holds.
     pub credential: Arc<str>,
 }
 
@@ -630,11 +631,14 @@ pub enum CustodyError {
 /// ([`CustodyHandle::cancel`]).
 type CancelReply = oneshot::Sender<Option<Screen>>;
 
+/// Where the main window's state request is answered ([`CustodyHandle::public_state`]).
+type PublicReply = oneshot::Sender<CustodyPublic>;
+
 enum Request {
     Start(IdentityStep, oneshot::Sender<Result<Screen, CustodyError>>),
     Step(StepInput, oneshot::Sender<Result<Screen, CustodyError>>),
     Cancel(CancelReply),
-    Public(oneshot::Sender<CustodyPublic>),
+    Public(PublicReply),
 }
 
 /// The `Send` handle to the custody thread.
@@ -733,32 +737,28 @@ fn names_no_store(e: &ClientError) -> bool {
 }
 
 /// Words that are all on the list and pass the checksum, yet make no master key of the identity.
-const NOT_THESE_WORDS: &str = "These words do not make your identity's master key. Check each \
-     word against your paper, in order. Nothing was changed.";
+const NOT_THESE_WORDS: &str = "This recovery phrase doesn't match your identity. Check the \
+     spelling and order of each word. Nothing changed.";
 
 /// A step stopped because this computer lost its count of the changes to the master key it keeps
 /// (`custody-epochs.json`, or an identity's entry in it, gone from the custody folder). The way
-/// back is the words-gated recovery ([`recover_lost_epoch`]): in "Replace my master key"
-/// ([`rotate_with_words`]) on a linked computer, in "Use my 12 words" ([`restore_on`]) on one
-/// not linked yet.
-const LOST_EPOCH: &str = "This computer has lost its count of the changes to the master key it \
-     keeps (a file in its custody folder is gone), so it will not change or remove that key on \
-     its own. Your master key is still here. To go on, type your 12 words: on a computer that \
-     is linked to this identity, choose “Replace my master key”; on one that is not linked yet, \
-     restore the identity. Once the words check out, this computer starts the count again and \
-     replaces the key.";
+/// back is the words-gated recovery ([`recover_lost_epoch`]): in "Replace master key"
+/// ([`rotate_with_words`]) on a linked computer, in "Restore with recovery phrase"
+/// ([`restore_on`]) on one not linked yet.
+const LOST_EPOCH: &str = "This computer lost track of changes to its master key, so it won't \
+     change or remove the key. Your master key is still here. To fix this, go to Settings > \
+     Devices and choose Replace master key, or Restore with recovery phrase if this computer \
+     isn't linked.";
 
 /// A step stopped because the keyring this computer keeps keys in is locked
 /// ([`crate::store::is_keyring_locked`]): it asked to be unlocked and nobody answered in time, or
 /// the person dismissed the prompt. The store stops waiting, so custody is never held by a prompt.
-const KEYRING_LOCKED_WORDS: &str = "Your keyring is locked, so this computer could not keep \
-     your master key in it. Unlock it when your desktop asks for its password (or in its \
-     Passwords and Keys app), then try again. Nothing was changed.";
+const KEYRING_LOCKED_WORDS: &str = "Your keyring is locked. Unlock it when your desktop asks \
+     for its password, or in Passwords and Keys, then try again. Nothing was changed.";
 
 /// Why a master key is not removed from this computer.
-const ONLY_COPY: &str = "This computer keeps the only copy of your master key: no other \
-     computer or phone of yours keeps one. Removing it would leave only your 12 words to add or \
-     remove devices. Send it to another device first. Your master key stays on this computer.";
+const ONLY_COPY: &str = "This computer has the only copy of your master key. Send it to another \
+     device before you remove it here. Nothing was removed.";
 
 /// Why the 12 words typed were refused, and the word it names (from 1). Names a word by its
 /// place only: the word typed, or the list word nearest it, may be one of the 12.
@@ -767,20 +767,21 @@ fn words_refused(e: &ad4m_identity_core::words::WordsError) -> (String, Option<u
     match e {
         WordsError::Count(n) => {
             let noun = if *n == 1 { "word" } else { "words" };
-            (format!("That is {n} {noun}. Type all 12, in order."), None)
+            (
+                format!("That's {n} {noun}. Enter all 12 words in order."),
+                None,
+            )
         }
         WordsError::UnknownWord { position, .. } => (
-            format!("Word {position} is not one of the words a recovery phrase uses. Check it on your paper."),
+            format!("Word {position} isn't a recovery phrase word. Check its spelling."),
             Some(*position),
         ),
         WordsError::Checksum => (
-            "One of the words is wrong: they do not fit together. Check each word against your \
-             paper, in order."
-                .into(),
+            "One or more words are wrong. Check the spelling and order of each word.".into(),
             None,
         ),
         WordsError::Index(_) => (
-            "Your master key cannot be replaced again from these words.".into(),
+            "Your master key can't be replaced again with this recovery phrase.".into(),
             None,
         ),
     }
@@ -809,24 +810,25 @@ fn failed(e: &ClientError) -> Screen {
         ClientError::OfferEnded(state) => {
             format!("The offer ended ({state}) before it was confirmed. Nothing was added.")
         }
-        ClientError::NotAKeeper(_) => "That device cannot keep the master key: only an app on \
-                                       a computer or a phone can. Nothing was sent."
+        ClientError::NotAKeeper(_) => "That device can't have the master key. Only the app on \
+                                       a computer or phone can. Nothing was sent."
             .into(),
         ClientError::Poster(why) => {
-            format!("The request does not check out ({why}). Nothing was done.")
+            log::warn!("custody: the request does not check out: {why}");
+            "This request couldn't be verified. Nothing changed.".into()
         }
         ClientError::NeedsWords => {
-            "This also replaces your master key, which needs your 12 words.".into()
+            "This also replaces your master key, which needs your recovery phrase.".into()
         }
         // Never the word itself, nor the list word nearest it: either may be one of the 12.
         ClientError::Words(e) => words_refused(e).0,
         ClientError::NotTheseWords(_) => NOT_THESE_WORDS.into(),
-        ClientError::LogBusy => "Your key log kept changing on another device while this ran. \
-                                 Nothing was replaced. Try again in a moment."
+        ClientError::LogBusy => "Another device kept changing your key log. Nothing was \
+                                 replaced. Try again in a moment."
             .into(),
         ClientError::OnlyCopy => ONLY_COPY.into(),
         ClientError::RecordBusy => {
-            "Your device list is being changed on another device. Try again in a moment.".into()
+            "Another device is changing your device list. Try again in a moment.".into()
         }
         ClientError::Rpc(e) => format!(
             "The identity service on this computer answered: {}",
@@ -850,58 +852,75 @@ fn a_sentence(mut message: String) -> String {
     message
 }
 
+/// The custody thread: one step at a time, and the main window's state read beside whatever runs
+/// ([`StateReads`]). The reads outlive the flow that took them: one still under way when a step
+/// ends is kept here and polled beside the next request, so a stalled read holds no later request,
+/// and every state request is answered once its read ends.
 async fn serve(vault: DesktopVault, address: ExecutorAddress, mut rx: Rx) {
-    while let Some(request) = rx.recv().await {
-        match request {
-            Request::Start(step, reply) => {
-                let mut reply = Some(reply);
-                match step {
-                    IdentityStep::Create => run_create(&vault, &address, &mut rx, &mut reply).await,
-                    IdentityStep::AddDevice => {
-                        run_link(&vault, &address, &mut rx, &mut reply).await
-                    }
-                    IdentityStep::ScanDevice => {
-                        run_scan(&vault, &address, &mut rx, &mut reply).await
-                    }
-                    IdentityStep::ShowCode => {
-                        run_show_code(&vault, &address, &mut rx, &mut reply).await
-                    }
-                    IdentityStep::TakeMaster => {
-                        run_take_master(&vault, &address, &mut rx, &mut reply).await
-                    }
-                    IdentityStep::AskMaster => run_ask_master(&vault, &address, &mut reply).await,
-                    IdentityStep::AnswerRequest { id } => {
-                        run_answer(&vault, &address, &mut rx, &mut reply, id).await
-                    }
-                    IdentityStep::Rename { key_id } => {
-                        run_rename(&vault, &address, &mut rx, &mut reply, key_id).await
-                    }
-                    IdentityStep::Revoke { key_id } => {
-                        run_revoke(&vault, &address, &mut rx, &mut reply, key_id).await
-                    }
-                    IdentityStep::ReplaceMaster => {
-                        run_replace_master(&vault, &address, &mut rx, &mut reply).await
-                    }
-                    IdentityStep::Restore => {
-                        run_restore(&vault, &address, &mut rx, &mut reply).await
-                    }
-                    IdentityStep::RemoveMaster => {
-                        run_remove_master(&vault, &address, &mut rx, &mut reply).await
-                    }
-                    IdentityStep::AddBot => {
-                        run_add_bot(&vault, &address, &mut rx, &mut reply).await
-                    }
-                }
-            }
+    let mut reads = StateReads::new(&vault, &address);
+    while let Some((step, reply)) = idle(&mut reads, &mut rx).await {
+        run_step(step, &mut reads, &mut rx, &mut Some(reply)).await;
+    }
+    reads.finish().await;
+}
+
+/// Runs `step` to its end. The show-code flow takes its state requests into `reads`; every other
+/// flow answers its own, and a read a step before it left under way goes on beside it ([`beside`]).
+async fn run_step(step: IdentityStep, reads: &mut StateReads<'_>, rx: &mut Rx, reply: &mut Reply) {
+    let (vault, address) = (reads.vault, reads.address);
+    match step {
+        IdentityStep::ShowCode => run_show_code(reads, rx, reply).await,
+        IdentityStep::Create => beside(reads, run_create(vault, address, rx, reply)).await,
+        IdentityStep::AddDevice => beside(reads, run_link(vault, address, rx, reply)).await,
+        IdentityStep::ScanDevice => beside(reads, run_scan(vault, address, rx, reply)).await,
+        IdentityStep::TakeMaster => beside(reads, run_take_master(vault, address, rx, reply)).await,
+        IdentityStep::AskMaster => beside(reads, run_ask_master(vault, address, reply)).await,
+        IdentityStep::AnswerRequest { id } => {
+            beside(reads, run_answer(vault, address, rx, reply, id)).await
+        }
+        IdentityStep::Rename { key_id } => {
+            beside(reads, run_rename(vault, address, rx, reply, key_id)).await
+        }
+        IdentityStep::Revoke { key_id } => {
+            beside(reads, run_revoke(vault, address, rx, reply, key_id)).await
+        }
+        IdentityStep::ReplaceMaster => {
+            beside(reads, run_replace_master(vault, address, rx, reply)).await
+        }
+        IdentityStep::Restore => beside(reads, run_restore(vault, address, rx, reply)).await,
+        IdentityStep::RemoveMaster => {
+            beside(reads, run_remove_master(vault, address, rx, reply)).await
+        }
+        IdentityStep::AddBot => beside(reads, run_add_bot(vault, address, rx, reply)).await,
+    }
+}
+
+/// Runs `flow` with the reads already under way going on beside it ([`StateReads::drive`]), so
+/// their requests are answered as each read ends rather than after the flow.
+async fn beside(reads: &mut StateReads<'_>, flow: impl std::future::Future<Output = ()>) {
+    tokio::select! {
+        () = flow => {}
+        never = reads.drive() => match never {},
+    }
+}
+
+/// The custody thread between steps: the next `Start` and its reply, the state read beside the wait
+/// ([`StateReads`]); `None` once the app is gone. A step input or a cancel with no step open is
+/// answered at once, never held by a read under way.
+async fn idle(
+    reads: &mut StateReads<'_>,
+    rx: &mut Rx,
+) -> Option<(IdentityStep, oneshot::Sender<Result<Screen, CustodyError>>)> {
+    loop {
+        match reads.recv(rx).await? {
+            Request::Start(step, reply) => return Some((step, reply)),
             Request::Step(_, reply) => {
                 let _ = reply.send(Err(CustodyError::NoStep));
             }
             Request::Cancel(reply) => {
                 let _ = reply.send(None);
             }
-            Request::Public(reply) => {
-                let _ = reply.send(public_state(&vault, &address).await);
-            }
+            Request::Public(reply) => reads.ask(reply),
         }
     }
 }
@@ -915,6 +934,19 @@ async fn serve(vault: DesktopVault, address: ExecutorAddress, mut rx: Rx) {
 /// account's incept is that account's to finish. An incept this executor can never publish,
 /// because it already speaks for another identity, is forgotten.
 async fn finish_pending<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    vault: &DesktopVault,
+) -> Result<Option<Created>, ClientError> {
+    let _one = FINISHING.lock().await;
+    finish_pending_locked(executor, vault).await
+}
+
+/// One publish of a kept incept at a time: a state read left running beside a step and the step
+/// (Create, a restore) can both finish it, and two publishes of the same incept would make the
+/// store answer the second with a conflict. The later caller finds nothing pending.
+static FINISHING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+async fn finish_pending_locked<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
     vault: &DesktopVault,
 ) -> Result<Option<Created>, ClientError> {
@@ -978,10 +1010,13 @@ fn refused_for_good(e: &ClientError, did: &str) -> Option<(String, bool)> {
     }
 }
 
-/// [`finish_pending`] where a step does not depend on it: a failure is logged, and the next
-/// attempt (any step, or the main window asking for the state) tries again.
+/// [`finish_pending`] for a state read: skipped while a step is finishing the incept itself, so the
+/// read never waits on the step.
 async fn finish_pending_quietly<R: ExecutorRpc>(executor: &ViaExecutor<R>, vault: &DesktopVault) {
-    if let Err(e) = finish_pending(executor, vault).await {
+    let Ok(_one) = FINISHING.try_lock() else {
+        return;
+    };
+    if let Err(e) = finish_pending_locked(executor, vault).await {
         log::warn!("custody: the pending identity is not finished yet: {e}");
     }
 }
@@ -1035,7 +1070,7 @@ async fn public_state_on<R: ExecutorRpc>(
         // Where the operating system unlocks a new item, the master key waiting is taken as the
         // app starts and whenever the main window asks: the keychain's own unlock guards it, as
         // it guards the key made here. A sealed item needs the passphrase, so the person takes
-        // it in the identity window ("Take the master key").
+        // it in the identity window ("Accept master key").
         let held = ad4m_identity_core::scid_of(did).map(|scid| held_sealed(vault, scid));
         // The same unlock pushes again what the retry list keeps: a master key given to a device
         // whose push the app did not see through. `retry_pushes` unlocks only when a push is left.
@@ -1798,18 +1833,20 @@ async fn follow_link<R: ExecutorRpc>(
                         record::write(executor, unlocking, did, &[change], &RANDOM).await
                     {
                         log::warn!("custody: this computer was not listed in the record: {e}");
-                        notes.push("This computer's name was not saved: rename it on Devices.");
+                        notes.push(
+                            "This computer's name wasn't saved. Rename it in Settings > Devices.",
+                        );
                     }
                 }
                 if let Err(e) = &linked.record {
                     log::warn!("custody: the linked device was not listed in the record: {e}");
-                    notes.push("Its name was not saved: rename it on Devices.");
+                    notes.push("Its name wasn't saved. Rename it in Settings > Devices.");
                 }
                 if let Some(Err(e)) = &linked.master {
                     log::warn!("custody: the master key was not put in its inbox: {e}");
                     notes.push(
-                        "The master key did not reach it yet: it is sent again the next time \
-                         this computer unlocks.",
+                        "The master key wasn't sent yet. It's sent again the next time this \
+                         computer unlocks.",
                     );
                 }
                 retry_quietly(executor, unlocking, did).await;
@@ -1992,14 +2029,14 @@ async fn run_scan(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx, 
 /// `store_url`; else what to tell the person.
 fn check_code(code: &str, store_url: &str, now: u64) -> Result<DeviceString, String> {
     let device = DeviceString::parse(code).map_err(|_| {
-        "That is not a device's code. Copy the whole code the new device shows.".to_string()
+        "That isn't a device code. Copy the whole code from the new device.".to_string()
     })?;
     if now >= device.exp {
-        return Err("That code has expired. Show a new one on the new device.".into());
+        return Err("That code expired. Show a new code on the new device.".into());
     }
     if device.store.trim_end_matches('/') != store_url.trim_end_matches('/') {
         return Err(format!(
-            "That device uses another identity store ({}). Both devices must use the same one.",
+            "That device uses a different identity store ({}). Both devices need the same one.",
             device.store
         ));
     }
@@ -2010,14 +2047,10 @@ fn check_code(code: &str, store_url: &str, now: u64) -> Result<DeviceString, Str
 
 /// The new device shows its code; a holder scans it, the executor claims the ticket the holder
 /// put for it (`link-ticket`), the person compares the match code, and the device follows the
-/// claim until the holder confirms.
-async fn run_show_code(
-    vault: &DesktopVault,
-    address: &ExecutorAddress,
-    rx: &mut Rx,
-    reply: &mut Reply,
-) {
-    let executor = match connect(address).await {
+/// claim until the holder confirms. The main window's state is read beside it into `reads`, which
+/// the service keeps polling once the flow ends.
+async fn run_show_code(reads: &mut StateReads<'_>, rx: &mut Rx, reply: &mut Reply) {
+    let executor = match connect(reads.address).await {
         Ok(e) => e,
         Err(message) => return answer(reply, Ok(Screen::Failed { message })),
     };
@@ -2040,15 +2073,14 @@ async fn run_show_code(
             );
         }
     };
-    show_code_on(&executor, events, vault, address, rx, reply).await
+    show_code_on(&executor, events, reads, rx, reply).await
 }
 
 /// [`run_show_code`] once the executor answers and its `link-ticket` events are watched.
 async fn show_code_on<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
     mut events: broadcast::Receiver<Value>,
-    vault: &DesktopVault,
-    address: &ExecutorAddress,
+    reads: &mut StateReads<'_>,
     rx: &mut Rx,
     reply: &mut Reply,
 ) {
@@ -2057,14 +2089,13 @@ async fn show_code_on<R: ExecutorRpc>(
     }
     match executor.status().await {
         Ok(status) => {
-            if let Some(did) = status.did {
+            if status.did.is_some() {
                 return answer(
                     reply,
                     Ok(Screen::Failed {
-                        message: format!(
-                            "This computer already speaks for {did}, so it cannot join another \
-                             identity."
-                        ),
+                        message: "This computer already has an identity, so it can't link to \
+                                  another."
+                            .into(),
                     }),
                 );
             }
@@ -2084,7 +2115,7 @@ async fn show_code_on<R: ExecutorRpc>(
         return answer(
             reply,
             Ok(Screen::Failed {
-                message: "This computer's code was not made. Try again.".into(),
+                message: "Couldn't make a code. Try again.".into(),
             }),
         );
     };
@@ -2097,56 +2128,94 @@ async fn show_code_on<R: ExecutorRpc>(
         }),
     );
 
+    // The main window's state is read beside the steps, never in their way: a slow read holds
+    // neither a cancel nor the claim's deadline. A read still under way when the step's own
+    // answer went out stays in `reads`, which the service goes on polling beside what comes next.
+    follow_code(executor, &mut events, expires, reads, rx, reply).await;
+}
+
+/// [`show_code_on`] once the code is shown: the window's steps until the link ends or the window
+/// cancels. Any cancel ends the claim this computer made, the one whose `link-ticket` is already
+/// in included; with none seen, the cancel answers that the code may still link
+/// ([`cancel_claim`]).
+async fn follow_code<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    events: &mut broadcast::Receiver<Value>,
+    expires: u64,
+    reads: &mut StateReads<'_>,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
     let mut claim: Option<Claim> = None;
     loop {
-        let input = match next_input_or_cancel(vault, address, rx, reply).await {
+        let input = match next_input_beside(reads, rx, reply).await {
             Ok(input) => input,
             Err(cancel) => {
-                return cancel_claim(executor, claim.as_ref(), cancel, vault, address, rx, reply)
-                    .await
+                // A ticket already in before the window waited for it is ended with the cancel.
+                let ready = match claim {
+                    Some(_) => None,
+                    None => ticket_ready(events).map(Claim::from_ticket),
+                };
+                return cancel_claim(
+                    executor,
+                    claim.as_ref().or(ready.as_ref()),
+                    Cancelled {
+                        cancel,
+                        ..Default::default()
+                    },
+                    reads,
+                    rx,
+                    reply,
+                )
+                .await;
             }
         };
         match input {
             StepInput::WaitLink if claim.is_none() => {
                 let wait = Duration::from_secs(expires.saturating_sub(CLOCK.now()));
+                // A ticket in beside a cancel is taken first, so the cancel ends its claim. The
+                // state requests taken meanwhile stay with `reads`, whichever side wins.
                 let outcome = tokio::select! {
-                    claimed = tokio::time::timeout(wait, next_ticket(&mut events)) => Some(claimed),
-                    () = wait_cancel(vault, address, rx) => None,
+                    biased;
+                    claimed = tokio::time::timeout(wait, next_ticket(events)) => Ok(claimed),
+                    cancel = next_cancel_beside(reads, rx) => Err(cancel),
                 };
                 match outcome {
-                    None => return answer(reply, Err(CustodyError::NoStep)),
-                    Some(Err(_)) => {
+                    Err(cancel) => {
+                        // A ticket that came in as the cancel was taken is ended with it.
+                        let claim = ticket_ready(events).map(Claim::from_ticket);
+                        return cancel_claim(
+                            executor,
+                            claim.as_ref(),
+                            Cancelled {
+                                cancel,
+                                ..Default::default()
+                            },
+                            reads,
+                            rx,
+                            reply,
+                        )
+                        .await;
+                    }
+                    Ok(Err(_)) => {
                         return answer(
                             reply,
                             Ok(Screen::Failed {
-                                message: "No device linked this computer before its code \
-                                          expired. Show a new code to try again."
+                                message: "The code expired. Show a new code to try again.".into(),
+                            }),
+                        )
+                    }
+                    Ok(Ok(None)) => {
+                        return answer(
+                            reply,
+                            Ok(Screen::Failed {
+                                message: "The app stopped responding. Try again in a moment."
                                     .into(),
                             }),
                         )
                     }
-                    Some(Ok(None)) => {
-                        return answer(
-                            reply,
-                            Ok(Screen::Failed {
-                                message: "The identity service on this computer stopped \
-                                          answering. Try again in a moment."
-                                    .into(),
-                            }),
-                        )
-                    }
-                    Some(Ok(Some(claimed))) => {
-                        let claimed = Claim {
-                            offer_id: claimed.offer_id,
-                            did: claimed.did,
-                            code: claimed.match_code,
-                            needs_accept: claimed.needs_accept,
-                            // The offer lives at most `OFFER_TTL_S` from its claim, and the
-                            // holder's confirm may land in the store's grace after it.
-                            deadline: CLOCK.now() + OFFER_TTL_S + CONFIRM_GRACE_S,
-                            accepted: false,
-                            confirmed: false,
-                        };
+                    Ok(Ok(Some(claimed))) => {
+                        let claimed = Claim::from_ticket(claimed);
                         answer(reply, Ok(claimed.screen()));
                         claim = Some(claimed);
                     }
@@ -2154,18 +2223,9 @@ async fn show_code_on<R: ExecutorRpc>(
             }
             StepInput::WaitJoin if claim.is_some() => {
                 let claim = claim.as_mut().expect("checked above");
-                match follow_claim(executor, claim, vault, address, rx, reply).await {
+                match follow_claim(executor, claim, reads, rx, reply).await {
                     Err(cancel) => {
-                        return cancel_claim(
-                            executor,
-                            Some(claim),
-                            cancel,
-                            vault,
-                            address,
-                            rx,
-                            reply,
-                        )
-                        .await
+                        return cancel_claim(executor, Some(claim), cancel, reads, rx, reply).await
                     }
                     // The other device confirmed; the person has yet to accept here.
                     Ok(screen @ Screen::DeviceMatch { .. }) => answer(reply, Ok(screen)),
@@ -2174,21 +2234,27 @@ async fn show_code_on<R: ExecutorRpc>(
             }
             StepInput::Accept if claim.as_ref().is_some_and(Claim::awaits_accept) => {
                 let claim = claim.as_mut().expect("checked above");
-                if let Err(screen) = accept_join(executor, claim).await {
-                    return answer(reply, Ok(screen));
-                }
-                let screen = match follow_claim(executor, claim, vault, address, rx, reply).await {
+                match accept_or_cancel(executor, claim, reads, rx).await {
                     Err(cancel) => {
                         return cancel_claim(
                             executor,
                             Some(claim),
-                            cancel,
-                            vault,
-                            address,
+                            Cancelled {
+                                cancel,
+                                waiting: None,
+                            },
+                            reads,
                             rx,
                             reply,
                         )
                         .await
+                    }
+                    Ok(Err(screen)) => return answer(reply, Ok(screen)),
+                    Ok(Ok(())) => {}
+                }
+                let screen = match follow_claim(executor, claim, reads, rx, reply).await {
+                    Err(cancel) => {
+                        return cancel_claim(executor, Some(claim), cancel, reads, rx, reply).await
                     }
                     Ok(screen) => screen,
                 };
@@ -2237,28 +2303,69 @@ impl Claim {
     fn awaits_accept(&self) -> bool {
         self.needs_accept && !self.accepted
     }
+
+    /// The claim `ticket` made, from now.
+    fn from_ticket(ticket: TicketClaimed) -> Claim {
+        Claim {
+            offer_id: ticket.offer_id,
+            did: ticket.did,
+            code: ticket.match_code,
+            needs_accept: ticket.needs_accept,
+            // The offer lives at most `OFFER_TTL_S` from its claim, and the holder's confirm may
+            // land in the store's grace after it.
+            deadline: CLOCK.now() + OFFER_TTL_S + CONFIRM_GRACE_S,
+            accepted: false,
+            confirmed: false,
+        }
+    }
 }
 
 /// The next `link-ticket` event; `None` once the connection closed.
 async fn next_ticket(events: &mut broadcast::Receiver<Value>) -> Option<TicketClaimed> {
     loop {
         match events.recv().await {
-            Ok(event) if event["type"] == "link-ticket" => {
-                let text = |key: &str| event[key].as_str().map(str::to_string);
-                match (text("did"), text("offerId"), text("matchCode")) {
-                    (Some(did), Some(offer_id), Some(match_code)) => {
-                        return Some(TicketClaimed {
-                            did,
-                            offer_id,
-                            match_code,
-                            needs_accept: event["needsAccept"].as_bool().unwrap_or(false),
-                        })
-                    }
-                    _ => log::warn!("custody: a link-ticket event without its fields"),
+            Ok(event) => {
+                if let Some(ticket) = ticket_of(&event) {
+                    return Some(ticket);
                 }
             }
-            Ok(_) | Err(broadcast::error::RecvError::Lagged(_)) => {}
+            Err(broadcast::error::RecvError::Lagged(_)) => {}
             Err(broadcast::error::RecvError::Closed) => return None,
+        }
+    }
+}
+
+/// A `link-ticket` event already received, without waiting for one.
+fn ticket_ready(events: &mut broadcast::Receiver<Value>) -> Option<TicketClaimed> {
+    loop {
+        match events.try_recv() {
+            Ok(event) => {
+                if let Some(ticket) = ticket_of(&event) {
+                    return Some(ticket);
+                }
+            }
+            Err(broadcast::error::TryRecvError::Lagged(_)) => {}
+            Err(_) => return None,
+        }
+    }
+}
+
+/// The ticket `event` is, if it is a `link-ticket` with its fields.
+fn ticket_of(event: &Value) -> Option<TicketClaimed> {
+    if event["type"] != "link-ticket" {
+        return None;
+    }
+    let text = |key: &str| event[key].as_str().map(str::to_string);
+    match (text("did"), text("offerId"), text("matchCode")) {
+        (Some(did), Some(offer_id), Some(match_code)) => Some(TicketClaimed {
+            did,
+            offer_id,
+            match_code,
+            needs_accept: event["needsAccept"].as_bool().unwrap_or(false),
+        }),
+        _ => {
+            log::warn!("custody: a link-ticket event without its fields");
+            None
         }
     }
 }
@@ -2269,18 +2376,16 @@ async fn next_ticket(events: &mut broadcast::Receiver<Value>) -> Option<TicketCl
 /// reply for [`cancel_claim`]), and an [`StepInput::Accept`] accepts the identity, answers the
 /// waiting request with the accepted `DeviceMatch` and becomes the request this answers. A claim
 /// the holder confirmed but the person has not accepted (`awaiting-accept`) answers `DeviceMatch`
-/// once, so the window asks.
+/// once, so the window asks. The main window's state is read beside it ([`StateReads`]), so a slow
+/// read holds neither a cancel nor the deadline.
 async fn follow_claim<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
     claim: &mut Claim,
-    vault: &DesktopVault,
-    address: &ExecutorAddress,
+    reads: &mut StateReads<'_>,
     rx: &mut Rx,
     reply: &mut Reply,
-) -> Result<Screen, Option<CancelReply>> {
-    let closed = || Screen::Failed {
-        message: "The other device did not confirm in time. Show a new code to try again.".into(),
-    };
+) -> Result<Screen, Cancelled> {
+    let closed = claim_closed;
     let mut next_poll = tokio::time::Instant::now();
     loop {
         if claim.deadline <= CLOCK.now() {
@@ -2301,21 +2406,32 @@ async fn follow_claim<R: ExecutorRpc>(
         };
         let polled = tokio::select! {
             join = poll => Some(join),
-            request = rx.recv() => {
+            request = reads.recv(rx) => {
                 match request {
-                    None => return Err(None),
-                    Some(Request::Cancel(r)) => return Err(Some(r)),
-                    Some(Request::Public(r)) => {
-                        let _ = r.send(public_state(vault, address).await);
+                    None => return Err(Cancelled::default()),
+                    Some(Request::Cancel(r)) => {
+                        return Err(Cancelled {
+                            cancel: Some(r),
+                            ..Default::default()
+                        })
                     }
+                    Some(Request::Public(r)) => reads.ask(r),
                     Some(Request::Start(_, r)) => {
                         let _ = r.send(Err(CustodyError::Busy));
                     }
                     Some(Request::Step(StepInput::Accept, r)) if claim.awaits_accept() => {
-                        if let Err(screen) = accept_join(executor, claim).await {
-                            answer(reply, Ok(screen.clone()));
-                            *reply = Some(r);
-                            return Ok(screen);
+                        match accept_or_cancel(executor, claim, reads, rx).await {
+                            // The wait and the accept are both cut short: the cancel answers both.
+                            Err(cancel) => {
+                                let waiting = reply.replace(r);
+                                return Err(Cancelled { cancel, waiting });
+                            }
+                            Ok(Err(screen)) => {
+                                answer(reply, Ok(screen.clone()));
+                                *reply = Some(r);
+                                return Ok(screen);
+                            }
+                            Ok(Ok(())) => {}
                         }
                         answer(reply, Ok(claim.screen()));
                         *reply = Some(r);
@@ -2355,19 +2471,20 @@ async fn follow_claim<R: ExecutorRpc>(
                         key_id: key_id.to_string(),
                     },
                     _ => Screen::Failed {
-                        message: "The link was confirmed, but the identity's log does not list \
-                                  this computer. Show a new code to try again."
+                        message: "The link was confirmed, but this computer isn't in your key \
+                                  log. Show a new code to try again."
                             .into(),
                     },
                 })
             }
             other => {
+                log::warn!(
+                    "custody: the link ended unconfirmed ({})",
+                    other.unwrap_or("unknown")
+                );
                 return Ok(Screen::Failed {
-                    message: format!(
-                        "The link ended unconfirmed ({}). Show a new code to try again.",
-                        other.unwrap_or("unknown")
-                    ),
-                })
+                    message: "The link wasn't confirmed. Show a new code to try again.".into(),
+                });
             }
         }
         next_poll = tokio::time::Instant::now()
@@ -2377,28 +2494,71 @@ async fn follow_claim<R: ExecutorRpc>(
     }
 }
 
-/// The person accepts the identity of `claim` here: the executor may record it as its operator once
-/// the holder confirms. `identity.acceptJoin` `{ offerId }` → `{ accepted: true }` is new in
+/// The person accepts the identity of `offer_id` here: the executor may record it as its operator
+/// once the holder confirms. `identity.acceptJoin` `{ offerId }` → `{ accepted: true }` is new in
 /// coasys/ad4m#1635 and not in the client this crate pins yet, so it is called by name.
 async fn accept_join<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
-    claim: &mut Claim,
+    offer_id: &str,
 ) -> Result<(), Screen> {
     match executor
         .rpc()
-        .call("identity.acceptJoin", json!({ "offerId": claim.offer_id }))
+        .call("identity.acceptJoin", json!({ "offerId": offer_id }))
         .await
     {
-        Ok(_) => {
-            claim.accepted = true;
-            Ok(())
-        }
+        Ok(_) => Ok(()),
         Err(e) if e.code == 409 && e.message.starts_with("cancelled") => Err(cancelled_here()),
         Err(e) if e.code == 404 => Err(Screen::Failed {
-            message: "This link is no longer open on this computer. Show a new code to try again."
-                .into(),
+            message: "This link has closed. Show a new code to try again.".into(),
         }),
         Err(e) => Err(failed(&ClientError::Rpc(e))),
+    }
+}
+
+/// [`accept_join`] while the window can still cancel: the accept is cut off at the claim's
+/// deadline, and a cancel that arrives meanwhile ends the wait (`Err`, with the cancel's reply for
+/// [`cancel_claim`], which ends the executor's claim before it answers). The main window's state is
+/// read beside the accept ([`StateReads`]): its lookup is several calls to the executor, which
+/// would otherwise hold a cancel past the claim's deadline. Anything else is refused. `Ok` holds
+/// what the accept came to; accepted, the claim says so.
+async fn accept_or_cancel<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    claim: &mut Claim,
+    reads: &mut StateReads<'_>,
+    rx: &mut Rx,
+) -> Result<Result<(), Screen>, Option<CancelReply>> {
+    let offer_id = claim.offer_id.clone();
+    let left = Duration::from_secs(claim.deadline.saturating_sub(CLOCK.now()));
+    let accepting = tokio::time::timeout(left, accept_join(executor, &offer_id));
+    tokio::pin!(accepting);
+    loop {
+        tokio::select! {
+            accepted = &mut accepting => {
+                return Ok(match accepted {
+                    Ok(Ok(())) => {
+                        claim.accepted = true;
+                        Ok(())
+                    }
+                    Ok(Err(screen)) => Err(screen),
+                    Err(_) => Err(claim_closed()),
+                });
+            }
+            request = reads.recv(rx) => match request {
+                None => return Err(None),
+                Some(Request::Cancel(r)) => return Err(Some(r)),
+                Some(Request::Public(r)) => reads.ask(r),
+                Some(Request::Start(_, r) | Request::Step(_, r)) => {
+                    let _ = r.send(Err(CustodyError::Busy));
+                }
+            },
+        }
+    }
+}
+
+/// What a claim the holder did not confirm before its deadline ends with.
+fn claim_closed() -> Screen {
+    Screen::Failed {
+        message: "The other device didn't confirm in time. Show a new code to try again.".into(),
     }
 }
 
@@ -2444,18 +2604,35 @@ const CANCEL_WAIT: Duration = Duration::from_secs(10);
 /// Ends `claim` when the window cancels the step, before the cancel is answered, so the window
 /// closes only once the executor confirmed it ([`cancel_join`]). The cancel and a request still
 /// waiting on the claim are answered alike: `None`/`NoStep` once it ended, else the screen to show.
-/// A cancel that arrives while the executor is asked is the same cancel and gets the same answer:
-/// answered later by the idle service, its `None` would close a window that should show the join.
+/// With no claim seen here the cancel cannot be confirmed: a ticket the executor claimed may have
+/// its `link-ticket` on the way, and the executor reads for tickets until the code expires, which
+/// no call ends; the cancel answers [`cancel_unseen`]. A cancel that arrives while the executor is
+/// asked, or is queued when the answer is known (with a claim or without), is the same cancel and
+/// gets the same answer: answered later by the idle service, its `None` would close a window that
+/// should show the join or the warning. The main window's state is read beside the cancel
+/// ([`StateReads`]), and a read still under way once the cancel is answered stays there for the
+/// service: its lookup is several calls to the executor, which would otherwise hold the cancel
+/// past [`CANCEL_WAIT`].
 async fn cancel_claim<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
     claim: Option<&Claim>,
-    cancel: Option<CancelReply>,
-    vault: &DesktopVault,
-    address: &ExecutorAddress,
+    cancelled: Cancelled,
+    reads: &mut StateReads<'_>,
     rx: &mut Rx,
     reply: &mut Reply,
 ) {
+    let Cancelled {
+        cancel,
+        mut waiting,
+    } = cancelled;
     let mut cancels: Vec<CancelReply> = cancel.into_iter().collect();
+    let mut taken = |request, reads: &mut StateReads<'_>| match request {
+        Request::Cancel(r) => cancels.push(r),
+        Request::Public(r) => reads.ask(r),
+        Request::Start(_, r) | Request::Step(_, r) => {
+            let _ = r.send(Err(CustodyError::Busy));
+        }
+    };
     let instead = match claim {
         Some(claim) => {
             let ending = cancel_join(executor, &claim.offer_id);
@@ -2463,24 +2640,158 @@ async fn cancel_claim<R: ExecutorRpc>(
             loop {
                 tokio::select! {
                     instead = &mut ending => break instead,
-                    Some(request) = rx.recv() => match request {
-                        Request::Cancel(r) => cancels.push(r),
-                        Request::Public(r) => {
-                            let _ = r.send(public_state(vault, address).await);
-                        }
-                        Request::Start(_, r) | Request::Step(_, r) => {
-                            let _ = r.send(Err(CustodyError::Busy));
-                        }
-                    },
+                    Some(request) = reads.recv(rx) => taken(request, reads),
                 }
             }
         }
-        None => None,
+        None => Some(cancel_unseen()),
     };
+    // Requests queued by the time the cancel is decided are this cancel's too, with or without a
+    // claim: a second cancel left to the idle service would close the window over the answer.
+    while let Ok(request) = rx.try_recv() {
+        taken(request, reads);
+    }
     answer(reply, instead.clone().ok_or(CustodyError::NoStep));
+    answer(&mut waiting, instead.clone().ok_or(CustodyError::NoStep));
     for cancel in cancels {
         let _ = cancel.send(instead.clone());
     }
+}
+
+/// The main window's state requests, read beside whatever the service does: one read of the state
+/// at a time answers every request that came before it started, and the next answers those that
+/// came while it ran. A wait that selects on [`StateReads::recv`] keeps the read going; the read
+/// lives here, not in the wait, so a wait that loses its select drops no request and no read part
+/// way. The service owns it across steps ([`serve`]): a read a flow left under way when its step
+/// was answered goes on beside the next request ([`idle`]) or the next flow ([`beside`]), so it
+/// never holds them, and [`StateReads::finish`] answers whatever is left once the app is gone.
+struct StateReads<'a> {
+    vault: &'a DesktopVault,
+    address: &'a ExecutorAddress,
+    /// The read under way and the requests it answers.
+    reading: Option<Reading<'a>>,
+    /// Requests that came while a read was under way: the next read answers them.
+    queued: Vec<PublicReply>,
+}
+
+type Reading<'a> = (
+    std::pin::Pin<Box<dyn std::future::Future<Output = CustodyPublic> + 'a>>,
+    Vec<PublicReply>,
+);
+
+impl<'a> StateReads<'a> {
+    fn new(vault: &'a DesktopVault, address: &'a ExecutorAddress) -> Self {
+        StateReads {
+            vault,
+            address,
+            reading: None,
+            queued: Vec::new(),
+        }
+    }
+
+    /// Takes a state request: read now when no read is under way, else by the next.
+    fn ask(&mut self, r: PublicReply) {
+        self.queued.push(r);
+        self.start();
+    }
+
+    fn start(&mut self) {
+        if self.reading.is_none() && !self.queued.is_empty() {
+            let read = Box::pin(public_state(self.vault, self.address));
+            self.reading = Some((read, std::mem::take(&mut self.queued)));
+        }
+    }
+
+    /// Answers the read under way once it ends, and starts the next; never ends with none under
+    /// way. Safe to drop part way: the read stays here.
+    async fn answer_one(&mut self) {
+        let Some((read, _)) = self.reading.as_mut() else {
+            return std::future::pending().await;
+        };
+        let state = read.await;
+        if let Some((_, waiting)) = self.reading.take() {
+            for r in waiting {
+                let _ = r.send(state.clone());
+            }
+        }
+        self.start();
+    }
+
+    /// The window's next request, the state read going on beside the wait. A state request is
+    /// taken here and never returned. Safe to drop part way, as `rx.recv` is.
+    async fn recv(&mut self, rx: &mut Rx) -> Option<Request> {
+        loop {
+            tokio::select! {
+                request = rx.recv() => match request {
+                    Some(Request::Public(r)) => self.ask(r),
+                    other => return other,
+                },
+                () = self.answer_one() => {}
+            }
+        }
+    }
+
+    /// Answers every request taken, the read under way finished rather than dropped: once the app
+    /// is gone, so no state request is left unanswered.
+    async fn finish(&mut self) {
+        while self.reading.is_some() {
+            self.answer_one().await;
+        }
+    }
+
+    /// Answers every read under way and starts each next one, forever: beside a flow that answers
+    /// its own state requests, so the reads a step before it left are not held until it ends.
+    async fn drive(&mut self) -> std::convert::Infallible {
+        loop {
+            self.answer_one().await;
+        }
+    }
+}
+
+/// [`next_input_or_cancel`] with the state read beside the wait ([`StateReads`]).
+async fn next_input_beside(
+    reads: &mut StateReads<'_>,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) -> Result<StepInput, Option<CancelReply>> {
+    loop {
+        match reads.recv(rx).await {
+            None => return Err(None),
+            Some(Request::Step(input, r)) => {
+                *reply = Some(r);
+                return Ok(input);
+            }
+            Some(Request::Cancel(r)) => return Err(Some(r)),
+            Some(Request::Start(_, r)) => {
+                let _ = r.send(Err(CustodyError::Busy));
+            }
+            Some(Request::Public(r)) => reads.ask(r),
+        }
+    }
+}
+
+/// [`next_cancel`] with the state read beside the wait ([`StateReads`]): a wait that loses its
+/// select drops no state request.
+async fn next_cancel_beside(reads: &mut StateReads<'_>, rx: &mut Rx) -> Option<CancelReply> {
+    loop {
+        match reads.recv(rx).await {
+            None => return None,
+            Some(Request::Cancel(r)) => return Some(r),
+            Some(Request::Public(r)) => reads.ask(r),
+            Some(Request::Start(_, r) | Request::Step(_, r)) => {
+                let _ = r.send(Err(CustodyError::Busy));
+            }
+        }
+    }
+}
+
+/// A cancel of a claim, for [`cancel_claim`]: the cancel's own reply (`None` once the window
+/// closed), and a request it cut short beside the step's own (the wait for the join an accept
+/// arrived beside), answered the same.
+#[derive(Default)]
+struct Cancelled {
+    cancel: Option<CancelReply>,
+    waiting: Reply,
 }
 
 /// What a cancel that came too late shows: `Joined`, from the claim's `identity.joinStatus`, or in
@@ -2520,8 +2831,7 @@ async fn already_joined<R: ExecutorRpc>(
 
 /// A cancel that reached the executor after this computer joined, when the join's key is unknown.
 const ALREADY_JOINED: &str =
-    "This computer had already joined the identity before the cancel reached it, so it stays \
-     joined.";
+    "This computer was already linked when you cancelled, so it stays linked.";
 
 /// A cancel the executor did not confirm: the claim may stand, and a confirm still join.
 fn cancel_unconfirmed() -> Screen {
@@ -2531,14 +2841,27 @@ fn cancel_unconfirmed() -> Screen {
 }
 
 const CANCEL_UNCONFIRMED: &str =
-    "The identity service on this computer did not confirm the cancel, so this computer may \
-     still join the identity if the other device confirms the link.";
+    "The cancel wasn't confirmed. This computer is still linked if your other device \
+     confirms.";
+
+/// A cancel before any `link-ticket` was seen here: the executor may have claimed a ticket whose
+/// event is still on its way, and it reads for tickets until the code expires. No executor call
+/// ends either (`identity.cancelJoin` names a claim's offer), so the cancel cannot be confirmed.
+fn cancel_unseen() -> Screen {
+    Screen::Failed {
+        message: CANCEL_UNSEEN.into(),
+    }
+}
+
+const CANCEL_UNSEEN: &str =
+    "This computer stopped waiting, but the code can still be used until it expires. If your \
+     other device scanned it, don't confirm the link there.";
 
 /// The claim was cancelled on this computer (`identity.acceptJoin` 409 `cancelled`, or a
 /// `cancelled` `identity.joinStatus`).
 fn cancelled_here() -> Screen {
     Screen::Failed {
-        message: "This link was cancelled on this computer. Show a new code to try again.".into(),
+        message: "This link was cancelled. Show a new code to try again.".into(),
     }
 }
 
@@ -2615,8 +2938,8 @@ async fn run_take_master(
     take_master_on(&executor, vault, address, rx, reply).await
 }
 
-const NO_MASTER_WAITING: &str = "No master key is waiting for this computer. Ask for it here, \
-     then say yes on a device that holds it.";
+const NO_MASTER_WAITING: &str = "No master key was sent to this computer. Ask for it, then \
+     send it from a device that has it.";
 
 /// [`run_take_master`] once the executor answers.
 async fn take_master_on<R: ExecutorRpc>(
@@ -2634,7 +2957,7 @@ async fn take_master_on<R: ExecutorRpc>(
         return answer(
             reply,
             Ok(Screen::Failed {
-                message: "This computer is not linked to an identity yet.".into(),
+                message: "This computer isn't linked yet.".into(),
             }),
         );
     };
@@ -2805,8 +3128,7 @@ async fn repair_mark_on<R: ExecutorRpc>(
 /// The note of a key kept here whose record write failed: the record is marked later.
 fn not_listed_yet(e: ClientError) -> String {
     log::warn!("custody: the record does not mark this computer yet: {e}");
-    "Your device list does not show it yet: it is updated the next time a device changes it."
-        .to_string()
+    "Your device list shows this after its next change.".to_string()
 }
 
 /// A linked app without the master key asks the identity's other devices for it: a
@@ -2827,17 +3149,17 @@ async fn ask_master_on<R: ExecutorRpc>(executor: &ViaExecutor<R>, vault: &Deskto
     };
     let (Some(did), Some(key_id)) = (status.did, status.key_id) else {
         return Screen::Failed {
-            message: "This computer is not linked to an identity yet.".into(),
+            message: "This computer isn't linked yet.".into(),
         };
     };
     let Some(scid) = ad4m_identity_core::scid_of(&did) else {
         return Screen::Failed {
-            message: "This computer is not linked to an identity yet.".into(),
+            message: "This computer isn't linked yet.".into(),
         };
     };
     if matches!(vault.holds(scid), Ok(true)) {
         return Screen::Failed {
-            message: "This computer already keeps your master key.".into(),
+            message: "This computer already has the master key.".into(),
         };
     }
     match executor
@@ -2896,7 +3218,7 @@ async fn answer_on<R: ExecutorRpc>(
         return answer(
             reply,
             Ok(Screen::Failed {
-                message: "That request is no longer waiting.".into(),
+                message: "This request is no longer open.".into(),
             }),
         );
     };
@@ -2931,7 +3253,7 @@ async fn answer_on<R: ExecutorRpc>(
                         reply,
                         Ok(Screen::Failed {
                             message: format!(
-                                "The request asks to revoke {key_id}, which is not in your key log."
+                                "This request asks to remove {key_id}, which isn't in your key log."
                             ),
                         }),
                     );
@@ -2951,7 +3273,7 @@ async fn answer_on<R: ExecutorRpc>(
         return answer(
             reply,
             Ok(Screen::Failed {
-                message: "The device that asks is not in your key log.".into(),
+                message: "The device asking isn't in your key log.".into(),
             }),
         );
     };
@@ -2961,8 +3283,8 @@ async fn answer_on<R: ExecutorRpc>(
             reply,
             Ok(Screen::Failed {
                 message: format!(
-                    "Device {} (key {fingerprint}) joined as a device that does not keep the \
-                     master key, so it cannot be sent to it.",
+                    "Device {} (key {fingerprint}) was linked as a device that can't have the \
+                     master key. Nothing was sent.",
                     request.by
                 ),
             }),
@@ -2999,12 +3321,10 @@ async fn answer_on<R: ExecutorRpc>(
                     // The rotation is published: a request left in the box is a note.
                     let left = deleted.err().map(|e| {
                         log::warn!("custody: the answered request was not deleted: {e}");
-                        "The request is answered, but it was not taken out of your request \
-                         box: it may still show there."
-                            .to_string()
+                        "The request was answered, but it may still show in Requests.".to_string()
                     });
                     if rotated.kept.is_err() {
-                        let answered = format!("The request from {device} is answered.");
+                        let answered = format!("The request from {device} was answered.");
                         return replaced(rotated, joined(Some(answered), left));
                     }
                     joined(handed_over(&rotated.pushes, &rotated.record), left)
@@ -3107,8 +3427,7 @@ async fn rename_on<R: ExecutorRpc>(
         return answer(
             reply,
             Ok(Screen::Failed {
-                message: "Only a device that keeps your master key can rename another device."
-                    .into(),
+                message: "Only a device with the master key can rename other devices.".into(),
             }),
         );
     }
@@ -3138,7 +3457,7 @@ async fn rename_on<R: ExecutorRpc>(
                 Ok(Screen::Rename {
                     key_id: key_id.clone(),
                     name: String::new(),
-                    error: Some("Give the device a name.".into()),
+                    error: Some("Enter a name.".into()),
                 }),
             );
             continue;
@@ -3187,13 +3506,22 @@ async fn rename_on<R: ExecutorRpc>(
 
 /// Resolves when the window cancels; answers `Public` in passing and refuses anything else.
 async fn wait_cancel(vault: &DesktopVault, address: &ExecutorAddress, rx: &mut Rx) {
+    if let Some(cancel) = next_cancel(vault, address, rx).await {
+        let _ = cancel.send(None);
+    }
+}
+
+/// [`wait_cancel`], for a flow that must end something before the cancel is answered: the
+/// cancel's reply, `None` when the window went away.
+async fn next_cancel(
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+) -> Option<CancelReply> {
     loop {
         match rx.recv().await {
-            None => return,
-            Some(Request::Cancel(r)) => {
-                let _ = r.send(None);
-                return;
-            }
+            None => return None,
+            Some(Request::Cancel(r)) => return Some(r),
             Some(Request::Public(r)) => {
                 let _ = r.send(public_state(vault, address).await);
             }
@@ -3448,7 +3776,7 @@ async fn run_revoke(
     revoke_on(&executor, vault, address, rx, reply, key_id).await
 }
 
-/// [`run_revoke`] once the executor answers. With "Also replace my master key" ticked (by
+/// [`run_revoke`] once the executor answers. With "Also replace master key" ticked (by
 /// default when the key log says the device may hold a copy, [`may_hold_master`]), the 12 words
 /// are asked next and the revoke is one rotation to a new master key: the revoked device's copy
 /// stops acting with it.
@@ -3560,6 +3888,8 @@ async fn revoke_on<R: ExecutorRpc>(
                 if let Err(e) = &revoked.record {
                     log::warn!("custody: the record still lists the revoked device: {e}");
                 }
+                // The main window's refreshes cannot unlock a sealed key; this unlock can.
+                retry_quietly(executor, &unlocking, &did).await;
                 return answer(
                     reply,
                     Ok(Screen::Revoked {
@@ -3674,24 +4004,24 @@ fn after_publish(e: &ClientError) -> String {
         }
         ClientError::Vault(VaultError::Cancelled) => "The unlock was cancelled.".into(),
         ClientError::Vault(VaultError::NotFound) => {
-            "The new master key was no longer where this computer set it aside.".into()
+            "The new master key went missing on this computer.".into()
         }
         ClientError::Vault(e) if crate::pending::is_lost_epoch(e) => LOST_EPOCH.into(),
         ClientError::Vault(e) if crate::store::is_keyring_locked(e) => {
-            "Your keyring is locked: unlock it when your desktop asks for its password.".into()
+            "Your keyring is locked. Unlock it when your desktop asks for its password.".into()
         }
-        ClientError::Vault(VaultError::Unavailable(why)) => {
-            format!("Where it keeps keys answered: {why}")
-        }
-        ClientError::LogBusy => "Your key log kept changing on another device.".into(),
+        ClientError::Vault(VaultError::Unavailable(why)) => format!("Key storage error: {why}"),
+        ClientError::LogBusy => "Another device kept changing your key log.".into(),
         ClientError::OfferEnded(state) => {
-            format!("Linking this computer ended ({state}) before it was confirmed.")
+            log::warn!("custody: linking this computer ended unconfirmed ({state})");
+            "Linking this computer wasn't confirmed.".into()
         }
-        ClientError::NotAKeeper(_) => "That device cannot keep the master key.".into(),
-        ClientError::Poster(why) => format!("The request does not check out ({why})."),
-        ClientError::NotTheseWords(_) => {
-            "These words do not make your identity's master key.".into()
+        ClientError::NotAKeeper(_) => "That device can't have the master key.".into(),
+        ClientError::Poster(why) => {
+            log::warn!("custody: the request does not check out: {why}");
+            "This request couldn't be verified.".into()
         }
+        ClientError::NotTheseWords(_) => "This recovery phrase doesn't match your identity.".into(),
         e => match failed(e) {
             Screen::Failed { message } => message,
             _ => unreachable!("failed() answers Failed"),
@@ -3735,8 +4065,8 @@ async fn rotate_with_words<R: ExecutorRpc>(
     }
 }
 
-/// The way back from a lost custody epoch ([`LOST_EPOCH`]), taken by "Replace my master key"
-/// before it rotates, and by "Use my 12 words" on a computer not linked yet before its rotation
+/// The way back from a lost custody epoch ([`LOST_EPOCH`]), taken by "Replace master key"
+/// before it rotates, and by "Restore with recovery phrase" on a computer not linked yet before its rotation
 /// stages and before each try at linking after it ([`restore_on`]). Only when the epoch of `did`'s key here is lost, and only once `words` are
 /// checked to make the identity's current master — the check `rotate` makes before it publishes
 /// ([`words_make_current_master`]) — is the epoch recovered
@@ -3857,18 +4187,14 @@ fn handed_over(
     }
     if !late.is_empty() {
         note.push(format!(
-            "The new master key has not reached {} yet: this computer sends it again each time \
-             it unlocks.",
+            "The new master key wasn't sent to {} yet. It's sent again the next time this \
+             computer unlocks.",
             late.join(", ")
         ));
     }
     if let Err(e) = record {
         log::warn!("custody: the record was not written after the rotation: {e}");
-        note.push(
-            "Your device list does not show it yet: it is updated the next time a device \
-             changes it."
-                .into(),
-        );
+        note.push("Your device list shows this after its next change.".into());
     }
     (!note.is_empty()).then(|| note.join(" "))
 }
@@ -3878,7 +4204,7 @@ async fn identity_of<R: ExecutorRpc>(executor: &ViaExecutor<R>) -> Result<String
     match executor.status().await {
         Ok(IdentityStatus { did: Some(did), .. }) => Ok(did),
         Ok(_) => Err(Screen::Failed {
-            message: "This computer is not linked to an identity yet.".into(),
+            message: "This computer isn't linked yet.".into(),
         }),
         Err(e) => Err(failed(&ClientError::Rpc(e))),
     }
@@ -4002,7 +4328,7 @@ async fn run_restore(
     restore_on(&executor, vault, address, rx, reply).await
 }
 
-/// "Use my 12 words" on a computer of no identity: the words name the identity (the store's key
+/// "Restore with recovery phrase" on a computer of no identity: the words name the identity (the store's key
 /// index knows whose master #0 they make), its devices are listed with the apps ticked to lock out,
 /// and one rotation revokes the ticked ones and gives this computer the new master key; then
 /// this computer joins as a device, and the apps not locked out are sent the new key.
@@ -4071,8 +4397,8 @@ async fn restore_on<R: ExecutorRpc>(
             return answer(
                 reply,
                 Ok(Screen::Failed {
-                    message: "This computer keeps a master key of this identity behind another \
-                              passphrase. Nothing was changed."
+                    message: "This computer has a master key for this identity with a \
+                              different passphrase. Nothing changed."
                         .into(),
                 }),
             );
@@ -4090,7 +4416,7 @@ async fn restore_on<R: ExecutorRpc>(
         .collect();
     let note = flow.record_error().map(|e| {
         log::warn!("custody: the record could not be read for the restore: {e}");
-        "Your device list could not be read, so your devices show by their keys.".to_string()
+        "Couldn't read your device list, so devices show without names.".to_string()
     });
     answer(
         reply,
@@ -4124,7 +4450,7 @@ async fn restore_on<R: ExecutorRpc>(
         .collect();
     // Before the stage the rotation makes: a custody epoch of this identity this computer lost
     // (a first restore stopped, a file of the custody folder gone) is recovered here, the words
-    // checked first to make the identity's current master. "Replace my master key", the way back
+    // checked first to make the identity's current master. "Replace master key", the way back
     // on a linked computer, refuses this one: it is not linked yet.
     let finished = match recover_lost_epoch(executor, vault, &did, &words).await {
         Ok(()) => flow.finish(&lock_out, entry.clone()).await,
@@ -4561,11 +4887,19 @@ mod tests {
         };
         assert!(message.contains(did.as_str()), "{message}");
 
-        // Finishing it publishes the same incept, with no unlock, and forgets it.
-        let created = finish_pending(&executor, &vault)
-            .await
-            .unwrap()
-            .expect("a pending identity");
+        // Finishing it publishes the same incept, with no unlock, and forgets it. A state read and a
+        // step that finish it at the same time publish it once.
+        executor
+            .rpc()
+            .delay("identity.publish", Duration::from_millis(50));
+        let (created, also, ()) = tokio::join!(
+            finish_pending(&executor, &vault),
+            finish_pending(&executor, &vault),
+            finish_pending_quietly(&executor, &vault),
+        );
+        executor.rpc().delays.borrow_mut().clear();
+        assert!(also.unwrap().is_none(), "the second finish found it done");
+        let created = created.unwrap().expect("a pending identity");
         assert_eq!(created.did, did_of(&scid));
         assert_eq!(created.device_key_id, "d1");
         assert_eq!(executor.rpc().publishes.get(), 1);
@@ -5213,6 +5547,21 @@ mod tests {
         )
     }
 
+    /// [`show_code_on`] on its own, without the service around it: its state reads its own, every
+    /// one answered once the flow ends.
+    async fn show_code_alone(
+        executor: &ViaExecutor<FakeExecutor>,
+        events: broadcast::Receiver<Value>,
+        vault: &DesktopVault,
+        address: &ExecutorAddress,
+        rx: &mut Rx,
+        reply: &mut Reply,
+    ) {
+        let mut reads = StateReads::new(vault, address);
+        show_code_on(executor, events, &mut reads, rx, reply).await;
+        reads.finish().await;
+    }
+
     /// A SCID `ad4m_identity_core::scid_of` reads: a sha2-256 multihash.
     const LINKED_SCID: &str = "QmYwAPJzv5CZsnA625s3Xf2nemtYgPpHdWEz79ojWnPbdG";
 
@@ -5246,7 +5595,7 @@ mod tests {
         let vault = memory_vault(crate::store::StoreKind::Keychain);
         let (address, mut rx, mut reply, window, first) = opened();
         let ((), screens) = tokio::join!(
-            show_code_on(&executor, events, &vault, &address, &mut rx, &mut reply),
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
             async move {
                 let first = first.await.unwrap().unwrap();
                 let matched = window.step(StepInput::WaitLink).await;
@@ -5300,7 +5649,7 @@ mod tests {
         let vault = memory_vault(crate::store::StoreKind::Keychain);
         let (address, mut rx, mut reply, window, first) = opened();
         let ((), last) = tokio::join!(
-            show_code_on(&executor, events, &vault, &address, &mut rx, &mut reply),
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
             async move {
                 first.await.unwrap().unwrap();
                 window.step(StepInput::WaitLink).await;
@@ -5308,7 +5657,7 @@ mod tests {
             }
         );
         assert!(
-            matches!(&last, Screen::Failed { message } if message.contains("ended unconfirmed (expired)")),
+            matches!(&last, Screen::Failed { message } if message.contains("wasn't confirmed")),
             "{last:?}"
         );
     }
@@ -5361,7 +5710,7 @@ mod tests {
         let vault = memory_vault(crate::store::StoreKind::Keychain);
         let (address, mut rx, mut reply, window, first) = opened();
         let ((), screens) = tokio::join!(
-            show_code_on(&executor, events, &vault, &address, &mut rx, &mut reply),
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
             async {
                 first.await.unwrap().unwrap();
                 let matched = window.step(StepInput::WaitLink).await;
@@ -5403,7 +5752,7 @@ mod tests {
         let vault = memory_vault(crate::store::StoreKind::Keychain);
         let (address, mut rx, mut reply, window, first) = opened();
         let ((), joined) = tokio::join!(
-            show_code_on(&executor, events, &vault, &address, &mut rx, &mut reply),
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
             async {
                 first.await.unwrap().unwrap();
                 window.step(StepInput::WaitLink).await;
@@ -5437,7 +5786,7 @@ mod tests {
         let (_, screens) = tokio::join!(
             tokio::time::timeout(
                 Duration::from_secs(5),
-                show_code_on(&executor, events, &vault, &address, &mut rx, &mut reply)
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply)
             ),
             async {
                 first.await.unwrap().unwrap();
@@ -5480,7 +5829,7 @@ mod tests {
         let vault = memory_vault(crate::store::StoreKind::Keychain);
         let (address, mut rx, mut reply, window, first) = opened();
         let ((), waited) = tokio::join!(
-            show_code_on(&executor, events, &vault, &address, &mut rx, &mut reply),
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
             async {
                 first.await.unwrap().unwrap();
                 window.step(StepInput::WaitLink).await;
@@ -5515,7 +5864,7 @@ mod tests {
         let vault = memory_vault(crate::store::StoreKind::Keychain);
         let (address, mut rx, mut reply, window, first) = opened();
         let ((), (waiting, accepted)) = tokio::join!(
-            show_code_on(&executor, events, &vault, &address, &mut rx, &mut reply),
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
             async {
                 first.await.unwrap().unwrap();
                 window.step(StepInput::WaitLink).await;
@@ -5528,9 +5877,968 @@ mod tests {
         // The fake answers an unknown method 404, as the executor answers an unknown offer.
         for screen in [&waiting, &accepted] {
             assert!(
-                matches!(screen, Screen::Failed { message } if message.contains("no longer open")),
+                matches!(screen, Screen::Failed { message } if message.contains("has closed")),
                 "{screen:?}"
             );
+        }
+    }
+
+    /// An accept the executor does not answer leaves the window able to cancel: the cancel ends
+    /// the executor's claim and is answered, and the accept with it, without waiting on the accept.
+    #[tokio::test]
+    async fn a_cancel_while_the_accept_stalls_ends_the_claim() {
+        tokio::time::pause();
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.acceptJoin", json!({ "accepted": true }));
+        executor
+            .rpc()
+            .delay("identity.acceptJoin", Duration::from_secs(3600));
+        executor
+            .rpc()
+            .answer("identity.cancelJoin", json!({ "cancelled": true }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let (_, answered) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(7200),
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply)
+            ),
+            tokio::time::timeout(Duration::from_secs(7200), async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                let (tx, accepted) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::Accept, tx))
+                    .unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let asked = tokio::time::Instant::now();
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                let cancelled = cancelled.await.unwrap();
+                (asked.elapsed(), cancelled, accepted.await.unwrap())
+            })
+        );
+        let (took, cancelled, accepted) = answered.expect("the cancel was answered");
+        assert!(took < CANCEL_WAIT, "{took:?}");
+        assert_eq!(cancelled, None);
+        assert!(
+            matches!(accepted, Err(CustodyError::NoStep)),
+            "{accepted:?}"
+        );
+        assert_eq!(
+            executor.rpc().called("identity.cancelJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+    }
+
+    /// The same, for an accept sent while a wait for the join is out: the cancel answers both.
+    #[tokio::test]
+    async fn a_cancel_while_an_accept_beside_a_wait_stalls_answers_both() {
+        tokio::time::pause();
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "claimed" }));
+        executor
+            .rpc()
+            .answer("identity.acceptJoin", json!({ "accepted": true }));
+        executor
+            .rpc()
+            .delay("identity.acceptJoin", Duration::from_secs(3600));
+        executor
+            .rpc()
+            .answer("identity.cancelJoin", json!({ "cancelled": true }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let (_, answered) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(7200),
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply)
+            ),
+            tokio::time::timeout(Duration::from_secs(7200), async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                let (tx, waited) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::WaitJoin, tx))
+                    .unwrap();
+                let (tx, accepted) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::Accept, tx))
+                    .unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let asked = tokio::time::Instant::now();
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                let cancelled = cancelled.await.unwrap();
+                (
+                    asked.elapsed(),
+                    cancelled,
+                    waited.await.unwrap(),
+                    accepted.await.unwrap(),
+                )
+            })
+        );
+        let (took, cancelled, waited, accepted) = answered.expect("the cancel was answered");
+        assert!(took < CANCEL_WAIT, "{took:?}");
+        assert_eq!(cancelled, None);
+        assert!(matches!(waited, Err(CustodyError::NoStep)), "{waited:?}");
+        assert!(
+            matches!(accepted, Err(CustodyError::NoStep)),
+            "{accepted:?}"
+        );
+        assert_eq!(
+            executor.rpc().called("identity.cancelJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+    }
+
+    /// An accept that never answers ends with the claim's deadline, saying the link closed.
+    #[tokio::test]
+    async fn an_accept_that_stalls_ends_at_the_claims_deadline() {
+        tokio::time::pause();
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.acceptJoin", json!({ "accepted": true }));
+        executor
+            .rpc()
+            .delay("identity.acceptJoin", Duration::from_secs(100_000));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let asked = tokio::time::Instant::now();
+        let ((), accepted) = tokio::join!(
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                window.step(StepInput::Accept).await
+            }
+        );
+        let took = asked.elapsed();
+        assert!(
+            took <= Duration::from_secs(OFFER_TTL_S + CONFIRM_GRACE_S + 1),
+            "{took:?}"
+        );
+        assert!(
+            matches!(&accepted, Screen::Failed { message } if message.contains("didn't confirm in time")),
+            "{accepted:?}"
+        );
+    }
+
+    /// The main window asking for the state while a cancel waits on the executor does not hold
+    /// the cancel: one whose executor connection stalls is answered once the cancel was.
+    #[tokio::test]
+    async fn a_state_request_during_a_cancel_does_not_hold_the_cancel() {
+        // Accepts connections and never answers the WebSocket handshake.
+        let stalled = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = ExecutorAddress {
+            url: format!("http://{}", stalled.local_addr().unwrap()),
+            credential: Arc::from("x"),
+        };
+        // On the real clock: the stalled handshake is real I/O, which a paused clock does not
+        // advance past.
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        executor
+            .rpc()
+            .answer("identity.cancelJoin", json!({ "cancelled": true }));
+        executor
+            .rpc()
+            .delay("identity.cancelJoin", Duration::from_millis(200));
+        let claim = Claim {
+            offer_id: "o1".into(),
+            did: "did:scid:x".into(),
+            code: "AAA BBB".into(),
+            needs_accept: true,
+            deadline: CLOCK.now() + 300,
+            accepted: false,
+            confirmed: false,
+        };
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (tx, mut rx) = mpsc::unbounded_channel();
+        let (waiting_tx, waiting) = oneshot::channel();
+        let mut reply: Reply = Some(waiting_tx);
+        let (public_tx, _public) = oneshot::channel();
+        tx.send(Request::Public(public_tx)).unwrap();
+        let mut reads = StateReads::new(&vault, &address);
+        // The state request is answered after the cancel, so the step itself is cut off here.
+        let (_, waited) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(3),
+                cancel_claim(
+                    &executor,
+                    Some(&claim),
+                    Cancelled::default(),
+                    &mut reads,
+                    &mut rx,
+                    &mut reply,
+                )
+            ),
+            tokio::time::timeout(Duration::from_secs(2), waiting)
+        );
+        let waited = waited
+            .expect("the cancel was answered while the state request stalled")
+            .unwrap();
+        assert!(matches!(waited, Err(CustodyError::NoStep)), "{waited:?}");
+        drop(stalled);
+    }
+
+    /// The main window asking for the state while an accept is out does not hold a cancel that
+    /// follows: the state, whose executor connection stalls here as an unlock prompt would, is
+    /// answered once the accept or the cancel ended. `beside_wait`: the accept arrived beside a
+    /// wait for the join (`follow_claim`), else straight after the code.
+    async fn a_state_request_during_an_accept_does_not_hold_a_cancel(beside_wait: bool) {
+        // Accepts connections and never answers the WebSocket handshake; on the real clock, as
+        // the stalled handshake is real I/O.
+        let stalled = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = ExecutorAddress {
+            url: format!("http://{}", stalled.local_addr().unwrap()),
+            credential: Arc::from("x"),
+        };
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "claimed" }));
+        executor
+            .rpc()
+            .answer("identity.acceptJoin", json!({ "accepted": true }));
+        executor
+            .rpc()
+            .delay("identity.acceptJoin", Duration::from_secs(3600));
+        executor
+            .rpc()
+            .answer("identity.cancelJoin", json!({ "cancelled": true }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (_, mut rx, mut reply, window, first) = opened();
+        let (_, answered) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(3),
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply)
+            ),
+            tokio::time::timeout(Duration::from_secs(2), async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                let waited = beside_wait.then(|| {
+                    let (tx, waited) = oneshot::channel();
+                    window
+                        .tx
+                        .send(Request::Step(StepInput::WaitJoin, tx))
+                        .unwrap();
+                    waited
+                });
+                let (tx, accepted) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::Accept, tx))
+                    .unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let (tx, _public) = oneshot::channel();
+                window.tx.send(Request::Public(tx)).unwrap();
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                let cancelled = cancelled.await.unwrap();
+                let waited = match waited {
+                    Some(waited) => Some(waited.await.unwrap()),
+                    None => None,
+                };
+                (cancelled, accepted.await.unwrap(), waited)
+            })
+        );
+        let (cancelled, accepted, waited) =
+            answered.expect("the cancel was answered while the state request stalled");
+        assert_eq!(cancelled, None);
+        assert!(
+            matches!(accepted, Err(CustodyError::NoStep)),
+            "{accepted:?}"
+        );
+        if let Some(waited) = waited {
+            assert!(matches!(waited, Err(CustodyError::NoStep)), "{waited:?}");
+        }
+        assert_eq!(
+            executor.rpc().called("identity.cancelJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+        drop(stalled);
+    }
+
+    #[tokio::test]
+    async fn a_state_request_during_an_accept_does_not_hold_the_cancel() {
+        a_state_request_during_an_accept_does_not_hold_a_cancel(false).await;
+    }
+
+    #[tokio::test]
+    async fn a_state_request_during_an_accept_beside_a_wait_does_not_hold_the_cancel() {
+        a_state_request_during_an_accept_does_not_hold_a_cancel(true).await;
+    }
+
+    /// A state request put off while an accept was out is answered once the accept is, on both
+    /// paths to the accept.
+    async fn a_state_request_during_an_accept_is_answered_after_it(beside_wait: bool) {
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "claimed" }));
+        executor
+            .rpc()
+            .answer("identity.acceptJoin", json!({ "accepted": true }));
+        executor
+            .rpc()
+            .delay("identity.acceptJoin", Duration::from_millis(200));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        // No executor answers on this address: the state is read without one, at once.
+        let (address, mut rx, mut reply, window, first) = opened();
+        let (_, answered) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(3),
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply)
+            ),
+            tokio::time::timeout(Duration::from_secs(2), async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                let _waited = beside_wait.then(|| {
+                    let (tx, waited) = oneshot::channel();
+                    window
+                        .tx
+                        .send(Request::Step(StepInput::WaitJoin, tx))
+                        .unwrap();
+                    waited
+                });
+                let (tx, _accepted) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::Accept, tx))
+                    .unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let (tx, public) = oneshot::channel();
+                window.tx.send(Request::Public(tx)).unwrap();
+                let public = public.await;
+                // Closed: the flow ends with the window.
+                drop(window);
+                public
+            })
+        );
+        let public = answered.expect("the state request was answered");
+        assert!(public.is_ok(), "the state request was dropped unanswered");
+        assert_eq!(executor.rpc().called("identity.acceptJoin").len(), 1);
+    }
+
+    #[tokio::test]
+    async fn a_state_request_during_an_accept_is_answered_after_the_accept() {
+        a_state_request_during_an_accept_is_answered_after_it(false).await;
+    }
+
+    #[tokio::test]
+    async fn a_state_request_during_an_accept_beside_a_wait_is_answered_after_the_accept() {
+        a_state_request_during_an_accept_is_answered_after_it(true).await;
+    }
+
+    /// A cancel that arrives with the `link-ticket` already in ends the claim the ticket made:
+    /// left unclaimed here, a holder's confirm of a claim that needs no accept would still join
+    /// this computer after its window closed. Repeated, as which of the two is seen first was
+    /// left to chance.
+    #[tokio::test]
+    async fn a_cancel_beside_a_ticket_ends_the_claim_the_ticket_made() {
+        for _ in 0..32 {
+            let (executor, events) = claiming_device(Some(false));
+            executor
+                .rpc()
+                .answer("identity.cancelJoin", json!({ "cancelled": true }));
+            let vault = memory_vault(crate::store::StoreKind::Keychain);
+            let (address, mut rx, mut reply, window, first) = opened();
+            let ((), cancelled) = tokio::join!(
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+                async {
+                    first.await.unwrap().unwrap();
+                    let (tx, _waited) = oneshot::channel();
+                    window
+                        .tx
+                        .send(Request::Step(StepInput::WaitLink, tx))
+                        .unwrap();
+                    let (tx, cancelled) = oneshot::channel();
+                    window.tx.send(Request::Cancel(tx)).unwrap();
+                    cancelled.await.unwrap()
+                }
+            );
+            assert_eq!(cancelled, None);
+            assert_eq!(
+                executor.rpc().called("identity.cancelJoin"),
+                vec![json!({ "offerId": "o1" })]
+            );
+        }
+    }
+
+    /// A cancel sent before the window waits for the ticket, with the ticket already in, ends the
+    /// claim the ticket made, as one beside the wait does.
+    #[tokio::test]
+    async fn a_cancel_before_the_wait_ends_the_claim_a_ticket_already_made() {
+        let (executor, events) = claiming_device(Some(false));
+        executor
+            .rpc()
+            .answer("identity.cancelJoin", json!({ "cancelled": true }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), cancelled) = tokio::join!(
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                cancelled.await.unwrap()
+            }
+        );
+        assert_eq!(cancelled, None);
+        assert_eq!(
+            executor.rpc().called("identity.cancelJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+    }
+
+    /// A cancel with no ticket seen cannot say no claim exists: the executor may have claimed one
+    /// whose `link-ticket` is still on its way, and it keeps reading for tickets until the code
+    /// expires. The cancel answers that, rather than closing the window as if nothing could link.
+    /// `during_wait`: sent while the window waits for the ticket, else before.
+    async fn a_cancel_with_no_ticket_seen_says_the_code_may_still_link(during_wait: bool) {
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        executor.rpc().answer(
+            "identity.prepareDevice",
+            json!({ "device": "coasys:device:1:abc", "expires": CLOCK.now() + 300 }),
+        );
+        let (_events_tx, events) = broadcast::channel(8);
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), (cancelled, waited)) = tokio::join!(
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                let waited = during_wait.then(|| {
+                    let (tx, waited) = oneshot::channel();
+                    window
+                        .tx
+                        .send(Request::Step(StepInput::WaitLink, tx))
+                        .unwrap();
+                    waited
+                });
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                let cancelled = cancelled.await.unwrap();
+                let waited = match waited {
+                    Some(waited) => Some(waited.await.unwrap()),
+                    None => None,
+                };
+                (cancelled, waited)
+            }
+        );
+        let unseen = |screen: Option<&Screen>| matches!(screen, Some(Screen::Failed { message }) if message == CANCEL_UNSEEN);
+        assert!(unseen(cancelled.as_ref()), "{cancelled:?}");
+        if let Some(waited) = waited {
+            assert!(unseen(waited.as_ref().ok()), "{waited:?}");
+        }
+        assert!(executor.rpc().called("identity.cancelJoin").is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_cancel_before_the_wait_with_no_ticket_seen_says_the_code_may_still_link() {
+        a_cancel_with_no_ticket_seen_says_the_code_may_still_link(false).await;
+    }
+
+    #[tokio::test]
+    async fn a_cancel_during_the_wait_with_no_ticket_seen_says_the_code_may_still_link() {
+        a_cancel_with_no_ticket_seen_says_the_code_may_still_link(true).await;
+    }
+
+    /// The service around a show-code flow as [`serve`] runs it: the flow, then the idle service
+    /// over the same state reads. A `Start` [`idle`] hands back is answered `started`, standing in
+    /// for the step [`serve`] would run.
+    async fn show_code_served(
+        executor: &ViaExecutor<FakeExecutor>,
+        events: broadcast::Receiver<Value>,
+        vault: &DesktopVault,
+        address: &ExecutorAddress,
+        rx: &mut Rx,
+        reply: &mut Reply,
+    ) {
+        let mut reads = StateReads::new(vault, address);
+        show_code_on(executor, events, &mut reads, rx, reply).await;
+        while let Some((_, start)) = idle(&mut reads, rx).await {
+            let _ = start.send(Ok(Screen::Failed {
+                message: "started".into(),
+            }));
+        }
+        reads.finish().await;
+    }
+
+    /// A state read a show-code flow took and left stalled when its claim ended holds no request
+    /// after it: a retried `Start` and a later cancel are answered at once, and the state request
+    /// once its read ends. `by_cancel`: the claim ends with a cancel, else it fails.
+    async fn a_state_read_left_stalled_holds_nothing_after_the_claim(by_cancel: bool) {
+        // On the real clock: the slow read is real I/O.
+        let address = slow_executor(Duration::from_millis(1500));
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        executor.rpc().answer(
+            "identity.prepareDevice",
+            json!({ "device": "coasys:device:1:abc", "expires": CLOCK.now() + 300 }),
+        );
+        let (events_tx, events) = broadcast::channel::<Value>(8);
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (_, mut rx, mut reply, window, first) = opened();
+        let prompt = Duration::from_millis(500);
+        let ((), (ended, started, cancelled, early, public)) = tokio::join!(
+            show_code_served(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async move {
+                first.await.unwrap().unwrap();
+                let (tx, mut public) = oneshot::channel();
+                window.tx.send(Request::Public(tx)).unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let ended = if by_cancel {
+                    let (tx, cancelled) = oneshot::channel();
+                    window.tx.send(Request::Cancel(tx)).unwrap();
+                    tokio::time::timeout(prompt, cancelled)
+                        .await
+                        .expect("the cancel was answered")
+                        .unwrap()
+                } else {
+                    // The executor's events end: the wait for the ticket fails.
+                    drop(events_tx);
+                    let (tx, waited) = oneshot::channel();
+                    window
+                        .tx
+                        .send(Request::Step(StepInput::WaitLink, tx))
+                        .unwrap();
+                    Some(
+                        tokio::time::timeout(prompt, waited)
+                            .await
+                            .expect("the step was answered")
+                            .unwrap()
+                            .unwrap(),
+                    )
+                };
+                let (tx, started) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Start(IdentityStep::ShowCode, tx))
+                    .unwrap();
+                let started = tokio::time::timeout(prompt, started)
+                    .await
+                    .expect("a retried start was held by the stalled read")
+                    .unwrap();
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                let cancelled = tokio::time::timeout(prompt, cancelled)
+                    .await
+                    .expect("a later cancel was held by the stalled read")
+                    .unwrap();
+                // The read is still under way: its request is answered when it ends.
+                let early = public.try_recv().is_ok();
+                let public = tokio::time::timeout(Duration::from_secs(5), public).await;
+                drop(window);
+                (ended, started, cancelled, early, public)
+            }
+        );
+        let ended = ended.expect("the claim's end shows a screen");
+        let Screen::Failed { message } = &ended else {
+            panic!("{ended:?}");
+        };
+        if by_cancel {
+            assert_eq!(message, CANCEL_UNSEEN);
+        } else {
+            assert!(message.contains("stopped responding"), "{message}");
+        }
+        assert!(
+            matches!(&started, Ok(Screen::Failed { message }) if message == "started"),
+            "{started:?}"
+        );
+        assert_eq!(cancelled, None);
+        assert!(!early, "the stalled read answered before it ended");
+        let public = public.expect("the state request was answered once its read ended");
+        assert!(public.is_ok(), "the state request was dropped unanswered");
+    }
+
+    #[tokio::test]
+    async fn a_state_read_left_stalled_by_a_cancelled_claim_holds_no_later_request() {
+        a_state_read_left_stalled_holds_nothing_after_the_claim(true).await;
+    }
+
+    #[tokio::test]
+    async fn a_state_read_left_stalled_by_a_failed_claim_holds_no_later_request() {
+        a_state_read_left_stalled_holds_nothing_after_the_claim(false).await;
+    }
+
+    /// With the service idle, a state read that stalls holds no step input and no cancel.
+    #[tokio::test]
+    async fn an_idle_state_read_that_stalls_holds_no_other_request() {
+        let address = slow_executor(Duration::from_millis(1500));
+        let handle = spawn(memory_vault(crate::store::StoreKind::Keychain), address);
+        let prompt = Duration::from_millis(500);
+        let reading = handle.public_state();
+        tokio::pin!(reading);
+        // Started, so the service has taken it before the requests after it.
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), &mut reading)
+                .await
+                .is_err()
+        );
+        let step = tokio::time::timeout(prompt, handle.step(StepInput::WaitLink))
+            .await
+            .expect("a step input was held by the stalled read");
+        assert_eq!(step, Err(CustodyError::NoStep));
+        let cancelled = tokio::time::timeout(prompt, handle.cancel())
+            .await
+            .expect("a cancel was held by the stalled read");
+        assert_eq!(cancelled, None);
+        let public = tokio::time::timeout(Duration::from_secs(5), reading)
+            .await
+            .expect("the state request was answered once its read ended");
+        assert!(public.is_ok(), "{public:?}");
+    }
+
+    /// Cancels queued together with no ticket seen are one cancel: each answers that the code may
+    /// still link, rather than the second closing the window from the idle service.
+    #[tokio::test]
+    async fn queued_cancels_with_no_ticket_seen_all_say_the_code_may_still_link() {
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        executor.rpc().answer(
+            "identity.prepareDevice",
+            json!({ "device": "coasys:device:1:abc", "expires": CLOCK.now() + 300 }),
+        );
+        let (_events_tx, events) = broadcast::channel(8);
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), (a, b)) = tokio::join!(
+            show_code_served(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async move {
+                first.await.unwrap().unwrap();
+                // Both sent before the flow runs again, so both are queued when it takes the first.
+                let (tx, a) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                let (tx, b) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                let answered = (a.await.unwrap(), b.await.unwrap());
+                drop(window);
+                answered
+            }
+        );
+        let unseen = |screen: &Option<Screen>| matches!(screen, Some(Screen::Failed { message }) if message == CANCEL_UNSEEN);
+        assert!(unseen(&a), "{a:?}");
+        assert!(unseen(&b), "{b:?}");
+        assert!(executor.rpc().called("identity.cancelJoin").is_empty());
+    }
+
+    /// An executor address whose state reads take `hold`: each connection is accepted, held
+    /// unanswered that long, then closed, so the read ends as one with no executor would.
+    fn slow_executor(hold: Duration) -> ExecutorAddress {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = ExecutorAddress {
+            url: format!("http://{}", listener.local_addr().unwrap()),
+            credential: Arc::from("x"),
+        };
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                let Ok(stream) = stream else { return };
+                std::thread::spawn(move || {
+                    std::thread::sleep(hold);
+                    drop(stream);
+                });
+            }
+        });
+        address
+    }
+
+    /// A state request taken while the window waits for the ticket is answered even when the
+    /// ticket comes in during its read: the read is not dropped with the wait for a cancel.
+    #[tokio::test]
+    async fn a_state_request_during_the_wait_for_a_ticket_is_answered_when_the_ticket_comes() {
+        // On the real clock: the slow read is real I/O.
+        let address = slow_executor(Duration::from_millis(300));
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        executor.rpc().answer(
+            "identity.prepareDevice",
+            json!({ "device": "coasys:device:1:abc", "expires": CLOCK.now() + 300 }),
+        );
+        let (events_tx, events) = broadcast::channel(8);
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (_, mut rx, mut reply, window, first) = opened();
+        let (_, answered) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(3),
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply)
+            ),
+            tokio::time::timeout(Duration::from_secs(2), async {
+                first.await.unwrap().unwrap();
+                let (tx, waited) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::WaitLink, tx))
+                    .unwrap();
+                tokio::time::sleep(Duration::from_millis(20)).await;
+                let (tx, public) = oneshot::channel();
+                window.tx.send(Request::Public(tx)).unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                events_tx
+                    .send(json!({ "type": "link-ticket", "did": "did:scid:x", "offerId": "o1", "matchCode": "AAA BBB" }))
+                    .unwrap();
+                let waited = waited.await.unwrap();
+                let public = public.await;
+                drop(window);
+                (waited, public)
+            })
+        );
+        let (waited, public) = answered.expect("the state request was answered");
+        assert_eq!(waited.unwrap(), device_match(false, false, false));
+        assert!(public.is_ok(), "the state request was dropped unanswered");
+    }
+
+    /// A cancel after an accept went through is not held by a state read that stalls (as a slow
+    /// executor would): the read runs beside the wait for the join. `beside_wait`: the accept
+    /// arrived beside a wait for the join (`follow_claim`), else straight after the code.
+    async fn a_cancel_after_an_accept_is_not_held_by_a_stalled_state_read(beside_wait: bool) {
+        // Accepts connections and never answers the WebSocket handshake; on the real clock, as
+        // the stalled handshake is real I/O.
+        let stalled = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = ExecutorAddress {
+            url: format!("http://{}", stalled.local_addr().unwrap()),
+            credential: Arc::from("x"),
+        };
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "claimed" }));
+        executor
+            .rpc()
+            .answer("identity.acceptJoin", json!({ "accepted": true }));
+        executor
+            .rpc()
+            .delay("identity.acceptJoin", Duration::from_millis(200));
+        executor
+            .rpc()
+            .answer("identity.cancelJoin", json!({ "cancelled": true }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (_, mut rx, mut reply, window, first) = opened();
+        let (_, answered) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(3),
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply)
+            ),
+            tokio::time::timeout(Duration::from_secs(2), async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                let waited = beside_wait.then(|| {
+                    let (tx, waited) = oneshot::channel();
+                    window
+                        .tx
+                        .send(Request::Step(StepInput::WaitJoin, tx))
+                        .unwrap();
+                    waited
+                });
+                let (tx, accepted) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::Accept, tx))
+                    .unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let (tx, _public) = oneshot::channel();
+                window.tx.send(Request::Public(tx)).unwrap();
+                // The accept is through by now, and the state read it put off has started.
+                tokio::time::sleep(Duration::from_millis(400)).await;
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                let cancelled = cancelled.await.unwrap();
+                let waited = match waited {
+                    Some(waited) => Some(waited.await.unwrap()),
+                    None => None,
+                };
+                (cancelled, accepted.await.unwrap(), waited)
+            })
+        );
+        let (cancelled, accepted, waited) =
+            answered.expect("the cancel was answered while the state read stalled");
+        assert_eq!(cancelled, None);
+        assert!(
+            matches!(accepted, Err(CustodyError::NoStep)),
+            "{accepted:?}"
+        );
+        if let Some(waited) = waited {
+            assert_eq!(waited.unwrap(), device_match(true, true, false));
+        }
+        assert_eq!(
+            executor.rpc().called("identity.acceptJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+        assert_eq!(
+            executor.rpc().called("identity.cancelJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+        drop(stalled);
+    }
+
+    #[tokio::test]
+    async fn a_cancel_after_an_accept_is_not_held_by_a_stalled_state_read_after_it() {
+        a_cancel_after_an_accept_is_not_held_by_a_stalled_state_read(false).await;
+    }
+
+    #[tokio::test]
+    async fn a_cancel_after_an_accept_beside_a_wait_is_not_held_by_a_stalled_state_read() {
+        a_cancel_after_an_accept_is_not_held_by_a_stalled_state_read(true).await;
+    }
+
+    /// An accept beside a wait for the join that fails answers both at once, though a state read
+    /// it put off stalls.
+    #[tokio::test]
+    async fn a_failed_accept_beside_a_wait_is_answered_while_a_state_read_stalls() {
+        let stalled = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = ExecutorAddress {
+            url: format!("http://{}", stalled.local_addr().unwrap()),
+            credential: Arc::from("x"),
+        };
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "claimed" }));
+        executor
+            .rpc()
+            .refuse("identity.acceptJoin", 404, "not-found: no claim");
+        executor
+            .rpc()
+            .delay("identity.acceptJoin", Duration::from_millis(200));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (_, mut rx, mut reply, window, first) = opened();
+        let (_, answered) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(3),
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply)
+            ),
+            tokio::time::timeout(Duration::from_secs(2), async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                let (tx, waited) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::WaitJoin, tx))
+                    .unwrap();
+                let (tx, accepted) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::Accept, tx))
+                    .unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let (tx, _public) = oneshot::channel();
+                window.tx.send(Request::Public(tx)).unwrap();
+                (waited.await.unwrap(), accepted.await.unwrap())
+            })
+        );
+        let (waited, accepted) =
+            answered.expect("the accept was answered while the state read stalled");
+        let closed = |screen: &Result<Screen, CustodyError>| matches!(screen, Ok(Screen::Failed { message }) if message.contains("link has closed"));
+        assert!(closed(&waited), "{waited:?}");
+        assert!(closed(&accepted), "{accepted:?}");
+        drop(stalled);
+    }
+
+    /// A state request while the window waits for the join does not hold a cancel that follows:
+    /// its read, stalled here, runs beside the wait.
+    #[tokio::test]
+    async fn a_cancel_during_a_wait_for_the_join_is_not_held_by_a_stalled_state_read() {
+        let stalled = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = ExecutorAddress {
+            url: format!("http://{}", stalled.local_addr().unwrap()),
+            credential: Arc::from("x"),
+        };
+        let (executor, events) = claiming_device(Some(false));
+        executor
+            .rpc()
+            .answer("identity.joinStatus", json!({ "state": "claimed" }));
+        executor
+            .rpc()
+            .answer("identity.cancelJoin", json!({ "cancelled": true }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (_, mut rx, mut reply, window, first) = opened();
+        let (_, answered) = tokio::join!(
+            tokio::time::timeout(
+                Duration::from_secs(3),
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply)
+            ),
+            tokio::time::timeout(Duration::from_secs(2), async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                let (tx, waited) = oneshot::channel();
+                window
+                    .tx
+                    .send(Request::Step(StepInput::WaitJoin, tx))
+                    .unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let (tx, _public) = oneshot::channel();
+                window.tx.send(Request::Public(tx)).unwrap();
+                tokio::time::sleep(Duration::from_millis(50)).await;
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                (cancelled.await.unwrap(), waited.await.unwrap())
+            })
+        );
+        let (cancelled, waited) =
+            answered.expect("the cancel was answered while the state read stalled");
+        assert_eq!(cancelled, None);
+        assert!(matches!(waited, Err(CustodyError::NoStep)), "{waited:?}");
+        assert_eq!(
+            executor.rpc().called("identity.cancelJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+        drop(stalled);
+    }
+
+    /// Cancels already queued when the executor's answer to the first is in are the same cancel:
+    /// each shows the join. Left for the idle service, a `None` would close the window over it.
+    /// Repeated, as which of the two is seen first was left to chance.
+    #[tokio::test]
+    async fn cancels_queued_as_the_cancel_ends_show_the_join_too() {
+        for _ in 0..32 {
+            let executor = ViaExecutor::new(FakeExecutor::new());
+            executor.rpc().refuse(
+                "identity.cancelJoin",
+                409,
+                "already-joined: the main agent speaks for this claim's identity",
+            );
+            executor.rpc().answer(
+                "identity.joinStatus",
+                json!({ "state": "spent", "did": "did:scid:x", "keyId": "d2", "seq": 1 }),
+            );
+            let claim = Claim {
+                offer_id: "o1".into(),
+                did: "did:scid:x".into(),
+                code: "AAA BBB".into(),
+                needs_accept: false,
+                deadline: CLOCK.now() + 300,
+                accepted: false,
+                confirmed: false,
+            };
+            let vault = memory_vault(crate::store::StoreKind::Keychain);
+            let (address, mut rx, mut reply, window, mut waited) = opened();
+            let (tx, mut first) = oneshot::channel();
+            let (queued_tx, mut queued) = oneshot::channel();
+            window.tx.send(Request::Cancel(queued_tx)).unwrap();
+            cancel_claim(
+                &executor,
+                Some(&claim),
+                Cancelled {
+                    cancel: Some(tx),
+                    ..Default::default()
+                },
+                &mut StateReads::new(&vault, &address),
+                &mut rx,
+                &mut reply,
+            )
+            .await;
+            let joined = |screen: Option<&Screen>| matches!(screen, Some(Screen::Joined { did, key_id }) if did == "did:scid:x" && key_id == "d2");
+            let first = first.try_recv().expect("the first cancel was answered");
+            let queued = queued.try_recv().expect("the queued cancel was answered");
+            let waited = waited.try_recv().expect("the step was answered");
+            assert!(joined(first.as_ref()), "{first:?}");
+            assert!(joined(queued.as_ref()), "{queued:?}");
+            assert!(joined(waited.as_ref().ok()), "{waited:?}");
         }
     }
 
@@ -5560,7 +6868,7 @@ mod tests {
         let vault = memory_vault(crate::store::StoreKind::Keychain);
         let (address, mut rx, mut reply, window, first) = opened();
         let ((), (cancelled, waited)) = tokio::join!(
-            show_code_on(&executor, events, &vault, &address, &mut rx, &mut reply),
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
             async {
                 first.await.unwrap().unwrap();
                 window.step(StepInput::WaitLink).await;
@@ -5617,7 +6925,7 @@ mod tests {
         let (address, mut rx, mut reply, window, first) = opened();
         let ((), (first_cancel, second_cancel)) = tokio::join!(
             async {
-                show_code_on(&executor, events, &vault, &address, &mut rx, &mut reply).await;
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply).await;
                 // The step is over: what is still queued meets the idle service, as `serve` does.
                 while let Ok(request) = rx.try_recv() {
                     if let Request::Cancel(r) = request {
@@ -5751,7 +7059,7 @@ mod tests {
         let vault = memory_vault(crate::store::StoreKind::Keychain);
         let (address, mut rx, mut reply, window, first) = opened();
         let ((), (cancelled, waited)) = tokio::join!(
-            show_code_on(&executor, events, &vault, &address, &mut rx, &mut reply),
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
             async {
                 first.await.unwrap().unwrap();
                 window.step(StepInput::WaitLink).await;
@@ -5784,7 +7092,7 @@ mod tests {
         let vault = memory_vault(crate::store::StoreKind::Keychain);
         let (address, mut rx, mut reply, window, first) = opened();
         let ((), (waiting, accepted)) = tokio::join!(
-            show_code_on(&executor, events, &vault, &address, &mut rx, &mut reply),
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
             async {
                 first.await.unwrap().unwrap();
                 window.step(StepInput::WaitLink).await;
@@ -5810,7 +7118,7 @@ mod tests {
         let vault = memory_vault(crate::store::StoreKind::Keychain);
         let (address, mut rx, mut reply, window, first) = opened();
         let ((), last) = tokio::join!(
-            show_code_on(&executor, events, &vault, &address, &mut rx, &mut reply),
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
             async {
                 first.await.unwrap().unwrap();
                 window.step(StepInput::WaitLink).await;
@@ -5818,7 +7126,7 @@ mod tests {
             }
         );
         assert!(
-            matches!(&last, Screen::Failed { message } if message == "This link was cancelled on this computer. Show a new code to try again."),
+            matches!(&last, Screen::Failed { message } if message == "This link was cancelled. Show a new code to try again."),
             "{last:?}"
         );
     }
@@ -5829,10 +7137,10 @@ mod tests {
         let (_events_tx, events) = broadcast::channel(1);
         let vault = memory_vault(crate::store::StoreKind::Keychain);
         let (address, mut rx, mut reply, _window, first) = opened();
-        show_code_on(&executor, events, &vault, &address, &mut rx, &mut reply).await;
+        show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply).await;
         let screen = first.await.unwrap().unwrap();
         assert!(
-            matches!(&screen, Screen::Failed { message } if message.contains("already speaks for")),
+            matches!(&screen, Screen::Failed { message } if message.contains("already has an identity")),
             "{screen:?}"
         );
         assert!(executor.rpc().called("identity.prepareDevice").is_empty());
@@ -5958,7 +7266,7 @@ mod tests {
         .await;
         let screen = first.await.unwrap().unwrap();
         assert!(
-            matches!(&screen, Screen::Failed { message } if message.contains("no longer waiting")),
+            matches!(&screen, Screen::Failed { message } if message.contains("no longer open")),
             "{screen:?}"
         );
     }
@@ -6030,7 +7338,7 @@ mod tests {
             } else {
                 assert!(
                     matches!(&screen, Screen::Failed { message }
-                        if message.contains("does not keep the master key")),
+                        if message.contains("can't have the master key")),
                     "{screen:?}"
                 );
             }
@@ -6219,7 +7527,7 @@ mod tests {
         let screen = first_answer_screen(&executor).await;
         assert!(
             matches!(&screen, Screen::Failed { message } if message.contains("d3")
-                && message.contains("not in your key log")),
+                && message.contains("isn't in your key log")),
             "{screen:?}"
         );
     }
@@ -6296,6 +7604,68 @@ mod tests {
         assert_eq!(confirm["rotate"], true);
     }
 
+    /// A revoke unlocked with the passphrase pushes again a master key whose delivery failed: the
+    /// main window's refreshes cannot, without the passphrase, so this unlock is the retry's.
+    #[tokio::test]
+    async fn a_revoke_under_the_passphrase_retries_a_master_key_push() {
+        let (mut events, _) = crate::keylog::tests::log_with_d2(true);
+        crate::keylog::tests::add_d3(&mut events, false);
+        let scid = events[0].scid.clone();
+        let (executor, _) = executor_with(&events, &lying_record());
+        let dir = tempfile::tempdir().unwrap();
+        let vault = open_vault(dir.path());
+        let master = words::master_key(&words::seed(&words::from_entropy(&[41u8; 16])), 0).unwrap();
+        vault
+            .unlocking(pass())
+            .store_master(&scid, 0, Secret::new(master.to_bytes()))
+            .unwrap();
+        // The push to `d2` failed earlier: it waits on the retry list.
+        vault
+            .unlocking(None)
+            .keep_push(&ad4m_identity_client::PendingPush {
+                scid: scid.clone(),
+                key_id: "d2".into(),
+            })
+            .unwrap();
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), revoked) = tokio::join!(
+            revoke_on(
+                &executor,
+                &vault,
+                &address,
+                &mut rx,
+                &mut reply,
+                "d3".into()
+            ),
+            async {
+                let confirm = first.await.unwrap().unwrap();
+                assert!(
+                    matches!(
+                        &confirm,
+                        Screen::RevokeConfirm {
+                            passphrase: true,
+                            ..
+                        }
+                    ),
+                    "{confirm:?}"
+                );
+                window
+                    .step(StepInput::Revoke {
+                        passphrase: Some(PASSPHRASE.into()),
+                        rotate: false,
+                    })
+                    .await
+            }
+        );
+        assert!(
+            matches!(&revoked, Screen::Revoked { key_id, .. } if key_id == "d3"),
+            "{revoked:?}"
+        );
+        let put = executor.rpc().called("identity.inboxPut");
+        assert_eq!(put.len(), 1, "the push to d2 was not tried again");
+        assert_eq!(put[0]["address"]["keyId"], "d2");
+    }
+
     /// A device without the master key names only itself; naming another device is refused.
     #[tokio::test]
     async fn a_device_without_the_master_key_renames_only_itself() {
@@ -6314,7 +7684,7 @@ mod tests {
         .await;
         let screen = first.await.unwrap().unwrap();
         assert!(
-            matches!(&screen, Screen::Failed { message } if message.contains("Only a device that keeps")),
+            matches!(&screen, Screen::Failed { message } if message.contains("Only a device with the master key")),
             "{screen:?}"
         );
 
@@ -6332,7 +7702,7 @@ mod tests {
         .await;
         let screen = first.await.unwrap().unwrap();
         assert!(
-            !matches!(&screen, Screen::Failed { message } if message.contains("Only a device that keeps")),
+            !matches!(&screen, Screen::Failed { message } if message.contains("Only a device with the master key")),
             "{screen:?}"
         );
     }
@@ -6356,11 +7726,11 @@ mod tests {
             .contains("expired"));
         assert!(check_code(&code, "https://other.example", 999)
             .unwrap_err()
-            .contains("another identity store"));
+            .contains("different identity store"));
         assert!(
             check_code("coasys:offer:1:zzz", "https://store.example", 999)
                 .unwrap_err()
-                .contains("not a device's code")
+                .contains("isn't a device code")
         );
     }
 
@@ -6682,14 +8052,17 @@ mod tests {
     #[test]
     fn a_count_refusal_says_word_for_one_and_words_for_more() {
         let count = |typed: &str| words_refused(&words::parse(typed).unwrap_err()).0;
-        assert_eq!(count("abandon"), "That is 1 word. Type all 12, in order.");
+        assert_eq!(
+            count("abandon"),
+            "That's 1 word. Enter all 12 words in order."
+        );
         assert_eq!(
             count("abandon ability"),
-            "That is 2 words. Type all 12, in order."
+            "That's 2 words. Enter all 12 words in order."
         );
         assert_eq!(
             count(&["abandon"; 13].join(" ")),
-            "That is 13 words. Type all 12, in order."
+            "That's 13 words. Enter all 12 words in order."
         );
     }
 
@@ -7078,7 +8451,7 @@ mod tests {
     }
 
     /// Lal's review of we#431 at 0d4501589: a custody folder that lost its epochs file refuses
-    /// to change the kept key, and "Replace my master key" is the way back. The words are
+    /// to change the kept key, and "Replace master key" is the way back. The words are
     /// checked against the log's current master first; then the identity's epoch is recovered,
     /// and the rotation goes on.
     #[tokio::test]
@@ -7194,7 +8567,7 @@ mod tests {
             after_publish(&ClientError::Vault(lost)),
         ] {
             assert_eq!(message, LOST_EPOCH);
-            assert!(message.contains("Replace my master key"), "{message}");
+            assert!(message.contains("Replace master key"), "{message}");
         }
     }
 
@@ -7451,7 +8824,7 @@ mod tests {
         executor
     }
 
-    /// "Use my 12 words" with `phrase` on `executor`, every other device locked out, as far as
+    /// "Restore with recovery phrase" with `phrase` on `executor`, every other device locked out, as far as
     /// it goes: its screens. Where the rotation published and the log served is still the one
     /// before it, the log is served again with it and "Try again" links this computer, so a
     /// restore that went through ends on [`Screen::Restored`].
@@ -7497,8 +8870,8 @@ mod tests {
     }
 
     /// Lal's review of we#431 at 564d9aaa0: on a computer not linked to an identity yet, a lost
-    /// custody epoch of the identity the words name is recovered by "Use my 12 words" — the way
-    /// back the lost-epoch screen names there, "Replace my master key" refusing an unlinked
+    /// custody epoch of the identity the words name is recovered by "Restore with recovery phrase" — the way
+    /// back the lost-epoch screen names there, "Replace master key" refusing an unlinked
     /// computer. The words are checked against the log's current master first. Both losses: the
     /// whole epochs file, and the identity's entry in a file that is there. Another identity
     /// noted and lost stays lost.

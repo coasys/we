@@ -56,6 +56,11 @@ WE's app declares `{ left: 80, right: 56 }`, which is what `SIDEBAR_PX` and `CHR
 app with a top bar declares `top`, and the content and the panels clear it; an app with no rail
 declares no `right`, and nothing keeps clear of a rail that is not there.
 
+A window narrower than `sm` (`shellStore.narrowWindow`) can have its own bands: `meta.frame.narrow`,
+the same four edges, replaces the frame there. On a phone WE's rail and the Coasys app's are a bar
+across the top (railShell's `compact`), so both declare `narrow: { top: 56, … }` with no `left`, and
+the page starts under the bar rather than beside a column.
+
 ## Where a panel is drawn
 
 Five ideas, each answered in one place:

@@ -48,7 +48,7 @@ export function identityPageUrl(change: IdentityChange | 'join', back: string): 
 
 function messageOf(error: unknown): string {
   if (error instanceof Error && error.message) return error.message;
-  return typeof error === 'string' ? error : 'the phone did not say why';
+  return typeof error === 'string' ? error : 'no details';
 }
 
 /** The kind the private record gives a phone (`crates/phone-custody`). */
@@ -80,7 +80,7 @@ export function phoneCustodyHost(plugin: DeviceKeyPlugin, nav: PageNav = browser
           did: null,
           holdsMaster: null,
           unlock: null,
-          blocked: `This phone cannot reach your identity store: ${messageOf(error)}`,
+          blocked: `Can’t load your devices. Try again later. (${messageOf(error)})`,
           thisDevice,
         };
       }
@@ -92,7 +92,7 @@ export function phoneCustodyHost(plugin: DeviceKeyPlugin, nav: PageNav = browser
         thisDevice: { keyId: status.keyId, kind: PHONE_KIND },
       };
       if (status.revoked !== null) {
-        return { ...base, blocked: 'This phone was removed from your identity: it changes nothing any more.' };
+        return { ...base, blocked: 'This phone was removed. It can’t make changes to your identity.' };
       }
       const [devices, requests, waiting] = await Promise.all([
         plugin.devices().then((r) => r.devices),

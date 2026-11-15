@@ -13,9 +13,9 @@ import {
   shortHash,
 } from '../src/shared/identityRows';
 
-const REVOKED_HOLDER = 'Still holds a valid master key — replace your master key';
+const REVOKED_HOLDER = 'Still has your master key. Replace it to lock this device out.';
 /** Where only the key log speaks: it let the device keep the master key, and the record is gone. */
-const REVOKED_MAY_HOLD = 'May still hold a valid master key — replace your master key';
+const REVOKED_MAY_HOLD = 'May still have your master key. Replace it to lock this device out.';
 
 describe('keyLogRows', () => {
   const events = [
@@ -30,10 +30,10 @@ describe('keyLogRows', () => {
     const rows = keyLogRows(events, 'd1');
     expect(rows.map((r) => [r.position, r.title, r.detail])).toEqual([
       ['#4', 'Scope', ''],
-      ['#3', 'Replaced the master key', 'with your 12 words'],
+      ['#3', 'Replaced the master key', 'with your recovery phrase'],
       ['#2', 'Revoked d2', 'd2'],
       ['#1', 'Added d2', 'd2'],
-      ['#0', 'Created your identity', 'with d1 · This computer'],
+      ['#0', 'Created identity', 'with d1 · This computer'],
     ]);
     expect(rows.find((r) => r.seq === 0)!.thisComputer).toBe(true);
     expect(rows.find((r) => r.seq === 1)!.thisComputer).toBe(false);
@@ -42,7 +42,7 @@ describe('keyLogRows', () => {
 
   it('names this computer and every other key by its id', () => {
     const rows = keyLogRows(events.slice(0, 3), 'd2');
-    expect(rows.map((r) => r.title)).toEqual(['Revoked This computer', 'Added This computer', 'Created your identity']);
+    expect(rows.map((r) => r.title)).toEqual(['Revoked this computer', 'Added this computer', 'Created identity']);
     expect(rows[2].detail).toBe('with d1');
   });
 });
@@ -55,9 +55,9 @@ describe('deviceRows', () => {
       { keyId: 'd1', sign: 'z', thisDevice: true, addedSeq: 0, revokedSeq: null },
     ]);
     expect(rows.map((r) => [r.keyId, r.label, r.status, r.canRevoke])).toEqual([
-      ['d1', 'This computer', 'Valid', false],
-      ['d3', 'Unnamed device', 'Valid', true],
-      ['d2', 'Unnamed device', 'Revoked at #2', false],
+      ['d1', 'This computer', 'Active', false],
+      ['d3', 'Unnamed device', 'Active', true],
+      ['d2', 'Unnamed device', 'Removed at #2', false],
     ]);
     // A device row names no key id; the Key log page is where those are read.
     expect(rows[1].subtitle).toBe('added at #3');
@@ -94,8 +94,8 @@ describe('deviceRows', () => {
       NOW,
     );
     expect(rows.map((r) => [r.keyId, r.label, r.status, r.valid])).toEqual([
-      ['d1', 'This computer', 'Valid', true],
-      ['d6', 'Box', 'Valid', true],
+      ['d1', 'This computer', 'Active', true],
+      ['d6', 'Box', 'Active', true],
     ]);
   });
 
@@ -118,7 +118,7 @@ describe('deviceRows', () => {
       ['d2', false, false],
     ]);
     expect(rows[2].status).toMatch(/^Expired on /);
-    expect(rows[1].status).toBe('Valid');
+    expect(rows[1].status).toBe('Active');
     // Ending it for good in the key log is still offered: an end can be the log's to move.
     expect(rows[2].canRevoke).toBe(true);
   });
@@ -140,9 +140,9 @@ describe('deviceRows', () => {
       ],
     );
     expect(rows.map((r) => [r.label, r.icon, r.master])).toEqual([
-      ['Desktop', 'laptop', 'Holds the master key'],
+      ['Desktop', 'laptop', 'Has master key'],
       ['Box', 'hard-drives', ''],
-      ['Laptop', 'laptop', 'Master key offered, not yet taken'],
+      ['Laptop', 'laptop', 'Master key sent'],
       ['Old', 'laptop', REVOKED_HOLDER],
     ]);
     expect(rows[0].subtitle).toBe('This computer · added at #0');
@@ -159,7 +159,7 @@ describe('deviceRows', () => {
       { keyId: 'd1', name: 'Desktop', kind: 'desktop-app', holdsMaster: 'yes' },
       { keyId: 'd2', name: 'Laptop', kind: 'desktop-app', holdsMaster: 'yes' },
     ]);
-    expect(handedOver[1].master).toBe('Holds the master key');
+    expect(handedOver[1].master).toBe('Has master key');
 
     // The revoke: the record's write drops d2's entry, and the key log says d2 may still hold it.
     const revoked = deviceRows(
@@ -168,8 +168,8 @@ describe('deviceRows', () => {
       ['d2'],
     );
     expect(revoked.map((r) => [r.label, r.status, r.master])).toEqual([
-      ['Desktop', 'Valid', 'Holds the master key'],
-      ['Unnamed device', 'Revoked at #2', REVOKED_MAY_HOLD],
+      ['Desktop', 'Active', 'Has master key'],
+      ['Unnamed device', 'Removed at #2', REVOKED_MAY_HOLD],
     ]);
 
     // A revoked device the log never let keep the master key carries no warning.
@@ -215,8 +215,12 @@ describe('requestRows', () => {
     );
     expect(rows.map((r) => r.title)).toEqual([
       'Laptop asks for the master key',
-      'Laptop asks to revoke This computer, d3',
+      'Laptop asks to remove This computer, d3',
     ]);
+    // A removal revokes the device key; a copy of the master key stays valid until it is replaced.
+    expect(rows[1].detail).toBe(
+      'Their device keys stop working. A device with your master key keeps access until you replace it.',
+    );
   });
 });
 
@@ -298,22 +302,22 @@ describe('this device, on a phone and on a desktop', () => {
     ];
     const phone = keyLogRows(events, 'd2', 'This phone');
     expect(phone.map((r) => [r.title, r.detail, r.thisComputer])).toEqual([
-      ['Added This phone', 'd2 · This phone', true],
-      ['Created your identity', 'with d1', false],
+      ['Added this phone', 'd2 · This phone', true],
+      ['Created identity', 'with d1', false],
     ]);
     // The desktop's words are unchanged.
     expect(keyLogRows(events, 'd1').map((r) => r.detail)).toEqual(['d2', 'with d1 · This computer']);
 
     const asks = [{ id: 'r1', kind: 'confirm-revoke' as const, by: 'd3', keyIds: ['d2', 'd1'], expires: 9 }];
-    expect(requestRows(asks, names, 'd2', 'This phone')[0].title).toBe('Box asks to revoke This phone, Laptop');
-    expect(requestRows(asks, [], 'd1')[0].title).toBe('d3 asks to revoke d2, This computer');
+    expect(requestRows(asks, names, 'd2', 'This phone')[0].title).toBe('Box asks to remove This phone, Laptop');
+    expect(requestRows(asks, [], 'd1')[0].title).toBe('d3 asks to remove d2, This computer');
   });
 
   it('the device serving the session is this computer on a desktop, the host on a phone', () => {
     // The desktop: whatever the record names, the top card is this computer.
     expect(servingDevice(keys, names, custodyDevice(custody(null)))).toEqual({
       label: 'This computer',
-      subtitle: 'Serves you now',
+      subtitle: 'In use',
       icon: 'desktop',
     });
     expect(servingDevice([], [], null).label).toBe('This computer');
@@ -322,13 +326,13 @@ describe('this device, on a phone and on a desktop', () => {
     const here = custodyDevice(custody({ keyId: 'd2', kind: 'phone-app' }));
     expect(servingDevice(keys, names, here)).toEqual({
       label: 'Laptop',
-      subtitle: 'Your host · serves you now',
+      subtitle: 'Your host · In use',
       icon: 'laptop',
     });
     // Never "This computer", whether the record names the host or not, or the list is not read yet.
     expect(servingDevice(keys, [], here)).toEqual({
       label: 'Your host',
-      subtitle: 'Serves you now',
+      subtitle: 'In use',
       icon: 'hard-drives',
     });
     expect(servingDevice([], names, here).label).toBe('Your host');
@@ -348,7 +352,7 @@ describe('this device, on a phone and on a desktop', () => {
     const phone = custodyDevice(custody({ keyId: 'd2', kind: 'phone-app' }));
     expect(servingDevice(keys, unnamed, phone)).toEqual({
       label: 'Linux computer',
-      subtitle: 'Your host · serves you now',
+      subtitle: 'Your host · In use',
       icon: 'laptop',
     });
     const host = deviceRows(keys, unnamed, [], null, NOW, phone).find((r) => r.keyId === 'd1');

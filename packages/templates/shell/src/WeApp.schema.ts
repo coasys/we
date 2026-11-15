@@ -11,7 +11,8 @@ import type { TemplateSchema } from '@we/schema-shared';
  * says, since an app that left one out would break something it cannot see.
  *
  * Its frame is today's furniture: the collapsed sidebar's 80 pixels on the left and the rail's 56 on
- * the right, so panels dock exactly where they did before apps were templates.
+ * the right, so panels dock exactly where they did before apps were templates. On a phone the
+ * sidebar is a 56px bar across the top while shut (`PHONE_BAR` in the sidebar), so its band moves there.
  *
  * `display: contents` at the root, as the shell's own chrome list has: every piece positions itself,
  * so the app's root must not be a box that anything is laid out in.
@@ -26,7 +27,7 @@ export const weApp: TemplateSchema = {
     icon: 'app-window',
     role: 'app',
     themeId: 'dark',
-    frame: { left: 80, right: 56 },
+    frame: { left: 80, right: 56, narrow: { top: 56, right: 56 } },
   },
   props: { styles: { display: 'contents' } },
   children: [

@@ -4,7 +4,7 @@
  * Connect like a browser.
  *
  * A phone joins an identity; it does not make one, and it takes no 12 words — the master key and its
- * words stay with a computer. So of the first run's three doors only "Link to my identity" opens here,
+ * words stay with a computer. So of the first run's three doors only "Link to another device" opens here,
  * on the phone's join page, and the other two say why they are a computer's. Every step leaves for the
  * phone's identity page (`apps/we-mobile/src/identity`), the only place a secret is shown, and the app
  * boots again when that page sends the person back.
@@ -14,6 +14,7 @@ import type { DeviceKeyPlugin } from '@we/app-web/platform/deviceKey';
 import {
   createDeviceKeyConnector,
   type DeviceKeyConnectorDeps,
+  KeyLoginRefused,
   KeyLoginUnreachable,
 } from '@we/app-web/platform/deviceKeyConnector';
 import { joinDeclined, readKeyHost } from '@we/app-web/platform/keyHost';
@@ -25,7 +26,7 @@ import { CONNECT, connectFor, type ReachDeps, unreachable } from './web';
 /** What the phone host is built from; the tests pass their own. */
 export interface PhoneHostDeps extends Pick<ReachDeps, 'remembered' | 'reach'> {
   plugin: DeviceKeyPlugin;
-  /** The connector AD4M Connect gives: the browser's. */
+  /** The connector AD4M Connect gives, for the CONNECT choice: the browser's. */
   fallback: BackendConnector;
   keyHost?: () => string | null;
   joinDeclined?: () => boolean;
@@ -35,10 +36,8 @@ export interface PhoneHostDeps extends Pick<ReachDeps, 'remembered' | 'reach'> {
   keyConnector?: (deps: DeviceKeyConnectorDeps) => BackendConnector;
 }
 
-export const MAKE_ON_A_COMPUTER =
-  'A phone joins an identity rather than making one: make it on your computer, then link this phone to it.';
-export const WORDS_ON_A_COMPUTER =
-  'The 12 words bring an identity back on a computer, which keeps its master key. Then link this phone to it.';
+export const MAKE_ON_A_COMPUTER = 'Create it on a computer, then link this phone.';
+export const WORDS_ON_A_COMPUTER = 'Restore on a computer, then link this phone.';
 
 /** The phone's identity, read from its plugin, with the join as the one door it opens. */
 export function phoneIdentitySource(
@@ -68,7 +67,7 @@ export function phoneIdentitySource(
       }
       return custody.open(step);
     },
-    // "Not now" on the phone's own join page is the same answer as "Start now" here.
+    // "Not now" on the phone's own join page is the same answer as "Skip for now" here.
     skipped: declined,
   };
 }
@@ -85,7 +84,7 @@ export function keyHostConnection(url: string): BaseConnection {
     id: 'key-host',
     kind: 'key-host',
     label: host,
-    detail: "Signs in with this phone's device key, asking you for nothing",
+    detail: 'Signs in automatically',
   };
 }
 
@@ -94,8 +93,7 @@ export function phoneBaseHost(deps: PhoneHostDeps): BaseHost {
   const declined = deps.joinDeclined ?? joinDeclined;
   const nav = deps.nav ?? browserNav;
   const online = deps.online ?? (() => globalThis.navigator?.onLine ?? true);
-  const makeKeyConnector =
-    deps.keyConnector ?? ((d: DeviceKeyConnectorDeps) => createDeviceKeyConnector(deps.fallback, d));
+  const makeKeyConnector = deps.keyConnector ?? createDeviceKeyConnector;
   return {
     kind: 'phone',
     identity: phoneIdentitySource(deps.plugin, nav, declined),
@@ -108,18 +106,12 @@ export function phoneBaseHost(deps: PhoneHostDeps): BaseHost {
         return Promise.resolve(
           connectFor(deps.fallback, how, { remembered: deps.remembered, reach: deps.reach, online }),
         );
-      return Promise.resolve(
-        makeKeyConnector({
-          plugin: () => deps.plugin,
-          keyHost,
-          nav,
-          // The base app asks about joining itself, before a connection is chosen; the connector must
-          // not send the person to the join page a second time.
-          joinDeclined: () => true,
-        }),
-      );
+      return Promise.resolve(makeKeyConnector({ plugin: () => deps.plugin, keyHost, nav }));
     },
     isUnreachable: (error) => error instanceof KeyLoginUnreachable || unreachable(error, online),
+    // The key login not made (the key not known there, revoked): back to the choice, which still
+    // offers AD4M Connect.
+    isRefused: (error) => error instanceof KeyLoginRefused,
     online,
   };
 }

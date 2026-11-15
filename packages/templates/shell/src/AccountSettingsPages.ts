@@ -57,7 +57,7 @@ const identifier: SchemaNode = {
   type: 'Card',
   props: { bg: 'surface', gap: '200' },
   children: [
-    { type: 'we-text', props: { variant: 'label', color: 'text-muted' }, children: ['Your identifier'] },
+    { type: 'we-text', props: { variant: 'label', color: 'text-muted' }, children: ['Identifier'] },
     {
       type: 'Row',
       props: { gap: '200', ay: 'center', ax: 'between' },
@@ -78,7 +78,7 @@ const identifier: SchemaNode = {
                 variant: 'ghost',
                 size: 'sm',
                 square: true,
-                label: 'Copy your identifier',
+                label: 'Copy identifier',
                 onClick: {
                   $invoke: 'clipboard.copy',
                   args: [{ $: 'identityStore.did ? identityStore.did : me.did' }, 'Identifier'],
@@ -96,7 +96,7 @@ const identifier: SchemaNode = {
       // Only what is true today: spaces still name each device by its own key, not the identity.
       children: [
         {
-          $: "identityStore.did ? 'The identity your devices speak for. Spaces still show each of your devices by its own key, for now.' : 'This device’s own key. Spaces show you by it.'",
+          $: "identityStore.did ? 'Shared by all your devices. For now, spaces still show each device by its own key.' : 'This device’s key. Spaces show you by it.'",
         },
       ],
     },
@@ -142,7 +142,7 @@ const advancedIdentifier: SchemaNode = {
             {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-muted' },
-              children: ['Your identifier, to copy where something asks for it.'],
+              children: ['Show your identifier so you can copy it.'],
             },
           ],
         },
@@ -176,14 +176,14 @@ export const securityPage: SchemaNode = {
   type: 'Column',
   props: { gap: '400' },
   children: [
-    heading('Security', 'How you get in, and the key that is you.'),
+    heading('Security', 'How you sign in and recover your identity.'),
     identityProblem,
     makeIdentityCard,
     comingSoon({
       available: can('password'),
       icon: 'password',
       title: 'Password',
-      description: 'What unlocks your account on a new device. Changed away from this page, on the sign-in screen.',
+      description: 'Unlocks your account on a new device. Change it on the sign-in screen.',
       preview: [actions('Change password')],
     }),
     comingSoon({
@@ -197,46 +197,45 @@ export const securityPage: SchemaNode = {
       available: can('masterKey'),
       icon: 'key',
       title: 'Master key',
-      description:
-        'The key that is you. It signs your devices in and can replace any of them; keep it on a device you trust.',
-      preview: [actions('Add to another device', 'Replace it')],
+      description: 'Links and removes your devices. Keep it on a device you trust.',
+      preview: [actions('Send to a device', 'Replace')],
       children: [{ type: 'Row', props: { gap: '200', wrap: true }, children: [replaceMasterButton] }],
     }),
     comingSoon({
       available: can('recoveryWords'),
       icon: 'list-numbers',
-      title: 'Recovery words',
-      description: 'Twelve words that bring your account back if every device is lost.',
-      preview: [actions('Show my words')],
+      title: 'Recovery phrase',
+      description: 'Restores your identity if you lose every device.',
+      preview: [actions('Show recovery phrase')],
       children: [{ type: 'Row', props: { gap: '200', wrap: true }, children: [restoreButton] }],
     }),
     comingSoon({
       available: can('keyLog'),
       icon: 'scroll',
       title: 'Key log',
-      description: 'Every change to your keys, in order, so anyone can check a signature was yours when it was made.',
-      preview: [actions('See the log', 'Export')],
+      description: 'Every change to your devices and keys, in order. Anyone can check it.',
+      preview: [actions('View log', 'Export')],
       children: keyLogSummary,
     }),
     comingSoon({
       available: can('export'),
       icon: 'export',
-      title: 'Take it with you',
-      description: 'Your key log and your private spaces, as a file you can take to another provider.',
+      title: 'Export your data',
+      description: 'Save your key log and private spaces as a file to move to another provider.',
       preview: [actions('Export')],
     }),
     comingSoon({
       available: can('logOutEverywhere'),
       icon: 'sign-out',
-      title: 'Log out everywhere',
-      description: 'Sign out on every device at once. Each will need your password again.',
-      preview: [actions('Log out everywhere')],
+      title: 'Sign out everywhere',
+      description: 'Sign out on all your devices. Each one needs your password to sign in again.',
+      preview: [actions('Sign out everywhere')],
     }),
     comingSoon({
       available: can('deleteAccount'),
       icon: 'trash',
-      title: 'Close your account',
-      description: 'Deletes your account and the keys that are you. Spaces you share stay with their members.',
+      title: 'Close account',
+      description: 'Deletes your account and keys. Shared spaces stay with their members.',
       preview: [actions('Close account')],
     }),
   ],
@@ -328,11 +327,11 @@ export const logOutAction: SchemaNode = {
     confirmModal({
       open: { $: 'local.confirmMasterLogout' },
       close: { $setLocal: 'confirmMasterLogout', value: false },
-      title: 'This computer keeps your master key',
-      body: 'Also remove my master key from this computer? Your other devices that keep a copy, and your 12 words, still add and remove devices.',
-      detail: 'Keep it if this is your computer and you will log in here again.',
+      title: 'Remove master key from this computer?',
+      body: 'Your other devices with the master key, and your recovery phrase, can still add and remove devices.',
+      detail: "Keep it if this is your computer and you'll sign in here again.",
       tone: 'accent',
-      confirmLabel: 'Remove it and log out',
+      confirmLabel: 'Remove and sign out',
       confirm: {
         $invoke: 'deviceStore.removeMaster',
         onSuccess: [
@@ -344,7 +343,7 @@ export const logOutAction: SchemaNode = {
           },
         ],
       },
-      cancelLabel: 'Keep it and log out',
+      cancelLabel: 'Keep and sign out',
       cancel: [{ $setLocal: 'confirmMasterLogout', value: false }, { $invoke: 'sessionStore.logout' }],
     }),
   ],
@@ -404,7 +403,7 @@ export const devicesPage: SchemaNode = {
   type: 'Column',
   props: { gap: '400' },
   children: [
-    heading('Devices', 'The devices that act as you: this one, and any you link.'),
+    heading('Devices', 'This computer and the devices you link to it.'),
     identityProblem,
     thisDeviceRow,
     requestList,
@@ -412,8 +411,8 @@ export const devicesPage: SchemaNode = {
     comingSoon({
       available: can('devices'),
       icon: 'devices',
-      title: 'Your other devices',
-      description: 'Every device that holds a key of yours, and removing one you no longer have.',
+      title: 'Your devices',
+      description: 'Remove a device you lost or no longer use.',
       preview: [actions('Remove a device')],
       children: [deviceList, deviceListFootnote],
     }),
@@ -424,15 +423,15 @@ export const devicesPage: SchemaNode = {
       icon: 'qr-code',
       title: 'Link a device',
       description:
-        'Sign another computer in as you: scan or paste the code it shows, or give a server a link from this one. You confirm a match code on both.',
+        'Enter the code the new device shows, or send a link to a host. Then check that the code matches on both.',
       preview: [actions('Link a device')],
       children: [{ type: 'Row', children: [addDeviceButton] }],
     }),
     comingSoon({
       available: can('switchDevice'),
       icon: 'arrows-left-right',
-      title: 'Which device serves you',
-      description: 'Choose the device that holds your spaces for this session — your computer, or a cloud device.',
+      title: 'Where to keep your spaces',
+      description: 'Open your spaces from this computer or from a host you run.',
       preview: [actions('Switch device')],
     }),
   ],
@@ -450,7 +449,7 @@ export function thisDevicePage(advanced: SchemaNode[]): SchemaNode {
         props: { variant: 'ghost', size: 'sm', onClick: { $invoke: 'routeStore.navigate', args: ['/devices'] } },
         children: [{ type: 'we-icon', props: { name: 'caret-left' } }, 'Devices'],
       },
-      heading('This device', 'The computer or host serving this session, and what runs on it.'),
+      heading('This device', "Settings for the computer or host you're using now."),
       hostSection,
       /*
         How this device keeps the data on its disk, in the backend's own terms and nothing more. Absent
@@ -529,13 +528,12 @@ export const botsPage: SchemaNode = {
       type: 'Column',
       props: { gap: '400' },
       children: [
-        heading('Bots', 'Bots act for you with keys of their own, inside what you grant them.'),
+        heading('Bots', 'Bots work only in the spaces you choose and give a reason for everything they write.'),
         comingSoon({
           available: can('bots'),
           icon: 'robot',
-          title: 'Your bots',
-          description:
-            'Each bot signs as itself, never as you, in the spaces you let it into, and gives a reason for each thing it writes. Each thing it does is logged.',
+          title: 'Bots',
+          description: 'Bots never write as you, and you can see everything they do.',
           preview: [actions('Add a bot')],
         }),
       ],

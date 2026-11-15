@@ -95,11 +95,11 @@ function fakePort(entries: BotActivityView[] = []) {
     async setGrant(_did, grant) {
       sent.push(grant);
       if (bot.grant.state === 'revoked')
-        throw new BotGrantConflict('revoked', 'This bot is revoked: its grant never changes again.');
+        throw new BotGrantConflict('revoked', "This bot was removed, so its permissions can't change.");
       if (grant.version !== bot.grant.version) {
         throw new BotGrantConflict(
           'version',
-          'The grant changed while you edited it. It is shown again as it is now.',
+          'These permissions changed while you were editing. Showing the latest.',
           bot.grant.version,
         );
       }
@@ -168,7 +168,7 @@ describe('botStore', () => {
     expect(store.loaded()).toBe(true);
     expect(store.bots()).toHaveLength(1);
     expect(store.bots()[0]).toMatchObject({ name: 'Test bot', status: 'Active', paused: false, revoked: false });
-    expect(store.bots()[0].grantLine).toBe('May do nothing yet: give it spaces');
+    expect(store.bots()[0].grantLine).toBe('No permissions yet');
     expect(store.canAdd()).toBe(true);
     setHoldsMaster(false);
     expect(store.canAdd()).toBe(false);
@@ -186,7 +186,7 @@ describe('botStore', () => {
     const store = mount();
     await settle();
     expect(await store.create('', 'Test bot')).toBe(false);
-    expect(store.createError()).toContain('Paste the offer');
+    expect(store.createError()).toContain('Paste the setup code');
     expect(await store.create('coasys:offer:1:x', ' Test bot ')).toBe(true);
     expect(store.created()).toMatchObject({ name: 'Test bot', matchCode: 'R7K Q2M', token: 'throwaway-token' });
     store.dismissCreated();
@@ -231,7 +231,7 @@ describe('botStore', () => {
     await settle();
     await store.select(BOT);
     store.toggleAction('join');
-    expect(store.editor()?.problem).toContain('Its key may not join');
+    expect(store.editor()?.problem).toContain("This bot can't join");
     expect(await store.saveGrant()).toBe(false);
     expect(fake.sent).toEqual([]);
   });
@@ -247,7 +247,7 @@ describe('botStore', () => {
     fake.elsewhere({ spaces: [SHARED], can: ['read'] });
     expect(await store.saveGrant()).toBe(false);
     expect(fake.sent[0].version).toBe(1);
-    expect(store.conflict()).toContain('changed while you edited it');
+    expect(store.conflict()).toContain('changed while you were editing');
     expect(
       store
         .editor()
@@ -296,7 +296,7 @@ describe('botStore', () => {
     expect(await store.pause()).toBe(true);
     expect(fake.sent[0]).toMatchObject({ spaces: [SHARED], can: ['read'], state: 'paused' });
     // A is told, and sees the grant as it is now, not the draft it started from.
-    expect(store.conflict()).toContain('changed while you edited it');
+    expect(store.conflict()).toContain('changed while you were editing');
     expect(
       store
         .editor()
@@ -318,9 +318,9 @@ describe('botStore', () => {
     await settle();
     await store.select(BOT);
     expect(await store.revoke()).toBe(true);
-    expect(store.selected()).toMatchObject({ status: 'Revoked', revoked: true });
+    expect(store.selected()).toMatchObject({ status: 'Removed', revoked: true });
     expect(await store.resume()).toBe(false);
-    expect(store.conflict()).toContain('revoked');
+    expect(store.conflict()).toContain('removed');
     expect(fake.current().grant.state).toBe('revoked');
   });
 
@@ -343,7 +343,7 @@ describe('botStore', () => {
     expect(store.activity()[0]).toMatchObject({ allowed: true, outcome: 'Allowed', what: 'write in Garden club' });
     expect(store.activity()[1]).toMatchObject({
       allowed: false,
-      outcome: 'Refused: Not in its grant',
+      outcome: 'Blocked: Not allowed',
       reason: 'No reason given',
     });
   });
@@ -364,12 +364,12 @@ describe('botRows', () => {
   });
 
   it('says what the key log says of the key', () => {
-    expect(botRow({ ...view(), key: null }).status).toBe('Not confirmed yet');
+    expect(botRow({ ...view(), key: null }).status).toBe('Not confirmed');
     expect(botRow({ ...view(), key: { keyId: 'd3', verdict: 'expired', can: [], expires: 1 } }).keyTone).toBe(
       'danger-text',
     );
     expect(botRow({ ...view(), key: { keyId: 'd3', verdict: 'valid', can: ['read'], expires: null } }).keyLine).toBe(
-      'Key valid · may read',
+      'Key valid · allows read',
     );
   });
 
@@ -377,8 +377,8 @@ describe('botRows', () => {
     const draft = draftOf(view({ expires: 1_800_000_000 }));
     expect(grantInput(draft, 1_000).expires).toBe(1_800_000_000);
     expect(grantInput({ ...draft, days: '2' }, 1_000).expires).toBe(1_000 + 2 * 86_400);
-    expect(draftProblem({ ...draft, days: 'soon' }, null)).toContain('number of days');
-    expect(draftProblem({ ...draft, days: '0' }, null)).toContain('number of days');
+    expect(draftProblem({ ...draft, days: 'soon' }, null)).toContain('1 to 3650 days');
+    expect(draftProblem({ ...draft, days: '0' }, null)).toContain('1 to 3650 days');
     expect(draftEnds({ ...draft, expires: null }, null, 0)).toBe('No end set.');
   });
 
@@ -391,11 +391,11 @@ describe('botRows', () => {
 
   it('words a write without a reason', () => {
     expect(activityRow({ ...entry(1, false), refusal: 'reason-required' }, []).outcome).toBe(
-      'Refused: It gave no reason',
+      'Blocked: No reason given',
     );
   });
 
   it('never words a refusal it does not know as allowed', () => {
-    expect(activityRow({ ...entry(1, false), refusal: 'something-new' }, []).outcome).toBe('Refused: something-new');
+    expect(activityRow({ ...entry(1, false), refusal: 'something-new' }, []).outcome).toBe('Blocked: something-new');
   });
 });

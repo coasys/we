@@ -13,9 +13,9 @@ export const widths = [900];
 export async function check({ count, screenshot }) {
   const problems = [];
   await screenshot('bots-detail');
-  if (!(await count('text=What it may do'))) problems.push('the grant editor was not drawn');
-  if (!(await count('text=WE, and any other app you connected with permission to change your identity')))
+  if (!(await count('text=Permissions'))) problems.push('the grant editor was not drawn');
+  if (!(await count("text=This app, and any other app you've allowed to manage your identity")))
     problems.push('it does not say which apps can change the grant');
-  if (!(await count('text=without asking you again'))) problems.push('it does not say the person is not asked again');
+  if (!(await count('text=without asking you'))) problems.push('it does not say the person is not asked again');
   return problems;
 }
