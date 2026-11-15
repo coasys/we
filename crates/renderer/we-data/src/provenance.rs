@@ -32,6 +32,7 @@ struct Inner {
     snapshot: BTreeSet<String>,
     natives: BTreeSet<String>,
     live: BTreeSet<String>,
+    unavailable: BTreeSet<String>,
     dropped: Vec<String>,
 }
 
@@ -46,6 +47,9 @@ pub struct ProvenanceReport {
     /// `store.member` reads answered by a live executor read (E7) — the
     /// connected app's `modelRead` rows. Empty offline.
     pub live_served: Vec<String>,
+    /// `store.member` reads a connected app answered with nothing: no live
+    /// row, and the recording left out (E7). Empty offline.
+    pub unavailable: Vec<String>,
     /// Count of dropped calls (`$invoke` with no reply, writes, flows, shape).
     pub dropped_calls: usize,
     /// The dropped call targets, in the order they were dropped.
@@ -84,6 +88,15 @@ impl Provenance {
             .insert(member.into());
     }
 
+    /// A connected app had no answer for `store.member` (E7).
+    pub fn note_unavailable(&self, member: impl Into<String>) {
+        self.inner
+            .write()
+            .expect("provenance")
+            .unavailable
+            .insert(member.into());
+    }
+
     /// A call went out with nothing answering it.
     pub fn note_dropped(&self, target: impl Into<String>) {
         self.inner
@@ -111,6 +124,7 @@ impl Provenance {
             snapshot_served: inner.snapshot.iter().cloned().collect(),
             native_served: inner.natives.iter().cloned().collect(),
             live_served: inner.live.iter().cloned().collect(),
+            unavailable: inner.unavailable.iter().cloned().collect(),
             dropped_calls: inner.dropped.len(),
             dropped: inner.dropped.clone(),
         }
@@ -133,6 +147,12 @@ impl fmt::Display for ProvenanceReport {
         if !self.live_served.is_empty() {
             writeln!(f, "served live ({}):", self.live_served.len())?;
             for member in &self.live_served {
+                writeln!(f, "  {member}")?;
+            }
+        }
+        if !self.unavailable.is_empty() {
+            writeln!(f, "unavailable ({}):", self.unavailable.len())?;
+            for member in &self.unavailable {
                 writeln!(f, "  {member}")?;
             }
         }

@@ -57,6 +57,8 @@ struct Args {
     executor_url: Option<String>,
     space: Option<String>,
     email: Option<String>,
+    /// `--demo-recorded` — the recording under a live space.
+    demo_recorded: bool,
 }
 
 /// Which `--gallery` showcase to open (`none` → render the bundle).
@@ -89,6 +91,7 @@ fn parse_args() -> Args {
         executor_url: None,
         space: None,
         email: None,
+        demo_recorded: false,
     };
     let mut rest = std::env::args().skip(1).peekable();
     if rest.peek().is_some_and(|a| a == "dump") {
@@ -140,6 +143,7 @@ fn parse_args() -> Args {
             }
             "--offline" => {}
             "--connect" => args.connect = true,
+            "--demo-recorded" => args.demo_recorded = true,
             "--executor-url" => {
                 args.executor_url = Some(
                     rest.next()
@@ -161,7 +165,7 @@ fn parse_args() -> Args {
             "--help" | "-h" => {
                 eprintln!(
                     "usage: we-app [dump] [--bundle <path>] [--snapshot <path>] [--route <href>] [--offline] [--theme <name>] [--coasys <route>] [--gallery style|widgets|inputs]\n       \
-                     we-app --connect [--executor-url <url>] [--space <uuid|name>] [--email <address>] [--theme <name>]\n\n\
+                     we-app --connect [--executor-url <url>] [--space <uuid|name>] [--email <address>] [--theme <name>] [--demo-recorded]\n\n\
                      dump               resolve the app root once, print the normal-form tree, exit\n\
                      --bundle <path>    bundle to render (default: the repo's bundles/coasys.bundle.json)\n\
                      --snapshot <path>  offline data: stores/queries/invokes as JSON\n\
@@ -172,6 +176,8 @@ fn parse_args() -> Args {
                      --executor-url <u> the executor to use instead of looking (http://127.0.0.1:12000)\n\
                      --space <id>       open this perspective (uuid or name) without the picker\n\
                      --email <address>  the account on a multi-user executor\n\
+                     --demo-recorded    with --connect: show the recorded Coasys data where the\n\
+                                        live space has none (a demo mix; off by default)\n\
                      --theme <name>     light, dark, black, retro, cyberpunk or glow (default dark)\n\
                      --coasys <route>   the whole app at a recorded Coasys route, set up as the\n\
                                         coasys_shots screenshots are: index, workflows, channels,\n\
@@ -505,6 +511,11 @@ fn run_connected(args: Args) -> eframe::Result<()> {
         },
         space: args.space.clone(),
         theme: args.theme.clone(),
+        data: if args.demo_recorded {
+            we_app::live::DataMode::DemoRecorded
+        } else {
+            we_app::live::DataMode::Live
+        },
     };
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()

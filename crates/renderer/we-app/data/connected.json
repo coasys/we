@@ -1,0 +1,9 @@
+{
+  "note": "What a live space (we-app --connect) reads that is not an executor read. `bundle` names the recorded members allowed in, each static to the Coasys bundle rather than to the recorded space: its themes and its brand. `connected` gives members whose value is a fact of connected mode, not a recording. Every other member of the recorded stores reads unavailable (undefined), and the data panel lists it. `--demo-recorded` restores the recording underneath, for demos only.",
+  "bundle": ["themeStore.builtInThemes", "themeStore.currentThemeId", "templateStore.brand"],
+  "connected": {
+    "sessionStore.bootState": "ready",
+    "identityStore.needsFirstRun": false,
+    "spaceStore.canAdministerCurrentSpace": false
+  }
+}

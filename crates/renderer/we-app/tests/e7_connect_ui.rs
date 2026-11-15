@@ -50,6 +50,7 @@ fn connect_pick_and_render() {
         },
         space: None,
         theme: "dark".into(),
+        data: Default::default(),
     };
     let bundle = we_template::Bundle::parse(BUNDLE).unwrap();
     let mut h = egui_kittest::Harness::builder()

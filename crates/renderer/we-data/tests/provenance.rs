@@ -281,3 +281,18 @@ fn live_reads_are_reported_apart() {
         .report_text()
         .contains("served live (1):\n  spaceStore.root\n"));
 }
+
+/// A connected app's unanswered reads (E7, Lal F4) are listed apart, and an
+/// offline report's text has no such section.
+#[test]
+fn unavailable_reads_are_reported_apart() {
+    let provenance = we_data::Provenance::new();
+    provenance.note_snapshot("themeStore.builtInThemes");
+    assert!(!provenance.report_text().contains("unavailable"));
+    provenance.note_unavailable("spaceStore.members");
+    let report = provenance.report();
+    assert_eq!(report.unavailable, vec!["spaceStore.members".to_string()]);
+    assert!(provenance
+        .report_text()
+        .contains("unavailable (1):\n  spaceStore.members\n"));
+}

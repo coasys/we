@@ -26,6 +26,8 @@ pub struct ConnectArgs {
     /// `--space <uuid or name>`: open it as soon as the list arrives.
     pub space: Option<String>,
     pub theme: String,
+    /// `--demo-recorded`: the recording under the live data (off by default).
+    pub data: crate::live::DataMode,
 }
 
 type Pending<T> = Arc<Mutex<Option<Result<T, String>>>>;
@@ -95,7 +97,8 @@ impl ConnectedApp {
     }
 
     fn open_space(&self, conn: &Connection, space: SpaceRow) -> Result<Box<LiveSpace>, String> {
-        let (mut live, fell_back) = live_space_app(&self.bundle, conn, space, &self.args.theme)?;
+        let (mut live, fell_back) =
+            live_space_app(&self.bundle, conn, space, &self.args.theme, self.args.data)?;
         if fell_back {
             eprintln!(
                 "no recorded theme {:?}; painting with dark",
@@ -415,12 +418,17 @@ fn space_screen(
             ui.separator();
             ui.label(
                 RichText::new(format!(
-                    "live queries {}  ·  results {}  ·  failed {}  ·  members live {} / snapshot {}",
+                    "live queries {}  ·  results {}  ·  failed {}  ·  members live {} / unavailable {}{}",
                     live.source.open.load(Ordering::Relaxed),
                     live.source.deliveries.load(Ordering::Relaxed),
                     live.source.failures.load(Ordering::Relaxed),
                     report.live_served.len(),
-                    report.snapshot_served.len(),
+                    report.unavailable.len(),
+                    if live.mode == crate::live::DataMode::DemoRecorded {
+                        format!("  ·  RECORDED DEMO DATA {}", report.snapshot_served.len())
+                    } else {
+                        String::new()
+                    },
                 ))
                 .monospace()
                 .size(11.0),
@@ -451,14 +459,19 @@ fn data_panel(ui: &mut egui::Ui, live: &LiveSpace, report: &we_data::ProvenanceR
         ui.heading("Where the data comes from");
         ui.label(
             RichText::new(
-                "Every $queries entry reads the executor. Store members with a live row read it too; \
-                 the rest still come from the recorded snapshot.",
+                "Every $queries entry reads the executor, and so do store members with a live row. \
+                 The rest are unavailable, except the bundle's themes and brand and the facts of \
+                 connected mode. With --demo-recorded, the recording fills them instead.",
             )
             .weak(),
         );
         let section = |ui: &mut egui::Ui, title: &str, color: Color32, items: &[String]| {
             ui.add_space(8.0);
-            ui.label(RichText::new(format!("{title} ({})", items.len())).strong().color(color));
+            ui.label(
+                RichText::new(format!("{title} ({})", items.len()))
+                    .strong()
+                    .color(color),
+            );
             for m in items {
                 ui.label(RichText::new(m).monospace().size(11.0));
             }
@@ -469,10 +482,31 @@ fn data_panel(ui: &mut egui::Ui, live: &LiveSpace, report: &we_data::ProvenanceR
             .filter(|m| !report.live_served.contains(m))
             .cloned()
             .collect();
-        section(ui, "Live", Color32::from_rgb(90, 200, 120), &report.live_served);
+        section(
+            ui,
+            "Live",
+            Color32::from_rgb(90, 200, 120),
+            &report.live_served,
+        );
         section(ui, "Live, not read yet", Color32::GRAY, &waiting);
-        section(ui, "Snapshot", Color32::from_rgb(230, 160, 60), &report.snapshot_served);
+        let recorded = if live.mode == crate::live::DataMode::DemoRecorded {
+            "Recorded (demo mix)"
+        } else {
+            "Bundle and connected facts"
+        };
+        section(
+            ui,
+            recorded,
+            Color32::from_rgb(230, 160, 60),
+            &report.snapshot_served,
+        );
+        section(ui, "Unavailable", Color32::GRAY, &report.unavailable);
         section(ui, "Derived", Color32::LIGHT_BLUE, &report.native_served);
-        section(ui, "Calls dropped (read-only)", Color32::from_rgb(230, 90, 90), &report.dropped);
+        section(
+            ui,
+            "Calls dropped (read-only)",
+            Color32::from_rgb(230, 90, 90),
+            &report.dropped,
+        );
     });
 }

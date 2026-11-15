@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 
 use we_ad4m::testkit as kit;
 use we_ad4m::SpaceRow;
-use we_app::live::{live_space_app, LiveSpace};
+use we_app::live::{bundle_allowlist, connected_facts, live_space_app, DataMode, LiveSpace};
 
 const BUNDLE: &str = include_str!("../../../../bundles/coasys.bundle.json");
 
@@ -53,7 +53,7 @@ fn coasys_app_renders_a_live_space() {
         name: "e7-app".into(),
         shared_url: None,
     };
-    let (mut live, _) = live_space_app(&bundle, &reader, space, "dark").unwrap();
+    let (mut live, _) = live_space_app(&bundle, &reader, space, "dark", DataMode::Live).unwrap();
     let (tx, wake) = mpsc::channel();
     live.app.session.set_waker(Arc::new(move || {
         let _ = tx.send(());
@@ -101,10 +101,72 @@ fn coasys_app_renders_a_live_space() {
         .live_served
         .iter()
         .any(|m| m == "spaceStore.taskStates"));
-    // The rest is still the recording — and the report says so.
-    assert!(report
+    // No recorded data inside a live space (Lal F4): not a recorded
+    // member's name, not the recorded space's, and nothing served from the
+    // recording but the bundle's own themes and brand.
+    assert!(report.unavailable.iter().any(|m| m == "spaceStore.members"));
+    let text = tree_text(&mut live);
+    for name in recorded_names() {
+        assert!(
+            !text.contains(&name),
+            "recorded {name:?} shown inside a live space"
+        );
+    }
+    let allowed: Vec<String> = [bundle_allowlist(), connected_facts()].concat();
+    for member in &report.snapshot_served {
+        assert!(
+            allowed.contains(member),
+            "{member} came from the recording inside a live space"
+        );
+    }
+    assert!(live.source.deliveries.load(Ordering::Relaxed) > 0);
+}
+
+/// The names the recording's space and members go by — none may appear in
+/// a live space.
+fn recorded_names() -> Vec<String> {
+    let truth: serde_json::Value =
+        serde_json::from_str(include_str!("../../fixtures/coasys/snapshot.json")).unwrap();
+    let space = &truth["stores"]["spaceStore"];
+    let mut names: Vec<String> = space["members"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|m| m["name"].as_str())
+        .map(str::to_string)
+        .collect();
+    names.push(space["currentSpace"]["name"].as_str().unwrap().to_string());
+    assert!(names.len() > 3);
+    names
+}
+
+/// `--demo-recorded` is the one way the recording shows in a live space,
+/// and only when asked for.
+#[test]
+fn demo_recorded_puts_the_recording_back() {
+    let Some(executor) = kit::start_executor() else {
+        return;
+    };
+    let rt = we_ad4m::Runtime::new().unwrap();
+    let conn = kit::connect(&rt, &executor.url);
+    let uuid = kit::seed_space(&rt, &conn, "e7-demo");
+    let bundle = we_template::Bundle::parse(BUNDLE).unwrap();
+    let space = SpaceRow {
+        uuid,
+        name: "e7-demo".into(),
+        shared_url: None,
+    };
+    let (mut live, _) =
+        live_space_app(&bundle, &conn, space, "dark", DataMode::DemoRecorded).unwrap();
+    let (tx, wake) = mpsc::channel();
+    live.app.session.set_waker(Arc::new(move || {
+        let _ = tx.send(());
+    }));
+    wait_for(&mut live, &wake, "Mara Ellison", Duration::from_secs(30));
+    assert!(live
+        .provenance
+        .report()
         .snapshot_served
         .iter()
         .any(|m| m == "spaceStore.members"));
-    assert!(live.source.deliveries.load(Ordering::Relaxed) > 0);
 }
