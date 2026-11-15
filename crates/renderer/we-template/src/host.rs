@@ -17,22 +17,16 @@
 use std::any::Any;
 use std::sync::Arc;
 
+/// The mount a node was resolved under — the `id` prefix of its tree
+/// (`app`, `space`, `page:<id>`, `boot`, or a single tree's id). Lives in
+/// `we-expr` with the rest of the mount identity (E3c-7); re-exported
+/// here so `crate::host::MountId` keeps working.
+pub use we_expr::MountId;
 use we_expr::Value;
 
 use crate::handler::CallId;
 use crate::inbox::{Arrival, Inbox};
 use crate::resolved::NodeId;
-
-/// The mount a node was resolved under — the `id` prefix of its tree
-/// (`app`, `space`, `page:<id>`, `boot`, or a single tree's id).
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
-pub struct MountId(pub std::sync::Arc<str>);
-
-impl MountId {
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
 
 /// Where an action came from. E3c-7 adds the tier and the space.
 #[derive(Clone, Debug, PartialEq, Eq)]
