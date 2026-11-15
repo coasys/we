@@ -161,3 +161,121 @@ fn reduced_motion_holds_the_heading_still() {
     let (r, p) = &f[1];
     assert!((p.min.unwrap().x - r.min.x).abs() < 0.01, "{p:?}");
 }
+
+/// Paint `root` (cyberpunk) for `steps` frames at `origin`, mid-glitch,
+/// and answer whether the last frame asked for another.
+fn repaints(root: &ResolvedNode, origin: egui::Vec2, steps: usize) -> bool {
+    let registry = Registry::with_builtins();
+    let table = we_style::TokenTable::new(
+        [(
+            Arc::<str>::from("--we-color-accent-500"),
+            Arc::<str>::from("#00ff00"),
+        )]
+        .into_iter()
+        .collect(),
+    );
+    let asked = RefCell::new(false);
+    let mut harness = egui_kittest::Harness::new_ui(|ui| {
+        let ctx = ui.ctx().clone();
+        we_egui::install_media(&ctx);
+        let mut scx = StyleCx::empty();
+        scx.tokens = &table;
+        scx.theme = "cyberpunk";
+        let lay = layout(
+            &MeasureCx::new(&ctx),
+            &scx,
+            &registry,
+            root,
+            egui::Rect::from_min_size(ui.cursor().min + origin, egui::vec2(400.0, 300.0)),
+        );
+        let (mut events, mut edit) = (Vec::new(), EditState::default());
+        paint(
+            ui,
+            &registry,
+            &scx,
+            root,
+            &lay,
+            &mut events,
+            &mut edit,
+            0.45 * 3.0,
+        );
+        *asked.borrow_mut() = ctx.has_requested_repaint();
+    });
+    harness.run_steps(steps);
+    drop(harness);
+    asked.into_inner()
+}
+
+fn heading_in(
+    column: &[(&str, we_expr::Value)],
+    above: Option<&str>,
+    extra: &[(&str, we_expr::Value)],
+) -> ResolvedNode {
+    let mut props = vec![
+        ("variant", we_expr::Value::from("heading-lg")),
+        ("text", we_expr::Value::from("Signals")),
+    ];
+    props.extend(extra.iter().cloned());
+    let mut root = node("Column", "c", column);
+    if let Some(h) = above {
+        root.children.push(ResolvedChild::Node(Box::new(node(
+            "Column",
+            "c/spacer",
+            &[
+                ("height", we_expr::Value::from(h)),
+                ("flexShrink", we_expr::Value::from(0.0)),
+            ],
+        ))));
+    }
+    root.children.push(ResolvedChild::Node(Box::new(node(
+        "we-text", "c/h", &props,
+    ))));
+    root
+}
+
+#[test]
+fn only_a_visible_heading_keeps_asking_for_frames() {
+    // On screen: the glitch runs, so every frame asks for the next.
+    let shown = heading_in(&[], None, &[]);
+    assert!(repaints(&shown, egui::Vec2::ZERO, 4), "a visible heading");
+    // Scrolled out of an overflow:auto column, below its clip.
+    let scrolled = heading_in(
+        &[
+            ("height", we_expr::Value::from("60px")),
+            ("overflow", we_expr::Value::from("auto")),
+        ],
+        Some("400px"),
+        &[],
+    );
+    assert!(
+        !repaints(&scrolled, egui::Vec2::ZERO, 4),
+        "a scrolled-away heading"
+    );
+    // Fully clipped by an overflow:hidden ancestor.
+    let clipped = heading_in(
+        &[
+            ("height", we_expr::Value::from("60px")),
+            ("overflow", we_expr::Value::from("hidden")),
+        ],
+        Some("400px"),
+        &[],
+    );
+    assert!(
+        !repaints(&clipped, egui::Vec2::ZERO, 4),
+        "a clipped heading"
+    );
+    // Laid out off the screen altogether.
+    assert!(
+        !repaints(&shown, egui::vec2(0.0, 5000.0), 4),
+        "an off-screen heading"
+    );
+    // Transparent.
+    let faded = heading_in(&[], None, &[("opacity", we_expr::Value::from(0.0))]);
+    assert!(
+        !repaints(&faded, egui::Vec2::ZERO, 4),
+        "an opacity-0 heading"
+    );
+    // Removed: nothing left to animate.
+    let gone = node("Column", "c", &[]);
+    assert!(!repaints(&gone, egui::Vec2::ZERO, 4), "no heading");
+}

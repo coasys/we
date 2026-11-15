@@ -861,7 +861,6 @@ fn animate(
     if anim.progress(t_ms).is_none() {
         return;
     }
-    w.ui.ctx().request_repaint();
     let view = crate::defaults::view_of(w.ui.ctx());
     let left = style
         .layout
@@ -883,14 +882,43 @@ fn animate(
         .and_then(|v| we_style::eval_dimension(&v.text()))
         .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
         .unwrap_or(0.0);
-    if sx == 0.0 && sy == 0.0 && dx == 0.0 {
-        return;
+    if sx != 0.0 || sy != 0.0 || dx != 0.0 {
+        let (tx, ty) = (sx.to_radians().tan(), sy.to_radians().tan());
+        let c = rect.center();
+        crate::props::apply_affine(w.ui.ctx(), w.ui.layer_id(), start, move |p| {
+            egui::pos2(p.x + tx * (p.y - c.y) + dx, p.y + ty * (p.x - c.x))
+        });
     }
-    let (tx, ty) = (sx.to_radians().tan(), sy.to_radians().tan());
-    let c = rect.center();
-    crate::props::apply_affine(w.ui.ctx(), w.ui.layer_id(), start, move |p| {
-        egui::pos2(p.x + tx * (p.y - c.y) + dx, p.y + ty * (p.x - c.x))
-    });
+    // The next frame only matters if somebody can see this one: a heading
+    // scrolled away, clipped out, off the screen or transparent animates
+    // nothing visible, and asking would keep an idle screen repainting.
+    // Its timeline keeps its start, so it resumes in step when it is next
+    // painted (a scroll back repaints anyway).
+    if animated_output_visible(w, style, start) {
+        w.ui.ctx().request_repaint();
+    }
+}
+
+/// Whether anything the node queued from `start` on lands inside its clip
+/// rect and the screen, with the host visible and not fully transparent.
+fn animated_output_visible(w: &Walk<'_>, style: &Style, start: usize) -> bool {
+    if !w.ui.is_visible() || style.paint.opacity.is_some_and(|o| o <= 0.0) {
+        return false;
+    }
+    let ctx = w.ui.ctx();
+    let screen = ctx.content_rect();
+    ctx.graphics(|g| {
+        let Some(list) = g.get(w.ui.layer_id()) else {
+            return false;
+        };
+        list.all_entries().skip(start).any(|cs| {
+            let bounds = cs
+                .transform_after_tessellation
+                .mul_rect(cs.shape.visual_bounding_rect());
+            let seen = bounds.intersect(cs.clip_rect).intersect(screen);
+            seen.is_positive()
+        })
+    })
 }
 
 /// A theme's generated `::before`/`::after` box on `node` — painted with
