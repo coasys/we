@@ -219,9 +219,11 @@ fn strip_comments(css: &str) -> String {
     while i < b.len() {
         let c = b[i];
         if let Some(q) = quote {
+            // An escape is the backslash and the whole character after it
+            // (which may be several bytes).
             if c == b'\\' && i + 1 < b.len() {
-                out.push_str(&css[i..i + 2]);
-                i += 2;
+                push_char(&mut out, css, &mut i);
+                push_char(&mut out, css, &mut i);
                 continue;
             }
             if c == q {
@@ -1087,8 +1089,7 @@ fn numbers(s: &str) -> (Vec<String>, Vec<f32>) {
                 continue;
             }
         }
-        texts.last_mut().unwrap().push(c as char);
-        i += 1;
+        push_char(texts.last_mut().unwrap(), s, &mut i);
     }
     (texts, nums)
 }
@@ -1488,5 +1489,51 @@ mod tests {
         assert_eq!(skew_deg("skew(-15deg)"), Some((-15.0, 0.0)));
         assert_eq!(skew_deg("translateX(2px) skewY(3deg)"), Some((0.0, 3.0)));
         assert_eq!(skew_deg("rotate(3deg)"), None);
+    }
+
+    /// Every way into the tokenizer with a multibyte character next to a
+    /// slice point: escapes, strings, comments, selectors, values, all
+    /// truncated at every char boundary. None may panic.
+    #[test]
+    fn arbitrary_utf8_never_panics() {
+        let tricky = [
+            "we-text::after { content: '\\é'; }",
+            "we-text::after { content: \"\\é\"; color: red }",
+            "we-text { color: red } /* \\é ünïcödé */ we-icon { color: blue }",
+            "we-text::after { content: '\\",
+            "we-text::after { content: 'é",
+            "we-text { color: red } /* é",
+            "we-text { font-family: 'Ünï\\'cödé' }",
+            "wé-text { color: red }",
+            "we-text[label='é'] { color: red }",
+            "we-text[label^=é] { color: red }",
+            "we-text:é { color: red }",
+            "we-text::part(é) { color: red }",
+            "@kéyframes x { from { left: 1px } }",
+            "@keyframes é { 0%é { left: é1px } }",
+            "we-text { transform: skew(é1deg) translate(1é) }",
+            "we-text { color: 🦀 !important; --x: '😀\\😀' }",
+            "\\é{}\\",
+            "'\\",
+            "\"",
+            "/*",
+            "{é",
+            "}é{",
+        ];
+        for css in tricky {
+            let mut cut = 0;
+            while cut <= css.len() {
+                if css.is_char_boundary(cut) {
+                    let _ = Stylesheet::parse(&css[..cut]);
+                }
+                cut += 1;
+            }
+        }
+        // The string survives intact rather than being mangled.
+        let s = strip_comments("a { content: '\\é/*x*/' }");
+        assert_eq!(s, "a { content: '\\é/*x*/' }");
+        let (texts, nums) = numbers("é1px");
+        assert_eq!(texts, vec!["é".to_string(), "px".to_string()]);
+        assert_eq!(nums, vec![1.0]);
     }
 }
