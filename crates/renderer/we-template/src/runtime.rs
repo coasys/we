@@ -802,7 +802,9 @@ impl Runtime {
             return;
         }
         self.stats.completions += 1;
-        let mount = mount_of(&self.mount_cxs, &pending.node);
+        // The mount the call STARTED under — not `mount_of` on the
+        // current mounts: a node that survived a navigation still runs
+        // its callbacks under the space it began on.
         let mut cx = HandlerCx {
             host,
             bag: &self.bag,
@@ -812,7 +814,7 @@ impl Runtime {
             pending: &mut self.pending,
             calls: &mut self.calls,
             node: &pending.node,
-            mount: &mount,
+            mount: &pending.mount,
             warnings: &mut self.stats.warnings,
         };
         match &result {

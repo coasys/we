@@ -30,15 +30,20 @@ use crate::resolved::NodeId;
 use crate::{Host, Invoked, LocalState, Scope, StoreBag};
 use we_expr::MountCx;
 
-/// A pending `$invoke`: who asked, in which scope, and the lifecycle token
-/// lists. [`crate::Runtime::complete`] fires them — `onSuccess`/`onError`
-/// with `result` bound, `onFinally` with the plain scope — unless the node
-/// has left the tree.
+/// A pending `$invoke`: who asked, under which mount, in which scope, and
+/// the lifecycle token lists. [`crate::Runtime::complete`] fires them —
+/// `onSuccess`/`onError` with `result` bound, `onFinally` with the plain
+/// scope — unless the node has left the tree.
 pub struct PendingCall {
     /// The node whose handler raised the call. A frame that resolves
     /// without it invalidates the call for good (`Runtime` drops it then),
     /// so a remount under the same id never runs these callbacks.
     pub node: NodeId,
+    /// The mount the call started under. The callbacks stamp it — a node
+    /// that survives a navigation (the chrome, say) must not let its
+    /// `onSuccess` stamp the space the route moved to: the initiating
+    /// authority survives into the callback (4.6.3).
+    pub mount: MountCx,
     pub scope: Scope,
     pub on_success: Option<Json>,
     pub on_error: Option<Json>,
@@ -681,6 +686,7 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
                         call,
                         PendingCall {
                             node: cx.node.clone(),
+                            mount: cx.mount.clone(),
                             scope: scope.clone(),
                             on_success: on_success.clone(),
                             on_error: on_error.clone(),

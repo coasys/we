@@ -11,8 +11,8 @@ use we_expr::{HandleTable, MountCx, Tier, Value};
 use we_screen::{ScreenOp, ScreenSchema, ScreenState};
 use we_session::Session;
 use we_template::{
-    ActionRequest, AppSpec, BundleTemplate, Completer, Host, Invoked, ResolvedChild, RootSpec,
-    SchemaNode, StoreBag,
+    Action, ActionRequest, AppSpec, BundleTemplate, Completer, Host, Invoked, ResolvedChild,
+    RootSpec, SchemaNode, StoreBag,
 };
 
 fn schema(v: serde_json::Value) -> SchemaNode {
@@ -23,6 +23,7 @@ fn schema(v: serde_json::Value) -> SchemaNode {
 #[derive(Default)]
 struct Log {
     requests: Vec<ActionRequest>,
+    completers: Vec<Completer>,
 }
 
 struct RecordingHost(Rc<RefCell<Log>>);
@@ -31,6 +32,27 @@ impl Host for RecordingHost {
     fn act(&mut self, request: ActionRequest, _done: Completer) -> Invoked {
         self.0.borrow_mut().requests.push(request);
         Invoked::Done(Ok(Value::Null))
+    }
+}
+
+/// Records every request; `storeX.slow` keeps its completer and answers
+/// `Pending` — everything else settles `Done` at once.
+struct ParkingHost(Rc<RefCell<Log>>);
+
+impl Host for ParkingHost {
+    fn act(&mut self, request: ActionRequest, done: Completer) -> Invoked {
+        let parks = matches!(
+            &request.action,
+            Action::Invoke { target, .. } if target.as_ref() == "storeX.slow"
+        );
+        let mut log = self.0.borrow_mut();
+        log.requests.push(request);
+        if parks {
+            log.completers.push(done);
+            Invoked::Pending
+        } else {
+            Invoked::Done(Ok(Value::Null))
+        }
     }
 }
 
@@ -220,6 +242,26 @@ fn origin_space_is_stamped() {
     );
 }
 
+/// The first node under `mount_prefix` holding `handler`, by walk.
+fn find_handler_node(
+    root: &we_template::ResolvedNode,
+    mount_prefix: &str,
+    handler: &str,
+) -> we_template::NodeId {
+    let mut stack = vec![root];
+    while let Some(node) = stack.pop() {
+        if node.id.as_str().starts_with(mount_prefix) && node.handlers.contains_key(handler) {
+            return node.id.clone();
+        }
+        for child in &node.children {
+            if let ResolvedChild::Node(n) = child {
+                stack.push(n);
+            }
+        }
+    }
+    panic!("no {handler} node under {mount_prefix}");
+}
+
 /// The `ds` a cell's key carries — parsed back the way a capture lookup
 /// reads it.
 fn ds_of(key: &we_template::QueryKey) -> Option<String> {
@@ -338,5 +380,90 @@ fn an_explicit_mount_space_resolves_through_the_shared_table() {
         s.runtime.handles().key(space.handle()).as_deref(),
         Some("space-a"),
         "the origin's space resolves through the shared table"
+    );
+}
+
+/// Lal F2: a pending call's callbacks stamp the mount the call STARTED
+/// under — a chrome node that survives a navigation must not let its
+/// `onSuccess` stamp the space the route moved to (4.6.3: the
+/// initiating authority survives into callbacks).
+#[test]
+fn a_pending_callback_stamps_the_space_it_started_on() {
+    let log = Rc::new(RefCell::new(Log::default()));
+    let mut s = Session::new(
+        RootSpec::App(Box::new(AppSpec {
+            bundle: "testbundle".into(),
+            app: Some(bundle_template(
+                "chrome",
+                json!({}),
+                schema(json!({
+                    "type": "Column",
+                    "props": { "onTap": {
+                        "$invoke": "storeX.slow", "args": [],
+                        "onSuccess": [{ "$invoke": "storeX.after", "args": [] }]
+                    } },
+                    "children": []
+                })),
+            )),
+            template: Some(bundle_template("tpl", json!({}), tap_node())),
+            pages: vec![],
+            boot: None,
+        })),
+        Arc::new(StoreBag::new()),
+        ScreenState::desktop(ScreenSchema::default(), "/space/space-a"),
+        Box::new(ParkingHost(log.clone())),
+    );
+
+    // The chrome's onTap parks the call on /space/space-a.
+    let root = s.resolve();
+    let chrome = find_handler_node(&root, "app:", "onTap");
+    s.dispatch(&chrome, "onTap", Value::Null);
+    {
+        let log = log.borrow();
+        assert_eq!(log.requests.len(), 1, "the call reached the host");
+        assert_eq!(log.completers.len(), 1, "it parked");
+        let space = log.requests[0]
+            .origin
+            .space
+            .as_ref()
+            .expect("on a space route");
+        assert_eq!(
+            s.runtime.handles().key(space.handle()).as_deref(),
+            Some("space-a"),
+            "the call started on space A"
+        );
+    }
+
+    // Navigate A → B: the chrome's id survives in the new tree, so the
+    // call is still pending — only the current mount's space moved on.
+    s.screen.apply(ScreenOp::Navigate {
+        to: "/space/space-b".into(),
+        query: None,
+        base_depth: None,
+        replace: false,
+    });
+    let root = s.resolve();
+    assert_eq!(
+        find_handler_node(&root, "app:", "onTap"),
+        chrome,
+        "the chrome node never left the tree"
+    );
+
+    // The late completion's onSuccess stamps the space the call started
+    // on — A — not the route's current space B.
+    let completer = log.borrow().completers[0].clone();
+    completer.complete(Ok(Value::Null));
+    s.resolve();
+    let log = log.borrow();
+    assert_eq!(log.requests.len(), 2, "onSuccess invoked the follow-up");
+    let space = log.requests[1]
+        .origin
+        .space
+        .as_ref()
+        .expect("the callback has a space");
+    assert_eq!(
+        s.runtime.handles().key(space.handle()).as_deref(),
+        Some("space-a"),
+        "the callback stamps the initiating mount's space"
     );
 }
