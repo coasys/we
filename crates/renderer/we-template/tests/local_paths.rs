@@ -204,6 +204,7 @@ fn list_index_write_and_append() {
         "props": {
             "onReplace": { "$setLocal": "draft.tags.1", "value": "B" },
             "onAppend": { "$setLocal": "draft.tags.2", "value": "c" },
+            "onEdge": { "$setLocal": "draft.tags.4", "value": "y" },
             "onBeyond": { "$setLocal": "draft.tags.5", "value": "x" }
         },
         "children": []
@@ -225,6 +226,14 @@ fn list_index_write_and_append() {
     assert!(
         get("tags.2", &draft).strict_eq(&Value::from("c")),
         "index == len appends: {draft:?}"
+    );
+
+    // One past `len` is the first index that is out of bounds.
+    rt.dispatch(&mut host, &mut screen, &owner, "onEdge", Value::Null);
+    let draft = locals.get(&owner, "draft");
+    assert!(
+        get("tags.4", &draft).is_undefined(),
+        "index len + 1 warns and writes nothing: {draft:?}"
     );
 
     rt.dispatch(&mut host, &mut screen, &owner, "onBeyond", Value::Null);
