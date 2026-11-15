@@ -200,3 +200,60 @@ pub fn create_post(rt: &Runtime, conn: &Connection, uuid: &str, title: &str) {
         }
     });
 }
+
+/// WE's `Space`, cut to what the live rows read: `uuid` and `root`.
+pub const SPACE_SDNA: &str = r#"{
+  "target_class": "we://Space",
+  "constructor_actions": [
+    {"action": "addLink", "source": "this", "predicate": "we://uuid", "target": "placeholder"}
+  ],
+  "properties": [
+    {"path": "we://uuid", "name": "uuid", "min_count": 1, "max_count": 1, "setter": [{"action": "setSingleTarget", "source": "this", "predicate": "we://uuid", "target": "value"}]},
+    {"path": "we://name", "name": "name", "min_count": 0, "max_count": 1, "setter": [{"action": "setSingleTarget", "source": "this", "predicate": "we://name", "target": "value"}]},
+    {"path": "we://root", "name": "root", "node_kind": "IRI", "min_count": 0, "max_count": 1, "setter": [{"action": "setSingleTarget", "source": "this", "predicate": "we://root", "target": "value"}]}
+  ]
+}"#;
+
+/// Install one more class into a perspective.
+pub fn add_class(rt: &Runtime, conn: &Connection, uuid: &str, name: &str, shacl: &str) {
+    rt.block_on(conn.ws().call::<Value>(
+        "perspective.addSdna",
+        json!({ "uuid": uuid, "name": name, "sdnaCode": "", "sdnaType": "subject_class", "shaclJson": shacl }),
+    ))
+    .unwrap();
+}
+
+/// Add links `source --predicate--> target`, targets as given (literal URLs
+/// or IRIs).
+pub fn add_links(
+    rt: &Runtime,
+    conn: &Connection,
+    uuid: &str,
+    source: &str,
+    links: &[(&str, String)],
+) {
+    use ad4m_client::types::LinkInput;
+    let client = conn.client();
+    rt.block_on(async {
+        for (predicate, target) in links {
+            client
+                .perspectives
+                .add_link(
+                    uuid.to_string(),
+                    LinkInput {
+                        source: source.to_string(),
+                        predicate: Some(predicate.to_string()),
+                        target: target.clone(),
+                    },
+                )
+                .await
+                .unwrap();
+        }
+    });
+}
+
+pub fn literal(s: &str) -> String {
+    ad4m_client::literal::Literal::from_string(s.to_string())
+        .to_url()
+        .unwrap()
+}

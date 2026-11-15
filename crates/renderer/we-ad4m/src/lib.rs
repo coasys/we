@@ -8,6 +8,8 @@
 //!   read-only (writes are E11).
 //! - [`connect::ConnectFlow`] runs `ad4m-connect` for the connect screen;
 //!   [`list_spaces`] lists what the picker offers.
+//! - [`live::LiveMembers`] serves the store map's `modelRead` rows (M2)
+//!   from executor reads; members without a row stay on the snapshot.
 //! - [`translate`] lowers a compiled `$query` to `modelQuery`'s options, as
 //!   the TS adapter does.
 //!
@@ -21,6 +23,8 @@ pub mod connect;
 mod connection;
 #[cfg(not(target_arch = "wasm32"))]
 mod executor;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod live;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod relations;
 #[cfg(not(target_arch = "wasm32"))]
