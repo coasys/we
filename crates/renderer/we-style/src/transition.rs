@@ -119,3 +119,44 @@ fn parse_easing(seg: &str) -> Option<Easing> {
         }
     })
 }
+
+/// One easing keyword or function as text — `ease-out`, `cubic-bezier(…)`.
+pub fn parse_easing_text(seg: &str) -> Option<Easing> {
+    parse_easing(seg)
+}
+
+/// The eased value of linear progress `x` (`0..=1`) — the CSS timing
+/// functions, the cubic Béziers solved for `x` by bisection. `Other`
+/// (`steps(…)`) answers linear.
+pub fn ease(easing: &Easing, x: f32) -> f32 {
+    let (x1, y1, x2, y2) = match easing {
+        Easing::Linear | Easing::Other(_) => return x,
+        Easing::StepStart => return if x > 0.0 { 1.0 } else { 0.0 },
+        Easing::StepEnd => return if x >= 1.0 { 1.0 } else { 0.0 },
+        Easing::Ease => (0.25, 0.1, 0.25, 1.0),
+        Easing::EaseIn => (0.42, 0.0, 1.0, 1.0),
+        Easing::EaseOut => (0.0, 0.0, 0.58, 1.0),
+        Easing::EaseInOut => (0.42, 0.0, 0.58, 1.0),
+        Easing::Bezier(a, b, c, d) => (*a, *b, *c, *d),
+    };
+    if x <= 0.0 {
+        return 0.0;
+    }
+    if x >= 1.0 {
+        return 1.0;
+    }
+    let bez = |t: f32, p1: f32, p2: f32| {
+        let u = 1.0 - t;
+        3.0 * u * u * t * p1 + 3.0 * u * t * t * p2 + t * t * t
+    };
+    let (mut lo, mut hi) = (0.0f32, 1.0f32);
+    for _ in 0..40 {
+        let mid = (lo + hi) / 2.0;
+        if bez(mid, x1, x2) < x {
+            lo = mid;
+        } else {
+            hi = mid;
+        }
+    }
+    bez((lo + hi) / 2.0, y1, y2)
+}

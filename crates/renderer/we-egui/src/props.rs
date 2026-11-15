@@ -1350,14 +1350,32 @@ mod tests {
         ));
     }
 
-    /// The theme's own four layers, `theme_css::retro_bevel`, resolve to
+    /// A node's style under a built-in theme — the stylesheet's rules
+    /// applied, as the frame resolves it.
+    fn themed_style(ty: &str, theme: &'static str) -> Style {
+        let node = we_template::ResolvedNode {
+            id: we_template::NodeId::from("n"),
+            ty: std::sync::Arc::from(ty),
+            props: Default::default(),
+            handlers: Default::default(),
+            slot: None,
+            children: vec![],
+            transition: None,
+        };
+        let mut scx = we_layout::defaults::StyleCx::empty();
+        scx.theme = theme;
+        we_layout::defaults::style_of(&node, &scx)
+    }
+
+    /// The theme's own four layers (retro's `we-button::part(base)`) resolve to
     /// the Win95 face: the light layers land on the top/left strips, the
     /// dark on bottom/right — and the `:active` list reverses the pairing.
     #[test]
     fn retro_bevel_layers_light_top_left_dark_bottom_right() {
         let rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(80.0, 28.0));
         let view = crate::defaults::ViewportCx::default();
-        for s in we_layout::theme_css::retro_bevel() {
+        let button = themed_style("we-button", "retro");
+        for s in button.paint.shadows.as_deref().unwrap() {
             let d = egui::vec2(
                 s.dx.to_px(view.font_px, view.root_px, view.viewport)
                     .unwrap_or(0.0),
@@ -1381,7 +1399,8 @@ mod tests {
             }
         }
         // The pressed swap: the same colours on opposite edges.
-        for s in we_layout::theme_css::retro_bevel_pressed() {
+        let pressed = button.with_state(we_style::StateKind::Active);
+        for s in pressed.paint.shadows.as_deref().unwrap() {
             let d = egui::vec2(
                 s.dx.to_px(view.font_px, view.root_px, view.viewport)
                     .unwrap_or(0.0),
@@ -1408,7 +1427,7 @@ mod tests {
     #[test]
     fn clip_points_resolves_the_button_slab() {
         let mut style = Style::default();
-        style.paint.clip = Some(we_layout::theme_css::cyberpunk_button_clip().clone());
+        style.paint.clip = themed_style("we-button", "cyberpunk").paint.clip;
         let rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(120.0, 36.0));
         let points = clip_points(&style, rect, crate::defaults::ViewportCx::default()).unwrap();
         let expect = [

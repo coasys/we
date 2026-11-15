@@ -24,6 +24,7 @@ pub mod props;
 pub mod scales;
 pub mod shorthand;
 pub mod style;
+pub mod stylesheet;
 pub mod theme;
 pub mod tokens;
 pub mod transition;
@@ -32,14 +33,14 @@ pub use color::{eval_color, Color};
 pub use css_value::{eval_dimension, eval_math};
 pub use props::{
     build_layout_decls, build_state_fragment_decls, emitted_for, eval_box_shadow, eval_clip_path,
-    eval_decls, interactive_decls, is_design_prop, is_interactive_prop, merge_props, resolve,
-    DeclValue, Decls, EvalCx, EvalResult, StyleInput,
+    eval_decls, eval_decls_in, interactive_decls, is_design_prop, is_interactive_prop, merge_props,
+    resolve, DeclValue, Decls, EvalCx, EvalResult, StyleInput,
 };
 pub use shorthand::{state_bag_filled, tier_bag_of, with_box_sides_filled, Bag, Tier};
 pub use style::*;
 pub use theme::{Polarity, Theme, ThemeSet};
 pub use tokens::{TokenTable, TokenTableError};
-pub use transition::{parse_transitions, Easing, Transition};
+pub use transition::{ease, parse_easing_text, parse_transitions, Easing, Transition};
 
 #[cfg(test)]
 mod tests {
