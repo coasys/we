@@ -7,6 +7,7 @@ publish = false
 
 [dependencies]
 we-expr.workspace = true
+we-metrics.workspace = true
 we-style.workspace = true
 we-template.workspace = true
 taffy.workspace = true

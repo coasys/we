@@ -10,6 +10,7 @@ use std::borrow::Cow;
 use std::sync::Arc;
 
 use indexmap::IndexMap;
+use we_metrics::UnitMetrics;
 
 use crate::color::Color;
 use crate::transition::Transition;
@@ -81,11 +82,11 @@ impl Calc {
     /// The terms the metrics can fold — px + em + rem + the viewport units,
     /// exactly as the scalar variants' `to_px` resolves them. `percent` and
     /// the font-metric units (`ch`/`ex`/`lh`) stay out: the first belongs to
-    /// the container, the rest to the layout engine's approximations.
-    pub fn known_px(&self, font_px: f32, root_px: f32, viewport: Size) -> f32 {
+    /// the container, the rest to the metrics' ratios.
+    pub fn known_px(&self, metrics: &UnitMetrics, viewport: Size) -> f32 {
         self.px
-            + self.em * font_px
-            + self.rem * root_px
+            + self.em * metrics.font_px
+            + self.rem * metrics.root_px
             + self.vw / 100.0 * viewport.width
             + self.vh / 100.0 * viewport.height
             + self.vmin / 100.0 * viewport.width.min(viewport.height)
@@ -94,9 +95,9 @@ impl Calc {
 
     /// Pixels, when every term resolves — i.e. no `percent`, `ch`, `ex` or
     /// `lh` remains.
-    pub fn to_px(&self, font_px: f32, root_px: f32, viewport: Size) -> Option<f32> {
+    pub fn to_px(&self, metrics: &UnitMetrics, viewport: Size) -> Option<f32> {
         if self.percent == 0.0 && self.ch == 0.0 && self.ex == 0.0 && self.lh == 0.0 {
-            Some(self.known_px(font_px, root_px, viewport))
+            Some(self.known_px(metrics, viewport))
         } else {
             None
         }
@@ -105,19 +106,17 @@ impl Calc {
     /// Pixels given the containing-block base the `percent` term resolves
     /// against — `None` when a percent term remains but no base was
     /// supplied (the caller keeps a placeholder rather than guess). The
-    /// `ch`/`ex`/`lh` terms fold with the same approximations the layout
-    /// and paint consumers shared before this policy existed here:
-    /// `0.5 × font_px` for `ch`/`ex`, `1.4 × font_px` for `lh`.
+    /// `ch`/`ex`/`lh` terms fold at the metrics' own ratios — `ch_em`/
+    /// `ex_em`/`lh_em` of `font_px`.
     pub fn resolve(
         &self,
         percent_base: Option<f32>,
-        font_px: f32,
-        root_px: f32,
+        metrics: &UnitMetrics,
         viewport: Size,
     ) -> Option<f32> {
-        let px = self.known_px(font_px, root_px, viewport)
-            + (self.ch + self.ex) * 0.5 * font_px
-            + self.lh * 1.4 * font_px;
+        let px = self.known_px(metrics, viewport)
+            + (self.ch * metrics.ch_em + self.ex * metrics.ex_em + self.lh * metrics.lh_em)
+                * metrics.font_px;
         if self.percent == 0.0 {
             Some(px)
         } else {
@@ -127,20 +126,20 @@ impl Calc {
 }
 
 impl Dimension {
-    /// Pixels, where the unit allows: `em` against `font_px`, `rem` against
-    /// `root_px`, the viewport units against `viewport`. `Auto` and `Percent`
-    /// have no fixed answer — they are `None`; a [`Calc`] answers only when
-    /// every term it carries does.
-    pub fn to_px(&self, font_px: f32, root_px: f32, viewport: Size) -> Option<f32> {
+    /// Pixels, where the unit allows: `em` against `metrics.font_px`, `rem`
+    /// against `metrics.root_px`, the viewport units against `viewport`.
+    /// `Auto` and `Percent` have no fixed answer — they are `None`; a
+    /// [`Calc`] answers only when every term it carries does.
+    pub fn to_px(&self, metrics: &UnitMetrics, viewport: Size) -> Option<f32> {
         Some(match *self {
             Dimension::Px(v) => v,
-            Dimension::Em(v) => v * font_px,
-            Dimension::Rem(v) => v * root_px,
+            Dimension::Em(v) => v * metrics.font_px,
+            Dimension::Rem(v) => v * metrics.root_px,
             Dimension::Vw(v) => v / 100.0 * viewport.width,
             Dimension::Vh(v) => v / 100.0 * viewport.height,
             Dimension::Vmin(v) => v / 100.0 * viewport.width.min(viewport.height),
             Dimension::Vmax(v) => v / 100.0 * viewport.width.max(viewport.height),
-            Dimension::Calc(c) => return c.to_px(font_px, root_px, viewport),
+            Dimension::Calc(c) => return c.to_px(metrics, viewport),
             Dimension::Auto
             | Dimension::Percent(_)
             | Dimension::Ch(_)
@@ -157,17 +156,16 @@ impl Dimension {
     pub fn resolve(
         &self,
         percent_base: Option<f32>,
-        font_px: f32,
-        root_px: f32,
+        metrics: &UnitMetrics,
         viewport: Size,
     ) -> Option<f32> {
         Some(match *self {
             Dimension::Percent(p) => return percent_base.map(|b| p * b),
-            Dimension::Ch(v) => v * 0.5 * font_px,
-            Dimension::Ex(v) => v * 0.5 * font_px,
-            Dimension::Lh(v) => v * 1.4 * font_px,
-            Dimension::Calc(c) => return c.resolve(percent_base, font_px, root_px, viewport),
-            _ => return self.to_px(font_px, root_px, viewport),
+            Dimension::Ch(v) => v * metrics.ch_em * metrics.font_px,
+            Dimension::Ex(v) => v * metrics.ex_em * metrics.font_px,
+            Dimension::Lh(v) => v * metrics.lh_em * metrics.font_px,
+            Dimension::Calc(c) => return c.resolve(percent_base, metrics, viewport),
+            _ => return self.to_px(metrics, viewport),
         })
     }
 }

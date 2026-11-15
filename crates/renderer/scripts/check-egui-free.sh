@@ -24,7 +24,7 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-core="we-session we-layout we-catalog we-data we-expr we-screen we-template we-style"
+core="we-session we-layout we-catalog we-data we-expr we-screen we-template we-style we-metrics"
 args=()
 for p in $core; do args+=(-p "$p"); done
 
@@ -52,4 +52,17 @@ for target in "" x86_64-pc-windows-msvc x86_64-apple-darwin; do
         exit 1
     fi
 done
+
+# E3c-12b: `we-metrics` owns the font metrics — `UnitMetrics`' defaults —
+# and the `ch`/`ex`/`lh` ratios. `FONT_PX`, `ROOT_PX` or a baked
+# `0.5 * font_px`/`1.4 * font_px` anywhere else is a metrics bypass
+# (a frontend quietly ignoring `StyleCx.metrics`), so flag it on sight.
+if grep -rnE --include='*.rs' \
+    -e '\bFONT_PX\b' -e '\bROOT_PX\b' \
+    -e '0\.5[[:space:]]*\*[[:space:]]*font_px' -e '1\.4[[:space:]]*\*[[:space:]]*font_px' \
+    --exclude-dir=we-metrics --exclude-dir=target .; then
+    echo "egui-free check FAILED: FONT_PX/ROOT_PX or a fixed ratio literal outside we-metrics" >&2
+    exit 1
+fi
+
 echo "egui-free check passed: ${core} + we-tui pull no ${deny//|/, } (core: all features, all targets; we-tui: per native target)"

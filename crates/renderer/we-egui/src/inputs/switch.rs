@@ -63,7 +63,7 @@ impl Widget for Switch {
         let corner = |p: &Option<we_style::StylePatch>, fallback: f32| {
             p.as_ref()
                 .and_then(|p| p.paint.radius.top)
-                .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
+                .and_then(|d| d.to_px(&view.metrics, view.viewport))
                 .unwrap_or(fallback)
         };
         let shadows = |p: &Option<we_style::StylePatch>, rect: Rect| {

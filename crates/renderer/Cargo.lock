@@ -5607,6 +5607,7 @@ dependencies = [
  "we-data",
  "we-egui",
  "we-expr",
+ "we-metrics",
  "we-screen",
  "we-session",
  "we-style",
@@ -5669,6 +5670,7 @@ dependencies = [
  "we-catalog",
  "we-expr",
  "we-layout",
+ "we-metrics",
  "we-style",
  "we-template",
  "wuff",
@@ -5694,9 +5696,14 @@ dependencies = [
  "log",
  "taffy",
  "we-expr",
+ "we-metrics",
  "we-style",
  "we-template",
 ]
+
+[[package]]
+name = "we-metrics"
+version = "0.1.0"
 
 [[package]]
 name = "we-screen"
@@ -5734,6 +5741,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "we-expr",
+ "we-metrics",
 ]
 
 [[package]]
@@ -5762,6 +5770,7 @@ dependencies = [
  "we-data",
  "we-expr",
  "we-layout",
+ "we-metrics",
  "we-screen",
  "we-session",
  "we-style",

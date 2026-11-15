@@ -15,43 +15,10 @@ use we_expr::Value;
 pub type Bag = IndexMap<Arc<str>, Value>;
 
 /// The viewport tier — `TIERS` in `1-tokens/src/breakpoint.ts`, ordered by
-/// precedence: a tier applies when the width clears its threshold.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
-pub enum Tier {
-    Base,
-    Sm,
-    Md,
-    Lg,
-}
-
-impl Tier {
-    /// `sm: 640px, md: 900px, lg: 1200px` — literals baked into the generated
-    /// CSS, so baked here too.
-    pub fn for_width(px: f32) -> Tier {
-        if px >= 1200.0 {
-            Tier::Lg
-        } else if px >= 900.0 {
-            Tier::Md
-        } else if px >= 640.0 {
-            Tier::Sm
-        } else {
-            Tier::Base
-        }
-    }
-
-    /// `sm`–`lg` ascending — `TIERS.slice(1)`.
-    pub const UPPER: [Tier; 3] = [Tier::Sm, Tier::Md, Tier::Lg];
-
-    /// The prop key a tier's bag lives under — `TIER_PROP_KEYS`.
-    pub fn prop_key(self) -> Option<&'static str> {
-        match self {
-            Tier::Base => None,
-            Tier::Sm => Some("smUpProps"),
-            Tier::Md => Some("mdUpProps"),
-            Tier::Lg => Some("lgUpProps"),
-        }
-    }
-}
+/// precedence: a tier applies when the width clears its threshold. The type
+/// is `we_metrics::SizeTier` (E3c-12a moved it there, renamed so it cannot
+/// be confused with the capability tier).
+use we_metrics::SizeTier;
 
 /// `sideOf` — the first truthy value in a side's fallback chain.
 fn side_of<'a>(props: Option<&'a Bag>, chain: &[&str]) -> Option<&'a Value> {
@@ -166,15 +133,15 @@ pub(crate) fn bag_of<'a>(props: &'a Bag, key: &str) -> Option<&'a Bag> {
 /// `tierBagOf` — the tier's bag with its box sides filled from the tiers
 /// beneath it and then the element's own props. `None` when there is no bag
 /// for this tier.
-pub fn tier_bag_of(props: &Bag, tier: Tier) -> Option<Bag> {
+pub fn tier_bag_of(props: &Bag, tier: SizeTier) -> Option<Bag> {
     let bag = bag_of(props, tier.prop_key()?)?.clone();
     // Tiers strictly below this one, nearest first, then the base props —
     // `TIERS.slice(1, indexOf(tier)).reverse().map(t => props[TIER_PROP_KEYS[t]])`.
-    let n = Tier::UPPER
+    let n = SizeTier::UPPER
         .iter()
         .position(|t| *t >= tier)
-        .unwrap_or(Tier::UPPER.len());
-    let mut beneath: Vec<Option<&Bag>> = Tier::UPPER[..n]
+        .unwrap_or(SizeTier::UPPER.len());
+    let mut beneath: Vec<Option<&Bag>> = SizeTier::UPPER[..n]
         .iter()
         .rev()
         .filter_map(|t| t.prop_key())

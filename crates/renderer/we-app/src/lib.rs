@@ -121,6 +121,7 @@ impl RendererApp {
                     theme: self.theme.id.as_ref(),
                     viewport: we_style::Size::new(vp.x, vp.y),
                     container_width: width,
+                    metrics: we_metrics::UnitMetrics::default(),
                     ..StyleCx::empty()
                 };
                 let key = (stats.resolves, width, rect.min.y);

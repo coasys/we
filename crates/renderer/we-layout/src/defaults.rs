@@ -11,16 +11,11 @@ use std::sync::LazyLock;
 
 use indexmap::IndexMap;
 use we_expr::Value;
+use we_metrics::UnitMetrics;
 use we_style::{Style, StyleInput, TokenTable};
 use we_template::ResolvedNode;
 
 use crate::props::{prop_str, Bag};
-
-/// The font metrics `em`/`rem`/`lh` resolve against when the theme's table
-/// records none — `em` and the `font-size` fallback want the base size,
-/// `rem` is 16 by CSS rule.
-pub const FONT_PX: f32 = 14.0;
-pub const ROOT_PX: f32 = 16.0;
 
 /// The theme's base font-size: `--we-font-size-300`, the recorded scale's
 /// `1rem` step. The recorder evaluated it under the theme's own root size
@@ -33,16 +28,18 @@ fn base_font_px(scx: &StyleCx) -> Option<f32> {
         .and_then(|v| v.strip_suffix("px").and_then(|n| n.parse().ok()))
 }
 
-/// The theme's `em` basis and `font-size` fallback — the size unstyled
-/// text inherits. `FONT_PX` stands in for a theme that records none.
-pub fn font_px(scx: &StyleCx) -> f32 {
-    base_font_px(scx).unwrap_or(FONT_PX)
-}
-
-/// What `1rem` means under the theme — the same recorded `1rem` step.
-/// `ROOT_PX` stands in for a theme that records none.
-pub fn root_px(scx: &StyleCx) -> f32 {
-    base_font_px(scx).unwrap_or(ROOT_PX)
+/// The unit metrics this context resolves `em`/`rem`/`ch`/`ex`/`lh`
+/// against — `scx.metrics` with the theme's recorded base font-size
+/// folded in (`--we-font-size-300` feeds both `em` and `rem`, the way the
+/// recorded scale works). The one place the fold happens — read this,
+/// never `scx.metrics` bare, when a length resolves.
+pub fn unit_metrics(scx: &StyleCx) -> UnitMetrics {
+    let base = base_font_px(scx);
+    UnitMetrics {
+        font_px: base.unwrap_or(scx.metrics.font_px),
+        root_px: base.unwrap_or(scx.metrics.root_px),
+        ..scx.metrics
+    }
 }
 
 /// What a style resolution needs beyond the bag: the theme's token table,
@@ -59,6 +56,10 @@ pub struct StyleCx<'a> {
     pub theme: &'a str,
     pub viewport: we_style::Size,
     pub container_width: f32,
+    /// The unit metrics the entry point configured — `em`/`rem`/`ch`/`ex`/
+    /// `lh` resolve against it through [`unit_metrics`], which folds the
+    /// theme's recorded `--we-font-size-300` over `font_px`/`root_px`.
+    pub metrics: UnitMetrics,
     /// The ancestors' custom-property scope — empty for a layout root.
     /// [`layout`](crate::layout) reseeds it from each node's resolved
     /// [`Style::scope`] as it descends.
@@ -77,6 +78,7 @@ impl<'a> StyleCx<'a> {
             theme: "",
             viewport: we_style::Size::new(0.0, 0.0),
             container_width: 0.0,
+            metrics: UnitMetrics::default(),
             scope: &EMPTY_SCOPE,
         }
     }
@@ -244,8 +246,7 @@ pub fn style_of(node: &ResolvedNode, scx: &StyleCx) -> Style {
     let mut input = StyleInput::new(scx.tokens, direction_of(node));
     input.container_width = scx.container_width;
     input.viewport = scx.viewport;
-    input.font_px = font_px(scx);
-    input.root_px = root_px(scx);
+    input.metrics = unit_metrics(scx);
     input.inherited = scx.scope;
     let mut style = we_style::resolve(&bag, &input);
     // The theme's component stylesheet — `[data-we-theme='x'] x::part(*)`

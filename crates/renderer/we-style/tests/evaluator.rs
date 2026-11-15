@@ -7,7 +7,17 @@
 use std::sync::Arc;
 
 use indexmap::IndexMap;
+use we_metrics::UnitMetrics;
 use we_style::{eval_color, eval_dimension, Calc, Color, Dimension, Size, TokenTable};
+
+/// Today's numbers — the metrics every `to_px` in this file folds against.
+const M: UnitMetrics = UnitMetrics {
+    root_px: 16.0,
+    font_px: 14.0,
+    ch_em: 0.5,
+    ex_em: 0.5,
+    lh_em: 1.4,
+};
 
 fn table() -> TokenTable {
     TokenTable::new(
@@ -87,24 +97,16 @@ fn calc_mixed_units() {
     // folds them against the supplied metrics — `calc(72px - 2rem)` is 40px
     // at a 16px root.
     let d = dim("calc(72px - 2rem)").expect("px - rem resolves");
-    assert_eq!(
-        d.to_px(14.0, 16.0, Size::new(0.0, 0.0)),
-        Some(40.0),
-        "{d:?}"
-    );
+    assert_eq!(d.to_px(&M, Size::new(0.0, 0.0)), Some(40.0), "{d:?}");
     // The bundle's railInset:
     // calc((72px - 1px - 2rem) / 2 - var(--we-space-200)) = (71-32)/2 - 8 = 11.5
     let d = dim("calc((72px - 1px - 2rem) / 2 - var(--we-space-200))").expect("railInset resolves");
-    assert_eq!(
-        d.to_px(14.0, 16.0, Size::new(0.0, 0.0)),
-        Some(11.5),
-        "{d:?}"
-    );
+    assert_eq!(d.to_px(&M, Size::new(0.0, 0.0)), Some(11.5), "{d:?}");
     // `em` folds against font_px, viewport units against the viewport.
     let d = dim("calc(2em + 4px)").expect("em + px resolves");
-    assert_eq!(d.to_px(14.0, 16.0, Size::new(0.0, 0.0)), Some(32.0));
+    assert_eq!(d.to_px(&M, Size::new(0.0, 0.0)), Some(32.0));
     let d = dim("calc(50vw - 10px)").expect("vw - px resolves");
-    assert_eq!(d.to_px(14.0, 16.0, Size::new(200.0, 100.0)), Some(90.0));
+    assert_eq!(d.to_px(&M, Size::new(200.0, 100.0)), Some(90.0));
 
     // Percent + length keeps both terms — layout owns the percent's base.
     let d = dim("calc(100% - 2 * var(--we-space-300))").expect("pct - px resolves");
@@ -117,7 +119,7 @@ fn calc_mixed_units() {
         })
     );
     // ..and the percent term is the part to_px cannot answer.
-    assert_eq!(d.to_px(14.0, 16.0, Size::new(200.0, 100.0)), None);
+    assert_eq!(d.to_px(&M, Size::new(200.0, 100.0)), None);
     assert_eq!(
         dim("calc(50% + 1rem)"),
         Some(Dimension::Calc(Calc {

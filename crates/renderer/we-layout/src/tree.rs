@@ -17,7 +17,7 @@ use we_expr::Value;
 use we_style::{Dimension, Display as WsDisplay, ItemAlign, Overflow, Position, Style, Wrap};
 use we_template::{NodeId, ResolvedChild, ResolvedNode};
 
-use crate::defaults::{direction_of, effective, font_px, root_px, style_of, StyleCx};
+use crate::defaults::{direction_of, effective, style_of, unit_metrics, StyleCx};
 use crate::{Pos2, Rect, Size, Vec2};
 
 /// A virtual sub-rectangle layout computed for a widget — the caret, row and
@@ -426,12 +426,7 @@ pub struct TextSpan {
 /// A length in px, the way `Dimension::resolve` folds it without a percent
 /// base — `ch`/`ex`/`lh` included, by the shared approximations.
 fn dim_px(d: &Dimension, scx: &StyleCx) -> Option<f32> {
-    d.resolve(
-        None,
-        crate::defaults::font_px(scx),
-        crate::defaults::root_px(scx),
-        scx.viewport,
-    )
+    d.resolve(None, &unit_metrics(scx), scx.viewport)
 }
 
 // ── Percent bases ─────────────────────────────────────────────────────────
@@ -885,12 +880,7 @@ fn main_pick(main: Direction, cb: (AxisBase, AxisBase)) -> AxisBase {
 /// A resolved border side's px — always definite (border widths never
 /// carry percent).
 fn border_px(side: &Option<we_style::BorderSide>, scx: &StyleCx) -> f32 {
-    crate::props::border_side_px(
-        side,
-        crate::defaults::font_px(scx),
-        crate::defaults::root_px(scx),
-        scx.viewport,
-    )
+    crate::props::border_side_px(side, &unit_metrics(scx), scx.viewport)
 }
 
 /// A resolved `LengthPercentage` as px — `None` while it is still a
@@ -1016,8 +1006,7 @@ fn parse_template(tpl: &str) -> Option<Vec<taffy::GridTemplateComponent<String>>
 fn border_lp(side: &Option<we_style::BorderSide>, scx: &StyleCx) -> LengthPercentage {
     LengthPercentage::length(crate::props::border_side_px(
         side,
-        crate::defaults::font_px(scx),
-        crate::defaults::root_px(scx),
+        &unit_metrics(scx),
         scx.viewport,
     ))
 }
@@ -1191,13 +1180,8 @@ impl<'a> Builder<'a> {
     fn pct_calc(&mut self, c: &we_style::Calc, b: PctBase) -> PctCalc {
         match self.pct_px(b) {
             Some(v) => PctCalc::Px(
-                c.resolve(
-                    Some(v),
-                    font_px(self.scx),
-                    root_px(self.scx),
-                    self.scx.viewport,
-                )
-                .unwrap_or(0.0),
+                c.resolve(Some(v), &unit_metrics(self.scx), self.scx.viewport)
+                    .unwrap_or(0.0),
             ),
             None if b.base == AxisBase::Indefinite => PctCalc::Cyclic,
             None => PctCalc::Percent(c.percent),
@@ -1244,13 +1228,8 @@ impl<'a> Builder<'a> {
                 PctCalc::Px(v) => LengthPercentage::length(v),
                 PctCalc::Percent(p) => LengthPercentage::percent(p),
                 PctCalc::Cyclic => LengthPercentage::length(
-                    c.resolve(
-                        Some(0.0),
-                        font_px(self.scx),
-                        root_px(self.scx),
-                        self.scx.viewport,
-                    )
-                    .unwrap_or(0.0),
+                    c.resolve(Some(0.0), &unit_metrics(self.scx), self.scx.viewport)
+                        .unwrap_or(0.0),
                 ),
             },
             Some(d) => dim_px(d, self.scx)
@@ -1302,13 +1281,8 @@ impl<'a> Builder<'a> {
                 PctCalc::Px(v) => LengthPercentageAuto::length(v),
                 PctCalc::Percent(p) => LengthPercentageAuto::percent(p),
                 PctCalc::Cyclic => LengthPercentageAuto::length(
-                    c.resolve(
-                        Some(0.0),
-                        font_px(self.scx),
-                        root_px(self.scx),
-                        self.scx.viewport,
-                    )
-                    .unwrap_or(0.0),
+                    c.resolve(Some(0.0), &unit_metrics(self.scx), self.scx.viewport)
+                        .unwrap_or(0.0),
                 ),
             },
             Some(d) => dim_px(d, self.scx)
@@ -1332,13 +1306,8 @@ impl<'a> Builder<'a> {
                 PctCalc::Px(v) => LengthPercentage::length(v),
                 PctCalc::Percent(p) => LengthPercentage::percent(p),
                 PctCalc::Cyclic => LengthPercentage::length(
-                    c.resolve(
-                        Some(0.0),
-                        font_px(self.scx),
-                        root_px(self.scx),
-                        self.scx.viewport,
-                    )
-                    .unwrap_or(0.0),
+                    c.resolve(Some(0.0), &unit_metrics(self.scx), self.scx.viewport)
+                        .unwrap_or(0.0),
                 ),
             },
             Some(d) => dim_px(d, self.scx)
@@ -2436,7 +2405,16 @@ fn vals_eq(a: &HashMap<(NodeId, Axis), f32>, b: &HashMap<(NodeId, Axis), f32>) -
 /// `height: auto` still paints the whole viewport (`min-height: 100vh`),
 /// so a `bg` root covers the empty tail of a short panel.
 pub fn layout(m: &dyn Measure, scx: &StyleCx, root: &ResolvedNode, rect: Rect) -> Layout {
-    layout_impl(m, scx, root, rect, true, None)
+    layout_impl(m, scx, root, rect, true, None, true)
+}
+
+/// The same walk with taffy's px-edge rounding off — the layout a
+/// terminal projects to cells: logical CSS px keeps its fractional edges
+/// so the projection's own snap sees them. `layout()` keeps the
+/// integer-edge output the egui painter was built against; moving the
+/// snap into the painter is a frontend task, not this one.
+pub fn layout_unrounded(m: &dyn Measure, scx: &StyleCx, root: &ResolvedNode, rect: Rect) -> Layout {
+    layout_impl(m, scx, root, rect, true, None, false)
 }
 
 /// The same walk for a subtree that is not the page root — the overlay
@@ -2453,7 +2431,7 @@ pub fn layout_shrink(
     rect: Rect,
     parent: Option<&Style>,
 ) -> Layout {
-    layout_impl(m, scx, root, rect, false, parent)
+    layout_impl(m, scx, root, rect, false, parent, true)
 }
 
 /// Fill `extra`/`map` with `node`'s synthesized children and recurse into
@@ -2483,6 +2461,7 @@ fn layout_impl(
     rect: Rect,
     viewport_root: bool,
     parent: Option<&Style>,
+    round: bool,
 ) -> Layout {
     /// Deep acyclic chains settle in a handful of passes; the cap
     /// bounds whatever does not — a repeated measured state is cyclic
@@ -2538,8 +2517,15 @@ fn layout_impl(
         if pass == MAX_PASSES && forced.is_empty() {
             break;
         }
+        let mut tree = TaffyTree::new();
+        // Logical CSS px, not device px: the unrounded walk keeps the
+        // fractional edges so the frontend's own snap (a terminal's cells)
+        // sees them — see [`layout_unrounded`].
+        if !round {
+            tree.disable_rounding();
+        }
         let mut b = Builder {
-            tree: TaffyTree::new(),
+            tree,
             m,
             scx,
             nodes: HashMap::new(),
@@ -2897,7 +2883,7 @@ fn place_pseudos(
     pseudos: Vec<(NodeId, crate::theme_css::PseudoBox, f32)>,
     scx: &StyleCx,
 ) {
-    let (fp, rp, vp) = (font_px(scx), root_px(scx), scx.viewport);
+    let (m, vp) = (unit_metrics(scx), scx.viewport);
     for (id, p, reserved) in pseudos {
         let (Some(r), Some(host)) = (out.rects.get(&id).copied(), out.styles.get(&id)) else {
             continue;
@@ -2909,8 +2895,7 @@ fn place_pseudos(
             border_px(&hb.bottom, scx),
             border_px(&hb.left, scx),
         );
-        let res =
-            |d: Option<Dimension>, base: f32| d.and_then(|d| d.resolve(Some(base), fp, rp, vp));
+        let res = |d: Option<Dimension>, base: f32| d.and_then(|d| d.resolve(Some(base), &m, vp));
         let pad = &host.layout.padding;
         let w0 = r.width();
         let (pt, pr, pb, pl) = (
