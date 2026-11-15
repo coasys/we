@@ -247,3 +247,63 @@ fn the_expanded_rail_paints_over_the_main_view_and_keeps_the_pointer() {
     );
     assert_eq!(rail_rect(&h).width(), 72.0, "leaving collapses it");
 }
+
+/// The `we-tree-item` whose value is `value`.
+fn tree_item<'n>(root: &'n ResolvedNode, value: &str) -> &'n ResolvedNode {
+    find(root, &|n| {
+        n.ty.as_ref() == "we-tree-item"
+            && n.props.get("value").map(|v| v.js_string()).as_deref() == Some(value)
+    })
+    .unwrap_or_else(|| panic!("no tree item {value}"))
+}
+
+/// Whether the tree lane's `group|people` row is open — what a click on
+/// its row toggles.
+fn people_open(h: &Harness<'_, RendererApp>) -> bool {
+    let root = h
+        .state()
+        .session
+        .runtime
+        .resolved()
+        .expect("resolved")
+        .clone();
+    tree_item(&root, "group|people")
+        .props
+        .get("open")
+        .is_some_and(|v| v.truthy())
+}
+
+fn click(h: &mut Harness<'_, RendererApp>, at: Pos2) {
+    hover(h, at, 3);
+    pointer(h, at, Some(true));
+    pointer(h, at, Some(false));
+    h.run_steps(3);
+}
+
+/// Under the expanded rail a click is the rail's: the tree row beneath it
+/// — `group|people`, a row with nothing of the rail's on that line — does
+/// not toggle. Beside the rail the same row does.
+#[test]
+fn a_click_on_the_expanded_rail_does_not_reach_the_tree_row_under_it() {
+    let mut h = harness(|_| {});
+    let rail = rail_rect(&h);
+    let row = {
+        let app = h.state();
+        let root = app.session.runtime.resolved().expect("resolved").clone();
+        app.layout().expect("laid out").rects[&tree_item(&root, "group|people").id]
+    };
+    let was = people_open(&h);
+    hover(&mut h, rail.center(), 60);
+    let expanded = rail_rect(&h);
+    assert_eq!(expanded.width(), 256.0, "hover expands it");
+    let under = Pos2::new(row.min.x + 60.0, row.center().y);
+    assert!(expanded.contains(under), "{under:?} is under the rail");
+    click(&mut h, under);
+    assert_eq!(rail_rect(&h).width(), 256.0, "still the rail's");
+    assert_eq!(people_open(&h), was, "the row under the rail toggled");
+    // The control: beside the rail, the same row takes the click.
+    let beside = Pos2::new(expanded.max.x + 40.0, row.center().y);
+    assert!(row.contains(beside));
+    click(&mut h, beside);
+    assert_ne!(people_open(&h), was, "a click beside the rail toggles it");
+}
