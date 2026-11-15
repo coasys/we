@@ -345,7 +345,7 @@ fn non_default_lh_em_reaches_style_and_layout() {
 
 // ── E3c-12b P3/S1: theme font at the former direct-constant callers ─────
 //
-// Two paint/measure paths used to read the baked `FONT_PX`/`ROOT_PX`
+// Two paint/measure paths used to read the baked font/root-px
 // constants and now read the folded `unit_metrics` view — an intended
 // correction toward the web, where both follow the theme font:
 //
