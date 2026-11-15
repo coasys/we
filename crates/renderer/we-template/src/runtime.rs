@@ -622,8 +622,13 @@ impl Runtime {
                 // The guard ends the window even if this pass unwinds.
                 kept_filling = {
                     let _window = self.inbox.sync_queries();
-                    self.hub.commit(self.source.clone());
-                    self.hub.drain()
+                    // A commit that reset or reopened cells invalidated
+                    // answers the pass just resolved with — that is as
+                    // much "work landed" as a delivered event: re-resolve
+                    // so the cells show `Loading` until the new source
+                    // answers (Lal N1).
+                    let reset = self.hub.commit(self.source.clone());
+                    self.hub.drain() || reset
                 };
                 if !kept_filling {
                     break;

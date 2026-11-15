@@ -733,7 +733,16 @@ impl QueryHub {
     /// Installing a different source mid-session closes every ticket it
     /// held — exactly once — resets the answer it gave, and reopens
     /// every still-held key on the new one.
-    pub fn commit(&mut self, source: Arc<dyn QuerySource>) {
+    ///
+    /// Returns `true` when commit itself reopened the answer state — a
+    /// source swap reset cells to `Loading`, or a late `name_hint`
+    /// reopened an open cell — AFTER the pass already resolved against
+    /// the answers it replaced. The frame treats it like a `drain` that
+    /// moved: re-resolve so the tree shows `Loading` until the new
+    /// source answers instead of caching the old source's rows behind a
+    /// stale `Loaded` (Lal N1).
+    pub fn commit(&mut self, source: Arc<dyn QuerySource>) -> bool {
+        let mut reset = false;
         if self
             .source
             .as_ref()
@@ -747,6 +756,7 @@ impl QueryHub {
                     if let Some(entry) = self.entries.get_mut(&key) {
                         entry.ticket = None;
                         entry.state = CellState::Loading;
+                        reset = true;
                     }
                     old.close(ticket);
                 }
@@ -796,6 +806,7 @@ impl QueryHub {
                         source.close(ticket);
                     }
                 }
+                reset = true;
             }
         }
 
@@ -817,6 +828,7 @@ impl QueryHub {
         // it, and then it stays so `Drop` can reach it.
         self.entries
             .retain(|_, e| e.holders > 0 || e.ticket.is_some());
+        reset
     }
 
     /// The 0→1 edge: mint the ticket and record ownership BEFORE the

@@ -697,6 +697,120 @@ fn a_source_swap_reopens_every_held_key() {
     );
 }
 
+/// F3 (Lal N1), Runtime level: swap to a source that does NOT answer
+/// inside `open`. The pass resolves with A's rows before `commit` swaps;
+/// if the reset inside `commit` does not count as work the loop breaks on
+/// a quiet `drain`, the tree caches A's rows behind `Loaded`, and `last`
+/// records the frame — stale data forever. The swap must re-resolve:
+/// `Loading` until B answers, and a claim derived from A's answer must
+/// not stay held on B while its dependency reloads.
+#[test]
+fn a_source_swap_that_withholds_shows_loading_until_b_answers() {
+    let node = json!({ "type": "Column",
+        "$queries": {
+            "items": { "entity": "Task" },
+            "detail": { "entity": "Detail",
+                "scope": { "anchorId": { "$": "first(local.items).id" } } }
+        },
+        "children": [
+            { "type": "we-text",
+              "props": { "text": { "$": "local.items.length" } } },
+            { "type": "we-flag",
+              "props": { "on": { "$": "local.itemsLoaded" } } }
+        ] });
+    let a = Counting::new();
+    let b = Counting::new();
+    b.hold
+        .lock()
+        .unwrap()
+        .extend(["Task".into(), "Detail".into()]);
+    let (mut rt, mut host, mut screen, _bag) = rig(node, a.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    let text = find_ty(&root, "we-text")
+        .and_then(|n| n.props.get("text"))
+        .cloned();
+    assert!(
+        matches!(&text, Some(v) if v.strict_eq(&Value::from(1.0))),
+        "A's row painted: {text:?}"
+    );
+    let on = find_ty(&root, "we-flag")
+        .and_then(|n| n.props.get("on"))
+        .cloned();
+    assert!(
+        matches!(&on, Some(Value::Bool(true))),
+        "A's answer reported Loaded: {on:?}"
+    );
+    assert_eq!(rt.hub().held(), 2, "items + the A-derived detail held");
+
+    rt = rt.with_sources(Some(b.clone()), Arc::new(we_template::NoParts));
+    assert!(rt.dirty(&screen), "the swap reports dirty to the next poll");
+    let root = rt.frame(&mut host, &screen).clone();
+    let text = find_ty(&root, "we-text")
+        .and_then(|n| n.props.get("text"))
+        .cloned();
+    assert!(
+        matches!(&text, Some(v) if v.strict_eq(&Value::from(0.0))),
+        "loading, not A's rows: {text:?}"
+    );
+    let on = find_ty(&root, "we-flag")
+        .and_then(|n| n.props.get("on"))
+        .cloned();
+    assert!(
+        matches!(&on, Some(Value::Bool(false))),
+        "the cells reset to Loading until B answers: {on:?}"
+    );
+    assert_eq!(a.close_count(), 2, "A closed both tickets, once each");
+    assert_eq!(b.open_count(), 2, "both held keys reopened on B");
+    assert_eq!(
+        rt.hub().held(),
+        1,
+        "the A-derived detail claim did not stay held while items reload"
+    );
+    assert_eq!(
+        b.close_count(),
+        1,
+        "the stale detail subscription closed on the settling pass"
+    );
+    assert!(
+        !rt.dirty(&screen),
+        "the loading tree is honest — the next poll is quiet until B answers"
+    );
+
+    // B answers through the sink it kept — the rows it gives replace the
+    // loading state, and the dependent claim reopens on B's answer.
+    b.deliver("Task", vec![Value::from_json(&json!({ "id": "b1" }))]);
+    let (_, queries, _) = rt.drain_inbox(&mut host, &mut screen);
+    assert_eq!(queries, 1, "B's delivery applied");
+    assert!(rt.dirty(&screen), "the applied answer reports dirty");
+    let root = rt.frame(&mut host, &screen).clone();
+    let text = find_ty(&root, "we-text")
+        .and_then(|n| n.props.get("text"))
+        .cloned();
+    assert!(
+        matches!(&text, Some(v) if v.strict_eq(&Value::from(1.0))),
+        "B's row painted once it answered: {text:?}"
+    );
+    let on = find_ty(&root, "we-flag")
+        .and_then(|n| n.props.get("on"))
+        .cloned();
+    assert!(
+        matches!(&on, Some(Value::Bool(true))),
+        "Loaded again: {on:?}"
+    );
+    let details = b.opens_for("Detail");
+    assert_eq!(
+        details.len(),
+        2,
+        "detail reopened on B with B-derived scope: {details:?}"
+    );
+    assert!(
+        details[1].contains("\"anchorId\":\"b1\""),
+        "the reopened detail asks B's anchor, not A's: {}",
+        details[1]
+    );
+    assert_eq!(rt.hub().held(), 2, "items + the B-derived detail held");
+}
+
 /// F5: the anonymous `$query` prop claims key K *before* the named
 /// `$queries.items` site in the same pass — K must still open with the
 /// name, or the name-keyed snapshot table answers nothing for either.
