@@ -409,3 +409,173 @@ dropped it.
 - The frame-queue change needs a check on a real vsynced display.
 - The disk on miguel filled up mid-round (other workers' builds). I freed my own: a 73 GB
   debug target and scratch worktrees. Nothing of anyone else's was touched.
+
+## Round 4
+
+Lal's review of round 2 (2d52622b1), on top of round 3 (84a7fe6ab). There is one commit per finding, each
+with a test. The red output below is each test run without its fix.
+
+### P2-2: a lane folded while held kept its drag (2cd562688)
+
+Paint cleared `_resizeHeld` only on the handle's `drag_stopped`. A lane folded away (or taken out of the
+tree) while its handle was held is not painted, so the release never reached the handle and the flag stayed
+set. Once the lane opened again, a primary press anywhere resized it from the old press.
+
+Fix: the press records the handle's egui id (`_resizeDragId`, as text, because a `u64` does not survive an
+`f64`). `lane_drags`, which runs every frame before the resolve whether or not the lane is painted, now
+counts a lane as held only while `ctx.dragged_id()` is that id. Otherwise it clears the flag. egui drops a
+drag whose widget was not drawn the frame before (`interaction.rs`), and with the button up nothing has a
+drag owner, so both cases clear it. That covers both of Lal's suggestions: clearing on button-up when the
+widget is not painted, and checking egui's real drag owner.
+
+Test: `lane_hold::a_lane_folded_while_held_lets_go_of_the_drag`, on the Coasys app at `people`. It presses
+the tree lane's handle, drags 30px, folds the lane (`SetLaneCollapsed`), releases, opens the lane again,
+then presses and drags 300px into the main view.
+
+    assertion `left == right` failed: move 1: a press elsewhere leaves the lane alone
+      left: 630.0
+     right: 310.0
+
+### P2-4: transitions saw only resolves (2a5353e48)
+
+`Transitions` was asked again only when the resolve count moved, while `LayoutKey` also keys on width,
+theme, tokens, metrics and viewport. Both now key on one `StyleInputs` (resolves, width, theme, token hash,
+metrics, viewport); `LayoutKey` is that plus the drawn-tree count and `y`. A target that moves without a
+resolve is now seen when it moves and transitions then, as CSS does on a resize.
+
+A width-only change does not reproduce the bug: the surface report re-resolves on every width change. A
+window that only gets shorter resolves nothing, so the test uses a `50vh` height.
+
+Test: `transition_inputs::a_shorter_window_is_not_played_back_at_the_next_resolve`. The window goes from 600
+to 400px tall (asserted to resolve nothing), 40 frames pass, then a query param a label reads changes.
+
+    assertion `left == right` failed: frame 0 after an unrelated resolve: the box stays where the window put it
+      left: 300.0
+     right: 200.0
+
+### P2-1: an authored onResize heard the same width several times (205d5b13c)
+
+The early path and paint each compared the width against the drawn one. A template's own `onResize` that
+snaps, refuses or defers leaves the drawn width short of the requested one, so both paths asked again, in
+the same frame and on every frame after.
+
+Fix: a drag remembers the last width it asked for (`_resizeAsked`, cleared at the press). The early path,
+paint and the release ask only for a width it has not asked for yet. This dedupes within a frame and across
+frames: each width reaches the handler once per drag. With the host's own wiring (`setLaneWidth`) nothing
+changes, because the drawn width already matches.
+
+Test: `lane_handlers::a_handler_that_keeps_the_width_hears_each_width_once`. It uses a hand-built template
+whose lane `onResize` invokes `test.resized` and leaves the width alone. The calls are counted through
+`StaticHost.dropped`: five 10px moves, then the release at the last of them.
+
+    assertion `left == right` failed: one call per width asked for
+      left: 13
+     right: 5
+
+### P2-3: reduced motion and a 0 duration mid-flight (c6de1aa77)
+
+Reduced motion and the duration were read only when the target changed. A track is now cleared on any frame
+where reduced motion is set or its duration is 0. The same applies to a `$if` enter fade already running,
+under reduced motion.
+
+Tests, in `we-layout/tests/transitions.rs`. They track a 72→256px width over 200ms, or a 100ms fade, and
+read it 50ms in:
+
+    reduced_motion_asked_mid_flight_jumps_to_the_end:        left: 118.0  right: 256.0
+    a_duration_dropped_to_zero_mid_flight_jumps_to_the_end:  left: 118.0  right: 256.0
+    reduced_motion_asked_mid_fade_shows_the_node:            left: 0.5    right: 1.0
+
+### P3: style memo collisions (26ced8045)
+
+Each memo entry now keeps the inputs it was resolved from: type, props, token table, theme, sheet
+generation, viewport, container width, metrics and scope. A hit is served only where those inputs are equal
+(props are compared structurally, numbers by their bits). On a collision the style is resolved again and
+the entry replaced.
+
+The token table now holds its vars behind an `Arc`, so the kept copy is a pointer. `TokenTable::same`
+compares pointers first and contents only for an equal table built separately, which then replaces the kept
+copy so the next hit is a pointer compare. The 64-bit fingerprint is now only where to look, never the
+answer.
+
+Test: `defaults::memo_tests::a_colliding_hash_is_not_served_the_other_inputs_style`. It plants a collision,
+putting node A's entry (100px) under node B's hash (200px).
+
+    assertion `left == right` failed: b's own width, not the colliding entry's
+      left: Some(Px(100.0))
+     right: Some(Px(200.0))
+
+Cost, on the drag bench (people, glow, ppp 1, 200 moves, 3 runs): layout median 1.29 / 1.29 / 1.31 ms before
+and 1.31 / 1.31 / 1.32 ms after, about 0.015 ms a frame. The frame was 3.38–3.45 ms before and 3.44–3.47 ms
+after, within noise. Kept.
+
+### P3: the masked font test (5775aeb86)
+
+`drag_perf::a_layout_resolves_each_style_once` detected missing font registration only as an extra style
+resolve per node, which the memo now makes a lookup. The new test,
+`font_first_frame::a_stack_first_seen_on_the_first_frame_is_in_use_on_it`, lays out text in an installed
+family and then text in `VT323, 'DM Sans'`, a two-family stack no install registers. It then asks whether
+that chain is among egui's families after the first frame. Registered by `Measure::prepare` before
+measuring, egui applies it at once. Registered only when a measure asks, it waits for the next pass, because
+text was already laid out. Red, with the `fonts::prepare` call in `Measure::prepare` removed:
+
+    the stack's chain is in use on the first frame that lays it out: ["Boldonse", ..., "VT323",
+    "VT323, monospace", "phosphor", "phosphor-bold", "phosphor-fill"]     (no "VT323, DM Sans")
+
+Two observables I tried first did not go red, so I dropped them:
+
+- **Frame-1 vs settled rects on people/glow.** A chain's fallback is the stack's head family, so ASCII
+  measures the same either way.
+- **Frame-1 vs settled family sets on people/glow.** Its one stack, `'Bricolage Grotesque', system-ui, …,
+sans-serif`, needs no registration.
+
+### Session.runtime (a8598ab5d)
+
+The field is private. `Session::runtime()` reads it, and `set_runtime` (which installs `LegacyBindings`) is
+the only way to replace it. Every caller in the workspace only read it, and 23 files now go through the
+getter.
+
+Test: a `compile_fail` doctest on `Session` that assigns the field, beside one doing the same through
+`set_runtime` that must compile, so the first fails for the right reason. Red with the field still `pub`:
+
+    test we-session/src/lib.rs - Session (line 69) - compile fail ... FAILED
+    Test compiled successfully, but it's marked `compile_fail`.
+
+### Drag frames, re-measured
+
+These are the round-3 head (84a7fe6ab) and round-4 head bench binaries, run alternately, three runs each:
+glow, 1280x800, 200 frames, CPU per frame, median (the range over the runs). `people` drags the tree lane.
+`about` has no lane, so the resize it does have is the rail's width transition (`rail` mode, the frames
+that animate).
+
+| case               | round 3      | round 4      | layout r3 → r4        |
+| ------------------ | ------------ | ------------ | --------------------- |
+| people drag, ppp 1 | 3.39–3.42 ms | 3.44–3.49 ms | 1.30–1.31 → 1.31–1.35 |
+| people drag, ppp 2 | 3.36–3.38 ms | 3.45–3.47 ms | 1.29 → 1.31–1.32      |
+| about rail, ppp 1  | 0.26 ms      | 0.27 ms      | 0 → 0                 |
+| about rail, ppp 2  | 0.26 ms      | 0.26–0.27 ms | 0 → 0                 |
+
+Frames where the lane's width lagged the pointer: 0 in every `people` run, before and after.
+
+Round 4 costs about 0.05–0.09 ms of a 3.4 ms drag frame (~2%). Split by stage (ppp 2, 3 runs):
+
+- **layout:** +0.02 ms, from verifying memo hits (above);
+- **dispatch:** +0.02 ms, from the pre-resolve drag reading egui's drag owner and writing the asked width to
+  scratch;
+- **resolve:** 1.34–1.35 → 1.35–1.38 ms, within noise;
+- **paint, tess, style resolves per frame:** unchanged.
+
+Nothing came back of what rounds 2 and 3 removed: no second style resolve and no gradient raster during the
+drag.
+
+Gates at the round-4 head: `cargo test --no-fail-fast` (163 suites, the coasys pixel test unchanged),
+clippy `-D warnings`, fmt, the wasm check and the egui-free script all green. Each of the seven commits
+builds and passes clippy on its own. The P2-1 commit first carried an unused import that only the next
+commit removed; that was fixed in place before the notes.
+
+### Left
+
+- **Exit transitions and `reveal`/`slide`/`scale` enter effects,** as in round 3.
+- **A real-display check of the frame queue,** as in round 3.
+- **The dedupe in P2-1 is per drag, not per handler result.** A handler that defers and later applies a
+  width it was asked for is not asked again for the same width. That is intended (it already has the
+  request), but it means a handler cannot rely on being re-asked to retry.
