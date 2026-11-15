@@ -269,6 +269,18 @@ fn overlay_of(store: &str, member: &str) -> Option<&'static str> {
     }
 }
 
+/// Whether the `screen` face `overlay` (`nav`/`shell`/`theme`) answers
+/// `member` — the keys the view's bag enumerates (each bag's `keys` lists
+/// every member its `get` answers; the view's canon depends on it).
+/// `we-legacy/tests/screen_policy.rs` pins that every such key has a core
+/// rule.
+fn face_answers(overlay: &str, member: &str) -> bool {
+    match ScreenView::new().get(overlay) {
+        Value::Namespace(ns) => ns.keys().iter().any(|k| k.as_ref() == member),
+        _ => false,
+    }
+}
+
 /// One store's table: the generated `templateSurface.ts` rows — except
 /// that every member a face answers from the screen is served through
 /// CORE's screen table (Lal F2; decision: core's screen table is the
@@ -278,9 +290,20 @@ fn overlay_of(store: &str, member: &str) -> Option<&'static str> {
 /// Space, core: App) reads Undefined at Space, while TS's denials
 /// (`shellStore.panels`, absent from TS) stay denied.
 fn store_tiers(store: &str, rows: &[(&'static str, Tier)]) -> MemberTiers {
-    let screen = we_template::screen_tiers();
+    store_tiers_against(store, rows, &we_template::screen_tiers())
+}
+
+/// [`store_tiers`] against an explicit core screen table — the seam its
+/// unit tests use to stand in for a core table that does not (yet)
+/// classify a key the screen faces answer.
+fn store_tiers_against(
+    store: &str,
+    rows: &[(&'static str, Tier)],
+    screen: &MemberTiers,
+) -> MemberTiers {
     let mut table: std::collections::BTreeMap<Arc<str>, MemberRule> =
         MemberTiers::from_rows(rows).members.as_ref().clone();
+    let mut refused: Vec<Arc<str>> = Vec::new();
     for (member, rule) in table.iter_mut() {
         let Some(overlay) = overlay_of(store, member) else {
             continue;
@@ -293,9 +316,15 @@ fn store_tiers(store: &str, rows: &[(&'static str, Tier)]) -> MemberTiers {
             continue;
         };
         *rule = match core {
-            // Not a screen fact core knows: the face's answer for it is
-            // the store's own data — the TS row stands.
-            None => continue,
+            // Core does not classify it. A member the face does not
+            // answer is the store's own data — the TS row stands. One the
+            // face DOES answer is a screen fact core has no rule for:
+            // refused (Lal N6 — fail closed; never granted by its TS row).
+            None if !face_answers(overlay, member) => continue,
+            None => {
+                refused.push(member.clone());
+                continue;
+            }
             Some(MemberRule::Member { tier }) => MemberRule::Member {
                 tier: tier.max(legacy),
             },
@@ -308,6 +337,9 @@ fn store_tiers(store: &str, rows: &[(&'static str, Tier)]) -> MemberTiers {
             // A container under an overlay is not a member a face serves.
             Some(MemberRule::Container { .. }) => MemberRule::Member { tier: Tier::App },
         };
+    }
+    for member in refused {
+        table.remove(&member);
     }
     MemberTiers::new(table)
 }
@@ -554,5 +586,56 @@ impl we_template::DataRevision for LegacyBindings {
         if let Some(bag) = self.bag.as_ref() {
             bag.set_invalidator(invalidator);
         }
+    }
+}
+
+#[cfg(test)]
+mod store_tiers_tests {
+    use super::*;
+
+    /// Core's screen table with `member` dropped from the `shell`
+    /// container — what core looks like the day a `ScreenView` key is
+    /// added without a core rule.
+    fn core_without(member: &str) -> MemberTiers {
+        let core = we_template::screen_tiers();
+        let mut top = core.members.as_ref().clone();
+        if let Some(MemberRule::Container { tier, members }) = top.get("shell").cloned() {
+            let mut inner = members.members.as_ref().clone();
+            inner.remove(member);
+            top.insert(
+                "shell".into(),
+                MemberRule::Container {
+                    tier,
+                    members: MemberTiers::new(inner),
+                },
+            );
+        }
+        top.remove(member);
+        MemberTiers::new(top)
+    }
+
+    /// N6 (Lal, E3c-8a r3): a member the screen face answers that core's
+    /// table does not classify is refused — never granted by its TS row.
+    #[test]
+    fn a_face_member_core_does_not_classify_is_refused() {
+        let table = store_tiers_against(
+            "shellStore",
+            &[
+                ("activeShellView", Tier::Space),
+                ("dockGeometry", Tier::Space),
+            ],
+            &core_without("activeShellView"),
+        );
+        assert!(
+            table.rule("activeShellView").is_none(),
+            "an unclassified face member fell back to its TS row: {:?}",
+            table.rule("activeShellView")
+        );
+        // A member the face does not answer is the store's own data: its
+        // TS row stands.
+        assert!(matches!(
+            table.rule("dockGeometry"),
+            Some(MemberRule::Member { tier: Tier::Space })
+        ));
     }
 }

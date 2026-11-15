@@ -5,7 +5,7 @@
 use std::sync::Arc;
 
 use serde_json::json;
-use we_expr::{MountCx, Value};
+use we_expr::{MountCx, Namespace, Value};
 use we_legacy::LegacyBindings;
 use we_screen::{ScreenOp, ScreenSchema, ScreenState, ThemeFork};
 use we_template::{
@@ -108,5 +108,37 @@ fn a_legacy_alias_grants_no_screen_fact_the_core_table_refuses() {
             !v.strict_eq(&Value::Undefined),
             "Space lost {src}: {space:?}"
         );
+    }
+}
+
+/// N6 (Lal, E3c-8a r3): every key the `screen` view answers — its own
+/// top-level keys and each of `nav`/`shell`/`theme`'s — has a rule in
+/// core's screen table. A key added to the view without one fails here
+/// (and the legacy aliases refuse it rather than falling back to its
+/// `templateSurface.ts` row).
+#[test]
+fn every_screen_view_key_has_a_core_rule() {
+    let core = we_template::screen_tiers();
+    let view = we_template::ScreenView::new();
+    let top = view.keys();
+    assert!(!top.is_empty());
+    for key in &top {
+        assert!(core.rule(key).is_some(), "screen.{key} has no core rule");
+    }
+    for overlay in ["nav", "shell", "theme"] {
+        let Some(we_template::MemberRule::Container { members, .. }) = core.rule(overlay) else {
+            panic!("screen.{overlay} is not a core container");
+        };
+        let Value::Namespace(face) = view.get(overlay) else {
+            panic!("the view does not answer {overlay}");
+        };
+        let keys = face.keys();
+        assert!(!keys.is_empty(), "screen.{overlay} enumerates nothing");
+        for key in keys {
+            assert!(
+                members.rule(&key).is_some(),
+                "screen.{overlay}.{key} has no core rule"
+            );
+        }
     }
 }
