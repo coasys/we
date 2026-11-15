@@ -2278,6 +2278,11 @@ pub trait Measure {
     /// The size a leaf wants in `avail` room, at the content box (padding
     /// and border land outside — taffy offers the content box).
     fn measure(&self, node: &ResolvedNode, style: &Style, avail: Size) -> Size;
+    /// Every effective style this build resolved, handed over once the
+    /// tree is built and before anything is measured — where a frontend
+    /// registers the fonts those styles name, so a text measures in its
+    /// own font on the frame it appears. The default does nothing.
+    fn prepare(&self, _styles: &mut dyn Iterator<Item = &Style>) {}
     /// A text child's size in its owner's resolved style, in `avail` room.
     /// `avail.x <= 0` is the MinContent query — the floor under the
     /// shrinkable span: the longest unbreakable run, or the ellipsis when
@@ -2667,6 +2672,7 @@ fn layout_pass(
             ..
         } = b;
         crate::counters::pass_built();
+        m.prepare(&mut styles.values());
         let _ = tree.compute_layout_with_measure(
             root_id,
             taffy::Size {
