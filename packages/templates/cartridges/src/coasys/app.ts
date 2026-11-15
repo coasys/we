@@ -67,7 +67,9 @@ const accountMenu: SchemaNode = {
       avatar: {
         src: { $: 'profileStore.ownProfile.avatar' },
         name: { $: 'profileStore.ownProfile.name' },
-        hash: { $: 'me.did' },
+        // The person, not this device's key, so my two computers draw me in one colour. Without a key
+        // log `me.person` is `me.did`.
+        hash: { $: 'me.person' },
       },
       label: { $: 'profileStore.ownProfile.name' },
       active: { $: "shellStore.activeShellView == 'profile'" },

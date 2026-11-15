@@ -294,6 +294,17 @@ describe('token conversion', () => {
     expect(findScopeRef(groups, { $: 'me.did' })?.id).toBe('context:me.did');
   });
 
+  it('offers the agent across all of its devices, not only this device key', () => {
+    const context = getScopeAtNode({ id: 'root', type: 'Column' }, 'root', { storeEntries }).find(
+      (g) => g.label === 'Context',
+    );
+    const byPath = new Map(context?.refs.map((r) => [r.path, r]));
+    expect(byPath.get('me.dids')?.valueType).toBe('array');
+    expect(byPath.get('me.person')?.valueType).toBe('string');
+    expect(findScopeRef(context ? [context] : [], { $: 'me.dids' })?.id).toBe('context:me.dids');
+    expect(inferRefKind('me.person', context ? [context] : [])).toBe('context');
+  });
+
   it('returns null for tokens that are not plain references', () => {
     const groups = getScopeAtNode({ id: 'root', type: 'Column' }, 'root', { storeEntries });
     expect(findScopeRef(groups, { $: '`${a}`' })).toBeNull();

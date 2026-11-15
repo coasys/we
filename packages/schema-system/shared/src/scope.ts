@@ -65,7 +65,27 @@ const CONTEXT_REFS: ScopeRef[] = [
     path: 'me.did',
     label: 'me.did',
     valueType: 'string',
-    hint: 'current agent identity',
+    hint: "this computer's device key, the author of what it writes",
+  },
+  /*
+    The same agent across all of its computers. "Is this me" is `X in me.dids`, never `X == me.did`:
+    a record from my other computer is mine, and a member or profile entry is listed by person.
+  */
+  {
+    id: 'context:me.dids',
+    kind: 'context',
+    path: 'me.dids',
+    label: 'me.dids',
+    valueType: 'array',
+    hint: 'every device key that writes as me, then my person — test "is this me" with `in me.dids`',
+  },
+  {
+    id: 'context:me.person',
+    kind: 'context',
+    path: 'me.person',
+    label: 'me.person',
+    valueType: 'string',
+    hint: 'the person this device speaks for (their did:scid), or me.did when there is no key log',
   },
   { id: 'context:me.handle', kind: 'context', path: 'me.handle', label: 'me.handle', valueType: 'string' },
   { id: 'context:me.avatar', kind: 'context', path: 'me.avatar', label: 'me.avatar', valueType: 'string' },

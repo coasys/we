@@ -46,8 +46,13 @@ export interface SignalControlProps {
    * SignalControl computes myValue and aggregate internally from this array.
    */
   signals?: SignalData[];
-  /** DID of the current user — used to derive myValue from signals */
-  myDid?: string;
+  /**
+   * Every DID that is the current user — `me.dids`: this device first, then their other devices,
+   * then their person. A reaction given from their other computer is theirs, so the control shows it
+   * as their value; where two of their devices both reacted, the earliest in the list wins, which is
+   * this device's own and the one the next press edits.
+   */
+  myDids?: readonly string[];
   /**
    * The reaction given, or `null` to withdraw one.
    *

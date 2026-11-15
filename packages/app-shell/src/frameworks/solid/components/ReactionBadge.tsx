@@ -142,7 +142,7 @@ export function ReactionBadge(props: {
         signals: rows(),
         record: record(),
         type: typeId(),
-        me: sessionStore.me()?.did,
+        me: sessionStore.me()?.dids ?? sessionStore.me()?.did,
         pending: signalOptimism.overlay(),
       }) as ReactionRow[];
     }
@@ -217,7 +217,8 @@ export function ReactionBadge(props: {
                     <SignalControl
                       signalType={signalType()}
                       signals={answers()}
-                      myDid={answeringAs()}
+                      // Acting as somebody, their one made-up DID; as myself, every computer I write from.
+                      myDids={pretend() ? [answeringAs()].filter((did) => did !== undefined) : sessionStore.me()?.dids}
                       onSignal={give}
                     />
                   </Column>

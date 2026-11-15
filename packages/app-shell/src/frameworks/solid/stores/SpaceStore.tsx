@@ -53,6 +53,7 @@ import {
 } from '@shared/registries/moduleRegistry';
 import { seedBundlePieces } from '@shared/registries/seedBundles';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
+import { replaceAcrossDevices } from '@shared/replaceAcrossDevices';
 import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
 import { type SharingPickerOption, sharingPickerOptions } from '@shared/sharingOptions';
@@ -3037,10 +3038,22 @@ export function SpaceStoreProvider(props: ParentProps) {
         At most one reaction per person per type is what "upsert" means here, so the write enforces
         it rather than assuming it.
       */
-      const mine = await Signal.findAll(p, {
-        parent: { id: nodeId, relation: 'signals' },
-        where: { signalTypeId, author: myDid },
-      });
+      /*
+        And mine from any of my computers (`me.dids`), since the control shows a reaction my laptop gave
+        as mine: a press here that saw only this device's record would add a second reaction where I
+        meant to change or take back the first. This device's record is the one kept and edited; the
+        other device's goes after this one is written — see `replaceAcrossDevices`.
+      */
+      const otherDevices = (session.me()?.dids ?? []).filter((did) => did !== myDid);
+      const [mine, elsewhere] = await Promise.all([
+        Signal.findAll(p, { parent: { id: nodeId, relation: 'signals' }, where: { signalTypeId, author: myDid } }),
+        otherDevices.length
+          ? Signal.findAll(p, {
+              parent: { id: nodeId, relation: 'signals' },
+              where: { signalTypeId, author: otherDevices },
+            })
+          : Promise.resolve([]),
+      ]);
 
       /*
         Withdrawing a reaction removes the record; changing one edits it in place.
@@ -3070,6 +3083,13 @@ export function SpaceStoreProvider(props: ParentProps) {
         } else if (value !== null) {
           await Signal.create(p, { signalTypeId, value }, { parent: { id: nodeId, relation: 'signals' } });
         }
+        const left = await replaceAcrossDevices(
+          elsewhere,
+          'SpaceStore: could not remove a reaction from your other device',
+        );
+        // A changed reaction is stored whatever happened to the old one. A withdrawal that left one
+        // standing did not do what was pressed, and says so.
+        if (left && value === null) toastService.error('Could not take back the reaction you gave on another device.');
         // The write is back. Not a release — what retires a hold is the data moving — but it ends
         // the hold's exemption from what the next draw says. See `@we/optimism`.
         signalOptimism.done(nodeId, signalTypeId);

@@ -18,6 +18,12 @@
  *   kept, because a person's part in the work shown oddly beats a person silently missing from it.
  * - **Duplicates collapse.** Two members pressing the same toggle at the same instant can leave two
  *   records for one pair; to every reader here they are one involvement.
+ * - **One answer per person, the newest.** An answer is one per person, but a person writes from
+ *   several device keys, and replacing what my laptop answered deletes a record another key wrote —
+ *   which a space's policy may refuse (see `replaceAcrossDevices`). Of one person's reflexive answers
+ *   to one record only the latest written counts, so a refused removal never shows a person both
+ *   going and not, nor counts them twice. A held write is the newest of all; a row with no readable
+ *   time loses to one that has it, and between two without, the later in the list wins.
  * - **`dids` leaves out anybody who declined.** It is what a people filter matches on, and somebody
  *   who said they are not going is exactly the person a "who is coming" filter must not surface the
  *   event for.
@@ -32,12 +38,15 @@ import type { InvolvementSemantic } from '@we/entities';
 
 import { relationId } from '../involvements';
 import { byAnyDid, selfDids } from '../personProfile';
+import { momentOf } from '../spaceRoles';
 
 export interface InvolvementRowInput {
   id?: string;
   node?: unknown;
   agent?: string;
   kind?: string;
+  /** When it was written — which of one person's answers is their newest. */
+  createdAt?: string | number;
 }
 
 export interface InvolvementKindInput {
@@ -176,6 +185,26 @@ export function applyPendingInvolvements(
   return out;
 }
 
+/** The one reflexive answer that counts for each person on each record — the newest written. */
+function newestAnswers(
+  rows: readonly InvolvementRowInput[],
+  bySlug: ReadonlyMap<string, InvolvementKindInput>,
+  personOf: (did: string) => string,
+): Set<InvolvementRowInput> {
+  // A held row carries no id and no time: it is the write just made, so it is the newest there is.
+  const time = (row: InvolvementRowInput) =>
+    !row.id && row.createdAt === undefined ? Infinity : (momentOf(row.createdAt) ?? -Infinity);
+  const newest = new Map<string, InvolvementRowInput>();
+  for (const row of rows) {
+    const node = relationId(row.node);
+    if (!node || !row.agent || !bySlug.get(row.kind ?? '')?.reflexive) continue;
+    const key = `${node}\u0000${personOf(row.agent)}`;
+    const best = newest.get(key);
+    if (!best || time(row) >= time(best)) newest.set(key, row);
+  }
+  return new Set(newest.values());
+}
+
 export function involvement(options: InvolvementOptions | null | undefined): InvolvementView {
   const types = asRows<InvolvementKindInput>(options?.types).filter((t) => t && t.slug);
   const bySlug = new Map(types.map((t) => [t.slug, t]));
@@ -190,6 +219,7 @@ export function involvement(options: InvolvementOptions | null | undefined): Inv
     return typeof person === 'string' && person ? person : did;
   };
   const counted = Array.isArray(options?.nodes) ? new Set(options.nodes) : null;
+  const answer = newestAnswers(rows, bySlug, (did) => (self.has(did) ? '\u0000me' : personOf(did)));
 
   const byNode: Record<string, NodeInvolvement> = {};
   const answers: Record<string, string> = {};
@@ -201,6 +231,7 @@ export function involvement(options: InvolvementOptions | null | undefined): Inv
     const did = row.agent ?? '';
     const kind = row.kind ?? '';
     if (!node || !did || !kind) continue;
+    if (bySlug.get(kind)?.reflexive && !answer.has(row)) continue;
     const entry = (byNode[node] ??= {
       people: [],
       dids: [],

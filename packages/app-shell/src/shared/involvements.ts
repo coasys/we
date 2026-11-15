@@ -11,7 +11,9 @@
  *   answer, and only that agent may give it. Refused here rather than trusted to a template, because
  *   a space template arrives from a stranger and "mark everyone as going" is one expression away.
  * - **One answer.** An agent gives one reflexive answer to a record: going, maybe or not going, never
- *   two. Changing it is one transaction, so no reader sees somebody both going and not.
+ *   two. Changing what this device said is one transaction, so no reader sees somebody both going
+ *   and not; an answer another of their computers gave is removed after it, and a reader that still
+ *   finds one counts only the newest (see `respond`).
  * - **Non-reflexive kinds stack.** A task can have an assignee and a reviewer, and they can be the
  *   same person. Each is its own record and its own toggle.
  *
@@ -33,6 +35,8 @@
  * failure reaches a person all arrive as `InvolvementDeps`.
  */
 import { type DatasetProxy, Involvement, type InvolvementSemantic, runEntityTransaction } from '@we/entities';
+
+import { replaceAcrossDevices } from './replaceAcrossDevices';
 
 /** What `InvolvementType.semantic` may hold, in the reading order a list uses. */
 export const INVOLVEMENT_SEMANTICS: readonly InvolvementSemantic[] = [
@@ -215,9 +219,14 @@ export function createInvolvementActions(deps: InvolvementDeps): InvolvementActi
   /**
    * Give this agent's own answer to a record — going, maybe, not going — or withdraw it with `''`.
    *
-   * One answer per record, so every other reflexive kind this agent holds on it goes in the same
+   * One answer per record, so every other reflexive kind this device holds on it goes in the same
    * transaction the new one arrives in. Non-reflexive kinds are untouched: answering an invitation
    * says nothing about whether you were assigned to it.
+   *
+   * An answer my other computer gave is replaced too, but after that transaction rather than inside
+   * it: deleting a record another key wrote is a write a space's policy may refuse, and a refusal
+   * inside the transaction would have cost the new answer with it. A refused one stays, and readers
+   * still count me once, as my newest answer — see `replaceAcrossDevices`.
    */
   async function respond(nodeId: string, kind: string): Promise<void> {
     const p = dataset();
@@ -234,26 +243,46 @@ export function createInvolvementActions(deps: InvolvementDeps): InvolvementActi
     }
     for (const slug of answers) hold?.(nodeId, self, slug, slug === kind);
     await inOrder(`${nodeId}\u0000${self}\u0000answer`, async () => {
+      /** What my other computers answered that this replaces — held off until each removal returns. */
+      let elsewhere: Involvement[] = [];
       try {
         // Mine from any of my computers — one answer per person, not one per device.
         const held = (await Promise.all(selves(self).map((did) => heldBy(p, nodeId, did))))
           .flat()
           .filter((row) => answers.has(row.kind));
         const stale = held.filter((row) => row.kind !== kind);
+        const own = stale.filter((row) => row.agent === self);
+        elsewhere = stale.filter((row) => row.agent !== self);
+        // The same answer from another of my computers still stands as mine; there is nothing to write.
         const already = held.some((row) => row.kind === kind);
-        for (const row of stale) if (row.agent && row.agent !== self) hold?.(nodeId, row.agent, row.kind, false);
-        if (stale.length || (!already && kind)) {
+        for (const row of elsewhere) if (row.agent) hold?.(nodeId, row.agent, row.kind, false);
+        if (own.length || (!already && kind)) {
           await runEntityTransaction(p, async (tx) => {
-            for (const row of stale) await row.delete(tx.batchId);
+            for (const row of own) await row.delete(tx.batchId);
             if (kind && !already) {
               await Involvement.create(p, { agent: self, kind, node: [nodeId] }, { batchId: tx.batchId });
             }
           });
         }
         for (const slug of answers) done?.(nodeId, self, slug);
-        for (const row of stale) if (row.agent && row.agent !== self) done?.(nodeId, row.agent, row.kind);
+        let refused = 0;
+        for (const row of elsewhere) {
+          const left = await replaceAcrossDevices(
+            [row],
+            'SpaceStore: could not remove the answer from your other device',
+          );
+          refused += left;
+          if (!row.agent) continue;
+          // A refused removal is still on the record, so what is on screen goes back to the data.
+          if (left) release?.(nodeId, row.agent, row.kind);
+          else done?.(nodeId, row.agent, row.kind);
+        }
+        // A new answer stands over a refused old one, since readers count my newest. A withdrawal
+        // that left one standing did not happen.
+        if (refused && !kind) notify('Could not withdraw the answer you gave on another device');
       } catch (error) {
         for (const slug of answers) release?.(nodeId, self, slug);
+        for (const row of elsewhere) if (row.agent) release?.(nodeId, row.agent, row.kind);
         console.error('SpaceStore: could not save that answer', error);
         notify('Could not save your answer');
       }

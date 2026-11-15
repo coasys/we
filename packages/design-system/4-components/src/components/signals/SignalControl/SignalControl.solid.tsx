@@ -42,11 +42,14 @@ export function SignalControl(props: SignalControlProps) {
   /** Draft value while the slider thumb is being dragged — not persisted until release */
   const [sliderDraft, setSliderDraft] = createSignal<number | null>(null);
 
-  /** The current user's signal value derived from the signals array */
+  /** The current user's signal value derived from the signals array, from whichever of their devices gave it */
   const myValue = () => {
     if (props.preview) return previewValue();
-    const mine = props.signals?.find((s) => s.author === props.myDid);
-    return mine !== undefined ? mine.value : null;
+    for (const did of props.myDids ?? []) {
+      const mine = props.signals?.find((s) => s.author === did);
+      if (mine !== undefined) return mine.value;
+    }
+    return null;
   };
 
   /** Unified reactive value */

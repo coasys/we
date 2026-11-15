@@ -161,7 +161,7 @@ type Resolved = SignalDisplayOptions & { mode: NonNullable<SignalDisplayOptions[
  * the count was overlaid and the heart sat unfilled beside a number that had moved.
  */
 const forType = (record: string, as: string) =>
-  `reactions({ signals: filter(${record}.signals, { signalTypeId: ${as}.id, author: { not: spaceStore.mutedDids } }), record: ${record}.id, type: ${as}.id, me: me.did })`;
+  `reactions({ signals: filter(${record}.signals, { signalTypeId: ${as}.id, author: { not: spaceStore.mutedDids } }), record: ${record}.id, type: ${as}.id, me: me.dids })`;
 
 /**
  * Everything on the record, less muted authors — what the single total counts.
@@ -344,7 +344,7 @@ function control(opts: Resolved, as: string): SchemaNode {
       ...(opts.size && { size: opts.size }),
       signalType: { $: as },
       signals: { $: forType(opts.record, as) },
-      myDid: { $: 'me.did' },
+      myDids: { $: 'me.dids' },
       ...(opts.readOnly
         ? {}
         : {

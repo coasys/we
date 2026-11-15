@@ -105,6 +105,32 @@ describe('the Coasys cartridge', () => {
     expect(rail).not.toContain('Add a space');
   });
 
+  // The placeholder colour is hashed from who I am, so my laptop and my desktop draw me alike.
+  it("colours my own avatar by my person, not by this computer's key", () => {
+    const hashes = new Set<string>();
+    (function walk(node: unknown) {
+      if (Array.isArray(node)) node.forEach(walk);
+      else if (node && typeof node === 'object') {
+        const hash = (node as { hash?: { $?: unknown } }).hash;
+        if (typeof hash?.$ === 'string' && hash.$.includes('me.')) hashes.add(hash.$);
+        Object.values(node).forEach(walk);
+      }
+    })(coasys.app);
+    expect(hashes.size).toBeGreaterThan(0);
+    const PERSON = 'did:scid:test:robin';
+    const laptop = { did: 'did:key:laptop', person: PERSON, dids: ['did:key:laptop', 'did:key:desktop', PERSON] };
+    const desktop = { did: 'did:key:desktop', person: PERSON, dids: ['did:key:desktop', 'did:key:laptop', PERSON] };
+    const as = (me: unknown) => ({
+      root: (name: string) => (name === 'me' ? { bound: true, value: me } : { bound: false, value: undefined }),
+      call: () => undefined,
+    });
+    for (const hash of hashes) {
+      const expr = parseExpression(hash);
+      expect(evaluateExpression(expr, as(laptop))).toBe(PERSON);
+      expect(evaluateExpression(expr, as(desktop))).toBe(PERSON);
+    }
+  });
+
   /*
     It defines no kinds of record of its own, so there is no gap to record: every template it brings
     must validate as it stands — the app around every space, the space template with its pages, and

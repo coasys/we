@@ -5,6 +5,8 @@
 */
 import { tallyEverything, tallySignals } from '@we/components/signals';
 
+import { selfDids } from '../personProfile';
+
 /**
  * What a record's reactions say, as one number.
  *
@@ -78,7 +80,11 @@ export function reactions(options: unknown): unknown[] {
     pending?: unknown;
   };
   const rows: unknown[] = Array.isArray(signals) ? signals : [];
-  if (!Array.isArray(pending) || typeof record !== 'string' || typeof type !== 'string' || typeof me !== 'string') {
+  // `me.dids` (this device first) or one DID: a held reaction stands in for the one my other computer
+  // gave too, since `upsertSignal` replaces that one as well.
+  const selves = selfDids(me);
+  const self = [...selves][0];
+  if (!Array.isArray(pending) || typeof record !== 'string' || typeof type !== 'string' || !self) {
     return rows;
   }
   const held = (pending as { record?: unknown; type?: unknown; value?: unknown }[]).find(
@@ -90,8 +96,8 @@ export function reactions(options: unknown): unknown[] {
 
   // This agent's stored reaction of this type goes, whatever it says — the held one stands in for
   // it, so changing a rating does not count twice and withdrawing one does not leave it behind.
-  const others = rows.filter((row) => (row as { author?: unknown } | null)?.author !== me);
+  const others = rows.filter((row) => !selves.has((row as { author?: unknown } | null)?.author as string));
   // A withdrawal is `null`, not a zero: a zero is an ordinary reaction and is put back like any
   // other. See `upsertSignal` for why the two stopped being the same thing.
-  return held.value === null ? others : [...others, { author: me, signalTypeId: type, value: held.value }];
+  return held.value === null ? others : [...others, { author: self, signalTypeId: type, value: held.value }];
 }
