@@ -952,13 +952,18 @@ fn resolve_node(
                 .and_then(|p| p.get("condition"))
                 .map(|c| eval_json(c, scope, cx.bag.clone(), cx.cache, cx.warnings))
                 .unwrap_or(Value::Undefined);
-            let branch = if cond.truthy() { "then" } else { "else" };
+            let then = cond.truthy();
+            let branch = if then { "then" } else { "else" };
             match prop_node(props, branch, cx) {
                 Some(branch_node) => {
                     let branch_path = format!("{path}/p:{branch}");
                     let children =
                         resolve_node(&branch_node, scope, parent, root, &branch_path, decls, cx);
-                    with_transition(children, props.and_then(Transition::from_props))
+                    // Only the `then` content is wrapped in the transition
+                    // (`ConditionalRenderer.tsx:327-331`); the `else` is
+                    // `Show`'s fallback, drawn as it is.
+                    let transition = then.then(|| props.and_then(Transition::from_props));
+                    with_transition(children, transition.flatten())
                 }
                 None => vec![],
             }
