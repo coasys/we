@@ -3,7 +3,8 @@
 //!
 //!     cargo run --release -p we-app --example drag_bench -- [theme] [moves] [ppp] [WxH]
 //!
-//! Each move is one frame with one `PointerMoved` of 3px, run through
+//! Each move is one frame with one `PointerMoved` of 3px (out 300px and
+//! back, repeated), run through
 //! `RendererApp::frame_body` inside `Context::run_ui` and tessellated, as
 //! eframe does — no window and no GPU, so the numbers are CPU only. Prints
 //! per-frame stage times and work counts, then median and p95.
@@ -138,7 +139,10 @@ fn main() {
     let mut frames = Vec::new();
     let mut late = 0;
     for i in 1..=moves {
-        let travel = 3.0 * i as f32;
+        // Out 300px and back, so a long run never parks at a bound where
+        // the width stops changing and a frame has nothing to lay out.
+        let leg = i % 200;
+        let travel = 3.0 * if leg <= 100 { leg } else { 200 - leg } as f32;
         let f = run(
             &mut app,
             vec![Event::PointerMoved(from + vec2(travel, 0.0))],
@@ -168,7 +172,8 @@ fn main() {
         );
         frames.push(f);
     }
-    let release = from + vec2(3.0 * moves as f32, 0.0);
+    let leg = moves % 200;
+    let release = from + vec2(3.0 * if leg <= 100 { leg } else { 200 - leg } as f32, 0.0);
     run(
         &mut app,
         vec![Event::PointerButton {
