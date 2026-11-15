@@ -35,6 +35,11 @@ body {
   padding: var(--we-space-500) var(--we-space-600) var(--we-space-600);
 }
 
+/* Progress bars wear the theme's accent, not the browser's blue. */
+progress {
+  accent-color: var(--accent);
+}
+
 /* The app's mark and name, as the screens before a session put them in the top corner. */
 .brand {
   display: flex;
