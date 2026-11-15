@@ -578,7 +578,10 @@ fn a_waker_can_set_root_on_the_same_bag() {
     let writer = bag.clone();
     let (done_tx, done_rx) = mpsc::channel();
     let worker = std::thread::spawn(move || {
-        writer.set_root("profileStore", store_value(json!({ "displayName": "outer" })));
+        writer.set_root(
+            "profileStore",
+            store_value(json!({ "displayName": "outer" })),
+        );
         let _ = done_tx.send(());
     });
     done_rx
@@ -673,10 +676,7 @@ fn set_waker_after_an_arrival_still_wakes() {
         "installing the hook schedules the queued batch"
     );
     let tick = s.poll();
-    assert_eq!(
-        tick.completions, 1,
-        "the next poll applies what was queued"
-    );
+    assert_eq!(tick.completions, 1, "the next poll applies what was queued");
     s.resolve();
     assert_eq!(local(&s, &root.id, "log"), "v");
 }
@@ -730,7 +730,10 @@ fn exhausted_budget_wakes_and_reports_dirty() {
         "the exhausted budget woke the frontend instead of stalling"
     );
     assert_eq!(prop(&root, "done"), "false", "q9 is still loading");
-    assert!(s.poll().dirty, "the bumped pool revision still reports dirty");
+    assert!(
+        s.poll().dirty,
+        "the bumped pool revision still reports dirty"
+    );
 
     let root = s.resolve();
     assert_eq!(
