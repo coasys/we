@@ -131,10 +131,12 @@ impl Widget for DatePicker {
             return;
         }
 
-        // The visible month survives across frames in EditState.
+        // The visible month survives across frames in EditState. "Today"
+        // is the injected clock (wall time, or a host's pin) — not
+        // `cx.now`, the frame clock, which is seconds since app start.
         let selected = Ymd::parse(&value);
         if cx.edit.field(&node.id, "month").is_undefined() {
-            let m = selected.unwrap_or_else(|| today(cx.now));
+            let m = selected.unwrap_or_else(|| today(crate::clock::now_secs(cx.ui.ctx())));
             cx.edit.set_field(
                 &node.id,
                 "month",
@@ -142,7 +144,8 @@ impl Widget for DatePicker {
             );
         }
         let month_s = cx.edit.field(&node.id, "month").js_string();
-        let month = Ymd::parse(&(month_s + "-01")).unwrap_or_else(|| today(cx.now));
+        let month = Ymd::parse(&(month_s + "-01"))
+            .unwrap_or_else(|| today(crate::clock::now_secs(cx.ui.ctx())));
 
         // `CloseOnClick` would dismiss on the month-nav buttons and the
         // time field — the DOM calendar stays open for inside clicks;
@@ -236,7 +239,9 @@ impl Widget for DatePicker {
                     ui.horizontal(|ui| {
                         ui.label("Time");
                         if ui.text_edit_singleline(&mut t).lost_focus() {
-                            let d = selected.unwrap_or_else(|| today(cx.now)).iso();
+                            let d = selected
+                                .unwrap_or_else(|| today(crate::clock::now_secs(cx.ui.ctx())))
+                                .iso();
                             cx.emit(
                                 &node.id,
                                 "onChange",

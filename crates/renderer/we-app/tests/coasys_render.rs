@@ -27,13 +27,24 @@
 //!
 //! - `tests/snapshots/coasys_<route>.png` + `coasys_tree_panel.png` —
 //!   recorded from `2a9edd244` (the E3c-0 base: E3c-1, E3c-3, the theme
-//!   rounds and the fonts round merged) with `UPDATE_SNAPSHOTS=1`.
+//!   rounds and the fonts round merged) in record mode.
 //!
 //! The re-record rule: a visual round re-records only the routes it means
 //! to change, in its own commit named `baseline: <routes>: <reason>`, and
 //! lists the routes and the reason in its notes. E3c refactor tasks must
 //! not move a pixel; a tree or pixel change that is not the task's stated
 //! purpose is a stop, not an update.
+//!
+//! Record mode — the only path that writes baselines — is
+//! `WE_RECORD_COASYS=1`, e.g.
+//! `WE_RECORD_COASYS=1 cargo test --locked -p we-app --test coasys_render -- pixel_index`.
+//! The gate forces `UPDATE_SNAPSHOTS` itself (`force` in record mode,
+//! `off` otherwise), so an inherited update variable can never turn a
+//! verify run into a rewrite.
+//!
+//! Clock: every pixel harness pins `we_egui`'s injected clock to
+//! `PINNED_NOW` — `we-timestamp`'s relative text and `we-date-picker`'s
+//! "today" then read the pin, not the day the test happens to run on.
 //!
 //! Data: `bundles/coasys.bundle.json` + `fixtures/coasys/snapshot.json`.
 //! The snapshot's sha256 is asserted before anything reads it, so capture
@@ -42,6 +53,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use egui::Vec2;
+use egui_kittest::kittest::Queryable;
 use egui_kittest::{Harness, SnapshotOptions, SnapshotResults};
 use serde_json::Value as Json;
 use sha2::{Digest, Sha256};
@@ -91,6 +103,17 @@ const MAX_SETTLE_ROUNDS: u32 = 8;
 /// stay pending forever, so decode waits on wall-clock sleeps, never on
 /// extra steps — the step count (and with it `i.time`) stays deterministic.
 const IMAGE_DRAIN_SLEEPS: u32 = 150;
+
+/// The instant every pixel harness pins `we_egui::pin_now` to — epoch
+/// seconds of **2025-10-07T00:00:00Z**, the morning after the fixture's
+/// newest stamp (`2025-10-06T15:00:00Z`, inside the recorded week;
+/// `snapshot.json`'s `meta` records no capture date, the fixture epoch is
+/// `2025-10-01`). Without it, `we-timestamp` relative text drifts with the
+/// wall clock and the PNG baselines go stale on their own (Lal F2).
+const PINNED_NOW: f64 = 1_759_795_200.0;
+
+/// Record mode's env flag — the ONLY way these tests write baselines.
+const RECORD_ENV: &str = "WE_RECORD_COASYS";
 
 fn renderer_dir() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("..")
@@ -236,22 +259,108 @@ fn settle(session: &mut Session) -> Arc<ResolvedNode> {
 /// The frame-level settle: a harness `step` is `frame_body` — resolve +
 /// layout + paint — and `poll` is the quiet signal between steps, the same
 /// `poll → resolve` loop `settle` runs. Image decode gets a bounded
-/// wall-clock drain afterwards so the step count stays deterministic.
+/// wall-clock drain afterwards so the step count stays deterministic —
+/// then two checks (Lal F4): the drain must actually finish (pending
+/// images are a failure, not a deadline the test waves through), and the
+/// frame the drain produced must itself be quiet, so the captured pixels
+/// are a settled frame, not one whose work is still queued.
 fn settle_frame(harness: &mut Harness<'_, RendererApp>) {
     for _ in 0..MAX_SETTLE_ROUNDS {
         harness.step();
         if harness.state_mut().session.poll() == Tick::default() {
-            for _ in 0..IMAGE_DRAIN_SLEEPS {
-                if !harness.ctx.has_pending_images() {
-                    break;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(20));
-            }
+            drain_images_or_fail(&harness.ctx);
             harness.step();
+            assert_quiet(&mut harness.state_mut().session);
             return;
         }
     }
     panic!("the frame did not settle in {MAX_SETTLE_ROUNDS} poll→step rounds");
+}
+
+/// `settle_frame` for the `Shell` — the same `poll → step` loop, over the
+/// shell's panel session.
+fn settle_frame_shell(harness: &mut Harness<'_, Shell>) {
+    for _ in 0..MAX_SETTLE_ROUNDS {
+        harness.step();
+        if harness.state_mut().panel.session.poll() == Tick::default() {
+            drain_images_or_fail(&harness.ctx);
+            harness.step();
+            assert_quiet(&mut harness.state_mut().panel.session);
+            return;
+        }
+    }
+    panic!("the frame did not settle in {MAX_SETTLE_ROUNDS} poll→step rounds");
+}
+
+/// The bounded wall-clock image drain: sleeps while any loader reports
+/// pending, then a hard fail — a fixture image that never landed passing
+/// as its placeholder is a silent partial (Lal F4). egui's loader API
+/// reports pending per loader, not per URI, so the failure names loaders.
+fn drain_images_or_fail(ctx: &egui::Context) {
+    for _ in 0..IMAGE_DRAIN_SLEEPS {
+        if !ctx.has_pending_images() {
+            return;
+        }
+        std::thread::sleep(std::time::Duration::from_millis(20));
+    }
+    let loaders = ctx.loaders();
+    let mut pending: Vec<String> = loaders
+        .image
+        .lock()
+        .iter()
+        .filter(|l| l.has_pending())
+        .map(|l| l.id().to_string())
+        .collect();
+    pending.extend(
+        loaders
+            .bytes
+            .lock()
+            .iter()
+            .filter(|l| l.has_pending())
+            .map(|l| l.id().to_string()),
+    );
+    panic!(
+        "images still pending after {}ms — loaders: {pending:?}",
+        u64::from(IMAGE_DRAIN_SLEEPS) * 20
+    );
+}
+
+/// The last frame's quiet check — work it queued is a settle failure,
+/// not a pass.
+fn assert_quiet(session: &mut Session) {
+    let tick = session.poll();
+    assert_eq!(
+        tick,
+        Tick::default(),
+        "the final frame queued work — the captured frame is not settled"
+    );
+}
+
+/// The `UPDATE_SNAPSHOTS` the gate's snapshot calls run under: `force`
+/// in record mode (`WE_RECORD_COASYS=1`), `off` always otherwise — an
+/// inherited `UPDATE_SNAPSHOTS` can never rewrite a baseline during a
+/// verify run (Lal F3). Pure so the policy is testable without touching
+/// process env.
+fn gate_snapshot_env(record: Option<&str>) -> &'static str {
+    match record {
+        Some("1") | Some("on") | Some("true") | Some("force") => "force",
+        _ => "off",
+    }
+}
+
+/// Set `UPDATE_SNAPSHOTS` for this test's snapshot calls, before any
+/// `harness.snapshot` reads it.
+fn enforce_snapshot_policy() {
+    std::env::set_var(
+        "UPDATE_SNAPSHOTS",
+        gate_snapshot_env(std::env::var(RECORD_ENV).ok().as_deref()),
+    );
+}
+
+/// `init_host` plus the clock pin — every pixel harness's context setup.
+fn gate_context_setup(ctx: &egui::Context) {
+    we_app::init_host(ctx);
+    we_egui::pin_now(ctx, Some(PINNED_NOW));
 }
 
 /// The pinned raster harness (the gallery's `pinned_harness` policy):
@@ -263,7 +372,7 @@ fn pixel_harness(app: RendererApp) -> Harness<'static, RendererApp> {
     Harness::builder()
         .with_size(Vec2::new(W, H))
         .with_pixels_per_point(1.0)
-        .with_context_setup(we_app::init_host)
+        .with_context_setup(gate_context_setup)
         // The builder's glyph policy lands after `context_setup`, so the
         // production `init_host`'s Tofu is restated here — recorded data
         // must not panic the renderer on a missing glyph.
@@ -319,6 +428,7 @@ fn pixel_gate(id: &str, results: &mut SnapshotResults) {
     let app = app_for(&truth, id);
     let mut harness = pixel_harness(app);
     settle_frame(&mut harness);
+    enforce_snapshot_policy();
     harness.snapshot(format!("coasys_{id}"));
     results.extend_harness(&mut harness);
 }
@@ -434,34 +544,44 @@ fn tree_panel() {
     let mut harness = Harness::builder()
         .with_size(Vec2::new(W, H))
         .with_pixels_per_point(1.0)
-        .with_context_setup(we_app::init_host)
+        .with_context_setup(gate_context_setup)
         .allow_missing_glyphs()
         .with_accessibility_check(false)
         .wgpu()
         .with_options(SnapshotOptions::new().threshold(0.05).max_failed_pixels(8))
         .build_ui_state(|ui, shell: &mut Shell| shell.frame_body(ui), shell);
     settle_frame_shell(&mut harness);
+    enforce_snapshot_policy();
     harness.snapshot("coasys_tree_panel");
     let mut results = SnapshotResults::new();
     results.extend_harness(&mut harness);
     results.unwrap();
 }
 
-/// `settle_frame` for the `Shell` — the same `poll → step` loop, over the
-/// shell's panel session.
-fn settle_frame_shell(harness: &mut Harness<'_, Shell>) {
-    for _ in 0..MAX_SETTLE_ROUNDS {
-        harness.step();
-        if harness.state_mut().panel.session.poll() == Tick::default() {
-            for _ in 0..IMAGE_DRAIN_SLEEPS {
-                if !harness.ctx.has_pending_images() {
-                    break;
-                }
-                std::thread::sleep(std::time::Duration::from_millis(20));
-            }
-            harness.step();
-            return;
-        }
-    }
-    panic!("the frame did not settle in {MAX_SETTLE_ROUNDS} poll→step rounds");
+/// The env policy is a pure decision: only `WE_RECORD_COASYS` names
+/// record mode; every other value — including a stray inherited
+/// `UPDATE_SNAPSHOTS` — verifies (Lal F3).
+#[test]
+fn verify_path_forces_update_snapshots_off() {
+    assert_eq!(gate_snapshot_env(None), "off");
+    assert_eq!(gate_snapshot_env(Some("nonsense")), "off");
+    assert_eq!(gate_snapshot_env(Some("1")), "force");
+    assert_eq!(gate_snapshot_env(Some("force")), "force");
+}
+
+/// The pinned clock is real, not decorative (Lal F2): re-pin "now" to an
+/// absurd instant — the epoch — and the relative text `we-timestamp`
+/// paints moves with it. Under the fixture's own week the same widgets
+/// read "9hr ago"/"Nday ago" (narrow style); under 1970 they read
+/// "in 56yr".
+#[test]
+fn pinned_clock_moves_timestamp_text() {
+    let truth = truth();
+    let app = app_for(&truth, "index");
+    let mut harness = pixel_harness(app);
+    we_egui::pin_now(&harness.ctx, Some(0.0)); // 1970-01-01T00:00:00Z
+    settle_frame(&mut harness);
+    // Panics when no painted node carries the absurd pin's text — under
+    // the wall clock or `PINNED_NOW` this label cannot appear.
+    harness.get_by_label("in 56yr");
 }
