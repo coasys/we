@@ -7,6 +7,10 @@
 //! - the rail (`position: fixed`, `zIndex: "chrome"`) paints over the main
 //!   view when hover expands it, and the pointer over the overlap stays the
 //!   rail's.
+
+#[path = "support/gpu.rs"]
+mod gpu;
+
 use egui::{Pos2, Rect, Vec2};
 use egui_kittest::Harness;
 use we_app::RendererApp;
@@ -27,6 +31,7 @@ fn harness(setup: impl FnOnce(&mut RendererApp)) -> Harness<'static, RendererApp
     assert!(!fell_back, "glow is a recorded theme");
     setup(&mut app);
     let mut harness = Harness::builder()
+        .renderer(gpu::serial())
         .with_size(Vec2::new(W, H))
         .with_pixels_per_point(1.0)
         .allow_missing_glyphs()

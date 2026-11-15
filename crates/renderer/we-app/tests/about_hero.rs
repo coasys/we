@@ -2,6 +2,10 @@
 //! the accent, beside the fixed "We are building" (a role colour that
 //! `eval_color` alone cannot read painted it white, and a phrase caught
 //! mid-delete painted nothing).
+
+#[path = "support/gpu.rs"]
+mod gpu;
+
 use egui::Vec2;
 use egui_kittest::kittest::Queryable;
 use egui_kittest::Harness;
@@ -28,6 +32,7 @@ fn the_typewriter_phrase_is_painted_in_the_accent() {
     let bundle = Bundle::parse(BUNDLE).unwrap();
     let (app, _) = we_app::coasys_app(&bundle, "about", "glow").unwrap();
     let mut h = Harness::builder()
+        .renderer(gpu::serial())
         .with_size(Vec2::new(1280.0, 800.0))
         .with_pixels_per_point(1.0)
         .allow_missing_glyphs()
@@ -63,6 +68,7 @@ fn about(reduced: bool) -> Harness<'static, RendererApp> {
     let bundle = Bundle::parse(BUNDLE).unwrap();
     let (app, _) = we_app::coasys_app(&bundle, "about", "glow").unwrap();
     let mut h = Harness::builder()
+        .renderer(gpu::serial())
         .with_size(Vec2::new(1280.0, 800.0))
         .with_pixels_per_point(1.0)
         .allow_missing_glyphs()
