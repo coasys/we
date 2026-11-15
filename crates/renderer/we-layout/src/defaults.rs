@@ -280,18 +280,22 @@ fn type_defaults(bag: &mut Bag, node: &ResolvedNode) {
                 _ => ("300", "md", "var(--we-space-400)"),
             };
             entries(bag, &[("fontSize", fs)]);
-            bag.insert(
-                Arc::from("px"),
-                v(&format!(
-                    "var(--we-theme-button-padding-x, var(--we-theme-control-padding-x, {px}))"
-                )),
-            );
-            bag.insert(
-                Arc::from("height"),
-                v(&format!(
-                    "calc(var(--we-component-height-{h}) + var(--we-theme-control-height-offset, 0px))"
-                )),
-            );
+            // The variant merges over the size tier: `bare`'s `height: auto`
+            // and zero padding win, so it wraps what it holds (a card).
+            if variant(node, "solid") != "bare" {
+                bag.insert(
+                    Arc::from("px"),
+                    v(&format!(
+                        "var(--we-theme-button-padding-x, var(--we-theme-control-padding-x, {px}))"
+                    )),
+                );
+                bag.insert(
+                    Arc::from("height"),
+                    v(&format!(
+                        "calc(var(--we-component-height-{h}) + var(--we-theme-control-height-offset, 0px))"
+                    )),
+                );
+            }
             // square: width = height = component height, padding removed.
             if crate::props::prop_bool(node, "square") {
                 let h = v(&format!(
