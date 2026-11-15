@@ -101,6 +101,10 @@ pub struct HandlerRef {
     pub tokens: Vec<HandlerToken>,
     /// The bindings in scope where the handler was written.
     pub scope: Scope,
+    /// The frame the handler was resolved in (design 4.6.3): dispatch and
+    /// any completion it starts run under this authority — never under a
+    /// mount the frontend or completer happens to name.
+    pub frame: crate::gate::Frame,
 }
 
 /// The bindings a handler carries out of the node it was written on:

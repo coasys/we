@@ -23,6 +23,7 @@ fn spec(v: serde_json::Value) -> RootSpec {
     RootSpec::Single {
         node: Box::new(schema(v)),
         cx: MountCx::explicit("test"),
+        declared: we_template::Declared::default(),
     }
 }
 

@@ -35,6 +35,7 @@ fn session(v: serde_json::Value) -> Session {
         RootSpec::Single {
             node: Box::new(schema(v)),
             cx: MountCx::explicit("test"),
+            declared: we_template::Declared::default(),
         },
         Arc::new(StoreBag::new()),
         screen(),
@@ -91,6 +92,7 @@ fn pending(v: serde_json::Value) -> (Session, Rc<RefCell<Vec<Completer>>>) {
         RootSpec::Single {
             node: Box::new(schema(v)),
             cx: MountCx::explicit("test"),
+            declared: we_template::Declared::default(),
         },
         Arc::new(StoreBag::new()),
         screen(),
@@ -133,22 +135,23 @@ fn store_value(members: serde_json::Value) -> Value {
         .unwrap()
 }
 
-/// A `we-text` reading `profileStore.displayName` — the binding the
+/// A `we-text` reading `themeStore.currentThemeId` — the binding the
 /// re-entrancy tests watch.
 fn profile_spec() -> RootSpec {
     RootSpec::Single {
         node: Box::new(schema(json!({
             "type": "we-text",
-            "props": { "text": { "$": "profileStore.displayName" } }
+            "props": { "text": { "$": "themeStore.currentThemeId" } }
         }))),
         cx: MountCx::explicit("test"),
+        declared: we_template::Declared::default(),
     }
 }
 
 fn profile_bag() -> Arc<StoreBag> {
     Arc::new(
         StoreBag::from_snapshot(&json!({
-            "stores": { "profileStore": { "displayName": "before" } },
+            "stores": { "themeStore": { "currentThemeId": "before" } },
             "queries": {}, "invokes": {}
         }))
         .unwrap(),
@@ -304,7 +307,7 @@ fn poll_counts_a_queued_screen_op() {
 fn poll_dirty_after_set_root() {
     let bag = Arc::new(
         StoreBag::from_snapshot(&json!({
-            "stores": { "profileStore": { "displayName": "before" } },
+            "stores": { "themeStore": { "currentThemeId": "before" } },
             "queries": {}, "invokes": {}
         }))
         .unwrap(),
@@ -313,9 +316,10 @@ fn poll_dirty_after_set_root() {
         RootSpec::Single {
             node: Box::new(schema(json!({
                 "type": "we-text",
-                "props": { "text": { "$": "profileStore.displayName" } }
+                "props": { "text": { "$": "themeStore.currentThemeId" } }
             }))),
             cx: MountCx::explicit("test"),
+            declared: we_template::Declared::default(),
         },
         bag.clone(),
         screen(),
@@ -327,8 +331,8 @@ fn poll_dirty_after_set_root() {
     assert_eq!(prop(&root, "text"), "before");
 
     bag.set_root(
-        "profileStore",
-        store_value(json!({ "displayName": "after" })),
+        "themeStore",
+        store_value(json!({ "currentThemeId": "after" })),
     );
     assert!(bag.revision() > rev, "the write bumped the data revision");
     assert_eq!(count(&wakes), 1, "the write woke the frontend");
@@ -367,7 +371,7 @@ fn poll_dirty_after_completion() {
 fn set_root_from_another_thread_wakes_a_sleeping_frontend() {
     let bag = Arc::new(
         StoreBag::from_snapshot(&json!({
-            "stores": { "profileStore": { "displayName": "before" } },
+            "stores": { "themeStore": { "currentThemeId": "before" } },
             "queries": {}, "invokes": {}
         }))
         .unwrap(),
@@ -376,9 +380,10 @@ fn set_root_from_another_thread_wakes_a_sleeping_frontend() {
         RootSpec::Single {
             node: Box::new(schema(json!({
                 "type": "we-text",
-                "props": { "text": { "$": "profileStore.displayName" } }
+                "props": { "text": { "$": "themeStore.currentThemeId" } }
             }))),
             cx: MountCx::explicit("test"),
+            declared: we_template::Declared::default(),
         },
         bag.clone(),
         screen(),
@@ -392,8 +397,8 @@ fn set_root_from_another_thread_wakes_a_sleeping_frontend() {
     let writer = bag.clone();
     std::thread::spawn(move || {
         writer.set_root(
-            "profileStore",
-            store_value(json!({ "displayName": "after" })),
+            "themeStore",
+            store_value(json!({ "currentThemeId": "after" })),
         );
     })
     .join()
@@ -441,6 +446,7 @@ fn set_root_during_resolve_is_seen_next_poll() {
                 ]
             }))),
             cx: MountCx::explicit("test"),
+            declared: we_template::Declared::default(),
         },
         bag,
         screen(),
@@ -561,8 +567,8 @@ fn a_waker_can_set_root_on_the_same_bag() {
             wakes.fetch_add(1, Ordering::SeqCst);
             if !once.swap(true, Ordering::SeqCst) {
                 writer.set_root(
-                    "profileStore",
-                    store_value(json!({ "displayName": "from-the-waker" })),
+                    "themeStore",
+                    store_value(json!({ "currentThemeId": "from-the-waker" })),
                 );
             }
         }));
@@ -574,8 +580,8 @@ fn a_waker_can_set_root_on_the_same_bag() {
     let (done_tx, done_rx) = mpsc::channel();
     let worker = std::thread::spawn(move || {
         writer.set_root(
-            "profileStore",
-            store_value(json!({ "displayName": "outer" })),
+            "themeStore",
+            store_value(json!({ "currentThemeId": "outer" })),
         );
         let _ = done_tx.send(());
     });
@@ -630,7 +636,10 @@ fn a_panicking_waker_does_not_poison_later_writes() {
 
     let writer = bag.clone();
     let panicked = catch_unwind(AssertUnwindSafe(|| {
-        writer.set_root("profileStore", store_value(json!({ "displayName": "one" })));
+        writer.set_root(
+            "themeStore",
+            store_value(json!({ "currentThemeId": "one" })),
+        );
     }));
     assert!(panicked.is_err(), "the waker's panic reaches the writer");
     // The arrival landed before the panic — drain it so the next
@@ -643,7 +652,10 @@ fn a_panicking_waker_does_not_poison_later_writes() {
     let (waker2, wakes2) = counting_waker();
     s2.set_waker(waker2);
     s2.resolve();
-    bag.set_root("profileStore", store_value(json!({ "displayName": "two" })));
+    bag.set_root(
+        "themeStore",
+        store_value(json!({ "currentThemeId": "two" })),
+    );
     assert_eq!(count(&wakes), 1, "the write after the panic still notified");
     assert_eq!(
         count(&wakes2),
@@ -711,6 +723,7 @@ fn exhausted_budget_wakes_and_reports_dirty() {
                 "children": []
             }))),
             cx: MountCx::explicit("test"),
+            declared: we_template::Declared::default(),
         },
         bag,
         screen(),

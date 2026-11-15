@@ -20,6 +20,7 @@ pub fn app(schema: serde_json::Value) -> TuiApp {
         RootSpec::Single {
             node: Box::new(schema),
             cx: MountCx::explicit("t"),
+            declared: we_template::Declared::default(),
         },
         Arc::new(StoreBag::new()),
         ScreenState::desktop(ScreenSchema::default(), "/"),

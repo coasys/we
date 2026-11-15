@@ -18,9 +18,9 @@ use serde_json::{json, Value as Json};
 use we_expr::{HandleTable, Value};
 use we_screen::{ScreenSchema, ScreenState};
 use we_template::{
-    AppSpec, BundleTemplate, Compiled, DatasetSel, Inbox, LocalState, NodeId, PartSource,
+    AppSpec, BundleTemplate, Compiled, DatasetSel, Inbox, LocalState, NodeId, PartDef, PartSource,
     QueryEvent, QueryHub, QueryIr, QueryRequest, QuerySink, QuerySource, ResolvedChild,
-    ResolvedNode, Runtime, SchemaNode, SiteId, SiteSlot, StaticHost, StoreBag, SubTicket,
+    ResolvedNode, Runtime, SchemaNode, SiteId, SiteSlot, StaticHost, StoreBag, SubTicket, Tier,
 };
 
 fn schema(v: serde_json::Value) -> SchemaNode {
@@ -350,10 +350,13 @@ fn repeated_part_sites_are_distinct_and_share() {
     // on one request, one shared ticket with two holders.
     struct Parts;
     impl PartSource for Parts {
-        fn part(&self, id: &str) -> Option<Arc<SchemaNode>> {
-            (id == "widget").then(|| {
-                Arc::new(schema(json!({ "type": "Row",
-                    "$queries": { "items": { "entity": "Task" } }, "children": [] })))
+        fn part(&self, id: &str) -> Option<PartDef> {
+            (id == "widget").then(|| PartDef {
+                schema: Arc::new(schema(json!({ "type": "Row",
+                    "$queries": { "items": { "entity": "Task" } }, "children": [] }))),
+                tier: Tier::App,
+                module: "test".into(),
+                needs: Arc::from([]),
             })
         }
     }

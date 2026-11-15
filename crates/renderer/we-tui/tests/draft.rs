@@ -39,6 +39,7 @@ fn a_draft_shows_where_nothing_writes_value_back() {
         RootSpec::Single {
             node: Box::new(schema),
             cx: MountCx::explicit("t"),
+            declared: we_template::Declared::default(),
         },
         Arc::new(StoreBag::new()),
         ScreenState::desktop(ScreenSchema::default(), "/"),

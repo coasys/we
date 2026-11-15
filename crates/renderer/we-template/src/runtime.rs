@@ -19,7 +19,8 @@ use we_expr::{
 };
 use we_screen::{Changed, Route, ScreenOp, ScreenState};
 
-use crate::bindings::Invalidator;
+use crate::bindings::{BagBindings, BindingSource, Invalidator};
+use crate::gate::{Declared, Gate};
 use crate::handlers::{self, HandlerCx, PendingMap};
 use crate::host::{CallBook, Completer};
 use crate::inbox::{Arrival, Inbox};
@@ -56,6 +57,9 @@ pub struct Stats {
     /// Surface reports dropped — a dead key or a stale generation.
     pub surfaces_dropped: u64,
 }
+
+/// A custom readiness probe — `None` asks the binding source.
+type ReadyFn = Box<dyn Fn(&StoreBag) -> bool>;
 
 /// How many dead calls the runtime remembers at once (the `orphaned`
 /// P3): a host may hold a [`Completer`] and never settle it, so the set
@@ -112,6 +116,9 @@ pub enum RootSpec {
         /// Who the tree is mounted as — `Explicit` and [`Tier::Space`]
         /// unless the caller stamps otherwise (E3c-7).
         cx: MountCx,
+        /// The panels/dialogs the tree's `meta` would have declared —
+        /// `[]` for an explicit mount unless the caller stamps it.
+        declared: crate::gate::Declared,
     },
     /// A bundle: the app chrome, the space template's route table +
     /// `meta.panels` + `meta.recordViews`, the pages, the boot screen.
@@ -126,6 +133,7 @@ impl RootSpec {
         Self::Single {
             node: Box::new(node),
             cx: MountCx::explicit(mount),
+            declared: crate::gate::Declared::default(),
         }
     }
 }
@@ -153,6 +161,9 @@ pub struct Runtime {
     spec: RootSpec,
     bag: Arc<StoreBag>,
     locals: LocalState,
+    /// Per-frame `$localState` stores — a `$part`/panel/slot frame swaps
+    /// its own in, keyed by its mount-root id (4.6.3).
+    frame_locals: HashMap<Arc<str>, LocalState>,
     /// `$`-types that are real components — the app seeds it from the widget
     /// registry; the default treats every `$`-type as an unknown op.
     dollar_type: Arc<dyn Fn(&str) -> bool>,
@@ -185,15 +196,23 @@ pub struct Runtime {
     /// Every between-frames arrival: completions, binding invalidations.
     /// `Session::poll` drains it; the waker on it is the frontend's.
     inbox: Arc<Inbox>,
-    /// The mount contexts the last frame resolved — a node's origin.
-    mount_cxs: Vec<MountCx>,
     /// The table every mount's handles (and `DatasetHandle`s) come from —
     /// the host's way back for a minted handle.
     handles: HandleTable,
     /// Ops a resolve queued (route redirects) — `take_ops` hands them out.
     ops: Vec<ScreenOp>,
     /// Whether `sessionStore` says the app is ready — boot screens read it.
-    ready: Box<dyn Fn(&StoreBag) -> bool>,
+    /// `None` asks the binding source instead (the trait's `ready`).
+    ready: Option<ReadyFn>,
+    /// Who answers root names — [`BagBindings`] until the session installs
+    /// its own (E3c-8a). Every resolve/dispatch read goes through it behind
+    /// [`Self::gate`].
+    bindings: Arc<dyn BindingSource>,
+    /// The single read choke point — mints the permits, logs the denials.
+    gate: Arc<Gate>,
+    /// The compat names `bindings` serves member-filtered (its
+    /// `compat_roots`), cached so `root_domain` needn't ask the source.
+    compat: Arc<[Arc<str>]>,
     cache: ParseCache,
     resolved: Option<Arc<ResolvedNode>>,
     /// (screen, data, local, pool, surfaces) the last resolve recorded —
@@ -206,8 +225,9 @@ pub struct Runtime {
     view: ScreenView,
     /// This mount's own root bindings (`screen`, the legacy faces),
     /// layered over `bag` — a second session on the same bag keeps its
-    /// own instead of overwriting this one's.
-    layer: RootLayer,
+    /// own instead of overwriting this one's. `Arc`: the default
+    /// [`BagBindings`] source reads through it.
+    layer: Arc<RootLayer>,
     live: HashSet<NodeId>,
     parents: HashMap<NodeId, NodeId>,
     /// Parsed embedded sub-schemas (`$if` branches, panel bodies, record
@@ -271,10 +291,15 @@ impl Runtime {
         // layer. A construction-time bind is no data arrival — no
         // revision moves and no session wakes for it.
         let view = ScreenView::new();
-        let layer = RootLayer::new(&bag);
+        let layer = Arc::new(RootLayer::new(&bag));
         layer.bind("screen", Value::namespace(view.clone()));
         // No installed source: the snapshot's `queries` table answers.
         let source: Arc<dyn QuerySource> = Arc::new(SnapshotQueries::new(bag.clone()));
+        // The default binding source — bag + this session's layer — until a
+        // session installs its own (`we-legacy`'s `LegacyBindings`). Its
+        // subscribe is the `set_invalidator` above, same dedup target.
+        let bindings: Arc<dyn BindingSource> =
+            Arc::new(BagBindings::new(bag.clone(), layer.clone()));
         Self {
             spec,
             bag,
@@ -289,10 +314,13 @@ impl Runtime {
             orphans: Orphans::default(),
             calls: CallBook::new(inbox.clone()),
             inbox,
-            mount_cxs: Vec::new(),
-            handles,
             ops: Vec::new(),
-            ready: Box::new(default_ready),
+            ready: None,
+            bindings,
+            gate: Arc::new(Gate::new(handles.clone())),
+            compat: Arc::from([]),
+            handles,
+            frame_locals: HashMap::new(),
             cache: ParseCache::new(),
             resolved: None,
             last: None,
@@ -337,11 +365,33 @@ impl Runtime {
         self
     }
 
-    /// Override how readiness is decided (the bag's `sessionStore` by
-    /// default); `Runtime::new`'s trees never boot-gate anyway.
+    /// Override how readiness is decided (asks the binding source by
+    /// default — `BagBindings` answers from the bag's `sessionStore`);
+    /// `Runtime::new`'s trees never boot-gate anyway.
     pub fn with_ready(mut self, ready: impl Fn(&StoreBag) -> bool + 'static) -> Self {
-        self.ready = Box::new(ready);
+        self.ready = Some(Box::new(ready));
         self
+    }
+
+    /// Install the session's binding source (E3c-8a): every gated root
+    /// read answers from it, its `compat_roots` widen `root_domain`, and
+    /// it is handed this session's invalidator — the same dedup target as
+    /// the construction-time bag subscription, so a re-install does not
+    /// double the arrivals.
+    pub fn set_bindings(&mut self, bindings: Arc<dyn BindingSource>) {
+        bindings.subscribe(Invalidator::new(&self.inbox));
+        self.compat = bindings.compat_roots().into();
+        self.bindings = bindings;
+    }
+
+    /// The gate this runtime resolves behind — tests read its denials.
+    pub fn gate(&self) -> &Arc<Gate> {
+        &self.gate
+    }
+
+    /// The binding source answering root names.
+    pub fn bindings(&self) -> &Arc<dyn BindingSource> {
+        &self.bindings
     }
 
     /// The shared local store — the app's host writes through the same one.
@@ -365,7 +415,7 @@ impl Runtime {
 
     /// The mount's own binding layer — `we-legacy`'s adapter installs the
     /// legacy faces here, where they are this session's own.
-    pub fn layer(&self) -> &RootLayer {
+    pub fn layer(&self) -> &Arc<RootLayer> {
         &self.layer
     }
 
@@ -433,8 +483,13 @@ impl Runtime {
         self.last
             != Some((
                 screen.version,
-                self.bag.version(),
-                self.locals.version(),
+                self.bindings.revision(),
+                self.locals.version()
+                    + self
+                        .frame_locals
+                        .values()
+                        .map(LocalState::version)
+                        .sum::<u64>(),
                 self.hub.revision(),
                 self.surfaces.revision(),
             ))
@@ -510,10 +565,15 @@ impl Runtime {
                 spec,
                 space,
             ),
+            declared: spec
+                .app
+                .as_ref()
+                .map(|t| Declared::from_meta(&t.meta))
+                .unwrap_or_default(),
             template: None,
         };
         match spec {
-            RootSpec::Single { node, cx } => {
+            RootSpec::Single { node, cx, declared } => {
                 // The caller's mount as declared — `Explicit`, Space when
                 // unstated. A space route fills an unstated `cx.space`:
                 // the mount is about the space the route names.
@@ -524,6 +584,7 @@ impl Runtime {
                 vec![Mount {
                     node: node.as_ref(),
                     cx,
+                    declared: declared.clone(),
                     template: None,
                 }]
             }
@@ -540,6 +601,7 @@ impl Runtime {
                                 spec,
                                 &open_space,
                             ),
+                            declared: Declared::default(),
                             template: None,
                         }];
                     }
@@ -558,6 +620,7 @@ impl Runtime {
                                     spec,
                                     &open_space,
                                 ),
+                                declared: Declared::from_meta(&page.meta),
                                 template: None,
                             });
                         }
@@ -576,6 +639,7 @@ impl Runtime {
                                     spec,
                                     &open_space,
                                 ),
+                                declared: Declared::from_meta(&template.meta),
                                 template: Some(template),
                             });
                         }
@@ -602,16 +666,24 @@ impl Runtime {
         self.hub.drain();
         let current = (
             screen.version,
-            self.bag.version(),
-            self.locals.version(),
+            self.bindings.revision(),
+            self.locals.version()
+                + self
+                    .frame_locals
+                    .values()
+                    .map(LocalState::version)
+                    .sum::<u64>(),
             self.hub.revision(),
             self.surfaces.revision(),
         );
         if self.resolved.is_none() || self.last != Some(current) {
             let started = Instant::now();
-            let ready = (self.ready)(&self.bag);
+            let ready = self
+                .ready
+                .as_ref()
+                .map(|f| f(&self.bag))
+                .unwrap_or_else(|| self.bindings.ready());
             let mounts = Self::mounts_for(&self.spec, &self.handles, screen, ready);
-            self.mount_cxs = mounts.iter().map(|m| m.cx.clone()).collect();
             // Resolve → commit the pass's claims → drain the deliveries:
             // a query's rows land after the pass that claimed it (the same
             // resolve that asks `local.<name>` reads `[]`). Loop until a
@@ -656,15 +728,30 @@ impl Runtime {
                         None => (None, None, None),
                     };
                     let mut route_tail = Vec::new();
+                    // The frame stack (4.6.3): frame 0 is the mount; a
+                    // `$part`/panel/slot body pushes and pops.
+                    let mut frames = vec![crate::gate::Frame {
+                        auth: mount.cx.clone(),
+                        declared: mount.declared.clone(),
+                    }];
                     let mut cx = ResolveCx {
-                        bag: Roots::new(&self.layer, self.bag.as_ref()),
+                        bag: Roots::new(self.layer.as_ref(), self.bag.as_ref()).gated(
+                            self.bindings.as_ref(),
+                            &self.gate,
+                            &self.compat,
+                            mount.cx.clone(),
+                            mount.declared.clone(),
+                        ),
                         host,
-                        locals: &self.locals,
+                        locals: self.locals.clone(),
+                        frame_locals: &mut self.frame_locals,
+                        frames: &mut frames,
                         cache: &mut self.cache,
                         screen,
                         hub: &mut self.hub,
                         surfaces: &mut self.surfaces,
                         mount: &mount.cx,
+                        declared: &mount.declared,
                         handles: &self.handles,
                         parts: self.parts.as_ref(),
                         routes,
@@ -848,21 +935,39 @@ impl Runtime {
             let Some(target) = find_node(&root, &id) else {
                 break;
             };
-            if let Some(HandlerRef { tokens, scope }) = target.handlers.get(name) {
+            if let Some(HandlerRef {
+                tokens,
+                scope,
+                frame,
+            }) = target.handlers.get(name)
+            {
                 let tokens = tokens.clone();
                 let scope = scope.clone();
-                let mount = mount_of(&self.mount_cxs, &id);
+                // The frame the handler was resolved in is its authority —
+                // never a mount recomputed from the tree (4.6.3: a panel
+                // body's handler must not inherit an outer frame).
+                let frame = frame.clone();
                 let mut cx = HandlerCx {
                     host,
-                    bag: Roots::new(&self.layer, self.bag.as_ref()),
-                    locals: &self.locals,
+                    bag: Roots::new(self.layer.as_ref(), self.bag.as_ref()).gated(
+                        self.bindings.as_ref(),
+                        &self.gate,
+                        &self.compat,
+                        frame.auth.clone(),
+                        frame.declared.clone(),
+                    ),
+                    locals: self
+                        .frame_locals
+                        .get(frame.auth.mount.0.as_ref())
+                        .unwrap_or(&self.locals),
                     cache: &mut self.cache,
                     screen,
                     view: &self.view,
                     pending: &mut self.pending,
                     calls: &mut self.calls,
                     node: &id,
-                    mount: &mount,
+                    mount: &frame.auth,
+                    declared: &frame.declared,
                     warnings: &mut self.stats.warnings,
                 };
                 handlers::run(&tokens, &scope, event, &mut cx);
@@ -973,21 +1078,41 @@ impl Runtime {
             return;
         }
         self.stats.completions += 1;
-        // The mount the call STARTED under — not `mount_of` on the
-        // current mounts: a node that survived a navigation still runs
+        // The frame the call STARTED under — not the mounts the current
+        // tree resolves: a node that survived a navigation still runs
         // its callbacks under the space it began on.
         let mut cx = HandlerCx {
             host,
-            bag: Roots::new(&self.layer, self.bag.as_ref()),
-            locals: &self.locals,
+            bag: Roots::new(self.layer.as_ref(), self.bag.as_ref()).gated(
+                self.bindings.as_ref(),
+                &self.gate,
+                &self.compat,
+                pending.frame.auth.clone(),
+                pending.frame.declared.clone(),
+            ),
+            locals: self
+                .frame_locals
+                .get(pending.frame.auth.mount.0.as_ref())
+                .unwrap_or(&self.locals),
             cache: &mut self.cache,
             screen,
             view: &self.view,
             pending: &mut self.pending,
             calls: &mut self.calls,
             node: &pending.node,
-            mount: &pending.mount,
+            mount: &pending.frame.auth,
+            declared: &pending.frame.declared,
             warnings: &mut self.stats.warnings,
+        };
+        // A host result landing in a space-tier callback carries no usable
+        // handles: anything it contains crosses the boundary tainted
+        // (4.6.5) — the callback can hold and compare it, never use it.
+        let result = if pending.frame.auth.tier < Tier::App {
+            result
+                .map(|v| crate::resolve::taint_handles(&v))
+                .map_err(|v| crate::resolve::taint_handles(&v))
+        } else {
+            result
         };
         match &result {
             Ok(value) => {
@@ -1012,28 +1137,14 @@ impl Runtime {
     }
 }
 
-/// The mount `node` was resolved under: the longest mount id its own id is
-/// prefixed by (`{mount}:{path}`). A synthetic wrapper (`root`, `frame`)
-/// names itself — and mounts as `Explicit`/Space, the untrusted default.
-fn mount_of(mounts: &[MountCx], node: &NodeId) -> MountCx {
-    let id = node.as_str();
-    mounts
-        .iter()
-        .filter(|cx| {
-            id.strip_prefix(cx.mount.as_str())
-                .is_some_and(|rest| rest.starts_with(':'))
-        })
-        .max_by_key(|cx| cx.mount.as_str().len())
-        .cloned()
-        .unwrap_or_else(|| MountCx::explicit(id))
-}
-
 /// One mount — a node resolved under its [`MountCx`]'s id, with the
 /// template context (`routes`/`panels`/`recordViews`) when the mount is
-/// the space template itself.
+/// the space template itself, and the panels/dialogs its `meta` declared
+/// (the frame's declared-id set, 4.6.3).
 struct Mount<'a> {
     node: &'a SchemaNode,
     cx: MountCx,
+    declared: Declared,
     template: Option<&'a BundleTemplate>,
 }
 
@@ -1095,7 +1206,9 @@ fn content_viewport(app: Option<&BundleTemplate>, children: Vec<ResolvedChild>) 
 
 /// `sessionStore` readiness — `signInStep`/`bootState` reads `"ready"`; an
 /// absent store is not ready (the bundle's own `$if` draws the boot in WE).
-fn default_ready(bag: &StoreBag) -> bool {
+/// `pub` for the binding-source adapters (`we-legacy`) whose `ready()`
+/// answers the same way.
+pub fn bag_ready(bag: &StoreBag) -> bool {
     match bag.root("sessionStore") {
         Some(Value::Namespace(ns)) => {
             let step = ns.get("signInStep");

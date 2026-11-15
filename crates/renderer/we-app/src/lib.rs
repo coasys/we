@@ -107,6 +107,7 @@ impl RendererApp {
         let spec = RootSpec::Single {
             node: Box::new(schema),
             cx: MountCx::explicit(template_id.into() as Arc<str>),
+            declared: we_template::Declared::default(),
         };
         let session =
             Session::offline(spec, bag, screen).with_dollar_types(move |ty| types.contains(ty));

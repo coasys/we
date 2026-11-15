@@ -2,10 +2,10 @@
 use indexmap::IndexMap;
 use serde_json::json;
 use std::sync::Arc;
-use we_expr::Value;
+use we_expr::{MountCx, Value};
 use we_template::{
-    normal_form, HandlerRef, HandlerToken, NodeId, ResolvedChild, ResolvedNode, SchemaChild,
-    SchemaNode, Scope,
+    normal_form, Declared, Frame, HandlerRef, HandlerToken, NodeId, ResolvedChild, ResolvedNode,
+    SchemaChild, SchemaNode, Scope,
 };
 
 #[test]
@@ -101,6 +101,10 @@ fn normal_form_writes_the_spec_shape() {
         HandlerRef {
             tokens: vec![HandlerToken::from_json(json!({"$invoke": "s.m"}))],
             scope: Scope::default(),
+            frame: Frame {
+                auth: MountCx::explicit("test"),
+                declared: Declared::default(),
+            },
         },
     );
     handlers.insert(
@@ -108,6 +112,10 @@ fn normal_form_writes_the_spec_shape() {
         HandlerRef {
             tokens: vec![],
             scope: Scope::default(),
+            frame: Frame {
+                auth: MountCx::explicit("test"),
+                declared: Declared::default(),
+            },
         },
     );
     let node = ResolvedNode {

@@ -199,6 +199,7 @@ fn offline_constructor_is_space_unless_told() {
     let spec = RootSpec::Single {
         node: Box::new(schema(node)),
         cx: MountCx::explicit_app("test"),
+        declared: we_template::Declared::default(),
     };
     let (mut s, log) = session(spec, "/");
     let (_, origin) = fire_and_origin(&mut s, &log, "test:");
@@ -344,6 +345,7 @@ fn an_explicit_mount_space_resolves_through_the_shared_table() {
             "children": []
         }))),
         cx: MountCx::explicit("panel").with_space(a),
+        declared: we_template::Declared::default(),
     };
     let log = Rc::new(RefCell::new(Log::default()));
     let mut s = Session::new_in(

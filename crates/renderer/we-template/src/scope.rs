@@ -15,9 +15,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, RwLock, Weak};
 
 use indexmap::IndexMap;
-use we_expr::{CallFn, Env, MapNamespace, Namespace, Value};
+use we_expr::{CallFn, Env, MapNamespace, MountCx, Namespace, Value};
 
-use crate::bindings::{DataRevision, Invalidator};
+use crate::bindings::{root_domain, BindingSource, DataRevision, Invalidator};
+use crate::gate::{Declared, Gate};
 use crate::query::{note_slot_read, QuerySlot, SlotRef};
 use crate::{LocalState, NodeId, Scope};
 
@@ -324,17 +325,43 @@ impl RootLayer {
     }
 }
 
+/// The authority a [`Roots`] view gates reads by (E3c-8a): the session's
+/// [`BindingSource`] and [`Gate`] plus the frame's authority and declared
+/// panels/dialogs. `auth`/`declared` are OWNED — a nested frame swaps them
+/// in place (`for_auth`) without re-borrowing the session's long-lived
+/// parts; every template-facing `Roots` carries one, and a `Roots` without
+/// it is core plumbing that never reaches a template read.
+#[derive(Debug, Clone)]
+pub struct GateRead<'a> {
+    /// Who answers the root name.
+    pub source: &'a dyn BindingSource,
+    /// The single choke point.
+    pub gate: &'a Arc<Gate>,
+    /// The compat names `source` serves (its `compat_roots`).
+    pub compat: &'a [Arc<str>],
+    /// The frame's authority — the asking mount.
+    pub auth: MountCx,
+    /// The frame's declared panel/dialog ids.
+    pub declared: Declared,
+}
+
 /// One mount's view of the root table: the session's own bindings
 /// (`screen`, the legacy faces) first, the shared bag underneath. `root`
 /// is the only layered answer — `call` and every other bag answer is the
 /// bag's own. Two sessions on one bag read different `Roots`, so a
 /// session's screen and faces are never another session's.
-#[derive(Debug, Clone, Copy)]
+///
+/// With `gate` set, `root` is the E3c-8a boundary: the gate classifies the
+/// name, the source answers it, and the answer wears the member filter
+/// before a template sees it.
+#[derive(Debug, Clone)]
 pub struct Roots<'a> {
     /// The mount's own bindings — `None` for a bare-bag `Roots`.
     pub layer: Option<&'a RootLayer>,
     /// The shared bag — data roots and functions.
     pub bag: &'a StoreBag,
+    /// The gate context — `Some` on every resolve/dispatch read path.
+    pub gate: Option<GateRead<'a>>,
 }
 
 impl<'a> Roots<'a> {
@@ -343,20 +370,90 @@ impl<'a> Roots<'a> {
         Self {
             layer: Some(layer),
             bag,
+            gate: None,
         }
     }
 
     /// A bare bag — a caller with no mount layer reads the bag's own roots.
     pub fn unlayered(bag: &'a StoreBag) -> Self {
-        Self { layer: None, bag }
+        Self {
+            layer: None,
+            bag,
+            gate: None,
+        }
     }
 
-    /// `name`'s binding — the mount's own first (`screen`, the legacy
-    /// faces), then the bag's store root or plain value.
+    /// This view gated by `auth`/`declared` — the read boundary every
+    /// template-facing evaluation sits behind.
+    pub fn gated(
+        self,
+        source: &'a dyn BindingSource,
+        gate: &'a Arc<Gate>,
+        compat: &'a [Arc<str>],
+        auth: MountCx,
+        declared: Declared,
+    ) -> Self {
+        Self {
+            gate: Some(GateRead {
+                source,
+                gate,
+                compat,
+                auth,
+                declared,
+            }),
+            ..self
+        }
+    }
+
+    /// The same view under a nested frame's authority — the resolver's
+    /// frame push: the source and gate stay, the authority and its
+    /// declared ids become the frame's own. Owned, so the swap needs no
+    /// shorter borrow than the session's own.
+    pub fn for_auth(&self, auth: MountCx, declared: Declared) -> Roots<'a> {
+        Roots {
+            layer: self.layer,
+            bag: self.bag,
+            gate: self.gate.as_ref().map(|g| GateRead {
+                source: g.source,
+                gate: g.gate,
+                compat: g.compat,
+                auth,
+                declared,
+            }),
+        }
+    }
+
+    /// `name`'s binding — through the gate when this view carries one:
+    /// core's [`root_domain`] classifies first (deny before the source is
+    /// asked), then the source answers and its answer wears the member
+    /// filter. Ungated: the mount's own bindings, then the bag.
     pub fn root(&self, name: &str) -> Option<Value> {
-        self.layer
-            .and_then(|layer| layer.get(name))
-            .or_else(|| self.bag.root(name))
+        let Some(g) = &self.gate else {
+            return self
+                .layer
+                .and_then(|layer| layer.get(name))
+                .or_else(|| self.bag.root(name));
+        };
+        let classified = root_domain(name, g.compat);
+        if let Some(domain) = classified {
+            if !g.gate.root(&g.auth, name, domain).allowed() {
+                return None;
+            }
+        }
+        let bound = g.source.root(name, &g.auth)?;
+        let domain = classified.or(bound.domain)?;
+        if classified.is_none() && !g.gate.root(&g.auth, name, domain).allowed() {
+            return None;
+        }
+        g.gate.serve(name, domain, bound, &g.auth, &g.declared)
+    }
+
+    /// The profile `$agent` binds — the source's answer under this view's
+    /// authority (`None` for ungated plumbing roots, which never resolve).
+    pub fn profile(&self, did: &str) -> Option<Value> {
+        self.gate
+            .as_ref()
+            .and_then(|g| g.source.profile(did, &g.auth))
     }
 
     /// `Env::call` — functions belong to the shared bag alone.
@@ -440,10 +537,12 @@ impl StoreBag {
     /// Subscribe to `set_root` writes — the [`DataRevision::subscribe`] a
     /// session installs one [`Invalidator`] at a time through. Several
     /// sessions may share a bag: each hears every write, and a handle
-    /// whose session's inbox died is pruned as it is noticed.
+    /// whose session's inbox died is pruned as it is noticed. A second
+    /// subscription from the same inbox *replaces* the first — the
+    /// session's own re-install must not double the arrivals.
     pub fn set_invalidator(&self, invalidator: Invalidator) {
         if let Ok(mut subs) = self.invalidators.lock() {
-            subs.retain(|i| i.alive());
+            subs.retain(|i| i.alive() && !i.same_inbox(&invalidator));
             subs.push(invalidator);
         }
     }

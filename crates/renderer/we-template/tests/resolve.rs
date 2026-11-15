@@ -6,7 +6,8 @@ use serde_json::json;
 use we_expr::Value;
 use we_screen::{ScreenSchema, ScreenState};
 use we_template::{
-    LocalState, NodeId, ResolvedChild, ResolvedNode, Runtime, SchemaNode, StaticHost, StoreBag,
+    LocalState, NodeId, ResolvedChild, ResolvedNode, RootSpec, Runtime, SchemaNode, StaticHost,
+    StoreBag,
 };
 
 fn schema(v: serde_json::Value) -> SchemaNode {
@@ -2259,7 +2260,21 @@ fn a_synthesized_panels_conduit_is_not_a_dependency() {
     }));
     let locals = LocalState::new();
     let bag = Arc::new(StoreBag::new());
-    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone());
+    // The mount declares `inspector` — `screen.panels` is id-filtered to
+    // the template's own `meta.panels` (E3c-8a); an undeclared id reads
+    // `Undefined`, and this test wants the leaf read.
+    let mut rt = Runtime::from_spec(
+        RootSpec::Single {
+            node: Box::new(node),
+            cx: we_expr::MountCx::explicit("test"),
+            declared: we_template::Declared {
+                panels: Arc::from(["inspector".into()]),
+                dialogs: Arc::from([]),
+            },
+        },
+        bag.clone(),
+        locals.clone(),
+    );
     let mut host = StaticHost::new(bag.clone());
     let mut screen = screen();
     screen.apply(we_screen::ScreenOp::OpenTemplatePanel {

@@ -117,6 +117,7 @@ fn main() {
         RootSpec::Single {
             node: Box::new(tree_schema(&bundle)),
             cx: MountCx::explicit("tree"),
+            declared: we_template::Declared::default(),
         },
         Arc::new(bag),
         screen,

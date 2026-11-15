@@ -20,6 +20,13 @@ type Shared<T> = Rc<RefCell<T>>;
 /// The recorded light token table — geometry props (`p="400"`, `gap="300"`)
 /// resolve to real pixels through it; the kittest cases assert layout, not
 /// colour.
+fn frame() -> we_template::Frame {
+    we_template::Frame {
+        auth: we_expr::MountCx::explicit("test"),
+        declared: we_template::Declared::default(),
+    }
+}
+
 fn tokens() -> we_style::TokenTable {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../../packages/schema-system/conformance/vectors/tokens/light.json");
@@ -42,6 +49,7 @@ fn handlers(list: &[&str]) -> IndexMap<Arc<str>, HandlerRef> {
                 HandlerRef {
                     tokens: vec![],
                     scope: Default::default(),
+                    frame: frame(),
                 },
             )
         })

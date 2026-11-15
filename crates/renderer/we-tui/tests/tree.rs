@@ -55,6 +55,7 @@ fn app(route: &str) -> TuiApp {
         RootSpec::Single {
             node: Box::new(schema),
             cx: MountCx::explicit("tree"),
+            declared: we_template::Declared::default(),
         },
         Arc::new(bag),
         ScreenState::desktop(ScreenSchema::default(), route),
@@ -250,6 +251,7 @@ fn unknown_widget_renders_placeholder() {
         RootSpec::Single {
             node: Box::new(schema),
             cx: MountCx::explicit("t"),
+            declared: we_template::Declared::default(),
         },
         Arc::new(StoreBag::new()),
         ScreenState::desktop(ScreenSchema::default(), "/"),

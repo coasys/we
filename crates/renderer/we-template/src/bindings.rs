@@ -7,13 +7,17 @@
 //! the E3c-2 in-scope cases (`set_root`, readiness). `BindingSource`
 //! (E3c-8a) makes the trait a supertrait; its own implementors get the
 //! same contract without `StoreBag` in the loop.
+use std::collections::BTreeMap;
 use std::sync::{Arc, Weak};
+
+use we_expr::{MountCx, Tier, Value};
 
 use crate::inbox::{Arrival, Inbox};
 
 /// A data source's change counter — the general form of what `StoreBag`
-/// already had as `version`.
-pub trait DataRevision {
+/// already had as `version`. `Debug` is part of the contract so a gated
+/// `Roots` view can show which source answers it.
+pub trait DataRevision: std::fmt::Debug {
     /// Monotonic. Must move whenever any answer the source gives could
     /// differ from the last time it was read — a root replaced, a profile
     /// arrived, readiness changed. Reading it is cheap.
@@ -51,11 +55,242 @@ impl Invalidator {
         self.0.upgrade().is_some()
     }
 
+    /// Same destination — a source that dedups by inbox (the way
+    /// [`crate::StoreBag::set_invalidator`] does) keeps one handle per
+    /// session instead of doubling every re-install.
+    pub(crate) fn same_inbox(&self, other: &Invalidator) -> bool {
+        self.0.ptr_eq(&other.0)
+    }
+
     /// The source's answers may differ now — queues the arrival and calls
     /// the waker, once per batch like everything else.
     pub fn invalidate(&self) {
         if let Some(inbox) = self.0.upgrade() {
             inbox.push(Arrival::Bindings);
         }
+    }
+}
+
+/// The live root source every read goes through (design 5, F2). A mount
+/// never reads a bag directly: it asks the session's `BindingSource` for a
+/// [`Bound`] by name — a root the source chose to serve — and the [`Gate`]
+/// (gate.rs) is the single choke point that decides whether the asking
+/// authority may have it and which of its members it may see.
+///
+/// `mount` is the asking authority (the frame's `MountCx`), never the
+/// template's own claim: the source reads tier/space/provenance off the
+/// stamp the runtime made at mount time.
+pub trait BindingSource: DataRevision + Send + Sync {
+    /// The root `name` as `mount` may have it — `None` when the source has
+    /// nothing by that name (absent, not an error). A returned [`Bound`]
+    /// may still carry a member filter the gate applies per access.
+    fn root(&self, name: &str, mount: &MountCx) -> Option<Bound>;
+
+    /// The profile of `did` as `mount` may read it — the one narrow read
+    /// behind `$agent` (`templateSurface.ts`: `profileFor` is host wiring;
+    /// the profile itself is `identity`-group state).
+    fn profile(&self, did: &str, mount: &MountCx) -> Option<Value>;
+
+    /// Whether the host finished booting — the question the boot screen's
+    /// mount asks, kept a source answer (not a `sessionStore` member read)
+    /// so the flag lives on the same revision as every other root.
+    fn ready(&self) -> bool {
+        true
+    }
+
+    /// The old store names this source still serves member-filtered while
+    /// bundles are unconverted (design 5.4, F3). Each name resolves through
+    /// `root` like any other and its `Bound` carries the legacy member
+    /// table; a name not listed here is an unknown root and refused.
+    fn compat_roots(&self) -> &[Arc<str>] {
+        &[]
+    }
+}
+
+/// One root a [`BindingSource`] serves: the value itself plus, when the
+/// root is not uniform authority (`screen`, `legacy`, every compat root),
+/// the member table the [`Gate`] consults per member access.
+#[derive(Debug, Clone)]
+pub struct Bound {
+    /// The root value — usually a [`we_expr::Namespace`].
+    pub value: Value,
+    /// The member table the gate applies to this bound, when the root's
+    /// members are not all one tier. `None` means every member rides the
+    /// root's own domain — the plain-data case.
+    pub members: Option<MemberTiers>,
+    /// The domain the source declares for a root [`root_domain`] does not
+    /// classify — a host's own data root says `Space` and every tier may
+    /// traverse it. `None` leaves classification to the table alone: a
+    /// name core knows is always core's answer (a source cannot widen
+    /// `app`), and a name neither side classifies is refused.
+    pub domain: Option<RootDomain>,
+}
+
+/// The member filter a [`Bound`] carries (design 4.6.1's `MemberTiers`,
+/// Lal R3): which members are classified and the lowest tier that may read
+/// each. Semantics per path segment below the bound root:
+///
+/// - a classified [`MemberRule::Member`] is served when the asking
+///   authority's tier reaches it; everything *below* it is ordinary data,
+///   no further filtering (`spaceStore.currentSpace.name` rides
+///   `currentSpace`'s grant);
+/// - a [`MemberRule::Container`] is a structural namespace whose own
+///   members are classified by its table (`legacy`'s store names,
+///   `screen.shell`);
+/// - a [`MemberRule::DeclaredIds`] is an id→value map whose subkeys are
+///   allowed only when the mount declared the id (`screen.panels`/`dialogs`
+///   = this template's `meta.panels`/`meta.dialogs`);
+/// - a member absent from the table is denied — `Undefined`, never a
+///   blocked value.
+#[derive(Debug, Clone, Default)]
+pub struct MemberTiers {
+    /// member name → rule. Absent means denied.
+    pub members: BTreeMap<Arc<str>, MemberRule>,
+}
+
+impl MemberTiers {
+    /// A table from flat `member → minimum tier` rows — the compat-root
+    /// form the generated `LEGACY_MEMBER_TIERS` provides.
+    pub fn from_rows(rows: &[(&'static str, Tier)]) -> MemberTiers {
+        MemberTiers {
+            members: rows
+                .iter()
+                .map(|(name, tier)| (Arc::from(*name), MemberRule::Member { tier: *tier }))
+                .collect(),
+        }
+    }
+
+    /// The rule `member` is classified by, if any.
+    pub fn rule(&self, member: &str) -> Option<&MemberRule> {
+        self.members.get(member)
+    }
+}
+
+/// How one classified member is served.
+#[derive(Debug, Clone)]
+pub enum MemberRule {
+    /// A leaf grant: readable at `tier`, everything below it unfiltered.
+    Member {
+        /// The lowest tier that may read the member.
+        tier: Tier,
+    },
+    /// A structural container — traversable at `tier`; its members are
+    /// classified by `members` (never the unfiltered inner namespace).
+    Container {
+        /// The lowest tier that may traverse into the container.
+        tier: Tier,
+        /// The container's own member table.
+        members: MemberTiers,
+    },
+    /// An id→value map filtered to the ids the mount declared
+    /// (`meta.panels`/`meta.dialogs`): traversable at `tier`, subkeys
+    /// allowed only when declared.
+    DeclaredIds {
+        /// The lowest tier that may read the map at all.
+        tier: Tier,
+    },
+}
+
+/// Which authority domain a root name belongs to (design 4.6.1's
+/// `ROOT_DOMAIN`): what the name *is*, not who may read it — the tier
+/// check is the gate's second half.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RootDomain {
+    /// A space-domain root (`space`) — a space template's own store.
+    Space,
+    /// An app-domain root (`app`, `me`, `system`) — chrome only.
+    App,
+    /// The screen root — member-checked per access by [`Gate::screen_read`].
+    Screen,
+    /// A legacy/compatibility root (`legacy` plus every
+    /// [`BindingSource::compat_roots`] name) — member-checked against the
+    /// legacy table.
+    Compat,
+}
+
+/// The v2 root names and their domains (design 4.2's `ROOT_DOMAIN`):
+/// `space`, `me` and `system` are the space-readable domain; `app` is
+/// the app domain — absent at Space. `screen` and `legacy` are their
+/// own entries — their members are filtered, the roots themselves
+/// traverse at both tiers.
+///
+/// `compat` is the set [`BindingSource::compat_roots`] adds — the caller
+/// passes it because the source owns the transitional list.
+pub fn root_domain(name: &str, compat: &[Arc<str>]) -> Option<RootDomain> {
+    match name {
+        "space" | "me" | "system" => Some(RootDomain::Space),
+        "app" => Some(RootDomain::App),
+        "screen" => Some(RootDomain::Screen),
+        "legacy" => Some(RootDomain::Compat),
+        _ => compat
+            .iter()
+            .any(|c| c.as_ref() == name)
+            .then_some(RootDomain::Compat),
+    }
+}
+
+/// The source a runtime carries before the session installs one — and
+/// the shape of a test double (E3c-8a): [`crate::StoreBag`] and the
+/// mount's [`crate::RootLayer`] behind the [`BindingSource`] contract.
+///
+/// It declares no compat names and no member tables — a bag root is
+/// served as a plain `Space`-domain root, the way a host's own data root
+/// is. That means **member filtering only exists where the host's
+/// adapter installs it**: a core-only runtime keeps the old unfiltered
+/// behaviour for the roots its bag happens to hold (the render gates
+/// always run through `we-legacy`'s `LegacyBindings`, never this).
+/// `screen` still gets core's table at `Roots::root` — the source
+/// supplies the value, core supplies the policy.
+pub struct BagBindings {
+    bag: Arc<crate::StoreBag>,
+    layer: Arc<crate::scope::RootLayer>,
+}
+
+impl BagBindings {
+    /// Wrap `bag` + `layer` — the runtime's own construction.
+    pub fn new(bag: Arc<crate::StoreBag>, layer: Arc<crate::scope::RootLayer>) -> Self {
+        Self { bag, layer }
+    }
+
+    /// The wrapped bag.
+    pub fn bag(&self) -> &Arc<crate::StoreBag> {
+        &self.bag
+    }
+}
+
+impl std::fmt::Debug for BagBindings {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("BagBindings").finish_non_exhaustive()
+    }
+}
+
+impl BindingSource for BagBindings {
+    fn root(&self, name: &str, _mount: &MountCx) -> Option<Bound> {
+        self.layer
+            .get(name)
+            .or_else(|| self.bag.root(name))
+            .map(|value| Bound {
+                value,
+                members: None,
+                domain: Some(RootDomain::Space),
+            })
+    }
+
+    fn profile(&self, did: &str, _mount: &MountCx) -> Option<Value> {
+        crate::resolve::profile_of(&self.bag, did)
+    }
+
+    fn ready(&self) -> bool {
+        crate::runtime::bag_ready(&self.bag)
+    }
+}
+
+impl DataRevision for BagBindings {
+    fn revision(&self) -> u64 {
+        self.bag.version()
+    }
+
+    fn subscribe(&self, invalidator: Invalidator) {
+        self.bag.set_invalidator(invalidator);
     }
 }

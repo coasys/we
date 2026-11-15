@@ -18,6 +18,7 @@ fn session(node: SchemaNode) -> Session {
         RootSpec::Single {
             node: Box::new(node),
             cx: MountCx::explicit("test"),
+            declared: we_template::Declared::default(),
         },
         bag,
         we_screen::ScreenState::desktop(we_screen::ScreenSchema::default(), "/"),

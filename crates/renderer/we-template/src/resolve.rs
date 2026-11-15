@@ -17,9 +17,10 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 use serde_json::Value as Json;
-use we_expr::{eval, Env, MountCx, ParseCache, Value};
+use we_expr::{eval, Env, MountCx, MountId, ParseCache, Provenance, Tier, Value};
 use we_screen::{local_persist_key, local_sync_spec, resolve_local_initial, ScreenOp, ScreenState};
 
+use crate::gate::{Declared, Frame};
 use crate::handler::HandlerToken;
 use crate::local::TrackedDeps;
 use crate::node::{JsonMap, RouteNode, SchemaChild, SchemaNode};
@@ -34,15 +35,31 @@ use crate::{Host, LocalState};
 /// [`NoParts`], which makes every `$part` a placeholder naming its id — the
 /// same placeholder WE's `PartFrame` draws when a module is not here.
 pub trait PartSource {
-    /// The part's schema, if this build carries it.
-    fn part(&self, id: &str) -> Option<Arc<SchemaNode>>;
+    /// The part's definition, if this build carries it.
+    fn part(&self, id: &str) -> Option<PartDef>;
+}
+
+/// A module part: its schema plus the authority its frame resolves under
+/// (design 4.4/4.6.3 — `tier` is the module's own, never the caller's) and
+/// the names it may read from its caller (`needs` in the manifest — only
+/// those, `inputs` and `subject` cross, and only inertly).
+#[derive(Debug, Clone)]
+pub struct PartDef {
+    /// The part's schema.
+    pub schema: Arc<SchemaNode>,
+    /// The tier the part resolves under — the module's own.
+    pub tier: Tier,
+    /// The module it came from — the frame's `Provenance::Module`.
+    pub module: Arc<str>,
+    /// The caller-scope names it reads (`tile`, `block`, `node`, …).
+    pub needs: Arc<[Arc<str>]>,
 }
 
 /// The default: no parts at all.
 pub struct NoParts;
 
 impl PartSource for NoParts {
-    fn part(&self, _id: &str) -> Option<Arc<SchemaNode>> {
+    fn part(&self, _id: &str) -> Option<PartDef> {
         None
     }
 }
@@ -53,7 +70,18 @@ pub struct ResolveCx<'a> {
     /// faces) over the shared bag; a `{"$"}`/`$query` reads through it.
     pub bag: Roots<'a>,
     pub host: &'a mut dyn Host,
-    pub locals: &'a LocalState,
+    /// The mount's `$localState` store — cloned so a nested frame swaps in
+    /// the frame's own store instead of touching the caller's.
+    pub locals: LocalState,
+    /// Each nested frame's `$localState` store, keyed by its mount-root id
+    /// (`part:{id}@{site}`) — a part keeps its locals across passes while
+    /// two mounts of one part stay isolated (4.6.3).
+    pub frame_locals: &'a mut HashMap<Arc<str>, LocalState>,
+    /// The frame stack (4.6.3): `frames[0]` is the mount frame; a `$part`,
+    /// panel, record-view or slot body pushes one whose authority is the
+    /// template author's stamp, and pops when the body resolves. `auth`/
+    /// `declared`/`frame` read the top.
+    pub frames: &'a mut Vec<Frame>,
     pub cache: &'a mut ParseCache,
     pub screen: &'a ScreenState,
     /// The subscription hub every query site claims on — the pass's
@@ -63,9 +91,11 @@ pub struct ResolveCx<'a> {
     /// claim their keys here; the frame's commit prunes the rest (E3c-13).
     pub surfaces: &'a mut SurfaceTable,
     /// The mount this resolve runs under — its stamped identity (tier,
-    /// space, provenance) is what queries and, downstream, actions carry
-    /// (E3c-7; stamping only — nothing is filtered by it yet).
+    /// space, provenance). The BASE frame: `auth()` reads the stack top,
+    /// which is this unless a nested frame is on it.
     pub mount: &'a MountCx,
+    /// The base frame's declared panels/dialogs — same nesting rule.
+    pub declared: &'a Declared,
     /// The runtime's table — a query's `Here` resolves the mount's space
     /// handle through it, and `dataset` values mint through it.
     pub handles: &'a we_expr::HandleTable,
@@ -108,15 +138,56 @@ pub struct ResolveCx<'a> {
 }
 
 impl ResolveCx<'_> {
+    /// The frame the current resolve sits in — the stack top, or the mount
+    /// frame. Everything that asks "whose authority am I under" reads this.
+    pub(crate) fn auth(&self) -> &MountCx {
+        self.frames.last().map(|f| &f.auth).unwrap_or(self.mount)
+    }
+
+    /// The current frame's declared panels/dialogs.
+    pub(crate) fn declared_set(&self) -> &Declared {
+        self.frames
+            .last()
+            .map(|f| &f.declared)
+            .unwrap_or(self.declared)
+    }
+
+    /// The frame a handler written under this resolve carries — the
+    /// stamped authority plus its declared panels/dialogs (4.6.3).
+    pub(crate) fn frame(&self) -> Frame {
+        Frame {
+            auth: self.auth().clone(),
+            declared: self.declared_set().clone(),
+        }
+    }
+
+    /// A direct `ScreenState` member read through the gate — the same
+    /// table the `screen` namespace's filter applies. `None` verdicts
+    /// (ungated plumbing roots) answer `Plain`.
+    pub(crate) fn screen_read(&self, member: &str) -> crate::gate::MemberVerdict {
+        match &self.bag.gate {
+            Some(g) => g.gate.screen_read(&g.auth, member, &g.declared),
+            None => crate::gate::MemberVerdict::Plain,
+        }
+    }
+
     /// The compile context a `$queries`/`$query` descriptor compiles under —
     /// the same bag, cache, warnings, mount and table this resolve runs with.
     pub(crate) fn compile_cx(&mut self) -> CompileCx<'_> {
+        // Field-level borrows, so the `&mut` fields below don't collide
+        // with a whole-`self` immutable borrow from `auth()`.
+        let mount = match self.frames.last() {
+            Some(f) => &f.auth,
+            None => self.mount,
+        };
+        let bag = self.bag.clone();
         CompileCx {
-            bag: self.bag,
+            bag,
             cache: &mut *self.cache,
             warnings: &mut *self.warnings,
-            mount: self.mount,
+            mount,
             handles: self.handles,
+            gate: self.bag.gate.as_ref().map(|g| g.gate.as_ref()),
         }
     }
 
@@ -148,6 +219,51 @@ impl ResolveCx<'_> {
         let node = Arc::new(node);
         self.node_memo.insert(key, node.clone());
         Some(node)
+    }
+}
+
+/// Every handle inside `v` replaced by its tainted twin (design 4.6.5):
+/// rows landing in a space-tier claim, a host result binding into a
+/// space-tier callback — the value can be held and compared, never used
+/// at a use site. Lists and objects recurse; namespaces that are not
+/// handles stay (a root crossing in a query row keeps its own filter —
+/// the gate, not the carrier, is the boundary).
+pub fn taint_handles(v: &Value) -> Value {
+    match v {
+        Value::Namespace(ns) => match ns.as_handle() {
+            Some(h) if !h.is_tainted() => Value::handle(h.tainted()),
+            _ => v.clone(),
+        },
+        Value::List(items) => Value::List(Arc::new(
+            items.iter().map(taint_handles).collect::<Vec<_>>(),
+        )),
+        Value::Obj(map) => Value::Obj(Arc::new(
+            map.iter()
+                .map(|(k, v)| (k.clone(), taint_handles(v)))
+                .collect(),
+        )),
+        _ => v.clone(),
+    }
+}
+
+/// A value crossing INTO a callee frame through `needs`/`inputs`/`subject`
+/// (design 4.6.3): plain data survives; a `Namespace` (a root, a filtered
+/// view) or a `Callable` becomes `Undefined`; a handle becomes its tainted
+/// twin — the callee can compare it, never use it.
+/// twin — so the caller gains nothing from the part's authority and can
+/// hand it no root, no function and no usable handle.
+pub fn inert(v: &Value) -> Value {
+    match v {
+        Value::Namespace(ns) => match ns.as_handle() {
+            Some(h) => Value::handle(h.tainted()),
+            None => Value::Undefined,
+        },
+        Value::Callable(_) => Value::Undefined,
+        Value::List(items) => Value::List(Arc::new(items.iter().map(inert).collect::<Vec<_>>())),
+        Value::Obj(map) => Value::Obj(Arc::new(
+            map.iter().map(|(k, v)| (k.clone(), inert(v))).collect(),
+        )),
+        other => other.clone(),
     }
 }
 
@@ -325,13 +441,18 @@ pub(crate) fn eval_json(
         }
         Json::Object(map) => Value::Obj(Arc::new(
             map.iter()
-                .map(|(k, v)| (k.as_str().into(), eval_json(v, scope, bag, cache, warnings)))
+                .map(|(k, v)| {
+                    (
+                        k.as_str().into(),
+                        eval_json(v, scope, bag.clone(), cache, warnings),
+                    )
+                })
                 .collect(),
         )),
         Json::Array(items) => Value::List(Arc::new(
             items
                 .iter()
-                .map(|v| eval_json(v, scope, bag, cache, warnings))
+                .map(|v| eval_json(v, scope, bag.clone(), cache, warnings))
                 .collect(),
         )),
         primitive => Value::from_json(primitive),
@@ -349,11 +470,11 @@ fn eval_prop(json: &Json, scope: &Scope, cx: &mut ResolveCx, site: &SiteId) -> V
             let compiled = compile_request(descriptor, scope, &mut cx.compile_cx());
             let view = cx
                 .hub
-                .claim(site.clone(), compiled, cx.mount.space.as_ref());
+                .claim(site.clone(), compiled, cx.auth().space.clone().as_ref());
             return Value::List(view.rows);
         }
     }
-    eval_json(json, scope, cx.bag, cx.cache, cx.warnings)
+    eval_json(json, scope, cx.bag.clone(), cx.cache, cx.warnings)
 }
 
 /// The tokens of a handler prop — one object, or a list of them — kept raw;
@@ -493,8 +614,9 @@ fn with_transition(
 /// The profile a `$agent` binds: `profileStore.profiles` holds them — an
 /// object keyed by DID, or a list of rows carrying `did`. `None` when no
 /// profile resolves — the caller binds the `{did}` stub a template can
-/// still name (`agent.did` reads it back).
-fn agent_profile(bag: &StoreBag, did: &str) -> Option<Value> {
+/// still name (`agent.did` reads it back). `pub` for the binding-source
+/// adapters (`we-legacy`) whose `profile()` answers the same way.
+pub fn profile_of(bag: &StoreBag, did: &str) -> Option<Value> {
     let profiles = bag
         .root("profileStore")
         .and_then(|root| match &root {
@@ -728,7 +850,7 @@ fn resolve_node(
 ) -> Vec<ResolvedChild> {
     // A `{"$": …}` child is an expression, not a node: evaluated text.
     if let Some(source) = node.expression_token() {
-        let value = eval_str(source, scope, cx.bag, cx.cache, cx.warnings);
+        let value = eval_str(source, scope, cx.bag.clone(), cx.cache, cx.warnings);
         return vec![ResolvedChild::Text(value.to_text())];
     }
 
@@ -753,7 +875,7 @@ fn resolve_node(
         Some("$if") => {
             let cond = props
                 .and_then(|p| p.get("condition"))
-                .map(|c| eval_json(c, scope, cx.bag, cx.cache, cx.warnings))
+                .map(|c| eval_json(c, scope, cx.bag.clone(), cx.cache, cx.warnings))
                 .unwrap_or(Value::Undefined);
             let branch = if cond.truthy() { "then" } else { "else" };
             match prop_node(props, branch, cx) {
@@ -828,7 +950,7 @@ fn resolve_node(
             // at all is a transparent pass-through.
             let open = props
                 .and_then(|p| p.get("condition"))
-                .map(|c| eval_json(c, scope, cx.bag, cx.cache, cx.warnings).truthy());
+                .map(|c| eval_json(c, scope, cx.bag.clone(), cx.cache, cx.warnings).truthy());
             let children = resolve_children(
                 node.children.as_deref(),
                 scope,
@@ -846,7 +968,7 @@ fn resolve_node(
         Some("$agent") => {
             let did = props
                 .and_then(|p| p.get("did"))
-                .map(|d| eval_json(d, scope, cx.bag, cx.cache, cx.warnings))
+                .map(|d| eval_json(d, scope, cx.bag.clone(), cx.cache, cx.warnings))
                 .unwrap_or(Value::Undefined);
             // A did that has not resolved draws nothing (WE's `Show`).
             let Value::Str(did) = did else {
@@ -860,7 +982,14 @@ fn resolve_node(
                 .and_then(|a| a.as_str())
                 .unwrap_or("agent");
             let mut row_scope = scope.clone();
-            match agent_profile(cx.bag.bag, &did) {
+            // The source's narrow read (E3c-8a) — replaces the core
+            // `profileStore` member read; an ungated `Roots` (core
+            // plumbing) falls back to the bag directly.
+            match cx
+                .bag
+                .profile(&did)
+                .or_else(|| profile_of(cx.bag.bag, &did))
+            {
                 // A real profile row is live data — its own dependency.
                 Some(row) => row_scope.bind(as_name, row),
                 // The stub is synthesized per read — a conduit like `local`.
@@ -882,20 +1011,85 @@ fn resolve_node(
                 .and_then(|i| i.as_str())
                 .unwrap_or_default();
             match cx.parts.part(id) {
-                Some(part_node) => {
+                Some(part) => {
                     // The call site goes into the part root — two mounts of
                     // the same part (or one per `$each` row) must not share
                     // NodeIds, locals, or `parents` entries.
                     let site = format!("{root}:{path}");
-                    resolve_node(
-                        &part_node,
-                        scope,
+                    // Frame push (4.6.3): the part resolves under its
+                    // MODULE's authority — never the caller's — in a fresh
+                    // scope and with no caller declarations. Only the
+                    // declared `needs` names, `inputs` and `subject` cross,
+                    // each evaluated here and made inert.
+                    let part_auth = MountCx {
+                        // The site-qualified id IS the authority — two
+                        // mounts of one part are two frames, never one.
+                        mount: MountId(format!("part:{id}@{site}").into()),
+                        tier: part.tier,
+                        space: cx.auth().space.clone(),
+                        provenance: Provenance::Module {
+                            module: part.module.clone(),
+                        },
+                    };
+                    let empty_decls: Arc<Vec<LocalScope>> = Arc::new(Vec::new());
+                    let mut part_scope = Scope::default();
+                    for name in &*part.needs {
+                        let value = scope.get(name).cloned().unwrap_or(Value::Undefined);
+                        part_scope.bind(name.as_ref(), inert(&value));
+                    }
+                    if let Some(Json::Object(map)) = props.and_then(|p| p.get("inputs")) {
+                        for (key, spec) in map {
+                            let value =
+                                eval_json(spec, scope, cx.bag.clone(), cx.cache, cx.warnings);
+                            part_scope.bind(key.as_str(), inert(&value));
+                        }
+                    }
+                    if let Some(subject) = props.and_then(|p| p.get("subject")) {
+                        let value =
+                            eval_json(subject, scope, cx.bag.clone(), cx.cache, cx.warnings);
+                        part_scope.bind("subject", inert(&value));
+                    }
+                    // Frame push (4.6.3): bag/locals/template tables swap to
+                    // the part's own — restored on the way out, whatever the
+                    // body resolved to.
+                    let saved = (
+                        cx.bag.clone(),
+                        cx.locals.clone(),
+                        cx.routes,
+                        cx.panels,
+                        cx.record_views,
+                    );
+                    cx.frames.push(Frame {
+                        auth: part_auth.clone(),
+                        declared: Declared::default(),
+                    });
+                    let locals = cx
+                        .frame_locals
+                        .entry(part_auth.mount.0.clone())
+                        .or_default()
+                        .clone();
+                    cx.bag = cx.bag.for_auth(part_auth, Declared::default());
+                    cx.locals = locals;
+                    cx.routes = None;
+                    cx.panels = None;
+                    cx.record_views = None;
+                    let out = resolve_node(
+                        &part.schema,
+                        &part_scope,
                         parent,
                         &format!("part:{id}@{site}"),
                         "",
-                        decls,
+                        &empty_decls,
                         cx,
-                    )
+                    );
+                    let (bag, locals, routes, panels, record_views) = saved;
+                    cx.bag = bag;
+                    cx.locals = locals;
+                    cx.routes = routes;
+                    cx.panels = panels;
+                    cx.record_views = record_views;
+                    cx.frames.pop();
+                    out
                 }
                 // The module is not here: a `$part` placeholder carrying the
                 // id — PartFrame's stand-in.
@@ -969,6 +1163,7 @@ fn resolve_node(
                             HandlerRef {
                                 tokens: handler_tokens(value),
                                 scope: surface_scope.clone(),
+                                frame: cx.frame(),
                             },
                         );
                     } else {
@@ -1039,6 +1234,7 @@ fn resolve_node(
                             HandlerRef {
                                 tokens: handler_tokens(value),
                                 scope: node_scope.clone(),
+                                frame: cx.frame(),
                             },
                         );
                     } else {
@@ -1137,8 +1333,13 @@ fn declare_locals(
                             // An expression initial: evaluate with its reads
                             // recorded — `follow_initial` compares this pass's
                             // inputs, not just this pass's value.
-                            let (value, deps) =
-                                eval_str_tracked(source, scope, cx.bag, cx.cache, cx.warnings);
+                            let (value, deps) = eval_str_tracked(
+                                source,
+                                scope,
+                                cx.bag.clone(),
+                                cx.cache,
+                                cx.warnings,
+                            );
                             (value, Some(deps))
                         }
                         // `{$query: …}`/`{$invoke: …}` as an initial is not a
@@ -1147,7 +1348,7 @@ fn declare_locals(
                     }
                 }
                 Some(initial) => (
-                    eval_json(initial, scope, cx.bag, cx.cache, cx.warnings),
+                    eval_json(initial, scope, cx.bag.clone(), cx.cache, cx.warnings),
                     None,
                 ),
                 None => (Value::Undefined, None),
@@ -1265,7 +1466,7 @@ fn declare_locals(
                 let compiled = compile_request(descriptor, &node_scope, &mut cx.compile_cx());
                 let key = match &compiled {
                     Compiled::Ready(request) => {
-                        Some(request.key(cx.mount.space.as_ref(), cx.handles))
+                        Some(request.key(cx.auth().space.as_ref(), cx.handles))
                     }
                     _ => None,
                 };
@@ -1273,7 +1474,19 @@ fn declare_locals(
                     node: id.clone(),
                     slot: SiteSlot::Named(name.clone()),
                 };
-                slot.set(cx.hub.claim(site, compiled, cx.mount.space.as_ref()));
+                let mut view = cx
+                    .hub
+                    .claim(site, compiled, cx.auth().space.clone().as_ref());
+                // Space-tier rows carry no usable handles: a handle that
+                // arrives inside a space frame's claim is held and
+                // comparable, never usable (4.6.5). The cell's shared
+                // rows keep their twin — an app-tier claim on the same
+                // key still gets them untainted.
+                if cx.mount.tier < Tier::App {
+                    view.rows = Arc::new(view.rows.iter().map(taint_handles).collect());
+                    view.error = view.error.map(|e| taint_handles(&e));
+                }
+                slot.set(view);
                 if last_keys.get(&name) != Some(&key) {
                     last_keys.insert(name, key);
                     changed = true;
@@ -1330,13 +1543,27 @@ fn resolve_panels(
                 continue;
             }
             let pid = map.get("id").and_then(|i| i.as_str()).unwrap_or_default();
-            let open = cx
-                .screen
-                .shell
-                .panels
-                .get(pid)
-                .map(|p| p.open)
-                .unwrap_or_else(|| map.get("open").and_then(|o| o.as_bool()).unwrap_or(true));
+            // `shell.panels[pid]` through the gate: the `panels` member is
+            // declared-id filtered at every tier — a mount reads the open
+            // state of the panels its own `meta` declared; anything else
+            // is refused and the authored `open` stands.
+            let open = match cx.screen_read("panels") {
+                crate::gate::MemberVerdict::Ids(ids) if ids.iter().any(|i| i.as_ref() == pid) => cx
+                    .screen
+                    .shell
+                    .panels
+                    .get(pid)
+                    .map(|p| p.open)
+                    .unwrap_or_else(|| map.get("open").and_then(|o| o.as_bool()).unwrap_or(true)),
+                crate::gate::MemberVerdict::Plain => cx
+                    .screen
+                    .shell
+                    .panels
+                    .get(pid)
+                    .map(|p| p.open)
+                    .unwrap_or_else(|| map.get("open").and_then(|o| o.as_bool()).unwrap_or(true)),
+                _ => map.get("open").and_then(|o| o.as_bool()).unwrap_or(true),
+            };
             if !open {
                 continue;
             }
@@ -1357,13 +1584,19 @@ fn resolve_panels(
         }
     }
 
-    let collapsed = cx
+    // `shell.lanes[lane].collapsed` through the gate — lane collapse is a
+    // `collapsedLanes` member, app-tier furniture: a space authority is
+    // refused and the lane resolves expanded.
+    let collapsed = matches!(
+        cx.screen_read("collapsedLanes"),
+        crate::gate::MemberVerdict::Plain
+    ) && (cx
         .screen
         .shell
         .lanes
         .get(&lane)
         .map(|l| l.collapsed)
-        .unwrap_or(false)
+        .unwrap_or(false))
         || (props
             .and_then(|p| p.get("foldEmpty"))
             .and_then(|f| f.as_bool())
@@ -1384,12 +1617,13 @@ fn resolve_panels(
                     HandlerRef {
                         tokens: handler_tokens(value),
                         scope: scope.clone(),
+                        frame: cx.frame(),
                     },
                 );
             } else {
                 resolved_props.insert(
                     key.as_str().into(),
-                    eval_json(value, scope, cx.bag, cx.cache, cx.warnings),
+                    eval_json(value, scope, cx.bag.clone(), cx.cache, cx.warnings),
                 );
             }
         }
