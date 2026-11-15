@@ -20,6 +20,9 @@ we-expr.workspace = true
 we-screen.workspace = true
 
 [dev-dependencies]
+# Harnesses that drive a raw Runtime install the same legacy faces a
+# session would (E3c-6).
+we-legacy.workspace = true
 egui_kittest = { workspace = true, features = ["snapshot", "wgpu"] }
 # PNG in/out for the `coasys_shots` side-by-sides — the version egui_kittest
 # already pulls in.

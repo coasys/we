@@ -13,6 +13,7 @@ members = [
     "we-expr",
     "we-screen",
     "we-template",
+    "we-legacy",
     "we-data",
     "we-style",
     "we-layout",
@@ -49,6 +50,7 @@ unicode-width = "0.2"
 we-expr = { path = "we-expr" }
 we-screen = { path = "we-screen" }
 we-template = { path = "we-template" }
+we-legacy = { path = "we-legacy" }
 we-data = { path = "we-data" }
 we-style = { path = "we-style" }
 we-layout = { path = "we-layout" }

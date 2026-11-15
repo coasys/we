@@ -5607,6 +5607,7 @@ dependencies = [
  "we-data",
  "we-egui",
  "we-expr",
+ "we-legacy",
  "we-screen",
  "we-session",
  "we-style",
@@ -5649,6 +5650,7 @@ dependencies = [
  "thiserror 2.0.21",
  "unicode-normalization",
  "we-expr",
+ "we-legacy",
  "we-screen",
  "we-session",
  "we-template",
@@ -5699,6 +5701,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "we-legacy"
+version = "0.1.0"
+dependencies = [
+ "indexmap",
+ "serde_json",
+ "we-expr",
+ "we-screen",
+ "we-template",
+]
+
+[[package]]
 name = "we-screen"
 version = "0.1.0"
 dependencies = [
@@ -5721,6 +5734,7 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "we-expr",
+ "we-legacy",
  "we-screen",
  "we-template",
 ]
