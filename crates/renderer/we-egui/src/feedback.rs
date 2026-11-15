@@ -5,7 +5,7 @@ use we_expr::Value;
 use we_style::Style;
 use we_template::ResolvedNode;
 
-use crate::defaults::{view_of, ViewportCx, FONT_PX};
+use crate::defaults::{view_of, ViewportCx};
 use crate::props;
 use crate::{
     Direction, MeasureCx, PaintCx, PartSpec, PartsSpec, Pick, Rect, Size, TextChildren, Widget,
@@ -97,7 +97,7 @@ impl Widget for Tooltip {
                         inner.center(),
                         egui::Align2::CENTER_CENTER,
                         content,
-                        egui::FontId::proportional(FONT_PX),
+                        egui::FontId::proportional(view_of(cx.ui.ctx()).metrics.font_px),
                         cx.ui.visuals().text_color(),
                     );
                 }
@@ -314,7 +314,7 @@ impl Alert {
         style
             .layout
             .gap
-            .and_then(|(_, col)| props::px(Some(&col), view.font_px, view.root_px, view.viewport))
+            .and_then(|(_, col)| props::px(Some(&col), &view.metrics, view.viewport))
             .unwrap_or(8.0)
     }
 
@@ -478,7 +478,7 @@ impl Widget for Skeleton {
                 let s = props::dim_prop(node, "size")
                     .or(style.layout.height)
                     .or(style.layout.width)
-                    .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
+                    .and_then(|d| d.to_px(&view.metrics, view.viewport))
                     .unwrap_or(40.0);
                 Size::new(s, s)
             }
@@ -488,7 +488,7 @@ impl Widget for Skeleton {
                 0.0,
                 props::dim_prop(node, "height")
                     .or(style.layout.height)
-                    .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
+                    .and_then(|d| d.to_px(&view.metrics, view.viewport))
                     .unwrap_or(60.0),
             ),
             // A line stretches (the web component's default is a 100%×20px
@@ -497,7 +497,7 @@ impl Widget for Skeleton {
                 0.0,
                 props::dim_prop(node, "height")
                     .or(style.layout.height)
-                    .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
+                    .and_then(|d| d.to_px(&view.metrics, view.viewport))
                     .unwrap_or(20.0),
             ),
         }
@@ -507,13 +507,7 @@ impl Widget for Skeleton {
         let variant = props::prop_str(node, "variant").unwrap_or("line");
         let r = match variant {
             "circle" => rect.height() / 2.0,
-            "block" => props::radius_px(
-                &style.paint.radius,
-                rect,
-                view.font_px,
-                view.root_px,
-                view.viewport,
-            ),
+            "block" => props::radius_px(&style.paint.radius, rect, &view.metrics, view.viewport),
             _ => (rect.height() / 2.0).min(4.0),
         };
         let base = style
@@ -564,7 +558,7 @@ impl Widget for Divider {
     fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, _s: &Style, avail: Size) -> Size {
         let view = view_of(cx.ctx);
         let t = props::dim_prop(node, "thickness")
-            .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
+            .and_then(|d| d.to_px(&view.metrics, view.viewport))
             .unwrap_or(1.0);
         let _ = avail;
         if props::prop_str(node, "orientation") == Some("vertical") {
@@ -590,7 +584,7 @@ impl Widget for Divider {
             })
             .unwrap_or_else(|| cx.ui.visuals().widgets.noninteractive.bg_stroke.color);
         let t = props::dim_prop(node, "thickness")
-            .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
+            .and_then(|d| d.to_px(&view.metrics, view.viewport))
             .unwrap_or(1.0);
         let vertical = props::prop_str(node, "orientation") == Some("vertical");
         // The line is the element's content — it sits inside the padding.

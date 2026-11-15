@@ -44,9 +44,10 @@ pub use inbox::{Inbox, Waker};
 pub use local::LocalState;
 pub use node::{RouteNode, SchemaChild, SchemaNode};
 pub use query::{
-    compile_query, compile_request, compiled_to_cell, prune_where, query_descriptor,
-    scope_anchored, CompileCx, Compiled, CompiledQuery, DatasetHandle, DatasetSel, QueryCell,
-    QueryIr, QueryKey, QueryPool, QueryRequest, QuerySource, QueryState, SlotRef, RESERVED_IR_KEYS,
+    compile_query, compile_request, prune_where, query_descriptor, scope_anchored, CompileCx,
+    Compiled, DatasetHandle, DatasetSel, HubCell, QueryEvent, QueryHub, QueryIr, QueryKey,
+    QueryRequest, QuerySink, QuerySlot, QuerySource, SiteId, SiteSlot, SlotRef, SlotView,
+    SubTicket, RESERVED_IR_KEYS,
 };
 pub use resolve::{resolve, NoParts, PartSource, ResolveCx};
 pub use resolved::{

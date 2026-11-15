@@ -273,7 +273,7 @@ fn ds_of(key: &we_template::QueryKey) -> Option<String> {
 #[test]
 fn two_spaces_do_not_share_a_cell() {
     // `Here` is keyed by the mount's space: one `$queries` block in two
-    // spaces compiles to two pool cells — one per space — or the second
+    // spaces claims two different keys — one per space — or the second
     // space's template would read the first space's rows.
     let mut s = Session::offline(
         RootSpec::single(
@@ -290,7 +290,7 @@ fn two_spaces_do_not_share_a_cell() {
     let _ = s.resolve();
     let keys: Vec<_> = s
         .runtime
-        .pool()
+        .hub()
         .cells()
         .iter()
         .map(|c| c.key.clone())
@@ -309,18 +309,18 @@ fn two_spaces_do_not_share_a_cell() {
         replace: false,
     });
     let _ = s.resolve();
-    let mut datasets: Vec<_> = s
+    let keys: Vec<_> = s
         .runtime
-        .pool()
+        .hub()
         .cells()
         .iter()
-        .filter_map(|c| ds_of(&c.key))
+        .map(|c| c.key.clone())
         .collect();
-    datasets.sort();
+    assert_eq!(keys.len(), 1, "the second space's query is one cell");
     assert_eq!(
-        datasets,
-        ["demo-a".to_string(), "demo-b".to_string()],
-        "the same question in a second space is a second cell"
+        ds_of(&keys[0]).as_deref(),
+        Some("demo-b"),
+        "the same question in a second space is a second cell — demo-a's was released, never shared"
     );
 }
 
@@ -360,7 +360,7 @@ fn an_explicit_mount_space_resolves_through_the_shared_table() {
     // the route's own space B must not fill it either).
     let keys: Vec<_> = s
         .runtime
-        .pool()
+        .hub()
         .cells()
         .iter()
         .map(|c| c.key.clone())

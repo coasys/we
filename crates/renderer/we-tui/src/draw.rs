@@ -13,7 +13,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color as TColor, Modifier, Style as TStyle};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use we_expr::Value;
-use we_layout::defaults::{direction_of, style_of, StyleCx, FONT_PX, ROOT_PX};
+use we_layout::defaults::{direction_of, style_of, unit_metrics, StyleCx};
 use we_layout::props::{prop, prop_bool, prop_num, prop_str};
 use we_style::{BorderKind, Color as WColor, Dimension, Direction, ItemAlign, Theme};
 use we_template::{NodeId, ResolvedChild, ResolvedNode};
@@ -238,14 +238,16 @@ fn rc(c: WColor, truecolor: bool) -> TColor {
 }
 
 /// The `Dimension` → cells on one axis. `avail` is the parent cells;
-/// `viewport` the frame cells.
-fn dim_cells(d: Option<&Dimension>, avail: u16, viewport: u16) -> Option<u16> {
+/// `viewport` the frame cells. The folded unit metrics resolve the font
+/// units (`em`/`rem`/`ch`/`ex`/`lh`) into the px a cell projects — the
+/// same fold `style_of` already applied, so a themed `rem` projects the
+/// same cells both places.
+fn dim_cells(scx: &StyleCx, d: Option<&Dimension>, avail: u16, viewport: u16) -> Option<u16> {
     match d? {
         Dimension::Percent(p) => Some((avail as f32 * p).round().max(0.0) as u16),
         other => other
             .to_px(
-                FONT_PX,
-                ROOT_PX,
+                &unit_metrics(scx),
                 we_style::Size::new(viewport as f32 * CELL_PX, viewport as f32 * CELL_PX),
             )
             .map(|px| (px / CELL_PX).round().max(0.0) as u16),
@@ -500,9 +502,14 @@ impl<'a> Painter<'a> {
         let (bw, bh) = self.box_extra(node, &style, avail_w, avail_h);
         let inner_w = avail_w.saturating_sub(bw);
         let inner_h = if height.is_some() {
-            dim_cells(height, avail_h, (self.scx.viewport.height / CELL_PX) as u16)
-                .unwrap_or(0)
-                .saturating_sub(bh)
+            dim_cells(
+                &self.scx,
+                height,
+                avail_h,
+                (self.scx.viewport.height / CELL_PX) as u16,
+            )
+            .unwrap_or(0)
+            .saturating_sub(bh)
         } else {
             0
         };
@@ -588,6 +595,7 @@ impl<'a> Painter<'a> {
             Tag::Skeleton => Dim::new(
                 inner_w.min(24),
                 dim_cells(
+                    &self.scx,
                     style.layout.height.as_ref(),
                     inner_h,
                     (self.scx.viewport.height / CELL_PX) as u16,
@@ -632,18 +640,18 @@ impl<'a> Painter<'a> {
         // Explicit width/height override the intrinsic size; min/max clamp.
         let vw = (self.scx.viewport.width / CELL_PX) as u16;
         let vh = (self.scx.viewport.height / CELL_PX) as u16;
-        if let Some(w) = dim_cells(style.layout.width.as_ref(), avail_w, vw) {
+        if let Some(w) = dim_cells(&self.scx, style.layout.width.as_ref(), avail_w, vw) {
             dim.w = w;
         }
-        if let Some(h) = dim_cells(height, avail_h, vh) {
+        if let Some(h) = dim_cells(&self.scx, height, avail_h, vh) {
             dim.h = h;
         }
         dim.w = dim.w.saturating_add(bw).min(avail_w.max(1));
         dim.h = dim.h.saturating_add(bh).min(MAX_LINES);
-        if let Some(mw) = dim_cells(style.layout.min_width.as_ref(), avail_w, vw) {
+        if let Some(mw) = dim_cells(&self.scx, style.layout.min_width.as_ref(), avail_w, vw) {
             dim.w = dim.w.max(mw);
         }
-        if let Some(mw) = dim_cells(style.layout.max_width.as_ref(), avail_w, vw) {
+        if let Some(mw) = dim_cells(&self.scx, style.layout.max_width.as_ref(), avail_w, vw) {
             dim.w = dim.w.min(mw.max(1));
         }
         let min_height = style
@@ -651,10 +659,10 @@ impl<'a> Painter<'a> {
             .min_height
             .as_ref()
             .filter(|_| !composite_button(node));
-        if let Some(mh) = dim_cells(min_height, avail_h, vh) {
+        if let Some(mh) = dim_cells(&self.scx, min_height, avail_h, vh) {
             dim.h = dim.h.max(mh);
         }
-        if let Some(mh) = dim_cells(style.layout.max_height.as_ref(), avail_h, vh) {
+        if let Some(mh) = dim_cells(&self.scx, style.layout.max_height.as_ref(), avail_h, vh) {
             dim.h = dim.h.min(mh.max(1));
         }
         dim
@@ -692,13 +700,16 @@ impl<'a> Painter<'a> {
         };
         (
             side(&style.paint.borders.left)
-                + dim_cells(style.layout.padding.left.as_ref(), avail_w, vw).unwrap_or(0),
+                + dim_cells(&self.scx, style.layout.padding.left.as_ref(), avail_w, vw)
+                    .unwrap_or(0),
             side(&style.paint.borders.top)
-                + dim_cells(style.layout.padding.top.as_ref(), avail_h, vh).unwrap_or(0),
+                + dim_cells(&self.scx, style.layout.padding.top.as_ref(), avail_h, vh).unwrap_or(0),
             side(&style.paint.borders.right)
-                + dim_cells(style.layout.padding.right.as_ref(), avail_w, vw).unwrap_or(0),
+                + dim_cells(&self.scx, style.layout.padding.right.as_ref(), avail_w, vw)
+                    .unwrap_or(0),
             side(&style.paint.borders.bottom)
-                + dim_cells(style.layout.padding.bottom.as_ref(), avail_h, vh).unwrap_or(0),
+                + dim_cells(&self.scx, style.layout.padding.bottom.as_ref(), avail_h, vh)
+                    .unwrap_or(0),
         )
     }
 
@@ -711,7 +722,7 @@ impl<'a> Painter<'a> {
             Direction::Row => col_gap.or(row_gap),
             Direction::Column => row_gap.or(col_gap),
         };
-        dim_cells(d.as_ref(), 100, 100).unwrap_or(0)
+        dim_cells(&self.scx, d.as_ref(), 100, 100).unwrap_or(0)
     }
 
     /// A column's intrinsic size: widest child + stacked heights + gaps.
@@ -1251,10 +1262,10 @@ impl<'a> Painter<'a> {
         let vw = (self.scx.viewport.width / CELL_PX) as u16;
         let vh = (self.scx.viewport.height / CELL_PX) as u16;
         let inset = &style.layout.inset;
-        let l = dim_cells(inset.left.as_ref(), base.width, vw);
-        let r = dim_cells(inset.right.as_ref(), base.width, vw);
-        let t = dim_cells(inset.top.as_ref(), base.height, vh);
-        let b = dim_cells(inset.bottom.as_ref(), base.height, vh);
+        let l = dim_cells(&self.scx, inset.left.as_ref(), base.width, vw);
+        let r = dim_cells(&self.scx, inset.right.as_ref(), base.width, vw);
+        let t = dim_cells(&self.scx, inset.top.as_ref(), base.height, vh);
+        let b = dim_cells(&self.scx, inset.bottom.as_ref(), base.height, vh);
         let dim = self.measure(node, base.width, base.height);
         let (x, w) = match (l, r, style.layout.width.is_some()) {
             (Some(l), Some(r), false) => (l, base.width.saturating_sub(l + r)),
@@ -2157,6 +2168,9 @@ pub fn paint_frame(
         scope: &empty_scope,
         viewport: we_style::Size::new(w as f32 * CELL_PX, view_h as f32 * CELL_PX),
         container_width: w as f32 * CELL_PX,
+        // The terminal frontend projects the px layout onto cells; the
+        // font units resolve against the default metrics (design 6.1).
+        metrics: we_metrics::UnitMetrics::default(),
     };
     let mut probe_buf = Buffer::empty(Rect::new(0, 0, w.max(1), 1));
     let probe = Painter::new(&mut probe_buf, scx, theme, palette, truecolor, drafts);
@@ -2198,5 +2212,47 @@ pub fn blit(canvas: &Buffer, dst: &mut Buffer, scroll: u16, area: Rect) {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use indexmap::IndexMap;
+    use std::sync::Arc;
+    use we_style::TokenTable;
+
+    /// `dim_cells` reads the same folded metrics `style_of` does — a
+    /// theme recording `--we-font-size-300: 13px` moves `rem`/`em` off
+    /// the configured defaults (the bare-`scx.metrics` read left them at
+    /// 16/14).
+    #[test]
+    fn dim_cells_folds_the_theme_metrics() {
+        let mut vars = IndexMap::new();
+        vars.insert(Arc::from("--we-font-size-300"), Arc::from("13px"));
+        let tokens = TokenTable::new(vars);
+        let mut scx = StyleCx::empty();
+        scx.tokens = &tokens;
+
+        // `4rem` is 4·13 = 52px → 6.5 → 7 cells (bare root_px 16 → 8);
+        // `2em` is 2·13 = 26px → 3.25 → 3 (bare font_px 14 → 28 → 4).
+        assert_eq!(
+            dim_cells(&scx, Some(&Dimension::Rem(4.0)), 100, 100),
+            Some(7),
+            "4rem under a 13px theme"
+        );
+        assert_eq!(
+            dim_cells(&scx, Some(&Dimension::Em(2.0)), 100, 100),
+            Some(3),
+            "2em under a 13px theme"
+        );
+
+        // No recorded base: the configured metrics apply verbatim.
+        let empty = StyleCx::empty();
+        assert_eq!(
+            dim_cells(&empty, Some(&Dimension::Rem(4.0)), 100, 100),
+            Some(8),
+            "4rem under the default metrics"
+        );
     }
 }

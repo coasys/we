@@ -224,6 +224,7 @@ pub fn widgets_ui(
         theme: "dark",
         viewport: we_style::Size::new(rect.width(), rect.height()),
         container_width: rect.width(),
+        metrics: we_metrics::UnitMetrics::default(),
         ..StyleCx::empty()
     };
     let lay = layout(&cx, &scx, &reg, tree, rect);

@@ -40,7 +40,9 @@ pub struct Tick {
     /// recorded — or the last resolve ran out of passes and left work
     /// over. `resolve` then `poll` again: the second tick is quiet.
     pub dirty: bool,
-    /// Live query events applied — `0` until the E3c-4/5a producers land.
+    /// Query events the drain applied — a source's between-frames
+    /// deliveries (E3c-4); events a frame's own `commit → drain` consumed
+    /// inside a resolve are not counted here.
     pub query_events: usize,
     /// Pending calls settled this drain — lifecycle ran, ignored and
     /// dropped alike.
@@ -204,7 +206,7 @@ impl Session {
     /// a different tree, plus what landed. Calling it with nothing
     /// pending is cheap and quiet — a quiet tick never woke anyone.
     pub fn poll(&mut self) -> Tick {
-        let (completions, binding_changes) = self
+        let (completions, query_events, binding_changes) = self
             .runtime
             .drain_inbox(self.host.as_mut(), &mut self.screen);
         let ops = self.runtime.take_ops();
@@ -214,7 +216,7 @@ impl Session {
         }
         Tick {
             dirty: self.runtime.dirty(&self.screen),
-            query_events: 0,
+            query_events,
             completions,
             binding_changes,
             screen_ops,

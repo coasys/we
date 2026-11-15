@@ -152,3 +152,47 @@ fn a_second_session_install_does_not_move_the_firsts_faces() {
     // …and still reads one's screen.
     assert!(route_href(&one).strict_eq(&Value::from("/one")));
 }
+
+/// The `where` each held claim of `s` carries for `field`.
+fn claimed(s: &Session, field: &str) -> Vec<serde_json::Value> {
+    s.runtime
+        .hub()
+        .cells()
+        .iter()
+        .map(|c| c.request.ir_json()["where"][field].clone())
+        .collect()
+}
+
+#[test]
+fn a_query_reading_screen_claims_for_its_own_sessions_route() {
+    // The E3c-4 hub compiles a claim's args through the runtime's roots;
+    // were they read from the shared bag, the last session's `screen`
+    // would answer for both and each would claim the other's route.
+    let spec = || RootSpec::Single {
+        node: Box::new(schema(json!({
+            "type": "Column",
+            "$queries": {
+                "rows": {
+                    "entity": "Post",
+                    "where": { "route": { "$": "screen.nav.href" } }
+                }
+            },
+            "children": []
+        }))),
+        cx: MountCx::explicit("test"),
+    };
+    let bag = Arc::new(StoreBag::new());
+    let mut one = Session::offline(spec(), bag.clone(), screen("/one"));
+    let mut two = Session::offline(spec(), bag.clone(), screen("/two"));
+    one.resolve();
+    two.resolve();
+    assert_eq!(claimed(&one, "route"), vec![json!("/one")]);
+    assert_eq!(claimed(&two, "route"), vec![json!("/two")]);
+
+    // One navigates: its claim follows, the other's stays.
+    one.apply_screen(navigate("/one/b"));
+    one.resolve();
+    two.resolve();
+    assert_eq!(claimed(&one, "route"), vec![json!("/one/b")]);
+    assert_eq!(claimed(&two, "route"), vec![json!("/two")]);
+}

@@ -30,8 +30,12 @@ pub fn project(layout: &Layout, proj: &CellProjection) -> HashMap<NodeId, CellRe
                 CellRect {
                     col: c0,
                     row: r0,
-                    cols: u16::try_from(c1.saturating_sub(c0)).unwrap_or(u16::MAX),
-                    rows: u16::try_from(r1.saturating_sub(r0)).unwrap_or(u16::MAX),
+                    // A snapped pair can come out reversed — an inverted
+                    // rect, a negative cell size, a NaN edge — and a span
+                    // past u16 is a painter's cap, not a wrap: clamp into
+                    // [0, u16::MAX] before converting, on both axes.
+                    cols: c1.saturating_sub(c0).clamp(0, i32::from(u16::MAX)) as u16,
+                    rows: r1.saturating_sub(r0).clamp(0, i32::from(u16::MAX)) as u16,
                 },
             )
         })

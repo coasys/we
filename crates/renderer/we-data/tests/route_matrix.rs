@@ -17,9 +17,7 @@ use we_data::{OfflineData, StoreMap};
 use we_expr::Value;
 use we_screen::{ScreenSchema, ScreenState};
 use we_session::Session;
-use we_template::{
-    AppSpec, Bundle, LocalState, QueryState, ResolvedChild, ResolvedNode, StaticHost,
-};
+use we_template::{AppSpec, Bundle, LocalState, ResolvedChild, ResolvedNode, SlotView, StaticHost};
 
 const BUNDLE: &str = include_str!(concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -94,46 +92,47 @@ fn row_names(rows: &[Value]) -> Vec<&str> {
         .collect()
 }
 
-/// `name → cell state` for every cell the resolve created — the pool's own
+/// `name → cell view` for every held claim the resolve made — the hub's own
 /// record of which `$queries` ran and how they were answered. Two cells
 /// answering to one local name (two declarations asking different questions)
 /// must agree: a name is not an identity, so one cell must not stand in for
 /// the other and hide a mismatch.
-fn cells(session: &Session) -> IndexMap<String, QueryState> {
-    let mut by_name: IndexMap<String, (String, QueryState)> = IndexMap::new();
-    for cell in session.runtime.pool().cells() {
-        let Some(name) = cell.first_name() else {
+fn cells(session: &Session) -> IndexMap<String, SlotView> {
+    let mut by_name: IndexMap<String, (String, SlotView)> = IndexMap::new();
+    for cell in session.runtime.hub().cells() {
+        let Some(name) = cell.request.name_hint.clone() else {
             continue;
         };
-        let state = cell.state();
+        let view = cell.view;
         match by_name.get(name.as_ref()) {
             Some((key, held)) => assert_eq!(
-                state_json(held),
-                state_json(&state),
+                view_json(held),
+                view_json(&view),
                 "query {name}: two cells disagree — {key} vs {}",
                 cell.key.as_str()
             ),
             None => {
-                by_name.insert(name.to_string(), (cell.key.as_str().to_string(), state));
+                by_name.insert(name.to_string(), (cell.key.as_str().to_string(), view));
             }
         }
     }
     by_name.into_iter().map(|(n, (_, s))| (n, s)).collect()
 }
 
-/// A cell state as comparable JSON — `null` while Loading.
-fn state_json(state: &QueryState) -> serde_json::Value {
-    match state {
-        QueryState::Loading => serde_json::Value::Null,
-        QueryState::Rows(rows) => rows.iter().map(Value::to_json).collect(),
+/// A cell view as comparable JSON — `null` while loading.
+fn view_json(view: &SlotView) -> serde_json::Value {
+    if view.loaded {
+        view.rows.iter().map(Value::to_json).collect()
+    } else {
+        serde_json::Value::Null
     }
 }
 
 /// The loaded rows of the named query — panics naming the query when it
 /// never loaded.
-fn rows<'a>(cells: &'a IndexMap<String, QueryState>, name: &str) -> &'a [Value] {
+fn rows<'a>(cells: &'a IndexMap<String, SlotView>, name: &str) -> &'a [Value] {
     match cells.get(name) {
-        Some(QueryState::Rows(rows)) => rows,
+        Some(view) if view.loaded => &view.rows,
         other => panic!("query {name}: expected loaded rows, got {other:?}"),
     }
 }
@@ -212,7 +211,7 @@ fn channels_leaves_the_unanswered_query_loading() {
     let (_text, session, _data) = text_on("/space/demo/channels");
     let cells = cells(&session);
     assert!(
-        matches!(cells.get("subChannels"), Some(QueryState::Loading)),
+        cells.get("subChannels").is_some_and(|v| !v.loaded),
         "subChannels is declared but the snapshot lacks it: {cells:?}"
     );
     // The queries the fixture does answer still load beside it.

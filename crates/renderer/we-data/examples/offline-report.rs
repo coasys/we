@@ -79,10 +79,9 @@ fn main() -> Result<(), String> {
         pages: bundle.pages.clone().unwrap_or_default(),
         boot: bundle.boot_screen.clone(),
     };
-    // The snapshot query source answers from the `queries` table once the
-    // pool's cells report their names — noted between resolves below.
+    // The snapshot query source answers from the `queries` table by each
+    // claim's `name_hint` — a `$queries` field name is the handle.
     let source = Arc::new(data.query_source());
-    let noted = source.clone();
     let mut session = Session::from_parts(
         Runtime::app(spec, data.bag.clone(), locals.clone()).with_sources(
             Some(source as Arc<dyn we_template::QuerySource>),
@@ -103,10 +102,8 @@ fn main() -> Result<(), String> {
             &args.route,
         ),
     );
-    session.resolve();
-    // First pass compiled the cells and learned nothing yet; teach the
-    // source their names and settle the rows they ask for.
-    noted.note_pool(session.runtime.pool());
+    // The commit → drain frame loop settles the named claims' rows in the
+    // resolve itself.
     session.resolve();
     // `$invoke` targets nothing answered — into the dropped count.
     data.provenance.absorb_dropped(std::mem::take(
