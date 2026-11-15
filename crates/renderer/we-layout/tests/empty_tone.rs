@@ -44,7 +44,7 @@ fn an_empty_tone_draws_the_neutral_badge() {
         ..StyleCx::empty()
     };
     let soft = ("variant", Value::from("soft"));
-    let untoned = style_of(&badge(&[soft.clone()]), &scx);
+    let untoned = style_of(&badge(std::slice::from_ref(&soft)), &scx);
     let empty = style_of(&badge(&[soft, ("tone", Value::from(""))]), &scx);
     assert_eq!(
         format!("{:?}", empty.paint.bg),
