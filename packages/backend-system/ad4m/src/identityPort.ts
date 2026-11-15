@@ -62,6 +62,11 @@ export interface Ad4mCustodyHost {
    * `false`, and the screens then offer neither.
    */
   takesWords?: boolean;
+  /**
+   * Whether the host runs the email check (`check-email`). Absent means it does, as the desktop
+   * custody service does; a phone says `false`, and Settings then does not offer it.
+   */
+  checksEmail?: boolean;
 }
 
 /** The custody service's public state, as it answers `publicState`. */
@@ -201,6 +206,7 @@ export function readIdentityStatus(value: unknown): IdentityStatusView {
     head: readHead(status.head),
     fork: readFork(status.fork),
     storeBehind: readStoreBehind(status.storeBehind),
+    vouched: status.vouched === true,
   };
 }
 
@@ -273,6 +279,7 @@ export function createAd4mIdentityPort(backendClient: unknown, custody?: Ad4mCus
         devices: true,
         masterKey: !!custody,
         recoveryWords: !!custody && custody.takesWords !== false,
+        emailCheck: !!custody && custody.checksEmail !== false,
         linkDevice: !!custody,
       };
     },

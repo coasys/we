@@ -17,12 +17,14 @@ import {
   isLast,
   migrationProgress,
   oneAtATime,
+  preparingNote,
   refusedField,
   remaining,
   type RevokeTarget,
   type Screen,
   spreadWords,
   targetLine,
+  vouchedLine,
   wordNumber,
 } from './screens';
 import screensSource from './screens.ts?raw';
@@ -360,7 +362,7 @@ describe('the identity window', () => {
     // runs over the next one.
     expect(css).toMatch(/\.word input \{[^}]*box-sizing: border-box;/);
     expect(css).toMatch(
-      /input\[type='text'\],\s*input\[type='password'\],\s*input\[type='url'\],\s*input\[type='number'\] \{[^}]*box-sizing: border-box;/,
+      /input\[type='text'\],\s*input\[type='password'\],\s*input\[type='url'\],\s*input\[type='number'\],\s*input\[type='email'\] \{[^}]*box-sizing: border-box;/,
     );
   });
 
@@ -370,7 +372,7 @@ describe('the identity window', () => {
         .map((m) => m[1])
         .filter((kind) => kind !== 'button' && kind !== 'checkbox'),
     );
-    expect([...kinds].sort()).toEqual(['number', 'password', 'text', 'url']);
+    expect([...kinds].sort()).toEqual(['email', 'number', 'password', 'text', 'url']);
     for (const kind of kinds)
       expect(css).toMatch(new RegExp(`input\\[type='${kind}'\\][,\\s][^{]*\\{[^}]*background: var\\(--sunken\\)`));
   });
@@ -405,7 +407,7 @@ describe('the identity window', () => {
   });
 
   it('ends on the screens that end a step', () => {
-    expect(isLast({ screen: 'identity-ready', did: 'did:scid:coasys:1:Qm', keyId: 'd1' })).toBe(true);
+    expect(isLast({ screen: 'identity-ready', did: 'did:scid:coasys:1:Qm', keyId: 'd1', vouched: false })).toBe(true);
     expect(isLast({ screen: 'revoked', keyId: 'd2', seq: 2 })).toBe(true);
     expect(isLast({ screen: 'show-words', words: [] })).toBe(false);
     expect(isLast({ screen: 'offer', link: '', qrSvg: '', expires: 0 })).toBe(false);
@@ -439,6 +441,69 @@ describe('the identity window', () => {
     ]) {
       expect(isLast(waiting), waiting.screen).toBe(false);
     }
+  });
+
+  it('waits while the identity is made, with a bar, the time so far and no Cancel', () => {
+    const preparing: Screen = { screen: 'preparing', bits: 22 };
+    expect(heading(preparing).title).toBe('Preparing your identity');
+    expect(heading(preparing).lead).toContain('publishes your identity');
+    // The window asks for the screen that follows: preparing is never a last screen.
+    expect(isLast(preparing)).toBe(false);
+    expect(preparingNote(0)).toBe('Working for 0:00 · Closing this window does not stop it.');
+    expect(preparingNote(65.7)).toBe('Working for 1:05 · Closing this window does not stop it.');
+    expect(preparingNote(-3)).toBe('Working for 0:00 · Closing this window does not stop it.');
+
+    const drawn = windowSource.slice(windowSource.indexOf("case 'preparing'"));
+    const body = drawn.slice(0, drawn.indexOf('case ', 10));
+    expect(body).toContain("waitFor({ kind: 'wait-created' })");
+    expect(body).toContain("el('progress')");
+    // The timer is the one `draw` clears, so it stops with the screen.
+    expect(body).toContain('offerTimer = window.setInterval(tick, 1000)');
+    expect(body).not.toContain('cancel');
+  });
+
+  it('says whether the new identity has its email checked', () => {
+    const ready = { screen: 'identity-ready' as const, did: 'did:scid:coasys:1:Qm', keyId: 'd1' };
+    expect(heading({ ...ready, vouched: false }).title).toBe('Your identity exists now');
+    expect(vouchedLine(false)).toBe('Email not checked. You can check it later in Settings → Security.');
+    expect(vouchedLine(true)).toContain('Email checked');
+    const drawn = windowSource.slice(windowSource.indexOf("case 'identity-ready'"));
+    expect(drawn.slice(0, drawn.indexOf('case ', 10))).toContain('vouchedLine(screen.vouched)');
+  });
+
+  it('checks an email in three screens: the address, the code sent to it, and the check done', () => {
+    const address: Screen = { screen: 'enter-email', error: null };
+    expect(heading(address).title).toBe('Check your email');
+    expect(heading(address).lead).toContain('We send a code to it');
+    const code: Screen = { screen: 'enter-email-code', email: 'ada@example.org', error: null };
+    expect(heading(code).title).toBe('Enter the code we sent to ada@example.org');
+    expect(heading(code).lead).toContain('6 digits');
+    const checked: Screen = { screen: 'email-checked', did: 'did:scid:coasys:1:Qm' };
+    expect(heading(checked).title).toBe('Your email is checked');
+    // The address and the code are asked again as often as it takes; only the check done ends it.
+    expect(isLast(address)).toBe(false);
+    expect(isLast(code)).toBe(false);
+    expect(isLast(checked)).toBe(true);
+  });
+
+  it('sends the address and the code, offers a new code and another address, and lets the person skip', () => {
+    const at = (name: string) => {
+      const from = windowSource.slice(windowSource.indexOf(`case '${name}'`));
+      return from.slice(0, from.indexOf('case ', 10));
+    };
+    const address = at('enter-email');
+    expect(address).toContain("step({ kind: 'email', email: email.input.value.trim() })");
+    expect(address).toContain("button('Not now', cancel)");
+    const code = at('enter-email-code');
+    expect(code).toContain("step({ kind: 'email-code', code: code.input.value.trim() }, [code.input])");
+    expect(code).toContain("step({ kind: 'new-code' }");
+    expect(code).toContain("step({ kind: 'change-email' }");
+    expect(code).toContain("button('Not now', cancel)");
+    // A refusal's words, from the custody service, show under the field.
+    for (const body of [address, code]) expect(body).toContain('errorLine(screen.error)');
+    expect(
+      heading({ screen: 'enter-email-code', email: 'a@b.c', error: 'That code is wrong. 4 tries left.' }).title,
+    ).toBe('Enter the code we sent to a@b.c');
   });
 
   it('adds a bot in four screens: its scope, the offer to paste, the match code, and what is next', () => {

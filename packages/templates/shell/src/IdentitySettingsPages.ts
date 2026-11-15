@@ -268,6 +268,54 @@ export const makeIdentityCard: SchemaNode = {
   },
 };
 
+/**
+ * The email check, offered while the identity has no vouch note. Nothing is refused without one, so
+ * the card only offers it; the address and the code are typed in the identity window, never here.
+ */
+export const checkEmailCard: SchemaNode = {
+  type: '$if',
+  props: {
+    condition: { $: 'identityStore.canCheckEmail' },
+    then: {
+      type: 'Card',
+      props: { bg: 'surface', gap: '300' },
+      children: [
+        {
+          type: 'Row',
+          props: { gap: '300', ay: 'center' },
+          children: [
+            { type: 'we-icon', props: { name: 'envelope-simple', color: 'accent-text' } },
+            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Check your email'] },
+          ],
+        },
+        {
+          type: 'we-text',
+          props: { variant: 'body', color: 'text-muted' },
+          children: [
+            'We send a code to your email address. When you type it in, the identity store records that a person made this identity.',
+          ],
+        },
+        {
+          type: 'Row',
+          children: [
+            {
+              type: 'we-button',
+              props: {
+                variant: 'soft',
+                size: 'sm',
+                loading: { $: 'identityStore.busy' },
+                disabled: { $: 'identityStore.busy' },
+                onClick: { $invoke: 'identityStore.checkEmail' },
+              },
+              children: ['Check my email'],
+            },
+          ],
+        },
+      ],
+    },
+  },
+};
+
 // ─── Devices ────────────────────────────────────────────────────────────────────
 
 const deviceRow: SchemaNode = listRow(
