@@ -518,9 +518,13 @@ pub enum StepInput {
     /// `Failed`).
     WaitCreated,
     /// On `EnterEmail`: the address to send a code to.
-    Email { email: String },
+    Email {
+        email: String,
+    },
     /// On `EnterEmailCode`: the code from the email.
-    EmailCode { code: String },
+    EmailCode {
+        code: String,
+    },
     /// On `EnterEmailCode`: send a new code to the same address.
     NewCode,
     /// On `EnterEmailCode`: go back to `EnterEmail`, to type another address.
@@ -1635,7 +1639,10 @@ async fn identity_ready<R: ExecutorRpc>(executor: &ViaExecutor<R>, created: Crea
     let vouched = match executor.status().await {
         Ok(status) => status.vouched,
         Err(e) => {
-            log::warn!("custody: whether the new identity is vouched is not known: {}", e.message);
+            log::warn!(
+                "custody: whether the new identity is vouched is not known: {}",
+                e.message
+            );
             false
         }
     };
@@ -4533,7 +4540,9 @@ async fn check_email_on<R: ExecutorRpc>(
                         reply,
                         Ok(Screen::EnterEmailCode {
                             email,
-                            error: Some("The code has 6 digits. Check the email and try again.".into()),
+                            error: Some(
+                                "The code has 6 digits. Check the email and try again.".into(),
+                            ),
                         }),
                     );
                     continue;
@@ -4572,7 +4581,8 @@ async fn check_email_on<R: ExecutorRpc>(
                             refused(message)
                         }
                     },
-                    Err(PlatformError::WrongCode { tries_left: 0 }) | Err(PlatformError::TooManyTries) => {
+                    Err(PlatformError::WrongCode { tries_left: 0 })
+                    | Err(PlatformError::TooManyTries) => {
                         refused("Too many wrong codes. Send a new code.".into())
                     }
                     Err(PlatformError::WrongCode { tries_left: 1 }) => {
@@ -5169,7 +5179,10 @@ mod tests {
         let checked = Screen::EmailChecked {
             did: "did:scid:coasys:1:Qm".into(),
         };
-        assert_eq!(serde_json::to_value(&checked).unwrap()["screen"], "email-checked");
+        assert_eq!(
+            serde_json::to_value(&checked).unwrap()["screen"],
+            "email-checked"
+        );
         assert_eq!(checked.outcome(), Some(StepOutcome::Done));
         assert_eq!(Screen::Preparing { bits: 22 }.outcome(), None);
         for (text, name) in [
@@ -5237,7 +5250,9 @@ mod tests {
     #[tokio::test]
     async fn a_refused_proof_is_finished_with_a_new_one_on_the_next_try() {
         let executor = ViaExecutor::new(FakeExecutor::new());
-        executor.rpc().refuse("identity.publish", 403, "forbidden: \"pow\"");
+        executor
+            .rpc()
+            .refuse("identity.publish", 403, "forbidden: \"pow\"");
         let vault = memory_vault(crate::store::StoreKind::File);
         let screens = run_create_on(&executor, &vault, |window, first| async move {
             vec![write_down(&window, first).await]
@@ -5246,13 +5261,18 @@ mod tests {
         let Screen::Failed { message } = &screens[0] else {
             panic!("{screens:?}");
         };
-        assert!(message.contains("did not accept the proof of work"), "{message}");
-        assert!(message.contains("the same identity will be finished"), "{message}");
+        assert!(
+            message.contains("did not accept the proof of work"),
+            "{message}"
+        );
+        assert!(
+            message.contains("the same identity will be finished"),
+            "{message}"
+        );
         assert_eq!(vault.pending_incepts().unwrap().len(), 1);
 
         executor.rpc().refusals.borrow_mut().clear();
-        let screens =
-            run_create_on(&executor, &vault, |_, first| async move { vec![first] }).await;
+        let screens = run_create_on(&executor, &vault, |_, first| async move { vec![first] }).await;
         assert!(
             matches!(&screens[0], Screen::IdentityReady { vouched: false, .. }),
             "{screens:?}"
@@ -5270,7 +5290,10 @@ mod tests {
             let preparing = to_the_passphrase(&window, first).await;
             let (tx, rx) = oneshot::channel();
             window.tx.send(Request::Cancel(tx)).unwrap();
-            let shown = rx.await.unwrap().expect("the cancel answers the screen to show");
+            let shown = rx
+                .await
+                .unwrap()
+                .expect("the cancel answers the screen to show");
             vec![preparing, shown]
         })
         .await;
@@ -5372,9 +5395,7 @@ mod tests {
 
     fn code_error(screen: &Screen) -> Option<&str> {
         match screen {
-            Screen::EnterEmailCode { error, .. } | Screen::EnterEmail { error } => {
-                error.as_deref()
-            }
+            Screen::EnterEmailCode { error, .. } | Screen::EnterEmail { error } => error.as_deref(),
             _ => None,
         }
     }
@@ -5498,9 +5519,13 @@ mod tests {
                 None,
             ]
         );
-        assert!(matches!(&screens[3], Screen::EnterEmailCode { email, .. } if email == "a@example.org"));
+        assert!(
+            matches!(&screens[3], Screen::EnterEmailCode { email, .. } if email == "a@example.org")
+        );
         assert!(matches!(screens[5], Screen::EnterEmail { .. }));
-        assert!(matches!(&screens[6], Screen::EnterEmailCode { email, .. } if email == "b@example.org"));
+        assert!(
+            matches!(&screens[6], Screen::EnterEmailCode { email, .. } if email == "b@example.org")
+        );
         assert_eq!(screens[7], Screen::EnterEmail { error: None });
         assert_eq!(taken.lock().unwrap().len(), 8);
         assert!(executor.rpc().called("identity.attachNote").is_empty());
@@ -5515,7 +5540,11 @@ mod tests {
                 "forbidden: \"vouch\"",
                 Some("That code cannot be used now. Send a new code."),
             ),
-            (503, "unavailable: no vouching service answers", Some(CHECKS_UNAVAILABLE)),
+            (
+                503,
+                "unavailable: no vouching service answers",
+                Some(CHECKS_UNAVAILABLE),
+            ),
             (400, "invalid: a bad token", None),
         ] {
             let executor = linked_executor();
@@ -5540,7 +5569,10 @@ mod tests {
                 ]
             })
             .await;
-            let Screen::EnterEmailCode { error: Some(error), .. } = &screens[0] else {
+            let Screen::EnterEmailCode {
+                error: Some(error), ..
+            } = &screens[0]
+            else {
                 panic!("{screens:?}");
             };
             match expected {
@@ -5653,7 +5685,16 @@ mod tests {
         for good in ["a@example.org", "first.last+tag@mail.example.co.uk"] {
             assert_eq!(email_problem(good), None, "{good}");
         }
-        for bad in ["", "a", "a@", "@example.org", "a@example", "a b@example.org", "a@@example.org", "a@example..org"] {
+        for bad in [
+            "",
+            "a",
+            "a@",
+            "@example.org",
+            "a@example",
+            "a b@example.org",
+            "a@@example.org",
+            "a@example..org",
+        ] {
             assert!(email_problem(bad).is_some(), "{bad}");
         }
         assert_eq!(email_code(" 123-456 ").as_deref(), Some("123456"));
