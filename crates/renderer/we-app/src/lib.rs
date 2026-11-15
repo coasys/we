@@ -94,10 +94,15 @@ impl RendererApp {
         install_media(ui.ctx());
         // The theme's polarity drives egui's visuals so untoned spots
         // (scrollbars, unknown boxes) sit right on a dark theme.
-        ui.ctx().set_visuals(match self.theme.polarity {
+        let mut visuals = match self.theme.polarity {
             we_style::Polarity::Dark => egui::Visuals::dark(),
             we_style::Polarity::Light => egui::Visuals::light(),
-        });
+        };
+        // Text nothing colours is the body colour the web declares where a
+        // theme applies (`BODY_TYPE`, 2-themes/themeStyles.ts) — not egui's
+        // grey. Every uncoloured fallback reads it through the visuals.
+        visuals.override_text_color = body_text_color(&self.theme.tokens);
+        ui.ctx().set_visuals(visuals);
 
         let resolved = self.session.resolve();
         let stats = self.session.stats().clone();
@@ -234,4 +239,17 @@ impl Shell {
             });
         });
     }
+}
+
+/// `color: var(--we-type-body-color, var(--we-role-text))` against the
+/// theme's tokens — `None` on a theme that records neither.
+fn body_text_color(tokens: &we_style::TokenTable) -> Option<egui::Color32> {
+    let css = tokens.substitute_nested("var(--we-type-body-color, var(--we-role-text))");
+    let [r, g, b, a] = we_style::eval_color(&css)?.to_premultiplied();
+    Some(egui::Color32::from_rgba_premultiplied(
+        (r * 255.0) as u8,
+        (g * 255.0) as u8,
+        (b * 255.0) as u8,
+        (a * 255.0) as u8,
+    ))
 }
