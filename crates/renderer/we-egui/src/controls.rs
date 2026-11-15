@@ -82,14 +82,21 @@ impl Widget for Button {
                 Some("sm") => 8.0,
                 _ => 12.0,
             };
+            // The row fills the button and justifies by the button's `ax`:
+            // on the web the slot is `display: contents`, so a `width: 100%`
+            // card resolves against `[part=base]`, the button's own box.
             vec![PartSpec::group("content", Pick::Default, Direction::Row)
                 .aligned(we_style::ItemAlign::Center)
+                .justified(we_style::ItemAlign::Auto)
+                .growing(1.0)
                 .gapped(gap)]
         } else {
             vec![]
         };
+        // `[part=base]` is a row: `ax` justifies along it, `ay` centres
+        // across it.
         Some(PartsSpec {
-            direction: Direction::Column,
+            direction: Direction::Row,
             parts,
         })
     }

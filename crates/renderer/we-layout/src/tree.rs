@@ -60,6 +60,10 @@ pub struct PartSpec {
     pub indent: f32,
     /// Align-items override for a part (e.g. `ay` on the tree row).
     pub align: Option<ItemAlign>,
+    /// Justify-content override for a part. `Auto` takes the owner's own
+    /// `ax`: the button's content row stands in for `[part=base]`, the
+    /// flex container the web's `display: contents` slot puts children in.
+    pub justify: Option<ItemAlign>,
     /// `flex-grow` along the part's main axis — the alert's content part
     /// fills what the icon leaves, so a trailing part docks at the far edge.
     pub flex_grow: f32,
@@ -85,6 +89,7 @@ impl PartSpec {
             min_height: 0.0,
             indent: 0.0,
             align: None,
+            justify: None,
             flex_grow: 0.0,
             column_gap: 0.0,
             row_gap: 0.0,
@@ -104,6 +109,7 @@ impl PartSpec {
             min_height: 0.0,
             indent: 0.0,
             align: None,
+            justify: None,
             flex_grow: 0.0,
             column_gap: 0.0,
             row_gap: 0.0,
@@ -123,6 +129,7 @@ impl PartSpec {
             min_height: 0.0,
             indent: 0.0,
             align: None,
+            justify: None,
             flex_grow: 0.0,
             column_gap: 0.0,
             row_gap: 0.0,
@@ -146,6 +153,12 @@ impl PartSpec {
     /// Cross-axis alignment for the part's children.
     pub fn aligned(mut self, align: ItemAlign) -> Self {
         self.align = Some(align);
+        self
+    }
+
+    /// Main-axis alignment for the part's children (`Auto`: the owner's).
+    pub fn justified(mut self, justify: ItemAlign) -> Self {
+        self.justify = Some(justify);
         self
     }
 
@@ -974,7 +987,7 @@ fn border_lp(side: &Option<we_style::BorderSide>, scx: &StyleCx) -> LengthPercen
 }
 
 /// A part spec → taffy style.
-fn part_style(spec: &PartSpec) -> taffy::Style {
+fn part_style(spec: &PartSpec, host: &Style) -> taffy::Style {
     taffy::Style {
         display: Display::Flex,
         flex_direction: match spec.direction {
@@ -986,6 +999,11 @@ fn part_style(spec: &PartSpec) -> taffy::Style {
             .as_ref()
             .and_then(|a| align(Some(a)))
             .unwrap_or(AlignItems::NORMAL),
+        justify_content: match &spec.justify {
+            Some(ItemAlign::Auto) => justify(host.layout.justify.as_ref()),
+            j => justify(j.as_ref()),
+        }
+        .unwrap_or(JustifyContent::NORMAL),
         size: taffy::Size {
             width: spec
                 .width
@@ -1659,13 +1677,13 @@ impl<'a> Builder<'a> {
         if kids.is_empty() {
             Some(
                 self.tree
-                    .new_leaf_with_context(part_style(spec), ctx)
+                    .new_leaf_with_context(part_style(spec, eff), ctx)
                     .unwrap(),
             )
         } else {
             let id = self
                 .tree
-                .new_with_children(part_style(spec), &kids)
+                .new_with_children(part_style(spec, eff), &kids)
                 .unwrap();
             self.tree.set_node_context(id, Some(ctx)).unwrap();
             Some(id)

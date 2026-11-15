@@ -95,7 +95,9 @@ fn entries(bag: &mut Bag, pairs: &[(&str, &str)]) {
 
 /// The component's flex direction for `resolve()`'s axis mapping: `Row`'s is
 /// `row`; `Card`/`Grid`/`div`/`we-link` take their `direction` prop (default
-/// `column`); everything else is `column`.
+/// `column`); `we-button` maps on `row`, as the primitives' `mapFlexAxes(props,
+/// props.direction ?? 'row')` does (its `[part=base]` is a row); everything
+/// else is `column`.
 pub fn direction_of(node: &ResolvedNode) -> we_style::Direction {
     match prop_str(node, "direction") {
         Some("row" | "row-reverse") => return we_style::Direction::Row,
@@ -103,7 +105,7 @@ pub fn direction_of(node: &ResolvedNode) -> we_style::Direction {
         _ => {}
     }
     match node.ty.as_ref() {
-        "Row" => we_style::Direction::Row,
+        "Row" | "we-button" => we_style::Direction::Row,
         _ => we_style::Direction::Column,
     }
 }
