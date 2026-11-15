@@ -149,6 +149,7 @@ impl Widget for Input {
                 std::borrow::Cow::Owned(out)
             }
         };
+        let chrome_style = cx.disabled_opacity(style, chrome_style, disabled);
         cx.report_state(&chrome_style);
         let style: &Style = &chrome_style;
 

@@ -237,6 +237,7 @@ fn painted_fills(root: &ResolvedNode, pointer: Option<egui::Pos2>) -> Vec<egui::
     entries.insert(Arc::from("--we-role-border"), Arc::from("#333333"));
     entries.insert(Arc::from("--we-role-border-hover"), Arc::from("#444444"));
     entries.insert(Arc::from("--we-component-height-md"), Arc::from("40px"));
+    entries.insert(Arc::from("--we-theme-disabled-opacity"), Arc::from("0.4"));
     let table = TokenTable::new(entries);
     let out = RefCell::new(Vec::new());
     let mut harness = egui_kittest::Harness::builder()
@@ -316,14 +317,40 @@ fn a_disabled_field_takes_its_disabled_state() {
         ],
     );
     let fills = painted_fills(&input, Some(egui::pos2(100.0, 20.0)));
+    // Its `bg`, at the theme's disabled opacity (`:host([disabled])`).
     assert!(
-        fills.contains(&egui::Color32::from_rgb(0xff, 0, 0)),
+        fills.contains(&egui::Color32::from_rgb(0xff, 0, 0).gamma_multiply(0.4)),
         "fills {fills:?}"
     );
     assert!(
         !fills.contains(&egui::Color32::from_rgb(0x22, 0x22, 0x22)),
         "fills {fills:?}"
     );
+}
+
+/// R2-1: a disabled field with no `disabledProps` still dims to the theme's
+/// `--we-theme-disabled-opacity` (shared/styles.ts `:host([disabled])`),
+/// and an authored `disabledProps.opacity` wins over it.
+#[test]
+fn a_disabled_field_takes_the_themes_disabled_opacity() {
+    let input = node("we-input", "input", &[("disabled", Value::Bool(true))]);
+    let fills = painted_fills(&input, None);
+    let rest = egui::Color32::from_rgb(0x11, 0x11, 0x11);
+    assert!(fills.contains(&rest.gamma_multiply(0.4)), "fills {fills:?}");
+    assert!(!fills.contains(&rest), "fills {fills:?}");
+
+    let mut bag = IndexMap::new();
+    bag.insert(Arc::<str>::from("opacity"), Value::from(0.8));
+    let authored = node(
+        "we-input",
+        "input",
+        &[
+            ("disabled", Value::Bool(true)),
+            ("disabledProps", Value::from(bag)),
+        ],
+    );
+    let fills = painted_fills(&authored, None);
+    assert!(fills.contains(&rest.gamma_multiply(0.8)), "fills {fills:?}");
 }
 
 /// The size the placeholder's glyphs are set at.

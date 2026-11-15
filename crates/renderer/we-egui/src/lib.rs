@@ -106,6 +106,10 @@ impl<'a> MeasureCx<'a> {
 ///   activated and which were dead surface. An overlay reads it to learn
 ///   that the DOM equivalent of "the trigger element got a click"
 ///   happened — a keyboard fake-click on a child button included.
+/// `DISABLED_OPACITY`'s fallback (1-tokens/states.ts): a theme without
+/// `--we-theme-disabled-opacity` dims a disabled primitive to half.
+const DISABLED_OPACITY: f32 = 0.5;
+
 pub struct PaintCx<'a> {
     pub ui: &'a mut egui::Ui,
     pub parts: &'a Parts,
@@ -255,7 +259,37 @@ impl<'a> PaintCx<'a> {
         disabled: bool,
     ) -> std::borrow::Cow<'s, we_style::Style> {
         let eff = crate::props::state_style(style, response, disabled);
+        let eff = self.disabled_opacity(style, eff, disabled);
         self.report_state(&eff);
+        eff
+    }
+
+    /// shared/styles.ts `:host([disabled])`: one disabled state for every
+    /// primitive, at `DISABLED_OPACITY` — the theme's
+    /// `--we-theme-disabled-opacity`, 0.5 without one — folded into the
+    /// state-resolved `eff`. An authored `disabledProps.opacity` comes later
+    /// in the cascade and wins. Every widget's state goes through here, so
+    /// no widget dims itself.
+    pub(crate) fn disabled_opacity<'s>(
+        &self,
+        style: &we_style::Style,
+        mut eff: std::borrow::Cow<'s, we_style::Style>,
+        disabled: bool,
+    ) -> std::borrow::Cow<'s, we_style::Style> {
+        let authored = style
+            .disabled
+            .as_deref()
+            .is_some_and(|p| p.paint.opacity.is_some());
+        if disabled && !authored {
+            let theme = crate::defaults::tokens_of(self.ui.ctx())
+                .and_then(|t| {
+                    t.get("--we-theme-disabled-opacity")
+                        .and_then(|raw| t.substitute(raw).trim().parse::<f32>().ok())
+                })
+                .unwrap_or(DISABLED_OPACITY);
+            let o = eff.paint.opacity.unwrap_or(1.0) * theme.clamp(0.0, 1.0);
+            eff.to_mut().paint.opacity = Some(o);
+        }
         eff
     }
 
