@@ -199,6 +199,7 @@ fn session_for(truth: &Json, id: &str) -> Session {
     let bag = Arc::new(StoreBag::from_snapshot(truth).expect("snapshot stores load"));
     let bundle = Bundle::parse(BUNDLE).expect("bundle parses");
     let spec = AppSpec {
+        bundle: bundle.name.clone().into(),
         app: bundle.app.clone(),
         template: bundle.templates.as_deref().and_then(|t| t.first()).cloned(),
         pages: bundle.pages.clone().unwrap_or_default(),
