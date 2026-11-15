@@ -26,6 +26,7 @@ use crate::inbox::{Arrival, Inbox};
 use crate::query::{QueryEvent, QueryHub, QueryRequest, QuerySink, QuerySource, SubTicket};
 use crate::resolve::{self, NoParts, PartSource};
 use crate::resolved::{HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope};
+use crate::surface::{SurfaceKey, SurfaceTable, SurfaceTag};
 use crate::{
     bind_screen, BundleTemplate, CallId, Host, Invoked, LocalState, ResolveCx, SchemaNode, StoreBag,
 };
@@ -50,6 +51,10 @@ pub struct Stats {
     pub completions_ignored: u64,
     /// Completions whose node had left the tree — nothing ran.
     pub completions_dropped: u64,
+    /// Live surface entries — the last frame's claim set (E3c-13).
+    pub surfaces: usize,
+    /// Surface reports dropped — a dead key or a stale generation.
+    pub surfaces_dropped: u64,
 }
 
 /// How many dead calls the runtime remembers at once (the `orphaned`
@@ -154,6 +159,10 @@ pub struct Runtime {
     /// The subscription hub — query sites claim each pass; `commit` opens
     /// and closes at the source.
     hub: QueryHub,
+    /// The surface table (E3c-13) — mount roots and `$surface` nodes claim
+    /// each pass; a frame's commit prunes the rest, and frontend reports
+    /// land through the inbox on the generation they quote.
+    surfaces: SurfaceTable,
     /// `QuerySource` — E6/E7 answer real subscriptions; the default is the
     /// snapshot's `queries` table, answering named requests by `name_hint`.
     source: Arc<dyn QuerySource>,
@@ -182,10 +191,10 @@ pub struct Runtime {
     ready: Box<dyn Fn(&StoreBag) -> bool>,
     cache: ParseCache,
     resolved: Option<Arc<ResolvedNode>>,
-    /// (screen, data, local, pool) the last resolve recorded — the data
-    /// entry as read *before* its first pass, so a write mid-resolve
-    /// leaves the source ahead and the next `poll` dirty.
-    last: Option<(u64, u64, u64, u64)>,
+    /// (screen, data, local, pool, surfaces) the last resolve recorded —
+    /// the data entry as read *before* its first pass, so a write
+    /// mid-resolve leaves the source ahead and the next `poll` dirty.
+    last: Option<(u64, u64, u64, u64, u64)>,
     /// The screen version `bind_screen` last mounted into the bag.
     bound_screen: Option<u64>,
     live: HashSet<NodeId>,
@@ -252,6 +261,7 @@ impl Runtime {
             locals,
             dollar_type: Arc::new(|_| false),
             hub: QueryHub::new(inbox.clone(), handles.clone()),
+            surfaces: SurfaceTable::default(),
             source,
             parts: Arc::new(NoParts),
             pending: HashMap::new(),
@@ -356,8 +366,8 @@ impl Runtime {
         &self.inbox
     }
 
-    /// Would `frame` re-resolve: the `(screen, data, local, hub)` tuple
-    /// is not what the last resolve recorded. An exhausted pass budget
+    /// Would `frame` re-resolve: the `(screen, data, local, hub, surfaces)`
+    /// tuple is not what the last resolve recorded. An exhausted pass budget
     /// is covered too — `frame` bumps the hub revision past what `last`
     /// recorded, so the mismatch reports itself here. `Session::poll`
     /// reports this as `Tick::dirty` — "a `resolve` now would produce a
@@ -370,6 +380,7 @@ impl Runtime {
                 self.bag.version(),
                 self.locals.version(),
                 self.hub.revision(),
+                self.surfaces.revision(),
             ))
     }
 
@@ -539,6 +550,7 @@ impl Runtime {
             self.bag.version(),
             self.locals.version(),
             self.hub.revision(),
+            self.surfaces.revision(),
         );
         if self.resolved.is_none() || self.last != Some(current) {
             let started = Instant::now();
@@ -562,6 +574,7 @@ impl Runtime {
                 // Claims a panicked pass recorded are dropped — a site
                 // that does not claim again does not keep a stale claim.
                 self.hub.begin_pass();
+                self.surfaces.begin_pass();
                 let mut round_live = HashSet::new();
                 let mut round_parents = HashMap::new();
                 warnings.clear();
@@ -584,6 +597,7 @@ impl Runtime {
                         cache: &mut self.cache,
                         screen,
                         hub: &mut self.hub,
+                        surfaces: &mut self.surfaces,
                         mount: &mount.cx,
                         handles: &self.handles,
                         parts: self.parts.as_ref(),
@@ -634,6 +648,13 @@ impl Runtime {
                     break;
                 }
             }
+            // The last pass's surface claims are the live set — a key whose
+            // node left the tree drops here, taking any measure it held
+            // (a stale-generation report already fails at apply, the way a
+            // closed ticket's event does). Pruning moves no revision.
+            self.surfaces.commit();
+            self.stats.surfaces = self.surfaces.len();
+            self.stats.surfaces_dropped = self.surfaces.dropped;
             self.ops.extend(ops);
             self.stats.parse_errors = warnings
                 .iter()
@@ -682,6 +703,7 @@ impl Runtime {
                     handlers: IndexMap::new(),
                     slot: None,
                     children,
+                    surfaces: smallvec::SmallVec::new(),
                     transition: None,
                 },
             };
@@ -712,6 +734,7 @@ impl Runtime {
                 // already reflected in this tree.
                 self.locals.version(),
                 self.hub.revision(),
+                self.surfaces.revision(),
             ));
             // Every pass moved a cell — a deeper dependency chain may
             // still be climbing. Bump the hub past what `last` recorded
@@ -775,16 +798,20 @@ impl Runtime {
     /// a `Query` event lands on its ticket's cell — `Tick::query_events`
     /// counts the ones a cell visibly changed for; a `Bindings` arrival
     /// only counts — the source's revision is the truth and
-    /// [`Self::dirty`] re-reads it. Answers `(completions, query events,
-    /// binding invalidations)` for `Tick`.
+    /// [`Self::dirty`] re-reads it; a `Surface` report applies against the
+    /// generation it quotes — a live generation's record moving is the
+    /// dirty input, a stale one just counts `surfaces_dropped`. Answers
+    /// `(completions, query events, binding invalidations, surface
+    /// reports)` for `Tick`.
     pub fn drain_inbox(
         &mut self,
         host: &mut dyn Host,
         screen: &mut ScreenState,
-    ) -> (usize, usize, usize) {
+    ) -> (usize, usize, usize, usize) {
         let mut completions = 0usize;
         let mut queries = 0usize;
         let mut bindings = 0usize;
+        let mut surfaces = 0usize;
         for arrival in self.inbox.drain() {
             match arrival {
                 Arrival::Completion { call, result } => {
@@ -795,9 +822,38 @@ impl Runtime {
                     queries += self.hub.deliver(ticket, event) as usize;
                 }
                 Arrival::Bindings => bindings += 1,
+                Arrival::Surface { tag, width } => {
+                    surfaces += 1;
+                    if !self.surfaces.report(&tag, width) {
+                        self.stats.surfaces_dropped = self.surfaces.dropped;
+                    }
+                }
             }
         }
-        (completions, queries, bindings)
+        (completions, queries, bindings, surfaces)
+    }
+
+    /// A frontend's content-box measure for `tag` — pushed to the inbox,
+    /// so it wakes the frontend's hook exactly like a completion or a
+    /// query delivery would. The drain applies it if `tag`'s generation
+    /// is still live; `Session::report_surface` forwards here.
+    pub fn report_surface(&mut self, tag: &SurfaceTag, width: f32) {
+        self.inbox.push(Arrival::Surface {
+            tag: tag.clone(),
+            width,
+        });
+    }
+
+    /// A live surface's `{width, tier}` — `None` when `key` is dead
+    /// (unmounted or never claimed).
+    pub fn surface_measure(&self, key: &SurfaceKey) -> Option<(f32, we_metrics::SizeTier)> {
+        self.surfaces.measure(key)
+    }
+
+    /// The surface table's revision — the [`Self::dirty`] input. Moves
+    /// only when a live surface's record does; pruning is quiet.
+    pub fn surface_revision(&self) -> u64 {
+        self.surfaces.revision()
     }
 
     /// Settle a pending `$invoke` (`Host::act` answered `Pending` for the
@@ -941,6 +997,7 @@ fn content_viewport(app: Option<&BundleTemplate>, children: Vec<ResolvedChild>) 
         handlers: IndexMap::new(),
         slot: None,
         children,
+        surfaces: smallvec::SmallVec::new(),
         transition: None,
     }
 }

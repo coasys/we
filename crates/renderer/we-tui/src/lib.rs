@@ -111,6 +111,10 @@ pub struct TuiApp {
     content_height: u16,
     /// The last frame's content window height — PageUp/Down's step.
     view_height: u16,
+    /// What each surface tag was last reported at (E3c-13) — the same
+    /// `set` guard the egui walk uses: an unmoved measure does not
+    /// re-report, so a steady frame never wakes the session.
+    surface_sent: HashMap<we_template::SurfaceTag, f32>,
 }
 
 impl TuiApp {
@@ -130,6 +134,7 @@ impl TuiApp {
             revealed: None,
             content_height: 0,
             view_height: 0,
+            surface_sent: HashMap::new(),
         }
     }
 
@@ -170,6 +175,16 @@ impl TuiApp {
         );
         self.content_height = frame.content_height;
         self.view_height = view_h;
+        // E3c-13: the frame's surface measures ride the session's inbox —
+        // they land on the next `resolve`'s drain like any producer.
+        self.surface_sent
+            .retain(|tag, _| frame.surface_reports.iter().any(|(t, _)| t == tag));
+        for (tag, width) in &frame.surface_reports {
+            if self.surface_sent.get(tag) != Some(width) {
+                self.surface_sent.insert(tag.clone(), *width);
+                self.session.report_surface(tag, *width);
+            }
+        }
         // A node that left the tree loses focus rather than pointing at a
         // stale id.
         if let Some(id) = &self.focus {

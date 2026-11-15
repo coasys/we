@@ -782,6 +782,7 @@ fn overlay_host(node: &ResolvedNode, width: f32, children: Vec<ResolvedChild>) -
         handlers: Default::default(),
         slot: None,
         children,
+        surfaces: Default::default(),
         transition: None,
     }
 }
@@ -999,6 +1000,7 @@ fn translate_layout(sub: &Layout, delta: egui::Vec2) -> Layout {
             .collect(),
         clip: sub.clip.clone(),
         bases: sub.bases.clone(),
+        content_boxes: sub.content_boxes.clone(),
         unconverged: sub.unconverged,
     }
 }
@@ -1435,6 +1437,7 @@ fn modal_overlay(
                     handlers: Default::default(),
                     slot: None,
                     children: vec![c],
+                    surfaces: Default::default(),
                     transition: None,
                 })));
             }
@@ -1494,6 +1497,7 @@ fn modal_overlay(
             handlers: Default::default(),
             slot: None,
             children: body,
+            surfaces: Default::default(),
             transition: None,
         };
         let flow2: Vec<ResolvedChild> = head

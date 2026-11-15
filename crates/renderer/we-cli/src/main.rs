@@ -3,7 +3,7 @@
 //! outline. `we-catalog` supplies each node's text fallback — the same
 //! words a non-painting frontend would show.
 //!
-//! usage: we-cli [--bundle <path>] [--snapshot <path>] [--route <href>]
+//! usage: we-cli [--bundle <path>] [--snapshot <path>] [--route <href>] [--viewport <px>]
 #![forbid(unsafe_code)]
 
 use std::sync::Arc;
@@ -81,6 +81,12 @@ fn outline(node: &ResolvedNode, depth: usize, out: &mut String) {
 fn main() {
     let bundle_path = arg("--bundle", Some(DEFAULT_BUNDLE.to_string())).unwrap();
     let route = arg("--route", Some("/space/demo".to_string())).unwrap();
+    // The design's headless measure (6.2): dump/CLI report the mount's
+    // host surfaces at `--viewport`, 1440 when the caller does not say.
+    let viewport = arg("--viewport", Some("1440".to_string()))
+        .unwrap()
+        .parse::<f32>()
+        .unwrap_or_else(|e| panic!("--viewport needs a pixel width: {e}"));
     let text = std::fs::read_to_string(&bundle_path)
         .unwrap_or_else(|e| panic!("cannot read bundle {bundle_path}: {e}"));
     let bundle = Bundle::parse(&text).unwrap_or_else(|e| panic!("bundle did not parse: {e}"));
@@ -117,6 +123,10 @@ fn main() {
     )
     .with_dollar_types(|ty| we_catalog::entry(ty).is_some());
     let mut root = session.resolve();
+    // E3c-13: the mount's host surfaces measure the viewport — the same
+    // box the egui frame offers — reported through the inbox like any
+    // frontend's `ResizeObserver`, then the poll below applies it.
+    session.report_host_surfaces(&root, viewport);
     // The CLI's wake channel is the loop itself: poll until a quiet tick
     // — a completion or a `set_root` landing between frames resolves
     // before the tree prints.

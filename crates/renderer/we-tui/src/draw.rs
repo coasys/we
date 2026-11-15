@@ -190,7 +190,9 @@ enum Tag {
 
 fn tag(node: &ResolvedNode) -> Tag {
     match node.ty.as_ref() {
-        "Column" | "Row" | "div" | "Grid" | "$lane" | "we-sortable" | "AgentChat" => Tag::Container,
+        "Column" | "Row" | "div" | "Grid" | "$lane" | "$surface" | "we-sortable" | "AgentChat" => {
+            Tag::Container
+        }
         "Card" => Tag::Card,
         "we-tooltip" => Tag::Tooltip,
         "we-tree" => Tag::Tree,
@@ -327,6 +329,10 @@ pub struct Painter<'a> {
     pub drafts: &'a std::collections::HashMap<NodeId, String>,
     /// Nodes the keyboard can reach, in paint order.
     pub focusables: Vec<Focusable>,
+    /// `(tag, content-box cells)` for every surface node painted this
+    /// pass — the terminal's `ResizeObserver` record (E3c-13), converted
+    /// to px by the caller (`cells × CELL_PX`).
+    pub surface_cells: Vec<(we_template::SurfaceTag, u16)>,
 }
 
 impl<'a> Painter<'a> {
@@ -347,6 +353,7 @@ impl<'a> Painter<'a> {
             focus: None,
             drafts,
             focusables: Vec::new(),
+            surface_cells: Vec::new(),
         }
     }
 
@@ -972,6 +979,14 @@ impl<'a> Painter<'a> {
         if inner.width == 0 || inner.height == 0 {
             self.paint_out_of_flow(node, inner, &env);
             return;
+        }
+
+        // E3c-13: `inner` is this node's content box in cells — the same
+        // box `ResizeObserver.contentBoxSize` answers — recorded for every
+        // surface tag the node carries; a hidden or zero-sized one left
+        // already, so a report here is a visible measure.
+        for tag in &node.surfaces {
+            self.surface_cells.push((tag.clone(), inner.width));
         }
 
         // Focusable nodes register their visible row — the rect the cursor
@@ -2139,6 +2154,10 @@ pub struct Frame {
     pub canvas: Buffer,
     /// Focusables in paint order (virtual coords).
     pub focusables: Vec<Focusable>,
+    /// Every surface tag's measured content-box width in px — cells ×
+    /// [`CELL_PX`], the terminal frontend's `ResizeObserver` answer for
+    /// the frame (E3c-13).
+    pub surface_reports: Vec<(we_template::SurfaceTag, f32)>,
     /// The content's full height in lines.
     pub content_height: u16,
 }
@@ -2193,10 +2212,15 @@ pub fn paint_frame(
     );
     p.highlight_focus(Rect::new(0, 0, w, height));
     let focusables = std::mem::take(&mut p.focusables);
+    let surface_reports = std::mem::take(&mut p.surface_cells)
+        .into_iter()
+        .map(|(tag, cells)| (tag, cells as f32 * CELL_PX))
+        .collect();
     drop(p);
     Frame {
         canvas: buf,
         focusables,
+        surface_reports,
         content_height: height,
     }
 }

@@ -10,7 +10,7 @@ use we_expr::Value;
 use we_screen::{ScreenSchema, ScreenState};
 use we_template::{
     AppSpec, BundleTemplate, LocalState, PartSource, ResolvedChild, ResolvedNode, Runtime,
-    SchemaNode, StaticHost, StoreBag,
+    SchemaNode, StaticHost, StoreBag, SurfaceKey,
 };
 
 fn schema(v: serde_json::Value) -> SchemaNode {
@@ -661,12 +661,23 @@ fn surface_keeps_its_node_and_binds_the_measured_box() {
         .get("w")
         .is_some_and(|v| v.strict_eq(&Value::from(0.0))));
 
-    // The measured box arrives through the op and the next frame reads it.
-    screen.apply(we_screen::ScreenOp::SetSurface {
-        id: outer.id.as_str().to_string(),
-        width: 840.0,
-        tier: "lg".into(),
-    });
+    // The measured box arrives through the inbox — the tag the node
+    // carries addresses it — and the next frame reads it.
+    let measure = |rt: &mut Runtime,
+                   host: &mut StaticHost,
+                   screen: &mut ScreenState,
+                   node: &ResolvedNode,
+                   width: f32| {
+        let tag = node
+            .surfaces
+            .iter()
+            .find(|t| matches!(t.key, SurfaceKey::Node(_)))
+            .expect("a $surface carries its tag")
+            .clone();
+        rt.report_surface(&tag, width);
+        rt.drain_inbox(host, screen);
+    };
+    measure(&mut rt, &mut host, &mut screen, outer, 1300.0);
     let root = rt.frame(&mut host, &screen).clone();
     let label = find_ty(&root, "Label").unwrap();
     assert!(label
@@ -676,17 +687,12 @@ fn surface_keeps_its_node_and_binds_the_measured_box() {
     assert!(label
         .props
         .get("w")
-        .is_some_and(|v| v.strict_eq(&Value::from(840.0))));
+        .is_some_and(|v| v.strict_eq(&Value::from(1300.0))));
 
     // `as` names the key — the inner surface binds `inner`.
     let mut surfaces = Vec::new();
     find_all_ty(&root, "$surface", &mut surfaces);
-    let inner_id = surfaces[1].id.as_str().to_string();
-    screen.apply(we_screen::ScreenOp::SetSurface {
-        id: inner_id,
-        width: 200.0,
-        tier: "sm".into(),
-    });
+    measure(&mut rt, &mut host, &mut screen, surfaces[1], 700.0);
     let root = rt.frame(&mut host, &screen).clone();
     let tag = find_ty(&root, "Tag").unwrap();
     assert!(tag

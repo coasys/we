@@ -12,3 +12,4 @@ we-template.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true
+we-metrics.workspace = true

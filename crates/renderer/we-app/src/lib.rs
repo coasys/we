@@ -24,7 +24,9 @@ use we_egui::{
 };
 use we_screen::ScreenState;
 use we_session::Session;
-use we_template::{MountCx, ResolvedNode, RootSpec, SchemaNode, StaticHost, StoreBag};
+use we_template::{
+    MountCx, ResolvedChild, ResolvedNode, RootSpec, SchemaNode, StaticHost, StoreBag, SurfaceTag,
+};
 
 /// Every input a cached [`Layout`] resolved against: the resolve count,
 /// the offered rect, and everything `style_of` reads — theme id (the
@@ -81,6 +83,10 @@ pub struct RendererApp {
     layout: Option<Layout>,
     /// The inputs the cached layout was computed for — see [`LayoutKey`].
     layout_key: Option<LayoutKey>,
+    /// What each surface tag was last reported at — `createSurface`'s
+    /// `set` guard at the producer (E3c-13): an unmoved measure does not
+    /// re-report, so a steady frame never wakes the session for nothing.
+    surface_sent: std::collections::HashMap<SurfaceTag, f32>,
     /// F12 — the resolve/paint counters overlay.
     pub debug: bool,
 }
@@ -111,6 +117,7 @@ impl RendererApp {
             edit: EditState::default(),
             layout: None,
             layout_key: None,
+            surface_sent: std::collections::HashMap::new(),
             debug: false,
         }
     }
@@ -166,6 +173,23 @@ impl RendererApp {
                 }
                 let l = self.layout.as_ref().unwrap();
                 ui.allocate_space(Vec2::new(width, l.size.y.max(1.0)));
+
+                // E3c-13: the `ResizeObserver` walk — every surface tag
+                // reports its node's content-box width (the same box
+                // `contentBoxSize` answers), once per change. The report
+                // rides the session's inbox, so it polls like a measure
+                // landing from any other producer.
+                let mut reports = Vec::new();
+                collect_surface_reports(&resolved, l, &mut reports);
+                self.surface_sent
+                    .retain(|tag, _| reports.iter().any(|(t, _)| t == tag));
+                for (tag, width) in reports {
+                    if self.surface_sent.get(&tag) != Some(&width) {
+                        self.surface_sent.insert(tag.clone(), width);
+                        self.session.report_surface(&tag, width);
+                    }
+                }
+
                 let mut events = Vec::new();
                 paint(
                     ui,
@@ -243,6 +267,24 @@ impl RendererApp {
                     }
                 });
             });
+    }
+}
+
+/// One pass over the resolved tree collecting `(tag, content-box width)`
+/// for every surface — the box `ResizeObserver.contentBoxSize` answers
+/// (`createSurface.ts:47`). A node with no laid-out box reports nothing.
+fn collect_surface_reports(node: &ResolvedNode, layout: &Layout, out: &mut Vec<(SurfaceTag, f32)>) {
+    if !node.surfaces.is_empty() {
+        if let Some(content) = layout.content_boxes.get(&node.id) {
+            for tag in &node.surfaces {
+                out.push((tag.clone(), content.x));
+            }
+        }
+    }
+    for child in &node.children {
+        if let ResolvedChild::Node(n) = child {
+            collect_surface_reports(n, layout, out);
+        }
     }
 }
 

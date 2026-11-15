@@ -56,6 +56,7 @@ fn node(ty: &str, id: &str, props: IndexMap<Arc<str>, Value>) -> ResolvedNode {
         handlers: IndexMap::new(),
         slot: None,
         children: vec![],
+        surfaces: Default::default(),
         transition: None,
     }
 }

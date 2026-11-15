@@ -26,6 +26,7 @@ fn node(ty: &str, id: &str, props: &[(&str, we_expr::Value)]) -> ResolvedNode {
         handlers: IndexMap::new(),
         slot: None,
         children: vec![],
+        surfaces: Default::default(),
         transition: None,
     }
 }

@@ -228,6 +228,11 @@ pub struct Layout {
     /// applied) or the source never laid out. Paint resolves its own
     /// insets against these — it never rebuilds a base from a parent rect.
     pub bases: HashMap<NodeId, Bases>,
+    /// Every laid-out node's content-box size — the box a `ResizeObserver`
+    /// reports (`contentBoxSize`), what a frontend reports a surface's
+    /// measure against (E3c-13). Read back from the same taffy build the
+    /// rects came from, so it agrees with them exactly.
+    pub content_boxes: HashMap<NodeId, Size>,
     /// `true` when the deferred-base solve hit its pass cap with consumed
     /// bases still moving — a deep acyclic chain the budget did not
     /// finish, not a detected cycle. The returned build is honest (its
@@ -2199,6 +2204,7 @@ fn layout_impl(
         scroll_content: HashMap::new(),
         clip: HashMap::new(),
         bases: HashMap::new(),
+        content_boxes: HashMap::new(),
         unconverged: false,
     };
 
@@ -2378,14 +2384,14 @@ fn layout_impl(
             },
         );
 
-        // The measured bases this pass produced — the movement check
-        // needs the real numbers every pass, so the walk runs whenever
-        // anything deferred exists.
+        // The measured boxes this pass produced — the deferred-base check
+        // reads them, and the layout exports every node's content box for
+        // the surface reports (E3c-13).
+        let mut boxes = HashMap::new();
+        collect_boxes(&tree, root_id, &mut boxes);
         let new_vals = if deferred.is_empty() {
             HashMap::new()
         } else {
-            let mut boxes = HashMap::new();
-            collect_boxes(&tree, root_id, &mut boxes);
             derive_deferred(&deferred, &cb_of, &boxes, &rect)
         };
         let mut next = Layout {
@@ -2408,6 +2414,10 @@ fn layout_impl(
             bases: axes
                 .iter()
                 .map(|(id, a)| (id.clone(), a.to_bases(id, &consumed, &vals, &new_vals)))
+                .collect(),
+            content_boxes: boxes
+                .into_iter()
+                .map(|(id, (content, _))| (id, content))
                 .collect(),
             unconverged: false,
         };

@@ -28,6 +28,7 @@ fn node(
         handlers: IndexMap::new(),
         slot: None,
         children: kids,
+        surfaces: Default::default(),
         transition: None,
     }
 }

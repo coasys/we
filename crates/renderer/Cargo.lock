@@ -5728,6 +5728,7 @@ version = "0.1.0"
 dependencies = [
  "serde_json",
  "we-expr",
+ "we-metrics",
  "we-screen",
  "we-template",
 ]
@@ -5751,8 +5752,10 @@ dependencies = [
  "indexmap",
  "serde",
  "serde_json",
+ "smallvec",
  "thiserror 2.0.21",
  "we-expr",
+ "we-metrics",
  "we-screen",
 ]
 

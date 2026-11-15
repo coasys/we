@@ -779,7 +779,7 @@ fn a_source_swap_that_withholds_shows_loading_until_b_answers() {
     // B answers through the sink it kept — the rows it gives replace the
     // loading state, and the dependent claim reopens on B's answer.
     b.deliver("Task", vec![Value::from_json(&json!({ "id": "b1" }))]);
-    let (_, queries, _) = rt.drain_inbox(&mut host, &mut screen);
+    let (_, queries, _, _) = rt.drain_inbox(&mut host, &mut screen);
     assert_eq!(queries, 1, "B's delivery applied");
     assert!(rt.dirty(&screen), "the applied answer reports dirty");
     let root = rt.frame(&mut host, &screen).clone();

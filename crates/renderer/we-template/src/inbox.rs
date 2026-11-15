@@ -18,6 +18,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use we_expr::Value;
 
 use crate::query::{QueryEvent, SubTicket};
+use crate::surface::SurfaceTag;
 use crate::CallId;
 
 /// What can land between frames. `Completion` is the E3c-1 channel
@@ -25,8 +26,9 @@ use crate::CallId;
 /// revision number is the truth, the arrival only wakes. `Query` is
 /// E3c-4's delivery: a source pushed an event on a subscription ticket
 /// and the hub applies it — the frame's `commit → drain` for a
-/// synchronous answer, `drain_inbox` for one between frames. `Surface`
-/// reports (E3c-13) join when their producer does.
+/// synchronous answer, `drain_inbox` for one between frames. `Surface` is
+/// E3c-13's: the frontend's content-box measure of a resolved tag, spent
+/// at drain by the generation it quotes.
 pub(crate) enum Arrival {
     /// A host settled a pending call; the runtime runs its lifecycle.
     Completion {
@@ -46,6 +48,16 @@ pub(crate) enum Arrival {
         ticket: SubTicket,
         /// What the source pushed.
         event: QueryEvent,
+    },
+    /// A surface's content-box width, reported by a frontend — the tag
+    /// carries the generation it measured, so a remounted surface's old
+    /// measure is spent at apply rather than landing on the new
+    /// incarnation (E3c-13).
+    Surface {
+        /// The surface the measure answers for — key plus generation.
+        tag: SurfaceTag,
+        /// Content-box inline size in px.
+        width: f32,
     },
 }
 

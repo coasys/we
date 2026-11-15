@@ -38,6 +38,7 @@ fn node(ty: &str) -> ResolvedNode {
         handlers: IndexMap::new(),
         slot: None,
         children: vec![],
+        surfaces: Default::default(),
         transition: None,
     }
 }

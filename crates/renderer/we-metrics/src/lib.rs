@@ -73,6 +73,17 @@ impl SizeTier {
         tier_for_width(px, &Breakpoints::default())
     }
 
+    /// The tier's name — `base` | `sm` | `md` | `lg`. What `surface.tier`
+    /// binds (`createSurface.ts`'s `tier` field).
+    pub fn name(self) -> &'static str {
+        match self {
+            SizeTier::Base => "base",
+            SizeTier::Sm => "sm",
+            SizeTier::Md => "md",
+            SizeTier::Lg => "lg",
+        }
+    }
+
     /// The prop key a tier's bag lives under — `TIER_PROP_KEYS`
     /// (`design-system/utils/src/index.ts`). `base` has none: the
     /// unqualified props are its bag.
