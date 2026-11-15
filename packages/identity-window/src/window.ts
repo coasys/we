@@ -117,6 +117,7 @@ async function leave(call: () => Promise<Screen | null | void>) {
   }
 }
 const cancel = oneAtATime(() => {
+  turn.mark();
   for (const b of Array.from(root.querySelectorAll('button'))) b.disabled = true;
   return leave(() => host.cancel());
 });
