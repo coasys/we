@@ -621,6 +621,9 @@ pub struct PaintStyle {
     pub pointer_events: Option<PointerEvents>,
     pub visibility: Option<Visibility>,
     pub transform: Option<Transform>,
+    /// `text-shadow` layers (no `inset`, no spread). `Some(vec![])` is an
+    /// explicit `none`.
+    pub text_shadows: Option<Vec<Shadow>>,
 }
 
 /// What a `hoverProps`-style bag may change — one slot per field, applied over
@@ -631,6 +634,9 @@ pub struct StylePatch {
     pub text: TextStyle,
     pub paint: PaintStyle,
     pub unsupported: Vec<Arc<str>>,
+    /// A theme rule's `animation` that holds only in this state
+    /// (cyberpunk's `we-button:hover`).
+    pub animation: Option<Arc<crate::stylesheet::Animation>>,
 }
 
 /// The interactive state a patch answers.
@@ -675,6 +681,9 @@ pub struct Style {
     /// verbatim), already substituted. What its descendants' `var()`s see —
     /// CSS custom-property inheritance hands this map down the DOM.
     pub scope: IndexMap<Arc<str>, Arc<str>>,
+    /// The `animation` a theme stylesheet rule runs on the element —
+    /// keyframes resolved; the painter samples it against its clock.
+    pub animation: Option<Arc<crate::stylesheet::Animation>>,
 }
 
 impl Style {
@@ -712,6 +721,9 @@ impl Style {
         patch.text.merge_into(&mut self.text);
         patch.paint.merge_into(&mut self.paint);
         self.unsupported.extend(patch.unsupported.iter().cloned());
+        if patch.animation.is_some() {
+            self.animation = patch.animation.clone();
+        }
     }
 }
 
@@ -733,7 +745,7 @@ macro_rules! merge_edge {
 }
 
 impl LayoutStyle {
-    pub(crate) fn merge_into(&self, dst: &mut LayoutStyle) {
+    pub fn merge_into(&self, dst: &mut LayoutStyle) {
         if self.display.is_some() {
             dst.display = self.display.clone();
         }
@@ -807,7 +819,7 @@ impl LayoutStyle {
 }
 
 impl TextStyle {
-    pub(crate) fn merge_into(&self, dst: &mut TextStyle) {
+    pub fn merge_into(&self, dst: &mut TextStyle) {
         if self.color.is_some() {
             dst.color = self.color;
         }
@@ -891,7 +903,7 @@ impl TextStyle {
 }
 
 impl PaintStyle {
-    pub(crate) fn merge_into(&self, dst: &mut PaintStyle) {
+    pub fn merge_into(&self, dst: &mut PaintStyle) {
         if self.bg.is_some() {
             dst.bg = self.bg;
         }
@@ -935,6 +947,9 @@ impl PaintStyle {
         }
         if self.transform.is_some() {
             dst.transform = self.transform.clone();
+        }
+        if self.text_shadows.is_some() {
+            dst.text_shadows = self.text_shadows.clone();
         }
     }
 }

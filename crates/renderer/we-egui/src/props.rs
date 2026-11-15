@@ -876,6 +876,63 @@ pub(crate) fn apply_clip(
     });
 }
 
+/// Move every shape the node's subtree queued on `layer` from `start` on
+/// through `f` — the animation's skew/offset. Like [`apply_clip`], egui
+/// has no affine shape transform beyond translate+scale, so each shape is
+/// tessellated with the frame's settings and its vertices mapped. Text
+/// stays text-quality: its glyph quads move with their texels.
+pub(crate) fn apply_affine(
+    ctx: &egui::Context,
+    layer: egui::LayerId,
+    start: usize,
+    f: impl Fn(egui::Pos2) -> egui::Pos2,
+) {
+    let ppp = ctx.pixels_per_point();
+    let options = ctx.tessellation_options(|o| *o);
+    let tex_size = ctx.fonts(|f| f.font_image_size());
+    let mut tess = egui::epaint::Tessellator::new(ppp, options, tex_size, Vec::new());
+    ctx.graphics_mut(|g| {
+        let Some(list) = g.get_mut(layer) else {
+            return;
+        };
+        let end = list.next_idx().0;
+        for i in start..end {
+            list.mutate_shape(egui::layers::ShapeIdx(i), |cs| {
+                let taken = std::mem::replace(&mut cs.shape, egui::Shape::Noop);
+                let transform = cs.transform_after_tessellation;
+                let mut prims = Vec::new();
+                // Tessellated unclipped: the ancestors' clip rect is put back
+                // on the shape, and a skew must not cut what it then moves.
+                tess.tessellate_clipped_shape(
+                    egui::epaint::ClippedShape {
+                        clip_rect: egui::Rect::EVERYTHING,
+                        shape: taken,
+                        transform_after_tessellation: transform,
+                    },
+                    &mut prims,
+                );
+                let mut shapes = Vec::new();
+                for cp in prims {
+                    if let egui::epaint::Primitive::Mesh(mut m) = cp.primitive {
+                        for v in &mut m.vertices {
+                            v.pos = f(transform.mul_pos(v.pos));
+                        }
+                        if !m.indices.is_empty() {
+                            shapes.push(egui::Shape::mesh(m));
+                        }
+                    }
+                }
+                cs.transform_after_tessellation = egui::emath::TSTransform::IDENTITY;
+                cs.shape = match shapes.len() {
+                    0 => egui::Shape::Noop,
+                    1 => shapes.pop().unwrap(),
+                    _ => egui::Shape::Vec(shapes),
+                };
+            });
+        }
+    });
+}
+
 /// Ear-clipping triangulation of a simple polygon — index triples into
 /// `points` (consecutive-duplicate-free, as `clip_points` returns).
 /// Orientation-agnostic: the signed area fixes the winding. A non-simple
@@ -1350,14 +1407,32 @@ mod tests {
         ));
     }
 
-    /// The theme's own four layers, `theme_css::retro_bevel`, resolve to
+    /// A node's style under a built-in theme — the stylesheet's rules
+    /// applied, as the frame resolves it.
+    fn themed_style(ty: &str, theme: &'static str) -> Style {
+        let node = we_template::ResolvedNode {
+            id: we_template::NodeId::from("n"),
+            ty: std::sync::Arc::from(ty),
+            props: Default::default(),
+            handlers: Default::default(),
+            slot: None,
+            children: vec![],
+            transition: None,
+        };
+        let mut scx = we_layout::defaults::StyleCx::empty();
+        scx.theme = theme;
+        we_layout::defaults::style_of(&node, &scx)
+    }
+
+    /// The theme's own four layers (retro's `we-button::part(base)`) resolve to
     /// the Win95 face: the light layers land on the top/left strips, the
     /// dark on bottom/right — and the `:active` list reverses the pairing.
     #[test]
     fn retro_bevel_layers_light_top_left_dark_bottom_right() {
         let rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(80.0, 28.0));
         let view = crate::defaults::ViewportCx::default();
-        for s in we_layout::theme_css::retro_bevel() {
+        let button = themed_style("we-button", "retro");
+        for s in button.paint.shadows.as_deref().unwrap() {
             let d = egui::vec2(
                 s.dx.to_px(view.font_px, view.root_px, view.viewport)
                     .unwrap_or(0.0),
@@ -1381,7 +1456,8 @@ mod tests {
             }
         }
         // The pressed swap: the same colours on opposite edges.
-        for s in we_layout::theme_css::retro_bevel_pressed() {
+        let pressed = button.with_state(we_style::StateKind::Active);
+        for s in pressed.paint.shadows.as_deref().unwrap() {
             let d = egui::vec2(
                 s.dx.to_px(view.font_px, view.root_px, view.viewport)
                     .unwrap_or(0.0),
@@ -1408,7 +1484,7 @@ mod tests {
     #[test]
     fn clip_points_resolves_the_button_slab() {
         let mut style = Style::default();
-        style.paint.clip = Some(we_layout::theme_css::cyberpunk_button_clip().clone());
+        style.paint.clip = themed_style("we-button", "cyberpunk").paint.clip;
         let rect = egui::Rect::from_min_size(egui::pos2(0.0, 0.0), egui::vec2(120.0, 36.0));
         let points = clip_points(&style, rect, crate::defaults::ViewportCx::default()).unwrap();
         let expect = [

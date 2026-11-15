@@ -1369,6 +1369,17 @@ fn eval_bg_image(text: &str) -> Option<BgImage> {
     None
 }
 
+/// [`eval_decls`] inside a custom-property scope — the element's resolved
+/// [`Style::scope`] — so a stylesheet rule's `var()`s see a `tone`'s
+/// re-pointings the way the element's own declarations do.
+pub fn eval_decls_in(
+    decls: &Decls,
+    cx: &EvalCx,
+    scope: &IndexMap<Arc<str>, Arc<str>>,
+) -> EvalResult {
+    eval_decls_scoped(decls, cx, scope)
+}
+
 /// Evaluate one declaration map against the theme's token table.
 pub fn eval_decls(decls: &Decls, cx: &EvalCx) -> EvalResult {
     eval_decls_scoped(decls, cx, &IndexMap::new())
@@ -1493,6 +1504,23 @@ fn eval_decls_scoped(
                 let edges = eval_edges(&mut r, cx, css, value);
                 if !edges.all_unset() {
                     r.layout.margin = edges;
+                }
+            }
+            "margin-top" => dim!(r.layout.margin.top),
+            "margin-right" => dim!(r.layout.margin.right),
+            "margin-bottom" => dim!(r.layout.margin.bottom),
+            "margin-left" => dim!(r.layout.margin.left),
+            "padding-top" => dim!(r.layout.padding.top),
+            "padding-right" => dim!(r.layout.padding.right),
+            "padding-bottom" => dim!(r.layout.padding.bottom),
+            "padding-left" => dim!(r.layout.padding.left),
+            "text-shadow" => {
+                let s = cx.subst(value);
+                match eval_box_shadow(&s) {
+                    Some(shadows) if shadows.iter().all(|s| !s.inset) => {
+                        r.paint.text_shadows = Some(shadows)
+                    }
+                    _ => r.bad(css, value),
                 }
             }
             "width" => dim!(r.layout.width),
@@ -1834,6 +1862,7 @@ fn state_patch(
         text: ev.text,
         paint: ev.paint,
         unsupported: ev.unsupported,
+        animation: None,
     }
 }
 
