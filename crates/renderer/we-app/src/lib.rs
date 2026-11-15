@@ -232,7 +232,7 @@ impl RendererApp {
         // resolves, so the frame the pointer moved on draws it.
         let started = std::time::Instant::now();
         if let (Some(layout), Some(root)) = (&self.layout, self.session.runtime.resolved()) {
-            let early = we_egui::lane_drags(ui.ctx(), &self.edit, layout, root);
+            let early = we_egui::lane_drags(ui.ctx(), &mut self.edit, layout, root);
             self.drain(early);
         }
         let dispatch_early = started.elapsed();

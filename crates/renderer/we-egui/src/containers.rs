@@ -197,6 +197,7 @@ impl Widget for Lane {
                 Value::Num(origin as f64),
             );
             props::scratch_set(&mut cx.edit.data, &node.id, HELD_KEY, Value::Bool(true));
+            props::scratch_set(&mut cx.edit.data, &node.id, ASKED_KEY, Value::Null);
         }
         if r.drag_stopped() {
             props::scratch_set(&mut cx.edit.data, &node.id, HELD_KEY, Value::Bool(false));
@@ -245,7 +246,9 @@ impl Widget for Lane {
         // replaced by the width let go at, even where that is the width
         // already drawn — `PanelLane` writes on release.
         let kept = props::prop_num(node, "laneWidth").map(|k| k as f32);
-        if (width - rect.width()).abs() >= 0.5 || kept.is_some_and(|k| (k - width).abs() >= 0.5) {
+        let differs =
+            (width - rect.width()).abs() >= 0.5 || kept.is_some_and(|k| (k - width).abs() >= 0.5);
+        if differs && ask(&mut cx.edit.data, node, width) {
             cx.emit(
                 &node.id,
                 "onResize",
@@ -260,6 +263,29 @@ impl Widget for Lane {
 const START_KEY: &str = "_resizeStart";
 const ORIGIN_KEY: &str = "_resizeOrigin";
 const HELD_KEY: &str = "_resizeHeld";
+/// The last width this drag asked `onResize` for.
+const ASKED_KEY: &str = "_resizeAsked";
+
+/// Whether `width` is a width this drag has not asked for yet — and if so,
+/// it is now the last asked. A handler that does not make the lane the
+/// width it was asked for (it snaps, refuses or defers) leaves the drawn
+/// width short of it, so every path that compares against the drawn width
+/// — the drag before the resolve, paint, the release — would ask again,
+/// in the same frame and on every frame after. Each width reaches the
+/// handler once per drag instead.
+fn ask(
+    data: &mut std::collections::HashMap<we_template::NodeId, Value>,
+    node: &ResolvedNode,
+    width: f32,
+) -> bool {
+    if let Some(Value::Num(last)) = props::scratch(data, &node.id, ASKED_KEY) {
+        if (*last as f32 - width).abs() < 0.5 {
+            return false;
+        }
+    }
+    props::scratch_set(data, &node.id, ASKED_KEY, Value::Num(width as f64));
+    true
+}
 
 /// The width a lane drag asks for with the pointer at `x`: the width at
 /// the press plus the travel since (minus, for a handle on the start
@@ -294,7 +320,7 @@ fn drag_width(
 /// position the button went up at).
 pub fn lane_drags(
     ctx: &egui::Context,
-    edit: &crate::EditState,
+    edit: &mut crate::EditState,
     layout: &crate::Layout,
     root: &ResolvedNode,
 ) -> Vec<crate::WidgetEvent> {
@@ -310,7 +336,7 @@ pub fn lane_drags(
     fn walk(
         node: &ResolvedNode,
         x: f32,
-        edit: &crate::EditState,
+        edit: &mut crate::EditState,
         layout: &crate::Layout,
         out: &mut Vec<crate::WidgetEvent>,
     ) {
@@ -332,7 +358,7 @@ pub fn lane_drags(
                         max: f32::INFINITY,
                     });
                 if let Some(width) = drag_width(&edit.data, node, start, bounds, x) {
-                    if (width - rect.width()).abs() >= 0.5 {
+                    if (width - rect.width()).abs() >= 0.5 && ask(&mut edit.data, node, width) {
                         out.push(crate::WidgetEvent {
                             node: node.id.clone(),
                             handler: "onResize".into(),
