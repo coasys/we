@@ -10,8 +10,8 @@ use serde_json::json;
 use we_expr::Value;
 use we_screen::{ScreenSchema, ScreenState};
 use we_template::{
-    LocalState, QueryIr, QueryKey, QuerySource, QueryState, Runtime, SchemaNode, StaticHost,
-    StoreBag,
+    LocalState, QueryEvent, QueryRequest, QuerySink, QuerySource, Runtime, SchemaNode, StaticHost,
+    StoreBag, SubTicket,
 };
 
 fn schema(v: serde_json::Value) -> SchemaNode {
@@ -22,11 +22,13 @@ fn screen(href: &str) -> ScreenState {
     ScreenState::desktop(ScreenSchema::default(), href)
 }
 
-/// A source that records every request a cell was made for, and answers
-/// `Board` only once `board_ready` is set.
+/// A source that records every request opened on it, and answers `Board`
+/// only once `board_ready` is set — holding the unanswered sinks until then,
+/// the way a live source holds a subscription it cannot fill yet.
 struct Recording {
     board_ready: AtomicBool,
     asked: Mutex<Vec<String>>,
+    held: Mutex<Vec<QuerySink>>,
 }
 
 impl Recording {
@@ -34,6 +36,7 @@ impl Recording {
         Arc::new(Self {
             board_ready: AtomicBool::new(false),
             asked: Mutex::new(Vec::new()),
+            held: Mutex::new(Vec::new()),
         })
     }
     fn asked_for(&self, entity: &str) -> Vec<String> {
@@ -48,18 +51,23 @@ impl Recording {
 }
 
 impl QuerySource for Recording {
-    fn rows(&self, key: &QueryKey, _ir: &QueryIr) -> QueryState {
+    fn open(&self, _ticket: SubTicket, request: &QueryRequest, sink: QuerySink) {
+        let key = request.key(None);
         self.asked.lock().unwrap().push(key.as_str().to_string());
         if key.as_str().contains("\"e\":[\"Board\"]") {
             if self.board_ready.load(Ordering::SeqCst) {
-                return QueryState::Rows(Arc::new(vec![Value::from_json(
+                sink.deliver(QueryEvent::Rows(Arc::new(vec![Value::from_json(
                     &json!({ "id": "b1", "gathers": "g1" }),
-                )]));
+                )])));
+            } else {
+                self.held.lock().unwrap().push(sink);
             }
-            return QueryState::Loading;
+            return;
         }
-        QueryState::Rows(Arc::new(Vec::new()))
+        sink.deliver(QueryEvent::Rows(Arc::new(Vec::new())));
     }
+
+    fn close(&self, _ticket: SubTicket) {}
 }
 
 fn run(node: serde_json::Value, source: Arc<Recording>) -> (Runtime, StaticHost, ScreenState) {
@@ -69,10 +77,15 @@ fn run(node: serde_json::Value, source: Arc<Recording>) -> (Runtime, StaticHost,
     (rt, StaticHost::new(bag), screen("/"))
 }
 
-/// The board lands on a later frame.
+/// The board lands: every held sink gets its rows, the way a live
+/// subscription's first result arrives — then the frame runs.
 fn board_lands(rt: &mut Runtime, host: &mut StaticHost, screen: &ScreenState, src: &Recording) {
     src.board_ready.store(true, Ordering::SeqCst);
-    rt.pool().bump();
+    for sink in src.held.lock().unwrap().drain(..) {
+        sink.deliver(QueryEvent::Rows(Arc::new(vec![Value::from_json(
+            &json!({ "id": "b1", "gathers": "g1" }),
+        )])));
+    }
     rt.frame(host, screen);
 }
 

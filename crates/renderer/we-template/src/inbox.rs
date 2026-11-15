@@ -13,16 +13,21 @@
 //! push landing after the drain swapped the queue out calls it again —
 //! nothing is lost and nothing loops.
 use std::collections::VecDeque;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 use we_expr::Value;
 
+use crate::query::{QueryEvent, SubTicket};
 use crate::CallId;
 
 /// What can land between frames. `Completion` is the E3c-1 channel
 /// carried over unchanged; `Bindings` is F2's invalidation — the source's
-/// revision number is the truth, the arrival only wakes. `Query` events
-/// (E3c-4/5a) and `Surface` reports (E3c-13) join when their producers do.
+/// revision number is the truth, the arrival only wakes. `Query` is
+/// E3c-4's delivery: a source pushed an event on a subscription ticket
+/// and the hub applies it — the frame's `commit → drain` for a
+/// synchronous answer, `drain_inbox` for one between frames. `Surface`
+/// reports (E3c-13) join when their producer does.
 pub(crate) enum Arrival {
     /// A host settled a pending call; the runtime runs its lifecycle.
     Completion {
@@ -34,6 +39,15 @@ pub(crate) enum Arrival {
     /// A binding source invalidated — `Runtime::dirty` re-reads its
     /// revision, so a drained `Bindings` can never hide a moved source.
     Bindings,
+    /// A query source delivered on a subscription ticket — the hub's,
+    /// addressed by the ticket so an event queued before the ticket
+    /// closed dies at apply.
+    Query {
+        /// The subscription `open` minted.
+        ticket: SubTicket,
+        /// What the source pushed.
+        event: QueryEvent,
+    },
 }
 
 /// The frontend's "call `poll`" hook — egui repaints, a TUI sends on its
@@ -49,6 +63,14 @@ pub struct Inbox {
     queue: Mutex<VecDeque<Arrival>>,
     /// The frontend's hook — a no-op until `set_waker` installs one.
     waker: RwLock<Waker>,
+    /// Set while a frame's `commit → drain` runs: `Query` pushes inside
+    /// the window are the frame's own products — the same pass drains
+    /// them, so they queue without a wake.
+    sync_queries: AtomicBool,
+    /// Whether the queue was empty when the window opened — leftovers a
+    /// window that started non-empty still belong to a batch that already
+    /// woke.
+    sync_started_empty: AtomicBool,
 }
 
 impl Default for Inbox {
@@ -62,6 +84,8 @@ impl Inbox {
         Self {
             queue: Mutex::new(VecDeque::new()),
             waker: RwLock::new(Arc::new(|| {})),
+            sync_queries: AtomicBool::new(false),
+            sync_started_empty: AtomicBool::new(true),
         }
     }
 
@@ -85,16 +109,50 @@ impl Inbox {
         }
     }
 
+    /// Open a `commit → drain` window: until [`Self::end_sync_queries`],
+    /// `Query` pushes queue without waking — the same pass's `drain_queries`
+    /// consumes them, and a wake for the frame's own products would report
+    /// arrivals the frame already handled.
+    pub(crate) fn begin_sync_queries(&self) {
+        self.sync_started_empty.store(
+            self.queue
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_empty(),
+            Ordering::Relaxed,
+        );
+        self.sync_queries.store(true, Ordering::Relaxed);
+    }
+
+    /// Close the window — `true` when leftovers need the one wake the
+    /// flag suppressed: the window started empty and something is still
+    /// queued (a non-query arrival pushed mid-window, or a query event
+    /// that landed behind the drain). Leftovers a window that started
+    /// non-empty belongs to a batch whose wake already fired.
+    pub(crate) fn end_sync_queries(&self) -> bool {
+        self.sync_queries.store(false, Ordering::Relaxed);
+        self.sync_started_empty.load(Ordering::Relaxed)
+            && !self
+                .queue
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .is_empty()
+    }
+
     /// An arrival: appended, and — when the queue went from empty to
-    /// non-empty — the waker called once for the batch.
+    /// non-empty — the waker called once for the batch. A `Query` pushed
+    /// inside a `commit → drain` window queues quietly: the same pass
+    /// drains it.
     pub(crate) fn push(&self, arrival: Arrival) {
+        let quiet =
+            matches!(&arrival, Arrival::Query { .. }) && self.sync_queries.load(Ordering::Relaxed);
         let was_empty = {
             let mut queue = self.queue.lock().unwrap_or_else(|e| e.into_inner());
             let was_empty = queue.is_empty();
             queue.push_back(arrival);
             was_empty
         };
-        if was_empty {
+        if was_empty && !quiet {
             self.wake();
         }
     }
@@ -103,6 +161,25 @@ impl Inbox {
     /// runs goes to the new queue — seen by the next drain, never by both.
     pub(crate) fn drain(&self) -> VecDeque<Arrival> {
         std::mem::take(&mut *self.queue.lock().unwrap_or_else(|e| e.into_inner()))
+    }
+
+    /// The queued `Query` arrivals, in order — the rest stay queued for
+    /// `drain` (a frame's `commit → drain` consumes query events without
+    /// eating completions or binding invalidations, which keep their
+    /// order for `drain_inbox`). A push landing mid-drain goes to the new
+    /// queue and is seen next time.
+    pub(crate) fn drain_queries(&self) -> Vec<(SubTicket, QueryEvent)> {
+        let mut queue = self.queue.lock().unwrap_or_else(|e| e.into_inner());
+        let mut out = Vec::new();
+        let mut kept = VecDeque::with_capacity(queue.len());
+        for arrival in queue.drain(..) {
+            match arrival {
+                Arrival::Query { ticket, event } => out.push((ticket, event)),
+                other => kept.push_back(other),
+            }
+        }
+        *queue = kept;
+        out
     }
 
     /// "Call `poll`" without an arrival — a frame that ran out of budget

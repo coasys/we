@@ -12,7 +12,7 @@
 //!   read lazily so a re-resolve picks up writes.
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, RwLock};
 
 use indexmap::IndexMap;
 use we_expr::{CallFn, Env, MapNamespace, Namespace, Value};
@@ -175,17 +175,14 @@ impl Namespace for LocalNs {
             Some((node, LocalDecl::State(_))) => self.state.get(node, key),
             Some((node, LocalDecl::Query(slot))) => {
                 note_slot_read(&SlotRef::new(node.clone(), key.into(), slot.clone()));
-                match slot.state() {
-                    crate::query::QueryState::Rows(rows) => Value::List(rows),
-                    crate::query::QueryState::Loading => Value::List(empty_rows()),
-                }
+                Value::List(slot.view().rows)
             }
             Some((node, LocalDecl::QueryLoaded(slot))) => {
                 // The declaration key is `<q>Loaded` (see `resolve`); the
                 // slot it reads is `<q>`'s.
                 let name = key.strip_suffix("Loaded").unwrap_or(key);
                 note_slot_read(&SlotRef::new(node.clone(), name.into(), slot.clone()));
-                Value::Bool(matches!(slot.state(), crate::query::QueryState::Rows(_)))
+                Value::Bool(slot.view().loaded)
             }
             Some((_, LocalDecl::Static(value))) => value.clone(),
             None => Value::Undefined,
@@ -202,15 +199,6 @@ impl Namespace for LocalNs {
     fn decl(&self, field: &str) -> Option<&dyn std::any::Any> {
         self.field_decl(field).map(|d| d as &dyn std::any::Any)
     }
-}
-
-/// One `[]` for every pending query. A Loading cell's rows are a stable
-/// empty list — WE's `[]` initial keeps its allocation until rows land —
-/// where a fresh `[]` per read would look like a dependency that always
-/// moves to a tracked `initial`.
-fn empty_rows() -> Arc<Vec<Value>> {
-    static EMPTY: OnceLock<Arc<Vec<Value>>> = OnceLock::new();
-    EMPTY.get_or_init(|| Arc::new(Vec::new())).clone()
 }
 
 /// `===`, relaxed once for the port's own rebuilds: two containers holding

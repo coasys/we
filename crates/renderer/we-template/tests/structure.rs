@@ -3,7 +3,7 @@
 //! pool's keyed dedup / gating.
 
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
 use serde_json::json;
 use we_expr::Value;
@@ -733,11 +733,11 @@ fn a_query_reads_the_same_nodes_local_fields() {
     let (mut rt, mut host, screen) = rig(node, StoreBag::new(), "/");
     rt.frame(&mut host, &screen);
     assert_eq!(
-        rt.pool().len(),
+        rt.hub().len(),
         1,
         "the query must compile against same-node locals, not gate"
     );
-    let cell = rt.pool().cells().into_iter().next().unwrap();
+    let cell = rt.hub().cells().into_iter().next().unwrap();
     assert!(
         cell.key.as_str().contains("Task"),
         "the compiled entity must be the local's value: {}",
@@ -766,17 +766,17 @@ fn a_query_reads_a_sibling_query_whichever_order() {
     let (mut rt, mut host, screen) = rig(node, bag, "/");
     rt.frame(&mut host, &screen); // board fills; cards compiled wide
     rt.frame(&mut host, &screen); // cards re-resolves against board's rows
-    let anchored = rt.pool().cells().into_iter().any(|cell| {
-        cell.ir
-            .scope
-            .as_ref()
+    let anchored = rt.hub().cells().into_iter().any(|cell| {
+        cell.request
+            .ir_json()
+            .get("scope")
             .and_then(|s| s.get("anchorId"))
             .is_some_and(|a| a == &json!("g1"))
     });
     assert!(
         anchored,
         "cards must anchor to first(local.board).gathers once board lands: {:?}",
-        rt.pool()
+        rt.hub()
             .cells()
             .iter()
             .map(|c| c.key.as_str().to_string())
@@ -785,23 +785,25 @@ fn a_query_reads_a_sibling_query_whichever_order() {
 }
 
 #[test]
-fn inline_query_tokens_flow_through_the_pool() {
+fn inline_query_tokens_flow_through_the_hub() {
     // B11: `{items: {$query: ...}}` on `$each` and `{$query: ...}` as a prop
-    // value compile into the pool like a named query — TS's
+    // value claim on the hub like a named query — TS's
     // `hasToken($query)` prop path and `$each` branch share it. Two sites
     // asking the same thing share one cell.
     struct Tasks;
     impl we_template::QuerySource for Tasks {
-        fn rows(
+        fn open(
             &self,
-            _key: &we_template::QueryKey,
-            _ir: &we_template::QueryIr,
-        ) -> we_template::QueryState {
-            we_template::QueryState::Rows(Arc::new(vec![
+            _ticket: we_template::SubTicket,
+            _request: &we_template::QueryRequest,
+            sink: we_template::QuerySink,
+        ) {
+            sink.deliver(we_template::QueryEvent::Rows(Arc::new(vec![
                 Value::from_json(&json!({ "id": "t1", "name": "one" })),
                 Value::from_json(&json!({ "id": "t2", "name": "two" })),
-            ]))
+            ])));
         }
+        fn close(&self, _ticket: we_template::SubTicket) {}
     }
     let node = schema(json!({ "type": "Column", "children": [
         { "type": "$each",
@@ -827,7 +829,7 @@ fn inline_query_tokens_flow_through_the_pool() {
         other => panic!("rows prop must be a list, got {other:?}"),
     }
     assert_eq!(
-        rt.pool().len(),
+        rt.hub().len(),
         1,
         "the prop and the $each asked the same thing — one cell"
     );
@@ -842,15 +844,17 @@ fn a_deep_query_chain_settles_past_the_round_cap() {
     // forever, and the runtime cached the partial tree.
     struct Tasks;
     impl we_template::QuerySource for Tasks {
-        fn rows(
+        fn open(
             &self,
-            _key: &we_template::QueryKey,
-            _ir: &we_template::QueryIr,
-        ) -> we_template::QueryState {
-            we_template::QueryState::Rows(Arc::new(vec![Value::from_json(
-                &json!({ "kind": "Task" }),
-            )]))
+            _ticket: we_template::SubTicket,
+            _request: &we_template::QueryRequest,
+            sink: we_template::QuerySink,
+        ) {
+            sink.deliver(we_template::QueryEvent::Rows(Arc::new(vec![
+                Value::from_json(&json!({ "kind": "Task" })),
+            ])));
         }
+        fn close(&self, _ticket: we_template::SubTicket) {}
     }
     let node = schema(json!({ "type": "Column",
         "$localState": { "kick": { "type": "string", "initial": "a" } },
@@ -900,15 +904,17 @@ fn a_fill_chain_deeper_than_the_pass_cap_continues_then_rests() {
     // runtime would cache the partial tree and q1 would stay [] forever.
     struct Tasks;
     impl we_template::QuerySource for Tasks {
-        fn rows(
+        fn open(
             &self,
-            _key: &we_template::QueryKey,
-            _ir: &we_template::QueryIr,
-        ) -> we_template::QueryState {
-            we_template::QueryState::Rows(Arc::new(vec![Value::from_json(
-                &json!({ "kind": "Task" }),
-            )]))
+            _ticket: we_template::SubTicket,
+            _request: &we_template::QueryRequest,
+            sink: we_template::QuerySink,
+        ) {
+            sink.deliver(we_template::QueryEvent::Rows(Arc::new(vec![
+                Value::from_json(&json!({ "kind": "Task" })),
+            ])));
         }
+        fn close(&self, _ticket: we_template::SubTicket) {}
     }
     let node = schema(json!({ "type": "Column",
         "$queries": {
@@ -957,15 +963,12 @@ fn a_fill_chain_deeper_than_the_pass_cap_continues_then_rests() {
         text = text(&root)
     );
     assert_eq!(
-        rt.pool().len(),
+        rt.hub().len(),
         10,
         "all ten queries compiled to their own cells"
     );
     assert!(
-        rt.pool()
-            .cells()
-            .iter()
-            .all(|c| matches!(c.state(), we_template::QueryState::Rows(_))),
+        rt.hub().cells().iter().all(|c| c.view.loaded),
         "every cell holds rows"
     );
 
@@ -990,22 +993,25 @@ fn a_pending_query_is_not_progress() {
     struct Pending {
         calls: AtomicUsize,
         ready: AtomicBool,
+        held: Mutex<Vec<we_template::QuerySink>>,
     }
     impl we_template::QuerySource for Pending {
-        fn rows(
+        fn open(
             &self,
-            _key: &we_template::QueryKey,
-            _ir: &we_template::QueryIr,
-        ) -> we_template::QueryState {
+            _ticket: we_template::SubTicket,
+            _request: &we_template::QueryRequest,
+            sink: we_template::QuerySink,
+        ) {
             self.calls.fetch_add(1, Ordering::Relaxed);
             if self.ready.load(Ordering::Relaxed) {
-                we_template::QueryState::Rows(Arc::new(vec![Value::from_json(
-                    &json!({ "id": "t1", "name": "landed" }),
-                )]))
+                sink.deliver(we_template::QueryEvent::Rows(Arc::new(vec![
+                    Value::from_json(&json!({ "id": "t1", "name": "landed" })),
+                ])));
             } else {
-                we_template::QueryState::Loading
+                self.held.lock().unwrap().push(sink);
             }
         }
+        fn close(&self, _ticket: we_template::SubTicket) {}
     }
     let node = schema(json!({ "type": "Column",
         "$queries": { "items": { "entity": "Task" } },
@@ -1018,6 +1024,7 @@ fn a_pending_query_is_not_progress() {
     let source = Arc::new(Pending {
         calls: AtomicUsize::new(0),
         ready: AtomicBool::new(false),
+        held: Mutex::new(Vec::new()),
     });
     let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone())
         .with_sources(Some(source.clone()), Arc::new(we_template::NoParts));
@@ -1039,10 +1046,15 @@ fn a_pending_query_is_not_progress() {
         "the pending cell was asked once — extra asks were the bug's spin"
     );
 
-    // When the source finally has rows, a wake lands them on the next
-    // frame — progress is `Loading → Rows`, not the passing of time.
+    // When the source finally has rows, it delivers on the held sink —
+    // the arrival lands on the next frame's entry drain, the way a live
+    // subscription's result arrives between resolves.
     source.ready.store(true, Ordering::Relaxed);
-    rt.pool().bump();
+    for sink in source.held.lock().unwrap().drain(..) {
+        sink.deliver(we_template::QueryEvent::Rows(Arc::new(vec![
+            Value::from_json(&json!({ "id": "t1", "name": "landed" })),
+        ])));
+    }
     let root = rt.frame(&mut host, &screen).clone();
     let text = find_ty(&root, "we-text")
         .and_then(|n| n.props.get("text"))
@@ -1078,11 +1090,11 @@ fn a_mutual_query_cycle_settles_as_gated_not_hung() {
         text.strict_eq(&Value::from(0.0)),
         "a mutual cycle gates to [] like TS's forward reads — got {text:?}"
     );
-    assert!(rt.pool().is_empty(), "gated queries never reach the pool");
+    assert!(rt.hub().is_empty(), "gated queries never reach the hub");
 }
 
 #[test]
-fn pool_dedups_only_identical_queries() {
+fn hub_dedups_only_identical_queries() {
     // Two nodes, same entity, different `where` → two cells. The sabotage
     // this guards: keying on the entity name alone would collide the reads.
     let node = schema(json!({ "type": "Column", "children": [
@@ -1096,7 +1108,7 @@ fn pool_dedups_only_identical_queries() {
     ]}));
     let (mut rt, mut host, screen) = rig(node, StoreBag::new(), "/");
     rt.frame(&mut host, &screen);
-    assert_eq!(rt.pool().len(), 2, "distinct IRs must not share a cell");
+    assert_eq!(rt.hub().len(), 2, "distinct IRs must not share a cell");
 }
 
 #[test]
@@ -1143,11 +1155,11 @@ fn gated_query_field_exists_empty_and_not_loaded() {
         texts.iter().any(|v| v.strict_eq(&Value::from(0.0))),
         "gated rows must read as an empty list: {texts:?}"
     );
-    // A gated query never reaches the pool — no cell, no subscription — but
+    // A gated query never reaches the hub — no cell, no subscription — but
     // an unanchored scope WIDENS rather than gates: `scoped` compiles to a
     // cell with no scope filter (WE's deliberate asymmetry).
     assert_eq!(
-        rt.pool().len(),
+        rt.hub().len(),
         1,
         "gated queries add no cells; the widened scope adds exactly one"
     );

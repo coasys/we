@@ -23,7 +23,7 @@ use we_screen::{local_persist_key, local_sync_spec, resolve_local_initial, Scree
 use crate::handler::HandlerToken;
 use crate::local::TrackedDeps;
 use crate::node::{JsonMap, RouteNode, SchemaChild, SchemaNode};
-use crate::query::{compile_query, QueryPool, QueryState};
+use crate::query::{compile_request, CompileCx, Compiled, QueryHub, QueryKey, SiteId, SiteSlot};
 use crate::resolved::{HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope, Transition};
 use crate::scope::{FieldMeta, LocalDecl, LocalNs, LocalScope, ScopeEnv, StoreBag};
 use crate::{Host, LocalState};
@@ -53,7 +53,9 @@ pub struct ResolveCx<'a> {
     pub locals: &'a LocalState,
     pub cache: &'a mut ParseCache,
     pub screen: &'a ScreenState,
-    pub pool: &'a QueryPool,
+    /// The subscription hub every query site claims on — the pass's
+    /// claims, committed by the frame after the resolve.
+    pub hub: &'a mut QueryHub,
     /// `$part` lookups.
     pub parts: &'a dyn PartSource,
     /// The active template's route table, for `$routes`.
@@ -314,19 +316,19 @@ pub(crate) fn eval_json(
 
 /// A prop value with the inline `{"$query": descriptor}` form — the path
 /// TS's prop loop and `$each.items` share (`hasToken($query)` →
-/// `createQuerySignal`). The descriptor compiles into the pool like a
-/// named query, and the prop reads the cell's rows — `[]` while Loading
+/// `createQuerySignal`). The descriptor's site claims on the hub like a
+/// named query, and the prop reads the claim's view — `[]` while Loading
 /// or when the gate turns it off, the same answer `local.<name>` gives.
-fn eval_prop(json: &Json, scope: &Scope, cx: &mut ResolveCx) -> Value {
+fn eval_prop(json: &Json, scope: &Scope, cx: &mut ResolveCx, site: &SiteId) -> Value {
     if let Json::Object(map) = json {
         if let Some(descriptor) = map.get("$query") {
-            return match compile_query(descriptor, scope, cx.bag, cx.cache, cx.warnings) {
-                Some(compiled) => match cx.pool.cell(compiled.key, compiled.ir).state() {
-                    QueryState::Rows(rows) => Value::List(rows),
-                    QueryState::Loading => Value::List(Arc::new(Vec::new())),
-                },
-                None => Value::List(Arc::new(Vec::new())),
-            };
+            let compiled = compile_request(
+                descriptor,
+                scope,
+                &mut CompileCx::new(cx.bag, cx.cache, cx.warnings),
+            );
+            let view = cx.hub.claim(site.clone(), compiled, None);
+            return Value::List(view.rows);
         }
     }
     eval_json(json, scope, cx.bag, cx.cache, cx.warnings)
@@ -745,10 +747,14 @@ fn resolve_node(
         Some("$each") => {
             // The rows remember the query slots they were read out of, so a
             // descriptor reading the row alias reads through those slots.
+            let each_site = SiteId {
+                node: id.clone(),
+                slot: SiteSlot::EachItems,
+            };
             let (items, slots) = crate::query::observe_slots(|| {
                 props
                     .and_then(|p| p.get("items"))
-                    .map(|i| eval_prop(i, scope, cx))
+                    .map(|i| eval_prop(i, scope, cx, &each_site))
                     .unwrap_or(Value::Undefined)
             });
             let slots: Arc<[crate::query::SlotRef]> = slots.into();
@@ -947,8 +953,14 @@ fn resolve_node(
                             },
                         );
                     } else {
-                        resolved_props
-                            .insert(key.as_str().into(), eval_prop(value, &node_scope, cx));
+                        let site = SiteId {
+                            node: id.clone(),
+                            slot: SiteSlot::Prop(key.as_str().into()),
+                        };
+                        resolved_props.insert(
+                            key.as_str().into(),
+                            eval_prop(value, &node_scope, cx, &site),
+                        );
                     }
                 }
             }
@@ -1009,8 +1021,14 @@ fn resolve_node(
                             },
                         );
                     } else {
-                        resolved_props
-                            .insert(key.as_str().into(), eval_prop(value, &node_scope, cx));
+                        let site = SiteId {
+                            node: id.clone(),
+                            slot: SiteSlot::Prop(key.as_str().into()),
+                        };
+                        resolved_props.insert(
+                            key.as_str().into(),
+                            eval_prop(value, &node_scope, cx, &site),
+                        );
                     }
                 }
             }
@@ -1191,15 +1209,19 @@ fn declare_locals(
         );
     }
 
-    // Compile each query against `node_scope`, filling its slot. A query
-    // whose IR depends on a sibling's cell settles over repeats — and over
-    // frames once the sibling's rows land — so the loop compiles until the
-    // set of produced cells is stable. An acyclic graph needs at most one
-    // round per level plus a quiet round to notice; anything still moving
-    // past that is a cycle — keep the last state and warn, never spin.
+    // Compile each query against `node_scope`, claiming its site and
+    // filling its slot with the claim's view. A query whose IR depends on
+    // a sibling's slot settles over repeats — and over frames once the
+    // sibling's rows land — so the loop compiles until the set of claimed
+    // keys is stable. An acyclic graph needs at most one round per level
+    // plus a quiet round to notice; anything still moving past that is a
+    // cycle — keep the last state and warn, never spin. The per-round
+    // claims are the same site re-claiming — only the last round's claims
+    // are what the pass's `commit` sees, exactly as the design requires.
     if let Some(queries) = &node.queries {
         let max_rounds = queries.len() + 1;
         let mut settled = false;
+        let mut last_keys: IndexMap<Arc<str>, Option<QueryKey>> = IndexMap::new();
         for _round in 0..max_rounds {
             let mut changed = false;
             for (name, descriptor) in queries {
@@ -1207,21 +1229,23 @@ fn declare_locals(
                 let Some(slot) = slots.get(&name) else {
                     continue;
                 };
-                match compile_query(descriptor, &node_scope, cx.bag, cx.cache, cx.warnings) {
-                    Some(compiled) => {
-                        let cell = cx.pool.cell(compiled.key.clone(), compiled.ir.clone());
-                        cell.note_name(name.clone());
-                        if slot.cell().is_none_or(|old| !Arc::ptr_eq(&old, &cell)) {
-                            slot.set(cell);
-                            changed = true;
-                        }
-                    }
-                    None => {
-                        if slot.cell().is_some() {
-                            slot.clear();
-                            changed = true;
-                        }
-                    }
+                let compiled = compile_request(
+                    descriptor,
+                    &node_scope,
+                    &mut CompileCx::new(cx.bag, cx.cache, cx.warnings),
+                );
+                let key = match &compiled {
+                    Compiled::Ready(request) => Some(request.key(None)),
+                    _ => None,
+                };
+                let site = SiteId {
+                    node: id.clone(),
+                    slot: SiteSlot::Named(name.clone()),
+                };
+                slot.set(cx.hub.claim(site, compiled, None));
+                if last_keys.get(&name) != Some(&key) {
+                    last_keys.insert(name, key);
+                    changed = true;
                 }
             }
             if !changed {

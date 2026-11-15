@@ -1,13 +1,14 @@
 //! [`Runtime`]: the resolved tree's owner — revision counters, the cached
-//! tree, the query pool, pending calls and the ops a resolve queued.
+//! tree, the query hub, pending calls and the ops a resolve queued.
 //!
 //! `frame` re-resolves only when a counter moved — screen (`ScreenState`
-//! version), data (the [`StoreBag`] revision), local ([`LocalState`]), pool
-//! ([`QueryPool`] revision). A frame with no change hands back the tree it
+//! version), data (the [`StoreBag`] revision), local ([`LocalState`]), hub
+//! ([`QueryHub`] revision). A frame with no change hands back the tree it
 //! had. `dispatch` turns a widget event into handler tokens run against the
 //! [`Host`] and the [`ScreenState`]; `drain_inbox` takes what landed in the
 //! session's [`Inbox`] — [`crate::Completer`] deliveries, binding
-//! invalidations — and `complete` settles each pending `$invoke`.
+//! invalidations, query events — and `complete` settles each pending
+//! `$invoke`.
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -20,7 +21,7 @@ use crate::bindings::Invalidator;
 use crate::handlers::{self, HandlerCx, PendingMap};
 use crate::host::{CallBook, Completer, MountId};
 use crate::inbox::{Arrival, Inbox};
-use crate::query::{QueryCell, QueryPool, QueryState};
+use crate::query::{QueryEvent, QueryHub, QueryRequest, QuerySink, QuerySource, SubTicket};
 use crate::resolve::{self, NoParts, PartSource};
 use crate::resolved::{HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope};
 use crate::{
@@ -132,10 +133,12 @@ pub struct Runtime {
     /// `$`-types that are real components — the app seeds it from the widget
     /// registry; the default treats every `$`-type as an unknown op.
     dollar_type: Arc<dyn Fn(&str) -> bool>,
-    pool: QueryPool,
-    /// `QuerySource` — E6/E7 answer real subscriptions; `None` here means
-    /// the snapshot's `queries` table fills cells.
-    source: Option<Arc<dyn crate::query::QuerySource>>,
+    /// The subscription hub — query sites claim each pass; `commit` opens
+    /// and closes at the source.
+    hub: QueryHub,
+    /// `QuerySource` — E6/E7 answer real subscriptions; the default is the
+    /// snapshot's `queries` table, answering named requests by `name_hint`.
+    source: Arc<dyn QuerySource>,
     /// `$part` content.
     parts: Arc<dyn PartSource>,
     pending: PendingMap,
@@ -200,13 +203,15 @@ impl Runtime {
         // arrival here and call its waker — a data change reaches a
         // sleeping frontend. Each session gets its own handle on the bag.
         bag.set_invalidator(Invalidator::new(&inbox));
+        // No installed source: the snapshot's `queries` table answers.
+        let source: Arc<dyn QuerySource> = Arc::new(SnapshotQueries::new(bag.clone()));
         Self {
             spec,
             bag,
             locals,
             dollar_type: Arc::new(|_| false),
-            pool: QueryPool::new(),
-            source: None,
+            hub: QueryHub::new(inbox.clone()),
+            source,
             parts: Arc::new(NoParts),
             pending: HashMap::new(),
             orphans: Orphans::default(),
@@ -239,13 +244,16 @@ impl Runtime {
         Self::from_spec(RootSpec::App(Box::new(spec)), bag, locals)
     }
 
-    /// Install the query source (E6/E7) and the part source (E9).
+    /// Install the query source (E6/E7) and the part source (E9). `None`
+    /// keeps the default — the snapshot's `queries` table.
     pub fn with_sources(
         mut self,
-        source: Option<Arc<dyn crate::query::QuerySource>>,
+        source: Option<Arc<dyn QuerySource>>,
         parts: Arc<dyn PartSource>,
     ) -> Self {
-        self.source = source;
+        if let Some(source) = source {
+            self.source = source;
+        }
         self.parts = parts;
         self
     }
@@ -262,9 +270,15 @@ impl Runtime {
         &self.locals
     }
 
-    /// The query pool — tests count cells through it.
-    pub fn pool(&self) -> &QueryPool {
-        &self.pool
+    /// The query hub — tests count held keys and open tickets through it.
+    pub fn hub(&self) -> &QueryHub {
+        &self.hub
+    }
+
+    /// Mutably — a test delivers on a cell's ticket the way a live source
+    /// would.
+    pub fn hub_mut(&mut self) -> &mut QueryHub {
+        &mut self.hub
     }
 
     pub fn stats(&self) -> &Stats {
@@ -288,9 +302,9 @@ impl Runtime {
         &self.inbox
     }
 
-    /// Would `frame` re-resolve: the `(screen, data, local, pool)` tuple
+    /// Would `frame` re-resolve: the `(screen, data, local, hub)` tuple
     /// is not what the last resolve recorded. An exhausted pass budget
-    /// is covered too — `frame` bumps the pool revision past what `last`
+    /// is covered too — `frame` bumps the hub revision past what `last`
     /// recorded, so the mismatch reports itself here. `Session::poll`
     /// reports this as `Tick::dirty` — "a `resolve` now would produce a
     /// different tree" — and a quiet answer means the last tree is still
@@ -301,7 +315,7 @@ impl Runtime {
                 screen.version,
                 self.bag.version(),
                 self.locals.version(),
-                self.pool.revision(),
+                self.hub.revision(),
             ))
     }
 
@@ -368,27 +382,33 @@ impl Runtime {
 
     /// Run a frame: re-resolve iff a revision moved, then answer the cached
     /// tree. Mounts the screen's namespaces when `screen.version` moved,
-    /// resolves, then fills query cells from the source or the snapshot.
+    /// resolves, then runs `commit → drain` on the hub — claims open at the
+    /// source and the answers a synchronous source pushed land in the same
+    /// pass.
     pub fn frame(&mut self, host: &mut dyn Host, screen: &ScreenState) -> &Arc<ResolvedNode> {
         if self.bound_screen != Some(screen.version) {
             bind_screen(&self.bag, screen);
             self.bound_screen = Some(screen.version);
         }
+        // Query events pushed since the last drain — a live source's
+        // between-frames answer — are applied before the counters compare,
+        // so the revision they moved is seen.
+        self.hub.drain();
         let current = (
             screen.version,
             self.bag.version(),
             self.locals.version(),
-            self.pool.revision(),
+            self.hub.revision(),
         );
         if self.resolved.is_none() || self.last != Some(current) {
             let started = Instant::now();
             let ready = (self.ready)(&self.bag);
             let mounts = Self::mounts_for(&self.spec, screen, ready);
             self.mount_ids = mounts.iter().map(|m| m.id.clone()).collect();
-            // Resolve → fill new cells → resolve again: a query's rows land
-            // after the pass that created its cell (the same resolve that
-            // asks `local.<name>` reads `[]`). Loop until a pass fills
-            // nothing — bounded, in case rows beget queries.
+            // Resolve → commit the pass's claims → drain the deliveries:
+            // a query's rows land after the pass that claimed it (the same
+            // resolve that asks `local.<name>` reads `[]`). Loop until a
+            // drain moves nothing — bounded, in case rows beget queries.
             let mut children = Vec::new();
             let mut live = HashSet::new();
             let mut parents = HashMap::new();
@@ -420,7 +440,7 @@ impl Runtime {
                         locals: &self.locals,
                         cache: &mut self.cache,
                         screen,
-                        pool: &self.pool,
+                        hub: &mut self.hub,
                         parts: self.parts.as_ref(),
                         routes,
                         panels,
@@ -447,7 +467,19 @@ impl Runtime {
                 }
                 live = round_live;
                 parents = round_parents;
-                kept_filling = self.fill_queries();
+                // `commit → drain`: the pass's claims diff against the held
+                // set — releases close, new keys open at the source — then
+                // whatever the deliveries queued lands on the cells. A
+                // synchronous source answers inside `open`, so its rows
+                // are visible to the very next pass. The quiet window keeps
+                // those pushes from waking — they are this frame's own
+                // products; anything left queued after it gets one wake.
+                self.inbox.begin_sync_queries();
+                self.hub.commit(self.source.clone());
+                kept_filling = self.hub.drain();
+                if self.inbox.end_sync_queries() {
+                    self.inbox.wake();
+                }
                 if !kept_filling {
                     break;
                 }
@@ -525,53 +557,23 @@ impl Runtime {
                 // the next poll is dirty even if the invalidation arrival
                 // already drained.
                 current.1,
-                // Locals and pool at the END: their writes here were the
+                // Locals and hub at the END: their writes here were the
                 // resolve's own products — seeds, follows, cell fills —
                 // already reflected in this tree.
                 self.locals.version(),
-                self.pool.revision(),
+                self.hub.revision(),
             ));
-            // Every pass filled a cell — a deeper dependency chain may
-            // still be climbing. Bump the pool past what `last` recorded
+            // Every pass moved a cell — a deeper dependency chain may
+            // still be climbing. Bump the hub past what `last` recorded
             // so `dirty` and the next frame see the leftover work instead
             // of caching this partial tree, and wake: the tree on screen
             // is partial, so a sleeping frontend must come back.
             if kept_filling {
-                self.pool.bump();
+                self.hub.bump();
                 self.inbox.wake();
             }
         }
         self.resolved.as_ref().unwrap()
-    }
-
-    /// Fill every Loading cell from the `QuerySource` or the snapshot's
-    /// `queries` table — keyed by the cell's declared name. `true` when a
-    /// cell moved, meaning a re-resolve may now see rows. `Loading →
-    /// Loading` is not progress — a still-pending query must not dirty
-    /// the revision or every frame re-resolves while it warms (R5); the
-    /// pending cell waits for `Rows` or an external wake.
-    fn fill_queries(&self) -> bool {
-        let mut moved = false;
-        for cell in self.pool.cells() {
-            if !matches!(cell.state(), QueryState::Loading) {
-                continue;
-            }
-            let state = match &self.source {
-                Some(source) => Some(source.rows(&cell.key, &cell.ir)),
-                None => snapshot_rows(&self.bag, cell.as_ref()),
-            };
-            if let Some(state) = state {
-                if matches!(state, QueryState::Loading) {
-                    continue;
-                }
-                cell.fill(state);
-                moved = true;
-            }
-        }
-        if moved {
-            self.pool.bump();
-        }
-        moved
     }
 
     /// `node`'s handler `name` fired with `event` — or an ancestor's, the way
@@ -620,11 +622,18 @@ impl Runtime {
 
     /// Everything the inbox took since the last drain, in arrival order:
     /// `complete` settles each delivered call (its lifecycle runs here);
-    /// a `Bindings` arrival only counts — the source's revision is the
-    /// truth and [`Self::dirty`] re-reads it. Answers
-    /// `(completions, binding invalidations)` for `Tick`.
-    pub fn drain_inbox(&mut self, host: &mut dyn Host, screen: &mut ScreenState) -> (usize, usize) {
+    /// a `Query` event lands on its ticket's cell — `Tick::query_events`
+    /// counts the ones a cell visibly changed for; a `Bindings` arrival
+    /// only counts — the source's revision is the truth and
+    /// [`Self::dirty`] re-reads it. Answers `(completions, query events,
+    /// binding invalidations)` for `Tick`.
+    pub fn drain_inbox(
+        &mut self,
+        host: &mut dyn Host,
+        screen: &mut ScreenState,
+    ) -> (usize, usize, usize) {
         let mut completions = 0usize;
+        let mut queries = 0usize;
         let mut bindings = 0usize;
         for arrival in self.inbox.drain() {
             match arrival {
@@ -632,10 +641,13 @@ impl Runtime {
                     completions += 1;
                     self.complete(host, screen, call, result);
                 }
+                Arrival::Query { ticket, event } => {
+                    queries += self.hub.deliver(ticket, event) as usize;
+                }
                 Arrival::Bindings => bindings += 1,
             }
         }
-        (completions, bindings)
+        (completions, queries, bindings)
     }
 
     /// Settle a pending `$invoke` (`Host::act` answered `Pending` for the
@@ -795,14 +807,34 @@ fn default_ready(bag: &StoreBag) -> bool {
     }
 }
 
-/// The snapshot's answer for a cell — `queries.<first-declared-name>` rows.
-fn snapshot_rows(bag: &StoreBag, cell: &QueryCell) -> Option<QueryState> {
-    let name = cell.first_name()?;
-    match bag.query(&name) {
-        Value::List(rows) => Some(QueryState::Rows(rows)),
-        Value::Undefined => None,
-        other => Some(QueryState::Rows(Arc::new(vec![other]))),
+/// The source a `Runtime` carries when the host installed none: the
+/// snapshot's `queries` table, answering a request by the `$queries`
+/// field name that compiled it (`name_hint`). `open` answers inside the
+/// call — the frame's `commit → drain` settles it in the same pass — and
+/// `close` is a no-op: a name-keyed table has nothing to dispose.
+struct SnapshotQueries {
+    bag: Arc<StoreBag>,
+}
+
+impl SnapshotQueries {
+    fn new(bag: Arc<StoreBag>) -> Self {
+        Self { bag }
     }
+}
+
+impl QuerySource for SnapshotQueries {
+    fn open(&self, _ticket: SubTicket, request: &QueryRequest, sink: QuerySink) {
+        let Some(name) = request.name_hint.as_deref() else {
+            return;
+        };
+        match self.bag.query(name) {
+            Value::List(rows) => sink.deliver(QueryEvent::Rows(rows)),
+            Value::Undefined => {}
+            other => sink.deliver(QueryEvent::Rows(Arc::new(vec![other]))),
+        }
+    }
+
+    fn close(&self, _ticket: SubTicket) {}
 }
 
 /// Nodes in the tree, counting structure-op placeholders.

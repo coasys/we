@@ -46,8 +46,8 @@ use we_data::{OfflineData, StoreMap};
 use we_egui::Registry;
 use we_screen::{ScreenSchema, ScreenState};
 use we_template::{
-    AppSpec, Bundle, LocalState, NoParts, QueryState, ResolvedChild, ResolvedNode, Runtime,
-    SchemaNode, StaticHost,
+    AppSpec, Bundle, LocalState, NoParts, ResolvedChild, ResolvedNode, Runtime, SchemaNode,
+    StaticHost,
 };
 
 const BUNDLE: &str = include_str!(concat!(
@@ -232,10 +232,10 @@ fn inspect(truth: &Json, id: &str, app: &RendererApp) -> Resolved {
     r.loading = app
         .session
         .runtime
-        .pool()
+        .hub()
         .cells()
         .iter()
-        .filter(|c| matches!(c.state(), QueryState::Loading))
+        .filter(|c| !c.view.loaded)
         .count();
     r
 }

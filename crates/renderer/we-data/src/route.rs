@@ -17,7 +17,9 @@ use std::sync::{Arc, Mutex};
 use indexmap::IndexMap;
 use serde_json::{Map as JsonMap, Value as Json};
 use we_expr::Value;
-use we_template::{QueryIr, QueryKey, QuerySource, QueryState};
+use we_template::{
+    DatasetSel, QueryEvent, QueryIr, QueryRequest, QuerySink, QuerySource, SubTicket,
+};
 
 use crate::executor::{ClassSel, SpaceId};
 
@@ -367,24 +369,21 @@ impl RouteCaptures {
         self.missed.lock().map(|m| m.clone()).unwrap_or_default()
     }
 
-    /// The recorded rows for a pool cell's request, by identity — `None`
-    /// when no capture answered it (never asked, skipped, failed, or two
-    /// captures disagree).
-    pub fn rows_for_key(&self, key: &QueryKey) -> Option<Arc<Vec<Value>>> {
-        let doc: Json = serde_json::from_str(key.as_str()).ok()?;
-        let entities = doc
-            .get("e")?
-            .as_array()?
-            .iter()
-            .map(|e| e.as_str().map(str::to_string))
-            .collect::<Option<Vec<_>>>()?;
-        let union = doc.get("u").and_then(|u| u.as_bool()).unwrap_or(false);
-        let dataset = doc.get("ds").and_then(|d| d.as_str()).map(str::to_string);
-        let rest = match doc.get("ir") {
-            Some(Json::Object(ir)) => request_rest(ir),
+    /// The recorded rows for a claimed request, by identity — `None` when
+    /// no capture answered it (never asked, skipped, failed, or two
+    /// captures disagree). The request is read directly, never parsed back
+    /// from a key.
+    pub fn rows_for_claim(&self, request: &QueryRequest) -> Option<Arc<Vec<Value>>> {
+        let entities: Vec<String> = request.classes.iter().map(|e| e.to_string()).collect();
+        let dataset = match &request.dataset {
+            DatasetSel::Named(handle) => Some(handle.as_str().to_string()),
+            DatasetSel::Here => None,
+        };
+        let rest = match request.ir_json() {
+            Json::Object(ir) => request_rest(&ir),
             _ => Json::Object(JsonMap::new()),
         };
-        self.lookup(&entities, union, dataset, &rest)
+        self.lookup(&entities, request.union, dataset, &rest)
     }
 
     /// The recorded rows for an executor request — the same identity a pool
@@ -439,9 +438,10 @@ fn same_rows(a: &[Value], b: &[Value]) -> bool {
     a.len() == b.len() && a.iter().zip(b).all(|(x, y)| x.to_json() == y.to_json())
 }
 
-/// A [`QuerySource`] answering a pool cell from one route's captures, by the
-/// cell's request identity. An unanswered request stays `Loading` — the TS
-/// state of a query that was never asked (skipped) or has not answered.
+/// A [`QuerySource`] answering a claim from one route's captures, by the
+/// request's identity. A request no capture answered delivers nothing —
+/// the TS state of a query that was never asked (skipped) or has not
+/// answered.
 #[derive(Debug, Clone)]
 pub struct RouteQuerySource {
     captures: Arc<RouteCaptures>,
@@ -458,10 +458,12 @@ impl RouteQuerySource {
 }
 
 impl QuerySource for RouteQuerySource {
-    fn rows(&self, key: &QueryKey, _ir: &QueryIr) -> QueryState {
-        match self.captures.rows_for_key(key) {
-            Some(rows) => QueryState::Rows(rows),
-            None => QueryState::Loading,
+    fn open(&self, _ticket: SubTicket, request: &QueryRequest, sink: QuerySink) {
+        if let Some(rows) = self.captures.rows_for_claim(request) {
+            sink.deliver(QueryEvent::Rows(rows));
         }
     }
+
+    /// A recording has nothing to dispose.
+    fn close(&self, _ticket: SubTicket) {}
 }

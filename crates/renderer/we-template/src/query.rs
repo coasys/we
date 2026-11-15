@@ -1,5 +1,5 @@
-//! `$queries` — the compiled descriptor, the pool key, and the state a row
-//! list is in.
+//! `$queries` — the compiled descriptor, the subscription key, and the hub
+//! a site's claim lives on.
 //!
 //! A node's `$queries` block declares named row lists. At resolve time each
 //! declaration compiles to a [`QueryIr`] (`resolveQueryProp` +
@@ -8,11 +8,16 @@
 //! is `deepResolveTokens`'d into the IR's `where`/`order`/`limit`/`offset`/
 //! `include`/`select`/`scope`.
 //!
-//! The pool ([`QueryPool`]) shares one cell per [`QueryKey`] — the full IR,
+//! The hub ([`QueryHub`]) shares one entry per [`QueryKey`] — the full IR,
 //! not just the entity (the subscription pool's "keyed by what is asked,
-//! never by the object asking").
+//! never by the object asking") — refcounted by the [`SiteId`]s claiming it
+//! each pass. `commit` diffs a pass's claims against the held set and calls
+//! [`QuerySource::open`]/[`QuerySource::close`] at the refcount edges; a
+//! source answers on the [`QuerySink`], an [`Arrival::Query`](crate::inbox)
+//! on the session's inbox.
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
+use std::fmt;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, RwLock};
 
@@ -215,49 +220,182 @@ impl QueryKey {
     }
 }
 
-/// A query's rows, or not yet — the `loaded` flag a `<name>Loaded` field
-/// reads is `matches!(Rows)` (an error reports loaded too, as WE's does).
-#[derive(Debug, Clone)]
-pub enum QueryState {
-    /// Subscribed, nothing back yet.
-    Loading,
-    /// Rows arrived (or an error, which WE also reports as loaded).
-    Rows(Arc<Vec<Value>>),
+/// A declaration site — whose claim a key is held by, distinct from the
+/// question itself. The `node` is the resolved [`NodeId`] the site sits
+/// over, so the same declaration inside two `$each` rows, or two mounts of
+/// one `$part`, are different claims on what may be the same key.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub struct SiteId {
+    /// The resolved id of the node the site belongs to.
+    pub node: NodeId,
+    /// Which declaration on that node.
+    pub slot: SiteSlot,
 }
 
-/// The cell a named query compiled to this pass — predeclared into `local`
+/// Which declaration on a node a site is — the named `$queries` fields are
+/// one each; an inline `{"$query"}` in prop position is the prop it asks.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
+pub enum SiteSlot {
+    /// A `$queries` field (`Named("items")` for `items: {entity:…}`). The
+    /// field name is also the request's `name_hint`, the handle a
+    /// name-keyed snapshot table answers by.
+    Named(Arc<str>),
+    /// A `{"$query"}` prop (`Prop("rows")` for `rows: {$query:…}`).
+    Prop(Arc<str>),
+    /// A `$each`'s `items` prop.
+    EachItems,
+    /// A `$single`'s query prop — reserved for the op when it lands.
+    SingleItem,
+}
+
+/// One subscription a source holds — minted for a key at its 0→1 refcount
+/// edge and stamped on every event its sink pushes, so a late delivery for
+/// a closed subscription is recognized as dead and dropped. `Copy`: it is
+/// a stamp, not a capability — closing needs the hub's table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SubTicket(u64);
+
+impl SubTicket {
+    /// The raw value — for a test asserting tickets are distinct.
+    pub fn raw(self) -> u64 {
+        self.0
+    }
+}
+
+/// What a source pushes on a ticket's sink — the TS listener's `onRows` /
+/// `onError`: the newest rows, or the failure. `Rows` is a wholesale
+/// replace until E3c-5b's reconciliation.
+#[derive(Debug, Clone)]
+pub enum QueryEvent {
+    /// The newest rows — `latest` in the TS entry.
+    Rows(Arc<Vec<Value>>),
+    /// The read failed — `error` in the TS entry; a settled query, so the
+    /// `Loaded` flag reports true on it as WE's does.
+    Failed(Value),
+}
+
+/// The delivery end a source keeps: `open` hands it the ticket's sink, and
+/// pushing a [`QueryEvent`] queues an [`Arrival::Query`](crate::inbox::Arrival)
+/// on the session's inbox — the frame's `commit → drain` applies it, same
+/// pass for a source that answers inside `open`. `Clone` and `Send + Sync`:
+/// a live source delivers from wherever it answers.
+#[derive(Clone)]
+pub struct QuerySink {
+    ticket: SubTicket,
+    inbox: Arc<crate::inbox::Inbox>,
+}
+
+impl fmt::Debug for QuerySink {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("QuerySink")
+            .field("ticket", &self.ticket)
+            .finish()
+    }
+}
+
+impl QuerySink {
+    /// Push an event on this ticket. A closed ticket's events are dropped
+    /// at apply — the sink need not check first.
+    pub fn deliver(&self, event: QueryEvent) {
+        self.inbox.push(crate::inbox::Arrival::Query {
+            ticket: self.ticket,
+            event,
+        });
+    }
+
+    /// The ticket this sink answers.
+    pub fn ticket(&self) -> SubTicket {
+        self.ticket
+    }
+}
+
+/// Where a subscription's rows come from — the contract E3c-4 defines and
+/// E6/E7's live sources implement. `open` starts a subscription for the
+/// full [`QueryRequest`] (entity names, union, dataset, `subscribe`, and
+/// the IR — never parsed back from a key) and hands the source the
+/// [`QuerySink`] it delivers on; `close` disposes the subscription for a
+/// key whose last claim released. A source that never delivers leaves the
+/// entry loading, exactly as an unanswered TS `subscribe` does.
+///
+/// `open` must not re-enter the hub or a source calling it may deadlock;
+/// deliver through the sink, which only queues.
+pub trait QuerySource: Send + Sync {
+    /// Open a subscription for `request` as `ticket`. A synchronous source
+    /// delivers inside this call; a live one keeps the sink.
+    fn open(&self, ticket: SubTicket, request: &QueryRequest, sink: QuerySink);
+    /// Dispose the subscription — every claim on it is gone.
+    fn close(&self, ticket: SubTicket);
+}
+
+/// One `[]` for every unanswered query. A loading cell's rows are a stable
+/// empty list — WE's `[]` initial keeps its allocation until rows land —
+/// where a fresh `[]` per read would look like a dependency that always
+/// moves to a tracked `initial`.
+pub(crate) fn empty_rows() -> Arc<Vec<Value>> {
+    static EMPTY: std::sync::OnceLock<Arc<Vec<Value>>> = std::sync::OnceLock::new();
+    EMPTY.get_or_init(|| Arc::new(Vec::new())).clone()
+}
+
+/// What a claim hands back and a [`QuerySlot`] holds: the entry's current
+/// answer — the rows (the shared `[]` while loading), whether it settled
+/// (rows or an error — both report loaded, as WE's `loaded` does), and the
+/// failure.
+#[derive(Debug, Clone)]
+pub struct SlotView {
+    /// The rows, or the shared empty list while loading.
+    pub rows: Arc<Vec<Value>>,
+    /// Rows arrived or the read failed — `local.<name>Loaded` reads this.
+    pub loaded: bool,
+    /// The failure, when the read ended in one.
+    pub error: Option<Value>,
+}
+
+impl Default for SlotView {
+    fn default() -> Self {
+        Self {
+            rows: empty_rows(),
+            loaded: false,
+            error: None,
+        }
+    }
+}
+
+/// What a named query compiled to this pass — predeclared into `local`
 /// before any query compiles so a sibling's `local.<name>` resolves
 /// whichever order the node's queries are compiled in (WE's `forward`
-/// accessors, which read the real signal once it exists). Until `set`
-/// fills it the slot answers like a gated cell: `[]`, `Loaded` `false`.
-#[derive(Debug, Default)]
-pub struct QuerySlot(RwLock<Option<Arc<QueryCell>>>);
+/// accessors, which read the real signal once it exists). `set` writes the
+/// view this pass's claim produced; until then the slot answers like a
+/// gated one — `[]`, `Loaded` `false`.
+#[derive(Debug)]
+pub struct QuerySlot(RwLock<SlotView>);
+
+impl Default for QuerySlot {
+    fn default() -> Self {
+        Self(RwLock::new(SlotView::default()))
+    }
+}
 
 impl QuerySlot {
-    /// Bind the slot to the cell this pass's compile produced.
-    pub fn set(&self, cell: Arc<QueryCell>) {
+    /// Bind the slot to the view this pass's claim answered.
+    pub fn set(&self, view: SlotView) {
         if let Ok(mut s) = self.0.write() {
-            *s = Some(cell);
+            *s = view;
         }
     }
 
-    /// This pass's compile gated — the slot answers empty again.
+    /// This pass's claim gated — the slot answers empty again.
     pub fn clear(&self) {
-        if let Ok(mut s) = self.0.write() {
-            *s = None;
-        }
+        self.set(SlotView::default());
     }
 
-    /// The bound cell, if the query compiled this pass.
-    pub fn cell(&self) -> Option<Arc<QueryCell>> {
-        self.0.read().ok().and_then(|s| s.clone())
+    /// The view the slot reads as.
+    pub fn view(&self) -> SlotView {
+        self.0.read().ok().map(|s| s.clone()).unwrap_or_default()
     }
 
-    /// The bound cell's state — `Loading` (empty rows) while unbound.
-    pub fn state(&self) -> QueryState {
-        self.cell()
-            .map(|cell| cell.state())
-            .unwrap_or(QueryState::Loading)
+    /// Rows arrived (or an error, reported as loaded).
+    pub fn loaded(&self) -> bool {
+        self.0.read().map(|s| s.loaded).unwrap_or(false)
     }
 }
 
@@ -279,9 +417,10 @@ impl SlotRef {
         Self { node, name, slot }
     }
 
-    /// The slot's bound cell holds rows (or an error, reported as loaded).
+    /// The slot's claim settled — rows arrived or the read failed (WE's
+    /// `loaded` reports both).
     pub fn loaded(&self) -> bool {
-        matches!(self.slot.state(), QueryState::Rows(_))
+        self.slot.loaded()
     }
 }
 
@@ -330,95 +469,316 @@ pub(crate) fn observe_slots<R>(f: impl FnOnce() -> R) -> (R, Vec<SlotRef>) {
     (out, mine)
 }
 
-/// One cell in the pool — shared by every node asking the same question.
-/// `names` are the `$queries` field names that compiled to it — data a
-/// snapshot fallback answers by, never part of the key.
-#[derive(Debug)]
-pub struct QueryCell {
-    pub key: QueryKey,
-    pub ir: QueryIr,
-    names: RwLock<Vec<Arc<str>>>,
-    state: RwLock<QueryState>,
+/// One entry's answer state — `latest`/`error`/`failed` on a TS pool
+/// entry.
+enum CellState {
+    /// Subscribed (or claimed, pre-`open`), nothing back yet.
+    Loading,
+    /// The newest rows.
+    Rows(Arc<Vec<Value>>),
+    /// The read failed — settled, reported loaded as WE does.
+    Failed(Value),
 }
 
-impl QueryCell {
-    pub fn state(&self) -> QueryState {
-        self.state
-            .read()
-            .map(|s| s.clone())
-            .unwrap_or(QueryState::Loading)
-    }
+/// One held key — the request that opened it, its newest answer, the
+/// claims count and the ticket the source knows it by.
+struct Entry {
+    request: QueryRequest,
+    state: CellState,
+    /// Sites currently claiming this key. `open` fires at 0→1, `close` at
+    /// 1→0; the entry dies with the count.
+    holders: usize,
+    /// The live subscription — `None` until the first claim commits.
+    ticket: Option<SubTicket>,
+}
 
-    /// Rows arrived — the caller bumps the pool's revision.
-    pub fn fill(&self, state: QueryState) {
-        if let Ok(mut s) = self.state.write() {
-            *s = state;
+impl Entry {
+    fn new(request: QueryRequest) -> Self {
+        Self {
+            request,
+            state: CellState::Loading,
+            holders: 0,
+            ticket: None,
         }
     }
 
-    /// A `$queries` field name that compiled to this cell.
-    pub fn note_name(&self, name: Arc<str>) {
-        if let Ok(mut names) = self.names.write() {
-            if !names.contains(&name) {
-                names.push(name);
+    /// The answer a claim reports — `latest` when there is one, the shared
+    /// empty while loading, `[]` + loaded on a failure.
+    fn view(&self) -> SlotView {
+        match &self.state {
+            CellState::Loading => SlotView::default(),
+            CellState::Rows(rows) => SlotView {
+                rows: rows.clone(),
+                loaded: true,
+                error: None,
+            },
+            CellState::Failed(error) => SlotView {
+                rows: empty_rows(),
+                loaded: true,
+                error: Some(error.clone()),
+            },
+        }
+    }
+}
+
+/// What a held entry shows a test or the debug overlay — the pool cell's
+/// successor: which request it is, the newest answer, and how many sites
+/// hold it.
+#[derive(Debug)]
+pub struct HubCell {
+    /// The full identity — `{e, u, ds, sub, ir}`.
+    pub key: QueryKey,
+    /// The request the first claim brought (`name_hint` included — the
+    /// handle a name-keyed snapshot table answers by).
+    pub request: QueryRequest,
+    /// Its current answer.
+    pub view: SlotView,
+    /// The ticket the source opened it under — a test delivers a refill
+    /// on it, the way a live subscription's update arrives.
+    pub ticket: SubTicket,
+    /// The sites claiming it this commit.
+    pub holders: usize,
+}
+
+/// The subscription hub (E3c-4) — WE's `subscriptionPool` as a lifetime-
+/// aware Rust type: one [`Entry`] per held [`QueryKey`], refcounted by the
+/// [`SiteId`]s claiming it, with the session's inbox for `onRows`/`onError`.
+///
+/// - [`Self::claim`] records a site's per-pass claim — a `Ready` compile
+///   creates the entry if new and answers its current view; `Provisional`
+///   and `Gated` are no claim, so a withheld query never opens a wide
+///   subscription.
+/// - [`Self::commit`] ends a pass: the claims the pass recorded are diffed
+///   against the held set, keys at the 0→1 edge `open` at the source, keys
+///   at 1→0 `close`, and a site that moved keys releases then re-acquires —
+///   a same-pass release/re-acquire never reaches the source (the claims
+///   map holds only the last claim).
+/// - [`Self::deliver`] applies one [`QueryEvent`] to its ticket's entry —
+///   `Rows` wholesale-replaces; a dead ticket's event is dropped. Bumps the
+///   revision on a visible change; [`Self::drain`] does it for everything
+///   queued on the inbox — the `commit → drain` the frame runs per pass.
+///
+/// `Drop` closes every open ticket — a destroyed runtime cannot leak
+/// subscriptions.
+pub struct QueryHub {
+    entries: HashMap<QueryKey, Entry>,
+    /// This pass's claims (`SiteId → key`), cleared by each `commit` — a
+    /// later claim from the same site replaces the earlier one, so only the
+    /// pass's last word counts.
+    claims: HashMap<SiteId, QueryKey>,
+    /// The held set the last `commit` produced — what this pass's claims
+    /// are diffed against.
+    held: HashMap<SiteId, QueryKey>,
+    /// Live tickets → their key — a delivery addresses the source's
+    /// subscription, and a closed ticket's events die here.
+    by_ticket: HashMap<SubTicket, QueryKey>,
+    next: u64,
+    /// Data revision — one of the frame's counters, bumped on every visible
+    /// cell change and on the frame loop's leftover-work signal.
+    revision: AtomicU64,
+    inbox: Arc<crate::inbox::Inbox>,
+    /// The source `commit` last ran against — kept so `Drop` can close and
+    /// a swap can be told apart.
+    source: Option<Arc<dyn QuerySource>>,
+}
+
+impl QueryHub {
+    pub fn new(inbox: Arc<crate::inbox::Inbox>) -> Self {
+        Self {
+            entries: HashMap::new(),
+            claims: HashMap::new(),
+            held: HashMap::new(),
+            by_ticket: HashMap::new(),
+            next: 0,
+            revision: AtomicU64::new(0),
+            inbox,
+            source: None,
+        }
+    }
+
+    /// A site's per-pass claim: `site → key`. `Ready` records the claim,
+    /// keys the request (`Here` resolves to `here`), stamps the `name_hint`
+    /// a `Named` site carries, creates the entry on first sight and answers
+    /// its current view — `Loading` until `commit` opens it and a delivery
+    /// lands. `Provisional` and `Gated` are a release: any earlier claim
+    /// this pass is forgotten and the answer is the empty view — a withheld
+    /// compile must never widen into a subscription.
+    pub fn claim(
+        &mut self,
+        site: SiteId,
+        compiled: Compiled,
+        here: Option<&DatasetHandle>,
+    ) -> SlotView {
+        match compiled {
+            Compiled::Ready(mut request) => {
+                if let SiteSlot::Named(name) = &site.slot {
+                    request.name_hint = Some(name.clone());
+                }
+                let key = request.key(here);
+                self.claims.insert(site, key.clone());
+                self.entries
+                    .entry(key)
+                    .or_insert_with(|| Entry::new(request))
+                    .view()
+            }
+            Compiled::Provisional(_) | Compiled::Gated => {
+                self.claims.remove(&site);
+                SlotView::default()
             }
         }
     }
 
-    /// The first field name that compiled here — a snapshot's lookup key.
-    pub fn first_name(&self) -> Option<Arc<str>> {
-        self.names.read().ok()?.first().cloned()
-    }
-}
-
-/// Where a cell's rows come from. E6/E7 answer from a real subscription;
-/// the offline stage answers from the snapshot's `queries` table. `rows` is
-/// the brief's signature — keyed by what is asked, never by who asked.
-pub trait QuerySource {
-    fn rows(&self, key: &QueryKey, ir: &QueryIr) -> QueryState;
-}
-
-/// The pool: `key → cell`, one cell per distinct question. The revision
-/// bumps whenever a cell's state changes, so a frame watches it like the
-/// bag's version.
-#[derive(Default)]
-pub struct QueryPool {
-    cells: RwLock<HashMap<QueryKey, Arc<QueryCell>>>,
-    revision: AtomicU64,
-}
-
-impl QueryPool {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    /// The cell for `key`, creating it (Loading) on first sight.
-    pub fn cell(&self, key: QueryKey, ir: QueryIr) -> Arc<QueryCell> {
-        if let Some(cell) = self.cells.read().ok().and_then(|c| c.get(&key).cloned()) {
-            return cell;
+    /// End a pass: releases first, then acquires — a key two sites swapped
+    /// claims on keeps its count through both edges and never flaps. A 1→0
+    /// key `close`s at the source and dies; a 0→1 key mints a [`SubTicket`]
+    /// and `open`s — the request the first claim brought, the sink that
+    /// stamps the ticket. Entries a claim created but no commit ever held
+    /// (a site re-claimed elsewhere mid-pass) are swept.
+    ///
+    /// Installing a different source mid-session closes every open ticket
+    /// on the old one and reopens on the new.
+    pub fn commit(&mut self, source: Arc<dyn QuerySource>) {
+        if self
+            .source
+            .as_ref()
+            .is_some_and(|old| !Arc::ptr_eq(old, &source))
+        {
+            for (ticket, key) in std::mem::take(&mut self.by_ticket) {
+                if let Some(old) = &self.source {
+                    old.close(ticket);
+                }
+                if let Some(entry) = self.entries.get_mut(&key) {
+                    entry.ticket = None;
+                }
+            }
         }
-        let mut cells = match self.cells.write() {
-            Ok(c) => c,
-            Err(_) => {
-                return Arc::new(QueryCell {
-                    key,
-                    ir,
-                    names: RwLock::new(Vec::new()),
-                    state: RwLock::new(QueryState::Loading),
-                });
+        self.source = Some(source);
+
+        let want: HashMap<SiteId, QueryKey> = std::mem::take(&mut self.claims);
+
+        let mut releases: Vec<SiteId> = self
+            .held
+            .iter()
+            .filter(|(site, key)| want.get(*site) != Some(*key))
+            .map(|(site, _)| site.clone())
+            .collect();
+        releases.sort();
+        for site in releases {
+            if let Some(key) = self.held.remove(&site) {
+                self.release_key(&key);
+            }
+        }
+
+        let mut acquires: Vec<(SiteId, QueryKey)> = want
+            .into_iter()
+            .filter(|(site, key)| self.held.get(site) != Some(key))
+            .collect();
+        acquires.sort_by(|a, b| a.0.cmp(&b.0));
+        for (site, key) in acquires {
+            self.held.insert(site, key.clone());
+            self.acquire_key(&key);
+        }
+
+        // An entry a claim created but nothing holds — a compile that went
+        // provisional between rounds, say — has no reason to exist.
+        self.entries
+            .retain(|_, e| e.holders > 0 || e.ticket.is_some());
+    }
+
+    /// One claim on `key` let go — a holder reached 0: `close` the
+    /// subscription and drop the entry.
+    fn release_key(&mut self, key: &QueryKey) {
+        let Some(entry) = self.entries.get_mut(key) else {
+            return;
+        };
+        entry.holders = entry.holders.saturating_sub(1);
+        if entry.holders == 0 {
+            if let Some(ticket) = entry.ticket.take() {
+                self.by_ticket.remove(&ticket);
+                if let Some(source) = &self.source {
+                    source.close(ticket);
+                }
+            }
+            self.entries.remove(key);
+        }
+    }
+
+    /// One claim on `key` arrived — the 0→1 edge mints the ticket and
+    /// `open`s at the source: the request, and a sink stamped with the
+    /// ticket. The sink only queues, so a source answering inside `open`
+    /// is applied by the `drain` this commit's pass follows with.
+    fn acquire_key(&mut self, key: &QueryKey) {
+        let Some(entry) = self.entries.get_mut(key) else {
+            return;
+        };
+        entry.holders += 1;
+        if entry.ticket.is_some() {
+            return;
+        }
+        let ticket = {
+            self.next += 1;
+            SubTicket(self.next)
+        };
+        let request = entry.request.clone();
+        let sink = QuerySink {
+            ticket,
+            inbox: self.inbox.clone(),
+        };
+        if let Some(source) = &self.source {
+            source.open(ticket, &request, sink);
+        }
+        // The entry survives `open` — a source may not claim or commit
+        // from inside it (documented on [`QuerySource`]).
+        if let Some(entry) = self.entries.get_mut(key) {
+            entry.ticket = Some(ticket);
+            self.by_ticket.insert(ticket, key.clone());
+        }
+    }
+
+    /// Apply one event to its ticket's entry — `true` when a cell visibly
+    /// changed. A dead ticket's event is dropped (`false`); `Rows` the
+    /// entry already holds by allocation is a no-op, and a repeated
+    /// `Failed` matching the recorded error is too — but a `Rows`
+    /// re-delivery under a different allocation replaces wholesale (E3c-4;
+    /// reconciliation is E3c-5b's).
+    pub fn deliver(&mut self, ticket: SubTicket, event: QueryEvent) -> bool {
+        let Some(key) = self.by_ticket.get(&ticket).cloned() else {
+            return false;
+        };
+        let Some(entry) = self.entries.get_mut(&key) else {
+            return false;
+        };
+        let applied = match (event, &entry.state) {
+            (QueryEvent::Rows(rows), CellState::Rows(old)) if Arc::ptr_eq(&rows, old) => false,
+            (QueryEvent::Rows(rows), _) => {
+                entry.state = CellState::Rows(rows);
+                true
+            }
+            (QueryEvent::Failed(error), CellState::Failed(old))
+                if crate::scope::content_eq(&error, old) =>
+            {
+                false
+            }
+            (QueryEvent::Failed(error), _) => {
+                entry.state = CellState::Failed(error);
+                true
             }
         };
-        cells
-            .entry(key.clone())
-            .or_insert_with(|| {
-                Arc::new(QueryCell {
-                    key,
-                    ir,
-                    names: RwLock::new(Vec::new()),
-                    state: RwLock::new(QueryState::Loading),
-                })
-            })
-            .clone()
+        if applied {
+            self.revision.fetch_add(1, Ordering::Relaxed);
+        }
+        applied
+    }
+
+    /// Everything the inbox holds for this hub, applied in arrival order —
+    /// `true` when any cell moved, meaning a re-resolve may now see rows.
+    /// Events for tickets closed since they queued are dropped.
+    pub fn drain(&mut self) -> bool {
+        let mut moved = false;
+        for (ticket, event) in self.inbox.drain_queries() {
+            moved |= self.deliver(ticket, event);
+        }
+        moved
     }
 
     /// Data revision — one of the frame's counters.
@@ -426,66 +786,62 @@ impl QueryPool {
         self.revision.load(Ordering::Relaxed)
     }
 
-    /// A cell's state changed.
+    /// A visible change happened outside `deliver` — the frame's
+    /// leftover-work marker (its pass budget ran out mid-climb; `dirty`
+    /// must still see the work left).
     pub fn bump(&self) {
         self.revision.fetch_add(1, Ordering::Relaxed);
     }
 
-    /// Live keys — for a test counting distinct subscriptions.
-    pub fn len(&self) -> usize {
-        self.cells.read().map(|c| c.len()).unwrap_or(0)
+    /// Distinct keys currently held — how many subscriptions the source
+    /// should see.
+    pub fn held(&self) -> usize {
+        self.entries.values().filter(|e| e.holders > 0).count()
     }
 
-    /// No live keys.
+    /// Live tickets — subscriptions the source believes it has.
+    pub fn opened(&self) -> usize {
+        self.by_ticket.len()
+    }
+
+    /// Held cells — what the old pool's `len` reported.
+    pub fn len(&self) -> usize {
+        self.held()
+    }
+
+    /// No held cells.
     pub fn is_empty(&self) -> bool {
         self.len() == 0
     }
 
-    /// All cells — the runtime fills new ones after a resolve.
-    pub fn cells(&self) -> Vec<Arc<QueryCell>> {
-        self.cells
-            .read()
-            .map(|c| c.values().cloned().collect())
-            .unwrap_or_default()
+    /// The held cells, ordered by key — what a test or overlay inspects.
+    pub fn cells(&self) -> Vec<HubCell> {
+        let mut cells: Vec<HubCell> = self
+            .entries
+            .iter()
+            .filter(|(_, e)| e.holders > 0)
+            .map(|(key, e)| HubCell {
+                key: key.clone(),
+                request: e.request.clone(),
+                view: e.view(),
+                ticket: e.ticket.unwrap_or(SubTicket(0)),
+                holders: e.holders,
+            })
+            .collect();
+        cells.sort_by(|a, b| a.key.as_str().cmp(b.key.as_str()));
+        cells
     }
 }
 
-/// The pull path's form of one `$queries` entry — what a pool cell is made
-/// from. [`compiled_to_cell`] produces it from a [`Compiled`].
-#[derive(Debug, Clone)]
-pub struct CompiledQuery {
-    /// Entity names after `entityNamesOf` — deduped, blanks dropped.
-    /// E6's `QuerySource` turns them into the subscription's `ClassSel`.
-    #[allow(dead_code)]
-    pub entities: Vec<Arc<str>>,
-    /// The entity came as a list — a union read even when it lists one.
-    #[allow(dead_code)]
-    pub union: bool,
-    /// `subscribe` — default `true`; a one-shot still asks once.
-    #[allow(dead_code)]
-    pub subscribe: bool,
-    /// The `when` gate evaluated true — a gated query's field still exists.
-    pub ir: QueryIr,
-    /// What the pool dedups on.
-    pub key: QueryKey,
-}
-
-/// The pull adapter: `Ready` is a cell to make; `Provisional` and `Gated`
-/// are no cell (the slot is cleared and answers `[]`/`false`). No mount
-/// space yet, so `Here` keys as a dataset-less read.
-pub fn compiled_to_cell(compiled: Compiled) -> Option<CompiledQuery> {
-    match compiled {
-        Compiled::Ready(request) => {
-            let key = request.key(None);
-            Some(CompiledQuery {
-                entities: request.classes.to_vec(),
-                union: request.union,
-                subscribe: request.subscribe,
-                ir: request.ir,
-                key,
-            })
+impl Drop for QueryHub {
+    /// A destroyed hub cannot leak subscriptions — every open ticket hears
+    /// `close` on the source that opened it.
+    fn drop(&mut self) {
+        if let Some(source) = &self.source {
+            for ticket in self.by_ticket.keys() {
+                source.close(*ticket);
+            }
         }
-        Compiled::Provisional(_) | Compiled::Gated => None,
     }
 }
 
@@ -679,21 +1035,13 @@ pub fn query_descriptor(
     Some(Json::Object(out))
 }
 
-/// Compile one `$queries` entry against `scope` for the pull path —
-/// [`compile_request`] through [`compiled_to_cell`]. `None` → no cell: the
-/// field exists, its rows are `[]` and its `Loaded` flag reads `false`.
-pub fn compile_query(
-    query: &Json,
-    scope: &Scope,
-    bag: &StoreBag,
-    cache: &mut ParseCache,
-    warnings: &mut Vec<Arc<str>>,
-) -> Option<CompiledQuery> {
-    compiled_to_cell(compile_request(
-        query,
-        scope,
-        &mut CompileCx::new(bag, cache, warnings),
-    ))
+/// Compile one `$queries` entry against `scope` — [`compile_request`]'s
+/// answer by the design's name. The [`Compiled`] is what a site claims
+/// ([`QueryHub::claim`]): `Ready` is a claim, `Provisional`/`Gated` are
+/// not — the field exists, its rows are `[]` and its `Loaded` flag reads
+/// `false`.
+pub fn compile_query(query: &Json, scope: &Scope, cx: &mut CompileCx) -> Compiled {
+    compile_request(query, scope, cx)
 }
 
 /// Compile one `$queries` entry against `scope` into a typed request.

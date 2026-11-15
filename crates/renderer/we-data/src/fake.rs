@@ -9,11 +9,11 @@
 //! `signalTypes { order: name asc }`, and a page the fixture never recorded
 //! would come back as the whole table.
 //!
-//! So the fake learns `request → name` the same way [`SnapshotQuerySource`]
-//! does — from pool cells (`note`/`note_pool`), or directly (`teach`). The
-//! request key is the pool's own: entity names, union, dataset, `subscribe`
-//! and the full IR — so a `model_query` and a `model_subscribe` asking the
-//! same question are different requests, as they are in the pool.
+//! So the fake learns `request → name` by the hub's own request key
+//! (`note` a compiled request's `request.key(...)`, or `teach` directly):
+//! entity names, union, dataset, `subscribe` and the full IR — so a
+//! `model_query` and a `model_subscribe` asking the same question are
+//! different requests, as they are in the hub.
 //! [`FakeExecutor::for_space`] binds the space the fixture speaks for; a
 //! call routed elsewhere, or a cell whose `dataset` named another space
 //! than the one it is called on, is refused too (unlearned), and so is an IR
@@ -36,7 +36,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use indexmap::IndexMap;
 use serde_json::{Map as JsonMap, Value as Json};
 use we_expr::Value;
-use we_template::{QueryCell, QueryKey, QueryPool};
+use we_template::QueryKey;
 
 use crate::executor::{
     ClassSel, ClassShape, Executor, ExecutorError, FlowCall, LiveQuery, LiveQueryId, QueryIr,
@@ -115,33 +115,20 @@ impl FakeExecutor {
         self
     }
 
-    /// Learn that `key` — the pool's identity for one resolved request —
-    /// is answered by the snapshot query named `name`.
+    /// Learn that `key` — the identity of one compiled request — is
+    /// answered by the snapshot query named `name`. Compile the descriptor
+    /// and note `request.key(None)` to teach the same binding a claim
+    /// opens with.
     pub fn note(&self, key: &QueryKey, name: impl Into<Arc<str>>) {
         if let Ok(mut names) = self.names.write() {
             names.insert(key.as_str().to_string(), name.into());
         }
     }
 
-    /// Learn one cell's first declared name.
-    pub fn note_cell(&self, cell: &QueryCell) {
-        if let Some(name) = cell.first_name() {
-            self.note(&cell.key, name);
-        }
-    }
-
-    /// Learn every named cell a pool holds — call it with `runtime.pool()`
-    /// after a resolve, as for [`SnapshotQuerySource::note_pool`].
-    pub fn note_pool(&self, pool: &QueryPool) {
-        for cell in pool.cells() {
-            self.note_cell(&cell);
-        }
-    }
-
-    /// Teach a binding without a pool cell: the request `(class, subscribe,
-    /// ir)` is answered by the snapshot query named `name`. The key is the
-    /// pool's own, so a `teach` and a compiled cell naming the same request
-    /// are interchangeable.
+    /// Teach a binding without a compiled request: the request `(class,
+    /// subscribe, ir)` is answered by the snapshot query named `name`. The
+    /// key is the hub's own, so a `teach` and a claim naming the same
+    /// request are interchangeable.
     pub fn teach(
         &self,
         class: &ClassSel,

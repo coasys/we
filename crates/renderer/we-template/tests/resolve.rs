@@ -688,13 +688,17 @@ fn an_initial_resets_when_a_query_result_is_refilled_equal_content() {
     // subscription's update delivers — still resets.
     struct Rows;
     impl we_template::QuerySource for Rows {
-        fn rows(
+        fn open(
             &self,
-            _key: &we_template::QueryKey,
-            _ir: &we_template::QueryIr,
-        ) -> we_template::QueryState {
-            we_template::QueryState::Rows(Arc::new(vec![Value::from_json(&json!({ "id": "r1" }))]))
+            _ticket: we_template::SubTicket,
+            _request: &we_template::QueryRequest,
+            sink: we_template::QuerySink,
+        ) {
+            sink.deliver(we_template::QueryEvent::Rows(Arc::new(vec![
+                Value::from_json(&json!({ "id": "r1" })),
+            ])));
         }
+        fn close(&self, _ticket: we_template::SubTicket) {}
     }
     let node = schema(json!({
         "type": "Column",
@@ -725,11 +729,11 @@ fn an_initial_resets_when_a_query_result_is_refilled_equal_content() {
     );
     locals.touch(&child, "sel");
     // A refill: a fresh rows allocation, identical content.
-    let cell = rt.pool().cells().into_iter().next().unwrap();
-    cell.fill(we_template::QueryState::Rows(Arc::new(vec![
-        Value::from_json(&json!({ "id": "r1" })),
-    ])));
-    rt.pool().bump();
+    let ticket = rt.hub().cells().into_iter().next().unwrap().ticket;
+    rt.hub_mut().deliver(
+        ticket,
+        we_template::QueryEvent::Rows(Arc::new(vec![Value::from_json(&json!({ "id": "r1" }))])),
+    );
     let _ = rt.frame(&mut host, &screen).clone();
     match locals.get(&child, "sel") {
         Value::List(items) => assert_eq!(

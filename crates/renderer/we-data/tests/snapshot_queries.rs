@@ -1,5 +1,5 @@
-//! `SnapshotQuerySource` answers a learned key from the snapshot's `queries`
-//! table and `Loading` for an unlearned one; `FakeExecutor` answers
+//! `SnapshotQuerySource` answers a named claim from the snapshot's `queries`
+//! table and stays silent for a name it lacks; `FakeExecutor` answers
 //! `model_query`/`model_subscribe` from the same rows and counts writes as
 //! dropped calls.
 use std::sync::Arc;
@@ -8,7 +8,10 @@ use we_data::{
     ClassSel, Executor, OfflineData, QueryIr, SnapshotQuerySource, SpaceId, Write, WriteOp,
 };
 use we_expr::ParseCache;
-use we_template::{compile_query, QueryPool, QuerySource, QueryState, Scope, StoreBag};
+use we_template::{
+    compile_request, CompileCx, Compiled, Inbox, NodeId, QueryHub, QueryRequest, QuerySource,
+    Scope, SiteId, SiteSlot, SlotView, StoreBag,
+};
 
 const MINI: &str = include_str!("data/coasys-mini.json");
 
@@ -16,84 +19,95 @@ fn mini_json() -> serde_json::Value {
     serde_json::from_str(MINI).unwrap()
 }
 
-/// Compile a `$queries` descriptor so a pool cell with a real key exists —
-/// the name is noted the way `resolve` notes it on the cell.
-fn cell_named(pool: &QueryPool, descriptor: serde_json::Value, name: &str, bag: &StoreBag) {
+/// Compile a `$queries` descriptor to its request — what a resolve produces
+/// before the hub keys it.
+fn compile(descriptor: serde_json::Value, bag: &StoreBag) -> QueryRequest {
     let mut cache = ParseCache::new();
     let mut warnings = Vec::new();
-    let compiled = compile_query(
-        &descriptor,
-        &Scope::default(),
+    let mut cx = CompileCx {
         bag,
-        &mut cache,
-        &mut warnings,
-    )
-    .expect("query compiles");
-    let cell = pool.cell(compiled.key.clone(), compiled.ir.clone());
-    cell.note_name(name.into());
+        cache: &mut cache,
+        warnings: &mut warnings,
+    };
+    match compile_request(&descriptor, &Scope::default(), &mut cx) {
+        Compiled::Ready(request) => request,
+        other => panic!("query compiles: {other:?}"),
+    }
+}
+
+/// The view a `Named` claim on `name` gets through `source` — the compile →
+/// claim → commit → drain sequence a frame runs.
+fn claimed_view(
+    descriptor: serde_json::Value,
+    name: &str,
+    bag: &Arc<StoreBag>,
+    source: Arc<dyn QuerySource>,
+) -> SlotView {
+    let mut hub = QueryHub::new(Arc::new(Inbox::default()));
+    let request = compile(descriptor, bag);
+    hub.claim(
+        SiteId {
+            node: NodeId::new("test:/n0"),
+            slot: SiteSlot::Named(name.into()),
+        },
+        Compiled::Ready(request),
+        None,
+    );
+    hub.commit(source);
+    hub.drain();
+    hub.cells()
+        .into_iter()
+        .next()
+        .map(|c| c.view)
+        .unwrap_or_default()
 }
 
 #[test]
 fn source_returns_the_named_query_rows() {
     let bag = Arc::new(StoreBag::from_snapshot(&mini_json()).unwrap());
-    let pool = QueryPool::new();
-    cell_named(
-        &pool,
+    let view = claimed_view(
         serde_json::json!({ "entity": "SignalType" }),
         "signalTypes",
         &bag,
+        Arc::new(SnapshotQuerySource::new(bag.clone())),
     );
-
-    let source = SnapshotQuerySource::new(bag);
-    source.note_pool(&pool);
-
-    let cell = pool.cells().into_iter().next().unwrap();
-    match source.rows(&cell.key, &cell.ir) {
-        QueryState::Rows(rows) => {
-            assert_eq!(rows.len(), 2, "the fixture's two signal types");
-        }
-        QueryState::Loading => panic!("named query should be answered"),
-    }
+    assert_eq!(view.rows.len(), 2, "the fixture's two signal types");
+    assert!(view.loaded, "a named query the table holds answers");
 }
 
 #[test]
-fn unlearned_key_loads() {
+fn unnamed_claim_loads() {
     let bag = Arc::new(StoreBag::from_snapshot(&mini_json()).unwrap());
-    let pool = QueryPool::new();
-    cell_named(
-        &pool,
-        serde_json::json!({ "entity": "SignalType" }),
-        "signalTypes",
-        &bag,
+    let mut hub = QueryHub::new(Arc::new(Inbox::default()));
+    let request = compile(serde_json::json!({ "entity": "SignalType" }), &bag);
+    // A `Prop` site carries no name_hint — the name-keyed table cannot
+    // answer it, exactly as an anonymous TS subscribe has no handle.
+    hub.claim(
+        SiteId {
+            node: NodeId::new("test:/n0"),
+            slot: SiteSlot::Prop("rows".into()),
+        },
+        Compiled::Ready(request),
+        None,
     );
-
-    let source = SnapshotQuerySource::new(bag);
-    // No note_pool — the source has not learned the key → Loading.
-    let cell = pool.cells().into_iter().next().unwrap();
-    assert!(matches!(
-        source.rows(&cell.key, &cell.ir),
-        QueryState::Loading
-    ));
+    hub.commit(Arc::new(SnapshotQuerySource::new(bag)));
+    hub.drain();
+    let view = hub.cells().into_iter().next().unwrap().view;
+    assert!(!view.loaded, "an anonymous request is not answered");
+    assert!(view.rows.is_empty());
 }
 
 #[test]
 fn name_the_snapshot_lacks_loads() {
     let bag = Arc::new(StoreBag::from_snapshot(&mini_json()).unwrap());
-    let pool = QueryPool::new();
-    cell_named(
-        &pool,
+    let view = claimed_view(
         serde_json::json!({ "entity": "Nope" }),
         "noSuchQuery",
         &bag,
+        Arc::new(SnapshotQuerySource::new(bag.clone())),
     );
-
-    let source = SnapshotQuerySource::new(bag);
-    source.note_pool(&pool);
-    let cell = pool.cells().into_iter().next().unwrap();
-    assert!(matches!(
-        source.rows(&cell.key, &cell.ir),
-        QueryState::Loading
-    ));
+    assert!(!view.loaded, "a name the table lacks is not answered");
+    assert!(view.rows.is_empty());
 }
 
 #[test]
@@ -139,32 +153,31 @@ fn a_request_the_snapshot_did_not_answer_is_refused() {
 }
 
 #[test]
-fn model_query_answers_the_request_the_cell_asked() {
+fn model_query_answers_the_request_the_claim_asked() {
     let data = OfflineData::from_snapshot(&mini_json(), None).unwrap();
     let executor = data.executor();
     let space = SpaceId::new("demo");
-    let pool = QueryPool::new();
     // A one-shot `subscribe: false` read — the request `model_query` makes.
-    cell_named(
-        &pool,
+    let request = compile(
         serde_json::json!({ "entity": "SignalType", "order": { "name": "asc" }, "subscribe": false }),
-        "signalTypes",
         &data.bag,
     );
-    executor.note_pool(&pool);
+    executor.note(&request.key(None), "signalTypes");
 
-    let cell = pool.cells().into_iter().next().unwrap();
     let rows =
-        pollster::block_on(executor.model_query(&space, ClassSel::one("SignalType"), &cell.ir))
+        pollster::block_on(executor.model_query(&space, ClassSel::one("SignalType"), &request.ir))
             .expect("the learned request is answered");
     match rows {
         we_expr::Value::List(rows) => assert_eq!(rows.len(), 2),
         other => panic!("expected rows, got {other:?}"),
     }
     // A subscription for the same entity is a different request — `sub`
-    // differs in the pool key — and this one was never learned.
-    let live =
-        pollster::block_on(executor.model_subscribe(&space, ClassSel::one("SignalType"), &cell.ir));
+    // differs in the key — and this one was never learned.
+    let live = pollster::block_on(executor.model_subscribe(
+        &space,
+        ClassSel::one("SignalType"),
+        &request.ir,
+    ));
     assert!(live.is_err(), "the subscribed twin was not learned");
 }
 
@@ -173,20 +186,19 @@ fn model_subscribe_opens_a_live_query_for_a_learned_request() {
     let data = OfflineData::from_snapshot(&mini_json(), None).unwrap();
     let executor = data.executor();
     let space = SpaceId::new("demo");
-    let pool = QueryPool::new();
     // `subscribe` defaults true — the request `model_subscribe` makes.
-    cell_named(
-        &pool,
+    let request = compile(
         serde_json::json!({ "entity": "SignalType", "order": { "name": "asc" } }),
-        "signalTypes",
         &data.bag,
     );
-    executor.note_pool(&pool);
+    executor.note(&request.key(None), "signalTypes");
 
-    let cell = pool.cells().into_iter().next().unwrap();
-    let live =
-        pollster::block_on(executor.model_subscribe(&space, ClassSel::one("SignalType"), &cell.ir))
-            .expect("the learned subscription is answered");
+    let live = pollster::block_on(executor.model_subscribe(
+        &space,
+        ClassSel::one("SignalType"),
+        &request.ir,
+    ))
+    .expect("the learned subscription is answered");
     match live.result() {
         we_expr::Value::List(rows) => assert_eq!(rows.len(), 2),
         other => panic!("expected rows, got {other:?}"),
@@ -201,24 +213,20 @@ fn a_request_for_another_space_is_refused() {
     // The fixture speaks for `demo` — a call routed to `other`, or whose IR
     // names another dataset on this space, is refused.
     let executor = data.executor().for_space(SpaceId::new("demo"));
-    let pool = QueryPool::new();
-    cell_named(
-        &pool,
+    let request = compile(
         serde_json::json!({ "entity": "SignalType", "subscribe": false }),
-        "signalTypes",
         &data.bag,
     );
-    executor.note_pool(&pool);
-    let cell = pool.cells().into_iter().next().unwrap();
+    executor.note(&request.key(None), "signalTypes");
 
     let wrong_space = pollster::block_on(executor.model_query(
         &SpaceId::new("other"),
         ClassSel::one("SignalType"),
-        &cell.ir,
+        &request.ir,
     ));
     assert!(wrong_space.is_err(), "a call routed elsewhere is refused");
 
-    let mut ds_ir = cell.ir.clone();
+    let mut ds_ir = request.ir.clone();
     ds_ir
         .extra
         .insert("dataset".to_string(), serde_json::json!("elsewhere"));
@@ -236,7 +244,7 @@ fn a_request_for_another_space_is_refused() {
     let rows = pollster::block_on(executor.model_query(
         &SpaceId::new("demo"),
         ClassSel::one("SignalType"),
-        &cell.ir,
+        &request.ir,
     ));
     assert!(rows.is_ok(), "the fixture's own space answers");
 }
@@ -252,20 +260,16 @@ fn the_factory_binds_the_executor_to_the_snapshot_space() {
     let data = OfflineData::from_snapshot(&mini_json(), None).unwrap();
     assert_eq!(data.space(), Some(&SpaceId::new("demo")));
     let executor = data.executor();
-    let pool = QueryPool::new();
-    cell_named(
-        &pool,
+    let request = compile(
         serde_json::json!({ "entity": "SignalType", "subscribe": false }),
-        "signalTypes",
         &data.bag,
     );
-    executor.note_pool(&pool);
-    let cell = pool.cells().into_iter().next().unwrap();
+    executor.note(&request.key(None), "signalTypes");
 
     let wrong_space = pollster::block_on(executor.model_query(
         &SpaceId::new("other"),
         ClassSel::one("SignalType"),
-        &cell.ir,
+        &request.ir,
     ));
     assert!(
         wrong_space.is_err(),
@@ -275,7 +279,7 @@ fn the_factory_binds_the_executor_to_the_snapshot_space() {
     let rows = pollster::block_on(executor.model_query(
         &SpaceId::new("demo"),
         ClassSel::one("SignalType"),
-        &cell.ir,
+        &request.ir,
     ));
     assert!(rows.is_ok(), "the snapshot's own space answers");
 

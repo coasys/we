@@ -3,10 +3,15 @@
 //! from the flat tables, and never `Rows([])` for a query the recorder
 //! skipped.
 
+use std::sync::Arc;
+
 use serde_json::json;
-use we_data::{ClassSel, Executor, OfflineData, QueryIr, SpaceId};
+use we_data::{ClassSel, Executor, OfflineData, SpaceId};
 use we_expr::ParseCache;
-use we_template::{compile_query, QueryKey, QueryState, Scope};
+use we_template::{
+    compile_request, CompileCx, Compiled, Inbox, NodeId, QueryHub, QueryRequest, QuerySource,
+    Scope, SiteId, SiteSlot, StoreBag,
+};
 
 /// Two `signalTypes` declarations asking different questions (the tree
 /// sorts by name, the inspector does not), a skipped one, an answered empty
@@ -45,66 +50,69 @@ fn doc() -> serde_json::Value {
     })
 }
 
-/// The pool key a template's descriptor compiles to.
-fn key(descriptor: serde_json::Value) -> (QueryKey, QueryIr) {
-    let bag = we_template::StoreBag::new();
-    let compiled = compile_query(
-        &descriptor,
-        &Scope::default(),
-        &bag,
-        &mut ParseCache::new(),
-        &mut Vec::new(),
-    )
-    .expect("descriptor compiles");
-    (compiled.key, compiled.ir)
+/// The request a template's descriptor compiles to.
+fn request(descriptor: serde_json::Value) -> QueryRequest {
+    let bag = StoreBag::new();
+    let mut cache = ParseCache::new();
+    let mut warnings = Vec::new();
+    let mut cx = CompileCx {
+        bag: &bag,
+        cache: &mut cache,
+        warnings: &mut warnings,
+    };
+    match compile_request(&descriptor, &Scope::default(), &mut cx) {
+        Compiled::Ready(request) => request,
+        other => panic!("descriptor compiles: {other:?}"),
+    }
 }
 
-fn rows(state: QueryState) -> Option<Vec<String>> {
-    match state {
-        QueryState::Rows(rows) => Some(
-            rows.iter()
-                .map(|r| r.to_json()["id"].as_str().unwrap_or_default().to_string())
-                .collect(),
-        ),
-        QueryState::Loading => None,
-    }
+/// Ask a source for a request the way a frame does — claim, commit, drain —
+/// and read the row ids; `None` when the claim is still loading.
+fn ask_rows(source: &Arc<dyn QuerySource>, request: QueryRequest) -> Option<Vec<String>> {
+    let mut hub = QueryHub::new(Arc::new(Inbox::default()));
+    hub.claim(
+        SiteId {
+            node: NodeId::new("test:/n0"),
+            slot: SiteSlot::Prop("rows".into()),
+        },
+        Compiled::Ready(request),
+        None,
+    );
+    hub.commit(source.clone());
+    hub.drain();
+    let view = hub.cells().into_iter().next()?.view;
+    view.loaded.then(|| {
+        view.rows
+            .iter()
+            .map(|r| r.to_json()["id"].as_str().unwrap_or_default().to_string())
+            .collect()
+    })
 }
 
 #[test]
 fn same_named_queries_get_their_own_recorded_answers() {
     let data = OfflineData::from_route(&doc(), "dna", None).expect("route loads");
     let source = data.source();
-    let (tree, tree_ir) = key(json!({ "entity": "SignalType", "order": { "name": "asc" } }));
-    let (inspector, inspector_ir) = key(json!({ "entity": "SignalType" }));
+    let tree = request(json!({ "entity": "SignalType", "order": { "name": "asc" } }));
+    let inspector = request(json!({ "entity": "SignalType" }));
+    assert_eq!(ask_rows(&source, tree), Some(vec!["a".into(), "l".into()]));
     assert_eq!(
-        rows(source.rows(&tree, &tree_ir)),
-        Some(vec!["a".into(), "l".into()])
-    );
-    assert_eq!(
-        rows(source.rows(&inspector, &inspector_ir)),
+        ask_rows(&source, inspector),
         Some(vec!["l".into(), "a".into()])
     );
     // A request nobody recorded is not answered by a same-named capture.
-    let (other, other_ir) = key(json!({ "entity": "SignalType", "limit": 2 }));
-    assert_eq!(rows(source.rows(&other, &other_ir)), None);
+    let other = request(json!({ "entity": "SignalType", "limit": 2 }));
+    assert_eq!(ask_rows(&source, other), None);
 }
 
 #[test]
 fn a_skipped_query_is_loading_and_an_answered_empty_one_is_rows() {
     let data = OfflineData::from_route(&doc(), "dna", None).unwrap();
     let source = data.source();
-    let (card, card_ir) = key(json!({ "entity": "CollectionBlock", "limit": 1 }));
-    assert_eq!(
-        rows(source.rows(&card, &card_ir)),
-        None,
-        "skipped is never asked"
-    );
-    let (topics, topics_ir) = key(json!({ "entity": "Topic", "order": { "name": "asc" } }));
-    assert_eq!(
-        rows(source.rows(&topics, &topics_ir)),
-        Some(vec![]),
-        "[] is an answer"
-    );
+    let card = request(json!({ "entity": "CollectionBlock", "limit": 1 }));
+    assert_eq!(ask_rows(&source, card), None, "skipped is never asked");
+    let topics = request(json!({ "entity": "Topic", "order": { "name": "asc" } }));
+    assert_eq!(ask_rows(&source, topics), Some(vec![]), "[] is an answer");
     let captures = data.captures().unwrap();
     assert_eq!(captures.counts(), (5, 1, 0));
     assert_eq!(
@@ -120,8 +128,8 @@ fn a_skipped_query_is_loading_and_an_answered_empty_one_is_rows() {
 #[test]
 fn two_captures_disagreeing_on_one_request_answer_neither() {
     let data = OfflineData::from_route(&doc(), "dna", None).unwrap();
-    let (kinds, kinds_ir) = key(json!({ "entity": "RelationshipType" }));
-    assert_eq!(rows(data.source().rows(&kinds, &kinds_ir)), None);
+    let kinds = request(json!({ "entity": "RelationshipType" }));
+    assert_eq!(ask_rows(&data.source(), kinds), None);
     assert_eq!(
         data.captures().unwrap().ambiguous(),
         vec![vec!["a".to_string(), "b".to_string()]]
@@ -131,8 +139,8 @@ fn two_captures_disagreeing_on_one_request_answer_neither() {
 #[test]
 fn the_flat_tables_are_never_read_for_a_route() {
     let data = OfflineData::from_route(&doc(), "dna", None).unwrap();
-    let (calls, calls_ir) = key(json!({ "entity": "CollectionBlock" }));
-    assert_eq!(rows(data.source().rows(&calls, &calls_ir)), None);
+    let calls = request(json!({ "entity": "CollectionBlock" }));
+    assert_eq!(ask_rows(&data.source(), calls), None);
     assert!(data.queries.is_empty(), "no name-keyed table for a route");
     // Members come from the route, agents join the profiles, invokes are the
     // route's declared targets.
@@ -161,8 +169,8 @@ fn a_capture_from_another_dataset_does_not_answer() {
                       "request": { "entity": "Tag" }, "rows": [{ "id": "t9" }] }),
         );
     let data = OfflineData::from_route(&doc, "dna", None).expect("route loads");
-    let (tags, tags_ir) = key(json!({ "entity": "Tag" }));
-    assert_eq!(rows(data.source().rows(&tags, &tags_ir)), None);
+    let tags = request(json!({ "entity": "Tag" }));
+    assert_eq!(ask_rows(&data.source(), tags), None);
 }
 
 #[test]
@@ -171,7 +179,7 @@ fn the_route_executor_answers_by_request_and_space() {
     let exec = data.executor();
     let demo = SpaceId::new("demo");
     let class = ClassSel::One("SignalType".into());
-    let (_, inspector_ir) = key(json!({ "entity": "SignalType" }));
+    let inspector_ir = request(json!({ "entity": "SignalType" })).ir;
     let got = pollster::block_on(exec.model_query(&demo, class.clone(), &inspector_ir))
         .expect("recorded request answers");
     assert_eq!(
@@ -188,9 +196,9 @@ fn the_route_executor_answers_by_request_and_space() {
         &inspector_ir
     ))
     .is_err());
-    let (_, limit_ir) = key(json!({ "entity": "SignalType", "limit": 2 }));
+    let limit_ir = request(json!({ "entity": "SignalType", "limit": 2 })).ir;
     assert!(pollster::block_on(exec.model_query(&demo, class, &limit_ir)).is_err());
-    let (_, card_ir) = key(json!({ "entity": "CollectionBlock", "limit": 1 }));
+    let card_ir = request(json!({ "entity": "CollectionBlock", "limit": 1 })).ir;
     assert!(pollster::block_on(exec.model_query(
         &demo,
         ClassSel::One("CollectionBlock".into()),
@@ -221,7 +229,7 @@ fn two_dataset_doc(default: Option<&str>) -> serde_json::Value {
 }
 
 fn ask(exec: &we_data::FakeExecutor, space: &str) -> Option<serde_json::Value> {
-    let (_, ir) = key(json!({ "entity": "SignalType" }));
+    let ir = request(json!({ "entity": "SignalType" })).ir;
     pollster::block_on(exec.model_query(
         &SpaceId::new(space),
         ClassSel::One("SignalType".into()),
@@ -265,7 +273,7 @@ fn a_reserved_dataset_in_the_ir_is_refused_against_captures() {
     let exec = data.executor();
     let demo = SpaceId::new("demo");
     let class = ClassSel::One("SignalType".into());
-    let (_, ir) = key(json!({ "entity": "SignalType" }));
+    let ir = request(json!({ "entity": "SignalType" })).ir;
     assert!(pollster::block_on(exec.model_query(&demo, class.clone(), &ir)).is_ok());
     let mut ds_ir = ir.clone();
     ds_ir
