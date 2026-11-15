@@ -157,7 +157,8 @@ label.check {
 input[type='text'],
 input[type='password'],
 input[type='url'],
-input[type='number'] {
+input[type='number'],
+input[type='email'] {
   box-sizing: border-box;
   font: inherit;
   color: var(--text);
@@ -171,7 +172,8 @@ input[type='number'] {
 input[type='text']:hover,
 input[type='password']:hover,
 input[type='url']:hover,
-input[type='number']:hover {
+input[type='number']:hover,
+input[type='email']:hover {
   background: var(--we-role-field-hover, var(--sunken));
 }
 
