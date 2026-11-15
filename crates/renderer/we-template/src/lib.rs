@@ -16,10 +16,12 @@
 //! No egui, no I/O, no tokio: this crate builds for `wasm32-unknown-unknown`.
 #![forbid(unsafe_code)]
 
+mod bindings;
 mod bundle;
 mod handler;
 mod handlers;
 mod host;
+mod inbox;
 mod local;
 mod node;
 mod order;
@@ -29,6 +31,7 @@ mod resolved;
 mod runtime;
 mod scope;
 
+pub use bindings::{DataRevision, Invalidator};
 pub use bundle::{
     Bundle, BundleAuthor, BundleBrand, BundleDisplay, BundleRecordType, BundleTemplate,
     BundleTheme, DisplaySpaces, BUNDLE_FORMAT, BUNDLE_FORMAT_VERSION,
@@ -36,6 +39,7 @@ pub use bundle::{
 pub use handler::{CallId, HandlerToken};
 pub use handlers::{run as run_handler, HandlerCx, PendingCall, PendingMap};
 pub use host::{Action, ActionRequest, CallBook, Completer, Host, Invoked, MountId, Origin};
+pub use inbox::{Inbox, Waker};
 pub use local::LocalState;
 pub use node::{RouteNode, SchemaChild, SchemaNode};
 pub use query::{
@@ -48,5 +52,5 @@ pub use resolved::{
     normal_form, HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope, Transition,
     TransitionEffect, TransitionKind,
 };
-pub use runtime::{AppSpec, RootSpec, Runtime, StaticHost, Stats};
+pub use runtime::{AppSpec, RootSpec, Runtime, StaticHost, Stats, ORPHANED_CAP};
 pub use scope::{bind_screen, FieldMeta, LocalDecl, LocalNs, LocalScope, ScopeEnv, StoreBag};

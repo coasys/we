@@ -116,7 +116,16 @@ fn main() {
         screen,
     )
     .with_dollar_types(|ty| we_catalog::entry(ty).is_some());
-    let root = session.resolve();
+    let mut root = session.resolve();
+    // The CLI's wake channel is the loop itself: poll until a quiet tick
+    // — a completion or a `set_root` landing between frames resolves
+    // before the tree prints.
+    for _ in 0..8 {
+        if !session.poll().dirty {
+            break;
+        }
+        root = session.resolve();
+    }
 
     let mut out = String::new();
     outline(&root, 0, &mut out);

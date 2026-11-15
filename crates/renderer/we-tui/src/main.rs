@@ -115,6 +115,9 @@ mod native {
         let backend = CrosstermBackend::new(stdout());
         let mut terminal = Terminal::new(backend).expect("terminal");
         let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| loop {
+            // The 100ms tick is the TUI's wake channel — a completion or
+            // a `set_root` landing off-thread lands within a frame, and a
+            // dirty tick tells `render_into` there is a new tree to draw.
             app.session.poll();
             terminal
                 .draw(|f| {
