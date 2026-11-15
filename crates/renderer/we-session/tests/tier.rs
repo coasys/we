@@ -7,7 +7,7 @@ use std::rc::Rc;
 use std::sync::Arc;
 
 use serde_json::json;
-use we_expr::{MountCx, Tier, Value};
+use we_expr::{HandleTable, MountCx, Tier, Value};
 use we_screen::{ScreenOp, ScreenSchema, ScreenState};
 use we_session::Session;
 use we_template::{
@@ -279,5 +279,64 @@ fn two_spaces_do_not_share_a_cell() {
         datasets,
         ["demo-a".to_string(), "demo-b".to_string()],
         "the same question in a second space is a second cell"
+    );
+}
+
+/// Lal F1: a host that knows which space an explicit mount is about mints
+/// the space in ITS table and hands the table to the session — host and
+/// runtime share one table (a `clone` is the same authority domain; a
+/// `HandleTable::new` is a different one, its handles refused at `key`).
+/// On a route naming a different space, `Here` and the action `Origin`
+/// must both resolve to the host's space through that shared table.
+#[test]
+fn an_explicit_mount_space_resolves_through_the_shared_table() {
+    // The host mints A in its own table and declares the panel mount
+    // about it, on a route that names space B.
+    let handles = HandleTable::new();
+    let a = handles.mint_space("space-a");
+    let spec = RootSpec::Single {
+        node: Box::new(schema(json!({
+            "type": "Column",
+            "$queries": { "q": { "entity": "Post" } },
+            "props": { "onTap": { "$invoke": "storeX.call", "args": [] } },
+            "children": []
+        }))),
+        cx: MountCx::explicit("panel").with_space(a),
+    };
+    let log = Rc::new(RefCell::new(Log::default()));
+    let mut s = Session::new_in(
+        spec,
+        Arc::new(StoreBag::new()),
+        ScreenState::desktop(ScreenSchema::default(), "/space/space-b"),
+        Box::new(RecordingHost(log.clone())),
+        handles,
+    );
+    let _ = s.resolve();
+
+    // `Here` keys the mount's space — A — through the shared table; a
+    // table that never minted the handle would answer `ds:null` (and
+    // the route's own space B must not fill it either).
+    let keys: Vec<_> = s
+        .runtime
+        .pool()
+        .cells()
+        .iter()
+        .map(|c| c.key.clone())
+        .collect();
+    assert_eq!(keys.len(), 1, "the mount's query is one cell");
+    assert_eq!(
+        ds_of(&keys[0]).as_deref(),
+        Some("space-a"),
+        "`Here` resolves the explicit mount space through the shared table"
+    );
+
+    // The action origin stamps A too — the host's way back is the same
+    // table's `key`.
+    let (_, origin) = fire_and_origin(&mut s, &log, "panel:");
+    let space = origin.space.expect("the explicit space is stamped");
+    assert_eq!(
+        s.runtime.handles().key(space.handle()).as_deref(),
+        Some("space-a"),
+        "the origin's space resolves through the shared table"
     );
 }

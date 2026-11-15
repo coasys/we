@@ -211,8 +211,31 @@ impl Runtime {
         )
     }
 
-    /// Either root — what a session is built from.
+    /// Either root — what a session is built from. The runtime's table is
+    /// fresh: a `MountCx::with_space` handle a host minted beforehand can
+    /// never resolve in it — see [`Self::from_spec_in`].
     pub fn from_spec(spec: RootSpec, bag: Arc<StoreBag>, locals: LocalState) -> Self {
+        Self::from_spec_in(spec, bag, locals, HandleTable::new())
+    }
+
+    /// `from_spec` inside the host's handle table: one table is one
+    /// authority domain — a `clone`d table is the same one (shared epoch,
+    /// shared slots), a `HandleTable::new` is a different one whose
+    /// handles `key` refuses. A host that knows which space an explicit
+    /// mount is about mints the handle in its own table and hands the
+    /// table in, so the `MountCx::with_space` it built resolves here.
+    ///
+    /// It is this direction — never the reverse — because a `MountCx` is
+    /// a constructor argument: it cannot wait for the runtime's table to
+    /// exist, and the host mints before the session does. Forgery is
+    /// unchanged: sharing is `Clone`, and a template still cannot build
+    /// a `HandleRef` or a table this table answers for.
+    pub fn from_spec_in(
+        spec: RootSpec,
+        bag: Arc<StoreBag>,
+        locals: LocalState,
+        handles: HandleTable,
+    ) -> Self {
         let inbox = Arc::new(Inbox::new());
         // The session's binding subscription: `set_root` writes push an
         // arrival here and call its waker — a data change reaches a
@@ -231,7 +254,7 @@ impl Runtime {
             calls: CallBook::new(inbox.clone()),
             inbox,
             mount_cxs: Vec::new(),
-            handles: HandleTable::new(),
+            handles,
             ops: Vec::new(),
             ready: Box::new(default_ready),
             cache: ParseCache::new(),

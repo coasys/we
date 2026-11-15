@@ -23,7 +23,7 @@
 
 use std::sync::Arc;
 
-use we_expr::Value;
+use we_expr::{HandleTable, Value};
 use we_screen::ScreenState;
 use we_template::{
     Host, LocalState, NodeId, ResolvedNode, RootSpec, Runtime, StaticHost, Stats, StoreBag, Waker,
@@ -74,7 +74,21 @@ impl Session {
         screen: ScreenState,
         host: Box<dyn Host>,
     ) -> Self {
-        let runtime = Runtime::from_spec(spec, bag, LocalState::new());
+        Self::new_in(spec, bag, screen, host, HandleTable::new())
+    }
+
+    /// [`Session::new`] inside the host's handle table (`Runtime::from_spec_in`):
+    /// a `MountCx::with_space` the host built from a handle it minted in
+    /// `handles` resolves inside the session, where a fresh private table
+    /// could never answer for it.
+    pub fn new_in(
+        spec: RootSpec,
+        bag: Arc<StoreBag>,
+        screen: ScreenState,
+        host: Box<dyn Host>,
+        handles: HandleTable,
+    ) -> Self {
+        let runtime = Runtime::from_spec_in(spec, bag, LocalState::new(), handles);
         Self {
             runtime,
             host,
