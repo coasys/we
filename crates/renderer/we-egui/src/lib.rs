@@ -128,6 +128,49 @@ pub struct PaintCx<'a> {
     /// cuts the subtree's output after it paints, so it must use the same
     /// state (cyberpunk's `:hover { clip-path: none }`).
     pub(crate) state_clip: Option<Option<we_style::ClipPath>>,
+    /// The frame's raised nodes (positioned, `z-index > 0`), which paint
+    /// over the in-flow content they cover — see [`PaintCx::occluded`].
+    pub(crate) raised: &'a [Raised],
+}
+
+/// A raised node — positioned with a positive `z-index` — as the frame's
+/// occluder list holds it: its laid-out rect, its z-index and its DOM
+/// ancestry.
+#[derive(Debug, Clone)]
+pub(crate) struct Raised {
+    pub id: NodeId,
+    pub z: i32,
+    pub rect: Rect,
+    pub chain: Vec<NodeId>,
+}
+
+/// Whether the pointer, over `node`, is over a raised box painted above it
+/// instead — one that is neither `node`'s ancestor nor its descendant and
+/// stacks higher than every raised box `node` is inside. What
+/// `rect_contains_pointer` cannot answer: it asks the layer, and the
+/// covered box and the cover share one.
+pub(crate) fn occluded(
+    ui: &egui::Ui,
+    raised: &[Raised],
+    ancestors: &[NodeId],
+    node: &NodeId,
+) -> bool {
+    if raised.is_empty() {
+        return false;
+    }
+    let Some(p) = ui.input(|i| i.pointer.hover_pos()) else {
+        return false;
+    };
+    let own = |r: &Raised| &r.id == node || ancestors.contains(&r.id);
+    let level = raised
+        .iter()
+        .filter(|r| own(r))
+        .map(|r| r.z)
+        .max()
+        .unwrap_or(0);
+    raised
+        .iter()
+        .any(|r| r.z > level && !own(r) && !r.chain.contains(node) && r.rect.contains(p))
 }
 
 /// The click-sensing rects the frame has reported so far: `activated` —
@@ -191,7 +234,15 @@ impl<'a> PaintCx<'a> {
             hits,
             clicks,
             state_clip: None,
+            raised: &[],
         }
+    }
+
+    /// Whether the pointer over `node` is covered by a raised box painted
+    /// above it ([`occluded`]) — a container's hover and click read this
+    /// beside `rect_contains_pointer`.
+    pub(crate) fn occluded(&self, node: &NodeId) -> bool {
+        occluded(self.ui, self.raised, self.ancestors, node)
     }
 
     /// The style for the response's state ([`crate::props::state_style`]),

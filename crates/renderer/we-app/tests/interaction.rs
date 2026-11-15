@@ -133,3 +133,93 @@ fn the_inspector_lane_resizes_from_its_start_edge() {
     );
     assert_eq!(lane_rect(&h, "inspector").width(), 400.0);
 }
+
+/// The rail: the fixed `zIndex: "chrome"` column that widens on hover.
+fn rail_rect(harness: &Harness<'_, RendererApp>) -> Rect {
+    let app = harness.state();
+    let root = app.session.runtime.resolved().expect("resolved").clone();
+    let node = find(&root, &|n| {
+        n.handlers.contains_key("onMouseEnter")
+            && n.props.get("zIndex").map(|v| v.js_string()).as_deref() == Some("chrome")
+    })
+    .expect("the rail");
+    app.layout().expect("laid out").rects[&node.id]
+}
+
+fn hover(harness: &mut Harness<'_, RendererApp>, pos: Pos2, frames: usize) {
+    for _ in 0..frames {
+        harness.event(egui::Event::PointerMoved(pos));
+        harness.step();
+    }
+}
+
+fn close(a: image::Rgba<u8>, b: image::Rgba<u8>) -> bool {
+    a.0.iter().zip(b.0.iter()).all(|(x, y)| x.abs_diff(*y) <= 6)
+}
+
+#[test]
+fn the_expanded_rail_paints_over_the_main_view_and_keeps_the_pointer() {
+    let mut h = harness(|_| {});
+    let collapsed = rail_rect(&h);
+    assert_eq!(collapsed.width(), 72.0, "{collapsed:?}");
+    let tree = lane_rect(&h, "tree");
+    assert!(
+        tree.min.x >= collapsed.max.x,
+        "the tree lane starts beside the rail"
+    );
+    let img = h.render().expect("render");
+    // The rail's right border, beside the tree lane.
+    let border_x = (collapsed.max.x - 0.5) as u32;
+    let mid_y = collapsed.center().y as u32;
+    let border = *img.get_pixel(border_x, mid_y);
+
+    hover(
+        &mut h,
+        Pos2::new(collapsed.center().x, collapsed.center().y),
+        60,
+    );
+    let expanded = rail_rect(&h);
+    assert_eq!(expanded.width(), 256.0, "hover expands it: {expanded:?}");
+    assert!(
+        expanded.max.x > tree.min.x + 100.0,
+        "it now overlaps the tree lane"
+    );
+
+    // Its border is drawn over the tree lane along the rail's whole height:
+    // the rail paints after the main view, not under it.
+    let img = h.render().expect("render");
+    let x = (expanded.max.x - 0.5) as u32;
+    let rows: Vec<u32> = (expanded.min.y as u32 + 20..expanded.max.y as u32 - 20).collect();
+    let on = rows
+        .iter()
+        .filter(|y| close(*img.get_pixel(x, **y), border))
+        .count();
+    assert!(
+        on * 10 >= rows.len() * 9,
+        "the rail's edge shows on {on} of {} rows at x={x}",
+        rows.len()
+    );
+    let dir = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../target/interaction");
+    std::fs::create_dir_all(&dir).unwrap();
+    img.save(dir.join("rail-expanded.png")).unwrap();
+
+    // The pointer over the overlap — above the tree lane — is the rail's:
+    // it stays open.
+    hover(
+        &mut h,
+        Pos2::new(tree.min.x + 80.0, expanded.center().y),
+        60,
+    );
+    assert_eq!(
+        rail_rect(&h).width(),
+        256.0,
+        "hover in the overlap keeps it open"
+    );
+    // And leaving it closes it again.
+    hover(
+        &mut h,
+        Pos2::new(expanded.max.x + 300.0, expanded.center().y),
+        60,
+    );
+    assert_eq!(rail_rect(&h).width(), 72.0, "leaving collapses it");
+}

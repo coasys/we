@@ -76,7 +76,10 @@ pub fn paint(
         inh: None,
         hits: crate::HitLog::default(),
         clicks: crate::ClickLog::default(),
+        depth: 0,
+        raised: Vec::new(),
     };
+    collect_all_raised(layout, root, &mut Vec::new(), &mut w.raised);
     paint_node(&mut w, root);
     paint_overlays(&mut w);
     bubble_unwound(&mut w, root);
@@ -142,6 +145,13 @@ struct Walk<'a> {
     /// container-witnessed pointer clicks; the post-children pass emits
     /// authored `onClick`s child-first from it.
     clicks: crate::ClickLog,
+    /// How deep in `paint_node` the walk is — a node met at depth 0 is the
+    /// root of its walk, and so a stacking context.
+    depth: usize,
+    /// Every raised node of the main tree ([`raised_z`]), for the pointer
+    /// questions that read geometry rather than egui's hit-test — empty on
+    /// an overlay's walk, which is a layer of its own.
+    raised: Vec<crate::Raised>,
 }
 
 /// One overlay that painted this frame — what the dismissal pass needs:
@@ -237,7 +247,8 @@ fn scroll_input(
     }
     // The pointer rides over the scrolled children, which win egui's
     // widget-level hover — ask the layer whether the point is in the box.
-    if !w.ui.rect_contains_pointer(rect) {
+    if !w.ui.rect_contains_pointer(rect) || crate::occluded(w.ui, &w.raised, &w.ancestors, &node.id)
+    {
         return pos;
     }
     let delta = w.ui.input(|i| i.smooth_scroll_delta);
@@ -428,6 +439,10 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
             w.ancestors.clone(),
         ));
     }
+    // A walk's root and every raised node are stacking contexts: the
+    // raised nodes inside paint after the context's in-flow content.
+    let stacking_context = w.depth == 0 || raised_z(w.layout, node).is_some();
+    w.depth += 1;
     w.ancestors.push(node.id.clone());
 
     // The node's own clip contribution (hidden/clip + any enclosing scroll)
@@ -499,6 +514,7 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
             hits: &mut w.hits,
             clicks: &mut w.clicks,
             state_clip: None,
+            raised: &w.raised,
         };
         widget.paint(&mut cx, node, style, rect);
         state_clip = cx.state_clip.take();
@@ -538,6 +554,8 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
     let extra = widget.synthesized_children(node);
     for child in node.children.iter().chain(extra.iter()) {
         match child {
+            // A raised child paints with its stacking context, below.
+            ResolvedChild::Node(n) if raised_z(w.layout, n).is_some() => {}
             ResolvedChild::Node(n) => paint_node(w, n),
             ResolvedChild::Text(t) => {
                 if let Some(span) = text_span(w.layout, &node.id, t) {
@@ -562,6 +580,10 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
     }
 
     paint_pseudo(w, node, style, "::after");
+
+    if stacking_context {
+        paint_raised(w, node);
+    }
 
     // The subtree's output is queued — cut it to the clip polygon of the
     // state the widget painted in (the resting style when it reported none).
@@ -705,6 +727,142 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
         };
     }
     w.ancestors.pop();
+    w.depth -= 1;
+}
+
+/// CSS stacking, as far as the painter needs it: a positioned node
+/// (`relative`, `absolute`, `fixed`, `sticky`) with a positive `z-index`
+/// is RAISED — it and its subtree paint after the in-flow content of its
+/// stacking context (the walk's root, or the nearest raised ancestor),
+/// ordered by z-index, tree order breaking ties. Layer names (`chrome`)
+/// arrive here as numbers: `zIndexVar` emits `var(--we-z-chrome)` and the
+/// theme's table substitutes it. Zero and negative z-indexes paint in tree
+/// order, as before — no bundle use needs them reordered.
+///
+/// egui's hit-test is paint order — the last widget registered on a layer
+/// is the one on top — so a raised node's controls win the pointer over
+/// what it covers by being painted later. The pointer questions that read
+/// geometry instead ([`occluded`]) consult the raised rects.
+fn raised_z(layout: &Layout, node: &ResolvedNode) -> Option<i32> {
+    let style = layout.styles.get(&node.id)?;
+    let positioned = matches!(
+        style.layout.position,
+        Some(
+            we_style::Position::Relative
+                | we_style::Position::Absolute
+                | we_style::Position::Fixed
+                | we_style::Position::Sticky
+        )
+    );
+    match style.paint.z_index {
+        Some(we_style::ZIndex::Value(z)) if positioned && z > 0 => Some(z),
+        _ => None,
+    }
+}
+
+/// Every raised node in `node`'s subtree, nested ones included, with its
+/// laid-out rect and DOM ancestry — the frame's occluder list.
+fn collect_all_raised(
+    layout: &Layout,
+    node: &ResolvedNode,
+    chain: &mut Vec<NodeId>,
+    out: &mut Vec<crate::Raised>,
+) {
+    if let (Some(z), Some(rect)) = (raised_z(layout, node), layout.rects.get(&node.id)) {
+        out.push(crate::Raised {
+            id: node.id.clone(),
+            z,
+            rect: *rect,
+            chain: chain.clone(),
+        });
+    }
+    chain.push(node.id.clone());
+    for child in &node.children {
+        if let ResolvedChild::Node(n) = child {
+            collect_all_raised(layout, n, chain, out);
+        }
+    }
+    chain.pop();
+}
+
+/// The raised nodes `ctx` paints as a stacking context — every raised
+/// descendant not inside a nearer raised one — each with the path to it
+/// (`ctx` excluded, the node last).
+fn context_raised<'n>(
+    layout: &Layout,
+    node: &'n ResolvedNode,
+    path: &mut Vec<&'n ResolvedNode>,
+    out: &mut Vec<(i32, Vec<&'n ResolvedNode>)>,
+) {
+    for child in &node.children {
+        let ResolvedChild::Node(n) = child else {
+            continue;
+        };
+        path.push(n);
+        match raised_z(layout, n) {
+            Some(z) => out.push((z, path.clone())),
+            None => context_raised(layout, n, path, out),
+        }
+        path.pop();
+    }
+}
+
+/// Paint `ctx`'s raised descendants, lowest z first, each under the walk
+/// state the in-flow walk would have given it — the scroll offsets, clips,
+/// inherited style and ancestry of the path down to it, rebuilt from the
+/// layout (the scroll positions the in-flow pass just stored included).
+fn paint_raised(w: &mut Walk<'_>, ctx: &ResolvedNode) {
+    let mut found = Vec::new();
+    context_raised(w.layout, ctx, &mut Vec::new(), &mut found);
+    if found.is_empty() {
+        return;
+    }
+    found.sort_by_key(|(z, _)| *z);
+    for (_, path) in found {
+        let (target, between) = path.split_last().expect("a path ends at its node");
+        let saved = (
+            w.offset,
+            w.clip,
+            w.inh.clone(),
+            w.parts_buf.clone(),
+            w.ancestors.len(),
+        );
+        let mut reachable = true;
+        for a in between {
+            let Some(raw) = w.layout.rects.get(&a.id).copied() else {
+                // An ancestor the in-flow walk would not paint (no box):
+                // neither would it paint what is inside.
+                reachable = false;
+                break;
+            };
+            let rect = raw.translate(-w.offset);
+            w.ancestors.push(a.id.clone());
+            if let Some(axes) = w.layout.clip.get(&a.id) {
+                let r = axis_clip(rect, *axes);
+                w.clip = Some(w.clip.map_or(r, |c| c.intersect(r)));
+            }
+            if let Some(axes) = w.layout.scroll.get(&a.id).copied() {
+                let pos = scroll_pos(w.edit, &a.id);
+                w.offset += egui::vec2(pos.x * axes.x, pos.y * axes.y);
+                let r = axis_clip(rect, axes);
+                w.clip = Some(w.clip.map_or(r, |c| c.intersect(r)));
+                w.parts_buf = Some(translated_parts(&w.base_parts, -w.offset));
+            }
+            if let Some(style) = w.layout.styles.get(&a.id) {
+                w.inh = Some(style.clone());
+            }
+        }
+        if reachable {
+            paint_node(w, target);
+        }
+        let (offset, clip, inh, parts_buf, depth) = saved;
+        w.offset = offset;
+        w.clip = clip;
+        w.inh = inh;
+        w.parts_buf = parts_buf;
+        w.ancestors.truncate(depth);
+        w.ui.set_clip_rect(w.clip.unwrap_or(w.base_clip));
+    }
 }
 
 /// `true` when the overlay should paint. `open` is element state the prop
@@ -1310,6 +1468,8 @@ fn overlay_contents(
         // through the page ancestors the DOM tree gives it.
         hits: crate::HitLog::default(),
         clicks: std::mem::take(&mut w.clicks),
+        depth: 0,
+        raised: Vec::new(),
     };
     // The floating children's containing block is the synthetic host
     // column's content box — the seeded sub-layout already recorded it on
@@ -1330,6 +1490,7 @@ fn overlay_contents(
             hits: &mut inner.hits,
             clicks: &mut inner.clicks,
             state_clip: None,
+            raised: &inner.raised,
         };
         widget.paint(&mut cx, node, &style, content_rect);
     }

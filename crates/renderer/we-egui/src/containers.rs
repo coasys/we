@@ -37,7 +37,9 @@ pub(crate) fn paint_container(cx: &mut PaintCx, node: &ResolvedNode, style: &Sty
 /// child's handler AND the container's. `mouseenter`/`mouseleave` fire on
 /// the boundary transition (the children inside the box don't re-enter).
 fn container_events(cx: &mut PaintCx, node: &ResolvedNode, rect: Rect) {
-    let inside = cx.ui.rect_contains_pointer(rect);
+    // Covered by a raised box painted over it (the hover-expanded rail
+    // over the main view), the pointer is the cover's, not this box's.
+    let inside = cx.ui.rect_contains_pointer(rect) && !cx.occluded(&node.id);
     // A primary-button release in the box is a DOM click somewhere in
     // this subtree: record the propagation path. The frame emits the
     // authored onClick after the descendants paint — child-first, like
