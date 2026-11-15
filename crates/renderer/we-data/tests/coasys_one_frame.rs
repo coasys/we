@@ -13,9 +13,7 @@ use serde_json::json;
 use we_data::OfflineData;
 use we_expr::Value;
 use we_screen::{ScreenSchema, ScreenState};
-use we_template::{
-    LocalState, ResolvedChild, ResolvedNode, Runtime, SchemaNode, StaticHost,
-};
+use we_template::{LocalState, ResolvedChild, ResolvedNode, Runtime, SchemaNode, StaticHost};
 
 const SNAPSHOT: &str = include_str!("../../fixtures/coasys/snapshot.json");
 
@@ -50,12 +48,8 @@ fn find_all_ty(node: &ResolvedNode, ty: &str, out: &mut Vec<ResolvedNode>) {
 
 #[test]
 fn coasys_named_and_inline_queries_settle_in_one_frame() {
-    let data = OfflineData::from_route(
-        &serde_json::from_str(SNAPSHOT).unwrap(),
-        "index",
-        None,
-    )
-    .expect("the index route loads");
+    let data = OfflineData::from_route(&serde_json::from_str(SNAPSHOT).unwrap(), "index", None)
+        .expect("the index route loads");
     // The index route's captures, verbatim: `calls` is the tree's 12-row
     // page, the bare `SignalType` request is the inspector's capture, and
     // `callDetail` reads `first(local.calls).id` — provisional until the
@@ -120,6 +114,9 @@ fn coasys_named_and_inline_queries_settle_in_one_frame() {
             wide.push(cell.key.as_str().to_string());
         }
     }
-    assert!(wide.is_empty(), "no wide dependent request was opened: {wide:?}");
+    assert!(
+        wide.is_empty(),
+        "no wide dependent request was opened: {wide:?}"
+    );
     assert_eq!(rt.stats().resolves, 1, "one frame, one resolve");
 }
