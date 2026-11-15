@@ -129,7 +129,10 @@ pub fn with_box_sides_filled(bag: &Bag, below: &[Option<&Bag>]) -> Bag {
             filled.shift_remove("r");
         }
         for (i, (side, chain)) in bx.iter().enumerate() {
-            if named[i].is_some() {
+            // A side the bag named is written back under its own key (the
+            // removal above took it with the box's shorthands).
+            if let Some(v) = &named[i] {
+                filled.insert(Arc::from(*side), v.clone());
                 continue;
             }
             let mut resolved: Option<Value> = None;
