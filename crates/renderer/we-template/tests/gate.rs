@@ -906,3 +906,53 @@ fn query_handles_are_tainted_by_the_receiving_frame() {
         "[inline, named] in an App part under a Space mount"
     );
 }
+
+// ── F6: declared ids over any map shape ─────────────────────────────
+
+/// F6 (Lal): a `DeclaredIds` member filters an ordinary object map the
+/// same as a namespace, and refuses a shape it cannot filter (a list).
+#[test]
+fn declared_ids_filter_plain_objects_and_refuse_lists() {
+    let (layer_bag, layer, bag, src, gate) = rig();
+    let _ = &layer_bag;
+    src.serve(
+        "screen",
+        map(&[
+            (
+                "panels",
+                obj(&[
+                    ("p-mine", obj(&[("open", Value::from(true))])),
+                    ("p-theirs", obj(&[("open", Value::from(true))])),
+                ]),
+            ),
+            (
+                "dialogs",
+                Value::List(Arc::new(vec![Value::from("d-theirs")])),
+            ),
+        ]),
+        None,
+    );
+    let declared = Declared {
+        panels: Arc::from(["p-mine".into()]),
+        dialogs: Arc::from([]),
+    };
+    let roots =
+        Roots::new(&layer, &bag).gated(&src, &gate, src.compat_roots(), space_auth(), declared);
+    let screen = roots.root("screen").unwrap();
+    let panels = get(&screen, "panels");
+    assert!(get(&get(&panels, "p-mine"), "open").strict_eq(&Value::from(true)));
+    assert!(
+        get(&panels, "p-theirs").strict_eq(&Value::Undefined),
+        "an undeclared id in a plain object leaked: {panels:?}"
+    );
+    let shown: Vec<String> = match &panels {
+        Value::Namespace(ns) => ns.keys().iter().map(|k| k.to_string()).collect(),
+        Value::Obj(o) => o.keys().map(|k| k.to_string()).collect(),
+        _ => vec![],
+    };
+    assert_eq!(shown, vec!["p-mine".to_string()]);
+    assert!(
+        get(&screen, "dialogs").strict_eq(&Value::Undefined),
+        "a list-shaped id map is refused"
+    );
+}

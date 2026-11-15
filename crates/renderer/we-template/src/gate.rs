@@ -19,7 +19,7 @@
 use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::sync::{Arc, Mutex, MutexGuard};
 
-use we_expr::{MountCx, Namespace, Tier, Value};
+use we_expr::{MapNamespace, MountCx, Namespace, Tier, Value};
 
 use crate::bindings::{Bound, MemberRule, MemberTiers, RootDomain};
 use crate::query::DatasetSel;
@@ -475,15 +475,20 @@ impl Namespace for FilteredNs {
                 }
                 _ => Value::Undefined,
             },
-            MemberVerdict::Ids(ids) => match self.inner.get(key) {
-                Value::Namespace(ns) => {
-                    let mut memo = self.memo.lock().unwrap_or_else(|p| p.into_inner());
-                    memo.entry(key.into())
-                        .or_insert_with(|| Value::namespace(DeclaredNs { inner: ns, ids }))
-                        .clone()
-                }
-                other => other,
-            },
+            // An id map in any shape the gate can filter (Lal F6): a
+            // namespace, or a plain object read as one; anything else — a
+            // list, a scalar — has no ids to filter by and is refused.
+            MemberVerdict::Ids(ids) => {
+                let ns: Arc<dyn Namespace> = match self.inner.get(key) {
+                    Value::Namespace(ns) => ns,
+                    Value::Obj(map) => Arc::new(MapNamespace::new((*map).clone())),
+                    _ => return Value::Undefined,
+                };
+                let mut memo = self.memo.lock().unwrap_or_else(|p| p.into_inner());
+                memo.entry(key.into())
+                    .or_insert_with(|| Value::namespace(DeclaredNs { inner: ns, ids }))
+                    .clone()
+            }
         }
     }
 
