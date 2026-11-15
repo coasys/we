@@ -1201,7 +1201,11 @@ fn declare_locals(
             let slot = Arc::new(crate::query::QuerySlot::default());
             slots.insert(name.clone(), slot.clone());
             fields.insert(name.clone(), LocalDecl::Query(slot.clone()));
-            fields.insert(format!("{name}Loaded").into(), LocalDecl::QueryLoaded(slot));
+            fields.insert(
+                format!("{name}Loaded").into(),
+                LocalDecl::QueryLoaded(slot.clone()),
+            );
+            fields.insert(format!("{name}Error").into(), LocalDecl::QueryError(slot));
         }
     }
 

@@ -60,6 +60,10 @@ pub enum LocalDecl {
     Query(Arc<QuerySlot>),
     /// A `<name>Loaded` companion — `true` once the bound cell holds rows.
     QueryLoaded(Arc<QuerySlot>),
+    /// A `<name>Error` companion — the failure the bound cell reported,
+    /// `undefined` while it has none (E3c-5a; `onError`'s `err`, readable
+    /// where TS only toasts it).
+    QueryError(Arc<QuerySlot>),
     /// A static answer — the snapshot's `queries` table before pooling, and
     /// what a `QuerySource` that has no opinion falls back to.
     Static(Value),
@@ -183,6 +187,13 @@ impl Namespace for LocalNs {
                 let name = key.strip_suffix("Loaded").unwrap_or(key);
                 note_slot_read(&SlotRef::new(node.clone(), name.into(), slot.clone()));
                 Value::Bool(slot.view().loaded)
+            }
+            Some((node, LocalDecl::QueryError(slot))) => {
+                // `<q>Error` reads `<q>`'s slot like `<q>Loaded` does —
+                // the recorded failure, `undefined` until one lands.
+                let name = key.strip_suffix("Error").unwrap_or(key);
+                note_slot_read(&SlotRef::new(node.clone(), name.into(), slot.clone()));
+                slot.view().error.unwrap_or(Value::Undefined)
             }
             Some((_, LocalDecl::Static(value))) => value.clone(),
             None => Value::Undefined,
