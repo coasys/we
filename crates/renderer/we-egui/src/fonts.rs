@@ -675,7 +675,7 @@ mod tests {
             assert!(!list.is_empty(), "{name} has faces");
             for face in list {
                 // wuff → raw sfnt: first four bytes are the sfnt tag,
-                // what ab_glyph will parse on paint.
+                // what skrifa will parse on paint.
                 let magic = &defs.font_data[face].font.as_ref().as_ref()[..4];
                 assert!(
                     matches!(magic, b"\x00\x01\x00\x00" | b"true" | b"OTTO"),
