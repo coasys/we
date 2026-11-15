@@ -106,7 +106,7 @@ fn completer(completers: &Rc<RefCell<Vec<Completer>>>, i: usize) -> Completer {
 }
 
 fn local(s: &Session, node: &NodeId, field: &str) -> String {
-    s.runtime.locals().get(node, field).js_string()
+    s.runtime().locals().get(node, field).js_string()
 }
 
 fn prop(node: &ResolvedNode, name: &str) -> String {

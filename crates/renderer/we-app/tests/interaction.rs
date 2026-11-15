@@ -55,7 +55,7 @@ fn find<'n>(n: &'n ResolvedNode, pred: &dyn Fn(&ResolvedNode) -> bool) -> Option
 /// The laid-out rect of the `$lane` named `lane`.
 fn lane_rect(harness: &Harness<'_, RendererApp>, lane: &str) -> Rect {
     let app = harness.state();
-    let root = app.session.runtime.resolved().expect("resolved").clone();
+    let root = app.session.runtime().resolved().expect("resolved").clone();
     let node = find(&root, &|n| {
         n.ty.as_ref() == "$lane"
             && n.props.get("lane").map(|v| v.js_string()).as_deref() == Some(lane)
@@ -121,7 +121,7 @@ fn stored(h: &Harness<'_, RendererApp>, lane: &str) -> Option<u32> {
 /// The laid-out rect of the row the lanes sit in.
 fn lane_row(harness: &Harness<'_, RendererApp>) -> Rect {
     let app = harness.state();
-    let root = app.session.runtime.resolved().expect("resolved").clone();
+    let root = app.session.runtime().resolved().expect("resolved").clone();
     let row = find(&root, &|n| {
         n.children
             .iter()
@@ -249,7 +249,7 @@ fn the_inspector_lane_resizes_from_its_start_edge() {
 /// The rail: the fixed `zIndex: "chrome"` column that widens on hover.
 fn rail_rect(harness: &Harness<'_, RendererApp>) -> Rect {
     let app = harness.state();
-    let root = app.session.runtime.resolved().expect("resolved").clone();
+    let root = app.session.runtime().resolved().expect("resolved").clone();
     let node = find(&root, &|n| {
         n.handlers.contains_key("onMouseEnter")
             && n.props.get("zIndex").map(|v| v.js_string()).as_deref() == Some("chrome")
@@ -351,7 +351,7 @@ fn people_open(h: &Harness<'_, RendererApp>) -> bool {
     let root = h
         .state()
         .session
-        .runtime
+        .runtime()
         .resolved()
         .expect("resolved")
         .clone();
@@ -377,7 +377,7 @@ fn a_click_on_the_expanded_rail_does_not_reach_the_tree_row_under_it() {
     let rail = rail_rect(&h);
     let row = {
         let app = h.state();
-        let root = app.session.runtime.resolved().expect("resolved").clone();
+        let root = app.session.runtime().resolved().expect("resolved").clone();
         app.layout().expect("laid out").rects[&tree_item(&root, "group|people").id]
     };
     let was = people_open(&h);

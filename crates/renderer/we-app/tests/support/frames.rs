@@ -92,7 +92,7 @@ impl Driver {
                 ResolvedChild::Text(_) => None,
             })
         }
-        let root = self.app.session.runtime.resolved().unwrap().clone();
+        let root = self.app.session.runtime().resolved().unwrap().clone();
         let node = find(&root, name).unwrap_or_else(|| panic!("no $lane {name}"));
         self.app.layout().unwrap().rects[&node.id]
     }
@@ -113,7 +113,7 @@ impl Driver {
                 ResolvedChild::Text(_) => None,
             })
         }
-        let root = self.app.session.runtime.resolved().unwrap().clone();
+        let root = self.app.session.runtime().resolved().unwrap().clone();
         let node = find(&root).expect("the rail");
         self.app.layout().unwrap().rects[&node.id]
     }

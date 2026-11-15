@@ -60,8 +60,25 @@ pub struct Tick {
 
 /// Runtime + host + screen — everything a frontend reuses to render a
 /// resolved tree.
+///
+/// The runtime is read through [`Session::runtime`] and replaced only
+/// through [`Session::set_runtime`], which installs the legacy screen
+/// bindings over it — a runtime put in any other way would answer every
+/// `routeStore`/`shellStore` member from a view nothing refreshes:
+///
+/// ```compile_fail
+/// fn replace(session: &mut we_session::Session, runtime: we_template::Runtime) {
+///     session.runtime = runtime;
+/// }
+/// ```
+///
+/// ```
+/// fn replace(session: &mut we_session::Session, runtime: we_template::Runtime) {
+///     session.set_runtime(runtime);
+/// }
+/// ```
 pub struct Session {
-    pub runtime: Runtime,
+    runtime: Runtime,
     /// The injected host. Public for E3c-1 (tests and the offline harnesses
     /// swap it); prefer [`Session::host`]/[`Session::host_as`].
     pub host: Box<dyn Host>,
@@ -142,6 +159,11 @@ impl Session {
         let legacy = we_legacy::LegacyBindings::install(runtime.layer(), runtime.view());
         runtime.set_bindings(Arc::new(legacy));
         self.runtime = runtime;
+    }
+
+    /// The runtime — what the tree resolved to, its stats, its query hub.
+    pub fn runtime(&self) -> &Runtime {
+        &self.runtime
     }
 
     /// `$`-types the frontend knows (`$lane`) resolve as components — the

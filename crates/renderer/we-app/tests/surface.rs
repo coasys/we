@@ -48,7 +48,13 @@ fn egui_reports_the_surface_content_box() {
         egui_kittest::Harness::new_ui_state(|ui, app: &mut RendererApp| app.frame_body(ui), app);
     harness.run_steps(5);
 
-    let root = harness.state().session.runtime.resolved().unwrap().clone();
+    let root = harness
+        .state()
+        .session
+        .runtime()
+        .resolved()
+        .unwrap()
+        .clone();
     let label = find(&root, "Label").expect("the label resolved");
     let w = label.props.get("w").expect("surface.width bound");
     let t = label.props.get("t").expect("surface.tier bound");
@@ -82,7 +88,7 @@ fn settled(schema: serde_json::Value, w: f32) -> egui_kittest::Harness<'static, 
 }
 
 fn labels(h: &egui_kittest::Harness<'static, RendererApp>) -> Vec<Option<f64>> {
-    let root = h.state().session.runtime.resolved().unwrap().clone();
+    let root = h.state().session.runtime().resolved().unwrap().clone();
     let mut out = Vec::new();
     fn walk(n: &ResolvedNode, out: &mut Vec<Option<f64>>) {
         if n.ty.as_ref() == "Label" {

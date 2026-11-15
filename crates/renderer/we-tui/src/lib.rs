@@ -513,7 +513,7 @@ impl TuiApp {
     /// A node's clone from the resolved tree — activation reads handlers
     /// and props off it. `None` when the node left the tree.
     fn node_at(&self, id: &NodeId) -> Option<ResolvedNode> {
-        let root = self.session.runtime.resolved()?.clone();
+        let root = self.session.runtime().resolved()?.clone();
         find_node(&root, id).cloned()
     }
 

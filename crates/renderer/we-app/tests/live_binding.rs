@@ -54,7 +54,7 @@ fn texts(n: &ResolvedNode, out: &mut Vec<String>) {
 }
 
 fn resolved_texts(h: &egui_kittest::Harness<'_, RendererApp>) -> Vec<String> {
-    let root = h.state().session.runtime.resolved().unwrap().clone();
+    let root = h.state().session.runtime().resolved().unwrap().clone();
     let mut out = Vec::new();
     texts(&root, &mut out);
     out

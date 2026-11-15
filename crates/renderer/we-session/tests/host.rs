@@ -82,7 +82,7 @@ fn session_answering(
 }
 
 fn local(s: &Session, node: &NodeId, field: &str) -> String {
-    s.runtime.locals().get(node, field).js_string()
+    s.runtime().locals().get(node, field).js_string()
 }
 
 fn completer(log: &Rc<RefCell<Log>>, i: usize) -> Completer {

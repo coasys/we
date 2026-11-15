@@ -108,7 +108,7 @@ fn resolved_route(truth: &serde_json::Value, id: &str) -> we_template::ResolvedN
     for _ in 0..4 {
         app.session.resolve();
     }
-    app.session.runtime.resolved().unwrap().as_ref().clone()
+    app.session.runtime().resolved().unwrap().as_ref().clone()
 }
 
 fn ids<'a>(n: &'a we_template::ResolvedNode, out: &mut Vec<&'a str>) {

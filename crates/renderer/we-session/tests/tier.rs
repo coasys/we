@@ -220,7 +220,7 @@ fn origin_space_is_stamped() {
     let (_, origin) = fire_and_origin(&mut s, &log, "space:");
     let space = origin.space.expect("a space route stamps the space");
     assert_eq!(
-        s.runtime.handles().key(space.handle()).as_deref(),
+        s.runtime().handles().key(space.handle()).as_deref(),
         Some("preview-coasys"),
         "the handle resolves to the route's space id"
     );
@@ -238,7 +238,7 @@ fn origin_space_is_stamped() {
     let (_, origin) = fire_and_origin(&mut s, &log, "test:");
     let space = origin.space.expect("the route's space fills the mount");
     assert_eq!(
-        s.runtime.handles().key(space.handle()).as_deref(),
+        s.runtime().handles().key(space.handle()).as_deref(),
         Some("preview-coasys")
     );
 }
@@ -290,7 +290,7 @@ fn two_spaces_do_not_share_a_cell() {
     );
     let _ = s.resolve();
     let keys: Vec<_> = s
-        .runtime
+        .runtime()
         .hub()
         .cells()
         .iter()
@@ -311,7 +311,7 @@ fn two_spaces_do_not_share_a_cell() {
     });
     let _ = s.resolve();
     let keys: Vec<_> = s
-        .runtime
+        .runtime()
         .hub()
         .cells()
         .iter()
@@ -361,7 +361,7 @@ fn an_explicit_mount_space_resolves_through_the_shared_table() {
     // table that never minted the handle would answer `ds:null` (and
     // the route's own space B must not fill it either).
     let keys: Vec<_> = s
-        .runtime
+        .runtime()
         .hub()
         .cells()
         .iter()
@@ -379,7 +379,7 @@ fn an_explicit_mount_space_resolves_through_the_shared_table() {
     let (_, origin) = fire_and_origin(&mut s, &log, "panel:");
     let space = origin.space.expect("the explicit space is stamped");
     assert_eq!(
-        s.runtime.handles().key(space.handle()).as_deref(),
+        s.runtime().handles().key(space.handle()).as_deref(),
         Some("space-a"),
         "the origin's space resolves through the shared table"
     );
@@ -430,7 +430,7 @@ fn a_pending_callback_stamps_the_space_it_started_on() {
             .as_ref()
             .expect("on a space route");
         assert_eq!(
-            s.runtime.handles().key(space.handle()).as_deref(),
+            s.runtime().handles().key(space.handle()).as_deref(),
             Some("space-a"),
             "the call started on space A"
         );
@@ -464,7 +464,7 @@ fn a_pending_callback_stamps_the_space_it_started_on() {
         .as_ref()
         .expect("the callback has a space");
     assert_eq!(
-        s.runtime.handles().key(space.handle()).as_deref(),
+        s.runtime().handles().key(space.handle()).as_deref(),
         Some("space-a"),
         "the callback stamps the initiating mount's space"
     );

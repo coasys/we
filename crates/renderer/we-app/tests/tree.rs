@@ -105,10 +105,10 @@ fn a_frame_without_input_does_not_resolve_again() {
         app("/space/demo?view=canvas"),
     );
     harness.run();
-    let resolves = harness.state().session.runtime.stats().resolves;
+    let resolves = harness.state().session.runtime().stats().resolves;
     // kittest already ran several frames; none of them bumped the count.
     harness.run();
-    assert_eq!(harness.state().session.runtime.stats().resolves, resolves);
+    assert_eq!(harness.state().session.runtime().stats().resolves, resolves);
 }
 
 #[test]
@@ -119,7 +119,7 @@ fn node_count_and_resolve_time() {
     );
     harness.run();
     assert!(
-        harness.state().session.runtime.stats().nodes > 100,
+        harness.state().session.runtime().stats().nodes > 100,
         "tree panel should resolve ~200 nodes"
     );
 }

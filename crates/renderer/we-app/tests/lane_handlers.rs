@@ -54,7 +54,7 @@ fn lane(h: &Harness<'_, RendererApp>) -> Rect {
         })
     }
     let app = h.state();
-    let root = app.session.runtime.resolved().expect("resolved");
+    let root = app.session.runtime().resolved().expect("resolved");
     let node = find(root).expect("the lane");
     app.layout().expect("laid out").rects[&node.id]
 }

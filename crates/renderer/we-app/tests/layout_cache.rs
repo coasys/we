@@ -43,7 +43,7 @@ fn theme(id: &str, font_size_300: &str) -> Theme {
 
 /// The lone child's laid-out height this frame.
 fn child_height(app: &RendererApp) -> f32 {
-    let root = app.session.runtime.resolved().expect("resolved");
+    let root = app.session.runtime().resolved().expect("resolved");
     let id = match &root.children[0] {
         ResolvedChild::Node(n) => n.id.clone(),
         ResolvedChild::Text(_) => panic!("the child is a node"),

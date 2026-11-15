@@ -226,7 +226,7 @@ fn inspect(truth: &Json, id: &str, app: &RendererApp) -> Resolved {
             .to_string(),
         ..Resolved::default()
     };
-    let Some(root) = app.session.runtime.resolved() else {
+    let Some(root) = app.session.runtime().resolved() else {
         r.error = Some("no resolved tree".into());
         return r;
     };
@@ -240,7 +240,7 @@ fn inspect(truth: &Json, id: &str, app: &RendererApp) -> Resolved {
         .collect();
     r.loading = app
         .session
-        .runtime
+        .runtime()
         .hub()
         .cells()
         .iter()

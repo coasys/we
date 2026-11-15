@@ -38,7 +38,7 @@ fn get(root: Option<Value>, key: &str) -> Value {
 
 /// `routeStore.href` — the legacy face's overlay of this session's `nav`.
 fn route_href(s: &Session) -> Value {
-    get(s.runtime.roots().root("routeStore"), "href")
+    get(s.runtime().roots().root("routeStore"), "href")
 }
 
 fn navigate(to: &str) -> ScreenOp {
@@ -86,7 +86,8 @@ fn two_sessions_on_one_bag_keep_their_own_screens() {
     // Different routes from the start, through both spellings.
     assert!(route_href(&one).strict_eq(&Value::from("/one")));
     assert!(route_href(&two).strict_eq(&Value::from("/two")));
-    let screen_href = |s: &Session| get(Some(get(s.runtime.roots().root("screen"), "nav")), "href");
+    let screen_href =
+        |s: &Session| get(Some(get(s.runtime().roots().root("screen"), "nav")), "href");
     assert!(screen_href(&one).strict_eq(&Value::from("/one")));
     assert!(screen_href(&two).strict_eq(&Value::from("/two")));
 
@@ -111,7 +112,7 @@ fn two_sessions_on_one_bag_keep_their_own_screens() {
         name: "create_space".into(),
         open: true,
     });
-    let dialog = |s: &Session| get(s.runtime.roots().root("shellStore"), "createSpaceOpen");
+    let dialog = |s: &Session| get(s.runtime().roots().root("shellStore"), "createSpaceOpen");
     assert!(dialog(&one).strict_eq(&Value::Bool(true)));
     assert!(dialog(&two).strict_eq(&Value::Bool(false)));
 
@@ -119,13 +120,13 @@ fn two_sessions_on_one_bag_keep_their_own_screens() {
     let shared = Value::from("shared-data");
     bag.set_root("profileStore", shared.clone());
     assert!(one
-        .runtime
+        .runtime()
         .roots()
         .root("profileStore")
         .unwrap()
         .strict_eq(&shared));
     assert!(two
-        .runtime
+        .runtime()
         .roots()
         .root("profileStore")
         .unwrap()
@@ -140,10 +141,10 @@ fn a_second_session_install_does_not_move_the_firsts_faces() {
     let bag = Arc::new(StoreBag::new());
     let mut one = Session::offline(spec(), bag.clone(), screen("/one"));
     one.resolve();
-    let face = one.runtime.roots().root("routeStore").unwrap();
+    let face = one.runtime().roots().root("routeStore").unwrap();
     let _two = Session::offline(spec(), bag.clone(), screen("/two"));
     assert!(
-        one.runtime
+        one.runtime()
             .roots()
             .root("routeStore")
             .unwrap()
@@ -156,7 +157,7 @@ fn a_second_session_install_does_not_move_the_firsts_faces() {
 
 /// The `where` each held claim of `s` carries for `field`.
 fn claimed(s: &Session, field: &str) -> Vec<serde_json::Value> {
-    s.runtime
+    s.runtime()
         .hub()
         .cells()
         .iter()

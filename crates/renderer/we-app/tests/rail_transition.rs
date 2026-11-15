@@ -95,7 +95,7 @@ fn label_opacities(d: &Driver) -> Vec<f32> {
         }
     }
     let mut ids = Vec::new();
-    walk(d.app.session.runtime.resolved().unwrap(), &mut ids);
+    walk(d.app.session.runtime().resolved().unwrap(), &mut ids);
     let layout = d.app.layout().unwrap();
     ids.iter()
         .filter_map(|id| layout.styles.get(id))

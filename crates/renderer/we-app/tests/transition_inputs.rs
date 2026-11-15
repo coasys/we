@@ -43,7 +43,7 @@ impl Driver {
                 _ => None,
             })
         }
-        let root = self.app.session.runtime.resolved().unwrap().clone();
+        let root = self.app.session.runtime().resolved().unwrap().clone();
         let node = find(&root).expect("the box");
         self.app.layout().unwrap().rects[&node.id].height()
     }

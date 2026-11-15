@@ -99,7 +99,7 @@ fn row_names(rows: &[Value]) -> Vec<&str> {
 /// the other and hide a mismatch.
 fn cells(session: &Session) -> IndexMap<String, SlotView> {
     let mut by_name: IndexMap<String, (String, SlotView)> = IndexMap::new();
-    for cell in session.runtime.hub().cells() {
+    for cell in session.runtime().hub().cells() {
         let Some(name) = cell.request.name_hint.clone() else {
             continue;
         };

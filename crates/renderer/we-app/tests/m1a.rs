@@ -85,7 +85,7 @@ fn app_layout(id: &str) -> (ResolvedNode, we_egui::Layout) {
     harness.run_steps(3);
 
     let app = harness.state();
-    let root = app.session.runtime.resolved().unwrap().as_ref().clone();
+    let root = app.session.runtime().resolved().unwrap().as_ref().clone();
     let ctx = harness.ctx.clone();
     let mcx = we_egui::MeasureCx::new(&ctx);
     let tokens = app.theme.tokens.clone();

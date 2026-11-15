@@ -46,7 +46,7 @@ fn the_typewriter_phrase_is_painted_in_the_accent() {
     h.run_steps(6);
     let img = h.render().expect("render");
     let app = h.state();
-    let root = app.session.runtime.resolved().expect("resolved").clone();
+    let root = app.session.runtime().resolved().expect("resolved").clone();
     let tw = find(&root, &|n| n.ty.as_ref() == "we-typewriter").expect("typewriter");
     let lay = app.layout().expect("laid out");
     let r = lay.rects[&tw.id];
@@ -107,7 +107,7 @@ fn kids(n: &ResolvedNode) -> Vec<&ResolvedNode> {
 fn the_about_header_lays_out_as_one_row() {
     let h = about(true);
     let app = h.state();
-    let root = app.session.runtime.resolved().expect("resolved").clone();
+    let root = app.session.runtime().resolved().expect("resolved").clone();
     let lay = app.layout().expect("laid out");
 
     let brand = link(&root, "https://coasys.org");

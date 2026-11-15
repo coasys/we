@@ -31,7 +31,7 @@ fn find<'n>(n: &'n ResolvedNode, pred: &dyn Fn(&ResolvedNode) -> bool) -> Option
 }
 
 fn lane(app: &RendererApp, name: &str) -> Rect {
-    let root = app.session.runtime.resolved().expect("resolved").clone();
+    let root = app.session.runtime().resolved().expect("resolved").clone();
     let n = find(&root, &|n| {
         n.ty.as_ref() == "$lane"
             && n.props.get("lane").map(|v| v.js_string()).as_deref() == Some(name)
