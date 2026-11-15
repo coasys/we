@@ -129,6 +129,11 @@ pub fn tier_for_width(width_px: f32, bp: &Breakpoints) -> SizeTier {
 
 /// A terminal's cell size in logical px, per axis — the grid a px
 /// `we_layout::Layout` projects onto. `8 × 16` is the default cell.
+///
+/// Precondition: both sizes are finite and positive. A zero, negative or
+/// NaN size is a caller bug — `col`/`row` still answer (float-to-int
+/// saturates, NaN becomes 0), and `we_layout::cells::project` clamps the
+/// reversed spans a bad size produces, but the grid itself means nothing.
 #[derive(Clone, Copy, Debug)]
 pub struct CellProjection {
     pub cell_w: f32,
