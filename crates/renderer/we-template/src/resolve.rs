@@ -1202,10 +1202,7 @@ fn declare_locals(
             let slot = Arc::new(crate::query::QuerySlot::default());
             slots.insert(name.clone(), slot.clone());
             fields.insert(name.clone(), LocalDecl::Query(slot.clone()));
-            fields.insert(
-                format!("{name}Loaded").into(),
-                LocalDecl::QueryLoaded(slot),
-            );
+            fields.insert(format!("{name}Loaded").into(), LocalDecl::QueryLoaded(slot));
         }
         // `<name>Error` is the port's own companion — WE synthesises only
         // `<name>` and `<name>Loaded`, which spread over `$local` and so win

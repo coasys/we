@@ -1439,7 +1439,11 @@ fn a_prefilled_cell_answers_inside_the_pass() {
         "every level shared a filled cell"
     );
     rt.frame(&mut host, &screen);
-    assert_eq!(rt.stats().resolves, resolves + 1, "and the next frame is quiet");
+    assert_eq!(
+        rt.stats().resolves,
+        resolves + 1,
+        "and the next frame is quiet"
+    );
 }
 
 /// A `$queries` block whose compiles can never settle keeps the last
@@ -1685,7 +1689,9 @@ fn an_authored_local_wins_over_the_error_companion() {
 
     rt.dispatch(&mut host, &mut screen, &owner, "onEdit", Value::Null);
     assert!(
-        locals.get(&owner, "saveError").strict_eq(&Value::from("edited")),
+        locals
+            .get(&owner, "saveError")
+            .strict_eq(&Value::from("edited")),
         "$setLocal still finds the authored field: {:?}",
         locals.get(&owner, "saveError")
     );
@@ -1697,7 +1703,9 @@ fn an_authored_local_wins_over_the_error_companion() {
     );
     rt.dispatch(&mut host, &mut screen, &owner, "onReset", Value::Null);
     assert!(
-        locals.get(&owner, "saveError").strict_eq(&Value::from("authored")),
+        locals
+            .get(&owner, "saveError")
+            .strict_eq(&Value::from("authored")),
         "$resetLocal restores the authored initial: {:?}",
         locals.get(&owner, "saveError")
     );
@@ -1740,4 +1748,92 @@ fn an_authored_query_wins_over_the_error_companion_in_either_order() {
             "{order:?}: foo's own companions are untouched: {on:?}"
         );
     }
+}
+
+// ---- E3c-5a round 2 (Lal F3): `<name>Error` clears, and is a tracked read ----
+
+/// A subscription that fails and later supplies rows on the same ticket
+/// recovers: `<name>Error` reads `undefined` again, Loaded stays true, the
+/// rows render.
+#[test]
+fn a_later_success_clears_the_error() {
+    let node = json!({ "type": "Column",
+        "$queries": { "items": { "entity": "Task" } },
+        "children": [{ "type": "we-q", "props": {
+            "err": { "$": "local.itemsError" },
+            "on": { "$": "local.itemsLoaded" },
+            "n": { "$": "local.items.length" } } }] });
+    let source = Counting::new().failing("Task");
+    let (mut rt, mut host, mut screen, _bag) = rig(node, source.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    let q = find_ty(&root, "we-q").expect("we-q mounts");
+    assert!(
+        matches!(q.props.get("err"), Some(Value::Str(s)) if s.as_ref() == "Task failed"),
+        "failed first: {:?}",
+        q.props.get("err")
+    );
+
+    source.deliver("Task", vec![Value::from_json(&json!({ "id": "t1" }))]);
+    let (_, queries, _) = rt.drain_inbox(&mut host, &mut screen);
+    assert_eq!(queries, 1, "the success on the same ticket applied");
+    let root = rt.frame(&mut host, &screen).clone();
+    let q = find_ty(&root, "we-q").expect("we-q mounts");
+    assert!(
+        matches!(q.props.get("err"), Some(Value::Undefined)),
+        "the error cleared: {:?}",
+        q.props.get("err")
+    );
+    assert!(
+        matches!(q.props.get("on"), Some(Value::Bool(true))),
+        "still loaded: {:?}",
+        q.props.get("on")
+    );
+    assert!(
+        matches!(q.props.get("n"), Some(v) if v.strict_eq(&Value::from(1.0))),
+        "the rows render: {:?}",
+        q.props.get("n")
+    );
+}
+
+/// A query that reads `local.itemsError` is a dependent of `items`: it is
+/// withheld while `items` loads (the read is noted, the slot is unloaded),
+/// asks the fallback once `items` fails, and moves back when it recovers.
+#[test]
+fn a_dependent_recomputes_on_the_error() {
+    let node = json!({ "type": "Column",
+        "$queries": {
+            "items": { "entity": "Task" },
+            "dep": { "entity": { "$": "local.itemsError ? 'Fallback' : 'Primary'" } }
+        },
+        "children": [] });
+    let source = Counting::new().holding("Task");
+    let (mut rt, mut host, mut screen, _bag) = rig(node, source.clone());
+    rt.frame(&mut host, &screen);
+    assert!(
+        source.opens_for("Primary").is_empty() && source.opens_for("Fallback").is_empty(),
+        "the dependent waits for items to settle"
+    );
+
+    source.deliver_failed("Task", Value::from("broke"));
+    rt.drain_inbox(&mut host, &mut screen);
+    rt.frame(&mut host, &screen);
+    assert_eq!(
+        source.opens_for("Fallback").len(),
+        1,
+        "the failure asks the fallback"
+    );
+    assert!(
+        source.opens_for("Primary").is_empty(),
+        "and never the primary"
+    );
+
+    source.deliver("Task", vec![Value::from_json(&json!({ "id": "t1" }))]);
+    rt.drain_inbox(&mut host, &mut screen);
+    rt.frame(&mut host, &screen);
+    assert_eq!(
+        source.opens_for("Primary").len(),
+        1,
+        "the recovery moves it back"
+    );
+    assert_eq!(source.close_count(), 1, "and closes the fallback");
 }
