@@ -229,38 +229,70 @@ pub fn root_domain(name: &str, compat: &[Arc<str>]) -> Option<RootDomain> {
     }
 }
 
-/// The source a runtime carries before the session installs one — and
-/// the shape of a test double (E3c-8a): [`crate::StoreBag`] and the
-/// mount's [`crate::RootLayer`] behind the [`BindingSource`] contract.
+/// The source a runtime carries before the session installs one:
+/// [`crate::StoreBag`] and the mount's [`crate::RootLayer`] behind the
+/// [`BindingSource`] contract.
 ///
-/// It declares no compat names and no member tables — a bag root is
-/// served as a plain `Space`-domain root, the way a host's own data root
-/// is. That means **member filtering only exists where the host's
-/// adapter installs it**: a core-only runtime keeps the old unfiltered
-/// behaviour for the roots its bag happens to hold (the render gates
-/// always run through `we-legacy`'s `LegacyBindings`, never this).
-/// `screen` still gets core's table at `Roots::root` — the source
-/// supplies the value, core supplies the policy.
+/// **Fail closed by default (Lal F3).** [`BagBindings::new`] declares no
+/// domain for a root core's [`root_domain`] does not classify, so a host's
+/// own bag roots (`sessionStore`, `accountStore`, …) are refused — and
+/// counted — at every tier: a `Runtime` nobody gave a classified source
+/// serves `screen` (core's value and core's table) and the v2 names core
+/// classifies, nothing else. It answers no profiles and is always ready:
+/// core reads no store for either (`we-legacy`'s `LegacyBindings` does).
+///
+/// [`BagBindings::trusted_unclassified`] is the old behaviour under a name
+/// that says what it is: every bag root served as a plain `Space`-domain
+/// root, unfiltered. Only tests and offline tools that render a snapshot
+/// they built themselves opt in ([`crate::Runtime::trust_unclassified_bag`]);
+/// a host never does.
 pub struct BagBindings {
     bag: Arc<crate::StoreBag>,
     layer: Arc<crate::scope::RootLayer>,
+    /// `true` only through [`Self::trusted_unclassified`].
+    trusted: bool,
 }
 
 impl BagBindings {
-    /// Wrap `bag` + `layer` — the runtime's own construction.
+    /// Wrap `bag` + `layer`, fail-closed — the runtime's own construction.
     pub fn new(bag: Arc<crate::StoreBag>, layer: Arc<crate::scope::RootLayer>) -> Self {
-        Self { bag, layer }
+        Self {
+            bag,
+            layer,
+            trusted: false,
+        }
+    }
+
+    /// Wrap `bag` + `layer` and label every unclassified bag root `Space`,
+    /// unfiltered — the explicit, trusted mode for tests and tools that
+    /// built the bag themselves. Never a host's source.
+    pub fn trusted_unclassified(
+        bag: Arc<crate::StoreBag>,
+        layer: Arc<crate::scope::RootLayer>,
+    ) -> Self {
+        Self {
+            bag,
+            layer,
+            trusted: true,
+        }
     }
 
     /// The wrapped bag.
     pub fn bag(&self) -> &Arc<crate::StoreBag> {
         &self.bag
     }
+
+    /// Whether this is the trusted-unclassified mode.
+    pub fn is_trusted(&self) -> bool {
+        self.trusted
+    }
 }
 
 impl std::fmt::Debug for BagBindings {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("BagBindings").finish_non_exhaustive()
+        f.debug_struct("BagBindings")
+            .field("trusted", &self.trusted)
+            .finish_non_exhaustive()
     }
 }
 
@@ -272,7 +304,9 @@ impl BindingSource for BagBindings {
             .map(|value| Bound {
                 value,
                 members: None,
-                domain: Some(RootDomain::Space),
+                // Fail closed: no declared domain — a name core does not
+                // classify is refused (and counted) by `Roots::root`.
+                domain: self.trusted.then_some(RootDomain::Space),
             })
     }
 
@@ -281,10 +315,6 @@ impl BindingSource for BagBindings {
     /// (`we-legacy`'s `LegacyBindings`).
     fn profile(&self, _did: &str, _mount: &MountCx) -> Option<Value> {
         None
-    }
-
-    fn ready(&self) -> bool {
-        crate::runtime::bag_ready(&self.bag)
     }
 }
 

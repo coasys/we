@@ -193,6 +193,22 @@ pub fn profile_of(bag: &StoreBag, did: &str) -> Option<Value> {
     }
 }
 
+/// `sessionStore` readiness — `signInStep`/`bootState` reads `"ready"`;
+/// an absent store answers ready (the bundle's own `$if` draws the boot in
+/// WE). The one `sessionStore` read in the renderer (Lal F3): it lives in
+/// the legacy source, never in core.
+pub fn session_ready(bag: &StoreBag) -> bool {
+    match bag.root("sessionStore") {
+        Some(Value::Namespace(ns)) => {
+            let step = ns.get("signInStep");
+            let state = ns.get("bootState");
+            matches!(&step, Value::Str(s) if s.as_ref() == "ready")
+                || matches!(&state, Value::Str(s) if s.as_ref() == "ready")
+        }
+        _ => true,
+    }
+}
+
 /// The installed adapter — the session's E3c-8a [`BindingSource`]: it
 /// serves `screen` (the live view it already reads), the `legacy` root
 /// (every old store name behind its generated member table), the compat
@@ -434,10 +450,7 @@ impl we_template::BindingSource for LegacyBindings {
     }
 
     fn ready(&self) -> bool {
-        self.bag
-            .as_ref()
-            .map(|b| we_template::bag_ready(b))
-            .unwrap_or(false)
+        self.bag.as_ref().map(|b| session_ready(b)).unwrap_or(false)
     }
 
     fn compat_roots(&self) -> &[Arc<str>] {

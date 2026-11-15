@@ -440,8 +440,20 @@ impl<'a> Roots<'a> {
                 return None;
             }
         }
-        let bound = g.source.root(name, &g.auth)?;
-        let domain = classified.or(bound.domain)?;
+        let Some(bound) = g.source.root(name, &g.auth) else {
+            // Nothing by that name. An unclassified one still has a
+            // verdict — counted, so a probe leaves its diagnostic.
+            if classified.is_none() {
+                g.gate.root_unknown(&g.auth, name);
+            }
+            return None;
+        };
+        let Some(domain) = classified.or(bound.domain) else {
+            // Served, but neither core nor the source classifies it:
+            // refused and counted (Lal F3 — never labelled Space).
+            g.gate.root_unknown(&g.auth, name);
+            return None;
+        };
         if classified.is_none() && !g.gate.root(&g.auth, name, domain).allowed() {
             return None;
         }

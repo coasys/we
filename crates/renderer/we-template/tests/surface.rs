@@ -27,7 +27,7 @@ fn rig(node: SchemaNode, bag: StoreBag) -> (Runtime, StaticHost, LocalState, Scr
 
 fn rig_arc(node: SchemaNode, bag: Arc<StoreBag>) -> (Runtime, StaticHost, LocalState, ScreenState) {
     let locals = LocalState::new();
-    let runtime = Runtime::new(node, "test", bag.clone(), locals.clone());
+    let runtime = Runtime::new(node, "test", bag.clone(), locals.clone()).trust_unclassified_bag();
     let host = StaticHost::new(bag);
     (runtime, host, locals, screen())
 }

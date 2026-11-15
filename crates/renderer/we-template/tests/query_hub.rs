@@ -153,6 +153,7 @@ impl QuerySource for Counting {
 fn rig(node: Json, source: Arc<Counting>) -> (Runtime, StaticHost, ScreenState, Arc<StoreBag>) {
     let bag = Arc::new(StoreBag::new());
     let rt = Runtime::new(schema(node), "test", bag.clone(), LocalState::new())
+        .trust_unclassified_bag()
         .with_sources(Some(source), Arc::new(we_template::NoParts));
     (rt, StaticHost::new(bag.clone()), screen("/"), bag)
 }
@@ -367,6 +368,7 @@ fn repeated_part_sites_are_distinct_and_share() {
     let source = Counting::new();
     let bag = Arc::new(StoreBag::new());
     let mut rt = Runtime::new(schema(node), "test", bag.clone(), LocalState::new())
+        .trust_unclassified_bag()
         .with_sources(Some(source.clone()), Arc::new(Parts));
     let mut host = StaticHost::new(bag);
     let screen = screen("/");
@@ -403,6 +405,7 @@ fn two_templates_share_a_cell() {
     let source = Counting::new();
     let bag = Arc::new(StoreBag::new());
     let mut rt = Runtime::app(spec, bag.clone(), LocalState::new())
+        .trust_unclassified_bag()
         .with_sources(Some(source.clone()), Arc::new(we_template::NoParts));
     let mut host = StaticHost::new(bag);
     let screen = screen("/app/anything");
@@ -524,7 +527,8 @@ fn the_snapshot_table_source_answers_named_queries() {
         "$queries": { "items": { "entity": "Task" } },
         "children": [{ "type": "we-text",
             "props": { "text": { "$": "local.items.length" } } }] });
-    let mut rt = Runtime::new(schema(node), "test", bag.clone(), LocalState::new());
+    let mut rt =
+        Runtime::new(schema(node), "test", bag.clone(), LocalState::new()).trust_unclassified_bag();
     let mut host = StaticHost::new(bag);
     let screen = screen("/");
     let root = rt.frame(&mut host, &screen).clone();
@@ -866,7 +870,8 @@ fn an_anonymous_then_named_claim_shares_the_named_answer() {
           "children": [{ "type": "we-text",
             "props": { "text": { "$": "local.items.length" } } }] }
     ]});
-    let mut rt = Runtime::new(schema(node), "test", bag.clone(), LocalState::new());
+    let mut rt =
+        Runtime::new(schema(node), "test", bag.clone(), LocalState::new()).trust_unclassified_bag();
     let mut host = StaticHost::new(bag);
     let screen = screen("/");
     let root = rt.frame(&mut host, &screen).clone();
@@ -904,7 +909,8 @@ fn a_named_then_anonymous_claim_shares_the_named_answer() {
         { "type": "List", "props": { "rows": { "$query": { "entity": "Task" } } },
           "children": [] }
     ]});
-    let mut rt = Runtime::new(schema(node), "test", bag.clone(), LocalState::new());
+    let mut rt =
+        Runtime::new(schema(node), "test", bag.clone(), LocalState::new()).trust_unclassified_bag();
     let mut host = StaticHost::new(bag);
     let screen = screen("/");
     let root = rt.frame(&mut host, &screen).clone();
@@ -1316,6 +1322,7 @@ fn chain_longer_than_eight_continues_and_goes_quiet() {
     let source = Arc::new(Stair::default());
     let bag = Arc::new(StoreBag::new());
     let mut rt = Runtime::new(schema(node), "test", bag.clone(), LocalState::new())
+        .trust_unclassified_bag()
         .with_sources(Some(source.clone()), Arc::new(we_template::NoParts));
     let wakes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let w = wakes.clone();
@@ -1400,6 +1407,7 @@ fn a_prefilled_cell_answers_inside_the_pass() {
     let source = Arc::new(Stair::default());
     let bag = Arc::new(StoreBag::new());
     let mut rt = Runtime::new(schema(node), "test", bag.clone(), LocalState::new())
+        .trust_unclassified_bag()
         .with_sources(Some(source.clone()), Arc::new(we_template::NoParts));
     let wakes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
     let w = wakes.clone();
@@ -1665,6 +1673,7 @@ fn an_authored_local_wins_over_the_error_companion() {
     let bag = Arc::new(StoreBag::new());
     let locals = LocalState::new();
     let mut rt = Runtime::new(schema(node), "test", bag.clone(), locals.clone())
+        .trust_unclassified_bag()
         .with_sources(Some(source), Arc::new(we_template::NoParts));
     let mut host = StaticHost::new(bag);
     let mut screen = screen("/");

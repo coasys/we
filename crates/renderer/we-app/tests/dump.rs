@@ -81,7 +81,8 @@ fn space_template_resolve_perf() {
     let mut rt = Runtime::app(spec, bag.clone(), locals.clone());
     // `we-app dump` resolves through a Session, which installs the legacy
     // screen adapter — a raw `Runtime` needs the same install for parity.
-    let _bindings = we_legacy::LegacyBindings::install(rt.layer(), rt.view());
+    let bindings = we_legacy::LegacyBindings::install(rt.layer(), rt.view());
+    rt.set_bindings(Arc::new(bindings));
     let mut host = StaticHost::new(bag);
     let screen = ScreenState::desktop(ScreenSchema::default(), "/space/demo?view=canvas");
     let root = rt.frame(&mut host, &screen).clone();

@@ -201,8 +201,9 @@ pub struct Runtime {
     handles: HandleTable,
     /// Ops a resolve queued (route redirects) — `take_ops` hands them out.
     ops: Vec<ScreenOp>,
-    /// Whether `sessionStore` says the app is ready — boot screens read it.
-    /// `None` asks the binding source instead (the trait's `ready`).
+    /// A host override for readiness — boot screens read it. `None` asks
+    /// the binding source (the trait's `ready`); core reads no store for
+    /// it (Lal F3: the `sessionStore` read lives in `we-legacy`).
     ready: Option<ReadyFn>,
     /// Who answers root names — [`BagBindings`] until the session installs
     /// its own (E3c-8a). Every resolve/dispatch read goes through it behind
@@ -295,9 +296,12 @@ impl Runtime {
         layer.bind("screen", Value::namespace(view.clone()));
         // No installed source: the snapshot's `queries` table answers.
         let source: Arc<dyn QuerySource> = Arc::new(SnapshotQueries::new(bag.clone()));
-        // The default binding source — bag + this session's layer — until a
-        // session installs its own (`we-legacy`'s `LegacyBindings`). Its
-        // subscribe is the `set_invalidator` above, same dedup target.
+        // The default binding source — bag + this session's layer, FAIL
+        // CLOSED (Lal F3): it serves `screen` and the names core
+        // classifies, and refuses every unclassified bag root until a
+        // session installs a classified source (`we-legacy`'s
+        // `LegacyBindings`) or a test opts into `trust_unclassified_bag`.
+        // Its subscribe is the `set_invalidator` above, same dedup target.
         let bindings: Arc<dyn BindingSource> =
             Arc::new(BagBindings::new(bag.clone(), layer.clone()));
         Self {
@@ -366,10 +370,21 @@ impl Runtime {
     }
 
     /// Override how readiness is decided (asks the binding source by
-    /// default — `BagBindings` answers from the bag's `sessionStore`);
+    /// default — `BagBindings` always answers ready; `LegacyBindings`
+    /// reads the bag's `sessionStore`);
     /// `Runtime::new`'s trees never boot-gate anyway.
     pub fn with_ready(mut self, ready: impl Fn(&StoreBag) -> bool + 'static) -> Self {
         self.ready = Some(Box::new(ready));
+        self
+    }
+
+    /// Opt into [`BagBindings::trusted_unclassified`]: every bag root is
+    /// served to every tier as a plain `Space` root, unfiltered. For tests
+    /// and offline tools rendering a snapshot they built — never a host,
+    /// which installs a classified source ([`Self::set_bindings`]).
+    pub fn trust_unclassified_bag(mut self) -> Self {
+        let trusted = BagBindings::trusted_unclassified(self.bag.clone(), self.layer.clone());
+        self.set_bindings(Arc::new(trusted));
         self
     }
 
@@ -382,6 +397,8 @@ impl Runtime {
         bindings.subscribe(Invalidator::new(&self.inbox));
         self.compat = bindings.compat_roots().into();
         self.bindings = bindings;
+        // A different source answers differently: the cached tree is stale.
+        self.last = None;
     }
 
     /// The gate this runtime resolves behind — tests read its denials.
@@ -1201,22 +1218,6 @@ fn content_viewport(app: Option<&BundleTemplate>, children: Vec<ResolvedChild>) 
         children,
         surfaces: smallvec::SmallVec::new(),
         transition: None,
-    }
-}
-
-/// `sessionStore` readiness — `signInStep`/`bootState` reads `"ready"`; an
-/// absent store is not ready (the bundle's own `$if` draws the boot in WE).
-/// `pub` for the binding-source adapters (`we-legacy`) whose `ready()`
-/// answers the same way.
-pub fn bag_ready(bag: &StoreBag) -> bool {
-    match bag.root("sessionStore") {
-        Some(Value::Namespace(ns)) => {
-            let step = ns.get("signInStep");
-            let state = ns.get("bootState");
-            matches!(&step, Value::Str(s) if s.as_ref() == "ready")
-                || matches!(&state, Value::Str(s) if s.as_ref() == "ready")
-        }
-        _ => true,
     }
 }
 

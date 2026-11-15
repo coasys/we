@@ -189,6 +189,12 @@ fn an_unknown_root_is_absent_and_never_served() {
     let roots = gated(&layer, &bag, &src, &gate, space_auth());
     // `domain: None` on an unclassified name → no domain → absent.
     assert!(roots.root("exotic").is_none());
+    // Both refusals are counted (Lal, missing (b)): an unknown root has a
+    // verdict — one diagnostic per (mount, name) — not a silent `None`.
+    assert_eq!(gate.denial_count(), 2, "unknown roots are counted");
+    // Asked again, still one line each.
+    assert!(roots.root("nonsense").is_none());
+    assert_eq!(gate.denial_count(), 2);
 }
 
 // ── 4.6.1 member rows ───────────────────────────────────────────────
@@ -605,4 +611,34 @@ fn a_refused_profile_is_not_read_from_the_bag() {
             "refused profile leaked from the bag: {ts:?}"
         );
     }
+}
+
+/// F3 (Lal): a bare `Runtime` — no classified source installed — must not
+/// serve a host's unclassified bag roots to a Space mount. The bag holds
+/// `sessionStore`; the default source has no member table for it, so the
+/// read is refused and counted, never labelled Space.
+#[test]
+fn a_bare_runtime_does_not_serve_unclassified_bag_roots_to_space() {
+    let bag = Arc::new(
+        StoreBag::from_snapshot(&json!({
+            "stores": { "sessionStore": { "bootState": "secret-boot" } },
+            "queries": {}, "invokes": {}
+        }))
+        .unwrap(),
+    );
+    let node: SchemaNode = serde_json::from_value(json!({
+        "type": "Text", "props": { "t": { "$": "sessionStore.bootState" } }
+    }))
+    .unwrap();
+    let mut rt = Runtime::new(node, "space-mount", bag.clone(), LocalState::new());
+    let mut host = StaticHost::new(bag);
+    let screen = ScreenState::desktop(ScreenSchema::default(), "/");
+    let root = rt.frame(&mut host, &screen).clone();
+    let mut ts = Vec::new();
+    texts(&root, &mut ts);
+    assert!(
+        ts[0].strict_eq(&Value::Undefined),
+        "unclassified bag root served to Space: {ts:?}"
+    );
+    assert_eq!(rt.gate().denial_count(), 1, "the refusal is counted");
 }
