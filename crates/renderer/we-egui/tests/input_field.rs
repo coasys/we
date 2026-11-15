@@ -189,3 +189,134 @@ fn the_field_takes_the_themes_input_radius() {
     let r = format!("{:?}", style.paint.radius.top);
     assert!(r.contains("14"), "radius {:?}", style.paint.radius);
 }
+
+/// input.ts:77 — focus recolours the border AND adds `FOCUS_RING_BEYOND_BORDER`,
+/// one pixel outside it, so border and ring are one 2px perimeter.
+#[test]
+fn a_focused_field_carries_the_ring_beyond_its_border() {
+    let mut entries: IndexMap<Arc<str>, Arc<str>> = IndexMap::new();
+    entries.insert(Arc::from("--we-focus-ring-width"), Arc::from("2px"));
+    entries.insert(Arc::from("--we-ring-color"), Arc::from("#0000ff"));
+    let table = TokenTable::new(entries);
+    let scx = StyleCx {
+        tokens: &table,
+        ..StyleCx::empty()
+    };
+    let style = we_egui::style_of(&node("we-input", "input", &[]), &scx);
+    let focused = style.with_state(we_style::StateKind::Focus);
+    let shadows = focused.paint.shadows.clone().unwrap_or_default();
+    let ring = shadows
+        .iter()
+        .find(|s| !s.inset)
+        .unwrap_or_else(|| panic!("no ring in {:?}", focused.paint.shadows));
+    let spread = ring.spread.as_ref().and_then(|d| {
+        d.resolve(
+            None,
+            16.0,
+            16.0,
+            we_style::Size {
+                width: 1000.0,
+                height: 1000.0,
+            },
+        )
+    });
+    assert_eq!(spread, Some(1.0), "ring {ring:?}");
+}
+
+/// The fills a field paints, in paint order.
+fn painted_fills(root: &ResolvedNode, pointer: Option<egui::Pos2>) -> Vec<egui::Color32> {
+    let registry = Registry::with_builtins();
+    let mut entries: IndexMap<Arc<str>, Arc<str>> = IndexMap::new();
+    entries.insert(Arc::from("--we-role-field"), Arc::from("#111111"));
+    entries.insert(Arc::from("--we-role-field-hover"), Arc::from("#222222"));
+    entries.insert(Arc::from("--we-role-border"), Arc::from("#333333"));
+    entries.insert(Arc::from("--we-role-border-hover"), Arc::from("#444444"));
+    entries.insert(Arc::from("--we-component-height-md"), Arc::from("40px"));
+    let table = TokenTable::new(entries);
+    let out = RefCell::new(Vec::new());
+    let mut harness = egui_kittest::Harness::builder()
+        .with_context_setup(we_egui::install_media)
+        .build_ui(|ui| {
+            let ctx = ui.ctx().clone();
+            let scx = StyleCx {
+                tokens: &table,
+                ..StyleCx::empty()
+            };
+            let lay = layout(
+                &MeasureCx::new(&ctx),
+                &scx,
+                &registry,
+                root,
+                egui::Rect::from_min_size(ui.cursor().min, egui::vec2(240.0, 600.0)),
+            );
+            let mut events = Vec::new();
+            let mut edit = EditState::default();
+            paint(ui, &registry, &scx, root, &lay, &mut events, &mut edit, 0.0);
+            let fills = ctx.graphics(|g| {
+                g.get(ui.layer_id())
+                    .map(|list| {
+                        list.all_entries()
+                            .filter_map(|cs| match &cs.shape {
+                                egui::Shape::Rect(r) if r.fill != egui::Color32::TRANSPARENT => {
+                                    Some(r.fill)
+                                }
+                                _ => None,
+                            })
+                            .collect::<Vec<_>>()
+                    })
+                    .unwrap_or_default()
+            });
+            *out.borrow_mut() = fills;
+        });
+    if let Some(p) = pointer {
+        harness
+            .input_mut()
+            .events
+            .push(egui::Event::PointerMoved(p));
+    }
+    harness.run_steps(3);
+    drop(harness);
+    out.into_inner()
+}
+
+/// input.ts:47 `hoverProps: { bg: 'field-hover', … }` — pointing at a
+/// field lifts its fill.
+#[test]
+fn a_hovered_field_takes_the_hover_fill() {
+    let input = node("we-input", "input", &[]);
+    let rest = painted_fills(&input, None);
+    assert!(
+        rest.contains(&egui::Color32::from_rgb(0x11, 0x11, 0x11)),
+        "rest {rest:?}"
+    );
+    let hovered = painted_fills(&input, Some(egui::pos2(100.0, 20.0)));
+    assert!(
+        hovered.contains(&egui::Color32::from_rgb(0x22, 0x22, 0x22)),
+        "hovered {hovered:?}"
+    );
+}
+
+/// A disabled field paints its `disabledProps`, and does not answer the
+/// pointer.
+#[test]
+fn a_disabled_field_takes_its_disabled_state() {
+    let mut bag = IndexMap::new();
+    bag.insert(Arc::<str>::from("bg"), Value::from("#ff0000"));
+    let input = node(
+        "we-input",
+        "input",
+        &[
+            ("disabled", Value::Bool(true)),
+            ("disabledProps", Value::from(bag)),
+        ],
+    );
+    let fills = painted_fills(&input, Some(egui::pos2(100.0, 20.0)));
+    assert!(
+        fills.contains(&egui::Color32::from_rgb(0xff, 0, 0)),
+        "fills {fills:?}"
+    );
+    assert!(
+        !fills.contains(&egui::Color32::from_rgb(0x22, 0x22, 0x22)),
+        "fills {fills:?}"
+    );
+}

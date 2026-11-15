@@ -433,6 +433,12 @@ fn type_defaults(bag: &mut Bag, node: &ResolvedNode) {
                     state(&[
                         ("bg", "field-hover"),
                         ("border", "1px solid var(--we-ring-color)"),
+                        // FOCUS_RING_BEYOND_BORDER: the pixel outside the
+                        // recoloured border, so the two read as one ring.
+                        (
+                            "ring",
+                            "0 0 0 max(0px, calc(var(--we-focus-ring-width) - var(--we-border-width, 1px))) var(--we-ring-color)",
+                        ),
                     ]),
                 );
             }

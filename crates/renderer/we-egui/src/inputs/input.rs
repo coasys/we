@@ -106,16 +106,38 @@ impl Widget for Input {
             matches!(props::prop(node, "type"), we_expr::Value::Str(s) if s.as_ref() == "password");
 
         // The TextEdit's persistent id, fixed on the widget below — the
-        // chrome paints before `put`, so focus has to be read through it
-        // directly (`:focus-within` styles: cyberpunk's accent border).
+        // chrome paints before `put`, so its state is read directly: the
+        // pointer over the field (`:hover`), focus through the id
+        // (`:focus-within` styles: cyberpunk's accent border), composed
+        // as the DOM composes them; a disabled field takes only its
+        // disabled state.
         let wid = cx.ui.make_persistent_id((node.id.as_str(), "we-input"));
-        let chrome_style = if cx.ui.ctx().memory(|m| m.has_focus(wid)) {
-            match &style.focus {
+        let chrome_style = if disabled {
+            match &style.disabled {
                 Some(p) => props::patched(style, p),
                 None => std::borrow::Cow::Borrowed(style),
             }
         } else {
-            std::borrow::Cow::Borrowed(style)
+            let hover = cx
+                .ui
+                .rect_contains_pointer(rect)
+                .then_some(style.hover.as_deref())
+                .flatten();
+            let focus = cx
+                .ui
+                .ctx()
+                .memory(|m| m.has_focus(wid))
+                .then_some(style.focus.as_deref())
+                .flatten();
+            if hover.is_none() && focus.is_none() {
+                std::borrow::Cow::Borrowed(style)
+            } else {
+                let mut out = style.pretier.as_deref().unwrap_or(style).clone();
+                for p in [hover, focus].into_iter().flatten() {
+                    out.apply(p);
+                }
+                std::borrow::Cow::Owned(out)
+            }
         };
         cx.report_state(&chrome_style);
         let style: &Style = &chrome_style;
