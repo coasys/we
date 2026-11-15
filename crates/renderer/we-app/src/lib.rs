@@ -174,12 +174,20 @@ impl RendererApp {
                 let l = self.layout.as_ref().unwrap();
                 ui.allocate_space(Vec2::new(width, l.size.y.max(1.0)));
 
-                // E3c-13: the `ResizeObserver` walk — every surface tag
-                // reports its node's content-box width (the same box
+                // E3c-13: the `ResizeObserver` walk — the mount's host
+                // surfaces report the slot this frame hands the session
+                // (the boundary outside the template, so a root sized off
+                // `surface.width` never measures itself), and every node
+                // tag its node's content-box width (the box
                 // `contentBoxSize` answers), once per change. The report
                 // rides the session's inbox, so it polls like a measure
                 // landing from any other producer.
-                let mut reports = Vec::new();
+                let mut reports: Vec<(SurfaceTag, f32)> = self
+                    .session
+                    .host_surfaces()
+                    .iter()
+                    .map(|tag| (tag.clone(), width))
+                    .collect();
                 collect_surface_reports(&resolved, l, &mut reports);
                 self.surface_sent
                     .retain(|tag, _| reports.iter().any(|(t, _)| t == tag));

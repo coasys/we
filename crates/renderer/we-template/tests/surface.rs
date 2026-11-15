@@ -456,11 +456,14 @@ fn host_surface_binds_at_mount_root() {
         .props
         .get("w")
         .is_some_and(|v| v.strict_eq(&Value::from(0.0))));
-    let tag = root
-        .surfaces
-        .iter()
-        .find(|t| matches!(t.key, SurfaceKey::Host(_)))
-        .expect("the mount root carries the host tag")
+    assert!(
+        root.surfaces.is_empty(),
+        "the host's tag sits on no template node — it is the boundary"
+    );
+    let tag = rt
+        .host_surfaces()
+        .first()
+        .expect("the mount claims its host surface")
         .clone();
     assert_eq!(
         tag.key,
@@ -484,10 +487,10 @@ fn host_surface_binds_at_mount_root() {
 }
 
 #[test]
-fn root_that_is_a_surface_carries_both_tags() {
-    // 6.2: a mount root that is itself a `$surface` reports the same box
-    // to two tags — the host's boundary first, its own second — one
-    // `Option<SurfaceTag>` could not hold both.
+fn root_that_is_a_surface_keeps_its_own_tag() {
+    // A mount root that is itself a `$surface` carries its node tag only;
+    // the host's boundary is outside the template (Lal U1) and measures
+    // separately — two boxes, two records.
     let node = schema(json!({
         "type": "$surface",
         "children": [{ "type": "Label", "props": { "w": { "$": "surface.width" } } }]
@@ -498,26 +501,19 @@ fn root_that_is_a_surface_carries_both_tags() {
     let root = rt.frame(&mut host, &screen).clone();
     assert_eq!(root.ty.as_ref(), "$surface");
     assert_eq!(
-        root.surfaces.len(),
-        2,
-        "host tag and node tag on one node: {:?}",
-        root.surfaces
+        root.surfaces.to_vec(),
+        vec![node_tag(&root)],
+        "the node's own tag, and no host tag"
     );
     assert_eq!(
         root.surfaces[0].key,
-        SurfaceKey::Host(we_template::MountId::from("test")),
-        "the host's tag comes first"
-    );
-    assert_eq!(
-        root.surfaces[1].key,
         SurfaceKey::Node(root.id.clone()),
-        "the node's own tag second"
+        "keyed by the node"
     );
+    let host_tag = rt.host_surfaces()[0].clone();
 
-    // The frontend reports one content box to both — each applies.
-    for tag in root.surfaces.iter().cloned().collect::<Vec<_>>() {
-        measure(&mut rt, &mut host, &mut screen, &tag, 500.0);
-    }
+    measure(&mut rt, &mut host, &mut screen, &host_tag, 1440.0);
+    measure(&mut rt, &mut host, &mut screen, &node_tag(&root), 500.0);
     let root = rt.resolved().unwrap().clone();
     assert!(
         find_ty(&root, "Label")
@@ -527,9 +523,55 @@ fn root_that_is_a_surface_carries_both_tags() {
     );
     assert_eq!(
         rt.surface_measure(&SurfaceKey::Host(we_template::MountId::from("test"))),
-        Some((500.0, SizeTier::Base)),
-        "the host's entry moved too — same box, two records"
+        Some((1440.0, SizeTier::Lg)),
+        "the host's entry holds the boundary's own measure"
     );
+}
+
+#[test]
+fn host_surface_needs_no_root_node() {
+    // Lal U1: a root fragment opening with text, or holding several
+    // roots, still has its host surface — the mount's boundary — and no
+    // resolved node carries a `Host` tag.
+    fn hosts_on_nodes(n: &ResolvedNode) -> usize {
+        n.surfaces
+            .iter()
+            .filter(|t| matches!(t.key, SurfaceKey::Host(_)))
+            .count()
+            + n.children
+                .iter()
+                .map(|c| match c {
+                    ResolvedChild::Node(n) => hosts_on_nodes(n),
+                    _ => 0,
+                })
+                .sum::<usize>()
+    }
+    for v in [
+        json!({ "children": ["heading", { "type": "Label", "props": { "w": { "$": "surface.width" } } }] }),
+        json!({ "children": [
+            { "type": "Label", "props": { "w": { "$": "surface.width" } } },
+            { "type": "Label", "props": { "w": { "$": "surface.width" } } }
+        ]}),
+    ] {
+        let (mut rt, mut host, _locals, screen) = rig(schema(v), StoreBag::new());
+        let mut screen = screen;
+        let root = rt.frame(&mut host, &screen).clone();
+        assert_eq!(hosts_on_nodes(&root), 0);
+        let tag = rt.host_surfaces()[0].clone();
+        measure(&mut rt, &mut host, &mut screen, &tag, 950.0);
+        let mut labels = Vec::new();
+        find_all_ty(rt.resolved().unwrap(), "Label", &mut labels);
+        assert!(!labels.is_empty());
+        for l in labels {
+            assert!(
+                l.props
+                    .get("w")
+                    .is_some_and(|v| v.strict_eq(&Value::from(950.0))),
+                "every root reads the boundary: {:?}",
+                l.props.get("w")
+            );
+        }
+    }
 }
 
 #[test]
@@ -709,11 +751,10 @@ fn host_and_template_surface_nesting() {
     let mut screen = screen;
 
     let root = rt.frame(&mut host, &screen).clone();
-    let host_tag = root
-        .surfaces
-        .iter()
-        .find(|t| matches!(t.key, SurfaceKey::Host(_)))
-        .expect("the mount root carries the host tag")
+    let host_tag = rt
+        .host_surfaces()
+        .first()
+        .expect("the mount claims its host surface")
         .clone();
     let inner = node_tag(find_ty(&root, "$surface").unwrap());
 

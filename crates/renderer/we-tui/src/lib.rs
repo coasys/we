@@ -176,10 +176,20 @@ impl TuiApp {
         self.content_height = frame.content_height;
         self.view_height = view_h;
         // E3c-13: the frame's surface measures ride the session's inbox —
-        // they land on the next `resolve`'s drain like any producer.
+        // they land on the next `resolve`'s drain like any producer. The
+        // mount's host surfaces are the pane the session is painted into,
+        // in cells × `CELL_PX` — the boundary outside the template.
+        let pane = content.width as f32 * draw::CELL_PX;
+        let mut reports: Vec<(we_template::SurfaceTag, f32)> = self
+            .session
+            .host_surfaces()
+            .iter()
+            .map(|tag| (tag.clone(), pane))
+            .collect();
+        reports.extend(frame.surface_reports.iter().cloned());
         self.surface_sent
-            .retain(|tag, _| frame.surface_reports.iter().any(|(t, _)| t == tag));
-        for (tag, width) in &frame.surface_reports {
+            .retain(|tag, _| reports.iter().any(|(t, _)| t == tag));
+        for (tag, width) in &reports {
             if self.surface_sent.get(tag) != Some(width) {
                 self.surface_sent.insert(tag.clone(), *width);
                 self.session.report_surface(tag, *width);

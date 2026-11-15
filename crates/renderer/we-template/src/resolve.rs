@@ -1586,10 +1586,12 @@ fn record_view_node(value: &Json, cx: &mut ResolveCx) -> Option<Arc<SchemaNode>>
 /// supplies the rest).
 ///
 /// The mount claims its host surface here (E3c-13): `surface` binds the
-/// mount-boundary record for the whole tree until a `$surface` shadows it,
-/// and the resolved root carries the host's tag first — a mount root that
-/// is itself a `$surface` holds both, the host's box being the boundary the
-/// frontend reports for either key.
+/// mount-boundary record for the whole tree until a `$surface` shadows it.
+/// The host's tag goes on no resolved node — the boundary is outside the
+/// template (`createSurface.ts:29`: the host's surfaces are the existing
+/// elements a tree is mounted in), so the runtime hands it to the frontend
+/// as the slot it paints the mount into ([`crate::Runtime::host_surfaces`]),
+/// and a root sized off `surface.width` can never measure itself.
 pub fn resolve(
     node: &SchemaNode,
     mount: &MountCx,
@@ -1614,7 +1616,7 @@ pub fn resolve(
     );
 
     let decls: Arc<Vec<LocalScope>> = Arc::new(Vec::new());
-    let mut out = resolve_node(
+    resolve_node(
         node,
         &scope,
         &NodeId::new(""),
@@ -1622,9 +1624,5 @@ pub fn resolve(
         "",
         &decls,
         cx,
-    );
-    if let Some(ResolvedChild::Node(root)) = out.first_mut() {
-        root.surfaces.insert(0, tag);
-    }
-    out
+    )
 }

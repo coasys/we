@@ -23,13 +23,16 @@ fn session(node: SchemaNode) -> Session {
     )
 }
 
-/// The mount root's host tag — the surface every mount carries.
-fn host_tag(root: &ResolvedNode) -> we_template::SurfaceTag {
-    root.surfaces
-        .iter()
-        .find(|t| matches!(t.key, SurfaceKey::Host(_)))
-        .expect("the mount root carries the host tag")
-        .clone()
+/// The mount's host tag — the surface every mount carries, at the slot
+/// the frontend paints the session into (no template node holds it).
+fn host_tag(session: &Session) -> we_template::SurfaceTag {
+    let tag = session
+        .host_surfaces()
+        .first()
+        .expect("the mount claims its host surface")
+        .clone();
+    assert!(matches!(tag.key, SurfaceKey::Host(_)));
+    tag
 }
 
 fn prop<'a>(node: &'a ResolvedNode, key: &str) -> Option<&'a we_expr::Value> {
@@ -46,8 +49,8 @@ fn report_dirties_poll() {
         "children": []
     }));
     let mut session = session(node);
-    let root = session.resolve();
-    let tag = host_tag(&root);
+    session.resolve();
+    let tag = host_tag(&session);
     assert_eq!(session.poll(), Tick::default(), "a fresh session is quiet");
 
     session.report_surface(&tag, 500.0);
@@ -78,8 +81,8 @@ fn same_width_report_is_quiet() {
         "children": []
     }));
     let mut session = session(node);
-    let root = session.resolve();
-    let tag = host_tag(&root);
+    session.resolve();
+    let tag = host_tag(&session);
     session.report_surface(&tag, 500.0);
     assert!(session.poll().dirty);
     session.resolve();
@@ -106,8 +109,8 @@ fn a_surface_report_wakes_a_sleeping_session() {
         "children": []
     }));
     let mut session = session(node);
-    let root = session.resolve();
-    let tag = host_tag(&root);
+    session.resolve();
+    let tag = host_tag(&session);
     assert!(!session.poll().dirty);
 
     let wakes = Arc::new(AtomicUsize::new(0));
@@ -193,4 +196,40 @@ fn viewport_report_reaches_the_tier_egui_computes() {
         Some("base".to_string()),
         "a nested surface keeps createSurface's `{{0, base}}` under a viewport report"
     );
+}
+
+/// Lal U1, headless half: dump and the CLI report the host as
+/// `--viewport` — the mount's boundary, which exists whatever the root
+/// looks like. A root fragment opening with text, or several roots, has
+/// no node that could carry the host's tag.
+#[test]
+fn headless_host_report_reaches_every_root_shape() {
+    for node in [
+        json!({ "children": ["heading", { "type": "Label", "props": { "w": { "$": "surface.width" } } }] }),
+        json!({ "children": [
+            { "type": "Label", "props": { "w": { "$": "surface.width" } } },
+            { "type": "Label", "props": { "w": { "$": "surface.width" } } }
+        ]}),
+    ] {
+        let mut session = session(schema(node));
+        let root = session.resolve();
+        session.report_host_surfaces(&root, 1440.0);
+        session.poll();
+        let root = session.resolve();
+        let ws: Vec<_> = root
+            .children
+            .iter()
+            .filter_map(|c| match c {
+                ResolvedChild::Node(n) if n.ty.as_ref() == "Label" => prop(n, "w").cloned(),
+                _ => None,
+            })
+            .collect();
+        assert!(!ws.is_empty());
+        for w in ws {
+            assert!(
+                w.strict_eq(&we_expr::Value::from(1440.0)),
+                "every root reads the viewport: {w:?}"
+            );
+        }
+    }
 }

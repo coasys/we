@@ -234,8 +234,8 @@ fn two_sessions_on_one_bag_keep_their_own_surfaces() {
     let root_one = one.resolve();
     let root_two = two.resolve();
     assert_eq!(
-        root_one.surfaces.first().map(|t| t.key.clone()),
-        root_two.surfaces.first().map(|t| t.key.clone()),
+        one.host_surfaces().first().map(|t| t.key.clone()),
+        two.host_surfaces().first().map(|t| t.key.clone()),
         "the premise: both mounts claim the same host key"
     );
 

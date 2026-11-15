@@ -163,6 +163,11 @@ pub struct Runtime {
     /// each pass; a frame's commit prunes the rest, and frontend reports
     /// land through the inbox on the generation they quote.
     surfaces: SurfaceTable,
+    /// The host tags of the mounts whose boundary is the slot the frontend
+    /// paints the session into — the last frame's, in mount order. A
+    /// mount framed by the content viewport carries its host tag on that
+    /// synthetic wrapper instead; no host tag sits on a template node.
+    host_surfaces: Vec<SurfaceTag>,
     /// `QuerySource` — E6/E7 answer real subscriptions; the default is the
     /// snapshot's `queries` table, answering named requests by `name_hint`.
     source: Arc<dyn QuerySource>,
@@ -277,6 +282,7 @@ impl Runtime {
             dollar_type: Arc::new(|_| false),
             hub: QueryHub::new(inbox.clone(), handles.clone()),
             surfaces: SurfaceTable::default(),
+            host_surfaces: Vec::new(),
             source,
             parts: Arc::new(NoParts),
             pending: HashMap::new(),
@@ -619,6 +625,9 @@ impl Runtime {
             // The leading resolved children that are the app chrome's —
             // everything after them is content for the viewport wrapper.
             let mut chrome_children = 0usize;
+            // Each mount's host tag, and whether it is the app chrome's —
+            // decides below which boundary reports it.
+            let mut host_tags: Vec<(SurfaceTag, bool)> = Vec::new();
             for _ in 0..8 {
                 // Claims a panicked pass recorded are dropped — a site
                 // that does not claim again does not keep a stale claim.
@@ -629,7 +638,15 @@ impl Runtime {
                 warnings.clear();
                 children.clear();
                 chrome_children = 0;
+                host_tags.clear();
                 for mount in &mounts {
+                    // The mount's boundary — claimed again inside the
+                    // resolve, which answers this same generation.
+                    host_tags.push((
+                        self.surfaces
+                            .claim(SurfaceKey::Host(mount.cx.mount.clone())),
+                        mount.cx.mount.as_str() == "app",
+                    ));
                     let (routes, panels, record_views) = match mount.template {
                         Some(t) => (
                             t.node.routes.as_deref(),
@@ -730,13 +747,25 @@ impl Runtime {
             // occupies; the space the frame leaves is the content
             // viewport — a fixed scroller the mounted page fills (the
             // web's appViewport element). A bare landing gets it too.
+            // The mounts that viewport frames measure its box (a synthetic
+            // node sized off `meta.frame` and the viewport, never off the
+            // template); every other mount's boundary is the slot.
+            self.host_surfaces.clear();
+            let mut framed = smallvec::SmallVec::new();
+            let frames = matches!(self.spec, RootSpec::App(_)) && chrome_children > 0;
+            for (tag, chrome) in host_tags {
+                if frames && !chrome {
+                    framed.push(tag);
+                } else {
+                    self.host_surfaces.push(tag);
+                }
+            }
             if let RootSpec::App(spec) = &self.spec {
                 if chrome_children > 0 {
                     let content = children.split_off(chrome_children);
-                    children.push(ResolvedChild::Node(Box::new(content_viewport(
-                        spec.app.as_ref(),
-                        content,
-                    ))));
+                    let mut frame = content_viewport(spec.app.as_ref(), content);
+                    frame.surfaces = framed;
+                    children.push(ResolvedChild::Node(Box::new(frame)));
                 }
             }
             // A fragment, an op or the multi-mount root can answer several
@@ -898,6 +927,17 @@ impl Runtime {
     /// (unmounted or never claimed).
     pub fn surface_measure(&self, key: &SurfaceKey) -> Option<(f32, we_metrics::SizeTier)> {
         self.surfaces.measure(key)
+    }
+
+    /// The host surfaces whose boundary is the slot the frontend gives the
+    /// session's root — the egui slot rect, the TUI pane, `--viewport` in
+    /// dump and the CLI. The frontend reports the slot's width against
+    /// each (E3c-13; `createSurface.ts:29` — the host's surfaces are the
+    /// elements a tree is mounted in, outside the template). Measured
+    /// there, a root sized off `surface.width` cannot feed its own width
+    /// back. Empty before the first frame.
+    pub fn host_surfaces(&self) -> &[SurfaceTag] {
+        &self.host_surfaces
     }
 
     /// The surface table's revision — the [`Self::dirty`] input. Moves

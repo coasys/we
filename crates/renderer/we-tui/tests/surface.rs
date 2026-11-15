@@ -94,13 +94,13 @@ fn tui_report_reaches_the_session() {
     }))
     .unwrap();
     let mut session = session(node);
-    let root = session.resolve();
-    let host = root
-        .surfaces
-        .iter()
-        .find(|t| matches!(t.key, SurfaceKey::Host(_)))
-        .expect("the mount root carries the host tag")
+    session.resolve();
+    let host = session
+        .host_surfaces()
+        .first()
+        .expect("the mount claims its host surface")
         .clone();
+    assert!(matches!(host.key, SurfaceKey::Host(_)));
     session.report_surface(&host, 960.0);
     let tick = session.poll();
     assert_eq!(tick.surfaces, 1, "the report drained");
@@ -112,4 +112,52 @@ fn tui_report_reaches_the_session() {
         "the host surface binds the reported measure: {:?}",
         root.props.get("w")
     );
+}
+
+fn label_w(root: &we_template::ResolvedNode) -> Vec<Option<f64>> {
+    fn walk(n: &we_template::ResolvedNode, out: &mut Vec<Option<f64>>) {
+        if n.ty.as_ref() == "Tag" {
+            out.push(n.props.get("w").and_then(|v| v.to_json().as_f64()));
+        }
+        for c in &n.children {
+            if let we_template::ResolvedChild::Node(n) = c {
+                walk(n, out);
+            }
+        }
+    }
+    let mut out = Vec::new();
+    walk(root, &mut out);
+    out
+}
+
+/// Lal U1: the TUI's host surface is the pane the app paints the session
+/// into — 100 cells, 800px — not any template node. A text-first root
+/// fragment has no first node to carry a tag, and a root sizing itself
+/// off `surface.width` must not measure itself.
+#[test]
+fn tui_host_surface_is_the_pane() {
+    let theme = load_theme_set().theme("dark").0.clone();
+    for node in [
+        json!({ "children": ["heading", { "type": "Tag", "props": { "w": { "$": "surface.width" } } }] }),
+        json!({
+            "type": "Column",
+            "props": { "width": { "$": "surface.width >= 640 ? '320px' : '720px'" } },
+            "children": [{ "type": "Tag", "props": { "w": { "$": "surface.width" } } }]
+        }),
+    ] {
+        let node: SchemaNode = serde_json::from_value(node).unwrap();
+        let mut app = we_tui::TuiApp::new(session(node), theme.clone(), true);
+        let area = ratatui::layout::Rect::new(0, 0, 100, 31);
+        for _ in 0..6 {
+            let mut buf = ratatui::buffer::Buffer::empty(area);
+            app.render_into(&mut buf, area);
+            app.session.poll();
+        }
+        let root = app.session.resolve();
+        assert_eq!(
+            label_w(&root),
+            vec![Some(800.0)],
+            "the pane is the host: 100 cells × 8px"
+        );
+    }
 }

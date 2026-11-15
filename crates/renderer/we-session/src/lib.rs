@@ -237,11 +237,19 @@ impl Session {
         self.runtime.report_surface(tag, width);
     }
 
-    /// The headless frontend's report: every host surface in `root` gets
-    /// `width` — dump/CLI do no layout, so the mount boundary is the
-    /// `--viewport` answer and nested `$surface` boxes keep
-    /// `createSurface`'s initial. Walks the tree once; reports through
-    /// the inbox like a measured one.
+    /// The host surfaces the slot measures — what a frontend reports the
+    /// width of the rect it paints this session into against (the egui
+    /// slot, the TUI pane). See [`we_template::Runtime::host_surfaces`].
+    pub fn host_surfaces(&self) -> &[we_template::SurfaceTag] {
+        self.runtime.host_surfaces()
+    }
+
+    /// The headless frontend's report: every host surface gets `width` —
+    /// the slot's ([`Self::host_surfaces`]) and those the content
+    /// viewport in `root` frames. Dump/CLI do no layout, so the mount
+    /// boundary is the `--viewport` answer and nested `$surface` boxes
+    /// keep `createSurface`'s initial. Reports through the inbox like a
+    /// measured one.
     pub fn report_host_surfaces(&mut self, root: &ResolvedNode, width: f32) {
         fn collect(node: &ResolvedNode, out: &mut Vec<we_template::SurfaceTag>) {
             out.extend(
@@ -256,7 +264,7 @@ impl Session {
                 }
             }
         }
-        let mut tags = Vec::new();
+        let mut tags = self.runtime.host_surfaces().to_vec();
         collect(root, &mut tags);
         for tag in &tags {
             self.runtime.report_surface(tag, width);
