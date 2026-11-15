@@ -1173,6 +1173,18 @@ pub(crate) fn token_px(
     we_style::eval_dimension(&resolved).and_then(|d| d.to_px(font_px, root_px, viewport))
 }
 
+/// `seededHue`: FNV-1a over UTF-16 code units, `Math.imul` semantics, then
+/// `Math.abs(h) % 12` — JS reads the product as a *signed* 32-bit int, so
+/// the bucket comes from its magnitude, not from the unsigned bits.
+pub(crate) fn seeded_hue(seed: &str) -> f32 {
+    let mut h: u32 = 0x811c9dc5;
+    for u in seed.encode_utf16() {
+        h ^= u as u32;
+        h = h.wrapping_mul(0x01000193);
+    }
+    ((h as i32).unsigned_abs() % 12) as f32 * 30.0
+}
+
 /// The port of `seededHue`/`seededFill` in `shared/seededColor.ts`: FNV-1a
 /// over UTF-16 code units quantized to twelve hues, then the theme's own
 /// 100/700 ramp steps at that hue — the pair `initialsFill` sets. `None`
@@ -1189,13 +1201,7 @@ pub(crate) fn seeded_fill(
             .unwrap_or(dflt)
     };
     let sat = num("--we-color-saturation", 97.0) / 100.0;
-    // FNV-1a, `Math.imul` semantics — the same hash, twelve buckets.
-    let mut h: u32 = 0x811c9dc5;
-    for u in seed.encode_utf16() {
-        h ^= u as u32;
-        h = h.wrapping_mul(0x01000193);
-    }
-    let hue = (h % 12) as f32 * 30.0;
+    let hue = seeded_hue(seed);
     let step = |lightness: f32| -> Option<egui::Color32> {
         let chroma = sat * 0.18 * 2.0 * lightness.min(1.0 - lightness).max(0.0);
         we_style::eval_color(&format!("oklch({lightness} {chroma} {hue})")).map(color32)
@@ -1317,6 +1323,23 @@ pub(crate) fn label(cx: &mut PaintCx, rect: egui::Rect, text: &str) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// The hues `seededHue` gives in a browser (node, the TS function
+    /// verbatim). "preview-coasys" is the Coasys preview space's "MC"
+    /// avatar seed: web olive (120°), where the unsigned bucket gave red.
+    #[test]
+    fn seeded_hue_matches_the_browser() {
+        for (seed, hue) in [
+            ("preview-coasys", 120.0),
+            ("MC", 30.0),
+            ("did:agent:mara", 300.0),
+            ("coasys", 90.0),
+            ("Meridian Coasys", 240.0),
+            ("a", 0.0),
+        ] {
+            assert_eq!(seeded_hue(seed), hue, "{seed}");
+        }
+    }
 
     /// The CSS cyclic-percentage fallback zeroes a `calc`'s *percent*
     /// term and keeps the rest — layout's `lp` resolves it against base
