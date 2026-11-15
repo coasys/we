@@ -204,8 +204,13 @@ pub struct Layout {
     /// Paint reads these so a descendant's `var()` resolves in the scope the
     /// tree walk established, not a scope-less re-resolution.
     pub styles: HashMap<NodeId, Style>,
-    /// `(node, part)` → rect — a widget's virtual chrome.
+    /// `(node, part)` → rect — a widget's virtual chrome. A theme's
+    /// generated `::before`/`::after` boxes land here too, keyed by
+    /// [`PseudoElement::key`](we_style::stylesheet::PseudoElement::key).
     pub parts: Parts,
+    /// The style of each generated `::before`/`::after` box, keyed like its
+    /// rect in [`parts`](Self::parts).
+    pub pseudo: HashMap<(NodeId, &'static str), Style>,
     /// Text children in paint order, with the node they belong to.
     pub texts: Vec<TextSpan>,
     /// Nodes with `overflow: auto|scroll` — which axes scroll at paint.
@@ -922,6 +927,9 @@ struct Builder<'a> {
     /// and the `Layout` output read it, so an inherited fontSize sizes the
     /// galley it paints and paint never re-resolves without the scope.
     styles: HashMap<NodeId, Style>,
+    /// The theme's generated boxes met this pass, with the space an in-flow
+    /// one reserved on its host (0 for an absolute one).
+    pseudos: Vec<(NodeId, crate::theme_css::PseudoBox, f32)>,
     /// `(id, axis)` → the measured value a deferred base got on the last
     /// pass — empty on the first (placeholder) build.
     vals: &'a HashMap<(NodeId, Axis), f32>,
@@ -1582,12 +1590,61 @@ impl<'a> Builder<'a> {
         scx: &StyleCx,
         inherited: Option<&Style>,
     ) -> Option<TaffyId> {
-        let style = effective(inherited, style_of(node, scx));
+        let mut style = effective(inherited, style_of(node, scx));
 
         // `display: none` removes the node AND its subtree from layout — no
         // rect, no parts, nothing painted.
         if matches!(style.layout.display, Some(WsDisplay::None)) {
             return None;
+        }
+        // The theme's generated `::before`/`::after` boxes. An in-flow one
+        // stacks before/after the host's content, so it reserves its outer
+        // height on that side (padding the content box out — the box is
+        // placed in that band once the host has a rect); an absolute one
+        // takes no room.
+        //
+        // A generated box is the host's child in CSS: it resolves `var()`s in
+        // the host's own custom-property scope (a `styles` re-pointing on the
+        // heading reaches its line), inherits its text and `visibility`, and
+        // is composited under the host's opacity.
+        let boxes: Vec<_> = {
+            let host_scx = StyleCx {
+                scope: &style.scope,
+                ..*scx
+            };
+            crate::theme_css::pseudo_boxes(&host_scx, node)
+                .into_iter()
+                .map(|mut p| {
+                    p.style = effective(Some(&style), p.style);
+                    if p.style.paint.visibility.is_none() {
+                        p.style.paint.visibility = style.paint.visibility.clone();
+                    }
+                    p
+                })
+                .collect()
+        };
+        for p in boxes {
+            let pl = &p.style.layout;
+            if matches!(pl.display, Some(WsDisplay::None)) {
+                continue;
+            }
+            let out_of_flow = matches!(
+                pl.position,
+                Some(Position::Absolute) | Some(Position::Fixed)
+            );
+            let mut reserved = 0.0;
+            if !out_of_flow {
+                reserved = pl.height.and_then(|d| dim_px(&d, scx)).unwrap_or(0.0)
+                    + border_px(&p.style.paint.borders.top, scx)
+                    + border_px(&p.style.paint.borders.bottom, scx);
+                let side = if p.key == "::before" {
+                    &mut style.layout.padding.top
+                } else {
+                    &mut style.layout.padding.bottom
+                };
+                *side = Some(add_px(*side, reserved));
+            }
+            self.pseudos.push((node.id.clone(), p, reserved));
         }
         self.nodes.insert(node.id.clone(), node);
 
@@ -2157,6 +2214,7 @@ fn layout_impl(
         rects: HashMap::new(),
         styles: HashMap::new(),
         parts: Parts::new(),
+        pseudo: HashMap::new(),
         texts: Vec::new(),
         scroll: HashMap::new(),
         scroll_content: HashMap::new(),
@@ -2202,6 +2260,7 @@ fn layout_impl(
             extra: &extra,
             extra_map: &extra_map,
             styles: HashMap::new(),
+            pseudos: Vec::new(),
             vals: &vals,
             consumed: std::collections::HashSet::new(),
             forced: &forced,
@@ -2274,6 +2333,7 @@ fn layout_impl(
             mut tree,
             nodes,
             styles,
+            pseudos,
             consumed,
             deferred,
             cb_of,
@@ -2347,6 +2407,7 @@ fn layout_impl(
             rects: HashMap::new(),
             styles,
             parts: Parts::new(),
+            pseudo: HashMap::new(),
             texts: Vec::new(),
             scroll,
             scroll_content: HashMap::new(),
@@ -2365,6 +2426,7 @@ fn layout_impl(
             unconverged: false,
         };
         collect(&tree, root_id, rect.min, &mut next);
+        place_pseudos(&mut next, pseudos, scx);
         // Scroll extents read the final geometry of this build.
         for id in next.scroll.keys().cloned().collect::<Vec<_>>() {
             if let Some(node) = nodes.get(&id) {
@@ -2503,6 +2565,117 @@ fn scroll_content_rect(out: &Layout, node: &ResolvedNode) -> Option<Rect> {
         }
     }
     acc
+}
+
+/// `d + px` as one dimension — the band an in-flow pseudo-element adds to
+/// its host's padding.
+fn add_px(d: Option<Dimension>, px: f32) -> Dimension {
+    use we_style::Calc;
+    match d {
+        None | Some(Dimension::Auto) => Dimension::Px(px),
+        Some(Dimension::Px(v)) => Dimension::Px(v + px),
+        Some(Dimension::Calc(mut c)) => {
+            c.px += px;
+            Dimension::Calc(c)
+        }
+        Some(Dimension::Percent(f)) => Dimension::Calc(Calc {
+            percent: f,
+            px,
+            ..Calc::default()
+        }),
+        Some(Dimension::Em(v)) => Dimension::Calc(Calc {
+            em: v,
+            px,
+            ..Calc::default()
+        }),
+        Some(Dimension::Rem(v)) => Dimension::Calc(Calc {
+            rem: v,
+            px,
+            ..Calc::default()
+        }),
+        Some(other) => other,
+    }
+}
+
+/// Place each generated box against its host's final rect.
+///
+/// - In flow: the band its host reserved — the full content width (or its
+///   own `width`, a percent of it), directly above (`::before`) or below
+///   (`::after`) the content, inside the host's own padding.
+/// - Absolute: against the host's padding box (the theme makes the host or
+///   its part `position: relative`), from its insets and size. Insets left
+///   `auto` take the static position: the content box's left edge, and —
+///   for the vertical axis of the flex rows these parts are — centred.
+fn place_pseudos(
+    out: &mut Layout,
+    pseudos: Vec<(NodeId, crate::theme_css::PseudoBox, f32)>,
+    scx: &StyleCx,
+) {
+    let (fp, rp, vp) = (font_px(scx), root_px(scx), scx.viewport);
+    for (id, p, reserved) in pseudos {
+        let (Some(r), Some(host)) = (out.rects.get(&id).copied(), out.styles.get(&id)) else {
+            continue;
+        };
+        let hb = &host.paint.borders;
+        let (bt, br, bb, bl) = (
+            border_px(&hb.top, scx),
+            border_px(&hb.right, scx),
+            border_px(&hb.bottom, scx),
+            border_px(&hb.left, scx),
+        );
+        let res =
+            |d: Option<Dimension>, base: f32| d.and_then(|d| d.resolve(Some(base), fp, rp, vp));
+        let pad = &host.layout.padding;
+        let w0 = r.width();
+        let (pt, pr, pb, pl) = (
+            res(pad.top, w0).unwrap_or(0.0),
+            res(pad.right, w0).unwrap_or(0.0),
+            res(pad.bottom, w0).unwrap_or(0.0),
+            res(pad.left, w0).unwrap_or(0.0),
+        );
+        let ps = &p.style;
+        let pbx = border_px(&ps.paint.borders.left, scx) + border_px(&ps.paint.borders.right, scx);
+        let pby = border_px(&ps.paint.borders.top, scx) + border_px(&ps.paint.borders.bottom, scx);
+        let content_x = r.min.x + bl + pl;
+        let content_w = (r.width() - bl - br - pl - pr).max(0.0);
+        let rect = if reserved > 0.0
+            || !matches!(
+                ps.layout.position,
+                Some(Position::Absolute) | Some(Position::Fixed)
+            ) {
+            let w = res(ps.layout.width, content_w)
+                .map(|v| v + pbx)
+                .unwrap_or(content_w);
+            let y = if p.key == "::before" {
+                r.min.y + bt + (pt - reserved)
+            } else {
+                r.max.y - bb - (pb - reserved) - reserved
+            };
+            Rect::from_min_size(Pos2::new(content_x, y), Vec2::new(w, reserved))
+        } else {
+            let (cx, cy) = (r.min.x + bl, r.min.y + bt);
+            let (cw, ch) = (
+                (r.width() - bl - br).max(0.0),
+                (r.height() - bt - bb).max(0.0),
+            );
+            let w = res(ps.layout.width, cw).unwrap_or(0.0) + pbx;
+            let h = res(ps.layout.height, ch).unwrap_or(0.0) + pby;
+            let ins = &ps.layout.inset;
+            let x = match (res(ins.left, cw), res(ins.right, cw)) {
+                (Some(l), _) => cx + l,
+                (None, Some(rt)) => cx + cw - rt - w,
+                _ => content_x,
+            };
+            let y = match (res(ins.top, ch), res(ins.bottom, ch)) {
+                (Some(t), _) => cy + t,
+                (None, Some(b)) => cy + ch - b - h,
+                _ => cy + (ch - h) / 2.0,
+            };
+            Rect::from_min_size(Pos2::new(x, y), Vec2::new(w, h))
+        };
+        out.parts.insert((id.clone(), p.key), rect);
+        out.pseudo.insert((id, p.key), p.style);
+    }
 }
 
 /// Walk the computed tree into the flat [`Layout`].

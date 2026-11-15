@@ -275,6 +275,15 @@ fn run_native(args: Args) -> eframe::Result<()> {
         options,
         Box::new(move |cc| {
             we_app::init_host(&cc.egui_ctx);
+            let mut shell = shell;
+            // The inbox's wake is egui's own "draw again" — a completion
+            // or a `set_root` landing off-thread repaints, and the poll
+            // that runs then picks it up.
+            let ctx = cc.egui_ctx.clone();
+            shell
+                .panel
+                .session
+                .set_waker(std::sync::Arc::new(move || ctx.request_repaint()));
             Ok(Box::new(App {
                 shell: std::cell::RefCell::new(shell),
             }))

@@ -475,6 +475,17 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
                 .unwrap_or(0)
         })
     });
+    // A theme `animation` (cyberpunk's glitch) moves the node's whole
+    // painted output — chrome, generated boxes, children — so it marks
+    // where that output starts, the way the clip does.
+    let animation = running_animation(w, node, style, rect);
+    let anim_mark = animation.as_ref().map(|_| {
+        w.ui.ctx().graphics(|g| {
+            g.get(w.ui.layer_id())
+                .map(|list| list.next_idx().0)
+                .unwrap_or(0)
+        })
+    });
     let state_clip;
     {
         let mut cx = PaintCx {
@@ -492,6 +503,7 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
         widget.paint(&mut cx, node, style, rect);
         state_clip = cx.state_clip.take();
     }
+    paint_pseudo(w, node, style, "::before");
 
     // Scroll container: children translate by the stored offset and clip on
     // the scrolling axes.
@@ -549,6 +561,8 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
         }
     }
 
+    paint_pseudo(w, node, style, "::after");
+
     // The subtree's output is queued — cut it to the clip polygon of the
     // state the widget painted in (the resting style when it reported none).
     if let Some(start) = clip_mark {
@@ -558,6 +572,11 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
             None => crate::props::clip_region(style, rect, view),
         };
         crate::props::apply_clip(w.ui.ctx(), w.ui.layer_id(), start, &clip);
+    }
+    // The animation's transform applies after the clip, as CSS orders
+    // them: the polygon is cut in the box's own frame, then skewed.
+    if let (Some((anim, t_ms)), Some(start)) = (animation, anim_mark) {
+        animate(w, style, rect, &anim, t_ms, start);
     }
 
     // DOM bubble: an authored `onClick` fires child-first — after every
@@ -789,6 +808,164 @@ fn modal_host(
     host
 }
 
+/// The theme animation running on `node` this frame and how long it has
+/// run, in ms: the resting style's, or the hover patch's while the pointer
+/// is over the box. Its start time is held per node on the context, so an
+/// animation a hover starts begins at its first frame (CSS starts one when
+/// the style first applies) and a fresh hover restarts it.
+fn running_animation(
+    w: &Walk<'_>,
+    node: &ResolvedNode,
+    style: &Style,
+    rect: egui::Rect,
+) -> Option<(std::sync::Arc<we_style::stylesheet::Animation>, f32)> {
+    let hovered = || w.ui.rect_contains_pointer(rect);
+    let anim = style.animation.clone().or_else(|| {
+        style
+            .hover
+            .as_ref()
+            .and_then(|p| p.animation.clone())
+            .filter(|_| hovered())
+    });
+    let id = egui::Id::unique("we-egui::animation").with(format!("{:?}", node.id));
+    let ctx = w.ui.ctx().clone();
+    let Some(anim) = anim else {
+        ctx.data_mut(|d| d.remove::<(std::sync::Arc<str>, f64)>(id));
+        return None;
+    };
+    if crate::defaults::reduced_motion(&ctx) {
+        return None;
+    }
+    let start = ctx.data_mut(|d| match d.get_temp::<(std::sync::Arc<str>, f64)>(id) {
+        Some((name, t)) if name == anim.name => t,
+        _ => {
+            d.insert_temp(id, (anim.name.clone(), w.now));
+            w.now
+        }
+    });
+    Some((anim, ((w.now - start) * 1000.0) as f32))
+}
+
+/// Sample `anim` at `t_ms` and move everything the node queued from
+/// `start` on: `transform: skew(…)` about the box's centre (CSS's default
+/// `transform-origin`) and a `left` offset (the relative-position nudge
+/// the glitch makes). Asks for the next frame while the animation runs.
+fn animate(
+    w: &mut Walk<'_>,
+    style: &Style,
+    rect: egui::Rect,
+    anim: &we_style::stylesheet::Animation,
+    t_ms: f32,
+    start: usize,
+) {
+    if anim.progress(t_ms).is_none() {
+        return;
+    }
+    let view = crate::defaults::view_of(w.ui.ctx());
+    let left = style
+        .layout
+        .inset
+        .left
+        .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
+        .map(|v| format!("{v}px"));
+    let base = move |prop: &str| match prop {
+        "left" => left.clone(),
+        _ => None,
+    };
+    let decls = anim.sample(t_ms, &base);
+    let (sx, sy) = decls
+        .get("transform")
+        .and_then(|v| we_style::stylesheet::skew_deg(&v.text()))
+        .unwrap_or((0.0, 0.0));
+    let dx = decls
+        .get("left")
+        .and_then(|v| we_style::eval_dimension(&v.text()))
+        .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
+        .unwrap_or(0.0);
+    if sx != 0.0 || sy != 0.0 || dx != 0.0 {
+        let (tx, ty) = (sx.to_radians().tan(), sy.to_radians().tan());
+        let c = rect.center();
+        crate::props::apply_affine(w.ui.ctx(), w.ui.layer_id(), start, move |p| {
+            egui::pos2(p.x + tx * (p.y - c.y) + dx, p.y + ty * (p.x - c.x))
+        });
+    }
+    // The next frame only matters if somebody can see this one: a heading
+    // scrolled away, clipped out, off the screen or transparent animates
+    // nothing visible, and asking would keep an idle screen repainting.
+    // Its timeline keeps its start, so it resumes in step when it is next
+    // painted (a scroll back repaints anyway).
+    if animated_output_visible(w, style, start) {
+        w.ui.ctx().request_repaint();
+    }
+}
+
+/// Whether anything the node queued from `start` on lands inside its clip
+/// rect and the screen, with the host visible and not fully transparent.
+fn animated_output_visible(w: &Walk<'_>, style: &Style, start: usize) -> bool {
+    if !w.ui.is_visible() || style.paint.opacity.is_some_and(|o| o <= 0.0) {
+        return false;
+    }
+    let ctx = w.ui.ctx();
+    let screen = ctx.content_rect();
+    ctx.graphics(|g| {
+        let Some(list) = g.get(w.ui.layer_id()) else {
+            return false;
+        };
+        list.all_entries().skip(start).any(|cs| {
+            let bounds = cs
+                .transform_after_tessellation
+                .mul_rect(cs.shape.visual_bounding_rect());
+            let seen = bounds.intersect(cs.clip_rect).intersect(screen);
+            seen.is_positive()
+        })
+    })
+}
+
+/// A theme's generated `::before`/`::after` box on `node` — painted with
+/// the box painter (background, borders, radius, shadows) and cut to its
+/// own `clip-path`; `::before` under the host's children, `::after` over
+/// them, inside whatever clip the host's own polygon applies.
+fn paint_pseudo(w: &mut Walk<'_>, node: &ResolvedNode, host: &Style, key: &'static str) {
+    let k = (node.id.clone(), key);
+    let Some(style) = w.layout.pseudo.get(&k) else {
+        return;
+    };
+    // Its style already carries the host's composed opacity and inherited
+    // `visibility` (layout folds them in), so a hidden or fully faded host
+    // paints no line.
+    if style.paint.opacity.is_some_and(|o| o <= 0.0)
+        || matches!(
+            style.paint.visibility,
+            Some(we_style::Visibility::Hidden | we_style::Visibility::Collapse)
+        )
+    {
+        return;
+    }
+    let parts = w.parts_buf.as_ref().unwrap_or(&w.base_parts);
+    let Some(rect) = parts.get(&k).copied() else {
+        return;
+    };
+    let view = crate::defaults::view_of(w.ui.ctx());
+    let mark = w.ui.ctx().graphics(|g| {
+        g.get(w.ui.layer_id())
+            .map(|list| list.next_idx().0)
+            .unwrap_or(0)
+    });
+    let mut p = w.ui.painter().clone();
+    p.set_clip_rect(w.clip.unwrap_or(w.base_clip));
+    let current = style
+        .text
+        .color
+        .or(host.text.color)
+        .map(props::color32)
+        .unwrap_or(egui::Color32::WHITE);
+    props::paint_box(&p, rect, style, current, view);
+    if style.paint.clip.is_some() {
+        let clip = crate::props::clip_region(style, rect, view);
+        crate::props::apply_clip(w.ui.ctx(), w.ui.layer_id(), mark, &clip);
+    }
+}
+
 /// `sub`, shifted so its origin sits at `min`.
 fn translate_layout(sub: &Layout, delta: egui::Vec2) -> Layout {
     Layout {
@@ -813,6 +990,7 @@ fn translate_layout(sub: &Layout, delta: egui::Vec2) -> Layout {
             })
             .collect(),
         styles: sub.styles.clone(),
+        pseudo: sub.pseudo.clone(),
         scroll: sub.scroll.clone(),
         scroll_content: sub
             .scroll_content
