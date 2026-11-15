@@ -27,8 +27,9 @@ use crate::handler::{CallId, HandlerToken};
 use crate::host::{Action, ActionRequest, CallBook, Origin};
 use crate::resolve::{eval_json, handler_tokens};
 use crate::resolved::NodeId;
+use crate::scope::Roots;
 use crate::screen_view::{apply_screen, ScreenView};
-use crate::{Host, Invoked, LocalState, Scope, StoreBag};
+use crate::{Host, Invoked, LocalState, Scope};
 use we_expr::MountCx;
 
 /// A pending `$invoke`: who asked, under which mount, in which scope, and
@@ -58,7 +59,9 @@ pub type PendingMap = HashMap<CallId, PendingCall>;
 /// What a handler needs to fire.
 pub struct HandlerCx<'a> {
     pub host: &'a mut dyn Host,
-    pub bag: &'a StoreBag,
+    /// This mount's root view — handler args and specs evaluate against
+    /// the session's own `screen`/legacy bindings, not another session's.
+    pub bag: Roots<'a>,
     pub locals: &'a LocalState,
     pub cache: &'a mut ParseCache,
     pub screen: &'a mut ScreenState,

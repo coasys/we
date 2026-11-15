@@ -20,7 +20,7 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex, Weak};
 
 use we_expr::{Namespace, Value};
-use we_template::{ScreenView, StoreBag};
+use we_template::{RootLayer, ScreenView, StoreBag};
 
 /// `member` → canonical allocation, for the members a face synthesizes —
 /// moved from `StoreBag` (E3c-6): a face's overlay answers rebuild as
@@ -65,10 +65,10 @@ fn read_key(value: &Value, key: &str) -> Value {
 /// the new base on its very next read.
 #[derive(Debug)]
 struct MergedNs {
-    /// `Weak`: the bag owns this face through `adapters` — a strong
-    /// backref would cycle (`StoreBag → face → bag`) and leak the whole
-    /// bag, once per dropped session. Upgraded on read; a face whose
-    /// bag is gone answers `Undefined` from the base side.
+    /// `Weak`: the mount's `RootLayer` holds this face — a strong
+    /// backref would cycle (`StoreBag → layer → face → bag`) and leak
+    /// the whole bag, once per dropped session. Upgraded on read; a
+    /// face whose bag is gone answers `Undefined` from the base side.
     bag: Weak<StoreBag>,
     /// The bag root this face sits over (`routeStore`, …).
     name: &'static str,
@@ -121,7 +121,7 @@ impl Namespace for MergedNs {
 #[derive(Debug)]
 struct SpaceStoreNs {
     /// `Weak` like [`MergedNs::bag`] — the face must never keep the bag
-    /// that owns it alive.
+    /// its layer reads through alive.
     bag: Weak<StoreBag>,
     view: ScreenView,
     /// Canonical allocation for `spacePath` — the screen fact; every other
@@ -168,12 +168,14 @@ impl Namespace for SpaceStoreNs {
 }
 
 /// The installed adapter: one face per legacy store name over the shared
-/// `screen` view. [`LegacyBindings::install`] binds them; the handle keeps
-/// the bag and view for callers that report what was installed — and is
-/// where the E3c-8a `BindingSource` impl lands later.
+/// `screen` view. [`LegacyBindings::install`] binds them into the mount's
+/// own layer — per session, never the bag's, so two sessions on one bag
+/// keep their own faces; the handle keeps the bag and view for callers
+/// that report what was installed — and is where the E3c-8a
+/// `BindingSource` impl lands later.
 #[derive(Debug)]
 pub struct LegacyBindings {
-    bag: Arc<StoreBag>,
+    bag: Option<Arc<StoreBag>>,
     view: ScreenView,
 }
 
@@ -182,14 +184,18 @@ pub struct LegacyBindings {
 pub const LEGACY_STORES: [&str; 4] = ["routeStore", "shellStore", "themeStore", "spaceStore"];
 
 impl LegacyBindings {
-    /// Bind the legacy screen stores over `view`, once: `routeStore` ←
-    /// `nav`, `shellStore` ← `shell`, `themeStore` ← `theme`, and
-    /// `spaceStore.spacePath` over the bag's `spaceStore` base. Every face
-    /// reads live — rebind is never needed and stacking is impossible
-    /// (each name holds exactly one face).
-    pub fn install(bag: &Arc<StoreBag>, view: &ScreenView) -> Self {
+    /// Bind the legacy screen stores into `layer` — the mount's own
+    /// binding table over the shared bag — once: `routeStore` ← `nav`,
+    /// `shellStore` ← `shell`, `themeStore` ← `theme`, and
+    /// `spaceStore.spacePath` over the bag's `spaceStore` base. Every
+    /// face reads live — rebind is never needed and stacking is
+    /// impossible (each name holds exactly one face). The faces' bag
+    /// backref is the layer's own `Weak` — installed, they read
+    /// `root_base` for the data members.
+    pub fn install(layer: &RootLayer, view: &ScreenView) -> Self {
+        let bag = layer.bag().clone();
         let route = MergedNs {
-            bag: Arc::downgrade(bag),
+            bag: bag.clone(),
             name: "routeStore",
             member: "nav",
             owned: &[
@@ -205,7 +211,7 @@ impl LegacyBindings {
             canon: Canon::default(),
         };
         let shell = MergedNs {
-            bag: Arc::downgrade(bag),
+            bag: bag.clone(),
             name: "shellStore",
             member: "shell",
             owned: &[
@@ -226,33 +232,33 @@ impl LegacyBindings {
         // `themeFork` is always the screen's call (`null` = no fork); an
         // unset `currentThemeId` reads Undefined and defers to the base.
         let theme = MergedNs {
-            bag: Arc::downgrade(bag),
+            bag: bag.clone(),
             name: "themeStore",
             member: "theme",
             owned: &["themeFork"],
             view: view.clone(),
             canon: Canon::default(),
         };
-        bag.install_adapter("routeStore", Value::namespace(route));
-        bag.install_adapter("shellStore", Value::namespace(shell));
-        bag.install_adapter("themeStore", Value::namespace(theme));
-        bag.install_adapter(
+        layer.bind("routeStore", Value::namespace(route));
+        layer.bind("shellStore", Value::namespace(shell));
+        layer.bind("themeStore", Value::namespace(theme));
+        layer.bind(
             "spaceStore",
             Value::namespace(SpaceStoreNs {
-                bag: Arc::downgrade(bag),
+                bag: bag.clone(),
                 view: view.clone(),
                 canon: Canon::default(),
             }),
         );
         Self {
-            bag: bag.clone(),
+            bag: bag.upgrade(),
             view: view.clone(),
         }
     }
 
-    /// The bag the faces are bound over.
-    pub fn bag(&self) -> &Arc<StoreBag> {
-        &self.bag
+    /// The bag the faces are bound over — `None` when it is gone.
+    pub fn bag(&self) -> Option<&Arc<StoreBag>> {
+        self.bag.as_ref()
     }
 
     /// The live view the faces read screen members through.

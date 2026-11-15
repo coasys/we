@@ -27,7 +27,7 @@ fn a_dropped_mount_frees_its_bag() {
     let weak = Arc::downgrade(&bag);
     let rt = Runtime::new(schema(), "test", bag.clone(), LocalState::new());
     {
-        let bindings = LegacyBindings::install(&bag, rt.view());
+        let bindings = LegacyBindings::install(rt.layer(), rt.view());
         // The install really answered — the faces' weak backref is live.
         let mut screen = ScreenState::desktop(ScreenSchema::default(), "/?x=1");
         rt.apply_screen(
@@ -38,7 +38,7 @@ fn a_dropped_mount_frees_its_bag() {
                 push: None,
             },
         );
-        let params = get(bag.root("routeStore"), "params");
+        let params = get(rt.roots().root("routeStore"), "params");
         assert!(
             get(Some(params), "x").strict_eq(&Value::from("2")),
             "the installed face answers while owners are alive"

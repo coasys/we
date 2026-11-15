@@ -31,7 +31,7 @@ fn rig(route: &str) -> (Runtime, StaticHost, ScreenState) {
     // A raw `Runtime` gets no adapter — a session installs one in its
     // constructor. `routeStore.params` is a screen fact the snapshot never
     // stores; without the faces it reads `Undefined` here.
-    let _bindings = we_legacy::LegacyBindings::install(&bag, rt.view());
+    let _bindings = we_legacy::LegacyBindings::install(rt.layer(), rt.view());
     let host = StaticHost::new(bag);
     let screen = ScreenState::desktop(
         ScreenSchema {

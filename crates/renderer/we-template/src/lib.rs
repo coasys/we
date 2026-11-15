@@ -54,7 +54,9 @@ pub use resolved::{
     TransitionEffect, TransitionKind,
 };
 pub use runtime::{AppSpec, RootSpec, Runtime, StaticHost, Stats, ORPHANED_CAP};
-pub use scope::{content_eq, FieldMeta, LocalDecl, LocalNs, LocalScope, ScopeEnv, StoreBag};
+pub use scope::{
+    content_eq, FieldMeta, LocalDecl, LocalNs, LocalScope, RootLayer, Roots, ScopeEnv, StoreBag,
+};
 pub use screen_view::ScreenView;
 /// The mount-identity family lives in `we-expr` (a `Namespace::as_handle`
 /// must name a type from below `we-template`; E3c-7, R4). Re-exported so

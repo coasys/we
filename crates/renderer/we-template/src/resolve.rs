@@ -25,7 +25,7 @@ use crate::local::TrackedDeps;
 use crate::node::{JsonMap, RouteNode, SchemaChild, SchemaNode};
 use crate::query::{compile_query, CompileCx, QueryPool, QueryState};
 use crate::resolved::{HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope, Transition};
-use crate::scope::{FieldMeta, LocalDecl, LocalNs, LocalScope, ScopeEnv, StoreBag};
+use crate::scope::{FieldMeta, LocalDecl, LocalNs, LocalScope, Roots, ScopeEnv, StoreBag};
 use crate::{Host, LocalState};
 
 /// Where `$part` looks up module content. The app installs the module
@@ -48,7 +48,9 @@ impl PartSource for NoParts {
 
 /// What a resolve needs besides the node and the scope.
 pub struct ResolveCx<'a> {
-    pub bag: &'a StoreBag,
+    /// This mount's root view — its own bindings (`screen`, the legacy
+    /// faces) over the shared bag; a `{"$"}`/`$query` reads through it.
+    pub bag: Roots<'a>,
     pub host: &'a mut dyn Host,
     pub locals: &'a LocalState,
     pub cache: &'a mut ParseCache,
@@ -172,7 +174,7 @@ fn has_any_token(v: &Json) -> bool {
 pub(crate) fn eval_str(
     source: &str,
     scope: &Scope,
-    bag: &StoreBag,
+    bag: Roots,
     cache: &mut ParseCache,
     warnings: &mut Vec<Arc<str>>,
 ) -> Value {
@@ -211,7 +213,7 @@ pub(crate) fn eval_str(
 fn eval_str_tracked(
     source: &str,
     scope: &Scope,
-    bag: &StoreBag,
+    bag: Roots,
     cache: &mut ParseCache,
     warnings: &mut Vec<Arc<str>>,
 ) -> (Value, TrackedDeps) {
@@ -301,7 +303,7 @@ impl Env for TrackEnv<'_> {
 pub(crate) fn eval_json(
     json: &Json,
     scope: &Scope,
-    bag: &StoreBag,
+    bag: Roots,
     cache: &mut ParseCache,
     warnings: &mut Vec<Arc<str>>,
 ) -> Value {
@@ -850,7 +852,7 @@ fn resolve_node(
                 .and_then(|a| a.as_str())
                 .unwrap_or("agent");
             let mut row_scope = scope.clone();
-            match agent_profile(cx.bag, &did) {
+            match agent_profile(cx.bag.bag, &did) {
                 // A real profile row is live data — its own dependency.
                 Some(row) => row_scope.bind(as_name, row),
                 // The stub is synthesized per read — a conduit like `local`.

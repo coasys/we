@@ -265,7 +265,7 @@ fn missed_captures(truth: &Json, id: &str) -> Vec<String> {
     let locals = LocalState::new();
     let mut rt = Runtime::app(spec, data.bag.clone(), locals.clone())
         .with_sources(Some(data.source()), Arc::new(NoParts));
-    let _bindings = we_legacy::LegacyBindings::install(&data.bag, rt.view());
+    let _bindings = we_legacy::LegacyBindings::install(rt.layer(), rt.view());
     let mut host = StaticHost::new(data.bag.clone());
     let screen = ScreenState::desktop(
         ScreenSchema {

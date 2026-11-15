@@ -1457,7 +1457,7 @@ fn the_screen_root_is_bound_once() {
     let mut rt = Runtime::new(node, "test", bag.clone(), LocalState::new());
     let mut host = StaticHost::new(bag.clone());
     let mut screen = screen();
-    let bound = bag.root("screen");
+    let bound = rt.roots().root("screen");
     let weak = match &bound {
         Some(Value::Namespace(ns)) => Arc::downgrade(ns),
         other => panic!("screen must be a namespace: {other:?}"),
@@ -1473,7 +1473,7 @@ fn the_screen_root_is_bound_once() {
             bound
                 .as_ref()
                 .unwrap()
-                .strict_eq(&bag.root("screen").unwrap()),
+                .strict_eq(&rt.roots().root("screen").unwrap()),
             "the screen root must be the same live view after a change"
         );
     }

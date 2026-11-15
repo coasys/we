@@ -25,6 +25,7 @@ use crate::inbox::{Arrival, Inbox};
 use crate::query::{QueryCell, QueryPool, QueryState};
 use crate::resolve::{self, NoParts, PartSource};
 use crate::resolved::{HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope};
+use crate::scope::{RootLayer, Roots};
 use crate::screen_view::{self, ScreenView};
 use crate::{BundleTemplate, CallId, Host, Invoked, LocalState, ResolveCx, SchemaNode, StoreBag};
 
@@ -182,9 +183,14 @@ pub struct Runtime {
     /// entry as read *before* its first pass, so a write mid-resolve
     /// leaves the source ahead and the next `poll` dirty.
     last: Option<(u64, u64, u64, u64)>,
-    /// The live `screen` root — bound once into the bag at construction;
-    /// `apply_screen`/`frame` refresh its snapshot, never rebind it.
+    /// The live `screen` root — bound once into the mount's [`RootLayer`]
+    /// at construction; `apply_screen`/`frame` refresh its snapshot,
+    /// never rebind it.
     view: ScreenView,
+    /// This mount's own root bindings (`screen`, the legacy faces),
+    /// layered over `bag` — a second session on the same bag keeps its
+    /// own instead of overwriting this one's.
+    layer: RootLayer,
     live: HashSet<NodeId>,
     parents: HashMap<NodeId, NodeId>,
     /// Parsed embedded sub-schemas (`$if` branches, panel bodies, record
@@ -241,14 +247,15 @@ impl Runtime {
         // arrival here and call its waker — a data change reaches a
         // sleeping frontend. Each session gets its own handle on the bag.
         bag.set_invalidator(Invalidator::new(&inbox));
-        // The one live `screen` root, bound once: `apply_screen` refreshes
-        // the view's snapshot on every change — never rebinds, never
-        // stacks a wrapper (E3c-6). The `we-legacy` adapter serves the old
-        // store names on top of it. `bind_root`, not `set_root`: a
-        // construction-time bind is no data arrival — a session waking on
-        // it would count a change nothing made.
+        // The one live `screen` root, bound once into THIS mount's layer
+        // — `apply_screen` refreshes the view's snapshot on every change,
+        // never rebinds, never stacks a wrapper (E3c-6). The `we-legacy`
+        // adapter serves the old store names beside it, in the same
+        // layer. A construction-time bind is no data arrival — no
+        // revision moves and no session wakes for it.
         let view = ScreenView::new();
-        bag.bind_root("screen", Value::namespace(view.clone()));
+        let layer = RootLayer::new(&bag);
+        layer.bind("screen", Value::namespace(view.clone()));
         Self {
             spec,
             bag,
@@ -269,6 +276,7 @@ impl Runtime {
             resolved: None,
             last: None,
             view,
+            layer,
             live: HashSet::new(),
             parents: HashMap::new(),
             node_memo: HashMap::new(),
@@ -316,6 +324,20 @@ impl Runtime {
     /// `from_parts` hands it to `we-legacy`'s adapter install.
     pub fn bag(&self) -> &Arc<StoreBag> {
         &self.bag
+    }
+
+    /// This mount's root view — its own bindings (`screen`, the legacy
+    /// faces) layered over the shared bag. Resolve and dispatch read
+    /// roots through here, so a second session on the same bag reads its
+    /// own `screen`, not this one's.
+    pub fn roots(&self) -> Roots<'_> {
+        Roots::new(&self.layer, self.bag.as_ref())
+    }
+
+    /// The mount's own binding layer — `we-legacy`'s adapter installs the
+    /// legacy faces here, where they are this session's own.
+    pub fn layer(&self) -> &RootLayer {
+        &self.layer
     }
 
     /// The live `screen` root this runtime bound — the snapshot member
@@ -578,7 +600,7 @@ impl Runtime {
                     };
                     let mut route_tail = Vec::new();
                     let mut cx = ResolveCx {
-                        bag: self.bag.as_ref(),
+                        bag: Roots::new(&self.layer, self.bag.as_ref()),
                         host,
                         locals: &self.locals,
                         cache: &mut self.cache,
@@ -766,7 +788,7 @@ impl Runtime {
                 let mount = mount_of(&self.mount_cxs, &id);
                 let mut cx = HandlerCx {
                     host,
-                    bag: &self.bag,
+                    bag: Roots::new(&self.layer, self.bag.as_ref()),
                     locals: &self.locals,
                     cache: &mut self.cache,
                     screen,
@@ -836,7 +858,7 @@ impl Runtime {
         // its callbacks under the space it began on.
         let mut cx = HandlerCx {
             host,
-            bag: &self.bag,
+            bag: Roots::new(&self.layer, self.bag.as_ref()),
             locals: &self.locals,
             cache: &mut self.cache,
             screen,

@@ -213,7 +213,7 @@ fn check_route(truth: &Json, doc: &Json, id: &str) -> Result<(), String> {
     // A raw `Runtime` gets no adapter — a session installs one in its
     // constructor. This harness drives the runtime the session's way:
     // `routeStore.params` is a screen fact the recording never stores.
-    let _bindings = we_legacy::LegacyBindings::install(&data.bag, runtime.view());
+    let _bindings = we_legacy::LegacyBindings::install(runtime.layer(), runtime.view());
     let mut host = StaticHost::new(data.bag.clone());
     let path = truth["routes"][id]["rust"].as_str().expect("route path");
     let screen = ScreenState::desktop(

@@ -22,7 +22,7 @@ use we_expr::{HandleKind, HandleRef, HandleTable, MountCx, ParseCache, SpaceHand
 
 use crate::resolve::{eval_json, eval_str};
 use crate::resolved::Scope;
-use crate::scope::StoreBag;
+use crate::scope::Roots;
 use crate::NodeId;
 
 /// A compiled query — the `$query` descriptor after expressions are resolved
@@ -187,7 +187,9 @@ pub enum Compiled {
 /// mount it runs under (whose space `Here` resolves to) and the table its
 /// dataset handles mint through.
 pub struct CompileCx<'a> {
-    pub bag: &'a StoreBag,
+    /// The mount's root view — query params may read `screen.*` and the
+    /// legacy stores, which are session bindings, not the bag's.
+    pub bag: Roots<'a>,
     pub cache: &'a mut ParseCache,
     pub warnings: &'a mut Vec<Arc<str>>,
     /// The mount the query compiles under — `Here` keys by its space.
@@ -206,14 +208,14 @@ impl CompileCx<'_> {
 
 impl<'a> CompileCx<'a> {
     pub fn new(
-        bag: &'a StoreBag,
+        bag: impl Into<Roots<'a>>,
         cache: &'a mut ParseCache,
         warnings: &'a mut Vec<Arc<str>>,
         mount: &'a MountCx,
         handles: &'a HandleTable,
     ) -> Self {
         Self {
-            bag,
+            bag: bag.into(),
             cache,
             warnings,
             mount,
@@ -624,7 +626,7 @@ fn to_ir_json(value: &Value) -> Option<Json> {
 fn deep_resolve_json(
     raw: &Json,
     scope: &Scope,
-    bag: &StoreBag,
+    bag: Roots,
     cache: &mut ParseCache,
     warnings: &mut Vec<Arc<str>>,
 ) -> Json {
@@ -653,16 +655,17 @@ fn deep_resolve_json(
 /// it is one — entity resolution happens against the live scope at compile
 /// time); every other key is a param and is deep-resolved. Absent `entity`
 /// and `dataset` encode `undefined`; `subscribe` defaults `true`.
-pub fn query_descriptor(
+pub fn query_descriptor<'a>(
     query: &Json,
     scope: &Scope,
-    bag: &StoreBag,
+    bag: impl Into<Roots<'a>>,
     cache: &mut ParseCache,
     warnings: &mut Vec<Arc<str>>,
 ) -> Option<Json> {
     let Json::Object(map) = query else {
         return None;
     };
+    let bag = bag.into();
     let undefined = || {
         let mut m = serde_json::Map::new();
         m.insert("$undefined".to_string(), Json::Bool(true));

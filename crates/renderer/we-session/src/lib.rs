@@ -95,7 +95,7 @@ impl Session {
         // `spaceStore` — bound once over the runtime's live `screen` view
         // (E3c-6). Every session path (native, dump, CLI, offline, tests)
         // gets the same adapter because it is the constructor's job.
-        we_legacy::LegacyBindings::install(runtime.bag(), runtime.view());
+        we_legacy::LegacyBindings::install(runtime.layer(), runtime.view());
         Self {
             runtime,
             host,
@@ -115,7 +115,7 @@ impl Session {
     /// legacy adapter installs the same as [`Session::new`]'s, and the
     /// screen lands in private ownership — the write path is unchanged.
     pub fn from_parts(runtime: Runtime, host: Box<dyn Host>, screen: ScreenState) -> Self {
-        we_legacy::LegacyBindings::install(runtime.bag(), runtime.view());
+        we_legacy::LegacyBindings::install(runtime.layer(), runtime.view());
         Self {
             runtime,
             host,
@@ -129,7 +129,7 @@ impl Session {
     /// re-install so they read the new one, else every screen member they
     /// own would answer from a view nothing refreshes.
     pub fn set_runtime(&mut self, runtime: Runtime) {
-        we_legacy::LegacyBindings::install(runtime.bag(), runtime.view());
+        we_legacy::LegacyBindings::install(runtime.layer(), runtime.view());
         self.runtime = runtime;
     }
 

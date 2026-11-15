@@ -47,7 +47,7 @@ fn set_root_then_screen_change_then_read() {
     // view; one read answers the new base member and the new screen fact.
     let bag = Arc::new(StoreBag::new());
     let rt = Runtime::new(schema(), "test", bag.clone(), LocalState::new());
-    let _bindings = LegacyBindings::install(&bag, rt.view());
+    let _bindings = LegacyBindings::install(rt.layer(), rt.view());
     bag.set_root(
         "spaceStore",
         store(&[("root", Value::from("demo")), ("members", Value::from(3.0))]),
@@ -62,7 +62,7 @@ fn set_root_then_screen_change_then_read() {
             replace: false,
         },
     );
-    let space = bag.root("spaceStore");
+    let space = rt.roots().root("spaceStore");
     assert!(
         same(
             &get(space.clone(), "spacePath"),
@@ -87,7 +87,7 @@ fn a_screen_change_is_visible_to_the_next_read() {
     // write path lands in the adapter's next read — no rebind in between.
     let bag = Arc::new(StoreBag::new());
     let mut rt = Runtime::new(schema(), "test", bag.clone(), LocalState::new());
-    let _bindings = LegacyBindings::install(&bag, rt.view());
+    let _bindings = LegacyBindings::install(rt.layer(), rt.view());
     let mut screen = screen("/?x=old");
     rt.frame(&mut StaticHost::new(bag.clone()), &screen);
     rt.apply_screen(
@@ -98,7 +98,7 @@ fn a_screen_change_is_visible_to_the_next_read() {
             push: None,
         },
     );
-    let params = get(bag.root("routeStore"), "params");
+    let params = get(rt.roots().root("routeStore"), "params");
     assert!(
         same(&get(Some(params), "x"), &Value::from("new")),
         "routeStore.params.x must answer the write just made"
@@ -112,9 +112,9 @@ fn repeated_changes_never_stack_a_wrapper() {
     // stay O(1) and root identity never moves.
     let bag = Arc::new(StoreBag::new());
     let rt = Runtime::new(schema(), "test", bag.clone(), LocalState::new());
-    let _bindings = LegacyBindings::install(&bag, rt.view());
+    let _bindings = LegacyBindings::install(rt.layer(), rt.view());
     let mut screen = screen("/");
-    let face0 = bag.root("routeStore").unwrap();
+    let face0 = rt.roots().root("routeStore").unwrap();
     for i in 0..10 {
         rt.apply_screen(
             &mut screen,
@@ -125,7 +125,7 @@ fn repeated_changes_never_stack_a_wrapper() {
             },
         );
     }
-    let face1 = bag.root("routeStore").unwrap();
+    let face1 = rt.roots().root("routeStore").unwrap();
     assert!(
         face0.strict_eq(&face1),
         "the routeStore binding must be one face, rebound never"
@@ -140,10 +140,10 @@ fn a_dialog_and_panel_open_are_the_next_shell_store_read() {
     // Panels, lanes and dialogs read the same way.
     let bag = Arc::new(StoreBag::new());
     let rt = Runtime::new(schema(), "test", bag.clone(), LocalState::new());
-    let _bindings = LegacyBindings::install(&bag, rt.view());
+    let _bindings = LegacyBindings::install(rt.layer(), rt.view());
     let mut screen = screen("/");
     rt.view().refresh(&screen);
-    let shell = bag.root("shellStore");
+    let shell = rt.roots().root("shellStore");
     let member = |key| get(shell.clone(), key);
     assert!(
         member("createSpaceOpen").strict_eq(&Value::Bool(false)),
@@ -185,10 +185,10 @@ fn a_theme_switch_is_the_next_theme_store_read() {
     // current id — not the first snapshot the theme member interned.
     let bag = Arc::new(StoreBag::new());
     let rt = Runtime::new(schema(), "test", bag.clone(), LocalState::new());
-    let _bindings = LegacyBindings::install(&bag, rt.view());
+    let _bindings = LegacyBindings::install(rt.layer(), rt.view());
     let mut screen = screen("/");
     rt.view().refresh(&screen);
-    let theme = bag.root("themeStore");
+    let theme = rt.roots().root("themeStore");
     let member = |key| get(theme.clone(), key);
     assert!(
         member("currentThemeId").is_undefined(),
@@ -226,7 +226,7 @@ fn data_members_fall_through_and_screen_members_stay_the_screens() {
     // (`null` = no fork) even when the base has its own opinion.
     let bag = Arc::new(StoreBag::new());
     let mut rt = Runtime::new(schema(), "test", bag.clone(), LocalState::new());
-    let _bindings = LegacyBindings::install(&bag, rt.view());
+    let _bindings = LegacyBindings::install(rt.layer(), rt.view());
     bag.set_root(
         "themeStore",
         store(&[
@@ -236,7 +236,7 @@ fn data_members_fall_through_and_screen_members_stay_the_screens() {
     );
     let screen = screen("/");
     rt.frame(&mut StaticHost::new(bag.clone()), &screen);
-    let theme = bag.root("themeStore");
+    let theme = rt.roots().root("themeStore");
     assert!(
         same(&get(theme.clone(), "builtInThemes"), &Value::from(2.0)),
         "a data member reads the base"

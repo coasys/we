@@ -12,7 +12,7 @@
 //!   read lazily so a re-resolve picks up writes.
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, OnceLock, RwLock};
+use std::sync::{Arc, Mutex, OnceLock, RwLock, Weak};
 
 use indexmap::IndexMap;
 use we_expr::{CallFn, Env, MapNamespace, Namespace, Value};
@@ -244,10 +244,11 @@ pub fn content_eq(a: &Value, b: &Value) -> bool {
 }
 
 /// The [`Env`] a resolve evaluates against: the node's [`Scope`] bindings
-/// first (innermost last), then the store bag; functions from the bag alone.
+/// first (innermost last), then the root table — session layer, then the
+/// shared bag; functions from the bag alone.
 pub struct ScopeEnv<'a> {
     pub scope: &'a Scope,
-    pub bag: &'a StoreBag,
+    pub bag: Roots<'a>,
 }
 
 impl Env for ScopeEnv<'_> {
@@ -269,6 +270,108 @@ impl Env for ScopeEnv<'_> {
     }
 }
 
+/// A mount's own root bindings, layered over the shared [`StoreBag`]
+/// (E3c-6, shared-bag fix): the `screen` view a runtime binds at
+/// construction and the legacy faces `we-legacy` installs are per-session
+/// answers — two sessions sharing one bag keep their own, where a shared
+/// slot made the last install win for every session on it. [`Roots::root`]
+/// reads the layer first, then the bag.
+pub struct RootLayer {
+    /// The shared bag this layer sits over — `Weak`: a mount's own table
+    /// must never keep the bag alive, and the faces' weak backref comes
+    /// from here (a face binding an `Arc` of its own would leak the bag
+    /// the way the in-bag adapter did).
+    bag: Weak<StoreBag>,
+    /// `name` → this mount's own binding — `screen`, the legacy faces.
+    roots: RwLock<IndexMap<Arc<str>, Value>>,
+}
+
+impl std::fmt::Debug for RootLayer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RootLayer")
+            .field("roots", &self.roots)
+            .finish_non_exhaustive()
+    }
+}
+
+impl RootLayer {
+    /// A layer over `bag` — one per mount, built at construction.
+    pub fn new(bag: &Arc<StoreBag>) -> Self {
+        Self {
+            bag: Arc::downgrade(bag),
+            roots: RwLock::new(IndexMap::new()),
+        }
+    }
+
+    /// `name`'s binding in the layer — `None` defers to the bag.
+    pub fn get(&self, name: &str) -> Option<Value> {
+        self.roots.read().ok()?.get(name).cloned()
+    }
+
+    /// Bind `name` in the layer — a construction-time write: the `screen`
+    /// view and the legacy faces are installed here, so they are the
+    /// session's own from the start. No revision moves — the mount holds
+    /// this layer exclusively, and it is not a data arrival.
+    pub fn bind(&self, name: &str, value: Value) {
+        if let Ok(mut roots) = self.roots.write() {
+            roots.insert(name.into(), value);
+        }
+    }
+
+    /// The shared bag under the layer — the weak backref a face reads
+    /// `root_base` through.
+    pub fn bag(&self) -> &Weak<StoreBag> {
+        &self.bag
+    }
+}
+
+/// One mount's view of the root table: the session's own bindings
+/// (`screen`, the legacy faces) first, the shared bag underneath. `root`
+/// is the only layered answer — `call` and every other bag answer is the
+/// bag's own. Two sessions on one bag read different `Roots`, so a
+/// session's screen and faces are never another session's.
+#[derive(Debug, Clone, Copy)]
+pub struct Roots<'a> {
+    /// The mount's own bindings — `None` for a bare-bag `Roots`.
+    pub layer: Option<&'a RootLayer>,
+    /// The shared bag — data roots and functions.
+    pub bag: &'a StoreBag,
+}
+
+impl<'a> Roots<'a> {
+    /// `layer` over `bag` — what a runtime's resolve and dispatch read.
+    pub fn new(layer: &'a RootLayer, bag: &'a StoreBag) -> Self {
+        Self {
+            layer: Some(layer),
+            bag,
+        }
+    }
+
+    /// A bare bag — a caller with no mount layer reads the bag's own roots.
+    pub fn unlayered(bag: &'a StoreBag) -> Self {
+        Self { layer: None, bag }
+    }
+
+    /// `name`'s binding — the mount's own first (`screen`, the legacy
+    /// faces), then the bag's store root or plain value.
+    pub fn root(&self, name: &str) -> Option<Value> {
+        self.layer
+            .and_then(|layer| layer.get(name))
+            .or_else(|| self.bag.root(name))
+    }
+
+    /// `Env::call` — functions belong to the shared bag alone.
+    pub fn call(&self, name: &str, args: &[Value]) -> Value {
+        self.bag.call(name, args)
+    }
+}
+
+impl<'a> From<&'a StoreBag> for Roots<'a> {
+    fn from(bag: &'a StoreBag) -> Self {
+        Self::unlayered(bag)
+    }
+}
+
 /// The store bag: root names → namespaces (or plain values), the function
 /// table [`Env::call`] reads, and the snapshot's static answers —
 /// `$queries` rows and canned `$invoke` replies. Everything mutable is
@@ -282,13 +385,6 @@ impl Env for ScopeEnv<'_> {
 #[derive(Default)]
 pub struct StoreBag {
     roots: RwLock<IndexMap<Arc<str>, Value>>,
-    /// Adapter faces bound over root names — `we-legacy`'s screen adapter
-    /// installs one per legacy store. `root` answers the face while
-    /// `set_root` keeps writing the base the face reads through
-    /// [`StoreBag::root_base`]: nothing is captured anywhere, so a
-    /// `set_root` swap is the face's very next answer (5.1's live-base
-    /// rule — the runtime-rebind residual cannot come back).
-    adapters: RwLock<IndexMap<Arc<str>, Value>>,
     functions: RwLock<HashMap<Arc<str>, CallFn>>,
     queries: RwLock<IndexMap<Arc<str>, Value>>,
     invokes: RwLock<HashMap<String, Value>>,
@@ -313,36 +409,18 @@ impl StoreBag {
         Self::default()
     }
 
-    /// A root name's binding — `spaceStore`, `routeStore`, … — the
-    /// adapter's face when one is installed, else the store root.
+    /// A root name's binding — `spaceStore`, `routeStore`, … — the store
+    /// root a `set_root` wrote. Session-owned bindings (`screen`, the
+    /// legacy faces) live in the mount's [`RootLayer`], never here.
     pub fn root(&self, name: &str) -> Option<Value> {
-        if let Ok(faces) = self.adapters.read() {
-            if let Some(face) = faces.get(name) {
-                return Some(face.clone());
-            }
-        }
         self.roots.read().ok()?.get(name).cloned()
     }
 
-    /// The store root under an adapter's face — what `set_root` writes.
-    /// A screen adapter reads its base through here, at read time; for a
-    /// name with no adapter this is the same answer [`StoreBag::root`]
-    /// gives.
+    /// The store root under a face's overlay — what `set_root` writes.
+    /// A screen face reads its base through here, at read time; for a
+    /// name with no face this is the same answer [`StoreBag::root`] gives.
     pub fn root_base(&self, name: &str) -> Option<Value> {
         self.roots.read().ok()?.get(name).cloned()
-    }
-
-    /// Install a face over a root name — `we-legacy`'s adapter binds the
-    /// legacy screen stores once per session. `root(name)` answers `face`
-    /// from here on; `set_root` writes keep landing in the base the face
-    /// reads live. Bumps the data revision — the root's answer moved —
-    /// but never invalidates: an install is construction, not a write a
-    /// session should wake for.
-    pub fn install_adapter(&self, name: &str, face: Value) {
-        if let Ok(mut faces) = self.adapters.write() {
-            faces.insert(name.into(), face);
-        }
-        self.version.fetch_add(1, Ordering::Relaxed);
     }
 
     /// A function call — built-ins in E1, natives in E6. Unknown → `Undefined`.
@@ -403,9 +481,7 @@ impl StoreBag {
     }
 
     /// Write a root, bumping the data revision — `set_root`'s write half,
-    /// without the invalidation: the `screen` root's one-time bind and
-    /// `install_adapter` reach here, since a binding installed at
-    /// construction is not a data arrival a session should wake for.
+    /// without the invalidation.
     pub(crate) fn bind_root(&self, name: &str, value: Value) {
         if let Ok(mut roots) = self.roots.write() {
             roots.insert(name.into(), value);
