@@ -39,3 +39,4 @@ sha2 = "0.10"
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
 # A real executor for the connected app's test (EXECUTOR_PATH).
 we-ad4m = { workspace = true, features = ["testkit"] }
+tempfile = "3"

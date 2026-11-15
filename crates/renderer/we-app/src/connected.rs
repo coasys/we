@@ -109,6 +109,23 @@ impl ConnectedApp {
         Ok(Box::new(live))
     }
 
+    /// Which screen is up: `connect`, `pick` or `space`.
+    pub fn stage(&self) -> &'static str {
+        match self.stage {
+            Stage::Connect { .. } => "connect",
+            Stage::Pick { .. } => "pick",
+            Stage::Space { .. } => "space",
+        }
+    }
+
+    /// The open space, once one is.
+    pub fn live_space(&mut self) -> Option<&mut LiveSpace> {
+        match &mut self.stage {
+            Stage::Space { live, .. } => Some(live),
+            _ => None,
+        }
+    }
+
     pub fn ui(&mut self, ui: &mut egui::Ui) {
         let next = match &mut self.stage {
             Stage::Connect { flow, input } => connect_screen(ui, flow, input),
@@ -389,7 +406,10 @@ fn space_screen(
     let mut next = None;
     egui::Panel::top("we-live-status").show(ui, |ui| {
         ui.horizontal(|ui| {
-            ui.colored_label(Color32::from_rgb(90, 200, 120), "●");
+            // A painted dot: the default fonts have no "●".
+            let (dot, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+            ui.painter()
+                .circle_filled(dot.center(), 4.0, Color32::from_rgb(90, 200, 120));
             ui.label(format!("{url}  ·  {}", live.space.name));
             ui.separator();
             ui.label(
