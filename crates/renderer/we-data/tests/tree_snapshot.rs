@@ -32,11 +32,11 @@ fn tree_snapshot_loads_and_marks_sidebar_members() {
         boot: bundle.boot_screen.clone(),
     };
     let screen = ScreenState::desktop(ScreenSchema::default(), "/space/demo");
-    let mut session = Session {
-        runtime: we_template::Runtime::app(spec, data.bag.clone(), locals.clone()),
-        host: Box::new(StaticHost::new(data.bag.clone())),
+    let mut session = Session::from_parts(
+        we_template::Runtime::app(spec, data.bag.clone(), locals.clone()),
+        Box::new(StaticHost::new(data.bag.clone())),
         screen,
-    };
+    );
     session.resolve();
 
     let report = data.provenance.report();

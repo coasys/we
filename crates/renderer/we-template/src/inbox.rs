@@ -143,6 +143,14 @@ impl Inbox {
     /// hook). A batch that woke the OLD hook before this call — the
     /// no-op default, or a hook nobody services anymore — gets one wake
     /// now; the odd redundant wake beats stranding a queued batch.
+    ///
+    /// Contract (Lal P3): the hook runs synchronously on whatever thread
+    /// produced the arrival — inside `push`, inside this call when
+    /// leftovers are queued, or inside a budget wake — after the inbox's
+    /// locks are released. It must be cheap and must not block, and it
+    /// must not panic: a panic escapes into the producer's
+    /// `deliver`/`push`/`wake` call (and out of `set_waker` itself
+    /// here), unwinding whatever produced the arrival.
     pub fn set_waker(&self, waker: Waker) {
         *self.waker.write().unwrap_or_else(|e| e.into_inner()) = waker;
         let pending = !self

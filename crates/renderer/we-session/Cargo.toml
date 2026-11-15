@@ -9,6 +9,7 @@ publish = false
 we-expr.workspace = true
 we-screen.workspace = true
 we-template.workspace = true
+we-legacy.workspace = true
 
 [dev-dependencies]
 serde_json.workspace = true

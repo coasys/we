@@ -1,5 +1,8 @@
 //! E3c-4: the query hub — claims, refcounts, tickets, synchronous delivery
 //! (E3c-design 2.2–2.4, row 8.2 E3c-4; TS reference `subscriptionPool.ts`).
+//! E3c-5a adds the asynchronous half: `QuerySink` deliveries that land on
+//! later frames, `Failed` answers, dead-ticket drops, the pass budget's
+//! leftover work, and the quiet a loading source must keep.
 //!
 //! The pull path is gone: a site `claim`s a compiled request per pass,
 //! `commit` diffs the pass's claims against the held set and calls
@@ -40,6 +43,8 @@ struct Counting {
     live: Mutex<HashMap<SubTicket, (QueryRequest, QuerySink)>>,
     /// Entity names `open` should not answer yet.
     hold: Mutex<Vec<Arc<str>>>,
+    /// Entity names `open` answers with a `Failed` instead of rows.
+    fail: Mutex<Vec<Arc<str>>>,
 }
 
 impl Counting {
@@ -51,6 +56,13 @@ impl Counting {
     fn holding(&self, entity: &str) -> Arc<Self> {
         let me = Arc::new(Self::default());
         me.hold.lock().unwrap().push(entity.into());
+        me
+    }
+
+    /// Entities `open` answers with `Failed("<entity> failed")`.
+    fn failing(&self, entity: &str) -> Arc<Self> {
+        let me = Arc::new(Self::default());
+        me.fail.lock().unwrap().push(entity.into());
         me
     }
 
@@ -82,6 +94,15 @@ impl Counting {
             }
         }
     }
+
+    /// Push a failure to every live ticket naming `entity`.
+    fn deliver_failed(&self, entity: &str, error: Value) {
+        for (_, (request, sink)) in self.live.lock().unwrap().iter() {
+            if request.classes.iter().any(|c| c.as_ref() == entity) {
+                sink.deliver(QueryEvent::Failed(error.clone()));
+            }
+        }
+    }
 }
 
 impl QuerySource for Counting {
@@ -100,16 +121,27 @@ impl QuerySource for Counting {
             .classes
             .iter()
             .any(|c| self.hold.lock().unwrap().iter().any(|h| h == c));
+        let failed = request
+            .classes
+            .iter()
+            .any(|c| self.fail.lock().unwrap().iter().any(|f| f == c));
         self.live
             .lock()
             .unwrap()
             .insert(ticket, (request.clone(), sink.clone()));
-        if !held {
-            let entity = request.classes.first().cloned().unwrap_or("?".into());
-            sink.deliver(QueryEvent::Rows(Arc::new(vec![Value::from_json(
-                &json!({ "id": format!("{entity}-1"), "kind": "Task" }),
-            )])));
+        let entity = request.classes.first().cloned().unwrap_or("?".into());
+        if held {
+            return;
         }
+        if failed {
+            sink.deliver(QueryEvent::Failed(Value::from(
+                format!("{entity} failed").as_str(),
+            )));
+            return;
+        }
+        sink.deliver(QueryEvent::Rows(Arc::new(vec![Value::from_json(
+            &json!({ "id": format!("{entity}-1"), "kind": "Task" }),
+        )])));
     }
 
     fn close(&self, ticket: SubTicket) {
@@ -435,7 +467,7 @@ fn subscribe_false_is_one_shot_and_stays_held() {
 }
 
 #[test]
-fn a_late_result_for_a_closed_ticket_is_dropped() {
+fn late_result_after_close_is_dropped() {
     // The site released, the ticket closed — a `deliver` the source pushes
     // afterwards lands on a tombstone: no entry, no visible change, no
     // dirty revision.
@@ -934,6 +966,78 @@ fn a_late_named_claim_reopens_the_unnamed_cell() {
     assert_eq!(hub.cells()[0].view.rows.len(), 2, "the named answer landed");
 }
 
+/// F5 + dead tickets: the reopen a late named claim causes closes the old
+/// ticket — so an event the source still pushes on it, after the reopen,
+/// is dropped at apply (E3c-design 2.4/2.5). Without that drop the old
+/// ticket's late rows would overwrite the cell the new ticket now serves.
+#[test]
+fn a_late_event_on_the_ticket_a_reopen_closed_is_dropped() {
+    let source = Counting::new().holding("Task");
+    let mut hub = hub();
+    hub.claim(
+        site("t:/l", SiteSlot::Prop("rows".into())),
+        request("Task"),
+        None,
+    );
+    hub.commit(source.clone());
+    hub.drain();
+    let old = hub.cells()[0].ticket;
+    let stale = source
+        .live
+        .lock()
+        .unwrap()
+        .get(&old)
+        .map(|(_, sink)| sink.clone())
+        .expect("the anonymous open kept a sink");
+
+    // The reopen: a later named claim adds a hint to the open cell.
+    hub.claim(
+        site("t:/n", SiteSlot::Named("items".into())),
+        request("Task"),
+        None,
+    );
+    hub.claim(
+        site("t:/l", SiteSlot::Prop("rows".into())),
+        request("Task"),
+        None,
+    );
+    hub.commit(source.clone());
+    hub.drain();
+    assert_eq!(source.open_count(), 2, "the hint reopened the cell");
+    assert_eq!(source.closes.lock().unwrap().clone(), vec![old]);
+    assert_ne!(hub.cells()[0].ticket, old, "the cell moved to a new ticket");
+    assert_eq!(hub.opened(), 1, "only the new ticket is live");
+
+    let ghost = || QueryEvent::Rows(Arc::new(vec![Value::from_json(&json!({ "id": "ghost" }))]));
+
+    // Nothing answered the new ticket yet: the stale event leaves it loading.
+    let before = hub.revision();
+    stale.deliver(ghost());
+    assert!(!hub.drain(), "the old ticket's event is not a change");
+    assert_eq!(hub.revision(), before, "no revision for a dead ticket");
+    assert!(
+        !hub.cells()[0].view.loaded,
+        "still loading on the new ticket"
+    );
+    assert!(hub.cells()[0].view.rows.is_empty());
+
+    // The new ticket answers; a later stale event cannot overwrite it.
+    source.deliver("Task", vec![Value::from_json(&json!({ "id": "new" }))]);
+    assert!(hub.drain(), "the new ticket's answer lands");
+    let before = hub.revision();
+    stale.deliver(ghost());
+    assert!(!hub.drain(), "the old ticket's event is not a change");
+    assert_eq!(hub.revision(), before, "no revision for a dead ticket");
+    let view = &hub.cells()[0].view;
+    assert!(view.loaded);
+    assert_eq!(view.rows.len(), 1);
+    assert_eq!(
+        view.rows[0].to_json()["id"].as_str(),
+        Some("new"),
+        "the cell still shows the new ticket's rows"
+    );
+}
+
 /// A source that answers by `name_hint` the way the snapshot table does —
 /// recording the hint every `open` carried.
 #[derive(Default)]
@@ -974,6 +1078,552 @@ impl QuerySource for Names {
     fn close(&self, _ticket: SubTicket) {}
 }
 
+// ---- E3c-5a: asynchronous delivery ----
+//
+// A live source answers when it answers: `open` returns, the sink it kept
+// pushes the event into the inbox, the push wakes the frontend, `poll`'s
+// drain applies it to the ticket's cell, and the next frame paints it.
+// `Failed` settles a cell loaded with no rows and its value readable as
+// `local.<name>Error`; events on closed tickets die at apply; a loading
+// source spins nothing.
+
+/// `open` answers nothing; the rows arrive on a later frame through the
+/// kept sink — the push wakes, the drain applies, the poll reports dirty
+/// and the next frame paints them.
+#[test]
+fn loading_then_rows_on_a_later_frame() {
+    let node = json!({ "type": "Column",
+        "$queries": { "items": { "entity": "Task" } },
+        "children": [
+            { "type": "we-text",
+              "props": { "text": { "$": "local.items.length" } } },
+            { "type": "we-flag",
+              "props": { "on": { "$": "local.itemsLoaded" } } }
+        ] });
+    let source = Counting::new().holding("Task");
+    let (mut rt, mut host, mut screen, _bag) = rig(node, source.clone());
+    let wakes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let w = wakes.clone();
+    rt.inbox().set_waker(Arc::new(move || {
+        w.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }));
+
+    let root = rt.frame(&mut host, &screen).clone();
+    let text = find_ty(&root, "we-text")
+        .and_then(|n| n.props.get("text"))
+        .cloned();
+    assert!(
+        matches!(&text, Some(v) if v.strict_eq(&Value::from(0.0))),
+        "an unanswered query paints empty: {text:?}"
+    );
+    let on = find_ty(&root, "we-flag")
+        .and_then(|n| n.props.get("on"))
+        .cloned();
+    assert!(
+        matches!(&on, Some(Value::Bool(false))),
+        "Loaded stays false while the source is quiet: {on:?}"
+    );
+    assert!(
+        !rt.dirty(&screen),
+        "waiting is not work — the poll is quiet"
+    );
+
+    // The answer arrives between frames: `deliver` queues it and wakes.
+    source.deliver("Task", vec![Value::from_json(&json!({ "id": "t1" }))]);
+    assert_eq!(
+        wakes.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "the sink's push woke the frontend"
+    );
+    let (_, queries, _, _) = rt.drain_inbox(&mut host, &mut screen);
+    assert_eq!(queries, 1, "the queued event applied to its cell");
+    assert!(rt.dirty(&screen), "the applied answer reports dirty");
+
+    let root = rt.frame(&mut host, &screen).clone();
+    let text = find_ty(&root, "we-text")
+        .and_then(|n| n.props.get("text"))
+        .cloned();
+    assert!(
+        matches!(&text, Some(v) if v.strict_eq(&Value::from(1.0))),
+        "the later frame paints the rows: {text:?}"
+    );
+    let on = find_ty(&root, "we-flag")
+        .and_then(|n| n.props.get("on"))
+        .cloned();
+    assert!(
+        matches!(&on, Some(Value::Bool(true))),
+        "Loaded flips once rows land: {on:?}"
+    );
+}
+
+/// A second live result on the same ticket replaces the first wholesale —
+/// the shape a live subscription's update takes until E3c-5b reconciles
+/// rows.
+#[test]
+fn second_live_result_appears() {
+    let node = json!({ "type": "Column",
+        "$queries": { "items": { "entity": "Task" } },
+        "children": [{ "type": "we-text",
+            "props": { "text": { "$": "first(local.items).id" } } }] });
+    let source = Counting::new(); // answers {id:"Task-1"} inside `open`
+    let (mut rt, mut host, mut screen, _bag) = rig(node, source.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    let text = find_ty(&root, "we-text")
+        .and_then(|n| n.props.get("text"))
+        .cloned();
+    assert!(
+        matches!(&text, Some(Value::Str(s)) if s.as_ref() == "Task-1"),
+        "the open answer painted: {text:?}"
+    );
+
+    source.deliver("Task", vec![Value::from_json(&json!({ "id": "Task-2" }))]);
+    let (_, queries, _, _) = rt.drain_inbox(&mut host, &mut screen);
+    assert_eq!(queries, 1, "the refill applied");
+    assert!(rt.dirty(&screen));
+    let root = rt.frame(&mut host, &screen).clone();
+    let text = find_ty(&root, "we-text")
+        .and_then(|n| n.props.get("text"))
+        .cloned();
+    assert!(
+        matches!(&text, Some(Value::Str(s)) if s.as_ref() == "Task-2"),
+        "the second result replaced the first wholesale: {text:?}"
+    );
+}
+
+/// The claim was wide while a flag held and narrows when it drops — the
+/// wide ticket closes and a result the source pushes on it afterwards is
+/// a dead ticket's event: dropped, so the narrow cell's own answer stands
+/// (its own key, its own ticket).
+#[test]
+fn narrow_result_not_overwritten_by_wide_late_result() {
+    let node = json!({ "type": "Column",
+        "$queries": { "items": { "entity": { "$": "flags.a ? 'Wide' : 'Narrow'" } } },
+        "children": [{ "type": "we-text",
+            "props": { "text": { "$": "first(local.items).id" } } }] });
+    let source = Counting::new();
+    source
+        .hold
+        .lock()
+        .unwrap()
+        .extend(["Wide".into(), "Narrow".into()]);
+    let (mut rt, mut host, mut screen, bag) = rig(node, source.clone());
+    set_flag(&bag, "a", true);
+    rt.frame(&mut host, &screen);
+    assert_eq!(source.opens_for("Wide").len(), 1, "the wide request opened");
+    let stale = source
+        .live
+        .lock()
+        .unwrap()
+        .values()
+        .next()
+        .map(|(_, sink)| sink.clone())
+        .expect("the wide ticket kept a sink");
+
+    set_flag(&bag, "a", false);
+    rt.frame(&mut host, &screen);
+    assert_eq!(
+        source.opens_for("Narrow").len(),
+        1,
+        "the narrow request opened on its own ticket"
+    );
+    assert_eq!(source.close_count(), 1, "the wide ticket closed");
+
+    // The narrow answer lands on the narrow ticket.
+    source.deliver("Narrow", vec![Value::from_json(&json!({ "id": "n1" }))]);
+    rt.drain_inbox(&mut host, &mut screen);
+    let root = rt.frame(&mut host, &screen).clone();
+    let text = find_ty(&root, "we-text")
+        .and_then(|n| n.props.get("text"))
+        .cloned();
+    assert!(
+        matches!(&text, Some(Value::Str(s)) if s.as_ref() == "n1"),
+        "the narrow result painted: {text:?}"
+    );
+
+    // The wide result pushed on its closed ticket dies at apply — the
+    // narrow cell keeps its own rows and the frame stays quiet.
+    let before = rt.hub().revision();
+    stale.deliver(QueryEvent::Rows(Arc::new(vec![Value::from_json(
+        &json!({ "id": "wide-ghost" }),
+    )])));
+    let (_, queries, _, _) = rt.drain_inbox(&mut host, &mut screen);
+    assert_eq!(queries, 0, "the dead ticket's event applied to nothing");
+    assert!(!rt.dirty(&screen), "a dropped event cannot dirty the frame");
+    assert_eq!(rt.hub().revision(), before, "no visible change");
+    let root = rt.frame(&mut host, &screen).clone();
+    let text = find_ty(&root, "we-text")
+        .and_then(|n| n.props.get("text"))
+        .cloned();
+    assert!(
+        matches!(&text, Some(Value::Str(s)) if s.as_ref() == "n1"),
+        "the narrow result was not overwritten: {text:?}"
+    );
+}
+
+/// A source that never answers leaves the entry `Loading` — and that is
+/// all: one resolve, one `open`, then quiet frames. `Loading` is not an
+/// event; nothing bumps, so nothing re-resolves.
+#[test]
+fn loading_source_does_not_spin() {
+    let node = json!({ "type": "Column",
+        "$queries": { "items": { "entity": "Task" } },
+        "children": [{ "type": "we-text",
+            "props": { "text": { "$": "local.items.length" } } }] });
+    let source = Counting::new().holding("Task");
+    let (mut rt, mut host, screen, _bag) = rig(node, source.clone());
+    rt.frame(&mut host, &screen);
+    assert_eq!(rt.stats().resolves, 1, "the loading frame resolved once");
+    assert_eq!(source.open_count(), 1, "the request opened and stays held");
+    assert!(
+        !rt.dirty(&screen),
+        "Loading is not work — the poll is quiet"
+    );
+
+    rt.frame(&mut host, &screen);
+    rt.frame(&mut host, &screen);
+    assert_eq!(
+        rt.stats().resolves,
+        1,
+        "an unanswered subscription does not re-resolve"
+    );
+    assert_eq!(source.open_count(), 1, "and is not re-asked");
+    assert_eq!(rt.hub().held(), 1, "the claim stays held");
+}
+
+/// Nine dependent queries — each asks the entity the previous answer
+/// names — outrun the eight-pass budget: the first frame shows the
+/// partial tree, reports dirty and wakes; the second finishes; the third
+/// is quiet.
+#[test]
+fn chain_longer_than_eight_continues_and_goes_quiet() {
+    let node = json!({ "type": "Column",
+        "$queries": {
+            "q0": { "entity": "E0" },
+            "q1": { "entity": { "$": "first(local.q0).kind" } },
+            "q2": { "entity": { "$": "first(local.q1).kind" } },
+            "q3": { "entity": { "$": "first(local.q2).kind" } },
+            "q4": { "entity": { "$": "first(local.q3).kind" } },
+            "q5": { "entity": { "$": "first(local.q4).kind" } },
+            "q6": { "entity": { "$": "first(local.q5).kind" } },
+            "q7": { "entity": { "$": "first(local.q6).kind" } },
+            "q8": { "entity": { "$": "first(local.q7).kind" } }
+        },
+        "children": [{ "type": "we-text",
+            "props": { "text": { "$": "local.q8.length" } } }] });
+    let source = Arc::new(Stair::default());
+    let bag = Arc::new(StoreBag::new());
+    let mut rt = Runtime::new(schema(node), "test", bag.clone(), LocalState::new())
+        .with_sources(Some(source.clone()), Arc::new(we_template::NoParts));
+    let wakes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let w = wakes.clone();
+    rt.inbox().set_waker(Arc::new(move || {
+        w.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }));
+    let mut host = StaticHost::new(bag);
+    let screen = screen("/");
+
+    // Frame one: the climb opens one level per pass — E0..E7 inside the
+    // budget — shows the partial tree, reports dirty and wakes.
+    let root = rt.frame(&mut host, &screen).clone();
+    let text = find_ty(&root, "we-text")
+        .and_then(|n| n.props.get("text"))
+        .cloned();
+    assert!(
+        matches!(&text, Some(v) if v.strict_eq(&Value::from(0.0))),
+        "the partial tree is what there is to show: {text:?}"
+    );
+    assert_eq!(rt.hub().held(), 8, "eight levels opened in eight passes");
+    assert!(rt.dirty(&screen), "the leftover work reports dirty");
+    assert_eq!(
+        wakes.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "the exhausted budget woke the frontend"
+    );
+
+    // Frame two: the climb resumes — the ninth level opens and delivers,
+    // then a quiet pass ends it.
+    let root = rt.frame(&mut host, &screen).clone();
+    let text = find_ty(&root, "we-text")
+        .and_then(|n| n.props.get("text"))
+        .cloned();
+    assert!(
+        matches!(&text, Some(v) if v.strict_eq(&Value::from(1.0))),
+        "the second frame finished the chain: {text:?}"
+    );
+    assert_eq!(rt.hub().held(), 9, "all nine levels held");
+    assert!(!rt.dirty(&screen), "done — quiet");
+
+    // Frame three: nothing left, no resolve at all.
+    rt.frame(&mut host, &screen);
+    assert_eq!(rt.stats().resolves, 2, "two resolves, then quiet");
+    assert_eq!(
+        wakes.load(std::sync::atomic::Ordering::SeqCst),
+        1,
+        "and no further wakes"
+    );
+    assert_eq!(
+        source.opens.lock().unwrap().len(),
+        9,
+        "each level asked exactly once"
+    );
+}
+
+/// Lal F2: a `Ready` claim on a cell an earlier pass filled answers inside
+/// the pass. A second copy of the nine-level chain mounts once the first
+/// has settled: every level's claim lands on a filled cell, so the next
+/// level compiles from it in the same round and the whole chain settles in
+/// one pass — no budget left over, no wake, no new `open` — where the cold
+/// chain needed two frames.
+#[test]
+fn a_prefilled_cell_answers_inside_the_pass() {
+    let chain = json!({
+        "q0": { "entity": "E0" },
+        "q1": { "entity": { "$": "first(local.q0).kind" } },
+        "q2": { "entity": { "$": "first(local.q1).kind" } },
+        "q3": { "entity": { "$": "first(local.q2).kind" } },
+        "q4": { "entity": { "$": "first(local.q3).kind" } },
+        "q5": { "entity": { "$": "first(local.q4).kind" } },
+        "q6": { "entity": { "$": "first(local.q5).kind" } },
+        "q7": { "entity": { "$": "first(local.q6).kind" } },
+        "q8": { "entity": { "$": "first(local.q7).kind" } }
+    });
+    let node = json!({ "type": "Column", "children": [
+        { "type": "Row", "$queries": chain.clone(), "children": [] },
+        { "type": "$if", "props": { "condition": { "$": "flags.b" },
+            "then": { "type": "Column", "$queries": chain,
+                "children": [{ "type": "we-text",
+                    "props": { "text": { "$": "first(local.q8).id" } } }] } } }
+    ] });
+    let source = Arc::new(Stair::default());
+    let bag = Arc::new(StoreBag::new());
+    let mut rt = Runtime::new(schema(node), "test", bag.clone(), LocalState::new())
+        .with_sources(Some(source.clone()), Arc::new(we_template::NoParts));
+    let wakes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let w = wakes.clone();
+    rt.inbox().set_waker(Arc::new(move || {
+        w.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }));
+    let mut host = StaticHost::new(bag.clone());
+    let mut screen = screen("/");
+
+    // The cold chain: two frames, as above.
+    rt.frame(&mut host, &screen);
+    rt.frame(&mut host, &screen);
+    assert!(!rt.dirty(&screen), "the cold chain settled");
+    assert_eq!(source.opens.lock().unwrap().len(), 9);
+
+    // The warm copy: one frame, one pass. The flag write queues its own
+    // invalidation and wakes for it; the poll drains it, as a frontend's
+    // would, and the count starts after.
+    set_flag(&bag, "b", true);
+    rt.drain_inbox(&mut host, &mut screen);
+    let woke = wakes.load(std::sync::atomic::Ordering::SeqCst);
+    let resolves = rt.stats().resolves;
+    let root = rt.frame(&mut host, &screen).clone();
+    let text = find_ty(&root, "we-text")
+        .and_then(|n| n.props.get("text"))
+        .cloned();
+    assert!(
+        matches!(&text, Some(Value::Str(s)) if s.as_ref() == "E8-row"),
+        "the warm chain reached the ninth level in one frame: {text:?}"
+    );
+    assert!(!rt.dirty(&screen), "nothing left over");
+    assert_eq!(
+        wakes.load(std::sync::atomic::Ordering::SeqCst),
+        woke,
+        "no exhausted budget, no wake"
+    );
+    assert_eq!(
+        source.opens.lock().unwrap().len(),
+        9,
+        "every level shared a filled cell"
+    );
+    rt.frame(&mut host, &screen);
+    assert_eq!(
+        rt.stats().resolves,
+        resolves + 1,
+        "and the next frame is quiet"
+    );
+}
+
+/// A `$queries` block whose compiles can never settle keeps the last
+/// round's claims as its bounded fallback and warns (Lal F3) — and goes
+/// quiet across frames: the rotating claims hit cells the first pass
+/// already filled, so nothing visible moves again.
+#[test]
+fn oscillating_cycle_warns_and_goes_quiet() {
+    // A host-function proxy for the oscillation the round bound exists
+    // for, not an authored local cycle. Slots do fill inside a pass — a
+    // `Ready` claim on a cell an earlier pass filled returns its rows at
+    // once (`a_prefilled_cell_answers_inside_the_pass`) — but a fresh
+    // mutual cycle gates: a compile that reads a sibling's unloaded slot
+    // is `Provisional`, and claiming that returns an empty view even when
+    // an equivalent cell exists, so no ready key rotates. `flip` instead
+    // answers a different entity each call. Its period (three) divides
+    // the six calls a pass makes (two queries, three rounds), so every
+    // pass ends on the same pair B/C: the second frame reuses those cells
+    // and goes quiet. A period that does not divide the calls would
+    // alternate pairs between passes and keep waking — bounded per frame,
+    // never quiet; that is the contract (quiet once nothing visible
+    // changes), not a gap this pins.
+    let node = json!({ "type": "Column",
+        "$queries": {
+            "qa": { "entity": { "$": "flip()" } },
+            "qb": { "entity": { "$": "flip()" } }
+        },
+        "children": [{ "type": "we-text",
+            "props": { "text": { "$": "local.qa.length" } } }] });
+    let source = Counting::new(); // answers whatever opens
+    let (mut rt, mut host, screen, bag) = rig(node, source.clone());
+    let n = Arc::new(std::sync::atomic::AtomicU64::new(0));
+    let n2 = n.clone();
+    bag.set_function(
+        "flip",
+        Arc::new(move |_| {
+            let i = n2.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Value::from(["A", "B", "C"][(i % 3) as usize])
+        }),
+    );
+
+    rt.frame(&mut host, &screen);
+    // One retained diagnostic per node and pass (deduplicated within the
+    // pass's warnings), not one ever: a later dirty resolve may say it again.
+    assert_eq!(
+        rt.stats()
+            .warnings
+            .iter()
+            .filter(|w| w.contains("did not settle") && w.contains("dependency cycle"))
+            .count(),
+        1,
+        "the settle loop exhausted its bound and warned once: {:?}",
+        rt.stats().warnings
+    );
+    assert!(
+        !rt.dirty(&screen),
+        "kept the bounded fallback — the poll is quiet"
+    );
+
+    rt.frame(&mut host, &screen);
+    rt.frame(&mut host, &screen);
+    assert_eq!(
+        rt.stats().resolves,
+        1,
+        "claims rotate over filled cells — no re-resolve, no spin"
+    );
+}
+
+/// `Failed` settles the cell loaded with no rows and its value readable
+/// as `local.<name>Error`; a healthy sibling's `<name>Error` reads
+/// `undefined`. A `Failed` that lands after rows clears them — the
+/// table's `any → Failed` rule — still loaded.
+#[test]
+fn failed_query_reports_loaded_with_error() {
+    let node = json!({ "type": "Column",
+        "$queries": {
+            "items": { "entity": "Task" },
+            "fine": { "entity": "Ok" },
+            "late": { "entity": "Late" }
+        },
+        "children": [
+            { "type": "we-err",  "props": { "v": { "$": "local.itemsError" } } },
+            { "type": "we-flag", "props": { "on": { "$": "local.itemsLoaded" } } },
+            { "type": "we-num",  "props": { "v": { "$": "local.items.length" } } },
+            { "type": "we-ok",   "props": { "v": { "$": "local.fineError" } } },
+            { "type": "we-late", "props": { "err": { "$": "local.lateError" },
+                "n": { "$": "local.late.length" },
+                "on": { "$": "local.lateLoaded" } } }
+        ] });
+    let source = Counting::new().failing("Task");
+    source.hold.lock().unwrap().push("Late".into());
+    let (mut rt, mut host, mut screen, _bag) = rig(node, source.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    let err = find_ty(&root, "we-err")
+        .and_then(|n| n.props.get("v"))
+        .cloned();
+    assert!(
+        matches!(&err, Some(Value::Str(s)) if s.as_ref() == "Task failed"),
+        "local.itemsError carries the failure: {err:?}"
+    );
+    let on = find_ty(&root, "we-flag")
+        .and_then(|n| n.props.get("on"))
+        .cloned();
+    assert!(
+        matches!(&on, Some(Value::Bool(true))),
+        "a failed read reports loaded, as WE does: {on:?}"
+    );
+    let n = find_ty(&root, "we-num")
+        .and_then(|n| n.props.get("v"))
+        .cloned();
+    assert!(
+        matches!(&n, Some(v) if v.strict_eq(&Value::from(0.0))),
+        "and no rows: {n:?}"
+    );
+    let ok = find_ty(&root, "we-ok")
+        .and_then(|n| n.props.get("v"))
+        .cloned();
+    assert!(
+        matches!(&ok, Some(Value::Undefined)),
+        "a healthy query's <name>Error reads undefined: {ok:?}"
+    );
+
+    // Rows arrive late, then a failure replaces them — `any → Failed`.
+    source.deliver("Late", vec![Value::from_json(&json!({ "id": "l1" }))]);
+    rt.drain_inbox(&mut host, &mut screen);
+    rt.frame(&mut host, &screen);
+    source.deliver_failed("Late", Value::from("late broke"));
+    rt.drain_inbox(&mut host, &mut screen);
+    let root = rt.frame(&mut host, &screen).clone();
+    let late = find_ty(&root, "we-late").expect("we-late mounts");
+    assert!(
+        matches!(late.props.get("err"), Some(Value::Str(s)) if s.as_ref() == "late broke"),
+        "the later failure landed on <name>Error: {:?}",
+        late.props.get("err")
+    );
+    assert!(
+        matches!(late.props.get("n"), Some(v) if v.strict_eq(&Value::from(0.0))),
+        "the rows are gone: {:?}",
+        late.props.get("n")
+    );
+    assert!(
+        matches!(late.props.get("on"), Some(Value::Bool(true))),
+        "still loaded: {:?}",
+        late.props.get("on")
+    );
+}
+
+/// A snapshot-style source: answers inside `open`, each row naming the
+/// entity the next link of a chain asks.
+#[derive(Default)]
+struct Stair {
+    opens: Mutex<Vec<String>>,
+}
+
+impl QuerySource for Stair {
+    fn open(
+        &self,
+        _ticket: SubTicket,
+        request: &QueryRequest,
+        handles: &HandleTable,
+        sink: QuerySink,
+    ) {
+        let entity = request.classes.first().cloned().unwrap_or("?".into());
+        self.opens
+            .lock()
+            .unwrap()
+            .push(request.key(None, handles).as_str().to_string());
+        let next = entity
+            .strip_prefix('E')
+            .and_then(|n| n.parse::<u64>().ok())
+            .map(|n| format!("E{}", n + 1))
+            .unwrap_or_else(|| "E0".into());
+        sink.deliver(QueryEvent::Rows(Arc::new(vec![Value::from_json(
+            &json!({ "id": format!("{entity}-row"), "kind": next }),
+        )])));
+    }
+
+    fn close(&self, _ticket: SubTicket) {}
+}
+
 fn find_ty<'a>(node: &'a ResolvedNode, ty: &str) -> Option<&'a ResolvedNode> {
     if node.ty.as_ref() == ty {
         return Some(node);
@@ -982,4 +1632,208 @@ fn find_ty<'a>(node: &'a ResolvedNode, ty: &str) -> Option<&'a ResolvedNode> {
         ResolvedChild::Node(n) => find_ty(n, ty),
         _ => None,
     })
+}
+
+// ---- E3c-5a round 2 (Lal F1): `<name>Error` never shadows an authored name ----
+//
+// `<name>Error` is the port's extension — WE synthesises only `<name>` and
+// `<name>Loaded` (`SchemaRenderer.tsx`), and those two keep WE's rule: the
+// query's accessors spread over `$local`, so they win. The Error companion
+// has no WE meaning to defend, so an authored name always wins over it: a
+// `$localState` field, or a query, of the same name.
+
+/// `$localState: { saveError }` beside `$queries: { save }` keeps the
+/// authored field — its value, its `$fields` membership, and the
+/// `$setLocal`/`$resetLocal` that find it through `$owner`.
+#[test]
+fn an_authored_local_wins_over_the_error_companion() {
+    let node = json!({ "type": "Column",
+        "$localState": { "saveError": { "type": "string", "initial": "authored" } },
+        "$queries": { "save": { "entity": "Task" } },
+        "props": {
+            "onEdit": { "$setLocal": "saveError", "value": "edited" },
+            "onReset": { "$resetLocal": "$scope" }
+        },
+        "children": [
+            { "type": "we-err", "props": { "v": { "$": "local.saveError" } } },
+            { "type": "we-fields", "props": { "v": { "$": "local['$fields']" } } }
+        ] });
+    let source = Counting::new().failing("Task");
+    let bag = Arc::new(StoreBag::new());
+    let locals = LocalState::new();
+    let mut rt = Runtime::new(schema(node), "test", bag.clone(), locals.clone())
+        .with_sources(Some(source), Arc::new(we_template::NoParts));
+    let mut host = StaticHost::new(bag);
+    let mut screen = screen("/");
+    let err_of = |root: &ResolvedNode| {
+        find_ty(root, "we-err")
+            .and_then(|n| n.props.get("v"))
+            .cloned()
+    };
+
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+    let err = err_of(&root);
+    assert!(
+        matches!(&err, Some(Value::Str(s)) if s.as_ref() == "authored"),
+        "the authored field wins over the failed query's companion: {err:?}"
+    );
+    let fields = find_ty(&root, "we-fields")
+        .and_then(|n| n.props.get("v"))
+        .cloned();
+    assert!(
+        matches!(&fields, Some(Value::List(l))
+            if l.iter().any(|v| v.strict_eq(&Value::from("saveError")))),
+        "the authored field stays in local.$fields: {fields:?}"
+    );
+
+    rt.dispatch(&mut host, &mut screen, &owner, "onEdit", Value::Null);
+    assert!(
+        locals
+            .get(&owner, "saveError")
+            .strict_eq(&Value::from("edited")),
+        "$setLocal still finds the authored field: {:?}",
+        locals.get(&owner, "saveError")
+    );
+    let root = rt.frame(&mut host, &screen).clone();
+    assert!(
+        matches!(&err_of(&root), Some(Value::Str(s)) if s.as_ref() == "edited"),
+        "and the read follows it: {:?}",
+        err_of(&root)
+    );
+    rt.dispatch(&mut host, &mut screen, &owner, "onReset", Value::Null);
+    assert!(
+        locals
+            .get(&owner, "saveError")
+            .strict_eq(&Value::from("authored")),
+        "$resetLocal restores the authored initial: {:?}",
+        locals.get(&owner, "saveError")
+    );
+}
+
+/// A query named `fooError` beside a query `foo` keeps its rows under its
+/// own name, whichever is declared first — `foo`'s error is then not
+/// readable by that name, and that is the price of the collision.
+#[test]
+fn an_authored_query_wins_over_the_error_companion_in_either_order() {
+    for order in [["foo", "fooError"], ["fooError", "foo"]] {
+        // Spelled as text: a `json!` map may sort its keys, and the order
+        // the two are declared in is the point.
+        let decl = |name: &str| {
+            let entity = if name == "foo" { "Broken" } else { "Task" };
+            format!("\"{name}\": {{ \"entity\": \"{entity}\" }}")
+        };
+        let queries = format!("{{ {}, {} }}", decl(order[0]), decl(order[1]));
+        let mut node = json!({ "type": "Column",
+            "children": [
+                { "type": "we-n", "props": { "v": { "$": "first(local.fooError).id" } } },
+                { "type": "we-on", "props": { "v": { "$": "local.fooLoaded" } } }
+            ] });
+        node["$queries"] = serde_json::from_str(&queries).unwrap();
+        let source = Counting::new().failing("Broken");
+        let (mut rt, mut host, screen, _bag) = rig(node, source);
+        let root = rt.frame(&mut host, &screen).clone();
+        let v = find_ty(&root, "we-n")
+            .and_then(|n| n.props.get("v"))
+            .cloned();
+        assert!(
+            matches!(&v, Some(Value::Str(s)) if s.as_ref() == "Task-1"),
+            "{order:?}: local.fooError is the query of that name: {v:?}"
+        );
+        let on = find_ty(&root, "we-on")
+            .and_then(|n| n.props.get("v"))
+            .cloned();
+        assert!(
+            matches!(&on, Some(Value::Bool(true))),
+            "{order:?}: foo's own companions are untouched: {on:?}"
+        );
+    }
+}
+
+// ---- E3c-5a round 2 (Lal F3): `<name>Error` clears, and is a tracked read ----
+
+/// A subscription that fails and later supplies rows on the same ticket
+/// recovers: `<name>Error` reads `undefined` again, Loaded stays true, the
+/// rows render.
+#[test]
+fn a_later_success_clears_the_error() {
+    let node = json!({ "type": "Column",
+        "$queries": { "items": { "entity": "Task" } },
+        "children": [{ "type": "we-q", "props": {
+            "err": { "$": "local.itemsError" },
+            "on": { "$": "local.itemsLoaded" },
+            "n": { "$": "local.items.length" } } }] });
+    let source = Counting::new().failing("Task");
+    let (mut rt, mut host, mut screen, _bag) = rig(node, source.clone());
+    let root = rt.frame(&mut host, &screen).clone();
+    let q = find_ty(&root, "we-q").expect("we-q mounts");
+    assert!(
+        matches!(q.props.get("err"), Some(Value::Str(s)) if s.as_ref() == "Task failed"),
+        "failed first: {:?}",
+        q.props.get("err")
+    );
+
+    source.deliver("Task", vec![Value::from_json(&json!({ "id": "t1" }))]);
+    let (_, queries, _, _) = rt.drain_inbox(&mut host, &mut screen);
+    assert_eq!(queries, 1, "the success on the same ticket applied");
+    let root = rt.frame(&mut host, &screen).clone();
+    let q = find_ty(&root, "we-q").expect("we-q mounts");
+    assert!(
+        matches!(q.props.get("err"), Some(Value::Undefined)),
+        "the error cleared: {:?}",
+        q.props.get("err")
+    );
+    assert!(
+        matches!(q.props.get("on"), Some(Value::Bool(true))),
+        "still loaded: {:?}",
+        q.props.get("on")
+    );
+    assert!(
+        matches!(q.props.get("n"), Some(v) if v.strict_eq(&Value::from(1.0))),
+        "the rows render: {:?}",
+        q.props.get("n")
+    );
+}
+
+/// A query that reads `local.itemsError` is a dependent of `items`: it is
+/// withheld while `items` loads (the read is noted, the slot is unloaded),
+/// asks the fallback once `items` fails, and moves back when it recovers.
+#[test]
+fn a_dependent_recomputes_on_the_error() {
+    let node = json!({ "type": "Column",
+        "$queries": {
+            "items": { "entity": "Task" },
+            "dep": { "entity": { "$": "local.itemsError ? 'Fallback' : 'Primary'" } }
+        },
+        "children": [] });
+    let source = Counting::new().holding("Task");
+    let (mut rt, mut host, mut screen, _bag) = rig(node, source.clone());
+    rt.frame(&mut host, &screen);
+    assert!(
+        source.opens_for("Primary").is_empty() && source.opens_for("Fallback").is_empty(),
+        "the dependent waits for items to settle"
+    );
+
+    source.deliver_failed("Task", Value::from("broke"));
+    rt.drain_inbox(&mut host, &mut screen);
+    rt.frame(&mut host, &screen);
+    assert_eq!(
+        source.opens_for("Fallback").len(),
+        1,
+        "the failure asks the fallback"
+    );
+    assert!(
+        source.opens_for("Primary").is_empty(),
+        "and never the primary"
+    );
+
+    source.deliver("Task", vec![Value::from_json(&json!({ "id": "t1" }))]);
+    rt.drain_inbox(&mut host, &mut screen);
+    rt.frame(&mut host, &screen);
+    assert_eq!(
+        source.opens_for("Primary").len(),
+        1,
+        "the recovery moves it back"
+    );
+    assert_eq!(source.close_count(), 1, "and closes the fallback");
 }

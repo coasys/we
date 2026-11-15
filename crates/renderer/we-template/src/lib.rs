@@ -30,6 +30,7 @@ mod resolve;
 mod resolved;
 mod runtime;
 mod scope;
+mod screen_view;
 mod surface;
 
 pub use bindings::{DataRevision, Invalidator};
@@ -55,7 +56,10 @@ pub use resolved::{
     TransitionEffect, TransitionKind,
 };
 pub use runtime::{AppSpec, RootSpec, Runtime, StaticHost, Stats, ORPHANED_CAP};
-pub use scope::{bind_screen, FieldMeta, LocalDecl, LocalNs, LocalScope, ScopeEnv, StoreBag};
+pub use scope::{
+    content_eq, FieldMeta, LocalDecl, LocalNs, LocalScope, RootLayer, Roots, ScopeEnv, StoreBag,
+};
+pub use screen_view::ScreenView;
 pub use surface::{SurfaceKey, SurfaceTag};
 /// The mount-identity family lives in `we-expr` (a `Namespace::as_handle`
 /// must name a type from below `we-template`; E3c-7, R4). Re-exported so
