@@ -146,29 +146,21 @@ pub const COLLECTION_SDNA: &str = r#"{
   ]
 }"#;
 
-/// Mint the agent, add a perspective, install `CollectionBlock`. Returns
-/// the perspective's uuid.
-pub fn seed_space(rt: &Runtime, conn: &Connection, name: &str) -> String {
+/// Mint the agent and add an empty perspective. Returns its uuid.
+pub fn new_space(rt: &Runtime, conn: &Connection, name: &str) -> String {
     let client = conn.client();
     rt.block_on(async {
         let status = client.agent.generate("passphrase".into()).await.unwrap();
         assert!(status.is_unlocked);
-        let handle = client.perspectives.add(name.into()).await.unwrap();
-        conn.ws()
-            .call::<Value>(
-                "perspective.addSdna",
-                json!({
-                    "uuid": handle.uuid,
-                    "name": "CollectionBlock",
-                    "sdnaCode": "",
-                    "sdnaType": "subject_class",
-                    "shaclJson": COLLECTION_SDNA,
-                }),
-            )
-            .await
-            .unwrap();
-        handle.uuid
+        client.perspectives.add(name.into()).await.unwrap().uuid
     })
+}
+
+/// [`new_space`] with `CollectionBlock` installed. Returns the uuid.
+pub fn seed_space(rt: &Runtime, conn: &Connection, name: &str) -> String {
+    let uuid = new_space(rt, conn, name);
+    add_class(rt, conn, &uuid, "CollectionBlock", COLLECTION_SDNA);
+    uuid
 }
 
 /// A post, written by another client as links: the constructor link
