@@ -582,6 +582,7 @@ mod tests {
         let sfnt = vt323_sfnt();
         let fitted = crate::pixel_grid::snap_x(&sfnt).expect("VT323 rewrites");
         assert!(fitted.len() > sfnt.len());
+        assert_eq!(crate::pixel_grid::checksum(&fitted), 0xb1b0_afba);
     }
 
     #[test]

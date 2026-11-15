@@ -48,7 +48,7 @@ fn put_u16(b: &mut [u8], at: usize, v: u16) {
 
 /// The sfnt table checksum: the sum of the table's big-endian u32 words,
 /// zero-padded to a whole word.
-fn checksum(table: &[u8]) -> u32 {
+pub(crate) fn checksum(table: &[u8]) -> u32 {
     table.chunks(4).fold(0u32, |sum, w| {
         let mut word = [0u8; 4];
         word[..w.len()].copy_from_slice(w);
@@ -238,7 +238,8 @@ fn snap_glyph(g: &[u8]) -> Option<Vec<u8>> {
 
 /// `ttf` with every glyph's x grid-fitted under hinting (see the module
 /// docs). The glyf, loca, head and maxp tables are rewritten; everything
-/// else is copied. `None` when the font is not a TrueType sfnt this can
+/// else is copied. Table checksums and head's checkSumAdjustment are
+/// recomputed for the rebuilt file. `None` when the font is not a TrueType sfnt this can
 /// read — the caller keeps the original.
 pub(crate) fn snap_x(ttf: &[u8]) -> Option<Vec<u8>> {
     let num_tables = u16_at(ttf, 4)? as usize;
@@ -291,9 +292,11 @@ pub(crate) fn snap_x(ttf: &[u8]) -> Option<Vec<u8>> {
     new_loca.extend(u32::try_from(new_glyf.len()).ok()?.to_be_bytes());
     tables[glyf].1 = new_glyf;
     tables[loca].1 = new_loca;
-    // Long loca offsets now; the checksum adjustment is left stale (no
-    // reader here verifies it).
+    // Long loca offsets now. checkSumAdjustment is zeroed for the table
+    // checksums and written once the file is assembled. skrifa ignores
+    // it, but a sanitiser or another reader may not.
     put_u16(&mut tables[head].1, 50, 1);
+    tables[head].1.get_mut(8..12)?.fill(0);
     // maxp 1.0: maxStackElements (24) — the tail pushes at most two values
     // at a time — and maxSizeOfInstructions (26).
     let stack = u16_at(&tables[maxp].1, 24)?;
@@ -304,7 +307,11 @@ pub(crate) fn snap_x(ttf: &[u8]) -> Option<Vec<u8>> {
     out.extend_from_slice(ttf.get(..12)?);
     let mut data_at = 12 + 16 * tables.len();
     let mut body = Vec::new();
-    for (tag, data) in &tables {
+    let mut head_at = 0;
+    for (i, (tag, data)) in tables.iter().enumerate() {
+        if i == head {
+            head_at = data_at;
+        }
         out.extend_from_slice(tag);
         out.extend(checksum(data).to_be_bytes());
         out.extend(u32::try_from(data_at).ok()?.to_be_bytes());
@@ -316,6 +323,9 @@ pub(crate) fn snap_x(ttf: &[u8]) -> Option<Vec<u8>> {
         data_at = 12 + 16 * tables.len() + body.len();
     }
     out.extend(body);
+    let adjustment = 0xb1b0_afbau32.wrapping_sub(checksum(&out));
+    out.get_mut(head_at + 8..head_at + 12)?
+        .copy_from_slice(&adjustment.to_be_bytes());
     Some(out)
 }
 
@@ -441,6 +451,31 @@ mod tests {
         assert_eq!(&out[..4], &[0, 1, 0, 0]);
         let out = snap_x(&font(&[&square()], 1)).expect("long loca too");
         assert_eq!(&out[..4], &[0, 1, 0, 0]);
+    }
+
+    /// The sfnt checksums of a rebuilt font hold: each directory entry's
+    /// sum is its table's (head's with `checkSumAdjustment` zeroed), and
+    /// the whole file sums to 0xB1B0AFBA.
+    #[test]
+    fn the_rebuilt_font_carries_valid_checksums() {
+        let out = snap_x(&font(&[&square()], 0)).unwrap();
+        let tables = u16_at(&out, 4).unwrap() as usize;
+        for i in 0..tables {
+            let rec = 12 + 16 * i;
+            let off = u32_at(&out, rec + 8).unwrap() as usize;
+            let len = u32_at(&out, rec + 12).unwrap() as usize;
+            let mut data = out[off..off + len].to_vec();
+            if &out[rec..rec + 4] == b"head" {
+                data[8..12].fill(0);
+            }
+            assert_eq!(
+                u32_at(&out, rec + 4).unwrap(),
+                checksum(&data),
+                "{:?}",
+                std::str::from_utf8(&out[rec..rec + 4])
+            );
+        }
+        assert_eq!(checksum(&out), 0xb1b0_afba);
     }
 
     /// Glyph records that cannot hold what they declare. Each must leave
