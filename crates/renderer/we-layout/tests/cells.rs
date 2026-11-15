@@ -476,9 +476,92 @@ fn sub_half_cell_sliver_projects_zero_wide() {
     assert_eq!(sliver.cols, 0, "a sub-half-cell box is not drawn");
 }
 
+/// A rect whose right/bottom edges snap *before* its left/top — an
+/// inverted box, a negative cell size or a NaN edge can all produce one —
+/// projects to zero cells on that axis, not 65535. Taffy never hands one
+/// out, so the guard is for the painter that consumes `CellRect`s, not
+/// the layout walk.
+#[test]
+fn reversed_spans_project_zero_cells() {
+    let proj = CellProjection {
+        cell_w: 8.0,
+        cell_h: 16.0,
+    };
+    let mut rects = HashMap::new();
+    // x [48, 32) → cols [6, 4); y [48, 16) → rows [3, 1).
+    rects.insert(
+        NodeId::from("rev"),
+        Rect {
+            min: Pos2::new(48.0, 48.0),
+            max: Pos2::new(32.0, 16.0),
+        },
+    );
+    // x [0, 8) fine; y reversed [32, 16) → rows [2, 1).
+    rects.insert(
+        NodeId::from("rev-y"),
+        Rect {
+            min: Pos2::new(0.0, 32.0),
+            max: Pos2::new(8.0, 16.0),
+        },
+    );
+    let out = Layout {
+        size: Size::ZERO,
+        rects,
+        styles: HashMap::new(),
+        parts: HashMap::new(),
+        pseudo: HashMap::new(),
+        texts: vec![],
+        scroll: HashMap::new(),
+        scroll_content: HashMap::new(),
+        clip: HashMap::new(),
+        bases: HashMap::new(),
+        unconverged: false,
+    };
+    let cells = project(&out, &proj);
+    let rev = cell(&cells, "rev");
+    assert_eq!(rev.cols, 0, "a reversed x span is zero cells, got {rev:?}");
+    assert_eq!(rev.rows, 0, "a reversed y span is zero cells, got {rev:?}");
+    let rev_y = cell(&cells, "rev-y");
+    assert_eq!(rev_y.cols, 1);
+    assert_eq!(rev_y.rows, 0, "got {rev_y:?}");
+}
+
+/// The far end of the same clamp: a span wider than u16::MAX cells
+/// saturates at 65535 rather than wrapping or panicking.
+#[test]
+fn huge_spans_saturate_at_u16_max() {
+    let proj = CellProjection {
+        cell_w: 8.0,
+        cell_h: 16.0,
+    };
+    let mut rects = HashMap::new();
+    rects.insert(
+        NodeId::from("huge"),
+        Rect {
+            min: Pos2::new(0.0, 0.0),
+            max: Pos2::new(8.0 * 70000.0, 16.0 * 70000.0),
+        },
+    );
+    let out = Layout {
+        size: Size::ZERO,
+        rects,
+        styles: HashMap::new(),
+        parts: HashMap::new(),
+        pseudo: HashMap::new(),
+        texts: vec![],
+        scroll: HashMap::new(),
+        scroll_content: HashMap::new(),
+        clip: HashMap::new(),
+        bases: HashMap::new(),
+        unconverged: false,
+    };
+    let huge = cell(&project(&out, &proj), "huge");
+    assert_eq!((huge.cols, huge.rows), (u16::MAX, u16::MAX));
+}
+
 /// `em` is not in the worked tree: a `2em` width is the font metric made
-/// visible — `UnitMetrics::default().font_px` is the number
-/// `we_layout::defaults::FONT_PX` stands in for today.
+/// visible — `UnitMetrics::default().font_px` is the number the deleted
+/// `we_layout::defaults` font constant stood in for.
 #[test]
 fn em_resolves_against_unit_metrics_font_px() {
     assert_eq!(UnitMetrics::default().font_px, 14.0);

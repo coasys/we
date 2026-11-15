@@ -22,7 +22,7 @@ use we_style::stylesheet::{
 use we_style::{EvalCx, EvalResult, StateKind, Style, StylePatch};
 use we_template::ResolvedNode;
 
-use crate::defaults::{font_px, root_px, StyleCx};
+use crate::defaults::{unit_metrics, StyleCx};
 
 pub use we_style::stylesheet::{install, uninstall};
 
@@ -87,8 +87,7 @@ fn eval_cx<'a>(scx: &'a StyleCx) -> EvalCx<'a> {
     EvalCx {
         tokens: scx.tokens,
         viewport: scx.viewport,
-        font_px: font_px(scx),
-        root_px: root_px(scx),
+        metrics: unit_metrics(scx),
     }
 }
 

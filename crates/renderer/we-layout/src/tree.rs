@@ -16,7 +16,7 @@ use we_expr::Value;
 use we_style::{Dimension, Display as WsDisplay, ItemAlign, Overflow, Position, Style, Wrap};
 use we_template::{NodeId, ResolvedChild, ResolvedNode};
 
-use crate::defaults::{direction_of, effective, font_px, root_px, style_of, StyleCx};
+use crate::defaults::{direction_of, effective, style_of, unit_metrics, StyleCx};
 use crate::{Pos2, Rect, Size, Vec2};
 
 /// A virtual sub-rectangle layout computed for a widget — the caret, row and
@@ -260,12 +260,7 @@ pub struct TextSpan {
 /// A length in px, the way `Dimension::resolve` folds it without a percent
 /// base — `ch`/`ex`/`lh` included, by the shared approximations.
 fn dim_px(d: &Dimension, scx: &StyleCx) -> Option<f32> {
-    d.resolve(
-        None,
-        crate::defaults::font_px(scx),
-        crate::defaults::root_px(scx),
-        scx.viewport,
-    )
+    d.resolve(None, &unit_metrics(scx), scx.viewport)
 }
 
 // ── Percent bases ─────────────────────────────────────────────────────────
@@ -694,12 +689,7 @@ fn main_pick(main: Direction, cb: (AxisBase, AxisBase)) -> AxisBase {
 /// A resolved border side's px — always definite (border widths never
 /// carry percent).
 fn border_px(side: &Option<we_style::BorderSide>, scx: &StyleCx) -> f32 {
-    crate::props::border_side_px(
-        side,
-        crate::defaults::font_px(scx),
-        crate::defaults::root_px(scx),
-        scx.viewport,
-    )
+    crate::props::border_side_px(side, &unit_metrics(scx), scx.viewport)
 }
 
 /// A resolved `LengthPercentage` as px — `None` while it is still a
@@ -825,8 +815,7 @@ fn parse_template(tpl: &str) -> Option<Vec<taffy::GridTemplateComponent<String>>
 fn border_lp(side: &Option<we_style::BorderSide>, scx: &StyleCx) -> LengthPercentage {
     LengthPercentage::length(crate::props::border_side_px(
         side,
-        crate::defaults::font_px(scx),
-        crate::defaults::root_px(scx),
+        &unit_metrics(scx),
         scx.viewport,
     ))
 }
@@ -982,13 +971,8 @@ impl<'a> Builder<'a> {
     fn pct_calc(&mut self, c: &we_style::Calc, b: PctBase) -> PctCalc {
         match self.pct_px(b) {
             Some(v) => PctCalc::Px(
-                c.resolve(
-                    Some(v),
-                    font_px(self.scx),
-                    root_px(self.scx),
-                    self.scx.viewport,
-                )
-                .unwrap_or(0.0),
+                c.resolve(Some(v), &unit_metrics(self.scx), self.scx.viewport)
+                    .unwrap_or(0.0),
             ),
             None if b.base == AxisBase::Indefinite => PctCalc::Cyclic,
             None => PctCalc::Percent(c.percent),
@@ -1035,13 +1019,8 @@ impl<'a> Builder<'a> {
                 PctCalc::Px(v) => LengthPercentage::length(v),
                 PctCalc::Percent(p) => LengthPercentage::percent(p),
                 PctCalc::Cyclic => LengthPercentage::length(
-                    c.resolve(
-                        Some(0.0),
-                        font_px(self.scx),
-                        root_px(self.scx),
-                        self.scx.viewport,
-                    )
-                    .unwrap_or(0.0),
+                    c.resolve(Some(0.0), &unit_metrics(self.scx), self.scx.viewport)
+                        .unwrap_or(0.0),
                 ),
             },
             Some(d) => dim_px(d, self.scx)
@@ -1093,13 +1072,8 @@ impl<'a> Builder<'a> {
                 PctCalc::Px(v) => LengthPercentageAuto::length(v),
                 PctCalc::Percent(p) => LengthPercentageAuto::percent(p),
                 PctCalc::Cyclic => LengthPercentageAuto::length(
-                    c.resolve(
-                        Some(0.0),
-                        font_px(self.scx),
-                        root_px(self.scx),
-                        self.scx.viewport,
-                    )
-                    .unwrap_or(0.0),
+                    c.resolve(Some(0.0), &unit_metrics(self.scx), self.scx.viewport)
+                        .unwrap_or(0.0),
                 ),
             },
             Some(d) => dim_px(d, self.scx)
@@ -1123,13 +1097,8 @@ impl<'a> Builder<'a> {
                 PctCalc::Px(v) => LengthPercentage::length(v),
                 PctCalc::Percent(p) => LengthPercentage::percent(p),
                 PctCalc::Cyclic => LengthPercentage::length(
-                    c.resolve(
-                        Some(0.0),
-                        font_px(self.scx),
-                        root_px(self.scx),
-                        self.scx.viewport,
-                    )
-                    .unwrap_or(0.0),
+                    c.resolve(Some(0.0), &unit_metrics(self.scx), self.scx.viewport)
+                        .unwrap_or(0.0),
                 ),
             },
             Some(d) => dim_px(d, self.scx)
@@ -2628,7 +2597,7 @@ fn place_pseudos(
     pseudos: Vec<(NodeId, crate::theme_css::PseudoBox, f32)>,
     scx: &StyleCx,
 ) {
-    let (fp, rp, vp) = (font_px(scx), root_px(scx), scx.viewport);
+    let (m, vp) = (unit_metrics(scx), scx.viewport);
     for (id, p, reserved) in pseudos {
         let (Some(r), Some(host)) = (out.rects.get(&id).copied(), out.styles.get(&id)) else {
             continue;
@@ -2640,8 +2609,7 @@ fn place_pseudos(
             border_px(&hb.bottom, scx),
             border_px(&hb.left, scx),
         );
-        let res =
-            |d: Option<Dimension>, base: f32| d.and_then(|d| d.resolve(Some(base), fp, rp, vp));
+        let res = |d: Option<Dimension>, base: f32| d.and_then(|d| d.resolve(Some(base), &m, vp));
         let pad = &host.layout.padding;
         let w0 = r.width();
         let (pt, pr, pb, pl) = (

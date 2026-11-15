@@ -38,13 +38,7 @@ impl Widget for Placeholder {
         crate::containers::paint_container(cx, node, style, rect);
         cx.ui.painter().rect_stroke(
             rect,
-            props::radius_px(
-                &style.paint.radius,
-                rect,
-                view.font_px,
-                view.root_px,
-                view.viewport,
-            ),
+            props::radius_px(&style.paint.radius, rect, &view.metrics, view.viewport),
             egui::Stroke::new(1.0, cx.ui.visuals().weak_text_color()),
             egui::StrokeKind::Inside,
         );
@@ -133,13 +127,7 @@ impl Widget for Sheet {
         let view = view_of(cx.ui.ctx());
         cx.ui.painter().rect_stroke(
             content,
-            props::radius_px(
-                &style.paint.radius,
-                content,
-                view.font_px,
-                view.root_px,
-                view.viewport,
-            ),
+            props::radius_px(&style.paint.radius, content, &view.metrics, view.viewport),
             egui::Stroke::new(1.0, cx.ui.visuals().weak_text_color()),
             egui::StrokeKind::Inside,
         );

@@ -45,8 +45,7 @@ pub fn prop_num(node: &ResolvedNode, key: &str) -> Option<f64> {
 /// painting side with no width is CSS `medium` (3).
 pub fn border_side_px(
     side: &Option<we_style::BorderSide>,
-    font_px: f32,
-    root_px: f32,
+    metrics: &we_metrics::UnitMetrics,
     viewport: Size,
 ) -> f32 {
     let Some(side) = side else { return 0.0 };
@@ -58,7 +57,7 @@ pub fn border_side_px(
     }
     side.width
         .as_ref()
-        .and_then(|d| d.to_px(font_px, root_px, viewport))
+        .and_then(|d| d.to_px(metrics, viewport))
         .unwrap_or(3.0)
 }
 

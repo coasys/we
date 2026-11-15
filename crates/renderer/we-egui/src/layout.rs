@@ -8,7 +8,7 @@ use std::sync::Arc;
 use we_style::Style;
 use we_template::{NodeId, ResolvedChild, ResolvedNode};
 
-use crate::defaults::{font_px, root_px, store_view, StyleCx};
+use crate::defaults::{store_view, unit_metrics, StyleCx};
 use crate::{MeasureCx, Rect, Registry, Size};
 
 /// `(node, part)` → rect — a widget's virtual chrome.
@@ -108,8 +108,7 @@ impl<'a> we_layout::Measure for EguiMeasure<'a> {
             style,
             self.cx.ctx,
             self.scx.tokens.get("--we-font-family"),
-            font_px(self.scx),
-            root_px(self.scx),
+            &unit_metrics(self.scx),
             self.scx.viewport,
         );
         if avail.x <= 0.0 {

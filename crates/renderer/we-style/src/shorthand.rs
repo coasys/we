@@ -15,12 +15,10 @@ use we_expr::Value;
 pub type Bag = IndexMap<Arc<str>, Value>;
 
 /// The viewport tier — `TIERS` in `1-tokens/src/breakpoint.ts`, ordered by
-/// precedence: a tier applies when the width clears its threshold. E3c-12a
-/// moved the type to `we-metrics` as [`SizeTier`](we_metrics::SizeTier)
-/// (renamed so it cannot be confused with the capability tier); this alias
-/// keeps the callers compiling for the one task, and E3c-12b renames the
-/// uses and drops it.
-pub use we_metrics::SizeTier as Tier;
+/// precedence: a tier applies when the width clears its threshold. The type
+/// is `we_metrics::SizeTier` (E3c-12a moved it there, renamed so it cannot
+/// be confused with the capability tier).
+use we_metrics::SizeTier;
 
 /// `sideOf` — the first truthy value in a side's fallback chain.
 fn side_of<'a>(props: Option<&'a Bag>, chain: &[&str]) -> Option<&'a Value> {
@@ -132,15 +130,15 @@ pub(crate) fn bag_of<'a>(props: &'a Bag, key: &str) -> Option<&'a Bag> {
 /// `tierBagOf` — the tier's bag with its box sides filled from the tiers
 /// beneath it and then the element's own props. `None` when there is no bag
 /// for this tier.
-pub fn tier_bag_of(props: &Bag, tier: Tier) -> Option<Bag> {
+pub fn tier_bag_of(props: &Bag, tier: SizeTier) -> Option<Bag> {
     let bag = bag_of(props, tier.prop_key()?)?.clone();
     // Tiers strictly below this one, nearest first, then the base props —
     // `TIERS.slice(1, indexOf(tier)).reverse().map(t => props[TIER_PROP_KEYS[t]])`.
-    let n = Tier::UPPER
+    let n = SizeTier::UPPER
         .iter()
         .position(|t| *t >= tier)
-        .unwrap_or(Tier::UPPER.len());
-    let mut beneath: Vec<Option<&Bag>> = Tier::UPPER[..n]
+        .unwrap_or(SizeTier::UPPER.len());
+    let mut beneath: Vec<Option<&Bag>> = SizeTier::UPPER[..n]
         .iter()
         .rev()
         .filter_map(|t| t.prop_key())
