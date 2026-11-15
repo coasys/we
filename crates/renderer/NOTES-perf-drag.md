@@ -236,3 +236,176 @@ exactly at 256 and 72, asks for frames only while moving, an idle frame after la
 out). Snapshot harnesses see the end state: kittest advances egui's clock 0.25 s per step,
 so a 250 ms transition has finished by the second step, and no harness hovers the rail
 before taking a picture.
+
+## Round 3
+
+Branch head after round 2 was 2d52622b1. This round: memo key tests, the merge of port/split
+(dc42a0c96) and port/glow-parity (75703db37), gradients during a drag, the frame queue, and
+the rail labels' fade.
+
+### 1. Style memo key coverage
+
+`we-layout/tests/style_memo.rs` has one test per input `style_key` hashes: the same node with
+only that input changed must resolve again, then be served its own style. Where the style
+reads the input, the test also asserts the style differs. The tests share a lock, because
+installing a sheet moves a process-wide generation that every key includes.
+
+Each input was dropped from `style_key` on its own and the file run
+(`cargo test --release -p we-layout --test style_memo`). Every drop was red:
+
+| input dropped           | failing test                                |
+| ----------------------- | ------------------------------------------- |
+| node type               | `the_type`                                  |
+| a prop's name           | `a_props_name`                              |
+| a prop's value          | `a_props_value`, `a_nested_props_value`     |
+| a nested (string) value | `a_props_value`, `a_nested_props_value`     |
+| token table fingerprint | `the_token_table`                           |
+| theme                   | `the_theme`                                 |
+| installed sheets        | `the_installed_sheets`                      |
+| viewport width          | `the_viewport_width`                        |
+| viewport height         | `the_viewport_height`                       |
+| container width         | `the_container_width` (an `lgUpProps` tier) |
+| `root_px`               | `each_metric` (metric 0)                    |
+| `font_px`               | `each_metric` (metric 1)                    |
+| `ch_em`                 | `each_metric` (metric 2)                    |
+| `ex_em`                 | `each_metric` (metric 3)                    |
+| `lh_em`                 | `each_metric` (metric 4)                    |
+| a scope entry's name    | `a_scope_name`                              |
+| a scope entry's value   | `a_scope_value`                             |
+
+The assertion each one failed was "changing only this input resolves again" (for the sheets,
+"a new sheet resolves again"). Not covered: the two length prefixes (`props.len()`,
+`scope.len()`). They only separate inputs that would hash the same as a sequence, and no
+change of a single input can show that.
+
+**Does `style_of` read anything the key does not hash?** No. `bag_for`, `type_defaults`,
+`role_of`, `direction_of` and `type_role` read the node's type and props and the token
+table. `unit_metrics` reads the tokens and `scx.metrics`. `we_style::resolve` reads the bag,
+tokens, container width (the tier) and inherited scope. `theme_css::apply` matches the
+node's type and props against a synthetic root carrying only `data-we-theme`, never real
+ancestors, children, the node id, the slot or the handlers; the sheets it uses are the
+built-in ones (static per theme name) and the installed ones (covered by the generation).
+Viewport and metrics are passed through but no style reads them today: lengths keep their
+units until layout. They stay in the key so a style that starts reading them cannot be
+served stale, and for them the cache miss is the whole assertion.
+
+### 2. Merge
+
+port/split dc42a0c96 and port/glow-parity 75703db37 were fetched from coasys and merged
+cleanly; `coasys_app` keeps `app.session.set_runtime(...)`. After the merge: `cargo test`
+(158 suites, coasys pixel test unchanged), clippy, fmt, the wasm check and the egui-free
+script were all green.
+
+### 3. Gradients during a drag
+
+The CPU gradients key a texture on the box's size in pixels, so every frame of a drag
+rasterised the dragged lane's gradient again and uploaded it. The fix is in
+`gradient::paint`. Boxes with the same gradient, radius, opacity, scale and units (not the
+viewport) form a family. On a cache miss:
+
+- if the exact key was also asked for on the previous frame (the size held), rasterise;
+- else if the family also missed on the previous frame (it is being resized), draw the
+  nearest texture it has, stretched, and ask for one more frame;
+- otherwise rasterise.
+
+A scene that never resizes rasterises every box exactly on its first frame, as before, so
+the pixel gates are unchanged (the full suite passes). A drag pays one raster on its first
+frame, stretches after that, and draws exactly on the release frame, since the size there
+equals the last move's. The dragged edge itself is layout and never waits; only the gradient
+behind it refines a frame later.
+
+About has no lanes (nothing to drag), so for about the resize case is a window-width sweep
+(60 frames, 3 px narrower each), which resizes every page-wide gradient box. Glow,
+1280x800, CPU per frame, median (p95):
+
+| case                     | before             | after          |
+| ------------------------ | ------------------ | -------------- |
+| people drag, ppp 1       | 7.78 ms (9.09)     | 3.47 ms (3.64) |
+| people drag, ppp 2       | 20.48 ms (24.93)   | 3.43 ms (3.58) |
+| people drag upload ppp 1 | 1.34 MB / frame    | 0 (p95 0)      |
+| people drag upload ppp 2 | 5.35 MB / frame    | 0 (p95 0)      |
+| people window, ppp 1     | 24.12 ms (27.08)   | 4.44 ms (5.35) |
+| people window, ppp 2     | 83.56 ms (89.62)   | 4.54 ms (5.54) |
+| about window, ppp 1      | 99.28 ms (108.36)  | 3.26 ms (4.77) |
+| about window, ppp 2      | 396.67 ms (422.25) | 3.22 ms (4.30) |
+| people rail, ppp 1       | 2.21 ms (5.13)     | 2.16 ms (4.58) |
+
+During the rail hover on people (bench `rail` mode), the only rasters are one box at the start
+of each animation and one when it settles (p95 0.07 Mpx at ppp 1, down from 0.16). On about the
+rail does not animate: the page repaints every frame on its own (0.26 ms paint-only frames)
+and its layout never moves.
+
+"Before" is the same code with the stretch path disabled (`|| true` on the rasterise
+condition); everything else, the counters included, is identical. Drag benches:
+`cargo run --release -p we-app --example drag_bench -- glow 90 <ppp> 1280x800 people`; rail:
+add `rail`. The window sweep was a scratch probe and is not committed.
+
+Tests: `gradient::tests::a_box_resized_every_frame_stretches_until_its_size_holds` and
+`a_still_scene_rasterises_every_box_on_its_first_frame` (the second caught a first version
+that stretched the second box of a family on its very first frame — exactly the pixel-gate
+risk), and `drag_perf::a_drag_rasterises_no_gradient_until_the_width_holds`. All three are
+red with the stretch path disabled.
+
+Two remaining costs. An upload of up to a few hundred bytes still happens on some drag frames:
+that is a glyph newly wrapped into the font atlas, which is needed. The p95 of the people
+drag is the first frame of the drag, which still rasterises once.
+
+### 4. Frames queued before the screen
+
+On miguel eframe uses wgpu (eframe's default feature). egui-wgpu's default surface is
+`SurfaceConfig::HIGH_THROUGHPUT`: `PresentMode::AutoVsync` with
+`desired_maximum_frame_latency: 2`. On a vsynced display a finished frame can wait behind
+another, about one refresh (16.7 ms at 60 Hz) between the pointer and the drawn line that
+no CPU saving removes. The windows now take egui's own `SurfaceConfig::LOW_LATENCY`:
+
+- still `AutoVsync`, so no tearing;
+- nothing is drawn while idle, because the app is reactive;
+- at most one frame queued;
+- left at wgpu's default on iOS, where egui notes that one halves the frame rate;
+- on macOS, egui-wgpu's resize-jitter workaround still raises it to two while a window is
+  being live-resized.
+
+`WE_FRAME_LATENCY=2` puts egui's default back; `WE_PRESENT_MODE=fifo|mailbox|immediate|
+auto-vsync|auto-no-vsync` picks a present mode. `immediate` and `auto-no-vsync` may tear, and
+wgpu refuses a mode the surface does not offer. Test: `we-app/tests/present.rs`.
+
+**What I could and could not measure.** Xvfb on `:99` has no vblank, and there wgpu runs on
+the GL backend over Mesa's software gallium driver (the NVIDIA RTX 3090's Vulkan cannot
+present to Xvfb). Presents never wait there, so there is no queue for the setting to shorten.
+`scripts/x11-latency/settle.py` sends bursts of 20 XTest moves 2 ms apart and times from the last
+move until one screen row shows the lane's border at the pointer (`XGetImage`, ~2 ms per
+grab). Two alternating runs:
+
+| queue depth | settle median (p95)                 |
+| ----------- | ----------------------------------- |
+| 2           | 13.4 ms (18.8), then 19.3 ms (42.0) |
+| 1           | 14.1 ms (19.7), then 14.3 ms (18.4) |
+
+That is within noise. Isolated moves 150 ms apart took 18.8 ms (depth 2) and 18.1 ms
+(depth 1), as they should: the queue is empty for a single event. Idle CPU was 0 ticks over
+5 s with either setting. The effect the change targets only exists on a real vsynced display
+(Nico's X11 session on the NVIDIA card), which I did not drive. To check it there: run
+`we-app --coasys people --theme glow` with and without `WE_FRAME_LATENCY=2` and drag; with
+`WE_FRAME_LOG=1` both show the same per-frame CPU, so any difference felt is the queue.
+
+### 5. Rail labels
+
+The web mounts the rail's labels through a `$if` with `RAIL_REVEAL`: an inline reveal over
+250 ms and a fade over 150 ms, the same on exit. `Transitions` now runs the enter fade. A
+node carrying one that was not in the last tree starts at opacity 0 and eases to its own,
+through the same styles hatch the CSS transitions use, never on the first tree seen.
+Tests: `transitions::a_node_a_branch_mounts_fades_in_and_one_there_from_the_start_does_not`
+and `rail_transition::the_rails_labels_fade_in_as_it_opens`. Not drawn yet: the inline
+reveal (the label opening sideways; while the rail widens it clips the label anyway), slide
+and scale, and every exit effect, which needs a node kept on screen after the resolve
+dropped it.
+
+### Left
+
+- The incremental-resolve proposal above stands. Resolve is ~1.05 ms of the ~3.4 ms drag
+  frame.
+- The first frame of a drag or a resize still rasterises each resized gradient once.
+- Exit transitions and the reveal/slide/scale enter effects.
+- The frame-queue change needs a check on a real vsynced display.
+- The disk on miguel filled up mid-round (other workers' builds). I freed my own: a 73 GB
+  debug target and scratch worktrees. Nothing of anyone else's was touched.
