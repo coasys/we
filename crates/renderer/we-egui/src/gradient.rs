@@ -39,8 +39,7 @@ struct Layer {
 /// What lengths resolve against.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct Metrics {
-    pub font_px: f32,
-    pub root_px: f32,
+    pub units: we_metrics::UnitMetrics,
     pub viewport: Size,
 }
 
@@ -97,7 +96,7 @@ fn length(text: &str, base: f32, m: Metrics) -> Option<f32> {
     if matches!(d, Dimension::Auto) {
         return None;
     }
-    d.resolve(Some(base), m.font_px, m.root_px, m.viewport)
+    d.resolve(Some(base), &m.units, m.viewport)
 }
 
 /// A colour stop `<color> [<pos> [<pos>]]`: one stop per position given.
@@ -480,8 +479,7 @@ mod tests {
 
     fn m() -> Metrics {
         Metrics {
-            font_px: 16.0,
-            root_px: 16.0,
+            units: we_metrics::UnitMetrics::default(),
             viewport: Size {
                 width: 1440.0,
                 height: 900.0,

@@ -218,8 +218,7 @@ fn a_focused_field_carries_the_ring_beyond_its_border() {
     let spread = ring.spread.as_ref().and_then(|d| {
         d.resolve(
             None,
-            16.0,
-            16.0,
+            &scx.metrics,
             we_style::Size {
                 width: 1000.0,
                 height: 1000.0,

@@ -8,7 +8,8 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 use we_expr::Value;
-use we_style::{tier_bag_of, Bag, Tier};
+use we_metrics::SizeTier as Tier;
+use we_style::{tier_bag_of, Bag};
 
 fn bag(pairs: &[(&str, Value)]) -> Bag {
     pairs

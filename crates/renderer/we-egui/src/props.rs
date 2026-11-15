@@ -341,8 +341,7 @@ pub(crate) fn paint_box(
             text,
             opacity,
             crate::gradient::Metrics {
-                font_px: view.font_px,
-                root_px: view.root_px,
+                units: view.metrics,
                 viewport,
             },
         );

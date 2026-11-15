@@ -207,8 +207,8 @@ impl Widget for TreeItem {
         // variant (fill, and a leading bar in its border colour and width,
         // square where the bar is), `item-hover` under the pointer.
         let ctx = cx.ui.ctx().clone();
-        let px =
-            |name: &str| props::token_px(&ctx, name, 16.0, 16.0, we_style::Size::new(0.0, 0.0));
+        let view = crate::defaults::view_of(&ctx);
+        let px = |name: &str| props::token_px(&ctx, name, &view.metrics, view.viewport);
         let radius = px("--we-theme-tree-radius")
             .or_else(|| px("--we-radius-300"))
             .unwrap_or(8.0);

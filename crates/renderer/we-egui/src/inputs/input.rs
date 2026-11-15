@@ -27,7 +27,7 @@ impl Input {
         let size = style
             .text
             .font_size
-            .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
+            .and_then(|d| d.to_px(&view.metrics, view.viewport))
             .unwrap_or(font.size);
         egui::FontId::new(size, font.family)
     }
