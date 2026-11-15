@@ -61,10 +61,13 @@ fn a_tainted_twin_resolves_to_nothing() {
 }
 
 #[test]
-fn an_unknown_or_foreign_handle_resolves_to_nothing() {
-    // The runtime half of `forged_handle_is_impossible`: a `HandleRef` a
-    // table did not mint — a different table's handle is "unknown" here —
-    // resolves to nothing instead of probing for authority.
+fn forged_handle_is_impossible() {
+    // Type level: `HandleRef` has no public constructor — only
+    // `HandleTable::mint` makes one (the `compile_fail` doctest on
+    // `HandleTable` proves `HandleRef::new(...)` does not compile).
+    // Runtime level: a `HandleRef` this table did not mint — a different
+    // table's handle is the closest thing to a forgery that can be
+    // built — resolves to nothing instead of probing for authority.
     let table = HandleTable::new();
     let foreign = HandleTable::new().mint(HandleKind::Space, "preview-coasys");
     assert_eq!(table.key(&foreign), None);
