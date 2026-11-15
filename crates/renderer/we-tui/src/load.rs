@@ -129,11 +129,7 @@ pub fn recorded_session(bundle: &Bundle, snapshot: &Json, route: &str) -> Result
         .with_sources(Some(data.source()), Arc::new(NoParts))
         .with_dollar_types(known_dollar);
     let host = Box::new(StaticHost::new(data.bag.clone()));
-    Ok(Session {
-        runtime,
-        host,
-        screen,
-    })
+    Ok(Session::from_parts(runtime, host, screen))
 }
 
 /// Either shape from the files' text: a recording picks route `route` (an

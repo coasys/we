@@ -302,7 +302,7 @@ fn two_spaces_do_not_share_a_cell() {
         "`Here` keys by the mount's space"
     );
 
-    s.screen.apply(ScreenOp::Navigate {
+    s.apply_screen(ScreenOp::Navigate {
         to: "/space/demo-b".into(),
         query: None,
         base_depth: None,
@@ -436,7 +436,7 @@ fn a_pending_callback_stamps_the_space_it_started_on() {
 
     // Navigate A → B: the chrome's id survives in the new tree, so the
     // call is still pending — only the current mount's space moved on.
-    s.screen.apply(ScreenOp::Navigate {
+    s.apply_screen(ScreenOp::Navigate {
         to: "/space/space-b".into(),
         query: None,
         base_depth: None,

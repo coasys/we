@@ -228,7 +228,7 @@ impl Shell {
                 self.panel.frame_body(ui);
             });
         egui::CentralPanel::default().show(ui, |ui| {
-            let route = self.panel.session.screen.nav.current_path();
+            let route = self.panel.session.screen().nav.current_path();
             ui.centered_and_justified(|ui| {
                 ui.label(format!("view: {route}"));
             });

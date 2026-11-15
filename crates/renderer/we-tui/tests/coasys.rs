@@ -216,7 +216,7 @@ fn key(code: KeyCode) -> KeyEvent {
 fn tab_and_enter_on_the_people_row_open_the_people_route() {
     let mut app = app("index");
     let before = frame(&mut app, 160, 60);
-    let path0 = app.session.screen.nav.current_path();
+    let path0 = app.session.screen().nav.current_path();
     assert!(!path0.ends_with("/people"), "starts on {path0}");
     assert!(!before.contains("@mara"), "no member cards yet:\n{before}");
 
@@ -238,9 +238,9 @@ fn tab_and_enter_on_the_people_row_open_the_people_route() {
 
     let after = frame(&mut app, 160, 120);
     assert!(
-        app.session.screen.nav.current_path().ends_with("/people"),
+        app.session.screen().nav.current_path().ends_with("/people"),
         "Enter navigated: {}",
-        app.session.screen.nav.current_path()
+        app.session.screen().nav.current_path()
     );
     // The People page's member cards — a recorded handle — now show.
     assert_shows(&after, "@mara", "a member card on the People page");

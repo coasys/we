@@ -83,13 +83,13 @@ fn main() -> Result<(), String> {
     // pool's cells report their names — noted between resolves below.
     let source = Arc::new(data.query_source());
     let noted = source.clone();
-    let mut session = Session {
-        runtime: Runtime::app(spec, data.bag.clone(), locals.clone()).with_sources(
+    let mut session = Session::from_parts(
+        Runtime::app(spec, data.bag.clone(), locals.clone()).with_sources(
             Some(source as Arc<dyn we_template::QuerySource>),
             Arc::new(NoParts),
         ),
-        host: Box::new(StaticHost::new(data.bag.clone())),
-        screen: ScreenState::desktop(
+        Box::new(StaticHost::new(data.bag.clone())),
+        ScreenState::desktop(
             ScreenSchema {
                 pages: bundle
                     .pages
@@ -102,7 +102,7 @@ fn main() -> Result<(), String> {
             },
             &args.route,
         ),
-    };
+    );
     session.resolve();
     // First pass compiled the cells and learned nothing yet; teach the
     // source their names and settle the rows they ask for.

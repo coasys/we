@@ -171,7 +171,7 @@ fn enter_on_a_tree_item_changes_route() {
     // — the same path the egui test clicks through.
     let mut app = app("/space/demo?view=canvas");
     frame(&mut app, 64, 44);
-    assert!(app.session.screen.nav.param("dna").is_none());
+    assert!(app.session.screen().nav.param("dna").is_none());
 
     // The "Social DNA" row carries value "group|dna" — Tab to it through
     // the focusable list the frame collected.
@@ -191,7 +191,7 @@ fn enter_on_a_tree_item_changes_route() {
     assert_eq!(app.focus.as_ref(), Some(&target), "Tab reached group|dna");
 
     app.handle_key(key(KeyCode::Enter));
-    assert_eq!(app.session.screen.nav.param("dna"), Some("all"));
+    assert_eq!(app.session.screen().nav.param("dna"), Some("all"));
 
     // The section expands — the DNA kinds' labels appear (the oracle
     // labels read from the template: 'Signal types', 'Connection types'…).

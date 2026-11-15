@@ -24,7 +24,7 @@
 use std::sync::Arc;
 
 use we_expr::{HandleTable, Value};
-use we_screen::ScreenState;
+use we_screen::{Changed, ScreenOp, ScreenState};
 use we_template::{
     Host, LocalState, NodeId, ResolvedNode, RootSpec, Runtime, StaticHost, Stats, StoreBag, Waker,
 };
@@ -59,9 +59,11 @@ pub struct Session {
     /// The injected host. Public for E3c-1 (tests and the offline harnesses
     /// swap it); prefer [`Session::host`]/[`Session::host_as`].
     pub host: Box<dyn Host>,
-    /// The address and chrome — `routeStore`/`shellStore` reads answer from
-    /// here; screen ops land here.
-    pub screen: ScreenState,
+    /// The address and chrome — `screen`/`routeStore`/`shellStore` reads
+    /// answer from here. Private (E3c-6): read through [`Session::screen`],
+    /// write only through [`Session::apply_screen`] — the one write path,
+    /// which keeps the live `screen` view's snapshot current.
+    screen: ScreenState,
 }
 
 impl Session {
@@ -89,6 +91,11 @@ impl Session {
         handles: HandleTable,
     ) -> Self {
         let runtime = Runtime::from_spec_in(spec, bag, LocalState::new(), handles);
+        // The legacy screen stores — `routeStore`/`shellStore`/`themeStore`/
+        // `spaceStore` — bound once over the runtime's live `screen` view
+        // (E3c-6). Every session path (native, dump, CLI, offline, tests)
+        // gets the same adapter because it is the constructor's job.
+        we_legacy::LegacyBindings::install(runtime.bag(), runtime.view());
         Self {
             runtime,
             host,
@@ -101,6 +108,29 @@ impl Session {
     pub fn offline(spec: RootSpec, bag: Arc<StoreBag>, screen: ScreenState) -> Self {
         let host = Box::new(StaticHost::new(bag.clone()));
         Self::new(spec, bag, screen, host)
+    }
+
+    /// A session out of already-owned parts — test rigs and the TUI's
+    /// load path build their `Runtime` around a shared `LocalState`. The
+    /// legacy adapter installs the same as [`Session::new`]'s, and the
+    /// screen lands in private ownership — the write path is unchanged.
+    pub fn from_parts(runtime: Runtime, host: Box<dyn Host>, screen: ScreenState) -> Self {
+        we_legacy::LegacyBindings::install(runtime.bag(), runtime.view());
+        Self {
+            runtime,
+            host,
+            screen,
+        }
+    }
+
+    /// Swap in a runtime built outside the session — test rigs inject the
+    /// route's query source into a `Runtime::app` this way. The bag's
+    /// legacy faces were installed over the old runtime's `screen` view;
+    /// re-install so they read the new one, else every screen member they
+    /// own would answer from a view nothing refreshes.
+    pub fn set_runtime(&mut self, runtime: Runtime) {
+        we_legacy::LegacyBindings::install(runtime.bag(), runtime.view());
+        self.runtime = runtime;
     }
 
     /// `$`-types the frontend knows (`$lane`) resolve as components — the
@@ -126,6 +156,26 @@ impl Session {
         self.runtime.inbox().set_waker(waker);
     }
 
+    /// The screen state, read-only — route, chrome, theme. Writes go
+    /// through [`Session::apply_screen`].
+    pub fn screen(&self) -> &ScreenState {
+        &self.screen
+    }
+
+    /// One frame against the owned screen — the dump path's single
+    /// resolve, no inbox drain or redirect loop.
+    pub fn frame(&mut self) -> &Arc<ResolvedNode> {
+        self.runtime.frame(self.host.as_mut(), &self.screen)
+    }
+
+    /// The one write path to screen state (E3c-6): `op` applies to the
+    /// owned [`ScreenState`] and, on a real change, refreshes the live
+    /// `screen` view the runtime bound — the next `screen.*` (or legacy
+    /// store) read sees it.
+    pub fn apply_screen(&mut self, op: ScreenOp) -> Changed {
+        self.runtime.apply_screen(&mut self.screen, op)
+    }
+
     /// The resolved tree, re-resolving while a resolve queued screen ops.
     /// Arrivals run their lifecycle first (`poll`), so a callback's local
     /// write is in this tree. A redirect bumps the screen version, so the
@@ -141,7 +191,7 @@ impl Session {
                 break;
             }
             for op in ops {
-                self.screen.apply(op);
+                self.apply_screen(op);
             }
             resolved = self.runtime.frame(self.host.as_mut(), &self.screen).clone();
         }
@@ -160,7 +210,7 @@ impl Session {
         let ops = self.runtime.take_ops();
         let screen_ops = ops.len();
         for op in ops {
-            self.screen.apply(op);
+            self.apply_screen(op);
         }
         Tick {
             dirty: self.runtime.dirty(&self.screen),
