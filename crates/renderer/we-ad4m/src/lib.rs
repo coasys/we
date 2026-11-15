@@ -6,6 +6,8 @@
 //!   created anywhere reaches the resolved tree without polling.
 //! - [`Ad4mExecutor`] is [`we_data::Executor`] over the same socket —
 //!   read-only (writes are E11).
+//! - [`connect::ConnectFlow`] runs `ad4m-connect` for the connect screen;
+//!   [`list_spaces`] lists what the picker offers.
 //! - [`translate`] lowers a compiled `$query` to `modelQuery`'s options, as
 //!   the TS adapter does.
 //!
@@ -14,6 +16,8 @@
 #![forbid(unsafe_code)]
 
 #[cfg(not(target_arch = "wasm32"))]
+pub mod connect;
+#[cfg(not(target_arch = "wasm32"))]
 mod connection;
 #[cfg(not(target_arch = "wasm32"))]
 mod executor;
@@ -21,6 +25,8 @@ mod executor;
 pub mod relations;
 #[cfg(not(target_arch = "wasm32"))]
 mod source;
+#[cfg(not(target_arch = "wasm32"))]
+mod spaces;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod translate;
 
@@ -32,3 +38,5 @@ pub use executor::Ad4mExecutor;
 pub use relations::Relations;
 #[cfg(not(target_arch = "wasm32"))]
 pub use source::{Ad4mQuerySource, SourceStats, SpaceBinding};
+#[cfg(not(target_arch = "wasm32"))]
+pub use spaces::{list_spaces, SpaceRow};

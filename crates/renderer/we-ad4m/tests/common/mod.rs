@@ -55,6 +55,17 @@ impl Drop for Executor {
 /// A single-user executor with no admin credential: an anonymous loopback
 /// caller is the operator, so no capability request is needed.
 pub fn start_executor() -> Option<Executor> {
+    start(None)
+}
+
+/// `--admin-credential <credential>`: an anonymous app must ask for a
+/// capability, as against the launcher; `credential` as the token is the
+/// operator, who approves.
+pub fn start_executor_with_admin(credential: &str) -> Option<Executor> {
+    start(Some(credential))
+}
+
+fn start(admin: Option<&str>) -> Option<Executor> {
     let binary = require_binary()?;
     let data = tempfile::tempdir().unwrap();
     let port = free_port();
@@ -70,15 +81,19 @@ pub fn start_executor() -> Option<Executor> {
         .expect("ad4m-executor init");
     assert!(init.success(), "ad4m-executor init failed");
     let log = std::env::var("WE_AD4M_EXECUTOR_LOG").ok();
-    let child = Command::new(&binary)
-        .arg("run")
+    let mut cmd = Command::new(&binary);
+    cmd.arg("run");
+    match admin {
+        Some(c) => cmd.args(["--admin-credential", c]),
+        None => cmd.arg("--insecure-no-admin-credential"),
+    };
+    let child = cmd
         .arg("--app-data-path")
         .arg(data.path())
         .args(["--port", &port.to_string()])
         .args(["--run-holochain", "false"])
         .args(["--language-language-only", "true"])
         .args(["--run-dapp-server", "false"])
-        .arg("--insecure-no-admin-credential")
         .env("AD4M_EXIT_WITH_PARENT", "true")
         .stdout(Stdio::null())
         .stderr(match &log {
@@ -97,9 +112,14 @@ pub fn start_executor() -> Option<Executor> {
 
 /// Poll the socket until the executor takes it.
 pub fn connect(rt: &Runtime, url: &str) -> Connection {
+    connect_as(rt, url, "")
+}
+
+/// [`connect`] with a token — the admin credential for the operator.
+pub fn connect_as(rt: &Runtime, url: &str, token: &str) -> Connection {
     let deadline = Instant::now() + Duration::from_secs(120);
     loop {
-        match rt.block_on(Connection::open(rt.handle(), url, "")) {
+        match rt.block_on(Connection::open(rt.handle(), url, token)) {
             Ok(c) => return c,
             Err(e) => {
                 assert!(
