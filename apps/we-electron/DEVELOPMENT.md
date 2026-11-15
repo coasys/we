@@ -131,7 +131,7 @@ External mode is for development. Its one weakness: the app's own initial enviro
 since deleting it changes only what children inherit. A started executor has no such leftover — the
 app makes its custody credential itself and never puts it in an environment.
 
-Settings → Devices → This computer → Advanced → **Executor settings** lists the config file's keys,
+Settings → Devices → This computer → Advanced → **Startup settings** lists the config file's keys,
 offers a control for each one the executor lets this machine change, says a change takes effect at
 the next start, offers **Restart now** (`runtime.restart`), and shows the log tail. It goes through
 `RuntimeAdminPort` (`executorConfig`, `setExecutorConfig`, `restartExecutor`, `executorLogTail`);

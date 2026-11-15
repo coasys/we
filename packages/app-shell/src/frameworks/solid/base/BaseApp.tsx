@@ -36,7 +36,13 @@ import type { WeSeedFile } from '../../../types/seed';
 import App from '../App';
 import { PlatformProvider } from '../providers/PlatformProvider';
 import { componentRegistry } from '../registries/componentRegistry';
-import { type BaseBrand, type BaseStore, createBaseStore } from '../stores/BaseStore';
+import {
+  type BaseBrand,
+  type BaseHandBack,
+  type BaseStore,
+  createBaseStore,
+  unreachableWords,
+} from '../stores/BaseStore';
 
 /** The theme a base template is drawn in: the bundle's first, as it is the app's default. */
 export interface BaseTheme {
@@ -117,17 +123,18 @@ export interface BaseBootProps {
   onStore?: (store: BaseStore) => void;
 }
 
-const message = (e: unknown) => (e instanceof Error ? e.message : String(e));
-
 /**
- * The connector the app is given: the host's, with one difference — a failure to reach the place
- * goes back to the base app instead of to the session's error screen.
+ * The connector the app is given: the host's, with one difference — a failure to reach the place, or
+ * the place refusing this device's sign-in, goes back to the base app instead of to the session's
+ * error screen: the offline state for the first, the connection choice for the second.
  */
-export function handBackOnUnreachable(
+export function handBackOnFailure(
   connector: BackendConnector,
   host: BaseHost,
   connection: BaseConnection,
-  handBack: (reason: string) => void,
+  handBack: (reason: string, to: BaseHandBack) => void,
+  /** The app's name, for words about this device's own backend. */
+  appName: string = WE_PRODUCT_NAME,
 ): BackendConnector {
   return {
     ...connector,
@@ -135,12 +142,14 @@ export function handBackOnUnreachable(
       try {
         return await connector.initialize(ctx);
       } catch (e) {
-        if (host.isUnreachable?.(e)) {
-          handBack(`${connection.label} could not be reached: ${message(e)}`);
-          // The app is unmounted by the hand-back; nothing waits on this any more.
-          return new Promise<never>(() => {});
-        }
-        throw e;
+        const to: BaseHandBack | null = host.isUnreachable?.(e) ? 'offline' : host.isRefused?.(e) ? 'connect' : null;
+        if (!to) throw e;
+        handBack(
+          to === 'offline' ? unreachableWords(connection, e, appName) : e instanceof Error ? e.message : String(e),
+          to,
+        );
+        // The app is unmounted by the hand-back; nothing waits on this any more.
+        return new Promise<never>(() => {});
       }
     },
   };
@@ -158,17 +167,18 @@ export function BaseBoot(props: BaseBootProps): JSX.Element {
     what cannot wait for a session is drawn, by WE's own fallback: this device's backend starting or
     failing to, and a place that could not be reached.
   */
+  const brand = base?.brand ?? { name: WE_PRODUCT_NAME, mark: '' };
   const store = createBaseStore(base ? host : { ...host, identity: undefined }, {
-    brand: base?.brand ?? { name: WE_PRODUCT_NAME, mark: '' },
+    brand,
     onHandOff: async (connection, how) => {
       const connector = await host.connector(connection, how);
-      setSession(() => handBackOnUnreachable(connector, host, connection, back));
+      setSession(() => handBackOnFailure(connector, host, connection, back, brand.name));
     },
     takeFirst: !base,
   });
-  function back(reason: string) {
+  function back(reason: string, to: BaseHandBack) {
     setSession(null);
-    store.handBack(reason);
+    store.handBack(reason, to);
   }
   untrack(() => props.onStore?.(store));
 

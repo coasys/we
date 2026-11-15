@@ -28,14 +28,14 @@ describe('the bot grant editor', () => {
   it('says that apps allowed to manage the identity can change the grant without asking', () => {
     const editor = find(
       shell,
-      (n) => n.type === 'Column' && !!n.children?.some((c) => isText('What it may do')(c as Node)),
+      (n) => n.type === 'Column' && !!n.children?.some((c) => isText('Permissions')(c as Node)),
     );
     expect(editor, 'the grant editor').toBeDefined();
     const note = editor!.children![1] as Node;
     expect(note.type).toBe('we-text');
     expect(note.props).toMatchObject({ variant: 'footnote', color: 'text-muted' });
     expect(note.children).toEqual([
-      'WE, and any other app you connected with permission to change your identity, can change this grant or resume a paused bot without asking you again.',
+      "This app, and any other app you've allowed to manage your identity, can change these permissions or resume the bot without asking you.",
     ]);
   });
 });

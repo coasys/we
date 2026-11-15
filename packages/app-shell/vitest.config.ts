@@ -66,6 +66,8 @@ const SOLID_TESTS = [
   'tests/homeLaneState.test.tsx',
   // A lane holding any panel: renders the shell store's real reactivity, so the node build would not do.
   'tests/laneSections.test.tsx',
+  // A space's own panel covering its tree on a phone: a lane's styles following the window's width.
+  'tests/spacePanelPhone.test.tsx',
   'tests/edgeLanes.test.tsx',
   'tests/panelInstances.test.tsx',
   // Mounts the chat twice over the issued nonce — only the browser build's effects reach the

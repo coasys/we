@@ -28,6 +28,7 @@ import { provideChromeBag } from '@shared/registries/templateBag';
 import { setTemplatePanels } from '@shared/registries/templatePanels';
 import { buildTemplateBag, CHROME_TIER, SPACE_TIER } from '@shared/registries/templateSurface';
 import { hostSourceBag } from '@shared/sources';
+import { installWindowCover } from '@shared/windowCover';
 import { EdgeLanes } from '@solid/components/EdgeLanes';
 import { PanelHost } from '@solid/components/PanelHost';
 import PanelLane from '@solid/components/PanelLane';
@@ -179,7 +180,13 @@ function mount(name: string, width: number, scale?: number): void {
     const known = identityOf[did] as { name?: string; avatar?: string } | undefined;
     return known ? { name: known.name, avatar: known.avatar } : undefined;
   };
-  disposeMount = render(
+  /*
+    What the app's layer has (`TemplateProvider`): an element that covers the window — a phone's
+    menu, open — holds the rest inert and Tab inside it. Without it a case about that would be judging
+    a mount the app never draws.
+  */
+  const stopCover = installWindowCover(host);
+  const disposeRender = render(
     () =>
       createComponent(BlockHostProvider, {
         person,
@@ -189,6 +196,10 @@ function mount(name: string, width: number, scale?: number): void {
       }),
     host,
   );
+  disposeMount = () => {
+    stopCover();
+    disposeRender();
+  };
 }
 
 /** The box a schema node drew, and the handful of computed values a layout assertion reads. */
@@ -382,6 +393,22 @@ function focused(): string {
   while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
   if (!el || el === document.body) return '';
   return `${el.tagName.toLowerCase()}${el.className ? '.' + String(el.className).split(' ').join('.') : ''}`;
+}
+
+/**
+ * What a person would call the control that holds the cursor: its label, or else its words.
+ *
+ * `focused()` says a button has it, which every control in a menu is. A case asking whether focus
+ * went back to the one that opened something needs to know which — `we-button` keeps its real
+ * `<button>` in its shadow root, so the words are the host's and the label may be either's.
+ */
+function focusedName(): string {
+  let el: Element | null = document.activeElement;
+  while (el?.shadowRoot?.activeElement) el = el.shadowRoot.activeElement;
+  if (!el || el === document.body) return '';
+  const host = (el.getRootNode() as ShadowRoot).host ?? el;
+  const label = el.getAttribute('aria-label') ?? host.getAttribute('aria-label');
+  return (label ?? host.textContent ?? '').replace(/\s+/g, ' ').trim();
 }
 
 /** What the page is painted on, for a case asking whether a colour stands out from it. */
@@ -1583,6 +1610,7 @@ function toastProbe(message: string, actionLabel = '', look?: ToastLook): string
   paintAt,
   probeColor,
   focused,
+  focusedName,
   html,
   scenarios: Object.keys(scenarios),
 };

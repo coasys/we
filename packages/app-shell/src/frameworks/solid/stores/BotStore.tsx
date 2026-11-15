@@ -343,7 +343,7 @@ export function BotStoreProvider(props: ParentProps) {
     // A pause keeps an edit in progress; a revoke ends every edit.
     if (ok && kept && state !== 'revoked') {
       if (unchanged) setDraft({ ...kept, state, version: selectedBot()?.grant.version ?? kept.version });
-      else setConflict('The grant changed while you edited it. It is shown again as it is now.');
+      else setConflict('These permissions changed while you were editing. Showing the latest.');
     }
     return ok;
   }
@@ -379,7 +379,7 @@ export function BotStoreProvider(props: ParentProps) {
       const p = port();
       if (!p || creating()) return false;
       if (!offer.trim()) {
-        setCreateError('Paste the offer the identity window shows.');
+        setCreateError('Paste the setup code from the identity window.');
         return false;
       }
       setCreating(true);
@@ -387,7 +387,7 @@ export function BotStoreProvider(props: ParentProps) {
       try {
         const made = await p.create(offer, name);
         setCreated({
-          name: name.trim() || 'A bot',
+          name: name.trim() || 'Unnamed bot',
           matchCode: made.matchCode,
           confirmBy: new Date(made.expires * 1000).toLocaleTimeString(undefined, {
             hour: '2-digit',

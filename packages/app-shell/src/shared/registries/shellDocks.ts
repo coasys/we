@@ -49,6 +49,8 @@ export function registerShellDocks(): void {
     close: 'closeSpaceSettings',
     // Not a module, so its store is not under `modules.<id>` — see `DockEntry.storeRef`.
     storeRef: 'shellStore',
+    // What its header and tab say. Without it `dockTitle` falls back to the store id: "Shell".
+    title: 'Space settings',
     node: spaceSettingsPanel,
     order: 24,
   });

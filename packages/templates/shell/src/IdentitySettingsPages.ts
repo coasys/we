@@ -149,7 +149,7 @@ export const keyLogList: SchemaNode = {
     else: {
       type: 'we-text',
       props: { color: 'text-muted', loading: { $: '!identityStore.keyLogLoaded' } },
-      children: ['Your identity has no key log yet: make one on a computer that keeps your master key.'],
+      children: ['No key log yet. Create your identity on a computer that can keep your master key.'],
     },
   },
 };
@@ -159,7 +159,7 @@ export const keyLogPage: SchemaNode = {
   props: { gap: '400' },
   children: [
     back('Security', '/security'),
-    heading('Key log', 'Every change to your keys, signed and chained. Anyone can check it; nobody can rewrite it.'),
+    heading('Key log', 'Every change to your devices and keys, in order. Anyone can check it. No one can rewrite it.'),
     {
       type: '$if',
       props: {
@@ -168,7 +168,7 @@ export const keyLogPage: SchemaNode = {
           type: 'we-alert',
           props: { tone: 'danger' },
           children: [
-            'Two different logs exist for your identity. This computer kept the one it had and added nothing until this is settled.',
+            'There are two different key logs for your identity. This computer keeps its own and makes no changes until this is resolved.',
           ],
         },
       },
@@ -186,13 +186,13 @@ export const keyLogPage: SchemaNode = {
             {
               type: 'we-text',
               props: { variant: 'footnote', color: 'text-muted' },
-              children: [{ $: '`The shared store signed this log up to #${identityStore.status.head.seq}.`' }],
+              children: [{ $: '`Confirmed by the identity store up to #${identityStore.status.head.seq}.`' }],
             },
           ],
         },
       },
     },
-    footnote('lock', 'Names come from your private record. The public log holds only keys.'),
+    footnote('lock', 'The public log lists only keys. Names show only on your devices.'),
   ],
 };
 
@@ -205,7 +205,7 @@ export const keyLogSummary: SchemaNode[] = [
       {
         type: 'we-text',
         props: { color: 'text-muted' },
-        children: [{ $: "count(identityStore.keyLog) == 1 ? '1 event' : `${count(identityStore.keyLog)} events`" }],
+        children: [{ $: "count(identityStore.keyLog) == 1 ? '1 entry' : `${count(identityStore.keyLog)} entries`" }],
       },
       {
         type: 'we-button',
@@ -214,7 +214,7 @@ export const keyLogSummary: SchemaNode[] = [
           size: 'sm',
           onClick: { $invoke: 'routeStore.navigate', args: ['/security/key-log'] },
         },
-        children: ['See the log'],
+        children: ['View log'],
       },
     ],
   },
@@ -237,15 +237,13 @@ export const makeIdentityCard: SchemaNode = {
           props: { gap: '300', ay: 'center' },
           children: [
             { type: 'we-icon', props: { name: 'sparkle', color: 'accent-text' } },
-            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Make my identity here'] },
+            { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Create your identity'] },
           ],
         },
         {
           type: 'we-text',
           props: { variant: 'body', color: 'text-muted' },
-          children: [
-            'Your 12 words, no email needed. This computer keeps your master key, and this computer becomes your first device.',
-          ],
+          children: ['No email or password needed. This computer becomes your first device and keeps your master key.'],
         },
         {
           type: 'Row',
@@ -259,7 +257,7 @@ export const makeIdentityCard: SchemaNode = {
                 disabled: { $: 'identityStore.busy' },
                 onClick: { $invoke: 'identityStore.makeIdentity' },
               },
-              children: ['Make my identity'],
+              children: ['Create identity'],
             },
           ],
         },
@@ -387,7 +385,10 @@ const deviceRow: SchemaNode = listRow(
     {
       type: '$if',
       props: {
-        condition: { $: '!device.revoked && deviceStore.canManage' },
+        // Any linked device may name itself; naming another needs the master key here.
+        condition: {
+          $: '!device.revoked && (deviceStore.canManage || (device.thisDevice && identityStore.canChange))',
+        },
         then: {
           type: 'we-button',
           props: {
@@ -413,7 +414,7 @@ const deviceRow: SchemaNode = listRow(
             disabled: { $: 'identityStore.busy' },
             onClick: { $invoke: 'deviceStore.revoke', args: [{ $: 'device.keyId' }] },
           },
-          children: ['Revoke'],
+          children: ['Remove'],
         },
       },
     },
@@ -430,7 +431,7 @@ const deviceRow: SchemaNode = listRow(
             disabled: { $: 'identityStore.busy' },
             onClick: { $invoke: 'deviceStore.replaceMaster' },
           },
-          children: ['Replace my master key'],
+          children: ['Replace master key'],
         },
       },
     },
@@ -452,7 +453,7 @@ export const deviceList: SchemaNode = {
     else: {
       type: 'we-text',
       props: { color: 'text-muted', loading: { $: '!deviceStore.devicesLoaded && !!identityStore.did' } },
-      children: ['No device speaks for you yet. Make your identity first.'],
+      children: ['No devices yet. Create your identity first.'],
     },
   },
 };
@@ -471,7 +472,7 @@ const stepButton = (label: string, invoke: string, variant = 'solid', args: unkn
 });
 
 /**
- * Linking, where this computer can sign a device in: by the code a device shows, or a server by a
+ * "Link a device", where this computer can sign one in: by the code a device shows, or a host by a
  * link this computer gives it.
  */
 export const addDeviceButton: SchemaNode = {
@@ -482,28 +483,28 @@ export const addDeviceButton: SchemaNode = {
       type: 'Row',
       props: { gap: '200', wrap: true },
       children: [
-        stepButton('Scan or paste a code', 'deviceStore.scanDevice'),
-        stepButton('Add a server by link', 'deviceStore.addDevice', 'soft'),
+        stepButton('Enter code', 'deviceStore.scanDevice'),
+        stepButton('Link a host', 'deviceStore.addDevice', 'soft'),
       ],
     },
   },
 };
 
-/** "Replace my master key": from the 12 words, on any device of the identity that takes them. */
+/** "Replace master key": from the 12 words, on any device of the identity that takes them. */
 export const replaceMasterButton: SchemaNode = {
   type: '$if',
   props: {
     condition: { $: 'deviceStore.canReplaceMaster' },
-    then: stepButton('Replace my master key', 'deviceStore.replaceMaster', 'soft'),
+    then: stepButton('Replace master key', 'deviceStore.replaceMaster', 'soft'),
   },
 };
 
-/** "Use my 12 words": brings the identity back on a computer of none. */
+/** "Restore with recovery phrase": brings the identity back on a computer of none. */
 export const restoreButton: SchemaNode = {
   type: '$if',
   props: {
     condition: { $: 'deviceStore.canRestore' },
-    then: stepButton('Use my 12 words', 'deviceStore.restore', 'soft'),
+    then: stepButton('Restore with recovery phrase', 'deviceStore.restore', 'soft'),
   },
 };
 
@@ -549,38 +550,38 @@ export const masterKeyCards: SchemaNode[] = [
     'deviceStore.canShowCode || deviceStore.canRestore',
     stepCard(
       'qr-code',
-      'Join your identity from another device',
+      'Link to another device',
       naming(
-        `Show this ${THIS}’s code, then add it from a device of your identity with “Scan or paste a code”. Lost every device? Use your 12 words.`,
+        `Show this ${THIS}’s code, then enter it on a device you already use. Lost all your devices? Use your recovery phrase.`,
       ),
-      [when('deviceStore.canShowCode', stepButton('Show my code', 'deviceStore.showCode')), restoreButton],
+      [when('deviceStore.canShowCode', stepButton('Show code', 'deviceStore.showCode')), restoreButton],
     ),
   ),
   when(
     'deviceStore.masterWaiting',
     stepCard(
       'key',
-      'Your master key was sent here',
-      naming(`Take it, and this ${THIS} can add and remove your devices too.`),
-      [stepButton('Take the master key', 'deviceStore.takeMaster')],
+      naming(`Master key sent to this ${THIS}`),
+      naming(`Accept it so this ${THIS} can add and remove devices.`),
+      [stepButton('Accept master key', 'deviceStore.takeMaster')],
     ),
   ),
   when(
     'deviceStore.canAskMaster',
     stepCard(
       'key',
-      naming(`This ${THIS} does not keep your master key`),
-      'Ask for it, then send it from a device that keeps it. Its Devices page shows your request.',
-      [stepButton('Ask for the master key', 'deviceStore.askMaster', 'soft')],
+      naming(`No master key on this ${THIS}`),
+      'Ask for it, then send it from a device that has it, in Settings > Devices.',
+      [stepButton('Ask for master key', 'deviceStore.askMaster', 'soft')],
     ),
   ),
   when(
     'deviceStore.canReplaceMaster',
     stepCard(
       'key',
-      'Lost a device that keeps your master key?',
+      'Lost a device with the master key?',
       naming(
-        `Replace your master key with your 12 words. This ${THIS} keeps the new one, and every copy kept until now stops adding and removing your devices.`,
+        `Replace it with your recovery phrase. This ${THIS} gets the new master key, and the old one stops working on every device.`,
       ),
       [replaceMasterButton],
     ),
@@ -603,7 +604,7 @@ const requestRow: SchemaNode = listRow(
   },
   { type: 'we-text', children: [{ $: 'request.title' }] },
   { type: 'we-text', props: { variant: 'footnote', color: 'text-muted' }, children: [{ $: 'request.detail' }] },
-  [stepButton('Answer', 'deviceStore.answerRequest', 'solid', [{ $: 'request.id' }])],
+  [stepButton('Review', 'deviceStore.answerRequest', 'solid', [{ $: 'request.id' }])],
 );
 
 /** What your other devices asked, while this computer keeps the master key. */
@@ -611,7 +612,7 @@ export const requestList: SchemaNode = when('count(deviceStore.requests)', {
   type: 'Column',
   props: { gap: '200' },
   children: [
-    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Waiting for your answer'] },
+    { type: 'we-text', props: { fontWeight: 'semibold' }, children: ['Requests'] },
     {
       type: 'Column',
       props: { bg: 'surface', r: 'surface', border: '1px solid border', overflow: 'hidden' },
@@ -624,5 +625,5 @@ export const requestList: SchemaNode = when('count(deviceStore.requests)', {
 
 export const deviceListFootnote: SchemaNode = footnote(
   'lock',
-  'Your public key log lists keys, not names: the names are in a record only your devices read. A revoked key stops speaking for you from that event on.',
+  'Only your devices can see device names. Your public key log lists only keys. Removing a device takes effect from that point in the log.',
 );

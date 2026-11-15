@@ -166,7 +166,7 @@ describe('baseStore, the order of things', () => {
     await until(() => some.store.stage() === 'connect');
     expect(some.store.did()).toBe(DID);
     expect(some.store.holdsMaster()).toBe(true);
-    expect(some.store.keepsLine()).toBe('This computer keeps your master key behind its own sign-in');
+    expect(some.store.keepsLine()).toBe('On this computer, protected by your device login');
   });
 
   it('asks no first run where the device keeps no identity source (a browser)', async () => {
@@ -174,7 +174,7 @@ describe('baseStore, the order of things', () => {
     await until(() => store.stage() === 'connect');
     expect(store.hasIdentity()).toBe(false);
     expect(store.doors().make.open).toBe(false);
-    expect(store.doors().make.note).toMatch(/keeps no identity of its own/);
+    expect(store.doors().make.note).toBe('Not available on this browser.');
   });
 
   it('reads an identity source that is still starting again, then says it could not', async () => {
@@ -195,7 +195,7 @@ describe('baseStore, the order of things', () => {
     const never: BaseIdentitySource = { ...source, state: async () => Promise.reject(new Error('custody is down')) };
     const failed = make(host({ identity: never }), { identityAttempts: 2 });
     await until(() => failed.store.error() !== '');
-    expect(failed.store.error()).toBe('This computer could not read its identity: custody is down');
+    expect(failed.store.error()).toBe("Couldn't read your identity: custody is down");
   });
 });
 
@@ -295,16 +295,14 @@ describe('baseStore, the first run', () => {
     state.mockRejectedValueOnce(new Error('This phone cannot reach your identity store: StoreDown'));
     const { store } = make(host({ kind: 'phone', identity: identity.source }), { identityAttempts: 1 });
     await until(() => store.stage() === 'connect');
-    expect(store.error()).toBe(
-      'This phone could not read its identity: This phone cannot reach your identity store: StoreDown',
-    );
+    expect(store.error()).toBe("Couldn't read your identity: This phone cannot reach your identity store: StoreDown");
     await store.retry();
     await until(() => store.error() === '');
     expect(store.stage()).toBe('connect');
     expect(state).toHaveBeenCalledTimes(2);
   });
 
-  it('remembers "Start now" for the whole device, and asks no first run after it', async () => {
+  it('remembers "Skip for now" for the whole device, and asks no first run after it', async () => {
     const storage = memoryStorage();
     const first = make(host({ identity: fakeIdentity(view()).source }), { storage });
     await until(() => first.store.stage() === 'first-run');
@@ -357,7 +355,7 @@ describe('baseStore, the connection', () => {
     await until(() => store.stage() === 'connect');
     await store.choose('server:a');
     expect(store.stage()).toBe('offline');
-    expect(store.offlineReason()).toBe('This computer has no network. Test server cannot be reached until it has.');
+    expect(store.offlineReason()).toBe('This computer is offline.');
     expect(handedOff).toEqual([]);
     await store.choose('this-device');
     expect(handedOff).toEqual([HERE]);
@@ -374,7 +372,7 @@ describe('baseStore, the connection', () => {
     await until(() => store.stage() === 'connect');
     await store.choose('server:a');
     expect(store.stage()).toBe('offline');
-    expect(store.offlineReason()).toBe('Test server could not be reached: Failed to fetch');
+    expect(store.offlineReason()).toBe("Can't reach Test server.");
 
     // "Try again" reaches the same place again.
     await store.retry();
@@ -414,22 +412,34 @@ describe('baseStore, the connection', () => {
     const { store } = make(host());
     await until(() => store.stage() === 'connect');
     await store.choose('server:gone');
-    expect(store.error()).toBe('That place is no longer offered here.');
+    expect(store.error()).toBe("That option isn't available anymore.");
   });
 
   it('says so when the places cannot be read, and still draws the choice', async () => {
     const { store } = make(host({ connections: async () => Promise.reject(new Error('servers file unreadable')) }));
     await until(() => store.stage() === 'connect');
-    expect(store.error()).toBe('The places to connect to could not be read: servers file unreadable');
+    expect(store.error()).toBe("Couldn't load the list: servers file unreadable");
   });
 
   it('takes the offline state back from a session the host lost', async () => {
     const { store } = make(host(), { takeFirst: true });
     await until(() => store.stage() === 'session');
-    store.handBack('This computer could not be reached: socket closed');
+    store.handBack("WE isn't responding.");
     expect(store.stage()).toBe('offline');
-    expect(store.offlineReason()).toBe('This computer could not be reached: socket closed');
+    expect(store.offlineReason()).toBe("WE isn't responding.");
     expect(store.busy()).toBe(false);
+  });
+
+  it('takes the connection choice back, with the reason, from a session the place refused', async () => {
+    const { store } = make(host(), { takeFirst: true });
+    await until(() => store.stage() === 'session');
+    store.handBack('The executor at node.example does not know this phone’s key', 'connect');
+    expect(store.stage()).toBe('connect');
+    expect(store.error()).toBe('The executor at node.example does not know this phone’s key');
+    expect(store.busy()).toBe(false);
+    // The choice stays up: the place that refused is not taken again by itself.
+    await new Promise((r) => setTimeout(r, 20));
+    expect(store.stage()).toBe('connect');
   });
 
   // The executor stopped under a session (outside the app, from the tray): the base takes the window
@@ -445,11 +455,11 @@ describe('baseStore, the connection', () => {
     await flush();
     expect(store.stage()).toBe('session');
 
-    own.move({ phase: 'failed', reason: 'The executor was stopped outside the app.', stopped: true });
+    own.move({ phase: 'failed', reason: 'It was stopped outside the app.', stopped: true });
     await flush();
     expect(store.stage()).toBe('failed');
     expect(store.executorStopped()).toBe(true);
-    expect(store.executorReason()).toBe('The executor was stopped outside the app.');
+    expect(store.executorReason()).toBe('It was stopped outside the app.');
 
     await store.retry();
     expect(own.starts).toHaveLength(1);
@@ -504,7 +514,7 @@ describe('baseStore, the connection', () => {
       await until(() => store.stage() === 'session');
       expect(store.doors().make.open).toBe(false);
       t.signIn();
-      store.handBack('This computer could not be reached: socket closed');
+      store.handBack("WE isn't responding.");
       await until(() => store.doors().make.open);
       expect(store.doors().link.open).toBe(true);
     });
@@ -549,16 +559,16 @@ describe('baseStore, the connection', () => {
         keyId: 'd1',
         label: 'Test laptop',
         subtitle: 'Computer',
-        master: 'Holds the master key',
+        master: 'Has master key',
       }),
       expect.objectContaining({
         keyId: 'd2',
         label: 'Unnamed device',
         subtitle: 'Phone',
-        master: 'Master key offered, not yet taken',
+        master: 'Master key pending',
       }),
     ]);
-    expect(store.keepsLine()).toBe('This computer keeps your master key behind your passphrase');
+    expect(store.keepsLine()).toBe('On this computer, protected by your passphrase');
     store.openPage('nonsense' as never);
     expect(store.page()).toBe('');
     store.openPage('security');

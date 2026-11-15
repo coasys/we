@@ -55,12 +55,9 @@ import { withoutCustodyCredential } from './executorProcess.js';
  * whose passphrase the keyring keeps, which nothing else opens.
  */
 export const KEYRING_WORDS = Object.freeze({
-  locked:
-    "This computer's keyring is locked, and it keeps the key to your agent, so the app cannot unlock it. Unlock the keyring (your login password usually does), then try again.",
-  failed:
-    "The key to your agent is kept in this computer's keyring, and the keyring did not answer. Try again; if it keeps happening, restart the keyring (on Linux, a Secret Service such as GNOME Keyring or KWallet), or the computer.",
-  unavailable:
-    "The key to your agent is kept in this computer's keyring, and the app cannot reach the keyring (on Linux, a Secret Service such as GNOME Keyring or KWallet). Start it, then try again.",
+  locked: 'The keyring on this computer is locked. Unlock it, then try again.',
+  failed: "The keyring on this computer isn't responding. Try again, or restart the computer.",
+  unavailable: "Can't reach the keyring on this computer, such as GNOME Keyring or KWallet. Start it, then try again.",
 });
 
 /**
@@ -69,10 +66,8 @@ export const KEYRING_WORDS = Object.freeze({
  * all: that start asks for the WE password instead.
  */
 export const NEW_AGENT_KEYRING_WORDS = Object.freeze({
-  locked:
-    "This computer's keyring is locked, and the app keeps the key to your new agent there, so it cannot make your agent yet. Unlock the keyring (your login password usually does), then try again.",
-  failed:
-    "The app keeps the key to your new agent in this computer's keyring, and the keyring did not answer. Try again; if it keeps happening, restart the keyring (on Linux, a Secret Service such as GNOME Keyring or KWallet), or the computer.",
+  locked: 'The keyring on this computer is locked. Unlock it, then try again.',
+  failed: "The keyring on this computer isn't responding. Try again, or restart the computer.",
 });
 
 /**

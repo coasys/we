@@ -114,7 +114,7 @@ export default function CredentialField(props: CredentialFieldProps) {
   };
 
   const passwordError = () => {
-    if (credential.touched() && !credential.entered()) return 'Password is required';
+    if (credential.touched() && !credential.entered()) return 'Enter a password';
     const min = props.minLength ?? 0;
     if ((credential.touched() || passwordLeft()) && credential.entered() && !credential.longEnough(min))
       return `Use at least ${min} characters`;

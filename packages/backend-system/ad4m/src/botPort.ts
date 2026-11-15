@@ -119,13 +119,13 @@ export function grantRefusal(error: unknown): unknown {
   if (rpcStatus(error) !== 409) return error;
   const body = text((error as { body?: unknown }).body) ?? (error instanceof Error ? error.message : '');
   if (/bot-revoked/.test(body)) {
-    return new BotGrantConflict('revoked', 'This bot is revoked: its grant never changes again.');
+    return new BotGrantConflict('revoked', "This bot was removed, so its permissions can't change.");
   }
   if (/version/.test(body)) {
     const now = /version is now (\d+)/.exec(body);
     return new BotGrantConflict(
       'version',
-      'The grant changed while you edited it. It is shown again as it is now.',
+      'These permissions changed while you were editing. Showing the latest.',
       now ? Number(now[1]) : null,
     );
   }

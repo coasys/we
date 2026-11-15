@@ -19,6 +19,7 @@ import { workflowStateOf } from '@shared/taskWorkflow';
 import { taskWorkflowLive } from '@shared/taskWorkflowLive';
 import { landsOnRoot } from '@shared/templateLanding';
 import { copyText } from '@shared/utils';
+import { installWindowCover } from '@shared/windowCover';
 import { withExtractionDefaults } from '@we/entities';
 import { completeResponse, respondsThrough } from '@we/entities';
 
@@ -144,7 +145,9 @@ export default function TemplateProvider() {
   // Both follow the app's frame, which the app template declares (`meta.frame`): a frame with no rail
   // publishes no rail width, so nothing keeps clear of a rail that is not there.
   // The bands the app's chrome holds, as it declares them — what panels dock against.
-  createEffect(() => declareAppFrame(templateStore.appTemplate().meta?.frame));
+  // At phone width an app may hold different bands — its sidebar a bar across the top — so the frame
+  // follows the window across the `sm` breakpoint as well as the app template.
+  createEffect(() => declareAppFrame(templateStore.appTemplate().meta?.frame, shellStore.narrowWindow()));
   // And how its edges frame the panels pushing the content aside there (`meta.edges`).
   createEffect(() => declareAppEdges(templateStore.appTemplate().meta?.edges));
 
@@ -1082,6 +1085,13 @@ export default function TemplateProvider() {
     observer.observe(layer, { childList: true, subtree: true });
     update();
     onCleanup(() => observer.disconnect());
+  });
+  /*
+    And while something of the app's covers the whole window — a phone's menu, open — the rest of
+    the app is inert behind it and Tab stays inside it. See `windowCover.ts`.
+  */
+  onMount(() => {
+    if (appLayer) onCleanup(installWindowCover(appLayer));
   });
   createEffect(() => {
     if (!asking() || !promptLayer) return;

@@ -511,7 +511,7 @@ describe('first run', () => {
 
     await expect(stores.session.createAgent('another-passphrase')).rejects.toSatisfy(isAgentExists);
 
-    const words = 'An account already exists on this computer. Sign in with its password instead.';
+    const words = 'This computer already has an account. Sign in instead.';
     expect(stores.session.createAgentError()).toBe(words);
     // The sign-in screen has its own error line, so the words are said there too.
     expect(stores.session.loginError()).toBe(words);

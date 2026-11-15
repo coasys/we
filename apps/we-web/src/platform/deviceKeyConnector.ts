@@ -1,36 +1,33 @@
 /**
- * The phone's connector: a key login to the executor it was told to use, when it can; otherwise
- * the ordinary one.
+ * The phone's connector: a key login to the executor it was told to use.
  *
  * Inside the phone app, with the `DeviceKey` plugin holding a device key that an identity's log
  * lists, and an executor URL set ({@link readKeyHost}), WE logs in to that executor with the
- * device key (`keySession.ts`) instead of asking for an email and password. Anywhere else — a
- * browser, a desktop shell, a phone that has not joined an identity — this is `fallback`, the
- * connector WE uses today, unchanged.
+ * device key (`keySession.ts`) instead of asking for an email and password. Where it cannot — no
+ * plugin, no identity, no executor, or the executor refuses the key — it throws
+ * {@link KeyLoginRefused}, and the base app hands the connection choice back with the reason.
  *
- * The connection itself is ad4m-connect's, as every other connector's is: the key login's token is
- * handed to an `Ad4mConnect` and its own `connect()` opens the client, checks the session and
- * watches it. So the rest of WE sees the same `core` and the same client whichever way the session
- * was opened. The token is not written to localStorage; every boot logs in afresh.
+ * The key login's token opens an `Ad4mClient` of its own, which is checked (the agent there is
+ * unlocked) and watched (`onAuthFailed`). The token is not written to localStorage, and the ordinary
+ * connector's stored session is left as it was: every boot logs in afresh.
  *
  * A session that ends by itself — the renewal ran out of time, or the executor refused the token —
  * is not left as an app whose calls all fail: by default WE starts again ({@link startAgain}),
- * which logs in afresh or, failing that, shows the connect screen.
+ * which logs in afresh or, failing that, returns to the connection choice.
  *
  * A key login that cannot reach the executor (the phone offline past the session's hour, say) is
  * not a failed one: it tries again for a while and then says the phone is offline, with a way to
  * try again, rather than showing a password screen to someone whose identity is fine.
  */
-import { Ad4mClient } from '@coasys/ad4m';
-import Ad4mConnect from '@coasys/ad4m-connect/core';
+import { Ad4mClient, type AgentStatus } from '@coasys/ad4m';
 import type { BackendConnector, BackendInitResult } from '@we/app-shell/shared';
 import { capabilitiesFromToken, createAd4mBackendPorts } from '@we/backend-ad4m';
 import weSeed from '@we/seed-file';
 
 import { type DeviceKeyPlugin, deviceKeyPlugin } from './deviceKey';
-import { joinDeclined, readKeyHost, rememberKeyHost } from './keyHost';
+import { readKeyHost, rememberKeyHost } from './keyHost';
 import { keepRenewed, type KeySessionApp, loginWithDeviceKey } from './keySession';
-import { browserNav, identityPageUrl, type PageNav, phoneCustodyHost } from './phoneCustody';
+import { browserNav, type PageNav, phoneCustodyHost } from './phoneCustody';
 
 const CAPABILITIES = [{ with: { domain: '*', pointers: ['*'] }, can: ['*'] }];
 
@@ -74,8 +71,6 @@ export interface DeviceKeyConnectorDeps {
   waitToRetry?: (ms: number) => Promise<void>;
   /** The time, Unix ms; the tests pass their own. */
   now?: () => number;
-  /** Whether the person said "Not now" to joining. By default, the phone's note ({@link joinDeclined}). */
-  joinDeclined?: () => boolean;
   /** Where the page is and how it leaves for the identity page; the tests pass their own. */
   nav?: PageNav;
 }
@@ -123,7 +118,7 @@ export function guardStorage(): TabStorage | undefined {
  * The default answer to a key session that ended: WE starts again, as a boot. A boot logs in
  * afresh with the device key, which asks the person nothing, so a session that expired while the
  * phone slept comes straight back; one the executor will not open again (the key revoked, the
- * identity not known there) falls back to the connect screen; a phone still offline, or an
+ * identity not known there) returns to the connection choice ({@link KeyLoginRefused}); a phone still offline, or an
  * executor out of reach, is told so with a way to try again ({@link loginUntilReached}). Either
  * way the person sees where they stand, rather than an app whose every call fails.
  *
@@ -192,9 +187,7 @@ export class KeyLoginUnreachable extends Error {
     readonly url: string,
     readonly cause: unknown,
   ) {
-    super(
-      `This phone is offline, or ${hostOf(url)} cannot be reached. It is still signed in with its device key: try again once it is back online.`,
-    );
+    super(`Can’t reach ${hostOf(url)}. Check that this phone is online, then try again. It stays signed in.`);
     this.name = 'KeyLoginUnreachable';
   }
 }
@@ -203,7 +196,7 @@ function hostOf(url: string): string {
   try {
     return new URL(url).host;
   } catch {
-    return 'the executor';
+    return 'the host';
   }
 }
 
@@ -280,42 +273,39 @@ export async function keyLoginTarget(
 }
 
 /**
- * Whether this boot sends the person to the phone's identity page to join an identity: the plugin
- * is here, the phone is in no identity yet (or a claim of it is waiting), and they have not said
- * "Not now". A plugin that does not answer is no reason to leave.
+ * A key login this boot did not make: there is no device key or executor to log in with, the
+ * executor refused the key (not known there, revoked), or the last key session ended as soon as it
+ * opened. Thrown rather than answered with another way to sign in: the base app takes the
+ * connection choice back with the reason, and the person picks where to go from there.
  */
-export async function offersJoin(plugin: DeviceKeyPlugin, declined: () => boolean = joinDeclined): Promise<boolean> {
-  if (declined()) return false;
-  try {
-    return !(await plugin.status()).identity;
-  } catch (error) {
-    console.error('[WE] The DeviceKey plugin did not answer:', error);
-    return false;
+export class KeyLoginRefused extends Error {
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = 'KeyLoginRefused';
   }
 }
 
-export function createDeviceKeyConnector(
-  fallback: BackendConnector,
-  deps: DeviceKeyConnectorDeps = defaultDeps,
-): BackendConnector {
+/** The port `url` reaches, as the embedded-app handshake is handed it: the URL's, or its scheme's. */
+export function portOf(url: string): number {
+  const parsed = new URL(url);
+  return Number(parsed.port) || (parsed.protocol === 'https:' ? 443 : 80);
+}
+
+function errorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+export function createDeviceKeyConnector(deps: DeviceKeyConnectorDeps = defaultDeps): BackendConnector {
   return {
     async initialize(ctx): Promise<BackendInitResult> {
       if ((deps.skipKeyLogin ?? takeEndedTooSoon)()) {
-        console.warn('[WE] The last key session ended as soon as it opened; showing the connect screen.');
-        return fallback.initialize(ctx);
-      }
-      const phone = deps.plugin();
-      if (phone && (await offersJoin(phone, deps.joinDeclined))) {
-        const nav = deps.nav ?? browserNav;
-        nav.assign(identityPageUrl('join', nav.here()));
-        // The page is left; WE boots again when the identity page sends the person back.
-        return new Promise<BackendInitResult>(() => {});
+        throw new KeyLoginRefused('Signed out right after signing in. Try again.');
       }
       const target = await keyLoginTarget(deps);
-      if (!target) return fallback.initialize(ctx);
+      if (!target) {
+        throw new KeyLoginRefused('This phone isn’t linked to a host yet.');
+      }
       const { plugin, url } = target;
-
-      const core = new Ad4mConnect({ appInfo: APP_INFO, url, capabilities: CAPABILITIES });
 
       // A challenge and a login need no token: a client of each try's own, closed once it has
       // answered (a socket that failed is not dialled again).
@@ -323,7 +313,7 @@ export function createDeviceKeyConnector(
       try {
         session = await loginUntilReached(
           async () => {
-            const anonymous = new Ad4mClient(core.baseUrl);
+            const anonymous = new Ad4mClient(url);
             try {
               return await loginWithDeviceKey(plugin, anonymous.agent, url, KEY_SESSION_APP);
             } finally {
@@ -336,22 +326,26 @@ export function createDeviceKeyConnector(
       } catch (error) {
         // Offline, or the executor out of reach: said on the boot screen, with a way to try again.
         if (error instanceof KeyLoginUnreachable) throw error;
-        // Not known there, or refused: the person can still sign in the ordinary way.
-        console.error('[WE] The key login was refused; falling back to the connect screen:', error);
-        return fallback.initialize(ctx);
+        // Not known there, or refused: handed back to the connection choice, with the reason.
+        throw new KeyLoginRefused(`${hostOf(url)} didn’t accept this phone’s sign-in (${errorText(error)}).`, {
+          cause: error,
+        });
       }
 
-      // ad4m-connect's constructor restored whatever password session the connect screen left
-      // in localStorage (`ad4m-token`), and `connect()` below writes this executor's URL beside
-      // it. Left there, a later boot that falls back to the connect screen would restore the old
-      // token with the new URL and send one host's token to another. A key login leaves no
-      // password session behind: `disconnect()` removes the stored token (and the hosting
-      // state), and nothing else is open yet.
-      await core.disconnect();
-      core.token = session.token;
-      const client = await core.connect();
-      if (core.authState !== 'authenticated') {
-        throw new Error(`The executor at ${url} did not accept the key session (${core.authState})`);
+      // The client WE keeps, opened with the key session's token. Nothing is written to
+      // localStorage: every boot logs in afresh.
+      let token = session.token;
+      const client = new Ad4mClient(url, token);
+      let status: AgentStatus;
+      try {
+        status = await client.agent.status();
+      } catch (error) {
+        client.close();
+        throw new Error(`${hostOf(url)} didn’t accept this phone’s sign-in (${errorText(error)}).`);
+      }
+      if (!status.isInitialized || !status.isUnlocked) {
+        client.close();
+        throw new Error(`${hostOf(url)} didn’t accept this phone’s sign-in (its agent is locked).`);
       }
 
       // A session that ends by itself is told once, and logging out is not an ending.
@@ -370,22 +364,18 @@ export function createDeviceKeyConnector(
         agent: client.agent,
         url,
         session,
-        // Read by `connection` below on each use, and by ad4m-connect when it builds a client.
-        // The client the ports hold takes it too (`Ad4mClient.setToken`): every later call and
+        // Read by `connection` below on each use. The client the ports hold takes it too (`Ad4mClient.setToken`): every later call and
         // the next socket go out with it, so a reconnect after the first token expired opens.
-        onToken: (token) => {
-          core.token = token;
-          client.setToken(token);
+        onToken: (renewed) => {
+          token = renewed;
+          client.setToken(renewed);
         },
         onExpired: (error) => ended('expired', error),
       });
 
-      // ad4m-connect watches the client: when the executor refuses its token (a 401, or the socket
-      // closed for auth), it drops the token and reports `unauthenticated`. The client the ports
-      // hold fails every call from then on, so this session is over.
-      core.addEventListener('authstatechange', (event) => {
-        if ((event as CustomEvent<string>).detail === 'unauthenticated') ended('refused');
-      });
+      // The executor refusing the client's token (a 401, or the socket closed for auth): the client
+      // the ports hold fails every call from then on, so this session is over.
+      const unwatch = client.onAuthFailed((reason) => ended('refused', reason));
 
       return {
         client,
@@ -393,9 +383,9 @@ export function createDeviceKeyConnector(
           // The operator's own identity logs in with the operator role; anyone else's is a session
           // on the agent that speaks for them, which is not somebody who runs the node.
           administersNode: session.role === 'operator',
-          capabilities: capabilitiesFromToken(core.token),
+          capabilities: capabilitiesFromToken(token),
           linkServerUrl: (weSeed.ad4m as { linkServerUrl?: string }).linkServerUrl,
-          connection: () => (core.baseUrl ? { url: core.baseUrl, token: core.token } : null),
+          connection: () => ({ url, token }),
           // The master key, the devices and their requests: the phone keeps the key behind its
           // biometric, and runs each change on its identity page.
           custody: phoneCustodyHost(plugin, deps.nav ?? browserNav),
@@ -405,15 +395,16 @@ export function createDeviceKeyConnector(
         disconnect: async () => {
           over = true;
           renewal.stop();
+          unwatch();
           rememberKeyHost(null);
           try {
             await client.agent.logout();
           } catch (error) {
             console.warn('[WE] Logging out of the key session failed:', error);
           }
-          await core.disconnect();
+          client.close();
         },
-        connection: { port: core.port, token: core.token, url: core.baseUrl },
+        connection: { port: portOf(url), token, url },
       };
     },
   };

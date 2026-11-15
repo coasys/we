@@ -45,7 +45,9 @@
  *
  * Below `NARROW_VIEWPORT_PX` a kept width means nothing — a phone has no room for a 280px column
  * beside anything — so the lane takes the width its parent gives it and the handle goes. How the page
- * stacks there is the template's, through its own layout (`mdUpProps`).
+ * stacks there is the template's, through its own layout (`mdUpProps`). On a phone
+ * (`shellStore.narrowWindow`) a `foldEmpty` lane covers its row while it is open, rather than
+ * sharing it with the lane beside it.
  *
  * The grips are quiet by default, so a page made of sections reads as a page. Hovering or focusing a
  * section shows its own; `shellStore.customisingLayout` shows them all.
@@ -159,6 +161,15 @@ export function PanelLane(props: {
   );
   const collapsed = () =>
     shellStore.collapsedLanes().includes(lane()) || (!!props.foldEmpty && !here().length && !away().length);
+  /*
+    On a phone (`shellStore.narrowWindow`, the `sm` rule the app's rail and Settings follow) a lane
+    that opens for something chosen — an inspector, settings from a gear — takes the whole row while
+    it is open. Below `NARROW_VIEWPORT_PX` every lane asks for the row's width and gives way, so the
+    space's tree and its settings shared a 390px window half each and neither could be read. This one
+    does not give way, so the lanes beside it give way to nothing and it covers them until it closes;
+    its section's close is the way back. Nothing here reaches a window wider than `sm`.
+  */
+  const covers = () => shellStore.narrowWindow() && !!props.foldEmpty && !collapsed();
 
   /*
     The width while a drag is under way, held here and written once at the end: a write per pointer
@@ -321,7 +332,11 @@ export function PanelLane(props: {
         width: collapsed() ? '0px' : width(),
         'min-width': collapsed() || narrow() ? '0' : (props.minWidth ?? '0'),
         'max-width': narrow() ? 'none' : (props.maxWidth ?? 'none'),
-        flex: narrow() ? undefined : (props.flex ?? (props.width || props.resize ? '0 0 auto' : undefined)),
+        flex: covers()
+          ? '0 0 100%'
+          : narrow()
+            ? undefined
+            : (props.flex ?? (props.width || props.resize ? '0 0 auto' : undefined)),
         'box-sizing': 'border-box',
         /*
           Hidden only once the slide is over, so it is seen leaving; shown at once on the way back,

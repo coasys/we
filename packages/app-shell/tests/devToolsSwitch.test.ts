@@ -68,8 +68,12 @@ describe('Settings → Developer', () => {
       control that throws it back must therefore be gated on something the switch cannot change.
     */
     const navToDeveloper = nodes.find((node) => {
-      const action = (node.props as Node | undefined)?.onClick as Node | undefined;
-      return action?.$invoke === 'routeStore.navigate' && (action.args as unknown[])?.[0] === '/developer';
+      const onClick = (node.props as Node | undefined)?.onClick;
+      // One handler or several: a nav entry also marks a page as chosen, for a phone's list.
+      const actions = (Array.isArray(onClick) ? onClick : [onClick]) as (Node | undefined)[];
+      return actions.some(
+        (action) => action?.$invoke === 'routeStore.navigate' && (action.args as unknown[])?.[0] === '/developer',
+      );
     });
     expect(navToDeveloper).toBeDefined();
 

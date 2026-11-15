@@ -142,7 +142,7 @@ class ScanActivity : AppCompatActivity() {
         val match = texts.firstOrNull { carries(it, prefix) }
         when {
           match != null -> finishWith(match, null)
-          texts.isNotEmpty() -> hint.text = "That QR code is not one this step can use"
+          texts.isNotEmpty() -> hint.text = "Wrong QR code. Scan the one on your other device."
         }
       }
       .addOnCompleteListener { frame.close() }

@@ -115,19 +115,27 @@ pub(crate) fn phone_error(e: ClientError) -> PhoneKeyError {
             } else if code >= 500 || code == 429 {
                 PhoneKeyError::Unavailable { reason: message }
             } else if code == 410 {
-                PhoneKeyError::Ended { reason: message }
+                ended(message)
             } else {
                 PhoneKeyError::Refused {
                     reason: format!("{message} ({code})"),
                 }
             }
         }
-        ClientError::OfferEnded(reason) => PhoneKeyError::Ended { reason },
+        ClientError::OfferEnded(reason) => ended(reason),
         ClientError::NotAKeeper(key) => PhoneKeyError::NotAKeeper { key },
         ClientError::NeedsWords => PhoneKeyError::NeedsWords,
         other => PhoneKeyError::Refused {
             reason: other.to_string(),
         },
+    }
+}
+
+/// A link, request or offer that ended at the store: in the person's words, with the store's state
+/// (`expired`, `cancelled`, …) kept after it for whoever reads a report.
+fn ended(state: String) -> PhoneKeyError {
+    PhoneKeyError::Ended {
+        reason: format!("This has ended. Start again. ({state})"),
     }
 }
 
@@ -148,7 +156,7 @@ pub(crate) fn vault_error(e: VaultError) -> PhoneKeyError {
             }
         }
         VaultError::Expired => PhoneKeyError::Ended {
-            reason: "the master key's unlock expired".into(),
+            reason: "Unlock timed out. Try again.".into(),
         },
         VaultError::Tampered => PhoneKeyError::Damaged {
             reason: "the master-key file does not match its tag".into(),
@@ -559,7 +567,7 @@ impl PhoneIdentity {
                 .into_iter()
                 .find(|r| r.id == id)
                 .ok_or_else(|| PhoneKeyError::Ended {
-                    reason: "the request is no longer in the box".into(),
+                    reason: "This request was already answered, or it expired.".into(),
                 })?;
         let devices = record_devices(&exec, self.vault.as_ref(), &did)?;
         let device = device_name(&devices, &request.by);
@@ -572,19 +580,19 @@ impl PhoneIdentity {
             &OsRandom,
         ))
         .map_err(phone_error)?;
-        let note = |what: &str, e: ClientError| format!("{what}, but {e}");
+        let note = |what: &str, e: ClientError| format!("{what} ({e})");
         let note = match answered {
             requests::Answered::MasterSent(sent) => sent
                 .record
                 .err()
-                .map(|e| note("The master key was sent", e)),
+                .map(|e| note("Master key sent. Your device list shows this after its next change.", e)),
             requests::Answered::Revoked(revoked) => revoked
                 .record
                 .err()
-                .map(|e| note("The devices were revoked", e)),
+                .map(|e| note("Devices removed. Your device list shows this after its next change.", e)),
             requests::Answered::Rotated { deleted, .. } => deleted
                 .err()
-                .map(|e| note("The master key was replaced", e)),
+                .map(|e| note("Master key replaced. The request may still show on your other devices until it expires.", e)),
         };
         Ok(AnswerView {
             kind: request_kind(&request.body).to_string(),
@@ -665,10 +673,9 @@ impl PhoneIdentity {
             &OsRandom,
         ))
         .map_err(phone_error)?;
-        Ok(revoked
-            .record
-            .err()
-            .map(|e| format!("The devices were revoked, but the device list was not updated: {e}")))
+        Ok(revoked.record.err().map(|e| {
+            format!("Devices removed. Your device list shows this after its next change. ({e})")
+        }))
     }
 
     /// Adds the device whose `coasys:device:1:` code this phone scanned: puts its ticket in the
