@@ -92,6 +92,9 @@ pub struct RendererApp {
     /// How long the last frame's stages took — the overlay prints them,
     /// and a bench reads them without a profiler.
     pub stages: Stages,
+    /// Print [`Stages`] and the lanes' widths every frame — `WE_FRAME_LOG`
+    /// turns it on in the binary.
+    pub frame_log: bool,
 }
 
 /// Wall time of each stage of the last [`RendererApp::frame_body`]: the
@@ -137,6 +140,7 @@ impl RendererApp {
             surface_sent: std::collections::HashMap::new(),
             debug: false,
             stages: Stages::default(),
+            frame_log: false,
         }
     }
 
@@ -269,6 +273,52 @@ impl RendererApp {
         if self.debug {
             self.overlay(ui.ctx(), &stats, &resolved);
         }
+        if self.frame_log {
+            self.log_frame(ui.ctx(), &resolved);
+        }
+    }
+
+    /// `WE_FRAME_LOG`: one stderr line per frame — when it ran, what input
+    /// it saw, each stage's time and every lane's drawn width — so a real
+    /// window's frame pacing and drag tracking can be read off a run.
+    fn log_frame(&self, ctx: &egui::Context, root: &ResolvedNode) {
+        fn lanes(node: &ResolvedNode, layout: &Layout, out: &mut String) {
+            if node.ty.as_ref() == "$lane" {
+                if let Some(r) = layout.rects.get(&node.id) {
+                    let name = node.props.get("lane").map(|v| v.js_string());
+                    out.push_str(&format!(
+                        " {}={}",
+                        name.as_deref().unwrap_or("?"),
+                        r.width()
+                    ));
+                }
+            }
+            for child in &node.children {
+                if let ResolvedChild::Node(n) = child {
+                    lanes(n, layout, out);
+                }
+            }
+        }
+        let mut widths = String::new();
+        if let Some(layout) = &self.layout {
+            lanes(root, layout, &mut widths);
+        }
+        let (time, events, pointer) = ctx.input(|i| {
+            (
+                i.time,
+                i.events.len(),
+                i.pointer.latest_pos().map(|p| (p.x, p.y)),
+            )
+        });
+        let st = &self.stages;
+        eprintln!(
+            "frame t={time:.4} events={events} pointer={pointer:?} resolve={:.2?} layout={:.2?}{} paint={:.2?} dispatch={:.2?} lanes:{widths}",
+            st.resolve,
+            st.layout,
+            if st.laid_out { "" } else { "(cached)" },
+            st.paint,
+            st.dispatch,
+        );
     }
 
     /// The cached layout, if a frame has laid out — what the rects the

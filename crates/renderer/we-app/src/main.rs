@@ -417,6 +417,7 @@ fn run_coasys(route: &str, theme_id: &str) -> eframe::Result<()> {
     if fell_back {
         eprintln!("no recorded theme {theme_id:?}; painting with dark");
     }
+    app.frame_log = std::env::var_os("WE_FRAME_LOG").is_some();
 
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()
