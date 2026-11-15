@@ -1,15 +1,16 @@
 //! GENERATED from packages/app-shell/src/shared/registries/templateSurface.ts
 //! (`TEMPLATE_SURFACE`, SPACE_TIER/CHROME_TIER groups) — E3c-8a. Do not edit by
-//! hand; regenerate with the script recorded in NOTES-e3c-8a.md. `member` -> the
-//! lowest tier that may reach it; a member absent here is denied (wiring or
-//! unclassified = never served). Groups in SPACE_TIER map to `Tier::Space`;
-//! the remaining chrome-tier groups map to `Tier::App`.
+//! hand; regenerate with `node crates/renderer/scripts/gen-legacy-surface.mjs`
+//! (`--check` fails when this file differs from a fresh generation). `member` ->
+//! the lowest tier that may reach it; a member absent here is denied (wiring or
+//! unclassified = never served). Groups in SPACE_TIER map to `Tier::Space`; the
+//! remaining chrome-tier groups map to `Tier::App`.
 use we_expr::Tier;
 
 /// `(member, minimum tier)` rows for one legacy store, in the file's order.
 pub type MemberRows = &'static [(&'static str, Tier)];
 
-/// `templateSurface.ts:229` — `sessionStore` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:230` — `sessionStore` in `TEMPLATE_SURFACE`.
 static SESSIONSTORE_MEMBERS: MemberRows = &[
     ("bootState", Tier::App),
     ("signInStep", Tier::App),
@@ -38,7 +39,7 @@ static SESSIONSTORE_MEMBERS: MemberRows = &[
     ("retryBoot", Tier::App),
 ];
 
-/// `templateSurface.ts:282` — `accountStore` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:283` — `accountStore` in `TEMPLATE_SURFACE`.
 static ACCOUNTSTORE_MEMBERS: MemberRows = &[
     ("canManageAccounts", Tier::App),
     ("accounts", Tier::App),
@@ -61,7 +62,7 @@ static ACCOUNTSTORE_MEMBERS: MemberRows = &[
     ("clearError", Tier::App),
 ];
 
-/// `templateSurface.ts:307` — `runtimeStore` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:308` — `runtimeStore` in `TEMPLATE_SURFACE`.
 static RUNTIMESTORE_MEMBERS: MemberRows = &[
     ("canAdminister", Tier::App),
     ("canManageTrust", Tier::App),
@@ -171,7 +172,7 @@ static RUNTIMESTORE_MEMBERS: MemberRows = &[
     ("dismissConsentSecret", Tier::App),
 ];
 
-/// `templateSurface.ts:418` — `datasetStore` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:419` — `datasetStore` in `TEMPLATE_SURFACE`.
 static DATASETSTORE_MEMBERS: MemberRows = &[
     ("datasets", Tier::Space),
     ("orderedDatasets", Tier::Space),
@@ -198,7 +199,7 @@ static DATASETSTORE_MEMBERS: MemberRows = &[
     ("marketplaceDataset", Tier::App),
 ];
 
-/// `templateSurface.ts:502` — `profileStore` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:503` — `profileStore` in `TEMPLATE_SURFACE`.
 static PROFILESTORE_MEMBERS: MemberRows = &[
     ("profiles", Tier::Space),
     ("ownProfile", Tier::Space),
@@ -216,7 +217,7 @@ static PROFILESTORE_MEMBERS: MemberRows = &[
     ("completeAccountSetup", Tier::App),
 ];
 
-/// `templateSurface.ts:527` — `spaceStore` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:528` — `spaceStore` in `TEMPLATE_SURFACE`.
 static SPACESTORE_MEMBERS: MemberRows = &[
     ("currentSpace", Tier::Space),
     ("memberDids", Tier::Space),
@@ -362,7 +363,7 @@ static SPACESTORE_MEMBERS: MemberRows = &[
     ("clearSpaceThemePin", Tier::Space),
 ];
 
-/// `templateSurface.ts:799` — `shapeStore` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:800` — `shapeStore` in `TEMPLATE_SURFACE`.
 static SHAPESTORE_MEMBERS: MemberRows = &[
     ("spaceShapes", Tier::Space),
     ("shapesLoaded", Tier::Space),
@@ -416,7 +417,7 @@ static SHAPESTORE_MEMBERS: MemberRows = &[
     ("resetHintEditor", Tier::Space),
 ];
 
-/// `templateSurface.ts:867` — `recordStore` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:868` — `recordStore` in `TEMPLATE_SURFACE`.
 static RECORDSTORE_MEMBERS: MemberRows = &[
     ("creatableEntities", Tier::Space),
     ("kinds", Tier::Space),
@@ -473,7 +474,7 @@ static RECORDSTORE_MEMBERS: MemberRows = &[
     ("saveRecord", Tier::Space),
 ];
 
-/// `templateSurface.ts:957` — `themeStore` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:958` — `themeStore` in `TEMPLATE_SURFACE`.
 static THEMESTORE_MEMBERS: MemberRows = &[
     ("automaticThemes", Tier::Space),
     ("systemThemes", Tier::App),
@@ -532,7 +533,7 @@ static THEMESTORE_MEMBERS: MemberRows = &[
     ("refreshSpaceThemes", Tier::Space),
 ];
 
-/// `templateSurface.ts:1053` — `templateStore` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:1054` — `templateStore` in `TEMPLATE_SURFACE`.
 static TEMPLATESTORE_MEMBERS: MemberRows = &[
     ("personalTemplates", Tier::Space),
     ("spaceTemplates", Tier::Space),
@@ -577,7 +578,7 @@ static TEMPLATESTORE_MEMBERS: MemberRows = &[
     ("leaveSafeModeInto", Tier::App),
 ];
 
-/// `templateSurface.ts:1158` — `routeStore` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:1159` — `routeStore` in `TEMPLATE_SURFACE`.
 static ROUTESTORE_MEMBERS: MemberRows = &[
     ("currentPath", Tier::Space),
     ("page", Tier::Space),
@@ -590,7 +591,7 @@ static ROUTESTORE_MEMBERS: MemberRows = &[
     ("back", Tier::Space),
 ];
 
-/// `templateSurface.ts:1173` — `shellStore` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:1174` — `shellStore` in `TEMPLATE_SURFACE`.
 static SHELLSTORE_MEMBERS: MemberRows = &[
     ("activeShellView", Tier::Space),
     ("openShellView", Tier::Space),
@@ -671,11 +672,12 @@ static SHELLSTORE_MEMBERS: MemberRows = &[
     ("deleteLayout", Tier::App),
     ("closeTemplatePanel", Tier::Space),
     ("openTemplatePanel", Tier::Space),
+    ("openPanel", Tier::Space),
     ("closePanel", Tier::Space),
     ("panelInstances", Tier::Space),
 ];
 
-/// `templateSurface.ts:1417` — `presenceStore` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:1418` — `presenceStore` in `TEMPLATE_SURFACE`.
 static PRESENCESTORE_MEMBERS: MemberRows = &[
     ("peers", Tier::Space),
     ("online", Tier::Space),
@@ -689,7 +691,7 @@ static PRESENCESTORE_MEMBERS: MemberRows = &[
     ("clearActivity", Tier::Space),
 ];
 
-/// `templateSurface.ts:1444` — `bundleStore` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:1445` — `bundleStore` in `TEMPLATE_SURFACE`.
 static BUNDLESTORE_MEMBERS: MemberRows = &[
     ("pendingInstall", Tier::App),
     ("installed", Tier::App),
@@ -706,7 +708,7 @@ static BUNDLESTORE_MEMBERS: MemberRows = &[
     ("removeBundle", Tier::App),
 ];
 
-/// `templateSurface.ts:1460` — `interpretationStore` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:1461` — `interpretationStore` in `TEMPLATE_SURFACE`.
 static INTERPRETATIONSTORE_MEMBERS: MemberRows = &[
     ("capable", Tier::Space),
     ("activity", Tier::Space),
@@ -718,7 +720,7 @@ static INTERPRETATIONSTORE_MEMBERS: MemberRows = &[
     ("dismissSettled", Tier::Space),
 ];
 
-/// `templateSurface.ts:1480` — `clockStore` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:1481` — `clockStore` in `TEMPLATE_SURFACE`.
 static CLOCKSTORE_MEMBERS: MemberRows = &[
     ("clocks", Tier::Space),
     ("play", Tier::Space),
@@ -731,7 +733,7 @@ static CLOCKSTORE_MEMBERS: MemberRows = &[
     ("configure", Tier::Space),
 ];
 
-/// `templateSurface.ts:1497` — `identityStore` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:1498` — `identityStore` in `TEMPLATE_SURFACE`.
 static IDENTITYSTORE_MEMBERS: MemberRows = &[
     ("available", Tier::App),
     ("canChange", Tier::App),
@@ -756,7 +758,7 @@ static IDENTITYSTORE_MEMBERS: MemberRows = &[
     ("startWithoutIdentity", Tier::App),
 ];
 
-/// `templateSurface.ts:1520` — `deviceStore` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:1521` — `deviceStore` in `TEMPLATE_SURFACE`.
 static DEVICESTORE_MEMBERS: MemberRows = &[
     ("devices", Tier::App),
     ("devicesLoaded", Tier::App),
@@ -768,7 +770,7 @@ static DEVICESTORE_MEMBERS: MemberRows = &[
     ("revoke", Tier::App),
 ];
 
-/// `templateSurface.ts:1537` — `workflowStore` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:1538` — `workflowStore` in `TEMPLATE_SURFACE`.
 static WORKFLOWSTORE_MEMBERS: MemberRows = &[
     ("available", Tier::Space),
     ("capabilities", Tier::Space),
@@ -810,7 +812,7 @@ static WORKFLOWSTORE_MEMBERS: MemberRows = &[
     ("removeEvidence", Tier::Space),
 ];
 
-/// `templateSurface.ts:1578` — `appStore` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:1579` — `appStore` in `TEMPLATE_SURFACE`.
 static APPSTORE_MEMBERS: MemberRows = &[
     ("apps", Tier::Space),
     ("appsWithWe", Tier::Space),
@@ -819,7 +821,7 @@ static APPSTORE_MEMBERS: MemberRows = &[
     ("deactivateApp", Tier::Space),
 ];
 
-/// `templateSurface.ts:1588` — `editorStore` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:1589` — `editorStore` in `TEMPLATE_SURFACE`.
 static EDITORSTORE_MEMBERS: MemberRows = &[
     ("messages", Tier::App),
     ("isOpen", Tier::App),
@@ -886,21 +888,22 @@ static EDITORSTORE_MEMBERS: MemberRows = &[
     ("clearHistory", Tier::App),
 ];
 
-/// `templateSurface.ts:1679` — `chatStore` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:1680` — `chatStore` in `TEMPLATE_SURFACE`.
 static CHATSTORE_MEMBERS: MemberRows = &[
     ("sheet", Tier::Space),
     ("isNarrow", Tier::Space),
+    ("openChat", Tier::Space),
     ("closeSheet", Tier::Space),
 ];
 
-/// `templateSurface.ts:1706` — `record` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:1707` — `record` in `TEMPLATE_SURFACE`.
 static RECORD_MEMBERS: MemberRows = &[
     ("create", Tier::Space),
     ("update", Tier::Space),
     ("delete", Tier::Space),
 ];
 
-/// `templateSurface.ts:1713` — `clipboard` in `TEMPLATE_SURFACE`.
+/// `templateSurface.ts:1714` — `clipboard` in `TEMPLATE_SURFACE`.
 static CLIPBOARD_MEMBERS: MemberRows = &[("copy", Tier::App)];
 
 /// Every classified legacy store name → its member rows (the compat-root set).
