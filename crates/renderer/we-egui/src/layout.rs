@@ -24,8 +24,11 @@ pub struct Layout {
     /// reads these so a descendant's `var()` sees its ancestors' `tone`/
     /// `styles` custom properties.
     pub styles: HashMap<NodeId, Style>,
-    /// `(node, part)` → rect — a widget's virtual chrome.
+    /// `(node, part)` → rect — a widget's virtual chrome, plus a theme's
+    /// generated `::before`/`::after` boxes.
     pub parts: Parts,
+    /// The generated boxes' styles, keyed like their rects.
+    pub pseudo: HashMap<(NodeId, &'static str), Style>,
     /// Text children in paint order, with the node they belong to.
     pub texts: Vec<TextSpan>,
     /// Nodes with `overflow: auto|scroll` — which axes scroll at paint.
@@ -222,6 +225,7 @@ fn run(
         size: Size::new(out.size.x, out.size.y),
         rects: out.rects.into_iter().map(|(k, v)| (k, r(v))).collect(),
         styles: out.styles,
+        pseudo: out.pseudo,
         parts: out.parts.into_iter().map(|(k, v)| (k, r(v))).collect(),
         texts: out
             .texts

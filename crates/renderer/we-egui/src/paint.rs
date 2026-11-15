@@ -492,6 +492,7 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
         widget.paint(&mut cx, node, style, rect);
         state_clip = cx.state_clip.take();
     }
+    paint_pseudo(w, node, style, "::before");
 
     // Scroll container: children translate by the stored offset and clip on
     // the scrolling axes.
@@ -548,6 +549,8 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
             }
         }
     }
+
+    paint_pseudo(w, node, style, "::after");
 
     // The subtree's output is queued — cut it to the clip polygon of the
     // state the widget painted in (the resting style when it reported none).
@@ -789,6 +792,40 @@ fn modal_host(
     host
 }
 
+/// A theme's generated `::before`/`::after` box on `node` — painted with
+/// the box painter (background, borders, radius, shadows) and cut to its
+/// own `clip-path`; `::before` under the host's children, `::after` over
+/// them, inside whatever clip the host's own polygon applies.
+fn paint_pseudo(w: &mut Walk<'_>, node: &ResolvedNode, host: &Style, key: &'static str) {
+    let k = (node.id.clone(), key);
+    let Some(style) = w.layout.pseudo.get(&k) else {
+        return;
+    };
+    let parts = w.parts_buf.as_ref().unwrap_or(&w.base_parts);
+    let Some(rect) = parts.get(&k).copied() else {
+        return;
+    };
+    let view = crate::defaults::view_of(w.ui.ctx());
+    let mark = w.ui.ctx().graphics(|g| {
+        g.get(w.ui.layer_id())
+            .map(|list| list.next_idx().0)
+            .unwrap_or(0)
+    });
+    let mut p = w.ui.painter().clone();
+    p.set_clip_rect(w.clip.unwrap_or(w.base_clip));
+    let current = style
+        .text
+        .color
+        .or(host.text.color)
+        .map(props::color32)
+        .unwrap_or(egui::Color32::WHITE);
+    props::paint_box(&p, rect, style, current, view);
+    if style.paint.clip.is_some() {
+        let clip = crate::props::clip_region(style, rect, view);
+        crate::props::apply_clip(w.ui.ctx(), w.ui.layer_id(), mark, &clip);
+    }
+}
+
 /// `sub`, shifted so its origin sits at `min`.
 fn translate_layout(sub: &Layout, delta: egui::Vec2) -> Layout {
     Layout {
@@ -813,6 +850,7 @@ fn translate_layout(sub: &Layout, delta: egui::Vec2) -> Layout {
             })
             .collect(),
         styles: sub.styles.clone(),
+        pseudo: sub.pseudo.clone(),
         scroll: sub.scroll.clone(),
         scroll_content: sub
             .scroll_content
