@@ -226,3 +226,75 @@ fn tui_positive_to_zero_reports_zero() {
         "a pane of 0 is reported, not skipped"
     );
 }
+
+/// Lal U2, the zero-size path: a nested `$surface` whose OWN border box
+/// goes to 0 cells wide while the pane stays at 150 cells. The painter
+/// leaves such a node early, before its content box is computed, so the
+/// report has to be recorded on the way out. Without it, the 960/md from
+/// the first paint stays live for the same generation. No padding: with
+/// it, a 0px width still leaves a border box of padding, which takes the
+/// later content-box path instead.
+#[test]
+fn tui_border_box_zero_reports_zero() {
+    let theme = load_theme_set().theme("dark").0.clone();
+    let node: SchemaNode = serde_json::from_value(json!({
+        "type": "Column",
+        "$localState": { "w": { "type": "string", "initial": "960px" } },
+        "props": {
+            "ax": "start",
+            "onClick": { "$setLocal": "w", "value": "0px" }
+        },
+        "children": [{
+            "type": "$surface",
+            "props": { "width": { "$": "local.w" } },
+            "children": [{ "type": "Tag", "props": { "w": { "$": "surface.width" } } }]
+        }]
+    }))
+    .unwrap();
+    let mut app = we_tui::TuiApp::new(session(node), theme, true);
+    let paint = |app: &mut we_tui::TuiApp| {
+        let area = ratatui::layout::Rect::new(0, 0, 150, 31);
+        for _ in 0..3 {
+            let mut buf = ratatui::buffer::Buffer::empty(area);
+            app.render_into(&mut buf, area);
+            app.session.poll();
+        }
+    };
+    let node_tag = |root: &we_template::ResolvedNode| {
+        root.children
+            .iter()
+            .find_map(|c| match c {
+                we_template::ResolvedChild::Node(n) => n.surfaces.first().cloned(),
+                _ => None,
+            })
+            .expect("the $surface carries its node tag")
+    };
+
+    // An authored 960px in a 150-cell pane: 120 cells = 960px → md.
+    paint(&mut app);
+    let root = app.session.resolve();
+    let tag = node_tag(&root);
+    assert_eq!(
+        app.session.runtime.surface_measure(&tag.key),
+        Some((960.0, we_metrics::SizeTier::Md))
+    );
+
+    // The surface's own width goes to 0px (`ax: start`, so the column
+    // does not stretch it back); the pane is unchanged.
+    app.session
+        .dispatch(&root.id, "onClick", we_expr::Value::Undefined);
+    paint(&mut app);
+    let root = app.session.resolve();
+    assert_eq!(node_tag(&root), tag, "the same incarnation");
+    assert_eq!(
+        app.session.runtime.surface_measure(&tag.key),
+        Some((0.0, we_metrics::SizeTier::Base)),
+        "a border box of 0 is reported, not skipped"
+    );
+    let host = app.session.host_surfaces()[0].clone();
+    assert_eq!(
+        app.session.runtime.surface_measure(&host.key),
+        Some((1200.0, we_metrics::SizeTier::Lg)),
+        "the pane stays positive"
+    );
+}
