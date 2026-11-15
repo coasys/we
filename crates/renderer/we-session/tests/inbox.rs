@@ -18,8 +18,8 @@ use we_expr::Value;
 use we_screen::{ScreenSchema, ScreenState};
 use we_session::{Session, Tick};
 use we_template::{
-    ActionRequest, AppSpec, BundleTemplate, Completer, DataRevision, Host, Invoked, NodeId,
-    ResolvedChild, ResolvedNode, RootSpec, SchemaNode, StoreBag, ORPHANED_CAP,
+    ActionRequest, AppSpec, BundleTemplate, Completer, DataRevision, Host, Invoked, MountCx,
+    NodeId, ResolvedChild, ResolvedNode, RootSpec, SchemaNode, StoreBag, ORPHANED_CAP,
 };
 
 fn schema(v: serde_json::Value) -> SchemaNode {
@@ -34,7 +34,7 @@ fn session(v: serde_json::Value) -> Session {
     Session::offline(
         RootSpec::Single {
             node: Box::new(schema(v)),
-            id: "test".into(),
+            cx: MountCx::explicit("test"),
         },
         Arc::new(StoreBag::new()),
         screen(),
@@ -90,7 +90,7 @@ fn pending(v: serde_json::Value) -> (Session, Rc<RefCell<Vec<Completer>>>) {
     let s = Session::new(
         RootSpec::Single {
             node: Box::new(schema(v)),
-            id: "test".into(),
+            cx: MountCx::explicit("test"),
         },
         Arc::new(StoreBag::new()),
         screen(),
@@ -141,7 +141,7 @@ fn profile_spec() -> RootSpec {
             "type": "we-text",
             "props": { "text": { "$": "profileStore.displayName" } }
         }))),
-        id: "test".into(),
+        cx: MountCx::explicit("test"),
     }
 }
 
@@ -271,6 +271,7 @@ fn poll_counts_a_queued_screen_op() {
     }))
     .unwrap();
     let spec = RootSpec::App(Box::new(AppSpec {
+        bundle: "test".into(),
         app: None,
         template: Some(tmpl),
         pages: vec![],
@@ -321,7 +322,7 @@ fn poll_dirty_after_set_root() {
                 "type": "we-text",
                 "props": { "text": { "$": "profileStore.displayName" } }
             }))),
-            id: "test".into(),
+            cx: MountCx::explicit("test"),
         },
         bag.clone(),
         screen(),
@@ -384,7 +385,7 @@ fn set_root_from_another_thread_wakes_a_sleeping_frontend() {
                 "type": "we-text",
                 "props": { "text": { "$": "profileStore.displayName" } }
             }))),
-            id: "test".into(),
+            cx: MountCx::explicit("test"),
         },
         bag.clone(),
         screen(),
@@ -446,7 +447,7 @@ fn set_root_during_resolve_is_seen_next_poll() {
                     { "type": "ProbeText", "props": { "text": { "$": "probe" } } }
                 ]
             }))),
-            id: "test".into(),
+            cx: MountCx::explicit("test"),
         },
         bag,
         screen(),
@@ -476,6 +477,7 @@ fn ready_flip_replaces_boot_mount() {
     }))
     .unwrap();
     let spec = RootSpec::App(Box::new(AppSpec {
+        bundle: "test".into(),
         app: None,
         template: Some(tmpl),
         pages: vec![],
@@ -715,7 +717,7 @@ fn exhausted_budget_wakes_and_reports_dirty() {
                 "props": { "done": { "$": "local.q9Loaded" } },
                 "children": []
             }))),
-            id: "test".into(),
+            cx: MountCx::explicit("test"),
         },
         bag,
         screen(),

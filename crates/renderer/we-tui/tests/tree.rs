@@ -18,7 +18,7 @@ use ratatui::Terminal;
 use serde::Deserialize;
 use we_screen::{ScreenSchema, ScreenState};
 use we_session::Session;
-use we_template::{Bundle, RootSpec, SchemaNode, StoreBag};
+use we_template::{Bundle, MountCx, RootSpec, SchemaNode, StoreBag};
 use we_tui::draw::FocusKind;
 use we_tui::palette::load_theme_set;
 use we_tui::{buffer_text, KeyResult, TuiApp};
@@ -54,7 +54,7 @@ fn app(route: &str) -> TuiApp {
     let session = Session::offline(
         RootSpec::Single {
             node: Box::new(schema),
-            id: "tree".into(),
+            cx: MountCx::explicit("tree"),
         },
         Arc::new(bag),
         ScreenState::desktop(ScreenSchema::default(), route),
@@ -249,7 +249,7 @@ fn unknown_widget_renders_placeholder() {
     let session = Session::offline(
         RootSpec::Single {
             node: Box::new(schema),
-            id: "t".into(),
+            cx: MountCx::explicit("t"),
         },
         Arc::new(StoreBag::new()),
         ScreenState::desktop(ScreenSchema::default(), "/"),

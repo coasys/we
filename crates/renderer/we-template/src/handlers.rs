@@ -24,10 +24,11 @@ use we_screen::{
 };
 
 use crate::handler::{CallId, HandlerToken};
-use crate::host::{Action, ActionRequest, CallBook, MountId, Origin};
+use crate::host::{Action, ActionRequest, CallBook, Origin};
 use crate::resolve::{eval_json, handler_tokens};
 use crate::resolved::NodeId;
 use crate::{Host, Invoked, LocalState, Scope, StoreBag};
+use we_expr::MountCx;
 
 /// A pending `$invoke`: who asked, in which scope, and the lifecycle token
 /// lists. [`crate::Runtime::complete`] fires them — `onSuccess`/`onError`
@@ -60,8 +61,10 @@ pub struct HandlerCx<'a> {
     pub calls: &'a mut CallBook,
     /// The node the handler lives on — a pending call's owner.
     pub node: &'a NodeId,
-    /// The mount that node was resolved under — the request's origin.
-    pub mount: &'a MountId,
+    /// The mount that node was resolved under — the request's origin:
+    /// its stamped tier and space go onto every action the handler
+    /// raises (E3c-7; stamping only).
+    pub mount: &'a MountCx,
     pub warnings: &'a mut Vec<Arc<str>>,
 }
 
@@ -658,8 +661,10 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
             let call = done.call_id();
             let request = ActionRequest {
                 origin: Origin {
-                    mount: cx.mount.clone(),
+                    mount: cx.mount.mount.clone(),
                     node: cx.node.clone(),
+                    tier: cx.mount.tier,
+                    space: cx.mount.space.clone(),
                 },
                 action: Action::Invoke {
                     target: target.as_str().into(),

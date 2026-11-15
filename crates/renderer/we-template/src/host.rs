@@ -22,17 +22,23 @@ use std::sync::Arc;
 /// `we-expr` with the rest of the mount identity (E3c-7); re-exported
 /// here so `crate::host::MountId` keeps working.
 pub use we_expr::MountId;
-use we_expr::Value;
+use we_expr::{SpaceHandle, Tier, Value};
 
 use crate::handler::CallId;
 use crate::inbox::{Arrival, Inbox};
 use crate::resolved::NodeId;
 
-/// Where an action came from. E3c-7 adds the tier and the space.
+/// Where an action came from — the node's mount and who that mount is.
+/// `tier` and `space` are stamped by core from the mount slot (E3c-7):
+/// the schema never writes them, and nothing is filtered by them yet.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Origin {
     pub mount: MountId,
     pub node: NodeId,
+    /// The mount's stamped tier — the slot's, lowered by `meta.role`.
+    pub tier: Tier,
+    /// The mount's space — `Some` wherever the mount is about a space.
+    pub space: Option<SpaceHandle>,
 }
 
 /// A domain action. E3c-1 carries the legacy `$invoke` only: its target and

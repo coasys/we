@@ -17,7 +17,8 @@ use we_data::{OfflineData, StoreMap};
 use we_screen::{ScreenSchema, ScreenState};
 use we_session::Session;
 use we_template::{
-    AppSpec, Bundle, LocalState, NoParts, RootSpec, Runtime, SchemaNode, StaticHost, StoreBag,
+    AppSpec, Bundle, LocalState, MountCx, NoParts, RootSpec, Runtime, SchemaNode, StaticHost,
+    StoreBag,
 };
 
 /// The store map the recorded-route path overlays — the same file
@@ -75,7 +76,7 @@ pub fn tree_session(bundle: &Bundle, bag: StoreBag, route: &str) -> Result<Sessi
     Ok(Session::offline(
         RootSpec::Single {
             node: Box::new(tree_schema(bundle)?),
-            id: "tree".into(),
+            cx: MountCx::explicit("tree"),
         },
         Arc::new(bag),
         screen,
@@ -112,6 +113,7 @@ pub fn recorded_session(bundle: &Bundle, snapshot: &Json, route: &str) -> Result
     let map = StoreMap::parse(SEED_MAP).map_err(|e| format!("seed map: {e}"))?;
     let data = OfflineData::from_route(snapshot, &id, Some(&map))?;
     let spec = AppSpec {
+        bundle: bundle.name.clone().into(),
         app: bundle.app.clone(),
         template: bundle.templates.as_deref().and_then(|t| t.first()).cloned(),
         pages: bundle.pages.clone().unwrap_or_default(),

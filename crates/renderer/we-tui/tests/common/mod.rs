@@ -9,7 +9,7 @@ use ratatui::layout::Rect;
 use ratatui::Terminal;
 use we_screen::{ScreenSchema, ScreenState};
 use we_session::Session;
-use we_template::{RootSpec, SchemaNode, StoreBag};
+use we_template::{MountCx, RootSpec, SchemaNode, StoreBag};
 use we_tui::palette::load_theme_set;
 use we_tui::{buffer_text, TuiApp};
 
@@ -19,7 +19,7 @@ pub fn app(schema: serde_json::Value) -> TuiApp {
     let session = Session::offline(
         RootSpec::Single {
             node: Box::new(schema),
-            id: "t".into(),
+            cx: MountCx::explicit("t"),
         },
         Arc::new(StoreBag::new()),
         ScreenState::desktop(ScreenSchema::default(), "/"),
