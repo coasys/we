@@ -966,6 +966,78 @@ fn a_late_named_claim_reopens_the_unnamed_cell() {
     assert_eq!(hub.cells()[0].view.rows.len(), 2, "the named answer landed");
 }
 
+/// F5 + dead tickets: the reopen a late named claim causes closes the old
+/// ticket — so an event the source still pushes on it, after the reopen,
+/// is dropped at apply (E3c-design 2.4/2.5). Without that drop the old
+/// ticket's late rows would overwrite the cell the new ticket now serves.
+#[test]
+fn a_late_event_on_the_ticket_a_reopen_closed_is_dropped() {
+    let source = Counting::new().holding("Task");
+    let mut hub = hub();
+    hub.claim(
+        site("t:/l", SiteSlot::Prop("rows".into())),
+        request("Task"),
+        None,
+    );
+    hub.commit(source.clone());
+    hub.drain();
+    let old = hub.cells()[0].ticket;
+    let stale = source
+        .live
+        .lock()
+        .unwrap()
+        .get(&old)
+        .map(|(_, sink)| sink.clone())
+        .expect("the anonymous open kept a sink");
+
+    // The reopen: a later named claim adds a hint to the open cell.
+    hub.claim(
+        site("t:/n", SiteSlot::Named("items".into())),
+        request("Task"),
+        None,
+    );
+    hub.claim(
+        site("t:/l", SiteSlot::Prop("rows".into())),
+        request("Task"),
+        None,
+    );
+    hub.commit(source.clone());
+    hub.drain();
+    assert_eq!(source.open_count(), 2, "the hint reopened the cell");
+    assert_eq!(source.closes.lock().unwrap().clone(), vec![old]);
+    assert_ne!(hub.cells()[0].ticket, old, "the cell moved to a new ticket");
+    assert_eq!(hub.opened(), 1, "only the new ticket is live");
+
+    let ghost = || QueryEvent::Rows(Arc::new(vec![Value::from_json(&json!({ "id": "ghost" }))]));
+
+    // Nothing answered the new ticket yet: the stale event leaves it loading.
+    let before = hub.revision();
+    stale.deliver(ghost());
+    assert!(!hub.drain(), "the old ticket's event is not a change");
+    assert_eq!(hub.revision(), before, "no revision for a dead ticket");
+    assert!(
+        !hub.cells()[0].view.loaded,
+        "still loading on the new ticket"
+    );
+    assert!(hub.cells()[0].view.rows.is_empty());
+
+    // The new ticket answers; a later stale event cannot overwrite it.
+    source.deliver("Task", vec![Value::from_json(&json!({ "id": "new" }))]);
+    assert!(hub.drain(), "the new ticket's answer lands");
+    let before = hub.revision();
+    stale.deliver(ghost());
+    assert!(!hub.drain(), "the old ticket's event is not a change");
+    assert_eq!(hub.revision(), before, "no revision for a dead ticket");
+    let view = &hub.cells()[0].view;
+    assert!(view.loaded);
+    assert_eq!(view.rows.len(), 1);
+    assert_eq!(
+        view.rows[0].to_json()["id"].as_str(),
+        Some("new"),
+        "the cell still shows the new ticket's rows"
+    );
+}
+
 /// A source that answers by `name_hint` the way the snapshot table does —
 /// recording the hint every `open` carried.
 #[derive(Default)]
