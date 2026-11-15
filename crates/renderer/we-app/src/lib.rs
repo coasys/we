@@ -148,6 +148,13 @@ impl RendererApp {
                     &mut self.edit,
                     ui.input(|i| i.time),
                 );
+                // A handler's effect — `$setLocal` on hover, a lane's new
+                // width — lands in the next resolve; without asking for
+                // that frame it waits for the next input, so a pointer that
+                // enters the rail and stops leaves it drawn collapsed.
+                if !events.is_empty() {
+                    ui.ctx().request_repaint();
+                }
                 self.drain(events);
             });
 

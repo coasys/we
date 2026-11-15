@@ -102,6 +102,30 @@ fn the_tree_lane_resizes_from_its_end_edge_and_keeps_the_width() {
     assert_eq!(lane_rect(&h, "tree").width(), 220.0);
 }
 
+/// A slow frame: the release and a move well past it arrive in one frame.
+/// The width is where the button went up, not where the pointer went next.
+#[test]
+fn a_release_in_a_slow_frame_keeps_the_width_it_was_let_go_at() {
+    let mut h = harness(|_| {});
+    let lane = lane_rect(&h, "tree");
+    let from = Pos2::new(lane.max.x, lane.center().y);
+    pointer(&mut h, from, None);
+    pointer(&mut h, from, Some(true));
+    pointer(&mut h, from + Vec2::new(20.0, 0.0), None);
+    let at = from + Vec2::new(40.0, 0.0);
+    h.event(egui::Event::PointerMoved(at));
+    h.event(egui::Event::PointerButton {
+        pos: at,
+        button: egui::PointerButton::Primary,
+        pressed: false,
+        modifiers: egui::Modifiers::NONE,
+    });
+    h.event(egui::Event::PointerMoved(at + Vec2::new(400.0, 100.0)));
+    h.step();
+    h.run_steps(3);
+    assert_eq!(lane_rect(&h, "tree").width(), lane.width() + 40.0);
+}
+
 #[test]
 fn the_inspector_lane_resizes_from_its_start_edge() {
     let mut h = harness(|app| {

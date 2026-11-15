@@ -175,27 +175,65 @@ impl Widget for Lane {
                 .ctx()
                 .set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
         }
+        // The width and the pointer at the press, kept for the whole drag:
+        // egui forgets the press origin on the release frame.
         let start_key = "_resizeStart";
+        let origin_key = "_resizeOrigin";
         if r.drag_started() {
+            let origin = cx
+                .ui
+                .input(|i| i.pointer.press_origin().or(i.pointer.interact_pos()))
+                .map_or(x, |p| p.x);
             props::scratch_set(
                 &mut cx.edit.data,
                 &node.id,
                 start_key,
                 Value::Num(rect.width() as f64),
             );
+            props::scratch_set(
+                &mut cx.edit.data,
+                &node.id,
+                origin_key,
+                Value::Num(origin as f64),
+            );
         }
-        if r.dragged() {
-            let from = match props::scratch(&cx.edit.data, &node.id, start_key) {
-                Some(Value::Num(w)) => *w as f32,
-                _ => rect.width(),
-            };
-            let travel =
-                cx.ui.input(
-                    |i| match (i.pointer.press_origin(), i.pointer.interact_pos()) {
-                        (Some(a), Some(b)) => b.x - a.x,
-                        _ => 0.0,
-                    },
-                );
+        // The release frame counts too: where frames lag the pointer, the
+        // last `dragged()` frame saw only part of the travel, and the width
+        // the handle was let go at is the one somebody chose.
+        let num = |key| match props::scratch(&cx.edit.data, &node.id, key) {
+            Some(Value::Num(v)) => Some(*v as f32),
+            _ => None,
+        };
+        // Where the button went up, on the release frame — not where the
+        // pointer is by the time the frame runs, which on a slow frame is
+        // wherever it moved after letting go.
+        let released_at = r
+            .drag_stopped()
+            .then(|| {
+                cx.ui.input(|i| {
+                    i.events.iter().rev().find_map(|e| match e {
+                        egui::Event::PointerButton {
+                            pos,
+                            button: egui::PointerButton::Primary,
+                            pressed: false,
+                            ..
+                        } => Some(*pos),
+                        _ => None,
+                    })
+                })
+            })
+            .flatten();
+        let pointer = released_at.or_else(|| {
+            cx.ui
+                .input(|i| i.pointer.interact_pos().or(i.pointer.latest_pos()))
+        });
+        if let (true, Some(from), Some(origin), Some(pointer)) = (
+            r.dragged() || r.drag_stopped(),
+            num(start_key),
+            num(origin_key),
+            pointer,
+        ) {
+            let travel = pointer.x - origin;
             let wanted = from + if start { -travel } else { travel };
             let min = props::prop_num(node, "minWidth").unwrap_or(120.0) as f32;
             let room = cx.ui.ctx().content_rect().width() - LANE_LEAVES_PX;
