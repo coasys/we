@@ -139,6 +139,9 @@ struct ServeKey {
     panels: Arc<[Arc<str>]>,
     dialogs: Arc<[Arc<str>]>,
     inner: usize,
+    /// The member table's identity (F7) — a tightened policy on the same
+    /// inner Arc is a different key. Held alive by the cached wrapper.
+    policy: usize,
 }
 
 impl Gate {
@@ -241,6 +244,7 @@ impl Gate {
                     panels: declared.panels.clone(),
                     dialogs: declared.dialogs.clone(),
                     inner: Arc::as_ptr(&inner) as *const () as usize,
+                    policy: tiers.id(),
                 };
                 let mut served = self.served.lock().unwrap_or_else(|p| p.into_inner());
                 Some(
@@ -359,6 +363,14 @@ pub enum MemberVerdict {
 /// the view flattens the three bags onto the root — a member is either
 /// reachable at a tier or it is not.
 pub fn screen_tiers() -> MemberTiers {
+    // Built once: the table's identity is the policy identity a served
+    // wrapper is keyed by (F7), so every `screen` read must hand back the
+    // same table or the root would rewrap on every read.
+    static TABLE: std::sync::OnceLock<MemberTiers> = std::sync::OnceLock::new();
+    TABLE.get_or_init(build_screen_tiers).clone()
+}
+
+fn build_screen_tiers() -> MemberTiers {
     let nav_member = |members: &mut BTreeMap<Arc<str>, MemberRule>, name: &str| {
         members.insert(Arc::from(name), MemberRule::Member { tier: Tier::Space });
     };
@@ -418,9 +430,7 @@ pub fn screen_tiers() -> MemberTiers {
             Arc::from(name),
             MemberRule::Container {
                 tier: Tier::Space,
-                members: MemberTiers {
-                    members: inner.clone(),
-                },
+                members: MemberTiers::new(inner.clone()),
             },
         );
         // The flattened spelling: `screen.params` reads `screen.nav.params`.
@@ -428,7 +438,7 @@ pub fn screen_tiers() -> MemberTiers {
             members.entry(Arc::from(m.as_ref())).or_insert(rule);
         }
     }
-    MemberTiers { members }
+    MemberTiers::new(members)
 }
 
 // ── filtered namespaces ──────────────────────────────────────────────
@@ -444,9 +454,37 @@ pub struct FilteredNs {
     auth: MountCx,
     declared: Declared,
     gate: Arc<Gate>,
-    /// Wrapped children by member name — `screen.nav` must answer one
-    /// identity per read, same as the root (see `Gate::served`).
-    memo: Mutex<HashMap<Arc<str>, Value>>,
+    /// Wrapped children by member name, with the inner child each wraps —
+    /// `screen.nav` answers one identity per read while its inner child
+    /// holds, and a fresh one when it is replaced (F7).
+    memo: Mutex<HashMap<Arc<str>, (Value, Value)>>,
+}
+
+impl FilteredNs {
+    /// The wrapper cached for `key` while its inner child is still `src`
+    /// (same allocation — the entry holds `src`, so the address cannot be
+    /// reused under it); a replaced child is rewrapped (Lal F7).
+    fn memoized(&self, key: &str, src: Value, wrap: impl FnOnce() -> Value) -> Value {
+        let mut memo = self.memo.lock().unwrap_or_else(|p| p.into_inner());
+        if let Some((held, wrapper)) = memo.get(key) {
+            if same_alloc(held, &src) {
+                return wrapper.clone();
+            }
+        }
+        let wrapper = wrap();
+        memo.insert(key.into(), (src, wrapper.clone()));
+        wrapper
+    }
+}
+
+/// Whether two values are the same allocation — the identity a memo
+/// entry keys a wrapper by.
+fn same_alloc(a: &Value, b: &Value) -> bool {
+    match (a, b) {
+        (Value::Namespace(a), Value::Namespace(b)) => Arc::ptr_eq(a, b),
+        (Value::Obj(a), Value::Obj(b)) => Arc::ptr_eq(a, b),
+        _ => false,
+    }
 }
 
 impl Namespace for FilteredNs {
@@ -457,37 +495,34 @@ impl Namespace for FilteredNs {
         {
             MemberVerdict::Deny => Value::Undefined,
             MemberVerdict::Plain => self.inner.get(key),
-            MemberVerdict::Container(tiers) => match self.inner.get(key) {
-                Value::Namespace(ns) => {
-                    let mut memo = self.memo.lock().unwrap_or_else(|p| p.into_inner());
-                    memo.entry(key.into())
-                        .or_insert_with(|| {
-                            Value::namespace(FilteredNs {
-                                inner: ns,
-                                tiers,
-                                auth: self.auth.clone(),
-                                declared: self.declared.clone(),
-                                gate: self.gate.clone(),
-                                memo: Mutex::new(HashMap::new()),
-                            })
-                        })
-                        .clone()
-                }
-                _ => Value::Undefined,
-            },
+            MemberVerdict::Container(tiers) => {
+                let src = self.inner.get(key);
+                let Value::Namespace(ns) = &src else {
+                    return Value::Undefined;
+                };
+                let ns = ns.clone();
+                self.memoized(key, src, || {
+                    Value::namespace(FilteredNs {
+                        inner: ns,
+                        tiers,
+                        auth: self.auth.clone(),
+                        declared: self.declared.clone(),
+                        gate: self.gate.clone(),
+                        memo: Mutex::new(HashMap::new()),
+                    })
+                })
+            }
             // An id map in any shape the gate can filter (Lal F6): a
             // namespace, or a plain object read as one; anything else — a
             // list, a scalar — has no ids to filter by and is refused.
             MemberVerdict::Ids(ids) => {
-                let ns: Arc<dyn Namespace> = match self.inner.get(key) {
-                    Value::Namespace(ns) => ns,
-                    Value::Obj(map) => Arc::new(MapNamespace::new((*map).clone())),
+                let src = self.inner.get(key);
+                let ns: Arc<dyn Namespace> = match &src {
+                    Value::Namespace(ns) => ns.clone(),
+                    Value::Obj(map) => Arc::new(MapNamespace::new((**map).clone())),
                     _ => return Value::Undefined,
                 };
-                let mut memo = self.memo.lock().unwrap_or_else(|p| p.into_inner());
-                memo.entry(key.into())
-                    .or_insert_with(|| Value::namespace(DeclaredNs { inner: ns, ids }))
-                    .clone()
+                self.memoized(key, src, || Value::namespace(DeclaredNs { inner: ns, ids }))
             }
         }
     }

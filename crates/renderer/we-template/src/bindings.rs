@@ -144,25 +144,42 @@ pub struct Bound {
 ///   blocked value.
 #[derive(Debug, Clone, Default)]
 pub struct MemberTiers {
-    /// member name → rule. Absent means denied.
-    pub members: BTreeMap<Arc<str>, MemberRule>,
+    /// member name → rule. Absent means denied. Shared and immutable: a
+    /// table's identity IS its policy identity — the gate keys a served
+    /// wrapper by it (Lal F7), so a source that changes a member's tier
+    /// builds a new table and the next read is filtered by it, never by a
+    /// wrapper cached under the old one.
+    pub members: Arc<BTreeMap<Arc<str>, MemberRule>>,
 }
 
 impl MemberTiers {
+    /// A table from its rules.
+    pub fn new(members: BTreeMap<Arc<str>, MemberRule>) -> MemberTiers {
+        MemberTiers {
+            members: Arc::new(members),
+        }
+    }
+
     /// A table from flat `member → minimum tier` rows — the compat-root
     /// form the generated `LEGACY_MEMBER_TIERS` provides.
     pub fn from_rows(rows: &[(&'static str, Tier)]) -> MemberTiers {
-        MemberTiers {
-            members: rows
-                .iter()
+        MemberTiers::new(
+            rows.iter()
                 .map(|(name, tier)| (Arc::from(*name), MemberRule::Member { tier: *tier }))
                 .collect(),
-        }
+        )
     }
 
     /// The rule `member` is classified by, if any.
     pub fn rule(&self, member: &str) -> Option<&MemberRule> {
         self.members.get(member)
+    }
+
+    /// The table's identity — two answers with the same id are the same
+    /// policy. Only meaningful while a clone is held (the gate's cached
+    /// wrapper holds one, so an id it keys by cannot be reused).
+    pub fn id(&self) -> usize {
+        Arc::as_ptr(&self.members) as usize
     }
 }
 

@@ -956,3 +956,80 @@ fn declared_ids_filter_plain_objects_and_refuse_lists() {
         "a list-shaped id map is refused"
     );
 }
+
+// ── F7: a wrapper follows its inner child and its policy ────────────
+
+/// A stable root whose `nav` child can be swapped in place.
+#[derive(Debug)]
+struct Swappable {
+    nav: Mutex<Value>,
+}
+impl we_expr::Namespace for Swappable {
+    fn get(&self, key: &str) -> Value {
+        match key {
+            "nav" => self.nav.lock().unwrap().clone(),
+            _ => Value::Undefined,
+        }
+    }
+    fn keys(&self) -> Vec<Arc<str>> {
+        vec!["nav".into()]
+    }
+}
+
+/// F7 (Lal): a filtered child is rewrapped when the inner child changes —
+/// the same root Arc with a new `nav` reads the new `nav`.
+#[test]
+fn a_filtered_child_follows_a_replaced_inner_child() {
+    let (layer_bag, layer, bag, src, gate) = rig();
+    let _ = &layer_bag;
+    let nav = |id: &str| map(&[("params", map(&[("id", Value::from(id))]))]);
+    let root = Arc::new(Swappable {
+        nav: Mutex::new(nav("a")),
+    });
+    src.serve("screen", Value::Namespace(root.clone()), None);
+    let read = || {
+        let screen = gated(&layer, &bag, &src, &gate, space_auth())
+            .root("screen")
+            .unwrap();
+        get(&get(&get(&screen, "nav"), "params"), "id")
+    };
+    assert!(read().strict_eq(&Value::from("a")));
+    *root.nav.lock().unwrap() = nav("b");
+    let after = read();
+    assert!(
+        after.strict_eq(&Value::from("b")),
+        "a stale child wrapper answered: {after:?}"
+    );
+}
+
+/// F7 (Lal): a policy tightened on the same inner Arc takes effect — the
+/// served wrapper is keyed by the policy as well as the value.
+#[test]
+fn a_tightened_member_policy_is_not_served_from_the_cache() {
+    let (layer_bag, layer, bag, src, gate) = rig();
+    let _ = &layer_bag;
+    let value = map(&[("token", Value::from("t"))]);
+    src.serve(
+        "space",
+        value.clone(),
+        Some(MemberTiers::from_rows(&[("token", Tier::Space)])),
+    );
+    let read = || {
+        let space = gated(&layer, &bag, &src, &gate, space_auth())
+            .root("space")
+            .unwrap();
+        get(&space, "token")
+    };
+    assert!(read().strict_eq(&Value::from("t")));
+    src.serve(
+        "space",
+        value,
+        Some(MemberTiers::from_rows(&[("token", Tier::App)])),
+    );
+    src.bump();
+    let after = read();
+    assert!(
+        after.strict_eq(&Value::Undefined),
+        "the old grant was served after the policy tightened: {after:?}"
+    );
+}

@@ -21,7 +21,7 @@ mod surface;
 pub use surface::LEGACY_MEMBER_TIERS;
 
 use std::collections::HashMap;
-use std::sync::{Arc, Mutex, Weak};
+use std::sync::{Arc, Mutex, OnceLock, Weak};
 
 use we_expr::{MountCx, Namespace, Tier, Value};
 use we_template::{Bound, MemberRule, MemberTiers, RootLayer, ScreenView, StoreBag};
@@ -233,11 +233,21 @@ pub const LEGACY_STORES: [&str; 4] = ["routeStore", "shellStore", "themeStore", 
 
 /// The member table for a legacy store name — absent from the generated
 /// table means the name is not a compat root at all.
+///
+/// Built once and shared: a table's identity is the policy identity the
+/// gate keys its served wrapper by (Lal F7), so a fresh table per request
+/// would rewrap — and cache — on every read.
 fn member_tiers(name: &str) -> Option<MemberTiers> {
-    LEGACY_MEMBER_TIERS
-        .iter()
-        .find(|(n, _)| *n == name)
-        .map(|(_, rows)| store_tiers(name, rows))
+    static TABLES: OnceLock<HashMap<&'static str, MemberTiers>> = OnceLock::new();
+    TABLES
+        .get_or_init(|| {
+            LEGACY_MEMBER_TIERS
+                .iter()
+                .map(|(name, rows)| (*name, store_tiers(name, rows)))
+                .collect()
+        })
+        .get(name)
+        .cloned()
 }
 
 /// The `screen` member a face overlays for `store` — `routeStore` reads
@@ -263,8 +273,9 @@ fn overlay_of(store: &str, member: &str) -> Option<&'static str> {
 /// (`shellStore.panels`, absent from TS) stay denied.
 fn store_tiers(store: &str, rows: &[(&'static str, Tier)]) -> MemberTiers {
     let screen = we_template::screen_tiers();
-    let mut table = MemberTiers::from_rows(rows);
-    for (member, rule) in table.members.iter_mut() {
+    let mut table: std::collections::BTreeMap<Arc<str>, MemberRule> =
+        MemberTiers::from_rows(rows).members.as_ref().clone();
+    for (member, rule) in table.iter_mut() {
         let Some(overlay) = overlay_of(store, member) else {
             continue;
         };
@@ -289,27 +300,32 @@ fn store_tiers(store: &str, rows: &[(&'static str, Tier)]) -> MemberTiers {
             Some(MemberRule::Container { .. }) => MemberRule::Member { tier: Tier::App },
         };
     }
-    table
+    MemberTiers::new(table)
 }
 
 /// `legacy`'s own member table: every compat store name is a container
 /// whose members are that store's generated table — `legacy.routeStore.
 /// params` is `routeStore.params` filtered by `routeStore`'s rows.
 fn legacy_tiers() -> MemberTiers {
-    MemberTiers {
-        members: LEGACY_MEMBER_TIERS
+    static TABLE: OnceLock<MemberTiers> = OnceLock::new();
+    TABLE.get_or_init(build_legacy_tiers).clone()
+}
+
+fn build_legacy_tiers() -> MemberTiers {
+    MemberTiers::new(
+        LEGACY_MEMBER_TIERS
             .iter()
             .map(|(name, rows)| {
                 (
                     Arc::from(*name),
                     MemberRule::Container {
                         tier: Tier::Space,
-                        members: store_tiers(name, rows),
+                        members: member_tiers(name).unwrap_or_else(|| store_tiers(name, rows)),
                     },
                 )
             })
             .collect(),
-    }
+    )
 }
 
 /// The `legacy` root: `legacy.<store>` answers the face when one exists,
