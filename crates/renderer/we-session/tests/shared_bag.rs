@@ -196,3 +196,82 @@ fn a_query_reading_screen_claims_for_its_own_sessions_route() {
     assert_eq!(claimed(&one, "route"), vec![json!("/one/b")]);
     assert_eq!(claimed(&two, "route"), vec![json!("/two")]);
 }
+
+#[test]
+fn two_sessions_on_one_bag_keep_their_own_surfaces() {
+    // E3c-13 × E3c-6: both sessions mount the same template under the
+    // same mount id, so their host surface keys (`SurfaceKey::Host(test)`)
+    // are equal. The surface table is the mount's own, like its `screen`
+    // layer — one session's measure never reaches the other's tree, and
+    // its report does not even dirty the other.
+    fn surfaced() -> RootSpec {
+        RootSpec::single(
+            schema(json!({
+                "type": "Row",
+                "props": {
+                    "w": { "$": "surface.width" },
+                    "t": { "$": "surface.tier" }
+                },
+                "children": []
+            })),
+            "test",
+        )
+    }
+    fn read(s: &mut Session) -> (Value, String) {
+        let root = s.resolve();
+        let w = root.props.get("w").cloned().unwrap_or(Value::Undefined);
+        let t = root
+            .props
+            .get("t")
+            .map(|v| v.to_text().to_string())
+            .unwrap_or_default();
+        (w, t)
+    }
+
+    let bag = Arc::new(StoreBag::new());
+    let mut one = Session::offline(surfaced(), bag.clone(), screen("/"));
+    let mut two = Session::offline(surfaced(), bag.clone(), screen("/"));
+    let root_one = one.resolve();
+    let root_two = two.resolve();
+    assert_eq!(
+        root_one.surfaces.first().map(|t| t.key.clone()),
+        root_two.surfaces.first().map(|t| t.key.clone()),
+        "the premise: both mounts claim the same host key"
+    );
+
+    one.report_host_surfaces(&root_one, 700.0);
+    assert!(
+        !two.poll().dirty,
+        "session one's report must not dirty session two"
+    );
+    two.report_host_surfaces(&root_two, 1440.0);
+
+    let (w1, t1) = read(&mut one);
+    let (w2, t2) = read(&mut two);
+    assert!(
+        w1.strict_eq(&Value::from(700.0)),
+        "one sees its own width: {w1:?}"
+    );
+    assert_eq!(t1, "sm", "one sees its own tier");
+    assert!(
+        w2.strict_eq(&Value::from(1440.0)),
+        "two sees its own width: {w2:?}"
+    );
+    assert_eq!(t2, "lg", "two sees its own tier");
+
+    // A later report on two leaves one exactly where it was — even when
+    // one re-resolves for a reason of its own (a navigation), which is
+    // the moment a measure kept anywhere shared would leak in.
+    two.report_host_surfaces(&root_two, 950.0);
+    assert!(!one.poll().dirty, "two's report never dirties one");
+    let (w2, t2) = read(&mut two);
+    assert!(w2.strict_eq(&Value::from(950.0)), "two moved: {w2:?}");
+    assert_eq!(t2, "md");
+    one.apply_screen(navigate("/elsewhere"));
+    let (w1, t1) = read(&mut one);
+    assert!(
+        w1.strict_eq(&Value::from(700.0)),
+        "one re-resolved and still reads its own width: {w1:?}"
+    );
+    assert_eq!(t1, "sm", "and its own tier");
+}
