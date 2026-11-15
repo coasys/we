@@ -110,10 +110,11 @@ pub fn direction_of(node: &ResolvedNode) -> we_style::Direction {
     }
 }
 
-/// `tone` picks the toned side of a variant table — `tone` present and not
-/// `"neutral"`, the same rule `getInstanceProps` applies.
+/// `tone` picks the toned side of a variant table — `tone` truthy and not
+/// `"neutral"` (badge.ts `this.tone && this.tone !== 'neutral'`): an
+/// empty string is no tone.
 fn toned(node: &ResolvedNode) -> bool {
-    matches!(prop_str(node, "tone"), Some(t) if t != "neutral")
+    matches!(prop_str(node, "tone"), Some(t) if !t.is_empty() && t != "neutral")
 }
 
 /// `variant`/`size` with the primitive's fallbacks.
