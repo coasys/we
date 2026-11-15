@@ -138,11 +138,45 @@ impl TuiApp {
         }
     }
 
+    /// The mount's host surfaces at the pane's width in px — the boundary
+    /// outside the template (E3c-13, Lal U1).
+    fn host_reports(&self, pane: f32) -> Vec<(we_template::SurfaceTag, f32)> {
+        self.session
+            .host_surfaces()
+            .iter()
+            .map(|tag| (tag.clone(), pane))
+            .collect()
+    }
+
+    /// Report each measure that moved since it was last sent — the
+    /// `set` guard at the producer. A full frame's list is every live
+    /// tag, so it also forgets tags it no longer holds; a `partial` one
+    /// (hosts only, nothing painted) leaves the others' records alone.
+    fn send_surfaces(&mut self, reports: Vec<(we_template::SurfaceTag, f32)>, partial: bool) {
+        if !partial {
+            self.surface_sent
+                .retain(|tag, _| reports.iter().any(|(t, _)| t == tag));
+        }
+        for (tag, width) in reports {
+            if self.surface_sent.get(&tag) != Some(&width) {
+                self.surface_sent.insert(tag.clone(), width);
+                self.session.report_surface(&tag, width);
+            }
+        }
+    }
+
     /// Paint one frame into `buf`'s `area`: content in `area.height - 1`
     /// rows, the status line on the last row.
     pub fn render_into(&mut self, buf: &mut Buffer, area: Rect) {
         let view_h = area.height.saturating_sub(1);
         if view_h == 0 || area.width == 0 {
+            // Nothing to paint, but the pane still measured: a 0 is a
+            // measurement (Lal U2), so the hosts report it — the nodes
+            // inside painted nothing and keep their last record until
+            // they paint again.
+            let pane = area.width as f32 * draw::CELL_PX;
+            let reports = self.host_reports(pane);
+            self.send_surfaces(reports, true);
             return;
         }
         let content = Rect {
@@ -179,22 +213,9 @@ impl TuiApp {
         // they land on the next `resolve`'s drain like any producer. The
         // mount's host surfaces are the pane the session is painted into,
         // in cells × `CELL_PX` — the boundary outside the template.
-        let pane = content.width as f32 * draw::CELL_PX;
-        let mut reports: Vec<(we_template::SurfaceTag, f32)> = self
-            .session
-            .host_surfaces()
-            .iter()
-            .map(|tag| (tag.clone(), pane))
-            .collect();
+        let mut reports = self.host_reports(content.width as f32 * draw::CELL_PX);
         reports.extend(frame.surface_reports.iter().cloned());
-        self.surface_sent
-            .retain(|tag, _| reports.iter().any(|(t, _)| t == tag));
-        for (tag, width) in &reports {
-            if self.surface_sent.get(tag) != Some(width) {
-                self.surface_sent.insert(tag.clone(), *width);
-                self.session.report_surface(tag, *width);
-            }
-        }
+        self.send_surfaces(reports, false);
         // A node that left the tree loses focus rather than pointing at a
         // stale id.
         if let Some(id) = &self.focus {

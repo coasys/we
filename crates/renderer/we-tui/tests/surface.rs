@@ -161,3 +161,68 @@ fn tui_host_surface_is_the_pane() {
         );
     }
 }
+
+/// Lal U2: a measured 0 is a measurement. A pane narrowing until the
+/// `$surface`'s padding eats its whole width reports 0 against the same
+/// generation — the old 960/md must not stay live — and a pane narrowed
+/// to nothing reports its host at 0 too.
+#[test]
+fn tui_positive_to_zero_reports_zero() {
+    let theme = load_theme_set().theme("dark").0.clone();
+    let node: SchemaNode = serde_json::from_value(json!({
+        "type": "Column",
+        "children": [{
+            "type": "$surface",
+            "props": { "width": "100%", "px": "120px" },
+            "children": [{ "type": "Tag", "props": { "w": { "$": "surface.width" } } }]
+        }]
+    }))
+    .unwrap();
+    let mut app = we_tui::TuiApp::new(session(node), theme, true);
+    let paint = |app: &mut we_tui::TuiApp, w: u16| {
+        let area = ratatui::layout::Rect::new(0, 0, w, 31);
+        for _ in 0..3 {
+            let mut buf = ratatui::buffer::Buffer::empty(area);
+            app.render_into(&mut buf, area);
+            app.session.poll();
+        }
+    };
+    let node_tag = |app: &mut we_tui::TuiApp| {
+        let root = app.session.resolve();
+        fn find(n: &we_template::ResolvedNode) -> Option<we_template::SurfaceTag> {
+            n.surfaces.first().cloned().or_else(|| {
+                n.children.iter().find_map(|c| match c {
+                    we_template::ResolvedChild::Node(n) => find(n),
+                    _ => None,
+                })
+            })
+        }
+        find(&root).expect("the $surface carries its node tag")
+    };
+
+    // 150 cells − 2×15 cells of padding = 120 cells = 960px → md.
+    paint(&mut app, 150);
+    let tag = node_tag(&mut app);
+    assert_eq!(
+        app.session.runtime.surface_measure(&tag.key),
+        Some((960.0, we_metrics::SizeTier::Md))
+    );
+
+    // 30 cells: the padding eats it all — the content box is 0.
+    paint(&mut app, 30);
+    assert_eq!(node_tag(&mut app), tag, "the same incarnation");
+    assert_eq!(
+        app.session.runtime.surface_measure(&tag.key),
+        Some((0.0, we_metrics::SizeTier::Base)),
+        "a content box of 0 is reported, not skipped"
+    );
+
+    // 0 cells: the pane itself measures 0.
+    let host = app.session.host_surfaces()[0].clone();
+    paint(&mut app, 0);
+    assert_eq!(
+        app.session.runtime.surface_measure(&host.key),
+        Some((0.0, we_metrics::SizeTier::Base)),
+        "a pane of 0 is reported, not skipped"
+    );
+}

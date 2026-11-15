@@ -357,6 +357,14 @@ impl<'a> Painter<'a> {
         }
     }
 
+    /// Record `width` cells of content box for every surface tag `node`
+    /// carries — the frame's `ResizeObserver` entries.
+    fn record_surfaces(&mut self, node: &ResolvedNode, width: u16) {
+        for tag in &node.surfaces {
+            self.surface_cells.push((tag.clone(), width));
+        }
+    }
+
     fn default_fg(&self) -> WColor {
         self.palette.fg(self.theme)
     }
@@ -945,6 +953,19 @@ impl<'a> Painter<'a> {
             return;
         }
         if area.width == 0 || area.height == 0 {
+            // E3c-13 (Lal U2): a measured 0 is a measurement — record the
+            // content box before leaving, or the last positive width stays
+            // live in the table.
+            if !node.surfaces.is_empty() {
+                let width = if area.width == 0 {
+                    0
+                } else {
+                    let style = self.style(node);
+                    let (l, _, r, _) = self.box_inset(node, &style, area.width, area.height);
+                    area.width.saturating_sub(l + r)
+                };
+                self.record_surfaces(node, width);
+            }
             self.paint_out_of_flow(node, area, env);
             return;
         }
@@ -976,17 +997,14 @@ impl<'a> Painter<'a> {
             width: area.width.saturating_sub(l + r),
             height: area.height.saturating_sub(t + b),
         };
+        // E3c-13: `inner` is this node's content box in cells — the same
+        // box `ResizeObserver.contentBoxSize` answers — recorded for every
+        // surface tag the node carries, a 0 included (Lal U2). Only a
+        // hidden node left before this.
+        self.record_surfaces(node, inner.width);
         if inner.width == 0 || inner.height == 0 {
             self.paint_out_of_flow(node, inner, &env);
             return;
-        }
-
-        // E3c-13: `inner` is this node's content box in cells — the same
-        // box `ResizeObserver.contentBoxSize` answers — recorded for every
-        // surface tag the node carries; a hidden or zero-sized one left
-        // already, so a report here is a visible measure.
-        for tag in &node.surfaces {
-            self.surface_cells.push((tag.clone(), inner.width));
         }
 
         // Focusable nodes register their visible row — the rect the cursor
