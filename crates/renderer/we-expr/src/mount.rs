@@ -295,10 +295,20 @@ struct TableInner {
 /// One counter gives every table its own epoch.
 static NEXT_EPOCH: AtomicU64 = AtomicU64::new(1);
 
+/// The next table epoch — `None` once every `u64` is taken, so a new
+/// table can never take an epoch a live table already holds. Checked
+/// rather than saturating: two tables at `u64::MAX` would alias exactly
+/// like a wrap (same slot numbering, `key` answering a foreign handle).
+fn next_epoch(counter: &AtomicU64) -> Option<u64> {
+    counter
+        .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |e| e.checked_add(1))
+        .ok()
+}
+
 impl HandleTable {
     pub fn new() -> Self {
         Self {
-            epoch: NEXT_EPOCH.fetch_add(1, Ordering::Relaxed),
+            epoch: next_epoch(&NEXT_EPOCH).expect("handle table epochs exhausted"),
             inner: Arc::new(Mutex::new(TableInner::default())),
         }
     }
@@ -404,5 +414,26 @@ impl Value {
     /// and no id.
     pub fn handle(handle: HandleRef) -> Value {
         Value::Namespace(Arc::new(HandleNs(handle)))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Lal F3: the epoch counter exhausts rather than wraps — past
+    /// `u64::MAX` a new table is refused, so a live table's epoch can
+    /// never alias a fresh one's (two tables at one epoch share slot
+    /// numbering: equal handles, `key` answering foreign handles — the
+    /// wall the epoch exists to be). The no-ABA claim is then exact.
+    #[test]
+    fn table_epochs_never_repeat_at_exhaustion() {
+        // `u64::MAX` is never handed out: taking it needs a `MAX + 1`
+        // the counter cannot hold, so it is the standing "exhausted"
+        // mark — refusal comes one epoch before the wrap, never reuse.
+        let counter = AtomicU64::new(u64::MAX - 1);
+        assert_eq!(next_epoch(&counter), Some(u64::MAX - 1));
+        assert_eq!(next_epoch(&counter), None, "no wrap to epoch 0");
+        assert_eq!(next_epoch(&counter), None, "exhaustion is final");
     }
 }
