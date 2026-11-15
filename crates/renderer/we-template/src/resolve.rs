@@ -112,6 +112,9 @@ pub struct ResolveCx<'a> {
     pub ops: &'a mut Vec<ScreenOp>,
     /// Every node id this pass produced — `LocalState::retain` drops the rest.
     pub live: &'a mut HashSet<NodeId>,
+    /// Every nested frame (part mount id) this pass resolved — the
+    /// runtime prunes `frame_locals` to it (Lal F9).
+    pub mounted_frames: &'a mut HashSet<Arc<str>>,
     /// child → parent, for handler bubbling at dispatch time.
     pub parents: &'a mut HashMap<NodeId, NodeId>,
     /// Resolve-time complaints. Never fatal.
@@ -1132,6 +1135,7 @@ fn resolve_node(
                         auth: part_auth.clone(),
                         declared: Declared::default(),
                     });
+                    cx.mounted_frames.insert(part_auth.mount.0.clone());
                     let locals = cx
                         .frame_locals
                         .entry(part_auth.mount.0.clone())

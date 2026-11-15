@@ -1033,3 +1033,85 @@ fn a_tightened_member_policy_is_not_served_from_the_cache() {
         "the old grant was served after the policy tightened: {after:?}"
     );
 }
+
+// ── F9: part locals and the dirty aggregate ─────────────────────────
+
+struct CounterPart;
+impl PartSource for CounterPart {
+    fn part(&self, id: &str) -> Option<PartDef> {
+        (id == "counter").then(|| PartDef {
+            schema: Arc::new(
+                serde_json::from_value::<SchemaNode>(json!({
+                    "type": "Button",
+                    "$localState": { "n": { "type": "number", "initial": 0 } },
+                    "props": {
+                        "t": { "$": "local.n" },
+                        "onClick": { "$setLocal": "n", "value": { "$": "local.n + 1" } }
+                    }
+                }))
+                .unwrap(),
+            ),
+            tier: Tier::Space,
+            module: "mod".into(),
+            needs: Arc::from([]),
+        })
+    }
+}
+
+/// F9 (Lal): after a write to a part's own local, one resolve settles the
+/// runtime — `last` records the same frame-local aggregate `dirty`
+/// compares — and a part no longer mounted leaves no locals behind.
+#[test]
+fn a_part_local_write_settles_and_unmounted_parts_are_pruned() {
+    let bag = Arc::new(StoreBag::new());
+    let node: SchemaNode = serde_json::from_value(json!({
+        "type": "Column",
+        "children": [{ "type": "$if", "props": {
+            "condition": { "$": "screen.params.show == 'yes'" },
+            "then": { "type": "$part", "props": { "id": "counter" } }
+        } }]
+    }))
+    .unwrap();
+    let mut rt = Runtime::new(node, "space-mount", bag.clone(), LocalState::new())
+        .with_sources(None, Arc::new(CounterPart));
+    let mut host = StaticHost::new(bag);
+    let mut screen = ScreenState::desktop(ScreenSchema::default(), "/?show=yes");
+    let root = rt.frame(&mut host, &screen).clone();
+    fn find_button(n: &ResolvedNode) -> Option<we_template::NodeId> {
+        if n.ty.as_ref() == "Button" {
+            return Some(n.id.clone());
+        }
+        n.children.iter().find_map(|c| match c {
+            ResolvedChild::Node(n) => find_button(n),
+            _ => None,
+        })
+    }
+    let button = find_button(&root).expect("the part mounted");
+    rt.dispatch(&mut host, &mut screen, &button, "onClick", Value::Null);
+    let root = rt.frame(&mut host, &screen).clone();
+    let mut ts = Vec::new();
+    texts(&root, &mut ts);
+    assert!(
+        ts[0].strict_eq(&Value::from(1.0)),
+        "the write landed: {ts:?}"
+    );
+    let resolves = rt.stats().resolves;
+    assert!(
+        !rt.dirty(&screen),
+        "a settled runtime reports dirty after a part-local write"
+    );
+    let _ = rt.frame(&mut host, &screen);
+    assert_eq!(rt.stats().resolves, resolves, "no extra resolve");
+
+    // Unmount the part: its locals go with it.
+    rt.apply_screen(
+        &mut screen,
+        we_screen::ScreenOp::SetParam {
+            name: "show".into(),
+            value: Some("no".into()),
+            push: None,
+        },
+    );
+    let _ = rt.frame(&mut host, &screen);
+    assert_eq!(rt.frame_local_count(), 0, "unmounted part locals pruned");
+}

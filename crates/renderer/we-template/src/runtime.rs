@@ -401,6 +401,12 @@ impl Runtime {
         self.last = None;
     }
 
+    /// How many nested frames (parts) hold a `$localState` store — tests
+    /// read this to see unmounted parts pruned (Lal F9).
+    pub fn frame_local_count(&self) -> usize {
+        self.frame_locals.len()
+    }
+
     /// The gate this runtime resolves behind — tests read its denials.
     pub fn gate(&self) -> &Arc<Gate> {
         &self.gate
@@ -501,15 +507,24 @@ impl Runtime {
             != Some((
                 screen.version,
                 self.bindings.revision(),
-                self.locals.version()
-                    + self
-                        .frame_locals
-                        .values()
-                        .map(LocalState::version)
-                        .sum::<u64>(),
+                self.local_version(),
                 self.hub.revision(),
                 self.surfaces.revision(),
             ))
+    }
+
+    /// The local-state input of the dirty tuple: the mount's store plus
+    /// every mounted part's (4.6.3). One function for `dirty`, `frame`'s
+    /// comparison and what `last` records (Lal F9). Between resolves each
+    /// term only grows (writes bump; stores are added and pruned only
+    /// inside a resolve), so an equal sum means nothing moved.
+    fn local_version(&self) -> u64 {
+        self.locals.version()
+            + self
+                .frame_locals
+                .values()
+                .map(LocalState::version)
+                .sum::<u64>()
     }
 
     /// `meta.role` lowers a mount's stamped tier — a space-tier role
@@ -684,12 +699,7 @@ impl Runtime {
         let current = (
             screen.version,
             self.bindings.revision(),
-            self.locals.version()
-                + self
-                    .frame_locals
-                    .values()
-                    .map(LocalState::version)
-                    .sum::<u64>(),
+            self.local_version(),
             self.hub.revision(),
             self.surfaces.revision(),
         );
@@ -717,6 +727,9 @@ impl Runtime {
             // Each mount's host tag, and whether it is the app chrome's —
             // decides below which boundary reports it.
             let mut host_tags: Vec<(SurfaceTag, bool)> = Vec::new();
+            // The nested frames (part mounts) the last pass resolved —
+            // a part's locals outlive a pass only while it is mounted.
+            let mut round_frames: HashSet<Arc<str>> = HashSet::new();
             for _ in 0..8 {
                 // Claims a panicked pass recorded are dropped — a site
                 // that does not claim again does not keep a stale claim.
@@ -724,6 +737,7 @@ impl Runtime {
                 self.surfaces.begin_pass();
                 let mut round_live = HashSet::new();
                 let mut round_parents = HashMap::new();
+                round_frames.clear();
                 warnings.clear();
                 children.clear();
                 chrome_children = 0;
@@ -776,6 +790,7 @@ impl Runtime {
                         record_views,
                         ops: &mut ops,
                         live: &mut round_live,
+                        mounted_frames: &mut round_frames,
                         parents: &mut round_parents,
                         warnings: &mut warnings,
                         node_memo: &mut self.node_memo,
@@ -832,6 +847,13 @@ impl Runtime {
                 .count();
             self.stats.warnings = warnings;
             self.locals.retain(&live);
+            // Part locals (F9): a part no longer mounted drops its store,
+            // and a mounted part's store drops fields of vanished nodes.
+            self.frame_locals
+                .retain(|mount, _| round_frames.contains(mount));
+            for locals in self.frame_locals.values() {
+                locals.retain(&live);
+            }
             self.parents = parents;
             self.live = live;
             // A pending call belongs to the node incarnation that made it:
@@ -913,8 +935,10 @@ impl Runtime {
                 current.1,
                 // Locals and hub at the END: their writes here were the
                 // resolve's own products — seeds, follows, cell fills —
-                // already reflected in this tree.
-                self.locals.version(),
+                // already reflected in this tree. The SAME aggregate
+                // `dirty` compares (Lal F9): the mount's locals plus every
+                // part's, after the unmounted parts were pruned.
+                self.local_version(),
                 self.hub.revision(),
                 self.surfaces.revision(),
             ));
