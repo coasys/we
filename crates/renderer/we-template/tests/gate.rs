@@ -642,3 +642,145 @@ fn a_bare_runtime_does_not_serve_unclassified_bag_roots_to_space() {
     );
     assert_eq!(rt.gate().denial_count(), 1, "the refusal is counted");
 }
+
+// ── F4: cross-authority payloads ────────────────────────────────────
+
+/// A namespace carrying `token`, filtered by the gate for an App mount —
+/// it keeps App's view whoever reads it later.
+fn app_filtered_token() -> Value {
+    let gate = Arc::new(Gate::new(HandleTable::new()));
+    gate.serve(
+        "x",
+        we_template::RootDomain::Space,
+        Bound {
+            value: map(&[("token", Value::from("app-secret"))]),
+            members: Some(MemberTiers::from_rows(&[("token", Tier::App)])),
+            domain: None,
+        },
+        &app_auth(),
+        &Declared::default(),
+    )
+    .expect("served at App")
+}
+
+/// A payload carrying another frame's authority three ways: an
+/// App-filtered namespace, a raw namespace, and an accessor whose answer
+/// is App data.
+fn smuggling_payload() -> Value {
+    obj(&[
+        ("app", app_filtered_token()),
+        ("raw", map(&[("token", Value::from("raw-secret"))])),
+        (
+            "acc",
+            Value::Callable(we_expr::CallableRef::accessor("acc", |_| {
+                Value::from("acc-secret")
+            })),
+        ),
+        ("plain", Value::from("ok")),
+    ])
+}
+
+/// Rows for any request: one row holding the smuggling payload.
+struct Smuggler;
+impl we_template::QuerySource for Smuggler {
+    fn open(
+        &self,
+        _ticket: we_template::SubTicket,
+        _request: &we_template::QueryRequest,
+        _handles: &HandleTable,
+        sink: we_template::QuerySink,
+    ) {
+        sink.deliver(we_template::QueryEvent::Rows(Arc::new(vec![
+            smuggling_payload(),
+        ])));
+    }
+    fn close(&self, _ticket: we_template::SubTicket) {}
+}
+
+/// Parks every `$invoke` so the test completes it by hand.
+#[derive(Default)]
+struct Parking(Vec<we_template::Completer>);
+impl we_template::Host for Parking {
+    fn act(
+        &mut self,
+        _request: we_template::ActionRequest,
+        done: we_template::Completer,
+    ) -> we_template::Invoked {
+        self.0.push(done);
+        we_template::Invoked::Pending
+    }
+}
+
+fn smuggle_tree() -> SchemaNode {
+    let reads = |src: &str| {
+        json!([
+            { "type": "Text", "props": { "t": { "$": format!("{src}.app.token") } } },
+            { "type": "Text", "props": { "t": { "$": format!("{src}.raw.token") } } },
+            { "type": "Text", "props": { "t": { "$": format!("{src}.acc") } } },
+            { "type": "Text", "props": { "t": { "$": format!("{src}.plain") } } }
+        ])
+    };
+    let mut children = vec![json!({
+        "type": "Button",
+        "props": { "onClick": {
+            "$invoke": "storeX.slow",
+            "onSuccess": [{ "$setLocal": "got", "value": { "$": "result" } }]
+        } }
+    })];
+    children.extend(reads("first(local.rows)").as_array().unwrap().clone());
+    children.extend(reads("local.got").as_array().unwrap().clone());
+    serde_json::from_value(json!({
+        "type": "Column",
+        "$localState": { "got": { "type": "object", "initial": null } },
+        "$queries": { "rows": { "entity": "Task" } },
+        "children": children
+    }))
+    .unwrap()
+}
+
+/// F4 (Lal): a query row and an `onSuccess` payload delivered into a
+/// Space frame cannot carry another authority — an App-filtered
+/// namespace, a raw namespace and an accessor inside them read Undefined
+/// there; plain data survives.
+#[test]
+fn query_rows_and_callback_payloads_carry_no_foreign_authority() {
+    let bag = Arc::new(StoreBag::new());
+    let mut rt = Runtime::from_spec(
+        RootSpec::Single {
+            node: Box::new(smuggle_tree()),
+            cx: space_auth(),
+            declared: Declared::default(),
+        },
+        bag.clone(),
+        LocalState::new(),
+    )
+    .with_sources(Some(Arc::new(Smuggler)), Arc::new(we_template::NoParts));
+    let mut host = Parking::default();
+    let mut screen = ScreenState::desktop(ScreenSchema::default(), "/");
+    let root = rt.frame(&mut host, &screen).clone();
+    let button = match &root.children[0] {
+        ResolvedChild::Node(n) => n.id.clone(),
+        _ => panic!("button"),
+    };
+    rt.dispatch(&mut host, &mut screen, &button, "onClick", Value::Null);
+    let done = host.0.pop().expect("parked");
+    let call = done.call_id();
+    rt.complete(&mut host, &mut screen, call, Ok(smuggling_payload()));
+    let root = rt.frame(&mut host, &screen).clone();
+    let mut ts = Vec::new();
+    texts(&root, &mut ts);
+    assert_eq!(ts.len(), 8, "{ts:?}");
+    let undefined = |v: &Value| v.strict_eq(&Value::Undefined);
+    // Query row: app / raw / accessor stripped, plain kept.
+    assert!(
+        ts[..3].iter().all(undefined),
+        "query row carried a foreign authority: {ts:?}"
+    );
+    assert!(ts[3].strict_eq(&Value::from("ok")), "{ts:?}");
+    // Callback payload: the same.
+    assert!(
+        ts[4..7].iter().all(undefined),
+        "onSuccess payload carried a foreign authority: {ts:?}"
+    );
+    assert!(ts[7].strict_eq(&Value::from("ok")), "{ts:?}");
+}

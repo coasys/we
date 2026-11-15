@@ -469,6 +469,16 @@ impl<'a> Roots<'a> {
     }
 
     /// `Env::call` — functions belong to the shared bag alone.
+    ///
+    /// **Not gated (Lal F4): a host function must be pure.** The call
+    /// carries no authority — the function sees its arguments (values the
+    /// calling frame was already allowed to read) and nothing else, and its
+    /// answer is handed back as is. A registrant that reads a store, the
+    /// session or any other host state inside the function, or returns a
+    /// namespace or accessor over such state, walks round the read
+    /// boundary; register a root (through the `BindingSource`) instead.
+    /// The bundled natives (`we-data`'s nine) are pure argument
+    /// computations.
     pub fn call(&self, name: &str, args: &[Value]) -> Value {
         self.bag.call(name, args)
     }
@@ -600,6 +610,13 @@ impl StoreBag {
     }
 
     /// Register a function (`Env::call` reaches it).
+    ///
+    /// Purity contract — **the read boundary does not see inside a
+    /// function** (Lal F4): every frame, Space included, may call it, with
+    /// no authority attached. It must compute its answer from its
+    /// arguments alone and return plain data — never read a store or host
+    /// state, never return a namespace or accessor over one. See
+    /// [`Roots::call`].
     ///
     /// Reactivity contract — **output-content tracking**: a tracked
     /// `{"$": …}` initial that calls this function records the call's

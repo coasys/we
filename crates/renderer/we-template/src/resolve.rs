@@ -225,9 +225,9 @@ impl ResolveCx<'_> {
 /// Every handle inside `v` replaced by its tainted twin (design 4.6.5):
 /// rows landing in a space-tier claim, a host result binding into a
 /// space-tier callback — the value can be held and compared, never used
-/// at a use site. Lists and objects recurse; namespaces that are not
-/// handles stay (a root crossing in a query row keeps its own filter —
-/// the gate, not the carrier, is the boundary).
+/// at a use site. Lists and objects recurse; anything else is left as is —
+/// a delivered payload has already lost its namespaces and callables to
+/// [`strip_authority`] (F4), so only handles remain to judge.
 pub fn taint_handles(v: &Value) -> Value {
     match v {
         Value::Namespace(ns) => match ns.as_handle() {
@@ -243,6 +243,89 @@ pub fn taint_handles(v: &Value) -> Value {
                 .collect(),
         )),
         _ => v.clone(),
+    }
+}
+
+/// A payload delivered INTO a frame from outside it — a query row, an
+/// `onSuccess`/`onError` result (Lal F4): it may carry plain data and
+/// handles, never another frame's authority. Every `Namespace` that is not
+/// a handle (a root, an App-filtered view, a host's lazy object) and every
+/// `Callable` (an accessor would answer whatever it closes over) becomes
+/// `Undefined`, at any depth. Handles stay for [`taint_handles`] to judge
+/// by the receiving tier.
+///
+/// The one rule for every delivery path: inert, never rewrapped — a
+/// payload has no frame of its own to rewrap under, and the receiving
+/// frame reads authority from its roots, not from data.
+///
+/// Identity is kept when nothing needs scrubbing: a row of plain data is
+/// the same allocation it arrived as, so a row keyed by reference keeps
+/// its key.
+pub fn strip_authority(v: &Value) -> Value {
+    strip(v).unwrap_or_else(|| v.clone())
+}
+
+/// `None` = unchanged (keep the caller's allocation).
+fn strip(v: &Value) -> Option<Value> {
+    match v {
+        Value::Namespace(ns) => match ns.as_handle() {
+            Some(_) => None,
+            None => Some(Value::Undefined),
+        },
+        Value::Callable(_) => Some(Value::Undefined),
+        Value::List(items) => strip_items(items).map(|items| Value::List(Arc::new(items))),
+        Value::Obj(map) => {
+            let mut out: Option<IndexMap<Arc<str>, Value>> = None;
+            for (i, (k, v)) in map.iter().enumerate() {
+                match (strip(v), &mut out) {
+                    (Some(new), Some(out)) => {
+                        out.insert(k.clone(), new);
+                    }
+                    (Some(new), None) => {
+                        let mut fresh: IndexMap<Arc<str>, Value> = map
+                            .iter()
+                            .take(i)
+                            .map(|(k, v)| (k.clone(), v.clone()))
+                            .collect();
+                        fresh.insert(k.clone(), new);
+                        out = Some(fresh);
+                    }
+                    (None, Some(out)) => {
+                        out.insert(k.clone(), v.clone());
+                    }
+                    (None, None) => {}
+                }
+            }
+            out.map(|m| Value::Obj(Arc::new(m)))
+        }
+        _ => None,
+    }
+}
+
+/// A list's items stripped — `None` when none needed it.
+fn strip_items(items: &[Value]) -> Option<Vec<Value>> {
+    let mut out: Option<Vec<Value>> = None;
+    for (i, item) in items.iter().enumerate() {
+        match (strip(item), &mut out) {
+            (Some(new), Some(out)) => out.push(new),
+            (Some(new), None) => {
+                let mut fresh = items[..i].to_vec();
+                fresh.push(new);
+                out = Some(fresh);
+            }
+            (None, Some(out)) => out.push(item.clone()),
+            (None, None) => {}
+        }
+    }
+    out
+}
+
+/// Query rows stripped of authority (see [`strip_authority`]), keeping
+/// the shared `Arc` when no row needed it.
+pub(crate) fn strip_rows(rows: &Arc<Vec<Value>>) -> Arc<Vec<Value>> {
+    match strip_items(rows) {
+        Some(items) => Arc::new(items),
+        None => rows.clone(),
     }
 }
 
@@ -471,7 +554,8 @@ fn eval_prop(json: &Json, scope: &Scope, cx: &mut ResolveCx, site: &SiteId) -> V
             let view = cx
                 .hub
                 .claim(site.clone(), compiled, cx.auth().space.clone().as_ref());
-            return Value::List(view.rows);
+            // Delivered into this frame: no foreign authority rides in (F4).
+            return Value::List(strip_rows(&view.rows));
         }
     }
     eval_json(json, scope, cx.bag.clone(), cx.cache, cx.warnings)
@@ -1449,6 +1533,10 @@ fn declare_locals(
                 let mut view = cx
                     .hub
                     .claim(site, compiled, cx.auth().space.clone().as_ref());
+                // Delivered into this frame: no foreign authority rides in
+                // (F4) — namespaces and callables inside rows read Undefined.
+                view.rows = strip_rows(&view.rows);
+                view.error = view.error.map(|e| strip_authority(&e));
                 // Space-tier rows carry no usable handles: a handle that
                 // arrives inside a space frame's claim is held and
                 // comparable, never usable (4.6.5). The cell's shared

@@ -1124,6 +1124,11 @@ impl Runtime {
         // A host result landing in a space-tier callback carries no usable
         // handles: anything it contains crosses the boundary tainted
         // (4.6.5) — the callback can hold and compare it, never use it.
+        // No payload carries another frame's authority (F4): namespaces and
+        // callables inside it are inert, whatever tier receives it.
+        let result = result
+            .map(|v| crate::resolve::strip_authority(&v))
+            .map_err(|v| crate::resolve::strip_authority(&v));
         let result = if pending.frame.auth.tier < Tier::App {
             result
                 .map(|v| crate::resolve::taint_handles(&v))
