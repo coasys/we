@@ -381,12 +381,22 @@ impl StoreBag {
     /// `set_root` reaches here: `bind_screen`'s overlay writes mirror the
     /// screen state, which the screen revision already covers — waking
     /// for them would loop.
+    ///
+    /// The lock is released before any `invalidate` runs: the invalidator
+    /// ends in the session's waker — arbitrary frontend code — and a
+    /// callback that re-enters the bag (a `set_root` of its own, a new
+    /// subscription) would deadlock on a held mutex, while a panicking
+    /// one would poison it for every later write. So the live handles
+    /// are pruned and cloned under the lock, then notified outside it.
     fn invalidate_subscribers(&self) {
-        let Ok(mut subs) = self.invalidators.lock() else {
-            return;
+        let live: Vec<Invalidator> = {
+            let Ok(mut subs) = self.invalidators.lock() else {
+                return;
+            };
+            subs.retain(|i| i.alive());
+            subs.iter().cloned().collect()
         };
-        subs.retain(|i| i.alive());
-        for i in subs.iter() {
+        for i in &live {
             i.invalidate();
         }
     }

@@ -6,9 +6,12 @@
 //! through `Completer`, binding invalidations through the `StoreBag`'s
 //! subscribed invalidator.
 use std::cell::RefCell;
+use std::panic::{catch_unwind, AssertUnwindSafe};
 use std::rc::Rc;
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::mpsc;
 use std::sync::Arc;
+use std::time::Duration;
 
 use serde_json::json;
 use we_expr::Value;
@@ -128,6 +131,28 @@ fn store_value(members: serde_json::Value) -> Value {
         .unwrap()
         .root("s")
         .unwrap()
+}
+
+/// A `we-text` reading `profileStore.displayName` — the binding the
+/// re-entrancy tests watch.
+fn profile_spec() -> RootSpec {
+    RootSpec::Single {
+        node: Box::new(schema(json!({
+            "type": "we-text",
+            "props": { "text": { "$": "profileStore.displayName" } }
+        }))),
+        id: "test".into(),
+    }
+}
+
+fn profile_bag() -> Arc<StoreBag> {
+    Arc::new(
+        StoreBag::from_snapshot(&json!({
+            "stores": { "profileStore": { "displayName": "before" } },
+            "queries": {}, "invokes": {}
+        }))
+        .unwrap(),
+    )
 }
 
 /// A completion that lands from another thread wakes the waker — once for
@@ -517,6 +542,116 @@ fn arrival_during_wake_is_kept() {
     assert_eq!(tick.completions, 2, "nothing was lost — both arrived");
     s.resolve();
     assert_eq!(local(&s, &root.id, "log"), "ab");
+    // The waker captured `b`, which owns this inbox's Arc — drop the hook
+    // so the test does not leave the reference cycle behind (Lal, (a)).
+    s.set_waker(Arc::new(|| {}));
+}
+
+/// Lal P2-1: invalidation must not hold the subscriber lock while the
+/// waker runs — a waker that writes back to the same bag used to
+/// deadlock on it. Two sessions subscribe to one bag; one's waker makes
+/// a one-shot `set_root`. The outer write runs on a worker thread with a
+/// timeout, so a regression fails here instead of hanging the suite.
+#[test]
+fn a_waker_can_set_root_on_the_same_bag() {
+    let bag = profile_bag();
+    let mut s1 = Session::offline(profile_spec(), bag.clone(), screen());
+    let mut s2 = Session::offline(profile_spec(), bag.clone(), screen());
+    let once = AtomicBool::new(false);
+    let wakes = Arc::new(AtomicUsize::new(0));
+    {
+        let wakes = wakes.clone();
+        let writer = bag.clone();
+        s1.set_waker(Arc::new(move || {
+            wakes.fetch_add(1, Ordering::SeqCst);
+            if !once.swap(true, Ordering::SeqCst) {
+                writer.set_root(
+                    "profileStore",
+                    store_value(json!({ "displayName": "from-the-waker" })),
+                );
+            }
+        }));
+    }
+    s1.resolve();
+    s2.resolve();
+
+    let writer = bag.clone();
+    let (done_tx, done_rx) = mpsc::channel();
+    let worker = std::thread::spawn(move || {
+        writer.set_root("profileStore", store_value(json!({ "displayName": "outer" })));
+        let _ = done_tx.send(());
+    });
+    done_rx
+        .recv_timeout(Duration::from_secs(10))
+        .expect("the write deadlocked — the waker ran under the subscriber lock");
+    worker.join().unwrap();
+
+    assert_eq!(
+        count(&wakes),
+        1,
+        "the batch woke once; the nested write rode the same queue"
+    );
+    let (t1, t2) = (s1.poll(), s2.poll());
+    assert!(t1.dirty && t2.dirty);
+    assert_eq!(
+        t1.binding_changes, 2,
+        "the outer and the nested invalidations both arrived"
+    );
+    assert_eq!(
+        t2.binding_changes, 2,
+        "the second subscriber heard both writes"
+    );
+    let root = s1.resolve();
+    assert_eq!(
+        prop(&root, "text"),
+        "from-the-waker",
+        "the waker's write ran inside the outer one — and landed last"
+    );
+}
+
+/// Lal P2-1, second half: a waker that panics must not poison the
+/// subscriber lock — the next write still notifies, and a session that
+/// subscribes after the panic still registers.
+#[test]
+fn a_panicking_waker_does_not_poison_later_writes() {
+    let bag = profile_bag();
+    let mut s1 = Session::offline(profile_spec(), bag.clone(), screen());
+    let blows_up = Arc::new(AtomicBool::new(true));
+    let wakes = Arc::new(AtomicUsize::new(0));
+    {
+        let wakes = wakes.clone();
+        let blows_up = blows_up.clone();
+        s1.set_waker(Arc::new(move || {
+            if blows_up.swap(false, Ordering::SeqCst) {
+                panic!("the frontend hook blew up");
+            }
+            wakes.fetch_add(1, Ordering::SeqCst);
+        }));
+    }
+    s1.resolve();
+
+    let writer = bag.clone();
+    let panicked = catch_unwind(AssertUnwindSafe(|| {
+        writer.set_root("profileStore", store_value(json!({ "displayName": "one" })));
+    }));
+    assert!(panicked.is_err(), "the waker's panic reaches the writer");
+    // The arrival landed before the panic — drain it so the next
+    // write's wake is an empty→non-empty call again.
+    let tick = s1.poll();
+    assert!(tick.dirty);
+    assert_eq!(tick.binding_changes, 1);
+
+    let mut s2 = Session::offline(profile_spec(), bag.clone(), screen());
+    let (waker2, wakes2) = counting_waker();
+    s2.set_waker(waker2);
+    s2.resolve();
+    bag.set_root("profileStore", store_value(json!({ "displayName": "two" })));
+    assert_eq!(count(&wakes), 1, "the write after the panic still notified");
+    assert_eq!(
+        count(&wakes2),
+        1,
+        "the post-panic subscriber registered and heard it"
+    );
 }
 
 /// The per-frame budget: nine dependent queries need nine fill rounds,
