@@ -67,9 +67,12 @@ pub struct Inbox {
     inner: Mutex<Inner>,
     /// The frontend's hook — a no-op until `set_waker` installs one.
     waker: RwLock<Waker>,
-    /// Test-only probe invoked where `push` decided and before it
-    /// enqueues — a barrier parks a producer in exactly the interleaving
-    /// the quiet window can lose (Lal F2), no sleeps needed.
+    /// Test-only probe invoked inside `push`'s critical section — after
+    /// the quiet decision, before the enqueue. A barrier parks a
+    /// producer in exactly the interleaving the quiet window can lose
+    /// (Lal F2), no sleeps needed; on the single-lock ordering a parked
+    /// producer also blocks the window end (`inner_held` proves it, so
+    /// the test distinguishes the old sample-outside-lock race).
     #[cfg(test)]
     push_probe: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
 }
@@ -172,11 +175,22 @@ impl Inbox {
         !inner.queue.is_empty()
     }
 
-    /// A barrier hook a test installs — invoked inside `push` before the
-    /// queue lock: the pause point a lost wake needs (Lal F2).
+    /// A barrier hook a test installs — invoked inside `push`'s critical
+    /// section between decision and enqueue: the pause point a lost
+    /// wake needs (Lal F2).
     #[cfg(test)]
     pub(crate) fn set_probe(&self, probe: Arc<dyn Fn() + Send + Sync>) {
         *self.push_probe.lock().unwrap() = Some(probe);
+    }
+
+    /// Whether `inner` is held right now. The lost-wake test parks a
+    /// producer mid-push and asks: if the decision/enqueue section is
+    /// the same one a window end takes, the answer is `true` and the
+    /// end must wait for the enqueue; `false` is the old split ordering
+    /// the window could interpose into (Lal F2/N3).
+    #[cfg(test)]
+    pub(crate) fn inner_held(&self) -> bool {
+        self.inner.try_lock().is_err()
     }
 
     /// An arrival: appended, and — when the queue went from empty to
@@ -186,13 +200,13 @@ impl Inbox {
     /// critical section — a producer can never decide on a window that
     /// already closed (Lal F2).
     pub(crate) fn push(&self, arrival: Arrival) {
-        #[cfg(test)]
-        if let Some(probe) = self.push_probe.lock().unwrap().clone() {
-            probe();
-        }
         let wake = {
             let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
             let quiet = matches!(&arrival, Arrival::Query { .. }) && inner.sync_queries;
+            #[cfg(test)]
+            if let Some(probe) = self.push_probe.lock().unwrap().clone() {
+                probe();
+            }
             let was_empty = inner.queue.is_empty();
             inner.queue.push_back(arrival);
             was_empty && !quiet
@@ -304,10 +318,17 @@ mod tests {
         assert_eq!(inbox.drain().len(), 1);
     }
 
-    /// Lal F2: a producer that saw the quiet window, then paused while
-    /// the frame drained and closed it, must not suppress the only wake.
-    /// The probe parks it between decision and enqueue — deterministic,
-    /// no sleeps.
+    /// Lal F2: a producer that decided `quiet` must not lose its wake to
+    /// a window that ends before it enqueues. The probe parks it inside
+    /// the decision/enqueue critical section — deterministic, no sleeps.
+    ///
+    /// The two possible orderings run different halves of the protocol
+    /// (Lal N3), and the parked section tells them apart: when the
+    /// producer holds `inner`, the window end cannot interpose at all,
+    /// so the push lands first and the end owes the leftover wake. When
+    /// the producer holds nothing — the old sample-outside-lock code —
+    /// the end completes first and the suppressed enqueue is stranded.
+    /// Either way the event must still reach the frontend.
     #[test]
     fn a_push_paused_between_deciding_and_enqueueing_still_wakes() {
         let inbox = Arc::new(Inbox::new());
@@ -335,13 +356,29 @@ mod tests {
             })
         };
 
-        entered.wait(); // the producer decided and paused
-        assert!(inbox.drain_queries().is_empty());
-        assert!(
-            !inbox.end_sync_queries(),
-            "nothing queued yet — no wake owed"
-        );
-        released.wait();
+        entered.wait(); // the producer decided `quiet` and paused
+        if inbox.inner_held() {
+            // Single-lock ordering: the parked push holds the mutex the
+            // window end needs — the end cannot interpose, so let the
+            // producer enqueue first; its event is a leftover that owes
+            // the wake at window end.
+            released.wait();
+            assert!(
+                inbox.end_sync_queries(),
+                "the event queued mid-window is a leftover — it owes the wake"
+            );
+            inbox.wake();
+        } else {
+            // Split ordering: the producer holds nothing mid-push, so
+            // the frame's drain and the window end can both complete
+            // first — the arriving event must still wake on its own.
+            assert!(inbox.drain_queries().is_empty());
+            assert!(
+                !inbox.end_sync_queries(),
+                "nothing queued yet — no wake owed"
+            );
+            released.wait();
+        }
         producer.join().unwrap();
 
         assert_eq!(
