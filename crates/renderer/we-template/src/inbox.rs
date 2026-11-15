@@ -85,14 +85,17 @@ struct Inner {
 
 /// The `commit → drain` quiet window, held as a guard (Lal F4): `Drop`
 /// ends it, so an unwound frame cannot leave `Query` pushes silenced,
-/// and whatever the drain left queued earns its one wake.
+/// and whatever the drain left queued earns its one wake — on unwind
+/// too. A batch already queued when the window ends owes that wake
+/// regardless: skipping it leaves the batch stranded behind a non-empty
+/// queue every later push stays silent for (Lal N2).
 pub(crate) struct SyncQueries<'a> {
     inbox: &'a Inbox,
 }
 
 impl Drop for SyncQueries<'_> {
     fn drop(&mut self) {
-        if self.inbox.end_sync_queries() && !std::thread::panicking() {
+        if self.inbox.end_sync_queries() {
             self.inbox.wake();
         }
     }
@@ -347,6 +350,40 @@ mod tests {
             "the event that queued behind the window still woke the frontend"
         );
         assert_eq!(inbox.drain_queries().len(), 1);
+    }
+
+    /// Lal N2: a batch queued inside the window owes its wake even when
+    /// the guard drops mid-unwind — a source's `open` that enqueues and
+    /// then panics must not strand it: cleared flag but silent queue
+    /// means every later push sees non-empty and never wakes again.
+    #[test]
+    fn an_unwound_window_still_wakes_for_its_leftovers() {
+        use std::panic::{catch_unwind, AssertUnwindSafe};
+        let inbox = Arc::new(Inbox::new());
+        let wakes = Arc::new(AtomicUsize::new(0));
+        let w = wakes.clone();
+        inbox.set_waker(Arc::new(move || {
+            w.fetch_add(1, Ordering::SeqCst);
+        }));
+        let hit = catch_unwind(AssertUnwindSafe(|| {
+            let _window = inbox.sync_queries();
+            inbox.push(Arrival::Query {
+                ticket: SubTicket::test(7),
+                event: QueryEvent::Rows(Arc::new(vec![])),
+            });
+            panic!("boom");
+        }));
+        assert!(hit.is_err(), "the panic propagated through the guard");
+        assert_eq!(
+            wakes.load(Ordering::SeqCst),
+            1,
+            "the batch queued before the unwind still earned its wake"
+        );
+        assert_eq!(inbox.drain_queries().len(), 1, "and it stayed queued");
+
+        // And the flag cleared: a later push wakes on its own batch.
+        inbox.push(Arrival::Bindings);
+        assert_eq!(wakes.load(Ordering::SeqCst), 2);
     }
 
     /// Lal F2: a window that began over a non-empty queue still owes a
