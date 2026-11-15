@@ -1122,47 +1122,24 @@ fn resolve_node(
                         part_scope.bind("subject", inert(&value));
                     }
                     // Frame push (4.6.3): bag/locals/template tables swap to
-                    // the part's own — restored on the way out, whatever the
-                    // body resolved to.
-                    let saved = (
-                        cx.bag.clone(),
-                        cx.locals.clone(),
-                        cx.routes,
-                        cx.panels,
-                        cx.record_views,
-                    );
-                    cx.frames.push(Frame {
-                        auth: part_auth.clone(),
-                        declared: Declared::default(),
-                    });
+                    // the part's own — restored when the guard drops, on a
+                    // normal return, an early one, or an unwind (Lal N3).
                     cx.mounted_frames.insert(part_auth.mount.0.clone());
                     let locals = cx
                         .frame_locals
                         .entry(part_auth.mount.0.clone())
                         .or_default()
                         .clone();
-                    cx.bag = cx.bag.for_auth(part_auth, Declared::default());
-                    cx.locals = locals;
-                    cx.routes = None;
-                    cx.panels = None;
-                    cx.record_views = None;
-                    let out = resolve_node(
+                    let mut cx = FrameGuard::enter(cx, part_auth, locals);
+                    resolve_node(
                         &part.schema,
                         &part_scope,
                         parent,
                         &format!("part:{id}@{site}"),
                         "",
                         &empty_decls,
-                        cx,
-                    );
-                    let (bag, locals, routes, panels, record_views) = saved;
-                    cx.bag = bag;
-                    cx.locals = locals;
-                    cx.routes = routes;
-                    cx.panels = panels;
-                    cx.record_views = record_views;
-                    cx.frames.pop();
-                    out
+                        &mut cx,
+                    )
                 }
                 // The module is not here: a `$part` placeholder carrying the
                 // id — PartFrame's stand-in.
@@ -1937,4 +1914,214 @@ pub fn resolve(
         &decls,
         cx,
     )
+}
+
+/// What a nested frame swaps out of the context — put back by
+/// [`FrameGuard`]'s `Drop`.
+type FrameSaved<'a> = (
+    Roots<'a>,
+    LocalState,
+    Option<&'a [RouteNode]>,
+    Option<&'a serde_json::Value>,
+    Option<&'a JsonMap>,
+);
+
+/// A nested frame on the context (design 4.6.3): pushes the callee's
+/// authority, swaps the bag to it and the locals to the callee's store,
+/// and hides the caller's route/panel/record-view tables — and puts every
+/// one of them back when dropped, so an early return or an unwind (a
+/// native namespace panicking in a part body, caught by an embedder that
+/// reuses the context) cannot leave the callee's frame on (Lal N3).
+struct FrameGuard<'g, 'a> {
+    cx: &'g mut ResolveCx<'a>,
+    /// The stack depth to restore — exactly the caller's frames.
+    depth: usize,
+    saved: Option<FrameSaved<'a>>,
+}
+
+impl<'g, 'a> FrameGuard<'g, 'a> {
+    fn enter(cx: &'g mut ResolveCx<'a>, auth: MountCx, locals: LocalState) -> Self {
+        let depth = cx.frames.len();
+        let saved = (
+            cx.bag.clone(),
+            std::mem::replace(&mut cx.locals, locals),
+            cx.routes.take(),
+            cx.panels.take(),
+            cx.record_views.take(),
+        );
+        cx.frames.push(Frame {
+            auth: auth.clone(),
+            declared: Declared::default(),
+        });
+        cx.bag = cx.bag.for_auth(auth, Declared::default());
+        FrameGuard {
+            cx,
+            depth,
+            saved: Some(saved),
+        }
+    }
+}
+
+impl Drop for FrameGuard<'_, '_> {
+    fn drop(&mut self) {
+        if let Some((bag, locals, routes, panels, record_views)) = self.saved.take() {
+            self.cx.bag = bag;
+            self.cx.locals = locals;
+            self.cx.routes = routes;
+            self.cx.panels = panels;
+            self.cx.record_views = record_views;
+        }
+        self.cx.frames.truncate(self.depth);
+    }
+}
+
+impl<'a> std::ops::Deref for FrameGuard<'_, 'a> {
+    type Target = ResolveCx<'a>;
+    fn deref(&self) -> &ResolveCx<'a> {
+        self.cx
+    }
+}
+
+impl<'a> std::ops::DerefMut for FrameGuard<'_, 'a> {
+    fn deref_mut(&mut self) -> &mut ResolveCx<'a> {
+        self.cx
+    }
+}
+
+#[cfg(test)]
+mod frame_guard_tests {
+    //! N3 (Lal, E3c-8a r3): the `$part` frame is restored by a guard, so a
+    //! panic in a part body that a caller catches cannot leave a reused
+    //! `ResolveCx` running under the part's authority.
+    use super::*;
+    use crate::{BagBindings, Gate, RootLayer, StaticHost, StoreBag};
+    use we_expr::Namespace;
+
+    /// A root whose every read panics — a misbehaving native namespace.
+    #[derive(Debug)]
+    struct Boom;
+    impl Namespace for Boom {
+        fn get(&self, _key: &str) -> Value {
+            panic!("boom");
+        }
+        fn keys(&self) -> Vec<Arc<str>> {
+            Vec::new()
+        }
+    }
+
+    /// An App part whose body reads the panicking root.
+    struct BoomPart;
+    impl PartSource for BoomPart {
+        fn part(&self, id: &str) -> Option<PartDef> {
+            (id == "boom").then(|| PartDef {
+                schema: Arc::new(
+                    serde_json::from_value(serde_json::json!({
+                        "type": "Text", "props": { "t": { "$": "boom.x" } }
+                    }))
+                    .unwrap(),
+                ),
+                tier: Tier::App,
+                module: "mod".into(),
+                needs: Arc::from([]),
+            })
+        }
+    }
+
+    #[test]
+    fn a_caught_panic_in_a_part_body_leaves_the_outer_frame() {
+        let bag = Arc::new(StoreBag::new());
+        bag.set_root("boom", Value::namespace(Boom));
+        let layer = Arc::new(RootLayer::new(&bag));
+        let source = BagBindings::trusted_unclassified(bag.clone(), layer.clone());
+        let gate = Arc::new(Gate::new(we_expr::HandleTable::new()));
+        let mount = MountCx::explicit("space-mount");
+        let declared = Declared::default();
+        let inbox = Arc::new(crate::inbox::Inbox::new());
+        let handles = we_expr::HandleTable::new();
+        let mut host = StaticHost::new(bag.clone());
+        let mut frame_locals = HashMap::new();
+        let mut frames = vec![Frame {
+            auth: mount.clone(),
+            declared: declared.clone(),
+        }];
+        let mut cache = ParseCache::default();
+        let screen = we_screen::ScreenState::desktop(we_screen::ScreenSchema::default(), "/");
+        let mut hub = QueryHub::new(inbox, handles.clone());
+        let mut surfaces = SurfaceTable::default();
+        let (mut ops, mut live, mut mounted, mut parents, mut warnings) = (
+            Vec::new(),
+            HashSet::new(),
+            HashSet::new(),
+            HashMap::new(),
+            Vec::new(),
+        );
+        let (mut node_memo, mut value_memo, mut route_tail) =
+            (HashMap::new(), HashMap::new(), Vec::new());
+        let routes: &[RouteNode] = &[];
+        let panels = serde_json::json!([]);
+        let record_views = JsonMap::new();
+        let locals = LocalState::new();
+        let dollar = |_: &str| false;
+        let mut cx = ResolveCx {
+            bag: Roots::new(&layer, &bag).gated(
+                &source,
+                &gate,
+                &[],
+                mount.clone(),
+                declared.clone(),
+            ),
+            host: &mut host,
+            locals: locals.clone(),
+            frame_locals: &mut frame_locals,
+            frames: &mut frames,
+            cache: &mut cache,
+            screen: &screen,
+            hub: &mut hub,
+            surfaces: &mut surfaces,
+            mount: &mount,
+            declared: &declared,
+            handles: &handles,
+            parts: &BoomPart,
+            routes: Some(routes),
+            panels: Some(&panels),
+            record_views: Some(&record_views),
+            ops: &mut ops,
+            live: &mut live,
+            mounted_frames: &mut mounted,
+            parents: &mut parents,
+            warnings: &mut warnings,
+            dollar_type: &dollar,
+            node_memo: &mut node_memo,
+            route_tail: &mut route_tail,
+            value_memo: &mut value_memo,
+        };
+        let part: SchemaNode = serde_json::from_value(
+            serde_json::json!({ "type": "$part", "props": { "id": "boom" } }),
+        )
+        .unwrap();
+        let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            resolve(&part, &mount, &Scope::default(), &mut cx)
+        }));
+        assert!(caught.is_err(), "the part body panicked");
+        // The reused context is back on the mount frame, whole.
+        assert_eq!(cx.frames.len(), 1, "the part's frame was left on the stack");
+        assert_eq!(cx.auth().tier, Tier::Space);
+        assert_eq!(cx.auth().mount.as_str(), "space-mount");
+        let gate_auth = &cx.bag.gate.as_ref().expect("gated").auth;
+        assert_eq!(
+            gate_auth.tier,
+            Tier::Space,
+            "the bag kept the part's authority"
+        );
+        assert_eq!(gate_auth.mount.as_str(), "space-mount");
+        assert!(cx.routes.is_some() && cx.panels.is_some() && cx.record_views.is_some());
+        // The mount's store, not the part's: a field written to the outer
+        // store reads through the context's.
+        let probe = NodeId::new("probe");
+        locals.set(&probe, "f", Value::from("outer"));
+        assert!(
+            cx.locals.get(&probe, "f").strict_eq(&Value::from("outer")),
+            "the part's locals were left in place"
+        );
+    }
 }
