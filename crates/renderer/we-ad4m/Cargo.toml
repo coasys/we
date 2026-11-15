@@ -40,3 +40,4 @@ we-ad4m = { path = ".", features = ["testkit"] }
 tempfile = "3"
 we-session.workspace = true
 we-screen.workspace = true
+anyhow = "1"

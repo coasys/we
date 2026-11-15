@@ -28,6 +28,7 @@ use std::sync::{Arc, Mutex};
 use ad4m_client::connect::{
     Ad4mConnect, AppInfo, AuthState, ConnectError, ConnectOptions, ConnectPrompts, ConnectStatus,
 };
+use ad4m_client::types::{CapabilityInput, ResourceInput};
 
 use crate::connection::Connection;
 
@@ -75,13 +76,82 @@ pub struct ConnectSettings {
     pub port_file: Option<PathBuf>,
 }
 
-/// The app as the capability request names it.
+/// The app as the capability request names it, asking for what a
+/// read-only renderer uses and nothing else (Lal F1):
+///
+/// - `agent` READ: `agent.get` (who `me` is);
+/// - `perspective` READ: `perspective.all` for the picker, and
+///   `perspective.modelQuery` / `modelSubscribe` / `disposeQuery`, which
+///   the executor guards with perspective READ (not SUBSCRIBE).
+///
+/// Not `neighbourhood` READ, although `neighbourhood.otherAgents` wants it:
+/// the executor also lets that capability call `neighbourhood.join`, which
+/// a read-only app must not be able to do. `spaceStore.memberDids` falls
+/// back to the agent alone when the executor refuses it.
 pub fn app_info() -> AppInfo {
     AppInfo::new(
         "WE (Rust renderer)",
         "Reads your spaces to render them natively. Read-only.",
         "https://github.com/coasys/we",
     )
+    .capabilities(read_only_capabilities())
+}
+
+/// The grant [`app_info`] asks for.
+pub fn read_only_capabilities() -> Vec<CapabilityInput> {
+    ["agent", "perspective"]
+        .into_iter()
+        .map(|domain| CapabilityInput {
+            can: vec!["READ".to_string()],
+            with: ResourceInput {
+                domain: domain.to_string(),
+                pointers: vec!["*".to_string()],
+            },
+        })
+        .collect()
+}
+
+/// Which grant a stored token for an executor was minted under — kept
+/// beside `ad4m-connect`'s token store, because the token itself carries no
+/// capabilities and there is no call that reads an app's own grant. A
+/// stored token without a current record came from an earlier build that
+/// asked for `*` on `*`: it is dropped and the read-only grant asked for.
+const GRANT_FILE: &str = "we-renderer-grants.json";
+const GRANT_VERSION: &str = "read-only-1";
+
+fn grant_path(settings: &ConnectSettings) -> PathBuf {
+    settings
+        .token_dir
+        .clone()
+        .unwrap_or_else(ad4m_client::connect::default_token_dir)
+        .join(GRANT_FILE)
+}
+
+fn grants(path: &std::path::Path) -> serde_json::Map<String, serde_json::Value> {
+    std::fs::read_to_string(path)
+        .ok()
+        .and_then(|t| serde_json::from_str(&t).ok())
+        .unwrap_or_default()
+}
+
+fn grant_is_current(path: &std::path::Path, url: &str) -> bool {
+    grants(path).get(url).and_then(|v| v.as_str()) == Some(GRANT_VERSION)
+}
+
+fn record_grant(path: &std::path::Path, url: &str) {
+    let mut all = grants(path);
+    all.insert(url.to_string(), serde_json::Value::from(GRANT_VERSION));
+    let write = || -> std::io::Result<()> {
+        if let Some(dir) = path.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let tmp = path.with_extension("json.tmp");
+        std::fs::write(&tmp, serde_json::Value::Object(all).to_string())?;
+        std::fs::rename(&tmp, path)
+    };
+    if let Err(e) = write() {
+        log::warn!("we-ad4m: could not record the grant for {url}: {e}");
+    }
 }
 
 type Wake = Arc<dyn Fn() + Send + Sync>;
@@ -171,10 +241,13 @@ impl ConnectFlow {
 struct UiPrompts {
     shared: Arc<Shared>,
     answers: tokio::sync::mpsc::UnboundedReceiver<String>,
+    /// The user was asked something: the token came from this flow.
+    asked: bool,
 }
 
 impl UiPrompts {
     async fn ask(&mut self, ask: Ask) -> anyhow::Result<String> {
+        self.asked = true;
         self.shared.set(ConnectPhase::Asking { ask, note: None });
         let answer = self
             .answers
@@ -245,6 +318,7 @@ async fn run(
     answers: tokio::sync::mpsc::UnboundedReceiver<String>,
     handle: tokio::runtime::Handle,
 ) {
+    let grant_file = grant_path(&settings);
     let mut opts = ConnectOptions::new(app_info());
     opts.url = settings.url;
     opts.email = settings.email;
@@ -257,12 +331,37 @@ async fn run(
     let mut prompts = UiPrompts {
         shared: shared.clone(),
         answers,
+        asked: false,
     };
-    let state = match session.connect(&mut prompts).await {
+    let mut state = match session.connect(&mut prompts).await {
         Ok(state) => state,
         Err(e) => return shared.set(ConnectPhase::Failed { reason: reason(&e) }),
     };
-    let url = session.url().unwrap_or_default().to_string();
+    let mut url = session.url().unwrap_or_default().to_string();
+    let app = app_info().name;
+    let stored = |s: &Ad4mConnect, url: &str| s.store().token(url, &app).ok().flatten();
+    // A stored token this build did not ask for may hold a broader grant:
+    // drop it and ask for the read-only one.
+    if state == AuthState::Authenticated
+        && !prompts.asked
+        && stored(&session, &url).is_some()
+        && !grant_is_current(&grant_file, &url)
+    {
+        log::warn!(
+            "we-ad4m: the stored token for {url} predates the read-only grant; asking again"
+        );
+        if let Err(e) = session.disconnect().await {
+            return shared.set(ConnectPhase::Failed { reason: reason(&e) });
+        }
+        state = match session.connect(&mut prompts).await {
+            Ok(state) => state,
+            Err(e) => return shared.set(ConnectPhase::Failed { reason: reason(&e) }),
+        };
+        url = session.url().unwrap_or_default().to_string();
+    }
+    if prompts.asked && state != AuthState::Unauthenticated && stored(&session, &url).is_some() {
+        record_grant(&grant_file, &url);
+    }
     match state {
         AuthState::Authenticated => {
             let Some(ws) = session.rpc().cloned() else {

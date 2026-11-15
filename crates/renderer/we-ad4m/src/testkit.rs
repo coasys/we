@@ -156,6 +156,56 @@ pub fn new_space(rt: &Runtime, conn: &Connection, name: &str) -> String {
     })
 }
 
+/// [`seed_space`] on a connection whose agent already exists (the
+/// operator's, after `agent.generate`).
+pub fn seed_space_as(rt: &Runtime, conn: &Connection, name: &str) -> String {
+    let uuid = rt
+        .block_on(conn.client().perspectives.add(name.into()))
+        .unwrap()
+        .uuid;
+    add_class(rt, conn, &uuid, "CollectionBlock", COLLECTION_SDNA);
+    uuid
+}
+
+/// A token for `app_name` with `capabilities`, minted the way the launcher
+/// approves one: request on an anonymous socket, permit as the operator,
+/// redeem the code.
+pub fn mint_token(
+    rt: &Runtime,
+    url: &str,
+    operator: &Connection,
+    app_name: &str,
+    capabilities: Value,
+) -> String {
+    let anon = connect(rt, url);
+    rt.block_on(async {
+        let request_id: String = anon
+            .ws()
+            .call(
+                "agent.requestCapability",
+                json!({ "authInfo": { "appName": app_name, "appDesc": "test", "appDomain": "test",
+                                      "appUrl": "test", "capabilities": capabilities } }),
+            )
+            .await
+            .unwrap();
+        let auth = json!({ "requestId": request_id,
+                           "auth": { "appName": app_name, "appDesc": "test", "capabilities": capabilities } })
+        .to_string();
+        let code: String = operator
+            .ws()
+            .call("agent.permitCapability", json!({ "auth": auth }))
+            .await
+            .unwrap();
+        let token: String = anon
+            .ws()
+            .call("agent.generateJwt", json!({ "requestId": request_id, "rand": code }))
+            .await
+            .unwrap();
+        anon.ws().close().await;
+        token
+    })
+}
+
 /// [`new_space`] with `CollectionBlock` installed. Returns the uuid.
 pub fn seed_space(rt: &Runtime, conn: &Connection, name: &str) -> String {
     let uuid = new_space(rt, conn, name);

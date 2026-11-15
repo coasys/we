@@ -262,6 +262,7 @@ fn connect_screen(ui: &mut egui::Ui, flow: &ConnectFlow, input: &mut String) -> 
                     Ask::CapabilityCode { request_id } => (
                         format!(
                             "This app asked for access (request {request_id}).\n\
+                             It asks to read your agent and your perspectives, and nothing else.\n\
                              Approve it in the AD4M launcher, then type the 6-digit code it shows."
                         ),
                         true,
