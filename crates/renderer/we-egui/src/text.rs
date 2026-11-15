@@ -220,8 +220,9 @@ pub fn format_relative(target_ms: f64, now_ms: f64, style: &str) -> String {
 /// The `LayoutJob` a we-text-family widget paints: transform, wrap,
 /// `lines`/`truncate` clamps with an ellipsis, align, break-anywhere —
 /// and the authored typography: `font-style` → synthesized slant,
-/// `font-weight` → the `wght` variation coordinate (and a second offset
-/// pass at paint — see [`paint_galley`]), `line-height`, `letter-spacing`,
+/// `font-weight` → the variable faces' `wght` (and Bricolage's `opsz`), or
+/// a synthesised bold at paint (see [`paint_galley`]), `line-height`,
+/// `letter-spacing`,
 /// and `opacity` folded into the colour's alpha.
 pub fn text_job(
     text: &str,
@@ -244,7 +245,7 @@ pub fn text_job(
     let opacity = style.paint.opacity.unwrap_or(1.0).clamp(0.0, 1.0);
     let color = props::text_color(style, ctx).gamma_multiply(opacity);
     let mut format = egui::text::TextFormat::simple(font.clone(), color);
-    format.coords = weight_coords(style);
+    format.coords = crate::fonts::variation(&font.family, style.text.font_weight, font.size);
     format.italics = italic(style);
     if let Some(ls) = props::px(
         style.text.letter_spacing.as_ref(),
@@ -297,22 +298,6 @@ pub fn text_job(
     ctx.fonts_mut(|f| f.layout_job(job))
 }
 
-/// `font-weight` as a `wght` variation coordinate — static faces ignore
-/// it (the offset pass in [`paint_galley`] supplies the look); a variable
-/// face honours it directly.
-pub(crate) fn weight_coords(style: &Style) -> egui::epaint::text::VariationCoords {
-    match style.text.font_weight {
-        Some(w) => egui::epaint::text::VariationCoords::new([(b"wght", w)]),
-        None => egui::epaint::text::VariationCoords::default(),
-    }
-}
-
-/// `font-weight ≥ 600` — semibold-and-up paints a second offset pass: the
-/// bundled faces are static, so `wght` alone changes nothing on screen.
-pub(crate) fn bold(style: &Style) -> bool {
-    style.text.font_weight.unwrap_or(400.0) >= 600.0
-}
-
 /// `font-style: italic|oblique` — synthesized slant (the faces are static).
 pub(crate) fn italic(style: &Style) -> bool {
     matches!(
@@ -321,9 +306,12 @@ pub(crate) fn italic(style: &Style) -> bool {
     )
 }
 
-/// `Shape::galley(pos, g, PLACEHOLDER)` plus the static-face bold pass: a
-/// second galley a fraction of a pixel right. Every text-owning paint
-/// goes through here so `font-weight` is never a silent no-op.
+/// `Shape::galley(pos, g, PLACEHOLDER)` plus the synthesised bold a
+/// browser gives a face that has no bold of its own: a second galley a
+/// fraction of a pixel right. A variable face reaches its weight through
+/// `wght` and is painted once (see [`crate::fonts::synthesises_bold`]).
+/// Every text-owning paint goes through here so `font-weight` is never a
+/// silent no-op.
 pub(crate) fn paint_galley(
     painter: &egui::Painter,
     pos: egui::Pos2,
@@ -335,7 +323,8 @@ pub(crate) fn paint_galley(
         g.clone(),
         egui::Color32::PLACEHOLDER,
     ));
-    if bold(style) {
+    let family = g.job.sections.first().map(|s| &s.format.font_id.family);
+    if family.is_some_and(|f| crate::fonts::synthesises_bold(f, style.text.font_weight)) {
         let dx = (g.size().y * 0.03).clamp(0.3, 1.2);
         painter.add(egui::Shape::galley(
             pos + egui::vec2(dx, 0.0),

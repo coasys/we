@@ -16,16 +16,20 @@
 //! down the list for missing glyphs, matching the CSS `unicode-range`
 //! pairing.
 //!
-//! Every shipped face is WOFF2 (the browsers' container) and egui's
-//! `ab_glyph` reads raw sfnt, so each payload is decompressed to TTF
-//! once at install via `wuff`.
+//! Every shipped face is WOFF2 (the browsers' container) and epaint's
+//! `skrifa` reads raw sfnt, so each payload is decompressed to TTF once at
+//! install via `wuff`.
 //!
-//! ab_glyph does not instance variable fonts, so a weight request can only
-//! reach a *file that carries it*: `family_named` looks for a
-//! `"Family Bold"` variant in the registered set before settling for the
-//! base file. No per-weight files ship today — Mozilla Text's and
-//! Bricolage's range rides the default instance, exactly like DM Sans's
-//! browser-synthesised bolds land unstyled here.
+//! Weights: epaint shapes and rasterises at the `wght` (and `opsz`)
+//! coordinates a `TextFormat` carries, so the two variable families reach
+//! every weight they declare with no per-weight files. Two things keep that
+//! honest, both here: a run that names no weight must land on CSS
+//! `normal` (400) rather than the file's default instance — Mozilla Text's
+//! is 200, Bricolage's 800 at opsz 96 — so each variable face carries a
+//! `FontTweak` default of 400; and [`variation`] clamps a request to the
+//! range the web's `@font-face` declares. A family with no face at the
+//! asked-for weight is emboldened the way a browser synthesises it
+//! ([`synthesises_bold`]); a variable one never is.
 use std::sync::Arc;
 
 use base64::Engine as _;
@@ -40,7 +44,7 @@ const FAMILIES: &[&str] = &[
     "Bricolage Grotesque",
 ];
 
-/// WOFF2 → TTF, once at install — `ab_glyph` only reads raw sfnt.
+/// WOFF2 → TTF, once at install — epaint only reads raw sfnt.
 fn ttf(woff2: &[u8]) -> egui::FontData {
     egui::FontData::from_owned(wuff::decompress_woff2(woff2).expect("vendored woff2 decodes"))
 }
@@ -73,6 +77,87 @@ const FACE_FILES: &[(&str, &str)] = &[
     ("VT323", "vt323-latin"),
     ("Bricolage Grotesque", "bricolage-grotesque-latin"),
 ];
+
+/// The `font-weight` range each family's faces answer for — the web's
+/// `@font-face` declaration, which is what CSS matches a request against
+/// (Bricolage's file reaches 200; its theme declares 300–800).
+fn weight_range(family: &str) -> (f32, f32) {
+    match family {
+        "Mozilla Text" => (200.0, 700.0),
+        "Bricolage Grotesque" => (300.0, 800.0),
+        _ => (400.0, 400.0),
+    }
+}
+
+/// Bricolage's optical-size axis — the browser sets it to the font size
+/// in CSS px (`font-optical-sizing: auto`).
+const OPSZ: (f32, f32) = (12.0, 96.0);
+
+/// How a family's faces are rasterised. The variable faces default to
+/// `wght` 400 (and Bricolage to a body-text `opsz`), so text laid out
+/// without coordinates — egui's own widgets, the inputs — is CSS `normal`,
+/// not the file's default instance.
+fn tweak(family: &str) -> egui::FontTweak {
+    let mut t = egui::FontTweak::default();
+    match family {
+        "Mozilla Text" => {
+            t.coords = egui::epaint::text::VariationCoords::new([(b"wght", 400.0)]);
+        }
+        "Bricolage Grotesque" => {
+            t.coords =
+                egui::epaint::text::VariationCoords::new([(b"wght", 400.0), (b"opsz", 16.0)]);
+        }
+        _ => {}
+    }
+    t
+}
+
+/// The WE family a resolved egui family is set in first — the leading
+/// entry of its chain key — or `None` when it leads with a generic.
+fn primary(family: &egui::FontFamily) -> Option<&'static str> {
+    let egui::FontFamily::Name(key) = family else {
+        return None;
+    };
+    let head = key.split(", ").next().unwrap_or_default();
+    FAMILIES.iter().copied().find(|f| *f == head)
+}
+
+/// The variation coordinates a run in `family` at `weight` and `size_px`
+/// (CSS px) is set at: for a variable family `wght` clamped to its
+/// declared range (400 when no weight is asked for) and Bricolage's `opsz`
+/// at the size. A static face has no axes and ignores a coordinate, so it
+/// carries the authored `wght` as it was asked for — the record of the
+/// resolved weight a galley keeps — and the look comes from
+/// [`synthesises_bold`].
+pub(crate) fn variation(
+    family: &egui::FontFamily,
+    weight: Option<f32>,
+    size_px: f32,
+) -> egui::epaint::text::VariationCoords {
+    let mut coords = egui::epaint::text::VariationCoords::default();
+    let (lo, hi) = primary(family).map_or((400.0, 400.0), weight_range);
+    if lo == hi {
+        if let Some(w) = weight {
+            coords.push(b"wght", w);
+        }
+        return coords;
+    }
+    coords.push(b"wght", weight.unwrap_or(400.0).clamp(lo, hi));
+    if primary(family) == Some("Bricolage Grotesque") {
+        coords.push(b"opsz", size_px.clamp(OPSZ.0, OPSZ.1));
+    }
+    coords
+}
+
+/// Whether a run in `family` at `weight` is emboldened synthetically — as
+/// the browser does when the matched face is lighter than bold: a request
+/// of 600 or more whose clamped weight is still below 600. DM Sans, VT323,
+/// Boldonse and the generics are, a variable face never is.
+pub(crate) fn synthesises_bold(family: &egui::FontFamily, weight: Option<f32>) -> bool {
+    let w = weight.unwrap_or(400.0);
+    let (lo, hi) = primary(family).map_or((400.0, 400.0), weight_range);
+    w >= 600.0 && w.clamp(lo, hi) < 600.0
+}
 
 /// The decoded face for one of [`FACE_FILES`].
 fn face_data(file: &str) -> egui::FontData {
@@ -116,9 +201,9 @@ fn face_data(file: &str) -> egui::FontData {
 /// missing glyphs move.
 pub(crate) fn install(fonts: &mut egui::FontDefinitions) {
     for (family, file) in FACE_FILES {
-        fonts
-            .font_data
-            .insert(file.to_string(), face_data(file).into());
+        let mut data = face_data(file);
+        data.tweak = tweak(family);
+        fonts.font_data.insert(file.to_string(), data.into());
         fonts
             .families
             .entry(egui::FontFamily::Name(Arc::from(*family)))
@@ -220,7 +305,7 @@ impl Chain {
                     continue;
                 }
                 // A weight-specific face would register as `"<base> Bold"`
-                // (none ship — variable files can't instance under ab_glyph).
+                // (none ship — the variable faces take `wght` instead).
                 let bold = format!("{base} Bold");
                 Link::Named(if weight.is_some_and(|w| w >= 600.0) && has_face(&bold) {
                     bold
@@ -517,6 +602,37 @@ mod tests {
             family_named("'VT323', sans-serif, monospace", None, |_| true),
             egui::FontFamily::Name(Arc::from("VT323, sans-serif, monospace"))
         );
+    }
+
+    /// A request is clamped to the range the web's `@font-face` declares,
+    /// and only a face lighter than bold after that is synthesised.
+    #[test]
+    fn weights_clamp_to_the_declared_range() {
+        let fam = |n: &str| egui::FontFamily::Name(Arc::from(n));
+        let wght = |f: &egui::FontFamily, w: Option<f32>| {
+            variation(f, w, 16.0)
+                .as_ref()
+                .iter()
+                .find(|(t, _)| t.to_be_bytes() == *b"wght")
+                .map(|(_, v)| *v)
+        };
+        assert_eq!(wght(&fam("Mozilla Text"), None), Some(400.0));
+        assert_eq!(wght(&fam("Mozilla Text"), Some(900.0)), Some(700.0));
+        assert_eq!(wght(&fam("Bricolage Grotesque"), Some(200.0)), Some(300.0));
+        assert_eq!(wght(&fam("DM Sans"), Some(700.0)), Some(700.0));
+        assert_eq!(wght(&fam("DM Sans"), None), None);
+        assert!(!synthesises_bold(&fam("Mozilla Text"), Some(900.0)));
+        assert!(!synthesises_bold(
+            &fam("Bricolage Grotesque, monospace"),
+            Some(700.0)
+        ));
+        assert!(synthesises_bold(&fam("DM Sans"), Some(600.0)));
+        assert!(synthesises_bold(&fam("VT323, monospace"), Some(700.0)));
+        assert!(synthesises_bold(
+            &egui::FontFamily::Proportional,
+            Some(700.0)
+        ));
+        assert!(!synthesises_bold(&fam("DM Sans"), Some(500.0)));
     }
 
     #[test]
