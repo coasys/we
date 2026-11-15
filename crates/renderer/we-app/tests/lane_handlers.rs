@@ -2,10 +2,8 @@
 //! web's `PanelLane` would call, which need not make the lane the width it
 //! was asked for:
 //!
-//! - each width a drag asks for reaches the handler once, however many
-//!   paths (the pre-resolve drag, paint, the release) see it asked for;
-//! - a lane folded away while its handle is held lets go of the drag, so a
-//!   later press elsewhere does not resize it from the old press.
+//! each width a drag asks for reaches the handler once, however many paths
+//! (the pre-resolve drag, paint, the release) see it asked for.
 use std::sync::Arc;
 
 use egui::{Pos2, Rect, Vec2};

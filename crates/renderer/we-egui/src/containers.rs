@@ -198,6 +198,12 @@ impl Widget for Lane {
             );
             props::scratch_set(&mut cx.edit.data, &node.id, HELD_KEY, Value::Bool(true));
             props::scratch_set(&mut cx.edit.data, &node.id, ASKED_KEY, Value::Null);
+            props::scratch_set(
+                &mut cx.edit.data,
+                &node.id,
+                DRAG_ID_KEY,
+                Value::Str(id.value().to_string().into()),
+            );
         }
         if r.drag_stopped() {
             props::scratch_set(&mut cx.edit.data, &node.id, HELD_KEY, Value::Bool(false));
@@ -263,6 +269,9 @@ impl Widget for Lane {
 const START_KEY: &str = "_resizeStart";
 const ORIGIN_KEY: &str = "_resizeOrigin";
 const HELD_KEY: &str = "_resizeHeld";
+/// The egui id of the handle that was pressed, as text (a `u64` does not
+/// survive an `f64`).
+const DRAG_ID_KEY: &str = "_resizeDragId";
 /// The last width this drag asked `onResize` for.
 const ASKED_KEY: &str = "_resizeAsked";
 
@@ -325,28 +334,43 @@ pub fn lane_drags(
     root: &ResolvedNode,
 ) -> Vec<crate::WidgetEvent> {
     let mut out = Vec::new();
-    let Some(x) = ctx.input(|i| {
+    let x = ctx.input(|i| {
         i.pointer
             .primary_down()
             .then(|| i.pointer.interact_pos().or(i.pointer.latest_pos()))
             .flatten()
-    }) else {
-        return out;
-    };
+    });
+    // With the button up nothing is dragged, so every held flag clears.
+    let dragged = x
+        .and_then(|_| ctx.dragged_id())
+        .map(|id| id.value().to_string());
     fn walk(
         node: &ResolvedNode,
-        x: f32,
+        x: Option<f32>,
+        dragged: &Option<String>,
         edit: &mut crate::EditState,
         layout: &crate::Layout,
         out: &mut Vec<crate::WidgetEvent>,
     ) {
-        if node.ty.as_ref() == "$lane"
+        let held = node.ty.as_ref() == "$lane"
             && matches!(
                 props::scratch(&edit.data, &node.id, HELD_KEY),
                 Some(Value::Bool(true))
-            )
-            && !props::prop_bool(node, "collapsed")
-        {
+            );
+        // Held only while egui is still dragging the handle that was
+        // pressed. A lane folded away or taken out of the tree mid-drag
+        // is not painted, so its handle never sees the release and paint
+        // never clears the flag; egui drops a drag whose widget was not
+        // drawn, and the flag goes with it — or a later press anywhere
+        // would drag the lane from the old press.
+        let owner = matches!(
+            props::scratch(&edit.data, &node.id, DRAG_ID_KEY),
+            Some(Value::Str(id)) if dragged.as_deref() == Some(id.as_ref())
+        );
+        if held && !owner {
+            props::scratch_set(&mut edit.data, &node.id, HELD_KEY, Value::Bool(false));
+        }
+        if held && owner && !props::prop_bool(node, "collapsed") {
             if let (Some(start), Some(rect)) = (lane_handle_edge(node), layout.rects.get(&node.id))
             {
                 let bounds = layout
@@ -357,7 +381,8 @@ pub fn lane_drags(
                         min: 0.0,
                         max: f32::INFINITY,
                     });
-                if let Some(width) = drag_width(&edit.data, node, start, bounds, x) {
+                if let Some(width) = x.and_then(|x| drag_width(&edit.data, node, start, bounds, x))
+                {
                     if (width - rect.width()).abs() >= 0.5 && ask(&mut edit.data, node, width) {
                         out.push(crate::WidgetEvent {
                             node: node.id.clone(),
@@ -370,10 +395,10 @@ pub fn lane_drags(
         }
         for child in &node.children {
             if let we_template::ResolvedChild::Node(n) = child {
-                walk(n, x, edit, layout, out);
+                walk(n, x, dragged, edit, layout, out);
             }
         }
     }
-    walk(root, x.x, edit, layout, &mut out);
+    walk(root, x.map(|p| p.x), &dragged, edit, layout, &mut out);
     out
 }
