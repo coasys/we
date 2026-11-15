@@ -52,7 +52,7 @@ use we_app::gallery::load_theme_set;
 use we_app::{RendererApp, Shell};
 use we_egui::Registry;
 use we_screen::{ScreenSchema, ScreenState};
-use we_session::Session;
+use we_session::{Session, Tick};
 use we_template::{normal_form, AppSpec, Bundle, ResolvedNode, RootSpec, SchemaNode, StoreBag};
 
 const BUNDLE: &str = include_str!(concat!(
@@ -223,12 +223,12 @@ fn app_for(truth: &Json, id: &str) -> RendererApp {
 }
 
 /// The gate's settle loop (8.1): `poll → resolve` until `poll` reports
-/// quiet — at most `MAX_SETTLE_ROUNDS` rounds, a failure past that. E3c-2
-/// turns `poll`'s count into a `Tick`; this helper is where that slots in.
+/// quiet — at most `MAX_SETTLE_ROUNDS` rounds, a failure past that. Quiet
+/// is `Tick::default()`: no arrivals and nothing dirty.
 fn settle(session: &mut Session) -> Arc<ResolvedNode> {
     let mut resolved = session.resolve();
     for _ in 0..MAX_SETTLE_ROUNDS {
-        if session.poll() == 0 {
+        if session.poll() == Tick::default() {
             return resolved;
         }
         resolved = session.resolve();
@@ -243,7 +243,7 @@ fn settle(session: &mut Session) -> Arc<ResolvedNode> {
 fn settle_frame(harness: &mut Harness<'_, RendererApp>) {
     for _ in 0..MAX_SETTLE_ROUNDS {
         harness.step();
-        if harness.state_mut().session.poll() == 0 {
+        if harness.state_mut().session.poll() == Tick::default() {
             for _ in 0..IMAGE_DRAIN_SLEEPS {
                 if !harness.ctx.has_pending_images() {
                     break;
@@ -459,7 +459,7 @@ fn tree_panel() {
 fn settle_frame_shell(harness: &mut Harness<'_, Shell>) {
     for _ in 0..MAX_SETTLE_ROUNDS {
         harness.step();
-        if harness.state_mut().panel.session.poll() == 0 {
+        if harness.state_mut().panel.session.poll() == Tick::default() {
             for _ in 0..IMAGE_DRAIN_SLEEPS {
                 if !harness.ctx.has_pending_images() {
                     break;
