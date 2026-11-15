@@ -57,12 +57,8 @@ fn no_executor_is_a_failure_with_a_reason() {
     if common::require_binary().is_none() {
         return;
     }
-    // `ad4m-connect` falls back to the default port after an explicit URL
-    // fails; an executor listening there is not ours to touch.
-    if std::net::TcpStream::connect(("127.0.0.1", 12000)).is_ok() {
-        eprintln!("SKIP: something listens on 127.0.0.1:12000");
-        return;
-    }
+    // An explicit URL is the only candidate (Lal F2), so nothing on the
+    // default port is contacted and this test needs no guard against one.
     let rt = we_ad4m::Runtime::new().unwrap();
     let port = std::net::TcpListener::bind("127.0.0.1:0")
         .unwrap()
@@ -75,7 +71,8 @@ fn no_executor_is_a_failure_with_a_reason() {
         ConnectPhase::Failed { reason } => Some(reason.clone()),
         _ => None,
     });
-    assert!(reason.contains("No AD4M executor found"), "{reason}");
+    assert!(reason.contains("does not answer"), "{reason}");
+    assert!(reason.contains(&port.to_string()), "{reason}");
 }
 
 #[test]
@@ -244,4 +241,54 @@ fn a_cached_broad_grant_is_asked_for_again() {
         asked,
         "the broad cached token was reused without asking: {seen:?}"
     );
+}
+
+/// An explicit `--executor-url` is the only executor the app may reach
+/// (Lal F2). Here it is down, and the launcher's port file names another,
+/// healthy executor: the flow must fail, not connect to that one.
+#[test]
+fn an_explicit_url_that_is_down_never_falls_back() {
+    let Some(other) = common::start_executor() else {
+        return;
+    };
+    let rt = we_ad4m::Runtime::new().unwrap();
+    // Wait until the other executor is up, so it would win a fallback.
+    let _ = common::connect(&rt, &other.url);
+    let tokens = tempfile::tempdir().unwrap();
+    let port_file = tokens.path().join("executor-port");
+    std::fs::write(&port_file, other.port.to_string()).unwrap();
+    let dead = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let (tx, wake) = std::sync::mpsc::channel();
+    let flow = ConnectFlow::start(
+        &rt.handle(),
+        ConnectSettings {
+            url: Some(format!("http://127.0.0.1:{dead}")),
+            token_dir: Some(tokens.path().to_path_buf()),
+            port_file: Some(port_file),
+            ..ConnectSettings::default()
+        },
+        move || {
+            let _ = tx.send(());
+        },
+    );
+    let (outcome, _) = wait(&flow, &wake, Duration::from_secs(60), |p| match p {
+        ConnectPhase::Failed { reason } => Some(Err(reason.clone())),
+        ConnectPhase::Connected { url } | ConnectPhase::Locked { url } => Some(Ok(url.clone())),
+        ConnectPhase::Asking { .. } => Some(Ok("asked".into())),
+        _ => None,
+    });
+    match outcome {
+        Err(reason) => {
+            assert!(reason.contains(&dead.to_string()), "{reason}");
+            assert!(
+                !reason.contains(&other.port.to_string()),
+                "the other executor was tried: {reason}"
+            );
+        }
+        Ok(url) => panic!("connected to {url}, not the executor named on the command line"),
+    }
 }

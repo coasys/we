@@ -26,9 +26,11 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use ad4m_client::connect::{
-    Ad4mConnect, AppInfo, AuthState, ConnectError, ConnectOptions, ConnectPrompts, ConnectStatus,
+    normalize_base_url, Ad4mConnect, AppInfo, AuthState, ConnectError, ConnectOptions,
+    ConnectPrompts, ConnectStatus, ExecutorIo, WsIo,
 };
 use ad4m_client::types::{CapabilityInput, ResourceInput};
+use ad4m_client::ws_rpc::WsRpcClient;
 
 use crate::connection::Connection;
 
@@ -312,6 +314,42 @@ impl ConnectPrompts for UiPrompts {
     }
 }
 
+/// The transport `ad4m-connect` dials through. With an explicit
+/// `--executor-url`, it refuses every other candidate before any request
+/// leaves the machine (Lal F2): `ad4m-connect` still lists the remembered
+/// URL, the launcher's port file and port 12000 after the explicit one, and
+/// takes the first that answers — so a URL that is down would otherwise
+/// quietly become a different executor.
+struct Io {
+    inner: WsIo,
+    only: Option<String>,
+}
+
+impl Io {
+    fn allowed(&self, base_url: &str) -> anyhow::Result<()> {
+        match &self.only {
+            Some(only) if normalize_base_url(base_url) != *only => Err(anyhow::anyhow!(
+                "not the executor named by --executor-url ({only})"
+            )),
+            _ => Ok(()),
+        }
+    }
+}
+
+impl ExecutorIo for Io {
+    type Rpc = Arc<WsRpcClient>;
+
+    async fn healthy<'a>(&'a self, base_url: &'a str) -> anyhow::Result<()> {
+        self.allowed(base_url)?;
+        self.inner.healthy(base_url).await
+    }
+
+    async fn rpc<'a>(&'a self, base_url: &'a str, token: &'a str) -> anyhow::Result<Self::Rpc> {
+        self.allowed(base_url)?;
+        self.inner.rpc(base_url, token).await
+    }
+}
+
 async fn run(
     shared: Arc<Shared>,
     settings: ConnectSettings,
@@ -324,7 +362,13 @@ async fn run(
     opts.email = settings.email;
     opts.token_dir = settings.token_dir;
     opts.executor_port_file = settings.port_file;
-    let mut session = match Ad4mConnect::new(opts) {
+    let io = Io {
+        inner: WsIo::new(),
+        only: opts.url.as_deref().map(normalize_base_url),
+    };
+    let only = io.only.clone();
+    let reason = |e: &anyhow::Error| reason_for(e, only.as_deref());
+    let mut session = match Ad4mConnect::with_io(opts, io) {
         Ok(s) => s,
         Err(e) => return shared.set(ConnectPhase::Failed { reason: reason(&e) }),
     };
@@ -339,7 +383,7 @@ async fn run(
     };
     let mut url = session.url().unwrap_or_default().to_string();
     let app = app_info().name;
-    let stored = |s: &Ad4mConnect, url: &str| s.store().token(url, &app).ok().flatten();
+    let stored = |s: &Ad4mConnect<Io>, url: &str| s.store().token(url, &app).ok().flatten();
     // A stored token this build did not ask for may hold a broader grant:
     // drop it and ask for the read-only one.
     if state == AuthState::Authenticated
@@ -394,9 +438,13 @@ async fn run(
     }
 }
 
-/// The sentence for a failed connect.
-fn reason(e: &anyhow::Error) -> String {
+/// The sentence for a failed connect; `only` is the explicit URL, if any.
+fn reason_for(e: &anyhow::Error, only: Option<&str>) -> String {
     match e.downcast_ref::<ConnectError>() {
+        Some(ConnectError::ExecutorNotFound { .. }) if only.is_some() => format!(
+            "The executor at {} does not answer. Start it, or leave out --executor-url to look for one.",
+            only.unwrap_or_default()
+        ),
         Some(ConnectError::ExecutorNotFound { tried }) => format!(
             "No AD4M executor found. Start the AD4M launcher, or pass --executor-url. Tried: {}",
             tried.join(", ")
