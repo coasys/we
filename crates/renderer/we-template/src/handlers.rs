@@ -99,6 +99,19 @@ fn local_write_target(scope: &Scope, field: &str) -> Option<(NodeId, Arc<str>, V
     ))
 }
 
+/// The field's declaration record — `local.decl(field)` — for the pieces a
+/// `Value` cannot carry: the authored initial and the scope it first
+/// evaluated in (`$resetLocal`'s call-time evaluation).
+fn local_meta(scope: &Scope, field: &str) -> Option<crate::scope::FieldMeta> {
+    let Value::Namespace(ns) = scope.get("local")? else {
+        return None;
+    };
+    match ns.decl(field)?.downcast_ref::<crate::scope::LocalDecl>()? {
+        crate::scope::LocalDecl::State(meta) => Some(meta.clone()),
+        _ => None,
+    }
+}
+
 /// The field's declared metadata — `local["$decl:<field>"]` — for the
 /// persist/URL mirror a write makes.
 fn local_decl(scope: &Scope, field: &str) -> Option<(String, Value, serde_json::Value, Value)> {
@@ -583,14 +596,25 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
             // Every field of the innermost declaring scope back to `initial`
             // (`resolveResetLocalProp` walks `$localScopeFields`) with its
             // persist/URL mirror REMOVED — `meta.reset()` in the validation
-            // layer.
+            // layer. The initial is the authored JSON re-evaluated NOW, in
+            // the scope the declaration first read it, against the call-time
+            // bag and screen (WE: `resolveInitial(rawInitial)`) — a param a
+            // `routeStore.setParam` moved since mount reads its new value,
+            // never the value the last resolve left behind.
             for name in scope_fields(scope) {
                 let Some(owner) = local_owner(scope, &name) else {
                     continue;
                 };
-                let initial = local_decl(scope, &name)
-                    .map(|(_, _, _, initial)| initial)
-                    .unwrap_or(Value::Undefined);
+                let initial = match local_meta(scope, &name) {
+                    Some(meta) => meta
+                        .raw_initial
+                        .as_ref()
+                        .map(|raw| {
+                            eval_json(raw, &meta.initial_scope, cx.bag, cx.cache, cx.warnings)
+                        })
+                        .unwrap_or(Value::Undefined),
+                    None => Value::Undefined,
+                };
                 reset_local(scope, &owner, &name, initial, cx);
             }
         }

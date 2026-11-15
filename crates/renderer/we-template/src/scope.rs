@@ -36,6 +36,15 @@ pub struct FieldMeta {
     /// The declared `initial`, as seeded — `local_param_text` clears a param
     /// whose value came back to this.
     pub declared_initial: Value,
+    /// The authored `initial` JSON — the spec a reset re-evaluates, not the
+    /// answer it produced (`meta.reset()` calls `resolveInitial(rawInitial)`
+    /// in WE). `None` when the field declared no `initial`.
+    pub raw_initial: Option<serde_json::Value>,
+    /// The scope `initial` first evaluated in — the declaring node's parent
+    /// scope. A reset re-evaluates [`FieldMeta::raw_initial`] here against
+    /// the call-time bag and screen, where a param a `$setParam` moved reads
+    /// its new value.
+    pub initial_scope: Scope,
 }
 
 /// What a node declares on `local`: a writable `$localState` field, or a
@@ -99,6 +108,13 @@ impl LocalNs {
                 .get_key_value(field)
                 .map(|(_, d)| (&scope.node, d))
         })
+    }
+
+    /// `field`'s declaration record — the `Namespace::decl` answer, so the
+    /// handler layer can read [`FieldMeta`] (the raw initial and its
+    /// evaluation scope) where a `Value` cannot carry it.
+    pub fn field_decl(&self, field: &str) -> Option<&LocalDecl> {
+        self.owner(field).map(|(_, d)| d)
     }
 
     /// The `State` fields the innermost `$localState` block declared — the
@@ -180,6 +196,10 @@ impl Namespace for LocalNs {
             .iter()
             .flat_map(|scope| scope.fields.keys().cloned())
             .collect()
+    }
+
+    fn decl(&self, field: &str) -> Option<&dyn std::any::Any> {
+        self.field_decl(field).map(|d| d as &dyn std::any::Any)
     }
 }
 
