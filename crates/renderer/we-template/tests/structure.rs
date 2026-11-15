@@ -73,6 +73,7 @@ fn app_rt(
         "sessionStore": { "bootState": "ready" }
     })));
     let spec = AppSpec {
+        bundle: "test".into(),
         app,
         template,
         pages: vec![],

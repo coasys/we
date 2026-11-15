@@ -5,8 +5,8 @@
 
 use serde_json::json;
 use we_data::{ClassSel, Executor, OfflineData, QueryIr, SpaceId};
-use we_expr::ParseCache;
-use we_template::{compile_query, QueryKey, QueryState, Scope};
+use we_expr::{HandleTable, MountCx, ParseCache};
+use we_template::{compile_query, CompileCx, QueryKey, QueryState, Scope};
 
 /// Two `signalTypes` declarations asking different questions (the tree
 /// sorts by name, the inspector does not), a skipped one, an answered empty
@@ -45,15 +45,22 @@ fn doc() -> serde_json::Value {
     })
 }
 
-/// The pool key a template's descriptor compiles to.
+/// The pool key a template's descriptor compiles to — under a mount with
+/// no space, the way a capture lookup's `ds:null` fallback reads it.
 fn key(descriptor: serde_json::Value) -> (QueryKey, QueryIr) {
     let bag = we_template::StoreBag::new();
+    let mount = MountCx::explicit("test");
+    let handles = HandleTable::new();
     let compiled = compile_query(
         &descriptor,
         &Scope::default(),
-        &bag,
-        &mut ParseCache::new(),
-        &mut Vec::new(),
+        &mut CompileCx::new(
+            &bag,
+            &mut ParseCache::new(),
+            &mut Vec::new(),
+            &mount,
+            &handles,
+        ),
     )
     .expect("descriptor compiles");
     (compiled.key, compiled.ir)

@@ -30,6 +30,7 @@ fn app_for(truth: &Json, id: &str) -> RendererApp {
     let data = OfflineData::from_route(truth, id, Some(&map)).unwrap();
     let bundle = Bundle::parse(BUNDLE).unwrap();
     let spec = AppSpec {
+        bundle: bundle.name.clone().into(),
         app: bundle.app.clone(),
         template: bundle.templates.as_deref().and_then(|t| t.first()).cloned(),
         pages: bundle.pages.clone().unwrap_or_default(),

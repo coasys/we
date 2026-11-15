@@ -11,7 +11,7 @@ use std::sync::Arc;
 use serde::Deserialize;
 use we_screen::{ScreenSchema, ScreenState};
 use we_session::Session;
-use we_template::{Bundle, ResolvedChild, ResolvedNode, RootSpec, SchemaNode, StoreBag};
+use we_template::{Bundle, MountCx, ResolvedChild, ResolvedNode, RootSpec, SchemaNode, StoreBag};
 
 const DEFAULT_BUNDLE: &str = concat!(
     env!("CARGO_MANIFEST_DIR"),
@@ -110,7 +110,7 @@ fn main() {
     let mut session = Session::offline(
         RootSpec::Single {
             node: Box::new(tree_schema(&bundle)),
-            id: "tree".into(),
+            cx: MountCx::explicit("tree"),
         },
         Arc::new(bag),
         screen,

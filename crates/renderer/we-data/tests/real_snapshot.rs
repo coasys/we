@@ -201,6 +201,7 @@ fn check_route(truth: &Json, doc: &Json, id: &str) -> Result<(), String> {
     let data = OfflineData::from_route(doc, id, Some(&map))?;
     let bundle = Bundle::parse(BUNDLE).expect("bundle parses");
     let spec = AppSpec {
+        bundle: bundle.name.clone().into(),
         app: bundle.app.clone(),
         template: bundle.templates.as_deref().and_then(|t| t.first()).cloned(),
         pages: bundle.pages.clone().unwrap_or_default(),

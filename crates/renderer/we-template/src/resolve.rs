@@ -17,13 +17,13 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 use serde_json::Value as Json;
-use we_expr::{eval, Env, ParseCache, Value};
+use we_expr::{eval, Env, MountCx, ParseCache, Value};
 use we_screen::{local_persist_key, local_sync_spec, resolve_local_initial, ScreenOp, ScreenState};
 
 use crate::handler::HandlerToken;
 use crate::local::TrackedDeps;
 use crate::node::{JsonMap, RouteNode, SchemaChild, SchemaNode};
-use crate::query::{compile_query, QueryPool, QueryState};
+use crate::query::{compile_query, CompileCx, QueryPool, QueryState};
 use crate::resolved::{HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope, Transition};
 use crate::scope::{FieldMeta, LocalDecl, LocalNs, LocalScope, ScopeEnv, StoreBag};
 use crate::{Host, LocalState};
@@ -54,6 +54,13 @@ pub struct ResolveCx<'a> {
     pub cache: &'a mut ParseCache,
     pub screen: &'a ScreenState,
     pub pool: &'a QueryPool,
+    /// The mount this resolve runs under — its stamped identity (tier,
+    /// space, provenance) is what queries and, downstream, actions carry
+    /// (E3c-7; stamping only — nothing is filtered by it yet).
+    pub mount: &'a MountCx,
+    /// The runtime's table — a query's `Here` resolves the mount's space
+    /// handle through it, and `dataset` values mint through it.
+    pub handles: &'a we_expr::HandleTable,
     /// `$part` lookups.
     pub parts: &'a dyn PartSource,
     /// The active template's route table, for `$routes`.
@@ -93,6 +100,18 @@ pub struct ResolveCx<'a> {
 }
 
 impl ResolveCx<'_> {
+    /// The compile context a `$queries`/`$query` descriptor compiles under —
+    /// the same bag, cache, warnings, mount and table this resolve runs with.
+    pub(crate) fn compile_cx(&mut self) -> CompileCx<'_> {
+        CompileCx {
+            bag: self.bag,
+            cache: &mut *self.cache,
+            warnings: &mut *self.warnings,
+            mount: self.mount,
+            handles: self.handles,
+        }
+    }
+
     /// `candidate` interned to `slot`: while a rebuild's content holds, the
     /// SAME value answers — the scope object WE keeps alive across renders.
     /// Changed content swaps the allocation, the way a store write does.
@@ -320,7 +339,7 @@ pub(crate) fn eval_json(
 fn eval_prop(json: &Json, scope: &Scope, cx: &mut ResolveCx) -> Value {
     if let Json::Object(map) = json {
         if let Some(descriptor) = map.get("$query") {
-            return match compile_query(descriptor, scope, cx.bag, cx.cache, cx.warnings) {
+            return match compile_query(descriptor, scope, &mut cx.compile_cx()) {
                 Some(compiled) => match cx.pool.cell(compiled.key, compiled.ir).state() {
                     QueryState::Rows(rows) => Value::List(rows),
                     QueryState::Loading => Value::List(Arc::new(Vec::new())),
@@ -1207,7 +1226,7 @@ fn declare_locals(
                 let Some(slot) = slots.get(&name) else {
                     continue;
                 };
-                match compile_query(descriptor, &node_scope, cx.bag, cx.cache, cx.warnings) {
+                match compile_query(descriptor, &node_scope, &mut cx.compile_cx()) {
                     Some(compiled) => {
                         let cell = cx.pool.cell(compiled.key.clone(), compiled.ir.clone());
                         cell.note_name(name.clone());
@@ -1524,14 +1543,23 @@ fn record_view_node(value: &Json, cx: &mut ResolveCx) -> Option<Arc<SchemaNode>>
     cx.memo_node(value)
 }
 
-/// The resolver's entry point: `node` under `root`'s identity namespace, in
-/// `scope` (usually the empty root scope — the store bag supplies the rest).
+/// The resolver's entry point: `node` under `mount`'s identity (`{mount}:{path}`
+/// node ids), in `scope` (usually the empty root scope — the store bag
+/// supplies the rest).
 pub fn resolve(
     node: &SchemaNode,
-    root: &str,
+    mount: &MountCx,
     scope: &Scope,
     cx: &mut ResolveCx,
 ) -> Vec<ResolvedChild> {
     let decls: Arc<Vec<LocalScope>> = Arc::new(Vec::new());
-    resolve_node(node, scope, &NodeId::new(""), root, "", &decls, cx)
+    resolve_node(
+        node,
+        scope,
+        &NodeId::new(""),
+        mount.mount.as_str(),
+        "",
+        &decls,
+        cx,
+    )
 }
