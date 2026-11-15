@@ -38,6 +38,9 @@ use we_template::{
 #[derive(PartialEq)]
 struct LayoutKey {
     resolves: u64,
+    /// Moves every frame a transition drew an in-between tree, and on the
+    /// frame it stops.
+    drawn: u64,
     width: f32,
     y: f32,
     theme: Arc<str>,
@@ -87,6 +90,16 @@ pub struct RendererApp {
     /// `set` guard at the producer (E3c-13): an unmoved measure does not
     /// re-report, so a steady frame never wakes the session for nothing.
     surface_sent: std::collections::HashMap<SurfaceTag, f32>,
+    /// The CSS transitions in flight — the rail widening on hover.
+    transitions: we_egui::Transitions,
+    /// The tree a transition is drawing this frame in place of the
+    /// resolved one, while one is running.
+    drawn: Option<Arc<ResolvedNode>>,
+    /// The resolve count the transitions last looked at, and how many
+    /// times they have drawn an in-between tree — the layout cache keys
+    /// on the second.
+    animated_at: Option<u64>,
+    drawn_frames: u64,
     /// F12 — the resolve/paint counters overlay.
     pub debug: bool,
     /// How long the last frame's stages took — the overlay prints them,
@@ -137,6 +150,10 @@ impl RendererApp {
             edit: EditState::default(),
             layout: None,
             layout_key: None,
+            transitions: we_egui::Transitions::default(),
+            drawn: None,
+            animated_at: None,
+            drawn_frames: 0,
             surface_sent: std::collections::HashMap::new(),
             debug: false,
             stages: Stages::default(),
@@ -200,8 +217,30 @@ impl RendererApp {
                     metrics: we_metrics::UnitMetrics::default(),
                     ..StyleCx::empty()
                 };
+                // A transition draws the resolved tree with its animated
+                // values at this instant written in. It is asked again
+                // when the tree re-resolved or while it is drawing; a
+                // frame with neither draws what the resolve produced.
+                let now = ui.input(|i| i.time);
+                if self.animated_at != Some(stats.resolves) || self.drawn.is_some() {
+                    self.animated_at = Some(stats.resolves);
+                    let reduced = we_egui::defaults::reduced_motion(ui.ctx());
+                    let was_drawing = self.drawn.is_some();
+                    self.drawn = self
+                        .transitions
+                        .apply(&resolved, &scx, now, reduced)
+                        .map(Arc::new);
+                    // The frame a transition ends draws the resolved tree
+                    // again, which the layout cache must not mistake for
+                    // the in-between one it holds.
+                    if self.drawn.is_some() || was_drawing {
+                        self.drawn_frames += 1;
+                    }
+                }
+                let tree = self.drawn.clone().unwrap_or_else(|| resolved.clone());
                 let key = LayoutKey {
                     resolves: stats.resolves,
+                    drawn: self.drawn_frames,
                     width,
                     y: rect.min.y,
                     theme: self.theme.id.clone(),
@@ -212,7 +251,7 @@ impl RendererApp {
                 if self.layout_key.as_ref() != Some(&key) || self.layout.is_none() {
                     let started = std::time::Instant::now();
                     let mcx = MeasureCx::new(ui.ctx());
-                    self.layout = Some(layout(&mcx, &scx, &self.registry, &resolved, rect));
+                    self.layout = Some(layout(&mcx, &scx, &self.registry, &tree, rect));
                     self.layout_key = Some(key);
                     self.stages.layout = started.elapsed();
                     self.stages.laid_out = true;
@@ -234,7 +273,7 @@ impl RendererApp {
                     .iter()
                     .map(|tag| (tag.clone(), width))
                     .collect();
-                collect_surface_reports(&resolved, l, &mut reports);
+                collect_surface_reports(&tree, l, &mut reports);
                 self.surface_sent
                     .retain(|tag, _| reports.iter().any(|(t, _)| t == tag));
                 for (tag, width) in reports {
@@ -250,7 +289,7 @@ impl RendererApp {
                     ui,
                     &self.registry,
                     &scx,
-                    &resolved,
+                    &tree,
                     l,
                     &mut events,
                     &mut self.edit,
@@ -263,7 +302,8 @@ impl RendererApp {
                 // collapsed.
                 self.stages.paint = started.elapsed();
                 let started = std::time::Instant::now();
-                if !events.is_empty() {
+                // A running transition needs the next frame to move.
+                if !events.is_empty() || self.drawn.is_some() {
                     ui.ctx().request_repaint();
                 }
                 self.drain(events);

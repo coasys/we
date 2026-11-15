@@ -62,6 +62,7 @@ pub use text::{
 };
 pub use tree::{Tree, TreeItem};
 pub use unknown::UnknownWidget;
+pub use we_layout::animate::Transitions;
 pub use we_layout::counters;
 pub use we_layout::{
     Direction, LaneBounds, PartSpec, PartsSpec, Pick, TextChildren, TreeCfg, LANE_LEAVES_PX,

@@ -156,7 +156,7 @@ pub fn set_reduced_motion(ctx: &egui::Context, reduced: bool) {
 }
 
 /// Whether [`set_reduced_motion`] asked for less motion.
-pub(crate) fn reduced_motion(ctx: &egui::Context) -> bool {
+pub fn reduced_motion(ctx: &egui::Context) -> bool {
     ctx.data_mut(|d| d.get_temp::<bool>(egui::Id::unique(MOTION_KEY)))
         .unwrap_or(false)
 }
