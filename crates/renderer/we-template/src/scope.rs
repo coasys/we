@@ -18,6 +18,7 @@ use indexmap::IndexMap;
 use we_expr::{CallFn, Env, MapNamespace, Namespace, Value};
 use we_screen::ScreenState;
 
+use crate::bindings::{DataRevision, Invalidator};
 use crate::query::{note_slot_read, QuerySlot, SlotRef};
 use crate::{LocalState, NodeId, Scope};
 
@@ -311,7 +312,9 @@ impl Env for ScopeEnv<'_> {
 /// table [`Env::call`] reads, and the snapshot's static answers —
 /// `$queries` rows and canned `$invoke` replies. Everything mutable is
 /// behind locks and bumps [`StoreBag::version`] so a write moves the data
-/// revision a frame watches.
+/// revision a frame watches — and a `set_root` write goes further: it
+/// calls every [`Invalidator`] a session subscribed, so a sleeping
+/// frontend hears the revision move.
 ///
 /// E6 builds the real bag — model reads, flows — behind this same
 /// `root`/`call` surface; nothing above it changes.
@@ -329,6 +332,9 @@ pub struct StoreBag {
     functions: RwLock<HashMap<Arc<str>, CallFn>>,
     queries: RwLock<IndexMap<Arc<str>, Value>>,
     invokes: RwLock<HashMap<String, Value>>,
+    /// The sessions listening for `set_root` — one [`Invalidator`] each,
+    /// so several sessions can share a bag and each hears every write.
+    invalidators: Mutex<Vec<Invalidator>>,
     version: AtomicU64,
 }
 
@@ -367,14 +373,52 @@ impl StoreBag {
         self.version.load(Ordering::Relaxed)
     }
 
+    /// Subscribe to `set_root` writes — the [`DataRevision::subscribe`] a
+    /// session installs one [`Invalidator`] at a time through. Several
+    /// sessions may share a bag: each hears every write, and a handle
+    /// whose session's inbox died is pruned as it is noticed.
+    pub fn set_invalidator(&self, invalidator: Invalidator) {
+        if let Ok(mut subs) = self.invalidators.lock() {
+            subs.retain(|i| i.alive());
+            subs.push(invalidator);
+        }
+    }
+
     /// Bind a root name (a store namespace, or a plain value). A real
     /// replacement: the captured screen base goes with it, so the next
-    /// `bind_screen` re-anchors its overlay on the new root.
+    /// `bind_screen` re-anchors its overlay on the new root. Called AFTER
+    /// the version bump — a reader that wakes now already sees the moved
+    /// revision.
     pub fn set_root(&self, name: &str, value: Value) {
         if let Ok(mut bases) = self.screen_bases.write() {
             bases.shift_remove(name);
         }
         self.bind_root(name, value);
+        self.invalidate_subscribers();
+    }
+
+    /// The data revision moved — tell every live subscriber. Only
+    /// `set_root` reaches here: `bind_screen`'s overlay writes mirror the
+    /// screen state, which the screen revision already covers — waking
+    /// for them would loop.
+    ///
+    /// The lock is released before any `invalidate` runs: the invalidator
+    /// ends in the session's waker — arbitrary frontend code — and a
+    /// callback that re-enters the bag (a `set_root` of its own, a new
+    /// subscription) would deadlock on a held mutex, while a panicking
+    /// one would poison it for every later write. So the live handles
+    /// are pruned and cloned under the lock, then notified outside it.
+    fn invalidate_subscribers(&self) {
+        let live: Vec<Invalidator> = {
+            let Ok(mut subs) = self.invalidators.lock() else {
+                return;
+            };
+            subs.retain(|i| i.alive());
+            subs.iter().cloned().collect()
+        };
+        for i in &live {
+            i.invalidate();
+        }
     }
 
     /// Write a root without touching its captured screen base —
@@ -508,6 +552,20 @@ impl StoreBag {
             }
         }
         Ok(bag)
+    }
+}
+
+/// The bag as a `DataRevision` source — `version` is the counter,
+/// `set_invalidator` the hook. `BindingSource` (E3c-8a) makes the trait a
+/// supertrait; this is the offline path's and the E3c-2 in-scope
+/// implementor.
+impl DataRevision for StoreBag {
+    fn revision(&self) -> u64 {
+        self.version()
+    }
+
+    fn subscribe(&self, invalidator: Invalidator) {
+        self.set_invalidator(invalidator);
     }
 }
 

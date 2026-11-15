@@ -2,13 +2,13 @@
 //! tree, the query pool, pending calls and the ops a resolve queued.
 //!
 //! `frame` re-resolves only when a counter moved — screen (`ScreenState`
-//! version), data (the [`StoreBag`] version), local ([`LocalState`]), pool
+//! version), data (the [`StoreBag`] revision), local ([`LocalState`]), pool
 //! ([`QueryPool`] revision). A frame with no change hands back the tree it
 //! had. `dispatch` turns a widget event into handler tokens run against the
-//! [`Host`] and the [`ScreenState`]; `drain_completions` takes what the
-//! host's [`crate::Completer`]s delivered and `complete` settles each
-//! pending `$invoke`.
-use std::collections::{HashMap, HashSet};
+//! [`Host`] and the [`ScreenState`]; `drain_inbox` takes what landed in the
+//! session's [`Inbox`] — [`crate::Completer`] deliveries, binding
+//! invalidations — and `complete` settles each pending `$invoke`.
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -16,8 +16,10 @@ use indexmap::IndexMap;
 use we_expr::{ParseCache, Value};
 use we_screen::{Route, ScreenOp, ScreenState};
 
+use crate::bindings::Invalidator;
 use crate::handlers::{self, HandlerCx, PendingMap};
 use crate::host::{CallBook, Completer, MountId};
+use crate::inbox::{Arrival, Inbox};
 use crate::query::{QueryCell, QueryPool, QueryState};
 use crate::resolve::{self, NoParts, PartSource};
 use crate::resolved::{HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope};
@@ -45,6 +47,51 @@ pub struct Stats {
     pub completions_ignored: u64,
     /// Completions whose node had left the tree — nothing ran.
     pub completions_dropped: u64,
+}
+
+/// How many dead calls the runtime remembers at once (the `orphaned`
+/// P3): a host may hold a [`Completer`] and never settle it, so the set
+/// is bounded — past the cap the oldest entry is evicted and its late
+/// completion counts as ignored rather than dropped. The memory is sized
+/// by the cap, not by calls ever made.
+pub const ORPHANED_CAP: usize = 1024;
+
+/// The orphaned call ids, oldest call first. `set` answers membership
+/// for `complete`; `order` caps it — `pending.retain` discovers a frame's
+/// dead calls in map order, not age order, so insertion sorts: ids mint
+/// upward, and the front is always the oldest call whichever pass found
+/// it.
+#[derive(Default)]
+struct Orphans {
+    order: VecDeque<CallId>,
+    set: HashSet<CallId>,
+}
+
+impl Orphans {
+    fn insert(&mut self, call: CallId) {
+        if self.set.insert(call) {
+            let at = self
+                .order
+                .iter()
+                .position(|c| *c > call)
+                .unwrap_or(self.order.len());
+            self.order.insert(at, call);
+            while self.order.len() > ORPHANED_CAP {
+                let evicted = self.order.pop_front().unwrap();
+                self.set.remove(&evicted);
+            }
+        }
+    }
+
+    /// `true` when `call` was held — and is now released — as an orphan.
+    fn remove(&mut self, call: &CallId) -> bool {
+        if self.set.remove(call) {
+            self.order.retain(|c| c != call);
+            true
+        } else {
+            false
+        }
+    }
 }
 
 /// What the runtime resolves at the top: one template (tests, the panel
@@ -95,9 +142,14 @@ pub struct Runtime {
     /// Pending calls whose node left the tree in some frame. Unmount
     /// invalidates them for good — a later remount under the same id is a
     /// different incarnation — and their completion counts as dropped.
-    orphaned: HashSet<CallId>,
-    /// Call ids core mints, and the queue completions land in.
+    /// Bounded at [`ORPHANED_CAP`]: a host that drops its completers
+    /// cannot grow this forever.
+    orphans: Orphans,
+    /// Call ids core mints — the completers hold `inbox`.
     calls: CallBook,
+    /// Every between-frames arrival: completions, binding invalidations.
+    /// `Session::poll` drains it; the waker on it is the frontend's.
+    inbox: Arc<Inbox>,
     /// The mount ids the last frame resolved — a node's origin mount.
     mount_ids: Vec<Arc<str>>,
     /// Ops a resolve queued (route redirects) — `take_ops` hands them out.
@@ -106,7 +158,9 @@ pub struct Runtime {
     ready: Box<dyn Fn(&StoreBag) -> bool>,
     cache: ParseCache,
     resolved: Option<Arc<ResolvedNode>>,
-    /// (screen, data, local, pool) at the end of the last resolve.
+    /// (screen, data, local, pool) the last resolve recorded — the data
+    /// entry as read *before* its first pass, so a write mid-resolve
+    /// leaves the source ahead and the next `poll` dirty.
     last: Option<(u64, u64, u64, u64)>,
     /// The screen version `bind_screen` last mounted into the bag.
     bound_screen: Option<u64>,
@@ -141,6 +195,11 @@ impl Runtime {
 
     /// Either root — what a session is built from.
     pub fn from_spec(spec: RootSpec, bag: Arc<StoreBag>, locals: LocalState) -> Self {
+        let inbox = Arc::new(Inbox::new());
+        // The session's binding subscription: `set_root` writes push an
+        // arrival here and call its waker — a data change reaches a
+        // sleeping frontend. Each session gets its own handle on the bag.
+        bag.set_invalidator(Invalidator::new(&inbox));
         Self {
             spec,
             bag,
@@ -150,8 +209,9 @@ impl Runtime {
             source: None,
             parts: Arc::new(NoParts),
             pending: HashMap::new(),
-            orphaned: HashSet::new(),
-            calls: CallBook::default(),
+            orphans: Orphans::default(),
+            calls: CallBook::new(inbox.clone()),
+            inbox,
             mount_ids: Vec::new(),
             ops: Vec::new(),
             ready: Box::new(default_ready),
@@ -220,6 +280,29 @@ impl Runtime {
     /// [`ScreenState`] (each application bumps the version → a re-resolve).
     pub fn take_ops(&mut self) -> Vec<ScreenOp> {
         std::mem::take(&mut self.ops)
+    }
+
+    /// The session's arrival queue — `Session::poll` drains it;
+    /// `Session::set_waker` installs the frontend's hook on it.
+    pub fn inbox(&self) -> &Arc<Inbox> {
+        &self.inbox
+    }
+
+    /// Would `frame` re-resolve: the `(screen, data, local, pool)` tuple
+    /// is not what the last resolve recorded. An exhausted pass budget
+    /// is covered too — `frame` bumps the pool revision past what `last`
+    /// recorded, so the mismatch reports itself here. `Session::poll`
+    /// reports this as `Tick::dirty` — "a `resolve` now would produce a
+    /// different tree" — and a quiet answer means the last tree is still
+    /// right.
+    pub fn dirty(&self, screen: &ScreenState) -> bool {
+        self.last
+            != Some((
+                screen.version,
+                self.bag.version(),
+                self.locals.version(),
+                self.pool.revision(),
+            ))
     }
 
     /// The mounts the frame resolves for this route — a free function on
@@ -382,11 +465,11 @@ impl Runtime {
             // once its node is absent from a frame, the call is dead even if
             // the same id mounts again before the completion arrives.
             let live = &self.live;
-            let orphaned = &mut self.orphaned;
+            let orphans = &mut self.orphans;
             self.pending.retain(|call, p| {
                 let keep = live.contains(&p.node);
                 if !keep {
-                    orphaned.insert(*call);
+                    orphans.insert(*call);
                 }
                 keep
             });
@@ -436,15 +519,26 @@ impl Runtime {
             self.resolved = Some(Arc::new(root));
             self.last = Some((
                 screen.version,
-                self.bag.version(),
+                // The data revision read BEFORE the passes — a root write
+                // inside the resolve (a host function it called, another
+                // thread's `set_root`) leaves the source ahead of it, so
+                // the next poll is dirty even if the invalidation arrival
+                // already drained.
+                current.1,
+                // Locals and pool at the END: their writes here were the
+                // resolve's own products — seeds, follows, cell fills —
+                // already reflected in this tree.
                 self.locals.version(),
                 self.pool.revision(),
             ));
-            // Every pass filled a cell — a deeper dependency chain may still
-            // be climbing. Bump the pool past what `last` recorded so the
-            // next frame re-resolves instead of caching this partial tree.
+            // Every pass filled a cell — a deeper dependency chain may
+            // still be climbing. Bump the pool past what `last` recorded
+            // so `dirty` and the next frame see the leftover work instead
+            // of caching this partial tree, and wake: the tree on screen
+            // is partial, so a sleeping frontend must come back.
             if kept_filling {
                 self.pool.bump();
+                self.inbox.wake();
             }
         }
         self.resolved.as_ref().unwrap()
@@ -524,16 +618,24 @@ impl Runtime {
         }
     }
 
-    /// Run every completion the host's [`Completer`]s delivered since the
-    /// last drain, in arrival order — `complete` for each. Answers how many
-    /// arrived (settled, ignored or dropped alike).
-    pub fn drain_completions(&mut self, host: &mut dyn Host, screen: &mut ScreenState) -> usize {
-        let arrived = self.calls.drain();
-        let n = arrived.len();
-        for (call, result) in arrived {
-            self.complete(host, screen, call, result);
+    /// Everything the inbox took since the last drain, in arrival order:
+    /// `complete` settles each delivered call (its lifecycle runs here);
+    /// a `Bindings` arrival only counts — the source's revision is the
+    /// truth and [`Self::dirty`] re-reads it. Answers
+    /// `(completions, binding invalidations)` for `Tick`.
+    pub fn drain_inbox(&mut self, host: &mut dyn Host, screen: &mut ScreenState) -> (usize, usize) {
+        let mut completions = 0usize;
+        let mut bindings = 0usize;
+        for arrival in self.inbox.drain() {
+            match arrival {
+                Arrival::Completion { call, result } => {
+                    completions += 1;
+                    self.complete(host, screen, call, result);
+                }
+                Arrival::Bindings => bindings += 1,
+            }
         }
-        n
+        (completions, bindings)
     }
 
     /// Settle a pending `$invoke` (`Host::act` answered `Pending` for the
@@ -551,7 +653,7 @@ impl Runtime {
         result: Result<Value, Value>,
     ) {
         let Some(pending) = self.pending.remove(&call_id) else {
-            if self.orphaned.remove(&call_id) {
+            if self.orphans.remove(&call_id) {
                 self.stats.completions_dropped += 1;
             } else {
                 self.stats.completions_ignored += 1;
