@@ -31,3 +31,6 @@ packages/ai-context/src/schemaContext.ts
 
 # Map data shipped as-is: minified on purpose, and formatting it would multiply its size.
 packages/module-system/globe/layers/assets/*.geojson
+
+# A copy of the AD4M executor's test bootstrap seed, kept byte-identical to its source.
+crates/renderer/we-ad4m/testdata/bootstrapSeed.json
