@@ -292,3 +292,29 @@ fn an_explicit_url_that_is_down_never_falls_back() {
         Ok(url) => panic!("connected to {url}, not the executor named on the command line"),
     }
 }
+
+/// An endpoint's userinfo and query never reach the screen (Lal P3): the
+/// reason for a dead explicit URL names the host and port only.
+#[test]
+fn a_failed_url_is_shown_without_its_credentials() {
+    if common::require_binary().is_none() {
+        return;
+    }
+    let rt = we_ad4m::Runtime::new().unwrap();
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port();
+    let tokens = tempfile::tempdir().unwrap();
+    let url = format!("http://alice:hunter2@127.0.0.1:{port}/?token=sekrit#frag");
+    let (flow, wake) = flow(&rt, &url, tokens.path());
+    let (reason, _) = wait(&flow, &wake, Duration::from_secs(30), |p| match p {
+        ConnectPhase::Failed { reason } => Some(reason.clone()),
+        _ => None,
+    });
+    for secret in ["alice", "hunter2", "sekrit", "frag"] {
+        assert!(!reason.contains(secret), "{secret:?} shown: {reason}");
+    }
+    assert!(reason.contains(&format!("127.0.0.1:{port}")), "{reason}");
+}

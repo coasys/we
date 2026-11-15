@@ -441,7 +441,10 @@ impl Answer {
     /// template's "loaded and empty" branch shows rather than a spinner
     /// that never ends.
     fn fail(&self, path: &str, e: anyhow::Error) {
-        log::warn!("we-ad4m: live row {path}: {e:#}");
+        log::warn!(
+            "we-ad4m: live row {path}: {}",
+            crate::connect::scrub(&format!("{e:#}"))
+        );
         self.set(&self.initial.clone());
     }
 }

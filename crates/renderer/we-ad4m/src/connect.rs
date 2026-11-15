@@ -152,8 +152,43 @@ fn record_grant(path: &std::path::Path, url: &str) {
         std::fs::rename(&tmp, path)
     };
     if let Err(e) = write() {
-        log::warn!("we-ad4m: could not record the grant for {url}: {e}");
+        log::warn!(
+            "we-ad4m: could not record the grant for {}: {e}",
+            redact_url(url)
+        );
     }
+}
+
+/// An endpoint as it may be shown or logged: scheme, host, port and path,
+/// without userinfo, query or fragment (Lal P3). An executor's credential
+/// is its token, never part of its URL.
+pub fn redact_url(url: &str) -> String {
+    let (scheme, rest) = match url.split_once("://") {
+        Some((s, r)) => (Some(s), r),
+        None => (None, url),
+    };
+    let end = rest.find(['/', '?', '#']).unwrap_or(rest.len());
+    let (authority, tail) = rest.split_at(end);
+    let host = authority.rsplit_once('@').map_or(authority, |(_, h)| h);
+    let path = &tail[..tail.find(['?', '#']).unwrap_or(tail.len())];
+    match scheme {
+        Some(s) => format!("{s}://{host}{path}"),
+        None => format!("{host}{path}"),
+    }
+}
+
+/// `text` with every URL in it redacted — for messages that quote one.
+pub fn scrub(text: &str) -> String {
+    text.split(' ')
+        .map(|word| {
+            if word.contains("://") {
+                redact_url(word)
+            } else {
+                word.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 type Wake = Arc<dyn Fn() + Send + Sync>;
@@ -166,6 +201,19 @@ struct Shared {
 
 impl Shared {
     fn set(&self, phase: ConnectPhase) {
+        // Whatever the flow shows, no endpoint in it carries credentials.
+        let phase = match phase {
+            ConnectPhase::Connected { url } => ConnectPhase::Connected {
+                url: redact_url(&url),
+            },
+            ConnectPhase::Locked { url } => ConnectPhase::Locked {
+                url: redact_url(&url),
+            },
+            ConnectPhase::Failed { reason } => ConnectPhase::Failed {
+                reason: scrub(&reason),
+            },
+            other => other,
+        };
         if let Ok(mut p) = self.phase.lock() {
             *p = phase;
         }
@@ -358,7 +406,16 @@ async fn run(
 ) {
     let grant_file = grant_path(&settings);
     let mut opts = ConnectOptions::new(app_info());
-    opts.url = settings.url;
+    // Userinfo, query and fragment mean nothing to an executor (the token is
+    // the credential), and kept they would ride into every message and log
+    // line `ad4m-connect` prints — so they never reach it.
+    opts.url = settings.url.as_deref().map(|url| {
+        let bare = redact_url(url);
+        if bare != url {
+            log::warn!("we-ad4m: --executor-url: userinfo, query and fragment ignored ({bare})");
+        }
+        bare
+    });
     opts.email = settings.email;
     opts.token_dir = settings.token_dir;
     opts.executor_port_file = settings.port_file;
@@ -392,7 +449,8 @@ async fn run(
         && !grant_is_current(&grant_file, &url)
     {
         log::warn!(
-            "we-ad4m: the stored token for {url} predates the read-only grant; asking again"
+            "we-ad4m: the stored token for {} predates the read-only grant; asking again",
+            redact_url(&url)
         );
         if let Err(e) = session.disconnect().await {
             return shared.set(ConnectPhase::Failed { reason: reason(&e) });
@@ -451,5 +509,32 @@ fn reason_for(e: &anyhow::Error, only: Option<&str>) -> String {
         ),
         Some(other) => other.to_string(),
         None => format!("{e:#}"),
+    }
+}
+
+#[cfg(test)]
+mod redact_tests {
+    use super::*;
+
+    #[test]
+    fn redact_url_keeps_scheme_host_port_and_path_only() {
+        assert_eq!(
+            redact_url("https://alice:pw@example.org:443/ad4m/?token=x#f"),
+            "https://example.org:443/ad4m/"
+        );
+        assert_eq!(
+            redact_url("http://127.0.0.1:12000"),
+            "http://127.0.0.1:12000"
+        );
+        assert_eq!(redact_url("ws://u@h/p?q"), "ws://h/p");
+        assert_eq!(redact_url("h:1?q=1"), "h:1");
+    }
+
+    #[test]
+    fn scrub_redacts_every_url_in_a_message() {
+        assert_eq!(
+            scrub("WebSocket to ws://a:b@h:1/?t=x failed; tried http://c@d:2."),
+            "WebSocket to ws://h:1/ failed; tried http://d:2."
+        );
     }
 }

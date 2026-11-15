@@ -152,6 +152,8 @@ pub(crate) fn rows(instances: Vec<serde_json::Value>) -> Arc<Vec<Value>> {
 }
 
 fn failed(sink: &QuerySink, stats: &SourceStats, what: &str, message: String) {
+    // An RPC error can quote an endpoint; none is shown with credentials.
+    let message = crate::connect::scrub(&message);
     log::warn!("we-ad4m: {what}: {message}");
     stats.fail(format!("{what}: {message}"));
     sink.deliver(QueryEvent::Failed(Value::Str(message.into())));
