@@ -35,8 +35,8 @@
  * a round trip later — the same arrangement `arrangedBoard` has with `boardOptimism`, for the same
  * reason. See `involvementOptimism`.
  */
-import { compareWritten } from '@we/components/signals';
 import type { InvolvementSemantic } from '@we/entities';
+import { compareWritten } from '@we/optimism';
 
 import { relationId } from '../involvements';
 import { byAnyDid, selfDids } from '../personProfile';

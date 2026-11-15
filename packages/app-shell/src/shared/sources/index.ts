@@ -156,8 +156,8 @@ export const hostSources: readonly HostSource[] = [
   {
     name: 'voicesParam',
     params: ['options'],
-    doc: 'The weights address form with one voice changed — options param, did and weight (0–100) — or, with only (a DID) and voices (the listed rows), every voice at nothing but that one. A voice back at full is left out, so putting everything back leaves a clean address.',
-    example: 'voicesParam({ param: local.voices, did: voice.did, weight: event.detail })',
+    doc: 'The weights address form with one voice changed — options param, did and weight (0–100) — or, with only (a DID) and voices (the listed rows), every voice at nothing but that one. A voice back at full is left out, so putting everything back leaves a clean address. Pass me (me.dids) so the viewer’s own voice is written under the one key every computer of theirs reads, and what another of their computers left is cleared.',
+    example: 'voicesParam({ param: local.voices, did: voice.did, weight: event.detail, me: me.dids })',
     fn: voicesParam,
   },
   {

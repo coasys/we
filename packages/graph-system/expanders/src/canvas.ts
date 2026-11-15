@@ -230,7 +230,8 @@ export interface CanvasSeedOptions {
     excludeAuthors?: string[];
     /**
      * The reader's DIDs (`me.dids`, this device first) or one DID, so each card also carries what they
-     * themselves gave — `weightMine` — and their devices count as one voice.
+     * themselves gave — `weightMine` — and their devices count as one voice, kept under their person
+     * (the last DID) so a weight or a mute reads the same on every one of their computers.
      */
     me?: string | readonly string[];
     /** The type's range, which a pretend person's made-up answers are drawn from — see `simulate`. */
@@ -446,7 +447,7 @@ export function canvasSeed(): SeedSource {
         edges: fragment.edges,
         summary: {
           type: weigh.signalTypeId,
-          voices: voicesOf(everyone, weigh.excludeAuthors ?? [], pretend),
+          voices: voicesOf(everyone, weigh.excludeAuthors ?? [], pretend, weigh.me),
           unplaced,
         },
       };

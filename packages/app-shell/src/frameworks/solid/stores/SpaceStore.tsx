@@ -53,7 +53,6 @@ import {
 } from '@shared/registries/moduleRegistry';
 import { seedBundlePieces } from '@shared/registries/seedBundles';
 import { defaultViewOrder, viewRegistry } from '@shared/registries/viewRegistry';
-import { keepNewestAcrossDevices, replaceAcrossDevices } from '@shared/replaceAcrossDevices';
 import { seedDefaultEnabledModules } from '@shared/seedModules';
 import { getSeed } from '@shared/seedRegistry';
 import { type SharingPickerOption, sharingPickerOptions } from '@shared/sharingOptions';
@@ -180,6 +179,7 @@ import {
   type TaskBlock,
   TaskState,
 } from '@we/entities';
+import { keepNewestAcrossDevices, replaceAcrossDevices } from '@we/optimism';
 import type { ResolvedView, TemplateSchema } from '@we/schema-shared';
 import {
   applyStarterRecords,

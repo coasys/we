@@ -345,7 +345,7 @@ const voicesControl: SchemaNode = {
                                         onClick: {
                                           $setLocal: 'voices',
                                           value: {
-                                            $: `voicesParam({ param: local.voices, only: voiceDid, voices: ${VOICES} })`,
+                                            $: `voicesParam({ param: local.voices, only: voiceDid, voices: ${VOICES}, me: me.dids })`,
                                           },
                                         },
                                       },
@@ -366,7 +366,7 @@ const voicesControl: SchemaNode = {
                                     onInput: {
                                       $setLocal: 'voices',
                                       value: {
-                                        $: 'voicesParam({ param: local.voices, did: voiceDid, weight: event.detail })',
+                                        $: 'voicesParam({ param: local.voices, did: voiceDid, weight: event.detail, me: me.dids })',
                                       },
                                     },
                                   },

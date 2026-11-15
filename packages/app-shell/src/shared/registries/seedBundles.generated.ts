@@ -22559,7 +22559,7 @@ export const seedBundles: Bundle[] = [
                                                                                   onClick: {
                                                                                     $setLocal: 'voices',
                                                                                     value: {
-                                                                                      $: 'voicesParam({ param: local.voices, only: voiceDid, voices: voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.dids }) })',
+                                                                                      $: 'voicesParam({ param: local.voices, only: voiceDid, voices: voices({ summary: local.voiceSummary, param: local.voices, profiles: profileStore.profiles, me: me.dids }), me: me.dids })',
                                                                                     },
                                                                                   },
                                                                                 },
@@ -22581,7 +22581,7 @@ export const seedBundles: Bundle[] = [
                                                                               onInput: {
                                                                                 $setLocal: 'voices',
                                                                                 value: {
-                                                                                  $: 'voicesParam({ param: local.voices, did: voiceDid, weight: event.detail })',
+                                                                                  $: 'voicesParam({ param: local.voices, did: voiceDid, weight: event.detail, me: me.dids })',
                                                                                 },
                                                                               },
                                                                             },

@@ -13,10 +13,10 @@
 import { render } from '@solidjs/testing-library';
 import { createInMemoryBackendPorts, type InMemoryAgentOptions, type InMemoryLifecycle } from '@we/backend-inmemory';
 import { createBlocks, registerCoreBlocks } from '@we/block-shared';
-import { newestWritten } from '@we/components/signals';
 import { toastService } from '@we/components/solid';
 import { AgentSettings, CollectionBlock, getEntity, Policy, Space, SpaceLandmark } from '@we/entities';
 import { type FeedFind, readFeedWindow } from '@we/module-feed';
+import { keepNewestAcrossDevices, newestWritten } from '@we/optimism';
 import { createEffect, createRoot, createSignal } from 'solid-js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -134,7 +134,6 @@ import { type SpaceStore, SpaceStoreProvider, useSpaceStore } from '../src/frame
 import { NO_STARTER } from '../src/shared/bundles/bundleStarter';
 import { createModuleStoreDeps } from '../src/shared/registries/moduleHostServices';
 import { moduleRegistry } from '../src/shared/registries/moduleRegistry';
-import { keepNewestAcrossDevices } from '../src/shared/replaceAcrossDevices';
 import { provideSeed } from '../src/shared/seedRegistry';
 import { reactions } from '../src/shared/sources/signalTally';
 import { writeSpaceLandmark } from '../src/shared/spaceLandmarks';

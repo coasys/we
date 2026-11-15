@@ -3,7 +3,8 @@
   them through the component barrel pulled a client-only API into a module the node tests load
   without a document.
 */
-import { newestWritten, tallyEverything, tallySignals, type Written } from '@we/components/signals';
+import { tallyEverything, tallySignals } from '@we/components/signals';
+import { newestWritten, type Written } from '@we/optimism';
 
 import { selfDids } from '../personProfile';
 

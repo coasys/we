@@ -414,6 +414,7 @@ export function DatasetStoreProvider(props: ParentProps) {
         return ds ? datasetKey({ cid: ds.sharedUri, uuid: ds.id }) : '';
       },
       selfId: () => session.me()?.did ?? null,
+      selfIds: () => session.me()?.dids ?? [],
       ephemeral: session.ephemeralPort,
       // Calls, over the backend's call port — read on every call, like transcription below. The
       // module asks without a dataset; the kernel chooses it: the call's own space when the module

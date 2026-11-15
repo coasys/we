@@ -64,7 +64,7 @@ describe('the polls module', () => {
 });
 
 describe('tally with a vote still in flight', () => {
-  const mine = { poll: 'p1', author: 'did:me', option: 'coffee' };
+  const mine = { poll: 'p1', authors: ['did:me', 'did:laptop'], option: 'coffee' };
 
   it('counts the held vote, so the bars move on the press', () => {
     // Without it the bars sit still for a round trip and the press reads as having failed — the
@@ -91,6 +91,21 @@ describe('tally with a vote still in flight', () => {
     expect(rows.find((row) => row.option === 'tea')?.count).toBe(1);
     expect(rows.find((row) => row.option === 'coffee')?.count).toBe(1);
     expect(rows.reduce((sum, row) => sum + row.count, 0)).toBe(2);
+  });
+
+  it('stands in for the vote my other computer cast too', () => {
+    const rows = tally({
+      votes: [
+        { author: 'did:laptop', option: 'tea' },
+        { author: 'did:them', option: 'tea' },
+      ],
+      options: 'tea,coffee',
+      pending: mine,
+    });
+    expect(rows.map((row) => [row.option, row.count, row.mine])).toEqual([
+      ['tea', 1, false],
+      ['coffee', 1, true],
+    ]);
   });
 
   it('leaves everybody else alone', () => {
@@ -141,5 +156,50 @@ describe('tally', () => {
     expect(pollOptions(' a , b,,c ')).toEqual(['a', 'b', 'c']);
     expect(pollOptions(['a', ' b '])).toEqual(['a', 'b']);
     expect(pollOptions(3)).toEqual([]);
+  });
+});
+
+describe('tally across one person’s computers', () => {
+  const me = ['did:phone', 'did:laptop', 'did:scid:me'];
+
+  it('reads the vote my other computer cast as mine', () => {
+    const rows = tally({ votes: [{ id: 'v1', author: 'did:laptop', option: 'tea' }], options: 'tea,coffee', me });
+    expect(rows.find((row) => row.mine)?.option).toBe('tea');
+    expect(rows.find((row) => row.option === 'tea')?.count).toBe(1);
+  });
+
+  it('counts two of mine once, as the newest', () => {
+    // A change on one computer whose removal of the other's the space refused: both stand.
+    const votes = [
+      { id: 'v1', author: 'did:laptop', option: 'tea', createdAt: '2026-11-01T10:00:00.000Z' },
+      { id: 'v2', author: 'did:phone', option: 'coffee', createdAt: '2026-11-01T11:00:00.000Z' },
+      { id: 'v3', author: 'did:them', option: 'tea', createdAt: '2026-11-01T09:00:00.000Z' },
+    ];
+    const rows = tally({ votes, options: 'tea,coffee', me });
+    expect(rows.map((row) => [row.option, row.count, row.mine])).toEqual([
+      ['tea', 1, false],
+      ['coffee', 1, true],
+    ]);
+  });
+
+  it('resolves two of mine written at the same moment the same, whichever is listed first', () => {
+    const at = '2026-11-01T10:00:00.000Z';
+    const a = { id: 'v1', author: 'did:laptop', option: 'tea', createdAt: at };
+    const b = { id: 'v2', author: 'did:phone', option: 'coffee', createdAt: at };
+    const forwards = tally({ votes: [a, b], options: 'tea,coffee', me });
+    const backwards = tally({ votes: [b, a], options: 'tea,coffee', me });
+    expect(forwards).toEqual(backwards);
+    // The larger id.
+    expect(forwards.find((row) => row.mine)?.option).toBe('coffee');
+    expect(forwards.reduce((sum, row) => sum + row.count, 0)).toBe(1);
+  });
+
+  it('marks nothing mine for a reader who has not voted, and counts everyone without `me`', () => {
+    const votes = [
+      { id: 'v1', author: 'did:laptop', option: 'tea' },
+      { id: 'v2', author: 'did:phone', option: 'tea' },
+    ];
+    expect(tally({ votes, options: 'tea', me: ['did:someone-else'] }).some((row) => row.mine)).toBe(false);
+    expect(tally({ votes, options: 'tea' })[0].count).toBe(2);
   });
 });

@@ -34,10 +34,8 @@
  * Framework-neutral, per `CONVENTIONS.md`: which dataset, who is asking, the vocabulary and how a
  * failure reaches a person all arrive as `InvolvementDeps`.
  */
-import { newestWritten } from '@we/components/signals';
 import { type DatasetProxy, Involvement, type InvolvementSemantic, runEntityTransaction } from '@we/entities';
-
-import { keepNewestAcrossDevices, replaceAcrossDevices } from './replaceAcrossDevices';
+import { keepNewestAcrossDevices, newestWritten, replaceAcrossDevices } from '@we/optimism';
 
 /** What `InvolvementType.semantic` may hold, in the reading order a list uses. */
 export const INVOLVEMENT_SEMANTICS: readonly InvolvementSemantic[] = [

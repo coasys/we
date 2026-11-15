@@ -74,3 +74,43 @@ describe('my reaction, from any of my computers', () => {
     expect(onSignal).toHaveBeenCalledWith(1);
   });
 });
+
+describe('the tally beside my reaction', () => {
+  const rate = { icon: 'star', mode: 'rating', rangeMin: 1, rangeMax: 5 } as const;
+
+  function show(props: SignalControlProps) {
+    host = document.createElement('div');
+    document.body.append(host);
+    dispose = render(() => <SignalControl {...props} />, host);
+    return {
+      selected: host.querySelector('[aria-valuenow]')?.getAttribute('aria-valuenow'),
+      average: (host.querySelector('.signal-control__agg') as (Element & { value?: number }) | null)?.value,
+    };
+  }
+
+  it('counts me once, as my newest, when my old rating from another computer could not be removed', () => {
+    // 1 from the desktop, then 5 from the laptop — whose removal of the desktop's row was refused.
+    const signals = [
+      { signalTypeId: 'rate', value: 1, author: DESKTOP, id: 'r-desk', createdAt: 1000 },
+      { signalTypeId: 'rate', value: 5, author: LAPTOP, id: 'r-lap', createdAt: 2000 },
+      { signalTypeId: 'rate', value: 3, author: 'did:key:ana', id: 'r-ana', createdAt: 1500 },
+    ];
+    for (const listed of [signals, [...signals].reverse()]) {
+      const shown = show({ signalType: rate, signals: listed, myDids: [DESKTOP, LAPTOP, PERSON] });
+      expect(shown.selected).toBe('5');
+      // (5 + 3) / 2, not (1 + 5 + 3) / 3.
+      expect(shown.average).toBe(4);
+      dispose?.();
+      dispose = undefined;
+      host?.remove();
+    }
+  });
+
+  it("leaves somebody else's two rows as they are", () => {
+    const signals = [
+      { signalTypeId: 'rate', value: 1, author: 'did:key:ana', id: 'a1', createdAt: 1000 },
+      { signalTypeId: 'rate', value: 5, author: 'did:key:ana', id: 'a2', createdAt: 2000 },
+    ];
+    expect(show({ signalType: rate, signals, myDids: [DESKTOP, LAPTOP, PERSON] }).average).toBe(3);
+  });
+});

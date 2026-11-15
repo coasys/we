@@ -27,8 +27,7 @@
  * count instead would have left the heart unfilled beside a number that had moved, which reads as
  * somebody else's reaction arriving rather than as your own registering.
  */
-import { newestWritten, type Written } from '@we/components/signals';
-import { createOptimism, keyOf, sameValue } from '@we/optimism';
+import { createOptimism, keyOf, newestWritten, sameValue, type Written } from '@we/optimism';
 import { createSignal } from 'solid-js';
 
 import { selfDids } from './personProfile';
