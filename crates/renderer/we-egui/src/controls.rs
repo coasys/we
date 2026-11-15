@@ -69,28 +69,14 @@ impl Widget for Button {
             TextChildren::Owned
         }
     }
-    /// button.ts: the default slot flows inside `display:flex;
-    /// align-items:center; gap:var(--we-button-size-gap)` — icon + label
-    /// side by side, centered. `--we-button-size-gap` is `xs→space-100`,
-    /// `sm→space-200`, `md/lg/xl→space-300` (4/8/12px).
+    /// button.ts: the default slot is `display: contents` inside
+    /// `[part=base]`, so the children are the base's own flex items — its
+    /// direction, `ax`/`ay`, gap (the size tier's by default) and wrap.
     fn parts_spec(&self, node: &ResolvedNode) -> Option<PartsSpec> {
         // `text` suppresses the slot, and text-only children are the
-        // painted label — only `Leaves` children need the content row.
+        // painted label — only `Leaves` children need the slot.
         let parts = if matches!(self.text_children(node), TextChildren::Leaves) {
-            let gap = match props::prop_str(node, "size") {
-                Some("xs") => 4.0,
-                Some("sm") => 8.0,
-                _ => 12.0,
-            };
-            // The row fills the button and justifies by the button's `ax`:
-            // on the web the slot is `display: contents`, so a `width: 100%`
-            // card resolves against `[part=base]`, the button's own box.
-            vec![PartSpec::group("content", Pick::Default, Direction::Row)
-                .aligned(we_style::ItemAlign::Center)
-                .justified(we_style::ItemAlign::Auto)
-                .growing(1.0)
-                .gapped(gap)
-                .as_contents()]
+            vec![PartSpec::group("content", Pick::Default, Direction::Row).as_contents()]
         } else {
             vec![]
         };

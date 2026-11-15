@@ -61,16 +61,13 @@ pub struct PartSpec {
     /// Align-items override for a part (e.g. `ay` on the tree row).
     pub align: Option<ItemAlign>,
     /// Justify-content override for a part. `Auto` takes the owner's own
-    /// `ax`: the button's content row stands in for `[part=base]`, the
-    /// flex container the web's `display: contents` slot puts children in.
+    /// `ax`.
     pub justify: Option<ItemAlign>,
     /// `flex-grow` along the part's main axis — the alert's content part
     /// fills what the icon leaves, so a trailing part docks at the far edge.
     pub flex_grow: f32,
-    /// The part stands in for a `display: contents` slot: it has no box on
-    /// the web, so it brings no automatic minimum of its own and shrinks
-    /// with its host (`min-width: 0`, `flex-shrink: 1`) — its children's own
-    /// minimums (a `width: 100%` card's definite size) are what count.
+    /// The part is a `display: contents` slot: it gets no box, and its
+    /// children are the host's own flex items (the button's default slot).
     pub contents: bool,
     /// `gap` between the part's children (the button's icon–label space).
     pub column_gap: f32,
@@ -1025,6 +1022,19 @@ fn border_lp(side: &Option<we_style::BorderSide>, scx: &StyleCx) -> LengthPercen
     ))
 }
 
+/// Whether `pick` takes `c` — the default slot or a named one.
+fn picks(pick: Option<&Pick>, c: &ResolvedChild) -> bool {
+    match (pick, c) {
+        (None, _) => false,
+        (Some(Pick::Default), ResolvedChild::Node(n)) => n.slot.is_none(),
+        (Some(Pick::Default), ResolvedChild::Text(_)) => true,
+        (Some(Pick::Named(want)), ResolvedChild::Node(n)) => {
+            n.slot.as_deref() == Some(want.as_ref())
+        }
+        (Some(Pick::Named(_)), ResolvedChild::Text(_)) => false,
+    }
+}
+
 /// A part spec → taffy style.
 fn part_style(spec: &PartSpec, host: &Style) -> taffy::Style {
     taffy::Style {
@@ -1054,11 +1064,7 @@ fn part_style(spec: &PartSpec, host: &Style) -> taffy::Style {
                 .unwrap_or(taffy::Dimension::auto()),
         },
         min_size: taffy::Size {
-            width: if spec.contents {
-                LengthPercentageAuto::length(0.0)
-            } else {
-                LengthPercentageAuto::auto()
-            },
+            width: LengthPercentageAuto::auto(),
             height: if spec.min_height > 0.0 {
                 LengthPercentageAuto::length(spec.min_height)
             } else {
@@ -1075,7 +1081,7 @@ fn part_style(spec: &PartSpec, host: &Style) -> taffy::Style {
             top: LengthPercentage::length(spec.padding[0]),
             bottom: LengthPercentage::length(spec.padding[2]),
         },
-        flex_shrink: if spec.contents { 1.0 } else { 0.0 },
+        flex_shrink: 0.0,
         flex_grow: spec.flex_grow,
         ..Default::default()
     }
@@ -1700,14 +1706,7 @@ impl<'a> Builder<'a> {
                 .children
                 .iter()
                 .chain(extra.iter())
-                .filter(|c| match (pick, c) {
-                    (Pick::Default, ResolvedChild::Node(n)) => n.slot.is_none(),
-                    (Pick::Default, ResolvedChild::Text(_)) => true,
-                    (Pick::Named(want), ResolvedChild::Node(n)) => {
-                        n.slot.as_deref() == Some(want.as_ref())
-                    }
-                    (Pick::Named(_), ResolvedChild::Text(_)) => false,
-                })
+                .filter(|c| picks(Some(pick), c))
             {
                 if let Some(k) = self.child_node(node, child, tree, &pf, scx, tc, eff) {
                     kids.push(k);
@@ -2155,6 +2154,47 @@ impl<'a> Builder<'a> {
                 .count()
         };
         let kids: Vec<TaffyId> = match spec {
+            // A `display: contents` part has no box: its children are the
+            // host's own flex items, laid out by the host's direction,
+            // alignment, gap and wrap — the button's slot in `[part=base]`.
+            Some(spec) if spec.parts.iter().any(|p| p.contents) => {
+                let main = match s.flex_direction {
+                    FlexDirection::Row | FlexDirection::RowReverse => Direction::Row,
+                    _ => Direction::Column,
+                };
+                let pf = ParentFrame {
+                    id: Some(&node.id),
+                    cb: own.content,
+                    positioned,
+                    pb,
+                    grid_axes: None,
+                    main,
+                    stretch_x: matches!(main, Direction::Column) && stretch_offer(l.align.as_ref()),
+                    stretch_y: matches!(main, Direction::Row) && stretch_offer(l.align.as_ref()),
+                };
+                let mut kids = Vec::new();
+                for part in &spec.parts {
+                    if part.contents {
+                        for child in node
+                            .children
+                            .iter()
+                            .chain(extra.iter())
+                            .filter(|c| picks(part.pick.as_ref(), c))
+                        {
+                            if let Some(k) =
+                                self.child_node(node, child, &tree, &pf, &scoped, tc, &style)
+                            {
+                                kids.push(k);
+                            }
+                        }
+                    } else if let Some(k) =
+                        self.part_node(&node.id, part, node, extra, &tree, &pf, &scoped, tc, &style)
+                    {
+                        kids.push(k);
+                    }
+                }
+                kids
+            }
             Some(spec) => {
                 s.flex_direction = match spec.direction {
                     Direction::Row => FlexDirection::Row,

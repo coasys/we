@@ -224,3 +224,87 @@ fn a_truncated_line_does_not_widen_a_full_width_card() {
         );
     }
 }
+
+/// Two fixed boxes in a button: `w×h` each, ids `<id>/a` and `<id>/b`.
+fn button_with_two(props: &[(&str, Value)], a: (&str, &str), b: (&str, &str)) -> ResolvedNode {
+    let mut root = node("Column", "r", &[("width", s("300px"))]);
+    let mut btn = node("we-button", "r/b", props);
+    for (id, (w, h)) in [("r/b/a", a), ("r/b/b", b)] {
+        btn.children.push(ResolvedChild::Node(Box::new(node(
+            "Row",
+            id,
+            &[("width", s(w)), ("height", s(h)), ("flexShrink", s("0"))],
+        ))));
+    }
+    root.children.push(ResolvedChild::Node(Box::new(btn)));
+    root
+}
+
+/// The slot is `display: contents`: an authored `gap` on the button is the
+/// gap between its children — `0px` puts them edge to edge (the tier's
+/// 12px is only the fallback).
+#[test]
+fn a_buttons_authored_gap_spaces_its_children() {
+    let root = button_with_two(
+        &[("variant", s("ghost")), ("gap", s("0px"))],
+        ("20px", "20px"),
+        ("20px", "20px"),
+    );
+    let (rects, _) = lay_out(&root);
+    let a = rects[&NodeId::from("r/b/a")];
+    let b = rects[&NodeId::from("r/b/b")];
+    assert!((b.min.x - a.max.x).abs() < 0.5, "a {a:?} b {b:?}");
+}
+
+/// Without an authored gap the size tier's gap still applies (md: 12px).
+#[test]
+fn a_buttons_default_gap_is_its_size_tier() {
+    let root = button_with_two(
+        &[("variant", s("ghost"))],
+        ("20px", "20px"),
+        ("20px", "20px"),
+    );
+    let (rects, _) = lay_out(&root);
+    let a = rects[&NodeId::from("r/b/a")];
+    let b = rects[&NodeId::from("r/b/b")];
+    assert!((b.min.x - a.max.x - 12.0).abs() < 0.5, "a {a:?} b {b:?}");
+}
+
+/// An authored `ay: start` top-aligns a short child beside a tall one.
+#[test]
+fn a_buttons_ay_aligns_its_children() {
+    let root = button_with_two(
+        &[
+            ("variant", s("bare")),
+            ("ay", s("start")),
+            ("height", s("60px")),
+        ],
+        ("20px", "40px"),
+        ("20px", "16px"),
+    );
+    let (rects, _) = lay_out(&root);
+    let btn = rects[&NodeId::from("r/b")];
+    let a = rects[&NodeId::from("r/b/a")];
+    let b = rects[&NodeId::from("r/b/b")];
+    assert!((a.min.y - btn.min.y).abs() < 0.5, "a {a:?} in {btn:?}");
+    assert!((b.min.y - btn.min.y).abs() < 0.5, "b {b:?} in {btn:?}");
+}
+
+/// An authored `direction: column` stacks the children.
+#[test]
+fn a_buttons_direction_stacks_its_children() {
+    let root = button_with_two(
+        &[
+            ("variant", s("bare")),
+            ("direction", s("column")),
+            ("gap", s("4px")),
+        ],
+        ("20px", "20px"),
+        ("20px", "20px"),
+    );
+    let (rects, _) = lay_out(&root);
+    let a = rects[&NodeId::from("r/b/a")];
+    let b = rects[&NodeId::from("r/b/b")];
+    assert!((a.min.x - b.min.x).abs() < 0.5, "a {a:?} b {b:?}");
+    assert!((b.min.y - a.max.y - 4.0).abs() < 0.5, "a {a:?} b {b:?}");
+}

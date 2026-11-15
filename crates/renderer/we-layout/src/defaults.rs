@@ -349,6 +349,20 @@ fn type_defaults(bag: &mut Bag, node: &ResolvedNode) {
                 _ => ("300", "md", "var(--we-space-400)"),
             };
             entries(bag, &[("fontSize", fs)]);
+            // `[part=base]`'s gap: the theme's button/control gap, then the
+            // size tier's `--we-button-size-gap` (helpers.ts COMPONENT_CASCADE).
+            // The slot is `display: contents`, so it spaces the children.
+            let gap = match size(node, "md") {
+                "xs" => "var(--we-space-100)",
+                "sm" => "var(--we-space-200)",
+                _ => "var(--we-space-300)",
+            };
+            bag.insert(
+                Arc::from("gap"),
+                v(&format!(
+                    "var(--we-theme-button-gap, var(--we-theme-control-gap, {gap}))"
+                )),
+            );
             // The variant merges over the size tier: `bare`'s `height: auto`
             // and zero padding win, so it wraps what it holds (a card).
             if variant(node, "solid") != "bare" {
