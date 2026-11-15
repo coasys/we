@@ -12,8 +12,12 @@
 //! (`--gallery style`) and the `egui_kittest` snapshots in `tests/gallery.rs`.
 #![forbid(unsafe_code)]
 
+#[cfg(not(target_arch = "wasm32"))]
+pub mod connected;
 pub mod gallery;
 pub mod gallery_widgets;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod live;
 
 use std::collections::BTreeSet;
 use std::sync::Arc;

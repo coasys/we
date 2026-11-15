@@ -5,7 +5,11 @@
 //! backed by the snapshot's stores. `--bundle` points at another bundle
 //! file; `--route` sets the initial routeStore path.
 //!
-//! `--offline` is the stage's default; there is no executor yet.
+//! `--offline` is the default. `--connect` (E7) talks to a live AD4M
+//! executor instead: it finds the executor (or takes `--executor-url`),
+//! asks for access once (approved in the AD4M launcher), lists the agent's
+//! spaces and renders the chosen one (`--space` skips the list) from live
+//! data, read-only.
 #![forbid(unsafe_code)]
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -47,6 +51,14 @@ struct Args {
     coasys: Option<String>,
     /// `--viewport` — the width the dump reports the host surfaces at.
     viewport: f32,
+    /// `--connect` — a live executor instead of the recording.
+    connect: bool,
+    /// `--executor-url`, `--space`, `--email` — what `--connect` uses.
+    executor_url: Option<String>,
+    space: Option<String>,
+    email: Option<String>,
+    /// `--demo-recorded` — the recording under a live space.
+    demo_recorded: bool,
 }
 
 /// Which `--gallery` showcase to open (`none` → render the bundle).
@@ -75,6 +87,11 @@ fn parse_args() -> Args {
         // The design's headless measure (6.2): the dump reports the
         // mount's host surfaces at 1440 unless `--viewport` says else.
         viewport: 1440.0,
+        connect: false,
+        executor_url: None,
+        space: None,
+        email: None,
+        demo_recorded: false,
     };
     let mut rest = std::env::args().skip(1).peekable();
     if rest.peek().is_some_and(|a| a == "dump") {
@@ -125,14 +142,42 @@ fn parse_args() -> Args {
                     .unwrap_or_else(|| panic!("--viewport needs a pixel width"));
             }
             "--offline" => {}
+            "--connect" => args.connect = true,
+            "--demo-recorded" => args.demo_recorded = true,
+            "--executor-url" => {
+                args.executor_url = Some(
+                    rest.next()
+                        .unwrap_or_else(|| panic!("--executor-url needs a URL")),
+                );
+            }
+            "--space" => {
+                args.space = Some(
+                    rest.next()
+                        .unwrap_or_else(|| panic!("--space needs a perspective uuid or name")),
+                );
+            }
+            "--email" => {
+                args.email = Some(
+                    rest.next()
+                        .unwrap_or_else(|| panic!("--email needs an address")),
+                );
+            }
             "--help" | "-h" => {
                 eprintln!(
-                    "usage: we-app [dump] [--bundle <path>] [--snapshot <path>] [--route <href>] [--offline] [--theme <name>] [--coasys <route>] [--gallery style|widgets|inputs]\n\n\
+                    "usage: we-app [dump] [--bundle <path>] [--snapshot <path>] [--route <href>] [--offline] [--theme <name>] [--coasys <route>] [--gallery style|widgets|inputs]\n       \
+                     we-app --connect [--executor-url <url>] [--space <uuid|name>] [--email <address>] [--theme <name>] [--demo-recorded]\n\n\
                      dump               resolve the app root once, print the normal-form tree, exit\n\
                      --bundle <path>    bundle to render (default: the repo's bundles/coasys.bundle.json)\n\
                      --snapshot <path>  offline data: stores/queries/invokes as JSON\n\
                      --route <href>     initial routeStore path (default /)\n\
-                     --offline          run with no executor — the only mode this stage has\n\
+                     --offline          run with no executor, from the recording (the default)\n\
+                     --connect          read a live AD4M executor: find it, ask for access once\n\
+                                        (approve in the AD4M launcher), pick a space, render it\n\
+                     --executor-url <u> the executor to use instead of looking (http://127.0.0.1:12000)\n\
+                     --space <id>       open this perspective (uuid or name) without the picker\n\
+                     --email <address>  the account on a multi-user executor\n\
+                     --demo-recorded    with --connect: show the recorded Coasys data where the\n\
+                                        live space has none (a demo mix; off by default)\n\
                      --theme <name>     light, dark, black, retro, cyberpunk or glow (default dark)\n\
                      --coasys <route>   the whole app at a recorded Coasys route, set up as the\n\
                                         coasys_shots screenshots are: index, workflows, channels,\n\
@@ -381,6 +426,9 @@ fn main() -> eframe::Result<()> {
     if args.gallery != Gallery::None {
         return run_gallery(args.gallery);
     }
+    if args.connect {
+        return run_connected(args);
+    }
     if let Some(route) = &args.coasys {
         return run_coasys(route, &args.theme);
     }
@@ -450,6 +498,56 @@ struct CoasysApp {
 impl eframe::App for CoasysApp {
     fn ui(&mut self, ui: &mut eframe::egui::Ui, _frame: &mut eframe::Frame) {
         self.app.frame_body(ui);
+    }
+}
+
+/// `we-app --connect` — the Coasys app against a live executor.
+#[cfg(not(target_arch = "wasm32"))]
+fn run_connected(args: Args) -> eframe::Result<()> {
+    use we_app::connected::{ConnectArgs, ConnectedApp};
+    let bundle = load_bundle(&args.bundle);
+    let title = format!("{} — connected", bundle.name);
+    let connect = ConnectArgs {
+        settings: we_ad4m::connect::ConnectSettings {
+            url: args.executor_url.clone(),
+            email: args.email.clone(),
+            ..Default::default()
+        },
+        space: args.space.clone(),
+        theme: args.theme.clone(),
+        data: if args.demo_recorded {
+            we_app::live::DataMode::DemoRecorded
+        } else {
+            we_app::live::DataMode::Live
+        },
+    };
+    let options = eframe::NativeOptions {
+        viewport: eframe::egui::ViewportBuilder::default()
+            .with_title(&title)
+            .with_inner_size([1280.0, 800.0]),
+        ..Default::default()
+    };
+    eframe::run_native(
+        &title,
+        options,
+        Box::new(move |cc| {
+            we_app::init_host(&cc.egui_ctx);
+            Ok(Box::new(Connected(ConnectedApp::new(
+                cc.egui_ctx.clone(),
+                bundle,
+                connect,
+            ))))
+        }),
+    )
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+struct Connected(we_app::connected::ConnectedApp);
+
+#[cfg(not(target_arch = "wasm32"))]
+impl eframe::App for Connected {
+    fn ui(&mut self, ui: &mut eframe::egui::Ui, _frame: &mut eframe::Frame) {
+        self.0.ui(ui);
     }
 }
 
