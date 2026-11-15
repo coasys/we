@@ -7,8 +7,8 @@ use std::sync::Arc;
 use we_data::{
     ClassSel, Executor, OfflineData, QueryIr, SnapshotQuerySource, SpaceId, Write, WriteOp,
 };
-use we_expr::ParseCache;
-use we_template::{compile_query, QueryPool, QuerySource, QueryState, Scope, StoreBag};
+use we_expr::{HandleTable, MountCx, ParseCache};
+use we_template::{compile_query, CompileCx, QueryPool, QuerySource, QueryState, Scope, StoreBag};
 
 const MINI: &str = include_str!("data/coasys-mini.json");
 
@@ -21,12 +21,12 @@ fn mini_json() -> serde_json::Value {
 fn cell_named(pool: &QueryPool, descriptor: serde_json::Value, name: &str, bag: &StoreBag) {
     let mut cache = ParseCache::new();
     let mut warnings = Vec::new();
+    let mount = MountCx::explicit("test");
+    let handles = HandleTable::new();
     let compiled = compile_query(
         &descriptor,
         &Scope::default(),
-        bag,
-        &mut cache,
-        &mut warnings,
+        &mut CompileCx::new(bag, &mut cache, &mut warnings, &mount, &handles),
     )
     .expect("query compiles");
     let cell = pool.cell(compiled.key.clone(), compiled.ir.clone());

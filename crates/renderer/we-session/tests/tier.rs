@@ -8,7 +8,7 @@ use std::sync::Arc;
 
 use serde_json::json;
 use we_expr::{MountCx, Tier, Value};
-use we_screen::{ScreenSchema, ScreenState};
+use we_screen::{ScreenOp, ScreenSchema, ScreenState};
 use we_session::Session;
 use we_template::{
     ActionRequest, AppSpec, BundleTemplate, Completer, Host, Invoked, ResolvedChild, RootSpec,
@@ -217,5 +217,67 @@ fn origin_space_is_stamped() {
     assert_eq!(
         s.runtime.handles().key(space.handle()).as_deref(),
         Some("preview-coasys")
+    );
+}
+
+/// The `ds` a cell's key carries — parsed back the way a capture lookup
+/// reads it.
+fn ds_of(key: &we_template::QueryKey) -> Option<String> {
+    serde_json::from_str::<serde_json::Value>(key.as_str()).ok()?["ds"]
+        .as_str()
+        .map(str::to_string)
+}
+
+#[test]
+fn two_spaces_do_not_share_a_cell() {
+    // `Here` is keyed by the mount's space: one `$queries` block in two
+    // spaces compiles to two pool cells — one per space — or the second
+    // space's template would read the first space's rows.
+    let mut s = Session::offline(
+        RootSpec::single(
+            schema(json!({
+                "type": "Column",
+                "$queries": { "q": { "entity": "Post" } },
+                "children": []
+            })),
+            "test",
+        ),
+        Arc::new(StoreBag::new()),
+        ScreenState::desktop(ScreenSchema::default(), "/space/demo-a"),
+    );
+    let _ = s.resolve();
+    let keys: Vec<_> = s
+        .runtime
+        .pool()
+        .cells()
+        .iter()
+        .map(|c| c.key.clone())
+        .collect();
+    assert_eq!(keys.len(), 1, "the first space's query is one cell");
+    assert_eq!(
+        ds_of(&keys[0]).as_deref(),
+        Some("demo-a"),
+        "`Here` keys by the mount's space"
+    );
+
+    s.screen.apply(ScreenOp::Navigate {
+        to: "/space/demo-b".into(),
+        query: None,
+        base_depth: None,
+        replace: false,
+    });
+    let _ = s.resolve();
+    let mut datasets: Vec<_> = s
+        .runtime
+        .pool()
+        .cells()
+        .iter()
+        .filter_map(|c| ds_of(&c.key))
+        .collect();
+    datasets.sort();
+    assert_eq!(
+        datasets,
+        ["demo-a".to_string(), "demo-b".to_string()],
+        "the same question in a second space is a second cell"
     );
 }

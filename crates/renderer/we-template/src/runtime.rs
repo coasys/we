@@ -534,6 +534,7 @@ impl Runtime {
                         screen,
                         pool: &self.pool,
                         mount: &mount.cx,
+                        handles: &self.handles,
                         parts: self.parts.as_ref(),
                         routes,
                         panels,
