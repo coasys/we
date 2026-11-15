@@ -491,10 +491,7 @@ fn toggle_local_in_removes_every_match() {
     let Value::List(tags) = get("tags", &draft) else {
         panic!("draft.tags stays a list: {draft:?}")
     };
-    assert!(
-        tags.is_empty(),
-        "both `a`s left the nested list: {tags:?}"
-    );
+    assert!(tags.is_empty(), "both `a`s left the nested list: {tags:?}");
 }
 
 #[test]
