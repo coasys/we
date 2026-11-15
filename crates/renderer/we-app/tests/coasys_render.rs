@@ -17,16 +17,13 @@
 //!   changes. A route that could not render at `d43118cf3` has that
 //!   failure recorded in NOTES-e3c-0.md instead of a baseline.
 //!
-//!   HEAD is not clean against these baselines: all ten routes differ,
-//!   and the whole diff is one change — merge `fd6f433f9` (port/m1-fix-a,
-//!   the icon-rail round) wraps the app root's content subtree in the
-//!   `meta.frame` content band (`position: fixed; left: 72px;
-//!   width: calc(100vw - 72px); height: calc(100vh - 0px);
-//!   overflowY: auto; bg: page`). The subtree inside is byte-identical.
-//!   Per Lal's rule the baselines are NOT advanced: each tree test is
-//!   `#[ignore]`d with the reason until Lal decides — see
-//!   NOTES-e3c-0.md. `cargo test --ignored` re-runs them and prints the
-//!   per-route diff.
+//!   Advanced once, with Lal's approval, to the output of `fd6f433f9`
+//!   (port/m1-fix-a, approved at 96418f442): that merge wraps the app
+//!   root's content subtree in the `meta.frame` band (`Column` with
+//!   `position: fixed; left: 72px; top: 0px; width: calc(100vw - 72px);
+//!   height: calc(100vh - 0px); overflowY: auto; bg: page`). For all ten
+//!   routes the root, its first child and the wrapped subtree are
+//!   byte-identical to the `d43118cf3` output; see the baseline commit.
 //!
 //! - `tests/snapshots/coasys_<route>.png` + `coasys_tree_panel.png` —
 //!   recorded from `2a9edd244` (the E3c-0 base: E3c-1, E3c-3, the theme
@@ -368,21 +365,17 @@ fn capture_theme_is_glow() {
     assert_eq!(capture_theme().id.as_ref(), "glow");
 }
 
-// The reason every tree test carries: at HEAD all ten routes differ from
-// the `d43118cf3` baselines by exactly one change — merge `fd6f433f9`
-// (port/m1-fix-a) wraps the app root's content in the `meta.frame` band.
-// Baselines stay pinned; Lal decides. See NOTES-e3c-0.md.
 tree_tests! {
-    #[ignore = "diverged from d43118cf3 baseline at fd6f433f9 (m1-fix-a meta.frame band); Lal decides — NOTES-e3c-0.md"] tree_index => "index",
-    #[ignore = "diverged from d43118cf3 baseline at fd6f433f9 (m1-fix-a meta.frame band); Lal decides — NOTES-e3c-0.md"] tree_workflows => "workflows",
-    #[ignore = "diverged from d43118cf3 baseline at fd6f433f9 (m1-fix-a meta.frame band); Lal decides — NOTES-e3c-0.md"] tree_channels => "channels",
-    #[ignore = "diverged from d43118cf3 baseline at fd6f433f9 (m1-fix-a meta.frame band); Lal decides — NOTES-e3c-0.md"] tree_channel_design => "channel-design",
-    #[ignore = "diverged from d43118cf3 baseline at fd6f433f9 (m1-fix-a meta.frame band); Lal decides — NOTES-e3c-0.md"] tree_calls => "calls",
-    #[ignore = "diverged from d43118cf3 baseline at fd6f433f9 (m1-fix-a meta.frame band); Lal decides — NOTES-e3c-0.md"] tree_call => "call",
-    #[ignore = "diverged from d43118cf3 baseline at fd6f433f9 (m1-fix-a meta.frame band); Lal decides — NOTES-e3c-0.md"] tree_people => "people",
-    #[ignore = "diverged from d43118cf3 baseline at fd6f433f9 (m1-fix-a meta.frame band); Lal decides — NOTES-e3c-0.md"] tree_dna => "dna",
-    #[ignore = "diverged from d43118cf3 baseline at fd6f433f9 (m1-fix-a meta.frame band); Lal decides — NOTES-e3c-0.md"] tree_person => "person",
-    #[ignore = "diverged from d43118cf3 baseline at fd6f433f9 (m1-fix-a meta.frame band); Lal decides — NOTES-e3c-0.md"] tree_about => "about",
+    tree_index => "index",
+    tree_workflows => "workflows",
+    tree_channels => "channels",
+    tree_channel_design => "channel-design",
+    tree_calls => "calls",
+    tree_call => "call",
+    tree_people => "people",
+    tree_dna => "dna",
+    tree_person => "person",
+    tree_about => "about",
 }
 
 macro_rules! pixel_tests {

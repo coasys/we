@@ -506,358 +506,254 @@
     {
       "type": "Column",
       "props": {
-        "width": "100%",
-        "minHeight": "100%",
-        "bg": "page",
-        "bgImage": "none",
-        "ax": "center"
+        "position": "fixed",
+        "left": "72px",
+        "top": "0px",
+        "width": "calc(100vw - 72px)",
+        "height": "calc(100vh - 0px)",
+        "overflowY": "auto",
+        "bg": "page"
       },
       "children": [
         {
           "type": "Column",
           "props": {
-            "position": "relative",
             "width": "100%",
-            "ax": "center",
-            "bgImage": "radial-gradient(circle 400px at calc(50% + min(50%, 720px) - 150px) 200px, rgba(117,255,190,.22), rgba(117,255,190,0)), radial-gradient(circle 550px at calc(50% - min(50%, 720px) + 200px) 650px, rgba(109,38,183,.55), rgba(109,38,183,0)), radial-gradient(70% 55% at 62% 0, rgba(117,255,190,.07), rgba(117,255,190,0)), linear-gradient(180deg, rgba(92,74,168,.12), rgba(19,21,51,0) 85%)"
+            "minHeight": "100%",
+            "bg": "page",
+            "bgImage": "none",
+            "ax": "center"
           },
           "children": [
             {
-              "type": "Row",
+              "type": "Column",
               "props": {
-                "position": "absolute",
-                "top": "0",
-                "left": "0",
-                "right": "0",
-                "ax": "center"
+                "position": "relative",
+                "width": "100%",
+                "ax": "center",
+                "bgImage": "radial-gradient(circle 400px at calc(50% + min(50%, 720px) - 150px) 200px, rgba(117,255,190,.22), rgba(117,255,190,0)), radial-gradient(circle 550px at calc(50% - min(50%, 720px) + 200px) 650px, rgba(109,38,183,.55), rgba(109,38,183,0)), radial-gradient(70% 55% at 62% 0, rgba(117,255,190,.07), rgba(117,255,190,0)), linear-gradient(180deg, rgba(92,74,168,.12), rgba(19,21,51,0) 85%)"
               },
               "children": [
                 {
                   "type": "Row",
                   "props": {
-                    "width": "100%",
-                    "maxWidth": "1040px",
-                    "px": "22px",
-                    "smUpProps": {
-                      "px": "40px"
-                    },
-                    "height": "120px",
-                    "ax": "between",
-                    "ay": "center"
+                    "position": "absolute",
+                    "top": "0",
+                    "left": "0",
+                    "right": "0",
+                    "ax": "center"
                   },
                   "children": [
                     {
-                      "type": "we-link",
-                      "props": {
-                        "href": "https://coasys.org",
-                        "target": "_blank",
-                        "display": "flex",
-                        "ay": "center",
-                        "gap": "15px",
-                        "color": "text",
-                        "textDecoration": "none",
-                        "fontSize": "24px",
-                        "fontWeight": "800",
-                        "smUpProps": {
-                          "fontSize": "34px"
-                        }
-                      },
-                      "children": [
-                        {
-                          "type": "we-image",
-                          "props": {
-                            "src": "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2061%2060%22%3E%3Cpath%20fill%3D%22%23ffffff%22%20d%3D%22M60.8132%2026.4402C60.8132%2017.8176%2054.0842%2010.7408%2045.5898%2010.1311C43.1321%204.19363%2037.2563%200%2030.42%200C23.5837%200%2017.7133%204.18829%2015.2503%2010.1257C6.73973%2010.7248%200%2017.8123%200%2026.4402C0%2031.7999%202.59716%2036.5606%206.60022%2039.5507C8.69297%2050.9281%2018.604%2059.2832%2030.42%2059.2832C42.236%2059.2832%2052.1524%2050.9067%2054.2398%2039.5293C58.2268%2036.5445%2060.8132%2031.7892%2060.8132%2026.4402ZM41.9999%2016.3573C41.9999%2021.8829%2038.0881%2026.5098%2032.883%2027.6384C32.8401%2027.2426%2032.8186%2026.8468%2032.8186%2026.4402C32.8186%2020.9147%2036.7305%2016.2878%2041.9355%2015.1591C41.9784%2015.555%2041.9999%2015.9508%2041.9999%2016.3573ZM30.4039%2050.6553C28.4882%2048.5477%2027.4204%2045.8144%2027.4204%2042.9206C27.4204%2040.0267%2028.5526%2037.2399%2030.4039%2035.1912C32.2606%2037.2399%2033.3874%2039.9519%2033.3874%2042.9206C33.3874%2045.8893%2032.3196%2048.5531%2030.4039%2050.6553ZM18.8992%2015.1698C24.0935%2016.3092%2027.9892%2020.9307%2027.9892%2026.4456C27.9892%2026.8468%2027.9677%2027.2426%2027.9302%2027.6384C22.7359%2026.4991%2018.8401%2021.8775%2018.8401%2016.3627C18.8401%2015.9615%2018.8616%2015.5657%2018.8992%2015.1698ZM21.8075%2031.3774C23.4281%2031.3774%2024.9735%2031.7144%2026.374%2032.3135C24.3564%2035.7047%2020.6431%2037.9834%2016.4093%2037.9834C14.7834%2037.9834%2013.238%2037.6464%2011.8321%2037.042C13.8873%2033.5812%2017.6596%2031.372%2021.8075%2031.372V31.3774ZM34.4338%2032.3135C35.8343%2031.7144%2037.3798%2031.3774%2039.0003%2031.3774C43.1482%2031.3774%2046.9206%2033.5865%2048.9757%2037.0473C47.5698%2037.6518%2046.0244%2037.9888%2044.4039%2037.9888C40.1701%2037.9888%2036.4568%2035.7101%2034.4392%2032.3135H34.4338ZM30.4146%204.81412C34.686%204.81412%2038.4208%207.13025%2040.4277%2010.5697C36.2046%2011.6181%2032.6201%2014.3033%2030.3986%2017.9085C28.1824%2014.3086%2024.6086%2011.6288%2020.3963%2010.575C22.4032%207.1356%2026.1379%204.81412%2030.4146%204.81412ZM14.0536%2015.1377C14.0214%2015.5443%2014.0053%2015.9508%2014.0053%2016.3627C14.0053%2020.4279%2015.5078%2024.1508%2017.9762%2027.0179C13.7961%2028.0182%2010.1633%2030.6232%207.8827%2034.2551C5.98312%2032.1958%204.81869%2029.4571%204.81869%2026.4456C4.81869%2020.8826%208.78419%2016.2236%2014.0483%2015.1377H14.0536ZM12.3848%2042.3054C13.6726%2042.6317%2015.0195%2042.8029%2016.4039%2042.8029C18.6148%2042.8029%2020.7182%2042.3643%2022.6446%2041.5726C22.6071%2042.0219%2022.5856%2042.4712%2022.5856%2042.9259C22.5856%2047.173%2024.2115%2051.1634%2027.0984%2054.1856C20.3963%2053.0463%2014.8478%2048.5049%2012.3848%2042.3054ZM33.704%2054.191C36.5963%2051.1741%2038.2169%2047.1891%2038.2169%2042.9259C38.2169%2042.4712%2038.1954%2042.0166%2038.1578%2041.5726C40.0842%2042.3643%2042.1931%2042.8082%2044.4039%2042.8082C45.7991%2042.8082%2047.1513%2042.6317%2048.4445%2042.3054C45.9761%2048.5103%2040.4062%2053.057%2033.7094%2054.1963L33.704%2054.191ZM52.9144%2034.2605C50.6392%2030.6339%2047.0171%2028.0289%2042.8477%2027.0233C45.3215%2024.1562%2046.824%2020.4333%2046.824%2016.3627C46.824%2015.9508%2046.8025%2015.5496%2046.7757%2015.1484C52.0236%2016.245%2055.9784%2020.8933%2055.9784%2026.4456C55.9784%2029.4571%2054.814%2032.2011%2052.9144%2034.2551V34.2605Z%22%2F%3E%3C%2Fsvg%3E",
-                            "alt": "",
-                            "width": "50px",
-                            "height": "50px",
-                            "smUpProps": {
-                              "width": "60px",
-                              "height": "60px"
-                            }
-                          }
-                        },
-                        {
-                          "text": "coasys"
-                        }
-                      ]
-                    },
-                    {
                       "type": "Row",
                       "props": {
-                        "gap": "14px",
-                        "ay": "center",
+                        "width": "100%",
+                        "maxWidth": "1040px",
+                        "px": "22px",
                         "smUpProps": {
-                          "gap": "22px"
-                        }
+                          "px": "40px"
+                        },
+                        "height": "120px",
+                        "ax": "between",
+                        "ay": "center"
                       },
                       "children": [
                         {
                           "type": "we-link",
                           "props": {
-                            "href": "https://coasys.org/Synergy_whitepaper.pdf",
+                            "href": "https://coasys.org",
                             "target": "_blank",
-                            "fontSize": "16px",
-                            "fontWeight": "500",
-                            "color": "text-muted",
-                            "textDecoration": "none",
-                            "hoverProps": {
-                              "color": "text"
-                            },
-                            "display": "none",
-                            "mdUpProps": {
-                              "display": "inline"
-                            }
-                          },
-                          "children": [
-                            {
-                              "text": "Synergy paper"
-                            }
-                          ]
-                        },
-                        {
-                          "type": "we-link",
-                          "props": {
-                            "href": "https://coasys.org/Coasys-Livepaper-2026-06-09.pdf",
-                            "target": "_blank",
-                            "fontSize": "16px",
-                            "fontWeight": "500",
-                            "color": "text-muted",
-                            "textDecoration": "none",
-                            "hoverProps": {
-                              "color": "text"
-                            },
-                            "display": "none",
-                            "mdUpProps": {
-                              "display": "inline"
-                            }
-                          },
-                          "children": [
-                            {
-                              "text": "Livepaper"
-                            }
-                          ]
-                        },
-                        {
-                          "type": "we-link",
-                          "props": {
-                            "href": "https://discord.gg/fYGVM66jEz",
-                            "target": "_blank",
-                            "label": "Discord",
-                            "color": "text-muted",
-                            "hoverProps": {
-                              "color": "text"
-                            },
-                            "display": "none",
-                            "smUpProps": {
-                              "display": "flex"
-                            }
-                          },
-                          "children": [
-                            {
-                              "type": "we-icon",
-                              "props": {
-                                "name": "discord-logo",
-                                "weight": "fill",
-                                "size": "22px"
-                              }
-                            }
-                          ]
-                        },
-                        {
-                          "type": "we-link",
-                          "props": {
-                            "href": "https://github.com/coasys/ad4m",
-                            "target": "_blank",
-                            "label": "AD4M on GitHub, 100 stars",
                             "display": "flex",
-                            "ay": "stretch",
-                            "height": "36px",
-                            "r": "18px",
-                            "overflow": "hidden",
-                            "border": "1px solid rgba(199,201,220,.3)",
+                            "ay": "center",
+                            "gap": "15px",
                             "color": "text",
                             "textDecoration": "none",
-                            "fontSize": "14px",
-                            "fontWeight": "600"
+                            "fontSize": "24px",
+                            "fontWeight": "800",
+                            "smUpProps": {
+                              "fontSize": "34px"
+                            }
                           },
                           "children": [
                             {
-                              "type": "Row",
+                              "type": "we-image",
                               "props": {
-                                "ay": "center",
-                                "gap": "8px",
-                                "pl": "14px",
-                                "pr": "12px"
+                                "src": "data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2061%2060%22%3E%3Cpath%20fill%3D%22%23ffffff%22%20d%3D%22M60.8132%2026.4402C60.8132%2017.8176%2054.0842%2010.7408%2045.5898%2010.1311C43.1321%204.19363%2037.2563%200%2030.42%200C23.5837%200%2017.7133%204.18829%2015.2503%2010.1257C6.73973%2010.7248%200%2017.8123%200%2026.4402C0%2031.7999%202.59716%2036.5606%206.60022%2039.5507C8.69297%2050.9281%2018.604%2059.2832%2030.42%2059.2832C42.236%2059.2832%2052.1524%2050.9067%2054.2398%2039.5293C58.2268%2036.5445%2060.8132%2031.7892%2060.8132%2026.4402ZM41.9999%2016.3573C41.9999%2021.8829%2038.0881%2026.5098%2032.883%2027.6384C32.8401%2027.2426%2032.8186%2026.8468%2032.8186%2026.4402C32.8186%2020.9147%2036.7305%2016.2878%2041.9355%2015.1591C41.9784%2015.555%2041.9999%2015.9508%2041.9999%2016.3573ZM30.4039%2050.6553C28.4882%2048.5477%2027.4204%2045.8144%2027.4204%2042.9206C27.4204%2040.0267%2028.5526%2037.2399%2030.4039%2035.1912C32.2606%2037.2399%2033.3874%2039.9519%2033.3874%2042.9206C33.3874%2045.8893%2032.3196%2048.5531%2030.4039%2050.6553ZM18.8992%2015.1698C24.0935%2016.3092%2027.9892%2020.9307%2027.9892%2026.4456C27.9892%2026.8468%2027.9677%2027.2426%2027.9302%2027.6384C22.7359%2026.4991%2018.8401%2021.8775%2018.8401%2016.3627C18.8401%2015.9615%2018.8616%2015.5657%2018.8992%2015.1698ZM21.8075%2031.3774C23.4281%2031.3774%2024.9735%2031.7144%2026.374%2032.3135C24.3564%2035.7047%2020.6431%2037.9834%2016.4093%2037.9834C14.7834%2037.9834%2013.238%2037.6464%2011.8321%2037.042C13.8873%2033.5812%2017.6596%2031.372%2021.8075%2031.372V31.3774ZM34.4338%2032.3135C35.8343%2031.7144%2037.3798%2031.3774%2039.0003%2031.3774C43.1482%2031.3774%2046.9206%2033.5865%2048.9757%2037.0473C47.5698%2037.6518%2046.0244%2037.9888%2044.4039%2037.9888C40.1701%2037.9888%2036.4568%2035.7101%2034.4392%2032.3135H34.4338ZM30.4146%204.81412C34.686%204.81412%2038.4208%207.13025%2040.4277%2010.5697C36.2046%2011.6181%2032.6201%2014.3033%2030.3986%2017.9085C28.1824%2014.3086%2024.6086%2011.6288%2020.3963%2010.575C22.4032%207.1356%2026.1379%204.81412%2030.4146%204.81412ZM14.0536%2015.1377C14.0214%2015.5443%2014.0053%2015.9508%2014.0053%2016.3627C14.0053%2020.4279%2015.5078%2024.1508%2017.9762%2027.0179C13.7961%2028.0182%2010.1633%2030.6232%207.8827%2034.2551C5.98312%2032.1958%204.81869%2029.4571%204.81869%2026.4456C4.81869%2020.8826%208.78419%2016.2236%2014.0483%2015.1377H14.0536ZM12.3848%2042.3054C13.6726%2042.6317%2015.0195%2042.8029%2016.4039%2042.8029C18.6148%2042.8029%2020.7182%2042.3643%2022.6446%2041.5726C22.6071%2042.0219%2022.5856%2042.4712%2022.5856%2042.9259C22.5856%2047.173%2024.2115%2051.1634%2027.0984%2054.1856C20.3963%2053.0463%2014.8478%2048.5049%2012.3848%2042.3054ZM33.704%2054.191C36.5963%2051.1741%2038.2169%2047.1891%2038.2169%2042.9259C38.2169%2042.4712%2038.1954%2042.0166%2038.1578%2041.5726C40.0842%2042.3643%2042.1931%2042.8082%2044.4039%2042.8082C45.7991%2042.8082%2047.1513%2042.6317%2048.4445%2042.3054C45.9761%2048.5103%2040.4062%2053.057%2033.7094%2054.1963L33.704%2054.191ZM52.9144%2034.2605C50.6392%2030.6339%2047.0171%2028.0289%2042.8477%2027.0233C45.3215%2024.1562%2046.824%2020.4333%2046.824%2016.3627C46.824%2015.9508%2046.8025%2015.5496%2046.7757%2015.1484C52.0236%2016.245%2055.9784%2020.8933%2055.9784%2026.4456C55.9784%2029.4571%2054.814%2032.2011%2052.9144%2034.2551V34.2605Z%22%2F%3E%3C%2Fsvg%3E",
+                                "alt": "",
+                                "width": "50px",
+                                "height": "50px",
+                                "smUpProps": {
+                                  "width": "60px",
+                                  "height": "60px"
+                                }
+                              }
+                            },
+                            {
+                              "text": "coasys"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "Row",
+                          "props": {
+                            "gap": "14px",
+                            "ay": "center",
+                            "smUpProps": {
+                              "gap": "22px"
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "we-link",
+                              "props": {
+                                "href": "https://coasys.org/Synergy_whitepaper.pdf",
+                                "target": "_blank",
+                                "fontSize": "16px",
+                                "fontWeight": "500",
+                                "color": "text-muted",
+                                "textDecoration": "none",
+                                "hoverProps": {
+                                  "color": "text"
+                                },
+                                "display": "none",
+                                "mdUpProps": {
+                                  "display": "inline"
+                                }
+                              },
+                              "children": [
+                                {
+                                  "text": "Synergy paper"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "we-link",
+                              "props": {
+                                "href": "https://coasys.org/Coasys-Livepaper-2026-06-09.pdf",
+                                "target": "_blank",
+                                "fontSize": "16px",
+                                "fontWeight": "500",
+                                "color": "text-muted",
+                                "textDecoration": "none",
+                                "hoverProps": {
+                                  "color": "text"
+                                },
+                                "display": "none",
+                                "mdUpProps": {
+                                  "display": "inline"
+                                }
+                              },
+                              "children": [
+                                {
+                                  "text": "Livepaper"
+                                }
+                              ]
+                            },
+                            {
+                              "type": "we-link",
+                              "props": {
+                                "href": "https://discord.gg/fYGVM66jEz",
+                                "target": "_blank",
+                                "label": "Discord",
+                                "color": "text-muted",
+                                "hoverProps": {
+                                  "color": "text"
+                                },
+                                "display": "none",
+                                "smUpProps": {
+                                  "display": "flex"
+                                }
                               },
                               "children": [
                                 {
                                   "type": "we-icon",
                                   "props": {
-                                    "name": "github-logo",
-                                    "size": "18px"
+                                    "name": "discord-logo",
+                                    "weight": "fill",
+                                    "size": "22px"
                                   }
-                                },
-                                {
-                                  "type": "we-text",
-                                  "props": {
-                                    "fontSize": "14px",
-                                    "fontWeight": "600",
-                                    "display": "none",
-                                    "smUpProps": {
-                                      "display": "inline"
-                                    }
-                                  },
-                                  "children": [
-                                    {
-                                      "text": "GitHub"
-                                    }
-                                  ]
                                 }
                               ]
                             },
                             {
-                              "type": "Row",
+                              "type": "we-link",
                               "props": {
-                                "ay": "center",
-                                "pl": "12px",
-                                "pr": "14px",
-                                "bg": "rgba(199,201,220,.08)",
-                                "borderLeft": "1px solid rgba(199,201,220,.3)"
+                                "href": "https://github.com/coasys/ad4m",
+                                "target": "_blank",
+                                "label": "AD4M on GitHub, 100 stars",
+                                "display": "flex",
+                                "ay": "stretch",
+                                "height": "36px",
+                                "r": "18px",
+                                "overflow": "hidden",
+                                "border": "1px solid rgba(199,201,220,.3)",
+                                "color": "text",
+                                "textDecoration": "none",
+                                "fontSize": "14px",
+                                "fontWeight": "600"
                               },
                               "children": [
                                 {
-                                  "type": "we-text",
+                                  "type": "Row",
                                   "props": {
-                                    "fontSize": "14px",
-                                    "fontWeight": "600"
+                                    "ay": "center",
+                                    "gap": "8px",
+                                    "pl": "14px",
+                                    "pr": "12px"
                                   },
                                   "children": [
                                     {
-                                      "text": "★ 100"
+                                      "type": "we-icon",
+                                      "props": {
+                                        "name": "github-logo",
+                                        "size": "18px"
+                                      }
+                                    },
+                                    {
+                                      "type": "we-text",
+                                      "props": {
+                                        "fontSize": "14px",
+                                        "fontWeight": "600",
+                                        "display": "none",
+                                        "smUpProps": {
+                                          "display": "inline"
+                                        }
+                                      },
+                                      "children": [
+                                        {
+                                          "text": "GitHub"
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "Row",
+                                  "props": {
+                                    "ay": "center",
+                                    "pl": "12px",
+                                    "pr": "14px",
+                                    "bg": "rgba(199,201,220,.08)",
+                                    "borderLeft": "1px solid rgba(199,201,220,.3)"
+                                  },
+                                  "children": [
+                                    {
+                                      "type": "we-text",
+                                      "props": {
+                                        "fontSize": "14px",
+                                        "fontWeight": "600"
+                                      },
+                                      "children": [
+                                        {
+                                          "text": "★ 100"
+                                        }
+                                      ]
                                     }
                                   ]
                                 }
                               ]
                             }
                           ]
-                        }
-                      ]
-                    }
-                  ]
-                }
-              ]
-            },
-            {
-              "type": "Column",
-              "props": {
-                "width": "100%",
-                "maxWidth": "1040px",
-                "px": "22px",
-                "smUpProps": {
-                  "px": "40px"
-                },
-                "pt": "110px",
-                "pb": "56px",
-                "gap": "400",
-                "mdUpProps": {
-                  "pt": "124px",
-                  "pb": "70px"
-                }
-              },
-              "children": [
-                {
-                  "type": "we-text",
-                  "props": {
-                    "variant": "overline",
-                    "color": "accent-text"
-                  },
-                  "children": [
-                    {
-                      "text": "Coasys"
-                    }
-                  ]
-                },
-                {
-                  "type": "we-text",
-                  "props": {
-                    "variant": "heading-xl",
-                    "tag": "h1",
-                    "maxWidth": "1000px",
-                    "mdUpProps": {
-                      "fontSize": "900"
-                    }
-                  },
-                  "children": [
-                    {
-                      "type": "we-typewriter",
-                      "props": {
-                        "text": "We are building",
-                        "phrases": [
-                          "a global brain.",
-                          "a nervous system for society.",
-                          "intelligence no one owns.",
-                          "a counterweight to big AI."
-                        ],
-                        "phraseColor": "accent-text"
-                      }
-                    }
-                  ]
-                },
-                {
-                  "type": "we-text",
-                  "props": {
-                    "variant": "ingress",
-                    "tag": "p",
-                    "maxWidth": "800px",
-                    "color": "text"
-                  },
-                  "children": [
-                    {
-                      "text": "Groups of people and AI agents, each keeping their own rules, learning as one network. Our bet: together they out-learn any centralized system."
-                    }
-                  ]
-                },
-                {
-                  "type": "Row",
-                  "props": {
-                    "gap": "400",
-                    "wrap": true
-                  },
-                  "children": [
-                    {
-                      "type": "we-button",
-                      "props": {
-                        "variant": "solid",
-                        "size": "lg"
-                      },
-                      "on": [
-                        "onClick"
-                      ],
-                      "children": [
-                        {
-                          "type": "we-icon",
-                          "props": {
-                            "name": "play",
-                            "size": "20px"
-                          }
-                        },
-                        {
-                          "text": "Watch the film"
-                        }
-                      ]
-                    },
-                    {
-                      "type": "we-button",
-                      "props": {
-                        "variant": "outline",
-                        "size": "lg"
-                      },
-                      "on": [
-                        "onClick"
-                      ],
-                      "children": [
-                        {
-                          "text": "See the app"
                         }
                       ]
                     }
@@ -867,22 +763,115 @@
                   "type": "Column",
                   "props": {
                     "width": "100%",
-                    "gap": "200",
-                    "mt": "300"
+                    "maxWidth": "1040px",
+                    "px": "22px",
+                    "smUpProps": {
+                      "px": "40px"
+                    },
+                    "pt": "110px",
+                    "pb": "56px",
+                    "gap": "400",
+                    "mdUpProps": {
+                      "pt": "124px",
+                      "pb": "70px"
+                    }
                   },
                   "children": [
                     {
                       "type": "we-text",
                       "props": {
-                        "tag": "p",
-                        "color": "text-muted",
-                        "fontSize": "17px",
-                        "lineHeight": "1.45",
-                        "maxWidth": "800px"
+                        "variant": "overline",
+                        "color": "accent-text"
                       },
                       "children": [
                         {
-                          "text": "How life holds together without a boss, and how we are building the same for people and AI. Four minutes."
+                          "text": "Coasys"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "we-text",
+                      "props": {
+                        "variant": "heading-xl",
+                        "tag": "h1",
+                        "maxWidth": "1000px",
+                        "mdUpProps": {
+                          "fontSize": "900"
+                        }
+                      },
+                      "children": [
+                        {
+                          "type": "we-typewriter",
+                          "props": {
+                            "text": "We are building",
+                            "phrases": [
+                              "a global brain.",
+                              "a nervous system for society.",
+                              "intelligence no one owns.",
+                              "a counterweight to big AI."
+                            ],
+                            "phraseColor": "accent-text"
+                          }
+                        }
+                      ]
+                    },
+                    {
+                      "type": "we-text",
+                      "props": {
+                        "variant": "ingress",
+                        "tag": "p",
+                        "maxWidth": "800px",
+                        "color": "text"
+                      },
+                      "children": [
+                        {
+                          "text": "Groups of people and AI agents, each keeping their own rules, learning as one network. Our bet: together they out-learn any centralized system."
+                        }
+                      ]
+                    },
+                    {
+                      "type": "Row",
+                      "props": {
+                        "gap": "400",
+                        "wrap": true
+                      },
+                      "children": [
+                        {
+                          "type": "we-button",
+                          "props": {
+                            "variant": "solid",
+                            "size": "lg"
+                          },
+                          "on": [
+                            "onClick"
+                          ],
+                          "children": [
+                            {
+                              "type": "we-icon",
+                              "props": {
+                                "name": "play",
+                                "size": "20px"
+                              }
+                            },
+                            {
+                              "text": "Watch the film"
+                            }
+                          ]
+                        },
+                        {
+                          "type": "we-button",
+                          "props": {
+                            "variant": "outline",
+                            "size": "lg"
+                          },
+                          "on": [
+                            "onClick"
+                          ],
+                          "children": [
+                            {
+                              "text": "See the app"
+                            }
+                          ]
                         }
                       ]
                     },
@@ -890,728 +879,25 @@
                       "type": "Column",
                       "props": {
                         "width": "100%",
-                        "aspectRatio": "16 / 9",
-                        "r": "18px",
-                        "overflow": "hidden",
-                        "border": "1px solid accent-border",
-                        "bg": "chrome",
-                        "shadow": "lg"
-                      },
-                      "children": [
-                        {
-                          "type": "we-button",
-                          "props": {
-                            "variant": "bare",
-                            "width": "100%",
-                            "height": "100%",
-                            "label": "Play: The Coasys film · 4 min · with sound"
-                          },
-                          "on": [
-                            "onClick"
-                          ],
-                          "children": [
-                            {
-                              "type": "Column",
-                              "props": {
-                                "position": "relative",
-                                "width": "100%",
-                                "height": "100%"
-                              },
-                              "children": [
-                                {
-                                  "type": "we-image",
-                                  "props": {
-                                    "src": "https://coasys.org/films/film-poster-r13.webp",
-                                    "alt": "",
-                                    "fit": "cover",
-                                    "width": "100%",
-                                    "height": "100%",
-                                    "opacity": 0.75,
-                                    "hoverProps": {
-                                      "opacity": 1
-                                    },
-                                    "transition": "opacity var(--we-theme-state-duration, 300ms) ease-out"
-                                  }
-                                },
-                                {
-                                  "type": "Column",
-                                  "props": {
-                                    "position": "absolute",
-                                    "top": "55%",
-                                    "left": "0",
-                                    "right": "0",
-                                    "bottom": "0",
-                                    "bgImage": "linear-gradient(180deg, rgba(13,15,38,0), rgba(13,15,38,.75))",
-                                    "pointerEvents": "none"
-                                  }
-                                },
-                                {
-                                  "type": "Row",
-                                  "props": {
-                                    "position": "absolute",
-                                    "left": "600",
-                                    "bottom": "500",
-                                    "gap": "400",
-                                    "ay": "center",
-                                    "pointerEvents": "none"
-                                  },
-                                  "children": [
-                                    {
-                                      "type": "Row",
-                                      "props": {
-                                        "width": "72px",
-                                        "height": "72px",
-                                        "r": "full",
-                                        "bg": "accent",
-                                        "ax": "center",
-                                        "ay": "center",
-                                        "flexShrink": 0,
-                                        "ring": "0 0 0 10px color-mix(in srgb, var(--we-role-accent) 18%, transparent)"
-                                      },
-                                      "children": [
-                                        {
-                                          "type": "we-icon",
-                                          "props": {
-                                            "name": "play",
-                                            "size": "34px",
-                                            "color": "on-accent"
-                                          }
-                                        }
-                                      ]
-                                    },
-                                    {
-                                      "type": "we-text",
-                                      "props": {
-                                        "variant": "label",
-                                        "color": "text",
-                                        "fontSize": "17px"
-                                      },
-                                      "children": [
-                                        {
-                                          "text": "The Coasys film · 4 min · with sound"
-                                        }
-                                      ]
-                                    }
-                                  ]
-                                }
-                              ]
-                            }
-                          ]
-                        }
-                      ]
-                    },
-                    {
-                      "type": "Row",
-                      "props": {
-                        "gap": "100",
-                        "ay": "center",
-                        "wrap": true
+                        "gap": "200",
+                        "mt": "300"
                       },
                       "children": [
                         {
                           "type": "we-text",
                           "props": {
-                            "fontSize": "13px",
-                            "color": "text-muted"
+                            "tag": "p",
+                            "color": "text-muted",
+                            "fontSize": "17px",
+                            "lineHeight": "1.45",
+                            "maxWidth": "800px"
                           },
                           "children": [
                             {
-                              "text": "Captions on ·"
+                              "text": "How life holds together without a boss, and how we are building the same for people and AI. Four minutes."
                             }
                           ]
                         },
-                        {
-                          "type": "we-button",
-                          "props": {
-                            "variant": "bare",
-                            "color": "accent-text",
-                            "fontSize": "13px",
-                            "fontWeight": "600",
-                            "expanded": false
-                          },
-                          "on": [
-                            "onClick"
-                          ],
-                          "children": [
-                            {
-                              "text": "Transcript"
-                            }
-                          ]
-                        }
-                      ]
-                    },
-                    {
-                      "type": "we-text",
-                      "props": {
-                        "variant": "footnote",
-                        "color": "text-faint"
-                      },
-                      "children": [
-                        {
-                          "text": "Forest photo: "
-                        },
-                        {
-                          "type": "we-link",
-                          "props": {
-                            "href": "https://www.flickr.com/photos/hollystar47/30763457786/",
-                            "target": "_blank",
-                            "rel": "noopener noreferrer"
-                          },
-                          "children": [
-                            {
-                              "text": "“Autumn magic”"
-                            }
-                          ]
-                        },
-                        {
-                          "text": " by Holly Victoria Norval, "
-                        },
-                        {
-                          "type": "we-link",
-                          "props": {
-                            "href": "https://creativecommons.org/licenses/by/2.0/",
-                            "target": "_blank",
-                            "rel": "noopener noreferrer"
-                          },
-                          "children": [
-                            {
-                              "text": "CC BY 2.0"
-                            }
-                          ]
-                        },
-                        {
-                          "text": ", modified (cropped, colour-graded, graphic overlay added)"
-                        }
-                      ]
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "type": "Column",
-          "props": {
-            "width": "100%",
-            "ax": "center",
-            "bgImage": "linear-gradient(180deg, rgba(92,74,168,0), rgba(92,74,168,.14))",
-            "pt": "46px",
-            "pb": "50px"
-          },
-          "children": [
-            {
-              "type": "Column",
-              "props": {
-                "width": "100%",
-                "maxWidth": "1040px",
-                "px": "22px",
-                "smUpProps": {
-                  "px": "40px"
-                },
-                "ax": "center",
-                "gap": "18px"
-              },
-              "children": [
-                {
-                  "type": "we-text",
-                  "props": {
-                    "variant": "overline",
-                    "color": "text-muted"
-                  },
-                  "children": [
-                    {
-                      "text": "Partners"
-                    }
-                  ]
-                },
-                {
-                  "type": "Row",
-                  "props": {
-                    "wrap": true,
-                    "ax": "center",
-                    "ay": "center",
-                    "gap": "20px 30px",
-                    "smUpProps": {
-                      "gap": "26px 48px"
-                    }
-                  },
-                  "children": [
-                    {
-                      "type": "we-link",
-                      "props": {
-                        "href": "https://www.holochain.org",
-                        "target": "_blank",
-                        "display": "flex",
-                        "opacity": 0.85,
-                        "hoverProps": {
-                          "opacity": 1
-                        }
-                      },
-                      "children": [
-                        {
-                          "type": "we-image",
-                          "props": {
-                            "r": "0",
-                            "src": "https://coasys.org/partners/holochain.svg",
-                            "alt": "holochain",
-                            "height": "24px",
-                            "width": "auto",
-                            "maxWidth": "130px",
-                            "fit": "contain",
-                            "smUpProps": {
-                              "maxWidth": "180px"
-                            }
-                          }
-                        }
-                      ]
-                    },
-                    {
-                      "type": "we-link",
-                      "props": {
-                        "href": "https://www.holo.host",
-                        "target": "_blank",
-                        "display": "flex",
-                        "opacity": 0.85,
-                        "hoverProps": {
-                          "opacity": 1
-                        }
-                      },
-                      "children": [
-                        {
-                          "type": "we-image",
-                          "props": {
-                            "r": "0",
-                            "src": "https://coasys.org/partners/holo.svg",
-                            "alt": "holo",
-                            "height": "17px",
-                            "width": "auto",
-                            "maxWidth": "130px",
-                            "fit": "contain",
-                            "smUpProps": {
-                              "maxWidth": "180px"
-                            }
-                          }
-                        }
-                      ]
-                    },
-                    {
-                      "type": "we-link",
-                      "props": {
-                        "href": "https://holoventures.io",
-                        "target": "_blank",
-                        "display": "flex",
-                        "opacity": 0.85,
-                        "hoverProps": {
-                          "opacity": 1
-                        }
-                      },
-                      "children": [
-                        {
-                          "type": "we-image",
-                          "props": {
-                            "r": "0",
-                            "src": "https://coasys.org/partners/holoventures.svg",
-                            "alt": "Holo Ventures",
-                            "height": "29px",
-                            "width": "auto",
-                            "maxWidth": "130px",
-                            "fit": "contain",
-                            "smUpProps": {
-                              "maxWidth": "180px"
-                            }
-                          }
-                        }
-                      ]
-                    },
-                    {
-                      "type": "we-link",
-                      "props": {
-                        "href": "https://corenexus.is",
-                        "target": "_blank",
-                        "display": "flex",
-                        "opacity": 0.85,
-                        "hoverProps": {
-                          "opacity": 1
-                        }
-                      },
-                      "children": [
-                        {
-                          "type": "we-image",
-                          "props": {
-                            "r": "0",
-                            "src": "https://coasys.org/partners/corenexus.svg",
-                            "alt": "corenexus",
-                            "height": "21px",
-                            "width": "auto",
-                            "maxWidth": "130px",
-                            "fit": "contain",
-                            "smUpProps": {
-                              "maxWidth": "180px"
-                            }
-                          }
-                        }
-                      ]
-                    },
-                    {
-                      "type": "we-link",
-                      "props": {
-                        "href": "https://trustgraph.net",
-                        "target": "_blank",
-                        "display": "flex",
-                        "opacity": 0.85,
-                        "hoverProps": {
-                          "opacity": 1
-                        }
-                      },
-                      "children": [
-                        {
-                          "type": "we-image",
-                          "props": {
-                            "r": "0",
-                            "src": "https://coasys.org/partners/trustgraph.svg",
-                            "alt": "trustgraph",
-                            "height": "32px",
-                            "width": "auto",
-                            "maxWidth": "130px",
-                            "fit": "contain",
-                            "smUpProps": {
-                              "maxWidth": "180px"
-                            }
-                          }
-                        }
-                      ]
-                    },
-                    {
-                      "type": "we-link",
-                      "props": {
-                        "href": "https://www.symphonics.life",
-                        "target": "_blank",
-                        "display": "flex",
-                        "opacity": 0.85,
-                        "hoverProps": {
-                          "opacity": 1
-                        }
-                      },
-                      "children": [
-                        {
-                          "type": "we-image",
-                          "props": {
-                            "r": "0",
-                            "src": "https://coasys.org/partners/symphonics.svg",
-                            "alt": "symphonics",
-                            "height": "29px",
-                            "width": "auto",
-                            "maxWidth": "130px",
-                            "fit": "contain",
-                            "smUpProps": {
-                              "maxWidth": "180px"
-                            }
-                          }
-                        }
-                      ]
-                    },
-                    {
-                      "type": "we-link",
-                      "props": {
-                        "href": "https://www.michkaelbaker.com",
-                        "target": "_blank",
-                        "display": "flex",
-                        "opacity": 0.85,
-                        "hoverProps": {
-                          "opacity": 1
-                        }
-                      },
-                      "children": [
-                        {
-                          "type": "we-image",
-                          "props": {
-                            "r": "0",
-                            "src": "https://coasys.org/partners/cacoon.svg",
-                            "alt": "cacoon",
-                            "height": "18px",
-                            "width": "auto",
-                            "maxWidth": "130px",
-                            "fit": "contain",
-                            "smUpProps": {
-                              "maxWidth": "180px"
-                            }
-                          }
-                        }
-                      ]
-                    },
-                    {
-                      "type": "we-link",
-                      "props": {
-                        "href": "https://asraya.io",
-                        "target": "_blank",
-                        "display": "flex",
-                        "opacity": 0.85,
-                        "hoverProps": {
-                          "opacity": 1
-                        }
-                      },
-                      "children": [
-                        {
-                          "type": "we-image",
-                          "props": {
-                            "r": "0",
-                            "src": "https://coasys.org/partners/asraya.svg",
-                            "alt": "asraya",
-                            "height": "40px",
-                            "width": "auto",
-                            "maxWidth": "130px",
-                            "fit": "contain",
-                            "smUpProps": {
-                              "maxWidth": "180px"
-                            }
-                          }
-                        }
-                      ]
-                    },
-                    {
-                      "type": "we-link",
-                      "props": {
-                        "href": "https://nillion.com/",
-                        "target": "_blank",
-                        "display": "flex",
-                        "opacity": 0.85,
-                        "hoverProps": {
-                          "opacity": 1
-                        }
-                      },
-                      "children": [
-                        {
-                          "type": "we-image",
-                          "props": {
-                            "r": "0",
-                            "src": "https://coasys.org/partners/nillion.svg",
-                            "alt": "nillion",
-                            "height": "22px",
-                            "width": "auto",
-                            "maxWidth": "130px",
-                            "fit": "contain",
-                            "smUpProps": {
-                              "maxWidth": "180px"
-                            }
-                          }
-                        }
-                      ]
-                    },
-                    {
-                      "type": "we-link",
-                      "props": {
-                        "href": "https://weco.io/",
-                        "target": "_blank",
-                        "display": "flex",
-                        "opacity": 0.85,
-                        "hoverProps": {
-                          "opacity": 1
-                        }
-                      },
-                      "children": [
-                        {
-                          "type": "Column",
-                          "props": {
-                            "position": "relative"
-                          },
-                          "children": [
-                            {
-                              "type": "we-image",
-                              "props": {
-                                "r": "0",
-                                "src": "https://coasys.org/partners/weco.svg",
-                                "alt": "weco",
-                                "height": "40px",
-                                "width": "auto",
-                                "maxWidth": "130px",
-                                "fit": "contain",
-                                "smUpProps": {
-                                  "maxWidth": "180px"
-                                }
-                              }
-                            },
-                            {
-                              "type": "Column",
-                              "props": {
-                                "position": "absolute",
-                                "top": "0",
-                                "left": "0"
-                              },
-                              "children": [
-                                {
-                                  "type": "we-image",
-                                  "props": {
-                                    "r": "0",
-                                    "src": "https://coasys.org/partners/weco.svg",
-                                    "alt": "",
-                                    "height": "40px",
-                                    "width": "auto",
-                                    "maxWidth": "130px",
-                                    "fit": "contain",
-                                    "smUpProps": {
-                                      "maxWidth": "180px"
-                                    }
-                                  }
-                                }
-                              ]
-                            }
-                          ]
-                        }
-                      ]
-                    },
-                    {
-                      "type": "we-link",
-                      "props": {
-                        "href": "https://www.holons.io/",
-                        "target": "_blank",
-                        "display": "flex",
-                        "opacity": 0.85,
-                        "hoverProps": {
-                          "opacity": 1
-                        }
-                      },
-                      "children": [
-                        {
-                          "type": "we-image",
-                          "props": {
-                            "r": "0",
-                            "src": "https://coasys.org/partners/holons.svg",
-                            "alt": "holons",
-                            "height": "32px",
-                            "width": "auto",
-                            "maxWidth": "130px",
-                            "fit": "contain",
-                            "smUpProps": {
-                              "maxWidth": "180px"
-                            }
-                          }
-                        }
-                      ]
-                    }
-                  ]
-                }
-              ]
-            }
-          ]
-        },
-        {
-          "type": "Column",
-          "props": {
-            "id": "app",
-            "width": "100%",
-            "ax": "center",
-            "py": "70px",
-            "mdUpProps": {
-              "py": "110px"
-            },
-            "bgImage": "linear-gradient(180deg, rgba(92,74,168,.14), rgba(19,21,51,0))"
-          },
-          "children": [
-            {
-              "type": "Column",
-              "props": {
-                "width": "100%",
-                "maxWidth": "1040px",
-                "px": "22px",
-                "smUpProps": {
-                  "px": "40px"
-                }
-              },
-              "children": [
-                {
-                  "type": "we-text",
-                  "props": {
-                    "variant": "overline",
-                    "color": "accent-text",
-                    "mb": "18px"
-                  },
-                  "children": [
-                    {
-                      "text": "The Coasys app"
-                    }
-                  ]
-                },
-                {
-                  "type": "we-text",
-                  "props": {
-                    "tag": "h2",
-                    "fontWeight": "300",
-                    "lineHeight": "1.12",
-                    "letterSpacing": "-0.01em",
-                    "maxWidth": "900px",
-                    "mb": "28px",
-                    "fontSize": "30px",
-                    "smUpProps": {
-                      "fontSize": "40px"
-                    },
-                    "mdUpProps": {
-                      "fontSize": "60px"
-                    }
-                  },
-                  "children": [
-                    {
-                      "text": "A space for your group "
-                    },
-                    {
-                      "type": "we-text",
-                      "props": {
-                        "inline": true,
-                        "color": "accent-text",
-                        "fontWeight": "300",
-                        "lineHeight": "1.12",
-                        "fontSize": "30px",
-                        "smUpProps": {
-                          "fontSize": "40px"
-                        },
-                        "mdUpProps": {
-                          "fontSize": "60px"
-                        }
-                      },
-                      "children": [
-                        {
-                          "text": "and its agents."
-                        }
-                      ]
-                    }
-                  ]
-                },
-                {
-                  "type": "we-text",
-                  "props": {
-                    "color": "text-muted",
-                    "fontSize": "18px",
-                    "lineHeight": "29px",
-                    "maxWidth": "760px",
-                    "mb": "28px",
-                    "mdUpProps": {
-                      "fontSize": "22px",
-                      "lineHeight": "34px"
-                    }
-                  },
-                  "children": [
-                    {
-                      "text": "Three minutes with one team and its AI agents, in the space they share: chat, calls and a board."
-                    }
-                  ]
-                },
-                {
-                  "type": "Row",
-                  "props": {
-                    "wrap": true,
-                    "gap": "36px",
-                    "mt": "8px",
-                    "ay": "start"
-                  },
-                  "children": [
-                    {
-                      "type": "Column",
-                      "props": {
-                        "flex": "1.25 1 420px",
-                        "minWidth": "0",
-                        "gap": "200"
-                      },
-                      "children": [
                         {
                           "type": "Column",
                           "props": {
@@ -1630,7 +916,7 @@
                                 "variant": "bare",
                                 "width": "100%",
                                 "height": "100%",
-                                "label": "Play: The Coasys app · 3:39"
+                                "label": "Play: The Coasys film · 4 min · with sound"
                               },
                               "on": [
                                 "onClick"
@@ -1647,7 +933,7 @@
                                     {
                                       "type": "we-image",
                                       "props": {
-                                        "src": "https://coasys.org/films/coasys-app-v11-poster.webp",
+                                        "src": "https://coasys.org/films/film-poster-r13.webp",
                                         "alt": "",
                                         "fit": "cover",
                                         "width": "100%",
@@ -1663,23 +949,21 @@
                                       "type": "Column",
                                       "props": {
                                         "position": "absolute",
-                                        "top": "60%",
+                                        "top": "55%",
                                         "left": "0",
                                         "right": "0",
                                         "bottom": "0",
-                                        "bgImage": "linear-gradient(180deg, rgba(13,15,38,0), rgba(13,15,38,.8))",
+                                        "bgImage": "linear-gradient(180deg, rgba(13,15,38,0), rgba(13,15,38,.75))",
                                         "pointerEvents": "none"
                                       }
                                     },
                                     {
-                                      "type": "Column",
+                                      "type": "Row",
                                       "props": {
                                         "position": "absolute",
-                                        "top": "0",
-                                        "left": "0",
-                                        "right": "0",
-                                        "bottom": "0",
-                                        "ax": "center",
+                                        "left": "600",
+                                        "bottom": "500",
+                                        "gap": "400",
                                         "ay": "center",
                                         "pointerEvents": "none"
                                       },
@@ -1687,8 +971,8 @@
                                         {
                                           "type": "Row",
                                           "props": {
-                                            "width": "64px",
-                                            "height": "64px",
+                                            "width": "72px",
+                                            "height": "72px",
                                             "r": "full",
                                             "bg": "accent",
                                             "ax": "center",
@@ -1701,34 +985,22 @@
                                               "type": "we-icon",
                                               "props": {
                                                 "name": "play",
-                                                "size": "26px",
+                                                "size": "34px",
                                                 "color": "on-accent"
                                               }
                                             }
                                           ]
                                         },
                                         {
-                                          "type": "Row",
+                                          "type": "we-text",
                                           "props": {
-                                            "position": "absolute",
-                                            "left": "0",
-                                            "right": "0",
-                                            "bottom": "300",
-                                            "ax": "center"
+                                            "variant": "label",
+                                            "color": "text",
+                                            "fontSize": "17px"
                                           },
                                           "children": [
                                             {
-                                              "type": "we-text",
-                                              "props": {
-                                                "variant": "label",
-                                                "color": "text",
-                                                "fontSize": "15px"
-                                              },
-                                              "children": [
-                                                {
-                                                  "text": "The Coasys app · 3:39"
-                                                }
-                                              ]
+                                              "text": "The Coasys film · 4 min · with sound"
                                             }
                                           ]
                                         }
@@ -1756,353 +1028,531 @@
                               },
                               "children": [
                                 {
-                                  "text": "Captions on"
-                                }
-                              ]
-                            }
-                          ]
-                        }
-                      ]
-                    },
-                    {
-                      "type": "Column",
-                      "props": {
-                        "flex": "1 1 300px",
-                        "minWidth": "0",
-                        "gap": "18px"
-                      },
-                      "children": [
-                        {
-                          "type": "Column",
-                          "props": {
-                            "pl": "18px",
-                            "borderLeft": "3px solid accent"
-                          },
-                          "children": [
-                            {
-                              "type": "we-text",
-                              "props": {
-                                "tag": "h3",
-                                "fontSize": "20px",
-                                "lineHeight": "28px",
-                                "fontWeight": "500",
-                                "color": "text",
-                                "mb": "4px"
-                              },
-                              "children": [
-                                {
-                                  "text": "Your own space"
+                                  "text": "Captions on ·"
                                 }
                               ]
                             },
                             {
-                              "type": "we-text",
+                              "type": "we-button",
                               "props": {
-                                "fontSize": "16px",
-                                "lineHeight": "25px",
-                                "color": "text-muted"
+                                "variant": "bare",
+                                "color": "accent-text",
+                                "fontSize": "13px",
+                                "fontWeight": "600",
+                                "expanded": false
                               },
+                              "on": [
+                                "onClick"
+                              ],
                               "children": [
                                 {
-                                  "text": "Calls, chat and a shared board in one place. Your group sets the rules."
-                                }
-                              ]
-                            },
-                            {
-                              "type": "we-text",
-                              "props": {
-                                "fontSize": "12px",
-                                "fontWeight": "700",
-                                "letterSpacing": "0.06em",
-                                "uppercase": true,
-                                "color": "text-muted",
-                                "alignSelf": "flex-start",
-                                "px": "12px",
-                                "py": "3px",
-                                "r": "999px",
-                                "mt": "8px",
-                                "bg": "rgba(199,201,220,.1)"
-                              },
-                              "children": [
-                                {
-                                  "text": "Works today · alpha"
+                                  "text": "Transcript"
                                 }
                               ]
                             }
                           ]
                         },
                         {
-                          "type": "Column",
+                          "type": "we-text",
                           "props": {
-                            "pl": "18px",
-                            "borderLeft": "3px solid accent"
+                            "variant": "footnote",
+                            "color": "text-faint"
                           },
                           "children": [
                             {
-                              "type": "we-text",
+                              "text": "Forest photo: "
+                            },
+                            {
+                              "type": "we-link",
                               "props": {
-                                "tag": "h3",
-                                "fontSize": "20px",
-                                "lineHeight": "28px",
-                                "fontWeight": "500",
-                                "color": "text",
-                                "mb": "4px"
+                                "href": "https://www.flickr.com/photos/hollystar47/30763457786/",
+                                "target": "_blank",
+                                "rel": "noopener noreferrer"
                               },
                               "children": [
                                 {
-                                  "text": "The AI drafts. People decide."
+                                  "text": "“Autumn magic”"
                                 }
                               ]
                             },
                             {
-                              "type": "we-text",
+                              "text": " by Holly Victoria Norval, "
+                            },
+                            {
+                              "type": "we-link",
                               "props": {
-                                "fontSize": "16px",
-                                "lineHeight": "25px",
-                                "color": "text-muted"
+                                "href": "https://creativecommons.org/licenses/by/2.0/",
+                                "target": "_blank",
+                                "rel": "noopener noreferrer"
                               },
                               "children": [
                                 {
-                                  "text": "After a call, your group's AI suggests tasks and events from it. Nothing is added until someone accepts it."
+                                  "text": "CC BY 2.0"
                                 }
                               ]
                             },
                             {
-                              "type": "we-text",
-                              "props": {
-                                "fontSize": "12px",
-                                "fontWeight": "700",
-                                "letterSpacing": "0.06em",
-                                "uppercase": true,
-                                "color": "text-muted",
-                                "alignSelf": "flex-start",
-                                "px": "12px",
-                                "py": "3px",
-                                "r": "999px",
-                                "mt": "8px",
-                                "bg": "rgba(199,201,220,.1)"
-                              },
-                              "children": [
-                                {
-                                  "text": "Works today · alpha"
-                                }
-                              ]
+                              "text": ", modified (cropped, colour-graded, graphic overlay added)"
                             }
                           ]
-                        },
-                        {
-                          "type": "Column",
-                          "props": {
-                            "pl": "18px",
-                            "borderLeft": "3px solid accent"
-                          },
-                          "children": [
-                            {
-                              "type": "we-text",
-                              "props": {
-                                "tag": "h3",
-                                "fontSize": "20px",
-                                "lineHeight": "28px",
-                                "fontWeight": "500",
-                                "color": "text",
-                                "mb": "4px"
-                              },
-                              "children": [
-                                {
-                                  "text": "Bring your agents"
-                                }
-                              ]
-                            },
-                            {
-                              "type": "we-text",
-                              "props": {
-                                "fontSize": "16px",
-                                "lineHeight": "25px",
-                                "color": "text-muted"
-                              },
-                              "children": [
-                                {
-                                  "text": "Any assistant that speaks MCP can join, with an account of its own. The group's AI runs on the model you pick, even a local one."
-                                }
-                              ]
-                            },
-                            {
-                              "type": "we-text",
-                              "props": {
-                                "fontSize": "12px",
-                                "fontWeight": "700",
-                                "letterSpacing": "0.06em",
-                                "uppercase": true,
-                                "color": "text-muted",
-                                "alignSelf": "flex-start",
-                                "px": "12px",
-                                "py": "3px",
-                                "r": "999px",
-                                "mt": "8px",
-                                "bg": "rgba(199,201,220,.1)"
-                              },
-                              "children": [
-                                {
-                                  "text": "Works today"
-                                }
-                              ]
-                            }
-                          ]
-                        },
-                        {
-                          "type": "Column",
-                          "props": {
-                            "pl": "18px",
-                            "borderLeft": "3px solid accent"
-                          },
-                          "children": [
-                            {
-                              "type": "we-text",
-                              "props": {
-                                "tag": "h3",
-                                "fontSize": "20px",
-                                "lineHeight": "28px",
-                                "fontWeight": "500",
-                                "color": "text",
-                                "mb": "4px"
-                              },
-                              "children": [
-                                {
-                                  "text": "You set the bar"
-                                }
-                              ]
-                            },
-                            {
-                              "type": "we-text",
-                              "props": {
-                                "fontSize": "16px",
-                                "lineHeight": "25px",
-                                "color": "text-muted"
-                              },
-                              "children": [
-                                {
-                                  "text": "Decide how many people must sign off before work moves on. Each sign-off is signed. Built; it ships in the next release."
-                                }
-                              ]
-                            },
-                            {
-                              "type": "we-text",
-                              "props": {
-                                "fontSize": "12px",
-                                "fontWeight": "700",
-                                "letterSpacing": "0.06em",
-                                "uppercase": true,
-                                "color": "text-muted",
-                                "alignSelf": "flex-start",
-                                "px": "12px",
-                                "py": "3px",
-                                "r": "999px",
-                                "mt": "8px",
-                                "border": "1px solid rgba(199,201,220,.55)"
-                              },
-                              "children": [
-                                {
-                                  "text": "Next"
-                                }
-                              ]
-                            }
-                          ]
-                        }
-                      ]
-                    }
-                  ]
-                },
-                {
-                  "type": "Row",
-                  "props": {
-                    "mt": "36px"
-                  },
-                  "children": [
-                    {
-                      "type": "we-button",
-                      "props": {
-                        "variant": "solid",
-                        "size": "lg"
-                      },
-                      "on": [
-                        "onClick"
-                      ],
-                      "children": [
-                        {
-                          "text": "Open your spaces"
                         }
                       ]
                     }
                   ]
                 }
               ]
-            }
-          ]
-        },
-        {
-          "type": "Column",
-          "props": {
-            "id": "layers",
-            "width": "100%",
-            "ax": "center",
-            "py": "70px",
-            "mdUpProps": {
-              "py": "110px"
-            }
-          },
-          "children": [
+            },
             {
               "type": "Column",
               "props": {
                 "width": "100%",
-                "maxWidth": "1040px",
-                "px": "22px",
-                "smUpProps": {
-                  "px": "40px"
-                }
+                "ax": "center",
+                "bgImage": "linear-gradient(180deg, rgba(92,74,168,0), rgba(92,74,168,.14))",
+                "pt": "46px",
+                "pb": "50px"
               },
               "children": [
                 {
-                  "type": "we-text",
+                  "type": "Column",
                   "props": {
-                    "variant": "overline",
-                    "color": "accent-text",
-                    "mb": "18px"
+                    "width": "100%",
+                    "maxWidth": "1040px",
+                    "px": "22px",
+                    "smUpProps": {
+                      "px": "40px"
+                    },
+                    "ax": "center",
+                    "gap": "18px"
                   },
                   "children": [
                     {
-                      "text": "Underneath"
+                      "type": "we-text",
+                      "props": {
+                        "variant": "overline",
+                        "color": "text-muted"
+                      },
+                      "children": [
+                        {
+                          "text": "Partners"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "Row",
+                      "props": {
+                        "wrap": true,
+                        "ax": "center",
+                        "ay": "center",
+                        "gap": "20px 30px",
+                        "smUpProps": {
+                          "gap": "26px 48px"
+                        }
+                      },
+                      "children": [
+                        {
+                          "type": "we-link",
+                          "props": {
+                            "href": "https://www.holochain.org",
+                            "target": "_blank",
+                            "display": "flex",
+                            "opacity": 0.85,
+                            "hoverProps": {
+                              "opacity": 1
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "we-image",
+                              "props": {
+                                "r": "0",
+                                "src": "https://coasys.org/partners/holochain.svg",
+                                "alt": "holochain",
+                                "height": "24px",
+                                "width": "auto",
+                                "maxWidth": "130px",
+                                "fit": "contain",
+                                "smUpProps": {
+                                  "maxWidth": "180px"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "we-link",
+                          "props": {
+                            "href": "https://www.holo.host",
+                            "target": "_blank",
+                            "display": "flex",
+                            "opacity": 0.85,
+                            "hoverProps": {
+                              "opacity": 1
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "we-image",
+                              "props": {
+                                "r": "0",
+                                "src": "https://coasys.org/partners/holo.svg",
+                                "alt": "holo",
+                                "height": "17px",
+                                "width": "auto",
+                                "maxWidth": "130px",
+                                "fit": "contain",
+                                "smUpProps": {
+                                  "maxWidth": "180px"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "we-link",
+                          "props": {
+                            "href": "https://holoventures.io",
+                            "target": "_blank",
+                            "display": "flex",
+                            "opacity": 0.85,
+                            "hoverProps": {
+                              "opacity": 1
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "we-image",
+                              "props": {
+                                "r": "0",
+                                "src": "https://coasys.org/partners/holoventures.svg",
+                                "alt": "Holo Ventures",
+                                "height": "29px",
+                                "width": "auto",
+                                "maxWidth": "130px",
+                                "fit": "contain",
+                                "smUpProps": {
+                                  "maxWidth": "180px"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "we-link",
+                          "props": {
+                            "href": "https://corenexus.is",
+                            "target": "_blank",
+                            "display": "flex",
+                            "opacity": 0.85,
+                            "hoverProps": {
+                              "opacity": 1
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "we-image",
+                              "props": {
+                                "r": "0",
+                                "src": "https://coasys.org/partners/corenexus.svg",
+                                "alt": "corenexus",
+                                "height": "21px",
+                                "width": "auto",
+                                "maxWidth": "130px",
+                                "fit": "contain",
+                                "smUpProps": {
+                                  "maxWidth": "180px"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "we-link",
+                          "props": {
+                            "href": "https://trustgraph.net",
+                            "target": "_blank",
+                            "display": "flex",
+                            "opacity": 0.85,
+                            "hoverProps": {
+                              "opacity": 1
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "we-image",
+                              "props": {
+                                "r": "0",
+                                "src": "https://coasys.org/partners/trustgraph.svg",
+                                "alt": "trustgraph",
+                                "height": "32px",
+                                "width": "auto",
+                                "maxWidth": "130px",
+                                "fit": "contain",
+                                "smUpProps": {
+                                  "maxWidth": "180px"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "we-link",
+                          "props": {
+                            "href": "https://www.symphonics.life",
+                            "target": "_blank",
+                            "display": "flex",
+                            "opacity": 0.85,
+                            "hoverProps": {
+                              "opacity": 1
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "we-image",
+                              "props": {
+                                "r": "0",
+                                "src": "https://coasys.org/partners/symphonics.svg",
+                                "alt": "symphonics",
+                                "height": "29px",
+                                "width": "auto",
+                                "maxWidth": "130px",
+                                "fit": "contain",
+                                "smUpProps": {
+                                  "maxWidth": "180px"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "we-link",
+                          "props": {
+                            "href": "https://www.michkaelbaker.com",
+                            "target": "_blank",
+                            "display": "flex",
+                            "opacity": 0.85,
+                            "hoverProps": {
+                              "opacity": 1
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "we-image",
+                              "props": {
+                                "r": "0",
+                                "src": "https://coasys.org/partners/cacoon.svg",
+                                "alt": "cacoon",
+                                "height": "18px",
+                                "width": "auto",
+                                "maxWidth": "130px",
+                                "fit": "contain",
+                                "smUpProps": {
+                                  "maxWidth": "180px"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "we-link",
+                          "props": {
+                            "href": "https://asraya.io",
+                            "target": "_blank",
+                            "display": "flex",
+                            "opacity": 0.85,
+                            "hoverProps": {
+                              "opacity": 1
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "we-image",
+                              "props": {
+                                "r": "0",
+                                "src": "https://coasys.org/partners/asraya.svg",
+                                "alt": "asraya",
+                                "height": "40px",
+                                "width": "auto",
+                                "maxWidth": "130px",
+                                "fit": "contain",
+                                "smUpProps": {
+                                  "maxWidth": "180px"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "we-link",
+                          "props": {
+                            "href": "https://nillion.com/",
+                            "target": "_blank",
+                            "display": "flex",
+                            "opacity": 0.85,
+                            "hoverProps": {
+                              "opacity": 1
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "we-image",
+                              "props": {
+                                "r": "0",
+                                "src": "https://coasys.org/partners/nillion.svg",
+                                "alt": "nillion",
+                                "height": "22px",
+                                "width": "auto",
+                                "maxWidth": "130px",
+                                "fit": "contain",
+                                "smUpProps": {
+                                  "maxWidth": "180px"
+                                }
+                              }
+                            }
+                          ]
+                        },
+                        {
+                          "type": "we-link",
+                          "props": {
+                            "href": "https://weco.io/",
+                            "target": "_blank",
+                            "display": "flex",
+                            "opacity": 0.85,
+                            "hoverProps": {
+                              "opacity": 1
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "Column",
+                              "props": {
+                                "position": "relative"
+                              },
+                              "children": [
+                                {
+                                  "type": "we-image",
+                                  "props": {
+                                    "r": "0",
+                                    "src": "https://coasys.org/partners/weco.svg",
+                                    "alt": "weco",
+                                    "height": "40px",
+                                    "width": "auto",
+                                    "maxWidth": "130px",
+                                    "fit": "contain",
+                                    "smUpProps": {
+                                      "maxWidth": "180px"
+                                    }
+                                  }
+                                },
+                                {
+                                  "type": "Column",
+                                  "props": {
+                                    "position": "absolute",
+                                    "top": "0",
+                                    "left": "0"
+                                  },
+                                  "children": [
+                                    {
+                                      "type": "we-image",
+                                      "props": {
+                                        "r": "0",
+                                        "src": "https://coasys.org/partners/weco.svg",
+                                        "alt": "",
+                                        "height": "40px",
+                                        "width": "auto",
+                                        "maxWidth": "130px",
+                                        "fit": "contain",
+                                        "smUpProps": {
+                                          "maxWidth": "180px"
+                                        }
+                                      }
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        },
+                        {
+                          "type": "we-link",
+                          "props": {
+                            "href": "https://www.holons.io/",
+                            "target": "_blank",
+                            "display": "flex",
+                            "opacity": 0.85,
+                            "hoverProps": {
+                              "opacity": 1
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "we-image",
+                              "props": {
+                                "r": "0",
+                                "src": "https://coasys.org/partners/holons.svg",
+                                "alt": "holons",
+                                "height": "32px",
+                                "width": "auto",
+                                "maxWidth": "130px",
+                                "fit": "contain",
+                                "smUpProps": {
+                                  "maxWidth": "180px"
+                                }
+                              }
+                            }
+                          ]
+                        }
+                      ]
                     }
                   ]
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "props": {
+                "id": "app",
+                "width": "100%",
+                "ax": "center",
+                "py": "70px",
+                "mdUpProps": {
+                  "py": "110px"
                 },
+                "bgImage": "linear-gradient(180deg, rgba(92,74,168,.14), rgba(19,21,51,0))"
+              },
+              "children": [
                 {
-                  "type": "we-text",
+                  "type": "Column",
                   "props": {
-                    "tag": "h2",
-                    "fontWeight": "300",
-                    "lineHeight": "1.12",
-                    "letterSpacing": "-0.01em",
-                    "maxWidth": "900px",
-                    "mb": "28px",
-                    "fontSize": "30px",
+                    "width": "100%",
+                    "maxWidth": "1040px",
+                    "px": "22px",
                     "smUpProps": {
-                      "fontSize": "40px"
-                    },
-                    "mdUpProps": {
-                      "fontSize": "60px"
+                      "px": "40px"
                     }
                   },
                   "children": [
                     {
-                      "text": "Three layers, "
+                      "type": "we-text",
+                      "props": {
+                        "variant": "overline",
+                        "color": "accent-text",
+                        "mb": "18px"
+                      },
+                      "children": [
+                        {
+                          "text": "The Coasys app"
+                        }
+                      ]
                     },
                     {
                       "type": "we-text",
                       "props": {
-                        "inline": true,
-                        "color": "accent-text",
+                        "tag": "h2",
                         "fontWeight": "300",
                         "lineHeight": "1.12",
+                        "letterSpacing": "-0.01em",
+                        "maxWidth": "900px",
+                        "mb": "28px",
                         "fontSize": "30px",
                         "smUpProps": {
                           "fontSize": "40px"
@@ -2113,80 +1563,214 @@
                       },
                       "children": [
                         {
-                          "text": "a short film each."
+                          "text": "A space for your group "
+                        },
+                        {
+                          "type": "we-text",
+                          "props": {
+                            "inline": true,
+                            "color": "accent-text",
+                            "fontWeight": "300",
+                            "lineHeight": "1.12",
+                            "fontSize": "30px",
+                            "smUpProps": {
+                              "fontSize": "40px"
+                            },
+                            "mdUpProps": {
+                              "fontSize": "60px"
+                            }
+                          },
+                          "children": [
+                            {
+                              "text": "and its agents."
+                            }
+                          ]
                         }
                       ]
-                    }
-                  ]
-                },
-                {
-                  "type": "Row",
-                  "props": {
-                    "wrap": true,
-                    "gap": "22px",
-                    "mt": "12px",
-                    "ay": "stretch"
-                  },
-                  "children": [
+                    },
                     {
-                      "type": "we-link",
+                      "type": "we-text",
                       "props": {
-                        "href": "https://coasys.org/adam",
-                        "target": "_blank",
-                        "display": "flex",
-                        "direction": "column",
-                        "flex": "1 1 260px",
-                        "minWidth": "0",
-                        "r": "16px",
-                        "overflow": "hidden",
-                        "bg": "rgba(27,30,69,.7)",
-                        "border": "1px solid border",
-                        "borderTop": "4px solid cyan",
-                        "color": "text",
-                        "textDecoration": "none",
-                        "hoverProps": {
-                          "borderColor": "cyan"
+                        "color": "text-muted",
+                        "fontSize": "18px",
+                        "lineHeight": "29px",
+                        "maxWidth": "760px",
+                        "mb": "28px",
+                        "mdUpProps": {
+                          "fontSize": "22px",
+                          "lineHeight": "34px"
                         }
+                      },
+                      "children": [
+                        {
+                          "text": "Three minutes with one team and its AI agents, in the space they share: chat, calls and a board."
+                        }
+                      ]
+                    },
+                    {
+                      "type": "Row",
+                      "props": {
+                        "wrap": true,
+                        "gap": "36px",
+                        "mt": "8px",
+                        "ay": "start"
                       },
                       "children": [
                         {
                           "type": "Column",
                           "props": {
-                            "position": "relative",
-                            "width": "100%"
+                            "flex": "1.25 1 420px",
+                            "minWidth": "0",
+                            "gap": "200"
                           },
                           "children": [
                             {
-                              "type": "we-image",
+                              "type": "Column",
                               "props": {
-                                "src": "https://coasys.org/cards/card-ad4m.webp",
-                                "alt": "The AD4M bar in blue, with three groups above it and three kinds of network below: centralized, peer-to-peer, federated.",
-                                "fit": "cover",
                                 "width": "100%",
                                 "aspectRatio": "16 / 9",
-                                "opacity": 0.8
-                              }
-                            },
-                            {
-                              "type": "we-text",
-                              "props": {
-                                "position": "absolute",
-                                "top": "12px",
-                                "left": "12px",
-                                "px": "12px",
-                                "py": "4px",
-                                "r": "999px",
-                                "fontSize": "12px",
-                                "fontWeight": "700",
-                                "letterSpacing": "0.1em",
-                                "uppercase": true,
-                                "color": "cyan",
-                                "bg": "rgba(13,15,38,.85)",
-                                "border": "1px dashed cyan"
+                                "r": "18px",
+                                "overflow": "hidden",
+                                "border": "1px solid accent-border",
+                                "bg": "chrome",
+                                "shadow": "lg"
                               },
                               "children": [
                                 {
-                                  "text": "Film coming"
+                                  "type": "we-button",
+                                  "props": {
+                                    "variant": "bare",
+                                    "width": "100%",
+                                    "height": "100%",
+                                    "label": "Play: The Coasys app · 3:39"
+                                  },
+                                  "on": [
+                                    "onClick"
+                                  ],
+                                  "children": [
+                                    {
+                                      "type": "Column",
+                                      "props": {
+                                        "position": "relative",
+                                        "width": "100%",
+                                        "height": "100%"
+                                      },
+                                      "children": [
+                                        {
+                                          "type": "we-image",
+                                          "props": {
+                                            "src": "https://coasys.org/films/coasys-app-v11-poster.webp",
+                                            "alt": "",
+                                            "fit": "cover",
+                                            "width": "100%",
+                                            "height": "100%",
+                                            "opacity": 0.75,
+                                            "hoverProps": {
+                                              "opacity": 1
+                                            },
+                                            "transition": "opacity var(--we-theme-state-duration, 300ms) ease-out"
+                                          }
+                                        },
+                                        {
+                                          "type": "Column",
+                                          "props": {
+                                            "position": "absolute",
+                                            "top": "60%",
+                                            "left": "0",
+                                            "right": "0",
+                                            "bottom": "0",
+                                            "bgImage": "linear-gradient(180deg, rgba(13,15,38,0), rgba(13,15,38,.8))",
+                                            "pointerEvents": "none"
+                                          }
+                                        },
+                                        {
+                                          "type": "Column",
+                                          "props": {
+                                            "position": "absolute",
+                                            "top": "0",
+                                            "left": "0",
+                                            "right": "0",
+                                            "bottom": "0",
+                                            "ax": "center",
+                                            "ay": "center",
+                                            "pointerEvents": "none"
+                                          },
+                                          "children": [
+                                            {
+                                              "type": "Row",
+                                              "props": {
+                                                "width": "64px",
+                                                "height": "64px",
+                                                "r": "full",
+                                                "bg": "accent",
+                                                "ax": "center",
+                                                "ay": "center",
+                                                "flexShrink": 0,
+                                                "ring": "0 0 0 10px color-mix(in srgb, var(--we-role-accent) 18%, transparent)"
+                                              },
+                                              "children": [
+                                                {
+                                                  "type": "we-icon",
+                                                  "props": {
+                                                    "name": "play",
+                                                    "size": "26px",
+                                                    "color": "on-accent"
+                                                  }
+                                                }
+                                              ]
+                                            },
+                                            {
+                                              "type": "Row",
+                                              "props": {
+                                                "position": "absolute",
+                                                "left": "0",
+                                                "right": "0",
+                                                "bottom": "300",
+                                                "ax": "center"
+                                              },
+                                              "children": [
+                                                {
+                                                  "type": "we-text",
+                                                  "props": {
+                                                    "variant": "label",
+                                                    "color": "text",
+                                                    "fontSize": "15px"
+                                                  },
+                                                  "children": [
+                                                    {
+                                                      "text": "The Coasys app · 3:39"
+                                                    }
+                                                  ]
+                                                }
+                                              ]
+                                            }
+                                          ]
+                                        }
+                                      ]
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "Row",
+                              "props": {
+                                "gap": "100",
+                                "ay": "center",
+                                "wrap": true
+                              },
+                              "children": [
+                                {
+                                  "type": "we-text",
+                                  "props": {
+                                    "fontSize": "13px",
+                                    "color": "text-muted"
+                                  },
+                                  "children": [
+                                    {
+                                      "text": "Captions on"
+                                    }
+                                  ]
                                 }
                               ]
                             }
@@ -2195,437 +1779,867 @@
                         {
                           "type": "Column",
                           "props": {
-                            "flex": "1 1 auto",
-                            "pt": "20px",
-                            "px": "22px",
-                            "pb": "22px"
+                            "flex": "1 1 300px",
+                            "minWidth": "0",
+                            "gap": "18px"
                           },
                           "children": [
                             {
-                              "type": "we-text",
+                              "type": "Column",
                               "props": {
-                                "fontSize": "14px",
-                                "letterSpacing": "0.06em",
-                                "uppercase": true,
-                                "color": "text-muted",
-                                "mb": "8px"
+                                "pl": "18px",
+                                "borderLeft": "3px solid accent"
                               },
                               "children": [
                                 {
                                   "type": "we-text",
                                   "props": {
-                                    "inline": true,
-                                    "fontSize": "22px",
+                                    "tag": "h3",
+                                    "fontSize": "20px",
+                                    "lineHeight": "28px",
+                                    "fontWeight": "500",
+                                    "color": "text",
+                                    "mb": "4px"
+                                  },
+                                  "children": [
+                                    {
+                                      "text": "Your own space"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": {
+                                    "fontSize": "16px",
+                                    "lineHeight": "25px",
+                                    "color": "text-muted"
+                                  },
+                                  "children": [
+                                    {
+                                      "text": "Calls, chat and a shared board in one place. Your group sets the rules."
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": {
+                                    "fontSize": "12px",
                                     "fontWeight": "700",
-                                    "letterSpacing": "0",
-                                    "textTransform": "none",
+                                    "letterSpacing": "0.06em",
+                                    "uppercase": true,
+                                    "color": "text-muted",
+                                    "alignSelf": "flex-start",
+                                    "px": "12px",
+                                    "py": "3px",
+                                    "r": "999px",
+                                    "mt": "8px",
+                                    "bg": "rgba(199,201,220,.1)"
+                                  },
+                                  "children": [
+                                    {
+                                      "text": "Works today · alpha"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "Column",
+                              "props": {
+                                "pl": "18px",
+                                "borderLeft": "3px solid accent"
+                              },
+                              "children": [
+                                {
+                                  "type": "we-text",
+                                  "props": {
+                                    "tag": "h3",
+                                    "fontSize": "20px",
+                                    "lineHeight": "28px",
+                                    "fontWeight": "500",
+                                    "color": "text",
+                                    "mb": "4px"
+                                  },
+                                  "children": [
+                                    {
+                                      "text": "The AI drafts. People decide."
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": {
+                                    "fontSize": "16px",
+                                    "lineHeight": "25px",
+                                    "color": "text-muted"
+                                  },
+                                  "children": [
+                                    {
+                                      "text": "After a call, your group's AI suggests tasks and events from it. Nothing is added until someone accepts it."
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": {
+                                    "fontSize": "12px",
+                                    "fontWeight": "700",
+                                    "letterSpacing": "0.06em",
+                                    "uppercase": true,
+                                    "color": "text-muted",
+                                    "alignSelf": "flex-start",
+                                    "px": "12px",
+                                    "py": "3px",
+                                    "r": "999px",
+                                    "mt": "8px",
+                                    "bg": "rgba(199,201,220,.1)"
+                                  },
+                                  "children": [
+                                    {
+                                      "text": "Works today · alpha"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "Column",
+                              "props": {
+                                "pl": "18px",
+                                "borderLeft": "3px solid accent"
+                              },
+                              "children": [
+                                {
+                                  "type": "we-text",
+                                  "props": {
+                                    "tag": "h3",
+                                    "fontSize": "20px",
+                                    "lineHeight": "28px",
+                                    "fontWeight": "500",
+                                    "color": "text",
+                                    "mb": "4px"
+                                  },
+                                  "children": [
+                                    {
+                                      "text": "Bring your agents"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": {
+                                    "fontSize": "16px",
+                                    "lineHeight": "25px",
+                                    "color": "text-muted"
+                                  },
+                                  "children": [
+                                    {
+                                      "text": "Any assistant that speaks MCP can join, with an account of its own. The group's AI runs on the model you pick, even a local one."
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": {
+                                    "fontSize": "12px",
+                                    "fontWeight": "700",
+                                    "letterSpacing": "0.06em",
+                                    "uppercase": true,
+                                    "color": "text-muted",
+                                    "alignSelf": "flex-start",
+                                    "px": "12px",
+                                    "py": "3px",
+                                    "r": "999px",
+                                    "mt": "8px",
+                                    "bg": "rgba(199,201,220,.1)"
+                                  },
+                                  "children": [
+                                    {
+                                      "text": "Works today"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "Column",
+                              "props": {
+                                "pl": "18px",
+                                "borderLeft": "3px solid accent"
+                              },
+                              "children": [
+                                {
+                                  "type": "we-text",
+                                  "props": {
+                                    "tag": "h3",
+                                    "fontSize": "20px",
+                                    "lineHeight": "28px",
+                                    "fontWeight": "500",
+                                    "color": "text",
+                                    "mb": "4px"
+                                  },
+                                  "children": [
+                                    {
+                                      "text": "You set the bar"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": {
+                                    "fontSize": "16px",
+                                    "lineHeight": "25px",
+                                    "color": "text-muted"
+                                  },
+                                  "children": [
+                                    {
+                                      "text": "Decide how many people must sign off before work moves on. Each sign-off is signed. Built; it ships in the next release."
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": {
+                                    "fontSize": "12px",
+                                    "fontWeight": "700",
+                                    "letterSpacing": "0.06em",
+                                    "uppercase": true,
+                                    "color": "text-muted",
+                                    "alignSelf": "flex-start",
+                                    "px": "12px",
+                                    "py": "3px",
+                                    "r": "999px",
+                                    "mt": "8px",
+                                    "border": "1px solid rgba(199,201,220,.55)"
+                                  },
+                                  "children": [
+                                    {
+                                      "text": "Next"
+                                    }
+                                  ]
+                                }
+                              ]
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "Row",
+                      "props": {
+                        "mt": "36px"
+                      },
+                      "children": [
+                        {
+                          "type": "we-button",
+                          "props": {
+                            "variant": "solid",
+                            "size": "lg"
+                          },
+                          "on": [
+                            "onClick"
+                          ],
+                          "children": [
+                            {
+                              "text": "Open your spaces"
+                            }
+                          ]
+                        }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "Column",
+              "props": {
+                "id": "layers",
+                "width": "100%",
+                "ax": "center",
+                "py": "70px",
+                "mdUpProps": {
+                  "py": "110px"
+                }
+              },
+              "children": [
+                {
+                  "type": "Column",
+                  "props": {
+                    "width": "100%",
+                    "maxWidth": "1040px",
+                    "px": "22px",
+                    "smUpProps": {
+                      "px": "40px"
+                    }
+                  },
+                  "children": [
+                    {
+                      "type": "we-text",
+                      "props": {
+                        "variant": "overline",
+                        "color": "accent-text",
+                        "mb": "18px"
+                      },
+                      "children": [
+                        {
+                          "text": "Underneath"
+                        }
+                      ]
+                    },
+                    {
+                      "type": "we-text",
+                      "props": {
+                        "tag": "h2",
+                        "fontWeight": "300",
+                        "lineHeight": "1.12",
+                        "letterSpacing": "-0.01em",
+                        "maxWidth": "900px",
+                        "mb": "28px",
+                        "fontSize": "30px",
+                        "smUpProps": {
+                          "fontSize": "40px"
+                        },
+                        "mdUpProps": {
+                          "fontSize": "60px"
+                        }
+                      },
+                      "children": [
+                        {
+                          "text": "Three layers, "
+                        },
+                        {
+                          "type": "we-text",
+                          "props": {
+                            "inline": true,
+                            "color": "accent-text",
+                            "fontWeight": "300",
+                            "lineHeight": "1.12",
+                            "fontSize": "30px",
+                            "smUpProps": {
+                              "fontSize": "40px"
+                            },
+                            "mdUpProps": {
+                              "fontSize": "60px"
+                            }
+                          },
+                          "children": [
+                            {
+                              "text": "a short film each."
+                            }
+                          ]
+                        }
+                      ]
+                    },
+                    {
+                      "type": "Row",
+                      "props": {
+                        "wrap": true,
+                        "gap": "22px",
+                        "mt": "12px",
+                        "ay": "stretch"
+                      },
+                      "children": [
+                        {
+                          "type": "we-link",
+                          "props": {
+                            "href": "https://coasys.org/adam",
+                            "target": "_blank",
+                            "display": "flex",
+                            "direction": "column",
+                            "flex": "1 1 260px",
+                            "minWidth": "0",
+                            "r": "16px",
+                            "overflow": "hidden",
+                            "bg": "rgba(27,30,69,.7)",
+                            "border": "1px solid border",
+                            "borderTop": "4px solid cyan",
+                            "color": "text",
+                            "textDecoration": "none",
+                            "hoverProps": {
+                              "borderColor": "cyan"
+                            }
+                          },
+                          "children": [
+                            {
+                              "type": "Column",
+                              "props": {
+                                "position": "relative",
+                                "width": "100%"
+                              },
+                              "children": [
+                                {
+                                  "type": "we-image",
+                                  "props": {
+                                    "src": "https://coasys.org/cards/card-ad4m.webp",
+                                    "alt": "The AD4M bar in blue, with three groups above it and three kinds of network below: centralized, peer-to-peer, federated.",
+                                    "fit": "cover",
+                                    "width": "100%",
+                                    "aspectRatio": "16 / 9",
+                                    "opacity": 0.8
+                                  }
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": {
+                                    "position": "absolute",
+                                    "top": "12px",
+                                    "left": "12px",
+                                    "px": "12px",
+                                    "py": "4px",
+                                    "r": "999px",
+                                    "fontSize": "12px",
+                                    "fontWeight": "700",
+                                    "letterSpacing": "0.1em",
+                                    "uppercase": true,
+                                    "color": "cyan",
+                                    "bg": "rgba(13,15,38,.85)",
+                                    "border": "1px dashed cyan"
+                                  },
+                                  "children": [
+                                    {
+                                      "text": "Film coming"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "Column",
+                              "props": {
+                                "flex": "1 1 auto",
+                                "pt": "20px",
+                                "px": "22px",
+                                "pb": "22px"
+                              },
+                              "children": [
+                                {
+                                  "type": "we-text",
+                                  "props": {
+                                    "fontSize": "14px",
+                                    "letterSpacing": "0.06em",
+                                    "uppercase": true,
+                                    "color": "text-muted",
+                                    "mb": "8px"
+                                  },
+                                  "children": [
+                                    {
+                                      "type": "we-text",
+                                      "props": {
+                                        "inline": true,
+                                        "fontSize": "22px",
+                                        "fontWeight": "700",
+                                        "letterSpacing": "0",
+                                        "textTransform": "none",
+                                        "color": "cyan"
+                                      },
+                                      "children": [
+                                        {
+                                          "text": "AD4M"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "text": " · The spanning layer"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": {
+                                    "fontSize": "17px",
+                                    "lineHeight": "27px",
+                                    "color": "text-muted"
+                                  },
+                                  "children": [
+                                    {
+                                      "text": "One open layer for your identity, your data and your group's shared spaces."
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": {
+                                    "fontSize": "12px",
+                                    "fontWeight": "700",
+                                    "letterSpacing": "0.06em",
+                                    "uppercase": true,
+                                    "color": "text-muted",
+                                    "alignSelf": "flex-start",
+                                    "px": "12px",
+                                    "py": "3px",
+                                    "r": "999px",
+                                    "mt": "8px",
+                                    "bg": "rgba(199,201,220,.1)"
+                                  },
+                                  "children": [
+                                    {
+                                      "text": "Works today"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": {
+                                    "mt": "auto",
+                                    "pt": "18px",
+                                    "fontSize": "16px",
+                                    "fontWeight": "600",
                                     "color": "cyan"
                                   },
                                   "children": [
                                     {
-                                      "text": "AD4M"
+                                      "text": "More →"
                                     }
                                   ]
-                                },
-                                {
-                                  "text": " · The spanning layer"
-                                }
-                              ]
-                            },
-                            {
-                              "type": "we-text",
-                              "props": {
-                                "fontSize": "17px",
-                                "lineHeight": "27px",
-                                "color": "text-muted"
-                              },
-                              "children": [
-                                {
-                                  "text": "One open layer for your identity, your data and your group's shared spaces."
-                                }
-                              ]
-                            },
-                            {
-                              "type": "we-text",
-                              "props": {
-                                "fontSize": "12px",
-                                "fontWeight": "700",
-                                "letterSpacing": "0.06em",
-                                "uppercase": true,
-                                "color": "text-muted",
-                                "alignSelf": "flex-start",
-                                "px": "12px",
-                                "py": "3px",
-                                "r": "999px",
-                                "mt": "8px",
-                                "bg": "rgba(199,201,220,.1)"
-                              },
-                              "children": [
-                                {
-                                  "text": "Works today"
-                                }
-                              ]
-                            },
-                            {
-                              "type": "we-text",
-                              "props": {
-                                "mt": "auto",
-                                "pt": "18px",
-                                "fontSize": "16px",
-                                "fontWeight": "600",
-                                "color": "cyan"
-                              },
-                              "children": [
-                                {
-                                  "text": "More →"
-                                }
-                              ]
-                            }
-                          ]
-                        }
-                      ]
-                    },
-                    {
-                      "type": "we-link",
-                      "props": {
-                        "href": "https://coasys.org/we",
-                        "target": "_blank",
-                        "display": "flex",
-                        "direction": "column",
-                        "flex": "1 1 260px",
-                        "minWidth": "0",
-                        "r": "16px",
-                        "overflow": "hidden",
-                        "bg": "rgba(27,30,69,.7)",
-                        "border": "1px solid border",
-                        "borderTop": "4px solid accent",
-                        "color": "text",
-                        "textDecoration": "none",
-                        "hoverProps": {
-                          "borderColor": "accent"
-                        }
-                      },
-                      "children": [
-                        {
-                          "type": "Column",
-                          "props": {
-                            "position": "relative",
-                            "width": "100%"
-                          },
-                          "children": [
-                            {
-                              "type": "we-image",
-                              "props": {
-                                "src": "https://coasys.org/cards/card-we.webp",
-                                "alt": "A group's space in the app: its rules, a board and a sign-off panel side by side.",
-                                "fit": "cover",
-                                "width": "100%",
-                                "aspectRatio": "16 / 9",
-                                "opacity": 0.8
-                              }
-                            },
-                            {
-                              "type": "we-text",
-                              "props": {
-                                "position": "absolute",
-                                "top": "12px",
-                                "left": "12px",
-                                "px": "12px",
-                                "py": "4px",
-                                "r": "999px",
-                                "fontSize": "12px",
-                                "fontWeight": "700",
-                                "letterSpacing": "0.1em",
-                                "uppercase": true,
-                                "color": "accent",
-                                "bg": "rgba(13,15,38,.85)",
-                                "border": "1px dashed accent"
-                              },
-                              "children": [
-                                {
-                                  "text": "Film coming"
                                 }
                               ]
                             }
                           ]
                         },
                         {
-                          "type": "Column",
+                          "type": "we-link",
                           "props": {
-                            "flex": "1 1 auto",
-                            "pt": "20px",
-                            "px": "22px",
-                            "pb": "22px"
+                            "href": "https://coasys.org/we",
+                            "target": "_blank",
+                            "display": "flex",
+                            "direction": "column",
+                            "flex": "1 1 260px",
+                            "minWidth": "0",
+                            "r": "16px",
+                            "overflow": "hidden",
+                            "bg": "rgba(27,30,69,.7)",
+                            "border": "1px solid border",
+                            "borderTop": "4px solid accent",
+                            "color": "text",
+                            "textDecoration": "none",
+                            "hoverProps": {
+                              "borderColor": "accent"
+                            }
                           },
                           "children": [
                             {
-                              "type": "we-text",
+                              "type": "Column",
                               "props": {
-                                "fontSize": "14px",
-                                "letterSpacing": "0.06em",
-                                "uppercase": true,
-                                "color": "text-muted",
-                                "mb": "8px"
+                                "position": "relative",
+                                "width": "100%"
+                              },
+                              "children": [
+                                {
+                                  "type": "we-image",
+                                  "props": {
+                                    "src": "https://coasys.org/cards/card-we.webp",
+                                    "alt": "A group's space in the app: its rules, a board and a sign-off panel side by side.",
+                                    "fit": "cover",
+                                    "width": "100%",
+                                    "aspectRatio": "16 / 9",
+                                    "opacity": 0.8
+                                  }
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": {
+                                    "position": "absolute",
+                                    "top": "12px",
+                                    "left": "12px",
+                                    "px": "12px",
+                                    "py": "4px",
+                                    "r": "999px",
+                                    "fontSize": "12px",
+                                    "fontWeight": "700",
+                                    "letterSpacing": "0.1em",
+                                    "uppercase": true,
+                                    "color": "accent",
+                                    "bg": "rgba(13,15,38,.85)",
+                                    "border": "1px dashed accent"
+                                  },
+                                  "children": [
+                                    {
+                                      "text": "Film coming"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "Column",
+                              "props": {
+                                "flex": "1 1 auto",
+                                "pt": "20px",
+                                "px": "22px",
+                                "pb": "22px"
                               },
                               "children": [
                                 {
                                   "type": "we-text",
                                   "props": {
-                                    "inline": true,
-                                    "fontSize": "22px",
+                                    "fontSize": "14px",
+                                    "letterSpacing": "0.06em",
+                                    "uppercase": true,
+                                    "color": "text-muted",
+                                    "mb": "8px"
+                                  },
+                                  "children": [
+                                    {
+                                      "type": "we-text",
+                                      "props": {
+                                        "inline": true,
+                                        "fontSize": "22px",
+                                        "fontWeight": "700",
+                                        "letterSpacing": "0",
+                                        "textTransform": "none",
+                                        "color": "accent"
+                                      },
+                                      "children": [
+                                        {
+                                          "text": "We"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "text": " · The interface layer"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": {
+                                    "fontSize": "17px",
+                                    "lineHeight": "27px",
+                                    "color": "text-muted"
+                                  },
+                                  "children": [
+                                    {
+                                      "text": "Each space carries its own screens. Its members can change them and share them with other groups."
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": {
+                                    "fontSize": "12px",
                                     "fontWeight": "700",
-                                    "letterSpacing": "0",
-                                    "textTransform": "none",
+                                    "letterSpacing": "0.06em",
+                                    "uppercase": true,
+                                    "color": "text-muted",
+                                    "alignSelf": "flex-start",
+                                    "px": "12px",
+                                    "py": "3px",
+                                    "r": "999px",
+                                    "mt": "8px",
+                                    "bg": "rgba(199,201,220,.1)"
+                                  },
+                                  "children": [
+                                    {
+                                      "text": "Works today · alpha"
+                                    }
+                                  ]
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": {
+                                    "mt": "auto",
+                                    "pt": "18px",
+                                    "fontSize": "16px",
+                                    "fontWeight": "600",
                                     "color": "accent"
                                   },
                                   "children": [
                                     {
-                                      "text": "We"
+                                      "text": "More →"
                                     }
                                   ]
-                                },
-                                {
-                                  "text": " · The interface layer"
-                                }
-                              ]
-                            },
-                            {
-                              "type": "we-text",
-                              "props": {
-                                "fontSize": "17px",
-                                "lineHeight": "27px",
-                                "color": "text-muted"
-                              },
-                              "children": [
-                                {
-                                  "text": "Each space carries its own screens. Its members can change them and share them with other groups."
-                                }
-                              ]
-                            },
-                            {
-                              "type": "we-text",
-                              "props": {
-                                "fontSize": "12px",
-                                "fontWeight": "700",
-                                "letterSpacing": "0.06em",
-                                "uppercase": true,
-                                "color": "text-muted",
-                                "alignSelf": "flex-start",
-                                "px": "12px",
-                                "py": "3px",
-                                "r": "999px",
-                                "mt": "8px",
-                                "bg": "rgba(199,201,220,.1)"
-                              },
-                              "children": [
-                                {
-                                  "text": "Works today · alpha"
-                                }
-                              ]
-                            },
-                            {
-                              "type": "we-text",
-                              "props": {
-                                "mt": "auto",
-                                "pt": "18px",
-                                "fontSize": "16px",
-                                "fontWeight": "600",
-                                "color": "accent"
-                              },
-                              "children": [
-                                {
-                                  "text": "More →"
-                                }
-                              ]
-                            }
-                          ]
-                        }
-                      ]
-                    },
-                    {
-                      "type": "we-link",
-                      "props": {
-                        "href": "https://coasys.org/synergy",
-                        "target": "_blank",
-                        "display": "flex",
-                        "direction": "column",
-                        "flex": "1 1 260px",
-                        "minWidth": "0",
-                        "r": "16px",
-                        "overflow": "hidden",
-                        "bg": "rgba(27,30,69,.7)",
-                        "border": "1px solid border",
-                        "borderTop": "4px solid orange",
-                        "color": "text",
-                        "textDecoration": "none",
-                        "hoverProps": {
-                          "borderColor": "orange"
-                        }
-                      },
-                      "children": [
-                        {
-                          "type": "Column",
-                          "props": {
-                            "position": "relative",
-                            "width": "100%"
-                          },
-                          "children": [
-                            {
-                              "type": "we-image",
-                              "props": {
-                                "src": "https://coasys.org/cards/card-synergy.webp",
-                                "alt": "Groups under a bar labelled the world, what actually happens; each has a bar for how much backing it has.",
-                                "fit": "cover",
-                                "width": "100%",
-                                "aspectRatio": "16 / 9",
-                                "opacity": 0.8
-                              }
-                            },
-                            {
-                              "type": "we-text",
-                              "props": {
-                                "position": "absolute",
-                                "top": "12px",
-                                "left": "12px",
-                                "px": "12px",
-                                "py": "4px",
-                                "r": "999px",
-                                "fontSize": "12px",
-                                "fontWeight": "700",
-                                "letterSpacing": "0.1em",
-                                "uppercase": true,
-                                "color": "orange",
-                                "bg": "rgba(13,15,38,.85)",
-                                "border": "1px dashed orange"
-                              },
-                              "children": [
-                                {
-                                  "text": "Film coming"
                                 }
                               ]
                             }
                           ]
                         },
                         {
-                          "type": "Column",
+                          "type": "we-link",
                           "props": {
-                            "flex": "1 1 auto",
-                            "pt": "20px",
-                            "px": "22px",
-                            "pb": "22px"
+                            "href": "https://coasys.org/synergy",
+                            "target": "_blank",
+                            "display": "flex",
+                            "direction": "column",
+                            "flex": "1 1 260px",
+                            "minWidth": "0",
+                            "r": "16px",
+                            "overflow": "hidden",
+                            "bg": "rgba(27,30,69,.7)",
+                            "border": "1px solid border",
+                            "borderTop": "4px solid orange",
+                            "color": "text",
+                            "textDecoration": "none",
+                            "hoverProps": {
+                              "borderColor": "orange"
+                            }
                           },
                           "children": [
                             {
-                              "type": "we-text",
+                              "type": "Column",
                               "props": {
-                                "fontSize": "14px",
-                                "letterSpacing": "0.06em",
-                                "uppercase": true,
-                                "color": "text-muted",
-                                "mb": "8px"
+                                "position": "relative",
+                                "width": "100%"
+                              },
+                              "children": [
+                                {
+                                  "type": "we-image",
+                                  "props": {
+                                    "src": "https://coasys.org/cards/card-synergy.webp",
+                                    "alt": "Groups under a bar labelled the world, what actually happens; each has a bar for how much backing it has.",
+                                    "fit": "cover",
+                                    "width": "100%",
+                                    "aspectRatio": "16 / 9",
+                                    "opacity": 0.8
+                                  }
+                                },
+                                {
+                                  "type": "we-text",
+                                  "props": {
+                                    "position": "absolute",
+                                    "top": "12px",
+                                    "left": "12px",
+                                    "px": "12px",
+                                    "py": "4px",
+                                    "r": "999px",
+                                    "fontSize": "12px",
+                                    "fontWeight": "700",
+                                    "letterSpacing": "0.1em",
+                                    "uppercase": true,
+                                    "color": "orange",
+                                    "bg": "rgba(13,15,38,.85)",
+                                    "border": "1px dashed orange"
+                                  },
+                                  "children": [
+                                    {
+                                      "text": "Film coming"
+                                    }
+                                  ]
+                                }
+                              ]
+                            },
+                            {
+                              "type": "Column",
+                              "props": {
+                                "flex": "1 1 auto",
+                                "pt": "20px",
+                                "px": "22px",
+                                "pb": "22px"
                               },
                               "children": [
                                 {
                                   "type": "we-text",
                                   "props": {
-                                    "inline": true,
-                                    "fontSize": "22px",
-                                    "fontWeight": "700",
-                                    "letterSpacing": "0",
-                                    "textTransform": "none",
-                                    "color": "orange"
+                                    "fontSize": "14px",
+                                    "letterSpacing": "0.06em",
+                                    "uppercase": true,
+                                    "color": "text-muted",
+                                    "mb": "8px"
                                   },
                                   "children": [
                                     {
-                                      "text": "Synergy"
+                                      "type": "we-text",
+                                      "props": {
+                                        "inline": true,
+                                        "fontSize": "22px",
+                                        "fontWeight": "700",
+                                        "letterSpacing": "0",
+                                        "textTransform": "none",
+                                        "color": "orange"
+                                      },
+                                      "children": [
+                                        {
+                                          "text": "Synergy"
+                                        }
+                                      ]
+                                    },
+                                    {
+                                      "text": " · The value layer"
                                     }
                                   ]
                                 },
                                 {
-                                  "text": " · The value layer"
-                                }
-                              ]
-                            },
-                            {
-                              "type": "we-text",
-                              "props": {
-                                "fontSize": "17px",
-                                "lineHeight": "27px",
-                                "color": "text-muted"
-                              },
-                              "children": [
+                                  "type": "we-text",
+                                  "props": {
+                                    "fontSize": "17px",
+                                    "lineHeight": "27px",
+                                    "color": "text-muted"
+                                  },
+                                  "children": [
+                                    {
+                                      "text": "Designed to give the value of our work back to the groups who do it."
+                                    }
+                                  ]
+                                },
                                 {
-                                  "text": "Designed to give the value of our work back to the groups who do it."
-                                }
-                              ]
-                            },
-                            {
-                              "type": "we-text",
-                              "props": {
-                                "fontSize": "12px",
-                                "fontWeight": "700",
-                                "letterSpacing": "0.06em",
-                                "uppercase": true,
-                                "color": "text-muted",
-                                "alignSelf": "flex-start",
-                                "px": "12px",
-                                "py": "3px",
-                                "r": "999px",
-                                "mt": "8px",
-                                "border": "1px dashed rgba(199,201,220,.45)"
-                              },
-                              "children": [
+                                  "type": "we-text",
+                                  "props": {
+                                    "fontSize": "12px",
+                                    "fontWeight": "700",
+                                    "letterSpacing": "0.06em",
+                                    "uppercase": true,
+                                    "color": "text-muted",
+                                    "alignSelf": "flex-start",
+                                    "px": "12px",
+                                    "py": "3px",
+                                    "r": "999px",
+                                    "mt": "8px",
+                                    "border": "1px dashed rgba(199,201,220,.45)"
+                                  },
+                                  "children": [
+                                    {
+                                      "text": "In design"
+                                    }
+                                  ]
+                                },
                                 {
-                                  "text": "In design"
-                                }
-                              ]
-                            },
-                            {
-                              "type": "we-text",
-                              "props": {
-                                "mt": "auto",
-                                "pt": "18px",
-                                "fontSize": "16px",
-                                "fontWeight": "600",
-                                "color": "orange"
-                              },
-                              "children": [
-                                {
-                                  "text": "More →"
+                                  "type": "we-text",
+                                  "props": {
+                                    "mt": "auto",
+                                    "pt": "18px",
+                                    "fontSize": "16px",
+                                    "fontWeight": "600",
+                                    "color": "orange"
+                                  },
+                                  "children": [
+                                    {
+                                      "text": "More →"
+                                    }
+                                  ]
                                 }
                               ]
                             }
                           ]
                         }
                       ]
-                    }
-                  ]
-                },
-                {
-                  "type": "we-text",
-                  "props": {
-                    "color": "text-muted",
-                    "mt": "36px"
-                  },
-                  "children": [
-                    {
-                      "text": "The team, the blog and the open source community are on "
                     },
                     {
-                      "type": "we-link",
+                      "type": "we-text",
                       "props": {
-                        "href": "https://coasys.org",
-                        "target": "_blank",
-                        "rel": "noopener noreferrer"
+                        "color": "text-muted",
+                        "mt": "36px"
                       },
                       "children": [
                         {
-                          "text": "coasys.org"
+                          "text": "The team, the blog and the open source community are on "
+                        },
+                        {
+                          "type": "we-link",
+                          "props": {
+                            "href": "https://coasys.org",
+                            "target": "_blank",
+                            "rel": "noopener noreferrer"
+                          },
+                          "children": [
+                            {
+                              "text": "coasys.org"
+                            }
+                          ]
+                        },
+                        {
+                          "text": "."
                         }
                       ]
-                    },
-                    {
-                      "text": "."
                     }
                   ]
                 }
