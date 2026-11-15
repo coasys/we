@@ -266,7 +266,7 @@ impl DesktopVault {
                 Some(owner) => seal::seal_staged(item, owner, passphrase, self.kdf, &os_random)?,
                 None => seal::seal(item, passphrase, self.kdf, &os_random)?,
             };
-            Ok(Prepared::Sealed(bytes))
+            Ok(Prepared::Sealed(Zeroizing::new(bytes)))
         }
     }
 
@@ -308,10 +308,12 @@ impl DesktopVault {
 /// An item ready for its slot ([`DesktopVault::prepare`]), and so for the kind of store it was
 /// prepared for: [`DesktopVault::ready`] lets it be written only to that kind.
 enum Prepared {
-    /// As it is, for a store that unlocks itself, with the tag the store keeps beside it.
+    /// As it is, for a store that unlocks itself, with the tag the store keeps beside it: the
+    /// master key itself, kept in the wiping buffer `to_bytes` makes, never copied out of it into
+    /// one freed unwiped after the put.
     Tagged(Zeroizing<Vec<u8>>, ItemTag),
-    /// Sealed under the flow's passphrase; no secret without it.
-    Sealed(Vec<u8>),
+    /// Sealed under the flow's passphrase; no secret without it, wiped all the same.
+    Sealed(Zeroizing<Vec<u8>>),
 }
 
 impl Prepared {

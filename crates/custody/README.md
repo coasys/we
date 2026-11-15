@@ -61,7 +61,12 @@ uses, as below. After the credential line it speaks lines of JSON on stdin and s
 | `publicState` |           | `CustodyPublic`                               |
 | `start`       | `{step}`  | `{screen, outcome}` — the step's first screen |
 | `step`        | `{input}` | `{screen, outcome}` — the next screen         |
-| `cancel`      |           | `null`; the open step is ended and wiped      |
+| `cancel`      |           | `null`, or `{screen, outcome}` (below)        |
+
+`cancel` answers `null` once the open step is ended and wiped, and the host may close the window. A
+cancel that cannot finish — the executor did not confirm the end of a link's claim, or this computer
+had already joined — answers `{screen, outcome}` instead: the host shows that screen and keeps the
+window open.
 
 `outcome` is `done`, `failed` or `null` until a screen ends the step. Failures are
 `{"id", "error": "<sentence>"}`, and a line that is not a request is answered with `"id": null`. No

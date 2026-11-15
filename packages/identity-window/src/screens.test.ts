@@ -23,9 +23,9 @@ import {
   remaining,
   type RevokeTarget,
   type Screen,
+  screenTurns,
   spreadWords,
   targetLine,
-  turns,
   wordNumber,
 } from './screens';
 import screensSource from './screens.ts?raw';
@@ -238,6 +238,45 @@ describe('the identity window', () => {
     expect(windowSource).toContain('const cancel = oneAtATime(');
   });
 
+  it("draws a wait's answer only while its screen is still shown and nothing was sent since", async () => {
+    const matched = {
+      screen: 'device-match' as const,
+      code: 'R7K Q2M',
+      did: 'did:scid:x',
+      needsAccept: true,
+      accepted: true,
+      confirmed: true,
+    };
+    const joined = { screen: 'joined' as const, did: 'did:scid:x', keyId: 'd2' };
+    // The device-match screen waits for the join; the person accepts while it waits.
+    for (const order of ['accept first', 'wait first']) {
+      const drawn: Screen[] = [];
+      const turn = screenTurns();
+      turn.mark(); // device-match drawn
+      const current = turn.hold(); // its wait-join sent
+      turn.mark(); // the accept sent
+      const wait = Promise.resolve(matched);
+      const accept = Promise.resolve(joined);
+      const draw = (screen: Screen) => {
+        turn.mark();
+        drawn.push(screen);
+      };
+      const waited = () => wait.then((screen) => current() && draw(screen));
+      const accepted = () => accept.then(draw);
+      if (order === 'accept first') await accepted().then(waited);
+      else await waited().then(accepted);
+      expect(drawn, order).toEqual([joined]);
+    }
+    // A wait whose screen is still shown is drawn.
+    const turn = screenTurns();
+    turn.mark();
+    const current = turn.hold();
+    expect(current()).toBe(true);
+    expect(windowSource).toMatch(/function waitFor[\s\S]*?const current = turn\.hold\(\);/);
+    expect(windowSource).toMatch(/async function run\([\s\S]*?turn\.mark\(\);/);
+    expect(windowSource).toMatch(/function draw\(screen: Screen\) \{[\s\S]*?turn\.mark\(\);/);
+  });
+
   it('says what the words do: add and remove devices, restore the identity, replace the master key', () => {
     const lead = heading({ screen: 'show-words', words: [] }).lead;
     expect(lead).toContain('links and removes your devices');
@@ -392,22 +431,24 @@ describe('the identity window', () => {
   });
 
   it('draws no answer that comes after a cancel', () => {
-    const answers = turns();
-    const solving = answers.take();
+    const turn = screenTurns();
+    turn.mark(); // the step sent
+    const solving = turn.hold();
     expect(solving()).toBe(true);
     // Cancel during the step: its late answer is not the window's any more.
-    answers.end();
+    turn.mark();
     expect(solving()).toBe(false);
     // A step after the cancel (one the cancel stayed for) is drawn.
-    const next = answers.take();
+    turn.mark();
+    const next = turn.hold();
     expect(next()).toBe(true);
     expect(solving()).toBe(false);
-    // The window takes a turn for each step and wait, checks it before it draws, and a cancel ends it.
-    expect(windowSource.match(/answers\.take\(\)/g)).toHaveLength(2);
+    // The window holds a turn for each step and wait, checks it before it draws, and a cancel marks.
+    expect(windowSource.match(/turn\.hold\(\)/g)).toHaveLength(2);
     expect(windowSource).toContain('if (current()) draw(screen);');
     expect(windowSource).toContain("if (current()) draw({ screen: 'failed', message: String(error) });");
     expect(windowSource).toContain('(screen) => current() && draw(screen)');
-    expect(windowSource).toMatch(/const cancel = oneAtATime\(\(\) => \{\n  answers\.end\(\);/);
+    expect(windowSource).toMatch(/const cancel = oneAtATime\(\(\) => \{\n  turn\.mark\(\);/);
   });
 
   it('blanks the screen, and waits for a frame that shows it, before it cancels or finishes', async () => {

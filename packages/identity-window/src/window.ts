@@ -31,10 +31,10 @@ import {
   refusedField,
   remaining,
   type Screen,
+  screenTurns,
   spreadWords,
   type StepInput,
   targetLine,
-  turns,
   wordNumber,
 } from './screens';
 
@@ -71,8 +71,11 @@ let root: HTMLElement;
 let offerTimer: number | undefined;
 /** The 12 word fields while the words entry is up, so a refusal keeps what was typed. */
 let wordFields: HTMLInputElement[] | null = null;
-/** Whose answer is drawn: a cancel ends the turn of the step it cancels. */
-const answers = turns();
+/**
+ * Marked at each screen drawn, each step sent and each cancel: a step's or a wait's answer is drawn
+ * only while it holds.
+ */
+const turn = screenTurns();
 
 type Child = Node | string;
 
@@ -108,8 +111,9 @@ function secretField(label: string): { label: HTMLLabelElement; input: HTMLInput
  * it runs, but those in `live`. An answer that comes after a cancel is not drawn.
  */
 async function run(call: () => Promise<Screen>, clear: HTMLInputElement[] = [], live: HTMLButtonElement[] = []) {
+  turn.mark();
   for (const b of Array.from(root.querySelectorAll('button'))) if (!live.includes(b)) b.disabled = true;
-  const current = answers.take();
+  const current = turn.hold();
   try {
     const screen = await call();
     if (current()) draw(screen);
@@ -167,7 +171,7 @@ async function leave(call: () => Promise<Screen | null | void>) {
   }
 }
 const cancel = oneAtATime(() => {
-  answers.end();
+  turn.mark();
   for (const b of Array.from(root.querySelectorAll('button'))) b.disabled = true;
   return leave(() => host.cancel());
 });
@@ -218,11 +222,12 @@ function countdown(expires: number, waiting: string): HTMLParagraphElement {
 
 /**
  * Asks the custody service to wait for what the other device does next, once this screen is drawn,
- * leaving the buttons live so the person can still copy or cancel while it waits.
+ * leaving the buttons live so the person can still copy or cancel while it waits. Its answer is
+ * dropped once another screen was drawn or a step sent (`screenTurns`).
  */
 function waitFor(input: StepInput) {
-  const current = answers.take();
   queueMicrotask(() => {
+    const current = turn.hold();
     void host.step(input).then(
       (screen) => current() && draw(screen),
       (error: unknown) => current() && draw({ screen: 'failed', message: String(error) }),
@@ -694,6 +699,7 @@ function body(screen: Screen): Child[] {
 }
 
 function draw(screen: Screen) {
+  turn.mark();
   if (offerTimer !== undefined) {
     window.clearInterval(offerTimer);
     offerTimer = undefined;

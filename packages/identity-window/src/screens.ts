@@ -588,24 +588,6 @@ export function oneAtATime<T>(call: () => Promise<T>): () => Promise<T> {
 }
 
 /**
- * The window's turns: a call's answer is drawn only while its turn is the current one. A cancel ends
- * the turn, so the late answer of a step it cancelled (a proof of work it stopped, a wait it ended)
- * is not drawn over the screen the cancel leaves.
- */
-export function turns(): { take(): () => boolean; end(): void } {
-  let current = 0;
-  return {
-    take() {
-      const mine = current;
-      return () => mine === current;
-    },
-    end() {
-      current += 1;
-    },
-  };
-}
-
-/**
  * `call`, once the screen is blank and a frame shows it so: `blank` empties the screen, and
  * `painted` waits for the frame. Cancel and Done go through it. On the phone they clear the mark
  * that keeps the window out of screenshots, and the words must be off the screen before it goes.
@@ -652,4 +634,23 @@ export function painted(page: PageFrames, wait = 100): Promise<void> {
     };
     start();
   });
+}
+
+/**
+ * Which answer still belongs on screen. The window marks each screen it draws and each step it sends;
+ * a wait for what the other device does next takes `hold()` when it is sent, and its answer is drawn
+ * only while that holds. An accept sent while a wait for the join is out answers the join itself, and
+ * the two answers can arrive in either order: the wait's, drawn after it, would put the screen that
+ * started it back over the join. A cancel marks too, so the late answer of a step it cancelled (a proof
+ * of work it stopped, a wait it ended) is not drawn over the screen the cancel leaves.
+ */
+export function screenTurns(): { mark(): void; hold(): () => boolean } {
+  let turn = 0;
+  return {
+    mark: () => void (turn += 1),
+    hold: () => {
+      const at = turn;
+      return () => turn === at;
+    },
+  };
 }

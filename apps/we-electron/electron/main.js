@@ -720,10 +720,17 @@ function startCustodyFor(port, credential) {
     );
     return;
   }
-  // A new supervisor per executor start, so the restarts it allows are counted afresh.
-  custodySupervisor = superviseCustody({
-    start: ({ onExit }) => startCustody({ binary, executorPort: port, credential, onExit }),
-  });
+  // A new supervisor per executor start, so the restarts it allows are counted afresh. Its first
+  // start runs here: a sidecar that cannot start (a credential `custodySpawn` refuses) is a missing
+  // sidecar, not a failed app — thrown on, it would end `whenReady` before the window opens.
+  try {
+    custodySupervisor = superviseCustody({
+      start: ({ onExit }) => startCustody({ binary, executorPort: port, credential, onExit }),
+    });
+  } catch (err) {
+    custodySupervisor = null;
+    console.error('[main] The custody sidecar could not start —', err.message, '— identity is off');
+  }
 }
 
 /** Closes the identity window and stops the sidecar: its step cannot outlive the executor it runs against. */
