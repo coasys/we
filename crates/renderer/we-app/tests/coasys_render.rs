@@ -50,10 +50,16 @@
 //!
 //! Data: `bundles/coasys.bundle.json` + `fixtures/coasys/snapshot.json`.
 //! The snapshot's sha256 is asserted before anything reads it, so capture
-//! bytes cannot drift under the test.
+//! bytes cannot drift under the test. The images the routes paint
+//! (`https://coasys.org/…`) come from `fixtures/coasys/media`, never the
+//! network (`support/media.rs`).
 
+#[path = "support/gate.rs"]
+mod gate;
 #[path = "support/gpu.rs"]
 mod gpu;
+#[path = "support/media.rs"]
+mod media;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -390,9 +396,12 @@ fn check_snapshot_policy() {
     }
 }
 
-/// `init_host` plus the clock pin — every pixel harness's context setup.
+/// `init_host`, the gate switches and the clock pin — every pixel
+/// harness's context setup.
 fn gate_context_setup(ctx: &egui::Context) {
     we_app::init_host(ctx);
+    gate::setup(ctx);
+    media::install(ctx);
     we_egui::pin_now(ctx, Some(PINNED_NOW));
 }
 

@@ -3,6 +3,8 @@
 //! Baselines live in `tests/snapshots/`; re-record with
 //! `UPDATE_SNAPSHOTS=1 cargo test -p we-app gallery`.
 
+#[path = "support/gate.rs"]
+mod gate;
 #[path = "support/gpu.rs"]
 mod gpu;
 
@@ -39,7 +41,10 @@ fn pinned_harness(size: egui::Vec2) -> egui_kittest::HarnessBuilder {
         .renderer(gpu::serial())
         .with_size(size)
         .with_pixels_per_point(1.0)
-        .with_context_setup(we_egui::install_media)
+        .with_context_setup(|ctx| {
+            we_egui::install_media(ctx);
+            gate::setup(ctx);
+        })
         .wgpu()
         .with_options(SnapshotOptions::new().threshold(0.05).max_failed_pixels(8))
 }

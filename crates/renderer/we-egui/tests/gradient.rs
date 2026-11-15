@@ -26,10 +26,15 @@ fn column(props: &[(&str, &str)]) -> ResolvedNode {
     }
 }
 
-/// The tessellated frame for `root` laid out at 400x400 from the origin.
-fn frame(root: &ResolvedNode) -> Vec<egui::epaint::ClippedPrimitive> {
+/// Images uploaded while a frame was painted, by texture.
+type Images = std::collections::HashMap<egui::TextureId, Arc<egui::ColorImage>>;
+
+/// The tessellated frame for `root` laid out at 400x400 from the origin,
+/// and the images its textures hold (a gradient is rasterised into one).
+fn frame(root: &ResolvedNode) -> (Vec<egui::epaint::ClippedPrimitive>, Images) {
     let registry = Registry::with_builtins();
     let out = RefCell::new(Vec::new());
+    let images = RefCell::new(Images::new());
     let mut harness = egui_kittest::Harness::new_ui(|ui| {
         let ctx = ui.ctx().clone();
         let scx = StyleCx::empty();
@@ -38,6 +43,15 @@ fn frame(root: &ResolvedNode) -> Vec<egui::epaint::ClippedPrimitive> {
         let mut events = Vec::new();
         let mut edit = EditState::default();
         paint(ui, &registry, &scx, root, &lay, &mut events, &mut edit, 0.0);
+        let mut delta = ctx.tex_manager().write().take_delta();
+        for (id, deltas) in &delta.set {
+            for d in deltas {
+                if let (None, egui::ImageData::Color(img)) = (d.pos, &d.image) {
+                    images.borrow_mut().insert(*id, img.clone());
+                }
+            }
+        }
+        delta.clear();
         let layer = ui.layer_id();
         let shapes: Vec<egui::epaint::ClippedShape> = ctx.graphics(|g| {
             g.get(layer)
@@ -48,20 +62,32 @@ fn frame(root: &ResolvedNode) -> Vec<egui::epaint::ClippedPrimitive> {
     });
     harness.run_steps(2);
     drop(harness);
-    out.into_inner()
+    (out.into_inner(), images.into_inner())
 }
 
 /// The colour the frame ends up with at `p`: every covering triangle
-/// composited over black in paint order (premultiplied source-over).
-fn color_at(prims: &[egui::epaint::ClippedPrimitive], p: egui::Pos2) -> [f32; 3] {
+/// composited over black in paint order (premultiplied source-over) — a
+/// textured one reads its texture at `p`'s texel, as the renderer's nearest
+/// sampling does.
+fn color_at(
+    (prims, images): &(Vec<egui::epaint::ClippedPrimitive>, Images),
+    p: egui::Pos2,
+) -> [f32; 3] {
     let mut acc = [0.0f32; 3];
     for cp in prims {
         let egui::epaint::Primitive::Mesh(m) = &cp.primitive else {
             continue;
         };
-        if m.texture_id != egui::TextureId::default() {
-            continue;
-        }
+        // The default texture is the font atlas, whose white texel an
+        // untextured mesh reads; any other is a gradient's image.
+        let image = if m.texture_id == egui::TextureId::default() {
+            None
+        } else {
+            let Some(image) = images.get(&m.texture_id) else {
+                continue;
+            };
+            Some(image)
+        };
         for t in m.indices.chunks_exact(3) {
             let [a, b, c] = [0, 1, 2].map(|i| m.vertices[t[i] as usize]);
             let d = (b.pos - a.pos).x * (c.pos - a.pos).y - (b.pos - a.pos).y * (c.pos - a.pos).x;
@@ -78,10 +104,19 @@ fn color_at(prims: &[egui::epaint::ClippedPrimitive], p: egui::Pos2) -> [f32; 3]
             let ch = |f: fn(egui::Color32) -> u8| {
                 (w1 * f(a.color) as f32 + w2 * f(b.color) as f32 + w3 * f(c.color) as f32) / 255.0
             };
-            let src = [ch(|c| c.r()), ch(|c| c.g()), ch(|c| c.b())];
-            let alpha = ch(|c| c.a());
+            let mut src = [ch(|c| c.r()), ch(|c| c.g()), ch(|c| c.b()), ch(|c| c.a())];
+            if let Some(img) = image {
+                let uv = a.uv.to_vec2() * w1 + b.uv.to_vec2() * w2 + c.uv.to_vec2() * w3;
+                let [iw, ih] = img.size;
+                let x = ((uv.x * iw as f32) as usize).min(iw - 1);
+                let y = ((uv.y * ih as f32) as usize).min(ih - 1);
+                let texel = img.pixels[y * iw + x].to_array();
+                for (i, v) in src.iter_mut().enumerate() {
+                    *v *= f32::from(texel[i]) / 255.0;
+                }
+            }
             for i in 0..3 {
-                acc[i] = src[i] + acc[i] * (1.0 - alpha);
+                acc[i] = src[i] + acc[i] * (1.0 - src[3]);
             }
         }
     }
