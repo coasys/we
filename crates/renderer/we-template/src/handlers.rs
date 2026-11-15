@@ -544,11 +544,12 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
                     return;
                 }
             };
-            match list.iter().position(|v| v.strict_eq(&member)) {
-                Some(at) => {
-                    list.remove(at);
-                }
-                None => list.push(member),
+            // WE removes EVERY equal entry (`list.filter(e => e !== member)`,
+            // local.ts) — membership is set-like, so duplicates go together.
+            if list.iter().any(|v| v.strict_eq(&member)) {
+                list.retain(|v| !v.strict_eq(&member));
+            } else {
+                list.push(member);
             }
             write_at(
                 scope,

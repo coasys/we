@@ -457,6 +457,47 @@ fn nested_toggle_local_in_path() {
 }
 
 #[test]
+fn toggle_local_in_removes_every_match() {
+    // WE filters EVERY equal entry out — `list.filter(e => e !== member)`
+    // (local.ts:179), not first-match removal. A list holding the value
+    // twice, toggled off, loses both — flat field and nested path alike.
+    let node = schema(json!({
+        "type": "Column",
+        "$localState": {
+            "tags": { "type": "array", "initial": ["a", "b", "a"] },
+            "draft": { "type": "object", "initial": { "tags": ["a", "a"] } }
+        },
+        "props": {
+            "onFlat": { "$toggleLocalIn": "tags", "value": "a" },
+            "onNested": { "$toggleLocalIn": "draft.tags", "value": "a" }
+        },
+        "children": []
+    }));
+    let (mut rt, mut host, locals, mut screen) = rig(node, StoreBag::new(), "/");
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+
+    rt.dispatch(&mut host, &mut screen, &owner, "onFlat", Value::Null);
+    let Value::List(tags) = locals.get(&owner, "tags") else {
+        panic!("tags stays a list")
+    };
+    assert!(
+        tags.len() == 1 && tags[0].strict_eq(&Value::from("b")),
+        "both `a`s left the flat list, only `b` remains: {tags:?}"
+    );
+
+    rt.dispatch(&mut host, &mut screen, &owner, "onNested", Value::Null);
+    let draft = locals.get(&owner, "draft");
+    let Value::List(tags) = get("tags", &draft) else {
+        panic!("draft.tags stays a list: {draft:?}")
+    };
+    assert!(
+        tags.is_empty(),
+        "both `a`s left the nested list: {tags:?}"
+    );
+}
+
+#[test]
 fn nested_merge_path() {
     // `merge:` at a path merges into the object AT the path — sibling keys
     // of `draft.contact` and of `draft` itself are kept.
