@@ -1738,6 +1738,10 @@ fn handlers_list(list: &[&str]) -> IndexMap<Arc<str>, we_template::HandlerRef> {
                 we_template::HandlerRef {
                     tokens: vec![],
                     scope: Default::default(),
+                    frame: we_template::Frame {
+                        auth: we_expr::MountCx::explicit("test"),
+                        declared: we_template::Declared::default(),
+                    },
                 },
             )
         })

@@ -396,6 +396,12 @@ jobs:
       - name: Install the pinned toolchain
         run: rustup toolchain install --component clippy --component rustfmt
 
+      # we-legacy's surface test runs `scripts/gen-legacy-surface.mjs --check`
+      # (Node built-ins only), so the job pins Node like the others do.
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
       - name: Restore the cargo cache
         uses: actions/cache/restore@v6
         with:

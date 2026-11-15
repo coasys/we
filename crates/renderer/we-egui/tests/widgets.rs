@@ -39,10 +39,18 @@ fn b(v: bool) -> we_expr::Value {
     we_expr::Value::from(v)
 }
 
+fn frame() -> we_template::Frame {
+    we_template::Frame {
+        auth: we_expr::MountCx::explicit("test"),
+        declared: we_template::Declared::default(),
+    }
+}
+
 fn handler() -> HandlerRef {
     HandlerRef {
         tokens: vec![],
         scope: Scope::default(),
+        frame: frame(),
     }
 }
 

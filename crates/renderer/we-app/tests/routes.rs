@@ -27,11 +27,12 @@ fn rig(route: &str) -> (Runtime, StaticHost, ScreenState) {
         pages: bundle.pages.clone().unwrap_or_default(),
         boot: bundle.boot_screen.clone(),
     };
-    let rt = Runtime::app(spec, Arc::clone(&bag), locals.clone());
+    let mut rt = Runtime::app(spec, Arc::clone(&bag), locals.clone());
     // A raw `Runtime` gets no adapter — a session installs one in its
     // constructor. `routeStore.params` is a screen fact the snapshot never
     // stores; without the faces it reads `Undefined` here.
-    let _bindings = we_legacy::LegacyBindings::install(rt.layer(), rt.view());
+    let bindings = we_legacy::LegacyBindings::install(rt.layer(), rt.view());
+    rt.set_bindings(Arc::new(bindings));
     let host = StaticHost::new(bag);
     let screen = ScreenState::desktop(
         ScreenSchema {

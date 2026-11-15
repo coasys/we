@@ -207,6 +207,9 @@ pub struct CompileCx<'a> {
     /// The session's table — `dataset` values mint handles through it and
     /// keying resolves handles back through it.
     pub handles: &'a HandleTable,
+    /// The read gate — `None` only in ungated test contexts; a compiled
+    /// `Named` dataset is refused through it (E3c-8a, 4.6.1).
+    pub gate: Option<&'a crate::gate::Gate>,
 }
 
 impl CompileCx<'_> {
@@ -230,6 +233,7 @@ impl<'a> CompileCx<'a> {
             warnings,
             mount,
             handles,
+            gate: None,
         }
     }
 }
@@ -1094,17 +1098,22 @@ fn deep_resolve_json(
 ) -> Json {
     match raw {
         Json::Object(map) if map.len() == 1 && map.contains_key("$") => {
-            eval_json(raw, scope, bag, cache, warnings).to_json()
+            eval_json(raw, scope, bag.clone(), cache, warnings).to_json()
         }
         Json::Object(map) => Json::Object(
             map.iter()
-                .map(|(k, v)| (k.clone(), deep_resolve_json(v, scope, bag, cache, warnings)))
+                .map(|(k, v)| {
+                    (
+                        k.clone(),
+                        deep_resolve_json(v, scope, bag.clone(), cache, warnings),
+                    )
+                })
                 .collect(),
         ),
         Json::Array(items) => Json::Array(
             items
                 .iter()
-                .map(|v| deep_resolve_json(v, scope, bag, cache, warnings))
+                .map(|v| deep_resolve_json(v, scope, bag.clone(), cache, warnings))
                 .collect(),
         ),
         other => other.clone(),
@@ -1144,7 +1153,7 @@ pub fn query_descriptor<'a>(
             _ => {
                 params.insert(
                     key.clone(),
-                    deep_resolve_json(raw, scope, bag, cache, warnings),
+                    deep_resolve_json(raw, scope, bag.clone(), cache, warnings),
                 );
             }
         }
@@ -1157,7 +1166,7 @@ pub fn query_descriptor<'a>(
         Json::Bool(match map.get("subscribe") {
             None => true,
             Some(Json::Bool(b)) => *b,
-            Some(other) => eval_json(other, scope, bag, cache, warnings).truthy(),
+            Some(other) => eval_json(other, scope, bag.clone(), cache, warnings).truthy(),
         }),
     );
     Some(Json::Object(out))
@@ -1194,17 +1203,17 @@ pub fn compile_request(query: &Json, scope: &Scope, cx: &mut CompileCx) -> Compi
 }
 
 fn compile_inner(query: &Json, scope: &Scope, cx: &mut CompileCx) -> Option<QueryRequest> {
-    let bag = cx.bag;
+    let bag = cx.bag.clone();
     let cache = &mut *cx.cache;
     let warnings = &mut *cx.warnings;
-    let descriptor = query_descriptor(query, scope, bag, cache, warnings)?;
+    let descriptor = query_descriptor(query, scope, bag.clone(), cache, warnings)?;
     let Json::Object(map) = &descriptor else {
         return None;
     };
 
     // `when`: falsy → the query is not asked at all.
     if let Some(when) = map.get("when") {
-        let met = eval_json(when, scope, bag, cache, warnings);
+        let met = eval_json(when, scope, bag.clone(), cache, warnings);
         if !met.truthy() {
             return None;
         }
@@ -1213,7 +1222,7 @@ fn compile_inner(query: &Json, scope: &Scope, cx: &mut CompileCx) -> Option<Quer
     // `entity` — a name, a list, or an expression answering either.
     let (entities, union) = map
         .get("entity")
-        .and_then(|e| entity_names(&eval_json(e, scope, bag, cache, warnings)))?;
+        .and_then(|e| entity_names(&eval_json(e, scope, bag.clone(), cache, warnings)))?;
 
     // `params` — the descriptor's resolved params; the IR keeps the keys it
     // models and stows the rest in `extra` so the pool key stays honest.
@@ -1222,7 +1231,7 @@ fn compile_inner(query: &Json, scope: &Scope, cx: &mut CompileCx) -> Option<Quer
     if let Some(Json::Object(params)) = map.get("params") {
         for (key, raw) in params {
             let authored = !raw.is_null();
-            let resolved = eval_json(raw, scope, bag, cache, warnings);
+            let resolved = eval_json(raw, scope, bag.clone(), cache, warnings);
             match key.as_str() {
                 "where" => ir.where_ = prune_where(&resolved),
                 "order" => ir.order = to_ir_json(&resolved),
@@ -1291,7 +1300,7 @@ fn compile_inner(query: &Json, scope: &Scope, cx: &mut CompileCx) -> Option<Quer
     }
 
     if let Some(include) = map.get("include") {
-        ir.include = to_ir_json(&eval_json(include, scope, bag, cache, warnings));
+        ir.include = to_ir_json(&eval_json(include, scope, bag.clone(), cache, warnings));
     }
     let mut dataset_sel = DatasetSel::Here;
     if let Some(dataset) = map.get("dataset") {
@@ -1299,7 +1308,7 @@ fn compile_inner(query: &Json, scope: &Scope, cx: &mut CompileCx) -> Option<Quer
             Json::Object(d) if d.get("$").and_then(|s| s.as_str()).is_some() => eval_str(
                 d["$"].as_str().unwrap_or_default(),
                 scope,
-                bag,
+                bag.clone(),
                 cache,
                 warnings,
             ),
@@ -1322,10 +1331,19 @@ fn compile_inner(query: &Json, scope: &Scope, cx: &mut CompileCx) -> Option<Quer
         }
     }
 
+    // `Gate::dataset` (4.6.1): a space authority's only dataset is `Here`;
+    // a `Named` one — authored, or a handle carried in data — is withheld
+    // before any key is derived, exactly like a gated descriptor.
+    if let Some(gate) = cx.gate {
+        if !gate.dataset(cx.mount, &dataset_sel).allowed() {
+            return None;
+        }
+    }
+
     let subscribe = match map.get("subscribe") {
         None => true,
         Some(Json::Bool(b)) => *b,
-        Some(other) => eval_json(other, scope, bag, cache, warnings).truthy(),
+        Some(other) => eval_json(other, scope, bag.clone(), cache, warnings).truthy(),
     };
 
     Some(QueryRequest {

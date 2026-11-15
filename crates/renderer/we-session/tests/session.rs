@@ -19,6 +19,7 @@ fn session(v: serde_json::Value) -> Session {
         RootSpec::Single {
             node: Box::new(schema(v)),
             cx: MountCx::explicit("test"),
+            declared: we_template::Declared::default(),
         },
         Arc::new(StoreBag::new()),
         screen(),

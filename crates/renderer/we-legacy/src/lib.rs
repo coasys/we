@@ -16,11 +16,15 @@
 //! runtime-rebind residual the design's §5.1 calls out cannot come back —
 //! `set_root("spaceStore", …)` then a screen change then a read answers
 //! the new base and the new screen fact together.
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex, Weak};
+mod surface;
 
-use we_expr::{Namespace, Value};
-use we_template::{RootLayer, ScreenView, StoreBag};
+pub use surface::LEGACY_MEMBER_TIERS;
+
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex, OnceLock, Weak};
+
+use we_expr::{MountCx, Namespace, Tier, Value};
+use we_template::{Bound, MemberRule, MemberTiers, RootLayer, ScreenView, StoreBag};
 
 /// `member` → canonical allocation, for the members a face synthesizes —
 /// moved from `StoreBag` (E3c-6): a face's overlay answers rebuild as
@@ -167,21 +171,232 @@ impl Namespace for SpaceStoreNs {
     }
 }
 
-/// The installed adapter: one face per legacy store name over the shared
-/// `screen` view. [`LegacyBindings::install`] binds them into the mount's
-/// own layer — per session, never the bag's, so two sessions on one bag
-/// keep their own faces; the handle keeps the bag and view for callers
-/// that report what was installed — and is where the E3c-8a
-/// `BindingSource` impl lands later.
+/// The profile a `$agent` binds, read the legacy way: `profileStore.
+/// profiles` holds them — an object keyed by DID, or a list of rows
+/// carrying `did`. `None` when no profile resolves (the resolver binds the
+/// `{did}` stub). The one `profileStore` read in the renderer (Lal F1):
+/// it lives in the legacy source, never in core.
+pub fn profile_of(bag: &StoreBag, did: &str) -> Option<Value> {
+    let profiles = match bag.root("profileStore") {
+        Some(Value::Namespace(ns)) => ns.get("profiles"),
+        _ => Value::Undefined,
+    };
+    match &profiles {
+        Value::Obj(map) => map.get(did).cloned(),
+        Value::List(rows) => rows
+            .iter()
+            .find(|row| {
+                matches!(row, Value::Obj(o) if matches!(o.get("did"), Some(Value::Str(d)) if d.as_ref() == did))
+            })
+            .cloned(),
+        _ => None,
+    }
+}
+
+/// `sessionStore` readiness — `signInStep`/`bootState` reads `"ready"`;
+/// an absent store answers ready (the bundle's own `$if` draws the boot in
+/// WE). The one `sessionStore` read in the renderer (Lal F3): it lives in
+/// the legacy source, never in core.
+pub fn session_ready(bag: &StoreBag) -> bool {
+    match bag.root("sessionStore") {
+        Some(Value::Namespace(ns)) => {
+            let step = ns.get("signInStep");
+            let state = ns.get("bootState");
+            matches!(&step, Value::Str(s) if s.as_ref() == "ready")
+                || matches!(&state, Value::Str(s) if s.as_ref() == "ready")
+        }
+        _ => true,
+    }
+}
+
+/// The installed adapter — the session's E3c-8a [`BindingSource`]: it
+/// serves `screen` (the live view it already reads), the `legacy` root
+/// (every old store name behind its generated member table), the compat
+/// names themselves, the bag's plain data roots, `$agent`'s profile and
+/// readiness. Its faces are also bound into the mount's own layer for
+/// ungated plumbing reads — per session, never the bag's, so two
+/// sessions on one bag keep their own.
 #[derive(Debug)]
 pub struct LegacyBindings {
     bag: Option<Arc<StoreBag>>,
     view: ScreenView,
+    /// The faces `install` built, kept so `root(name)` can serve the same
+    /// live allocation the layer holds.
+    faces: HashMap<&'static str, Arc<dyn Namespace>>,
+    /// `compat_roots()` — the generated table's names.
+    compat: Arc<[Arc<str>]>,
+    /// The `screen` root, one allocation for the adapter's life (Lal F8):
+    /// the gate keys its served wrapper by the inner allocation, so a
+    /// fresh namespace per request was a fresh cache entry per read.
+    screen_root: Value,
+    /// The `legacy` root, built once for the same reason.
+    legacy_root: Value,
 }
 
-/// The legacy names this adapter serves — the screen stores a bundle may
-/// read before conversion (E3c-9 rewrites them to `screen.*`/`legacy.*`).
+/// The legacy screen-store names — the ones this adapter overlays with
+/// live screen members (E3c-9 rewrites them to `screen.*`/`legacy.*`).
 pub const LEGACY_STORES: [&str; 4] = ["routeStore", "shellStore", "themeStore", "spaceStore"];
+
+/// The member table for a legacy store name — absent from the generated
+/// table means the name is not a compat root at all.
+///
+/// Built once and shared: a table's identity is the policy identity the
+/// gate keys its served wrapper by (Lal F7), so a fresh table per request
+/// would rewrap — and cache — on every read.
+fn member_tiers(name: &str) -> Option<MemberTiers> {
+    static TABLES: OnceLock<HashMap<&'static str, MemberTiers>> = OnceLock::new();
+    TABLES
+        .get_or_init(|| {
+            LEGACY_MEMBER_TIERS
+                .iter()
+                .map(|(name, rows)| (*name, store_tiers(name, rows)))
+                .collect()
+        })
+        .get(name)
+        .cloned()
+}
+
+/// The `screen` member a face overlays for `store` — `routeStore` reads
+/// `nav`, `shellStore` `shell`, `themeStore` `theme`; `spaceStore`
+/// overlays `nav.spacePath` alone. `None`: not a screen-backed store.
+fn overlay_of(store: &str, member: &str) -> Option<&'static str> {
+    match store {
+        "routeStore" => Some("nav"),
+        "shellStore" => Some("shell"),
+        "themeStore" => Some("theme"),
+        "spaceStore" if member == "spacePath" => Some("nav"),
+        _ => None,
+    }
+}
+
+/// Whether the `screen` face `overlay` (`nav`/`shell`/`theme`) answers
+/// `member` — the keys the view's bag enumerates (each bag's `keys` lists
+/// every member its `get` answers; the view's canon depends on it).
+/// `we-legacy/tests/screen_policy.rs` pins that every such key has a core
+/// rule.
+fn face_answers(overlay: &str, member: &str) -> bool {
+    match ScreenView::new().get(overlay) {
+        Value::Namespace(ns) => ns.keys().iter().any(|k| k.as_ref() == member),
+        _ => false,
+    }
+}
+
+/// One store's table: the generated `templateSurface.ts` rows — except
+/// that every member a face answers from the screen is served through
+/// CORE's screen table (Lal F2; decision: core's screen table is the
+/// policy for every spelling). The stricter rule wins: a member either
+/// table refuses is refused, and a member both allow is allowed only at
+/// the higher of the two tiers. So `shellStore.activeShellView` (TS:
+/// Space, core: App) reads Undefined at Space, while TS's denials
+/// (`shellStore.panels`, absent from TS) stay denied.
+fn store_tiers(store: &str, rows: &[(&'static str, Tier)]) -> MemberTiers {
+    store_tiers_against(store, rows, &we_template::screen_tiers())
+}
+
+/// [`store_tiers`] against an explicit core screen table — the seam its
+/// unit tests use to stand in for a core table that does not (yet)
+/// classify a key the screen faces answer.
+fn store_tiers_against(
+    store: &str,
+    rows: &[(&'static str, Tier)],
+    screen: &MemberTiers,
+) -> MemberTiers {
+    let mut table: std::collections::BTreeMap<Arc<str>, MemberRule> =
+        MemberTiers::from_rows(rows).members.as_ref().clone();
+    let mut refused: Vec<Arc<str>> = Vec::new();
+    for (member, rule) in table.iter_mut() {
+        let Some(overlay) = overlay_of(store, member) else {
+            continue;
+        };
+        let core = match screen.rule(overlay) {
+            Some(MemberRule::Container { members, .. }) => members.rule(member).cloned(),
+            _ => None,
+        };
+        let MemberRule::Member { tier: legacy } = *rule else {
+            continue;
+        };
+        *rule = match core {
+            // Core does not classify it. A member the face does not
+            // answer is the store's own data — the TS row stands. One the
+            // face DOES answer is a screen fact core has no rule for:
+            // refused (Lal N6 — fail closed; never granted by its TS row).
+            None if !face_answers(overlay, member) => continue,
+            None => {
+                refused.push(member.clone());
+                continue;
+            }
+            Some(MemberRule::Member { tier }) => MemberRule::Member {
+                tier: tier.max(legacy),
+            },
+            Some(MemberRule::DeclaredIds { tier }) => MemberRule::DeclaredIds {
+                tier: tier.max(legacy),
+            },
+            Some(MemberRule::DeclaredLanes { tier }) => MemberRule::DeclaredLanes {
+                tier: tier.max(legacy),
+            },
+            // A container under an overlay is not a member a face serves.
+            Some(MemberRule::Container { .. }) => MemberRule::Member { tier: Tier::App },
+        };
+    }
+    for member in refused {
+        table.remove(&member);
+    }
+    MemberTiers::new(table)
+}
+
+/// `legacy`'s own member table: every compat store name is a container
+/// whose members are that store's generated table — `legacy.routeStore.
+/// params` is `routeStore.params` filtered by `routeStore`'s rows.
+fn legacy_tiers() -> MemberTiers {
+    static TABLE: OnceLock<MemberTiers> = OnceLock::new();
+    TABLE.get_or_init(build_legacy_tiers).clone()
+}
+
+fn build_legacy_tiers() -> MemberTiers {
+    MemberTiers::new(
+        LEGACY_MEMBER_TIERS
+            .iter()
+            .map(|(name, rows)| {
+                (
+                    Arc::from(*name),
+                    MemberRule::Container {
+                        tier: Tier::Space,
+                        members: member_tiers(name).unwrap_or_else(|| store_tiers(name, rows)),
+                    },
+                )
+            })
+            .collect(),
+    )
+}
+
+/// The `legacy` root: `legacy.<store>` answers the face when one exists,
+/// the bag's live root otherwise — member filtering is the gate's job on
+/// top of this namespace, so a raw value here is still filtered per
+/// member below.
+#[derive(Debug)]
+struct LegacyRootNs {
+    bag: Weak<StoreBag>,
+    faces: HashMap<&'static str, Arc<dyn Namespace>>,
+}
+
+impl Namespace for LegacyRootNs {
+    fn get(&self, key: &str) -> Value {
+        if let Some(face) = self.faces.get(key) {
+            return Value::Namespace(face.clone());
+        }
+        self.bag
+            .upgrade()
+            .and_then(|bag| bag.root(key))
+            .unwrap_or(Value::Undefined)
+    }
+
+    fn keys(&self) -> Vec<Arc<str>> {
+        LEGACY_MEMBER_TIERS
+            .iter()
+            .map(|(name, _)| Arc::from(*name))
+            .collect()
+    }
+}
 
 impl LegacyBindings {
     /// Bind the legacy screen stores into `layer` — the mount's own
@@ -239,20 +454,39 @@ impl LegacyBindings {
             view: view.clone(),
             canon: Canon::default(),
         };
-        layer.bind("routeStore", Value::namespace(route));
-        layer.bind("shellStore", Value::namespace(shell));
-        layer.bind("themeStore", Value::namespace(theme));
-        layer.bind(
-            "spaceStore",
-            Value::namespace(SpaceStoreNs {
-                bag: bag.clone(),
-                view: view.clone(),
-                canon: Canon::default(),
-            }),
-        );
+        let route: Arc<dyn Namespace> = Arc::new(route);
+        let shell: Arc<dyn Namespace> = Arc::new(shell);
+        let theme: Arc<dyn Namespace> = Arc::new(theme);
+        let space: Arc<dyn Namespace> = Arc::new(SpaceStoreNs {
+            bag: bag.clone(),
+            view: view.clone(),
+            canon: Canon::default(),
+        });
+        layer.bind("routeStore", Value::Namespace(route.clone()));
+        layer.bind("shellStore", Value::Namespace(shell.clone()));
+        layer.bind("themeStore", Value::Namespace(theme.clone()));
+        layer.bind("spaceStore", Value::Namespace(space.clone()));
+        let faces = HashMap::from([
+            ("routeStore", route),
+            ("shellStore", shell),
+            ("themeStore", theme),
+            ("spaceStore", space),
+        ]);
+        let screen_root = Value::namespace(view.clone());
+        let legacy_root = Value::namespace(LegacyRootNs {
+            bag: bag.clone(),
+            faces: faces.clone(),
+        });
         Self {
             bag: bag.upgrade(),
             view: view.clone(),
+            screen_root,
+            legacy_root,
+            faces,
+            compat: LEGACY_MEMBER_TIERS
+                .iter()
+                .map(|(name, _)| Arc::from(*name))
+                .collect(),
         }
     }
 
@@ -264,5 +498,144 @@ impl LegacyBindings {
     /// The live view the faces read screen members through.
     pub fn view(&self) -> &ScreenView {
         &self.view
+    }
+}
+
+impl LegacyBindings {
+    /// The value a compat store name serves: its face (live screen
+    /// overlay) when one exists, the bag's live root otherwise — the
+    /// gate's member table applies on top either way.
+    fn bound_value(&self, name: &str) -> Option<Value> {
+        if let Some(face) = self.faces.get(name) {
+            return Some(Value::Namespace(face.clone()));
+        }
+        self.bag.as_ref().and_then(|bag| bag.root(name))
+    }
+}
+
+impl we_template::BindingSource for LegacyBindings {
+    fn root(&self, name: &str, _mount: &MountCx) -> Option<Bound> {
+        match name {
+            // The live `screen` root — core classifies it `Screen` and
+            // forces its own member table; this answers the value alone.
+            "screen" => Some(Bound {
+                value: self.screen_root.clone(),
+                members: None,
+                domain: None,
+            }),
+            // Every old store name under `legacy.*` — the containers'
+            // member tables come from the generated oracle.
+            "legacy" => Some(Bound {
+                value: self.legacy_root.clone(),
+                members: Some(legacy_tiers()),
+                domain: None,
+            }),
+            _ => {
+                if let Some(tiers) = member_tiers(name) {
+                    // A compat store — served member-filtered until the
+                    // bundle converts. `domain: None`: the classified
+                    // Compat from `root_domain` applies; an unclassified
+                    // name never reaches this branch.
+                    return self.bag.as_ref().and_then(|_| {
+                        self.bound_value(name).map(|value| Bound {
+                            value,
+                            members: Some(tiers),
+                            domain: None,
+                        })
+                    });
+                }
+                // A plain data root — the host's own, traversable by
+                // either tier.
+                self.bag
+                    .as_ref()
+                    .and_then(|bag| bag.root(name))
+                    .map(|value| Bound {
+                        value,
+                        members: None,
+                        domain: Some(we_template::RootDomain::Space),
+                    })
+            }
+        }
+    }
+
+    fn profile(&self, did: &str, _mount: &MountCx) -> Option<Value> {
+        self.bag.as_ref().and_then(|bag| profile_of(bag, did))
+    }
+
+    fn ready(&self) -> bool {
+        self.bag.as_ref().map(|b| session_ready(b)).unwrap_or(false)
+    }
+
+    fn compat_roots(&self) -> &[Arc<str>] {
+        &self.compat
+    }
+}
+
+impl we_template::DataRevision for LegacyBindings {
+    /// The bag's own revision — the faces read it live, so a `set_root`
+    /// or a screen change is visible in the next answer.
+    fn revision(&self) -> u64 {
+        self.bag.as_ref().map(|b| b.version()).unwrap_or(0)
+    }
+
+    /// The bag's subscription — the faces read live, so the bag's
+    /// `set_root` invalidations are this source's whole change signal.
+    /// `StoreBag::set_invalidator` dedups by inbox, so a re-install
+    /// replaces rather than doubles.
+    fn subscribe(&self, invalidator: we_template::Invalidator) {
+        if let Some(bag) = self.bag.as_ref() {
+            bag.set_invalidator(invalidator);
+        }
+    }
+}
+
+#[cfg(test)]
+mod store_tiers_tests {
+    use super::*;
+
+    /// Core's screen table with `member` dropped from the `shell`
+    /// container — what core looks like the day a `ScreenView` key is
+    /// added without a core rule.
+    fn core_without(member: &str) -> MemberTiers {
+        let core = we_template::screen_tiers();
+        let mut top = core.members.as_ref().clone();
+        if let Some(MemberRule::Container { tier, members }) = top.get("shell").cloned() {
+            let mut inner = members.members.as_ref().clone();
+            inner.remove(member);
+            top.insert(
+                "shell".into(),
+                MemberRule::Container {
+                    tier,
+                    members: MemberTiers::new(inner),
+                },
+            );
+        }
+        top.remove(member);
+        MemberTiers::new(top)
+    }
+
+    /// N6 (Lal, E3c-8a r3): a member the screen face answers that core's
+    /// table does not classify is refused — never granted by its TS row.
+    #[test]
+    fn a_face_member_core_does_not_classify_is_refused() {
+        let table = store_tiers_against(
+            "shellStore",
+            &[
+                ("activeShellView", Tier::Space),
+                ("dockGeometry", Tier::Space),
+            ],
+            &core_without("activeShellView"),
+        );
+        assert!(
+            table.rule("activeShellView").is_none(),
+            "an unclassified face member fell back to its TS row: {:?}",
+            table.rule("activeShellView")
+        );
+        // A member the face does not answer is the store's own data: its
+        // TS row stands.
+        assert!(matches!(
+            table.rule("dockGeometry"),
+            Some(MemberRule::Member { tier: Tier::Space })
+        ));
     }
 }

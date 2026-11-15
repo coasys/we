@@ -96,12 +96,15 @@ impl Session {
         host: Box<dyn Host>,
         handles: HandleTable,
     ) -> Self {
-        let runtime = Runtime::from_spec_in(spec, bag, LocalState::new(), handles);
+        let mut runtime = Runtime::from_spec_in(spec, bag, LocalState::new(), handles);
         // The legacy screen stores — `routeStore`/`shellStore`/`themeStore`/
         // `spaceStore` — bound once over the runtime's live `screen` view
         // (E3c-6). Every session path (native, dump, CLI, offline, tests)
         // gets the same adapter because it is the constructor's job.
-        we_legacy::LegacyBindings::install(runtime.layer(), runtime.view());
+        // The adapter is also the session's E3c-8a binding source: the same
+        // live faces answer the gated roots.
+        let legacy = we_legacy::LegacyBindings::install(runtime.layer(), runtime.view());
+        runtime.set_bindings(Arc::new(legacy));
         Self {
             runtime,
             host,
@@ -120,8 +123,9 @@ impl Session {
     /// load path build their `Runtime` around a shared `LocalState`. The
     /// legacy adapter installs the same as [`Session::new`]'s, and the
     /// screen lands in private ownership — the write path is unchanged.
-    pub fn from_parts(runtime: Runtime, host: Box<dyn Host>, screen: ScreenState) -> Self {
-        we_legacy::LegacyBindings::install(runtime.layer(), runtime.view());
+    pub fn from_parts(mut runtime: Runtime, host: Box<dyn Host>, screen: ScreenState) -> Self {
+        let legacy = we_legacy::LegacyBindings::install(runtime.layer(), runtime.view());
+        runtime.set_bindings(Arc::new(legacy));
         Self {
             runtime,
             host,
@@ -134,8 +138,9 @@ impl Session {
     /// legacy faces were installed over the old runtime's `screen` view;
     /// re-install so they read the new one, else every screen member they
     /// own would answer from a view nothing refreshes.
-    pub fn set_runtime(&mut self, runtime: Runtime) {
-        we_legacy::LegacyBindings::install(runtime.layer(), runtime.view());
+    pub fn set_runtime(&mut self, mut runtime: Runtime) {
+        let legacy = we_legacy::LegacyBindings::install(runtime.layer(), runtime.view());
+        runtime.set_bindings(Arc::new(legacy));
         self.runtime = runtime;
     }
 

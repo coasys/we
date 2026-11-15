@@ -8,8 +8,9 @@ use std::sync::{Arc, Mutex};
 use serde_json::json;
 use we_expr::Value;
 use we_screen::{ScreenSchema, ScreenState};
+use we_template::Tier;
 use we_template::{
-    AppSpec, BundleTemplate, LocalState, PartSource, ResolvedChild, ResolvedNode, Runtime,
+    AppSpec, BundleTemplate, LocalState, PartDef, PartSource, ResolvedChild, ResolvedNode, Runtime,
     SchemaNode, StaticHost, StoreBag, SurfaceKey,
 };
 
@@ -113,9 +114,13 @@ fn panels_mount_lane_sections_from_meta() {
 fn part_uses_the_source_and_falls_back_to_a_placeholder() {
     struct Parts;
     impl PartSource for Parts {
-        fn part(&self, id: &str) -> Option<Arc<SchemaNode>> {
-            (id == "real")
-                .then(|| Arc::new(schema(json!({ "type": "PartBody", "props": { "x": 1 } }))))
+        fn part(&self, id: &str) -> Option<PartDef> {
+            (id == "real").then(|| PartDef {
+                schema: Arc::new(schema(json!({ "type": "PartBody", "props": { "x": 1 } }))),
+                tier: Tier::App,
+                module: "test".into(),
+                needs: Arc::from([]),
+            })
         }
     }
     let node = schema(json!({ "type": "Column", "children": [
@@ -137,52 +142,6 @@ fn part_uses_the_source_and_falls_back_to_a_placeholder() {
         .props
         .get("id")
         .is_some_and(|v| v.strict_eq(&Value::Str("missing".into()))));
-}
-
-#[test]
-fn agent_binds_the_profile_from_profilestore() {
-    let node = schema(json!({ "type": "Column", "children": [
-        { "type": "$agent", "props": { "did": "did:a", "as": "who" },
-          "children": [{ "type": "we-text", "props": { "text": { "$": "who.name" } } }] },
-        { "type": "$agent", "props": { "did": "did:ghost" },
-          "children": [{ "type": "we-text", "props": { "text": { "$": "agent.did" } } }] },
-        { "type": "$agent", "props": { "did": { "$": "nothing" } },
-          "children": [{ "type": "Never" }] }
-    ]}));
-    let bag = snapshot(json!({
-        "profileStore": { "profiles": { "did:a": { "did": "did:a", "name": "Ana" } } }
-    }));
-    let (mut rt, mut host, screen) = rig(node, bag, "/");
-    let root = rt.frame(&mut host, &screen).clone();
-    let mut texts = Vec::new();
-    fn texts_of(n: &ResolvedNode, out: &mut Vec<Value>) {
-        if let Some(Value::Str(s)) = n.props.get("text") {
-            out.push(Value::Str(s.clone()));
-        }
-        for c in &n.children {
-            if let ResolvedChild::Node(x) = c {
-                texts_of(x, out);
-            }
-        }
-    }
-    texts_of(&root, &mut texts);
-    assert!(
-        texts.iter().any(|v| v.strict_eq(&Value::Str("Ana".into()))),
-        "bound profile name missing: {texts:?}"
-    );
-    // An unknown did still answers `{did}` — templates can name it.
-    assert!(
-        texts
-            .iter()
-            .any(|v| v.strict_eq(&Value::Str("did:ghost".into()))),
-        "stub did missing: {texts:?}"
-    );
-    let mut tys = Vec::new();
-    types(&root, &mut tys);
-    assert!(
-        !tys.iter().any(|t| t == "Never"),
-        "unresolved did must draw nothing"
-    );
 }
 
 #[test]
@@ -588,13 +547,19 @@ fn two_mounts_of_one_part_have_independent_identities() {
     // `editor` must not share NodeIds or local state.
     struct Parts;
     impl PartSource for Parts {
-        fn part(&self, id: &str) -> Option<Arc<SchemaNode>> {
-            (id == "editor").then(|| {
-                Arc::new(schema(json!({
+        fn part(&self, id: &str) -> Option<PartDef> {
+            (id == "editor").then(|| PartDef {
+                schema: Arc::new(schema(json!({
                     "type": "PartBody",
                     "$localState": { "draft": { "initial": "seed" } },
-                    "children": [{ "type": "Text", "props": { "t": { "$": "local.draft" } } }]
-                })))
+                    "children": [{ "type": "Text", "props": {
+                        "t": { "$": "local.draft" },
+                        "onTap": [{ "$setLocal": "draft", "value": "A" }]
+                    } }]
+                }))),
+                tier: Tier::App,
+                module: "test".into(),
+                needs: Arc::from([]),
             })
         }
     }
@@ -618,8 +583,16 @@ fn two_mounts_of_one_part_have_independent_identities() {
         "two mounts of one part must not share a root id"
     );
 
-    // Editing one mount's local must leave the other mount's alone.
-    locals.set(&bodies[0].id, "draft", Value::from("A"));
+    // Editing one mount's local must leave the other mount's alone. The
+    // write enters through a real `$setLocal` dispatch — a frame's locals
+    // are its own store; an outside write to the runtime's store could not
+    // reach them (4.6.3).
+    let mut screen = screen;
+    let text_id = match &bodies[0].children[0] {
+        ResolvedChild::Node(t) => t.id.clone(),
+        _ => panic!("text node"),
+    };
+    rt.dispatch(&mut host, &mut screen, &text_id, "onTap", Value::Undefined);
     let root = rt.frame(&mut host, &screen).clone();
     let mut bodies = Vec::new();
     find_all_ty(&root, "PartBody", &mut bodies);

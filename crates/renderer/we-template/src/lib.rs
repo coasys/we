@@ -18,6 +18,7 @@
 
 mod bindings;
 mod bundle;
+mod gate;
 mod handler;
 mod handlers;
 mod host;
@@ -33,11 +34,15 @@ mod scope;
 mod screen_view;
 mod surface;
 
-pub use bindings::{DataRevision, Invalidator};
+pub use bindings::{
+    root_domain, BagBindings, BindingSource, Bound, DataRevision, Invalidator, MemberRule,
+    MemberTiers, RootDomain,
+};
 pub use bundle::{
     Bundle, BundleAuthor, BundleBrand, BundleDisplay, BundleRecordType, BundleTemplate,
     BundleTheme, DisplaySpaces, BUNDLE_FORMAT, BUNDLE_FORMAT_VERSION,
 };
+pub use gate::{screen_tiers, Declared, FilteredNs, Frame, Gate, MemberVerdict, Permit, Verdict};
 pub use handler::{CallId, HandlerToken};
 pub use handlers::{run as run_handler, HandlerCx, PendingCall, PendingMap};
 pub use host::{Action, ActionRequest, CallBook, Completer, Host, Invoked, MountId, Origin};
@@ -50,7 +55,9 @@ pub use query::{
     QueryRequest, QuerySink, QuerySlot, QuerySource, SiteId, SiteSlot, SlotRef, SlotView,
     SubTicket, RESERVED_IR_KEYS,
 };
-pub use resolve::{resolve, NoParts, PartSource, ResolveCx};
+pub use resolve::{
+    inert, resolve, strip_authority, taint_handles, NoParts, PartDef, PartSource, ResolveCx,
+};
 pub use resolved::{
     normal_form, HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope, Transition,
     TransitionEffect, TransitionKind,

@@ -37,6 +37,10 @@ fn clickable(ty: &str, id: &str, props: &[(&str, &str)]) -> ResolvedNode {
         HandlerRef {
             tokens: vec![],
             scope: Default::default(),
+            frame: we_template::Frame {
+                auth: we_expr::MountCx::explicit("test"),
+                declared: we_template::Declared::default(),
+            },
         },
     );
     n

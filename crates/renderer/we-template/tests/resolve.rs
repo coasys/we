@@ -6,7 +6,8 @@ use serde_json::json;
 use we_expr::Value;
 use we_screen::{ScreenSchema, ScreenState};
 use we_template::{
-    LocalState, NodeId, ResolvedChild, ResolvedNode, Runtime, SchemaNode, StaticHost, StoreBag,
+    LocalState, NodeId, ResolvedChild, ResolvedNode, RootSpec, Runtime, SchemaNode, StaticHost,
+    StoreBag,
 };
 
 fn schema(v: serde_json::Value) -> SchemaNode {
@@ -26,7 +27,7 @@ fn rig(node: SchemaNode, bag: StoreBag) -> (Runtime, StaticHost, LocalState, Scr
 /// The same, over a shared bag (tests that mutate it mid-flight).
 fn rig_arc(node: SchemaNode, bag: Arc<StoreBag>) -> (Runtime, StaticHost, LocalState, ScreenState) {
     let locals = LocalState::new();
-    let runtime = Runtime::new(node, "test", bag.clone(), locals.clone());
+    let runtime = Runtime::new(node, "test", bag.clone(), locals.clone()).trust_unclassified_bag();
     let host = StaticHost::new(bag);
     (runtime, host, locals, screen())
 }
@@ -713,6 +714,7 @@ fn an_initial_resets_when_a_query_result_is_refilled_equal_content() {
     let locals = LocalState::new();
     let bag = Arc::new(StoreBag::new());
     let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone())
+        .trust_unclassified_bag()
         .with_sources(Some(Arc::new(Rows)), Arc::new(we_template::NoParts));
     let mut host = StaticHost::new(bag);
     let screen = screen();
@@ -1461,7 +1463,8 @@ fn the_screen_root_is_bound_once() {
     // any number of changes.
     let bag = Arc::new(StoreBag::new());
     let node = schema(json!({ "type": "Column", "children": [] }));
-    let mut rt = Runtime::new(node, "test", bag.clone(), LocalState::new());
+    let mut rt =
+        Runtime::new(node, "test", bag.clone(), LocalState::new()).trust_unclassified_bag();
     let mut host = StaticHost::new(bag.clone());
     let mut screen = screen();
     let bound = rt.roots().root("screen");
@@ -1529,7 +1532,7 @@ fn a_local_state_handler_bumps_exactly_one_counter() {
     let bag = Arc::new(StoreBag::new());
     let locals = LocalState::new();
     let mut screen = screen();
-    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone());
+    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone()).trust_unclassified_bag();
     let mut host = StaticHost::new(bag);
     let root = rt.frame(&mut host, &screen).clone();
     let owner = root.id.clone();
@@ -1796,7 +1799,8 @@ fn a_tracked_eval_leaves_no_retained_wrapper_graph() {
     }));
     {
         let locals = LocalState::new();
-        let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone());
+        let mut rt =
+            Runtime::new(node, "test", bag.clone(), locals.clone()).trust_unclassified_bag();
         let mut host = StaticHost::new(bag.clone());
         let screen = screen();
         let _ = rt.frame(&mut host, &screen).clone();
@@ -2207,7 +2211,7 @@ fn a_synthesized_route_conduit_is_not_a_dependency() {
     }));
     let locals = LocalState::new();
     let bag = Arc::new(StoreBag::new());
-    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone());
+    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone()).trust_unclassified_bag();
     let mut host = StaticHost::new(bag.clone());
     let screen = ScreenState::desktop(ScreenSchema::default(), "/?id=demo");
     let root = rt.frame(&mut host, &screen).clone();
@@ -2259,7 +2263,22 @@ fn a_synthesized_panels_conduit_is_not_a_dependency() {
     }));
     let locals = LocalState::new();
     let bag = Arc::new(StoreBag::new());
-    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone());
+    // The mount declares `inspector` — `screen.panels` is id-filtered to
+    // the template's own `meta.panels` (E3c-8a); an undeclared id reads
+    // `Undefined`, and this test wants the leaf read.
+    let mut rt = Runtime::from_spec(
+        RootSpec::Single {
+            node: Box::new(node),
+            cx: we_expr::MountCx::explicit("test"),
+            declared: we_template::Declared {
+                panels: Arc::from(["inspector".into()]),
+                dialogs: Arc::from([]),
+                lanes: Arc::from([]),
+            },
+        },
+        bag.clone(),
+        locals.clone(),
+    );
     let mut host = StaticHost::new(bag.clone());
     let mut screen = screen();
     screen.apply(we_screen::ScreenOp::OpenTemplatePanel {
@@ -2314,7 +2333,7 @@ fn a_synthesized_conduit_read_whole_is_not_a_dependency() {
     }));
     let locals = LocalState::new();
     let bag = Arc::new(StoreBag::new());
-    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone());
+    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone()).trust_unclassified_bag();
     let mut host = StaticHost::new(bag.clone());
     let screen = ScreenState::desktop(ScreenSchema::default(), "/?id=demo");
     let root = rt.frame(&mut host, &screen).clone();
@@ -2349,7 +2368,7 @@ fn a_synthesized_conduit_in_a_fresh_container_keeps_the_edit() {
     }));
     let locals = LocalState::new();
     let bag = Arc::new(StoreBag::new());
-    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone());
+    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone()).trust_unclassified_bag();
     let mut host = StaticHost::new(bag.clone());
     let screen = ScreenState::desktop(ScreenSchema::default(), "/?id=demo");
     let root = rt.frame(&mut host, &screen).clone();
@@ -2394,7 +2413,7 @@ fn a_synthesized_panels_conduit_in_a_fresh_container_keeps_the_edit() {
     }));
     let locals = LocalState::new();
     let bag = Arc::new(StoreBag::new());
-    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone());
+    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone()).trust_unclassified_bag();
     let mut host = StaticHost::new(bag.clone());
     let mut screen = screen();
     screen.apply(we_screen::ScreenOp::OpenTemplatePanel {
@@ -2446,7 +2465,7 @@ fn a_dynamic_index_through_a_synthesized_conduit_keeps_the_edit() {
     }));
     let locals = LocalState::new();
     let bag = Arc::new(StoreBag::new());
-    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone());
+    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone()).trust_unclassified_bag();
     let mut host = StaticHost::new(bag.clone());
     let screen = ScreenState::desktop(ScreenSchema::default(), "/?id=demo");
     let root = rt.frame(&mut host, &screen).clone();
@@ -2589,7 +2608,7 @@ fn a_screen_rebind_keeps_an_edit_on_a_route_member_initial() {
     }));
     let locals = LocalState::new();
     let bag = Arc::new(StoreBag::new());
-    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone());
+    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone()).trust_unclassified_bag();
     let mut host = StaticHost::new(bag.clone());
     let mut screen = ScreenState::desktop(ScreenSchema::default(), "/?id=demo");
     let owner = rt.frame(&mut host, &screen).id.clone();
@@ -2629,7 +2648,7 @@ fn a_real_route_param_change_still_resets_after_a_rebind() {
     }));
     let locals = LocalState::new();
     let bag = Arc::new(StoreBag::new());
-    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone());
+    let mut rt = Runtime::new(node, "test", bag.clone(), locals.clone()).trust_unclassified_bag();
     let mut host = StaticHost::new(bag.clone());
     let mut screen = ScreenState::desktop(ScreenSchema::default(), "/?id=demo");
     let owner = rt.frame(&mut host, &screen).id.clone();
