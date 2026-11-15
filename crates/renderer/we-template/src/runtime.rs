@@ -56,9 +56,11 @@ pub struct Stats {
 /// by the cap, not by calls ever made.
 pub const ORPHANED_CAP: usize = 1024;
 
-/// The orphaned call ids, oldest first. `set` answers membership for
-/// `complete`; `order` caps it — ids mint upward, so the front is always
-/// the oldest.
+/// The orphaned call ids, oldest call first. `set` answers membership
+/// for `complete`; `order` caps it — `pending.retain` discovers a frame's
+/// dead calls in map order, not age order, so insertion sorts: ids mint
+/// upward, and the front is always the oldest call whichever pass found
+/// it.
 #[derive(Default)]
 struct Orphans {
     order: VecDeque<CallId>,
@@ -68,7 +70,12 @@ struct Orphans {
 impl Orphans {
     fn insert(&mut self, call: CallId) {
         if self.set.insert(call) {
-            self.order.push_back(call);
+            let at = self
+                .order
+                .iter()
+                .position(|c| *c > call)
+                .unwrap_or(self.order.len());
+            self.order.insert(at, call);
             while self.order.len() > ORPHANED_CAP {
                 let evicted = self.order.pop_front().unwrap();
                 self.set.remove(&evicted);

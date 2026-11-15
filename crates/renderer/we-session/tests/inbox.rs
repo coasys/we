@@ -797,3 +797,67 @@ fn orphaned_calls_stay_bounded() {
         "the oldest three were evicted — bounded, not grown"
     );
 }
+
+/// Lal P3: eviction must be by call age — `pending.retain` discovers a
+/// frame's dead calls in map order, so a node's `ORPHANED_CAP + 3`
+/// pending calls unmounted in ONE frame must still evict exactly the
+/// three oldest mints, not whichever three ids retain visited first.
+#[test]
+fn orphaned_calls_evict_the_oldest_first() {
+    let invokes: Vec<serde_json::Value> = (0..ORPHANED_CAP + 3)
+        .map(|_| json!({ "$invoke": "storeX.call" }))
+        .collect();
+    let (mut s, completers) = pending(json!({
+        "type": "Column",
+        "$localState": {
+            "show": { "type": "boolean", "initial": true }
+        },
+        "props": { "onHide": { "$setLocal": "show", "value": false } },
+        "children": [{
+            "type": "$if",
+            "props": {
+                "condition": { "$": "local.show" },
+                "then": {
+                    "type": "we-button",
+                    "props": { "onTap": invokes }
+                }
+            }
+        }]
+    }));
+    let root = s.resolve();
+    let button = find_ty(&root, "we-button")
+        .expect("button mounted")
+        .id
+        .clone();
+    s.dispatch(&button, "onTap", Value::Null); // ORPHANED_CAP+3 calls at once
+    assert_eq!(completers.borrow().len(), ORPHANED_CAP + 3);
+    s.dispatch(&root.id, "onHide", Value::Null);
+    s.resolve(); // one frame — every call orphans in the same retain pass
+
+    // Completers are in mint order: the three oldest are the evictions.
+    for i in 0..3 {
+        completer(&completers, i).complete(Ok(Value::Null));
+        s.poll();
+        assert_eq!(
+            s.stats().completions_ignored,
+            (i + 1) as u64,
+            "call #{i} — an oldest mint — was the one evicted"
+        );
+    }
+    // The newest survived the cap — dropped, not ignored.
+    for i in ORPHANED_CAP..ORPHANED_CAP + 3 {
+        completer(&completers, i).complete(Ok(Value::Null));
+        s.poll();
+        assert_eq!(
+            s.stats().completions_dropped,
+            (i - ORPHANED_CAP + 1) as u64,
+            "call #{i} — a newest mint — stayed remembered"
+        );
+    }
+    for i in 3..ORPHANED_CAP {
+        completer(&completers, i).complete(Ok(Value::Null));
+    }
+    s.poll();
+    assert_eq!(s.stats().completions_dropped, ORPHANED_CAP as u64);
+    assert_eq!(s.stats().completions_ignored, 3);
+}
