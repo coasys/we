@@ -222,7 +222,7 @@ struct Case {
     query: Value,
     expect: Expect,
     /// AD4M's documented gap, when it has one: run inverted.
-    gap: Option<&'static str>,
+    gap: Option<Gap>,
 }
 
 fn in_channel() -> Value {
@@ -309,7 +309,11 @@ fn cases() -> Vec<Case> {
             query: json!({ "where": { "id": "{post1}" }, "limit": 1,
                            "include": { "$replyCount": { "from": "thread", "count": true, "where": { "kind": "reply" } } } }),
             expect: Expect::Field("$replyCount", &[("post1", 2)]),
-            gap: Some("a count's where on an untyped relation is skipped (build_projection_where_patterns)"),
+            gap: Some(Gap {
+                why: "a count's where on an untyped relation is skipped (build_projection_where_patterns)",
+                // Every response counted: two replies and the call.
+                shape: GapShape::Counts(3),
+            }),
         },
         Case {
             id: "newest-in-a-channel",
@@ -318,7 +322,10 @@ fn cases() -> Vec<Case> {
                 "$firstChild": { "from": "children", "order": { "createdAt": "ASC" }, "limit": 1 },
                 "$latestChild": { "from": "children", "order": { "createdAt": "DESC" }, "limit": 1 } } }),
             expect: Expect::Ends(["$firstChild", "$latestChild"], &[("channel", ["post1", "task2"])]),
-            gap: Some("a projection's order honours only id/base (build_projection_order_clause)"),
+            gap: Some(Gap {
+                why: "a projection's order honours only id/base (build_projection_order_clause)",
+                shape: GapShape::SameMemberBothEnds,
+            }),
         },
         Case {
             id: "newest-reply-under-a-post",
@@ -327,7 +334,10 @@ fn cases() -> Vec<Case> {
                 "$firstReply": { "from": "thread", "order": { "createdAt": "ASC" }, "limit": 1 },
                 "$latestReply": { "from": "thread", "order": { "createdAt": "DESC" }, "limit": 1 } } }),
             expect: Expect::Ends(["$firstReply", "$latestReply"], &[("post1", ["comment1", "callAbout"])]),
-            gap: Some("a projection's order honours only id/base (build_projection_order_clause)"),
+            gap: Some(Gap {
+                why: "a projection's order honours only id/base (build_projection_order_clause)",
+                shape: GapShape::SameMemberBothEnds,
+            }),
         },
         Case {
             id: "transcript-lines-with-replies",
@@ -484,22 +494,12 @@ fn the_seventeen_template_queries() {
                 let model = Model::new(conn.ws(), uuid.clone(), case.entity);
                 rt.block_on(model.query(&q)).map_err(|e| format!("{e:#}"))
             });
-        let verdict = match outcome {
-            Ok(r) => {
-                let (got, want) = compare(&r.instances, &case.expect, &space);
-                if got == want {
-                    Ok(())
-                } else {
-                    Err(format!("got {got}, want {want}"))
-                }
-            }
-            Err(e) => Err(format!("refused: {e}")),
-        };
-        match (verdict, case.gap) {
-            (Ok(()), None) => eprintln!("ok    {}", case.id),
-            (Err(e), Some(gap)) => eprintln!("gap   {} ({gap}): {e}", case.id),
-            (Ok(()), Some(_)) => gaps_now_passing.push(case.id),
-            (Err(e), None) => {
+        let answered = outcome.map(|r| compare(&r.instances, &case.expect, &space));
+        match judge(case.gap, answered) {
+            Verdict::Ok => eprintln!("ok    {}", case.id),
+            Verdict::Gap(e) => eprintln!("gap   {} ({}): {e}", case.id, case.gap.unwrap().why),
+            Verdict::GapClosed => gaps_now_passing.push(case.id),
+            Verdict::Fail(e) => {
                 eprintln!("FAIL  {}: {e}", case.id);
                 failures.push(format!("{}: {e}", case.id));
             }
@@ -515,4 +515,116 @@ fn the_seventeen_template_queries() {
         failures.len(),
         failures.join("\n")
     );
+}
+
+/// A known gap: why, and the wrong answer it gives.
+#[derive(Clone, Copy)]
+struct Gap {
+    why: &'static str,
+    shape: GapShape,
+}
+
+#[derive(Clone, Copy)]
+enum GapShape {
+    /// Every row's number is this — a count that ignored its `where`.
+    Counts(u64),
+    /// Each row names one member at both ends — a projection whose `order`
+    /// was ignored, so first and latest are whichever came first.
+    SameMemberBothEnds,
+}
+
+impl GapShape {
+    fn matches(self, got: &Value) -> bool {
+        let Some(rows) = got.as_object().filter(|r| !r.is_empty()) else {
+            return false;
+        };
+        rows.values().all(|v| match self {
+            GapShape::Counts(n) => v.as_u64() == Some(n),
+            GapShape::SameMemberBothEnds => match v.as_array().map(Vec::as_slice) {
+                Some([a, b]) => a.is_string() && a == b,
+                _ => false,
+            },
+        })
+    }
+}
+
+enum Verdict {
+    Ok,
+    /// The known gap, as documented.
+    Gap(String),
+    /// A known gap that now answers right: take it off the list.
+    GapClosed,
+    Fail(String),
+}
+
+/// A case's outcome — its answer and the expected one, or why it did not
+/// answer — against its known gap, if it has one.
+fn judge(gap: Option<Gap>, answered: Result<(Value, Value), String>) -> Verdict {
+    match (answered, gap) {
+        (Ok((got, want)), None) if got == want => Verdict::Ok,
+        (Ok((got, want)), Some(_)) if got == want => Verdict::GapClosed,
+        (Ok((got, want)), Some(g)) if g.shape.matches(&got) => {
+            Verdict::Gap(format!("got {got}, want {want}"))
+        }
+        (Ok((got, want)), _) => Verdict::Fail(format!("got {got}, want {want}")),
+        (Err(e), _) => Verdict::Fail(format!("refused: {e}")),
+    }
+}
+
+/// A known gap is a documented wrong answer, never any failure (Lal P3): a
+/// gap case that is refused, or answers wrong in another way, has broken
+/// for a new reason, and that must fail. Needs no executor.
+#[test]
+fn a_known_gap_is_only_its_documented_wrong_answer() {
+    let cases = cases();
+    let case = |id: &str| cases.iter().find(|c| c.id == id).unwrap();
+    let reply_total = case("reply-total-leaves-calls-out");
+    let newest = case("newest-in-a-channel");
+    // The documented answers: every response counted; one member at both ends.
+    assert!(matches!(
+        judge(
+            reply_total.gap,
+            Ok((json!({ "post1": 3 }), json!({ "post1": 2 })))
+        ),
+        Verdict::Gap(_)
+    ));
+    assert!(matches!(
+        judge(
+            newest.gap,
+            Ok((
+                json!({ "channel": ["call", "call"] }),
+                json!({ "channel": ["post1", "task2"] })
+            ))
+        ),
+        Verdict::Gap(_)
+    ));
+    // Anything else is a failure, not the gap.
+    assert!(matches!(
+        judge(reply_total.gap, Err("RPC error 500: no such class".into())),
+        Verdict::Fail(_)
+    ));
+    assert!(matches!(
+        judge(
+            reply_total.gap,
+            Ok((json!({ "post1": 0 }), json!({ "post1": 2 })))
+        ),
+        Verdict::Fail(_)
+    ));
+    assert!(matches!(
+        judge(
+            newest.gap,
+            Ok((
+                json!({ "channel": [null, null] }),
+                json!({ "channel": ["post1", "task2"] })
+            ))
+        ),
+        Verdict::Fail(_)
+    ));
+    assert!(matches!(
+        judge(
+            newest.gap,
+            Ok((json!({}), json!({ "channel": ["post1", "task2"] })))
+        ),
+        Verdict::Fail(_)
+    ));
 }
