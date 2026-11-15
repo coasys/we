@@ -16,7 +16,7 @@ use indexmap::IndexMap;
 use we_expr::{
     BundleSlot, HandleTable, MountCx, MountId, ParseCache, Provenance, SpaceHandle, Tier, Value,
 };
-use we_screen::{Route, ScreenOp, ScreenState};
+use we_screen::{Changed, Route, ScreenOp, ScreenState};
 
 use crate::bindings::Invalidator;
 use crate::handlers::{self, HandlerCx, PendingMap};
@@ -25,9 +25,8 @@ use crate::inbox::{Arrival, Inbox};
 use crate::query::{QueryCell, QueryPool, QueryState};
 use crate::resolve::{self, NoParts, PartSource};
 use crate::resolved::{HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope};
-use crate::{
-    bind_screen, BundleTemplate, CallId, Host, Invoked, LocalState, ResolveCx, SchemaNode, StoreBag,
-};
+use crate::screen_view::{self, ScreenView};
+use crate::{BundleTemplate, CallId, Host, Invoked, LocalState, ResolveCx, SchemaNode, StoreBag};
 
 /// Numbers the debug overlay reads — how much work the pipeline did.
 #[derive(Debug, Default, Clone)]
@@ -183,8 +182,9 @@ pub struct Runtime {
     /// entry as read *before* its first pass, so a write mid-resolve
     /// leaves the source ahead and the next `poll` dirty.
     last: Option<(u64, u64, u64, u64)>,
-    /// The screen version `bind_screen` last mounted into the bag.
-    bound_screen: Option<u64>,
+    /// The live `screen` root — bound once into the bag at construction;
+    /// `apply_screen`/`frame` refresh its snapshot, never rebind it.
+    view: ScreenView,
     live: HashSet<NodeId>,
     parents: HashMap<NodeId, NodeId>,
     /// Parsed embedded sub-schemas (`$if` branches, panel bodies, record
@@ -241,6 +241,14 @@ impl Runtime {
         // arrival here and call its waker — a data change reaches a
         // sleeping frontend. Each session gets its own handle on the bag.
         bag.set_invalidator(Invalidator::new(&inbox));
+        // The one live `screen` root, bound once: `apply_screen` refreshes
+        // the view's snapshot on every change — never rebinds, never
+        // stacks a wrapper (E3c-6). The `we-legacy` adapter serves the old
+        // store names on top of it. `bind_root`, not `set_root`: a
+        // construction-time bind is no data arrival — a session waking on
+        // it would count a change nothing made.
+        let view = ScreenView::new();
+        bag.bind_root("screen", Value::namespace(view.clone()));
         Self {
             spec,
             bag,
@@ -260,7 +268,7 @@ impl Runtime {
             cache: ParseCache::new(),
             resolved: None,
             last: None,
-            bound_screen: None,
+            view,
             live: HashSet::new(),
             parents: HashMap::new(),
             node_memo: HashMap::new(),
@@ -302,6 +310,26 @@ impl Runtime {
     /// The shared local store — the app's host writes through the same one.
     pub fn locals(&self) -> &LocalState {
         &self.locals
+    }
+
+    /// The store bag this runtime resolves against — the session's
+    /// `from_parts` hands it to `we-legacy`'s adapter install.
+    pub fn bag(&self) -> &Arc<StoreBag> {
+        &self.bag
+    }
+
+    /// The live `screen` root this runtime bound — the snapshot member
+    /// reads resolve through, refreshed by [`Self::apply_screen`] and
+    /// [`Self::frame`]. One per mount; never rebound.
+    pub fn view(&self) -> &ScreenView {
+        &self.view
+    }
+
+    /// `op` through the one write path: applied to `screen`, the view's
+    /// snapshot refreshes on a real change so the next `screen.*` (or
+    /// legacy-adapter) read sees it.
+    pub fn apply_screen(&self, screen: &mut ScreenState, op: ScreenOp) -> Changed {
+        screen_view::apply_screen(screen, &self.view, op)
     }
 
     /// The query pool — tests count cells through it.
@@ -502,12 +530,12 @@ impl Runtime {
     }
 
     /// Run a frame: re-resolve iff a revision moved, then answer the cached
-    /// tree. Mounts the screen's namespaces when `screen.version` moved,
-    /// resolves, then fills query cells from the source or the snapshot.
+    /// tree. Syncs the `screen` view's snapshot when `screen.version`
+    /// moved, resolves, then fills query cells from the source or the
+    /// snapshot.
     pub fn frame(&mut self, host: &mut dyn Host, screen: &ScreenState) -> &Arc<ResolvedNode> {
-        if self.bound_screen != Some(screen.version) {
-            bind_screen(&self.bag, screen);
-            self.bound_screen = Some(screen.version);
+        if self.view.version() != screen.version {
+            self.view.refresh(screen);
         }
         let current = (
             screen.version,
@@ -742,6 +770,7 @@ impl Runtime {
                     locals: &self.locals,
                     cache: &mut self.cache,
                     screen,
+                    view: &self.view,
                     pending: &mut self.pending,
                     calls: &mut self.calls,
                     node: &id,
@@ -811,6 +840,7 @@ impl Runtime {
             locals: &self.locals,
             cache: &mut self.cache,
             screen,
+            view: &self.view,
             pending: &mut self.pending,
             calls: &mut self.calls,
             node: &pending.node,

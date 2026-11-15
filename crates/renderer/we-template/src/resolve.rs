@@ -201,11 +201,12 @@ pub(crate) fn eval_str(
 /// is what suppresses the non-emission when the memo's own answer is the
 /// shared child. The reads the port synthesizes are not inputs and are
 /// excluded at the recorder, named: `LocalNs`'s `local.$*` plumbing and a bare
-/// conduit-box root (`local`, `surface`, `$nav`, an `$agent` stub, and the
-/// screen-store roots `bind_screen` rewraps on a screen move) — rebuilt
+/// conduit-box root (`local`, `surface`, `$nav`, an `$agent` stub) — rebuilt
 /// every pass where WE keeps one object alive per mount, so
 /// recording the box would fake a moved input while the reads through it
-/// (`local.src`, `surface.tier`) stay real. [`LocalState::follow_initial`]
+/// (`local.src`, `surface.tier`) stay real. The `screen` root is bound once
+/// per mount (E3c-6) — a bare read of it is the same stable allocation, so
+/// it needs no conduit marking. [`LocalState::follow_initial`]
 /// is the consumer.
 fn eval_str_tracked(
     source: &str,
@@ -219,13 +220,11 @@ fn eval_str_tracked(
             let reads = RefCell::new(TrackedDeps::default());
             let value = {
                 // A bare root is a conduit when its innermost scope binding
-                // is marked one, or — unshadowed by the scope — when it is
-                // a root `bind_screen` rebuilt (`routeStore`, `shellStore`,
-                // `themeStore`, `spaceStore`), rewrapped on every screen
-                // version move.
+                // is marked one. The `screen` root never rebinds (E3c-6), so
+                // it is as stable a read as any store root.
                 let is_conduit_root = |name: &str| match scope.get(name) {
                     Some(_) => scope.is_conduit(name),
-                    None => bag.is_screen_conduit(name),
+                    None => false,
                 };
                 let observe = |path: &str, value: &Value| {
                     // `LocalNs`'s own members (`local.$fields`,

@@ -5,9 +5,9 @@
 //!   plus the functions expressions call. A [`StoreBag::from_snapshot`]
 //!   builds it from a `--snapshot` JSON file (the offline stage's `StaticBag`);
 //!   E6 puts the real sources behind the same `root`/`call` surface.
-//! - [`bind_screen`] mounts `we-screen`'s [`ScreenBag`] into the table —
-//!   `routeStore`, `shellStore`, `themeStore` as namespaces, and
-//!   `spaceStore.spacePath` merged into the snapshot's `spaceStore`.
+//! - The `screen` root is a live [`crate::ScreenView`] the [`crate::Runtime`]
+//!   binds once per mount; `we-legacy`'s adapter serves the old store names
+//!   on top of it.
 //! - [`LocalNs`] is `local` — the `$localState`/`$queries` fields in scope,
 //!   read lazily so a re-resolve picks up writes.
 use std::collections::HashMap;
@@ -16,7 +16,6 @@ use std::sync::{Arc, Mutex, OnceLock, RwLock};
 
 use indexmap::IndexMap;
 use we_expr::{CallFn, Env, MapNamespace, Namespace, Value};
-use we_screen::ScreenState;
 
 use crate::bindings::{DataRevision, Invalidator};
 use crate::query::{note_slot_read, QuerySlot, SlotRef};
@@ -219,8 +218,8 @@ fn empty_rows() -> Arc<Vec<Value>> {
 /// only when its answer differs, not when a rebuild allocated it again —
 /// so equal content inherits the predecessor's allocation rather than
 /// pretending the memo fired. A namespace's content is what it
-/// enumerates: the conduit maps (`routeStore.params`,
-/// `shellStore.panels`) are a fresh `MapNamespace` per read but equal
+/// enumerates: the conduit maps (`screen.params`,
+/// `screen.panels`) are a fresh `MapNamespace` per read but equal
 /// while the screen holds — interning needs the same relaxation for
 /// them, or a held conduit read (the initial's value, or one an index
 /// expression's own reads interleave under) moves every pass.
@@ -231,55 +230,17 @@ fn empty_rows() -> Arc<Vec<Value>> {
 /// effective values (a callable serializes as its name; a non-enumerable
 /// namespace encodes one opaque marker), and equal enumeration says
 /// nothing about `raw()`, hidden keys or future answers. The only
-/// namespaces this compares are the immutable snapshots Canon and
-/// `memo_value` intern — `params`/`panels`/`spacePath` maps and the
-/// `$surface`/`$nav` boxes — bounded, acyclic content. Do not extend it
-/// to arbitrary live stores without a real snapshot contract.
-pub(crate) fn content_eq(a: &Value, b: &Value) -> bool {
+/// namespaces this compares are the immutable snapshots the `ScreenView`
+/// canon and `memo_value` intern — `params`/`panels`/`spacePath` maps and
+/// the `$surface`/`$nav` boxes — bounded, acyclic content. Do not extend
+/// it to arbitrary live stores without a real snapshot contract.
+/// `pub` for `we-legacy`'s adapter — its `Canon` interns by the same
+/// comparison.
+pub fn content_eq(a: &Value, b: &Value) -> bool {
     a.strict_eq(b)
         || (matches!(a, Value::Obj(_) | Value::List(_) | Value::Namespace(_))
             && matches!(b, Value::Obj(_) | Value::List(_) | Value::Namespace(_))
             && a.to_json() == b.to_json())
-}
-
-/// `(store, member) → canonical allocation`, shared by every bind of the
-/// same bag — the flat table [`Canon`] reads through.
-type CanonMap = Arc<Mutex<HashMap<(Arc<str>, Arc<str>), Value>>>;
-
-/// The member-read identity TS's screen accessors guarantee, as a flat
-/// `(store, member) → canonical value` table on the bag. `segments`,
-/// `templateSegments`, `collapsedLanes`, `themeFork` recompute from screen
-/// state on every bind, and the `params`/`panels` conduit maps rebuild on
-/// every READ — fresh allocations each `get` — but while their content
-/// holds the SAME value must answer: `===` on a rebuilt-but-equal read
-/// says "moved" where the memo it stands for never emitted, and a
-/// rebuilt conduit recorded as a tracked initial's dep would reset it on
-/// an unrelated pass. The canonical allocation survives rebinds without
-/// any wrapper owning its predecessor: the nth bind carries no history,
-/// and an unread member read after many binds asks its source once.
-#[derive(Debug, Clone)]
-pub(crate) struct Canon {
-    store: Arc<str>,
-    map: CanonMap,
-}
-
-impl Canon {
-    /// `candidate`, interned: while the content holds, the canonical
-    /// allocation answers (`createMemo`'s unchanged-value identity); a
-    /// changed answer replaces it.
-    fn get(&self, member: &str, candidate: Value) -> Value {
-        let key = (self.store.clone(), member.into());
-        let Ok(mut map) = self.map.lock() else {
-            return candidate;
-        };
-        match map.get(&key) {
-            Some(held) if content_eq(held, &candidate) => held.clone(),
-            _ => {
-                map.insert(key, candidate.clone());
-                candidate
-            }
-        }
-    }
 }
 
 /// The [`Env`] a resolve evaluates against: the node's [`Scope`] bindings
@@ -321,14 +282,13 @@ impl Env for ScopeEnv<'_> {
 #[derive(Default)]
 pub struct StoreBag {
     roots: RwLock<IndexMap<Arc<str>, Value>>,
-    /// The value each screen-mounted name held before the first
-    /// `bind_screen` wrapped it — the stable layer under the overlay,
-    /// so re-binds replace the overlay rather than stack it.
-    screen_bases: RwLock<IndexMap<Arc<str>, Value>>,
-    /// `(store, member) → canonical allocation` for the members a screen
-    /// bind synthesizes — see [`Canon`]. Flat on the bag, so a rebound
-    /// namespace holds no predecessor.
-    canon: CanonMap,
+    /// Adapter faces bound over root names — `we-legacy`'s screen adapter
+    /// installs one per legacy store. `root` answers the face while
+    /// `set_root` keeps writing the base the face reads through
+    /// [`StoreBag::root_base`]: nothing is captured anywhere, so a
+    /// `set_root` swap is the face's very next answer (5.1's live-base
+    /// rule — the runtime-rebind residual cannot come back).
+    adapters: RwLock<IndexMap<Arc<str>, Value>>,
     functions: RwLock<HashMap<Arc<str>, CallFn>>,
     queries: RwLock<IndexMap<Arc<str>, Value>>,
     invokes: RwLock<HashMap<String, Value>>,
@@ -353,9 +313,36 @@ impl StoreBag {
         Self::default()
     }
 
-    /// A root name's binding — `spaceStore`, `routeStore`, …
+    /// A root name's binding — `spaceStore`, `routeStore`, … — the
+    /// adapter's face when one is installed, else the store root.
     pub fn root(&self, name: &str) -> Option<Value> {
+        if let Ok(faces) = self.adapters.read() {
+            if let Some(face) = faces.get(name) {
+                return Some(face.clone());
+            }
+        }
         self.roots.read().ok()?.get(name).cloned()
+    }
+
+    /// The store root under an adapter's face — what `set_root` writes.
+    /// A screen adapter reads its base through here, at read time; for a
+    /// name with no adapter this is the same answer [`StoreBag::root`]
+    /// gives.
+    pub fn root_base(&self, name: &str) -> Option<Value> {
+        self.roots.read().ok()?.get(name).cloned()
+    }
+
+    /// Install a face over a root name — `we-legacy`'s adapter binds the
+    /// legacy screen stores once per session. `root(name)` answers `face`
+    /// from here on; `set_root` writes keep landing in the base the face
+    /// reads live. Bumps the data revision — the root's answer moved —
+    /// but never invalidates: an install is construction, not a write a
+    /// session should wake for.
+    pub fn install_adapter(&self, name: &str, face: Value) {
+        if let Ok(mut faces) = self.adapters.write() {
+            faces.insert(name.into(), face);
+        }
+        self.version.fetch_add(1, Ordering::Relaxed);
     }
 
     /// A function call — built-ins in E1, natives in E6. Unknown → `Undefined`.
@@ -384,23 +371,17 @@ impl StoreBag {
         }
     }
 
-    /// Bind a root name (a store namespace, or a plain value). A real
-    /// replacement: the captured screen base goes with it, so the next
-    /// `bind_screen` re-anchors its overlay on the new root. Called AFTER
-    /// the version bump — a reader that wakes now already sees the moved
+    /// Bind a root name (a store namespace, or a plain value) — a real
+    /// replacement: whatever the name held is dropped. Called AFTER the
+    /// version bump — a reader that wakes now already sees the moved
     /// revision.
     pub fn set_root(&self, name: &str, value: Value) {
-        if let Ok(mut bases) = self.screen_bases.write() {
-            bases.shift_remove(name);
-        }
         self.bind_root(name, value);
         self.invalidate_subscribers();
     }
 
     /// The data revision moved — tell every live subscriber. Only
-    /// `set_root` reaches here: `bind_screen`'s overlay writes mirror the
-    /// screen state, which the screen revision already covers — waking
-    /// for them would loop.
+    /// `set_root` reaches here.
     ///
     /// The lock is released before any `invalidate` runs: the invalidator
     /// ends in the session's waker — arbitrary frontend code — and a
@@ -421,49 +402,15 @@ impl StoreBag {
         }
     }
 
-    /// Write a root without touching its captured screen base —
-    /// `bind_screen`'s own write path, so the overlay it installs never
-    /// becomes the layer the next one reads back.
-    fn bind_root(&self, name: &str, value: Value) {
+    /// Write a root, bumping the data revision — `set_root`'s write half,
+    /// without the invalidation: the `screen` root's one-time bind and
+    /// `install_adapter` reach here, since a binding installed at
+    /// construction is not a data arrival a session should wake for.
+    pub(crate) fn bind_root(&self, name: &str, value: Value) {
         if let Ok(mut roots) = self.roots.write() {
             roots.insert(name.into(), value);
         }
         self.version.fetch_add(1, Ordering::Relaxed);
-    }
-
-    /// The canonical-value table for one store's synthesized members —
-    /// `bind_screen` hands one to each namespace it builds.
-    fn canon(&self, store: &str) -> Canon {
-        Canon {
-            store: store.into(),
-            map: self.canon.clone(),
-        }
-    }
-
-    /// Whether `name` is a root `bind_screen` synthesized — it holds a
-    /// captured screen base, and [`StoreBag::set_root`] drops that base
-    /// when real data replaces the root. WE keeps one live store object
-    /// per mount, so the rebuilt wrapper's identity is not an input; the
-    /// reads through it (`routeStore.params.id`) are.
-    pub(crate) fn is_screen_conduit(&self, name: &str) -> bool {
-        self.screen_bases
-            .read()
-            .is_ok_and(|bases| bases.contains_key(name))
-    }
-
-    /// The layer a screen overlay wraps: the value captured before the
-    /// first `bind_screen` for this name, or today's root if none was
-    /// ever bound.
-    fn screen_base(&self, name: &str) -> Value {
-        if let Ok(mut bases) = self.screen_bases.write() {
-            if let Some(v) = bases.get(name) {
-                return v.clone();
-            }
-            let v = self.root(name).unwrap_or(Value::Undefined);
-            bases.insert(name.into(), v.clone());
-            return v;
-        }
-        self.root(name).unwrap_or(Value::Undefined)
     }
 
     /// Register a function (`Env::call` reaches it).
@@ -511,8 +458,8 @@ impl StoreBag {
     /// Each store is an object of members → a [`MapNamespace`]; each entry of
     /// `queries` is the rows `local.<name>` answers; `invokes` maps a
     /// `$invoke` target to the `Done` value it replies. `routeStore`,
-    /// `shellStore` and `themeStore` are not read from the file —
-    /// [`bind_screen`] provides them from `we-screen`'s state.
+    /// `shellStore` and `themeStore` are not read from the file — the
+    /// `we-legacy` adapter serves them from the live `screen` view.
     pub fn from_snapshot(json: &serde_json::Value) -> Result<StoreBag, String> {
         let bag = StoreBag::new();
         let Some(obj) = json.as_object() else {
@@ -566,234 +513,5 @@ impl DataRevision for StoreBag {
 
     fn subscribe(&self, invalidator: Invalidator) {
         self.set_invalidator(invalidator);
-    }
-}
-
-/// A namespace overlaid on whatever a store root already held — the screen's
-/// accessor names (`shellStore.activeShellView`, `themeStore.currentThemeId`,
-/// `spaceStore.spacePath`) on top, the store's own members underneath. A
-/// plain value (not a namespace) answers by name only when it is the
-/// overlay's to give.
-#[derive(Debug)]
-struct MergedNs {
-    overlay: Value,
-    base: Value,
-    /// Reads the overlay owns even when its answer is `Undefined`/`null`.
-    owned: &'static [&'static str],
-    /// Canonical allocations for the overlay's answers — synthesized
-    /// screen members only; forwarded data reads stay live.
-    canon: Canon,
-}
-
-impl Namespace for MergedNs {
-    fn get(&self, key: &str) -> Value {
-        let over = match &self.overlay {
-            Value::Namespace(ns) => ns.get(key),
-            _ => Value::Undefined,
-        };
-        if self.owned.contains(&key) || !matches!(over, Value::Undefined) {
-            return self.canon.get(key, over);
-        }
-        match &self.base {
-            Value::Namespace(ns) => ns.get(key),
-            _ => Value::Undefined,
-        }
-    }
-
-    fn keys(&self) -> Vec<Arc<str>> {
-        let mut keys = match &self.base {
-            Value::Namespace(ns) => ns.keys(),
-            _ => Vec::new(),
-        };
-        if let Value::Namespace(ns) = &self.overlay {
-            for k in ns.keys() {
-                if !keys.iter().any(|e| e == &k) {
-                    keys.push(k);
-                }
-            }
-        }
-        keys
-    }
-}
-
-/// `spaceStore` merged with `spacePath` — the snapshot's members underneath,
-/// the screen's reading of where we are on top. `spacePath` is a screen fact
-/// (`/space/<id>` inside a space, null out); a snapshot cannot carry it
-/// because it changes with the route.
-#[derive(Debug)]
-struct SpaceStoreNs {
-    base: Value,
-    space_path: Value,
-    /// Canonical allocation for `spacePath` — the screen fact; every other
-    /// member is the base store's data and reads live.
-    canon: Canon,
-}
-
-impl Namespace for SpaceStoreNs {
-    fn get(&self, key: &str) -> Value {
-        if key == "spacePath" {
-            return self.canon.get(key, self.space_path.clone());
-        }
-        match &self.base {
-            Value::Namespace(ns) => ns.get(key),
-            _ => Value::Undefined,
-        }
-    }
-
-    fn keys(&self) -> Vec<Arc<str>> {
-        let mut keys = match &self.base {
-            Value::Namespace(ns) => ns.keys(),
-            _ => Vec::new(),
-        };
-        if !keys.iter().any(|k| k.as_ref() == "spacePath") {
-            keys.push("spacePath".into());
-        }
-        keys
-    }
-}
-
-/// Mount the screen's read surface into the bag: `routeStore` ← nav,
-/// `shellStore` ← shell, `themeStore` ← theme (the names §4.4 gives a
-/// template), and `spaceStore.spacePath` merged into whatever `spaceStore`
-/// the bag already holds. Shell and theme are overlays — the screen's
-/// accessors first, the store's own members underneath — a real
-/// `themeStore` carries `builtInThemes` a screen never answers.
-/// Called when `screen.version` moves — the bag version bumps once per
-/// changed root.
-pub fn bind_screen(bag: &StoreBag, screen: &ScreenState) {
-    let sb = screen.bag();
-    // One overlay over the captured base — a re-bind replaces the overlay,
-    // it never wraps the last one. `Canon` hands each synthesized member a
-    // stable identity while its content holds — flat on the bag, so the
-    // new root carries no reference to the bind it replaced.
-    bag.bind_root(
-        "routeStore",
-        Value::namespace(MergedNs {
-            overlay: sb.get("nav"),
-            base: bag.screen_base("routeStore"),
-            canon: bag.canon("routeStore"),
-            owned: &[
-                "params",
-                "templateSegments",
-                "segments",
-                "currentPath",
-                "page",
-                "href",
-                "spacePath",
-            ],
-        }),
-    );
-    bag.bind_root(
-        "shellStore",
-        Value::namespace(MergedNs {
-            overlay: sb.get("shell"),
-            base: bag.screen_base("shellStore"),
-            canon: bag.canon("shellStore"),
-            owned: &[
-                "activeShellView",
-                "spaceSettingsOpen",
-                "spaceSettingsTab",
-                "collapsedLanes",
-                "layoutDirty",
-                "panelsHidden",
-                "panelMaximised",
-                "createSpaceOpen",
-                "joinSpaceOpen",
-                "panels",
-            ],
-        }),
-    );
-    bag.bind_root(
-        "themeStore",
-        Value::namespace(MergedNs {
-            overlay: sb.get("theme"),
-            base: bag.screen_base("themeStore"),
-            canon: bag.canon("themeStore"),
-            // `themeFork` is always the screen's call (`null` = no fork);
-            // an unset `currentThemeId` reads Undefined and defers to the
-            // store's answer.
-            owned: &["themeFork"],
-        }),
-    );
-    bag.bind_root(
-        "spaceStore",
-        Value::namespace(SpaceStoreNs {
-            base: bag.screen_base("spaceStore"),
-            space_path: sb.get("nav").read_key("spacePath"),
-            canon: bag.canon("spaceStore"),
-        }),
-    );
-}
-
-/// Read one key off a `Value` that may be a namespace — for `spacePath`
-/// above, which lives behind `nav`.
-trait ReadKey {
-    fn read_key(&self, key: &str) -> Value;
-}
-
-impl ReadKey for Value {
-    fn read_key(&self, key: &str) -> Value {
-        match self {
-            Value::Namespace(ns) => ns.get(key),
-            _ => Value::Undefined,
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use we_screen::{ScreenOp, ScreenSchema, ScreenState};
-
-    fn themed_screen(theme: Option<&str>) -> ScreenState {
-        let mut screen = ScreenState::desktop(ScreenSchema::default(), "/");
-        if let Some(t) = theme {
-            screen.apply(ScreenOp::SetCurrentTheme {
-                theme: t.to_string(),
-            });
-        }
-        screen
-    }
-
-    fn read(root: &StoreBag, store: &str, key: &str) -> Value {
-        match root.root(store) {
-            Some(Value::Namespace(ns)) => ns.get(key),
-            _ => Value::Undefined,
-        }
-    }
-
-    #[test]
-    fn rebinding_replaces_the_overlay_instead_of_stacking() {
-        // B10: each bind wraps the captured base — never the previous
-        // overlay. The semantic case: theme X bound, then a screen with no
-        // theme — `currentThemeId` must fall back to the STORE's answer,
-        // not the stale X overlay.
-        let bag = StoreBag::from_snapshot(&serde_json::json!({
-            "stores": { "themeStore": {
-                "builtInThemes": ["a", "b"],
-                "currentThemeId": "store-theme"
-            } },
-            "queries": {}, "invokes": {}
-        }))
-        .unwrap();
-
-        bind_screen(&bag, &themed_screen(Some("screen-a")));
-        assert!(read(&bag, "themeStore", "currentThemeId").strict_eq(&Value::from("screen-a")));
-
-        // A screen that carries no theme: the store's answer shows again.
-        bind_screen(&bag, &themed_screen(None));
-        assert!(
-            read(&bag, "themeStore", "currentThemeId").strict_eq(&Value::from("store-theme")),
-            "an un-themed screen must reveal the base store's theme, not the last overlay: {:?}",
-            read(&bag, "themeStore", "currentThemeId")
-        );
-        assert!(
-            matches!(read(&bag, "themeStore", "builtInThemes"), Value::List(_)),
-            "store members read through the single overlay"
-        );
-
-        // And re-mounting a theme works the same on the stable base.
-        bind_screen(&bag, &themed_screen(Some("screen-b")));
-        assert!(read(&bag, "themeStore", "currentThemeId").strict_eq(&Value::from("screen-b")));
     }
 }
