@@ -137,3 +137,18 @@ pub(crate) fn part_patch(
     };
     we_layout::theme_css::part_style(&scx, node, part, None)
 }
+
+const MOTION_KEY: &str = "we-egui::reduced-motion";
+
+/// Ask for less motion: theme animations hold still (the resting frame)
+/// while it is set. A host wires it to the OS setting or the agent's
+/// `displayPreferences.motion`; nothing sets it by default.
+pub fn set_reduced_motion(ctx: &egui::Context, reduced: bool) {
+    ctx.data_mut(|d| d.insert_temp(egui::Id::unique(MOTION_KEY), reduced));
+}
+
+/// Whether [`set_reduced_motion`] asked for less motion.
+pub(crate) fn reduced_motion(ctx: &egui::Context) -> bool {
+    ctx.data_mut(|d| d.get_temp::<bool>(egui::Id::unique(MOTION_KEY)))
+        .unwrap_or(false)
+}

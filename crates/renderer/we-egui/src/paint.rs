@@ -475,6 +475,17 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
                 .unwrap_or(0)
         })
     });
+    // A theme `animation` (cyberpunk's glitch) moves the node's whole
+    // painted output — chrome, generated boxes, children — so it marks
+    // where that output starts, the way the clip does.
+    let animation = running_animation(w, node, style, rect);
+    let anim_mark = animation.as_ref().map(|_| {
+        w.ui.ctx().graphics(|g| {
+            g.get(w.ui.layer_id())
+                .map(|list| list.next_idx().0)
+                .unwrap_or(0)
+        })
+    });
     let state_clip;
     {
         let mut cx = PaintCx {
@@ -561,6 +572,11 @@ fn paint_node(w: &mut Walk<'_>, node: &ResolvedNode) {
             None => crate::props::clip_region(style, rect, view),
         };
         crate::props::apply_clip(w.ui.ctx(), w.ui.layer_id(), start, &clip);
+    }
+    // The animation's transform applies after the clip, as CSS orders
+    // them: the polygon is cut in the box's own frame, then skewed.
+    if let (Some((anim, t_ms)), Some(start)) = (animation, anim_mark) {
+        animate(w, style, rect, &anim, t_ms, start);
     }
 
     // DOM bubble: an authored `onClick` fires child-first — after every
@@ -790,6 +806,91 @@ fn modal_host(
     host.props
         .insert("pt".into(), we_expr::Value::Str(format!("{pt}px").into()));
     host
+}
+
+/// The theme animation running on `node` this frame and how long it has
+/// run, in ms: the resting style's, or the hover patch's while the pointer
+/// is over the box. Its start time is held per node on the context, so an
+/// animation a hover starts begins at its first frame (CSS starts one when
+/// the style first applies) and a fresh hover restarts it.
+fn running_animation(
+    w: &Walk<'_>,
+    node: &ResolvedNode,
+    style: &Style,
+    rect: egui::Rect,
+) -> Option<(std::sync::Arc<we_style::stylesheet::Animation>, f32)> {
+    let hovered = || w.ui.rect_contains_pointer(rect);
+    let anim = style.animation.clone().or_else(|| {
+        style
+            .hover
+            .as_ref()
+            .and_then(|p| p.animation.clone())
+            .filter(|_| hovered())
+    });
+    let id = egui::Id::unique("we-egui::animation").with(format!("{:?}", node.id));
+    let ctx = w.ui.ctx().clone();
+    let Some(anim) = anim else {
+        ctx.data_mut(|d| d.remove::<(std::sync::Arc<str>, f64)>(id));
+        return None;
+    };
+    if crate::defaults::reduced_motion(&ctx) {
+        return None;
+    }
+    let start = ctx.data_mut(|d| match d.get_temp::<(std::sync::Arc<str>, f64)>(id) {
+        Some((name, t)) if name == anim.name => t,
+        _ => {
+            d.insert_temp(id, (anim.name.clone(), w.now));
+            w.now
+        }
+    });
+    Some((anim, ((w.now - start) * 1000.0) as f32))
+}
+
+/// Sample `anim` at `t_ms` and move everything the node queued from
+/// `start` on: `transform: skew(…)` about the box's centre (CSS's default
+/// `transform-origin`) and a `left` offset (the relative-position nudge
+/// the glitch makes). Asks for the next frame while the animation runs.
+fn animate(
+    w: &mut Walk<'_>,
+    style: &Style,
+    rect: egui::Rect,
+    anim: &we_style::stylesheet::Animation,
+    t_ms: f32,
+    start: usize,
+) {
+    if anim.progress(t_ms).is_none() {
+        return;
+    }
+    w.ui.ctx().request_repaint();
+    let view = crate::defaults::view_of(w.ui.ctx());
+    let left = style
+        .layout
+        .inset
+        .left
+        .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
+        .map(|v| format!("{v}px"));
+    let base = move |prop: &str| match prop {
+        "left" => left.clone(),
+        _ => None,
+    };
+    let decls = anim.sample(t_ms, &base);
+    let (sx, sy) = decls
+        .get("transform")
+        .and_then(|v| we_style::stylesheet::skew_deg(&v.text()))
+        .unwrap_or((0.0, 0.0));
+    let dx = decls
+        .get("left")
+        .and_then(|v| we_style::eval_dimension(&v.text()))
+        .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
+        .unwrap_or(0.0);
+    if sx == 0.0 && sy == 0.0 && dx == 0.0 {
+        return;
+    }
+    let (tx, ty) = (sx.to_radians().tan(), sy.to_radians().tan());
+    let c = rect.center();
+    crate::props::apply_affine(w.ui.ctx(), w.ui.layer_id(), start, move |p| {
+        egui::pos2(p.x + tx * (p.y - c.y) + dx, p.y + ty * (p.x - c.x))
+    });
 }
 
 /// A theme's generated `::before`/`::after` box on `node` — painted with

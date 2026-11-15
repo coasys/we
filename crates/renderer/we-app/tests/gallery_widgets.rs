@@ -64,7 +64,13 @@ fn widget_gallery_snapshots_per_theme() {
             // (any ≥1-level channel change fails a non-AA pixel) with an
             // 8px changed-area budget.
             .with_pixels_per_point(1.0)
-            .with_context_setup(we_egui::install_media)
+            // Theme animations (cyberpunk's heading glitch) hold their
+            // resting frame: the steps below wait on real time, so a running
+            // animation would snapshot whatever frame the clock reached.
+            .with_context_setup(|ctx| {
+                we_egui::install_media(ctx);
+                we_egui::defaults::set_reduced_motion(ctx, true);
+            })
             .wgpu()
             .with_options(SnapshotOptions::new().threshold(0.05).max_failed_pixels(8))
             .build_ui_state(|ui, app: &mut we_app::RendererApp| app.frame_body(ui), app);

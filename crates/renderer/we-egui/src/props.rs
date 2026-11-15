@@ -876,6 +876,63 @@ pub(crate) fn apply_clip(
     });
 }
 
+/// Move every shape the node's subtree queued on `layer` from `start` on
+/// through `f` — the animation's skew/offset. Like [`apply_clip`], egui
+/// has no affine shape transform beyond translate+scale, so each shape is
+/// tessellated with the frame's settings and its vertices mapped. Text
+/// stays text-quality: its glyph quads move with their texels.
+pub(crate) fn apply_affine(
+    ctx: &egui::Context,
+    layer: egui::LayerId,
+    start: usize,
+    f: impl Fn(egui::Pos2) -> egui::Pos2,
+) {
+    let ppp = ctx.pixels_per_point();
+    let options = ctx.tessellation_options(|o| *o);
+    let tex_size = ctx.fonts(|f| f.font_image_size());
+    let mut tess = egui::epaint::Tessellator::new(ppp, options, tex_size, Vec::new());
+    ctx.graphics_mut(|g| {
+        let Some(list) = g.get_mut(layer) else {
+            return;
+        };
+        let end = list.next_idx().0;
+        for i in start..end {
+            list.mutate_shape(egui::layers::ShapeIdx(i), |cs| {
+                let taken = std::mem::replace(&mut cs.shape, egui::Shape::Noop);
+                let transform = cs.transform_after_tessellation;
+                let mut prims = Vec::new();
+                // Tessellated unclipped: the ancestors' clip rect is put back
+                // on the shape, and a skew must not cut what it then moves.
+                tess.tessellate_clipped_shape(
+                    egui::epaint::ClippedShape {
+                        clip_rect: egui::Rect::EVERYTHING,
+                        shape: taken,
+                        transform_after_tessellation: transform,
+                    },
+                    &mut prims,
+                );
+                let mut shapes = Vec::new();
+                for cp in prims {
+                    if let egui::epaint::Primitive::Mesh(mut m) = cp.primitive {
+                        for v in &mut m.vertices {
+                            v.pos = f(transform.mul_pos(v.pos));
+                        }
+                        if !m.indices.is_empty() {
+                            shapes.push(egui::Shape::mesh(m));
+                        }
+                    }
+                }
+                cs.transform_after_tessellation = egui::emath::TSTransform::IDENTITY;
+                cs.shape = match shapes.len() {
+                    0 => egui::Shape::Noop,
+                    1 => shapes.pop().unwrap(),
+                    _ => egui::Shape::Vec(shapes),
+                };
+            });
+        }
+    });
+}
+
 /// Ear-clipping triangulation of a simple polygon — index triples into
 /// `points` (consecutive-duplicate-free, as `clip_points` returns).
 /// Orientation-agnostic: the signed area fixes the winding. A non-simple
