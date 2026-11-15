@@ -110,7 +110,7 @@ container!(Grid, "Grid");
 container!(Card, "Card");
 container!(Div, "div");
 
-/// `$lane` — a resizable side lane. `collapsed` renders a thin strip;
+/// `$lane` — a resizable side lane. `collapsed` folds it away to nothing;
 /// `width` sets the lane width; a drag handle on the inner edge resizes it
 /// and emits `onResize` with the new width.
 #[derive(Debug, Default)]
@@ -130,13 +130,8 @@ impl Widget for Lane {
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
         let collapsed = props::prop_bool(node, "collapsed");
         if collapsed {
-            // A collapsed lane is a 4px strip the shell can still target.
-            cx.ui.painter().rect_filled(
-                egui::Rect::from_min_size(rect.min, egui::vec2(4.0, rect.height())),
-                0.0,
-                cx.ui.visuals().widgets.noninteractive.bg_fill,
-            );
-            cx.label(rect, "lane (collapsed)");
+            // Folded away: layout gives it no width and nothing of it shows
+            // (`PanelLane`'s `visibility: hidden`).
             return;
         }
         paint_container(cx, node, style, rect);

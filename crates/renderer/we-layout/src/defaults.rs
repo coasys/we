@@ -147,6 +147,24 @@ pub(crate) fn bag_for(node: &ResolvedNode) -> Bag {
             bag.insert(k.clone(), val.clone());
         }
     }
+    // A folded home lane takes no room (`PanelLane`: `width: 0`,
+    // `min-width: 0`, `visibility: hidden`) — its sections stay mounted
+    // behind the clip, and its own fill and edge go with it.
+    if node.ty.as_ref() == "$lane" && crate::props::prop_bool(node, "collapsed") {
+        for k in [
+            "bg",
+            "border",
+            "borderLeft",
+            "borderRight",
+            "borderTop",
+            "borderBottom",
+        ] {
+            bag.shift_remove(k);
+        }
+        bag.insert(Arc::from("width"), Value::Str(Arc::from("0px")));
+        bag.insert(Arc::from("minWidth"), Value::Str(Arc::from("0")));
+        bag.insert(Arc::from("overflow"), Value::Str(Arc::from("hidden")));
+    }
     bag
 }
 
