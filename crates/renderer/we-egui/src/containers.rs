@@ -122,6 +122,11 @@ container!(Div, "div");
 /// [`we_layout::LANE_LEAVES_PX`]). The resolver wires `onResize` to
 /// `shellStore.setLaneWidth`, and layout reads the stored width back
 /// (`laneWidth`) under the same bounds, as `PanelLane` does.
+///
+/// While a drag is held, [`lane_drags`] asks for the width before the
+/// frame resolves, so the frame the pointer moved on draws it; paint then
+/// finds the lane already that wide and emits nothing. Paint still owns
+/// the press and the release.
 #[derive(Debug, Default)]
 pub struct Lane;
 
@@ -174,8 +179,6 @@ impl Widget for Lane {
         }
         // The width and the pointer at the press, kept for the whole drag:
         // egui forgets the press origin on the release frame.
-        let start_key = "_resizeStart";
-        let origin_key = "_resizeOrigin";
         if r.drag_started() {
             let origin = cx
                 .ui
@@ -184,23 +187,24 @@ impl Widget for Lane {
             props::scratch_set(
                 &mut cx.edit.data,
                 &node.id,
-                start_key,
+                START_KEY,
                 Value::Num(rect.width() as f64),
             );
             props::scratch_set(
                 &mut cx.edit.data,
                 &node.id,
-                origin_key,
+                ORIGIN_KEY,
                 Value::Num(origin as f64),
             );
+            props::scratch_set(&mut cx.edit.data, &node.id, HELD_KEY, Value::Bool(true));
+        }
+        if r.drag_stopped() {
+            props::scratch_set(&mut cx.edit.data, &node.id, HELD_KEY, Value::Bool(false));
         }
         // The release frame counts too: where frames lag the pointer, the
         // last `dragged()` frame saw only part of the travel, and the width
         // the handle was let go at is the one somebody chose.
-        let num = |key| match props::scratch(&cx.edit.data, &node.id, key) {
-            Some(Value::Num(v)) => Some(*v as f32),
-            _ => None,
-        };
+        //
         // Where the button went up, on the release frame — not where the
         // pointer is by the time the frame runs, which on a slow frame is
         // wherever it moved after letting go.
@@ -224,33 +228,126 @@ impl Widget for Lane {
             cx.ui
                 .input(|i| i.pointer.interact_pos().or(i.pointer.latest_pos()))
         });
-        if let (true, Some(from), Some(origin), Some(pointer)) = (
-            r.dragged() || r.drag_stopped(),
-            num(start_key),
-            num(origin_key),
-            pointer,
-        ) {
-            let travel = pointer.x - origin;
-            let wanted = from + if start { -travel } else { travel };
-            // The bounds layout measured — none for a lane laid out
-            // somewhere they were not (a hand-built test context).
-            let bounds = cx.lane.unwrap_or(we_layout::LaneBounds {
-                min: 0.0,
-                max: f32::INFINITY,
-            });
-            let width = bounds.clamp(wanted).round();
-            // A kept width drawn narrower than it is (the room shrank) is
-            // replaced by the width let go at, even where that is the
-            // width already drawn — `PanelLane` writes on release.
-            let kept = props::prop_num(node, "laneWidth").map(|k| k as f32);
-            if (width - rect.width()).abs() >= 0.5 || kept.is_some_and(|k| (k - width).abs() >= 0.5)
+        if !(r.dragged() || r.drag_stopped()) {
+            return;
+        }
+        let Some(pointer) = pointer else { return };
+        // The bounds layout measured — none for a lane laid out somewhere
+        // they were not (a hand-built test context).
+        let bounds = cx.lane.unwrap_or(we_layout::LaneBounds {
+            min: 0.0,
+            max: f32::INFINITY,
+        });
+        let Some(width) = drag_width(&cx.edit.data, node, start, bounds, pointer.x) else {
+            return;
+        };
+        // A kept width drawn narrower than it is (the room shrank) is
+        // replaced by the width let go at, even where that is the width
+        // already drawn — `PanelLane` writes on release.
+        let kept = props::prop_num(node, "laneWidth").map(|k| k as f32);
+        if (width - rect.width()).abs() >= 0.5 || kept.is_some_and(|k| (k - width).abs() >= 0.5) {
+            cx.emit(
+                &node.id,
+                "onResize",
+                props::detail([("width", Value::Num(width as f64))]),
+            );
+        }
+    }
+}
+
+/// The scratch fields a lane drag keeps: the width and the pointer `x` at
+/// the press, and whether the drag is still held.
+const START_KEY: &str = "_resizeStart";
+const ORIGIN_KEY: &str = "_resizeOrigin";
+const HELD_KEY: &str = "_resizeHeld";
+
+/// The width a lane drag asks for with the pointer at `x`: the width at
+/// the press plus the travel since (minus, for a handle on the start
+/// edge), held to `bounds` and rounded — `None` before a press recorded
+/// where it started.
+fn drag_width(
+    data: &std::collections::HashMap<we_template::NodeId, Value>,
+    node: &ResolvedNode,
+    start_edge: bool,
+    bounds: we_layout::LaneBounds,
+    x: f32,
+) -> Option<f32> {
+    let num = |key| match props::scratch(data, &node.id, key) {
+        Some(Value::Num(v)) => Some(*v as f32),
+        _ => None,
+    };
+    let (from, origin) = (num(START_KEY)?, num(ORIGIN_KEY)?);
+    let travel = x - origin;
+    let wanted = from + if start_edge { -travel } else { travel };
+    Some(bounds.clamp(wanted).round())
+}
+
+/// The `onResize` every held lane drag asks for at the pointer's current
+/// position, worked out before the frame resolves — so the width lands in
+/// this frame's resolve and layout and is drawn on the frame the pointer
+/// moved, rather than emitted by paint, dispatched after it, and drawn a
+/// frame later. `root` and `layout` are the last frame's: the bounds and
+/// the drawn width a drag compares against are the ones on screen.
+///
+/// Only while the button is held: a press and a release stay paint's, as
+/// they need egui's response for the handle (the release frame finds the
+/// position the button went up at).
+pub fn lane_drags(
+    ctx: &egui::Context,
+    edit: &crate::EditState,
+    layout: &crate::Layout,
+    root: &ResolvedNode,
+) -> Vec<crate::WidgetEvent> {
+    let mut out = Vec::new();
+    let Some(x) = ctx.input(|i| {
+        i.pointer
+            .primary_down()
+            .then(|| i.pointer.interact_pos().or(i.pointer.latest_pos()))
+            .flatten()
+    }) else {
+        return out;
+    };
+    fn walk(
+        node: &ResolvedNode,
+        x: f32,
+        edit: &crate::EditState,
+        layout: &crate::Layout,
+        out: &mut Vec<crate::WidgetEvent>,
+    ) {
+        if node.ty.as_ref() == "$lane"
+            && matches!(
+                props::scratch(&edit.data, &node.id, HELD_KEY),
+                Some(Value::Bool(true))
+            )
+            && !props::prop_bool(node, "collapsed")
+        {
+            if let (Some(start), Some(rect)) = (lane_handle_edge(node), layout.rects.get(&node.id))
             {
-                cx.emit(
-                    &node.id,
-                    "onResize",
-                    props::detail([("width", Value::Num(width as f64))]),
-                );
+                let bounds = layout
+                    .lanes
+                    .get(&node.id)
+                    .copied()
+                    .unwrap_or(we_layout::LaneBounds {
+                        min: 0.0,
+                        max: f32::INFINITY,
+                    });
+                if let Some(width) = drag_width(&edit.data, node, start, bounds, x) {
+                    if (width - rect.width()).abs() >= 0.5 {
+                        out.push(crate::WidgetEvent {
+                            node: node.id.clone(),
+                            handler: "onResize".into(),
+                            value: props::detail([("width", Value::Num(width as f64))]),
+                        });
+                    }
+                }
+            }
+        }
+        for child in &node.children {
+            if let we_template::ResolvedChild::Node(n) = child {
+                walk(n, x, edit, layout, out);
             }
         }
     }
+    walk(root, x.x, edit, layout, &mut out);
+    out
 }

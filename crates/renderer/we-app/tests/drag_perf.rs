@@ -4,7 +4,10 @@
 //! renderer, so nothing here waits on a GPU.
 //!
 //! - a layout resolves each node's style once, not once more to find the
-//!   fonts it needs.
+//!   fonts it needs;
+//! - the width a drag asks for is drawn on the frame the pointer moved —
+//!   written through the lane's `onResize` before that frame resolves —
+//!   so the frame egui runs after it has nothing left to lay out.
 
 use egui::{pos2, vec2, Event, PointerButton, Pos2, RawInput, Rect};
 use we_app::RendererApp;
@@ -110,5 +113,39 @@ fn a_layout_resolves_each_style_once() {
         f.counters.style_resolves < nodes + nodes / 4,
         "{} style resolves for {nodes} laid-out nodes",
         f.counters.style_resolves
+    );
+}
+
+#[test]
+fn a_drag_draws_its_width_on_the_frame_the_pointer_moved() {
+    let mut d = Driver::new();
+    let start = d.lane("tree");
+    let from = pos2(start.max.x, start.center().y);
+    d.frame(vec![Event::PointerMoved(from)]);
+    d.frame(vec![button(from, true)]);
+    for i in 1..=8 {
+        let travel = 7.0 * i as f32;
+        d.frame(vec![Event::PointerMoved(from + vec2(travel, 0.0))]);
+        assert_eq!(
+            d.lane("tree").width(),
+            start.width() + travel,
+            "move {i}: the frame the pointer moved draws the width it asks for"
+        );
+        // The follow-up frame egui asks for after any input: the drag's
+        // write already landed, so nothing is re-resolved or re-laid out.
+        let after = d.frame(vec![]);
+        assert_eq!(
+            after.counters.layout_passes, 0,
+            "move {i}: nothing left to lay out"
+        );
+    }
+    let end = from + vec2(56.0, 0.0);
+    d.frame(vec![button(end, false)]);
+    d.frame(vec![]);
+    assert_eq!(d.lane("tree").width(), start.width() + 56.0);
+    assert_eq!(
+        d.app.session.screen().shell.lanes["tree"].width,
+        Some((start.width() + 56.0) as u32),
+        "the width is in shell state, written by the lane's own handler"
     );
 }

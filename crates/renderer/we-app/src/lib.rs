@@ -96,8 +96,8 @@ pub struct RendererApp {
 
 /// Wall time of each stage of the last [`RendererApp::frame_body`]: the
 /// resolve (a no-op when no revision moved), the layout (zero when the
-/// cache held — `laid_out` says which), paint, and running the events it
-/// produced.
+/// cache held — `laid_out` says which), paint, and running events — a
+/// held lane drag's before the resolve, and the ones paint produced.
 #[derive(Debug, Default, Clone, Copy)]
 pub struct Stages {
     pub resolve: std::time::Duration,
@@ -160,10 +160,21 @@ impl RendererApp {
         visuals.override_text_color = body_text_color(&self.theme.tokens);
         ui.ctx().set_visuals(visuals);
 
+        // A held lane drag writes the width the pointer asks for now,
+        // through the lane's own `onResize` — the same handler and screen
+        // op paint would dispatch after drawing — but before this frame
+        // resolves, so the frame the pointer moved on draws it.
+        let started = std::time::Instant::now();
+        if let (Some(layout), Some(root)) = (&self.layout, self.session.runtime.resolved()) {
+            let early = we_egui::lane_drags(ui.ctx(), &self.edit, layout, root);
+            self.drain(early);
+        }
+        let dispatch_early = started.elapsed();
         let started = std::time::Instant::now();
         let resolved = self.session.resolve();
         self.stages = Stages {
             resolve: started.elapsed(),
+            dispatch: dispatch_early,
             ..Stages::default()
         };
         let stats = self.session.stats().clone();
@@ -241,17 +252,18 @@ impl RendererApp {
                     &mut self.edit,
                     ui.input(|i| i.time),
                 );
-                // A handler's effect — `$setLocal` on hover, a lane's new
-                // width — lands in the next resolve; without asking for
-                // that frame it waits for the next input, so a pointer that
-                // enters the rail and stops leaves it drawn collapsed.
+                // A handler's effect — `$setLocal` on hover, a lane's
+                // press or release — lands in the next resolve; without
+                // asking for that frame it waits for the next input, so a
+                // pointer that enters the rail and stops leaves it drawn
+                // collapsed.
                 self.stages.paint = started.elapsed();
                 let started = std::time::Instant::now();
                 if !events.is_empty() {
                     ui.ctx().request_repaint();
                 }
                 self.drain(events);
-                self.stages.dispatch = started.elapsed();
+                self.stages.dispatch += started.elapsed();
             });
 
         if self.debug {
