@@ -134,6 +134,18 @@ fn tweak(family: &str) -> egui::FontTweak {
 
 /// The WE family a resolved egui family is set in first — the leading
 /// entry of its chain key — or `None` when it leads with a generic.
+///
+/// The weight policy below ([`variation`], [`synthesises_bold`]) is
+/// decided by this stack head for the whole run, not per face that ends up
+/// drawing each glyph — CSS decides per selected face. So a glyph that
+/// falls back to another face gets the head's treatment: under
+/// `'Bricolage Grotesque', 'DM Sans'` at 700, a Latin-ext letter Bricolage
+/// lacks is drawn by static DM Sans and stays regular (no synthetic bold,
+/// since the head is variable); under a static head falling back to a
+/// variable face, the fallback glyph is struck twice. Doing it per face
+/// would need epaint to say which face it picked per glyph and the galley
+/// split into runs. The shipped stacks only meet it for Latin-ext text
+/// under Bricolage, whose web payload is Latin-only too.
 fn primary(family: &egui::FontFamily) -> Option<&'static str> {
     let egui::FontFamily::Name(key) = family else {
         return None;
@@ -148,7 +160,8 @@ fn primary(family: &egui::FontFamily) -> Option<&'static str> {
 /// at the size. A static face has no axes and ignores a coordinate, so it
 /// carries the authored `wght` as it was asked for — the record of the
 /// resolved weight a galley keeps — and the look comes from
-/// [`synthesises_bold`].
+/// [`synthesises_bold`]. The stack head decides, for every face in the
+/// run (see [`primary`]).
 pub(crate) fn variation(
     family: &egui::FontFamily,
     weight: Option<f32>,
@@ -172,7 +185,8 @@ pub(crate) fn variation(
 /// Whether a run in `family` at `weight` is emboldened synthetically — as
 /// the browser does when the matched face is lighter than bold: a request
 /// of 600 or more whose clamped weight is still below 600. DM Sans, VT323,
-/// Boldonse and the generics are, a variable face never is.
+/// Boldonse and the generics are, a variable face never is. Decided by the
+/// stack head for the whole run (see [`primary`]), not per glyph's face.
 pub(crate) fn synthesises_bold(family: &egui::FontFamily, weight: Option<f32>) -> bool {
     let w = weight.unwrap_or(400.0);
     let (lo, hi) = primary(family).map_or((400.0, 400.0), weight_range);

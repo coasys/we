@@ -310,6 +310,9 @@ pub(crate) fn italic(style: &Style) -> bool {
 /// browser gives a face that has no bold of its own: a second galley a
 /// fraction of a pixel right. A variable face reaches its weight through
 /// `wght` and is painted once (see [`crate::fonts::synthesises_bold`]).
+/// Whether the second pass happens is decided once for the galley, by its
+/// first section's stack head — a glyph that falls back to a face of the
+/// other kind gets the head's treatment (see `fonts::primary`).
 /// Every text-owning paint goes through here so `font-weight` is never a
 /// silent no-op.
 pub(crate) fn paint_galley(
