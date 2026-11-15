@@ -350,8 +350,11 @@ pub enum MemberVerdict {
 // ── the screen member table ──────────────────────────────────────────
 
 /// `screen`'s member table (design 4.2): the space tier sees the route,
-/// the params, and this template's own panels and dialogs; overlays,
-/// dock, lanes and the theme fork are chrome's. The same table is shared
+/// the params, this template's own panels and dialogs, and the two layout
+/// facts Coasys' space template reads (`layoutDirty`, `collapsedLanes`);
+/// overlays, dock, space settings and the theme fork are chrome's. The
+/// ONE screen policy (E3c-8a r2, F2): `we-legacy` serves every old
+/// spelling of a screen fact through this table. The same table is shared
 /// across `screen.<member>`, `screen.nav|shell|theme.<member>` because
 /// the view flattens the three bags onto the root — a member is either
 /// reachable at a tier or it is not.
@@ -378,17 +381,23 @@ pub fn screen_tiers() -> MemberTiers {
     }
 
     // `shell`: this template's panels/dialogs are space's; the overlays,
-    // lanes, dock and space-settings panel are the app's furniture.
+    // dock and space-settings panel are the app's furniture.
     let mut shell = BTreeMap::new();
     for m in ["panels", "dialogs"] {
         shell.insert(Arc::from(m), MemberRule::DeclaredIds { tier: Tier::Space });
+    }
+    // Space by TS (`templateSurface.ts` 1373/1379: `view-state`) AND read
+    // at Space by a shipped template (Coasys `templates/0`: a panel body's
+    // reset control, the lane toggles in its routes and record view) —
+    // E3c-8a r2, F2. This table is the policy for every spelling: the
+    // legacy aliases cannot grant more than it does.
+    for m in ["layoutDirty", "collapsedLanes"] {
+        nav_member(&mut shell, m);
     }
     for m in [
         "activeShellView",
         "spaceSettingsOpen",
         "spaceSettingsTab",
-        "collapsedLanes",
-        "layoutDirty",
         "panelsHidden",
         "panelMaximised",
         "createSpaceOpen",

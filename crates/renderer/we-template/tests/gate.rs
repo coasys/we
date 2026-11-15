@@ -784,3 +784,33 @@ fn query_rows_and_callback_payloads_carry_no_foreign_authority() {
     );
     assert!(ts[7].strict_eq(&Value::from("ok")), "{ts:?}");
 }
+
+// ── F2: one policy for screen facts ─────────────────────────────────
+
+/// F2 (Lal; decision: core's screen table is the policy for every
+/// spelling). The two screen facts TS grants at Space AND a shipped
+/// Coasys template reads at Space — `layoutDirty` (templates/0 panel
+/// body) and `collapsedLanes` (templates/0 routes and record view) — are
+/// Space in core's own table; the rest of the chrome stays App.
+#[test]
+fn the_core_screen_table_grants_what_space_templates_read() {
+    let tiers = we_template::screen_tiers();
+    let tier = |m: &str| match tiers.rule(m) {
+        Some(we_template::MemberRule::Member { tier }) => Some(*tier),
+        _ => None,
+    };
+    assert_eq!(tier("layoutDirty"), Some(Tier::Space));
+    assert_eq!(tier("collapsedLanes"), Some(Tier::Space));
+    for chrome in [
+        "activeShellView",
+        "spaceSettingsOpen",
+        "spaceSettingsTab",
+        "panelsHidden",
+        "panelMaximised",
+        "createSpaceOpen",
+        "joinSpaceOpen",
+        "themeFork",
+    ] {
+        assert_eq!(tier(chrome), Some(Tier::App), "{chrome}");
+    }
+}
