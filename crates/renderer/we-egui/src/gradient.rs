@@ -420,6 +420,37 @@ fn coverage(rect: egui::Rect, radius: f32, p: egui::Pos2) -> f32 {
     (r - d + 0.5).clamp(0.0, 1.0)
 }
 
+/// Built meshes, keyed by [`key`]: the page box's gradient is ~7k
+/// vertices, each compositing every layer, and it is the same mesh every
+/// frame while the gradient, the box's size and the metrics hold.
+#[derive(Clone, Default)]
+struct Cache(std::collections::HashMap<u64, std::sync::Arc<egui::Mesh>>);
+
+/// More distinct gradient boxes than this and the cache starts over — a
+/// resize drag walks through sizes nothing will ask for again.
+const CACHE_CAP: usize = 64;
+
+/// What a mesh depends on: the value, the box's size (a mesh is built at
+/// the origin and moved), its corner radius, the fade and the metrics that
+/// resolve its lengths.
+fn key(text: &str, size: egui::Vec2, radius: f32, opacity: f32, m: Metrics) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    text.hash(&mut h);
+    for f in [
+        size.x,
+        size.y,
+        radius,
+        opacity,
+        m.viewport.width,
+        m.viewport.height,
+    ] {
+        f.to_bits().hash(&mut h);
+    }
+    format!("{:?}", m.units).hash(&mut h);
+    h.finish()
+}
+
 /// Paint `text`'s gradient layers over `rect`, faded by `opacity`. Nothing
 /// is painted for a value with no layer this module understands.
 pub(crate) fn paint(
@@ -433,15 +464,51 @@ pub(crate) fn paint(
     if rect.width() <= 0.0 || rect.height() <= 0.0 {
         return;
     }
+    let id = egui::Id::unique("we-egui::gradient-cache");
+    let k = key(text, rect.size(), radius, opacity, m);
+    let cached = painter
+        .ctx()
+        .data_mut(|d| d.get_temp_mut_or_default::<Cache>(id).0.get(&k).cloned());
+    let mesh = match cached {
+        Some(mesh) => mesh,
+        None => {
+            let mesh = std::sync::Arc::new(build(
+                egui::Rect::from_min_size(egui::Pos2::ZERO, rect.size()),
+                radius,
+                text,
+                opacity,
+                m,
+            ));
+            painter.ctx().data_mut(|d| {
+                let cache = d.get_temp_mut_or_default::<Cache>(id);
+                if cache.0.len() >= CACHE_CAP {
+                    cache.0.clear();
+                }
+                cache.0.insert(k, mesh.clone());
+            });
+            mesh
+        }
+    };
+    if mesh.is_empty() {
+        return;
+    }
+    let mut mesh = (*mesh).clone();
+    mesh.translate(rect.min.to_vec2());
+    painter.add(egui::Shape::mesh(mesh));
+}
+
+/// The mesh for `text` over `rect` — empty for a value with no layer this
+/// module understands.
+fn build(rect: egui::Rect, radius: f32, text: &str, opacity: f32, m: Metrics) -> egui::Mesh {
+    let mut mesh = egui::Mesh::default();
     let layers = parse(text, rect, m);
     if layers.is_empty() {
-        return;
+        return mesh;
     }
     // A vertex every ~12px, at most 96 a side — the washes are smooth, and
     // a page-sized box stays a few thousand vertices.
     let cols = ((rect.width() / 12.0).ceil() as usize).clamp(2, 96);
     let rows = ((rect.height() / 12.0).ceil() as usize).clamp(2, 96);
-    let mut mesh = egui::Mesh::default();
     for j in 0..=rows {
         for i in 0..=cols {
             let p = egui::pos2(
@@ -470,7 +537,7 @@ pub(crate) fn paint(
             mesh.add_triangle(a + 1, a + w + 1, a + w);
         }
     }
-    painter.add(egui::Shape::mesh(mesh));
+    mesh
 }
 
 #[cfg(test)]
@@ -506,6 +573,42 @@ mod tests {
         );
         assert_eq!(layers[0].stops.len(), 2);
         assert!((layers[0].stops[1].at - 0.7).abs() < 1e-4);
+    }
+
+    /// The same gradient over a box of the same size is built once and
+    /// moved: the mesh a second frame paints is the first one translated.
+    #[test]
+    fn a_repeated_box_reuses_its_mesh() {
+        let ctx = egui::Context::default();
+        let text = "radial-gradient(45vmax 40vmax at 32% -12%, rgba(117, 255, 190, 0.15), transparent 70%)";
+        let size = egui::vec2(300.0, 200.0);
+        let mut meshes = Vec::new();
+        for at in [egui::pos2(0.0, 0.0), egui::pos2(40.0, 10.0)] {
+            let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+                paint(
+                    ui.painter(),
+                    egui::Rect::from_min_size(at, size),
+                    0.0,
+                    text,
+                    1.0,
+                    m(),
+                );
+            });
+            out.textures_delta.clear();
+            let cache = ctx.data_mut(|d| {
+                d.get_temp_mut_or_default::<Cache>(egui::Id::unique("we-egui::gradient-cache"))
+                    .clone()
+            });
+            meshes.push(cache.0.values().cloned().collect::<Vec<_>>());
+        }
+        assert_eq!(meshes[0].len(), 1);
+        assert_eq!(
+            meshes[1].len(),
+            1,
+            "one entry: the moved box hits the cache"
+        );
+        assert!(std::sync::Arc::ptr_eq(&meshes[0][0], &meshes[1][0]));
+        assert!(!meshes[0][0].is_empty());
     }
 
     #[test]

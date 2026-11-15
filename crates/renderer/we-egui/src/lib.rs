@@ -91,6 +91,10 @@ impl<'a> MeasureCx<'a> {
     }
 }
 
+/// `DISABLED_OPACITY`'s fallback (1-tokens/states.ts): a theme without
+/// `--we-theme-disabled-opacity` dims a disabled primitive to half.
+const DISABLED_OPACITY: f32 = 0.5;
+
 /// What a widget may use while painting.
 ///
 /// - `ui` — the egui painter + interaction.
@@ -106,10 +110,6 @@ impl<'a> MeasureCx<'a> {
 ///   activated and which were dead surface. An overlay reads it to learn
 ///   that the DOM equivalent of "the trigger element got a click"
 ///   happened — a keyboard fake-click on a child button included.
-/// `DISABLED_OPACITY`'s fallback (1-tokens/states.ts): a theme without
-/// `--we-theme-disabled-opacity` dims a disabled primitive to half.
-const DISABLED_OPACITY: f32 = 0.5;
-
 pub struct PaintCx<'a> {
     pub ui: &'a mut egui::Ui,
     pub parts: &'a Parts,
