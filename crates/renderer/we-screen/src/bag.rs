@@ -277,6 +277,26 @@ impl Namespace for ShellBag {
             _ => Value::Undefined,
         }
     }
+
+    fn keys(&self) -> Vec<Arc<str>> {
+        // Every member `get` answers — a namespace's `to_json` enumerates
+        // `keys`, and the `ScreenView` canon interns `screen.shell` by
+        // that content: empty keys would make every snapshot compare equal
+        // and freeze the first answer (dialogs, panels, lanes included).
+        vec![
+            "activeShellView".into(),
+            "spaceSettingsOpen".into(),
+            "spaceSettingsTab".into(),
+            "collapsedLanes".into(),
+            "layoutDirty".into(),
+            "panelsHidden".into(),
+            "panelMaximised".into(),
+            "createSpaceOpen".into(),
+            "joinSpaceOpen".into(),
+            "panels".into(),
+            "dialogs".into(),
+        ]
+    }
 }
 
 #[derive(Debug)]
@@ -292,6 +312,13 @@ impl Namespace for ThemeBag {
             "themeFork" => self.fork.clone(),
             _ => Value::Undefined,
         }
+    }
+
+    fn keys(&self) -> Vec<Arc<str>> {
+        // See `ShellBag::keys`: the canon compares what `to_json`
+        // enumerates — both members, or `screen.theme` freezes on its
+        // first read and `setCurrentTheme` never lands.
+        vec!["currentThemeId".into(), "themeFork".into()]
     }
 }
 

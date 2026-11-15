@@ -188,6 +188,128 @@ mod tests {
     }
 
     #[test]
+    fn a_shell_write_is_visible_to_the_next_read() {
+        // `screen.shell` is interned by content: a first read must not
+        // freeze it — a dialog open, a lane fold and a panel open are the
+        // very next read's answers.
+        let view = ScreenView::new();
+        let mut screen = screen("/");
+        view.refresh(&screen);
+        let member = |key| read_key(&read(&view, "shell"), key);
+        assert!(member("createSpaceOpen").strict_eq(&Value::Bool(false)));
+        apply_screen(
+            &mut screen,
+            &view,
+            ScreenOp::SetDialog {
+                name: "create_space".into(),
+                open: true,
+            },
+        );
+        assert!(
+            member("createSpaceOpen").strict_eq(&Value::Bool(true)),
+            "the dialog must read open on the very next read"
+        );
+        apply_screen(
+            &mut screen,
+            &view,
+            ScreenOp::SetLaneCollapsed {
+                lane: "tree".into(),
+                collapsed: true,
+            },
+        );
+        let lanes = member("collapsedLanes");
+        assert!(
+            matches!(&lanes, Value::List(l) if l.iter().any(|v| v.strict_eq(&Value::from("tree")))),
+            "the folded lane must read back: {lanes:?}"
+        );
+        apply_screen(
+            &mut screen,
+            &view,
+            ScreenOp::OpenTemplatePanel {
+                id: "inspector".into(),
+            },
+        );
+        assert!(
+            read_key(&member("panels"), "inspector").strict_eq(&Value::Bool(true)),
+            "the opened panel must read open on the very next read"
+        );
+    }
+
+    #[test]
+    fn a_theme_write_is_visible_to_the_next_read() {
+        // `screen.theme` interned by content: a first read (the unset
+        // theme's `Undefined`) must not freeze `currentThemeId` forever.
+        let view = ScreenView::new();
+        let mut screen = screen("/");
+        view.refresh(&screen);
+        let current = || read_key(&read(&view, "theme"), "currentThemeId");
+        assert!(
+            current().is_undefined(),
+            "an unset theme defers to the store"
+        );
+        apply_screen(
+            &mut screen,
+            &view,
+            ScreenOp::SetCurrentTheme {
+                theme: "one".into(),
+            },
+        );
+        assert!(
+            current().strict_eq(&Value::from("one")),
+            "the next read must see the theme just set"
+        );
+        apply_screen(
+            &mut screen,
+            &view,
+            ScreenOp::SetCurrentTheme {
+                theme: "two".into(),
+            },
+        );
+        assert!(
+            current().strict_eq(&Value::from("two")),
+            "and the one after that"
+        );
+    }
+
+    #[test]
+    fn an_unchanged_shell_keeps_its_allocation() {
+        // The other half of the intern contract: while shell's content
+        // holds, the SAME ShellBag allocation answers — a tracked read
+        // must not observe a move on an unrelated screen change.
+        let view = ScreenView::new();
+        let mut screen = screen("/?x=1");
+        view.refresh(&screen);
+        let s0 = read(&view, "shell");
+        apply_screen(
+            &mut screen,
+            &view,
+            ScreenOp::SetParam {
+                name: "x".into(),
+                value: Some("2".into()),
+                push: None,
+            },
+        );
+        let s1 = read(&view, "shell");
+        assert!(
+            s0.strict_eq(&s1),
+            "an unrelated screen change must not move the shell identity"
+        );
+        apply_screen(
+            &mut screen,
+            &view,
+            ScreenOp::SetDialog {
+                name: "create_space".into(),
+                open: true,
+            },
+        );
+        let s2 = read(&view, "shell");
+        assert!(
+            !s0.strict_eq(&s2),
+            "a real shell change must move the shell identity"
+        );
+    }
+
+    #[test]
     fn a_noop_write_leaves_the_snapshot() {
         let view = ScreenView::new();
         let mut screen = screen("/?x=old");

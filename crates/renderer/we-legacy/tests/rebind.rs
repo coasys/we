@@ -133,6 +133,93 @@ fn repeated_changes_never_stack_a_wrapper() {
 }
 
 #[test]
+fn a_dialog_and_panel_open_are_the_next_shell_store_read() {
+    // `shellStore.createSpaceOpen` read while false must not stay false
+    // forever: the face overlays the view's `shell` member, which was
+    // interned on first read and answered the first snapshot from then on.
+    // Panels, lanes and dialogs read the same way.
+    let bag = Arc::new(StoreBag::new());
+    let rt = Runtime::new(schema(), "test", bag.clone(), LocalState::new());
+    let _bindings = LegacyBindings::install(&bag, rt.view());
+    let mut screen = screen("/");
+    rt.view().refresh(&screen);
+    let shell = bag.root("shellStore");
+    let member = |key| get(shell.clone(), key);
+    assert!(
+        member("createSpaceOpen").strict_eq(&Value::Bool(false)),
+        "closed before the write"
+    );
+    rt.apply_screen(
+        &mut screen,
+        ScreenOp::SetDialog {
+            name: "create_space".into(),
+            open: true,
+        },
+    );
+    assert!(
+        member("createSpaceOpen").strict_eq(&Value::Bool(true)),
+        "the very next shellStore read must see the open dialog"
+    );
+    rt.apply_screen(
+        &mut screen,
+        ScreenOp::OpenTemplatePanel {
+            id: "inspector".into(),
+        },
+    );
+    assert!(
+        get(Some(member("panels")), "inspector").strict_eq(&Value::Bool(true)),
+        "the very next shellStore read must see the opened panel"
+    );
+    // …and through the `screen` spelling — the same live root.
+    let view_shell = we_expr::Namespace::get(rt.view(), "shell");
+    assert!(
+        get(Some(view_shell), "createSpaceOpen").strict_eq(&Value::Bool(true)),
+        "screen.shell sees it too"
+    );
+}
+
+#[test]
+fn a_theme_switch_is_the_next_theme_store_read() {
+    // `themeStore.currentThemeId` while unset defers to the base store;
+    // after `setCurrentTheme` lands the face must answer the screen's
+    // current id — not the first snapshot the theme member interned.
+    let bag = Arc::new(StoreBag::new());
+    let rt = Runtime::new(schema(), "test", bag.clone(), LocalState::new());
+    let _bindings = LegacyBindings::install(&bag, rt.view());
+    let mut screen = screen("/");
+    rt.view().refresh(&screen);
+    let theme = bag.root("themeStore");
+    let member = |key| get(theme.clone(), key);
+    assert!(
+        member("currentThemeId").is_undefined(),
+        "unset defers to the base"
+    );
+    rt.apply_screen(
+        &mut screen,
+        ScreenOp::SetCurrentTheme {
+            theme: "one".into(),
+        },
+    );
+    assert!(
+        member("currentThemeId").strict_eq(&Value::from("one")),
+        "the very next themeStore read must see the theme just set"
+    );
+    rt.apply_screen(
+        &mut screen,
+        ScreenOp::SetCurrentTheme {
+            theme: "two".into(),
+        },
+    );
+    assert!(member("currentThemeId").strict_eq(&Value::from("two")));
+    // …and `screen.theme.currentThemeId` — the same live root.
+    let view_theme = we_expr::Namespace::get(rt.view(), "theme");
+    assert!(
+        get(Some(view_theme), "currentThemeId").strict_eq(&Value::from("two")),
+        "screen.theme sees it too"
+    );
+}
+
+#[test]
 fn data_members_fall_through_and_screen_members_stay_the_screens() {
     // Overlay fall-through: `themeStore.builtInThemes` is store data the
     // screen never answers; `themeStore.themeFork` is always the screen's
