@@ -26,7 +26,7 @@ use crate::local::TrackedDeps;
 use crate::node::{JsonMap, RouteNode, SchemaChild, SchemaNode};
 use crate::query::{compile_request, CompileCx, Compiled, QueryHub, QueryKey, SiteId, SiteSlot};
 use crate::resolved::{HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope, Transition};
-use crate::scope::{FieldMeta, LocalDecl, LocalNs, LocalScope, Roots, ScopeEnv, StoreBag};
+use crate::scope::{FieldMeta, LocalDecl, LocalNs, LocalScope, Roots, ScopeEnv};
 use crate::surface::{SurfaceKey, SurfaceTable};
 use crate::{Host, LocalState};
 
@@ -389,7 +389,7 @@ fn eval_str_tracked(
 /// an opaque call's inputs are whatever it read while it ran, invisible
 /// here, so the settled ANSWER compared by content (`deps_moved` gives
 /// `$call:` entries `content_eq`) is the contract — documented at
-/// [`StoreBag::set_function`] for registrants.
+/// [`crate::StoreBag::set_function`] for registrants.
 struct TrackEnv<'a> {
     inner: ScopeEnv<'a>,
     observe: &'a dyn Fn(&str, &Value),
@@ -608,31 +608,6 @@ fn with_transition(
             })
             .collect(),
         None => children,
-    }
-}
-
-/// The profile a `$agent` binds: `profileStore.profiles` holds them — an
-/// object keyed by DID, or a list of rows carrying `did`. `None` when no
-/// profile resolves — the caller binds the `{did}` stub a template can
-/// still name (`agent.did` reads it back). `pub` for the binding-source
-/// adapters (`we-legacy`) whose `profile()` answers the same way.
-pub fn profile_of(bag: &StoreBag, did: &str) -> Option<Value> {
-    let profiles = bag
-        .root("profileStore")
-        .and_then(|root| match &root {
-            Value::Namespace(ns) => Some(ns.get("profiles")),
-            _ => None,
-        })
-        .unwrap_or(Value::Undefined);
-    match &profiles {
-        Value::Obj(map) => map.get(did).cloned(),
-        Value::List(rows) => rows
-            .iter()
-            .find(|row| {
-                matches!(row, Value::Obj(o) if matches!(o.get("did"), Some(Value::Str(d)) if d.as_ref() == did))
-            })
-            .cloned(),
-        _ => None,
     }
 }
 
@@ -982,14 +957,11 @@ fn resolve_node(
                 .and_then(|a| a.as_str())
                 .unwrap_or("agent");
             let mut row_scope = scope.clone();
-            // The source's narrow read (E3c-8a) — replaces the core
-            // `profileStore` member read; an ungated `Roots` (core
-            // plumbing) falls back to the bag directly.
-            match cx
-                .bag
-                .profile(&did)
-                .or_else(|| profile_of(cx.bag.bag, &did))
-            {
+            // The source's narrow read (E3c-8a, Lal F1): the source's
+            // answer is final — a refusal binds the stub, never a row the
+            // shared bag happens to hold for another consumer. Core reads
+            // no profile store of its own.
+            match cx.bag.profile(&did) {
                 // A real profile row is live data — its own dependency.
                 Some(row) => row_scope.bind(as_name, row),
                 // The stub is synthesized per read — a conduit like `local`.

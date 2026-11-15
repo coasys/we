@@ -276,8 +276,11 @@ impl BindingSource for BagBindings {
             })
     }
 
-    fn profile(&self, did: &str, _mount: &MountCx) -> Option<Value> {
-        crate::resolve::profile_of(&self.bag, did)
+    /// No profiles: core reads no profile store (Lal F1) — a host that
+    /// serves `$agent` profiles does so from its own source
+    /// (`we-legacy`'s `LegacyBindings`).
+    fn profile(&self, _did: &str, _mount: &MountCx) -> Option<Value> {
+        None
     }
 
     fn ready(&self) -> bool {

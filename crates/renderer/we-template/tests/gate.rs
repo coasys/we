@@ -26,7 +26,7 @@ fn map(pairs: &[(&str, Value)]) -> Value {
 }
 
 /// The F2 double: a source that answers the v2 root names it knows,
-/// profiles from the bag's `profileStore.profiles`, and counts
+/// profiles from its own bag's `profiles` root, and counts
 /// subscriptions — the read-identity contract without a session.
 #[derive(Debug)]
 struct Double {
@@ -81,7 +81,13 @@ impl BindingSource for Double {
             })
     }
     fn profile(&self, did: &str, _mount: &MountCx) -> Option<Value> {
-        we_template::profile_of(&self.bag, did)
+        match self.bag.root("profiles") {
+            Some(Value::Namespace(ns)) => match ns.get(did) {
+                Value::Undefined => None,
+                v => Some(v),
+            },
+            _ => None,
+        }
     }
     fn ready(&self) -> bool {
         true
@@ -460,7 +466,7 @@ fn taint_handles_recurses_and_leaves_plain_data_alone() {
 fn the_source_answers_profiles_revisions_and_subscriptions() {
     let mut src = Double::new();
     src.bag = StoreBag::from_snapshot(&json!({
-        "stores": { "profileStore": { "profiles": { "did:1": { "name": "Ana" } } } },
+        "stores": { "profiles": { "did:1": { "name": "Ana" } } },
         "queries": {}, "invokes": {}
     }))
     .unwrap();
@@ -501,4 +507,102 @@ fn two_views_one_source_stay_isolated_by_authority() {
     // One denial, for the space view's `app` ask — the app view's ask
     // logged none.
     assert_eq!(gate.denial_count(), 1);
+}
+
+// ── Round 2 (Lal) ───────────────────────────────────────────────────
+
+/// A source that refuses everything — every root, every profile — for
+/// every mount: the deliberate denial a gated path must treat as final.
+#[derive(Debug)]
+struct Refusing;
+
+impl DataRevision for Refusing {
+    fn revision(&self) -> u64 {
+        1
+    }
+    fn subscribe(&self, _inv: Invalidator) {}
+}
+
+impl BindingSource for Refusing {
+    fn root(&self, _name: &str, _mount: &MountCx) -> Option<Bound> {
+        None
+    }
+    fn profile(&self, _did: &str, _mount: &MountCx) -> Option<Value> {
+        None
+    }
+}
+
+fn texts(n: &ResolvedNode, out: &mut Vec<Value>) {
+    if let Some(v) = n.props.get("t") {
+        out.push(v.clone());
+    }
+    for c in &n.children {
+        if let ResolvedChild::Node(n) = c {
+            texts(n, out);
+        }
+    }
+}
+
+/// F1 (Lal): a source's profile refusal is final. The shared bag holds
+/// the profile (another consumer cached it); a Space mount and a module
+/// part, both behind a source that refuses the DID, must bind the `{did}`
+/// stub — never the bag's row.
+#[test]
+fn a_refused_profile_is_not_read_from_the_bag() {
+    struct Parts;
+    impl PartSource for Parts {
+        fn part(&self, id: &str) -> Option<PartDef> {
+            (id == "card").then(|| PartDef {
+                schema: Arc::new(
+                    serde_json::from_value::<SchemaNode>(json!({
+                        "type": "$agent", "props": { "did": "did:a" },
+                        "children": [{ "type": "Text", "props": { "t": { "$": "agent.name" } } }]
+                    }))
+                    .unwrap(),
+                ),
+                tier: Tier::Space,
+                module: "mod".into(),
+                needs: Arc::from([]),
+            })
+        }
+    }
+    let bag = Arc::new(
+        StoreBag::from_snapshot(&json!({
+            "stores": { "profileStore": { "profiles": { "did:a": { "did": "did:a", "name": "Ana" } } } },
+            "queries": {}, "invokes": {}
+        }))
+        .unwrap(),
+    );
+    let node: SchemaNode = serde_json::from_value(json!({
+        "type": "Column",
+        "children": [
+            { "type": "$agent", "props": { "did": "did:a" },
+              "children": [{ "type": "Text", "props": { "t": { "$": "agent.name" } } }] },
+            { "type": "$part", "props": { "id": "card" } }
+        ]
+    }))
+    .unwrap();
+    let mut rt = Runtime::from_spec(
+        RootSpec::Single {
+            node: Box::new(node),
+            cx: space_auth(),
+            declared: Declared::default(),
+        },
+        bag.clone(),
+        LocalState::new(),
+    )
+    .with_sources(None, Arc::new(Parts));
+    rt.set_bindings(Arc::new(Refusing));
+    let mut host = StaticHost::new(bag);
+    let screen = ScreenState::desktop(ScreenSchema::default(), "/");
+    let root = rt.frame(&mut host, &screen).clone();
+    let mut ts = Vec::new();
+    texts(&root, &mut ts);
+    assert_eq!(ts.len(), 2, "both $agent bodies resolve: {ts:?}");
+    for t in &ts {
+        assert!(
+            t.strict_eq(&Value::Undefined),
+            "refused profile leaked from the bag: {ts:?}"
+        );
+    }
 }

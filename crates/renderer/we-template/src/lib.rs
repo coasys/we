@@ -55,9 +55,7 @@ pub use query::{
     QueryRequest, QuerySink, QuerySlot, QuerySource, SiteId, SiteSlot, SlotRef, SlotView,
     SubTicket, RESERVED_IR_KEYS,
 };
-pub use resolve::{
-    inert, profile_of, resolve, taint_handles, NoParts, PartDef, PartSource, ResolveCx,
-};
+pub use resolve::{inert, resolve, taint_handles, NoParts, PartDef, PartSource, ResolveCx};
 pub use resolved::{
     normal_form, HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope, Transition,
     TransitionEffect, TransitionKind,

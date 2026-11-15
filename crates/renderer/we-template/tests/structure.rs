@@ -145,52 +145,6 @@ fn part_uses_the_source_and_falls_back_to_a_placeholder() {
 }
 
 #[test]
-fn agent_binds_the_profile_from_profilestore() {
-    let node = schema(json!({ "type": "Column", "children": [
-        { "type": "$agent", "props": { "did": "did:a", "as": "who" },
-          "children": [{ "type": "we-text", "props": { "text": { "$": "who.name" } } }] },
-        { "type": "$agent", "props": { "did": "did:ghost" },
-          "children": [{ "type": "we-text", "props": { "text": { "$": "agent.did" } } }] },
-        { "type": "$agent", "props": { "did": { "$": "nothing" } },
-          "children": [{ "type": "Never" }] }
-    ]}));
-    let bag = snapshot(json!({
-        "profileStore": { "profiles": { "did:a": { "did": "did:a", "name": "Ana" } } }
-    }));
-    let (mut rt, mut host, screen) = rig(node, bag, "/");
-    let root = rt.frame(&mut host, &screen).clone();
-    let mut texts = Vec::new();
-    fn texts_of(n: &ResolvedNode, out: &mut Vec<Value>) {
-        if let Some(Value::Str(s)) = n.props.get("text") {
-            out.push(Value::Str(s.clone()));
-        }
-        for c in &n.children {
-            if let ResolvedChild::Node(x) = c {
-                texts_of(x, out);
-            }
-        }
-    }
-    texts_of(&root, &mut texts);
-    assert!(
-        texts.iter().any(|v| v.strict_eq(&Value::Str("Ana".into()))),
-        "bound profile name missing: {texts:?}"
-    );
-    // An unknown did still answers `{did}` — templates can name it.
-    assert!(
-        texts
-            .iter()
-            .any(|v| v.strict_eq(&Value::Str("did:ghost".into()))),
-        "stub did missing: {texts:?}"
-    );
-    let mut tys = Vec::new();
-    types(&root, &mut tys);
-    assert!(
-        !tys.iter().any(|t| t == "Never"),
-        "unresolved did must draw nothing"
-    );
-}
-
-#[test]
 fn animate_mounts_children_and_marks_open_state() {
     // Rewritten to the TS contract (AnimateRenderer.tsx): `$animate` never
     // controls presence — the child is always mounted; `condition` only

@@ -171,6 +171,28 @@ impl Namespace for SpaceStoreNs {
     }
 }
 
+/// The profile a `$agent` binds, read the legacy way: `profileStore.
+/// profiles` holds them — an object keyed by DID, or a list of rows
+/// carrying `did`. `None` when no profile resolves (the resolver binds the
+/// `{did}` stub). The one `profileStore` read in the renderer (Lal F1):
+/// it lives in the legacy source, never in core.
+pub fn profile_of(bag: &StoreBag, did: &str) -> Option<Value> {
+    let profiles = match bag.root("profileStore") {
+        Some(Value::Namespace(ns)) => ns.get("profiles"),
+        _ => Value::Undefined,
+    };
+    match &profiles {
+        Value::Obj(map) => map.get(did).cloned(),
+        Value::List(rows) => rows
+            .iter()
+            .find(|row| {
+                matches!(row, Value::Obj(o) if matches!(o.get("did"), Some(Value::Str(d)) if d.as_ref() == did))
+            })
+            .cloned(),
+        _ => None,
+    }
+}
+
 /// The installed adapter — the session's E3c-8a [`BindingSource`]: it
 /// serves `screen` (the live view it already reads), the `legacy` root
 /// (every old store name behind its generated member table), the compat
@@ -408,9 +430,7 @@ impl we_template::BindingSource for LegacyBindings {
     }
 
     fn profile(&self, did: &str, _mount: &MountCx) -> Option<Value> {
-        self.bag
-            .as_ref()
-            .and_then(|bag| we_template::profile_of(bag, did))
+        self.bag.as_ref().and_then(|bag| profile_of(bag, did))
     }
 
     fn ready(&self) -> bool {
