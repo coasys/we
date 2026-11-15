@@ -1368,16 +1368,100 @@ fn chain_longer_than_eight_continues_and_goes_quiet() {
     );
 }
 
+/// Lal F2: a `Ready` claim on a cell an earlier pass filled answers inside
+/// the pass. A second copy of the nine-level chain mounts once the first
+/// has settled: every level's claim lands on a filled cell, so the next
+/// level compiles from it in the same round and the whole chain settles in
+/// one pass — no budget left over, no wake, no new `open` — where the cold
+/// chain needed two frames.
+#[test]
+fn a_prefilled_cell_answers_inside_the_pass() {
+    let chain = json!({
+        "q0": { "entity": "E0" },
+        "q1": { "entity": { "$": "first(local.q0).kind" } },
+        "q2": { "entity": { "$": "first(local.q1).kind" } },
+        "q3": { "entity": { "$": "first(local.q2).kind" } },
+        "q4": { "entity": { "$": "first(local.q3).kind" } },
+        "q5": { "entity": { "$": "first(local.q4).kind" } },
+        "q6": { "entity": { "$": "first(local.q5).kind" } },
+        "q7": { "entity": { "$": "first(local.q6).kind" } },
+        "q8": { "entity": { "$": "first(local.q7).kind" } }
+    });
+    let node = json!({ "type": "Column", "children": [
+        { "type": "Row", "$queries": chain.clone(), "children": [] },
+        { "type": "$if", "props": { "condition": { "$": "flags.b" },
+            "then": { "type": "Column", "$queries": chain,
+                "children": [{ "type": "we-text",
+                    "props": { "text": { "$": "first(local.q8).id" } } }] } } }
+    ] });
+    let source = Arc::new(Stair::default());
+    let bag = Arc::new(StoreBag::new());
+    let mut rt = Runtime::new(schema(node), "test", bag.clone(), LocalState::new())
+        .with_sources(Some(source.clone()), Arc::new(we_template::NoParts));
+    let wakes = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let w = wakes.clone();
+    rt.inbox().set_waker(Arc::new(move || {
+        w.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }));
+    let mut host = StaticHost::new(bag.clone());
+    let mut screen = screen("/");
+
+    // The cold chain: two frames, as above.
+    rt.frame(&mut host, &screen);
+    rt.frame(&mut host, &screen);
+    assert!(!rt.dirty(&screen), "the cold chain settled");
+    assert_eq!(source.opens.lock().unwrap().len(), 9);
+
+    // The warm copy: one frame, one pass. The flag write queues its own
+    // invalidation and wakes for it; the poll drains it, as a frontend's
+    // would, and the count starts after.
+    set_flag(&bag, "b", true);
+    rt.drain_inbox(&mut host, &mut screen);
+    let woke = wakes.load(std::sync::atomic::Ordering::SeqCst);
+    let resolves = rt.stats().resolves;
+    let root = rt.frame(&mut host, &screen).clone();
+    let text = find_ty(&root, "we-text")
+        .and_then(|n| n.props.get("text"))
+        .cloned();
+    assert!(
+        matches!(&text, Some(Value::Str(s)) if s.as_ref() == "E8-row"),
+        "the warm chain reached the ninth level in one frame: {text:?}"
+    );
+    assert!(!rt.dirty(&screen), "nothing left over");
+    assert_eq!(
+        wakes.load(std::sync::atomic::Ordering::SeqCst),
+        woke,
+        "no exhausted budget, no wake"
+    );
+    assert_eq!(
+        source.opens.lock().unwrap().len(),
+        9,
+        "every level shared a filled cell"
+    );
+    rt.frame(&mut host, &screen);
+    assert_eq!(rt.stats().resolves, resolves + 1, "and the next frame is quiet");
+}
+
 /// A `$queries` block whose compiles can never settle keeps the last
 /// round's claims as its bounded fallback and warns (Lal F3) — and goes
 /// quiet across frames: the rotating claims hit cells the first pass
 /// already filled, so nothing visible moves again.
 #[test]
 fn oscillating_cycle_warns_and_goes_quiet() {
-    // `local.<q>` reads inside a cycle can never rotate a pass's keys —
-    // a round's slots only fill between passes — so the oscillation the
-    // bound exists for comes from a compile that is itself
-    // non-deterministic: `flip` answers a different entity each call.
+    // A host-function proxy for the oscillation the round bound exists
+    // for, not an authored local cycle. Slots do fill inside a pass — a
+    // `Ready` claim on a cell an earlier pass filled returns its rows at
+    // once (`a_prefilled_cell_answers_inside_the_pass`) — but a fresh
+    // mutual cycle gates: a compile that reads a sibling's unloaded slot
+    // is `Provisional`, and claiming that returns an empty view even when
+    // an equivalent cell exists, so no ready key rotates. `flip` instead
+    // answers a different entity each call. Its period (three) divides
+    // the six calls a pass makes (two queries, three rounds), so every
+    // pass ends on the same pair B/C: the second frame reuses those cells
+    // and goes quiet. A period that does not divide the calls would
+    // alternate pairs between passes and keep waking — bounded per frame,
+    // never quiet; that is the contract (quiet once nothing visible
+    // changes), not a gap this pins.
     let node = json!({ "type": "Column",
         "$queries": {
             "qa": { "entity": { "$": "flip()" } },
@@ -1398,12 +1482,16 @@ fn oscillating_cycle_warns_and_goes_quiet() {
     );
 
     rt.frame(&mut host, &screen);
-    assert!(
+    // One retained diagnostic per node and pass (deduplicated within the
+    // pass's warnings), not one ever: a later dirty resolve may say it again.
+    assert_eq!(
         rt.stats()
             .warnings
             .iter()
-            .any(|w| w.contains("did not settle") && w.contains("dependency cycle")),
-        "the settle loop exhausted its bound and warned: {:?}",
+            .filter(|w| w.contains("did not settle") && w.contains("dependency cycle"))
+            .count(),
+        1,
+        "the settle loop exhausted its bound and warned once: {:?}",
         rt.stats().warnings
     );
     assert!(
