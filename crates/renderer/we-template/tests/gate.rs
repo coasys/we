@@ -814,3 +814,95 @@ fn the_core_screen_table_grants_what_space_templates_read() {
         assert_eq!(tier(chrome), Some(Tier::App), "{chrome}");
     }
 }
+
+// ── F5: taint by the receiving frame ────────────────────────────────
+
+/// Rows carrying a live handle minted in the runtime's own table.
+struct HandleRows;
+impl we_template::QuerySource for HandleRows {
+    fn open(
+        &self,
+        _ticket: we_template::SubTicket,
+        _request: &we_template::QueryRequest,
+        handles: &HandleTable,
+        sink: we_template::QuerySink,
+    ) {
+        let h = handles.mint(HandleKind::Dataset, "ds-1");
+        sink.deliver(we_template::QueryEvent::Rows(Arc::new(vec![obj(&[(
+            "h",
+            Value::handle(h),
+        )])])));
+    }
+    fn close(&self, _ticket: we_template::SubTicket) {}
+}
+
+/// A part at `tier` reading a handle from an inline `$each` query and a
+/// named `$queries` query.
+struct HandleParts(Tier);
+impl PartSource for HandleParts {
+    fn part(&self, id: &str) -> Option<PartDef> {
+        (id == "reader").then(|| PartDef {
+            schema: Arc::new(
+                serde_json::from_value::<SchemaNode>(json!({
+                    "type": "Column",
+                    "$queries": { "named": { "entity": "Task" } },
+                    "children": [
+                        { "type": "$each",
+                          "props": { "items": { "$query": { "entity": "Task" } } },
+                          "children": [{ "type": "Text", "props": { "t": { "$": "item.h" } } }] },
+                        { "type": "Text", "props": { "t": { "$": "first(local.named).h" } } }
+                    ]
+                }))
+                .unwrap(),
+            ),
+            tier: self.0,
+            module: "mod".into(),
+            needs: Arc::from([]),
+        })
+    }
+}
+
+fn part_handles(mount: MountCx, part: Tier) -> Vec<bool> {
+    let bag = Arc::new(StoreBag::new());
+    let node: SchemaNode =
+        serde_json::from_value(json!({ "type": "$part", "props": { "id": "reader" } })).unwrap();
+    let mut rt = Runtime::from_spec(
+        RootSpec::Single {
+            node: Box::new(node),
+            cx: mount,
+            declared: Declared::default(),
+        },
+        bag.clone(),
+        LocalState::new(),
+    )
+    .with_sources(Some(Arc::new(HandleRows)), Arc::new(HandleParts(part)));
+    let mut host = StaticHost::new(bag);
+    let screen = ScreenState::desktop(ScreenSchema::default(), "/");
+    let root = rt.frame(&mut host, &screen).clone();
+    let mut ts = Vec::new();
+    texts(&root, &mut ts);
+    ts.iter()
+        .map(|v| match v {
+            Value::Namespace(ns) => ns.as_handle().expect("a handle").is_tainted(),
+            other => panic!("handle expected, got {other:?}"),
+        })
+        .collect()
+}
+
+/// F5 (Lal): every delivery path taints by the RECEIVING frame — inline
+/// `$each.items` included. A Space part under an App mount gets tainted
+/// handles from both its inline and its named query; an App part under a
+/// Space mount gets usable ones.
+#[test]
+fn query_handles_are_tainted_by_the_receiving_frame() {
+    assert_eq!(
+        part_handles(app_auth(), Tier::Space),
+        vec![true, true],
+        "[inline, named] in a Space part under an App mount"
+    );
+    assert_eq!(
+        part_handles(space_auth(), Tier::App),
+        vec![false, false],
+        "[inline, named] in an App part under a Space mount"
+    );
+}

@@ -251,7 +251,7 @@ pub fn taint_handles(v: &Value) -> Value {
 /// handles, never another frame's authority. Every `Namespace` that is not
 /// a handle (a root, an App-filtered view, a host's lazy object) and every
 /// `Callable` (an accessor would answer whatever it closes over) becomes
-/// `Undefined`, at any depth. Handles stay for [`taint_handles`] to judge
+/// `Undefined`, at any depth. Handles stay for [`deliver`] to judge
 /// by the receiving tier.
 ///
 /// The one rule for every delivery path: inert, never rewrapped — a
@@ -262,22 +262,33 @@ pub fn taint_handles(v: &Value) -> Value {
 /// the same allocation it arrived as, so a row keyed by reference keeps
 /// its key.
 pub fn strip_authority(v: &Value) -> Value {
-    strip(v).unwrap_or_else(|| v.clone())
+    deliver(v, Tier::App)
+}
+
+/// A payload delivered into a frame whose authority is `receiving` (Lal
+/// F4 + F5) — the one function every delivery path calls: query rows
+/// (named and inline), query errors, completion results. Authority is
+/// stripped ([`strip_authority`]) and, when the RECEIVING frame is below
+/// App, every live handle becomes its tainted twin (4.6.5) — the frame on
+/// the stack, never the mount it sits under.
+pub fn deliver(v: &Value, receiving: Tier) -> Value {
+    scrub(v, receiving).unwrap_or_else(|| v.clone())
 }
 
 /// `None` = unchanged (keep the caller's allocation).
-fn strip(v: &Value) -> Option<Value> {
+fn scrub(v: &Value, tier: Tier) -> Option<Value> {
     match v {
         Value::Namespace(ns) => match ns.as_handle() {
+            Some(h) if tier < Tier::App && !h.is_tainted() => Some(Value::handle(h.tainted())),
             Some(_) => None,
             None => Some(Value::Undefined),
         },
         Value::Callable(_) => Some(Value::Undefined),
-        Value::List(items) => strip_items(items).map(|items| Value::List(Arc::new(items))),
+        Value::List(items) => scrub_items(items, tier).map(|items| Value::List(Arc::new(items))),
         Value::Obj(map) => {
             let mut out: Option<IndexMap<Arc<str>, Value>> = None;
             for (i, (k, v)) in map.iter().enumerate() {
-                match (strip(v), &mut out) {
+                match (scrub(v, tier), &mut out) {
                     (Some(new), Some(out)) => {
                         out.insert(k.clone(), new);
                     }
@@ -302,11 +313,11 @@ fn strip(v: &Value) -> Option<Value> {
     }
 }
 
-/// A list's items stripped — `None` when none needed it.
-fn strip_items(items: &[Value]) -> Option<Vec<Value>> {
+/// A list's items scrubbed — `None` when none needed it.
+fn scrub_items(items: &[Value], tier: Tier) -> Option<Vec<Value>> {
     let mut out: Option<Vec<Value>> = None;
     for (i, item) in items.iter().enumerate() {
-        match (strip(item), &mut out) {
+        match (scrub(item, tier), &mut out) {
             (Some(new), Some(out)) => out.push(new),
             (Some(new), None) => {
                 let mut fresh = items[..i].to_vec();
@@ -320,10 +331,10 @@ fn strip_items(items: &[Value]) -> Option<Vec<Value>> {
     out
 }
 
-/// Query rows stripped of authority (see [`strip_authority`]), keeping
-/// the shared `Arc` when no row needed it.
-pub(crate) fn strip_rows(rows: &Arc<Vec<Value>>) -> Arc<Vec<Value>> {
-    match strip_items(rows) {
+/// Query rows delivered into a frame at `receiving` (see [`deliver`]),
+/// keeping the shared `Arc` when no row needed it.
+pub(crate) fn deliver_rows(rows: &Arc<Vec<Value>>, receiving: Tier) -> Arc<Vec<Value>> {
+    match scrub_items(rows, receiving) {
         Some(items) => Arc::new(items),
         None => rows.clone(),
     }
@@ -554,8 +565,10 @@ fn eval_prop(json: &Json, scope: &Scope, cx: &mut ResolveCx, site: &SiteId) -> V
             let view = cx
                 .hub
                 .claim(site.clone(), compiled, cx.auth().space.clone().as_ref());
-            // Delivered into this frame: no foreign authority rides in (F4).
-            return Value::List(strip_rows(&view.rows));
+            // Delivered into THIS frame (F4, F5): no foreign authority, and
+            // handles judged by the receiving frame's tier.
+            let tier = cx.auth().tier;
+            return Value::List(deliver_rows(&view.rows, tier));
         }
     }
     eval_json(json, scope, cx.bag.clone(), cx.cache, cx.warnings)
@@ -1533,19 +1546,15 @@ fn declare_locals(
                 let mut view = cx
                     .hub
                     .claim(site, compiled, cx.auth().space.clone().as_ref());
-                // Delivered into this frame: no foreign authority rides in
-                // (F4) — namespaces and callables inside rows read Undefined.
-                view.rows = strip_rows(&view.rows);
-                view.error = view.error.map(|e| strip_authority(&e));
-                // Space-tier rows carry no usable handles: a handle that
-                // arrives inside a space frame's claim is held and
-                // comparable, never usable (4.6.5). The cell's shared
-                // rows keep their twin — an app-tier claim on the same
-                // key still gets them untainted.
-                if cx.mount.tier < Tier::App {
-                    view.rows = Arc::new(view.rows.iter().map(taint_handles).collect());
-                    view.error = view.error.map(|e| taint_handles(&e));
-                }
+                // Delivered into THIS frame (F4, F5): namespaces and
+                // callables inside rows read Undefined, and handles are
+                // tainted when the receiving frame — the stack top, never
+                // the mount under it — is below App. The cell's shared rows
+                // keep their twin, so an app-tier claim on the same key
+                // still gets them untainted.
+                let tier = cx.auth().tier;
+                view.rows = deliver_rows(&view.rows, tier);
+                view.error = view.error.map(|e| deliver(&e, tier));
                 slot.set(view);
                 if last_keys.get(&name) != Some(&key) {
                     last_keys.insert(name, key);
