@@ -735,7 +735,15 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
 
 /// Fire `tokens` with `event` (and `arg`, the same value) bound on top of
 /// the captured scope.
+///
+/// The event value is a payload delivered INTO the handler's frame from
+/// outside it (Lal N1), so it takes the same deep delivery as query rows
+/// and completion results ([`crate::resolve::deliver`]): no namespace or
+/// callable survives at any depth, and a handle is tainted when the frame
+/// is below App. Done here, before binding, so a `$invoke` that captures
+/// this scope into a pending call captures the delivered value too.
 pub fn run(tokens: &[HandlerToken], scope: &Scope, event: Value, cx: &mut HandlerCx) {
+    let event = crate::resolve::deliver(&event, cx.mount.tier);
     let mut call_scope = scope.clone();
     call_scope.bind("event", event.clone());
     call_scope.bind("arg", event.clone());

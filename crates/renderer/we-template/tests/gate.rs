@@ -1115,3 +1115,168 @@ fn a_part_local_write_settles_and_unmounted_parts_are_pruned() {
     let _ = rt.frame(&mut host, &screen);
     assert_eq!(rt.frame_local_count(), 0, "unmounted part locals pruned");
 }
+
+// ── Round 3 (Lal N1): the event ingress ─────────────────────────────
+
+/// A live App view carrying `token`: the gate is returned with it, so
+/// the view stays readable for as long as the caller holds the gate (the
+/// wrapper's back edge is weak — F8).
+fn live_app_token() -> (Arc<Gate>, Value) {
+    let gate = Arc::new(Gate::new(HandleTable::new()));
+    let token = gate
+        .serve(
+            "x",
+            we_template::RootDomain::Space,
+            Bound {
+                value: map(&[("token", Value::from("app-secret"))]),
+                members: Some(MemberTiers::from_rows(&[("token", Tier::App)])),
+                domain: None,
+            },
+            &app_auth(),
+            &Declared::default(),
+        )
+        .expect("served at App");
+    (gate, token)
+}
+
+/// An event value a native producer could hand a handler: a live App
+/// view, an accessor, a live handle, a raw namespace two containers
+/// deep, and plain data.
+fn event_payload(app: &Value) -> Value {
+    let handles = HandleTable::new();
+    obj(&[
+        ("app", app.clone()),
+        (
+            "acc",
+            Value::Callable(we_expr::CallableRef::accessor("acc", |_| {
+                Value::from("acc-secret")
+            })),
+        ),
+        (
+            "h",
+            Value::handle(handles.mint(HandleKind::Dataset, "ds-1")),
+        ),
+        (
+            "deep",
+            Value::List(Arc::new(vec![obj(&[(
+                "ns",
+                map(&[("token", Value::from("raw-secret"))]),
+            )])])),
+        ),
+        ("plain", Value::from("ok")),
+    ])
+}
+
+fn event_tree() -> SchemaNode {
+    let reads = |src: &str| {
+        json!([
+            { "type": "Text", "props": { "t": { "$": format!("local.{src}.app.token") } } },
+            { "type": "Text", "props": { "t": { "$": format!("local.{src}.acc") } } },
+            { "type": "Text", "props": { "t": { "$": format!("first(local.{src}.deep).ns.token") } } },
+            { "type": "Text", "props": { "t": { "$": format!("local.{src}.h") } } },
+            { "type": "Text", "props": { "t": { "$": format!("local.{src}.plain") } } }
+        ])
+    };
+    let mut children = vec![
+        json!({ "type": "Button", "props": {
+            "onClick": [{ "$setLocal": "direct", "value": { "$": "event" } }]
+        } }),
+        // The event is captured into the pending call's scope and read
+        // back when the call settles.
+        json!({ "type": "Button", "props": { "onClick": {
+            "$invoke": "storeX.slow",
+            "onSuccess": [{ "$setLocal": "later", "value": { "$": "arg" } }]
+        } } }),
+    ];
+    children.extend(reads("direct").as_array().unwrap().clone());
+    children.extend(reads("later").as_array().unwrap().clone());
+    serde_json::from_value(json!({
+        "type": "Column",
+        "$localState": {
+            "direct": { "type": "object", "initial": null },
+            "later": { "type": "object", "initial": null }
+        },
+        "children": children
+    }))
+    .unwrap()
+}
+
+/// Dispatches the payload into a mount at `cx` both ways and answers the
+/// ten reads (five direct, five through the pending call).
+fn dispatched(cx: MountCx, app: &Value) -> Vec<Value> {
+    let bag = Arc::new(StoreBag::new());
+    let mut rt = Runtime::from_spec(
+        RootSpec::Single {
+            node: Box::new(event_tree()),
+            cx,
+            declared: Declared::default(),
+        },
+        bag,
+        LocalState::new(),
+    );
+    let mut host = Parking::default();
+    let mut screen = ScreenState::desktop(ScreenSchema::default(), "/");
+    let root = rt.frame(&mut host, &screen).clone();
+    let id = |i: usize| match &root.children[i] {
+        ResolvedChild::Node(n) => n.id.clone(),
+        _ => panic!("button"),
+    };
+    let (direct, later) = (id(0), id(1));
+    rt.dispatch(
+        &mut host,
+        &mut screen,
+        &direct,
+        "onClick",
+        event_payload(app),
+    );
+    rt.dispatch(
+        &mut host,
+        &mut screen,
+        &later,
+        "onClick",
+        event_payload(app),
+    );
+    let done = host.0.pop().expect("parked");
+    rt.complete(&mut host, &mut screen, done.call_id(), Ok(Value::Null));
+    let root = rt.frame(&mut host, &screen).clone();
+    let mut ts = Vec::new();
+    texts(&root, &mut ts);
+    assert_eq!(ts.len(), 10, "{ts:?}");
+    ts
+}
+
+fn tainted(v: &Value) -> Option<bool> {
+    match v {
+        Value::Namespace(ns) => ns.as_handle().map(|h| h.is_tainted()),
+        _ => None,
+    }
+}
+
+/// N1 (Lal): an event value delivered into a frame is a payload like a
+/// query row or a completion result — no namespace or callable at any
+/// depth survives, and a handle is tainted below App — whether the
+/// handler reads it at once or captures it into a pending call.
+#[test]
+fn an_event_value_carries_no_foreign_authority_into_its_frame() {
+    let (_gate, app) = live_app_token();
+    assert!(
+        get(&app, "token").strict_eq(&Value::from("app-secret")),
+        "the App view is live before delivery"
+    );
+    let undefined = |v: &Value| v.strict_eq(&Value::Undefined);
+    for (cx, tier) in [(space_auth(), Tier::Space), (app_auth(), Tier::App)] {
+        let ts = dispatched(cx, &app);
+        for (path, at) in [("direct", 0), ("pending", 5)] {
+            assert!(
+                ts[at..at + 3].iter().all(undefined),
+                "{path} event at {tier:?} carried a foreign authority: {ts:?}"
+            );
+            assert_eq!(
+                tainted(&ts[at + 3]),
+                Some(tier < Tier::App),
+                "{path} event handle at {tier:?}: {ts:?}"
+            );
+            assert!(ts[at + 4].strict_eq(&Value::from("ok")), "{ts:?}");
+        }
+    }
+}
