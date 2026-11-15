@@ -654,6 +654,33 @@ fn a_panicking_waker_does_not_poison_later_writes() {
     );
 }
 
+/// Lal P2-2: an arrival that landed before the frontend installed its
+/// hook already spent the batch's one wake on the default no-op.
+/// Installing the hook on a non-empty queue must wake again, or an
+/// event-driven frontend sleeps while work sits queued.
+#[test]
+fn set_waker_after_an_arrival_still_wakes() {
+    let (mut s, completers) = pending(invoke_node());
+    let root = s.resolve();
+    s.dispatch(&root.id, "onTap", Value::Null);
+    completer(&completers, 0).complete(Ok(Value::from("v")));
+    // …the empty→non-empty wake went to the default no-op hook.
+    let (waker, wakes) = counting_waker();
+    s.set_waker(waker);
+    assert_eq!(
+        count(&wakes),
+        1,
+        "installing the hook schedules the queued batch"
+    );
+    let tick = s.poll();
+    assert_eq!(
+        tick.completions, 1,
+        "the next poll applies what was queued"
+    );
+    s.resolve();
+    assert_eq!(local(&s, &root.id, "log"), "v");
+}
+
 /// The per-frame budget: nine dependent queries need nine fill rounds,
 /// the frame runs out at eight — it reports `leftover` (dirty) and wakes
 /// rather than spinning or stalling; the next frame finishes and a third

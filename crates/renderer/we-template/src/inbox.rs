@@ -66,9 +66,23 @@ impl Inbox {
     }
 
     /// Install the frontend's wake hook — `Session::set_waker` forwards.
-    /// Replaces whatever was there; already queued arrivals stay queued.
+    /// Replaces whatever was there; already queued arrivals stay queued
+    /// — and still get heard. The install comes first, so a first push
+    /// racing it either lands before the queue check below (seen →
+    /// woken here) or after (its own empty→non-empty wake reads the new
+    /// hook). A batch that woke the OLD hook before this call — the
+    /// no-op default, or a hook nobody services anymore — gets one wake
+    /// now; the odd redundant wake beats stranding a queued batch.
     pub fn set_waker(&self, waker: Waker) {
         *self.waker.write().unwrap_or_else(|e| e.into_inner()) = waker;
+        let pending = !self
+            .queue
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .is_empty();
+        if pending {
+            self.wake();
+        }
     }
 
     /// An arrival: appended, and — when the queue went from empty to
@@ -125,6 +139,32 @@ mod tests {
         assert_eq!(drained.len(), 2);
         assert_eq!(inbox.drain().len(), 1);
         assert!(inbox.drain().is_empty());
+    }
+
+    /// Lal P2-2: installing the hook on a queue that already holds
+    /// arrivals must schedule a wake — the batch's empty→non-empty wake
+    /// went to the old (default no-op) hook, and every later push sees a
+    /// non-empty queue and stays quiet. Without this the new frontend
+    /// sleeps while work sits waiting.
+    #[test]
+    fn set_waker_wakes_when_arrivals_are_queued() {
+        let inbox = Inbox::new();
+        inbox.push(Arrival::Bindings); // the no-op hook was woken — nobody heard
+        let wakes = Arc::new(AtomicUsize::new(0));
+        let w = wakes.clone();
+        inbox.set_waker(Arc::new(move || {
+            w.fetch_add(1, Ordering::SeqCst);
+        }));
+        assert_eq!(
+            wakes.load(Ordering::SeqCst),
+            1,
+            "installing on a pending batch wakes"
+        );
+        assert_eq!(
+            inbox.drain().len(),
+            1,
+            "the queued arrival still waits for the drain"
+        );
     }
 
     /// A completed call wakes — the `Completer` path into the inbox.
