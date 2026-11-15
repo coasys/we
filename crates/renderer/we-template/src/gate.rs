@@ -17,7 +17,7 @@
 //!   template authors (`meta.role`, a handle in data, a caller's scope)
 //!   mints authority it was not given.
 use std::collections::{BTreeMap, BTreeSet, HashMap};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex, MutexGuard, Weak};
 
 use we_expr::{MapNamespace, MountCx, Namespace, Tier, Value};
 
@@ -129,6 +129,14 @@ pub struct Gate {
     served: Mutex<HashMap<ServeKey, Value>>,
 }
 
+/// The most served wrappers a gate caches (F8). A session reads a few
+/// dozen roots per mount; the cap only matters to a pathological source
+/// that answers a fresh allocation per read.
+pub const SERVED_CAP: usize = 1024;
+
+/// The most distinct refusals a gate logs (F8).
+pub const DENIALS_CAP: usize = 4096;
+
 /// What a served wrapper is keyed by — the root name, the asking mount,
 /// and the inner namespace's identity.
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -160,15 +168,27 @@ impl Gate {
     /// Record the refusal once per (mount, what) — the diagnostic a probe
     /// cannot turn into a value channel.
     fn deny(&self, auth: &MountCx, what: String) -> Verdict {
-        self.denials().insert(Denial {
-            mount: auth.mount.as_str().into(),
-            what: what.into(),
-        });
+        let mut denials = self.denials();
+        // Bounded (Lal F8): a probe minting names (or `$each` part sites
+        // minting mounts) cannot grow the log without limit; past the cap
+        // a refusal still refuses, it is just not logged again.
+        if denials.len() < DENIALS_CAP {
+            denials.insert(Denial {
+                mount: auth.mount.as_str().into(),
+                what: what.into(),
+            });
+        }
         Verdict::Deny
     }
 
     fn allow(&self) -> Verdict {
         Verdict::Allow(Permit(()))
+    }
+
+    /// How many served wrappers the gate holds — tests and the
+    /// diagnostics surface read this (Lal F8: it must not grow per read).
+    pub fn served_len(&self) -> usize {
+        self.served.lock().unwrap_or_else(|p| p.into_inner()).len()
     }
 
     /// How many distinct refusals were logged — tests and the diagnostics
@@ -247,6 +267,18 @@ impl Gate {
                     policy: tiers.id(),
                 };
                 let mut served = self.served.lock().unwrap_or_else(|p| p.into_inner());
+                if served.len() >= SERVED_CAP && !served.contains_key(&key) {
+                    // Bounded (Lal F8): first drop the wrappers nobody but
+                    // the cache still holds; if every one is live, start
+                    // over — a fresh wrapper costs identity, never safety.
+                    served.retain(|_, v| match v {
+                        Value::Namespace(ns) => Arc::strong_count(ns) > 1,
+                        _ => false,
+                    });
+                    if served.len() >= SERVED_CAP {
+                        served.clear();
+                    }
+                }
                 Some(
                     served
                         .entry(key)
@@ -256,7 +288,7 @@ impl Gate {
                                 tiers,
                                 auth: auth.clone(),
                                 declared: declared.clone(),
-                                gate: self.clone(),
+                                gate: Arc::downgrade(self),
                                 memo: Mutex::new(HashMap::new()),
                             })
                         })
@@ -453,7 +485,10 @@ pub struct FilteredNs {
     tiers: MemberTiers,
     auth: MountCx,
     declared: Declared,
-    gate: Arc<Gate>,
+    /// `Weak` (Lal F8): the gate's cache holds this wrapper, so a strong
+    /// back edge was a cycle that outlived the runtime. A wrapper whose
+    /// gate is gone answers nothing — fail closed.
+    gate: Weak<Gate>,
     /// Wrapped children by member name, with the inner child each wraps —
     /// `screen.nav` answers one identity per read while its inner child
     /// holds, and a fresh one when it is replaced (F7).
@@ -489,10 +524,10 @@ fn same_alloc(a: &Value, b: &Value) -> bool {
 
 impl Namespace for FilteredNs {
     fn get(&self, key: &str) -> Value {
-        match self
-            .gate
-            .member(&self.auth, key, self.tiers.rule(key), &self.declared)
-        {
+        let Some(gate) = self.gate.upgrade() else {
+            return Value::Undefined;
+        };
+        match gate.member(&self.auth, key, self.tiers.rule(key), &self.declared) {
             MemberVerdict::Deny => Value::Undefined,
             MemberVerdict::Plain => self.inner.get(key),
             MemberVerdict::Container(tiers) => {
@@ -507,7 +542,7 @@ impl Namespace for FilteredNs {
                         tiers,
                         auth: self.auth.clone(),
                         declared: self.declared.clone(),
-                        gate: self.gate.clone(),
+                        gate: Arc::downgrade(&gate),
                         memo: Mutex::new(HashMap::new()),
                     })
                 })

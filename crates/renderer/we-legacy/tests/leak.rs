@@ -52,3 +52,64 @@ fn a_dropped_mount_frees_its_bag() {
         "the installed faces must not keep the bag alive"
     );
 }
+
+fn reading_tree() -> SchemaNode {
+    serde_json::from_value(serde_json::json!({ "type": "Column", "children": [
+        { "type": "Text", "props": { "t": { "$": "screen.params.x" } } },
+        { "type": "Text", "props": { "t": { "$": "routeStore.params.x" } } },
+        { "type": "Text", "props": { "t": { "$": "legacy.routeStore.params.x" } } }
+    ] }))
+    .unwrap()
+}
+
+/// F8 (Lal): the gate's cached wrappers must not keep the gate alive —
+/// once a filtered root has been read, dropping the Runtime frees the
+/// Gate (and everything its cache holds).
+#[test]
+fn dropping_the_runtime_frees_the_gate_after_a_filtered_read() {
+    let bag = Arc::new(StoreBag::new());
+    let mut rt = Runtime::new(reading_tree(), "test", bag.clone(), LocalState::new());
+    let legacy = LegacyBindings::install(rt.layer(), rt.view());
+    rt.set_bindings(Arc::new(legacy));
+    let mut host = we_template::StaticHost::new(bag.clone());
+    let screen = ScreenState::desktop(ScreenSchema::default(), "/?x=1");
+    let _ = rt.frame(&mut host, &screen);
+    assert!(
+        rt.gate().served_len() > 0,
+        "the reads went through the gate"
+    );
+    let gate = Arc::downgrade(rt.gate());
+    drop(rt);
+    drop(host);
+    assert!(
+        gate.upgrade().is_none(),
+        "the gate survived its runtime (a wrapper <-> gate cycle)"
+    );
+}
+
+/// F8 (Lal): unchanged reads through the real `LegacyBindings` reuse one
+/// wrapper per root — the cache does not grow per read.
+#[test]
+fn unchanged_reads_do_not_grow_the_served_cache() {
+    let bag = Arc::new(StoreBag::new());
+    let mut rt = Runtime::new(reading_tree(), "test", bag.clone(), LocalState::new());
+    let legacy = LegacyBindings::install(rt.layer(), rt.view());
+    rt.set_bindings(Arc::new(legacy));
+    let mut host = we_template::StaticHost::new(bag.clone());
+    let mut screen = ScreenState::desktop(ScreenSchema::default(), "/?x=1");
+    let _ = rt.frame(&mut host, &screen);
+    let after_one = rt.gate().served_len();
+    for i in 0..5 {
+        // A screen change forces a re-resolve, re-reading every root.
+        rt.apply_screen(
+            &mut screen,
+            ScreenOp::SetParam {
+                name: "x".into(),
+                value: Some(format!("{i}")),
+                push: None,
+            },
+        );
+        let _ = rt.frame(&mut host, &screen);
+    }
+    assert_eq!(rt.gate().served_len(), after_one, "one wrapper per root");
+}

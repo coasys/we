@@ -225,6 +225,12 @@ pub struct LegacyBindings {
     faces: HashMap<&'static str, Arc<dyn Namespace>>,
     /// `compat_roots()` — the generated table's names.
     compat: Arc<[Arc<str>]>,
+    /// The `screen` root, one allocation for the adapter's life (Lal F8):
+    /// the gate keys its served wrapper by the inner allocation, so a
+    /// fresh namespace per request was a fresh cache entry per read.
+    screen_root: Value,
+    /// The `legacy` root, built once for the same reason.
+    legacy_root: Value,
 }
 
 /// The legacy screen-store names — the ones this adapter overlays with
@@ -431,9 +437,16 @@ impl LegacyBindings {
             ("themeStore", theme),
             ("spaceStore", space),
         ]);
+        let screen_root = Value::namespace(view.clone());
+        let legacy_root = Value::namespace(LegacyRootNs {
+            bag: bag.clone(),
+            faces: faces.clone(),
+        });
         Self {
             bag: bag.upgrade(),
             view: view.clone(),
+            screen_root,
+            legacy_root,
             faces,
             compat: LEGACY_MEMBER_TIERS
                 .iter()
@@ -471,17 +484,14 @@ impl we_template::BindingSource for LegacyBindings {
             // The live `screen` root — core classifies it `Screen` and
             // forces its own member table; this answers the value alone.
             "screen" => Some(Bound {
-                value: Value::namespace(self.view.clone()),
+                value: self.screen_root.clone(),
                 members: None,
                 domain: None,
             }),
             // Every old store name under `legacy.*` — the containers'
             // member tables come from the generated oracle.
             "legacy" => Some(Bound {
-                value: Value::namespace(LegacyRootNs {
-                    bag: self.bag.as_ref().map(Arc::downgrade).unwrap_or_default(),
-                    faces: self.faces.clone(),
-                }),
+                value: self.legacy_root.clone(),
                 members: Some(legacy_tiers()),
                 domain: None,
             }),
