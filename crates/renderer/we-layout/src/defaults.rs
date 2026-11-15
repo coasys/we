@@ -171,10 +171,76 @@ pub(crate) fn bag_for(node: &ResolvedNode) -> Bag {
     bag
 }
 
+/// The type role a component's words are set in — helpers.ts
+/// `COMPONENT_CASCADE[name].typeRole`. `we-text` takes its role from its
+/// variant: the heading sizes are headings, `label` and `overline` their own,
+/// and every other variant (and none) takes nothing, so text inside a button
+/// inherits the button's control type.
+fn role_of(node: &ResolvedNode) -> Option<&'static str> {
+    match node.ty.as_ref() {
+        "we-button" | "we-menu-item" | "we-tab" => Some("control"),
+        "we-badge" | "we-tag" => Some("badge"),
+        "we-input" | "we-textarea" | "we-select" | "we-number-input" | "we-date-picker" => {
+            Some("body")
+        }
+        "we-text" => match prop_str(node, "variant") {
+            Some(v) if v.starts_with("heading") => Some("heading"),
+            Some("label") => Some("label"),
+            Some("overline") => Some("overline"),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+/// The DS prop each type-role key lands on, and the key's variable suffix
+/// (`TYPE_ROLE_KEYS`).
+const ROLE_KEYS: &[(&str, &str)] = &[
+    ("fontFamily", "family"),
+    ("fontSize", "size"),
+    ("fontWeight", "weight"),
+    ("letterSpacing", "letter-spacing"),
+    ("lineHeight", "line-height"),
+    ("textTransform", "text-transform"),
+    ("color", "color"),
+];
+
+/// Whether the author set `key` — on the node, or in its `style`/`styles`
+/// bags. An authored value is the narrowest statement and the theme never
+/// reaches past it.
+fn authored(node: &ResolvedNode, key: &str) -> bool {
+    node.props.contains_key(key)
+        || ["style", "styles"]
+            .iter()
+            .any(|o| crate::props::prop_obj(node, o).is_some_and(|m| m.contains_key(key)))
+}
+
+/// Put the theme's type role ahead of the element's own defaults: the web
+/// writes `var(--we-type-<role>-<key>, <default>)` for every key the author
+/// did not set (`applyComponentTheme`, `staticThemeChain`). A variable the
+/// theme does not declare falls through to the default, which is what
+/// leaving the bag alone gives — so only the declared ones are written. The
+/// heading role takes no size (`roleTakes`): headings are a scale.
+fn type_role(bag: &mut Bag, node: &ResolvedNode, tokens: &we_style::TokenTable) {
+    let Some(role) = role_of(node) else {
+        return;
+    };
+    for (prop, key) in ROLE_KEYS {
+        if role == "heading" && *key == "size" {
+            continue;
+        }
+        let var = format!("--we-type-{role}-{key}");
+        if tokens.contains(&var) && !authored(node, prop) {
+            bag.insert(Arc::from(*prop), v(&format!("var({var})")));
+        }
+    }
+}
+
 /// The node's [`we_style::Style`] under `scx`'s theme — the single entry
 /// point layout, measure and paint share.
 pub fn style_of(node: &ResolvedNode, scx: &StyleCx) -> Style {
-    let bag = bag_for(node);
+    let mut bag = bag_for(node);
+    type_role(&mut bag, node, scx.tokens);
     let mut input = StyleInput::new(scx.tokens, direction_of(node));
     input.container_width = scx.container_width;
     input.viewport = scx.viewport;
