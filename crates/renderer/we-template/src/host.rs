@@ -5,8 +5,8 @@
 //! receives a typed [`ActionRequest`] — in E3c-1 only the legacy `$invoke`
 //! ([`Action::Invoke`]) — and answers [`Invoked::Done`] or
 //! [`Invoked::Pending`]. A pending call settles through its [`Completer`],
-//! from any thread, into the session's completion queue; the runtime drains
-//! that queue and runs the call's lifecycle (`onSuccess`/`onError`/
+//! from any thread, into the session's [`crate::Inbox`]; the runtime drains
+//! that inbox and runs the call's lifecycle (`onSuccess`/`onError`/
 //! `onFinally`, `invoke.ts`).
 //!
 //! Core mints the [`CallId`]s. A completion for an unknown or already
@@ -15,12 +15,12 @@
 //! same id has mounted again — runs nothing and is counted
 //! ([`crate::Stats::completions_dropped`]).
 use std::any::Any;
-use std::collections::VecDeque;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use we_expr::Value;
 
 use crate::handler::CallId;
+use crate::inbox::{Arrival, Inbox};
 use crate::resolved::NodeId;
 
 /// The mount a node was resolved under — the `id` prefix of its tree
@@ -89,75 +89,53 @@ pub trait Host: Any {
     fn act(&mut self, request: ActionRequest, done: Completer) -> Invoked;
 }
 
-/// The minimal completion queue (E3c-1): [`Completer::complete`] pushes,
-/// the runtime drains at the start of a session resolve. E3c-2 turns it
-/// into the inbox without changing [`Completer`].
-#[derive(Default)]
-pub(crate) struct CompletionQueue(Mutex<VecDeque<(CallId, Result<Value, Value>)>>);
-
-impl CompletionQueue {
-    fn push(&self, call: CallId, result: Result<Value, Value>) {
-        self.0
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .push_back((call, result));
-    }
-
-    /// Everything that arrived, in arrival order; later pushes wait for the
-    /// next drain.
-    pub(crate) fn drain(&self) -> VecDeque<(CallId, Result<Value, Value>)> {
-        std::mem::take(&mut *self.0.lock().unwrap_or_else(|e| e.into_inner()))
-    }
-}
-
 /// Core's side of the call ids: mints a [`CallId`] and its [`Completer`]
-/// per action, and owns the queue completions land in.
+/// per action. Completers hold the session's [`Inbox`] — what they push
+/// lands for the next drain, from whatever thread `complete` ran on.
 pub struct CallBook {
     /// The next id to hand out; `None` once `u64::MAX` has been minted.
     next: Option<u64>,
-    queue: Arc<CompletionQueue>,
-}
-
-impl Default for CallBook {
-    fn default() -> Self {
-        Self {
-            next: Some(0),
-            queue: Arc::default(),
-        }
-    }
+    inbox: Arc<Inbox>,
 }
 
 impl CallBook {
+    pub(crate) fn new(inbox: Arc<Inbox>) -> Self {
+        Self {
+            next: Some(0),
+            inbox,
+        }
+    }
+
     /// The next call's completer — ids count up from 0 and are unique for
     /// the book's life: after `u64::MAX` the book is exhausted and answers
     /// `None` rather than wrapping onto an id an outstanding call may hold.
     pub(crate) fn mint(&mut self) -> Option<Completer> {
         let call = self.next?;
         self.next = call.checked_add(1);
-        Some(Completer::new(CallId(call), self.queue.clone()))
-    }
-
-    pub(crate) fn drain(&self) -> VecDeque<(CallId, Result<Value, Value>)> {
-        self.queue.drain()
+        Some(Completer::new(CallId(call), self.inbox.clone()))
     }
 }
 
-/// One per action: settles it. Completing a call twice (through a clone),
-/// or completing one the host already answered `Done`, is ignored by the
-/// runtime and counted.
+/// One per action: settles it — pushes the completion into the session
+/// inbox, which wakes the frontend. `Send + Sync` because that is all it
+/// does. Completing a call twice (through a clone), or completing one the
+/// host already answered `Done`, is ignored by the runtime and counted.
 #[derive(Clone)]
 pub struct Completer {
     call: CallId,
-    queue: Arc<CompletionQueue>,
+    inbox: Arc<Inbox>,
 }
 
 impl Completer {
-    pub(crate) fn new(call: CallId, queue: Arc<CompletionQueue>) -> Self {
-        Self { call, queue }
+    pub(crate) fn new(call: CallId, inbox: Arc<Inbox>) -> Self {
+        Self { call, inbox }
     }
 
     pub fn complete(self, result: Result<Value, Value>) {
-        self.queue.push(self.call, result);
+        self.inbox.push(Arrival::Completion {
+            call: self.call,
+            result,
+        });
     }
 
     pub fn call_id(&self) -> CallId {
@@ -185,7 +163,7 @@ mod tests {
     fn call_ids_never_repeat_at_exhaustion() {
         let mut book = CallBook {
             next: Some(u64::MAX - 1),
-            ..CallBook::default()
+            inbox: Arc::new(Inbox::new()),
         };
         let ids: Vec<Option<CallId>> = (0..4).map(|_| book.mint().map(|c| c.call_id())).collect();
         assert_eq!(

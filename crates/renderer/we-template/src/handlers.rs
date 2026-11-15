@@ -56,7 +56,7 @@ pub struct HandlerCx<'a> {
     pub cache: &'a mut ParseCache,
     pub screen: &'a mut ScreenState,
     pub pending: &'a mut PendingMap,
-    /// Call ids and the completion queue a [`crate::Completer`] pushes to.
+    /// Call ids — a [`crate::Completer`] pushes into the session's inbox.
     pub calls: &'a mut CallBook,
     /// The node the handler lives on — a pending call's owner.
     pub node: &'a NodeId,
