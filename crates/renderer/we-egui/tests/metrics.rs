@@ -385,16 +385,7 @@ fn painted_text_sizes(root: &ResolvedNode, themed: &std::cell::Cell<bool>) -> Ve
         );
         let mut events = Vec::new();
         let mut edit = EditState::default();
-        paint(
-            ui,
-            &registry,
-            &scx,
-            &root,
-            &lay,
-            &mut events,
-            &mut edit,
-            0.0,
-        );
+        paint(ui, &registry, &scx, root, &lay, &mut events, &mut edit, 0.0);
         out.borrow_mut().clear();
         ctx.graphics_mut(|g| {
             for cs in g.drain(&[], &Default::default()) {
