@@ -300,7 +300,8 @@ impl Runtime {
         // CLOSED (Lal F3): it serves `screen` and the names core
         // classifies, and refuses every unclassified bag root until a
         // session installs a classified source (`we-legacy`'s
-        // `LegacyBindings`) or a test opts into `trust_unclassified_bag`.
+        // `LegacyBindings`) or the embedder explicitly opts into
+        // `trust_unclassified_bag` (public; tests and snapshot tools do).
         // Its subscribe is the `set_invalidator` above, same dedup target.
         let bindings: Arc<dyn BindingSource> =
             Arc::new(BagBindings::new(bag.clone(), layer.clone()));
@@ -379,9 +380,11 @@ impl Runtime {
     }
 
     /// Opt into [`BagBindings::trusted_unclassified`]: every bag root is
-    /// served to every tier as a plain `Space` root, unfiltered. For tests
-    /// and offline tools rendering a snapshot they built — never a host,
-    /// which installs a classified source ([`Self::set_bindings`]).
+    /// served to every tier as a plain `Space` root, unfiltered. A public,
+    /// explicit opt-in — the caller vouches for every root in the bag (a
+    /// bag it built, as tests and offline snapshot tools do). A host with
+    /// real session stores installs a classified source
+    /// ([`Self::set_bindings`]) instead.
     pub fn trust_unclassified_bag(mut self) -> Self {
         let trusted = BagBindings::trusted_unclassified(self.bag.clone(), self.layer.clone());
         self.set_bindings(Arc::new(trusted));

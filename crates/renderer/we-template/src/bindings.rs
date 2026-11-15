@@ -270,9 +270,11 @@ pub fn root_domain(name: &str, compat: &[Arc<str>]) -> Option<RootDomain> {
 ///
 /// [`BagBindings::trusted_unclassified`] is the old behaviour under a name
 /// that says what it is: every bag root served as a plain `Space`-domain
-/// root, unfiltered. Only tests and offline tools that render a snapshot
-/// they built themselves opt in ([`crate::Runtime::trust_unclassified_bag`]);
-/// a host never does.
+/// root, unfiltered. It is public API, not test-only — an explicit opt-in
+/// ([`crate::Runtime::trust_unclassified_bag`]) by which an embedder vouches
+/// that every root in its bag is fit for every tier, Space included. Today
+/// only tests and offline tools rendering a snapshot they built use it; a
+/// host serving real session data installs a classified source instead.
 pub struct BagBindings {
     bag: Arc<crate::StoreBag>,
     layer: Arc<crate::scope::RootLayer>,
@@ -291,8 +293,10 @@ impl BagBindings {
     }
 
     /// Wrap `bag` + `layer` and label every unclassified bag root `Space`,
-    /// unfiltered — the explicit, trusted mode for tests and tools that
-    /// built the bag themselves. Never a host's source.
+    /// unfiltered — the explicit, trusted mode. Public: the caller vouches
+    /// that every root in `bag` may be read by every tier (a bag it built
+    /// itself — a test fixture, an offline snapshot). A source over a
+    /// session's real stores must classify them instead.
     pub fn trusted_unclassified(
         bag: Arc<crate::StoreBag>,
         layer: Arc<crate::scope::RootLayer>,
