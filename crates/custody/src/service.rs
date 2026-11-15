@@ -1680,16 +1680,16 @@ async fn show_code_on<R: ExecutorRpc>(
     // The main window's state is read beside the steps, never in their way: a slow read holds
     // neither a cancel nor the claim's deadline. A read still under way when the step's own
     // answer went out stays in `reads`, which the service goes on polling beside what comes next.
-    follow_code(executor, &mut events, expires, reads, rx, reply).await;
+    follow_code(executor, &mut events, code, expires, reads, rx, reply).await;
 }
 
 /// [`show_code_on`] once the code is shown: the window's steps until the link ends or the window
-/// cancels. Any cancel ends the claim this computer made, the one whose `link-ticket` is already
-/// in included; with none seen, the cancel answers that the code may still link
-/// ([`cancel_claim`]).
+/// cancels. Any cancel ends the code `device` (its ticket read and every claim from it) and the
+/// claim seen here ([`cancel_claim`]).
 async fn follow_code<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
     events: &mut broadcast::Receiver<Value>,
+    device: &str,
     expires: u64,
     reads: &mut StateReads<'_>,
     rx: &mut Rx,
@@ -1707,6 +1707,7 @@ async fn follow_code<R: ExecutorRpc>(
                 };
                 return cancel_claim(
                     executor,
+                    device,
                     claim.as_ref().or(ready.as_ref()),
                     Cancelled {
                         cancel,
@@ -1735,6 +1736,7 @@ async fn follow_code<R: ExecutorRpc>(
                         let claim = ticket_ready(events).map(Claim::from_ticket);
                         return cancel_claim(
                             executor,
+                            device,
                             claim.as_ref(),
                             Cancelled {
                                 cancel,
@@ -1774,7 +1776,16 @@ async fn follow_code<R: ExecutorRpc>(
                 let claim = claim.as_mut().expect("checked above");
                 match follow_claim(executor, claim, reads, rx, reply).await {
                     Err(cancel) => {
-                        return cancel_claim(executor, Some(claim), cancel, reads, rx, reply).await
+                        return cancel_claim(
+                            executor,
+                            device,
+                            Some(claim),
+                            cancel,
+                            reads,
+                            rx,
+                            reply,
+                        )
+                        .await
                     }
                     // The other device confirmed; the person has yet to accept here.
                     Ok(screen @ Screen::DeviceMatch { .. }) => answer(reply, Ok(screen)),
@@ -1787,6 +1798,7 @@ async fn follow_code<R: ExecutorRpc>(
                     Err(cancel) => {
                         return cancel_claim(
                             executor,
+                            device,
                             Some(claim),
                             Cancelled {
                                 cancel,
@@ -1803,7 +1815,16 @@ async fn follow_code<R: ExecutorRpc>(
                 }
                 let screen = match follow_claim(executor, claim, reads, rx, reply).await {
                     Err(cancel) => {
-                        return cancel_claim(executor, Some(claim), cancel, reads, rx, reply).await
+                        return cancel_claim(
+                            executor,
+                            device,
+                            Some(claim),
+                            cancel,
+                            reads,
+                            rx,
+                            reply,
+                        )
+                        .await
                     }
                     Ok(screen) => screen,
                 };
@@ -2112,16 +2133,20 @@ fn claim_closed() -> Screen {
 }
 
 /// Ends this executor's claim of `offer_id` when the person cancels, so a confirm that lands later
-/// does not join this computer. `identity.cancelJoin` `{ offerId }` → `{ cancelled: true }` is new
+/// does not join this computer: the fallback of [`end_code`] when the code's own end did not
+/// cancel the claim seen here. `identity.cancelJoin` `{ offerId }` → `{ cancelled: true }` is new
 /// in coasys/ad4m#1635, called by name until the pinned client has it. `None` once the executor
 /// confirms the claim ended (or was cancelled already, 409 `cancelled`); else the screen to show
 /// instead of a cancel. A claim that already bound (409 `already-joined`) is not undone, so this
-/// computer did join. Any other answer, or none within [`CANCEL_WAIT`] (an executor without
-/// `cancelJoin` keeps the claim until the offer expires), leaves the claim standing: a confirm may
-/// still join this computer, and the screen says so. The whole decision, the join's lookup
-/// included, is cut off at [`CANCEL_WAIT`]: the custody thread answers nothing else meanwhile.
-async fn cancel_join<R: ExecutorRpc>(executor: &ViaExecutor<R>, offer_id: &str) -> Option<Screen> {
-    let deadline = tokio::time::Instant::now() + CANCEL_WAIT;
+/// computer did join. Any other answer, or none by `deadline` (an executor without `cancelJoin`
+/// keeps the claim until the offer expires), leaves the claim standing: a confirm may still join
+/// this computer, and the screen says so. The join's lookup is cut off at `deadline` too: the
+/// custody thread answers nothing else meanwhile.
+async fn cancel_join<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    offer_id: &str,
+    deadline: tokio::time::Instant,
+) -> Option<Screen> {
     let cancelled = tokio::time::timeout_at(
         deadline,
         executor
@@ -2147,15 +2172,87 @@ async fn cancel_join<R: ExecutorRpc>(executor: &ViaExecutor<R>, offer_id: &str) 
     }
 }
 
+/// Ends the shown code `device` when the person cancels, so neither a ticket read later nor a claim
+/// already made joins this computer. `identity.endPrepared` `{ device }` (new in coasys/ad4m#1635,
+/// called by name until the pinned client has it) stops the code's ticket read, waits for a ticket
+/// it is taking, and cancels every claim the read made: `{ state: "ended", cancelled: [offerId] }`,
+/// or `{ state: "already-joined", offerId, did }` when one had bound. `None` once the code ended
+/// (the window closes as any cancel), with `claim`, the one seen here, among the cancelled or then
+/// ended by [`cancel_join`]. An already joined claim shows the join ([`already_joined`]). An
+/// executor that refuses the call (one without it, or restarted since the code was made) leaves the
+/// claim seen here to [`cancel_join`]; with none seen, the code may still link: the cancel says it
+/// was not confirmed. All of it is cut off at [`CANCEL_WAIT`].
+async fn end_code<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    device: &str,
+    claim: Option<&Claim>,
+) -> Option<Screen> {
+    let deadline = tokio::time::Instant::now() + CANCEL_WAIT;
+    let ended = tokio::time::timeout_at(
+        deadline,
+        executor
+            .rpc()
+            .call("identity.endPrepared", json!({ "device": device })),
+    )
+    .await;
+    let answer = match ended {
+        Ok(Ok(answer)) => answer,
+        Ok(Err(e)) => {
+            log::warn!("custody: the code was not ended: {e}");
+            return match claim {
+                Some(claim) => cancel_join(executor, &claim.offer_id, deadline).await,
+                None => Some(cancel_unconfirmed()),
+            };
+        }
+        Err(_) => {
+            log::warn!("custody: the executor did not answer the end of the code");
+            return Some(cancel_unconfirmed());
+        }
+    };
+    match answer["state"].as_str() {
+        Some("ended") => {
+            let cancelled = |offer_id: &str| {
+                answer["cancelled"]
+                    .as_array()
+                    .is_some_and(|ids| ids.iter().any(|id| id.as_str() == Some(offer_id)))
+            };
+            match claim {
+                Some(claim) if !cancelled(&claim.offer_id) => {
+                    cancel_join(executor, &claim.offer_id, deadline).await
+                }
+                _ => None,
+            }
+        }
+        Some("already-joined") => {
+            let offer_id = answer["offerId"]
+                .as_str()
+                .or(claim.map(|c| c.offer_id.as_str()));
+            log::info!("custody: a claim of the code had already joined; not cancelled");
+            Some(match offer_id {
+                Some(offer_id) => already_joined(executor, offer_id, deadline).await,
+                None => Screen::Failed {
+                    message: ALREADY_JOINED.into(),
+                },
+            })
+        }
+        _ => {
+            log::warn!("custody: the end of the code answered {answer}");
+            match claim {
+                Some(claim) => cancel_join(executor, &claim.offer_id, deadline).await,
+                None => Some(cancel_unconfirmed()),
+            }
+        }
+    }
+}
+
 /// How long a cancel waits for the executor to end the claim before saying it could not.
 const CANCEL_WAIT: Duration = Duration::from_secs(10);
 
-/// Ends `claim` when the window cancels the step, before the cancel is answered, so the window
-/// closes only once the executor confirmed it ([`cancel_join`]). The cancel and a request still
-/// waiting on the claim are answered alike: `None`/`NoStep` once it ended, else the screen to show.
-/// With no claim seen here the cancel cannot be confirmed: a ticket the executor claimed may have
-/// its `link-ticket` on the way, and the executor reads for tickets until the code expires, which
-/// no call ends; the cancel answers [`cancel_unseen`]. A cancel that arrives while the executor is
+/// Ends the code `device` and `claim` when the window cancels the step, before the cancel is
+/// answered, so the window closes only once the executor confirmed it ([`end_code`]). The cancel
+/// and a request still waiting on the claim are answered alike: `None`/`NoStep` once it ended, else
+/// the screen to show. A claim whose `link-ticket` is still on the way is ended with the code, so
+/// a cancel with no claim seen here closes the window too. A cancel that arrives while the executor is
 /// asked, or is queued when the answer is known (with a claim or without), is the same cancel and
 /// gets the same answer: answered later by the idle service, its `None` would close a window that
 /// should show the join or the warning. The main window's state is read beside the cancel
@@ -2164,6 +2261,7 @@ const CANCEL_WAIT: Duration = Duration::from_secs(10);
 /// past [`CANCEL_WAIT`].
 async fn cancel_claim<R: ExecutorRpc>(
     executor: &ViaExecutor<R>,
+    device: &str,
     claim: Option<&Claim>,
     cancelled: Cancelled,
     reads: &mut StateReads<'_>,
@@ -2182,18 +2280,13 @@ async fn cancel_claim<R: ExecutorRpc>(
             let _ = r.send(Err(CustodyError::Busy));
         }
     };
-    let instead = match claim {
-        Some(claim) => {
-            let ending = cancel_join(executor, &claim.offer_id);
-            tokio::pin!(ending);
-            loop {
-                tokio::select! {
-                    instead = &mut ending => break instead,
-                    Some(request) = reads.recv(rx) => taken(request, reads),
-                }
-            }
+    let ending = end_code(executor, device, claim);
+    tokio::pin!(ending);
+    let instead = loop {
+        tokio::select! {
+            instead = &mut ending => break instead,
+            Some(request) = reads.recv(rx) => taken(request, reads),
         }
-        None => Some(cancel_unseen()),
     };
     // Requests queued by the time the cancel is decided are this cancel's too, with or without a
     // claim: a second cancel left to the idle service would close the window over the answer.
@@ -2392,19 +2485,6 @@ fn cancel_unconfirmed() -> Screen {
 const CANCEL_UNCONFIRMED: &str =
     "The cancel wasn't confirmed. This computer is still linked if your other device \
      confirms.";
-
-/// A cancel before any `link-ticket` was seen here: the executor may have claimed a ticket whose
-/// event is still on its way, and it reads for tickets until the code expires. No executor call
-/// ends either (`identity.cancelJoin` names a claim's offer), so the cancel cannot be confirmed.
-fn cancel_unseen() -> Screen {
-    Screen::Failed {
-        message: CANCEL_UNSEEN.into(),
-    }
-}
-
-const CANCEL_UNSEEN: &str =
-    "This computer stopped waiting, but the code can still be used until it expires. If your \
-     other device scanned it, don't confirm the link there.";
 
 /// The claim was cancelled on this computer (`identity.acceptJoin` 409 `cancelled`, or a
 /// `cancelled` `identity.joinStatus`).
@@ -3219,6 +3299,17 @@ mod tests {
                         "scid": event.scid, "seq": 0, "hash": "h", "time": 0,
                         "store": "did:key:zStore", "sig": "s",
                     }))
+                }
+                // Ends the code `identity.prepareDevice` gave, with no claim of it: a test that
+                // sees a claim cancelled by the end answers it.
+                "identity.endPrepared"
+                    if self
+                        .canned
+                        .borrow()
+                        .get("identity.prepareDevice")
+                        .is_some_and(|prepared| prepared["device"] == p["device"]) =>
+                {
+                    Ok(json!({ "state": "ended", "cancelled": [] }))
                 }
                 other => Err(RpcError {
                     code: 404,
@@ -4396,6 +4487,7 @@ mod tests {
                 Duration::from_secs(3),
                 cancel_claim(
                     &executor,
+                    "coasys:device:1:abc",
                     Some(&claim),
                     Cancelled::default(),
                     &mut reads,
@@ -4623,11 +4715,10 @@ mod tests {
         );
     }
 
-    /// A cancel with no ticket seen cannot say no claim exists: the executor may have claimed one
-    /// whose `link-ticket` is still on its way, and it keeps reading for tickets until the code
-    /// expires. The cancel answers that, rather than closing the window as if nothing could link.
+    /// A cancel with no ticket seen ends the code: the executor stops reading for tickets and cancels
+    /// a claim whose `link-ticket` is still on its way (`identity.endPrepared`), so the window closes.
     /// `during_wait`: sent while the window waits for the ticket, else before.
-    async fn a_cancel_with_no_ticket_seen_says_the_code_may_still_link(during_wait: bool) {
+    async fn a_cancel_with_no_ticket_seen_ends_the_code(during_wait: bool) {
         let executor = ViaExecutor::new(FakeExecutor::new());
         executor.rpc().answer(
             "identity.prepareDevice",
@@ -4658,22 +4749,25 @@ mod tests {
                 (cancelled, waited)
             }
         );
-        let unseen = |screen: Option<&Screen>| matches!(screen, Some(Screen::Failed { message }) if message == CANCEL_UNSEEN);
-        assert!(unseen(cancelled.as_ref()), "{cancelled:?}");
+        assert_eq!(cancelled, None);
         if let Some(waited) = waited {
-            assert!(unseen(waited.as_ref().ok()), "{waited:?}");
+            assert!(matches!(waited, Err(CustodyError::NoStep)), "{waited:?}");
         }
+        assert_eq!(
+            executor.rpc().called("identity.endPrepared"),
+            vec![json!({ "device": "coasys:device:1:abc" })]
+        );
         assert!(executor.rpc().called("identity.cancelJoin").is_empty());
     }
 
     #[tokio::test]
-    async fn a_cancel_before_the_wait_with_no_ticket_seen_says_the_code_may_still_link() {
-        a_cancel_with_no_ticket_seen_says_the_code_may_still_link(false).await;
+    async fn a_cancel_before_the_wait_with_no_ticket_seen_ends_the_code() {
+        a_cancel_with_no_ticket_seen_ends_the_code(false).await;
     }
 
     #[tokio::test]
-    async fn a_cancel_during_the_wait_with_no_ticket_seen_says_the_code_may_still_link() {
-        a_cancel_with_no_ticket_seen_says_the_code_may_still_link(true).await;
+    async fn a_cancel_during_the_wait_with_no_ticket_seen_ends_the_code() {
+        a_cancel_with_no_ticket_seen_ends_the_code(true).await;
     }
 
     /// The service around a show-code flow as [`serve`] runs it: the flow, then the idle service
@@ -4764,14 +4858,15 @@ mod tests {
                 (ended, started, cancelled, early, public)
             }
         );
-        let ended = ended.expect("the claim's end shows a screen");
-        let Screen::Failed { message } = &ended else {
-            panic!("{ended:?}");
-        };
         if by_cancel {
-            assert_eq!(message, CANCEL_UNSEEN);
+            // The code ended: the window closes.
+            assert_eq!(ended, None);
         } else {
-            assert!(message.contains("stopped responding"), "{message}");
+            let ended = ended.expect("the claim's end shows a screen");
+            assert!(
+                matches!(&ended, Screen::Failed { message } if message.contains("stopped responding")),
+                "{ended:?}"
+            );
         }
         assert!(
             matches!(&started, Ok(Screen::Failed { message }) if message == "started"),
@@ -4821,15 +4916,19 @@ mod tests {
         assert!(public.is_ok(), "{public:?}");
     }
 
-    /// Cancels queued together with no ticket seen are one cancel: each answers that the code may
-    /// still link, rather than the second closing the window from the idle service.
+    /// Cancels queued together are one cancel: the code is ended once, and each cancel answers what
+    /// that end said. Here the executor refuses it (one without `identity.endPrepared`), so each says
+    /// the cancel was not confirmed, rather than the second closing the window from the idle service.
     #[tokio::test]
-    async fn queued_cancels_with_no_ticket_seen_all_say_the_code_may_still_link() {
+    async fn queued_cancels_are_one_end_of_the_code_and_answer_alike() {
         let executor = ViaExecutor::new(FakeExecutor::new());
         executor.rpc().answer(
             "identity.prepareDevice",
             json!({ "device": "coasys:device:1:abc", "expires": CLOCK.now() + 300 }),
         );
+        executor
+            .rpc()
+            .refuse("identity.endPrepared", 404, "no identity.endPrepared");
         let (_events_tx, events) = broadcast::channel(8);
         let vault = memory_vault(crate::store::StoreKind::Keychain);
         let (address, mut rx, mut reply, window, first) = opened();
@@ -4847,9 +4946,10 @@ mod tests {
                 answered
             }
         );
-        let unseen = |screen: &Option<Screen>| matches!(screen, Some(Screen::Failed { message }) if message == CANCEL_UNSEEN);
-        assert!(unseen(&a), "{a:?}");
-        assert!(unseen(&b), "{b:?}");
+        let unconfirmed = |screen: &Option<Screen>| matches!(screen, Some(Screen::Failed { message }) if message == CANCEL_UNCONFIRMED);
+        assert!(unconfirmed(&a), "{a:?}");
+        assert!(unconfirmed(&b), "{b:?}");
+        assert_eq!(executor.rpc().called("identity.endPrepared").len(), 1);
         assert!(executor.rpc().called("identity.cancelJoin").is_empty());
     }
 
@@ -5146,6 +5246,7 @@ mod tests {
             window.tx.send(Request::Cancel(queued_tx)).unwrap();
             cancel_claim(
                 &executor,
+                "coasys:device:1:abc",
                 Some(&claim),
                 Cancelled {
                     cancel: Some(tx),
@@ -5305,7 +5406,7 @@ mod tests {
             .rpc()
             .delay("identity.joinStatus", Duration::from_secs(3600));
         let asked = tokio::time::Instant::now();
-        let screen = cancel_join(&executor, "o1").await;
+        let screen = cancel_join(&executor, "o1", tokio::time::Instant::now() + CANCEL_WAIT).await;
         assert!(
             matches!(&screen, Some(Screen::Failed { message }) if message == ALREADY_JOINED),
             "{screen:?}"
@@ -5328,7 +5429,7 @@ mod tests {
             409,
             "already-joined: the main agent speaks for this claim's identity",
         );
-        let screen = cancel_join(&executor, "o1").await;
+        let screen = cancel_join(&executor, "o1", tokio::time::Instant::now() + CANCEL_WAIT).await;
         assert!(
             matches!(&screen, Some(Screen::Failed { message }) if message == ALREADY_JOINED),
             "{screen:?}"
@@ -5339,7 +5440,11 @@ mod tests {
             409,
             "cancelled: the claim of this offer is cancelled",
         );
-        assert!(cancel_join(&executor, "o1").await.is_none());
+        assert!(
+            cancel_join(&executor, "o1", tokio::time::Instant::now() + CANCEL_WAIT)
+                .await
+                .is_none()
+        );
     }
 
     /// A cancel the executor refuses, or does not answer, leaves the claim standing: the step says
@@ -5351,7 +5456,7 @@ mod tests {
             .rpc()
             .refuse("identity.cancelJoin", 503, "the executor is busy");
         assert_eq!(
-            cancel_join(&executor, "o1").await,
+            cancel_join(&executor, "o1", tokio::time::Instant::now() + CANCEL_WAIT).await,
             Some(cancel_unconfirmed())
         );
 
@@ -5364,9 +5469,185 @@ mod tests {
             .rpc()
             .delay("identity.cancelJoin", CANCEL_WAIT + Duration::from_secs(1));
         assert_eq!(
-            cancel_join(&executor, "o1").await,
+            cancel_join(&executor, "o1", tokio::time::Instant::now() + CANCEL_WAIT).await,
             Some(cancel_unconfirmed())
         );
+    }
+
+    /// A cancel with a claim seen, whose end of the code cancelled that claim: the window closes, and
+    /// no `identity.cancelJoin` follows.
+    #[tokio::test]
+    async fn a_cancel_whose_end_of_the_code_cancelled_the_claim_closes_the_window() {
+        let (executor, events) = claiming_device(Some(true));
+        executor.rpc().answer(
+            "identity.endPrepared",
+            json!({ "state": "ended", "cancelled": ["o1"] }),
+        );
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), (matched, cancelled)) = tokio::join!(
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                let matched = window.step(StepInput::WaitLink).await;
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                (matched, cancelled.await.unwrap())
+            }
+        );
+        assert_eq!(matched, device_match(true, false, false));
+        assert_eq!(cancelled, None);
+        assert_eq!(
+            executor.rpc().called("identity.endPrepared"),
+            vec![json!({ "device": "coasys:device:1:abc" })]
+        );
+        assert!(executor.rpc().called("identity.cancelJoin").is_empty());
+    }
+
+    /// A cancel whose code had a claim bind already, its `link-ticket` not seen here: the executor
+    /// answers `already-joined`, and the step shows the join, as a late `identity.cancelJoin` does;
+    /// in words when the join's key is not known.
+    #[tokio::test]
+    async fn a_cancel_whose_code_already_joined_shows_the_join() {
+        for knows_key in [true, false] {
+            let executor = ViaExecutor::new(FakeExecutor::new());
+            executor.rpc().answer(
+                "identity.prepareDevice",
+                json!({ "device": "coasys:device:1:abc", "expires": CLOCK.now() + 300 }),
+            );
+            executor.rpc().answer(
+                "identity.endPrepared",
+                json!({ "state": "already-joined", "offerId": "o1", "did": "did:scid:x" }),
+            );
+            if knows_key {
+                executor.rpc().answer(
+                    "identity.joinStatus",
+                    json!({ "state": "spent", "did": "did:scid:x", "keyId": "d2", "seq": 1 }),
+                );
+            }
+            let (_events_tx, events) = broadcast::channel(8);
+            let vault = memory_vault(crate::store::StoreKind::Keychain);
+            let (address, mut rx, mut reply, window, first) = opened();
+            let ((), cancelled) = tokio::join!(
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+                async {
+                    first.await.unwrap().unwrap();
+                    let (tx, cancelled) = oneshot::channel();
+                    window.tx.send(Request::Cancel(tx)).unwrap();
+                    cancelled.await.unwrap()
+                }
+            );
+            if knows_key {
+                assert!(
+                    matches!(&cancelled, Some(Screen::Joined { did, key_id }) if did == "did:scid:x" && key_id == "d2"),
+                    "{cancelled:?}"
+                );
+            } else {
+                assert!(
+                    matches!(&cancelled, Some(Screen::Failed { message }) if message == ALREADY_JOINED),
+                    "{cancelled:?}"
+                );
+            }
+            assert_eq!(
+                executor.rpc().called("identity.joinStatus"),
+                vec![json!({ "offerId": "o1" })]
+            );
+            assert!(executor.rpc().called("identity.cancelJoin").is_empty());
+        }
+    }
+
+    /// An executor that refuses the end of the code (one without `identity.endPrepared`, or one
+    /// restarted since it made the code) still has the claim seen here cancelled by its offer.
+    #[tokio::test]
+    async fn a_refused_end_of_the_code_cancels_the_claim_seen_here() {
+        let (executor, events) = claiming_device(Some(true));
+        executor
+            .rpc()
+            .refuse("identity.endPrepared", 404, "no identity.endPrepared");
+        executor
+            .rpc()
+            .answer("identity.cancelJoin", json!({ "cancelled": true }));
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), cancelled) = tokio::join!(
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                window.step(StepInput::WaitLink).await;
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                cancelled.await.unwrap()
+            }
+        );
+        assert_eq!(cancelled, None);
+        assert_eq!(
+            executor.rpc().called("identity.cancelJoin"),
+            vec![json!({ "offerId": "o1" })]
+        );
+    }
+
+    /// An end of the code the executor does not answer within [`CANCEL_WAIT`] is not confirmed: the
+    /// step says so, and custody is free again inside the wait.
+    #[tokio::test]
+    async fn an_end_of_the_code_the_executor_does_not_answer_says_the_cancel_is_unconfirmed() {
+        tokio::time::pause();
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        executor.rpc().answer(
+            "identity.prepareDevice",
+            json!({ "device": "coasys:device:1:abc", "expires": CLOCK.now() + 300 }),
+        );
+        executor
+            .rpc()
+            .delay("identity.endPrepared", CANCEL_WAIT + Duration::from_secs(1));
+        let (_events_tx, events) = broadcast::channel(8);
+        let vault = memory_vault(crate::store::StoreKind::Keychain);
+        let (address, mut rx, mut reply, window, first) = opened();
+        let ((), (cancelled, took)) = tokio::join!(
+            show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+            async {
+                first.await.unwrap().unwrap();
+                let asked = tokio::time::Instant::now();
+                let (tx, cancelled) = oneshot::channel();
+                window.tx.send(Request::Cancel(tx)).unwrap();
+                (cancelled.await.unwrap(), asked.elapsed())
+            }
+        );
+        assert_eq!(cancelled, Some(cancel_unconfirmed()));
+        assert!(took < CANCEL_WAIT + Duration::from_millis(10), "{took:?}");
+    }
+
+    /// An end of the code that did not list the claim seen here (it was cancelled before, or the
+    /// answer is odd) leaves that claim to `identity.cancelJoin`; an answer this custody does not
+    /// read does too.
+    #[tokio::test]
+    async fn an_end_that_does_not_list_the_claim_seen_here_cancels_it_by_its_offer() {
+        for ended in [
+            json!({ "state": "ended", "cancelled": ["o2"] }),
+            json!({ "state": "something-else" }),
+        ] {
+            let (executor, events) = claiming_device(Some(true));
+            executor.rpc().answer("identity.endPrepared", ended);
+            executor
+                .rpc()
+                .answer("identity.cancelJoin", json!({ "cancelled": true }));
+            let vault = memory_vault(crate::store::StoreKind::Keychain);
+            let (address, mut rx, mut reply, window, first) = opened();
+            let ((), cancelled) = tokio::join!(
+                show_code_alone(&executor, events, &vault, &address, &mut rx, &mut reply),
+                async {
+                    first.await.unwrap().unwrap();
+                    window.step(StepInput::WaitLink).await;
+                    let (tx, cancelled) = oneshot::channel();
+                    window.tx.send(Request::Cancel(tx)).unwrap();
+                    cancelled.await.unwrap()
+                }
+            );
+            assert_eq!(cancelled, None);
+            assert_eq!(
+                executor.rpc().called("identity.cancelJoin"),
+                vec![json!({ "offerId": "o1" })]
+            );
+        }
     }
 
     /// A cancel the executor does not confirm, through the flow: answered with the screen that
