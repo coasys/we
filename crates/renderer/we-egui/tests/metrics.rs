@@ -342,3 +342,176 @@ fn non_default_lh_em_reaches_style_and_layout() {
         "lh_em=2.0 moves the layout gap to 30px, got {gap_moved}"
     );
 }
+
+// ── E3c-12b P3/S1: theme font at the former direct-constant callers ─────
+//
+// Two paint/measure paths used to read the baked font/root-px
+// constants and now read the folded `unit_metrics` view — an intended
+// correction toward the web, where both follow the theme font:
+//
+// - tooltip.ts:89 — `font-size: var(--we-font-size-200, 14px);` — the
+//   `content`-prop bubble rides the recorded font scale, not a fixed 14px.
+//   (The web reads the -200 step; the port's `font_px` tracks the -300
+//   step the theme records — what moves here is theme-following, which is
+//   what this test pins.)
+// - avatar.ts:233-235 — `// Handle custom size values (e.g., "20px",
+//   "2rem")` → `this.style.setProperty('--we-avatar-size', this.size);` —
+//   the browser resolves the authored `em`/`rem` against the live font,
+//   so `Avatar::size_px` folds `view.metrics`, not a constant.
+
+/// The `font_id.size` of every painted text run across ALL layers — the
+/// tooltip's bubble paints on the overlay layer, which page-layer reads
+/// miss. `(text, size)` pairs; the assertion picks its own run.
+fn painted_text_sizes(root: &ResolvedNode, themed: &std::cell::Cell<bool>) -> Vec<(String, f32)> {
+    let registry = Registry::with_builtins();
+    let empty = TokenTable::new(IndexMap::new());
+    // A theme recording `--we-font-size-300: 16px` — the scale's `1rem`
+    // step that `unit_metrics` folds over `font_px`/`root_px`.
+    let mut vars = IndexMap::new();
+    vars.insert(Arc::from("--we-font-size-300"), Arc::from("16px"));
+    let themed_tokens = TokenTable::new(vars);
+    let out = RefCell::new(Vec::new());
+    let mut harness = egui_kittest::Harness::new_ui(|ui| {
+        let ctx = ui.ctx().clone();
+        we_egui::install_media(&ctx);
+        let mut scx = StyleCx::empty();
+        scx.tokens = if themed.get() { &themed_tokens } else { &empty };
+        let lay = layout(
+            &MeasureCx::new(&ctx),
+            &scx,
+            &registry,
+            root,
+            egui::Rect::from_min_size(ui.cursor().min, egui::vec2(400.0, 600.0)),
+        );
+        let mut events = Vec::new();
+        let mut edit = EditState::default();
+        paint(ui, &registry, &scx, root, &lay, &mut events, &mut edit, 0.0);
+        out.borrow_mut().clear();
+        ctx.graphics_mut(|g| {
+            for cs in g.drain(&[], &Default::default()) {
+                if let egui::Shape::Text(t) = cs.shape {
+                    if let Some(s) = t.galley.job.sections.first() {
+                        out.borrow_mut()
+                            .push((t.galley.text().to_string(), s.format.font_id.size));
+                    }
+                }
+            }
+        });
+    });
+    harness.run_steps(2);
+    let seen = out.borrow().clone();
+    seen
+}
+
+/// A prop-only `we-tooltip` (`content` is the content slot's fallback —
+/// no `slot="content"` child) held open by its `open` prop.
+#[test]
+fn tooltip_fallback_text_follows_the_theme_font() {
+    let mut tip = node("we-tooltip", "t", &[("content", "just text")]);
+    tip.props
+        .insert(Arc::from("open"), we_expr::Value::Bool(true));
+    tip.children = vec![ResolvedChild::Node(Box::new(node(
+        "we-button",
+        "t/b",
+        &[("text", "hover me")],
+    )))];
+
+    let themed = std::cell::Cell::new(false);
+    let default_sizes = painted_text_sizes(&tip, &themed);
+    themed.set(true);
+    let themed_sizes = painted_text_sizes(&tip, &themed);
+
+    let find = |sizes: &[(String, f32)]| {
+        sizes
+            .iter()
+            .find(|(t, _)| t.contains("just text"))
+            .map(|(_, s)| *s)
+    };
+    // `unit_metrics.font_px`: 14 under the default metrics, 16 under a
+    // theme recording `--we-font-size-300: 16px` — the tooltip.ts:89
+    // `var(--we-font-size-200, 14px)` answer moves with the theme font.
+    assert_eq!(
+        find(&default_sizes),
+        Some(14.0),
+        "the fallback text paints at the default font_px: {default_sizes:?}"
+    );
+    assert_eq!(
+        find(&themed_sizes),
+        Some(16.0),
+        "the fallback text follows the themed font_px: {themed_sizes:?}"
+    );
+}
+
+/// `Avatar::size_px` is the read `AvatarStack::measure` lays out (the
+/// stack's style pins no width/height, so taffy asks for the measure) —
+/// its `em`/`rem` fold is observable as the stack's square rect.
+/// `size: "2em"` is `2·font_px`; `size: "2rem"` is `2·root_px`.
+#[test]
+fn avatar_relative_size_follows_the_theme_font() {
+    let mut root = node("Column", "r", &[("ay", "start")]);
+    root.children = vec![
+        ResolvedChild::Node(Box::new(node("AvatarStack", "em", &[("size", "2em")]))),
+        ResolvedChild::Node(Box::new(node("AvatarStack", "rem", &[("size", "2rem")]))),
+    ];
+
+    // Frame 1's table records `--we-font-size-300: 13px` — the cyberpunk
+    // fold — so `font_px`/`root_px` both move: `2em` 28 → 26 and `2rem`
+    // 32 → 26.
+    let registry = Registry::with_builtins();
+    let empty = TokenTable::new(IndexMap::new());
+    let mut vars = IndexMap::new();
+    vars.insert(Arc::from("--we-font-size-300"), Arc::from("13px"));
+    let themed_tokens = TokenTable::new(vars);
+    let frame = std::cell::Cell::new(0usize);
+    let out = RefCell::new(Vec::new());
+    let mut harness = egui_kittest::Harness::new_ui(|ui| {
+        let ctx = ui.ctx().clone();
+        we_egui::install_media(&ctx);
+        let mut scx = StyleCx::empty();
+        scx.tokens = if frame.get() == 0 {
+            &empty
+        } else {
+            &themed_tokens
+        };
+        frame.set(frame.get() + 1);
+        let lay = layout(
+            &MeasureCx::new(&ctx),
+            &scx,
+            &registry,
+            &root,
+            egui::Rect::from_min_size(ui.cursor().min, egui::vec2(400.0, 600.0)),
+        );
+        // Paint too: `size_px` also reads the paint-time view — the stash
+        // `store_view` leaves is what measure read through `view_of`.
+        let mut events = Vec::new();
+        let mut edit = EditState::default();
+        paint(
+            ui,
+            &registry,
+            &scx,
+            &root,
+            &lay,
+            &mut events,
+            &mut edit,
+            0.0,
+        );
+        out.borrow_mut().push((
+            lay.rects[&NodeId::from("em")].height(),
+            lay.rects[&NodeId::from("rem")].height(),
+        ));
+    });
+    harness.run_steps(2);
+    let seen = out.borrow();
+    let (em_default, rem_default) = seen[0];
+    let (em_themed, rem_themed) = seen[1];
+    // avatar.ts:233-235 hands the authored length to the browser's font
+    // metrics: `2em` under the default font_px (14) is 28, under the
+    // theme's 13px fold 26; `2rem` under root_px 16 is 32, under 13px 26.
+    assert_eq!(em_default, 28.0, "2em under default font_px: {em_default}");
+    assert_eq!(em_themed, 26.0, "2em under themed font_px: {em_themed}");
+    assert_eq!(
+        rem_default, 32.0,
+        "2rem under default root_px: {rem_default}"
+    );
+    assert_eq!(rem_themed, 26.0, "2rem under themed root_px: {rem_themed}");
+}

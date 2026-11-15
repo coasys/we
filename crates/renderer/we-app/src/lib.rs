@@ -26,6 +26,37 @@ use we_screen::ScreenState;
 use we_session::Session;
 use we_template::{MountCx, ResolvedNode, RootSpec, SchemaNode, StaticHost, StoreBag};
 
+/// Every input a cached [`Layout`] resolved against: the resolve count,
+/// the offered rect, and everything `style_of` reads — theme id (the
+/// `[data-we-theme]` selectors `theme_css` matches), the token table's
+/// contents (every `var(--we-*)`, including the `--we-font-size-300` the
+/// unit metrics fold over `scx.metrics`), the configured metrics and the
+/// viewport. A theme swap that moves none of the first three still
+/// repaints into stale rects without the rest.
+#[derive(PartialEq)]
+struct LayoutKey {
+    resolves: u64,
+    width: f32,
+    y: f32,
+    theme: Arc<str>,
+    tokens: u64,
+    metrics: we_metrics::UnitMetrics,
+    viewport: we_style::Size,
+}
+
+/// A content hash of the table — the gallery swaps the whole
+/// `Arc<TokenTable>` on a theme pick, but the contents are what
+/// `style_of` folds, so pointer identity would miss an in-place rewrite.
+fn token_hash(tokens: &we_style::TokenTable) -> u64 {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    for (k, v) in tokens.iter() {
+        k.hash(&mut h);
+        v.hash(&mut h);
+    }
+    h.finish()
+}
+
 /// The production host's one-time context setup, called from eframe's
 /// creation callback: a glyph no installed font has draws as a tofu box —
 /// a paint detail, never a crash in front of a user — and the media fonts
@@ -48,8 +79,8 @@ pub struct RendererApp {
     pub theme: we_style::Theme,
     edit: EditState,
     layout: Option<Layout>,
-    /// (resolve count, width, height) the cached layout was computed for.
-    layout_key: Option<(u64, f32, f32)>,
+    /// The inputs the cached layout was computed for — see [`LayoutKey`].
+    layout_key: Option<LayoutKey>,
     /// F12 — the resolve/paint counters overlay.
     pub debug: bool,
 }
@@ -119,8 +150,16 @@ impl RendererApp {
                     metrics: we_metrics::UnitMetrics::default(),
                     ..StyleCx::empty()
                 };
-                let key = (stats.resolves, width, rect.min.y);
-                if self.layout_key != Some(key) || self.layout.is_none() {
+                let key = LayoutKey {
+                    resolves: stats.resolves,
+                    width,
+                    y: rect.min.y,
+                    theme: self.theme.id.clone(),
+                    tokens: token_hash(&self.theme.tokens),
+                    metrics: scx.metrics,
+                    viewport: scx.viewport,
+                };
+                if self.layout_key.as_ref() != Some(&key) || self.layout.is_none() {
                     let mcx = MeasureCx::new(ui.ctx());
                     self.layout = Some(layout(&mcx, &scx, &self.registry, &resolved, rect));
                     self.layout_key = Some(key);
@@ -144,6 +183,12 @@ impl RendererApp {
         if self.debug {
             self.overlay(ui.ctx(), &stats, &resolved);
         }
+    }
+
+    /// The cached layout, if a frame has laid out — what the rects the
+    /// last paint used are. Tests read it; the paint path owns it.
+    pub fn layout(&self) -> Option<&Layout> {
+        self.layout.as_ref()
     }
 
     /// Run the events a paint produced — `onSelect`, `onOpenChange`, …
