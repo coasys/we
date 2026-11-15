@@ -20,6 +20,6 @@ wuff = "=0.2.9"
 
 [dev-dependencies]
 we-catalog.workspace = true
-egui = { workspace = true, features = ["default_fonts"] }
+egui = { workspace = true, features = ["default_fonts", "persistence"] }
 egui_kittest.workspace = true
 serde_json.workspace = true
