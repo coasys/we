@@ -181,15 +181,15 @@ impl OfflineData {
         }
     }
 
-    /// A `SnapshotQuerySource` over this bag — note cells from a pool after
-    /// each resolve so their keys learn the names they answer to.
+    /// A `SnapshotQuerySource` over this bag — name-keyed, so a claim whose
+    /// `name_hint` the table knows is answered at `open`.
     pub fn query_source(&self) -> SnapshotQuerySource {
         SnapshotQuerySource::new(self.bag.clone())
     }
 
     /// A `FakeExecutor` holding the snapshot's `queries` table. It answers
-    /// only requests it has learned — `note`/`note_pool` from pool cells, or
-    /// `teach` for a direct binding — and refuses the rest into
+    /// only requests it has learned — `note` on a compiled request's key,
+    /// or `teach` for a direct binding — and refuses the rest into
     /// `provenance.dropped`, beside writes, commits, flows and shape calls.
     /// The factory binds the executor to the space the snapshot names;
     /// a snapshot that names none yields an executor that refuses every
