@@ -92,10 +92,10 @@ fn space_template_resolve_perf() {
     );
     assert!(stats.nodes > 100);
 
-    // Steady-state: cells already hold rows, so a bumped pool revision buys
+    // Steady-state: cells already hold rows, so a bumped hub revision buys
     // exactly one resolve pass — the number an interactive frame pays.
     for _ in 0..5 {
-        rt.pool().bump();
+        rt.hub().bump();
         let t0 = std::time::Instant::now();
         rt.frame(&mut host, &screen);
         println!("STEADY resolve {:?}", t0.elapsed());

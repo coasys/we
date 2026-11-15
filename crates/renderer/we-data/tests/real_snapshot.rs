@@ -14,8 +14,8 @@ use serde_json::{json, Value as Json};
 use we_data::{OfflineData, StoreMap};
 use we_screen::{ScreenSchema, ScreenState};
 use we_template::{
-    AppSpec, Bundle, HandlerToken, LocalState, NoParts, QueryState, ResolvedChild, ResolvedNode,
-    Runtime, StaticHost,
+    AppSpec, Bundle, HandlerToken, LocalState, NoParts, ResolvedChild, ResolvedNode, Runtime,
+    StaticHost,
 };
 
 const BUNDLE: &str = include_str!(concat!(
@@ -242,10 +242,10 @@ fn check_route(truth: &Json, doc: &Json, id: &str) -> Result<(), String> {
         ));
     }
     let loading = runtime
-        .pool()
+        .hub()
         .cells()
         .iter()
-        .filter(|c| matches!(c.state(), QueryState::Loading))
+        .filter(|c| !c.view.loaded)
         .count();
     if loading > 0 {
         wrong.push(format!("{loading} mounted queries still Loading"));
