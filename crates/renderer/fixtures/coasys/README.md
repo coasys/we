@@ -10,10 +10,11 @@ cargo run -p we-app -- dump --snapshot fixtures/coasys/snapshot.json --route '/s
 
 ## Files
 
-| file            | what                                                                                                                                                                                                                                                                              |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `fixture.json`  | Deterministic in-memory space "Meridian Commons" (dataset `preview-coasys`): agents, channels+messages, calls+transcripts, board/canvas landmarks+placements, tasks, signals, relationships, DNA vocab, workflows, presence. Fixture epoch `createdAt: 2025-10-01T00:00:00.000Z`. |
-| `snapshot.json` | Recorded `{ meta, stores, queries, invokes, routes }`. `routes.<id>` is the primary shape. Regenerate with `crates/renderer/scripts/record-coasys.sh`.                                                                                                                            |
+| file            | what                                                                                                                                                                                                                                                                                                                                   |
+| --------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `fixture.json`  | Deterministic in-memory space "Meridian Commons" (dataset `preview-coasys`): agents, channels+messages, calls+transcripts, board/canvas landmarks+placements, tasks, signals, relationships, DNA vocab, workflows, presence. Fixture epoch `createdAt: 2025-10-01T00:00:00.000Z`.                                                      |
+| `snapshot.json` | Recorded `{ meta, stores, queries, invokes, routes }`. `routes.<id>` is the primary shape. Regenerate with `crates/renderer/scripts/record-coasys.sh`.                                                                                                                                                                                 |
+| `media/`        | The images the recorded routes paint, by their address (`media/coasys.org/films/film-poster-r13.webp` is `https://coasys.org/films/film-poster-r13.webp`), as downloaded on 2026-11-15. `coasys_render` serves them from here (`we-app/tests/support/media.rs`) so a pixel gate never compares against whatever the site serves today. |
 
 ## Snapshot shape
 
