@@ -412,7 +412,7 @@ dropped it.
 
 ## Round 4
 
-Lal's review of round 2 (2d52622b1), on top of round 3 (84a7fe6ab). There is one commit per finding, each
+Lal's review of round 2 (2d52622b1), on top of round 3 (ad91f7a34). There is one commit per finding, each
 with a test. The red output below is each test run without its fix.
 
 ### P2-2: a lane folded while held kept its drag (2cd562688)
@@ -542,7 +542,7 @@ Test: a `compile_fail` doctest on `Session` that assigns the field, beside one d
 
 ### Drag frames, re-measured
 
-These are the round-3 head (84a7fe6ab) and round-4 head bench binaries, run alternately, three runs each:
+These are the round-3 head (ad91f7a34) and round-4 head bench binaries, run alternately, three runs each:
 glow, 1280x800, 200 frames, CPU per frame, median (the range over the runs). `people` drags the tree lane.
 `about` has no lane, so the resize it does have is the rail's width transition (`rail` mode, the frames
 that animate).
