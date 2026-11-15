@@ -200,9 +200,13 @@ fn app_for(truth: &Json, id: &str, theme: &we_style::Theme) -> Result<RendererAp
     let types: std::collections::HashSet<&'static str> = registry.type_names().collect();
     let mut app = RendererApp::new(placeholder, "coasys", data.bag.clone(), screen, registry);
     let locals = LocalState::new();
-    app.session.runtime = Runtime::app(spec, data.bag.clone(), locals.clone())
-        .with_sources(Some(data.source()), Arc::new(NoParts))
-        .with_dollar_types(move |ty| types.contains(ty));
+    // `set_runtime`, not a field write: the bag's legacy faces must read
+    // this runtime's `screen` view, not the one the session built.
+    app.session.set_runtime(
+        Runtime::app(spec, data.bag.clone(), locals.clone())
+            .with_sources(Some(data.source()), Arc::new(NoParts))
+            .with_dollar_types(move |ty| types.contains(ty)),
+    );
     app.session.host = Box::new(StaticHost::new(data.bag.clone()));
     app.theme = theme.clone();
     // Keep the captures alive for the miss report: `data` drops here, the
@@ -261,6 +265,7 @@ fn missed_captures(truth: &Json, id: &str) -> Vec<String> {
     let locals = LocalState::new();
     let mut rt = Runtime::app(spec, data.bag.clone(), locals.clone())
         .with_sources(Some(data.source()), Arc::new(NoParts));
+    let _bindings = we_legacy::LegacyBindings::install(rt.layer(), rt.view());
     let mut host = StaticHost::new(data.bag.clone());
     let screen = ScreenState::desktop(
         ScreenSchema {

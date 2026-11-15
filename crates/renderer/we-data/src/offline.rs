@@ -9,7 +9,7 @@
 //! 2. Every store root is wrapped in a [`RecordingNs`] so a member read that
 //!    the snapshot answers lands in the provenance's snapshot set. Members
 //!    the screen owns (`routeStore.params`, `spaceStore.spacePath`, …) never
-//!    reach it — `bind_screen`'s overlay answers first, as it should.
+//!    reach it — `we-legacy`'s adapter face answers first, as it should.
 //! 3. `me` is aliased to `sessionStore.me` when the snapshot has no `me`
 //!    store of its own — WE's `$me` is `sessionStore.me()`, so `me.did`
 //!    records `sessionStore.me`.

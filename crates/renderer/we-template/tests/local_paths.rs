@@ -553,7 +553,7 @@ fn reset_reevaluates_the_raw_initial_at_call_time() {
     let node = schema(json!({
         "type": "Column",
         "$localState": {
-            "f": { "type": "string", "initial": { "$": "routeStore.params.x" } }
+            "f": { "type": "string", "initial": { "$": "screen.params.x" } }
         },
         "props": { "onTap": [
             { "$invoke": "routeStore.setParam", "args": ["x", "new"] },

@@ -83,7 +83,7 @@ fn clicking_a_row_changes_routestore_params() {
         app("/space/demo?view=canvas"),
     );
     harness.run();
-    assert!(harness.state().session.screen.nav.param("dna").is_none());
+    assert!(harness.state().session.screen().nav.param("dna").is_none());
     // "Social DNA" carries value "group|dna"; in canvas view its onSelect
     // runs routeStore.setParam("dna", "all"). The full evaluator resolves
     // enough rows to push it below the fold — scroll it into view first.
@@ -92,7 +92,10 @@ fn clicking_a_row_changes_routestore_params() {
     harness.run();
     harness.get_by_label("group|dna").click();
     harness.run();
-    assert_eq!(harness.state().session.screen.nav.param("dna"), Some("all"));
+    assert_eq!(
+        harness.state().session.screen().nav.param("dna"),
+        Some("all")
+    );
 }
 
 #[test]

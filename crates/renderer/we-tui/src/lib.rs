@@ -203,7 +203,7 @@ impl TuiApp {
     /// The bottom row: current route and the key hints, sunken like chrome.
     fn paint_status(&self, buf: &mut Buffer, area: Rect) {
         let y = area.y + area.height - 1;
-        let route = self.session.screen.nav.href();
+        let route = self.session.screen().nav.href();
         let n = self.session.stats().nodes;
         let text =
             format!(" {route}  ·  {n} nodes   tab/↑↓ focus · enter activate · ←/→ fold · q quit ");

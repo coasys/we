@@ -125,15 +125,15 @@ fn reset_local_through_a_query_only_node_hits_the_state_scope() {
 
 #[test]
 fn a_screen_write_is_visible_to_later_tokens_in_the_chain() {
-    // B8: `routeStore.setParam` mutates ScreenState; the next token's
-    // `routeStore.params.x` read must see it — TS store accessors see the
-    // synchronous navigation-state update in the next action.
+    // B8: `routeStore.setParam` mutates ScreenState through the view; the
+    // next token's `screen.params.x` read must see it — TS store accessors
+    // see the synchronous navigation-state update in the next action.
     let node = schema(json!({
         "type": "Column",
         "$localState": { "seen": { "type": "string", "initial": "" } },
         "props": { "onTap": [
             { "$invoke": "routeStore.setParam", "args": ["x", "new"] },
-            { "$setLocal": "seen", "value": { "$": "routeStore.params.x" } }
+            { "$setLocal": "seen", "value": { "$": "screen.params.x" } }
         ] }
     }));
     let (mut rt, mut host, locals, mut screen) = rig(node, StoreBag::new(), "/");

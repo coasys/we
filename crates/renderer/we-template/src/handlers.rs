@@ -27,7 +27,9 @@ use crate::handler::{CallId, HandlerToken};
 use crate::host::{Action, ActionRequest, CallBook, Origin};
 use crate::resolve::{eval_json, handler_tokens};
 use crate::resolved::NodeId;
-use crate::{Host, Invoked, LocalState, Scope, StoreBag};
+use crate::scope::Roots;
+use crate::screen_view::{apply_screen, ScreenView};
+use crate::{Host, Invoked, LocalState, Scope};
 use we_expr::MountCx;
 
 /// A pending `$invoke`: who asked, under which mount, in which scope, and
@@ -57,10 +59,15 @@ pub type PendingMap = HashMap<CallId, PendingCall>;
 /// What a handler needs to fire.
 pub struct HandlerCx<'a> {
     pub host: &'a mut dyn Host,
-    pub bag: &'a StoreBag,
+    /// This mount's root view — handler args and specs evaluate against
+    /// the session's own `screen`/legacy bindings, not another session's.
+    pub bag: Roots<'a>,
     pub locals: &'a LocalState,
     pub cache: &'a mut ParseCache,
     pub screen: &'a mut ScreenState,
+    /// The runtime's live `screen` root — every screen write goes through
+    /// [`apply_screen`] so the snapshot the next token reads is current.
+    pub view: &'a ScreenView,
     pub pending: &'a mut PendingMap,
     /// Call ids — a [`crate::Completer`] pushes into the session's inbox.
     pub calls: &'a mut CallBook,
@@ -292,28 +299,26 @@ fn write_local(scope: &Scope, owner: &NodeId, field: &str, value: Value, cx: &mu
         _ => None,
     };
     let mirror = local_write_mirror(&ty, persist_name.as_deref(), &sync_param, &value, &initial);
-    let mut moved = false;
     if let Some((key, json)) = mirror.store {
-        moved |= cx
-            .screen
-            .apply(ScreenOp::SetPref {
+        apply_screen(
+            cx.screen,
+            cx.view,
+            ScreenOp::SetPref {
                 key,
                 value: serde_json::from_str(&json).ok(),
-            })
-            .changed();
+            },
+        );
     }
     if let Some(param) = mirror.param {
-        moved |= cx
-            .screen
-            .apply(ScreenOp::SetParam {
+        apply_screen(
+            cx.screen,
+            cx.view,
+            ScreenOp::SetParam {
                 name: param.name,
                 value: param.text,
                 push: Some(param.push),
-            })
-            .changed();
-    }
-    if moved {
-        crate::scope::bind_screen(cx.bag, cx.screen);
+            },
+        );
     }
 }
 
@@ -332,25 +337,19 @@ fn reset_local(scope: &Scope, owner: &NodeId, field: &str, value: Value, cx: &mu
         Value::Str(s) => Some(s.to_string()),
         _ => None,
     };
-    let mut moved = false;
     if let Some(key) = local_persist_key(&ty, persist_name.as_deref()) {
-        moved |= cx
-            .screen
-            .apply(ScreenOp::SetPref { key, value: None })
-            .changed();
+        apply_screen(cx.screen, cx.view, ScreenOp::SetPref { key, value: None });
     }
     if let Some((name, _)) = local_sync_spec(&ty, &sync_param) {
-        moved |= cx
-            .screen
-            .apply(ScreenOp::SetParam {
+        apply_screen(
+            cx.screen,
+            cx.view,
+            ScreenOp::SetParam {
                 name,
                 value: None,
                 push: None,
-            })
-            .changed();
-    }
-    if moved {
-        crate::scope::bind_screen(cx.bag, cx.screen);
+            },
+        );
     }
 }
 
@@ -656,13 +655,11 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
             };
             // A `screen` row applies straight to the screen state — the
             // store map's answer for routeStore/shellStore/themeStore. The
-            // bag's namespaces rebind at once: the next token's
-            // `routeStore.params.x` sees the write the way a WE action sees
+            // view's snapshot refreshes at once: the next token's
+            // `screen.params.x` sees the write the way a WE action sees
             // the store's synchronous update.
             if let Some(op) = screen_op(target, &evaluated, scope, cx.screen) {
-                if cx.screen.apply(op).changed() {
-                    crate::scope::bind_screen(cx.bag, cx.screen);
-                }
+                apply_screen(cx.screen, cx.view, op);
                 return;
             }
             let Some(done) = cx.calls.mint() else {

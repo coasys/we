@@ -47,11 +47,11 @@ fn session(route: &str) -> (Session, OfflineData) {
         },
         route,
     );
-    let session = Session {
-        runtime: we_template::Runtime::app(spec, data.bag.clone(), locals.clone()),
-        host: Box::new(StaticHost::new(data.bag.clone())),
+    let session = Session::from_parts(
+        we_template::Runtime::app(spec, data.bag.clone(), locals.clone()),
+        Box::new(StaticHost::new(data.bag.clone())),
         screen,
-    };
+    );
     (session, data)
 }
 
@@ -196,14 +196,16 @@ fn the_template_picker_renders_the_fixture_choices() {
 fn inspector_route_fires_member_natives_and_host_functions() {
     let (mut session, data) = session("/space/demo?card=call-1&cardType=CollectionBlock");
     // The inspector's declaration is `open: false` — the shell opens it.
-    session.screen.shell.open_template_panel("inspector");
+    session.apply_screen(we_screen::ScreenOp::OpenTemplatePanel {
+        id: "inspector".into(),
+    });
     // The reactions section's `$localState` persists under
     // `we-local:inspector.reactionsSection` — open it so the signal rows
     // (and `spaceStore.mutedDids`) resolve.
-    session.screen.prefs.set(
-        "we-local:inspector.reactionsSection",
-        Some(&serde_json::json!(true)),
-    );
+    session.apply_screen(we_screen::ScreenOp::SetPref {
+        key: "we-local:inspector.reactionsSection".into(),
+        value: Some(serde_json::json!(true)),
+    });
     session.resolve();
     data.provenance.absorb_dropped(std::mem::take(
         &mut session

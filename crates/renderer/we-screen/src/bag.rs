@@ -20,6 +20,36 @@ pub struct ScreenBag {
 }
 
 impl ScreenBag {
+    /// The empty bag — a `ScreenView`'s snapshot before its first refresh.
+    pub fn empty() -> ScreenBag {
+        ScreenBag {
+            nav: NavBag {
+                params: IndexMap::new(),
+                segments: Vec::new(),
+                template_segments: Vec::new(),
+                current_path: "".into(),
+                page: "".into(),
+                href: "".into(),
+                space_path: Value::Null,
+            },
+            shell: ShellBag {
+                active_view: Value::Null,
+                space_settings_open: false,
+                space_settings_tab: Value::Null,
+                collapsed_lanes: Vec::new(),
+                layout_dirty: false,
+                panels_hidden: false,
+                panel_maximised: false,
+                dialogs: BTreeMap::new(),
+                panels_open: IndexMap::new(),
+            },
+            theme: ThemeBag {
+                current_id: Value::Undefined,
+                fork: Value::Null,
+            },
+        }
+    }
+
     /// Snapshot `state` — call it when `version` moves.
     pub fn snapshot(state: &ScreenState) -> ScreenBag {
         let nav = &state.nav;
@@ -236,8 +266,36 @@ impl Namespace for ShellBag {
                 .cloned()
                 .unwrap_or(Value::Bool(false)),
             "panels" => Value::namespace(MapNamespace::new(self.panels_open.clone())),
+            // The whole dialog table — `screen.dialogs.<name>` reads a
+            // named dialog's open flag the way `createSpaceOpen` does.
+            "dialogs" => Value::namespace(MapNamespace::new(
+                self.dialogs
+                    .iter()
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect(),
+            )),
             _ => Value::Undefined,
         }
+    }
+
+    fn keys(&self) -> Vec<Arc<str>> {
+        // Every member `get` answers — a namespace's `to_json` enumerates
+        // `keys`, and the `ScreenView` canon interns `screen.shell` by
+        // that content: empty keys would make every snapshot compare equal
+        // and freeze the first answer (dialogs, panels, lanes included).
+        vec![
+            "activeShellView".into(),
+            "spaceSettingsOpen".into(),
+            "spaceSettingsTab".into(),
+            "collapsedLanes".into(),
+            "layoutDirty".into(),
+            "panelsHidden".into(),
+            "panelMaximised".into(),
+            "createSpaceOpen".into(),
+            "joinSpaceOpen".into(),
+            "panels".into(),
+            "dialogs".into(),
+        ]
     }
 }
 
@@ -254,6 +312,13 @@ impl Namespace for ThemeBag {
             "themeFork" => self.fork.clone(),
             _ => Value::Undefined,
         }
+    }
+
+    fn keys(&self) -> Vec<Arc<str>> {
+        // See `ShellBag::keys`: the canon compares what `to_json`
+        // enumerates — both members, or `screen.theme` freezes on its
+        // first read and `setCurrentTheme` never lands.
+        vec!["currentThemeId".into(), "themeFork".into()]
     }
 }
 

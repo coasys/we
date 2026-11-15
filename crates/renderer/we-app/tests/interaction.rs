@@ -93,7 +93,7 @@ fn the_tree_lane_resizes_from_its_end_edge_and_keeps_the_width() {
     let after = lane_rect(&h, "tree");
     assert_eq!(after.width(), 340.0, "dragged 60px right: {after:?}");
     assert_eq!(
-        h.state().session.screen.shell.lanes["tree"].width,
+        h.state().session.screen().shell.lanes["tree"].width,
         Some(340),
         "the dragged width is shell state"
     );
@@ -129,7 +129,7 @@ fn a_release_in_a_slow_frame_keeps_the_width_it_was_let_go_at() {
 #[test]
 fn the_inspector_lane_resizes_from_its_start_edge() {
     let mut h = harness(|app| {
-        app.session.screen.apply(ScreenOp::OpenTemplatePanel {
+        app.session.apply_screen(ScreenOp::OpenTemplatePanel {
             id: "inspector".into(),
         });
     });
