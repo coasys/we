@@ -105,7 +105,7 @@ pub fn direction_of(node: &ResolvedNode) -> we_style::Direction {
         _ => {}
     }
     match node.ty.as_ref() {
-        "Row" | "we-button" => we_style::Direction::Row,
+        "Row" | "we-button" | "we-input" => we_style::Direction::Row,
         _ => we_style::Direction::Column,
     }
 }
@@ -314,6 +314,62 @@ fn type_defaults(bag: &mut Bag, node: &ResolvedNode) {
                 bag.insert(Arc::from("height"), h);
                 bag.shift_remove("px");
                 bag.shift_remove("py");
+            }
+        }
+        "we-input" => {
+            // input.ts DEFAULT_PROPS: a recessed well with an outline, its
+            // own row (`display: flex`, `ay: center`) holding the `start`
+            // slot, the text and the `end` slot. The size tier sets the
+            // padding, the font and the control height.
+            entries(
+                bag,
+                &[
+                    ("bg", "field"),
+                    ("border", "1px solid border"),
+                    // `r: '300'` reaches the CSS through the input family
+                    // (helpers.ts `radiusGroup: --we-theme-input-radius`).
+                    ("r", "input"),
+                    ("color", "text"),
+                    ("ay", "center"),
+                ],
+            );
+            let state = |pairs: &[(&str, &str)]| {
+                let mut m = IndexMap::new();
+                for (k, val) in pairs {
+                    m.insert(Arc::from(*k), v(val));
+                }
+                Value::Obj(Arc::new(m))
+            };
+            if !bag.contains_key("hoverProps") {
+                bag.insert(
+                    Arc::from("hoverProps"),
+                    state(&[("bg", "field-hover"), ("border", "1px solid border-hover")]),
+                );
+            }
+            if !bag.contains_key("focusProps") {
+                bag.insert(
+                    Arc::from("focusProps"),
+                    state(&[
+                        ("bg", "field-hover"),
+                        ("border", "1px solid var(--we-ring-color)"),
+                    ]),
+                );
+            }
+            let (px, fs, h) = match size(node, "md") {
+                "xs" => ("100", "100", "xs"),
+                "sm" => ("200", "200", "sm"),
+                "lg" => ("400", "400", "lg"),
+                "xl" => ("500", "400", "xl"),
+                _ => ("300", "300", "md"),
+            };
+            entries(bag, &[("px", px), ("fontSize", fs)]);
+            if !bag.contains_key("height") {
+                bag.insert(
+                    Arc::from("height"),
+                    v(&format!(
+                        "calc(var(--we-component-height-{h}) + var(--we-theme-control-height-offset, 0px))"
+                    )),
+                );
             }
         }
         "we-badge" => {

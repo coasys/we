@@ -3,8 +3,9 @@
 //! `onChange`, and every key reports `onKeyDown` `{detail:{key,code,
 //! isComposing}}` — the envelope the bundle's handlers read.
 use egui::TextEdit;
+use we_layout::{Direction, PartSpec, PartsSpec, Pick};
 use we_style::Style;
-use we_template::ResolvedNode;
+use we_template::{ResolvedChild, ResolvedNode};
 
 use crate::inputs::{
     access_label, disabled, readonly, reconcile_draft, remember_focus, shown_text,
@@ -21,6 +22,13 @@ impl Input {
         props::control_font(style, ctx)
     }
 
+    fn has_slot(node: &ResolvedNode, slot: &str) -> bool {
+        node.children.iter().any(|c| match c {
+            ResolvedChild::Node(n) => n.slot.as_deref() == Some(slot),
+            _ => false,
+        })
+    }
+
     fn line_height(cx: &MeasureCx, style: &Style) -> f32 {
         let font = Self::font(style, cx.ctx);
         cx.ctx.fonts_mut(|f| f.row_height(&font))
@@ -34,6 +42,35 @@ impl Widget for Input {
 
     fn kind(&self) -> WidgetKind {
         WidgetKind::Leaf
+    }
+
+    /// `[part='base']` is a row: the `start` slot, the text (`flex: 1`),
+    /// the `end` slot — so a slotted icon sits at the field's padding and
+    /// the text starts after it. Without slotted children the field stays a
+    /// leaf and measures itself.
+    fn parts_spec(&self, node: &ResolvedNode) -> Option<PartsSpec> {
+        let (start, end) = (Self::has_slot(node, "start"), Self::has_slot(node, "end"));
+        if !start && !end {
+            return None;
+        }
+        let mut parts = Vec::new();
+        if start {
+            parts.push(
+                PartSpec::group("start", Pick::Named("start".into()), Direction::Row)
+                    .aligned(we_style::ItemAlign::Center),
+            );
+        }
+        parts.push(PartSpec::fixed("text", 0.0, 0.0).growing(1.0));
+        if end {
+            parts.push(
+                PartSpec::group("end", Pick::Named("end".into()), Direction::Row)
+                    .aligned(we_style::ItemAlign::Center),
+            );
+        }
+        Some(PartsSpec {
+            direction: Direction::Row,
+            parts,
+        })
     }
 
     fn measure(&self, cx: &MeasureCx, node: &ResolvedNode, style: &Style, avail: Size) -> Size {
@@ -120,16 +157,26 @@ impl Widget for Input {
             .password(is_password)
             .interactive(!disabled);
         if chrome {
-            widget = widget.frame(egui::Frame::NONE);
-            // The resolved padding/border insets carry as the TextEdit's
-            // margin, so the text still starts at the content box.
-            let inner = props::content_rect(rect, style, view, cx.cb_w);
-            widget = widget.margin(egui::Margin {
-                left: (inner.min.x - rect.min.x) as i8,
-                top: (inner.min.y - rect.min.y) as i8,
-                right: (rect.max.x - inner.max.x) as i8,
-                bottom: (rect.max.y - inner.max.y) as i8,
-            });
+            // The resolved padding/border insets — and the slots' room —
+            // carry as the frame's inner margin, so the text starts at the
+            // content box. (egui ignores `TextEdit::margin` once a frame is
+            // given: the margin has to ride on the frame itself.)
+            let mut inner = props::content_rect(rect, style, view, cx.cb_w);
+            // The text takes what the slots leave (`[part='input']` is
+            // `flex: 1` between them).
+            if let Some(start) = cx.parts.get(&(node.id.clone(), "start")) {
+                inner.min.x = inner.min.x.max(start.max.x);
+            }
+            if let Some(end) = cx.parts.get(&(node.id.clone(), "end")) {
+                inner.max.x = inner.max.x.min(end.min.x);
+            }
+            let m = |v: f32| v.round().clamp(0.0, 127.0) as i8;
+            widget = widget.frame(egui::Frame::NONE.inner_margin(egui::Margin {
+                left: m(inner.min.x - rect.min.x),
+                top: m(inner.min.y - rect.min.y),
+                right: m(rect.max.x - inner.max.x),
+                bottom: m(rect.max.y - inner.max.y),
+            }));
         }
         let widget = match props::prop_string(node, "placeholder") {
             Some(p) => widget.hint_text(p),
