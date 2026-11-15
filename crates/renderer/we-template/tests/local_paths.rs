@@ -335,7 +335,10 @@ fn empty_inner_scope_does_not_block_named_enclosing_draft() {
     let (mut rt, mut host, locals, mut screen) = rig(node, StoreBag::new(), "/");
     let root = rt.frame(&mut host, &screen).clone();
     let outer = root.id.clone();
-    let inner = find(&root, "Row").expect("the inner Row mounted").id.clone();
+    let inner = find(&root, "Row")
+        .expect("the inner Row mounted")
+        .id
+        .clone();
 
     rt.dispatch(&mut host, &mut screen, &inner, "onTap", Value::Null);
     let draft = locals.get(&outer, "draft");
@@ -572,7 +575,7 @@ fn reset_evaluates_initial_in_the_declaring_scope() {
     let mut screen = screen("/");
     let root = rt.frame(&mut host, &screen).clone();
     let rows: Vec<NodeId> = {
-        fn collect<'a>(n: &'a ResolvedNode, ty: &str, out: &mut Vec<NodeId>) {
+        fn collect(n: &ResolvedNode, ty: &str, out: &mut Vec<NodeId>) {
             if n.ty.as_ref() == ty {
                 out.push(n.id.clone());
             }
@@ -589,7 +592,7 @@ fn reset_evaluates_initial_in_the_declaring_scope() {
     assert_eq!(rows.len(), 2, "two $each rows mounted");
     let boxes: Vec<NodeId> = {
         let mut v = Vec::new();
-        fn collect<'a>(n: &'a ResolvedNode, out: &mut Vec<NodeId>) {
+        fn collect(n: &ResolvedNode, out: &mut Vec<NodeId>) {
             if n.ty.as_ref() == "Box" {
                 out.push(n.id.clone());
             }

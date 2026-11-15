@@ -79,6 +79,26 @@ fn local_owner(scope: &Scope, field: &str) -> Option<NodeId> {
     }
 }
 
+/// Where a `$setLocal`-family write lands: `(owner node, head field,
+/// path)`. A field named exactly `field` wins — a literal `draft.title`
+/// declaration is written as itself. Otherwise the name splits at the
+/// first `.`: the head must be a declared field, found by the normal
+/// owner lookup (innermost declaring scope; an explicit-empty
+/// `$localState` truncates `$fields` but does not block it), and the tail
+/// is a path into the head's value.
+fn local_write_target(scope: &Scope, field: &str) -> Option<(NodeId, Arc<str>, Vec<Arc<str>>)> {
+    if let Some(owner) = local_owner(scope, field) {
+        return Some((owner, field.into(), Vec::new()));
+    }
+    let (head, tail) = field.split_once('.')?;
+    let owner = local_owner(scope, head)?;
+    Some((
+        owner,
+        head.into(),
+        tail.split('.').map(Arc::<str>::from).collect(),
+    ))
+}
+
 /// The field's declared metadata — `local["$decl:<field>"]` — for the
 /// persist/URL mirror a write makes.
 fn local_decl(scope: &Scope, field: &str) -> Option<(String, Value, serde_json::Value, Value)> {
@@ -99,6 +119,126 @@ fn local_decl(scope: &Scope, field: &str) -> Option<(String, Value, serde_json::
         .unwrap_or(Json::Null);
     let initial = decl.get("initial").cloned().unwrap_or(Value::Undefined);
     Some((ty, persist, sync_param, initial))
+}
+
+/// `seg` as a list index — all digits (`"0"`, `"12"`), nothing else.
+fn digits(seg: &str) -> Option<usize> {
+    if !seg.is_empty() && seg.bytes().all(|b| b.is_ascii_digit()) {
+        seg.parse().ok()
+    } else {
+        None
+    }
+}
+
+/// The value at `path` under `container` — `Undefined` wherever the walk
+/// fails (a missing key, an index past `len`, a non-container): merge and
+/// the toggles read the slot as empty.
+fn read_path(container: &Value, path: &[Arc<str>]) -> Value {
+    let mut at = container.clone();
+    for seg in path {
+        at = match &at {
+            Value::Obj(o) => o.get(seg.as_ref()).cloned().unwrap_or(Value::Undefined),
+            Value::List(l) => match digits(seg) {
+                Some(i) => l.get(i).cloned().unwrap_or(Value::Undefined),
+                None => return Value::Undefined,
+            },
+            _ => return Value::Undefined,
+        };
+    }
+    at
+}
+
+/// Why a path write was refused — the warning's reason.
+enum PathFail {
+    /// A non-container sits on the path (a string, number, bool, null,
+    /// namespace, callable — or a named segment on a list).
+    NonContainer,
+    /// A list index is past `len` — appends land at `len` exactly.
+    OutOfBounds,
+}
+
+/// `container` with the `path` tail set to `value`, copy-on-write: every
+/// container on the path is cloned with the one key replaced, so siblings
+/// keep their values and their identities. `Undefined` is a missing slot —
+/// intermediates are created as objects. A digit segment indexes a list:
+/// it replaces an element or appends at `len`; past `len` refuses. A
+/// non-container midway, or a named segment on a list, refuses.
+fn write_path(container: &Value, path: &[Arc<str>], value: Value) -> Result<Value, PathFail> {
+    let Some((seg, rest)) = path.split_first() else {
+        return Ok(value);
+    };
+    match container {
+        Value::Obj(o) => {
+            let mut next = (**o).clone();
+            let child = if rest.is_empty() {
+                value
+            } else {
+                let slot = next.get(seg.as_ref()).cloned().unwrap_or(Value::Undefined);
+                write_path(&slot, rest, value)?
+            };
+            next.insert(seg.clone(), child);
+            Ok(Value::Obj(Arc::new(next)))
+        }
+        Value::List(l) => {
+            let Some(index) = digits(seg) else {
+                return Err(PathFail::NonContainer);
+            };
+            if index > l.len() {
+                return Err(PathFail::OutOfBounds);
+            }
+            let mut next = (**l).clone();
+            let child = if rest.is_empty() {
+                value
+            } else {
+                let slot = next.get(index).cloned().unwrap_or(Value::Undefined);
+                write_path(&slot, rest, value)?
+            };
+            if index == next.len() {
+                next.push(child);
+            } else {
+                next[index] = child;
+            }
+            Ok(Value::List(Arc::new(next)))
+        }
+        // A missing slot becomes a fresh object (missing intermediates are
+        // created as objects, digit segment or not).
+        Value::Undefined => write_path(&Value::Obj(Arc::new(Default::default())), path, value),
+        _ => Err(PathFail::NonContainer),
+    }
+}
+
+/// The write every local verb funnels into: `path` empty → `value` is the
+/// head's new whole value; otherwise copy-on-write at the path inside
+/// `head`'s current value. A refused path warns through `verb` and writes
+/// nothing. The whole head then goes through [`write_local`] — the head
+/// field is the unit for revision, touch, validation and the mirrors.
+fn write_at(
+    scope: &Scope,
+    owner: &NodeId,
+    head: &str,
+    path: &[Arc<str>],
+    value: Value,
+    cx: &mut HandlerCx,
+    verb: &str,
+) {
+    let whole = if path.is_empty() {
+        value
+    } else {
+        let current = cx.locals.get(owner, head);
+        match write_path(&current, path, value) {
+            Ok(whole) => whole,
+            Err(why) => {
+                let reason = match why {
+                    PathFail::NonContainer => "a non-container sits on the path",
+                    PathFail::OutOfBounds => "a list index on the path is past the end",
+                };
+                cx.warnings
+                    .push(format!("${verb}: {head:?} — {reason}; no write").into());
+                return;
+            }
+        }
+    };
+    write_local(scope, owner, head, whole, cx);
 }
 
 /// The scope's `State` field names — `local["$fields"]`.
@@ -305,16 +445,21 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
             merge,
             ..
         } => {
-            let Some(owner) = local_owner(scope, field) else {
+            let Some((owner, head, path)) = local_write_target(scope, field) else {
                 cx.warnings
                     .push(format!("$setLocal: no $localState in scope for {field:?}").into());
                 return;
             };
             if let Some(spec) = merge {
                 // `merge:` — shallow-merge evaluated members into the object
-                // the field holds (`{...(current ?? {}), ...resolved}` in WE).
+                // the slot holds (`{...(current ?? {}), ...resolved}` in WE).
                 let evaluated = eval_json(spec, scope, cx.bag, cx.cache, cx.warnings);
-                let mut merged = match cx.locals.get(&owner, field) {
+                let slot = if path.is_empty() {
+                    cx.locals.get(&owner, &head)
+                } else {
+                    read_path(&cx.locals.get(&owner, &head), &path)
+                };
+                let mut merged = match slot {
                     Value::Obj(o) => (*o).clone(),
                     _ => Default::default(),
                 };
@@ -323,26 +468,46 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
                         merged.insert(k.clone(), v.clone());
                     }
                 }
-                write_local(scope, &owner, field, Value::Obj(Arc::new(merged)), cx);
+                write_at(
+                    scope,
+                    &owner,
+                    &head,
+                    &path,
+                    Value::Obj(Arc::new(merged)),
+                    cx,
+                    "setLocal",
+                );
             } else {
                 let v = value
                     .as_ref()
                     .map(|v| eval_json(v, scope, cx.bag, cx.cache, cx.warnings))
                     .unwrap_or(Value::Undefined);
-                write_local(scope, &owner, field, v, cx);
+                write_at(scope, &owner, &head, &path, v, cx, "setLocal");
             }
         }
         HandlerToken::ToggleLocal { field, .. } => {
-            let Some(owner) = local_owner(scope, field) else {
+            let Some((owner, head, path)) = local_write_target(scope, field) else {
                 cx.warnings
                     .push(format!("$toggleLocal: no $localState in scope for {field:?}").into());
                 return;
             };
-            let next = !cx.locals.get(&owner, field).truthy();
-            write_local(scope, &owner, field, Value::Bool(next), cx);
+            let slot = if path.is_empty() {
+                cx.locals.get(&owner, &head)
+            } else {
+                read_path(&cx.locals.get(&owner, &head), &path)
+            };
+            write_at(
+                scope,
+                &owner,
+                &head,
+                &path,
+                Value::Bool(!slot.truthy()),
+                cx,
+                "toggleLocal",
+            );
         }
         HandlerToken::ToggleLocalIn { field, value, .. } => {
-            let Some(owner) = local_owner(scope, field) else {
+            let Some((owner, head, path)) = local_write_target(scope, field) else {
                 cx.warnings
                     .push(format!("$toggleLocalIn: no $localState in scope for {field:?}").into());
                 return;
@@ -351,8 +516,12 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
                 .as_ref()
                 .map(|v| eval_json(v, scope, cx.bag, cx.cache, cx.warnings))
                 .unwrap_or(Value::Undefined);
-            let current = cx.locals.get(&owner, field);
-            let mut list: Vec<Value> = match current {
+            let slot = if path.is_empty() {
+                cx.locals.get(&owner, &head)
+            } else {
+                read_path(&cx.locals.get(&owner, &head), &path)
+            };
+            let mut list: Vec<Value> = match slot {
                 Value::List(l) => (*l).clone(),
                 Value::Undefined | Value::Null => vec![],
                 other => {
@@ -368,7 +537,15 @@ fn run_token(token: &HandlerToken, scope: &Scope, cx: &mut HandlerCx) {
                 }
                 None => list.push(member),
             }
-            write_local(scope, &owner, field, Value::List(Arc::new(list)), cx);
+            write_at(
+                scope,
+                &owner,
+                &head,
+                &path,
+                Value::List(Arc::new(list)),
+                cx,
+                "toggleLocalIn",
+            );
         }
         HandlerToken::CallLocal { field, .. } => {
             let Some(owner) = local_owner(scope, field) else {
