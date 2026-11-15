@@ -12,6 +12,7 @@
 //! without updating `_shared-architecture.md` §3.5.
 #![forbid(unsafe_code)]
 
+mod clock;
 mod containers;
 mod controls;
 pub mod defaults;
@@ -40,6 +41,7 @@ use we_expr::Value;
 use we_style::Style;
 use we_template::{NodeId, ResolvedChild, ResolvedNode};
 
+pub use clock::{now_secs, pin_now};
 pub use containers::{Card, Column, Div, Grid, Lane, Row};
 pub use controls::Button;
 pub use defaults::StyleCx;

@@ -1145,6 +1145,11 @@ fn declare_locals(
                     persist: spec.get("persist").and_then(|p| p.as_str()).map(Into::into),
                     sync_param: sync_param.clone(),
                     declared_initial,
+                    // Reset re-evaluates the authored spec where it first
+                    // read — `resolveInitial(rawInitial)` in WE — never the
+                    // value the last resolve left in `declared_initial`.
+                    raw_initial: spec.get("initial").cloned(),
+                    initial_scope: scope.clone(),
                 }),
             );
         }

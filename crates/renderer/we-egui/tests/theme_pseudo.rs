@@ -211,3 +211,54 @@ fn retro_menu_item_draws_its_dotted_connector() {
     );
     assert!(min.y > rect.min.y && max.y < rect.max.y, "inside the row");
 }
+
+fn heading(extra: &[(&str, we_expr::Value)]) -> ResolvedNode {
+    let mut props = vec![
+        ("variant", we_expr::Value::from("heading-lg")),
+        ("text", we_expr::Value::from("Signals")),
+    ];
+    props.extend(extra.iter().cloned());
+    let mut root = node("Column", "c", &[]);
+    root.children = vec![ResolvedChild::Node(Box::new(node(
+        "we-text", "c/h", &props,
+    )))];
+    root
+}
+
+#[test]
+fn heading_line_is_composited_under_the_host_opacity() {
+    let green = egui::Color32::from_rgb(0, 255, 0);
+    let tokens = [("--we-color-accent-500", "#00ff00")];
+    // Fully transparent: no line at all, in any shade.
+    let zero = heading(&[("opacity", we_expr::Value::from(0.0))]);
+    let (_, p) = run(zero.clone(), "c/h", "cyberpunk", &tokens, green);
+    assert_eq!(p.area, 0.0, "an opacity-0 heading paints its line: {p:?}");
+    let half_green = green.gamma_multiply(0.5);
+    let (_, p) = run(zero, "c/h", "cyberpunk", &tokens, half_green);
+    assert_eq!(p.area, 0.0);
+    // Half: the line is faded with the heading, not opaque.
+    let half = heading(&[("opacity", we_expr::Value::from(0.5))]);
+    let (_, p) = run(half.clone(), "c/h", "cyberpunk", &tokens, green);
+    assert_eq!(p.area, 0.0, "a faded heading paints an opaque line: {p:?}");
+    let (_, p) = run(half, "c/h", "cyberpunk", &tokens, half_green);
+    assert!(p.area > 0.0, "the faded line: {p:?}");
+}
+
+#[test]
+fn heading_line_resolves_in_the_host_scope() {
+    // The heading re-points the accent for itself and its descendants; its
+    // generated line is one of them.
+    let red = egui::Color32::from_rgb(255, 0, 0);
+    let green = egui::Color32::from_rgb(0, 255, 0);
+    let mut decl = IndexMap::new();
+    decl.insert(
+        Arc::<str>::from("--we-color-accent-500"),
+        we_expr::Value::from("#ff0000"),
+    );
+    let root = heading(&[("styles", we_expr::Value::Obj(Arc::new(decl)))]);
+    let tokens = [("--we-color-accent-500", "#00ff00")];
+    let (_, p) = run(root.clone(), "c/h", "cyberpunk", &tokens, red);
+    assert!(p.area > 0.0, "the line in the heading's own accent: {p:?}");
+    let (_, p) = run(root, "c/h", "cyberpunk", &tokens, green);
+    assert_eq!(p.area, 0.0, "the line in the theme accent: {p:?}");
+}

@@ -195,11 +195,26 @@ fn a_static_face_still_gets_the_synthesised_bold() {
 /// 1x and 2x, every inked column and row of `HIH` reaches full coverage
 /// somewhere — a stem is whole pixels, with no partial-alpha fringe column
 /// beside it and no half-covered row along the baseline or cap height.
+/// Ink comes first: a blank image has no partial pixels either, so the
+/// glyphs must be there, spanning most of an em per glyph, before their
+/// edges are judged.
 #[test]
 fn vt323_lands_on_whole_pixels() {
     for ppp in [1.0, 2.0] {
         for size in ["14px", "16px", "18px", "24px"] {
             let shot = shoot(text_node("HIH", "'VT323', monospace", size, None), ppp);
+            let px = size.trim_end_matches("px").parse::<f32>().unwrap() * ppp;
+            let full = shot.ink.iter().filter(|&&a| a > 0.98).count() as f32;
+            assert!(
+                full > px * px * 0.1,
+                "VT323 {size} at {ppp}x: {full} fully covered pixels, too few for HIH"
+            );
+            let (first, last) = shot.x_extent();
+            let width = (last - first + 1) as f32;
+            assert!(
+                width > px * 0.9 && width < px * 3.0,
+                "VT323 {size} at {ppp}x: HIH spans {width} px"
+            );
             let fringe_cols: Vec<(usize, f32)> = (0..shot.w)
                 .map(|x| (x, (0..shot.h).map(|y| shot.at(x, y)).fold(0.0, f32::max)))
                 .filter(|&(_, m)| m > 0.02 && m < 0.98)

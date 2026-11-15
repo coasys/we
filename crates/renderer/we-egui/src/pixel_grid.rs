@@ -18,15 +18,28 @@
 //!
 //! The rewrite works on the decoded sfnt bytes — the same bytes the web
 //! loads — so the outlines can never drift from `vt323.ts`.
+//!
+//! Its only input today is that vendored payload, compiled in. It still
+//! treats the bytes as untrusted: every offset and count is checked, a
+//! glyph record that cannot hold what it declares makes the whole rewrite
+//! `None` (the caller keeps the original), and nothing panics on any input.
+//! What it does not do is vet the bytecode it appends to: the tail assumes
+//! the existing program falls through to it with the loop counter at 1, as
+//! VT323's does. Pointing it at a font loaded at runtime would want a
+//! `SLOOP 1` ahead of the tail and a fuzz pass first.
 
 /// Big-endian reads that fail softly: a font this cannot parse is
 /// returned unchanged.
 fn u16_at(b: &[u8], at: usize) -> Option<u16> {
-    Some(u16::from_be_bytes(b.get(at..at + 2)?.try_into().ok()?))
+    Some(u16::from_be_bytes(
+        b.get(at..at.checked_add(2)?)?.try_into().ok()?,
+    ))
 }
 
 fn u32_at(b: &[u8], at: usize) -> Option<u32> {
-    Some(u32::from_be_bytes(b.get(at..at + 4)?.try_into().ok()?))
+    Some(u32::from_be_bytes(
+        b.get(at..at.checked_add(4)?)?.try_into().ok()?,
+    ))
 }
 
 fn put_u16(b: &mut [u8], at: usize, v: u16) {
@@ -35,7 +48,7 @@ fn put_u16(b: &mut [u8], at: usize, v: u16) {
 
 /// The sfnt table checksum: the sum of the table's big-endian u32 words,
 /// zero-padded to a whole word.
-fn checksum(table: &[u8]) -> u32 {
+pub(crate) fn checksum(table: &[u8]) -> u32 {
     table.chunks(4).fold(0u32, |sum, w| {
         let mut word = [0u8; 4];
         word[..w.len()].copy_from_slice(w);
@@ -104,26 +117,32 @@ fn x_round_program(xs: &[i32]) -> Vec<u8> {
 }
 
 /// The x coordinates of a simple glyph's `points` points, decoded from
-/// its flags and x deltas, which start at `at`.
+/// its flags and x deltas, which start at `at` — `None` unless the flags
+/// and *both* coordinate arrays are all there, with no repeat running past
+/// the last point.
 fn simple_xs(g: &[u8], mut at: usize, points: usize) -> Option<Vec<i32>> {
     const X_SHORT: u8 = 0x02;
+    const Y_SHORT: u8 = 0x04;
     const REPEAT: u8 = 0x08;
     const X_SAME_OR_POSITIVE: u8 = 0x10;
+    const Y_SAME_OR_POSITIVE: u8 = 0x20;
     let mut flags = Vec::with_capacity(points);
     while flags.len() < points {
         let f = *g.get(at)?;
         at += 1;
         flags.push(f);
         if f & REPEAT != 0 {
-            let n = *g.get(at)?;
+            let n = *g.get(at)? as usize;
             at += 1;
-            flags.extend(std::iter::repeat_n(f, n as usize));
+            if n > points - flags.len() {
+                return None;
+            }
+            flags.extend(std::iter::repeat_n(f, n));
         }
     }
-    flags.truncate(points);
     let mut x = 0i32;
     let mut xs = Vec::with_capacity(points);
-    for f in flags {
+    for &f in &flags {
         if f & X_SHORT != 0 {
             let d = *g.get(at)? as i32;
             at += 1;
@@ -134,6 +153,15 @@ fn simple_xs(g: &[u8], mut at: usize, points: usize) -> Option<Vec<i32>> {
         }
         xs.push(x);
     }
+    let y_bytes: usize = flags
+        .iter()
+        .map(|&f| match (f & Y_SHORT != 0, f & Y_SAME_OR_POSITIVE != 0) {
+            (true, _) => 1,
+            (false, true) => 0,
+            (false, false) => 2,
+        })
+        .sum();
+    g.get(at..at.checked_add(y_bytes)?)?;
     Some(xs)
 }
 
@@ -146,17 +174,20 @@ fn snap_glyph(g: &[u8]) -> Option<Vec<u8>> {
     let contours = u16_at(g, 0)? as i16;
     if contours >= 0 {
         let n = contours as usize;
-        let ends = 10;
-        let points = if n == 0 {
-            0
-        } else {
-            u16_at(g, ends + 2 * (n - 1))? + 1
-        };
-        let len_at = ends + 2 * n;
+        // End points rise strictly; the point count is one past the last.
+        let mut points = 0usize;
+        for c in 0..n {
+            let end = u16_at(g, 10 + 2 * c)? as usize;
+            if end < points {
+                return None;
+            }
+            points = end + 1;
+        }
+        let len_at = 10 + 2 * n;
         let ins_len = u16_at(g, len_at)? as usize;
         let ins_end = len_at + 2 + ins_len;
         g.get(ins_end..)?;
-        let tail = x_round_program(&simple_xs(g, ins_end, points as usize)?);
+        let tail = x_round_program(&simple_xs(g, ins_end, points)?);
         let mut out = Vec::with_capacity(g.len() + tail.len());
         out.extend_from_slice(&g[..len_at]);
         out.extend(u16::try_from(ins_len + tail.len()).ok()?.to_be_bytes());
@@ -173,22 +204,32 @@ fn snap_glyph(g: &[u8]) -> Option<Vec<u8>> {
     const MORE: u16 = 0x0020;
     const HAVE_XY_SCALE: u16 = 0x0040;
     const HAVE_2X2: u16 = 0x0080;
+    const HAVE_INSTRUCTIONS: u16 = 0x0100;
     let mut out = g.to_vec();
     let mut at = 10;
     loop {
         let flags = u16_at(&out, at)?;
+        // The component — flags, glyph index, arguments, transform — must
+        // be all there before its flags are touched.
+        let span = 4
+            + if flags & ARG_WORDS != 0 { 4 } else { 2 }
+            + if flags & HAVE_SCALE != 0 {
+                2
+            } else if flags & HAVE_XY_SCALE != 0 {
+                4
+            } else if flags & HAVE_2X2 != 0 {
+                8
+            } else {
+                0
+            };
+        out.get(at..at + span)?;
         put_u16(&mut out, at, flags | ROUND_XY_TO_GRID);
-        at += 4 + if flags & ARG_WORDS != 0 { 4 } else { 2 };
-        at += if flags & HAVE_SCALE != 0 {
-            2
-        } else if flags & HAVE_XY_SCALE != 0 {
-            4
-        } else if flags & HAVE_2X2 != 0 {
-            8
-        } else {
-            0
-        };
+        at += span;
         if flags & MORE == 0 {
+            if flags & HAVE_INSTRUCTIONS != 0 {
+                let ins_len = u16_at(&out, at)? as usize;
+                out.get(at + 2..at + 2 + ins_len)?;
+            }
             break;
         }
     }
@@ -197,7 +238,8 @@ fn snap_glyph(g: &[u8]) -> Option<Vec<u8>> {
 
 /// `ttf` with every glyph's x grid-fitted under hinting (see the module
 /// docs). The glyf, loca, head and maxp tables are rewritten; everything
-/// else is copied. `None` when the font is not a TrueType sfnt this can
+/// else is copied. Table checksums and head's checkSumAdjustment are
+/// recomputed for the rebuilt file. `None` when the font is not a TrueType sfnt this can
 /// read — the caller keeps the original.
 pub(crate) fn snap_x(ttf: &[u8]) -> Option<Vec<u8>> {
     let num_tables = u16_at(ttf, 4)? as usize;
@@ -205,9 +247,9 @@ pub(crate) fn snap_x(ttf: &[u8]) -> Option<Vec<u8>> {
     for i in 0..num_tables {
         let rec = 12 + 16 * i;
         let tag: [u8; 4] = ttf.get(rec..rec + 4)?.try_into().ok()?;
-        let off = u32_at(ttf, rec + 8)? as usize;
-        let len = u32_at(ttf, rec + 12)? as usize;
-        tables.push((tag, ttf.get(off..off + len)?.to_vec()));
+        let off = usize::try_from(u32_at(ttf, rec + 8)?).ok()?;
+        let len = usize::try_from(u32_at(ttf, rec + 12)?).ok()?;
+        tables.push((tag, ttf.get(off..off.checked_add(len)?)?.to_vec()));
     }
     let find = |tag: &[u8; 4]| tables.iter().position(|(t, _)| t == tag);
     let (head, loca, glyf, maxp) = (
@@ -217,11 +259,15 @@ pub(crate) fn snap_x(ttf: &[u8]) -> Option<Vec<u8>> {
         find(b"maxp")?,
     );
     let glyphs = u16_at(&tables[maxp].1, 4)? as usize;
-    let long = u16_at(&tables[head].1, 50)? == 1;
+    let long = match u16_at(&tables[head].1, 50)? {
+        0 => false,
+        1 => true,
+        _ => return None,
+    };
     let offset = |i: usize| -> Option<usize> {
         let l = &tables[loca].1;
         Some(if long {
-            u32_at(l, 4 * i)? as usize
+            usize::try_from(u32_at(l, 4 * i)?).ok()?
         } else {
             2 * u16_at(l, 2 * i)? as usize
         })
@@ -237,18 +283,20 @@ pub(crate) fn snap_x(ttf: &[u8]) -> Option<Vec<u8>> {
             let n = u16_at(&g, 0)? as usize;
             max_ins = max_ins.max(u16_at(&g, 10 + 2 * n)?);
         }
-        new_loca.extend((new_glyf.len() as u32).to_be_bytes());
+        new_loca.extend(u32::try_from(new_glyf.len()).ok()?.to_be_bytes());
         new_glyf.extend(g);
         while new_glyf.len() % 4 != 0 {
             new_glyf.push(0);
         }
     }
-    new_loca.extend((new_glyf.len() as u32).to_be_bytes());
+    new_loca.extend(u32::try_from(new_glyf.len()).ok()?.to_be_bytes());
     tables[glyf].1 = new_glyf;
     tables[loca].1 = new_loca;
-    // Long loca offsets now; the checksum adjustment is left stale (no
-    // reader here verifies it).
+    // Long loca offsets now. checkSumAdjustment is zeroed for the table
+    // checksums and written once the file is assembled. skrifa ignores
+    // it, but a sanitiser or another reader may not.
     put_u16(&mut tables[head].1, 50, 1);
+    tables[head].1.get_mut(8..12)?.fill(0);
     // maxp 1.0: maxStackElements (24) — the tail pushes at most two values
     // at a time — and maxSizeOfInstructions (26).
     let stack = u16_at(&tables[maxp].1, 24)?;
@@ -259,11 +307,15 @@ pub(crate) fn snap_x(ttf: &[u8]) -> Option<Vec<u8>> {
     out.extend_from_slice(ttf.get(..12)?);
     let mut data_at = 12 + 16 * tables.len();
     let mut body = Vec::new();
-    for (tag, data) in &tables {
+    let mut head_at = 0;
+    for (i, (tag, data)) in tables.iter().enumerate() {
+        if i == head {
+            head_at = data_at;
+        }
         out.extend_from_slice(tag);
         out.extend(checksum(data).to_be_bytes());
-        out.extend((data_at as u32).to_be_bytes());
-        out.extend((data.len() as u32).to_be_bytes());
+        out.extend(u32::try_from(data_at).ok()?.to_be_bytes());
+        out.extend(u32::try_from(data.len()).ok()?.to_be_bytes());
         body.extend_from_slice(data);
         while body.len() % 4 != 0 {
             body.push(0);
@@ -271,6 +323,9 @@ pub(crate) fn snap_x(ttf: &[u8]) -> Option<Vec<u8>> {
         data_at = 12 + 16 * tables.len() + body.len();
     }
     out.extend(body);
+    let adjustment = 0xb1b0_afbau32.wrapping_sub(checksum(&out));
+    out.get_mut(head_at + 8..head_at + 12)?
+        .copy_from_slice(&adjustment.to_be_bytes());
     Some(out)
 }
 
@@ -291,15 +346,258 @@ mod tests {
 
     #[test]
     fn x_deltas_decode() {
-        // Three points: a short positive 40, a repeated "same", a word -10.
-        // flags: 0x12 (x short, positive), 0x10|0x08 repeat 0 (same),
-        // 0x00 (word).
-        let g = [0x12, 0x18, 0x00, 0x00, 40, 0xff, 0xf6];
+        // Three points: a short positive 40, a repeated "same", a word -10,
+        // every y "same" (0x20) so no y bytes follow.
+        // flags: 0x32 (x short, positive), 0x30|0x08 repeat 0 (same),
+        // 0x20 (x word).
+        let g = [0x32, 0x38, 0x00, 0x20, 40, 0xff, 0xf6];
         assert_eq!(simple_xs(&g, 0, 3), Some(vec![40, 40, 30]));
     }
 
     #[test]
     fn garbage_is_left_alone() {
         assert!(snap_x(b"not a font").is_none());
+    }
+
+    /// A minimal TrueType sfnt holding `glyphs`: head, maxp, loca (short
+    /// when `loc_format` is 0, long otherwise — the head says
+    /// `loc_format` either way) and glyf.
+    fn font(glyphs: &[&[u8]], loc_format: u16) -> Vec<u8> {
+        let mut glyf = Vec::new();
+        let mut loca = Vec::new();
+        let entry = |loca: &mut Vec<u8>, at: usize| {
+            if loc_format == 0 {
+                loca.extend((at as u16 / 2).to_be_bytes());
+            } else {
+                loca.extend((at as u32).to_be_bytes());
+            }
+        };
+        for (i, g) in glyphs.iter().enumerate() {
+            entry(&mut loca, glyf.len());
+            glyf.extend_from_slice(g);
+            // The last record is left unpadded under long offsets, so a
+            // truncated fixture is truncated rather than padded with zeros
+            // its parser could read as data.
+            let last = i + 1 == glyphs.len() && loc_format != 0;
+            while !last && glyf.len() % 4 != 0 {
+                glyf.push(0);
+            }
+        }
+        entry(&mut loca, glyf.len());
+        let mut head = vec![0u8; 54];
+        head[..4].copy_from_slice(&0x0001_0000u32.to_be_bytes());
+        head[8..12].copy_from_slice(&0x1234_5678u32.to_be_bytes());
+        head[12..16].copy_from_slice(&0x5f0f_3cf5u32.to_be_bytes());
+        head[50..52].copy_from_slice(&loc_format.to_be_bytes());
+        let mut maxp = vec![0u8; 32];
+        maxp[..4].copy_from_slice(&0x0001_0000u32.to_be_bytes());
+        maxp[4..6].copy_from_slice(&(glyphs.len() as u16).to_be_bytes());
+        let tables: [(&[u8; 4], Vec<u8>); 4] = [
+            (b"glyf", glyf),
+            (b"head", head),
+            (b"loca", loca),
+            (b"maxp", maxp),
+        ];
+        let mut out = vec![0, 1, 0, 0, 0, 4, 0, 64, 0, 2, 0, 0];
+        let mut body = Vec::new();
+        for (tag, data) in &tables {
+            out.extend_from_slice(*tag);
+            out.extend(checksum(data).to_be_bytes());
+            out.extend(((12 + 16 * 4 + body.len()) as u32).to_be_bytes());
+            out.extend((data.len() as u32).to_be_bytes());
+            body.extend_from_slice(data);
+            while body.len() % 4 != 0 {
+                body.push(0);
+            }
+        }
+        out.extend(body);
+        out
+    }
+
+    /// The bounding box every fixture glyph carries after its contour
+    /// count.
+    const BBOX: [u8; 8] = [0; 8];
+
+    /// A simple glyph: `contours` end points, `ins` as its instructions,
+    /// then `rest` (flags and coordinates).
+    fn simple(ends: &[u16], ins: &[u8], rest: &[u8]) -> Vec<u8> {
+        let mut g = (ends.len() as u16).to_be_bytes().to_vec();
+        g.extend(BBOX);
+        g.extend(ends.iter().flat_map(|e| e.to_be_bytes()));
+        g.extend((ins.len() as u16).to_be_bytes());
+        g.extend_from_slice(ins);
+        g.extend_from_slice(rest);
+        g
+    }
+
+    /// A square of four points: x 40 → 60, y 0 → 20, every coordinate a
+    /// short delta (flags on-curve | x short | y short, with signs).
+    fn square() -> Vec<u8> {
+        // (+40, +0) (+20, 0) (0, +20) (-20, 0)
+        let flags = [
+            0x01 | 0x02 | 0x10 | 0x20,
+            0x01 | 0x02 | 0x10 | 0x20,
+            0x01 | 0x10 | 0x04 | 0x20,
+            0x01 | 0x02 | 0x20,
+        ];
+        let xs = [40, 20, 20];
+        let ys = [20];
+        simple(&[3], &[], &[&flags[..], &xs, &ys].concat())
+    }
+
+    #[test]
+    fn a_valid_font_is_rewritten() {
+        let out = snap_x(&font(&[&[], &square()], 0)).expect("a valid font rewrites");
+        assert_eq!(&out[..4], &[0, 1, 0, 0]);
+        let out = snap_x(&font(&[&square()], 1)).expect("long loca too");
+        assert_eq!(&out[..4], &[0, 1, 0, 0]);
+    }
+
+    /// The sfnt checksums of a rebuilt font hold: each directory entry's
+    /// sum is its table's (head's with `checkSumAdjustment` zeroed), and
+    /// the whole file sums to 0xB1B0AFBA.
+    #[test]
+    fn the_rebuilt_font_carries_valid_checksums() {
+        let out = snap_x(&font(&[&square()], 0)).unwrap();
+        let tables = u16_at(&out, 4).unwrap() as usize;
+        for i in 0..tables {
+            let rec = 12 + 16 * i;
+            let off = u32_at(&out, rec + 8).unwrap() as usize;
+            let len = u32_at(&out, rec + 12).unwrap() as usize;
+            let mut data = out[off..off + len].to_vec();
+            if &out[rec..rec + 4] == b"head" {
+                data[8..12].fill(0);
+            }
+            assert_eq!(
+                u32_at(&out, rec + 4).unwrap(),
+                checksum(&data),
+                "{:?}",
+                std::str::from_utf8(&out[rec..rec + 4])
+            );
+        }
+        assert_eq!(checksum(&out), 0xb1b0_afba);
+    }
+
+    /// Glyph records that cannot hold what they declare. Each must leave
+    /// the whole font unchanged (`None`) — never panic, never install a
+    /// rewrite of a broken record.
+    #[test]
+    fn malformed_glyphs_leave_the_font_alone() {
+        let cases: Vec<(&str, Vec<u8>)> = vec![
+            // Last end point 0xffff: 65536 points, an overflow in u16.
+            ("end point 0xffff", simple(&[0xffff], &[], &[])),
+            // One point, flag 0x10 (x same) but y needs a word: no bytes.
+            ("missing y delta", simple(&[0], &[], &[0x10])),
+            // One point, a short x delta flag and no byte for it.
+            ("missing x delta", simple(&[0], &[], &[0x02 | 0x20])),
+            // Two points, a flag repeated three more times.
+            ("repeat overshoots", simple(&[1], &[], &[0x39, 3])),
+            // A flag repeated with no count byte.
+            ("repeat count missing", simple(&[0], &[], &[0x39])),
+            // End points must rise.
+            ("end points fall", simple(&[3, 1], &[], &[0x31; 4])),
+            // Instructions longer than the record.
+            ("instructions run off", {
+                let mut g = simple(&[0], &[], &[]);
+                g[12..14].copy_from_slice(&0x10u16.to_be_bytes());
+                g
+            }),
+            // 0x7fff contours in a record of fourteen bytes.
+            ("absurd contour count", {
+                let mut g = vec![0x7f, 0xff];
+                g.extend(BBOX);
+                g.extend([0, 0, 0, 0]);
+                g
+            }),
+            // A composite whose only component is a flags word: no glyph
+            // index, no arguments.
+            ("composite without index", {
+                let mut g = vec![0xff, 0xff];
+                g.extend(BBOX);
+                g.extend([0, 0]);
+                g
+            }),
+            // A composite with word arguments cut after the first.
+            ("composite args cut", {
+                let mut g = vec![0xff, 0xff];
+                g.extend(BBOX);
+                g.extend([0, 0x01, 0, 1, 0, 5]);
+                g
+            }),
+            // A composite with a 2x2 transform and no transform bytes.
+            ("composite transform cut", {
+                let mut g = vec![0xff, 0xff];
+                g.extend(BBOX);
+                g.extend([0, 0x80, 0, 1, 5, 5]);
+                g
+            }),
+            // A composite whose instructions flag has no length after it.
+            ("composite instructions cut", {
+                let mut g = vec![0xff, 0xff];
+                g.extend(BBOX);
+                g.extend([0x01, 0x00, 0, 1, 5, 5]);
+                g
+            }),
+            // A composite header with no components at all.
+            ("composite empty", {
+                let mut g = vec![0xff, 0xff];
+                g.extend(BBOX);
+                g
+            }),
+            // A glyph shorter than its header.
+            ("header cut", vec![0, 1, 0, 0]),
+        ];
+        let wrong: Vec<String> = cases
+            .into_iter()
+            .filter_map(|(name, g)| {
+                let f = font(&[&square(), &g], 1);
+                match std::panic::catch_unwind(|| snap_x(&f)) {
+                    Ok(None) => None,
+                    Ok(Some(_)) => Some(format!("{name}: rewritten")),
+                    Err(_) => Some(format!("{name}: panicked")),
+                }
+            })
+            .collect();
+        assert!(wrong.is_empty(), "not left alone: {wrong:#?}");
+    }
+
+    /// A font whose tables or offsets cannot be what they say.
+    #[test]
+    fn malformed_tables_leave_the_font_alone() {
+        let good = font(&[&square()], 0);
+        let mut cases: Vec<(&str, Vec<u8>)> = Vec::new();
+        // indexToLocFormat 2 is neither short nor long.
+        let mut f = good.clone();
+        let head = 12 + 16 + 8;
+        let head_at = u32_at(&f, head).unwrap() as usize;
+        f[head_at + 51] = 2;
+        cases.push(("loca format 2", f));
+        // maxp claims 0xffff glyphs; loca holds two entries.
+        let mut f = good.clone();
+        let maxp_at = u32_at(&f, 12 + 48 + 8).unwrap() as usize;
+        f[maxp_at + 4..maxp_at + 6].copy_from_slice(&[0xff, 0xff]);
+        cases.push(("glyph count past loca", f));
+        // loca descending.
+        let mut f = good.clone();
+        let loca_at = u32_at(&f, 12 + 32 + 8).unwrap() as usize;
+        f[loca_at..loca_at + 2].copy_from_slice(&[0xff, 0xff]);
+        cases.push(("loca falls", f));
+        // A table offset at the top of the address space.
+        let mut f = good.clone();
+        f[12 + 8..12 + 16].copy_from_slice(&[0xff, 0xff, 0xff, 0xf0, 0, 0, 0, 0x40]);
+        cases.push(("offset + length overflows", f));
+        // 0xffff tables in a directory of four.
+        let mut f = good.clone();
+        f[4..6].copy_from_slice(&[0xff, 0xff]);
+        cases.push(("absurd table count", f));
+        let wrong: Vec<String> = cases
+            .into_iter()
+            .filter_map(|(name, f)| match std::panic::catch_unwind(|| snap_x(&f)) {
+                Ok(None) => None,
+                Ok(Some(_)) => Some(format!("{name}: rewritten")),
+                Err(_) => Some(format!("{name}: panicked")),
+            })
+            .collect();
+        assert!(wrong.is_empty(), "not left alone: {wrong:#?}");
     }
 }

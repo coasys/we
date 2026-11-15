@@ -14,6 +14,8 @@ pnpm-lock.yaml
 # Recorded renderer snapshots are generated artifacts — they must stay byte-identical to the
 # recorder's output so the determinism hash in the fixtures' READMEs/NOTES stays valid.
 crates/renderer/fixtures/*/snapshot.json
+# The C2a render gate's tree baselines are compared byte-for-byte with normal_form's output.
+crates/renderer/we-app/tests/coasys/*.tree.json
 
 # Tauri writes its capability schemas here on every build (`src-tauri/.gitignore` ignores them for the
 # same reason). Four of them fail a format check on any machine that has built the Tauri app, which made

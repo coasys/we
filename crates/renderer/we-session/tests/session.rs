@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use serde_json::json;
 use we_screen::{ScreenSchema, ScreenState};
-use we_session::Session;
+use we_session::{Session, Tick};
 use we_template::{ResolvedChild, RootSpec, SchemaNode, StoreBag};
 
 fn schema(v: serde_json::Value) -> SchemaNode {
@@ -47,12 +47,11 @@ fn resolve_gives_the_tree() {
     assert!(Arc::ptr_eq(&root, &root2) || s.stats().resolves == resolves);
 }
 
+/// The same counter as the S8 `dispatch_then_poll`, adapted to the
+/// `poll -> Tick` API: the dispatch's local write is observable — the
+/// tick reports `dirty` — and a settled session reports a clean tick.
 #[test]
-fn dispatch_runs_the_handler_and_poll_drains() {
-    // A counter: `$localState` is a *node* field (not a prop — resolver
-    // data does not live in props), `onClick` a *prop* (event props parse
-    // into handlers; a `handlers` field is not a thing the schema reads).
-    // The label binds the local, so the dispatch's write shows on re-resolve.
+fn dispatch_then_poll_reports_the_local_change() {
     let mut s = session(json!({
         "type": "we-button",
         "$localState": { "clicks": { "type": "number", "initial": 0 } },
@@ -78,9 +77,15 @@ fn dispatch_runs_the_handler_and_poll_drains() {
     );
 
     s.dispatch(&root.id, "onClick", we_expr::Value::Undefined);
-    // dispatch queues ops/locals — poll drains anything queued between
-    // frames; the locals write itself already bumped the resolve revision.
-    let _ = s.poll();
+    // The write went straight to LocalState — nothing arrived, but the
+    // revision moved: the tick is dirty with zero arrivals.
+    let tick = s.poll();
+    assert!(tick.dirty, "the local write moved the revision");
+    assert_eq!(
+        tick.completions + tick.query_events + tick.binding_changes + tick.screen_ops,
+        0,
+        "nothing arrived — the write was direct"
+    );
     let root2 = s.resolve();
     assert_eq!(label(&root2), "1");
 
@@ -88,4 +93,9 @@ fn dispatch_runs_the_handler_and_poll_drains() {
     s.dispatch(&root2.id, "onClick", we_expr::Value::Undefined);
     let root3 = s.resolve();
     assert_eq!(label(&root3), "2");
+    assert_eq!(
+        s.poll(),
+        Tick::default(),
+        "settled — a clean tick reports nothing"
+    );
 }

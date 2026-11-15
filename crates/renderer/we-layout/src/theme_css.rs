@@ -204,6 +204,25 @@ pub(crate) fn apply(scx: &StyleCx, node: &ResolvedNode, style: &mut Style) {
             let (mut patch, imp) = evaluate(&c, scx, &scope);
             if let Some(authored) = slot.as_deref() {
                 merge(authored, &mut patch);
+                // The authored state bag is a normal declaration inside the
+                // primitive's shadow stylesheet, which a normal outer rule
+                // for that state beats (`we-button::part(base):active` keeps
+                // retro's pressed bevel over `activeProps`). So what the
+                // theme's state rules set goes back over the bag, each
+                // property at the value the theme's own cascade gave it.
+                let stated: Vec<Matched> =
+                    m.iter().filter(|r| !r.states.is_empty()).cloned().collect();
+                let keys = cascade(&stated, Some(state)).normal;
+                let over = Cascaded {
+                    normal: c
+                        .normal
+                        .iter()
+                        .filter(|(k, _)| keys.contains_key(*k))
+                        .map(|(k, v)| (k.clone(), v.clone()))
+                        .collect(),
+                    important: Default::default(),
+                };
+                merge(&evaluate(&over, scx, &scope).0, &mut patch);
             }
             important_over(&imp, &mut patch);
             patch.animation = anim;
@@ -415,10 +434,21 @@ mod tests {
         let active = style.with_state(StateKind::Active);
         assert_eq!(active.paint.shadows, eval_box_shadow(RETRO_PRESSED));
         assert_eq!(active.paint.bg, Some(color("silver")));
-        let authored = node("we-button", &[("activeProps", bag(&[("shadow", "none")]))]);
+        // The web: the authored state bag is a declaration inside the
+        // button's shadow stylesheet, and the theme's normal outer
+        // `::part(base):active` rule beats it, so the bevel stays pressed.
+        // What the theme's active rule does not set, the bag still sets.
+        let authored = node(
+            "we-button",
+            &[(
+                "activeProps",
+                bag(&[("shadow", "none"), ("opacity", "0.5")]),
+            )],
+        );
         let style = crate::defaults::style_of(&authored, &themed("retro"));
         let active = style.with_state(StateKind::Active);
-        assert_ne!(active.paint.shadows, eval_box_shadow(RETRO_PRESSED));
+        assert_eq!(active.paint.shadows, eval_box_shadow(RETRO_PRESSED));
+        assert_eq!(active.paint.opacity, Some(0.5));
     }
 
     #[test]

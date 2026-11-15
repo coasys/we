@@ -56,6 +56,13 @@ pub trait Namespace: Send + Sync + fmt::Debug {
     fn raw(&self) -> Option<Value> {
         None
     }
+    /// The declaration record `field` names, in the namespace owner's own
+    /// type — the typed sibling of `local`'s `$owner:*`/`$decl:*`/`$fields`
+    /// reads, for callers that own both ends of the downcast. `None` for a
+    /// namespace that declares no fields (everything but `local`).
+    fn decl(&self, _field: &str) -> Option<&dyn std::any::Any> {
+        None
+    }
 }
 
 /// A namespace over an [`IndexMap`] — what `{"$namespace": {…}}` decodes to, and

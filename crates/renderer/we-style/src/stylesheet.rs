@@ -219,9 +219,11 @@ fn strip_comments(css: &str) -> String {
     while i < b.len() {
         let c = b[i];
         if let Some(q) = quote {
+            // An escape is the backslash and the whole character after it
+            // (which may be several bytes).
             if c == b'\\' && i + 1 < b.len() {
-                out.push_str(&css[i..i + 2]);
-                i += 2;
+                push_char(&mut out, css, &mut i);
+                push_char(&mut out, css, &mut i);
                 continue;
             }
             if c == q {
@@ -406,7 +408,10 @@ impl Stylesheet {
                     let kf = parse_keyframes(body);
                     self.keyframes.insert(Arc::from(rest), kf);
                 }
-                "scope" | "layer" => self.parse_block(body),
+                // `@scope` needs its scope root and `@layer` its own place
+                // below every unlayered rule; neither is modelled, so both
+                // are reported rather than flattened into rules that would
+                // apply too widely or win by source order.
                 _ => self
                     .skipped
                     .push(format!("@{name} {} (at-rule not read)", one_line(rest))),
@@ -641,13 +646,25 @@ fn parse_selector(s: &str) -> Result<Selector, String> {
             b' ' | b'\t' | b'\n' | b'\r' | b'>' => {
                 // Combinator: whitespace and/or `>`.
                 let mut j = i;
-                let mut child = false;
+                let mut gts = 0;
                 while j < b.len() && matches!(b[j], b' ' | b'\t' | b'\n' | b'\r' | b'>') {
-                    child |= b[j] == b'>';
+                    gts += usize::from(b[j] == b'>');
                     j += 1;
                 }
+                let child = gts > 0;
+                // A `>` needs a compound on both sides, and only one of it:
+                // the browser drops such a rule rather than reading around it.
                 if j >= b.len() {
+                    if child {
+                        return Err("a dangling combinator".into());
+                    }
                     break;
+                }
+                if gts > 1 {
+                    return Err("a doubled combinator".into());
+                }
+                if child && !cur_started && compounds.is_empty() {
+                    return Err("a leading combinator".into());
                 }
                 if after_part(&part, &pseudo) {
                     return Err("a combinator after a part or pseudo-element".into());
@@ -1087,8 +1104,7 @@ fn numbers(s: &str) -> (Vec<String>, Vec<f32>) {
                 continue;
             }
         }
-        texts.last_mut().unwrap().push(c as char);
-        i += 1;
+        push_char(texts.last_mut().unwrap(), s, &mut i);
     }
     (texts, nums)
 }
@@ -1278,8 +1294,44 @@ mod tests {
              a:not(.b) { color: red } we-text { color: blue } @font-face { font-family: x } \
              @scope (.t) { we-icon { color: green } } garbage",
         );
-        assert_eq!(sheet.rules.len(), 2, "{:?}", sheet.rules);
-        assert_eq!(sheet.skipped.len(), 6, "{:?}", sheet.skipped);
+        // `@scope (.t)` would need its scope root; it is reported, not
+        // unwrapped into a rule that colours every icon.
+        assert_eq!(sheet.rules.len(), 1, "{:?}", sheet.rules);
+        assert_eq!(sheet.skipped.len(), 7, "{:?}", sheet.skipped);
+    }
+
+    #[test]
+    fn layers_and_dangling_combinators_fail_closed() {
+        // Unlayered normal rules beat layered ones in a browser; flattening
+        // the layer would let it win by source order. Skip it instead.
+        let sheet =
+            Stylesheet::parse("we-text { color: blue } @layer low { we-text { color: red } }");
+        assert_eq!(sheet.rules.len(), 1, "{:?}", sheet.rules);
+        assert!(
+            sheet.skipped.iter().any(|s| s.starts_with("@layer")),
+            "{:?}",
+            sheet.skipped
+        );
+        // A trailing or doubled combinator is an invalid selector: the
+        // browser drops the rule, it does not widen to `we-text`.
+        for css in [
+            "we-text > { color: red }",
+            "we-text >> we-icon { color: red }",
+            "we-text > > we-icon { color: red }",
+            "> we-text { color: red }",
+        ] {
+            let sheet = Stylesheet::parse(css);
+            assert!(sheet.rules.is_empty(), "{css}: {:?}", sheet.rules);
+            assert_eq!(sheet.skipped.len(), 1, "{css}: {:?}", sheet.skipped);
+        }
+        // A trailing descendant whitespace is not a combinator.
+        assert_eq!(Stylesheet::parse("we-text  { color: red }").rules.len(), 1);
+        assert_eq!(
+            Stylesheet::parse("we-row > we-text { color: red }")
+                .rules
+                .len(),
+            1
+        );
     }
 
     #[test]
@@ -1488,5 +1540,51 @@ mod tests {
         assert_eq!(skew_deg("skew(-15deg)"), Some((-15.0, 0.0)));
         assert_eq!(skew_deg("translateX(2px) skewY(3deg)"), Some((0.0, 3.0)));
         assert_eq!(skew_deg("rotate(3deg)"), None);
+    }
+
+    /// Every way into the tokenizer with a multibyte character next to a
+    /// slice point: escapes, strings, comments, selectors, values, all
+    /// truncated at every char boundary. None may panic.
+    #[test]
+    fn arbitrary_utf8_never_panics() {
+        let tricky = [
+            "we-text::after { content: '\\é'; }",
+            "we-text::after { content: \"\\é\"; color: red }",
+            "we-text { color: red } /* \\é ünïcödé */ we-icon { color: blue }",
+            "we-text::after { content: '\\",
+            "we-text::after { content: 'é",
+            "we-text { color: red } /* é",
+            "we-text { font-family: 'Ünï\\'cödé' }",
+            "wé-text { color: red }",
+            "we-text[label='é'] { color: red }",
+            "we-text[label^=é] { color: red }",
+            "we-text:é { color: red }",
+            "we-text::part(é) { color: red }",
+            "@kéyframes x { from { left: 1px } }",
+            "@keyframes é { 0%é { left: é1px } }",
+            "we-text { transform: skew(é1deg) translate(1é) }",
+            "we-text { color: 🦀 !important; --x: '😀\\😀' }",
+            "\\é{}\\",
+            "'\\",
+            "\"",
+            "/*",
+            "{é",
+            "}é{",
+        ];
+        for css in tricky {
+            let mut cut = 0;
+            while cut <= css.len() {
+                if css.is_char_boundary(cut) {
+                    let _ = Stylesheet::parse(&css[..cut]);
+                }
+                cut += 1;
+            }
+        }
+        // The string survives intact rather than being mangled.
+        let s = strip_comments("a { content: '\\é/*x*/' }");
+        assert_eq!(s, "a { content: '\\é/*x*/' }");
+        let (texts, nums) = numbers("é1px");
+        assert_eq!(texts, vec!["é".to_string(), "px".to_string()]);
+        assert_eq!(nums, vec![1.0]);
     }
 }
