@@ -203,13 +203,47 @@ impl Widget for TreeItem {
             cx.interact_label(row, &label, egui::Role::Button, &node.id, "row", true, None);
         let visuals = cx.ui.visuals().clone();
         let selected = Self::selected(cx, node);
-        if selected {
-            let fill = props::tone_color(style, "soft", visuals.selection.bg_fill);
-            cx.ui.painter().rect_filled(row, 4.0, fill);
+        // The primitive's row: the tree radius, the theme's `selected`
+        // variant (fill, and a leading bar in its border colour and width,
+        // square where the bar is), `item-hover` under the pointer.
+        let ctx = cx.ui.ctx().clone();
+        let px =
+            |name: &str| props::token_px(&ctx, name, 16.0, 16.0, we_style::Size::new(0.0, 0.0));
+        let radius = px("--we-theme-tree-radius")
+            .or_else(|| px("--we-radius-300"))
+            .unwrap_or(8.0);
+        let bar = if selected {
+            px("--we-theme-tree--selected-border-width").unwrap_or(0.0)
+        } else {
+            0.0
+        };
+        let lit = if selected {
+            Some(
+                props::token_color(&ctx, "--we-theme-tree--selected-fill")
+                    .or_else(|| props::role_color(&ctx, "selected"))
+                    .unwrap_or_else(|| props::tone_color(style, "soft", visuals.selection.bg_fill)),
+            )
         } else if response.hovered() {
-            cx.ui
-                .painter()
-                .rect_filled(row, 4.0, visuals.widgets.hovered.bg_fill);
+            Some(props::role_color(&ctx, "item-hover").unwrap_or(visuals.widgets.hovered.bg_fill))
+        } else {
+            None
+        };
+        if let Some(fill) = lit {
+            let r = radius.round().clamp(0.0, 255.0) as u8;
+            let lead = if bar > 0.0 { 0 } else { r };
+            let corners = egui::CornerRadius {
+                nw: lead,
+                sw: lead,
+                ne: r,
+                se: r,
+            };
+            cx.ui.painter().rect_filled(row, corners, fill);
+        }
+        if bar > 0.0 {
+            if let Some(color) = props::token_color(&ctx, "--we-theme-tree--selected-border") {
+                let strip = egui::Rect::from_min_size(row.min, egui::vec2(bar, row.height()));
+                cx.ui.painter().rect_filled(strip, 0.0, color);
+            }
         }
         // The web component's row text is the default slot's content alone
         // — `label` is not a property it declares. Slot content paints in

@@ -288,6 +288,28 @@ impl TreeMetrics {
     }
 }
 
+/// `var(--we-theme-tree--selected-text, var(--we-role-on-selected))` in
+/// `scx`'s scope.
+fn tree_selected_text(scx: &StyleCx) -> Option<we_style::Color> {
+    let probe = ResolvedNode {
+        id: NodeId::from("$tree-selected"),
+        ty: Arc::from("div"),
+        props: [(
+            Arc::from("color"),
+            Value::Str(Arc::from(
+                "var(--we-theme-tree--selected-text, var(--we-role-on-selected))",
+            )),
+        )]
+        .into_iter()
+        .collect(),
+        handlers: IndexMap::new(),
+        slot: None,
+        children: vec![],
+        transition: None,
+    };
+    crate::defaults::style_of(&probe, scx).text.color
+}
+
 /// A CSS value split at top-level whitespace — `calc(a * b) 10px` is two.
 fn split_top_level(s: &str) -> Vec<String> {
     let mut out = Vec::new();
@@ -1718,6 +1740,19 @@ impl<'a> Builder<'a> {
         inherited: Option<&Style>,
     ) -> Option<TaffyId> {
         let mut style = effective(inherited, style_of(node, scx));
+        // The lit tree row's text is the theme's `selected` variant's
+        // (`:host([selected]) [part='row'] { color }`) — it inherits down
+        // into the row's content like any colour.
+        if node.ty.as_ref() == "we-tree-item"
+            && tree.selected.as_ref().is_some_and(|sel| {
+                let value = node.props.get("value");
+                value.is_some_and(|v| v.truthy() && v.strict_eq(sel))
+            })
+        {
+            if let Some(c) = tree_selected_text(scx) {
+                style.text.color = Some(c);
+            }
+        }
 
         // `display: none` removes the node AND its subtree from layout — no
         // rect, no parts, nothing painted.
