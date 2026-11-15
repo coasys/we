@@ -34,7 +34,6 @@ type Pending<T> = Arc<Mutex<Option<Result<T, String>>>>;
 
 enum Stage {
     Connect {
-        flow: ConnectFlow,
         input: String,
     },
     Pick {
@@ -57,6 +56,11 @@ pub struct ConnectedApp {
     bundle: we_template::Bundle,
     args: ConnectArgs,
     ctx: egui::Context,
+    /// The connect session, for as long as the window is connected — not
+    /// just while the connect screen is up (Lal F5). It owns the token's
+    /// refusal watch: a grant removed in the launcher flips it to Failed,
+    /// and the window goes back to the connect screen to say so.
+    flow: ConnectFlow,
     stage: Stage,
     /// `--space` is applied once; going back to the picker leaves it alone.
     auto_space: Option<String>,
@@ -72,8 +76,8 @@ impl ConnectedApp {
             auto_space: args.space.clone(),
             args,
             ctx,
+            flow,
             stage: Stage::Connect {
-                flow,
                 input: String::new(),
             },
         }
@@ -130,21 +134,46 @@ impl ConnectedApp {
     }
 
     pub fn ui(&mut self, ui: &mut egui::Ui) {
+        if !matches!(self.stage, Stage::Connect { .. }) {
+            // The session ended under an open screen — a token refused, a
+            // grant removed: back to the connect screen, which says why.
+            if let ConnectPhase::Failed { .. } = self.flow.phase() {
+                self.stage = Stage::Connect {
+                    input: String::new(),
+                };
+            } else {
+                // The socket has no "dropped" callback to wake on; look again
+                // twice a second so a lost connection shows.
+                ui.ctx()
+                    .request_repaint_after(std::time::Duration::from_millis(500));
+            }
+        }
+        let flow = &self.flow;
         let next = match &mut self.stage {
-            Stage::Connect { flow, input } => connect_screen(ui, flow, input),
+            Stage::Connect { input } => connect_screen(ui, flow, input),
             Stage::Pick {
                 spaces,
                 filter,
                 error,
                 url,
-                ..
+                conn,
             } => {
                 let list = spaces.lock().ok().and_then(|s| s.clone());
-                pick_screen(ui, url, list, filter, error, &mut self.auto_space)
+                lost_banner(ui, conn).or(pick_screen(
+                    ui,
+                    url,
+                    list,
+                    filter,
+                    error,
+                    &mut self.auto_space,
+                ))
             }
             Stage::Space {
-                url, live, panel, ..
-            } => space_screen(ui, url, live, panel),
+                url,
+                live,
+                panel,
+                conn,
+            } => space_screen(ui, url, conn, live, panel),
         };
         if let Some(next) = next {
             self.go(next);
@@ -154,9 +183,8 @@ impl ConnectedApp {
     fn go(&mut self, next: Next) {
         match next {
             Next::Retry => {
-                let flow = start_flow(&self.rt, &self.ctx, &self.args.settings);
+                self.flow = start_flow(&self.rt, &self.ctx, &self.args.settings);
                 self.stage = Stage::Connect {
-                    flow,
                     input: String::new(),
                 };
             }
@@ -397,9 +425,29 @@ fn pick_screen(
     next
 }
 
+/// Above the picker: the socket dropped. `ad4m-client` keeps redialling;
+/// Reconnect starts the connect flow over.
+fn lost_banner(ui: &mut egui::Ui, conn: &Connection) -> Option<Next> {
+    if conn.is_connected() {
+        return None;
+    }
+    let mut next = None;
+    ui.horizontal(|ui| {
+        ui.colored_label(LOST, "Connection lost — reconnecting…");
+        if ui.button("Reconnect").clicked() {
+            next = Some(Next::Retry);
+        }
+    });
+    next
+}
+
+const LIVE: Color32 = Color32::from_rgb(90, 200, 120);
+const LOST: Color32 = Color32::from_rgb(230, 160, 60);
+
 fn space_screen(
     ui: &mut egui::Ui,
     url: &str,
+    conn: &Connection,
     live: &mut LiveSpace,
     panel: &mut bool,
 ) -> Option<Next> {
@@ -412,9 +460,18 @@ fn space_screen(
         ui.horizontal(|ui| {
             // A painted dot: the default fonts have no "●".
             let (dot, _) = ui.allocate_exact_size(egui::vec2(10.0, 10.0), egui::Sense::hover());
+            let connected = conn.is_connected();
             ui.painter()
-                .circle_filled(dot.center(), 4.0, Color32::from_rgb(90, 200, 120));
+                .circle_filled(dot.center(), 4.0, if connected { LIVE } else { LOST });
             ui.label(format!("{url}  ·  {}", live.space.name));
+            if !connected {
+                // What is on screen is the last answer; nothing updates
+                // until the socket is back.
+                ui.colored_label(LOST, "Connection lost — reconnecting…");
+                if ui.button("Reconnect").clicked() {
+                    next = Some(Next::Retry);
+                }
+            }
             ui.separator();
             ui.label(
                 RichText::new(format!(
