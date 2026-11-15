@@ -40,6 +40,8 @@ struct Args {
     gallery: Gallery,
     /// `dump` — resolve once, print the normal-form tree, exit.
     dump: bool,
+    /// `--theme` — which recorded theme to paint with.
+    theme: String,
 }
 
 /// Which `--gallery` showcase to open (`none` → render the bundle).
@@ -63,6 +65,7 @@ fn parse_args() -> Args {
         route: "/".to_string(),
         gallery: Gallery::None,
         dump: false,
+        theme: "dark".to_string(),
     };
     let mut rest = std::env::args().skip(1).peekable();
     if rest.peek().is_some_and(|a| a == "dump") {
@@ -95,15 +98,21 @@ fn parse_args() -> Args {
                     panic!("--gallery needs a target (`style`, `widgets` or `inputs`): {other:?}")
                 }
             },
+            "--theme" => {
+                args.theme = rest
+                    .next()
+                    .unwrap_or_else(|| panic!("--theme needs a name"));
+            }
             "--offline" => {}
             "--help" | "-h" => {
                 eprintln!(
-                    "usage: we-app [dump] [--bundle <path>] [--snapshot <path>] [--route <href>] [--offline] [--gallery style|widgets|inputs]\n\n\
+                    "usage: we-app [dump] [--bundle <path>] [--snapshot <path>] [--route <href>] [--offline] [--theme <name>] [--gallery style|widgets|inputs]\n\n\
                      dump               resolve the app root once, print the normal-form tree, exit\n\
                      --bundle <path>    bundle to render (default: the repo's bundles/coasys.bundle.json)\n\
                      --snapshot <path>  offline data: stores/queries/invokes as JSON\n\
                      --route <href>     initial routeStore path (default /)\n\
                      --offline          run with no executor — the only mode this stage has\n\
+                     --theme <name>     light, dark, black, retro, cyberpunk or glow (default dark)\n\
                      --gallery style    design-system showcase: roles, scales, radii, shadows\n\
                      --gallery widgets  the E5a widget showcase, themed, schema-driven\n\
                      --gallery inputs   the E5b widget showcase, painted through layout+paint"
@@ -246,9 +255,12 @@ fn run_native(args: Args) -> eframe::Result<()> {
         screen,
         Registry::with_builtins(),
     );
-    // The recorded tables carry a `dark` theme; the bundle's default is dark.
+    // Every recorded table loads; `--theme` picks one, dark by default.
     let set = we_app::gallery::load_theme_set();
-    let (theme, _) = set.theme("dark");
+    let (theme, fell_back) = set.theme(&args.theme);
+    if fell_back {
+        eprintln!("no recorded theme {:?}; painting with dark", args.theme);
+    }
     panel.theme = theme.clone();
     let shell = Shell { panel };
 
