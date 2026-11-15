@@ -1422,13 +1422,12 @@ fn a_forwarded_member_replaced_equal_content_resets_the_tracked_initial() {
 
     locals.set(&owner, "sel", list(&["typed"]));
     locals.touch(&owner, "sel");
-    // The source swaps in an equal-content list, then the screen rebinds
-    // (what `frame` does when screen.version moves).
+    // The source swaps in an equal-content list — a re-resolve on the
+    // locals' own write is the wake.
     source
         .write()
         .unwrap()
         .insert("members".into(), list(&["m1"]));
-    we_template::bind_screen(&bag, &screen);
     let _ = rt.frame(&mut host, &screen).clone();
     assert_eq!(
         locals.get(&owner, "sel").to_json(),
@@ -1453,75 +1452,39 @@ fn find_text(node: &ResolvedNode) -> Option<Value> {
 }
 
 #[test]
-fn screen_rebinds_keep_no_wrapper_chain() {
-    // N6, lifetime: every bind used to own the previous bind's wrapper —
-    // the nth bind transitively retained the whole history. A Weak on an
-    // early bind's root must die once it has been replaced.
-    let bag = StoreBag::new();
-    let screen = screen();
-    we_template::bind_screen(&bag, &screen);
-    let weak = match bag.root("routeStore") {
-        Some(Value::Namespace(ns)) => Arc::downgrade(&ns),
-        other => panic!("routeStore must be a namespace: {other:?}"),
+fn the_screen_root_is_bound_once() {
+    // B10, the live-root shape: `screen` binds once at runtime
+    // construction — a screen change refreshes the view's snapshot, it
+    // never rebinds the root. The held root's identity is stable across
+    // any number of changes.
+    let bag = Arc::new(StoreBag::new());
+    let node = schema(json!({ "type": "Column", "children": [] }));
+    let mut rt = Runtime::new(node, "test", bag.clone(), LocalState::new());
+    let mut host = StaticHost::new(bag.clone());
+    let mut screen = screen();
+    let bound = rt.roots().root("screen");
+    let weak = match &bound {
+        Some(Value::Namespace(ns)) => Arc::downgrade(ns),
+        other => panic!("screen must be a namespace: {other:?}"),
     };
-    we_template::bind_screen(&bag, &screen);
-    we_template::bind_screen(&bag, &screen);
-    assert!(
-        weak.upgrade().is_none(),
-        "a replaced screen wrapper must be dropped, not retained by its successor"
-    );
-}
-
-#[test]
-fn a_member_read_after_many_rebinds_hits_the_source_once() {
-    // N6, traversal: an unread member read after N rebinds must ask the
-    // captured base once — a wrapper chain would recurse through every
-    // predecessor (and populate every cache).
-    use std::sync::atomic::{AtomicUsize, Ordering};
-    struct CountNs {
-        gets: Arc<AtomicUsize>,
-        members: indexmap::IndexMap<Arc<str>, Value>,
-    }
-    impl we_expr::Namespace for CountNs {
-        fn get(&self, key: &str) -> Value {
-            self.gets.fetch_add(1, Ordering::Relaxed);
-            self.members.get(key).cloned().unwrap_or(Value::Undefined)
-        }
-        fn keys(&self) -> Vec<Arc<str>> {
-            self.members.keys().cloned().collect()
-        }
-    }
-    impl std::fmt::Debug for CountNs {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            f.debug_struct("CountNs").finish()
-        }
-    }
-
-    let mut members = indexmap::IndexMap::new();
-    members.insert("data".into(), Value::from("v"));
-    let gets = Arc::new(AtomicUsize::new(0));
-    let bag = StoreBag::new();
-    bag.set_root(
-        "routeStore",
-        Value::namespace(CountNs {
-            gets: gets.clone(),
-            members,
-        }),
-    ); // the captured base
-    let screen = screen();
     for _ in 0..20 {
-        we_template::bind_screen(&bag, &screen);
+        screen.apply(we_screen::ScreenOp::SetSurface {
+            id: "s".into(),
+            width: 1.0,
+            tier: "md".into(),
+        });
+        let _ = rt.frame(&mut host, &screen).clone();
+        assert!(
+            bound
+                .as_ref()
+                .unwrap()
+                .strict_eq(&rt.roots().root("screen").unwrap()),
+            "the screen root must be the same live view after a change"
+        );
     }
-    gets.store(0, Ordering::Relaxed);
-    let v = match bag.root("routeStore") {
-        Some(Value::Namespace(ns)) => ns.get("data"),
-        other => panic!("routeStore must be a namespace: {other:?}"),
-    };
-    assert!(v.strict_eq(&Value::from("v")));
-    assert_eq!(
-        gets.load(Ordering::Relaxed),
-        1,
-        "one unread member read = one source read, not one per retained wrapper"
+    assert!(
+        weak.upgrade().is_some(),
+        "the bound-once view is never dropped"
     );
 }
 
@@ -2230,7 +2193,7 @@ fn an_initial_tracks_through_an_accessor_returned_list() {
 
 #[test]
 fn a_synthesized_route_conduit_is_not_a_dependency() {
-    // R4-5: `routeStore.params` is rebuilt on every read (a fresh
+    // R4-5: `screen.params` is rebuilt on every read (a fresh
     // MapNamespace each `get`) — recording the conduit made every pass
     // a "move" and wiped the edit on an unrelated resolve. The deps are
     // the leaf reads beneath it — `params.id` — never the conduit's
@@ -2238,7 +2201,7 @@ fn a_synthesized_route_conduit_is_not_a_dependency() {
     // replaces; an unchanged route emits nothing.)
     let node = schema(json!({
         "type": "Column",
-        "$localState": { "sel": { "type": "array", "initial": { "$": "[routeStore.params.id]" } } },
+        "$localState": { "sel": { "type": "array", "initial": { "$": "[screen.params.id]" } } },
         "children": []
     }));
     let locals = LocalState::new();
@@ -2254,7 +2217,7 @@ fn a_synthesized_route_conduit_is_not_a_dependency() {
                 .first()
                 .and_then(|v| v.to_json().as_str().map(String::from)),
             Some("demo".to_string()),
-            "sel seeds [routeStore.params.id]"
+            "sel seeds [screen.params.id]"
         ),
         other => panic!("sel must seed a list: {other:?}"),
     }
@@ -2285,12 +2248,12 @@ fn a_synthesized_route_conduit_is_not_a_dependency() {
 
 #[test]
 fn a_synthesized_panels_conduit_is_not_a_dependency() {
-    // R4-5, the shell twin: `shellStore.panels` is also a fresh
-    // MapNamespace per read — `[shellStore.panels.inspector]` depends on
+    // R4-5, the shell twin: `screen.panels` is also a fresh
+    // MapNamespace per read — `[screen.panels.inspector]` depends on
     // the panel flag's leaf read, not on the rebuilt map.
     let node = schema(json!({
         "type": "Column",
-        "$localState": { "open": { "type": "array", "initial": { "$": "[shellStore.panels.inspector]" } } },
+        "$localState": { "open": { "type": "array", "initial": { "$": "[screen.panels.inspector]" } } },
         "children": []
     }));
     let locals = LocalState::new();
@@ -2306,7 +2269,7 @@ fn a_synthesized_panels_conduit_is_not_a_dependency() {
     assert_eq!(
         locals.get(&owner, "open").to_json(),
         json!([true]),
-        "open seeds [shellStore.panels.inspector]"
+        "open seeds [screen.panels.inspector]"
     );
 
     locals.set(
@@ -2335,7 +2298,7 @@ fn a_synthesized_panels_conduit_is_not_a_dependency() {
 
 #[test]
 fn a_synthesized_conduit_read_whole_is_not_a_dependency() {
-    // R4-5, the terminal-read edge: `routeStore.params` AS the initial's
+    // R4-5, the terminal-read edge: `screen.params` AS the initial's
     // value is a leaf — there is no deeper read to spare it — so the
     // conduit needs a stable identity while its content holds (TS's
     // params object is one allocation a param write replaces). The
@@ -2345,7 +2308,7 @@ fn a_synthesized_conduit_read_whole_is_not_a_dependency() {
     // same `Undefined` and the memo's `===` check never emitted.
     let node = schema(json!({
         "type": "Column",
-        "$localState": { "bag": { "type": "object", "initial": { "$": "routeStore.params" } } },
+        "$localState": { "bag": { "type": "object", "initial": { "$": "screen.params" } } },
         "children": []
     }));
     let locals = LocalState::new();
@@ -2380,7 +2343,7 @@ fn a_synthesized_conduit_in_a_fresh_container_keeps_the_edit() {
     // stable identity is the only thing that spares the edit here.
     let node = schema(json!({
         "type": "Column",
-        "$localState": { "bag": { "type": "object", "initial": { "$": "[routeStore.params]" } } },
+        "$localState": { "bag": { "type": "object", "initial": { "$": "[screen.params]" } } },
         "children": []
     }));
     let locals = LocalState::new();
@@ -2393,7 +2356,7 @@ fn a_synthesized_conduit_in_a_fresh_container_keeps_the_edit() {
     assert_eq!(
         locals.get(&owner, "bag").to_json(),
         json!([{ "$undefined": true }]),
-        "bag seeds [routeStore.params] — a namespace settles to undefined in a value position"
+        "bag seeds [screen.params] — a namespace settles to undefined in a value position"
     );
 
     locals.set(
@@ -2422,10 +2385,10 @@ fn a_synthesized_conduit_in_a_fresh_container_keeps_the_edit() {
 
 #[test]
 fn a_synthesized_panels_conduit_in_a_fresh_container_keeps_the_edit() {
-    // R4-5, the same edge for the shell twin — `[shellStore.panels]`.
+    // R4-5, the same edge for the shell twin — `[screen.panels]`.
     let node = schema(json!({
         "type": "Column",
-        "$localState": { "bag": { "type": "object", "initial": { "$": "[shellStore.panels]" } } },
+        "$localState": { "bag": { "type": "object", "initial": { "$": "[screen.panels]" } } },
         "children": []
     }));
     let locals = LocalState::new();
@@ -2465,7 +2428,7 @@ fn a_synthesized_panels_conduit_in_a_fresh_container_keeps_the_edit() {
 
 #[test]
 fn a_dynamic_index_through_a_synthesized_conduit_keeps_the_edit() {
-    // R4-5, the interleaved-read edge: `routeStore.params[local.key]` —
+    // R4-5, the interleaved-read edge: `screen.params[local.key]` —
     // the index's own read (`local.key`) lands between the conduit and
     // its leaf in the read log, so the conduit is not the "next read
     // extends it" case and leaf-collapsing keeps it. Its stable identity
@@ -2476,7 +2439,7 @@ fn a_dynamic_index_through_a_synthesized_conduit_keeps_the_edit() {
         "$localState": { "key": { "type": "string", "initial": "id" } },
         "children": [{
             "type": "Row",
-            "$localState": { "sel": { "type": "array", "initial": { "$": "[routeStore.params[local.key]]" } } },
+            "$localState": { "sel": { "type": "array", "initial": { "$": "[screen.params[local.key]]" } } },
             "children": []
         }]
     }));
@@ -2491,7 +2454,7 @@ fn a_dynamic_index_through_a_synthesized_conduit_keeps_the_edit() {
     assert_eq!(
         locals.get(&child, "sel").to_json(),
         json!(["demo"]),
-        "sel seeds [routeStore.params[local.key]]"
+        "sel seeds [screen.params[local.key]]"
     );
 
     locals.set(
@@ -2599,7 +2562,7 @@ fn first_text(v: &Value) -> Option<String> {
 }
 
 /// An unrelated screen change — a surface measurement elsewhere — that
-/// moves `screen.version` and so re-runs `bind_screen`.
+/// moves `screen.version` and so refreshes the `screen` view's snapshot.
 fn unrelated_screen_change(screen: &mut ScreenState) {
     let before = screen.version;
     screen.apply(we_screen::ScreenOp::SetSurface {
@@ -2615,12 +2578,12 @@ fn unrelated_screen_change(screen: &mut ScreenState) {
 
 #[test]
 fn a_screen_rebind_keeps_an_edit_on_a_route_member_initial() {
-    // R6-1: a screen-version move rebuilds the routeStore root; WE keeps one
-    // live store object per mount, so the bare root is not an input — the
-    // edit and touched survive an unrelated screen change.
+    // R6-1: a screen-version move refreshes the screen view's snapshot; WE
+    // keeps one live store object per mount, so the view's identity is not
+    // an input — the edit and touched survive an unrelated screen change.
     let node = schema(json!({
         "type": "Column",
-        "$localState": { "sel": { "type": "array", "initial": { "$": "[routeStore.params.id]" } } },
+        "$localState": { "sel": { "type": "array", "initial": { "$": "[screen.params.id]" } } },
         "children": []
     }));
     let locals = LocalState::new();
@@ -2656,11 +2619,11 @@ fn a_screen_rebind_keeps_an_edit_on_a_route_member_initial() {
 
 #[test]
 fn a_real_route_param_change_still_resets_after_a_rebind() {
-    // R6-1, the other half: the read through the root (`params.id`) is still
+    // R6-1, the other half: the read through the view (`params.id`) is still
     // a dependency — a genuine param change resets the initial.
     let node = schema(json!({
         "type": "Column",
-        "$localState": { "sel": { "type": "array", "initial": { "$": "[routeStore.params.id]" } } },
+        "$localState": { "sel": { "type": "array", "initial": { "$": "[screen.params.id]" } } },
         "children": []
     }));
     let locals = LocalState::new();
@@ -2695,8 +2658,8 @@ fn a_real_route_param_change_still_resets_after_a_rebind() {
 
 #[test]
 fn a_screen_rebind_keeps_an_edit_on_a_space_store_member_initial() {
-    // R6-1, the spaceStore twin: `bind_screen` rewraps spaceStore too; a
-    // base member read must survive the rebind.
+    // R6-1, the spaceStore twin: `spaceStore` is an ordinary root — a
+    // base member read must survive an unrelated screen change.
     let node = schema(json!({
         "type": "Column",
         "$localState": { "sel": { "type": "array", "initial": { "$": "[spaceStore.root]" } } },

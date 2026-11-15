@@ -54,11 +54,11 @@ fn session(route: &str) -> (Session, OfflineData) {
         },
         route,
     );
-    let session = Session {
-        runtime: we_template::Runtime::app(spec, data.bag.clone(), locals.clone()),
-        host: Box::new(StaticHost::new(data.bag.clone())),
+    let session = Session::from_parts(
+        we_template::Runtime::app(spec, data.bag.clone(), locals.clone()),
+        Box::new(StaticHost::new(data.bag.clone())),
         screen,
-    };
+    );
     (session, data)
 }
 
@@ -293,11 +293,13 @@ fn the_inspector_loads_populated_empty_and_dependent_queries() {
     }
 
     let (mut session, data) = session(route);
-    session.screen.shell.open_template_panel("inspector");
-    session.screen.prefs.set(
-        "we-local:inspector.reactionsSection",
-        Some(&serde_json::json!(true)),
-    );
+    session.apply_screen(we_screen::ScreenOp::OpenTemplatePanel {
+        id: "inspector".into(),
+    });
+    session.apply_screen(we_screen::ScreenOp::SetPref {
+        key: "we-local:inspector.reactionsSection".into(),
+        value: Some(serde_json::json!(true)),
+    });
     let root = session.resolve().clone();
     let mut texts = Vec::new();
     find_text(&root, &mut texts);

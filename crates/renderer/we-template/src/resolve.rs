@@ -25,7 +25,7 @@ use crate::local::TrackedDeps;
 use crate::node::{JsonMap, RouteNode, SchemaChild, SchemaNode};
 use crate::query::{compile_request, CompileCx, Compiled, QueryHub, QueryKey, SiteId, SiteSlot};
 use crate::resolved::{HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope, Transition};
-use crate::scope::{FieldMeta, LocalDecl, LocalNs, LocalScope, ScopeEnv, StoreBag};
+use crate::scope::{FieldMeta, LocalDecl, LocalNs, LocalScope, Roots, ScopeEnv, StoreBag};
 use crate::{Host, LocalState};
 
 /// Where `$part` looks up module content. The app installs the module
@@ -48,7 +48,9 @@ impl PartSource for NoParts {
 
 /// What a resolve needs besides the node and the scope.
 pub struct ResolveCx<'a> {
-    pub bag: &'a StoreBag,
+    /// This mount's root view — its own bindings (`screen`, the legacy
+    /// faces) over the shared bag; a `{"$"}`/`$query` reads through it.
+    pub bag: Roots<'a>,
     pub host: &'a mut dyn Host,
     pub locals: &'a LocalState,
     pub cache: &'a mut ParseCache,
@@ -174,7 +176,7 @@ fn has_any_token(v: &Json) -> bool {
 pub(crate) fn eval_str(
     source: &str,
     scope: &Scope,
-    bag: &StoreBag,
+    bag: Roots,
     cache: &mut ParseCache,
     warnings: &mut Vec<Arc<str>>,
 ) -> Value {
@@ -203,16 +205,17 @@ pub(crate) fn eval_str(
 /// is what suppresses the non-emission when the memo's own answer is the
 /// shared child. The reads the port synthesizes are not inputs and are
 /// excluded at the recorder, named: `LocalNs`'s `local.$*` plumbing and a bare
-/// conduit-box root (`local`, `surface`, `$nav`, an `$agent` stub, and the
-/// screen-store roots `bind_screen` rewraps on a screen move) — rebuilt
+/// conduit-box root (`local`, `surface`, `$nav`, an `$agent` stub) — rebuilt
 /// every pass where WE keeps one object alive per mount, so
 /// recording the box would fake a moved input while the reads through it
-/// (`local.src`, `surface.tier`) stay real. [`LocalState::follow_initial`]
+/// (`local.src`, `surface.tier`) stay real. The `screen` root is bound once
+/// per mount (E3c-6) — a bare read of it is the same stable allocation, so
+/// it needs no conduit marking. [`LocalState::follow_initial`]
 /// is the consumer.
 fn eval_str_tracked(
     source: &str,
     scope: &Scope,
-    bag: &StoreBag,
+    bag: Roots,
     cache: &mut ParseCache,
     warnings: &mut Vec<Arc<str>>,
 ) -> (Value, TrackedDeps) {
@@ -221,13 +224,11 @@ fn eval_str_tracked(
             let reads = RefCell::new(TrackedDeps::default());
             let value = {
                 // A bare root is a conduit when its innermost scope binding
-                // is marked one, or — unshadowed by the scope — when it is
-                // a root `bind_screen` rebuilt (`routeStore`, `shellStore`,
-                // `themeStore`, `spaceStore`), rewrapped on every screen
-                // version move.
+                // is marked one. The `screen` root never rebinds (E3c-6), so
+                // it is as stable a read as any store root.
                 let is_conduit_root = |name: &str| match scope.get(name) {
                     Some(_) => scope.is_conduit(name),
-                    None => bag.is_screen_conduit(name),
+                    None => false,
                 };
                 let observe = |path: &str, value: &Value| {
                     // `LocalNs`'s own members (`local.$fields`,
@@ -304,7 +305,7 @@ impl Env for TrackEnv<'_> {
 pub(crate) fn eval_json(
     json: &Json,
     scope: &Scope,
-    bag: &StoreBag,
+    bag: Roots,
     cache: &mut ParseCache,
     warnings: &mut Vec<Arc<str>>,
 ) -> Value {
@@ -855,7 +856,7 @@ fn resolve_node(
                 .and_then(|a| a.as_str())
                 .unwrap_or("agent");
             let mut row_scope = scope.clone();
-            match agent_profile(cx.bag, &did) {
+            match agent_profile(cx.bag.bag, &did) {
                 // A real profile row is live data — its own dependency.
                 Some(row) => row_scope.bind(as_name, row),
                 // The stub is synthesized per read — a conduit like `local`.

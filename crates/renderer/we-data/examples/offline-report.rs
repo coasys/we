@@ -82,13 +82,13 @@ fn main() -> Result<(), String> {
     // The snapshot query source answers from the `queries` table by each
     // claim's `name_hint` — a `$queries` field name is the handle.
     let source = Arc::new(data.query_source());
-    let mut session = Session {
-        runtime: Runtime::app(spec, data.bag.clone(), locals.clone()).with_sources(
+    let mut session = Session::from_parts(
+        Runtime::app(spec, data.bag.clone(), locals.clone()).with_sources(
             Some(source as Arc<dyn we_template::QuerySource>),
             Arc::new(NoParts),
         ),
-        host: Box::new(StaticHost::new(data.bag.clone())),
-        screen: ScreenState::desktop(
+        Box::new(StaticHost::new(data.bag.clone())),
+        ScreenState::desktop(
             ScreenSchema {
                 pages: bundle
                     .pages
@@ -101,7 +101,7 @@ fn main() -> Result<(), String> {
             },
             &args.route,
         ),
-    };
+    );
     // The commit → drain frame loop settles the named claims' rows in the
     // resolve itself.
     session.resolve();

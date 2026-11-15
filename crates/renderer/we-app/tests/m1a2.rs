@@ -97,9 +97,13 @@ fn resolved_route(truth: &serde_json::Value, id: &str) -> we_template::ResolvedN
     let types: std::collections::HashSet<&'static str> = registry.type_names().collect();
     let mut app = RendererApp::new(placeholder, "coasys", data.bag.clone(), screen, registry);
     let locals = LocalState::new();
-    app.session.runtime = Runtime::app(spec, data.bag.clone(), locals.clone())
-        .with_sources(Some(data.source()), Arc::new(NoParts))
-        .with_dollar_types(move |ty| types.contains(ty));
+    // `set_runtime`, not a field write: the bag's legacy faces must read
+    // this runtime's `screen` view, not the one the session built.
+    app.session.set_runtime(
+        Runtime::app(spec, data.bag.clone(), locals.clone())
+            .with_sources(Some(data.source()), Arc::new(NoParts))
+            .with_dollar_types(move |ty| types.contains(ty)),
+    );
     app.session.host = Box::new(StaticHost::new(data.bag.clone()));
     for _ in 0..4 {
         app.session.resolve();

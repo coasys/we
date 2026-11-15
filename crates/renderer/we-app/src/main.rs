@@ -187,13 +187,8 @@ fn run_dump(args: &Args) {
     // first resolve produced, redirects not followed.
     let mut session = Session::offline(RootSpec::App(Box::new(spec)), bag, screen)
         .with_dollar_types(move |ty| types.contains(ty));
-    let Session {
-        runtime,
-        host,
-        screen,
-    } = &mut session;
-    let root = runtime.frame(host.as_mut(), screen).clone();
-    let stats = runtime.stats();
+    let root = session.frame().clone();
+    let stats = session.stats();
     eprintln!(
         "dump: nodes={} resolves={} last_resolve={:?} warnings={}",
         stats.nodes,

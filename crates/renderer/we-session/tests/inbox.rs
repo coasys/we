@@ -248,7 +248,7 @@ fn poll_dirty_after_screen_op() {
         tick.screen_ops, 0,
         "it applied inside dispatch, not via poll"
     );
-    assert_eq!(s.screen.nav.current_path(), "/elsewhere");
+    assert_eq!(s.screen().nav.current_path(), "/elsewhere");
     s.resolve();
     assert_eq!(s.poll(), Tick::default());
 }
@@ -283,21 +283,14 @@ fn poll_counts_a_queued_screen_op() {
         ScreenState::desktop(ScreenSchema::default(), "/space/demo/app/bogus"),
     );
     // A raw frame queues the redirect op — the session has not polled yet.
-    {
-        let Session {
-            runtime,
-            host,
-            screen,
-        } = &mut s;
-        runtime.frame(host.as_mut(), screen);
-    }
+    s.frame();
     let tick = s.poll();
     assert_eq!(tick.screen_ops, 1, "poll applied the queued redirect");
     assert!(tick.dirty, "the navigate moved the screen revision");
     assert!(
-        s.screen.nav.current_path().ends_with("/gone"),
+        s.screen().nav.current_path().ends_with("/gone"),
         "the redirect landed — {:?}",
-        s.screen.nav.current_path()
+        s.screen().nav.current_path()
     );
     let root = s.resolve();
     assert!(find_ty(&root, "GoneLeaf").is_some());

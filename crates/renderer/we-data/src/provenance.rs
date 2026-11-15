@@ -129,7 +129,7 @@ impl fmt::Display for ProvenanceReport {
 ///
 /// A read that comes back `Undefined` is not "served by the snapshot" — the
 /// store was asked and had nothing — so it records nothing. `routeStore` and
-/// `spaceStore` keep their wrapper under `bind_screen`'s overlay: the screen
+/// `spaceStore` keep their wrapper under `we-legacy`'s adapter face: the screen
 /// facts are intercepted before this namespace sees the read, everything else
 /// still flows through and records.
 #[derive(Debug)]
