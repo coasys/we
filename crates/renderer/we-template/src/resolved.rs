@@ -221,6 +221,10 @@ pub struct Transition {
     /// draws the open or hidden style — the subtree is present regardless.
     /// `None` for a mount/scroll-driven animation and for `$if`.
     pub open: Option<bool>,
+    /// The `$if` this is the `then` branch of, by the `$if`'s own id — the
+    /// key its condition is kept under in [`crate::Runtime::conditions`].
+    /// `None` for `$animate`.
+    pub site: Option<NodeId>,
 }
 
 /// One animation effect (`TransitionEffect` in `types.ts`). `distance` is text
@@ -280,6 +284,7 @@ impl Transition {
             enter,
             exit,
             open: None,
+            site: None,
         })
     }
 }

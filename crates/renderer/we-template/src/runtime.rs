@@ -179,6 +179,8 @@ pub struct Runtime {
     /// mount framed by the content viewport carries its host tag on that
     /// synthetic wrapper instead; no host tag sits on a template node.
     host_surfaces: Vec<SurfaceTag>,
+    /// The last pass's `$if` conditions ([`Runtime::conditions`]).
+    conditions: HashMap<NodeId, bool>,
     /// `QuerySource` — E6/E7 answer real subscriptions; the default is the
     /// snapshot's `queries` table, answering named requests by `name_hint`.
     source: Arc<dyn QuerySource>,
@@ -313,6 +315,7 @@ impl Runtime {
             hub: QueryHub::new(inbox.clone(), handles.clone()),
             surfaces: SurfaceTable::default(),
             host_surfaces: Vec::new(),
+            conditions: HashMap::new(),
             source,
             parts: Arc::new(NoParts),
             pending: HashMap::new(),
@@ -733,6 +736,7 @@ impl Runtime {
             // The nested frames (part mounts) the last pass resolved —
             // a part's locals outlive a pass only while it is mounted.
             let mut round_frames: HashSet<Arc<str>> = HashSet::new();
+            let mut round_conditions: HashMap<NodeId, bool> = HashMap::new();
             for _ in 0..8 {
                 // Claims a panicked pass recorded are dropped — a site
                 // that does not claim again does not keep a stale claim.
@@ -740,6 +744,7 @@ impl Runtime {
                 self.surfaces.begin_pass();
                 let mut round_live = HashSet::new();
                 let mut round_parents = HashMap::new();
+                round_conditions.clear();
                 round_frames.clear();
                 warnings.clear();
                 children.clear();
@@ -793,6 +798,7 @@ impl Runtime {
                         record_views,
                         ops: &mut ops,
                         live: &mut round_live,
+                        conditions: &mut round_conditions,
                         mounted_frames: &mut round_frames,
                         parents: &mut round_parents,
                         warnings: &mut warnings,
@@ -859,6 +865,7 @@ impl Runtime {
             }
             self.parents = parents;
             self.live = live;
+            self.conditions = round_conditions;
             // A pending call belongs to the node incarnation that made it:
             // once its node is absent from a frame, the call is dead even if
             // the same id mounts again before the completion arrives.
@@ -1115,6 +1122,14 @@ impl Runtime {
     /// elements a tree is mounted in, outside the template). Measured
     /// there, a root sized off `surface.width` cannot feed its own width
     /// back. Empty before the first frame.
+    /// Each `$if` with a transition in the last resolved tree, by the
+    /// `$if`'s own id: whether its condition held. The painter compares it
+    /// with the tree before — a `$if` there false and here true fades its
+    /// `then` branch in; one not there before starts as it is.
+    pub fn conditions(&self) -> &HashMap<NodeId, bool> {
+        &self.conditions
+    }
+
     pub fn host_surfaces(&self) -> &[SurfaceTag] {
         &self.host_surfaces
     }

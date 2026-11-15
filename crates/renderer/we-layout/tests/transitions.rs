@@ -1,6 +1,7 @@
 //! `Transitions` plays a change to a transitioned property out over its
 //! duration, by CSS's rules: no transition on a node's first frame, a
 //! change mid-flight starts from the value on screen, reduced motion jumps.
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use indexmap::IndexMap;
@@ -10,6 +11,16 @@ use we_layout::defaults::{style_of, StyleCx};
 use we_template::{
     NodeId, ResolvedChild, ResolvedNode, Transition, TransitionEffect, TransitionKind,
 };
+
+/// No `$if` in the tree.
+fn none() -> HashMap<NodeId, bool> {
+    HashMap::new()
+}
+
+/// The `$if` the label is the `then` of, with its condition.
+fn site(condition: bool) -> HashMap<NodeId, bool> {
+    [(NodeId::from("if"), condition)].into_iter().collect()
+}
 
 fn rail(width: &str) -> ResolvedNode {
     let props: IndexMap<Arc<str>, Value> = [
@@ -35,7 +46,7 @@ fn rail(width: &str) -> ResolvedNode {
 /// resolved one's when nothing is moving.
 fn drawn(t: &mut Transitions, node: &ResolvedNode, now: f64, reduced: bool) -> f32 {
     let scx = StyleCx::empty();
-    let tree = t.apply(node, &scx, now, reduced);
+    let tree = t.apply(node, &none(), &scx, now, reduced);
     let tree = tree.as_ref().unwrap_or(node);
     match style_of(tree, &scx).layout.width {
         Some(we_style::Dimension::Px(px)) => px,
@@ -65,7 +76,8 @@ fn a_change_plays_out_over_the_duration_and_stops() {
     assert_eq!(drawn(&mut t, &wide, 1.2, false), 256.0);
     assert!(!t.running(1.2), "done at the end of its duration");
     assert!(
-        t.apply(&wide, &StyleCx::empty(), 1.3, false).is_none(),
+        t.apply(&wide, &none(), &StyleCx::empty(), 1.3, false)
+            .is_none(),
         "nothing left to draw"
     );
 }
@@ -99,11 +111,13 @@ fn only_the_node_that_changed_is_rewritten() {
     root.children
         .push(ResolvedChild::Node(Box::new(rail("72px"))));
     let scx = StyleCx::empty();
-    assert!(t.apply(&root, &scx, 0.0, false).is_none());
+    assert!(t.apply(&root, &none(), &scx, 0.0, false).is_none());
     if let ResolvedChild::Node(n) = &mut root.children[0] {
         n.props.insert(Arc::from("width"), Value::from("172px"));
     }
-    let tree = t.apply(&root, &scx, 1.0, false).expect("the child moves");
+    let tree = t
+        .apply(&root, &none(), &scx, 1.0, false)
+        .expect("the child moves");
     assert!(
         !tree.props.contains_key("styles"),
         "the parent is drawn as resolved"
@@ -130,13 +144,19 @@ fn label() -> ResolvedNode {
         enter: Some(vec![fade]),
         exit: None,
         open: None,
+        site: Some(NodeId::from("if")),
     });
     n
 }
 
-fn opacity(t: &mut Transitions, root: &ResolvedNode, now: f64) -> f32 {
+fn opacity(
+    t: &mut Transitions,
+    root: &ResolvedNode,
+    conditions: &HashMap<NodeId, bool>,
+    now: f64,
+) -> f32 {
     let scx = StyleCx::empty();
-    let tree = t.apply(root, &scx, now, false);
+    let tree = t.apply(root, conditions, &scx, now, false);
     let tree = tree.as_ref().unwrap_or(root);
     let node = match tree.children.first() {
         Some(ResolvedChild::Node(n)) => n,
@@ -145,30 +165,68 @@ fn opacity(t: &mut Transitions, root: &ResolvedNode, now: f64) -> f32 {
     style_of(node, &scx).paint.opacity.unwrap_or(1.0)
 }
 
-#[test]
-fn a_node_a_branch_mounts_fades_in_and_one_there_from_the_start_does_not() {
+/// The tree with and without the label a `$if` (`if`) shows.
+fn trees() -> (ResolvedNode, ResolvedNode) {
     let mut root = rail("72px");
     root.id = NodeId::from("root");
     root.props.shift_remove("transition");
-    let with_label = {
-        let mut r = root.clone();
-        r.children.push(ResolvedChild::Node(Box::new(label())));
-        r
-    };
-    // There on the first tree: drawn as it is.
+    let mut with_label = root.clone();
+    with_label
+        .children
+        .push(ResolvedChild::Node(Box::new(label())));
+    (root, with_label)
+}
+
+/// A `$if` that goes from false to true fades its `then` in, through the
+/// duration, to its own opacity — and again each time it does.
+#[test]
+fn a_conditional_turning_true_fades_its_then_in() {
+    let (root, with_label) = trees();
     let mut t = Transitions::default();
-    assert_eq!(opacity(&mut t, &with_label, 0.0), 1.0);
-    // Mounted later: from 0, through the duration, to its own opacity.
-    let mut t = Transitions::default();
-    assert!(t.apply(&root, &StyleCx::empty(), 0.0, false).is_none());
-    assert_eq!(opacity(&mut t, &with_label, 1.0), 0.0);
+    assert!(t
+        .apply(&root, &site(false), &StyleCx::empty(), 0.0, false)
+        .is_none());
+    assert_eq!(opacity(&mut t, &with_label, &site(true), 1.0), 0.0);
     assert!(t.running(1.0));
-    assert!((opacity(&mut t, &with_label, 1.05) - 0.5).abs() < 1e-3);
-    assert_eq!(opacity(&mut t, &with_label, 1.1), 1.0);
+    assert!((opacity(&mut t, &with_label, &site(true), 1.05) - 0.5).abs() < 1e-3);
+    assert_eq!(opacity(&mut t, &with_label, &site(true), 1.1), 1.0);
     assert!(!t.running(1.1));
-    // Unmounted and mounted again: it fades in again.
-    assert!(t.apply(&root, &StyleCx::empty(), 2.0, false).is_none());
-    assert_eq!(opacity(&mut t, &with_label, 3.0), 0.0);
+    assert!(t
+        .apply(&root, &site(false), &StyleCx::empty(), 2.0, false)
+        .is_none());
+    assert_eq!(opacity(&mut t, &with_label, &site(true), 3.0), 0.0);
+}
+
+/// A `$if` first seen true starts visible (`ConditionalRenderer`'s
+/// `startVisible`): on the first tree, in a tree long after it (a page
+/// navigated to), and when it mounts again after leaving the tree — each
+/// is a new conditional, with its own initial condition.
+#[test]
+fn a_conditional_first_seen_true_is_drawn_at_once() {
+    let (root, with_label) = trees();
+    let mut t = Transitions::default();
+    assert_eq!(
+        opacity(&mut t, &with_label, &site(true), 0.0),
+        1.0,
+        "first tree"
+    );
+    let mut t = Transitions::default();
+    assert!(t
+        .apply(&root, &none(), &StyleCx::empty(), 0.0, false)
+        .is_none());
+    assert_eq!(
+        opacity(&mut t, &with_label, &site(true), 1.0),
+        1.0,
+        "mounted after the first tree"
+    );
+    assert!(t
+        .apply(&root, &none(), &StyleCx::empty(), 2.0, false)
+        .is_none());
+    assert_eq!(
+        opacity(&mut t, &with_label, &site(true), 3.0),
+        1.0,
+        "mounted again after leaving"
+    );
 }
 
 /// Reduced motion asked for while a track runs stops it where it is going:
@@ -210,19 +268,14 @@ fn a_duration_dropped_to_zero_mid_flight_jumps_to_the_end() {
 /// The same for a `$if`'s enter fade already running.
 #[test]
 fn reduced_motion_asked_mid_fade_shows_the_node() {
-    let mut root = rail("72px");
-    root.id = NodeId::from("root");
-    root.props.shift_remove("transition");
-    let with_label = {
-        let mut r = root.clone();
-        r.children.push(ResolvedChild::Node(Box::new(label())));
-        r
-    };
+    let (root, with_label) = trees();
     let mut t = Transitions::default();
-    assert!(t.apply(&root, &StyleCx::empty(), 0.0, false).is_none());
-    assert_eq!(opacity(&mut t, &with_label, 1.0), 0.0);
+    assert!(t
+        .apply(&root, &site(false), &StyleCx::empty(), 0.0, false)
+        .is_none());
+    assert_eq!(opacity(&mut t, &with_label, &site(true), 1.0), 0.0);
     let scx = StyleCx::empty();
-    let tree = t.apply(&with_label, &scx, 1.05, true);
+    let tree = t.apply(&with_label, &site(true), &scx, 1.05, true);
     let tree = tree.as_ref().unwrap_or(&with_label);
     let node = match tree.children.first() {
         Some(ResolvedChild::Node(n)) => n,

@@ -3,6 +3,8 @@
 //! fades in only on a later false → true change; only the `then` branch is
 //! wrapped, so the `else` never fades.
 //!
+//! - a page navigated to whose conditional is true from the start draws its
+//!   body at once;
 //! - true → false draws the `else` at once;
 //! - false → true fades the `then` in.
 use std::sync::Arc;
@@ -115,12 +117,37 @@ impl Driver {
     }
 }
 
+fn navigate(to: &str) -> ScreenOp {
+    ScreenOp::Navigate {
+        to: to.into(),
+        query: None,
+        base_depth: None,
+        replace: false,
+    }
+}
+
 fn show(value: &str) -> ScreenOp {
     ScreenOp::SetParam {
         name: "show".into(),
         value: Some(value.into()),
         push: None,
     }
+}
+
+/// `ConditionalRenderer.tsx:75-82`: a conditional mounted with its
+/// condition true starts visible — opacity 1, nothing to animate — however
+/// long after the app's first frame it mounts.
+#[test]
+fn a_page_navigated_to_draws_its_true_conditional_at_once() {
+    let mut d = Driver::new("/");
+    assert_eq!(d.opacity("home"), Some(1.0));
+    d.apply(navigate("/b"));
+    d.frame();
+    assert_eq!(
+        d.opacity("body"),
+        Some(1.0),
+        "the conditional mounted true: its body is not faded in"
+    );
 }
 
 /// `ConditionalRenderer.tsx:327-331`: only the `then` content is wrapped;

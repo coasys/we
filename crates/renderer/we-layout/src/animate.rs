@@ -21,9 +21,10 @@
 //!   a `calc()`) jumps;
 //! - with reduced motion asked for, everything jumps.
 //!
-//! A `$if`'s enter `fade` runs here too: a node carrying one that was not
-//! in the last tree fades its opacity in from 0 — never on the first frame
-//! anything is seen, which nothing mounted. The other enter effects
+//! A `$if`'s enter `fade` runs here too: the `then` branch of a `$if` whose
+//! condition went from false to true fades its opacity in from 0. A `$if`
+//! first seen true — on the first frame, on a page navigated to, in a row
+//! that just appeared — is drawn at once, as the web's does. The other enter effects
 //! (`reveal`, `slide`, `scale`) and every exit effect are not drawn yet:
 //! an exit needs the node kept after the resolve dropped it.
 use std::collections::HashMap;
@@ -121,28 +122,38 @@ struct Slot {
 #[derive(Debug, Default)]
 pub struct Transitions {
     slots: HashMap<(NodeId, Prop), Slot>,
-    /// The nodes with an enter `fade` that were in the last tree — one
-    /// that is not was just mounted (a `$if` turning true) and fades in.
-    entered: std::collections::HashSet<NodeId>,
-    /// Whether a tree has been seen: what is there on the first frame was
-    /// not mounted by anything, and does not fade in.
-    started: bool,
+    /// Each transitioned `$if`'s condition in the last tree looked at, by
+    /// the `$if`'s own id ([`Runtime::conditions`](we_template::Runtime::conditions)).
+    conditions: HashMap<NodeId, bool>,
 }
 
 impl Transitions {
     /// The tree to lay out and paint at `now` (seconds, the frontend's
     /// frame clock): `None` when no property is mid-transition, so the
     /// resolved tree is drawn as it is and nothing is copied.
+    ///
+    /// `conditions` is each transitioned `$if`'s condition in `root`, by
+    /// its id. A `$if` fades its `then` branch in only when it was in the
+    /// last tree false and is true now; one seen for the first time starts
+    /// from its own condition — true is drawn at once — as the web's
+    /// `ConditionalRenderer` does (`startVisible`), wherever and whenever
+    /// it mounts.
     pub fn apply(
         &mut self,
         root: &ResolvedNode,
+        conditions: &HashMap<NodeId, bool>,
         scx: &StyleCx,
         now: f64,
         reduced_motion: bool,
     ) -> Option<ResolvedNode> {
         let mut seen = std::collections::HashSet::new();
         let mut shown: HashMap<NodeId, Vec<(Prop, f32)>> = HashMap::new();
-        let mut entered = std::collections::HashSet::new();
+        let entering: std::collections::HashSet<NodeId> = conditions
+            .iter()
+            .filter(|(site, now)| **now && self.conditions.get(*site) == Some(&false))
+            .map(|(site, _)| site.clone())
+            .collect();
+        self.conditions = conditions.clone();
         self.walk(
             root,
             scx,
@@ -150,10 +161,8 @@ impl Transitions {
             reduced_motion,
             &mut seen,
             &mut shown,
-            &mut entered,
+            &entering,
         );
-        self.entered = entered;
-        self.started = true;
         // A node that left the tree takes its tracks with it.
         self.slots.retain(|key, _| seen.contains(key));
         if shown.is_empty() {
@@ -181,19 +190,19 @@ impl Transitions {
         reduced: bool,
         seen: &mut std::collections::HashSet<(NodeId, Prop)>,
         shown: &mut HashMap<NodeId, Vec<(Prop, f32)>>,
-        entered: &mut std::collections::HashSet<NodeId>,
+        entering: &std::collections::HashSet<NodeId>,
     ) {
         let style = style_of(node, scx);
-        // A `$if`'s enter `fade`: a node mounted since the last tree starts
-        // at opacity 0 and eases to its own.
+        // A `$if`'s enter `fade`: the `then` branch of a `$if` that just
+        // turned true starts at opacity 0 and eases to its own.
         let fade = node
             .transition
             .as_ref()
             .and_then(|t| t.enter.as_ref())
             .and_then(|e| e.iter().find(|e| e.kind == TransitionKind::Fade));
         if let Some(fade) = fade {
-            entered.insert(node.id.clone());
-            if self.started && !self.entered.contains(&node.id) {
+            let site = node.transition.as_ref().and_then(|t| t.site.as_ref());
+            if site.is_some_and(|s| entering.contains(s)) {
                 let target = Prop::Opacity.value(&style, scx).unwrap_or(1.0);
                 let duration = fade.duration.unwrap_or(DEFAULT_ENTER_MS) / 1000.0;
                 let track = (!reduced && duration > 0.0).then(|| Track {
@@ -288,7 +297,7 @@ impl Transitions {
         };
         for child in &node.children {
             if let ResolvedChild::Node(n) = child {
-                self.walk(n, &child_scx, now, reduced, seen, shown, entered);
+                self.walk(n, &child_scx, now, reduced, seen, shown, entering);
             }
         }
     }

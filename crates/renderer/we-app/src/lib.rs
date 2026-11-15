@@ -297,7 +297,13 @@ impl RendererApp {
                     let was_drawing = self.drawn.is_some();
                     self.drawn = self
                         .transitions
-                        .apply(&resolved, &scx, now, reduced)
+                        .apply(
+                            &resolved,
+                            self.session.runtime().conditions(),
+                            &scx,
+                            now,
+                            reduced,
+                        )
                         .map(Arc::new);
                     // The frame a transition ends draws the resolved tree
                     // again, which the layout cache must not mistake for

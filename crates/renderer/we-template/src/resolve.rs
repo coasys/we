@@ -112,6 +112,9 @@ pub struct ResolveCx<'a> {
     pub ops: &'a mut Vec<ScreenOp>,
     /// Every node id this pass produced — `LocalState::retain` drops the rest.
     pub live: &'a mut HashSet<NodeId>,
+    /// Each `$if` with a transition, by its id: its condition this pass
+    /// ([`crate::Runtime::conditions`]).
+    pub conditions: &'a mut HashMap<NodeId, bool>,
     /// Every nested frame (part mount id) this pass resolved — the
     /// runtime prunes `frame_locals` to it (Lal F9).
     pub mounted_frames: &'a mut HashSet<Arc<str>>,
@@ -962,10 +965,25 @@ fn resolve_node(
                     // Only the `then` content is wrapped in the transition
                     // (`ConditionalRenderer.tsx:327-331`); the `else` is
                     // `Show`'s fallback, drawn as it is.
-                    let transition = then.then(|| props.and_then(Transition::from_props));
-                    with_transition(children, transition.flatten())
+                    let transition = props.and_then(Transition::from_props);
+                    // Where it transitions, its condition is kept by its
+                    // own id for the painter to compare with the last
+                    // tree's — false then and true now is what fades.
+                    if transition.is_some() {
+                        cx.conditions.insert(id.clone(), then);
+                    }
+                    let transition = transition.filter(|_| then).map(|t| Transition {
+                        site: Some(id.clone()),
+                        ..t
+                    });
+                    with_transition(children, transition)
                 }
-                None => vec![],
+                None => {
+                    if props.and_then(Transition::from_props).is_some() {
+                        cx.conditions.insert(id.clone(), then);
+                    }
+                    vec![]
+                }
             }
         }
         Some("$each") => {
@@ -2092,6 +2110,7 @@ mod frame_guard_tests {
             record_views: Some(&record_views),
             ops: &mut ops,
             live: &mut live,
+            conditions: &mut HashMap::new(),
             mounted_frames: &mut mounted,
             parents: &mut parents,
             warnings: &mut warnings,
