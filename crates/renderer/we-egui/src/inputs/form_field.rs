@@ -25,6 +25,7 @@ fn band(name: &'static str, h: f32) -> PartSpec {
         align: None,
         justify: None,
         flex_grow: 0.0,
+        contents: false,
         column_gap: 0.0,
         row_gap: 0.0,
         padding: [0.0; 4],

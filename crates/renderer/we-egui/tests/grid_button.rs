@@ -164,3 +164,63 @@ fn a_start_aligned_button_puts_its_content_at_its_padding() {
         rects[&NodeId::from("r/b")]
     );
 }
+
+/// A card whose description is a long truncated line stays in its track:
+/// the card's `width: 100%` is a definite specified size, which caps its
+/// automatic minimum (CSS flexbox §4.5), so the line truncates instead of
+/// widening the card. Glow parity: Social DNA's Connection types cards
+/// grew past their tracks and spilled over the tree panel.
+#[test]
+fn a_truncated_line_does_not_widen_a_full_width_card() {
+    let mut root = node("Column", "r", &[("width", s("760px"))]);
+    let mut grid = node(
+        "Grid",
+        "r/g",
+        &[("minChildWidth", s("240px")), ("gap", s("12px"))],
+    );
+    for i in 0..3 {
+        let mut b = node(
+            "we-button",
+            &format!("r/g/{i}"),
+            &[("variant", s("bare")), ("width", s("100%"))],
+        );
+        let mut card = node(
+            "Card",
+            &format!("r/g/{i}/c"),
+            &[
+                ("width", s("100%")),
+                ("direction", s("row")),
+                ("gap", s("300")),
+            ],
+        );
+        let mut col = node(
+            "Column",
+            &format!("r/g/{i}/c/col"),
+            &[("flex", s("1")), ("minWidth", s("0"))],
+        );
+        let mut text = node(
+            "we-text",
+            &format!("r/g/{i}/c/col/t"),
+            &[("truncate", Value::Bool(true))],
+        );
+        text.children.push(ResolvedChild::Text(Arc::from(
+            "Loosely connected — worth knowing about, nothing implied, and then some more words",
+        )));
+        col.children.push(ResolvedChild::Node(Box::new(text)));
+        card.children.push(ResolvedChild::Node(Box::new(col)));
+        b.children.push(ResolvedChild::Node(Box::new(card)));
+        grid.children.push(ResolvedChild::Node(Box::new(b)));
+    }
+    root.children.push(ResolvedChild::Node(Box::new(grid)));
+    let (rects, _) = lay_out(&root);
+    let track = (760.0 - 24.0) / 3.0;
+    for i in 0..3 {
+        let b = rects[&NodeId::from(format!("r/g/{i}").as_str())];
+        let c = rects[&NodeId::from(format!("r/g/{i}/c").as_str())];
+        assert!((b.width() - track).abs() < 1.0, "button {i}: {b:?}");
+        assert!(
+            (c.min.x - b.min.x).abs() < 1.0 && (c.width() - track).abs() < 1.0,
+            "card {i}: {c:?} in button {b:?}"
+        );
+    }
+}

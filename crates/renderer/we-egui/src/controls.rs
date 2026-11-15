@@ -89,7 +89,8 @@ impl Widget for Button {
                 .aligned(we_style::ItemAlign::Center)
                 .justified(we_style::ItemAlign::Auto)
                 .growing(1.0)
-                .gapped(gap)]
+                .gapped(gap)
+                .as_contents()]
         } else {
             vec![]
         };

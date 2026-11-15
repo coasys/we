@@ -67,6 +67,11 @@ pub struct PartSpec {
     /// `flex-grow` along the part's main axis — the alert's content part
     /// fills what the icon leaves, so a trailing part docks at the far edge.
     pub flex_grow: f32,
+    /// The part stands in for a `display: contents` slot: it has no box on
+    /// the web, so it brings no automatic minimum of its own and shrinks
+    /// with its host (`min-width: 0`, `flex-shrink: 1`) — its children's own
+    /// minimums (a `width: 100%` card's definite size) are what count.
+    pub contents: bool,
     /// `gap` between the part's children (the button's icon–label space).
     pub column_gap: f32,
     /// `row-gap` between the part's children — a column part's rows.
@@ -91,6 +96,7 @@ impl PartSpec {
             align: None,
             justify: None,
             flex_grow: 0.0,
+            contents: false,
             column_gap: 0.0,
             row_gap: 0.0,
             padding: [0.0; 4],
@@ -111,6 +117,7 @@ impl PartSpec {
             align: None,
             justify: None,
             flex_grow: 0.0,
+            contents: false,
             column_gap: 0.0,
             row_gap: 0.0,
             padding: [0.0; 4],
@@ -131,6 +138,7 @@ impl PartSpec {
             align: None,
             justify: None,
             flex_grow: 0.0,
+            contents: false,
             column_gap: 0.0,
             row_gap: 0.0,
             padding: [0.0; 4],
@@ -147,6 +155,12 @@ impl PartSpec {
     /// `flex-grow` — the part claims the row's leftover space.
     pub fn growing(mut self, v: f32) -> Self {
         self.flex_grow = v;
+        self
+    }
+
+    /// The part is a `display: contents` slot — see [`PartSpec::contents`].
+    pub fn as_contents(mut self) -> Self {
+        self.contents = true;
         self
     }
 
@@ -1015,7 +1029,11 @@ fn part_style(spec: &PartSpec, host: &Style) -> taffy::Style {
                 .unwrap_or(taffy::Dimension::auto()),
         },
         min_size: taffy::Size {
-            width: LengthPercentageAuto::auto(),
+            width: if spec.contents {
+                LengthPercentageAuto::length(0.0)
+            } else {
+                LengthPercentageAuto::auto()
+            },
             height: if spec.min_height > 0.0 {
                 LengthPercentageAuto::length(spec.min_height)
             } else {
@@ -1032,7 +1050,7 @@ fn part_style(spec: &PartSpec, host: &Style) -> taffy::Style {
             top: LengthPercentage::length(spec.padding[0]),
             bottom: LengthPercentage::length(spec.padding[2]),
         },
-        flex_shrink: 0.0,
+        flex_shrink: if spec.contents { 1.0 } else { 0.0 },
         flex_grow: spec.flex_grow,
         ..Default::default()
     }
