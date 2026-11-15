@@ -408,7 +408,10 @@ impl Stylesheet {
                     let kf = parse_keyframes(body);
                     self.keyframes.insert(Arc::from(rest), kf);
                 }
-                "scope" | "layer" => self.parse_block(body),
+                // `@scope` needs its scope root and `@layer` its own place
+                // below every unlayered rule; neither is modelled, so both
+                // are reported rather than flattened into rules that would
+                // apply too widely or win by source order.
                 _ => self
                     .skipped
                     .push(format!("@{name} {} (at-rule not read)", one_line(rest))),
@@ -643,13 +646,25 @@ fn parse_selector(s: &str) -> Result<Selector, String> {
             b' ' | b'\t' | b'\n' | b'\r' | b'>' => {
                 // Combinator: whitespace and/or `>`.
                 let mut j = i;
-                let mut child = false;
+                let mut gts = 0;
                 while j < b.len() && matches!(b[j], b' ' | b'\t' | b'\n' | b'\r' | b'>') {
-                    child |= b[j] == b'>';
+                    gts += usize::from(b[j] == b'>');
                     j += 1;
                 }
+                let child = gts > 0;
+                // A `>` needs a compound on both sides, and only one of it:
+                // the browser drops such a rule rather than reading around it.
                 if j >= b.len() {
+                    if child {
+                        return Err("a dangling combinator".into());
+                    }
                     break;
+                }
+                if gts > 1 {
+                    return Err("a doubled combinator".into());
+                }
+                if child && !cur_started && compounds.is_empty() {
+                    return Err("a leading combinator".into());
                 }
                 if after_part(&part, &pseudo) {
                     return Err("a combinator after a part or pseudo-element".into());
@@ -1279,8 +1294,44 @@ mod tests {
              a:not(.b) { color: red } we-text { color: blue } @font-face { font-family: x } \
              @scope (.t) { we-icon { color: green } } garbage",
         );
-        assert_eq!(sheet.rules.len(), 2, "{:?}", sheet.rules);
-        assert_eq!(sheet.skipped.len(), 6, "{:?}", sheet.skipped);
+        // `@scope (.t)` would need its scope root; it is reported, not
+        // unwrapped into a rule that colours every icon.
+        assert_eq!(sheet.rules.len(), 1, "{:?}", sheet.rules);
+        assert_eq!(sheet.skipped.len(), 7, "{:?}", sheet.skipped);
+    }
+
+    #[test]
+    fn layers_and_dangling_combinators_fail_closed() {
+        // Unlayered normal rules beat layered ones in a browser; flattening
+        // the layer would let it win by source order. Skip it instead.
+        let sheet =
+            Stylesheet::parse("we-text { color: blue } @layer low { we-text { color: red } }");
+        assert_eq!(sheet.rules.len(), 1, "{:?}", sheet.rules);
+        assert!(
+            sheet.skipped.iter().any(|s| s.starts_with("@layer")),
+            "{:?}",
+            sheet.skipped
+        );
+        // A trailing or doubled combinator is an invalid selector: the
+        // browser drops the rule, it does not widen to `we-text`.
+        for css in [
+            "we-text > { color: red }",
+            "we-text >> we-icon { color: red }",
+            "we-text > > we-icon { color: red }",
+            "> we-text { color: red }",
+        ] {
+            let sheet = Stylesheet::parse(css);
+            assert!(sheet.rules.is_empty(), "{css}: {:?}", sheet.rules);
+            assert_eq!(sheet.skipped.len(), 1, "{css}: {:?}", sheet.skipped);
+        }
+        // A trailing descendant whitespace is not a combinator.
+        assert_eq!(Stylesheet::parse("we-text  { color: red }").rules.len(), 1);
+        assert_eq!(
+            Stylesheet::parse("we-row > we-text { color: red }")
+                .rules
+                .len(),
+            1
+        );
     }
 
     #[test]
