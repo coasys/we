@@ -24,6 +24,10 @@ pub struct Frame {
     pub counters: we_egui::counters::Counters,
     /// egui was asked for another frame straight away.
     pub repaint: bool,
+    /// Gradient boxes rasterised this frame.
+    pub gradients: u64,
+    /// Texture bytes uploaded this frame.
+    pub upload: usize,
 }
 
 impl Driver {
@@ -53,12 +57,22 @@ impl Driver {
             ..Default::default()
         };
         we_egui::counters::take();
+        we_egui::gradient_rasters_take();
         let app = &mut self.app;
         let mut out = self.ctx.run_ui(input, |ui| app.frame_body(ui));
         // Nothing uploads here; say so, or epaint's debug check panics.
+        let upload = out
+            .textures_delta
+            .set
+            .values()
+            .flatten()
+            .map(|d| d.image.width() * d.image.height() * 4)
+            .sum();
         out.textures_delta.clear();
         Frame {
             counters: we_egui::counters::take(),
+            gradients: we_egui::gradient_rasters_take().0,
+            upload,
             repaint: out
                 .viewport_output
                 .values()

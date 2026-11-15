@@ -50,7 +50,7 @@ pub use dnd::Sortable;
 pub use edit_state::EditState;
 pub use event as events;
 pub use feedback::{Alert, Badge, Divider, Skeleton, Tag, Tooltip};
-pub use gradient::set_gradient_alpha_steps;
+pub use gradient::{rasters_take as gradient_rasters_take, set_gradient_alpha_steps};
 pub use inputs::{FormField, Input, NumberInput, Select, Slider, Switch, Textarea};
 pub use layout::{layout, layout_shrink, Layout, Parts, TextSpan};
 pub use media::{install as install_media, AnimatedIcon, Avatar, AvatarStack, Icon, Image};

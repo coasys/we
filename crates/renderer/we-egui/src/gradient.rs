@@ -432,6 +432,22 @@ fn coverage(rect: egui::Rect, radius: f32, p: egui::Pos2) -> f32 {
 struct Entry {
     texture: egui::TextureHandle,
     last_used: u64,
+    /// [`family`] — the same gradient at any size.
+    family: u64,
+    size: [usize; 2],
+}
+
+/// What a family asked for on its last two frames: the frame it last
+/// missed the cache on, and the exact [`key`]s it asked for on the frame
+/// before the current one and on the current one.
+#[derive(Clone, Default)]
+struct Asked {
+    missed: Option<u64>,
+    /// The family missed on the frame before this one — it is being resized.
+    resizing: bool,
+    frame: u64,
+    keys: Vec<u64>,
+    before: Vec<u64>,
 }
 
 /// Rasterised boxes, keyed by [`key`]: the page box's gradient is a
@@ -439,7 +455,10 @@ struct Entry {
 /// every frame while the gradient, the box's pixel size and the metrics
 /// hold.
 #[derive(Clone, Default)]
-struct Cache(std::collections::HashMap<u64, Entry>);
+struct Cache {
+    entries: std::collections::HashMap<u64, Entry>,
+    families: std::collections::HashMap<u64, Asked>,
+}
 
 /// More distinct gradient boxes than this and the ones not drawn in the
 /// last two passes go — a resize drag walks through sizes nothing will ask
@@ -468,6 +487,30 @@ fn key(
     }
     format!("{:?}", m.units).hash(&mut h);
     h.finish()
+}
+
+/// [`key`] without the size or the viewport: the same gradient on a box
+/// of any size in a window of any size — what a resize may stretch while
+/// it runs.
+fn family(text: &str, radius: f32, opacity: f32, ppp: f32, steps: bool, m: Metrics) -> u64 {
+    let any = Metrics {
+        viewport: Size {
+            width: 0.0,
+            height: 0.0,
+        },
+        ..m
+    };
+    key(text, [0, 0], radius, opacity, ppp, steps, any)
+}
+
+thread_local! {
+    static RASTERS: std::cell::Cell<(u64, u64)> = const { std::cell::Cell::new((0, 0)) };
+}
+
+/// How many gradient boxes this thread rasterised, and how many pixels,
+/// since the last call — reset to zero. A test asks it what a frame cost.
+pub fn rasters_take() -> (u64, u64) {
+    RASTERS.with(|c| c.replace((0, 0)))
 }
 
 const ALPHA_STEPS_KEY: &str = "we-egui::gradient-alpha-steps";
@@ -517,34 +560,82 @@ pub(crate) fn paint(
     let id = egui::Id::unique("we-egui::gradient-cache");
     let steps = alpha_steps(ctx);
     let k = key(text, size, radius, opacity, ppp, steps, m);
+    let fam = family(text, radius, opacity, ppp, steps, m);
     let pass = ctx.cumulative_pass_nr();
-    let cached = ctx.data_mut(|d| {
-        let entry = d.get_temp_mut_or_default::<Cache>(id).0.get_mut(&k)?;
-        entry.last_used = pass;
-        Some(entry.texture.id())
+    // Sizes are compared frame to frame, not pass to pass: egui runs a
+    // second pass in the frame a size changed, and that pass must not read
+    // as the size having held.
+    let frame = ctx.cumulative_frame_nr();
+    // What to draw without rasterising: this size's own texture, or — while
+    // the family's boxes keep changing size — the nearest size it has,
+    // stretched. A box being dragged is an expensive dependent the eye does
+    // not track; it is drawn exactly once its size has held for a frame.
+    let found = ctx.data_mut(|d| {
+        let cache = d.get_temp_mut_or_default::<Cache>(id);
+        let asked = cache.families.entry(fam).or_default();
+        if asked.frame != frame {
+            asked.resizing = asked.missed.is_some_and(|f| f + 1 == frame);
+            asked.before = if asked.frame + 1 == frame {
+                std::mem::take(&mut asked.keys)
+            } else {
+                Vec::new()
+            };
+            asked.keys.clear();
+            asked.frame = frame;
+        }
+        asked.keys.push(k);
+        if let Some(entry) = cache.entries.get_mut(&k) {
+            entry.last_used = pass;
+            return Some((entry.texture.id(), false));
+        }
+        let held = asked.before.contains(&k);
+        asked.missed = Some(frame);
+        if held || !asked.resizing {
+            return None;
+        }
+        let nearest = cache
+            .entries
+            .values_mut()
+            .filter(|e| e.family == fam)
+            .min_by_key(|e| e.size[0].abs_diff(size[0]) + e.size[1].abs_diff(size[1]))?;
+        nearest.last_used = pass;
+        Some((nearest.texture.id(), true))
     });
-    let texture = match cached {
-        Some(texture) => texture,
+    let texture = match found {
+        Some((texture, stretched)) => {
+            if stretched {
+                // The frame after the size holds rasterises it.
+                ctx.request_repaint();
+            }
+            texture
+        }
         None => {
             let Some(image) = build(size, ppp, radius, text, opacity, steps, m) else {
                 return;
             };
+            RASTERS.with(|c| {
+                let (n, px) = c.get();
+                c.set((n + 1, px + (size[0] * size[1]) as u64));
+            });
             let handle =
                 ctx.load_texture("we-egui::gradient", image, egui::TextureOptions::NEAREST);
             let texture = handle.id();
             ctx.data_mut(|d| {
                 let cache = d.get_temp_mut_or_default::<Cache>(id);
-                if cache.0.len() >= CACHE_CAP {
-                    cache.0.retain(|_, e| pass <= e.last_used + 2);
-                    if cache.0.len() >= CACHE_CAP {
-                        cache.0.clear();
+                if cache.entries.len() >= CACHE_CAP {
+                    cache.entries.retain(|_, e| pass <= e.last_used + 2);
+                    if cache.entries.len() >= CACHE_CAP {
+                        cache.entries.clear();
                     }
                 }
-                cache.0.insert(
+                cache.families.retain(|_, a| frame <= a.frame + 2);
+                cache.entries.insert(
                     k,
                     Entry {
                         texture: handle,
                         last_used: pass,
+                        family: fam,
+                        size,
                     },
                 );
             });
@@ -663,6 +754,87 @@ mod tests {
 
     /// The same gradient over a box of the same size is rasterised once
     /// and drawn wherever the box is.
+    /// egui asks for repaints of its own on a context's first frames.
+    fn warm(ctx: &egui::Context) {
+        for _ in 0..3 {
+            let mut out = ctx.run_ui(egui::RawInput::default(), |_| {});
+            out.textures_delta.clear();
+        }
+    }
+
+    /// One frame painting `boxes` (sizes in points), and what it cost:
+    /// boxes rasterised, and whether it asked for another frame.
+    fn frame(ctx: &egui::Context, boxes: &[egui::Vec2]) -> (u64, bool) {
+        let text = "radial-gradient(45vmax 40vmax at 32% -12%, rgba(117, 255, 190, 0.15), transparent 70%)";
+        rasters_take();
+        let mut out = ctx.run_ui(egui::RawInput::default(), |ui| {
+            for (i, size) in boxes.iter().enumerate() {
+                let at = egui::pos2(0.0, 400.0 * i as f32);
+                paint(
+                    ui.painter(),
+                    egui::Rect::from_min_size(at, *size),
+                    0.0,
+                    text,
+                    1.0,
+                    m(),
+                );
+            }
+        });
+        out.textures_delta.clear();
+        let repaint = out
+            .viewport_output
+            .values()
+            .any(|v| v.repaint_delay == std::time::Duration::ZERO);
+        (rasters_take().0, repaint)
+    }
+
+    /// A box whose size changes every frame — a lane being dragged — is
+    /// rasterised when the change starts, drawn from the nearest texture
+    /// stretched while it keeps changing (asking for the next frame), and
+    /// rasterised once, exactly, on the frame after its size holds.
+    #[test]
+    fn a_box_resized_every_frame_stretches_until_its_size_holds() {
+        let ctx = egui::Context::default();
+        warm(&ctx);
+        assert_eq!(frame(&ctx, &[egui::vec2(300.0, 200.0)]).0, 1, "first sight");
+        assert_eq!(
+            frame(&ctx, &[egui::vec2(300.0, 200.0)]),
+            (0, false),
+            "cached"
+        );
+        assert_eq!(
+            frame(&ctx, &[egui::vec2(303.0, 200.0)]).0,
+            1,
+            "a change starts"
+        );
+        for w in [306.0, 309.0, 312.0, 315.0] {
+            assert_eq!(
+                frame(&ctx, &[egui::vec2(w, 200.0)]),
+                (0, true),
+                "{w}: stretched, and the next frame asked for"
+            );
+        }
+        // egui carries the last stretched frame's repaint request one frame
+        // on, so whether this one asks is egui's; the one after must not.
+        assert_eq!(frame(&ctx, &[egui::vec2(315.0, 200.0)]).0, 1, "held: exact");
+        assert_eq!(
+            frame(&ctx, &[egui::vec2(315.0, 200.0)]),
+            (0, false),
+            "then quiet"
+        );
+    }
+
+    /// A scene that does not resize is drawn exactly on its first frame,
+    /// every box of a family at its own size — what a pixel gate pictures.
+    #[test]
+    fn a_still_scene_rasterises_every_box_on_its_first_frame() {
+        let ctx = egui::Context::default();
+        warm(&ctx);
+        let boxes = [egui::vec2(300.0, 200.0), egui::vec2(120.0, 90.0)];
+        assert_eq!(frame(&ctx, &boxes), (2, false));
+        assert_eq!(frame(&ctx, &boxes), (0, false));
+    }
+
     #[test]
     fn a_repeated_box_reuses_its_texture() {
         let ctx = egui::Context::default();
