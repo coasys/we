@@ -1,12 +1,19 @@
 #!/usr/bin/env python3
 """Regenerate data/relations.json from packages/entities/src/manifest.
 
-A `$query` scope names a relation (`{ anchor, via }`); the executor's
-`parent` wants the predicate it is stored under. This is the table the
-TS adapter reads off the manifest (`resolveScopeToParent`), as data:
-entity -> relation -> predicate, with WeNode's shared relations folded in,
-reverse relations left out, and containment in AD4M's own spelling
-(`ad4m://has_child`, `containment.ts`).
+What the Rust adapter needs to know about each relation, read off the
+manifest as the TS adapter and SDK do: entity -> relation ->
+{ predicate, target, polymorphic, reverse }.
+
+- `predicate`: what a `scope` drill-down's `parent` names
+  (`resolveScopeToParent`); containment in AD4M's own spelling
+  (`ad4m://has_child`, `containment.ts`).
+- `polymorphic`: an include over it reads each member as the class it is
+  (`resolvesPolymorphically`: declared, else untyped).
+- `target`: the class an include's nested includes are resolved on.
+- `reverse`: read backwards (`reverseOf`) — includable, never a scope.
+
+WeNode's shared relations are folded into every WeNode entity.
 
     python3 crates/renderer/we-ad4m/scripts/gen-relations.py
 """
@@ -21,14 +28,22 @@ OUT = HERE.parent / "data/relations.json"
 SKIP = {"types.ts", "defs.ts", "shared.ts", "index.ts", "base.ts"}
 CONTAINMENT = "ad4m://has_child"
 REL = re.compile(r"^\s*(\w+):\s*\{([^{}]*predicate:\s*('[^']*'|CONTAINMENT_PREDICATE)[^{}]*)\}", re.M)
+TARGET = re.compile(r"target:\s*'([^']*)'")
+POLY = re.compile(r"polymorphic:\s*(true|false)")
 
 
 def relations(text):
     out = {}
     for name, body, pred in REL.findall(text):
-        if "reverseOf" in body:
-            continue
-        out[name] = CONTAINMENT if pred == "CONTAINMENT_PREDICATE" else pred.strip("'")
+        target = TARGET.search(body)
+        target = target.group(1) if target else ""
+        poly = POLY.search(body)
+        out[name] = {
+            "predicate": CONTAINMENT if pred == "CONTAINMENT_PREDICATE" else pred.strip("'"),
+            "target": target,
+            "polymorphic": (poly.group(1) == "true") if poly else target == "",
+            "reverse": "reverseOf" in body,
+        }
     return out
 
 

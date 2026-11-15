@@ -9,6 +9,10 @@
 //! - `select` is renamed `properties`, at the root and on every relation
 //!   sub-query (`selectAsProperties`) — unrenamed the model returns every
 //!   field.
+//! - an include over a polymorphic relation (declared, or untyped) carries
+//!   `polymorphic: true`, at every depth — what the TS SDK's
+//!   `applyPolymorphicIncludeDefaults` adds from the class declaration; the
+//!   executor refuses to hydrate an untyped relation without it.
 //! - `scope` (`{ anchor, via, anchorId, … }`) resolves to the executor's
 //!   `parent`: the anchor's `via` relation looked up in [`Relations`], one
 //!   plain step as `{ id, predicate }`, anything bounded as the traverse
@@ -24,8 +28,13 @@ use we_template::QueryIr;
 
 use crate::relations::Relations;
 
-/// `ir` as a model query, with `scope` resolved through `relations`.
-pub fn model_query(ir: &QueryIr, relations: &Relations) -> Result<ModelQuery, String> {
+/// `ir` as a model query on `entity` (`None` for a union read), with
+/// `scope` and include defaults resolved through `relations`.
+pub fn model_query(
+    ir: &QueryIr,
+    entity: Option<&str>,
+    relations: &Relations,
+) -> Result<ModelQuery, String> {
     if let Some(key) = ir.reserved_key() {
         return Err(format!("query carries the reserved key {key:?}"));
     }
@@ -43,7 +52,7 @@ pub fn model_query(ir: &QueryIr, relations: &Relations) -> Result<ModelQuery, St
         let Json::Object(map) = include else {
             return Err(format!("include must be an object, got {include}"));
         };
-        q.include = Some(select_as_properties(map));
+        q.include = Some(select_as_properties(map, entity, relations));
     }
     if let Some(scope) = &ir.scope {
         q.parent = Some(scope_to_parent(scope, relations)?);
@@ -80,13 +89,24 @@ fn order_pairs(order: &Json) -> Result<Vec<(String, String)>, String> {
     }
 }
 
-/// `select` → `properties` on every relation sub-query. A projection (a
-/// `from:` entry) takes no field list and is left as it is.
-fn select_as_properties(include: &Map<String, Json>) -> Map<String, Json> {
+/// `select` → `properties` on every relation sub-query, and `polymorphic`
+/// on every include whose relation reads that way (an explicit
+/// `polymorphic` at the call site wins). A projection (a `from:` entry)
+/// takes no field list and is left as it is.
+fn select_as_properties(
+    include: &Map<String, Json>,
+    entity: Option<&str>,
+    relations: &Relations,
+) -> Map<String, Json> {
     include
         .iter()
         .map(|(key, spec)| {
+            let rel = entity.and_then(|e| relations.get(e, key));
+            let poly = !key.starts_with('$') && rel.is_some_and(|r| r.polymorphic);
+            // Nested includes resolve on the relation's target class.
+            let target = rel.map(|r| r.target.as_str()).filter(|t| !t.is_empty());
             let spec = match spec {
+                Json::Bool(true) if poly => serde_json::json!({ "polymorphic": true }),
                 Json::Object(sub) if !sub.contains_key("from") => {
                     let mut out = Map::new();
                     for (k, v) in sub {
@@ -97,13 +117,16 @@ fn select_as_properties(include: &Map<String, Json>) -> Map<String, Json> {
                             ("include", Json::Object(inner)) => {
                                 out.insert(
                                     "include".into(),
-                                    Json::Object(select_as_properties(inner)),
+                                    Json::Object(select_as_properties(inner, target, relations)),
                                 );
                             }
                             _ => {
                                 out.insert(k.clone(), v.clone());
                             }
                         }
+                    }
+                    if poly && !out.contains_key("polymorphic") {
+                        out.insert("polymorphic".into(), Json::Bool(true));
                     }
                     Json::Object(out)
                 }
@@ -176,6 +199,7 @@ mod tests {
     fn order_becomes_pairs_in_authored_order() {
         let q = model_query(
             &ir(json!({ "order": { "createdAt": "desc", "name": "asc" }, "limit": 20 })),
+            None,
             &Relations::core(),
         )
         .unwrap();
@@ -188,6 +212,7 @@ mod tests {
     fn where_travels_as_written_under_its_wire_name() {
         let q = model_query(
             &ir(json!({ "where": { "kind": "post", "title": { "contains": "x" } } })),
+            None,
             &Relations::core(),
         )
         .unwrap();
@@ -207,7 +232,7 @@ mod tests {
                     "$n": { "from": "responses", "count": true, "select": ["x"] }
                 }
             })),
-            &Relations::core(),
+            None, &Relations::core(),
         )
         .unwrap();
         let w = wire(&q);
@@ -221,11 +246,51 @@ mod tests {
         assert_eq!(w["projections"]["$n"]["select"], json!(["x"]));
     }
 
+    /// The executor refuses to hydrate an untyped relation unless the
+    /// include says `polymorphic` — the TS SDK adds it from the class.
+    #[test]
+    fn untyped_includes_are_polymorphic_at_every_depth() {
+        let q = model_query(
+            &ir(json!({ "include": {
+                "thread": true,
+                "respondsTo": { "select": ["id"] },
+                "signals": true,
+                "children": { "polymorphic": false },
+                "$n": { "from": "thread", "count": true }
+            } })),
+            Some("CollectionBlock"),
+            &Relations::core(),
+        )
+        .unwrap();
+        let w = wire(&q);
+        assert_eq!(w["include"]["thread"], json!({ "polymorphic": true }));
+        assert_eq!(
+            w["include"]["respondsTo"],
+            json!({ "properties": ["id"], "polymorphic": true })
+        );
+        // Typed: as written.
+        assert_eq!(w["include"]["signals"], json!(true));
+        // An explicit choice at the call site wins.
+        assert_eq!(w["include"]["children"], json!({ "polymorphic": false }));
+        assert_eq!(
+            w["projections"]["$n"],
+            json!({ "from": "thread", "count": true })
+        );
+        // A union read has no class to ask: left as written.
+        let q = model_query(
+            &ir(json!({ "include": { "thread": true } })),
+            None,
+            &Relations::core(),
+        )
+        .unwrap();
+        assert_eq!(wire(&q)["include"]["thread"], json!(true));
+    }
+
     #[test]
     fn plain_scope_is_id_and_predicate_children_is_has_child() {
         let q = model_query(
             &ir(json!({ "scope": { "anchor": "CollectionBlock", "via": "children", "anchorId": "c1" } })),
-            &Relations::core(),
+            None, &Relations::core(),
         )
         .unwrap();
         assert_eq!(
@@ -241,6 +306,7 @@ mod tests {
                 "anchor": "CollectionBlock", "via": "responses",
                 "anchorId": "c1", "levels": [10, 5]
             } })),
+            None,
             &Relations::core(),
         )
         .unwrap();
@@ -254,6 +320,7 @@ mod tests {
     fn empty_anchor_list_stays_empty() {
         let q = model_query(
             &ir(json!({ "scope": { "anchor": "Space", "via": "typeStyles", "anchorId": [] } })),
+            None,
             &Relations::core(),
         )
         .unwrap();
@@ -267,7 +334,7 @@ mod tests {
     fn unknown_relation_is_refused_not_widened() {
         let err = model_query(
             &ir(json!({ "scope": { "anchor": "CollectionBlock", "via": "nope", "anchorId": "c1" } })),
-            &Relations::core(),
+            None, &Relations::core(),
         )
         .unwrap_err();
         assert!(err.contains("nope"), "{err}");
@@ -275,7 +342,8 @@ mod tests {
 
     #[test]
     fn reserved_key_is_refused() {
-        let err = model_query(&ir(json!({ "space": "other" })), &Relations::core()).unwrap_err();
+        let err =
+            model_query(&ir(json!({ "space": "other" })), None, &Relations::core()).unwrap_err();
         assert!(err.contains("space"), "{err}");
     }
 }

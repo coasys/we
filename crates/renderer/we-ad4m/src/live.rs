@@ -341,7 +341,7 @@ impl LiveMembers {
                         };
                         ir.where_ = Some(merge_where(ir.where_.take(), w));
                     }
-                    let q = match crate::translate::model_query(&ir, &relations) {
+                    let q = match crate::translate::model_query(&ir, Some(entity), &relations) {
                         Ok(q) => q,
                         Err(e) => {
                             log::warn!("we-ad4m: live row {}: {e}", row.path);

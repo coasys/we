@@ -42,6 +42,13 @@ impl Ad4mExecutor {
     }
 }
 
+fn one_class(class: &ClassSel) -> Option<&str> {
+    match class {
+        ClassSel::One(name) => Some(name),
+        ClassSel::Many(_) => None,
+    }
+}
+
 fn other(e: impl std::fmt::Display) -> ExecutorError {
     ExecutorError::Other(e.to_string())
 }
@@ -58,7 +65,8 @@ impl Executor for Ad4mExecutor {
         class: ClassSel,
         query: &QueryIr,
     ) -> Result<Value> {
-        let q = crate::translate::model_query(query, &self.relations).map_err(other)?;
+        let q = crate::translate::model_query(query, one_class(&class), &self.relations)
+            .map_err(other)?;
         let model = self.model(space, &class);
         let result = self
             .conn
@@ -74,7 +82,8 @@ impl Executor for Ad4mExecutor {
         class: ClassSel,
         query: &QueryIr,
     ) -> Result<LiveQuery> {
-        let q = crate::translate::model_query(query, &self.relations).map_err(other)?;
+        let q = crate::translate::model_query(query, one_class(&class), &self.relations)
+            .map_err(other)?;
         let model = self.model(space, &class);
         let (sub, first, id) = self
             .conn

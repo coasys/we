@@ -1,316 +1,2216 @@
 {
   "AgentSettings": {
-    "hiddenTemplates": "we://hidden_template",
-    "installedThemes": "we://installed_theme",
-    "spaceTemplatePreferences": "we://space_template_preference"
+    "hiddenTemplates": {
+      "polymorphic": false,
+      "predicate": "we://hidden_template",
+      "reverse": false,
+      "target": "Template"
+    },
+    "installedThemes": {
+      "polymorphic": false,
+      "predicate": "we://installed_theme",
+      "reverse": false,
+      "target": "Theme"
+    },
+    "spaceTemplatePreferences": {
+      "polymorphic": false,
+      "predicate": "we://space_template_preference",
+      "reverse": false,
+      "target": "SpaceTemplatePreference"
+    }
   },
   "Amendment": {
-    "node": "we://amended_node",
-    "run": "we://amendment_run"
+    "node": {
+      "polymorphic": true,
+      "predicate": "we://amended_node",
+      "reverse": false,
+      "target": ""
+    },
+    "run": {
+      "polymorphic": false,
+      "predicate": "we://amendment_run",
+      "reverse": false,
+      "target": "ModelRun"
+    }
   },
   "AudioBlock": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "CalloutBlock": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "CodeBlock": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "CollectionBlock": {
-    "amendments": "we://amendment",
-    "arranges": "we://arranges",
-    "board": "we://board",
-    "children": "ad4m://has_child",
-    "extracted": "we://extracted",
-    "gathers": "we://gathers",
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "recognised": "we://recognised",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "amendments": {
+      "polymorphic": false,
+      "predicate": "we://amendment",
+      "reverse": false,
+      "target": "Amendment"
+    },
+    "arranges": {
+      "polymorphic": true,
+      "predicate": "we://arranges",
+      "reverse": false,
+      "target": ""
+    },
+    "board": {
+      "polymorphic": false,
+      "predicate": "we://board",
+      "reverse": false,
+      "target": "CollectionBlock"
+    },
+    "children": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": false,
+      "target": ""
+    },
+    "extracted": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": false,
+      "target": ""
+    },
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "gathers": {
+      "polymorphic": true,
+      "predicate": "we://gathers",
+      "reverse": false,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "recognised": {
+      "polymorphic": true,
+      "predicate": "we://recognised",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "DividerBlock": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "EdgeRoute": {
-    "connection": "we://routed_connection"
+    "connection": {
+      "polymorphic": true,
+      "predicate": "we://routed_connection",
+      "reverse": false,
+      "target": ""
+    }
   },
   "EmbedBlock": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "EventBlock": {
-    "generatedBy": "we://generated_by",
-    "location": "we://location",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "location": {
+      "polymorphic": false,
+      "predicate": "we://location",
+      "reverse": false,
+      "target": "LocationBlock"
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "FileBlock": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "ImageBlock": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "Involvement": {
-    "node": "we://involved_in"
+    "node": {
+      "polymorphic": true,
+      "predicate": "we://involved_in",
+      "reverse": false,
+      "target": ""
+    }
   },
   "InvolvementType": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "LinkBlock": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "LocationBlock": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "ModelRun": {},
   "MutedAgent": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "Placement": {
-    "node": "we://placed_node"
+    "node": {
+      "polymorphic": true,
+      "predicate": "we://placed_node",
+      "reverse": false,
+      "target": ""
+    }
   },
   "Policy": {},
   "ReadMarker": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "Relationship": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "source": "we://relationship_source",
-    "target": "we://relationship_target",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "source": {
+      "polymorphic": true,
+      "predicate": "we://relationship_source",
+      "reverse": false,
+      "target": ""
+    },
+    "target": {
+      "polymorphic": true,
+      "predicate": "we://relationship_target",
+      "reverse": false,
+      "target": ""
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "RelationshipType": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "Role": {},
   "RoleGrant": {},
   "Shape": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "Signal": {},
   "SignalType": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "Space": {
-    "generatedBy": "we://generated_by",
-    "landmarks": "we://space_landmark",
-    "location": "we://location",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "root": "we://root",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "taskStates": "we://task_state_order",
-    "thread": "we://thread",
-    "typeStyles": "we://type_style"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "landmarks": {
+      "polymorphic": false,
+      "predicate": "we://space_landmark",
+      "reverse": false,
+      "target": "SpaceLandmark"
+    },
+    "location": {
+      "polymorphic": false,
+      "predicate": "we://location",
+      "reverse": false,
+      "target": "LocationBlock"
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "root": {
+      "polymorphic": false,
+      "predicate": "we://root",
+      "reverse": false,
+      "target": "CollectionBlock"
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "taskStates": {
+      "polymorphic": false,
+      "predicate": "we://task_state_order",
+      "reverse": false,
+      "target": "TaskState"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    },
+    "typeStyles": {
+      "polymorphic": false,
+      "predicate": "we://type_style",
+      "reverse": false,
+      "target": "TypeStyle"
+    }
   },
   "SpaceLandmark": {
-    "node": "we://landmark_node"
+    "node": {
+      "polymorphic": false,
+      "predicate": "we://landmark_node",
+      "reverse": false,
+      "target": ""
+    }
   },
   "SpacePreference": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "SpaceTemplatePreference": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "TagBlock": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "TaskBlock": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "TaskState": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "Template": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "screenshots": "we://screenshot",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "screenshots": {
+      "polymorphic": false,
+      "predicate": "we://screenshot",
+      "reverse": false,
+      "target": "ImageBlock"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "TextBlock": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "Theme": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "screenshots": "we://screenshot",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "screenshots": {
+      "polymorphic": false,
+      "predicate": "we://screenshot",
+      "reverse": false,
+      "target": "ImageBlock"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "Topic": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "TypeStyle": {},
   "VideoBlock": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   },
   "WeNode": {
-    "generatedBy": "we://generated_by",
-    "mentions": "we://mention",
-    "participants": "we://participant",
-    "responses": "we://response",
-    "runs": "we://model_run",
-    "signals": "we://signal",
-    "thread": "we://thread"
+    "extractedFrom": {
+      "polymorphic": true,
+      "predicate": "we://extracted",
+      "reverse": true,
+      "target": ""
+    },
+    "generatedBy": {
+      "polymorphic": false,
+      "predicate": "we://generated_by",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "inThread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": true,
+      "target": ""
+    },
+    "mentions": {
+      "polymorphic": false,
+      "predicate": "we://mention",
+      "reverse": false,
+      "target": ""
+    },
+    "partOf": {
+      "polymorphic": true,
+      "predicate": "ad4m://has_child",
+      "reverse": true,
+      "target": ""
+    },
+    "participants": {
+      "polymorphic": false,
+      "predicate": "we://participant",
+      "reverse": false,
+      "target": ""
+    },
+    "respondsTo": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": true,
+      "target": ""
+    },
+    "responses": {
+      "polymorphic": true,
+      "predicate": "we://response",
+      "reverse": false,
+      "target": ""
+    },
+    "runs": {
+      "polymorphic": false,
+      "predicate": "we://model_run",
+      "reverse": false,
+      "target": "ModelRun"
+    },
+    "signals": {
+      "polymorphic": false,
+      "predicate": "we://signal",
+      "reverse": false,
+      "target": "Signal"
+    },
+    "thread": {
+      "polymorphic": true,
+      "predicate": "we://thread",
+      "reverse": false,
+      "target": ""
+    }
   }
 }

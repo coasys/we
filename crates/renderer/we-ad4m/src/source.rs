@@ -170,7 +170,8 @@ impl QuerySource for Ad4mQuerySource {
         if let Err(e) = self.resolve_dataset(request, handles) {
             return failed(&sink, &self.stats, &what, e);
         }
-        let query = match crate::translate::model_query(&request.ir, &self.relations) {
+        let one = (!request.union && classes.len() == 1).then(|| classes[0].as_str());
+        let query = match crate::translate::model_query(&request.ir, one, &self.relations) {
             Ok(q) => q,
             Err(e) => return failed(&sink, &self.stats, &what, e),
         };
