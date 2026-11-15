@@ -162,10 +162,6 @@ pub struct Runtime {
     /// entry as read *before* its first pass, so a write mid-resolve
     /// leaves the source ahead and the next `poll` dirty.
     last: Option<(u64, u64, u64, u64)>,
-    /// The last resolve ran out of passes — `dirty` reports it and the
-    /// frame woke the frontend, so a partial tree is not mistaken for
-    /// settled. Cleared by the next frame that ends quiet.
-    leftover: bool,
     /// The screen version `bind_screen` last mounted into the bag.
     bound_screen: Option<u64>,
     live: HashSet<NodeId>,
@@ -222,7 +218,6 @@ impl Runtime {
             cache: ParseCache::new(),
             resolved: None,
             last: None,
-            leftover: false,
             bound_screen: None,
             live: HashSet::new(),
             parents: HashMap::new(),
@@ -294,19 +289,20 @@ impl Runtime {
     }
 
     /// Would `frame` re-resolve: the `(screen, data, local, pool)` tuple
-    /// is not what the last resolve recorded, or the last resolve ran
-    /// out of passes ([`Self::leftover`]). `Session::poll` reports this
-    /// as `Tick::dirty` — "a `resolve` now would produce a different
-    /// tree" — and a quiet answer means the last tree is still right.
+    /// is not what the last resolve recorded. An exhausted pass budget
+    /// is covered too — `frame` bumps the pool revision past what `last`
+    /// recorded, so the mismatch reports itself here. `Session::poll`
+    /// reports this as `Tick::dirty` — "a `resolve` now would produce a
+    /// different tree" — and a quiet answer means the last tree is still
+    /// right.
     pub fn dirty(&self, screen: &ScreenState) -> bool {
-        self.leftover
-            || self.last
-                != Some((
-                    screen.version,
-                    self.bag.version(),
-                    self.locals.version(),
-                    self.pool.revision(),
-                ))
+        self.last
+            != Some((
+                screen.version,
+                self.bag.version(),
+                self.locals.version(),
+                self.pool.revision(),
+            ))
     }
 
     /// The mounts the frame resolves for this route — a free function on
@@ -535,12 +531,11 @@ impl Runtime {
                 self.locals.version(),
                 self.pool.revision(),
             ));
-            self.leftover = kept_filling;
             // Every pass filled a cell — a deeper dependency chain may
             // still be climbing. Bump the pool past what `last` recorded
-            // so the next frame re-resolves instead of caching this
-            // partial tree, and wake: the tree on screen is partial, so a
-            // sleeping frontend must come back.
+            // so `dirty` and the next frame see the leftover work instead
+            // of caching this partial tree, and wake: the tree on screen
+            // is partial, so a sleeping frontend must come back.
             if kept_filling {
                 self.pool.bump();
                 self.inbox.wake();

@@ -682,9 +682,9 @@ fn set_waker_after_an_arrival_still_wakes() {
 }
 
 /// The per-frame budget: nine dependent queries need nine fill rounds,
-/// the frame runs out at eight — it reports `leftover` (dirty) and wakes
-/// rather than spinning or stalling; the next frame finishes and a third
-/// poll is quiet.
+/// the frame runs out at eight — it reports dirty and wakes rather than
+/// spinning or stalling; the next frame finishes and a third poll is
+/// quiet.
 #[test]
 fn exhausted_budget_wakes_and_reports_dirty() {
     let mut queries = serde_json::Map::new();
@@ -730,7 +730,7 @@ fn exhausted_budget_wakes_and_reports_dirty() {
         "the exhausted budget woke the frontend instead of stalling"
     );
     assert_eq!(prop(&root, "done"), "false", "q9 is still loading");
-    assert!(s.poll().dirty, "leftover work reports dirty");
+    assert!(s.poll().dirty, "the bumped pool revision still reports dirty");
 
     let root = s.resolve();
     assert_eq!(
@@ -738,7 +738,7 @@ fn exhausted_budget_wakes_and_reports_dirty() {
         "true",
         "the next frame finished the chain"
     );
-    assert_eq!(s.poll(), Tick::default(), "leftover cleared — quiet");
+    assert_eq!(s.poll(), Tick::default(), "settled — quiet");
     assert_eq!(count(&wakes), 1, "no further wakes — it settled");
 }
 
