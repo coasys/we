@@ -461,7 +461,9 @@ fn type_defaults(bag: &mut Bag, node: &ResolvedNode) {
             );
         }
         "we-avatar" => {
-            entries(bag, &[("flex", "0 0 auto")]);
+            // helpers.ts: `avatar: { radiusGroup: --we-theme-avatar-radius,
+            // radiusDefault: '50%' }` — the `avatar` family.
+            entries(bag, &[("flex", "0 0 auto"), ("r", "avatar")]);
             // `:host` pins both dims to `--we-avatar-size`, and the tier
             // rules point it at `--we-avatar-size-{tier}` — without them a
             // `stretch` parent widens the face (the TS element's own
