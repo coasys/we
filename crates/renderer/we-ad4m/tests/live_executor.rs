@@ -129,3 +129,42 @@ fn live_record_reaches_the_tree_and_survives_a_reconnect() {
         assert!(text.contains(title), "{title:?} missing after reconnect");
     }
 }
+
+/// `Ad4mExecutor` reads once with `model_query`, and refuses
+/// `model_subscribe` (Lal F6): `we_data::LiveQuery` has no channel for the
+/// updates, so a subscription opened there would hand back its first
+/// result forever and leave the executor-side subscription running when
+/// dropped. Live reads go through `Ad4mQuerySource`.
+#[test]
+fn executor_reads_once_and_refuses_a_subscription_it_cannot_follow() {
+    use we_data::{ClassSel, Executor, ExecutorError, QueryIr, SpaceId};
+    let Some(executor) = common::start_executor() else {
+        return;
+    };
+    let rt = we_ad4m::Runtime::new().unwrap();
+    let conn = common::connect(&rt, &executor.url);
+    let uuid = common::seed_space(&rt, &conn, "e7-executor");
+    common::create_post(&rt, &conn, &uuid, "read once");
+    let ad4m = we_ad4m::Ad4mExecutor::new(conn.clone());
+    let space = SpaceId::new(uuid.as_str());
+    let rows = rt
+        .block_on(ad4m.model_query(
+            &space,
+            ClassSel::one("CollectionBlock"),
+            &QueryIr::default(),
+        ))
+        .unwrap();
+    assert!(rows.to_json().to_string().contains("read once"));
+    match rt.block_on(ad4m.model_subscribe(
+        &space,
+        ClassSel::one("CollectionBlock"),
+        &QueryIr::default(),
+    )) {
+        Err(ExecutorError::Unsupported(why)) => assert!(why.contains("Ad4mQuerySource"), "{why}"),
+        Ok(live) => panic!(
+            "model_subscribe opened {:?}, which never updates",
+            live.id()
+        ),
+        Err(e) => panic!("{e}"),
+    }
+}

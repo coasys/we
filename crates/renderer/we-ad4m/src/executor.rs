@@ -1,13 +1,11 @@
 //! [`Ad4mExecutor`]: [`we_data::Executor`] over `ad4m-client`, read-only.
 //!
-//! `model_query` is `perspective.modelQuery`; `model_subscribe` opens
-//! `perspective.modelSubscribe` and keeps the subscription until
-//! `dispose_query` ends it. Writes, commits, flows and shapes answer
-//! [`ExecutorError::Unsupported`]: E7 writes nothing (E11 does).
-use std::collections::HashMap;
-use std::sync::{Arc, Mutex};
-
-use ad4m_client::model::{Model, ModelSubscription};
+//! `model_query` is `perspective.modelQuery`. `model_subscribe` answers
+//! [`ExecutorError::Unsupported`]: the seam's `LiveQuery` cannot carry
+//! updates, and live reads go through [`crate::Ad4mQuerySource`]. Writes,
+//! commits, flows and shapes answer `Unsupported` too: E7 writes nothing
+//! (E11 does).
+use ad4m_client::model::Model;
 use we_data::{
     ClassSel, ClassShape, Executor, ExecutorError, FlowCall, LiveQuery, LiveQueryId, QueryIr,
     Result, SpaceId, Write,
@@ -20,8 +18,6 @@ use crate::relations::Relations;
 pub struct Ad4mExecutor {
     conn: Connection,
     relations: Relations,
-    /// Open subscriptions by id — `dispose_query` ends them.
-    live: Arc<Mutex<HashMap<String, Arc<ModelSubscription>>>>,
 }
 
 impl Ad4mExecutor {
@@ -29,7 +25,6 @@ impl Ad4mExecutor {
         Self {
             conn,
             relations: Relations::core(),
-            live: Arc::default(),
         }
     }
 
@@ -76,48 +71,28 @@ impl Executor for Ad4mExecutor {
         Ok(rows_value(result.instances))
     }
 
+    /// Refused (Lal F6): `we_data::LiveQuery` carries the first result and
+    /// has no channel for the updates after it, so a subscription opened
+    /// here would answer its first result forever, and dropping the handle
+    /// would leave the executor-side subscription running. Live reads go
+    /// through [`crate::Ad4mQuerySource`], which follows every update and
+    /// disposes on close.
     async fn model_subscribe(
         &self,
-        space: &SpaceId,
-        class: ClassSel,
-        query: &QueryIr,
+        _space: &SpaceId,
+        _class: ClassSel,
+        _query: &QueryIr,
     ) -> Result<LiveQuery> {
-        let q = crate::translate::model_query(query, one_class(&class), &self.relations)
-            .map_err(other)?;
-        let model = self.model(space, &class);
-        let (sub, first, id) = self
-            .conn
-            .run(async move {
-                let mut sub = model.subscribe(&q).await?;
-                let first = sub.next().await.map(|r| r.instances).unwrap_or_default();
-                let id = sub.id().await.unwrap_or_default();
-                Ok((sub, first, id))
-            })
-            .await
-            .map_err(|e| other(format!("{e:#}")))?;
-        if let Ok(mut live) = self.live.lock() {
-            live.insert(id.clone(), Arc::new(sub));
-        }
-        Ok(LiveQuery::new(LiveQueryId::new(id), rows_value(first), 0))
+        Err(ExecutorError::Unsupported(
+            "model_subscribe through the Executor seam (it cannot follow updates); \
+             live reads go through Ad4mQuerySource"
+                .into(),
+        ))
     }
 
-    async fn dispose_query(&self, _space: &SpaceId, id: &LiveQueryId) -> Result<bool> {
-        let sub = self
-            .live
-            .lock()
-            .ok()
-            .and_then(|mut l| l.remove(id.as_str()));
-        let Some(sub) = sub else {
-            return Ok(false);
-        };
-        self.conn
-            .run(async move {
-                sub.dispose().await;
-                Ok(())
-            })
-            .await
-            .map_err(other)?;
-        Ok(true)
+    /// Nothing is ever opened here, so there is nothing to dispose.
+    async fn dispose_query(&self, _space: &SpaceId, _id: &LiveQueryId) -> Result<bool> {
+        Ok(false)
     }
 
     async fn write(&self, _space: &SpaceId, _write: Write) -> Result<Value> {
