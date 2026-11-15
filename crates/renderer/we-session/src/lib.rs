@@ -52,6 +52,10 @@ pub struct Tick {
     pub binding_changes: usize,
     /// Screen ops a resolve queued (route redirects) applied this drain.
     pub screen_ops: usize,
+    /// Surface reports the drain applied — the frontend's content-box
+    /// measures landing between frames (E3c-13). A stale generation's is
+    /// counted too: it drained, it just changed nothing.
+    pub surfaces: usize,
 }
 
 /// Runtime + host + screen — everything a frontend reuses to render a
@@ -206,7 +210,7 @@ impl Session {
     /// a different tree, plus what landed. Calling it with nothing
     /// pending is cheap and quiet — a quiet tick never woke anyone.
     pub fn poll(&mut self) -> Tick {
-        let (completions, query_events, binding_changes) = self
+        let (completions, query_events, binding_changes, surfaces) = self
             .runtime
             .drain_inbox(self.host.as_mut(), &mut self.screen);
         let ops = self.runtime.take_ops();
@@ -220,6 +224,50 @@ impl Session {
             completions,
             binding_changes,
             screen_ops,
+            surfaces,
+        }
+    }
+
+    /// A surface's content-box width in px, measured by this frontend —
+    /// one of the tags a resolved node carries in `surfaces`. The report
+    /// rides the same inbox every between-frames producer does: it wakes
+    /// the session's waker and lands on `poll`'s drain, where a stale
+    /// generation is spent instead of applied (E3c-13).
+    pub fn report_surface(&mut self, tag: &we_template::SurfaceTag, width: f32) {
+        self.runtime.report_surface(tag, width);
+    }
+
+    /// The host surfaces the slot measures — what a frontend reports the
+    /// width of the rect it paints this session into against (the egui
+    /// slot, the TUI pane). See [`we_template::Runtime::host_surfaces`].
+    pub fn host_surfaces(&self) -> &[we_template::SurfaceTag] {
+        self.runtime.host_surfaces()
+    }
+
+    /// The headless frontend's report: every host surface gets `width` —
+    /// the slot's ([`Self::host_surfaces`]) and those the content
+    /// viewport in `root` frames. Dump/CLI do no layout, so the mount
+    /// boundary is the `--viewport` answer and nested `$surface` boxes
+    /// keep `createSurface`'s initial. Reports through the inbox like a
+    /// measured one.
+    pub fn report_host_surfaces(&mut self, root: &ResolvedNode, width: f32) {
+        fn collect(node: &ResolvedNode, out: &mut Vec<we_template::SurfaceTag>) {
+            out.extend(
+                node.surfaces
+                    .iter()
+                    .filter(|t| matches!(t.key, we_template::SurfaceKey::Host(_)))
+                    .cloned(),
+            );
+            for child in &node.children {
+                if let we_template::ResolvedChild::Node(n) = child {
+                    collect(n, out);
+                }
+            }
+        }
+        let mut tags = self.runtime.host_surfaces().to_vec();
+        collect(root, &mut tags);
+        for tag in &tags {
+            self.runtime.report_surface(tag, width);
         }
     }
 

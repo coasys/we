@@ -9,11 +9,13 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
+use smallvec::SmallVec;
 use we_expr::Value;
 
 use crate::handler::HandlerToken;
 use crate::node::JsonMap;
 use crate::query::SlotRef;
+use crate::surface::SurfaceTag;
 
 /// A node's stable identity: template id + child path + `$each` keys.
 #[derive(Clone, PartialEq, Eq, Hash, PartialOrd, Ord)]
@@ -71,6 +73,15 @@ pub struct ResolvedNode {
     pub slot: Option<Arc<str>>,
     /// `Node` children and text runs, in order.
     pub children: Vec<ResolvedChild>,
+    /// The surfaces this node answers for — a `$surface`'s own tag, or on
+    /// the runtime's synthetic content-viewport wrapper the host tags of
+    /// the mounts it frames (E3c-13). Never a mount's host tag on a
+    /// template node: the host is the boundary around the template
+    /// (`Runtime::host_surfaces`). The frontend reports the node's
+    /// content-box width against each; the generation keeps a remount's
+    /// measures apart. Identity detail like `id` — not part of the
+    /// [`normal_form`].
+    pub surfaces: SmallVec<[SurfaceTag; 2]>,
     /// From `$if` / `$animate`; paint-only.
     pub transition: Option<Transition>,
 }

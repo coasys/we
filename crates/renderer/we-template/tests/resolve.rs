@@ -771,14 +771,26 @@ fn an_unread_surface_member_change_keeps_a_derived_initial() {
             }]
         }]
     }));
-    let mut screen = screen();
-    screen.apply(we_screen::ScreenOp::SetSurface {
-        id: "test:/$surface0".into(),
-        width: 400.0,
-        tier: "base".into(),
-    });
-    let (mut rt, mut host, locals, _unused) = rig(node, StoreBag::new());
-    let _ = rt.frame(&mut host, &screen).clone();
+    let (mut rt, mut host, locals, mut screen) = rig(node, StoreBag::new());
+    let root = rt.frame(&mut host, &screen).clone();
+    let tag = root
+        .children
+        .iter()
+        .find_map(|c| match c {
+            ResolvedChild::Node(n) if n.ty.as_ref() == "$surface" => n
+                .surfaces
+                .iter()
+                .find(|t| matches!(t.key, we_template::SurfaceKey::Node(_)))
+                .cloned(),
+            _ => None,
+        })
+        .expect("the $surface carries its tag");
+    let measure =
+        |rt: &mut Runtime, host: &mut StaticHost, screen: &mut ScreenState, width: f32| {
+            rt.report_surface(&tag, width);
+            rt.drain_inbox(host, screen);
+            rt.frame(host, screen);
+        };
     let row = NodeId::new("test:/$surface0/Row0");
     match locals.get(&row, "sel") {
         Value::List(items) => assert_eq!(
@@ -799,12 +811,7 @@ fn an_unread_surface_member_change_keeps_a_derived_initial() {
     locals.touch(&row, "sel");
 
     // An unread member moving is no input of this initial — the edit stays.
-    screen.apply(we_screen::ScreenOp::SetSurface {
-        id: "test:/$surface0".into(),
-        width: 401.0,
-        tier: "base".into(),
-    });
-    let _ = rt.frame(&mut host, &screen).clone();
+    measure(&mut rt, &mut host, &mut screen, 401.0); // still `base`
     match locals.get(&row, "sel") {
         Value::List(items) => assert_eq!(
             items
@@ -818,12 +825,7 @@ fn an_unread_surface_member_change_keeps_a_derived_initial() {
     assert!(locals.is_touched(&row, "sel"), "a kept edit stays touched");
 
     // The read member moving resets — the dep is granular, not absent.
-    screen.apply(we_screen::ScreenOp::SetSurface {
-        id: "test:/$surface0".into(),
-        width: 401.0,
-        tier: "md".into(),
-    });
-    let _ = rt.frame(&mut host, &screen).clone();
+    measure(&mut rt, &mut host, &mut screen, 1000.0); // → `md`
     match locals.get(&row, "sel") {
         Value::List(items) => assert_eq!(
             items
@@ -1467,11 +1469,10 @@ fn the_screen_root_is_bound_once() {
         Some(Value::Namespace(ns)) => Arc::downgrade(ns),
         other => panic!("screen must be a namespace: {other:?}"),
     };
-    for _ in 0..20 {
-        screen.apply(we_screen::ScreenOp::SetSurface {
-            id: "s".into(),
-            width: 1.0,
-            tier: "md".into(),
+    for i in 0..20 {
+        screen.apply(we_screen::ScreenOp::SetPref {
+            key: "we-test:s".into(),
+            value: Some(serde_json::json!(i)),
         });
         let _ = rt.frame(&mut host, &screen).clone();
         assert!(
@@ -2561,18 +2562,18 @@ fn first_text(v: &Value) -> Option<String> {
     }
 }
 
-/// An unrelated screen change — a surface measurement elsewhere — that
-/// moves `screen.version` and so refreshes the `screen` view's snapshot.
+/// An unrelated screen change — a device-preference write elsewhere —
+/// that moves `screen.version` and so refreshes the `screen` view's
+/// snapshot.
 fn unrelated_screen_change(screen: &mut ScreenState) {
     let before = screen.version;
-    screen.apply(we_screen::ScreenOp::SetSurface {
-        id: "elsewhere".into(),
-        width: 321.0,
-        tier: "md".into(),
+    screen.apply(we_screen::ScreenOp::SetPref {
+        key: "we-test:unrelated".into(),
+        value: Some(serde_json::json!(321)),
     });
     assert_ne!(
         before, screen.version,
-        "the surface write must move the screen version"
+        "the pref write must move the screen version"
     );
 }
 

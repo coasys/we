@@ -28,6 +28,7 @@ use crate::resolve::{self, NoParts, PartSource};
 use crate::resolved::{HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope};
 use crate::scope::{RootLayer, Roots};
 use crate::screen_view::{self, ScreenView};
+use crate::surface::{SurfaceKey, SurfaceTable, SurfaceTag};
 use crate::{BundleTemplate, CallId, Host, Invoked, LocalState, ResolveCx, SchemaNode, StoreBag};
 
 /// Numbers the debug overlay reads — how much work the pipeline did.
@@ -50,6 +51,10 @@ pub struct Stats {
     pub completions_ignored: u64,
     /// Completions whose node had left the tree — nothing ran.
     pub completions_dropped: u64,
+    /// Live surface entries — the last frame's claim set (E3c-13).
+    pub surfaces: usize,
+    /// Surface reports dropped — a dead key or a stale generation.
+    pub surfaces_dropped: u64,
 }
 
 /// How many dead calls the runtime remembers at once (the `orphaned`
@@ -154,6 +159,15 @@ pub struct Runtime {
     /// The subscription hub — query sites claim each pass; `commit` opens
     /// and closes at the source.
     hub: QueryHub,
+    /// The surface table (E3c-13) — mount roots and `$surface` nodes claim
+    /// each pass; a frame's commit prunes the rest, and frontend reports
+    /// land through the inbox on the generation they quote.
+    surfaces: SurfaceTable,
+    /// The host tags of the mounts whose boundary is the slot the frontend
+    /// paints the session into — the last frame's, in mount order. A
+    /// mount framed by the content viewport carries its host tag on that
+    /// synthetic wrapper instead; no host tag sits on a template node.
+    host_surfaces: Vec<SurfaceTag>,
     /// `QuerySource` — E6/E7 answer real subscriptions; the default is the
     /// snapshot's `queries` table, answering named requests by `name_hint`.
     source: Arc<dyn QuerySource>,
@@ -182,10 +196,10 @@ pub struct Runtime {
     ready: Box<dyn Fn(&StoreBag) -> bool>,
     cache: ParseCache,
     resolved: Option<Arc<ResolvedNode>>,
-    /// (screen, data, local, pool) the last resolve recorded — the data
-    /// entry as read *before* its first pass, so a write mid-resolve
+    /// (screen, data, local, pool, surfaces) the last resolve recorded —
+    /// the data entry as read *before* its first pass, so a write mid-resolve
     /// leaves the source ahead and the next `poll` dirty.
-    last: Option<(u64, u64, u64, u64)>,
+    last: Option<(u64, u64, u64, u64, u64)>,
     /// The live `screen` root — bound once into the mount's [`RootLayer`]
     /// at construction; `apply_screen`/`frame` refresh its snapshot,
     /// never rebind it.
@@ -267,6 +281,8 @@ impl Runtime {
             locals,
             dollar_type: Arc::new(|_| false),
             hub: QueryHub::new(inbox.clone(), handles.clone()),
+            surfaces: SurfaceTable::default(),
+            host_surfaces: Vec::new(),
             source,
             parts: Arc::new(NoParts),
             pending: HashMap::new(),
@@ -406,8 +422,8 @@ impl Runtime {
         &self.inbox
     }
 
-    /// Would `frame` re-resolve: the `(screen, data, local, hub)` tuple
-    /// is not what the last resolve recorded. An exhausted pass budget
+    /// Would `frame` re-resolve: the `(screen, data, local, hub, surfaces)`
+    /// tuple is not what the last resolve recorded. An exhausted pass budget
     /// is covered too — `frame` bumps the hub revision past what `last`
     /// recorded, so the mismatch reports itself here. `Session::poll`
     /// reports this as `Tick::dirty` — "a `resolve` now would produce a
@@ -420,6 +436,7 @@ impl Runtime {
                 self.bag.version(),
                 self.locals.version(),
                 self.hub.revision(),
+                self.surfaces.revision(),
             ))
     }
 
@@ -588,6 +605,7 @@ impl Runtime {
             self.bag.version(),
             self.locals.version(),
             self.hub.revision(),
+            self.surfaces.revision(),
         );
         if self.resolved.is_none() || self.last != Some(current) {
             let started = Instant::now();
@@ -607,16 +625,28 @@ impl Runtime {
             // The leading resolved children that are the app chrome's —
             // everything after them is content for the viewport wrapper.
             let mut chrome_children = 0usize;
+            // Each mount's host tag, and whether it is the app chrome's —
+            // decides below which boundary reports it.
+            let mut host_tags: Vec<(SurfaceTag, bool)> = Vec::new();
             for _ in 0..8 {
                 // Claims a panicked pass recorded are dropped — a site
                 // that does not claim again does not keep a stale claim.
                 self.hub.begin_pass();
+                self.surfaces.begin_pass();
                 let mut round_live = HashSet::new();
                 let mut round_parents = HashMap::new();
                 warnings.clear();
                 children.clear();
                 chrome_children = 0;
+                host_tags.clear();
                 for mount in &mounts {
+                    // The mount's boundary — claimed again inside the
+                    // resolve, which answers this same generation.
+                    host_tags.push((
+                        self.surfaces
+                            .claim(SurfaceKey::Host(mount.cx.mount.clone())),
+                        mount.cx.mount.as_str() == "app",
+                    ));
                     let (routes, panels, record_views) = match mount.template {
                         Some(t) => (
                             t.node.routes.as_deref(),
@@ -633,6 +663,7 @@ impl Runtime {
                         cache: &mut self.cache,
                         screen,
                         hub: &mut self.hub,
+                        surfaces: &mut self.surfaces,
                         mount: &mount.cx,
                         handles: &self.handles,
                         parts: self.parts.as_ref(),
@@ -683,6 +714,13 @@ impl Runtime {
                     break;
                 }
             }
+            // The last pass's surface claims are the live set — a key whose
+            // node left the tree drops here, taking any measure it held
+            // (a stale-generation report already fails at apply, the way a
+            // closed ticket's event does). Pruning moves no revision.
+            self.surfaces.commit();
+            self.stats.surfaces = self.surfaces.len();
+            self.stats.surfaces_dropped = self.surfaces.dropped;
             self.ops.extend(ops);
             self.stats.parse_errors = warnings
                 .iter()
@@ -709,13 +747,25 @@ impl Runtime {
             // occupies; the space the frame leaves is the content
             // viewport — a fixed scroller the mounted page fills (the
             // web's appViewport element). A bare landing gets it too.
+            // The mounts that viewport frames measure its box (a synthetic
+            // node sized off `meta.frame` and the viewport, never off the
+            // template); every other mount's boundary is the slot.
+            self.host_surfaces.clear();
+            let mut framed = smallvec::SmallVec::new();
+            let frames = matches!(self.spec, RootSpec::App(_)) && chrome_children > 0;
+            for (tag, chrome) in host_tags {
+                if frames && !chrome {
+                    framed.push(tag);
+                } else {
+                    self.host_surfaces.push(tag);
+                }
+            }
             if let RootSpec::App(spec) = &self.spec {
                 if chrome_children > 0 {
                     let content = children.split_off(chrome_children);
-                    children.push(ResolvedChild::Node(Box::new(content_viewport(
-                        spec.app.as_ref(),
-                        content,
-                    ))));
+                    let mut frame = content_viewport(spec.app.as_ref(), content);
+                    frame.surfaces = framed;
+                    children.push(ResolvedChild::Node(Box::new(frame)));
                 }
             }
             // A fragment, an op or the multi-mount root can answer several
@@ -731,6 +781,7 @@ impl Runtime {
                     handlers: IndexMap::new(),
                     slot: None,
                     children,
+                    surfaces: smallvec::SmallVec::new(),
                     transition: None,
                 },
             };
@@ -761,6 +812,7 @@ impl Runtime {
                 // already reflected in this tree.
                 self.locals.version(),
                 self.hub.revision(),
+                self.surfaces.revision(),
             ));
             // Every pass moved a cell — a deeper dependency chain may
             // still be climbing. Bump the hub past what `last` recorded
@@ -855,16 +907,20 @@ impl Runtime {
     /// a `Query` event lands on its ticket's cell — `Tick::query_events`
     /// counts the ones a cell visibly changed for; a `Bindings` arrival
     /// only counts — the source's revision is the truth and
-    /// [`Self::dirty`] re-reads it. Answers `(completions, query events,
-    /// binding invalidations)` for `Tick`.
+    /// [`Self::dirty`] re-reads it; a `Surface` report applies against the
+    /// generation it quotes — a live generation's record moving is the
+    /// dirty input, a stale one just counts `surfaces_dropped`. Answers
+    /// `(completions, query events, binding invalidations, surface
+    /// reports)` for `Tick`.
     pub fn drain_inbox(
         &mut self,
         host: &mut dyn Host,
         screen: &mut ScreenState,
-    ) -> (usize, usize, usize) {
+    ) -> (usize, usize, usize, usize) {
         let mut completions = 0usize;
         let mut queries = 0usize;
         let mut bindings = 0usize;
+        let mut surfaces = 0usize;
         for arrival in self.inbox.drain() {
             match arrival {
                 Arrival::Completion { call, result } => {
@@ -875,9 +931,49 @@ impl Runtime {
                     queries += self.hub.deliver(ticket, event) as usize;
                 }
                 Arrival::Bindings => bindings += 1,
+                Arrival::Surface { tag, width } => {
+                    surfaces += 1;
+                    if !self.surfaces.report(&tag, width) {
+                        self.stats.surfaces_dropped = self.surfaces.dropped;
+                    }
+                }
             }
         }
-        (completions, queries, bindings)
+        (completions, queries, bindings, surfaces)
+    }
+
+    /// A frontend's content-box measure for `tag` — pushed to the inbox,
+    /// so it wakes the frontend's hook exactly like a completion or a
+    /// query delivery would. The drain applies it if `tag`'s generation
+    /// is still live; `Session::report_surface` forwards here.
+    pub fn report_surface(&mut self, tag: &SurfaceTag, width: f32) {
+        self.inbox.push(Arrival::Surface {
+            tag: tag.clone(),
+            width,
+        });
+    }
+
+    /// A live surface's `{width, tier}` — `None` when `key` is dead
+    /// (unmounted or never claimed).
+    pub fn surface_measure(&self, key: &SurfaceKey) -> Option<(f32, we_metrics::SizeTier)> {
+        self.surfaces.measure(key)
+    }
+
+    /// The host surfaces whose boundary is the slot the frontend gives the
+    /// session's root — the egui slot rect, the TUI pane, `--viewport` in
+    /// dump and the CLI. The frontend reports the slot's width against
+    /// each (E3c-13; `createSurface.ts:29` — the host's surfaces are the
+    /// elements a tree is mounted in, outside the template). Measured
+    /// there, a root sized off `surface.width` cannot feed its own width
+    /// back. Empty before the first frame.
+    pub fn host_surfaces(&self) -> &[SurfaceTag] {
+        &self.host_surfaces
+    }
+
+    /// The surface table's revision — the [`Self::dirty`] input. Moves
+    /// only when a live surface's record does; pruning is quiet.
+    pub fn surface_revision(&self) -> u64 {
+        self.surfaces.revision()
     }
 
     /// Settle a pending `$invoke` (`Host::act` answered `Pending` for the
@@ -1022,6 +1118,7 @@ fn content_viewport(app: Option<&BundleTemplate>, children: Vec<ResolvedChild>) 
         handlers: IndexMap::new(),
         slot: None,
         children,
+        surfaces: smallvec::SmallVec::new(),
         transition: None,
     }
 }

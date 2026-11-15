@@ -26,6 +26,7 @@ use crate::node::{JsonMap, RouteNode, SchemaChild, SchemaNode};
 use crate::query::{compile_request, CompileCx, Compiled, QueryHub, QueryKey, SiteId, SiteSlot};
 use crate::resolved::{HandlerRef, NodeId, ResolvedChild, ResolvedNode, Scope, Transition};
 use crate::scope::{FieldMeta, LocalDecl, LocalNs, LocalScope, Roots, ScopeEnv, StoreBag};
+use crate::surface::{SurfaceKey, SurfaceTable};
 use crate::{Host, LocalState};
 
 /// Where `$part` looks up module content. The app installs the module
@@ -58,6 +59,9 @@ pub struct ResolveCx<'a> {
     /// The subscription hub every query site claims on — the pass's
     /// claims, committed by the frame after the resolve.
     pub hub: &'a mut QueryHub,
+    /// The runtime's surface table — a `$surface` and each mount root
+    /// claim their keys here; the frame's commit prunes the rest (E3c-13).
+    pub surfaces: &'a mut SurfaceTable,
     /// The mount this resolve runs under — its stamped identity (tier,
     /// space, provenance) is what queries and, downstream, actions carry
     /// (E3c-7; stamping only — nothing is filtered by it yet).
@@ -908,6 +912,7 @@ fn resolve_node(
                         handlers: IndexMap::new(),
                         slot: node.slot.as_deref().map(Into::into),
                         children: Vec::new(),
+                        surfaces: smallvec::SmallVec::new(),
                         transition: None,
                     }))]
                 }
@@ -917,11 +922,11 @@ fn resolve_node(
         Some("$routes") => resolve_routes(scope, parent, root, path, decls, cx),
         Some("$surface") => {
             // A measuring box that stays a real node — the frontend paints
-            // it and reports the box through `ScreenOp::SetSurface`. `as`
-            // names the context key (`surface` by default); the value is
-            // `{width, tier}`, `createSurface`'s initial `{0, "base"}`
-            // until the first measure lands. Nesting shadows: the
-            // innermost surface's key wins (SurfaceRenderer).
+            // it and reports the box against the tag stamped here (E3c-13).
+            // `as` names the context key (`surface` by default); the value
+            // is `{width, tier}` from the runtime's table — `createSurface`'s
+            // initial `{0, "base"}` until the first measure lands. Nesting
+            // shadows: the innermost surface's key wins (SurfaceRenderer).
             let id = cx.node_id(root, path);
             cx.live.insert(id.clone());
             cx.parents.insert(id.clone(), parent.clone());
@@ -931,18 +936,14 @@ fn resolve_node(
                 .and_then(|v| v.as_str())
                 .unwrap_or("surface")
                 .into();
-            let measure =
-                cx.screen
-                    .surfaces
-                    .get(id.as_str())
-                    .cloned()
-                    .unwrap_or(we_screen::SurfaceMeasure {
-                        width: 0.0,
-                        tier: "base".into(),
-                    });
+            let tag = cx.surfaces.claim(SurfaceKey::Node(id.clone()));
+            let (width, tier) = cx
+                .surfaces
+                .measure(&tag.key)
+                .unwrap_or((0.0, we_metrics::SizeTier::Base));
             let mut surface = IndexMap::new();
-            surface.insert("width".into(), Value::Num(measure.width));
-            surface.insert("tier".into(), Value::Str(measure.tier.into()));
+            surface.insert("width".into(), Value::Num(width as f64));
+            surface.insert("tier".into(), Value::Str(tier.name().into()));
             let mut surface_scope = node_scope.clone();
             // The same box across resolves until a measure lands — WE's
             // `createSurface` keeps one store alive, and a tracked initial
@@ -999,6 +1000,7 @@ fn resolve_node(
                 handlers,
                 slot: node.slot.as_deref().map(Into::into),
                 children,
+                surfaces: smallvec::smallvec![tag],
                 transition: props.and_then(Transition::from_props),
             }))]
         }
@@ -1018,6 +1020,7 @@ fn resolve_node(
                 handlers: IndexMap::new(),
                 slot: node.slot.as_deref().map(Into::into),
                 children,
+                surfaces: smallvec::SmallVec::new(),
                 transition: None,
             }))]
         }
@@ -1090,6 +1093,7 @@ fn resolve_node(
                 handlers,
                 slot: node.slot.as_deref().map(Into::into),
                 children,
+                surfaces: smallvec::SmallVec::new(),
                 transition: props.and_then(Transition::from_props),
             }))]
         }
@@ -1403,6 +1407,7 @@ fn resolve_panels(
         handlers,
         slot: node.slot.as_deref().map(Into::into),
         children,
+        surfaces: smallvec::SmallVec::new(),
         transition: None,
     }))]
 }
@@ -1560,6 +1565,7 @@ fn resolve_record(
                 handlers: IndexMap::new(),
                 slot: None,
                 children: Vec::new(),
+                surfaces: smallvec::SmallVec::new(),
                 transition: None,
             }))]
         }
@@ -1578,16 +1584,41 @@ fn record_view_node(value: &Json, cx: &mut ResolveCx) -> Option<Arc<SchemaNode>>
 /// The resolver's entry point: `node` under `mount`'s identity (`{mount}:{path}`
 /// node ids), in `scope` (usually the empty root scope — the store bag
 /// supplies the rest).
+///
+/// The mount claims its host surface here (E3c-13): `surface` binds the
+/// mount-boundary record for the whole tree until a `$surface` shadows it.
+/// The host's tag goes on no resolved node — the boundary is outside the
+/// template (`createSurface.ts:29`: the host's surfaces are the existing
+/// elements a tree is mounted in), so the runtime hands it to the frontend
+/// as the slot it paints the mount into ([`crate::Runtime::host_surfaces`]),
+/// and a root sized off `surface.width` can never measure itself.
 pub fn resolve(
     node: &SchemaNode,
     mount: &MountCx,
     scope: &Scope,
     cx: &mut ResolveCx,
 ) -> Vec<ResolvedChild> {
+    let tag = cx.surfaces.claim(SurfaceKey::Host(mount.mount.clone()));
+    let (width, tier) = cx
+        .surfaces
+        .measure(&tag.key)
+        .unwrap_or((0.0, we_metrics::SizeTier::Base));
+    let mut host = IndexMap::new();
+    host.insert("width".into(), Value::Num(width as f64));
+    host.insert("tier".into(), Value::Str(tier.name().into()));
+    let mut scope = scope.clone();
+    scope.bind_conduit(
+        "surface",
+        cx.memo_value(
+            format!("$surface:host:{}", mount.mount.as_str()).into(),
+            Value::Obj(Arc::new(host)),
+        ),
+    );
+
     let decls: Arc<Vec<LocalScope>> = Arc::new(Vec::new());
     resolve_node(
         node,
-        scope,
+        &scope,
         &NodeId::new(""),
         mount.mount.as_str(),
         "",

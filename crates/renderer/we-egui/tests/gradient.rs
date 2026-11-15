@@ -22,6 +22,7 @@ fn column(props: &[(&str, &str)]) -> ResolvedNode {
         slot: None,
         children: vec![],
         transition: None,
+        surfaces: Default::default(),
     }
 }
 

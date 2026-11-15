@@ -26,6 +26,7 @@ fn node(ty: &str, props: &[(&str, Value)]) -> ResolvedNode {
         slot: None,
         children: vec![],
         transition: None,
+        surfaces: Default::default(),
     }
 }
 

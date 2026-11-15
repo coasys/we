@@ -27,6 +27,7 @@ fn node(id: &str, ty: &str, props: &[(&str, &str)], kids: Vec<ResolvedNode>) -> 
             .map(|k| ResolvedChild::Node(Box::new(k)))
             .collect(),
         transition: None,
+        surfaces: Default::default(),
     }
 }
 

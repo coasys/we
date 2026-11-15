@@ -359,6 +359,7 @@ mod tests {
             handlers: indexmap::IndexMap::new(),
             slot: None,
             children: vec![],
+            surfaces: Default::default(),
             transition: None,
         }
     }

@@ -118,10 +118,9 @@ fn repeated_changes_never_stack_a_wrapper() {
     for i in 0..10 {
         rt.apply_screen(
             &mut screen,
-            ScreenOp::SetSurface {
-                id: format!("s{i}"),
-                width: 100.0 + i as f64,
-                tier: "md".into(),
+            ScreenOp::SetPref {
+                key: format!("we-test:s{i}"),
+                value: Some(serde_json::json!(100 + i)),
             },
         );
     }

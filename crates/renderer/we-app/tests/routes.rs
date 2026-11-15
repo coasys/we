@@ -136,3 +136,43 @@ fn star_route_redirects_to_space_root() {
         "`*` route should queue a replace-navigate; got {ops:?}"
     );
 }
+
+/// Lal U1 × the app frame: the chrome's host surface is the slot the
+/// frontend paints the session into; the mounts the content viewport
+/// frames carry their host tags on that synthetic `frame` node — sized off
+/// `meta.frame` and the viewport, never off the template. No template
+/// node carries a host tag.
+#[test]
+fn host_surfaces_sit_on_mount_boundaries() {
+    fn hosts(n: &ResolvedNode, out: &mut Vec<(String, we_template::SurfaceTag)>) {
+        for t in &n.surfaces {
+            if matches!(t.key, we_template::SurfaceKey::Host(_)) {
+                out.push((n.id.to_string(), t.clone()));
+            }
+        }
+        for c in &n.children {
+            if let ResolvedChild::Node(x) = c {
+                hosts(x, out);
+            }
+        }
+    }
+    let (mut rt, mut host, screen) = rig("/space/demo");
+    let root = rt.frame(&mut host, &screen).clone();
+    assert_eq!(
+        rt.host_surfaces()
+            .iter()
+            .map(|t| t.key.clone())
+            .collect::<Vec<_>>(),
+        vec![we_template::SurfaceKey::Host("app".into())],
+        "the chrome's boundary is the slot"
+    );
+    let mut on_nodes = Vec::new();
+    hosts(&root, &mut on_nodes);
+    assert!(
+        !on_nodes.is_empty(),
+        "the framed mounts claim host surfaces"
+    );
+    for (id, tag) in &on_nodes {
+        assert_eq!(id, "frame", "{tag:?} sits on the content viewport only");
+    }
+}

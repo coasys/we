@@ -811,7 +811,7 @@ fn a_source_swap_that_withholds_shows_loading_until_b_answers() {
     // B answers through the sink it kept — the rows it gives replace the
     // loading state, and the dependent claim reopens on B's answer.
     b.deliver("Task", vec![Value::from_json(&json!({ "id": "b1" }))]);
-    let (_, queries, _) = rt.drain_inbox(&mut host, &mut screen);
+    let (_, queries, _, _) = rt.drain_inbox(&mut host, &mut screen);
     assert_eq!(queries, 1, "B's delivery applied");
     assert!(rt.dirty(&screen), "the applied answer reports dirty");
     let root = rt.frame(&mut host, &screen).clone();
@@ -1135,7 +1135,7 @@ fn loading_then_rows_on_a_later_frame() {
         1,
         "the sink's push woke the frontend"
     );
-    let (_, queries, _) = rt.drain_inbox(&mut host, &mut screen);
+    let (_, queries, _, _) = rt.drain_inbox(&mut host, &mut screen);
     assert_eq!(queries, 1, "the queued event applied to its cell");
     assert!(rt.dirty(&screen), "the applied answer reports dirty");
 
@@ -1177,7 +1177,7 @@ fn second_live_result_appears() {
     );
 
     source.deliver("Task", vec![Value::from_json(&json!({ "id": "Task-2" }))]);
-    let (_, queries, _) = rt.drain_inbox(&mut host, &mut screen);
+    let (_, queries, _, _) = rt.drain_inbox(&mut host, &mut screen);
     assert_eq!(queries, 1, "the refill applied");
     assert!(rt.dirty(&screen));
     let root = rt.frame(&mut host, &screen).clone();
@@ -1246,7 +1246,7 @@ fn narrow_result_not_overwritten_by_wide_late_result() {
     stale.deliver(QueryEvent::Rows(Arc::new(vec![Value::from_json(
         &json!({ "id": "wide-ghost" }),
     )])));
-    let (_, queries, _) = rt.drain_inbox(&mut host, &mut screen);
+    let (_, queries, _, _) = rt.drain_inbox(&mut host, &mut screen);
     assert_eq!(queries, 0, "the dead ticket's event applied to nothing");
     assert!(!rt.dirty(&screen), "a dropped event cannot dirty the frame");
     assert_eq!(rt.hub().revision(), before, "no visible change");
@@ -1774,7 +1774,7 @@ fn a_later_success_clears_the_error() {
     );
 
     source.deliver("Task", vec![Value::from_json(&json!({ "id": "t1" }))]);
-    let (_, queries, _) = rt.drain_inbox(&mut host, &mut screen);
+    let (_, queries, _, _) = rt.drain_inbox(&mut host, &mut screen);
     assert_eq!(queries, 1, "the success on the same ticket applied");
     let root = rt.frame(&mut host, &screen).clone();
     let q = find_ty(&root, "we-q").expect("we-q mounts");

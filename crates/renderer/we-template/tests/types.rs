@@ -125,9 +125,11 @@ fn normal_form_writes_the_spec_shape() {
                 handlers: IndexMap::new(),
                 slot: None,
                 children: vec![],
+                surfaces: Default::default(),
                 transition: None,
             })),
         ],
+        surfaces: Default::default(),
         transition: None,
     };
     assert_eq!(

@@ -1429,6 +1429,7 @@ mod tests {
             handlers: Default::default(),
             slot: None,
             children: vec![],
+            surfaces: Default::default(),
             transition: None,
         };
         let mut scx = we_layout::defaults::StyleCx::empty();

@@ -31,6 +31,7 @@ mod resolved;
 mod runtime;
 mod scope;
 mod screen_view;
+mod surface;
 
 pub use bindings::{DataRevision, Invalidator};
 pub use bundle::{
@@ -59,6 +60,7 @@ pub use scope::{
     content_eq, FieldMeta, LocalDecl, LocalNs, LocalScope, RootLayer, Roots, ScopeEnv, StoreBag,
 };
 pub use screen_view::ScreenView;
+pub use surface::{SurfaceKey, SurfaceTag};
 /// The mount-identity family lives in `we-expr` (a `Namespace::as_handle`
 /// must name a type from below `we-template`; E3c-7, R4). Re-exported so
 /// frontends and tests need no extra dependency for `MountCx`.

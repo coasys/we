@@ -190,7 +190,9 @@ enum Tag {
 
 fn tag(node: &ResolvedNode) -> Tag {
     match node.ty.as_ref() {
-        "Column" | "Row" | "div" | "Grid" | "$lane" | "we-sortable" | "AgentChat" => Tag::Container,
+        "Column" | "Row" | "div" | "Grid" | "$lane" | "$surface" | "we-sortable" | "AgentChat" => {
+            Tag::Container
+        }
         "Card" => Tag::Card,
         "we-tooltip" => Tag::Tooltip,
         "we-tree" => Tag::Tree,
@@ -327,6 +329,10 @@ pub struct Painter<'a> {
     pub drafts: &'a std::collections::HashMap<NodeId, String>,
     /// Nodes the keyboard can reach, in paint order.
     pub focusables: Vec<Focusable>,
+    /// `(tag, content-box cells)` for every surface node painted this
+    /// pass — the terminal's `ResizeObserver` record (E3c-13), converted
+    /// to px by the caller (`cells × CELL_PX`).
+    pub surface_cells: Vec<(we_template::SurfaceTag, u16)>,
 }
 
 impl<'a> Painter<'a> {
@@ -347,6 +353,15 @@ impl<'a> Painter<'a> {
             focus: None,
             drafts,
             focusables: Vec::new(),
+            surface_cells: Vec::new(),
+        }
+    }
+
+    /// Record `width` cells of content box for every surface tag `node`
+    /// carries — the frame's `ResizeObserver` entries.
+    fn record_surfaces(&mut self, node: &ResolvedNode, width: u16) {
+        for tag in &node.surfaces {
+            self.surface_cells.push((tag.clone(), width));
         }
     }
 
@@ -938,6 +953,19 @@ impl<'a> Painter<'a> {
             return;
         }
         if area.width == 0 || area.height == 0 {
+            // E3c-13 (Lal U2): a measured 0 is a measurement — record the
+            // content box before leaving, or the last positive width stays
+            // live in the table.
+            if !node.surfaces.is_empty() {
+                let width = if area.width == 0 {
+                    0
+                } else {
+                    let style = self.style(node);
+                    let (l, _, r, _) = self.box_inset(node, &style, area.width, area.height);
+                    area.width.saturating_sub(l + r)
+                };
+                self.record_surfaces(node, width);
+            }
             self.paint_out_of_flow(node, area, env);
             return;
         }
@@ -969,6 +997,11 @@ impl<'a> Painter<'a> {
             width: area.width.saturating_sub(l + r),
             height: area.height.saturating_sub(t + b),
         };
+        // E3c-13: `inner` is this node's content box in cells — the same
+        // box `ResizeObserver.contentBoxSize` answers — recorded for every
+        // surface tag the node carries, a 0 included (Lal U2). Only a
+        // hidden node left before this.
+        self.record_surfaces(node, inner.width);
         if inner.width == 0 || inner.height == 0 {
             self.paint_out_of_flow(node, inner, &env);
             return;
@@ -2139,6 +2172,10 @@ pub struct Frame {
     pub canvas: Buffer,
     /// Focusables in paint order (virtual coords).
     pub focusables: Vec<Focusable>,
+    /// Every surface tag's measured content-box width in px — cells ×
+    /// [`CELL_PX`], the terminal frontend's `ResizeObserver` answer for
+    /// the frame (E3c-13).
+    pub surface_reports: Vec<(we_template::SurfaceTag, f32)>,
     /// The content's full height in lines.
     pub content_height: u16,
 }
@@ -2193,10 +2230,15 @@ pub fn paint_frame(
     );
     p.highlight_focus(Rect::new(0, 0, w, height));
     let focusables = std::mem::take(&mut p.focusables);
+    let surface_reports = std::mem::take(&mut p.surface_cells)
+        .into_iter()
+        .map(|(tag, cells)| (tag, cells as f32 * CELL_PX))
+        .collect();
     drop(p);
     Frame {
         canvas: buf,
         focusables,
+        surface_reports,
         content_height: height,
     }
 }

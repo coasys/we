@@ -89,6 +89,7 @@ impl Widget for DropdownMenu {
                 handlers: Default::default(),
                 slot: None,
                 children: Vec::new(),
+                surfaces: Default::default(),
                 transition: None,
             })));
         }
@@ -102,6 +103,7 @@ impl Widget for DropdownMenu {
             handlers: Default::default(),
             slot: None,
             children: bchildren,
+            surfaces: Default::default(),
             transition: None,
         };
         match title {
@@ -117,6 +119,7 @@ impl Widget for DropdownMenu {
                     handlers: Default::default(),
                     slot: None,
                     children: vec![ResolvedChild::Node(Box::new(button))],
+                    surfaces: Default::default(),
                     transition: None,
                 }))]
             }

@@ -42,6 +42,9 @@ pub struct Layout {
     /// `cb.0` is the containing-block width paint insets percent padding
     /// against. Paint never rebuilds the base itself.
     pub bases: HashMap<NodeId, we_layout::Bases>,
+    /// Every laid-out node's content-box size — what a surface report
+    /// measures (`ResizeObserver.contentBoxSize`, E3c-13).
+    pub content_boxes: HashMap<NodeId, egui::Vec2>,
     /// `true` when the deferred-base solve hit its pass cap still moving
     /// — the returned build is honest but not settled.
     pub unconverged: bool,
@@ -254,6 +257,11 @@ fn run(
             .map(|(k, v)| (k, egui::vec2(v.x, v.y)))
             .collect(),
         bases: out.bases,
+        content_boxes: out
+            .content_boxes
+            .into_iter()
+            .map(|(k, v)| (k, egui::vec2(v.x, v.y)))
+            .collect(),
         unconverged: out.unconverged,
         lanes: out.lanes,
     }

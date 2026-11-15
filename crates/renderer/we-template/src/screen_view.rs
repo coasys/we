@@ -340,10 +340,9 @@ mod tests {
         apply_screen(
             &mut screen,
             &view,
-            ScreenOp::SetSurface {
-                id: "elsewhere".into(),
-                width: 100.0,
-                tier: "md".into(),
+            ScreenOp::SetPref {
+                key: "we-test:elsewhere".into(),
+                value: Some(serde_json::json!(100)),
             },
         );
         let p1 = read(&view, "params");

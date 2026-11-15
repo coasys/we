@@ -58,6 +58,7 @@ fn node(ty: &str, id: &str, props: &[(&str, Value)]) -> ResolvedNode {
         handlers: IndexMap::new(),
         slot: None,
         children: vec![],
+        surfaces: Default::default(),
         transition: None,
     }
 }
@@ -515,6 +516,7 @@ fn reversed_spans_project_zero_cells() {
         scroll_content: HashMap::new(),
         clip: HashMap::new(),
         bases: HashMap::new(),
+        content_boxes: HashMap::new(),
         unconverged: false,
         lanes: Default::default(),
     };
@@ -554,6 +556,7 @@ fn huge_spans_saturate_at_u16_max() {
         scroll_content: HashMap::new(),
         clip: HashMap::new(),
         bases: HashMap::new(),
+        content_boxes: HashMap::new(),
         unconverged: false,
         lanes: Default::default(),
     };

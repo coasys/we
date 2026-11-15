@@ -48,6 +48,7 @@ egui_extras = { version = "0.37", default-features = false, features = ["image",
 ratatui = "0.30.2"
 crossterm = "0.29.0"
 unicode-width = "0.2"
+smallvec = "1"
 
 we-metrics = { path = "we-metrics" }
 we-expr = { path = "we-expr" }

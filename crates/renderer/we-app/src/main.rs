@@ -45,6 +45,8 @@ struct Args {
     /// `--coasys <route>` — the whole app root at one recorded C2a route,
     /// set up the way `tests/coasys_shots.rs` sets it up.
     coasys: Option<String>,
+    /// `--viewport` — the width the dump reports the host surfaces at.
+    viewport: f32,
 }
 
 /// Which `--gallery` showcase to open (`none` → render the bundle).
@@ -70,6 +72,9 @@ fn parse_args() -> Args {
         dump: false,
         theme: "dark".to_string(),
         coasys: None,
+        // The design's headless measure (6.2): the dump reports the
+        // mount's host surfaces at 1440 unless `--viewport` says else.
+        viewport: 1440.0,
     };
     let mut rest = std::env::args().skip(1).peekable();
     if rest.peek().is_some_and(|a| a == "dump") {
@@ -113,6 +118,12 @@ fn parse_args() -> Args {
                         .unwrap_or_else(|| panic!("--coasys needs a route: {COASYS_ROUTES:?}")),
                 );
             }
+            "--viewport" => {
+                args.viewport = rest
+                    .next()
+                    .and_then(|v| v.parse::<f32>().ok())
+                    .unwrap_or_else(|| panic!("--viewport needs a pixel width"));
+            }
             "--offline" => {}
             "--help" | "-h" => {
                 eprintln!(
@@ -126,6 +137,7 @@ fn parse_args() -> Args {
                      --coasys <route>   the whole app at a recorded Coasys route, set up as the\n\
                                         coasys_shots screenshots are: index, workflows, channels,\n\
                                         channel-design, calls, call, people, dna, person or about\n\
+                     --viewport <px>    the width dump reports the mount surfaces at (default 1440)\n\
                      --gallery style    design-system showcase: roles, scales, radii, shadows\n\
                      --gallery widgets  the E5a widget showcase, themed, schema-driven\n\
                      --gallery inputs   the E5b widget showcase, painted through layout+paint"
@@ -196,11 +208,15 @@ fn run_dump(args: &Args) {
     let types: std::collections::HashSet<&'static str> =
         Registry::with_builtins().type_names().collect();
     // The same session the window and the CLI run, with the offline host
-    // injected. One frame, exactly as before: the dump prints the tree the
-    // first resolve produced, redirects not followed.
+    // injected. One frame, exactly as before — plus the viewport measure
+    // every frontend reports the mount's host surfaces at (E3c-13): the
+    // report rides the inbox, the poll applies it, the dump prints the
+    // settled tree.
     let mut session = Session::offline(RootSpec::App(Box::new(spec)), bag, screen)
         .with_dollar_types(move |ty| types.contains(ty));
-    let root = session.frame().clone();
+    let root = session.resolve();
+    session.report_host_surfaces(&root, args.viewport);
+    let root = session.resolve();
     let stats = session.stats();
     eprintln!(
         "dump: nodes={} resolves={} last_resolve={:?} warnings={}",
