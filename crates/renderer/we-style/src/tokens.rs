@@ -17,11 +17,32 @@ use indexmap::IndexMap;
 #[derive(Debug, Clone, Default)]
 pub struct TokenTable {
     vars: IndexMap<Arc<str>, Arc<str>>,
+    /// [`Self::fingerprint`], worked out the first time it is asked for —
+    /// the table never changes after it is built.
+    fingerprint: std::sync::OnceLock<u64>,
 }
 
 impl TokenTable {
     pub fn new(vars: IndexMap<Arc<str>, Arc<str>>) -> Self {
-        Self { vars }
+        Self {
+            vars,
+            fingerprint: std::sync::OnceLock::new(),
+        }
+    }
+
+    /// A hash of every name and value, in order — what a cache of styles
+    /// resolved against this table keys on, so two tables with the same
+    /// contents share entries and a changed one shares none.
+    pub fn fingerprint(&self) -> u64 {
+        *self.fingerprint.get_or_init(|| {
+            use std::hash::{Hash, Hasher};
+            let mut h = std::collections::hash_map::DefaultHasher::new();
+            for (k, v) in &self.vars {
+                k.hash(&mut h);
+                v.hash(&mut h);
+            }
+            h.finish()
+        })
     }
 
     /// Parse a recorded table: `{ "theme": "dark", "vars": { "--we-…": "…" } }`.
@@ -37,7 +58,7 @@ impl TokenTable {
                 .ok_or_else(|| TokenTableError::NonString(k.clone()))?;
             out.insert(Arc::from(k.as_str()), Arc::from(value));
         }
-        Ok(Self { vars: out })
+        Ok(Self::new(out))
     }
 
     /// The computed text a `--we-*` custom property holds, if this table

@@ -256,7 +256,100 @@ fn type_role(bag: &mut Bag, node: &ResolvedNode, tokens: &we_style::TokenTable) 
 
 /// The node's [`we_style::Style`] under `scx`'s theme — the single entry
 /// point layout, measure and paint share.
+///
+/// A style is a pure function of the node's type and props, of the
+/// context — tokens, theme, viewport, container width, metrics and the
+/// inherited scope — and of the installed theme sheets, so each answer is kept, per thread, under a hash of
+/// exactly those, and a frame that re-lays out a tree where one lane's
+/// width moved resolves that lane's style and looks the rest up. A prop
+/// holding a callable or a namespace has no content to hash; such a node
+/// resolves every time.
 pub fn style_of(node: &ResolvedNode, scx: &StyleCx) -> Style {
+    let Some(key) = style_key(node, scx) else {
+        return resolve_style(node, scx);
+    };
+    if let Some(hit) = STYLE_MEMO.with(|m| m.borrow().get(&key).cloned()) {
+        return hit;
+    }
+    let style = resolve_style(node, scx);
+    STYLE_MEMO.with(|m| {
+        let mut m = m.borrow_mut();
+        // A bound, not an eviction policy: a tree has a few hundred
+        // distinct styles, and what a theme swap or a window resize left
+        // behind is dropped wholesale rather than tracked.
+        if m.len() >= STYLE_MEMO_CAP {
+            m.clear();
+        }
+        m.insert(key, style.clone());
+    });
+    style
+}
+
+/// How many styles [`style_of`] keeps per thread before it starts over.
+const STYLE_MEMO_CAP: usize = 4096;
+
+thread_local! {
+    static STYLE_MEMO: std::cell::RefCell<std::collections::HashMap<u64, Style>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// The hash [`style_of`] keeps a style under — every input it reads, or
+/// `None` when a prop holds something with no content to hash.
+fn style_key(node: &ResolvedNode, scx: &StyleCx) -> Option<u64> {
+    use std::hash::{Hash, Hasher};
+    let mut h = std::collections::hash_map::DefaultHasher::new();
+    node.ty.hash(&mut h);
+    node.props.len().hash(&mut h);
+    for (k, v) in &node.props {
+        k.hash(&mut h);
+        hash_value(v, &mut h)?;
+    }
+    scx.tokens.fingerprint().hash(&mut h);
+    scx.theme.hash(&mut h);
+    we_style::stylesheet::installed_generation().hash(&mut h);
+    scx.viewport.width.to_bits().hash(&mut h);
+    scx.viewport.height.to_bits().hash(&mut h);
+    scx.container_width.to_bits().hash(&mut h);
+    let m = &scx.metrics;
+    for f in [m.root_px, m.font_px, m.ch_em, m.ex_em, m.lh_em] {
+        f.to_bits().hash(&mut h);
+    }
+    scx.scope.len().hash(&mut h);
+    for (k, v) in scx.scope {
+        k.hash(&mut h);
+        v.hash(&mut h);
+    }
+    Some(h.finish())
+}
+
+fn hash_value(v: &we_expr::Value, h: &mut impl std::hash::Hasher) -> Option<()> {
+    use std::hash::Hash;
+    use we_expr::Value;
+    match v {
+        Value::Undefined => 0u8.hash(h),
+        Value::Null => 1u8.hash(h),
+        Value::Bool(b) => (2u8, b).hash(h),
+        Value::Num(n) => (3u8, n.to_bits()).hash(h),
+        Value::Str(s) => (4u8, s).hash(h),
+        Value::List(l) => {
+            (5u8, l.len()).hash(h);
+            for x in l.iter() {
+                hash_value(x, h)?;
+            }
+        }
+        Value::Obj(o) => {
+            (6u8, o.len()).hash(h);
+            for (k, x) in o.iter() {
+                k.hash(h);
+                hash_value(x, h)?;
+            }
+        }
+        Value::Namespace(_) | Value::Callable(_) => return None,
+    }
+    Some(())
+}
+
+fn resolve_style(node: &ResolvedNode, scx: &StyleCx) -> Style {
     crate::counters::style_resolved();
     let mut bag = bag_for(node);
     type_role(&mut bag, node, scx.tokens);

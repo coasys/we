@@ -7,7 +7,9 @@
 //!   fonts it needs;
 //! - the width a drag asks for is drawn on the frame the pointer moved —
 //!   written through the lane's `onResize` before that frame resolves —
-//!   so the frame egui runs after it has nothing left to lay out.
+//!   so the frame egui runs after it has nothing left to lay out;
+//! - re-laying the tree out for a new lane width resolves the lane's own
+//!   style and looks every other node's up.
 
 use egui::{pos2, vec2, Event, PointerButton, Pos2, RawInput, Rect};
 use we_app::RendererApp;
@@ -147,5 +149,21 @@ fn a_drag_draws_its_width_on_the_frame_the_pointer_moved() {
         d.app.session.screen().shell.lanes["tree"].width,
         Some((start.width() + 56.0) as u32),
         "the width is in shell state, written by the lane's own handler"
+    );
+}
+
+#[test]
+fn a_drag_frame_resolves_only_the_dragged_lanes_style() {
+    let mut d = Driver::new();
+    let lane = d.lane("tree");
+    let from = pos2(lane.max.x, lane.center().y);
+    d.frame(vec![Event::PointerMoved(from)]);
+    d.frame(vec![button(from, true)]);
+    d.frame(vec![Event::PointerMoved(from + vec2(5.0, 0.0))]);
+    let f = d.frame(vec![Event::PointerMoved(from + vec2(10.0, 0.0))]);
+    assert_eq!(f.counters.layout_passes, 1, "the move re-laid the tree out");
+    assert_eq!(
+        f.counters.style_resolves, 1,
+        "only the lane, whose laneWidth moved, resolves its style again"
     );
 }

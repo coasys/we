@@ -1218,6 +1218,17 @@ pub fn builtin(theme: &str) -> Option<&'static Stylesheet> {
 static INSTALLED: std::sync::LazyLock<std::sync::RwLock<IndexMap<Arc<str>, Arc<Stylesheet>>>> =
     std::sync::LazyLock::new(Default::default);
 
+/// Moves every time a sheet is installed or dropped — a cache of styles
+/// resolved against the sheets keys on it.
+static GENERATION: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
+/// How many times the installed sheets changed — what a cache of resolved
+/// styles keys on, since an installed sheet changes what a style resolves
+/// to without changing anything the style was asked with.
+pub fn installed_generation() -> u64 {
+    GENERATION.load(std::sync::atomic::Ordering::Acquire)
+}
+
 /// Install `css` as `theme`'s stylesheet (replacing any earlier one).
 /// Returns what was skipped, so a theme editor can say which rules the
 /// renderer does not read.
@@ -1226,6 +1237,7 @@ pub fn install(theme: &str, css: &str) -> Vec<String> {
     let skipped = sheet.skipped.clone();
     if let Ok(mut map) = INSTALLED.write() {
         map.insert(Arc::from(theme), Arc::new(sheet));
+        GENERATION.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
     }
     skipped
 }
@@ -1234,6 +1246,7 @@ pub fn install(theme: &str, css: &str) -> Vec<String> {
 pub fn uninstall(theme: &str) {
     if let Ok(mut map) = INSTALLED.write() {
         map.shift_remove(theme);
+        GENERATION.fetch_add(1, std::sync::atomic::Ordering::AcqRel);
     }
 }
 
