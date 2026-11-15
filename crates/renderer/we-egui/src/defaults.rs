@@ -54,7 +54,16 @@ pub(crate) fn store_view(ctx: &egui::Context, scx: &StyleCx) {
                 unit_metrics(scx),
             ),
         );
-        d.insert_temp(egui::Id::unique(TOKENS_KEY), scx.tokens.clone());
+        // Shared, and copied in only when the table changed: every token a
+        // widget reads at paint goes through `tokens_of`, and handing out a
+        // copy of a theme's whole table per read cost a fifth of paint.
+        let key = egui::Id::unique(TOKENS_KEY);
+        let held = d
+            .get_temp::<Arc<we_style::TokenTable>>(key)
+            .is_some_and(|t| t.fingerprint() == scx.tokens.fingerprint());
+        if !held {
+            d.insert_temp(key, Arc::new(scx.tokens.clone()));
+        }
         // The theme's `--we-font-family` — the family body text inherits on
         // the web side (`font-family` on the app host). A separate key so
         // `ViewportCx` stays `Copy`; an explicit `font-family` on the node
@@ -81,8 +90,8 @@ pub(crate) fn store_view(ctx: &egui::Context, scx: &StyleCx) {
 }
 
 /// The stashed token table — `None` before the first `layout`/`paint`.
-pub(crate) fn tokens_of(ctx: &egui::Context) -> Option<we_style::TokenTable> {
-    ctx.data_mut(|d| d.get_temp::<we_style::TokenTable>(egui::Id::unique(TOKENS_KEY)))
+pub(crate) fn tokens_of(ctx: &egui::Context) -> Option<Arc<we_style::TokenTable>> {
+    ctx.data_mut(|d| d.get_temp::<Arc<we_style::TokenTable>>(egui::Id::unique(TOKENS_KEY)))
 }
 
 /// The stashed view — the unthemed defaults before the first
@@ -150,4 +159,61 @@ pub fn set_reduced_motion(ctx: &egui::Context, reduced: bool) {
 pub(crate) fn reduced_motion(ctx: &egui::Context) -> bool {
     ctx.data_mut(|d| d.get_temp::<bool>(egui::Id::unique(MOTION_KEY)))
         .unwrap_or(false)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn table(value: &str) -> we_style::TokenTable {
+        we_style::TokenTable::new(
+            [(Arc::from("--we-role-text"), Arc::from(value))]
+                .into_iter()
+                .collect(),
+        )
+    }
+
+    /// Every token a widget paints with is read through `tokens_of`; a
+    /// read hands out the one stashed table, and a frame that stashes an
+    /// unchanged table keeps it rather than copying it in again.
+    #[test]
+    fn the_stashed_table_is_shared_and_replaced_only_when_it_changes() {
+        let ctx = egui::Context::default();
+        let a = table("red");
+        store_view(
+            &ctx,
+            &StyleCx {
+                tokens: &a,
+                ..StyleCx::empty()
+            },
+        );
+        let first = tokens_of(&ctx).unwrap();
+        assert!(
+            Arc::ptr_eq(&first, &tokens_of(&ctx).unwrap()),
+            "a read shares it"
+        );
+
+        let same = table("red");
+        store_view(
+            &ctx,
+            &StyleCx {
+                tokens: &same,
+                ..StyleCx::empty()
+            },
+        );
+        assert!(
+            Arc::ptr_eq(&first, &tokens_of(&ctx).unwrap()),
+            "unchanged: kept"
+        );
+
+        let other = table("blue");
+        store_view(
+            &ctx,
+            &StyleCx {
+                tokens: &other,
+                ..StyleCx::empty()
+            },
+        );
+        assert_eq!(tokens_of(&ctx).unwrap().get("--we-role-text"), Some("blue"));
+    }
 }
