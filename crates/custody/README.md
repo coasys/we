@@ -64,9 +64,10 @@ uses, as below. After the credential line it speaks lines of JSON on stdin and s
 | `cancel`      |           | `null`, or `{screen, outcome}` (below)        |
 
 `cancel` answers `null` once the open step is ended and wiped, and the host may close the window. A
-cancel that cannot finish — the executor did not confirm the end of a link's claim, or this computer
-had already joined — answers `{screen, outcome}` instead: the host shows that screen and keeps the
-window open.
+cancel that cannot finish — the executor did not confirm the end of a link's claim, a shown code was
+cancelled before any claim of it was seen here (the executor may have claimed one whose event is on
+its way, and reads for tickets until the code expires), or this computer had already joined —
+answers `{screen, outcome}` instead: the host shows that screen and keeps the window open.
 
 `outcome` is `done`, `failed` or `null` until a screen ends the step. Failures are
 `{"id", "error": "<sentence>"}`, and a line that is not a request is answered with `"id": null`. No
