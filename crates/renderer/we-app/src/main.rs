@@ -334,13 +334,7 @@ fn run_native(args: Args) -> eframe::Result<()> {
     panel.theme = theme.clone();
     let shell = Shell { panel };
 
-    let options = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default()
-            .with_title(&title)
-            .with_inner_size([1024.0, 640.0]),
-        wgpu_options: we_app::wgpu_options(),
-        ..Default::default()
-    };
+    let options = we_app::window_options(&title, [1024.0, 640.0]);
     eframe::run_native(
         &title,
         options,
@@ -399,13 +393,7 @@ fn run_gallery(kind: Gallery) -> eframe::Result<()> {
         ),
         Gallery::None => unreachable!(),
     };
-    let options = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default()
-            .with_title(title)
-            .with_inner_size(size),
-        wgpu_options: we_app::wgpu_options(),
-        ..Default::default()
-    };
+    let options = we_app::window_options(title, size);
     eframe::run_native(
         title,
         options,
@@ -469,13 +457,7 @@ fn run_coasys(route: &str, theme_id: &str) -> eframe::Result<()> {
     }
     app.frame_log = std::env::var_os("WE_FRAME_LOG").is_some();
 
-    let options = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default()
-            .with_title(&title)
-            .with_inner_size([1280.0, 800.0]),
-        wgpu_options: we_app::wgpu_options(),
-        ..Default::default()
-    };
+    let options = we_app::window_options(&title, [1280.0, 800.0]);
     eframe::run_native(
         &title,
         options,
@@ -521,12 +503,7 @@ fn run_connected(args: Args) -> eframe::Result<()> {
             we_app::live::DataMode::Live
         },
     };
-    let options = eframe::NativeOptions {
-        viewport: eframe::egui::ViewportBuilder::default()
-            .with_title(&title)
-            .with_inner_size([1280.0, 800.0]),
-        ..Default::default()
-    };
+    let options = we_app::window_options(&title, [1280.0, 800.0]);
     eframe::run_native(
         &title,
         options,

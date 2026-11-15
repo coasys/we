@@ -30,3 +30,28 @@ fn the_variables_set_the_depth_and_the_mode() {
         "a depth that is not a number is ignored"
     );
 }
+
+/// Every window the binary opens takes its options from
+/// `we_app::window_options`, so none is opened without the surface above:
+/// the binary builds no `NativeOptions` of its own.
+#[test]
+fn every_window_takes_the_surface_config() {
+    let main = include_str!("../src/main.rs");
+    let built: Vec<_> = main
+        .lines()
+        .enumerate()
+        .filter(|(_, l)| l.contains("NativeOptions {"))
+        .map(|(n, l)| format!("main.rs:{}: {}", n + 1, l.trim()))
+        .collect();
+    assert!(
+        built.is_empty(),
+        "windows built without window_options: {built:?}"
+    );
+}
+
+/// What `window_options` builds carries the surface `wgpu_options` chose.
+#[test]
+fn window_options_carry_the_surface() {
+    let options = we_app::window_options("t", [100.0, 100.0]);
+    assert_eq!(options.wgpu_options.surface, we_app::wgpu_options().surface);
+}

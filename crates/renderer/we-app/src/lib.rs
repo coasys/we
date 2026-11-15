@@ -101,6 +101,20 @@ pub fn wgpu_options() -> eframe::WgpuConfiguration {
     }
 }
 
+/// The options every window the binary opens is built with — its title,
+/// its size, and [`wgpu_options`]: built here, once, so no window can be
+/// opened without the surface the others have.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn window_options(title: &str, size: [f32; 2]) -> eframe::NativeOptions {
+    eframe::NativeOptions {
+        viewport: eframe::egui::ViewportBuilder::default()
+            .with_title(title)
+            .with_inner_size(size),
+        wgpu_options: wgpu_options(),
+        ..Default::default()
+    }
+}
+
 /// [`wgpu_options`]'s surface, from the two variables' values.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn surface_config(latency: Option<&str>, mode: Option<&str>) -> eframe::SurfaceConfig {
