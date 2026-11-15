@@ -20,6 +20,11 @@ we-data.workspace = true
 we-expr.workspace = true
 we-screen.workspace = true
 
+# The connected app (E7): the executor adapter, native only — the wasm
+# build is the offline app until E10.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+we-ad4m.workspace = true
+
 [dev-dependencies]
 # Harnesses that drive a raw Runtime install the same legacy faces a
 # session would (E3c-6).
@@ -30,3 +35,7 @@ egui_kittest = { workspace = true, features = ["snapshot", "wgpu"] }
 image = { version = "0.25", default-features = false, features = ["png"] }
 # The render gate pins the C2a snapshot's sha256 (coasys_render.rs).
 sha2 = "0.10"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+# A real executor for the connected app's test (EXECUTOR_PATH).
+we-ad4m = { workspace = true, features = ["testkit"] }

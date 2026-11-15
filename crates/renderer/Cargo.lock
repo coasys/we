@@ -6344,6 +6344,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "we-ad4m",
  "we-data",
  "we-egui",
  "we-expr",
