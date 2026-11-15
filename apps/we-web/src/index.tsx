@@ -7,12 +7,11 @@ import './platform/randomUuidPolyfill';
 import '@we/app-shell/shared/index.scss';
 
 import { writeGuestBootTarget } from '@we/app-shell/shared';
-import { App, PlatformProvider, registerHostChromeReserve } from '@we/app-shell/solid';
+import { App, PlatformProvider } from '@we/app-shell/solid';
 import weSeed from '@we/seed-file';
 import { render } from 'solid-js/web';
 
 import { ad4mConnector } from './platform/ad4mConnector';
-import { createDeviceKeyConnector } from './platform/deviceKeyConnector';
 import { createGuestConnector, hasStoredSession, parseGuestParams } from './platform/guestConnector';
 import { webPlatform } from './platform/webPlatform';
 
@@ -30,21 +29,9 @@ const guestTarget = parseGuestParams();
   does, taking them to the space's join gate to decide for themselves.
 */
 const storedSession = hasStoredSession();
-// Inside the phone app, a phone that has joined an identity logs in with its device key; anywhere
-// else this is `ad4mConnector` itself. See `deviceKeyConnector`.
-const connector =
-  guestTarget && !storedSession ? createGuestConnector(guestTarget.hostUrl) : createDeviceKeyConnector(ad4mConnector);
-
-/*
-  `ad4m-connect` pins its settings button to the window's bottom-right corner (fixed, 34px at 10px
-  in), and it is the only thing down there that no template declared. A floating panel knows
-  nothing of it and resolves its bottom edge into the button's band, which is how a composer's send
-  control ended up under the watermark. The corner is this host's own chrome, so the host publishes
-  the reserve: the button's band plus a gap's worth of air around it. Only the full connector draws
-  the button; a guest connects headless. Registered here rather than in `ad4mConnector`, which stays
-  free of the Solid shell so it can be tested without a DOM.
-*/
-if (connector === ad4mConnector) registerHostChromeReserve('ad4m-connect', { bottom: 54 });
+// The browser signs in to a remote executor through AD4M Connect, until Coasys Connect replaces it.
+// The phone app's key login is the Coasys base app's (`apps/coasys`), not this entry's.
+const connector = guestTarget && !storedSession ? createGuestConnector(guestTarget.hostUrl) : ad4mConnector;
 
 // The boot controller reads this to reach the target space once auth completes. Stored on the
 // global rather than in a store because it must survive the entire provider tree mounting.

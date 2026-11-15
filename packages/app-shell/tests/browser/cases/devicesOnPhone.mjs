@@ -11,7 +11,7 @@ export const name = 'the device list on a phone: badges whole, offered is a neut
 export const scenario = 'devices:phone';
 export const widths = [320, 360, 412];
 
-const OFFERED = 'Master key offered, not yet taken';
+const OFFERED = 'Master key sent';
 
 export async function check({ evaluate, screenshot }) {
   const problems = [];
@@ -74,7 +74,7 @@ export async function check({ evaluate, screenshot }) {
   if (!offered) problems.push('the offered state is not drawn');
   else if (offered.kind === 'badge') problems.push(`"offered" is a badge (tone ${offered.tone}), not a line`);
   else if (offered.color !== 'text-muted') problems.push(`the "offered" line is ${offered.color}, not text-muted`);
-  const holds = found.find((b) => b.kind === 'badge' && b.text === 'Holds the master key');
+  const holds = found.find((b) => b.kind === 'badge' && b.text === 'Has master key');
   if (!holds) problems.push('no "holds" badge drawn');
   else if (holds.tone !== 'accent') problems.push(`the "holds" badge is tone ${holds.tone}, not accent`);
   for (const item of found) {

@@ -66,7 +66,7 @@ describe('errorMessage', () => {
 
   it('offers to load WE again when the WebView is new enough', () => {
     const message = errorMessage(errorReason(WEBVIEW_124));
-    expect(message.title).toBe('Coasys could not open WE');
+    expect(message.title).toBe('Coasys didn’t load');
     expect(message.action).toEqual({ label: 'Try again', href: '/' });
   });
 });

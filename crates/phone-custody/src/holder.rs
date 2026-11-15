@@ -83,7 +83,7 @@ impl HolderLink {
         let store_url = parts.store_url();
         if SystemClock.now() >= device.exp {
             return Err(PhoneKeyError::Ended {
-                reason: "that code has expired; show a new one on the new device".into(),
+                reason: "That code expired. Show a new code on the new device.".into(),
             });
         }
         if device.store.trim_end_matches('/') != store_url {
@@ -143,7 +143,7 @@ fn await_command(
     match commands.recv_timeout(std::time::Duration::from_secs(deadline.saturating_sub(now))) {
         Ok(command) => Ok(command),
         Err(RecvTimeoutError::Timeout) => Err(PhoneKeyError::Ended {
-            reason: "the time to confirm the link ran out".into(),
+            reason: "Time ran out to confirm. Start again.".into(),
         }),
         Err(RecvTimeoutError::Disconnected) => Err(PhoneKeyError::Cancelled),
     }
@@ -228,21 +228,22 @@ fn run(
             Some(Ok(_)) => true,
             Some(Err(e)) => {
                 notes.push(format!(
-                    "the master key was not sent yet ({e}); it is sent again later"
+                    "The master key wasn't sent yet. It's sent again later. ({e})"
                 ));
                 false
             }
             None => false,
         };
         if let Err(e) = linked.record {
-            notes.push(format!("the device list was not updated ({e})"));
+            notes.push(format!(
+                "Its name wasn't saved. Rename it in Settings > Devices. ({e})"
+            ));
         }
         let _ = steps.send(Ok(LinkStep::Linked {
             key_id: linked.key_id,
             seq: linked.head.seq,
             master_sent,
-            note: (!notes.is_empty())
-                .then(|| format!("The device was added, but {}.", notes.join(" and "))),
+            note: (!notes.is_empty()).then(|| notes.join(" ")),
         }));
         Ok(())
     })
@@ -259,7 +260,7 @@ impl HolderLink {
             .unwrap_or_else(|poisoned| poisoned.into_inner());
         steps.recv().unwrap_or_else(|_| {
             Err(PhoneKeyError::Ended {
-                reason: "the link is over".into(),
+                reason: "This link has ended. Start again.".into(),
             })
         })
     }
@@ -275,7 +276,7 @@ impl HolderLink {
             .as_ref()
             .and_then(|c| c.send(Command::Confirm { name, keep_master }).ok())
             .ok_or_else(|| PhoneKeyError::Ended {
-                reason: "the link is over".into(),
+                reason: "This link has ended. Start again.".into(),
             })
     }
 

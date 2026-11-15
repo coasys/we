@@ -1,5 +1,5 @@
 import type { SchemaNode, TemplatePanel, TemplateSchema } from '@we/schema-shared';
-import { confirmModal, railGroup, railItem, railShell } from '@we/template-kit';
+import { closeWhenCompact, confirmModal, railGroup, railItem, railShell } from '@we/template-kit';
 
 import { coasysFirstRun } from './firstRun.ts';
 import { COLLAPSED, lockup } from './lockup.ts';
@@ -21,11 +21,58 @@ import { COLLAPSED, lockup } from './lockup.ts';
 /** Lit while one of the host's own pages is open. */
 const viewing = (view: string) => ({ $: `shellStore.activeShellView == '${view}'` });
 
+/*
+  A phone's window: the rail and the page take turns. Shut, the rail is a bar across the top holding
+  the mark, which opens it over the whole window; every row that goes somewhere shuts it again, so
+  what was chosen is what shows. See `railShell`'s `compact`.
+*/
+const narrow = { $: 'shellStore.narrowWindow' };
+const shutOnPhone = closeWhenCompact(narrow);
+/** The bar's height, and so the band the app's narrow frame declares. */
+const BAR = 56;
+
+/**
+ * The mark as the switch between the rail and the page, with the app's name beside it.
+ *
+ * The button is the mark and a menu glyph, and is called "Menu": the name beside it is not part of
+ * it, so what a screen reader announces is what the button does rather than whose it is.
+ */
+const menuToggle: SchemaNode = {
+  type: 'Row',
+  props: { height: `${BAR}px`, width: '100%', flex: '0 0 auto', ay: 'center', gap: '200', px: '300' },
+  children: [
+    {
+      type: 'we-button',
+      props: {
+        variant: 'ghost',
+        label: 'Menu',
+        expanded: { $: 'local.expanded' },
+        gap: '200',
+        px: '200',
+        onClick: { $toggleLocal: 'expanded' },
+      },
+      children: [
+        {
+          type: 'we-image',
+          props: { src: { $: 'templateStore.brand.mark' }, alt: '', width: '28px', height: '28px', flexShrink: 0 },
+        },
+        { type: 'we-icon', props: { name: { $: "local.expanded ? 'x' : 'list'" } } },
+      ],
+    },
+    {
+      type: 'we-text',
+      props: { variant: 'body', fontWeight: 'semibold', letterSpacing: 'tight', truncate: true },
+      children: [{ $: 'templateStore.brand.name' }],
+    },
+  ],
+};
+
 /** The person, as the foot of the rail draws them: a menu behind their own face. */
 const accountMenu: SchemaNode = {
   type: 'DropdownMenu',
   props: {
-    placement: 'right-end',
+    // Above the person on a phone, where the rail is the window's width and there is no right of it.
+    placement: { $: "shellStore.narrowWindow ? 'top-start' : 'right-end'" },
     items: [
       { id: 'profile', label: 'Profile', icon: 'user' },
       { id: 'about', label: 'About Coasys', icon: 'info' },
@@ -35,13 +82,13 @@ const accountMenu: SchemaNode = {
       {
         $if: {
           condition: { $: "arg.id == 'profile'" },
-          then: { $invoke: 'shellStore.openShellView', args: ['profile'] },
+          then: [shutOnPhone, { $invoke: 'shellStore.openShellView', args: ['profile'] }],
         },
       },
       {
         $if: {
           condition: { $: "arg.id == 'about'" },
-          then: { $invoke: 'shellStore.openShellView', args: ['landing-page'] },
+          then: [shutOnPhone, { $invoke: 'shellStore.openShellView', args: ['landing-page'] }],
         },
       },
       /*
@@ -92,12 +139,12 @@ const addSpace: SchemaNode[] = [
   railItem({
     icon: 'plus',
     label: 'Create a space',
-    onClick: { $invoke: 'shellStore.setCreateSpaceOpen', args: [true] },
+    onClick: [shutOnPhone, { $invoke: 'shellStore.setCreateSpaceOpen', args: [true] }],
   }),
   railItem({
     icon: 'link',
     label: 'Join a space',
-    onClick: { $invoke: 'shellStore.setJoinSpaceOpen', args: [true] },
+    onClick: [shutOnPhone, { $invoke: 'shellStore.setJoinSpaceOpen', args: [true] }],
   }),
 ];
 
@@ -108,30 +155,46 @@ const rail: SchemaNode = railShell({
   zIndex: 'chrome',
   bg: 'chrome',
   border: '1px solid border',
+  compact: narrow,
+  compactHeight: `${BAR}px`,
   localState: { confirmGuestLogout: { type: 'boolean', initial: false } },
   // The mark where the sign-in screen draws it, and the name beside it while the rail is open.
   header: {
     type: 'Column',
     props: { width: '100%' },
     children: [
-      lockup({
-        alt: 'Coasys',
-        name: { while: { $: 'local.expanded' } },
+      {
+        type: '$if',
         props: {
-          width: '100%',
-          cursor: 'pointer',
-          onClick: { $invoke: 'shellStore.openShellView', args: ['landing-page'] },
+          condition: narrow,
+          then: menuToggle,
+          else: lockup({
+            alt: 'Coasys',
+            name: { while: { $: 'local.expanded' } },
+            props: {
+              width: '100%',
+              cursor: 'pointer',
+              onClick: { $invoke: 'shellStore.openShellView', args: ['landing-page'] },
+            },
+          }),
         },
-      }),
+      },
       /*
         The global chat: a sparkle at the top of the rail opens the one chat that reaches every
         space — a session with no capabilities listed, so it holds everything the app's token does.
       */
-      railItem({
-        icon: 'sparkle',
-        label: 'AI chat',
-        onClick: { $invoke: 'chatStore.openChat' },
-      }),
+      // Not in a phone's bar, which holds the switch alone; there it is the first row once open.
+      {
+        type: '$if',
+        props: {
+          condition: { $: '!shellStore.narrowWindow || local.expanded' },
+          then: railItem({
+            icon: 'sparkle',
+            label: 'AI chat',
+            onClick: [shutOnPhone, { $invoke: 'chatStore.openChat' }],
+          }),
+        },
+      },
     ],
   },
   footer: {
@@ -142,7 +205,11 @@ const rail: SchemaNode = railShell({
         icon: 'gear-six',
         label: 'Settings',
         active: viewing('settings'),
-        onClick: [{ $invoke: 'appStore.deactivateApp' }, { $invoke: 'shellStore.openShellView', args: ['settings'] }],
+        onClick: [
+          shutOnPhone,
+          { $invoke: 'appStore.deactivateApp' },
+          { $invoke: 'shellStore.openShellView', args: ['settings'] },
+        ],
       }),
       accountMenu,
       confirmModal({
@@ -182,7 +249,7 @@ const rail: SchemaNode = railShell({
                 spaces, as cards — for as long as the switch took, which on the first space after a
                 boot is long enough to see.
               */
-              onClick: { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] },
+              onClick: [shutOnPhone, { $invoke: 'spaceStore.navigateToSpace', args: [{ $: 'space.spaceId' }] }],
               // The space a call is running in, so the way back to it is on the rail.
               live: {
                 when: { $: 'modules.call.active && `neighbourhood://${space.spaceId}` == modules.call.callSpace.uri' },
@@ -242,7 +309,8 @@ export const coasysApp: TemplateSchema & { id: string } = {
     description: 'Your spaces down the left, the space you are in beside them.',
     icon: 'hexagon',
     role: 'app',
-    frame: { left: 72 },
+    // On a phone the rail is the bar across the top (`menuToggle`), and the page sits below it.
+    frame: { left: 72, narrow: { top: BAR } },
     panels: chatPanels,
   },
   props: { styles: { display: 'contents' } },

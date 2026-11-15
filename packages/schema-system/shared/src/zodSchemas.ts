@@ -473,6 +473,15 @@ export const zTemplateMeta: z.ZodType<TemplateMeta> = z
         right: z.number().optional(),
         top: z.number().optional(),
         bottom: z.number().optional(),
+        narrow: z
+          .object({
+            left: z.number().optional(),
+            right: z.number().optional(),
+            top: z.number().optional(),
+            bottom: z.number().optional(),
+          })
+          .strict()
+          .optional(),
       })
       .strict()
       .optional(),

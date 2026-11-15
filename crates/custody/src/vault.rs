@@ -266,7 +266,7 @@ impl DesktopVault {
                 Some(owner) => seal::seal_staged(item, owner, passphrase, self.kdf, &os_random)?,
                 None => seal::seal(item, passphrase, self.kdf, &os_random)?,
             };
-            Ok(Prepared::Sealed(bytes))
+            Ok(Prepared::Sealed(Zeroizing::new(bytes)))
         }
     }
 
@@ -308,10 +308,12 @@ impl DesktopVault {
 /// An item ready for its slot ([`DesktopVault::prepare`]), and so for the kind of store it was
 /// prepared for: [`DesktopVault::ready`] lets it be written only to that kind.
 enum Prepared {
-    /// As it is, for a store that unlocks itself, with the tag the store keeps beside it.
+    /// As it is, for a store that unlocks itself, with the tag the store keeps beside it: the
+    /// master key itself, kept in the wiping buffer `to_bytes` makes, never copied out of it into
+    /// one freed unwiped after the put.
     Tagged(Zeroizing<Vec<u8>>, ItemTag),
-    /// Sealed under the flow's passphrase; no secret without it.
-    Sealed(Vec<u8>),
+    /// Sealed under the flow's passphrase; no secret without it, wiped all the same.
+    Sealed(Zeroizing<Vec<u8>>),
 }
 
 impl Prepared {
@@ -464,7 +466,7 @@ impl DesktopVault {
     /// looked and means to go on: a new entry in a fresh incarnation, which an epoch read
     /// before the loss matches only by a 1 in 2³² draw (improbable, not impossible), so a
     /// removal paused across it keeps the key rather than forgetting it. An epoch that is there
-    /// is left as it is. Answers the epoch. The app takes it in "Replace my master key", once
+    /// is left as it is. Answers the epoch. The app takes it in "Replace master key", once
     /// the words are checked (`crate::service`).
     pub fn recover_custody_epoch(&self, scid: &str) -> Result<u64, VaultError> {
         log::info!("custody: recover a lost custody epoch");

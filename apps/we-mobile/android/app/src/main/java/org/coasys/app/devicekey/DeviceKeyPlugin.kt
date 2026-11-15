@@ -147,7 +147,7 @@ class DeviceKeyPlugin : Plugin() {
     val deadline = System.nanoTime() + seconds * 1_000_000_000L
     var progress: ClaimProgress
     do {
-      val pending = keys.status().pending ?: throw Refusal("NoClaim", "no claim is waiting")
+      val pending = keys.status().pending ?: throw Refusal("NoClaim", "This phone isn't waiting to join. Start again.")
       val left = ((deadline - System.nanoTime()) / 1_000_000_000L).coerceIn(0, STATE_WAIT_SECONDS)
       progress = try {
         val answer = StoreHttp.get("${pending.stateUrl}&wait=$left")
@@ -191,14 +191,14 @@ class DeviceKeyPlugin : Plugin() {
   @PluginMethod
   fun takeMaster(call: PluginCall) = run(call) {
     if (!master.canAuthenticate()) {
-      throw Refusal("NoBiometrics", "set up a fingerprint or face unlock on this phone to keep the master key here")
+      throw Refusal("NoBiometrics", "Set up fingerprint or face unlock to keep the master key on this phone.")
     }
     val identity = identity()
     val taken = try {
       identity.takeMaster(false)
     } catch (e: PhoneKeyException.WeakProtection) {
-      if (!agreeToWeakProtection(master.protection())) {
-        throw Refusal("WeakProtection", e.message ?: "the master key was not kept on this phone")
+      if (!agreeToWeakProtection()) {
+        throw Refusal("WeakProtection", e.message ?: "The master key wasn't kept on this phone.")
       }
       identity.takeMaster(true)
     }
@@ -235,7 +235,7 @@ class DeviceKeyPlugin : Plugin() {
   fun rename(call: PluginCall) = run(call) {
     val keyId = call.getString("keyId") ?: throw Refusal("Invalid", "rename needs the device's keyId")
     val name = call.getString("name")?.trim()?.takeIf { it.isNotEmpty() }
-      ?: throw Refusal("Invalid", "a device's name cannot be empty")
+      ?: throw Refusal("Invalid", "Enter a name for the device.")
     identity().rename(keyId, name)
     JSObject()
   }
@@ -308,9 +308,9 @@ class DeviceKeyPlugin : Plugin() {
     when {
       text != null -> call.resolve(JSObject().put("text", text))
       result.data?.getStringExtra(ScanActivity.EXTRA_REASON) == "denied" ->
-        call.reject("the camera was not allowed; paste the code instead", "CameraDenied")
+        call.reject("Allow camera access to scan, or paste the code.", "CameraDenied")
       result.data?.getStringExtra(ScanActivity.EXTRA_REASON) == "no-camera" ->
-        call.reject("this phone's camera did not start; paste the code instead", "NoCamera")
+        call.reject("Can't start the camera. Paste the code instead.", "NoCamera")
       else -> call.reject("the scan was cancelled", "Cancelled")
     }
   }
@@ -328,7 +328,7 @@ class DeviceKeyPlugin : Plugin() {
     val id = call.getString("link") ?: throw Refusal("Invalid", "the call needs the link")
     inUse.add(id)
     try {
-      val link = links[id] ?: throw Refusal("Ended", "that link is over")
+      val link = links[id] ?: throw Refusal("Ended", "This link has ended. Start again.")
       return block(id, link)
     } finally {
       inUse.remove(id)
@@ -352,22 +352,20 @@ class DeviceKeyPlugin : Plugin() {
    * The one question asked before a master key is kept below secure hardware. Blocks the calling
    * (worker) thread until the person answers; closing the dialog any other way is a no.
    */
-  private fun agreeToWeakProtection(protection: String): Boolean {
+  private fun agreeToWeakProtection(): Boolean {
     val host = activity ?: return false
     val agreed = AtomicBoolean(false)
     val answered = CountDownLatch(1)
     host.runOnUiThread {
       AlertDialog.Builder(host)
-        .setTitle("Keep your master key without secure hardware?")
+        .setTitle("Keep master key without a secure chip?")
         .setMessage(
-          "Your master key adds and removes the devices of your identity.\n\n" +
-            "This phone keeps keys in $protection, not in a secure chip, so an app or a person " +
-            "able to read this app's files could use your master key without your fingerprint.\n\n" +
-            "Keep it only on a phone you use for testing. Otherwise, keep it on your computer " +
-            "and leave this phone without it.",
+          "This phone doesn't keep keys in a secure chip. Anyone who can read this app's files " +
+            "could use your master key without your fingerprint.\n\n" +
+            "Keep it here only on a phone you use for testing.",
         )
-        .setPositiveButton("Keep it here anyway") { _, _ -> agreed.set(true) }
-        .setNegativeButton("Don't keep it", null)
+        .setPositiveButton("Keep anyway") { _, _ -> agreed.set(true) }
+        .setNegativeButton("Don't keep", null)
         .setOnDismissListener { answered.countDown() }
         .show()
     }

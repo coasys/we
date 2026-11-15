@@ -24,7 +24,8 @@ import { callPage, spaceRoutes } from './views.ts';
  * canvas, a definition chosen in the tree or on the vocabulary map — and the space's own settings,
  * which the gear in the tree's header opens. Whichever was opened last is in front. Both start
  * closed, and the lane folds while neither is open, so it slides in when one opens and out when the
- * last closes; there in Page mode too, beside whatever page is open.
+ * last closes; there in Page mode too, beside whatever page is open. On a phone it opens over the
+ * tree, the whole width, and its close puts the tree back (`PanelLane`'s `foldEmpty`).
  */
 
 /** Put the inspector away: nothing chosen, and its panel closed. */
