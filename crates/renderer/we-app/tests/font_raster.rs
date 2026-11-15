@@ -1,7 +1,8 @@
 //! What the WE faces look like once rasterised, measured on rendered pixels:
 //! the variable faces reach the weight a style asks for (and the CSS
-//! default, 400, when it asks for none), and only a face without that
-//! weight gets the synthesised bold the browser would give it.
+//! default, 400, when it asks for none), only a face without that weight
+//! gets the synthesised bold the browser would give it, and VT323 — a
+//! pixel font — lands on whole physical pixels at 1x and 2x.
 use std::cell::RefCell;
 use std::sync::Arc;
 
@@ -188,4 +189,29 @@ fn a_static_face_still_gets_the_synthesised_bold() {
     let bold = shoot(text_node(SAMPLE, family, "24px", Some("700")), 1.0);
     assert_eq!(bold.text_shapes, 2, "synthesised bold: a second pass");
     assert!(bold.total() > regular.total() * 1.1);
+}
+
+/// VT323 is drawn on a pixel grid. At the sizes the retro theme uses, at
+/// 1x and 2x, every inked column and row of `HIH` reaches full coverage
+/// somewhere — a stem is whole pixels, with no partial-alpha fringe column
+/// beside it and no half-covered row along the baseline or cap height.
+#[test]
+fn vt323_lands_on_whole_pixels() {
+    for ppp in [1.0, 2.0] {
+        for size in ["14px", "16px", "18px", "24px"] {
+            let shot = shoot(text_node("HIH", "'VT323', monospace", size, None), ppp);
+            let fringe_cols: Vec<(usize, f32)> = (0..shot.w)
+                .map(|x| (x, (0..shot.h).map(|y| shot.at(x, y)).fold(0.0, f32::max)))
+                .filter(|&(_, m)| m > 0.02 && m < 0.98)
+                .collect();
+            let fringe_rows: Vec<(usize, f32)> = (0..shot.h)
+                .map(|y| (y, (0..shot.w).map(|x| shot.at(x, y)).fold(0.0, f32::max)))
+                .filter(|&(_, m)| m > 0.02 && m < 0.98)
+                .collect();
+            assert!(
+                fringe_cols.is_empty() && fringe_rows.is_empty(),
+                "VT323 {size} at {ppp}x: partial columns {fringe_cols:?}, rows {fringe_rows:?}"
+            );
+        }
+    }
 }

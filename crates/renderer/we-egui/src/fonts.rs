@@ -30,6 +30,13 @@
 //! range the web's `@font-face` declares. A family with no face at the
 //! asked-for weight is emboldened the way a browser synthesises it
 //! ([`synthesises_bold`]); a variable one never is.
+//!
+//! VT323 is a pixel font, and its hints (ttfautohint's) fit only the y
+//! axis — Chrome covers the x axis with LCD anti-aliasing, which a
+//! grey-scale raster cannot. Its faces get x grid-fitting added to their
+//! instructions ([`crate::pixel_grid`]), are hinted for monochrome
+//! (`HintingTarget::Mono`, which executes x moves) and are placed without
+//! sub-pixel bins, so every edge lands on a whole physical pixel.
 use std::sync::Arc;
 
 use base64::Engine as _;
@@ -51,7 +58,8 @@ fn ttf(woff2: &[u8]) -> egui::FontData {
 
 /// The retro theme's `fontFaces` entry, decoded out of `vt323.ts` — the
 /// same base64 the web registers via the FontFace API, so the bytes can
-/// never drift from it.
+/// never drift from it — with x grid-fitting added to its instructions
+/// (see [`crate::pixel_grid`]).
 fn vt323() -> egui::FontData {
     const VT323_TS: &str =
         include_str!("../../../../packages/design-system/2-themes/src/retro/vt323.ts");
@@ -61,7 +69,8 @@ fn vt323() -> egui::FontData {
         .and_then(|rest| rest.split('\'').next())
         .and_then(|b64| base64::engine::general_purpose::STANDARD.decode(b64).ok())
         .expect("retro/vt323.ts keeps a data:font/woff2;base64 payload");
-    ttf(&woff2)
+    let sfnt = wuff::decompress_woff2(&woff2).expect("vendored woff2 decodes");
+    egui::FontData::from_owned(crate::pixel_grid::snap_x(&sfnt).unwrap_or(sfnt))
 }
 
 /// Every shipped face file, by family — the latin file before the
@@ -96,7 +105,8 @@ const OPSZ: (f32, f32) = (12.0, 96.0);
 /// How a family's faces are rasterised. The variable faces default to
 /// `wght` 400 (and Bricolage to a body-text `opsz`), so text laid out
 /// without coordinates — egui's own widgets, the inputs — is CSS `normal`,
-/// not the file's default instance.
+/// not the file's default instance. VT323 is grid-fitted for monochrome
+/// and placed on whole pixels.
 fn tweak(family: &str) -> egui::FontTweak {
     let mut t = egui::FontTweak::default();
     match family {
@@ -106,6 +116,11 @@ fn tweak(family: &str) -> egui::FontTweak {
         "Bricolage Grotesque" => {
             t.coords =
                 egui::epaint::text::VariationCoords::new([(b"wght", 400.0), (b"opsz", 16.0)]);
+        }
+        "VT323" => {
+            t.hinting = Some(true);
+            t.hinting_target = egui::epaint::text::HintingTarget::Mono;
+            t.subpixel_binning = Some(false);
         }
         _ => {}
     }

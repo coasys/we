@@ -26,6 +26,7 @@ mod media;
 mod overlays;
 mod paint;
 mod pickers;
+mod pixel_grid;
 mod placeholders;
 pub mod props;
 mod registry;
