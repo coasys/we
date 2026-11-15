@@ -13,7 +13,7 @@ use ratatui::layout::Rect;
 use ratatui::style::{Color as TColor, Modifier, Style as TStyle};
 use unicode_width::{UnicodeWidthChar, UnicodeWidthStr};
 use we_expr::Value;
-use we_layout::defaults::{direction_of, style_of, StyleCx};
+use we_layout::defaults::{direction_of, style_of, unit_metrics, StyleCx};
 use we_layout::props::{prop, prop_bool, prop_num, prop_str};
 use we_style::{BorderKind, Color as WColor, Dimension, Direction, ItemAlign, Theme};
 use we_template::{NodeId, ResolvedChild, ResolvedNode};
@@ -238,14 +238,16 @@ fn rc(c: WColor, truecolor: bool) -> TColor {
 }
 
 /// The `Dimension` → cells on one axis. `avail` is the parent cells;
-/// `viewport` the frame cells. `scx`'s unit metrics resolve the font
-/// units (`em`/`rem`/`ch`/`ex`/`lh`) into the px a cell projects.
+/// `viewport` the frame cells. The folded unit metrics resolve the font
+/// units (`em`/`rem`/`ch`/`ex`/`lh`) into the px a cell projects — the
+/// same fold `style_of` already applied, so a themed `rem` projects the
+/// same cells both places.
 fn dim_cells(scx: &StyleCx, d: Option<&Dimension>, avail: u16, viewport: u16) -> Option<u16> {
     match d? {
         Dimension::Percent(p) => Some((avail as f32 * p).round().max(0.0) as u16),
         other => other
             .to_px(
-                &scx.metrics,
+                &unit_metrics(scx),
                 we_style::Size::new(viewport as f32 * CELL_PX, viewport as f32 * CELL_PX),
             )
             .map(|px| (px / CELL_PX).round().max(0.0) as u16),
@@ -2210,5 +2212,47 @@ pub fn blit(canvas: &Buffer, dst: &mut Buffer, scroll: u16, area: Rect) {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use indexmap::IndexMap;
+    use std::sync::Arc;
+    use we_style::TokenTable;
+
+    /// `dim_cells` reads the same folded metrics `style_of` does — a
+    /// theme recording `--we-font-size-300: 13px` moves `rem`/`em` off
+    /// the configured defaults (the bare-`scx.metrics` read left them at
+    /// 16/14).
+    #[test]
+    fn dim_cells_folds_the_theme_metrics() {
+        let mut vars = IndexMap::new();
+        vars.insert(Arc::from("--we-font-size-300"), Arc::from("13px"));
+        let tokens = TokenTable::new(vars);
+        let mut scx = StyleCx::empty();
+        scx.tokens = &tokens;
+
+        // `4rem` is 4·13 = 52px → 6.5 → 7 cells (bare root_px 16 → 8);
+        // `2em` is 2·13 = 26px → 3.25 → 3 (bare font_px 14 → 28 → 4).
+        assert_eq!(
+            dim_cells(&scx, Some(&Dimension::Rem(4.0)), 100, 100),
+            Some(7),
+            "4rem under a 13px theme"
+        );
+        assert_eq!(
+            dim_cells(&scx, Some(&Dimension::Em(2.0)), 100, 100),
+            Some(3),
+            "2em under a 13px theme"
+        );
+
+        // No recorded base: the configured metrics apply verbatim.
+        let empty = StyleCx::empty();
+        assert_eq!(
+            dim_cells(&empty, Some(&Dimension::Rem(4.0)), 100, 100),
+            Some(8),
+            "4rem under the default metrics"
+        );
     }
 }
