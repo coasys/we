@@ -47,9 +47,7 @@ describe('the browser host', () => {
     });
     const failed = await (await host.connector(CONNECT)).initialize({} as never).catch((e: unknown) => e);
     expect(failed).toBeInstanceOf(ConnectUnreachable);
-    expect((failed as Error).message).toBe(
-      'The executor it signed in to last (10.0.2.2:12000) did not answer. Try again once it is running, or choose another place.',
-    );
+    expect((failed as Error).message).toBe("Can't reach 10.0.2.2:12000.");
     expect(host.isUnreachable?.(failed)).toBe(true);
     expect(initialize).not.toHaveBeenCalled();
   });

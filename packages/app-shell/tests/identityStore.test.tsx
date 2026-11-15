@@ -176,7 +176,7 @@ describe('identityStore', () => {
     await flush();
     expect(identity.did()).toBe(DID);
     expect(identity.keyId()).toBe('d1');
-    expect(identity.keyLog().map((r) => r.title)).toEqual(['Added d2', 'Created your identity']);
+    expect(identity.keyLog().map((r) => r.title)).toEqual(['Added d2', 'Created identity']);
     expect(identity.keyLog()[1].detail).toBe('with d1 · This computer');
     expect(identity.keyLog()[1].thisComputer).toBe(true);
     expect(b.calls).toContain(`log:${DID}`);
@@ -234,7 +234,7 @@ describe('identityStore', () => {
     expect(c.changes).toEqual([{ kind: 'create' }]);
     expect(identity.did()).toBe(DID);
     expect(identity.needsFirstRun()).toBe(false);
-    expect(identity.keyLog().map((r) => r.title)).toEqual(['Created your identity']);
+    expect(identity.keyLog().map((r) => r.title)).toEqual(['Created identity']);
     expect(identity.custody()?.holdsMaster).toBe(true);
     expect(deviceStore.devices().map((d) => d.label)).toEqual(['This computer']);
   });
@@ -436,7 +436,7 @@ describe('identityStore', () => {
     expect(identity.needsFirstRun()).toBe(true);
   });
 
-  it('takes "Start now" given before any account, in the app before a session, as this account\'s too', async () => {
+  it('takes "Skip for now" given before any account, in the app before a session, as this account\'s too', async () => {
     localStorage.setItem(START_NOW_HERE_KEY, '1');
     try {
       setPorts({ identity: custody(backend({ did: null, events: [], devices: [] }).port, () => {}).identity });
@@ -507,10 +507,10 @@ describe('deviceStore', () => {
       ['d1', 'Desktop', 'laptop', false, true],
     ]);
     expect(identity.keyLog().map((r) => [r.title, r.detail])).toEqual([
-      ['Added This phone', 'd2 · This phone'],
-      ['Created your identity', 'with d1'],
+      ['Added this phone', 'd2 · This phone'],
+      ['Created identity', 'with d1'],
     ]);
-    expect(deviceStore.requests()[0].title).toBe('Desktop asks to revoke This phone');
+    expect(deviceStore.requests()[0].title).toBe('Desktop asks to remove This phone');
   });
 
   it('revoke asks for that key and reads the list again', async () => {
@@ -538,7 +538,7 @@ describe('deviceStore', () => {
     expect(c.changes).toEqual([{ kind: 'revoke', keyId: 'd2' }]);
     expect(deviceStore.devices().find((d) => d.keyId === 'd2')).toMatchObject({
       revoked: true,
-      status: 'Revoked at #2',
+      status: 'Removed at #2',
     });
     expect(deviceStore.validCount()).toBe(1);
     expect(identity.keyLog()[0].title).toBe('Revoked d2');
@@ -598,15 +598,15 @@ describe('deviceStore', () => {
     await flush();
     await flush();
     expect(deviceStore.devices().map((d) => [d.label, d.master])).toEqual([
-      ['Desktop', 'Holds the master key'],
-      ['Laptop', 'Master key offered, not yet taken'],
+      ['Desktop', 'Has master key'],
+      ['Laptop', 'Master key sent'],
     ]);
     expect(deviceStore.requests()).toEqual([
       {
         id: 'r1',
         kind: 'send-master',
         title: 'Laptop asks for the master key',
-        detail: 'With it, that device can add and remove your devices too.',
+        detail: 'It could then add and remove devices.',
       },
     ]);
     expect(deviceStore.canAskMaster()).toBe(false);
@@ -660,7 +660,7 @@ describe('deviceStore', () => {
     expect(deviceStore.requests().map((r) => r.id)).toEqual(['r1']);
   });
 
-  it('offers "Show my code" on a computer of no identity, and reads the identity once it joined', async () => {
+  it('offers "Show code" on a computer of no identity, and reads the identity once it joined', async () => {
     const b = backend({ did: null, events: [], devices: [] });
     const changes: IdentityChange[] = [];
     setPorts({
@@ -686,7 +686,7 @@ describe('deviceStore', () => {
     expect(deviceStore.canShowCode()).toBe(false);
   });
 
-  it('offers "Use my 12 words" beside "Show my code", and reads the identity it restored', async () => {
+  it('offers "Restore with recovery phrase" beside "Show code", and reads the identity it restored', async () => {
     const b = backend({ did: null, events: [], devices: [] });
     const changes: IdentityChange[] = [];
     let state: IdentityCustodyView = { ...NO_CUSTODY, unlock: 'os' };
@@ -758,7 +758,7 @@ describe('deviceStore', () => {
     await flush();
     await flush();
     const d2 = () => deviceStore.devices().find((d) => d.keyId === 'd2')!;
-    expect(d2().master).toContain('replace your master key');
+    expect(d2().master).toContain('Replace it to lock this device out');
     expect(d2().replaceMaster).toBe(true);
     // Not keeping the master key is the point: the lost device kept it.
     expect(deviceStore.canManage()).toBe(false);

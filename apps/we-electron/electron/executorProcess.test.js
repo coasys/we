@@ -501,7 +501,7 @@ describe('waitForExecutorReady', () => {
     const { server, port } = await serve(reply(404, 'not found', 'text/plain'));
     servers.push(server);
     await expect(waitForExecutorReady(port, quick())).rejects.toThrow(
-      `The executor on port ${port} was not ready after 1.5 s`,
+      `It didn't respond within 1.5 seconds (port ${port}).`,
     );
   });
 
@@ -509,7 +509,7 @@ describe('waitForExecutorReady', () => {
     const { server, port } = await serve(reply(404, 'not found', 'text/plain'));
     servers.push(server);
     await expect(waitForExecutorReady(port, { ...quick(), gone: () => true })).rejects.toThrow(
-      `The executor exited before it was ready on port ${port}`,
+      `It stopped before it was ready (port ${port}).`,
     );
   });
 });

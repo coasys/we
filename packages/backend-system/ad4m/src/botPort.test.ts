@@ -114,7 +114,7 @@ describe('the AD4M bot port', () => {
     );
     const refused = await port.setGrant(BOT, { ...agent.grant, state: 'active' }).catch((e: unknown) => e);
     expect(refused).toMatchObject({ reason: 'revoked' });
-    expect(String((refused as Error).message)).toContain('revoked');
+    expect(String((refused as Error).message)).toContain('removed');
   });
 
   it('passes any other refusal on as it came', async () => {

@@ -2139,7 +2139,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       panelMaximised:
         "boolean — some panel covers the whole window. The app's own chrome — sidebar, module rail — hides while it is true; a template's fixed chrome should too",
       narrowWindow:
-        'boolean — the window is narrower than the sm breakpoint (640px): a phone held upright. Chrome only, because chrome sits outside every surface and has no surface.tier to read; the sidebar opens from a menu button while it is true rather than under the pointer. A template answers to its own surface with smUpProps instead',
+        'boolean — the window is narrower than the sm breakpoint (640px): a phone held upright. Chrome only, because chrome sits outside every surface and has no surface.tier to read; while it is true the sidebar is a bar across the top whose Menu button switches between it and the page, and meta.frame.narrow replaces the app frame. A template answers to its own surface with smUpProps instead',
       panelInstances:
         '{ id, panel, inputs, title? }[] — the instances open in the interface on screen: which declared panel each is of, and what it was opened with. To list them, or to tell a control whether its record already has one',
       panelFrames:
@@ -2333,7 +2333,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         'boolean — offer "Check my email" now: this computer can sign changes, it speaks for an identity this device was not revoked from, and the identity is not vouched yet',
       thisDeviceRevoked: 'boolean — the key log revoked this device’s key: it no longer speaks for the person',
       keyLog:
-        '{ seq, op, keys, position, icon, title, detail, hash, hashShort, thisComputer }[] — the key log, newest first, with what each row says made from `op` and `keys` (reword from those where a template wants other words), already worded: `title` "Created your identity", "Added d2", "Revoked d2"; `detail` the keys it names with this computer’s marked "This computer"; `hashShort` the event’s hash for a monospace column',
+        '{ seq, op, keys, position, icon, title, detail, hash, hashShort, thisComputer }[] — the key log, newest first, with what each row says made from `op` and `keys` (reword from those where a template wants other words), already worded: `title` "Created identity", "Added d2", "Revoked d2"; `detail` the keys it names with this computer’s marked "This computer"; `hashShort` the event’s hash for a monospace column',
       keyLogLoaded: 'boolean — the log has been read once',
       forked: 'boolean — the backend found two different logs for this identity',
       fork: '{ seq, ours, theirs } | null — where they part',
@@ -2384,7 +2384,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "string — 'This computer keeps your master key behind its own sign-in' / '… behind your passphrase' / 'This phone keeps no master key', ready to show",
       blocked: 'string — why no identity change can be made here, ready to show; empty when one can',
       devices:
-        "{ keyId, label, subtitle, icon, thisDevice, master }[] — the devices the identity's private record names, read-only before a session: `label` 'This computer' / 'This phone', the record's name, or 'Device d2'; `master` 'Holds the master key', 'Master key offered, not yet taken' or empty",
+        "{ keyId, label, subtitle, icon, thisDevice, master }[] — the devices the identity's private record names, read-only before a session: `label` 'This computer' / 'This phone', the record's name, or 'Unnamed device'; `master` 'Has master key', 'Master key sent' or empty",
       doors:
         "{ make, link, words } each { open: boolean, note: string } — the three ways in as this device offers them: `open` the door runs a step here, else `note` says why not ('A phone joins an identity made on a computer'). Draw a closed door disabled with its note, never hide it",
       connections:
@@ -2409,7 +2409,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       linkIdentity:
         '(): "Link to my identity" — opens the identity window on joining one another device keeps: on a computer it shows this computer’s code, on a phone it opens the join page',
       useWords:
-        '(): "Use my 12 words" — opens the identity window on bringing the identity back from them; the words are typed there only',
+        '(): "Use my recovery phrase" — opens the identity window on bringing the identity back from it; the words are typed there only',
       startNow:
         '(): "Start now" — no identity on this device for now; remembered here (and inside the session), and offered again from Settings',
       choose: '(id): connects to one of `connections` and hands the session to the app; remembered for the next boot',
@@ -2426,7 +2426,7 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
   deviceStore: {
     state: {
       devices:
-        "{ keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, valid, status, canRevoke, name, holdsMaster, master, replaceMaster }[] — the device keys of the person's key log, valid first and this computer on top (a bot's key, which the key log marks, is not listed: botStore manages it), named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' (on a phone 'This phone': the phone's own key is this device, and the computer whose executor it reaches is listed like any other) or 'Device d2'; `name` the record's name or empty; `valid` is neither revoked nor past its end; `status` 'Valid', 'Revoked at #2' or 'Expired on 3 Dec 2026'; `canRevoke` is a key not revoked that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Holds the master key', 'Master key offered, not yet taken', or empty). A revoked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it ('Still holds a valid master key — replace your master key', 'May still hold a valid master key — replace your master key'): a revoke leaves a copy of the master key valid, until the master key is replaced: a rotation at or after the revoke clears the warning. `replaceMaster` is true on a row that warns: offer replaceMaster there, where canReplaceMaster. Draw 'yes' as a badge; 'offered' is pending, not a problem, so a muted line (a sentence, which a badge never wraps); and a revoked key's warning in a warning tone",
+        "{ keyId, addedSeq, revokedSeq, label, subtitle, icon, thisDevice, revoked, valid, status, canRevoke, name, holdsMaster, master, replaceMaster }[] — the device keys of the person's key log, valid first and this computer on top (a bot's key, which the key log marks, is not listed: botStore manages it), named from the identity's private record (which only its devices read). `label` is the record's name, else 'This computer' (on a phone 'This phone': the phone's own key is this device, and the computer whose executor it reaches is listed like any other) or 'Unnamed device'; `name` the record's name or empty; `valid` is neither revoked nor past its end; `status` 'Active', 'Removed at #2' or 'Expired on 3 Dec 2026'; `canRevoke` is a key not revoked that is not this computer's; `holdsMaster` 'yes', 'no' or 'offered' (sent, not yet taken), worded in `master` ('Has master key', 'Master key sent', or empty). A revoked key's `holdsMaster` is 'no', but its `master` warns when it took the master key or the key log let it ('Still has your master key. Replace it to lock this device out.', 'May still have your master key. Replace it to lock this device out.'): a revoke leaves a copy of the master key valid, until the master key is replaced: a rotation at or after the revoke clears the warning. `replaceMaster` is true on a row that warns: offer replaceMaster there, where canReplaceMaster. Draw 'yes' as a badge; 'offered' is pending, not a problem, so a muted line (a sentence, which a badge never wraps); and a revoked key's warning in a warning tone",
       devicesLoaded: 'boolean — the list has been read once',
       serving:
         "{ label, subtitle, icon } — the device serving this session, for the top of Devices: 'This computer' on the desktop; on a phone, the host it signs in to, by its name in the private record or 'Your host'",
@@ -2434,18 +2434,17 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
         "'phone' | 'computer' — what this device is, for the sentences about it: 'This ' + deviceStore.deviceNoun + ' does not keep your master key'",
       validCount: 'number — how many device keys are valid (neither revoked nor ended); bot keys are not counted',
       canManage:
-        'boolean — linking (scanDevice, addDevice), Rename, Revoke and answering requests can be offered: this computer keeps the master key of the identity',
-      canShowCode:
-        'boolean — "Show my code" can be offered: this computer can join an identity and speaks for none yet',
+        'boolean — Link a device (scanDevice, addDevice), Rename, Remove and answering requests can be offered: this computer keeps the master key of the identity',
+      canShowCode: 'boolean — "Show code" can be offered: this computer can join an identity and speaks for none yet',
       canAskMaster:
-        'boolean — "Ask for the master key" can be offered: a device of the identity that does not keep the master key and has none waiting',
+        'boolean — "Ask for master key" can be offered: a device of the identity that does not keep the master key and has none waiting',
       canReplaceMaster:
-        'boolean — "Replace my master key" can be offered: a valid device of the identity where the 12 words can be typed. It need not keep the master key: replacing it shuts out a lost device that kept one',
+        'boolean — "Replace master key" can be offered: a valid device of the identity where the 12 words can be typed. It need not keep the master key: replacing it shuts out a lost device that kept one',
       canRestore:
-        'boolean — "Use my 12 words" can be offered: this computer can take the words and speaks for no identity yet. Offer it beside "Show my code"',
+        'boolean — "Restore with recovery phrase" can be offered: this computer can take the words and speaks for no identity yet. Offer it beside "Show code"',
       canRemoveMaster:
-        'boolean — this computer keeps the master key: on log out, offer "Also remove my master key from this computer"',
-      masterWaiting: 'boolean — a master key another device sent waits here: offer "Take the master key"',
+        'boolean — this computer keeps the master key: on log out, ask "Remove master key from this computer?"',
+      masterWaiting: 'boolean — a master key another device sent waits here: offer "Accept master key"',
       requests:
         "{ id, kind, title, detail }[] — what the person's other devices asked and is waiting for an answer, while this computer keeps the master key; empty otherwise. `kind` is 'send-master' or 'confirm-revoke'; `title` names the device that asked ('Laptop asks for the master key')",
       error: 'string — why the last read failed, or empty',
@@ -2455,21 +2454,21 @@ const descriptions: Record<string, { state: Record<string, string>; actions: Rec
       addDevice:
         '(): adds a server by an offer link — the backend asks the person wherever it keeps the master key (on the desktop: the offer link and QR code, then the match code, then the confirmation that signs it). Resolves with the outcome; the list is read again',
       scanDevice:
-        '(): "Scan or paste a code" — adds a device by the code it shows: the person pastes it, both show a match code, and the confirmation names the device and may let it keep the master key',
+        '(): "Enter code" — adds a device by the code it shows: the person pastes it, both show a match code, and the confirmation names the device and may let it keep the master key',
       showCode:
-        '(): "Show my code" — on a computer of no identity yet, shows its code (QR and link) until a device of the identity adds it',
-      takeMaster: '(): "Take the master key" — keeps the master key another device sent here',
+        '(): "Show code" — on a computer of no identity yet, shows its code (QR and link) until a device of the identity adds it',
+      takeMaster: '(): "Accept master key" — keeps the master key another device sent here',
       askMaster:
-        '(): "Ask for the master key" — asks the devices that keep it to send it here; one answers from its own requests',
+        '(): "Ask for master key" — asks the devices that keep it to send it here; one answers from its own requests',
       answerRequest:
         '(id: string): answers that request of another device, once the person says yes where the master key is kept (send the master key, or revoke the devices it names)',
       rename: '(keyId: string): names that device, in the private record only the identity’s devices read',
       revoke:
-        '(keyId: string): revokes that device key, once the person confirms it where the master key is kept; the confirmation offers "Also replace my master key" (ticked when the device kept a copy), which asks for the 12 words. Resolves with the outcome',
+        '(keyId: string): revokes that device key, once the person confirms it where the master key is kept; the confirmation offers "Also replace master key" (ticked when the device kept a copy), which asks for the 12 words. Resolves with the outcome',
       replaceMaster:
-        '(): "Replace my master key" — asks for the 12 words where the custody service runs and publishes the next master key, which this computer keeps; every copy kept until now stops counting. Resolves with the outcome',
+        '(): "Replace master key" — asks for the 12 words where the custody service runs and publishes the next master key, which this computer keeps; every copy kept until now stops counting. Resolves with the outcome',
       restore:
-        '(): "Use my 12 words" — on a computer of no identity, asks for the words, lists the identity\'s devices to lock out, and makes this computer a device of it that keeps the new master key. Resolves with the outcome',
+        '(): "Restore with recovery phrase" — on a computer of no identity, asks for the words, lists the identity\'s devices to lock out, and makes this computer a device of it that keeps the new master key. Resolves with the outcome',
       removeMaster:
         "(): stops keeping the master key on this computer, once the person confirms it; refused, with the reason, when this computer keeps the only copy. Resolves 'done' only when it was removed",
     },

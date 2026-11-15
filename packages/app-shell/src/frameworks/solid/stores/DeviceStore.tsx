@@ -56,20 +56,23 @@ export interface DeviceStore {
    * key of the identity.
    */
   canManage: Accessor<boolean>;
-  /** "Show my code" can be offered: this computer can join an identity, and speaks for none yet. */
+  /** "Show code" can be offered: this computer can join an identity, and speaks for none yet. */
   canShowCode: Accessor<boolean>;
-  /** "Ask for the master key": a device of the identity that does not keep it, nor has it waiting. */
+  /** "Ask for master key": a device of the identity that does not keep it, nor has it waiting. */
   canAskMaster: Accessor<boolean>;
   /**
-   * "Replace my master key" can be offered: a device of the identity, where the custody service takes
+   * "Replace master key" can be offered: a device of the identity, where the custody service takes
    * the 12 words. It need not keep the master key: replacing it is how a lost holder is shut out.
    */
   canReplaceMaster: Accessor<boolean>;
-  /** "Use my 12 words" can be offered: this computer can take the words, and speaks for no identity. */
+  /**
+   * "Restore with recovery phrase" can be offered: this computer can take the words, and speaks for
+   * no identity.
+   */
   canRestore: Accessor<boolean>;
-  /** "Also remove my master key from this computer" can be offered on log out: it keeps one. */
+  /** "Remove master key from this computer?" can be asked on sign out: it keeps one. */
   canRemoveMaster: Accessor<boolean>;
-  /** A master key another device sent waits here: "Take the master key". */
+  /** A master key another device sent waits here: "Accept master key". */
   masterWaiting: Accessor<boolean>;
   /** What other devices asked, waiting for an answer from a device that keeps the master key. */
   requests: Accessor<RequestRow[]>;
@@ -79,7 +82,7 @@ export interface DeviceStore {
   refresh: () => Promise<void>;
   /** Adds a server to the identity, by an offer link it is given. */
   addDevice: () => Promise<IdentityChangeOutcome>;
-  /** Adds a device by the code it shows ("Scan or paste a code"). */
+  /** Adds a device by the code it shows ("Enter code"). */
   scanDevice: () => Promise<IdentityChangeOutcome>;
   /** Shows this computer's code, for a device of the identity to add it. */
   showCode: () => Promise<IdentityChangeOutcome>;

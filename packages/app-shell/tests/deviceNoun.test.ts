@@ -4,8 +4,8 @@ import { settingsTemplate } from '@we/template-shell';
 import { describe, expect, it } from 'vitest';
 
 /**
- * Devices' master-key cards name the device they are on. On a phone they said "This computer does
- * not keep your master key", because the words were written for the desktop; they now read
+ * Devices' master-key cards name the device they are on. On a phone they said "No master key on
+ * this computer", because the words were written for the desktop; they now read
  * `deviceStore.deviceNoun`, and on the desktop they say exactly what they said before.
  */
 
@@ -38,13 +38,14 @@ describe('the master-key cards name the device they are on', () => {
     const sources = namingExpressions(settingsTemplate);
     const desktop = sources.map((s) => evaluate(s, 'computer'));
     expect(desktop).toEqual([
-      'Show this computer’s code, then add it from a device of your identity with “Scan or paste a code”. Lost every device? Use your 12 words.',
-      'Take it, and this computer can add and remove your devices too.',
-      'This computer does not keep your master key',
-      'Replace your master key with your 12 words. This computer keeps the new one, and every copy kept until now stops adding and removing your devices.',
+      'Show this computer’s code, then enter it on a device you already use. Lost all your devices? Use your recovery phrase.',
+      'Master key sent to this computer',
+      'Accept it so this computer can add and remove devices.',
+      'No master key on this computer',
+      'Replace it with your recovery phrase. This computer gets the new master key, and the old one stops working on every device.',
     ]);
     const phone = sources.map((s) => evaluate(s, 'phone'));
-    expect(phone).toContain('This phone does not keep your master key');
+    expect(phone).toContain('No master key on this phone');
     for (const words of phone) expect(words).not.toMatch(/computer/);
   });
 });

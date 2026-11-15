@@ -3,8 +3,8 @@
  * anywhere. Each case acts as a person does — reads the words on screen, presses a control by them —
  * and checks what the page shows next.
  *
- * - The phone: the first run's three doors, "Link to my identity" leaving for the phone's identity
- *   page, "Start now" → where to connect → the hand-off to WE's app; and offline → "Try again".
+ * - The phone: the first run's three doors, "Link to another device" leaving for the phone's identity
+ *   page, "Skip for now" → where to connect → the hand-off to WE's app; and offline → "Try again".
  * - The browser: where to connect → the hand-off.
  *
  * The phone's native layer is the one stand-in. A Playwright init script answers as the phone app's
@@ -126,8 +126,7 @@ const sees = (page, words) => page.getByText(words, { exact: false }).first().wa
 async function handedOff(page) {
   await page.waitForFunction(
     () =>
-      !document.querySelector('[data-node-id^="base__"]') &&
-      !/Where should Coasys run for you\?/.test(document.body.innerText),
+      !document.querySelector('[data-node-id^="base__"]') && !/Where to keep your spaces/.test(document.body.innerText),
     null,
     { timeout: STEP_MS },
   );
@@ -136,24 +135,24 @@ async function handedOff(page) {
 describe('the phone, with no identity and no executor', () => {
   it('opens on the first run, with the one door a phone opens', async () => {
     const { context, page } = await open({ phone: true });
-    await sees(page, 'Join your identity');
+    await sees(page, 'Link this phone');
     await shot(page, 'phone-first-run');
-    assert.equal(await closed(control(page, 'Link to my identity')), false);
-    assert.equal(await closed(control(page, 'Make my identity here')), true);
-    assert.equal(await closed(control(page, 'Use my 12 words')), true);
-    await sees(page, 'make it on your computer');
+    assert.equal(await closed(control(page, 'Link to another device')), false);
+    assert.equal(await closed(control(page, 'Create new identity')), true);
+    assert.equal(await closed(control(page, 'Restore with recovery phrase')), true);
+    await sees(page, 'Create it on a computer, then link this phone.');
     // A phone is the one scanned or handed an offer, never the one showing a code to scan.
-    await sees(page, 'scan or paste the offer it makes for this phone');
-    assert.equal(await page.getByText('it scans this code').count(), 0);
+    await sees(page, 'Enter the code from a computer that has your master key.');
+    assert.equal(await page.getByText('Show a code to scan').count(), 0);
     await context.close();
   });
 
   it("leaves for the phone's identity page to join, coming back to the app", async () => {
     const { context, page } = await open({ phone: true });
-    await sees(page, 'Join your identity');
+    await sees(page, 'Link this phone');
     await Promise.all([
       page.waitForURL(/\/mobile\/identity\.html\?/, { timeout: STEP_MS }),
-      control(page, 'Link to my identity').click(),
+      control(page, 'Link to another device').click(),
     ]);
     const url = new URL(page.url());
     assert.ok(url.searchParams.has('join'));
@@ -163,17 +162,17 @@ describe('the phone, with no identity and no executor', () => {
 
   it("starts now, offers where to connect, and hands the page to WE's app", async () => {
     const { context, page } = await open({ phone: true });
-    await sees(page, 'Join your identity');
-    await control(page, 'Start now').click();
-    await sees(page, 'Where should Coasys run for you?');
+    await sees(page, 'Link this phone');
+    await control(page, 'Skip for now').click();
+    await sees(page, 'Where to keep your spaces');
     await sees(page, '127.0.0.1:9');
-    await sees(page, 'AD4M Connect');
-    await sees(page, 'None is offered yet.');
+    await sees(page, 'A host');
+    await sees(page, 'Hosts run by Coasys and by communities will appear here.');
     await shot(page, 'phone-connection-choice');
-    await control(page, 'AD4M Connect').click();
+    await control(page, 'A host').click();
     await handedOff(page);
     await shot(page, 'phone-hand-off');
-    // "Start now" is remembered on the device: a reload asks no first-run question again.
+    // "Skip for now" is remembered on the device: a reload asks no first-run question again.
     await page.reload();
     await handedOff(page);
     await context.close();
@@ -181,14 +180,14 @@ describe('the phone, with no identity and no executor', () => {
 
   it('shows the device offline, stays there on "Try again" with no network, and goes on once it is back', async () => {
     const { context, page } = await open({ phone: true });
-    await control(page, 'Start now').click();
-    await sees(page, 'Where should Coasys run for you?');
+    await control(page, 'Skip for now').click();
+    await sees(page, 'Where to keep your spaces');
     await context.setOffline(true);
-    await control(page, 'AD4M Connect').click();
-    await sees(page, 'You are offline');
+    await control(page, 'A host').click();
+    await sees(page, 'Can’t connect');
     await shot(page, 'phone-offline');
     await control(page, 'Try again').click();
-    await sees(page, 'You are offline');
+    await sees(page, 'Can’t connect');
     // The network coming back is a try of its own: nobody has to press anything.
     await context.setOffline(false);
     await handedOff(page);
@@ -202,8 +201,8 @@ describe('the phone, with no identity and no executor', () => {
   */
   it("relaunches to the offline state when AD4M Connect's last executor does not answer", async () => {
     const { context, page } = await open({ phone: true });
-    await control(page, 'Start now').click();
-    await control(page, 'AD4M Connect').click();
+    await control(page, 'Skip for now').click();
+    await control(page, 'A host').click();
     await handedOff(page);
     await page.evaluate(
       ({ prefix, url }) => {
@@ -213,8 +212,8 @@ describe('the phone, with no identity and no executor', () => {
       { prefix: CONNECT_PREFIX, url: 'http://127.0.0.1:9' },
     );
     await page.reload();
-    await sees(page, 'could not be reached');
-    await sees(page, 'did not answer');
+    await sees(page, 'Can’t connect');
+    await sees(page, "Can't reach 127.0.0.1:9");
     assert.equal(await page.getByText('How would you like to connect?').count(), 0);
     await shot(page, 'phone-relaunch-offline');
     await context.close();
@@ -222,12 +221,12 @@ describe('the phone, with no identity and no executor', () => {
 });
 
 describe('the browser, with no executor', () => {
-  it('asks no first-run question, offers AD4M Connect, and hands off', async () => {
+  it('asks no first-run question, offers a host, and hands off', async () => {
     const { context, page } = await open();
-    await sees(page, 'Where should Coasys run for you?');
-    assert.equal(await page.getByText('Make my identity here').count(), 0);
+    await sees(page, 'Where to keep your spaces');
+    assert.equal(await page.getByText('Create new identity').count(), 0);
     await shot(page, 'web-connection-choice');
-    await control(page, 'AD4M Connect').click();
+    await control(page, 'A host').click();
     await handedOff(page);
     await shot(page, 'web-hand-off');
     await context.close();

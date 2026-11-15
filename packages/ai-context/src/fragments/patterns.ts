@@ -669,6 +669,14 @@ The label is mounted only while the rail is open rather than narrowed to nothing
 there is no room for it, and a hidden-but-present label is still in the accessibility tree and still
 found by find-in-page.
 
+On a phone there is no hover: a tap reports the pointer arriving and nothing reports it leaving.
+Below \`sm\` (\`shellStore.narrowWindow\`) WE's rail is a bar across the top instead — the kit's
+\`railShell({ compact })\` draws it — whose mark is a \`we-button\` labelled "Menu"
+(\`{ "$toggleLocal": "expanded" }\`, \`expanded\` bound to \`local.expanded\`) that opens the rail over
+the whole window. \`onMouseEnter\` is gated on \`!shellStore.narrowWindow\`, and every row that goes
+somewhere also shuts the rail (\`closeWhenCompact\`), so the place chosen is what shows. The app's
+\`meta.frame.narrow\` gives the page the band under the bar rather than the column beside it.
+
 A group heading toggles its own id in the set, and its body reveals on the block axis:
 
 \`\`\`json

@@ -156,19 +156,25 @@ interface RailShellBase {
    */
   initialCollapsedGroups?: SchemaProp[];
   /**
-   * While true, the pointer arriving does not open the rail — only a control does.
+   * While true, the rail is a phone's: a bar across the top of the window, or the whole window.
    *
-   * For a touch screen. A tap is reported as the pointer arriving, and nothing reports it leaving
-   * until the next tap lands somewhere else, so a hover rail on a phone opens under the first press
-   * and stays open over the page it led to. An expression, because it is a fact about the window
-   * rather than about the rail (WE's sidebar passes `shellStore.narrowWindow`): below it, put a
-   * control in the `header` carrying `{ $toggleLocal: 'expanded' }`. Leaving still closes the rail,
-   * which on a touch screen is the next press landing outside it.
+   * A phone has no width to give a rail beside the page, so the rail and the page take turns. Closed,
+   * the rail is a bar `compactHeight` tall that shows only its `header`; open, it covers the window,
+   * every row labelled. Put a control in the `header` carrying `{ $toggleLocal: 'expanded' }` — it is
+   * the one way between the two — and close the rail behind every row that goes somewhere
+   * (`closeWhenCompact`), so choosing a place shows it. The app declares the bar as its narrow
+   * frame (`meta.frame.narrow`), which is what moves the page down to clear it.
    *
-   * Only meaningful with `hoverExpand`, the default; a rail that never opens under the pointer is
-   * already what this asks for.
+   * The pointer arriving does not open it either. A tap is reported as the pointer arriving, and
+   * nothing reports it leaving until the next tap lands somewhere else, so a hover rail on a phone
+   * opened under the first press and stayed open over the page it led to.
+   *
+   * An expression, because it is a fact about the window rather than about the rail (WE's sidebar
+   * passes `shellStore.narrowWindow`).
    */
   compact?: SchemaProp;
+  /** How tall the bar is while `compact` and closed. Defaults to '56px'. */
+  compactHeight?: string;
 }
 
 /**
@@ -215,15 +221,32 @@ export function railShell(opts: RailShellOptions): SchemaNode {
   const persistKey = hoverExpand ? undefined : opts.persistKey;
   const border = opts.border ?? '1px solid neutral-200';
   const collapsedWidth = opts.collapsedWidth ?? '80px';
+  const width = expr`local.expanded ? ${opts.expandedWidth ?? '240px'} : ${collapsedWidth}`;
+  const compact = opts.compact;
+  // Shut to the bar: only the header is drawn. A rail that is never compact is never shut.
+  const shut = compact === undefined ? undefined : expr`${compact} && !local.expanded`;
+  // `display` rather than an `$if`, so what the rail holds (a folded group, a scroll position)
+  // is where it was when the rail opens again.
+  const hiddenWhileShut = shut === undefined ? {} : { display: expr`${shut} ? 'none' : 'flex'` };
+  /*
+    Open and compact, the rail is the whole window, and what it covers must not be reachable behind
+    it: Tab past its last control landed on the covered page, and a screen reader read it out. The
+    host does that part, for any element marked as covering the window (`COVER_ATTR` in app-shell's
+    `windowCover.ts`): everything else is made inert, Tab is kept inside, and focus goes back to
+    what opened it — the Menu button — once it closes. Escape is the rail's, since only the rail
+    holds the flag that closes it.
+  */
+  const covering = compact === undefined ? undefined : expr`${compact} && local.expanded`;
 
   return {
     type: 'Column',
     props: {
-      width: expr`local.expanded ? ${opts.expandedWidth ?? '240px'} : ${collapsedWidth}`,
+      width: compact === undefined ? width : expr`${compact} ? '100%' : ${width}`,
+      ...(shut !== undefined && { height: expr`${shut} ? ${opts.compactHeight ?? '56px'} : '100%'` }),
       // The token, not a number of ms — this is the one duration here that can be a token, and a
       // theme's animationSpeed preset overrides it. See DURATION_MS.
       transition: 'width 300 ease-in-out',
-      height: '100%',
+      ...(shut === undefined && { height: '100%' }),
       // A rail never scrolls sideways: labels truncate and icons are a fixed width. Left to
       // compute, `overflow-x` becomes `auto` the moment `overflow-y` is set, and content caught
       // mid-open is briefly wider than the rail — enough to grow a horizontal scrollbar that takes
@@ -234,6 +257,12 @@ export function railShell(opts: RailShellOptions): SchemaNode {
       position: opts.position ?? 'fixed',
       ...(opts.zIndex !== undefined && { zIndex: opts.zIndex }),
       ...(opts.position !== 'static' && { top: '0', [side]: '0' }),
+      ...(covering !== undefined && {
+        'data-we-covers-window': expr`${covering} ? 'true' : 'false'`,
+        onKeyDown: {
+          $if: { condition: expr`${covering} && event.key == 'Escape'`, then: { $setLocal: 'expanded', value: false } },
+        },
+      }),
       ...(hoverExpand && {
         onMouseEnter:
           opts.compact === undefined
@@ -267,14 +296,33 @@ export function railShell(opts: RailShellOptions): SchemaNode {
           ay: 'center',
           overflowY: 'auto',
           overflowX: 'hidden',
+          ...hiddenWhileShut,
         },
         children: opts.children,
       },
       ...(opts.footer
-        ? [{ type: 'Column', props: { width: '100%', gap: '200', px: EDGE, py: '300' }, children: [opts.footer] }]
+        ? [
+            {
+              type: 'Column',
+              props: { width: '100%', gap: '200', px: EDGE, py: '300', ...hiddenWhileShut },
+              children: [opts.footer],
+            },
+          ]
         : []),
     ],
   };
+}
+
+/**
+ * Shut a `compact` rail behind a press — on each row that goes somewhere.
+ *
+ * A compact rail covers the page while it is open, so a row that left it open after somebody chose
+ * where to go would cover the place they chose. On each row rather than once on the rail, because a
+ * press on a group heading folds the group and should leave the rail open to show the fold. Does
+ * nothing while the rail is not compact: there the pointer leaving closes it.
+ */
+export function closeWhenCompact(compact: SchemaProp): SchemaProp {
+  return { $if: { condition: compact, then: { $setLocal: 'expanded', value: false } } };
 }
 
 export interface RailButtonOptions {

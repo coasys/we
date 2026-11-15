@@ -12,8 +12,8 @@ import { rememberedSessionBase } from '@we/app-web/platform/storedSession';
 export const CONNECT: BaseConnection = {
   id: 'connect',
   kind: 'connect',
-  label: 'AD4M Connect',
-  detail: 'Sign in to the executor that keeps your data: on your computer, a server, or a Coasys account',
+  label: 'A host',
+  detail: "Always available. You need the host's address.",
 };
 
 /** How long the executor AD4M Connect signed in to last has to answer: AD4M Connect's own wait. */
@@ -25,9 +25,7 @@ export class ConnectUnreachable extends Error {
     readonly url: string,
     readonly cause: unknown,
   ) {
-    super(
-      `The executor it signed in to last (${hostOf(url)}) did not answer. Try again once it is running, or choose another place.`,
-    );
+    super(`Can't reach ${hostOf(url)}.`);
     this.name = 'ConnectUnreachable';
   }
 }
