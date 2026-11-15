@@ -349,6 +349,23 @@ pub(crate) fn paint_box(
     if let Some(bg) = style.paint.bg {
         painter.rect_filled(rect, radius, fade(color32(bg)));
     }
+    // `background-image` gradients over the colour (the theme's surface
+    // images, an element's own gradient `bgImage`). URL images are the
+    // media widgets' business.
+    if let Some(we_style::BgImage::Gradient(text)) = &style.paint.bg_image {
+        crate::gradient::paint(
+            painter,
+            rect,
+            radius,
+            text,
+            opacity,
+            crate::gradient::Metrics {
+                font_px: view.font_px,
+                root_px: view.root_px,
+                viewport,
+            },
+        );
+    }
 
     // Inset layers: over the background, under the borders (CSS painting
     // order), inside the PADDING box — an inner shadow starts at the

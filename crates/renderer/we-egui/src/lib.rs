@@ -21,6 +21,7 @@ mod edit_state;
 pub mod event;
 mod feedback;
 mod fonts;
+mod gradient;
 mod inputs;
 mod layout;
 mod media;
