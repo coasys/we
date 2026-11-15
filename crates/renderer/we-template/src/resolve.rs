@@ -17,7 +17,7 @@ use std::sync::Arc;
 
 use indexmap::IndexMap;
 use serde_json::Value as Json;
-use we_expr::{eval, Env, ParseCache, Value};
+use we_expr::{eval, Env, MountCx, ParseCache, Value};
 use we_screen::{local_persist_key, local_sync_spec, resolve_local_initial, ScreenOp, ScreenState};
 
 use crate::handler::HandlerToken;
@@ -56,6 +56,13 @@ pub struct ResolveCx<'a> {
     /// The subscription hub every query site claims on — the pass's
     /// claims, committed by the frame after the resolve.
     pub hub: &'a mut QueryHub,
+    /// The mount this resolve runs under — its stamped identity (tier,
+    /// space, provenance) is what queries and, downstream, actions carry
+    /// (E3c-7; stamping only — nothing is filtered by it yet).
+    pub mount: &'a MountCx,
+    /// The runtime's table — a query's `Here` resolves the mount's space
+    /// handle through it, and `dataset` values mint through it.
+    pub handles: &'a we_expr::HandleTable,
     /// `$part` lookups.
     pub parts: &'a dyn PartSource,
     /// The active template's route table, for `$routes`.
@@ -95,6 +102,18 @@ pub struct ResolveCx<'a> {
 }
 
 impl ResolveCx<'_> {
+    /// The compile context a `$queries`/`$query` descriptor compiles under —
+    /// the same bag, cache, warnings, mount and table this resolve runs with.
+    pub(crate) fn compile_cx(&mut self) -> CompileCx<'_> {
+        CompileCx {
+            bag: self.bag,
+            cache: &mut *self.cache,
+            warnings: &mut *self.warnings,
+            mount: self.mount,
+            handles: self.handles,
+        }
+    }
+
     /// `candidate` interned to `slot`: while a rebuild's content holds, the
     /// SAME value answers — the scope object WE keeps alive across renders.
     /// Changed content swaps the allocation, the way a store write does.
@@ -322,12 +341,10 @@ pub(crate) fn eval_json(
 fn eval_prop(json: &Json, scope: &Scope, cx: &mut ResolveCx, site: &SiteId) -> Value {
     if let Json::Object(map) = json {
         if let Some(descriptor) = map.get("$query") {
-            let compiled = compile_request(
-                descriptor,
-                scope,
-                &mut CompileCx::new(cx.bag, cx.cache, cx.warnings),
-            );
-            let view = cx.hub.claim(site.clone(), compiled, None);
+            let compiled = compile_request(descriptor, scope, &mut cx.compile_cx());
+            let view = cx
+                .hub
+                .claim(site.clone(), compiled, cx.mount.space.as_ref());
             return Value::List(view.rows);
         }
     }
@@ -1229,20 +1246,18 @@ fn declare_locals(
                 let Some(slot) = slots.get(&name) else {
                     continue;
                 };
-                let compiled = compile_request(
-                    descriptor,
-                    &node_scope,
-                    &mut CompileCx::new(cx.bag, cx.cache, cx.warnings),
-                );
+                let compiled = compile_request(descriptor, &node_scope, &mut cx.compile_cx());
                 let key = match &compiled {
-                    Compiled::Ready(request) => Some(request.key(None)),
+                    Compiled::Ready(request) => {
+                        Some(request.key(cx.mount.space.as_ref(), cx.handles))
+                    }
                     _ => None,
                 };
                 let site = SiteId {
                     node: id.clone(),
                     slot: SiteSlot::Named(name.clone()),
                 };
-                slot.set(cx.hub.claim(site, compiled, None));
+                slot.set(cx.hub.claim(site, compiled, cx.mount.space.as_ref()));
                 if last_keys.get(&name) != Some(&key) {
                     last_keys.insert(name, key);
                     changed = true;
@@ -1548,14 +1563,23 @@ fn record_view_node(value: &Json, cx: &mut ResolveCx) -> Option<Arc<SchemaNode>>
     cx.memo_node(value)
 }
 
-/// The resolver's entry point: `node` under `root`'s identity namespace, in
-/// `scope` (usually the empty root scope — the store bag supplies the rest).
+/// The resolver's entry point: `node` under `mount`'s identity (`{mount}:{path}`
+/// node ids), in `scope` (usually the empty root scope — the store bag
+/// supplies the rest).
 pub fn resolve(
     node: &SchemaNode,
-    root: &str,
+    mount: &MountCx,
     scope: &Scope,
     cx: &mut ResolveCx,
 ) -> Vec<ResolvedChild> {
     let decls: Arc<Vec<LocalScope>> = Arc::new(Vec::new());
-    resolve_node(node, scope, &NodeId::new(""), root, "", &decls, cx)
+    resolve_node(
+        node,
+        scope,
+        &NodeId::new(""),
+        mount.mount.as_str(),
+        "",
+        &decls,
+        cx,
+    )
 }

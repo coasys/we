@@ -7,7 +7,7 @@ use std::sync::Arc;
 
 use serde_json::json;
 use we_data::{ClassSel, Executor, OfflineData, SpaceId};
-use we_expr::ParseCache;
+use we_expr::{HandleTable, MountCx, ParseCache};
 use we_template::{
     compile_request, CompileCx, Compiled, Inbox, NodeId, QueryHub, QueryRequest, QuerySource,
     Scope, SiteId, SiteSlot, StoreBag,
@@ -50,17 +50,23 @@ fn doc() -> serde_json::Value {
     })
 }
 
-/// The request a template's descriptor compiles to.
+/// The request a template's descriptor compiles to — under a mount with
+/// no space, the way a capture lookup's `ds:null` fallback reads it.
 fn request(descriptor: serde_json::Value) -> QueryRequest {
     let bag = StoreBag::new();
-    let mut cache = ParseCache::new();
-    let mut warnings = Vec::new();
-    let mut cx = CompileCx {
-        bag: &bag,
-        cache: &mut cache,
-        warnings: &mut warnings,
-    };
-    match compile_request(&descriptor, &Scope::default(), &mut cx) {
+    let mount = MountCx::explicit("test");
+    let handles = HandleTable::new();
+    match compile_request(
+        &descriptor,
+        &Scope::default(),
+        &mut CompileCx::new(
+            &bag,
+            &mut ParseCache::new(),
+            &mut Vec::new(),
+            &mount,
+            &handles,
+        ),
+    ) {
         Compiled::Ready(request) => request,
         other => panic!("descriptor compiles: {other:?}"),
     }
@@ -69,7 +75,7 @@ fn request(descriptor: serde_json::Value) -> QueryRequest {
 /// Ask a source for a request the way a frame does — claim, commit, drain —
 /// and read the row ids; `None` when the claim is still loading.
 fn ask_rows(source: &Arc<dyn QuerySource>, request: QueryRequest) -> Option<Vec<String>> {
-    let mut hub = QueryHub::new(Arc::new(Inbox::default()));
+    let mut hub = QueryHub::new(Arc::new(Inbox::default()), HandleTable::new());
     hub.claim(
         SiteId {
             node: NodeId::new("test:/n0"),

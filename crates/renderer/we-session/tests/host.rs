@@ -11,8 +11,8 @@ use we_expr::Value;
 use we_screen::{ScreenSchema, ScreenState};
 use we_session::Session;
 use we_template::{
-    Action, ActionRequest, Completer, Host, Invoked, NodeId, ResolvedChild, ResolvedNode, RootSpec,
-    SchemaNode, StaticHost, StoreBag,
+    Action, ActionRequest, Completer, Host, Invoked, MountCx, NodeId, ResolvedChild, ResolvedNode,
+    RootSpec, SchemaNode, StaticHost, StoreBag,
 };
 
 fn schema(v: serde_json::Value) -> SchemaNode {
@@ -22,7 +22,7 @@ fn schema(v: serde_json::Value) -> SchemaNode {
 fn spec(v: serde_json::Value) -> RootSpec {
     RootSpec::Single {
         node: Box::new(schema(v)),
-        id: "test".into(),
+        cx: MountCx::explicit("test"),
     }
 }
 

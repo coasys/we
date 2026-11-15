@@ -51,8 +51,14 @@ impl Recording {
 }
 
 impl QuerySource for Recording {
-    fn open(&self, _ticket: SubTicket, request: &QueryRequest, sink: QuerySink) {
-        let key = request.key(None);
+    fn open(
+        &self,
+        _ticket: SubTicket,
+        request: &QueryRequest,
+        handles: &we_expr::HandleTable,
+        sink: QuerySink,
+    ) {
+        let key = request.key(None, handles);
         self.asked.lock().unwrap().push(key.as_str().to_string());
         if key.as_str().contains("\"e\":[\"Board\"]") {
             if self.board_ready.load(Ordering::SeqCst) {

@@ -692,6 +692,7 @@ fn an_initial_resets_when_a_query_result_is_refilled_equal_content() {
             &self,
             _ticket: we_template::SubTicket,
             _request: &we_template::QueryRequest,
+            _handles: &we_expr::HandleTable,
             sink: we_template::QuerySink,
         ) {
             sink.deliver(we_template::QueryEvent::Rows(Arc::new(vec![

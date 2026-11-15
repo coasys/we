@@ -7,7 +7,7 @@ use std::sync::Arc;
 use we_data::{
     ClassSel, Executor, OfflineData, QueryIr, SnapshotQuerySource, SpaceId, Write, WriteOp,
 };
-use we_expr::ParseCache;
+use we_expr::{HandleTable, MountCx, ParseCache};
 use we_template::{
     compile_request, CompileCx, Compiled, Inbox, NodeId, QueryHub, QueryRequest, QuerySource,
     Scope, SiteId, SiteSlot, SlotView, StoreBag,
@@ -24,12 +24,13 @@ fn mini_json() -> serde_json::Value {
 fn compile(descriptor: serde_json::Value, bag: &StoreBag) -> QueryRequest {
     let mut cache = ParseCache::new();
     let mut warnings = Vec::new();
-    let mut cx = CompileCx {
-        bag,
-        cache: &mut cache,
-        warnings: &mut warnings,
-    };
-    match compile_request(&descriptor, &Scope::default(), &mut cx) {
+    let mount = MountCx::explicit("test");
+    let handles = HandleTable::new();
+    match compile_request(
+        &descriptor,
+        &Scope::default(),
+        &mut CompileCx::new(bag, &mut cache, &mut warnings, &mount, &handles),
+    ) {
         Compiled::Ready(request) => request,
         other => panic!("query compiles: {other:?}"),
     }
@@ -43,7 +44,7 @@ fn claimed_view(
     bag: &Arc<StoreBag>,
     source: Arc<dyn QuerySource>,
 ) -> SlotView {
-    let mut hub = QueryHub::new(Arc::new(Inbox::default()));
+    let mut hub = QueryHub::new(Arc::new(Inbox::default()), HandleTable::new());
     let request = compile(descriptor, bag);
     hub.claim(
         SiteId {
@@ -78,7 +79,7 @@ fn source_returns_the_named_query_rows() {
 #[test]
 fn unnamed_claim_loads() {
     let bag = Arc::new(StoreBag::from_snapshot(&mini_json()).unwrap());
-    let mut hub = QueryHub::new(Arc::new(Inbox::default()));
+    let mut hub = QueryHub::new(Arc::new(Inbox::default()), HandleTable::new());
     let request = compile(serde_json::json!({ "entity": "SignalType" }), &bag);
     // A `Prop` site carries no name_hint — the name-keyed table cannot
     // answer it, exactly as an anonymous TS subscribe has no handle.
@@ -162,7 +163,7 @@ fn model_query_answers_the_request_the_claim_asked() {
         serde_json::json!({ "entity": "SignalType", "order": { "name": "asc" }, "subscribe": false }),
         &data.bag,
     );
-    executor.note(&request.key(None), "signalTypes");
+    executor.note(&request.key(None, &HandleTable::new()), "signalTypes");
 
     let rows =
         pollster::block_on(executor.model_query(&space, ClassSel::one("SignalType"), &request.ir))
@@ -191,7 +192,7 @@ fn model_subscribe_opens_a_live_query_for_a_learned_request() {
         serde_json::json!({ "entity": "SignalType", "order": { "name": "asc" } }),
         &data.bag,
     );
-    executor.note(&request.key(None), "signalTypes");
+    executor.note(&request.key(None, &HandleTable::new()), "signalTypes");
 
     let live = pollster::block_on(executor.model_subscribe(
         &space,
@@ -217,7 +218,7 @@ fn a_request_for_another_space_is_refused() {
         serde_json::json!({ "entity": "SignalType", "subscribe": false }),
         &data.bag,
     );
-    executor.note(&request.key(None), "signalTypes");
+    executor.note(&request.key(None, &HandleTable::new()), "signalTypes");
 
     let wrong_space = pollster::block_on(executor.model_query(
         &SpaceId::new("other"),
@@ -264,7 +265,7 @@ fn the_factory_binds_the_executor_to_the_snapshot_space() {
         serde_json::json!({ "entity": "SignalType", "subscribe": false }),
         &data.bag,
     );
-    executor.note(&request.key(None), "signalTypes");
+    executor.note(&request.key(None, &HandleTable::new()), "signalTypes");
 
     let wrong_space = pollster::block_on(executor.model_query(
         &SpaceId::new("other"),

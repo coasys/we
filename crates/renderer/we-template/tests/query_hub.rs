@@ -84,11 +84,17 @@ impl Counting {
 }
 
 impl QuerySource for Counting {
-    fn open(&self, ticket: SubTicket, request: &QueryRequest, sink: QuerySink) {
+    fn open(
+        &self,
+        ticket: SubTicket,
+        request: &QueryRequest,
+        handles: &we_expr::HandleTable,
+        sink: QuerySink,
+    ) {
         self.opens
             .lock()
             .unwrap()
-            .push((ticket, request.key(None).as_str().to_string()));
+            .push((ticket, request.key(None, handles).as_str().to_string()));
         let held = request
             .classes
             .iter()
@@ -356,6 +362,7 @@ fn two_templates_share_a_cell() {
         template: Some(template),
         pages: Vec::new(),
         boot: None,
+        bundle: "test-bundle".into(),
     };
     let source = Counting::new();
     let bag = Arc::new(StoreBag::new());

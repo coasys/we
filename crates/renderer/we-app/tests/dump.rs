@@ -72,6 +72,7 @@ fn space_template_resolve_perf() {
     let bag = Arc::new(StoreBag::from_snapshot(&serde_json::from_str(SNAPSHOT).unwrap()).unwrap());
     let locals = LocalState::new();
     let spec = AppSpec {
+        bundle: bundle.name.clone().into(),
         app: None,
         template: bundle.templates.as_deref().unwrap().first().cloned(),
         pages: vec![],

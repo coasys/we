@@ -14,12 +14,14 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use indexmap::IndexMap;
-use we_expr::{ParseCache, Value};
+use we_expr::{
+    BundleSlot, HandleTable, MountCx, MountId, ParseCache, Provenance, SpaceHandle, Tier, Value,
+};
 use we_screen::{Route, ScreenOp, ScreenState};
 
 use crate::bindings::Invalidator;
 use crate::handlers::{self, HandlerCx, PendingMap};
-use crate::host::{CallBook, Completer, MountId};
+use crate::host::{CallBook, Completer};
 use crate::inbox::{Arrival, Inbox};
 use crate::query::{QueryEvent, QueryHub, QueryRequest, QuerySink, QuerySource, SubTicket};
 use crate::resolve::{self, NoParts, PartSource};
@@ -102,16 +104,32 @@ pub enum RootSpec {
     Single {
         /// The node.
         node: Box<SchemaNode>,
-        /// Its identity prefix (`tree`, `space`, …).
-        id: Arc<str>,
+        /// Who the tree is mounted as — `Explicit` and [`Tier::Space`]
+        /// unless the caller stamps otherwise (E3c-7).
+        cx: MountCx,
     },
     /// A bundle: the app chrome, the space template's route table +
     /// `meta.panels` + `meta.recordViews`, the pages, the boot screen.
     App(Box<AppSpec>),
 }
 
+impl RootSpec {
+    /// A single tree mounted `Explicit` — tests and the offline harness.
+    /// Space tier, no space: the caller declares nothing, so core grants
+    /// nothing (`meta.role` is never consulted for it).
+    pub fn single(node: SchemaNode, mount: impl Into<MountId>) -> Self {
+        Self::Single {
+            node: Box::new(node),
+            cx: MountCx::explicit(mount),
+        }
+    }
+}
+
 /// A bundle's renderable pieces.
 pub struct AppSpec {
+    /// The bundle's own name — `Provenance::Bundle { bundle, .. }` stamps
+    /// it onto every mount the spec makes.
+    pub bundle: Arc<str>,
     /// `bundle.app` — the chrome every route renders inside; its
     /// `meta.frame` declares the bands it occupies (the rest is the
     /// content viewport the mounted page fills).
@@ -153,8 +171,11 @@ pub struct Runtime {
     /// Every between-frames arrival: completions, binding invalidations.
     /// `Session::poll` drains it; the waker on it is the frontend's.
     inbox: Arc<Inbox>,
-    /// The mount ids the last frame resolved — a node's origin mount.
-    mount_ids: Vec<Arc<str>>,
+    /// The mount contexts the last frame resolved — a node's origin.
+    mount_cxs: Vec<MountCx>,
+    /// The table every mount's handles (and `DatasetHandle`s) come from —
+    /// the host's way back for a minted handle.
+    handles: HandleTable,
     /// Ops a resolve queued (route redirects) — `take_ops` hands them out.
     ops: Vec<ScreenOp>,
     /// Whether `sessionStore` says the app is ready — boot screens read it.
@@ -187,17 +208,37 @@ impl Runtime {
         locals: LocalState,
     ) -> Self {
         Self::from_spec(
-            RootSpec::Single {
-                node: Box::new(template),
-                id: template_id.into(),
-            },
+            RootSpec::single(template, MountId(template_id.into())),
             bag,
             locals,
         )
     }
 
-    /// Either root — what a session is built from.
+    /// Either root — what a session is built from. The runtime's table is
+    /// fresh: a `MountCx::with_space` handle a host minted beforehand can
+    /// never resolve in it — see [`Self::from_spec_in`].
     pub fn from_spec(spec: RootSpec, bag: Arc<StoreBag>, locals: LocalState) -> Self {
+        Self::from_spec_in(spec, bag, locals, HandleTable::new())
+    }
+
+    /// `from_spec` inside the host's handle table: one table is one
+    /// authority domain — a `clone`d table is the same one (shared epoch,
+    /// shared slots), a `HandleTable::new` is a different one whose
+    /// handles `key` refuses. A host that knows which space an explicit
+    /// mount is about mints the handle in its own table and hands the
+    /// table in, so the `MountCx::with_space` it built resolves here.
+    ///
+    /// It is this direction — never the reverse — because a `MountCx` is
+    /// a constructor argument: it cannot wait for the runtime's table to
+    /// exist, and the host mints before the session does. Forgery is
+    /// unchanged: sharing is `Clone`, and a template still cannot build
+    /// a `HandleRef` or a table this table answers for.
+    pub fn from_spec_in(
+        spec: RootSpec,
+        bag: Arc<StoreBag>,
+        locals: LocalState,
+        handles: HandleTable,
+    ) -> Self {
         let inbox = Arc::new(Inbox::new());
         // The session's binding subscription: `set_root` writes push an
         // arrival here and call its waker — a data change reaches a
@@ -210,14 +251,15 @@ impl Runtime {
             bag,
             locals,
             dollar_type: Arc::new(|_| false),
-            hub: QueryHub::new(inbox.clone()),
+            hub: QueryHub::new(inbox.clone(), handles.clone()),
             source,
             parts: Arc::new(NoParts),
             pending: HashMap::new(),
             orphans: Orphans::default(),
             calls: CallBook::new(inbox.clone()),
             inbox,
-            mount_ids: Vec::new(),
+            mount_cxs: Vec::new(),
+            handles,
             ops: Vec::new(),
             ready: Box::new(default_ready),
             cache: ParseCache::new(),
@@ -281,6 +323,13 @@ impl Runtime {
         &mut self.hub
     }
 
+    /// The session's handle table — every [`crate::SpaceHandle`] and
+    /// dataset handle the mounts stamp comes from it. The host's way
+    /// back: `handles.key(&h)` is the host identifier a handle names.
+    pub fn handles(&self) -> &HandleTable {
+        &self.handles
+    }
+
     pub fn stats(&self) -> &Stats {
         &self.stats
     }
@@ -319,62 +368,148 @@ impl Runtime {
             ))
     }
 
+    /// `meta.role` lowers a mount's stamped tier — a space-tier role
+    /// (`shell`/`view`) drops an app slot to Space. It never raises: an
+    /// app-tier claim on a space slot stamps Space all the same — the
+    /// acceptance check refuses such a schema outright (`judgeBundle`
+    /// judges bundle templates at `SPACE_TIER` whatever `meta` says), so
+    /// core's stamp is the floor, never the claim (4.4).
+    fn slot_tier(slot: Tier, role: Option<&str>) -> Tier {
+        match role {
+            Some("shell" | "view") => slot.min(Tier::Space),
+            _ => slot,
+        }
+    }
+
+    /// A bundle mount's identity: the slot fixes the mount id, the tier
+    /// ceiling and the provenance; `meta.role` may only lower the tier.
+    /// The open space stamps from the route, not the schema.
+    fn bundle_cx(
+        mount: impl Into<MountId>,
+        slot: Tier,
+        role: Option<&str>,
+        provenance_slot: BundleSlot,
+        spec: &AppSpec,
+        space: &Option<SpaceHandle>,
+    ) -> MountCx {
+        MountCx {
+            mount: mount.into(),
+            tier: Self::slot_tier(slot, role),
+            space: space.clone(),
+            provenance: Provenance::Bundle {
+                bundle: spec.bundle.clone(),
+                slot: provenance_slot,
+            },
+        }
+    }
+
     /// The mounts the frame resolves for this route — a free function on
     /// `&self.spec` so the frame can hold the choice while mutably borrowing
     /// the rest of the runtime. The chrome (`app`) mounts on every ready
     /// route — the rail never leaves; the content mount beside it is the
     /// space template for `Route::Space`, the bundle page for `Route::Page`,
     /// nothing for the landing.
-    fn mounts_for<'a>(spec: &'a RootSpec, screen: &ScreenState, ready: bool) -> Vec<Mount<'a>> {
-        let chrome = |spec: &'a AppSpec| Mount {
+    fn mounts_for<'a>(
+        spec: &'a RootSpec,
+        handles: &HandleTable,
+        screen: &ScreenState,
+        ready: bool,
+    ) -> Vec<Mount<'a>> {
+        // The open space as the route names it — every mount's `cx.space`
+        // while a space is open; the landing and pages have none.
+        let open_space = match screen.nav.route() {
+            Route::Space { space_id, .. } => Some(handles.mint_space(&space_id)),
+            _ => None,
+        };
+        fn meta_role(meta: Option<&serde_json::Value>) -> Option<&str> {
+            meta?.get("role")?.as_str()
+        }
+        let chrome = |spec: &'a AppSpec, space: &Option<SpaceHandle>| Mount {
             node: spec
                 .app
                 .as_ref()
                 .map(|t| &t.node)
                 .unwrap_or_else(|| empty_node()),
-            id: "app".into(),
+            cx: Self::bundle_cx(
+                "app",
+                Tier::App,
+                meta_role(spec.app.as_ref().map(|t| &t.meta)),
+                BundleSlot::App,
+                spec,
+                space,
+            ),
             template: None,
         };
         match spec {
-            RootSpec::Single { node, id } => vec![Mount {
-                node: node.as_ref(),
-                id: id.clone(),
-                template: None,
-            }],
+            RootSpec::Single { node, cx } => {
+                // The caller's mount as declared — `Explicit`, Space when
+                // unstated. A space route fills an unstated `cx.space`:
+                // the mount is about the space the route names.
+                let mut cx = cx.clone();
+                if cx.space.is_none() {
+                    cx.space = open_space;
+                }
+                vec![Mount {
+                    node: node.as_ref(),
+                    cx,
+                    template: None,
+                }]
+            }
             RootSpec::App(spec) => {
                 if !ready {
                     if let Some(boot) = &spec.boot {
                         return vec![Mount {
                             node: boot,
-                            id: "boot".into(),
+                            cx: Self::bundle_cx(
+                                "boot",
+                                Tier::App,
+                                meta_role(boot.extra.get("meta")),
+                                BundleSlot::Boot,
+                                spec,
+                                &open_space,
+                            ),
                             template: None,
                         }];
                     }
                 }
                 match screen.nav.route() {
                     Route::Page { id } => {
-                        let mut mounts = vec![chrome(spec)];
+                        let mut mounts = vec![chrome(spec, &open_space)];
                         if let Some(page) = spec.pages.iter().find(|p| p.id == id) {
                             mounts.push(Mount {
                                 node: &page.node,
-                                id: format!("page:{id}").into(),
+                                cx: Self::bundle_cx(
+                                    format!("page:{id}"),
+                                    Tier::App,
+                                    meta_role(Some(&page.meta)),
+                                    BundleSlot::Page(page.id.as_str().into()),
+                                    spec,
+                                    &open_space,
+                                ),
                                 template: None,
                             });
                         }
                         mounts
                     }
                     Route::Space { .. } | Route::Other => {
-                        let mut mounts = vec![chrome(spec)];
+                        let mut mounts = vec![chrome(spec, &open_space)];
                         if let Some(template) = &spec.template {
                             mounts.push(Mount {
                                 node: &template.node,
-                                id: "space".into(),
+                                cx: Self::bundle_cx(
+                                    "space",
+                                    Tier::Space,
+                                    meta_role(Some(&template.meta)),
+                                    BundleSlot::Template(template.id.as_str().into()),
+                                    spec,
+                                    &open_space,
+                                ),
                                 template: Some(template),
                             });
                         }
                         mounts
                     }
-                    Route::Landing => vec![chrome(spec)],
+                    Route::Landing => vec![chrome(spec, &open_space)],
                 }
             }
         }
@@ -403,8 +538,8 @@ impl Runtime {
         if self.resolved.is_none() || self.last != Some(current) {
             let started = Instant::now();
             let ready = (self.ready)(&self.bag);
-            let mounts = Self::mounts_for(&self.spec, screen, ready);
-            self.mount_ids = mounts.iter().map(|m| m.id.clone()).collect();
+            let mounts = Self::mounts_for(&self.spec, &self.handles, screen, ready);
+            self.mount_cxs = mounts.iter().map(|m| m.cx.clone()).collect();
             // Resolve → commit the pass's claims → drain the deliveries:
             // a query's rows land after the pass that claimed it (the same
             // resolve that asks `local.<name>` reads `[]`). Loop until a
@@ -441,6 +576,8 @@ impl Runtime {
                         cache: &mut self.cache,
                         screen,
                         hub: &mut self.hub,
+                        mount: &mount.cx,
+                        handles: &self.handles,
                         parts: self.parts.as_ref(),
                         routes,
                         panels,
@@ -457,11 +594,11 @@ impl Runtime {
                     let before = children.len();
                     children.extend(resolve::resolve(
                         mount.node,
-                        &mount.id,
+                        &mount.cx,
                         &Scope::default(),
                         &mut cx,
                     ));
-                    if mount.id.as_ref() == "app" {
+                    if mount.cx.mount.as_str() == "app" {
                         chrome_children = children.len() - before;
                     }
                 }
@@ -600,7 +737,7 @@ impl Runtime {
             if let Some(HandlerRef { tokens, scope }) = target.handlers.get(name) {
                 let tokens = tokens.clone();
                 let scope = scope.clone();
-                let mount = mount_of(&self.mount_ids, &id);
+                let mount = mount_of(&self.mount_cxs, &id);
                 let mut cx = HandlerCx {
                     host,
                     bag: &self.bag,
@@ -677,7 +814,9 @@ impl Runtime {
             return;
         }
         self.stats.completions += 1;
-        let mount = mount_of(&self.mount_ids, &pending.node);
+        // The mount the call STARTED under — not `mount_of` on the
+        // current mounts: a node that survived a navigation still runs
+        // its callbacks under the space it began on.
         let mut cx = HandlerCx {
             host,
             bag: &self.bag,
@@ -687,7 +826,7 @@ impl Runtime {
             pending: &mut self.pending,
             calls: &mut self.calls,
             node: &pending.node,
-            mount: &mount,
+            mount: &pending.mount,
             warnings: &mut self.stats.warnings,
         };
         match &result {
@@ -715,26 +854,26 @@ impl Runtime {
 
 /// The mount `node` was resolved under: the longest mount id its own id is
 /// prefixed by (`{mount}:{path}`). A synthetic wrapper (`root`, `frame`)
-/// names itself.
-fn mount_of(mounts: &[Arc<str>], node: &NodeId) -> MountId {
+/// names itself — and mounts as `Explicit`/Space, the untrusted default.
+fn mount_of(mounts: &[MountCx], node: &NodeId) -> MountCx {
     let id = node.as_str();
     mounts
         .iter()
-        .filter(|m| {
-            id.strip_prefix(m.as_ref())
+        .filter(|cx| {
+            id.strip_prefix(cx.mount.as_str())
                 .is_some_and(|rest| rest.starts_with(':'))
         })
-        .max_by_key(|m| m.len())
-        .map(|m| MountId(m.clone()))
-        .unwrap_or_else(|| MountId(id.into()))
+        .max_by_key(|cx| cx.mount.as_str().len())
+        .cloned()
+        .unwrap_or_else(|| MountCx::explicit(id))
 }
 
-/// One mount — a node resolved under an id prefix, with the template
-/// context (`routes`/`panels`/`recordViews`) when the mount is the space
-/// template itself.
+/// One mount — a node resolved under its [`MountCx`]'s id, with the
+/// template context (`routes`/`panels`/`recordViews`) when the mount is
+/// the space template itself.
 struct Mount<'a> {
     node: &'a SchemaNode,
-    id: Arc<str>,
+    cx: MountCx,
     template: Option<&'a BundleTemplate>,
 }
 
@@ -823,7 +962,13 @@ impl SnapshotQueries {
 }
 
 impl QuerySource for SnapshotQueries {
-    fn open(&self, _ticket: SubTicket, request: &QueryRequest, sink: QuerySink) {
+    fn open(
+        &self,
+        _ticket: SubTicket,
+        request: &QueryRequest,
+        _handles: &HandleTable,
+        sink: QuerySink,
+    ) {
         let Some(name) = request.name_hint.as_deref() else {
             return;
         };

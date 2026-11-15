@@ -30,7 +30,13 @@ impl QuerySource for SnapshotQuerySource {
     /// is the rows, any other named value becomes a one-row answer, and a
     /// name the snapshot does not have delivers nothing — the cell stays
     /// loading, exactly as an unanswered TS `subscribe` does.
-    fn open(&self, _ticket: SubTicket, request: &QueryRequest, sink: QuerySink) {
+    fn open(
+        &self,
+        _ticket: SubTicket,
+        request: &QueryRequest,
+        _handles: &we_expr::HandleTable,
+        sink: QuerySink,
+    ) {
         let Some(name) = request.name_hint.as_deref() else {
             return;
         };

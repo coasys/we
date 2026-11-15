@@ -16,7 +16,7 @@ use std::sync::{Arc, Mutex};
 
 use indexmap::IndexMap;
 use serde_json::{Map as JsonMap, Value as Json};
-use we_expr::Value;
+use we_expr::{HandleTable, SpaceHandle, Value};
 use we_template::{
     DatasetSel, QueryEvent, QueryIr, QueryRequest, QuerySink, QuerySource, SubTicket,
 };
@@ -372,13 +372,20 @@ impl RouteCaptures {
     /// The recorded rows for a claimed request, by identity — `None` when
     /// no capture answered it (never asked, skipped, failed, or two
     /// captures disagree). The request is read directly, never parsed back
-    /// from a key.
-    pub fn rows_for_claim(&self, request: &QueryRequest) -> Option<Arc<Vec<Value>>> {
+    /// from a key; `handles` is the table the request's handles were
+    /// minted through (the hub's own — `open` hands it over), the only
+    /// way back to the names `Here` and `Named` resolve to.
+    pub fn rows_for_claim(
+        &self,
+        request: &QueryRequest,
+        handles: &HandleTable,
+    ) -> Option<Arc<Vec<Value>>> {
         let entities: Vec<String> = request.classes.iter().map(|e| e.to_string()).collect();
-        let dataset = match &request.dataset {
-            DatasetSel::Named(handle) => Some(handle.as_str().to_string()),
-            DatasetSel::Here => None,
+        let handle = match &request.dataset {
+            DatasetSel::Here => request.space.as_ref().map(SpaceHandle::handle),
+            DatasetSel::Named(h) => Some(h.handle()),
         };
+        let dataset = handle.and_then(|h| handles.key(h)).map(|s| s.to_string());
         let rest = match request.ir_json() {
             Json::Object(ir) => request_rest(&ir),
             _ => Json::Object(JsonMap::new()),
@@ -458,8 +465,14 @@ impl RouteQuerySource {
 }
 
 impl QuerySource for RouteQuerySource {
-    fn open(&self, _ticket: SubTicket, request: &QueryRequest, sink: QuerySink) {
-        if let Some(rows) = self.captures.rows_for_claim(request) {
+    fn open(
+        &self,
+        _ticket: SubTicket,
+        request: &QueryRequest,
+        handles: &HandleTable,
+        sink: QuerySink,
+    ) {
+        if let Some(rows) = self.captures.rows_for_claim(request, handles) {
             sink.deliver(QueryEvent::Rows(rows));
         }
     }

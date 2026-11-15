@@ -73,6 +73,7 @@ fn main() -> Result<(), String> {
     let bundle = Bundle::parse(&bundle_text).map_err(|e| format!("parse bundle: {e}"))?;
     let locals = LocalState::new();
     let spec = AppSpec {
+        bundle: bundle.name.clone().into(),
         app: bundle.app.clone(),
         template: bundle.templates.as_deref().and_then(|t| t.first()).cloned(),
         pages: bundle.pages.clone().unwrap_or_default(),

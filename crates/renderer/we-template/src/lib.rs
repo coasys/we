@@ -55,3 +55,9 @@ pub use resolved::{
 };
 pub use runtime::{AppSpec, RootSpec, Runtime, StaticHost, Stats, ORPHANED_CAP};
 pub use scope::{bind_screen, FieldMeta, LocalDecl, LocalNs, LocalScope, ScopeEnv, StoreBag};
+/// The mount-identity family lives in `we-expr` (a `Namespace::as_handle`
+/// must name a type from below `we-template`; E3c-7, R4). Re-exported so
+/// frontends and tests need no extra dependency for `MountCx`.
+pub use we_expr::{
+    BundleSlot, HandleKind, HandleRef, HandleTable, MountCx, Provenance, SpaceHandle, Tier,
+};

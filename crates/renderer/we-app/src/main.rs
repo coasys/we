@@ -170,6 +170,7 @@ fn run_dump(args: &Args) {
     };
     let screen = ScreenState::desktop(screen_schema, &args.route);
     let spec = AppSpec {
+        bundle: bundle.name.clone().into(),
         app: bundle.app.clone(),
         template: bundle.templates.as_deref().and_then(|t| t.first()).cloned(),
         pages: bundle.pages.clone().unwrap_or_default(),

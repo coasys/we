@@ -73,6 +73,7 @@ fn app_rt(
         "sessionStore": { "bootState": "ready" }
     })));
     let spec = AppSpec {
+        bundle: "test".into(),
         app,
         template,
         pages: vec![],
@@ -796,6 +797,7 @@ fn inline_query_tokens_flow_through_the_hub() {
             &self,
             _ticket: we_template::SubTicket,
             _request: &we_template::QueryRequest,
+            _handles: &we_expr::HandleTable,
             sink: we_template::QuerySink,
         ) {
             sink.deliver(we_template::QueryEvent::Rows(Arc::new(vec![
@@ -848,6 +850,7 @@ fn a_deep_query_chain_settles_past_the_round_cap() {
             &self,
             _ticket: we_template::SubTicket,
             _request: &we_template::QueryRequest,
+            _handles: &we_expr::HandleTable,
             sink: we_template::QuerySink,
         ) {
             sink.deliver(we_template::QueryEvent::Rows(Arc::new(vec![
@@ -908,6 +911,7 @@ fn a_fill_chain_deeper_than_the_pass_cap_continues_then_rests() {
             &self,
             _ticket: we_template::SubTicket,
             _request: &we_template::QueryRequest,
+            _handles: &we_expr::HandleTable,
             sink: we_template::QuerySink,
         ) {
             sink.deliver(we_template::QueryEvent::Rows(Arc::new(vec![
@@ -1000,6 +1004,7 @@ fn a_pending_query_is_not_progress() {
             &self,
             _ticket: we_template::SubTicket,
             _request: &we_template::QueryRequest,
+            _handles: &we_expr::HandleTable,
             sink: we_template::QuerySink,
         ) {
             self.calls.fetch_add(1, Ordering::Relaxed);
