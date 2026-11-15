@@ -72,7 +72,9 @@ impl Platform {
 
     /// The platform `WE_PLATFORM_URL` names, else [`DEFAULT_PLATFORM_URL`].
     pub fn from_env() -> Self {
-        Platform::new(&platform_url(std::env::var(PLATFORM_URL_VAR).ok().as_deref()))
+        Platform::new(&platform_url(
+            std::env::var(PLATFORM_URL_VAR).ok().as_deref(),
+        ))
     }
 
     pub fn base(&self) -> &str {
@@ -82,9 +84,12 @@ impl Platform {
     /// `POST /api/vouch/email/start {email, did}`: the platform sends a code to `email`. It
     /// answers `202` for every address, known or not.
     pub async fn start(&self, email: &str, did: &str) -> Result<(), PlatformError> {
-        self.post("/api/vouch/email/start", json!({ "email": email, "did": did }))
-            .await
-            .map(|_| ())
+        self.post(
+            "/api/vouch/email/start",
+            json!({ "email": email, "did": did }),
+        )
+        .await
+        .map(|_| ())
     }
 
     /// `POST /api/vouch/email/verify {email, did, code}`: the one-use token for the right code.
@@ -100,10 +105,11 @@ impl Platform {
                 json!({ "email": email, "did": did, "code": code }),
             )
             .await?;
-        let issued: Issued = serde_json::from_value(answer).map_err(|_| PlatformError::Refused {
-            status: 200,
-            error: Some("no token".into()),
-        })?;
+        let issued: Issued =
+            serde_json::from_value(answer).map_err(|_| PlatformError::Refused {
+                status: 200,
+                error: Some("no token".into()),
+            })?;
         Ok(Zeroizing::new(issued.token))
     }
 
@@ -229,11 +235,8 @@ pub(crate) mod tests {
 
     #[tokio::test]
     async fn start_and_verify_send_the_contract_and_read_the_token() {
-        let (platform, taken) = fake_platform(vec![
-            (202, json!({})),
-            (200, json!({ "token": "t-1" })),
-        ])
-        .await;
+        let (platform, taken) =
+            fake_platform(vec![(202, json!({})), (200, json!({ "token": "t-1" }))]).await;
         platform.start("a@example.org", "did:scid:x").await.unwrap();
         let token = platform
             .verify("a@example.org", "did:scid:x", "123456")
