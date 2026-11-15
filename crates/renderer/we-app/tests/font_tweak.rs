@@ -69,9 +69,12 @@ impl Surface {
                 "we-input",
                 "root/c",
                 // A styled field: the box is ours (white), egui's frame is off.
+                // The field's text follows its fontSize, so it is set at the
+                // reference run's — this test is about the weight.
                 vec![
                     ("value", s(text)),
                     ("fontFamily", s(family)),
+                    ("fontSize", s(SIZE)),
                     ("bg", s("#ffffff")),
                 ],
             ),

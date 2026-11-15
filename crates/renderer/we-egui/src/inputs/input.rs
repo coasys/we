@@ -18,8 +18,18 @@ pub struct Input;
 impl Input {
     /// The field's font: egui's body size in the theme's family — the
     /// web input is `font: inherit`, so a themed face reaches the text.
+    /// The field's text: the control face at the resolved `font-size`
+    /// (input.ts's size tier, or an authored size — `font: inherit` on the
+    /// native input), egui's control size where none resolves.
     fn font(style: &Style, ctx: &egui::Context) -> egui::FontId {
-        props::control_font(style, ctx)
+        let font = props::control_font(style, ctx);
+        let view = crate::defaults::view_of(ctx);
+        let size = style
+            .text
+            .font_size
+            .and_then(|d| d.to_px(view.font_px, view.root_px, view.viewport))
+            .unwrap_or(font.size);
+        egui::FontId::new(size, font.family)
     }
 
     fn has_slot(node: &ResolvedNode, slot: &str) -> bool {
@@ -201,7 +211,11 @@ impl Widget for Input {
             }));
         }
         let widget = match props::prop_string(node, "placeholder") {
-            Some(p) => widget.hint_text(p),
+            // egui lays a hint out in the style's default font, not the
+            // edit's: the placeholder carries the field's own size.
+            Some(p) => {
+                widget.hint_text(egui::RichText::new(p).font(Self::font(style, cx.ui.ctx())))
+            }
             None => widget,
         };
         let response = cx.ui.put(rect, widget);

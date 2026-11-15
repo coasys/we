@@ -326,3 +326,59 @@ fn a_disabled_field_takes_its_disabled_state() {
         "fills {fills:?}"
     );
 }
+
+/// The size the placeholder's glyphs are set at.
+fn placeholder_size(root: &ResolvedNode) -> Option<f32> {
+    let registry = Registry::with_builtins();
+    let mut entries: IndexMap<Arc<str>, Arc<str>> = IndexMap::new();
+    entries.insert(Arc::from("--we-font-size-100"), Arc::from("12px"));
+    entries.insert(Arc::from("--we-font-size-400"), Arc::from("20px"));
+    let table = TokenTable::new(entries);
+    let out = RefCell::new(None);
+    let mut harness = egui_kittest::Harness::builder()
+        .with_context_setup(we_egui::install_media)
+        .build_ui(|ui| {
+            let ctx = ui.ctx().clone();
+            let scx = StyleCx {
+                tokens: &table,
+                ..StyleCx::empty()
+            };
+            let lay = layout(
+                &MeasureCx::new(&ctx),
+                &scx,
+                &registry,
+                root,
+                egui::Rect::from_min_size(ui.cursor().min, egui::vec2(240.0, 600.0)),
+            );
+            let mut events = Vec::new();
+            let mut edit = EditState::default();
+            paint(ui, &registry, &scx, root, &lay, &mut events, &mut edit, 0.0);
+            *out.borrow_mut() = ctx.graphics(|g| {
+                g.get(ui.layer_id()).and_then(|list| {
+                    list.all_entries().find_map(|cs| match &cs.shape {
+                        egui::Shape::Text(t) if t.galley.text() == "Find" => {
+                            t.galley.job.sections.first().map(|s| s.format.font_id.size)
+                        }
+                        _ => None,
+                    })
+                })
+            });
+        });
+    harness.run_steps(2);
+    drop(harness);
+    out.into_inner()
+}
+
+/// input.ts SIZE_DEFAULTS: `xs` sets fontSize 100, `xl` 400 — the field's
+/// text follows them (and an authored fontSize), as `font: inherit` does.
+#[test]
+fn a_fields_text_takes_its_size_tier_and_an_authored_size() {
+    let field = |props: &[(&str, Value)]| {
+        let mut all = vec![("placeholder", Value::from("Find"))];
+        all.extend(props.iter().cloned());
+        placeholder_size(&node("we-input", "input", &all))
+    };
+    assert_eq!(field(&[("size", Value::from("xs"))]), Some(12.0));
+    assert_eq!(field(&[("size", Value::from("xl"))]), Some(20.0));
+    assert_eq!(field(&[("fontSize", Value::from("15px"))]), Some(15.0));
+}
