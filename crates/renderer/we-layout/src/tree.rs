@@ -671,6 +671,31 @@ fn lpa_base(v: LengthPercentageAuto, base: AxisBase) -> AxisBase {
     }
 }
 
+/// An out-of-flow box's `auto` size on an axis: the containing block less
+/// both insets and margins when neither inset is `auto`, else indefinite
+/// (the box shrink-wraps).
+fn inset_size(
+    start: LengthPercentageAuto,
+    end: LengthPercentageAuto,
+    cb: AxisBase,
+    m_start: AxisBase,
+    m_end: AxisBase,
+) -> AxisBase {
+    let auto = |v: LengthPercentageAuto| matches!(v.expand(), ExpandedLengthPercentageAuto::Auto);
+    if auto(start) || auto(end) {
+        return AxisBase::Indefinite;
+    }
+    // An `auto` margin is 0 here: the size takes what the insets leave.
+    let margin = |m: AxisBase| match m {
+        AxisBase::Indefinite => AxisBase::Definite(0.0),
+        m => m,
+    };
+    cb.sub_state(lpa_base(start, cb))
+        .sub_state(lpa_base(end, cb))
+        .sub_state(margin(m_start))
+        .sub_state(margin(m_end))
+}
+
 /// `lpa_base` for a min/max bound — `auto` is no bound rather than an
 /// indefinite one.
 fn bound_base(v: LengthPercentageAuto, base: AxisBase) -> Option<AxisBase> {
@@ -1512,7 +1537,9 @@ impl<'a> Builder<'a> {
             Ed::Percent(p) => ncx.cb.0.map(|b| p * b),
             Ed::Auto => {
                 if !ncx.in_flow {
-                    AxisBase::Indefinite
+                    // Both insets set: the containing block less them
+                    // (CSS 2.1 §10.3.7) — definite for the children.
+                    inset_size(s.inset.left, s.inset.right, ncx.cb.0, ml, mr)
                 } else if ncx.fill_x {
                     ncx.cb.0.sub_state(ml).sub_state(mr)
                 } else if matches!(ncx.main, Direction::Row) && flexed {
@@ -1529,7 +1556,8 @@ impl<'a> Builder<'a> {
             Ed::Percent(p) => ncx.cb.1.map(|b| p * b),
             Ed::Auto => {
                 if !ncx.in_flow {
-                    AxisBase::Indefinite
+                    // §10.6.4: top and bottom both set size the box.
+                    inset_size(s.inset.top, s.inset.bottom, ncx.cb.1, mt, mb)
                 } else if ncx.fill_y {
                     ncx.cb.1.sub_state(mt).sub_state(mb)
                 } else if matches!(ncx.main, Direction::Column) && flexed {
