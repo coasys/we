@@ -287,14 +287,19 @@ impl Runtime {
     }
 
     /// Install the query source (E6/E7) and the part source (E9). `None`
-    /// keeps the default — the snapshot's `queries` table.
+    /// keeps the default — the snapshot's `queries` table. A real swap
+    /// invalidates the cached frame: the held keys only reach the new
+    /// source through a resolve → commit.
     pub fn with_sources(
         mut self,
         source: Option<Arc<dyn QuerySource>>,
         parts: Arc<dyn PartSource>,
     ) -> Self {
         if let Some(source) = source {
-            self.source = source;
+            if !Arc::ptr_eq(&self.source, &source) {
+                self.source = source;
+                self.last = None;
+            }
         }
         self.parts = parts;
         self
@@ -554,6 +559,9 @@ impl Runtime {
             // everything after them is content for the viewport wrapper.
             let mut chrome_children = 0usize;
             for _ in 0..8 {
+                // Claims a panicked pass recorded are dropped — a site
+                // that does not claim again does not keep a stale claim.
+                self.hub.begin_pass();
                 let mut round_live = HashSet::new();
                 let mut round_parents = HashMap::new();
                 warnings.clear();
@@ -611,12 +619,12 @@ impl Runtime {
                 // are visible to the very next pass. The quiet window keeps
                 // those pushes from waking — they are this frame's own
                 // products; anything left queued after it gets one wake.
-                self.inbox.begin_sync_queries();
-                self.hub.commit(self.source.clone());
-                kept_filling = self.hub.drain();
-                if self.inbox.end_sync_queries() {
-                    self.inbox.wake();
-                }
+                // The guard ends the window even if this pass unwinds.
+                kept_filling = {
+                    let _window = self.inbox.sync_queries();
+                    self.hub.commit(self.source.clone());
+                    self.hub.drain()
+                };
                 if !kept_filling {
                     break;
                 }

@@ -13,7 +13,6 @@
 //! push landing after the drain swapped the queue out calls it again —
 //! nothing is lost and nothing loops.
 use std::collections::VecDeque;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, RwLock};
 
 use we_expr::Value;
@@ -60,17 +59,43 @@ pub type Waker = Arc<dyn Fn() + Send + Sync>;
 /// consequences. `drain` swaps the queue out under the lock, so an
 /// arrival pushed mid-drain lands in the next queue (and wakes again).
 pub struct Inbox {
-    queue: Mutex<VecDeque<Arrival>>,
+    /// Queue and quiet window under ONE lock (Lal F2): a push's
+    /// suppression decision and its empty→non-empty transition are one
+    /// critical section, and a window's end decides its leftover wake in
+    /// the same section — a producer deciding while a window closes can
+    /// never strand its own wake.
+    inner: Mutex<Inner>,
     /// The frontend's hook — a no-op until `set_waker` installs one.
     waker: RwLock<Waker>,
+    /// Test-only probe invoked where `push` decided and before it
+    /// enqueues — a barrier parks a producer in exactly the interleaving
+    /// the quiet window can lose (Lal F2), no sleeps needed.
+    #[cfg(test)]
+    push_probe: Mutex<Option<Arc<dyn Fn() + Send + Sync>>>,
+}
+
+/// The queue and the window flag guarding it — one critical section.
+struct Inner {
+    queue: VecDeque<Arrival>,
     /// Set while a frame's `commit → drain` runs: `Query` pushes inside
     /// the window are the frame's own products — the same pass drains
     /// them, so they queue without a wake.
-    sync_queries: AtomicBool,
-    /// Whether the queue was empty when the window opened — leftovers a
-    /// window that started non-empty still belong to a batch that already
-    /// woke.
-    sync_started_empty: AtomicBool,
+    sync_queries: bool,
+}
+
+/// The `commit → drain` quiet window, held as a guard (Lal F4): `Drop`
+/// ends it, so an unwound frame cannot leave `Query` pushes silenced,
+/// and whatever the drain left queued earns its one wake.
+pub(crate) struct SyncQueries<'a> {
+    inbox: &'a Inbox,
+}
+
+impl Drop for SyncQueries<'_> {
+    fn drop(&mut self) {
+        if self.inbox.end_sync_queries() && !std::thread::panicking() {
+            self.inbox.wake();
+        }
+    }
 }
 
 impl Default for Inbox {
@@ -82,10 +107,13 @@ impl Default for Inbox {
 impl Inbox {
     pub(crate) fn new() -> Self {
         Self {
-            queue: Mutex::new(VecDeque::new()),
+            inner: Mutex::new(Inner {
+                queue: VecDeque::new(),
+                sync_queries: false,
+            }),
             waker: RwLock::new(Arc::new(|| {})),
-            sync_queries: AtomicBool::new(false),
-            sync_started_empty: AtomicBool::new(true),
+            #[cfg(test)]
+            push_probe: Mutex::new(None),
         }
     }
 
@@ -100,9 +128,10 @@ impl Inbox {
     pub fn set_waker(&self, waker: Waker) {
         *self.waker.write().unwrap_or_else(|e| e.into_inner()) = waker;
         let pending = !self
-            .queue
+            .inner
             .lock()
             .unwrap_or_else(|e| e.into_inner())
+            .queue
             .is_empty();
         if pending {
             self.wake();
@@ -114,45 +143,58 @@ impl Inbox {
     /// consumes them, and a wake for the frame's own products would report
     /// arrivals the frame already handled.
     pub(crate) fn begin_sync_queries(&self) {
-        self.sync_started_empty.store(
-            self.queue
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .is_empty(),
-            Ordering::Relaxed,
-        );
-        self.sync_queries.store(true, Ordering::Relaxed);
+        self.inner
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .sync_queries = true;
+    }
+
+    /// The quiet window, held as a guard: the drop ends it — leftovers
+    /// get their wake, and an unwound frame re-arms pushes either way.
+    pub(crate) fn sync_queries(&self) -> SyncQueries<'_> {
+        self.begin_sync_queries();
+        SyncQueries { inbox: self }
     }
 
     /// Close the window — `true` when leftovers need the one wake the
-    /// flag suppressed: the window started empty and something is still
-    /// queued (a non-query arrival pushed mid-window, or a query event
-    /// that landed behind the drain). Leftovers a window that started
-    /// non-empty belongs to a batch whose wake already fired.
+    /// window suppressed: anything still queued when it ends (a
+    /// non-query arrival pushed mid-window, or a query event that
+    /// landed behind the drain). There is no "started empty" exception
+    /// (Lal F2): leftovers a window that began over an already-woken
+    /// batch still need a wake of their own — that wake went to the
+    /// frame already running, not to the event queueing now.
     pub(crate) fn end_sync_queries(&self) -> bool {
-        self.sync_queries.store(false, Ordering::Relaxed);
-        self.sync_started_empty.load(Ordering::Relaxed)
-            && !self
-                .queue
-                .lock()
-                .unwrap_or_else(|e| e.into_inner())
-                .is_empty()
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        inner.sync_queries = false;
+        !inner.queue.is_empty()
+    }
+
+    /// A barrier hook a test installs — invoked inside `push` before the
+    /// queue lock: the pause point a lost wake needs (Lal F2).
+    #[cfg(test)]
+    pub(crate) fn set_probe(&self, probe: Arc<dyn Fn() + Send + Sync>) {
+        *self.push_probe.lock().unwrap() = Some(probe);
     }
 
     /// An arrival: appended, and — when the queue went from empty to
     /// non-empty — the waker called once for the batch. A `Query` pushed
     /// inside a `commit → drain` window queues quietly: the same pass
-    /// drains it.
+    /// drains it. The quiet decision and the queue transition are one
+    /// critical section — a producer can never decide on a window that
+    /// already closed (Lal F2).
     pub(crate) fn push(&self, arrival: Arrival) {
-        let quiet =
-            matches!(&arrival, Arrival::Query { .. }) && self.sync_queries.load(Ordering::Relaxed);
-        let was_empty = {
-            let mut queue = self.queue.lock().unwrap_or_else(|e| e.into_inner());
-            let was_empty = queue.is_empty();
-            queue.push_back(arrival);
-            was_empty
+        #[cfg(test)]
+        if let Some(probe) = self.push_probe.lock().unwrap().clone() {
+            probe();
+        }
+        let wake = {
+            let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+            let quiet = matches!(&arrival, Arrival::Query { .. }) && inner.sync_queries;
+            let was_empty = inner.queue.is_empty();
+            inner.queue.push_back(arrival);
+            was_empty && !quiet
         };
-        if was_empty && !quiet {
+        if wake {
             self.wake();
         }
     }
@@ -160,7 +202,7 @@ impl Inbox {
     /// Everything queued, in arrival order. A push that lands while this
     /// runs goes to the new queue — seen by the next drain, never by both.
     pub(crate) fn drain(&self) -> VecDeque<Arrival> {
-        std::mem::take(&mut *self.queue.lock().unwrap_or_else(|e| e.into_inner()))
+        std::mem::take(&mut self.inner.lock().unwrap_or_else(|e| e.into_inner()).queue)
     }
 
     /// The queued `Query` arrivals, in order — the rest stay queued for
@@ -169,16 +211,16 @@ impl Inbox {
     /// order for `drain_inbox`). A push landing mid-drain goes to the new
     /// queue and is seen next time.
     pub(crate) fn drain_queries(&self) -> Vec<(SubTicket, QueryEvent)> {
-        let mut queue = self.queue.lock().unwrap_or_else(|e| e.into_inner());
+        let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
         let mut out = Vec::new();
-        let mut kept = VecDeque::with_capacity(queue.len());
-        for arrival in queue.drain(..) {
+        let mut kept = VecDeque::with_capacity(inner.queue.len());
+        for arrival in inner.queue.drain(..) {
             match arrival {
                 Arrival::Query { ticket, event } => out.push((ticket, event)),
                 other => kept.push_back(other),
             }
         }
-        *queue = kept;
+        inner.queue = kept;
         out
     }
 
@@ -257,5 +299,86 @@ mod tests {
         completer.complete(Ok(Value::Null));
         assert_eq!(wakes.load(Ordering::SeqCst), 1);
         assert_eq!(inbox.drain().len(), 1);
+    }
+
+    /// Lal F2: a producer that saw the quiet window, then paused while
+    /// the frame drained and closed it, must not suppress the only wake.
+    /// The probe parks it between decision and enqueue — deterministic,
+    /// no sleeps.
+    #[test]
+    fn a_push_paused_between_deciding_and_enqueueing_still_wakes() {
+        let inbox = Arc::new(Inbox::new());
+        let wakes = Arc::new(AtomicUsize::new(0));
+        let w = wakes.clone();
+        inbox.set_waker(Arc::new(move || {
+            w.fetch_add(1, Ordering::SeqCst);
+        }));
+        inbox.begin_sync_queries();
+
+        let entered = Arc::new(std::sync::Barrier::new(2));
+        let released = Arc::new(std::sync::Barrier::new(2));
+        let (e2, r2) = (entered.clone(), released.clone());
+        inbox.set_probe(Arc::new(move || {
+            e2.wait();
+            r2.wait();
+        }));
+        let producer = {
+            let inbox = inbox.clone();
+            std::thread::spawn(move || {
+                inbox.push(Arrival::Query {
+                    ticket: SubTicket::test(9),
+                    event: QueryEvent::Rows(Arc::new(vec![])),
+                });
+            })
+        };
+
+        entered.wait(); // the producer decided and paused
+        assert!(inbox.drain_queries().is_empty());
+        assert!(
+            !inbox.end_sync_queries(),
+            "nothing queued yet — no wake owed"
+        );
+        released.wait();
+        producer.join().unwrap();
+
+        assert_eq!(
+            wakes.load(Ordering::SeqCst),
+            1,
+            "the event that queued behind the window still woke the frontend"
+        );
+        assert_eq!(inbox.drain_queries().len(), 1);
+    }
+
+    /// Lal F2: a window that began over a non-empty queue still owes a
+    /// wake for what its drain left behind — the first batch's wake went
+    /// to the frame already running, so a quiet arrival that lands after
+    /// the drain must not stay silent.
+    #[test]
+    fn a_window_started_non_empty_wakes_for_leftovers() {
+        let inbox = Inbox::new();
+        let wakes = Arc::new(AtomicUsize::new(0));
+        let w = wakes.clone();
+        inbox.set_waker(Arc::new(move || {
+            w.fetch_add(1, Ordering::SeqCst);
+        }));
+        inbox.push(Arrival::Query {
+            ticket: SubTicket::test(1),
+            event: QueryEvent::Rows(Arc::new(vec![])),
+        });
+        assert_eq!(wakes.load(Ordering::SeqCst), 1, "the first batch woke");
+
+        inbox.begin_sync_queries();
+        assert_eq!(inbox.drain_queries().len(), 1, "the pass drained it");
+        inbox.push(Arrival::Query {
+            ticket: SubTicket::test(2),
+            event: QueryEvent::Rows(Arc::new(vec![])),
+        });
+        assert!(
+            inbox.end_sync_queries(),
+            "the leftover queued behind the drain owes a wake"
+        );
+        inbox.wake();
+        assert_eq!(wakes.load(Ordering::SeqCst), 2);
+        assert_eq!(inbox.drain_queries().len(), 1);
     }
 }

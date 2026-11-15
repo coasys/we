@@ -12,11 +12,12 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 
 use serde_json::{json, Value as Json};
-use we_expr::Value;
+use we_expr::{HandleTable, Value};
 use we_screen::{ScreenSchema, ScreenState};
 use we_template::{
-    AppSpec, BundleTemplate, LocalState, PartSource, QueryEvent, QueryRequest, QuerySink,
-    QuerySource, ResolvedChild, ResolvedNode, Runtime, SchemaNode, StaticHost, StoreBag, SubTicket,
+    AppSpec, BundleTemplate, Compiled, DatasetSel, Inbox, LocalState, NodeId, PartSource,
+    QueryEvent, QueryHub, QueryIr, QueryRequest, QuerySink, QuerySource, ResolvedChild,
+    ResolvedNode, Runtime, SchemaNode, SiteId, SiteSlot, StaticHost, StoreBag, SubTicket,
 };
 
 fn schema(v: serde_json::Value) -> SchemaNode {
@@ -499,6 +500,364 @@ fn the_snapshot_table_source_answers_named_queries() {
         matches!(&text, Some(v) if v.strict_eq(&Value::from(2.0))),
         "the name-keyed table answered the named site: {text:?}"
     );
+}
+
+// ---- Round 2: Lal's review fixes ----
+
+/// A request built by hand — the hub's contract needs no schema.
+fn request(entity: &str) -> Compiled {
+    Compiled::Ready(QueryRequest {
+        classes: vec![entity.into()].into(),
+        union: false,
+        subscribe: true,
+        dataset: DatasetSel::Here,
+        ir: QueryIr::default(),
+        name_hint: None,
+        space: None,
+    })
+}
+
+fn site(node: &str, slot: SiteSlot) -> SiteId {
+    SiteId {
+        node: NodeId::new(node),
+        slot,
+    }
+}
+
+fn hub() -> QueryHub {
+    QueryHub::new(Arc::new(Inbox::default()), HandleTable::new())
+}
+
+/// F1: two sites swap one key inside a single commit — the final holder
+/// count never reaches zero, so the ticket survives untouched.
+#[test]
+fn a_same_key_handoff_keeps_the_one_ticket() {
+    let source = Counting::new().holding("Task");
+    let mut hub = hub();
+    let a = site("t:/a", SiteSlot::Prop("rows".into()));
+    let b = site("t:/b", SiteSlot::Prop("rows".into()));
+
+    hub.claim(a.clone(), request("Task"), None);
+    hub.commit(source.clone());
+    assert_eq!(hub.opened(), 1);
+    let ticket = hub.cells()[0].ticket;
+
+    hub.claim(b.clone(), request("Task"), None);
+    hub.commit(source.clone());
+    assert_eq!(hub.opened(), 1, "the ticket survives the handoff");
+    assert_eq!(
+        hub.cells()[0].ticket,
+        ticket,
+        "the same ticket — no close/open churn"
+    );
+    assert_eq!(source.open_count(), 1, "the source is not re-opened");
+    assert_eq!(source.close_count(), 0, "the source is not closed");
+
+    // And a later delivery still lands on the handed-off subscription.
+    source.deliver("Task", vec![Value::from_json(&json!({ "id": "t9" }))]);
+    hub.drain();
+    assert_eq!(hub.cells()[0].view.rows.len(), 1);
+    assert!(hub.cells()[0].view.loaded);
+}
+
+/// F1: two sites trade two keys — each key is positive before and after,
+/// so neither ticket moves.
+#[test]
+fn a_two_key_swap_keeps_both_tickets() {
+    let source = Counting::new().holding("Task").holding("Topic");
+    let mut hub = hub();
+    let a = site("t:/a", SiteSlot::Prop("rows".into()));
+    let b = site("t:/b", SiteSlot::Prop("rows".into()));
+
+    hub.claim(a.clone(), request("Task"), None);
+    hub.claim(b.clone(), request("Topic"), None);
+    hub.commit(source.clone());
+    assert_eq!(hub.opened(), 2);
+    let tickets: Vec<SubTicket> = hub.cells().iter().map(|c| c.ticket).collect();
+
+    hub.claim(a.clone(), request("Topic"), None);
+    hub.claim(b.clone(), request("Task"), None);
+    hub.commit(source.clone());
+    assert_eq!(hub.opened(), 2, "both keys keep their subscriptions");
+    let mut now: Vec<SubTicket> = hub.cells().iter().map(|c| c.ticket).collect();
+    now.sort_by_key(|t| t.raw());
+    let mut before = tickets;
+    before.sort_by_key(|t| t.raw());
+    assert_eq!(now, before, "the same two tickets — no churn");
+    assert_eq!(source.open_count(), 2, "no re-opens");
+    assert_eq!(source.close_count(), 0, "no closes");
+}
+
+/// F1, through a frame: exclusive branches asking the identical request
+/// hand the key between site ids as the flag flips.
+#[test]
+fn a_branch_handoff_does_not_churn_the_source() {
+    let node = json!({ "type": "Column", "children": [
+        { "type": "$if", "props": { "condition": { "$": "flags.a" },
+            "then": { "type": "RowA",
+                "$queries": { "items": { "entity": "Task" } }, "children": [] },
+            "else": { "type": "RowB",
+                "$queries": { "items": { "entity": "Task" } }, "children": [] } } }
+    ]});
+    let source = Counting::new().holding("Task");
+    let (mut rt, mut host, screen, bag) = rig(node, source.clone());
+    set_flag(&bag, "a", true);
+    rt.frame(&mut host, &screen);
+    assert_eq!(source.open_count(), 1, "branch A opened the key");
+
+    set_flag(&bag, "a", false);
+    rt.frame(&mut host, &screen);
+    assert_eq!(rt.hub().opened(), 1, "branch B holds the same ticket");
+    assert_eq!(source.open_count(), 1, "no reopen for the same key");
+    assert_eq!(source.close_count(), 0, "no close churn mid-handoff");
+}
+
+/// F1, through a frame: the `$each` list's sole row is replaced — the new
+/// row's site claims the identical request the replaced row's held.
+#[test]
+fn a_full_row_replacement_keeps_the_ticket() {
+    let node = json!({ "type": "Column", "children": [
+        { "type": "$each", "props": { "items": { "$": "rows" }, "as": "item" },
+          "children": [{ "type": "Row",
+            "$queries": { "items": { "entity": "Task" } }, "children": [] }] }
+    ]});
+    let source = Counting::new().holding("Task");
+    let (mut rt, mut host, screen, bag) = rig(node, source.clone());
+    bag.set_root("rows", Value::from_json(&json!([{ "id": "a" }])));
+    rt.frame(&mut host, &screen);
+    assert_eq!(source.open_count(), 1, "row a's site opened the key");
+
+    bag.set_root("rows", Value::from_json(&json!([{ "id": "b" }])));
+    rt.frame(&mut host, &screen);
+    assert_eq!(rt.hub().opened(), 1, "row b holds the same subscription");
+    assert_eq!(source.open_count(), 1, "no reopen on a whole-row swap");
+    assert_eq!(source.close_count(), 0, "no close on a whole-row swap");
+}
+
+/// F3: a different source inherits every still-held key — the old
+/// tickets close exactly once, the held keys reopen once, and the new
+/// source's answer replaces the old one's.
+#[test]
+fn a_source_swap_reopens_every_held_key() {
+    let a = Counting::new();
+    let b = Counting::new();
+    let mut hub = hub();
+    hub.claim(
+        site("t:/n0", SiteSlot::Prop("rows".into())),
+        request("Task"),
+        None,
+    );
+    hub.commit(a.clone());
+    hub.drain();
+    assert_eq!(a.open_count(), 1);
+    assert_eq!(hub.cells()[0].view.rows.len(), 1, "A's rows landed");
+    // The dead-ticket check: A's sink cannot reach the cell after close.
+    let stale = a
+        .live
+        .lock()
+        .unwrap()
+        .values()
+        .next()
+        .map(|(_, sink)| sink.clone())
+        .expect("A held a live sink");
+
+    hub.claim(
+        site("t:/n0", SiteSlot::Prop("rows".into())),
+        request("Task"),
+        None,
+    );
+    hub.commit(b.clone());
+    assert_eq!(a.close_count(), 1, "A closed exactly once");
+    assert_eq!(b.open_count(), 1, "the held key reopened on B");
+    assert_eq!(hub.opened(), 1, "still one live ticket");
+    // A's old ticket is dead: an event pushed on it is dropped at apply.
+    stale.deliver(QueryEvent::Rows(Arc::new(vec![Value::from_json(
+        &json!({ "id": "ghost" }),
+    )])));
+    hub.drain();
+    assert!(
+        !hub.cells()[0]
+            .view
+            .rows
+            .iter()
+            .any(|r| r.to_json()["id"].as_str() == Some("ghost")),
+        "the swapped-out ticket's event died"
+    );
+    assert_eq!(hub.cells()[0].view.rows.len(), 1, "B's answer landed");
+
+    // And B's live delivery replaces A's rows wholesale.
+    b.deliver("Task", vec![Value::from_json(&json!({ "id": "from-b" }))]);
+    hub.drain();
+    let view = &hub.cells()[0].view;
+    assert_eq!(view.rows.len(), 1);
+    assert_eq!(
+        view.rows[0].to_json()["id"].as_str(),
+        Some("from-b"),
+        "the cell answers from the new source"
+    );
+}
+
+/// F5: the anonymous `$query` prop claims key K *before* the named
+/// `$queries.items` site in the same pass — K must still open with the
+/// name, or the name-keyed snapshot table answers nothing for either.
+/// Both orders share the one subscription and the named answer.
+#[test]
+fn an_anonymous_then_named_claim_shares_the_named_answer() {
+    let bag = Arc::new(
+        StoreBag::from_snapshot(&json!({
+            "stores": {},
+            "queries": { "items": [{ "id": "t1" }, { "id": "t2" }] },
+        }))
+        .unwrap(),
+    );
+    let node = json!({ "type": "Column", "children": [
+        { "type": "List", "props": { "rows": { "$query": { "entity": "Task" } } },
+          "children": [] },
+        { "type": "Named", "$queries": { "items": { "entity": "Task" } },
+          "children": [{ "type": "we-text",
+            "props": { "text": { "$": "local.items.length" } } }] }
+    ]});
+    let mut rt = Runtime::new(schema(node), "test", bag.clone(), LocalState::new());
+    let mut host = StaticHost::new(bag);
+    let screen = screen("/");
+    let root = rt.frame(&mut host, &screen).clone();
+    let text = find_ty(&root, "we-text")
+        .and_then(|n| n.props.get("text"))
+        .cloned();
+    assert!(
+        matches!(&text, Some(v) if v.strict_eq(&Value::from(2.0))),
+        "the named claim's rows answered the shared key: {text:?}"
+    );
+    let rows = find_ty(&root, "List")
+        .and_then(|n| n.props.get("rows"))
+        .cloned();
+    assert!(
+        matches!(&rows, Some(Value::List(r)) if r.len() == 2),
+        "the anonymous claim sees them too: {rows:?}"
+    );
+    assert_eq!(rt.hub().opened(), 1, "both sites share one subscription");
+}
+
+#[test]
+fn a_named_then_anonymous_claim_shares_the_named_answer() {
+    // The same two claims, named first — the order that already worked.
+    let bag = Arc::new(
+        StoreBag::from_snapshot(&json!({
+            "stores": {},
+            "queries": { "items": [{ "id": "t1" }, { "id": "t2" }] },
+        }))
+        .unwrap(),
+    );
+    let node = json!({ "type": "Column", "children": [
+        { "type": "Named", "$queries": { "items": { "entity": "Task" } },
+          "children": [{ "type": "we-text",
+            "props": { "text": { "$": "local.items.length" } } }] },
+        { "type": "List", "props": { "rows": { "$query": { "entity": "Task" } } },
+          "children": [] }
+    ]});
+    let mut rt = Runtime::new(schema(node), "test", bag.clone(), LocalState::new());
+    let mut host = StaticHost::new(bag);
+    let screen = screen("/");
+    let root = rt.frame(&mut host, &screen).clone();
+    let text = find_ty(&root, "we-text")
+        .and_then(|n| n.props.get("text"))
+        .cloned();
+    assert!(
+        matches!(&text, Some(v) if v.strict_eq(&Value::from(2.0))),
+        "the named-first order still answers: {text:?}"
+    );
+    let rows = find_ty(&root, "List")
+        .and_then(|n| n.props.get("rows"))
+        .cloned();
+    assert!(
+        matches!(&rows, Some(Value::List(r)) if r.len() == 2),
+        "the anonymous claim shares them: {rows:?}"
+    );
+    assert_eq!(rt.hub().opened(), 1, "both sites share one subscription");
+}
+
+/// F5, hub-level: a named claim landing on an already-open anonymous cell
+/// updates the entry's hint and reopens the subscription so the
+/// name-keyed source answers it.
+#[test]
+fn a_late_named_claim_reopens_the_unnamed_cell() {
+    let bag = Arc::new(
+        StoreBag::from_snapshot(&json!({
+            "stores": {},
+            "queries": { "items": [{ "id": "t1" }, { "id": "t2" }] },
+        }))
+        .unwrap(),
+    );
+    let source = Names::new(bag);
+    let mut hub = hub();
+    hub.claim(
+        site("t:/l", SiteSlot::Prop("rows".into())),
+        request("Task"),
+        None,
+    );
+    hub.commit(source.clone());
+    hub.drain();
+    assert_eq!(source.hints(), vec![None], "the anonymous open had no name");
+    assert!(!hub.cells()[0].view.loaded, "an unnamed ask is unanswered");
+
+    hub.claim(
+        site("t:/n", SiteSlot::Named("items".into())),
+        request("Task"),
+        None,
+    );
+    hub.claim(
+        site("t:/l", SiteSlot::Prop("rows".into())),
+        request("Task"),
+        None,
+    );
+    hub.commit(source.clone());
+    hub.drain();
+    assert_eq!(
+        source.hints(),
+        vec![None, Some("items".into())],
+        "the cell reopened with the merged hint"
+    );
+    assert_eq!(hub.cells()[0].view.rows.len(), 2, "the named answer landed");
+}
+
+/// A source that answers by `name_hint` the way the snapshot table does —
+/// recording the hint every `open` carried.
+#[derive(Default)]
+struct Names {
+    bag: Arc<StoreBag>,
+    opens: Mutex<Vec<Option<Arc<str>>>>,
+}
+
+impl Names {
+    fn new(bag: Arc<StoreBag>) -> Arc<Self> {
+        Arc::new(Self {
+            bag,
+            opens: Mutex::new(Vec::new()),
+        })
+    }
+    fn hints(&self) -> Vec<Option<Arc<str>>> {
+        self.opens.lock().unwrap().clone()
+    }
+}
+
+impl QuerySource for Names {
+    fn open(
+        &self,
+        _ticket: SubTicket,
+        request: &QueryRequest,
+        _handles: &HandleTable,
+        sink: QuerySink,
+    ) {
+        self.opens.lock().unwrap().push(request.name_hint.clone());
+        if let Some(name) = request.name_hint.as_deref() {
+            match self.bag.query(name) {
+                Value::List(rows) => sink.deliver(QueryEvent::Rows(rows)),
+                Value::Undefined => {}
+                other => sink.deliver(QueryEvent::Rows(Arc::new(vec![other]))),
+            }
+        }
+    }
+    fn close(&self, _ticket: SubTicket) {}
 }
 
 fn find_ty<'a>(node: &'a ResolvedNode, ty: &str) -> Option<&'a ResolvedNode> {

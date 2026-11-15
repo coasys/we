@@ -284,6 +284,13 @@ impl SubTicket {
     pub fn raw(self) -> u64 {
         self.0
     }
+
+    /// A ticket by number — tests address deliveries and exhaustion
+    /// directly.
+    #[cfg(test)]
+    pub(crate) fn test(raw: u64) -> Self {
+        Self(raw)
+    }
 }
 
 /// What a source pushes on a ticket's sink — the TS listener's `onRows` /
@@ -489,13 +496,28 @@ pub(crate) fn note_slot_read(slot: &SlotRef) {
 }
 
 /// Run `f`, returning what it returned and every query slot it read. An
-/// enclosing observer sees the same reads.
+/// enclosing observer sees the same reads. Unwind-safe (Lal F4): a
+/// panicked `f` restores the enclosing observation rather than leaking
+/// its reads into it.
 pub(crate) fn observe_slots<R>(f: impl FnOnce() -> R) -> (R, Vec<SlotRef>) {
+    /// Restores the slot this observation replaced — on return and on
+    /// unwind alike.
+    struct Guard {
+        outer: Option<Vec<SlotRef>>,
+    }
+    impl Drop for Guard {
+        fn drop(&mut self) {
+            let outer = self.outer.take();
+            SLOT_READS.with(|reads| *reads.borrow_mut() = outer);
+        }
+    }
     let outer = SLOT_READS.with(|reads| reads.borrow_mut().replace(Vec::new()));
+    let guard = Guard { outer };
     let out = f();
     let mine = SLOT_READS
-        .with(|reads| std::mem::replace(&mut *reads.borrow_mut(), outer))
+        .with(|reads| std::mem::take(&mut *reads.borrow_mut()))
         .unwrap_or_default();
+    drop(guard);
     for slot in &mine {
         note_slot_read(slot);
     }
@@ -523,6 +545,10 @@ struct Entry {
     holders: usize,
     /// The live subscription — `None` until the first claim commits.
     ticket: Option<SubTicket>,
+    /// A named claim added the `name_hint` this open cell lacked — the
+    /// next commit closes and reopens it so a name-keyed source answers
+    /// (Lal F5).
+    reopen: bool,
 }
 
 impl Entry {
@@ -532,6 +558,7 @@ impl Entry {
             state: CellState::Loading,
             holders: 0,
             ticket: None,
+            reopen: false,
         }
     }
 
@@ -656,10 +683,28 @@ impl QueryHub {
                 request.space = here.cloned();
                 let key = request.key(here, &self.handles);
                 self.claims.insert(site, key.clone());
-                self.entries
-                    .entry(key)
-                    .or_insert_with(|| Entry::new(request))
-                    .view()
+                match self.entries.entry(key) {
+                    std::collections::hash_map::Entry::Occupied(mut e) => {
+                        let entry = e.get_mut();
+                        // The name hint is the claimants' union: a named
+                        // claim supplies it to a key an anonymous claim
+                        // made first — in time for the first open, and,
+                        // for a still-unanswered cell already open, by
+                        // flagging it to reopen so a name-keyed source
+                        // can answer (Lal F5).
+                        if entry.request.name_hint.is_none() {
+                            if let Some(name) = request.name_hint.clone() {
+                                entry.request.name_hint = Some(name);
+                                entry.reopen = entry.ticket.is_some()
+                                    && matches!(entry.state, CellState::Loading);
+                            }
+                        }
+                        entry.view()
+                    }
+                    std::collections::hash_map::Entry::Vacant(e) => {
+                        e.insert(Entry::new(request)).view()
+                    }
+                }
             }
             Compiled::Provisional(_) | Compiled::Gated => {
                 self.claims.remove(&site);
@@ -668,110 +713,138 @@ impl QueryHub {
         }
     }
 
-    /// End a pass: releases first, then acquires — a key two sites swapped
-    /// claims on keeps its count through both edges and never flaps. A 1→0
-    /// key `close`s at the source and dies; a 0→1 key mints a [`SubTicket`]
-    /// and `open`s — the request the first claim brought, the sink that
-    /// stamps the ticket. Entries a claim created but no commit ever held
-    /// (a site re-claimed elsewhere mid-pass) are swept.
+    /// Start a pass: claims a panicked pass recorded are dropped — a site
+    /// that does not claim again this pass must not keep its stale claim
+    /// (Lal F4). A `commit` takes the map wholesale, so a healthy pass
+    /// clears nothing.
+    pub fn begin_pass(&mut self) {
+        self.claims.clear();
+    }
+
+    /// End a pass. The final per-key holder count is computed BEFORE any
+    /// edge runs, so a key sites hand off inside one commit — a branch
+    /// swap, a replaced `$each` row, a two-key trade — never reaches the
+    /// intermediate zero that would close its ticket (Lal F1). Keys the
+    /// final set lacks close on the current source and die; held keys
+    /// with no live ticket open — new claims, and every key a source
+    /// swap just unhooked (Lal F3). Source calls run in key order, so a
+    /// pass's opens and closes are repeatable.
     ///
-    /// Installing a different source mid-session closes every open ticket
-    /// on the old one and reopens on the new.
+    /// Installing a different source mid-session closes every ticket it
+    /// held — exactly once — resets the answer it gave, and reopens
+    /// every still-held key on the new one.
     pub fn commit(&mut self, source: Arc<dyn QuerySource>) {
         if self
             .source
             .as_ref()
             .is_some_and(|old| !Arc::ptr_eq(old, &source))
         {
-            for (ticket, key) in std::mem::take(&mut self.by_ticket) {
-                if let Some(old) = &self.source {
+            if let Some(old) = self.source.clone() {
+                for (ticket, key) in std::mem::take(&mut self.by_ticket) {
+                    // Each ticket leaves the delivery map before its
+                    // `close`, so a late event on it dies; the held keys
+                    // reopen below on the new source.
+                    if let Some(entry) = self.entries.get_mut(&key) {
+                        entry.ticket = None;
+                        entry.state = CellState::Loading;
+                    }
                     old.close(ticket);
-                }
-                if let Some(entry) = self.entries.get_mut(&key) {
-                    entry.ticket = None;
                 }
             }
         }
         self.source = Some(source);
 
         let want: HashMap<SiteId, QueryKey> = std::mem::take(&mut self.claims);
+        let mut counts: HashMap<QueryKey, usize> = HashMap::with_capacity(want.len());
+        for key in want.values() {
+            *counts.entry(key.clone()).or_default() += 1;
+        }
+        self.held = want;
 
-        let mut releases: Vec<SiteId> = self
-            .held
-            .iter()
-            .filter(|(site, key)| want.get(*site) != Some(*key))
-            .map(|(site, _)| site.clone())
-            .collect();
-        releases.sort();
-        for site in releases {
-            if let Some(key) = self.held.remove(&site) {
-                self.release_key(&key);
+        // Keys absent from the final set close and die — entries and
+        // tickets are settled before each `close` so a panicking source
+        // leaves the rest still closeable.
+        let mut closes: Vec<QueryKey> = Vec::new();
+        for (key, entry) in self.entries.iter_mut() {
+            let count = counts.get(key).copied().unwrap_or(0);
+            if count == 0 && (entry.holders > 0 || entry.ticket.is_some()) {
+                closes.push(key.clone());
+            } else {
+                entry.holders = count;
             }
         }
-
-        let mut acquires: Vec<(SiteId, QueryKey)> = want
-            .into_iter()
-            .filter(|(site, key)| self.held.get(site) != Some(key))
-            .collect();
-        acquires.sort_by(|a, b| a.0.cmp(&b.0));
-        for (site, key) in acquires {
-            self.held.insert(site, key.clone());
-            self.acquire_key(&key);
-        }
-
-        // An entry a claim created but nothing holds — a compile that went
-        // provisional between rounds, say — has no reason to exist.
-        self.entries
-            .retain(|_, e| e.holders > 0 || e.ticket.is_some());
-    }
-
-    /// One claim on `key` let go — a holder reached 0: `close` the
-    /// subscription and drop the entry.
-    fn release_key(&mut self, key: &QueryKey) {
-        let Some(entry) = self.entries.get_mut(key) else {
-            return;
-        };
-        entry.holders = entry.holders.saturating_sub(1);
-        if entry.holders == 0 {
+        closes.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+        for key in closes {
+            let Some(mut entry) = self.entries.remove(&key) else {
+                continue;
+            };
             if let Some(ticket) = entry.ticket.take() {
                 self.by_ticket.remove(&ticket);
                 if let Some(source) = &self.source {
                     source.close(ticket);
                 }
             }
-            self.entries.remove(key);
         }
+
+        // A hint a later named claim added to an open cell reopens it —
+        // the name-keyed answer its anonymous open could not fetch.
+        for entry in self.entries.values_mut() {
+            if std::mem::take(&mut entry.reopen) {
+                if let Some(ticket) = entry.ticket.take() {
+                    self.by_ticket.remove(&ticket);
+                    if let Some(source) = &self.source {
+                        source.close(ticket);
+                    }
+                }
+            }
+        }
+
+        // Every still-held key without a live ticket opens.
+        let mut opens: Vec<QueryKey> = self
+            .entries
+            .iter()
+            .filter(|(_, e)| e.holders > 0 && e.ticket.is_none())
+            .map(|(key, _)| key.clone())
+            .collect();
+        opens.sort_by(|a, b| a.as_str().cmp(b.as_str()));
+        for key in opens {
+            self.open_key(&key);
+        }
+
+        // An entry a claim created but nothing holds — a compile that
+        // went provisional between rounds, say — has no reason to exist.
+        // A ticket outlives `holders` only when an `open` panicked on
+        // it, and then it stays so `Drop` can reach it.
+        self.entries
+            .retain(|_, e| e.holders > 0 || e.ticket.is_some());
     }
 
-    /// One claim on `key` arrived — the 0→1 edge mints the ticket and
-    /// `open`s at the source: the request, and a sink stamped with the
-    /// ticket. The sink only queues, so a source answering inside `open`
-    /// is applied by the `drain` this commit's pass follows with.
-    fn acquire_key(&mut self, key: &QueryKey) {
+    /// The 0→1 edge: mint the ticket and record ownership BEFORE the
+    /// source runs — an `open` panic still leaves a ticket `deliver`
+    /// knows and `Drop` can close (Lal F4) — then `open` with the merged
+    /// request. The sink only queues, so a source answering inside
+    /// `open` is applied by the `drain` this commit's pass follows with.
+    /// The counter refuses exhaustion rather than reusing a ticket an
+    /// ancient sink could still address (Lal F6).
+    fn open_key(&mut self, key: &QueryKey) {
         let Some(entry) = self.entries.get_mut(key) else {
             return;
         };
-        entry.holders += 1;
-        if entry.ticket.is_some() {
-            return;
-        }
-        let ticket = {
-            self.next += 1;
-            SubTicket(self.next)
-        };
+        let ticket = SubTicket(
+            self.next
+                .checked_add(1)
+                .expect("subscription tickets exhausted"),
+        );
+        self.next = ticket.0;
         let request = entry.request.clone();
+        entry.ticket = Some(ticket);
+        self.by_ticket.insert(ticket, key.clone());
         let sink = QuerySink {
             ticket,
             inbox: self.inbox.clone(),
         };
         if let Some(source) = &self.source {
             source.open(ticket, &request, &self.handles, sink);
-        }
-        // The entry survives `open` — a source may not claim or commit
-        // from inside it (documented on [`QuerySource`]).
-        if let Some(entry) = self.entries.get_mut(key) {
-            entry.ticket = Some(ticket);
-            self.by_ticket.insert(ticket, key.clone());
         }
     }
 
@@ -1249,4 +1322,155 @@ fn compile_inner(query: &Json, scope: &Scope, cx: &mut CompileCx) -> Option<Quer
         name_hint: None,
         space: None,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    //! Round 2, P3: panic/unwind consistency and checked ticket
+    //! exhaustion — the hub-level halves of Lal's F4 and F6.
+    use super::*;
+    use crate::inbox::Inbox;
+    use std::panic::{catch_unwind, AssertUnwindSafe};
+    use std::sync::Mutex;
+
+    fn hub() -> QueryHub {
+        QueryHub::new(Arc::new(Inbox::default()), HandleTable::new())
+    }
+
+    fn request(entity: &str) -> Compiled {
+        Compiled::Ready(QueryRequest {
+            classes: vec![entity.into()].into(),
+            union: false,
+            subscribe: true,
+            dataset: DatasetSel::Here,
+            ir: QueryIr::default(),
+            name_hint: None,
+            space: None,
+        })
+    }
+
+    fn site(node: &str) -> SiteId {
+        SiteId {
+            node: NodeId::new(node),
+            slot: SiteSlot::Prop("rows".into()),
+        }
+    }
+
+    /// A source that never answers and never panics.
+    #[derive(Default)]
+    struct Null;
+    impl QuerySource for Null {
+        fn open(
+            &self,
+            _ticket: SubTicket,
+            _request: &QueryRequest,
+            _handles: &HandleTable,
+            _sink: QuerySink,
+        ) {
+        }
+        fn close(&self, _ticket: SubTicket) {}
+    }
+
+    /// A source whose `open` panics — the subscription may or may not
+    /// exist on its side; its `close` records what it was asked to end.
+    #[derive(Default)]
+    struct PanicOpen {
+        closes: Mutex<Vec<SubTicket>>,
+    }
+    impl QuerySource for PanicOpen {
+        fn open(
+            &self,
+            _ticket: SubTicket,
+            _request: &QueryRequest,
+            _handles: &HandleTable,
+            _sink: QuerySink,
+        ) {
+            panic!("boom");
+        }
+        fn close(&self, ticket: SubTicket) {
+            self.closes.lock().unwrap().push(ticket);
+        }
+    }
+
+    /// Lal F4/F6: `open` records the ticket BEFORE the source runs, so a
+    /// source that panics mid-open still leaves a subscription the hub
+    /// can close — `Drop` reaches it, and a later claim can move on.
+    #[test]
+    fn a_panicking_open_leaves_the_hub_consistent() {
+        let source = Arc::new(PanicOpen::default());
+        let mut hub = hub();
+        hub.claim(site("t:/a"), request("Task"), None);
+        let hit = catch_unwind(AssertUnwindSafe(|| hub.commit(source.clone())));
+        assert!(hit.is_err(), "the source's panic propagated");
+        assert_eq!(
+            hub.opened(),
+            1,
+            "the ticket registered before the source ran"
+        );
+        let ticket = hub.cells()[0].ticket;
+        drop(hub);
+        assert_eq!(
+            source.closes.lock().unwrap().as_slice(),
+            &[ticket],
+            "drop closed the half-opened ticket"
+        );
+    }
+
+    /// Claims a panicked pass recorded never reach the next commit —
+    /// `begin_pass` clears them, so a site that did not re-claim does not
+    /// stay held.
+    #[test]
+    fn a_panicked_pass_drops_its_claims() {
+        let mut hub = hub();
+        hub.claim(site("t:/a"), request("Task"), None);
+        hub.begin_pass();
+        hub.commit(Arc::new(Null));
+        assert_eq!(hub.held(), 0, "the stale claim never held");
+        assert_eq!(hub.opened(), 0, "and never opened");
+    }
+
+    /// Lal F6: the ticket counter refuses at `u64::MAX` rather than
+    /// wrapping into reuse — an ancient retained sink can never address a
+    /// new entry.
+    #[test]
+    fn tickets_exhaust_instead_of_wrapping() {
+        let source = Arc::new(Null);
+        let mut hub = hub();
+        hub.next = u64::MAX - 1;
+        hub.claim(site("t:/a"), request("Task"), None);
+        hub.commit(source.clone());
+        assert_eq!(hub.opened(), 1, "the last ticket minted");
+
+        hub.claim(site("t:/a"), request("Task"), None);
+        hub.claim(site("t:/b"), request("Topic"), None);
+        let hit = catch_unwind(AssertUnwindSafe(|| hub.commit(source)));
+        assert!(hit.is_err(), "exhaustion refuses instead of wrapping");
+        assert_eq!(hub.opened(), 1, "no second ticket was minted");
+    }
+
+    /// The slot-read observer restores the enclosing observation on
+    /// unwind — a panicked compile's reads must not leak into the next.
+    #[test]
+    fn a_panicked_slot_observation_restores_the_outer_one() {
+        let slot_a = SlotRef::new(
+            NodeId::new("t:/n"),
+            "a".into(),
+            Arc::new(QuerySlot::default()),
+        );
+        let slot_b = SlotRef::new(
+            NodeId::new("t:/n"),
+            "b".into(),
+            Arc::new(QuerySlot::default()),
+        );
+        let ((), reads) = observe_slots(|| {
+            let _ = catch_unwind(AssertUnwindSafe(|| {
+                observe_slots(|| {
+                    note_slot_read(&slot_a);
+                    panic!("boom");
+                });
+            }));
+            note_slot_read(&slot_b);
+        });
+        assert_eq!(reads, vec![slot_b], "the panicked read never leaked out");
+    }
 }
