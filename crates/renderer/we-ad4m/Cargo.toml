@@ -26,9 +26,14 @@ async-trait.workspace = true
 ad4m-client = { git = "https://github.com/coasys/ad4m.git", rev = "fb3e212b1550f4ef064921a0114b0c449a2a7cb8" }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
 anyhow = "1"
+tempfile = { version = "3", optional = true }
+
+[features]
+# `we_ad4m::testkit`: start a real executor for a live test. Tests only.
+testkit = ["dep:tempfile"]
 
 [target.'cfg(not(target_arch = "wasm32"))'.dev-dependencies]
+we-ad4m = { path = ".", features = ["testkit"] }
 tempfile = "3"
-serde_json.workspace = true
 we-session.workspace = true
 we-screen.workspace = true

@@ -65,6 +65,29 @@ pub struct SourceStats {
     pub deliveries: AtomicU64,
     /// Requests that failed — translation, a refused dataset, an RPC error.
     pub failures: AtomicU64,
+    /// The last few failures, newest last: the entity and the reason.
+    pub recent_failures: Mutex<Vec<String>>,
+}
+
+impl SourceStats {
+    const KEEP: usize = 20;
+
+    fn fail(&self, what: String) {
+        self.failures.fetch_add(1, Ordering::Relaxed);
+        if let Ok(mut recent) = self.recent_failures.lock() {
+            recent.push(what);
+            let over = recent.len().saturating_sub(Self::KEEP);
+            recent.drain(..over);
+        }
+    }
+
+    /// The last few failures, newest last.
+    pub fn failures_seen(&self) -> Vec<String> {
+        self.recent_failures
+            .lock()
+            .map(|r| r.clone())
+            .unwrap_or_default()
+    }
 }
 
 /// `QuerySource` over a live executor, bound to one perspective.
@@ -128,9 +151,9 @@ pub(crate) fn rows(instances: Vec<serde_json::Value>) -> Arc<Vec<Value>> {
     Arc::new(instances.iter().map(Value::from_json).collect())
 }
 
-fn failed(sink: &QuerySink, stats: &SourceStats, message: String) {
-    log::warn!("we-ad4m: query failed: {message}");
-    stats.failures.fetch_add(1, Ordering::Relaxed);
+fn failed(sink: &QuerySink, stats: &SourceStats, what: &str, message: String) {
+    log::warn!("we-ad4m: {what}: {message}");
+    stats.fail(format!("{what}: {message}"));
     sink.deliver(QueryEvent::Failed(Value::Str(message.into())));
 }
 
@@ -142,20 +165,21 @@ impl QuerySource for Ad4mQuerySource {
         handles: &HandleTable,
         sink: QuerySink,
     ) {
+        let classes: Vec<String> = request.classes.iter().map(|c| c.to_string()).collect();
+        let what = classes.join("|");
         if let Err(e) = self.resolve_dataset(request, handles) {
-            return failed(&sink, &self.stats, e);
+            return failed(&sink, &self.stats, &what, e);
         }
         let query = match crate::translate::model_query(&request.ir, &self.relations) {
             Ok(q) => q,
-            Err(e) => return failed(&sink, &self.stats, e),
+            Err(e) => return failed(&sink, &self.stats, &what, e),
         };
-        let classes: Vec<String> = request.classes.iter().map(|c| c.to_string()).collect();
         let model = if request.union || classes.len() > 1 {
             Model::new_union(self.conn.ws(), self.space.uuid.clone(), classes)
         } else {
             match classes.into_iter().next() {
                 Some(c) => Model::new(self.conn.ws(), self.space.uuid.clone(), c),
-                None => return failed(&sink, &self.stats, "query names no entity".into()),
+                None => return failed(&sink, &self.stats, &what, "query names no entity".into()),
             }
         };
         let stats = self.stats.clone();
@@ -166,7 +190,7 @@ impl QuerySource for Ad4mQuerySource {
                         stats.deliveries.fetch_add(1, Ordering::Relaxed);
                         sink.deliver(QueryEvent::Rows(rows(r.instances)));
                     }
-                    Err(e) => failed(&sink, &stats, format!("{e:#}")),
+                    Err(e) => failed(&sink, &stats, &what, format!("{e:#}")),
                 }
             });
             return;
@@ -176,7 +200,7 @@ impl QuerySource for Ad4mQuerySource {
             stops.insert(ticket, stop_tx);
         }
         self.conn
-            .spawn(subscribe(model, query, sink, stats, stop_rx));
+            .spawn(subscribe(model, query, sink, stats, what, stop_rx));
     }
 
     fn close(&self, ticket: SubTicket) {
@@ -193,12 +217,13 @@ async fn subscribe(
     query: ModelQuery,
     sink: QuerySink,
     stats: Arc<SourceStats>,
+    what: String,
     mut stop: tokio::sync::oneshot::Receiver<()>,
 ) {
     let mut sub = tokio::select! {
         r = model.subscribe(&query) => match r {
             Ok(sub) => sub,
-            Err(e) => return failed(&sink, &stats, format!("{e:#}")),
+            Err(e) => return failed(&sink, &stats, &what, format!("{e:#}")),
         },
         _ = &mut stop => return,
     };

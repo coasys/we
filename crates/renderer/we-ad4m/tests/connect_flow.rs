@@ -1,7 +1,7 @@
 //! The connect screen's flow against real executors (`EXECUTOR_PATH`;
 //! skipped without it): not found, a capability request the operator
 //! approves, and the stored token reused without asking again.
-mod common;
+use we_ad4m::testkit as common;
 
 use std::sync::mpsc;
 use std::time::{Duration, Instant};

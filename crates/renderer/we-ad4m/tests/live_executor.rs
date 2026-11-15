@@ -2,7 +2,7 @@
 //! without it): a session whose `$queries` read through
 //! [`Ad4mQuerySource`] shows a record created by another client within 2 s,
 //! and keeps doing so after the socket drops and the subscription re-opens.
-mod common;
+use we_ad4m::testkit as common;
 
 use std::sync::mpsc;
 use std::sync::Arc;

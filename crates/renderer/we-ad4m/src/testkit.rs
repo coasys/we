@@ -1,4 +1,5 @@
-//! A real executor for the live tests: spawn, connect, seed a perspective.
+//! A real executor for live tests (feature `testkit`): spawn, connect, seed
+//! a perspective. Shared by this crate's tests and `we-app`'s.
 //!
 //! The binary is `EXECUTOR_PATH`, as in `ad4m-client`'s own integration
 //! tests. Without it the tests print a skip and pass — unless
@@ -7,14 +8,13 @@
 //! Each executor gets its own temporary data directory and a free port, and
 //! is killed when the handle drops: these tests never touch an executor they
 //! did not start.
-#![allow(dead_code)]
 
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::{Duration, Instant};
 
+use crate::{Connection, Runtime};
 use serde_json::{json, Value};
-use we_ad4m::{Connection, Runtime};
 
 pub fn require_binary() -> Option<PathBuf> {
     if let Ok(p) = std::env::var("EXECUTOR_PATH") {
@@ -69,7 +69,7 @@ fn start(admin: Option<&str>) -> Option<Executor> {
     let binary = require_binary()?;
     let data = tempfile::tempdir().unwrap();
     let port = free_port();
-    let seed = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("tests/data/bootstrapSeed.json");
+    let seed = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("testdata/bootstrapSeed.json");
     let init = Command::new(&binary)
         .args(["init", "--data-path"])
         .arg(data.path())
@@ -176,14 +176,19 @@ pub fn seed_space(rt: &Runtime, conn: &Connection, name: &str) -> String {
 /// because the executor the tests run against may predate the validated
 /// write RPC (A3); the subscription answers to links either way.
 pub fn create_post(rt: &Runtime, conn: &Connection, uuid: &str, title: &str) {
+    create_collection(rt, conn, uuid, "post", title);
+}
+
+/// A `CollectionBlock` of `kind` — a post, a call, a channel — as links.
+pub fn create_collection(rt: &Runtime, conn: &Connection, uuid: &str, kind: &str, title: &str) {
     use ad4m_client::literal::Literal;
     use ad4m_client::types::LinkInput;
     static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let base = format!("e7test://post/{}-{n}", std::process::id());
+    let base = format!("e7test://{kind}/{}-{n}", std::process::id());
     let client = conn.client();
     rt.block_on(async {
-        for (predicate, value) in [("we://kind", "post"), ("we://title", title)] {
+        for (predicate, value) in [("we://kind", kind), ("we://title", title)] {
             let target = Literal::from_string(value.to_string()).to_url().unwrap();
             client
                 .perspectives

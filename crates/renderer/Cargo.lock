@@ -6324,6 +6324,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "tokio",
+ "we-ad4m",
  "we-data",
  "we-expr",
  "we-screen",

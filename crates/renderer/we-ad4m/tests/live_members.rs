@@ -2,7 +2,7 @@
 //! skipped without it): a member with a row reads the executor, starting
 //! from the TS store's empty value rather than the snapshot's, and the
 //! provenance says it was served live.
-mod common;
+use we_ad4m::testkit as common;
 
 use std::time::{Duration, Instant};
 

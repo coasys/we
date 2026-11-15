@@ -31,6 +31,8 @@ pub mod relations;
 mod source;
 #[cfg(not(target_arch = "wasm32"))]
 mod spaces;
+#[cfg(all(not(target_arch = "wasm32"), feature = "testkit"))]
+pub mod testkit;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod translate;
 
