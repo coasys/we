@@ -19,11 +19,14 @@ async-trait.workspace = true
 # only — the crate compiles to an empty shell on wasm32, so the workspace's
 # wasm check stays green (`crates/renderer/Cargo.toml`: no tokio on wasm).
 #
-# `ad4m-client` from the approved, unmerged A4 + A5 work (branch
-# port/a5-rust-connect): typed modelQuery/modelSubscribe with reconnect, and
-# the Rust `ad4m-connect` flow. Move the rev when it merges.
+# `ad4m-client` from the unmerged A6 lineage (branch port/a6-on-a5, which
+# contains A4 and A5): typed modelQuery/modelSubscribe with reconnect, the
+# Rust `ad4m-connect` flow, and connect and reconnect sharing the
+# loopback-pinned dial (20847b994). The A5 head, fb3e212b, lost the
+# localhost pin on the first reconnect (`tests/pin.rs`). Move the rev when
+# it merges.
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
-ad4m-client = { git = "https://github.com/coasys/ad4m.git", rev = "fb3e212b1550f4ef064921a0114b0c449a2a7cb8" }
+ad4m-client = { git = "https://github.com/coasys/ad4m.git", rev = "d2e6fab93a61588d429fd44e7139e5d3bcaa7fcd" }
 tokio = { version = "1", features = ["rt-multi-thread", "sync", "time", "macros"] }
 anyhow = "1"
 tempfile = { version = "3", optional = true }
