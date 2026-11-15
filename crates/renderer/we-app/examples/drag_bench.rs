@@ -1,7 +1,8 @@
 //! Drag the tree lane's splitter through the real frame loop and time it:
-//! the Coasys app at the `people` route, 1280x800, a theme (default glow).
+//! the Coasys app at a recorded route (default `people`), 1280x800, a theme
+//! (default glow).
 //!
-//!     cargo run --release -p we-app --example drag_bench -- [theme] [moves] [ppp] [WxH]
+//!     cargo run --release -p we-app --example drag_bench -- [theme] [moves] [ppp] [WxH] [route] [rail]
 //!
 //! Each move is one frame with one `PointerMoved` of 3px (out 300px and
 //! back, repeated), run through
@@ -44,6 +45,8 @@ struct Frame {
     tess: Duration,
     stages: we_app::Stages,
     counters: we_egui::counters::Counters,
+    /// Gradient boxes rasterised, and their pixels.
+    rasters: (u64, u64),
     repaint: bool,
     textures: usize,
     texture_bytes: usize,
@@ -66,8 +69,12 @@ fn main() {
         .split('x')
         .map(|n| n.parse().expect("WxH"))
         .collect();
+    let route = args.next().unwrap_or_else(|| "people".into());
+    // `rail` hovers the rail open and closed instead of dragging a lane —
+    // every frame of its width transition, for a page with no lane.
+    let rail = args.next().as_deref() == Some("rail");
     let bundle = Bundle::parse(BUNDLE).expect("bundle");
-    let (mut app, _) = we_app::coasys_app(&bundle, "people", &theme).expect("app");
+    let (mut app, _) = we_app::coasys_app(&bundle, &route, &theme).expect("app");
     let ctx = egui::Context::default();
     we_app::init_host(&ctx);
     let mut time = 0.0;
@@ -85,10 +92,12 @@ fn main() {
             .or_default()
             .native_pixels_per_point = Some(ppp);
         we_egui::counters::take();
+        we_egui::gradient_rasters_take();
         let t = Instant::now();
         let mut out = ctx.run_ui(input, |ui| app.frame_body(ui));
         let total = t.elapsed();
         let counters = we_egui::counters::take();
+        let rasters = we_egui::gradient_rasters_take();
         let textures = out.textures_delta.set.len();
         let texture_bytes: usize = out
             .textures_delta
@@ -113,6 +122,7 @@ fn main() {
             tess,
             stages: app.stages,
             counters,
+            rasters,
             repaint: out
                 .viewport_output
                 .values()
@@ -125,6 +135,25 @@ fn main() {
     };
     for _ in 0..20 {
         run(&mut app, vec![]);
+    }
+    if rail {
+        // Frames while the rail moves: in for 20 frames, out for 20, and
+        // only the frames that asked for another (the transition running).
+        let mut frames = Vec::new();
+        for i in 0..moves {
+            let x = if (i / 20) % 2 == 0 { 30.0 } else { 900.0 };
+            let events = if i % 20 == 0 {
+                vec![Event::PointerMoved(pos2(x, 400.0))]
+            } else {
+                vec![]
+            };
+            let f = run(&mut app, events);
+            if f.repaint && i % 20 != 0 {
+                frames.push(f);
+            }
+        }
+        report(&format!("{route} rail"), &theme, ppp, &size, &frames, None);
+        return;
     }
     let start = lane(&app, "tree");
     let from = pos2(start.max.x, start.center().y);
@@ -183,13 +212,27 @@ fn main() {
             modifiers: Default::default(),
         }],
     );
+    report(&route, &theme, ppp, &size, &frames, Some(late));
+}
+
+/// Median and p95 of every measure over `frames`; `late` is how many drag
+/// frames drew the lane somewhere other than under the pointer.
+fn report(what: &str, theme: &str, ppp: f32, size: &[f32], frames: &[Frame], late: Option<usize>) {
     let stat = |name: &str, get: &dyn Fn(&Frame) -> f64| {
         let mut v: Vec<f64> = frames.iter().map(get).collect();
         v.sort_by(|a, b| a.partial_cmp(b).expect("finite"));
         let p95 = v[(v.len() * 95).div_ceil(100) - 1];
         println!("{name:10} median {:8.2}  p95 {p95:8.2}", v[v.len() / 2]);
     };
-    println!("{moves} moves, theme {theme}, ppp {ppp}, {}x{} points; frames where the width lagged the pointer: {late}", size[0], size[1]);
+    let late = late.map_or(String::new(), |n| {
+        format!("; frames where the width lagged the pointer: {n}")
+    });
+    println!(
+        "{what}: {} frames, theme {theme}, ppp {ppp}, {}x{} points{late}",
+        frames.len(),
+        size[0],
+        size[1]
+    );
     stat("frame ms", &|f| ms(f.total));
     stat("tess ms", &|f| ms(f.tess));
     stat("resolve ms", &|f| ms(f.stages.resolve));
@@ -200,4 +243,6 @@ fn main() {
     stat("passes", &|f| f.counters.layout_passes as f64);
     stat("tex bytes", &|f| f.texture_bytes as f64);
     stat("vertices", &|f| f.vertices as f64);
+    stat("gradients", &|f| f.rasters.0 as f64);
+    stat("grad px", &|f| f.rasters.1 as f64);
 }
