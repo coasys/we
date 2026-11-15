@@ -14,6 +14,7 @@ import { botsSection } from './BotSettingsPages.ts';
 import { hostCredits, hostSection } from './HostSettings.schema.ts';
 import {
   addDeviceButton,
+  checkEmailCard,
   deviceList,
   deviceListFootnote,
   identityProblem,
@@ -179,6 +180,7 @@ export const securityPage: SchemaNode = {
     heading('Security', 'How you get in, and the key that is you.'),
     identityProblem,
     makeIdentityCard,
+    checkEmailCard,
     comingSoon({
       available: can('password'),
       icon: 'password',

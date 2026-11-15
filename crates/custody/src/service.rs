@@ -94,6 +94,10 @@ pub enum IdentityStep {
     /// for the executor that runs the bot to claim (`bot.createAgent`), and confirms the match
     /// code. The key joins the log with the bot mark and that scope; it never speaks for the person.
     AddBot,
+    /// Checks an email address with the platform (`crate::platform`), and attaches the vouch note
+    /// the platform's token gives to the identity (`identity.attachNote`). Offered while
+    /// `identity.status` says `vouched: false`; the person can skip it.
+    CheckEmail,
 }
 
 /// A key a `confirm-revoke` request asks to revoke, as the key log lists it: the key id and its
@@ -125,12 +129,29 @@ pub enum Screen {
     SetPassphrase { error: Option<String> },
     /// The passphrase, to unlock the master key for this step (Linux).
     EnterPassphrase { error: Option<String> },
-    /// The identity exists, and this computer is its first device.
+    /// The words are confirmed and the identity is being made: the proof of work the store asks of
+    /// a new identity (`bits`, from `identity.powParams`) is solved here, then the identity is
+    /// published. Not a last screen: [`StepInput::WaitCreated`] answers with the screen that
+    /// follows, once the publish is done.
+    Preparing { bits: u8 },
+    /// The identity exists, and this computer is its first device. `vouched`: the store keeps a
+    /// vouch note for it (`identity.status`); when it does not, the email check is offered.
     IdentityReady {
         did: String,
         #[serde(rename = "keyId")]
         key_id: String,
+        vouched: bool,
     },
+    /// The email check: type an email address, to get a code at it. `error`: why the last one
+    /// did not go.
+    EnterEmail { error: Option<String> },
+    /// The code the platform sent to `email`. `error`: why the last code was refused.
+    EnterEmailCode {
+        email: String,
+        error: Option<String>,
+    },
+    /// The store keeps a vouch note for `did` now.
+    EmailChecked { did: String },
     /// The offer link to give the new device, and its QR code as SVG.
     Offer {
         link: String,
@@ -353,7 +374,8 @@ impl Screen {
             | Screen::MasterReplaced { .. }
             | Screen::Restored { .. }
             | Screen::MasterRemoved
-            | Screen::BotAdded { .. } => Some(StepOutcome::Done),
+            | Screen::BotAdded { .. }
+            | Screen::EmailChecked { .. } => Some(StepOutcome::Done),
             Screen::Failed { .. } => Some(StepOutcome::Failed),
             _ => None,
         }
@@ -492,6 +514,17 @@ pub enum StepInput {
         can: Vec<String>,
         days: u32,
     },
+    /// On `Preparing`: wait for the identity to be made (resolves with `IdentityReady`, or with
+    /// `Failed`).
+    WaitCreated,
+    /// On `EnterEmail`: the address to send a code to.
+    Email { email: String },
+    /// On `EnterEmailCode`: the code from the email.
+    EmailCode { code: String },
+    /// On `EnterEmailCode`: send a new code to the same address.
+    NewCode,
+    /// On `EnterEmailCode`: go back to `EnterEmail`, to type another address.
+    ChangeEmail,
 }
 
 impl std::fmt::Debug for StepInput {
@@ -516,6 +549,11 @@ impl std::fmt::Debug for StepInput {
             StepInput::Discard => "discard",
             StepInput::TryAgain => "try-again",
             StepInput::BotScope { .. } => "bot-scope",
+            StepInput::WaitCreated => "wait-created",
+            StepInput::Email { .. } => "email",
+            StepInput::EmailCode { .. } => "email-code",
+            StepInput::NewCode => "new-code",
+            StepInput::ChangeEmail => "change-email",
         };
         f.write_str(name)
     }
@@ -786,6 +824,40 @@ fn words_refused(e: &ad4m_identity_core::words::WordsError) -> (String, Option<u
     }
 }
 
+/// The wait in seconds a `429` of the executor names (`rate-limited: Address, retry after 3600 s`).
+fn retry_after(e: &ClientError) -> Option<u64> {
+    let ClientError::Rpc(e) = e else {
+        return None;
+    };
+    if e.code != 429 {
+        return None;
+    }
+    let (_, after) = e.message.split_once("retry after ")?;
+    after.split_whitespace().next()?.parse().ok()
+}
+
+/// `seconds` as a person reads a wait: in minutes up to an hour, else in hours, rounded up.
+fn a_wait(seconds: u64) -> String {
+    let count = |n: u64, unit: &str| {
+        if n == 1 {
+            format!("1 {unit}")
+        } else {
+            format!("{n} {unit}s")
+        }
+    };
+    if seconds <= 3600 {
+        count(seconds.div_ceil(60).max(1), "minute")
+    } else {
+        count(seconds.div_ceil(3600), "hour")
+    }
+}
+
+/// The store refused the proof of work sent with a new identity (`403 forbidden: "pow"`): its
+/// cost went up after the proof was solved, or the proof is wrong. A new proof can pass.
+fn refused_the_proof(e: &ClientError) -> bool {
+    matches!(e, ClientError::Rpc(e) if e.code == 403 && e.message.starts_with("forbidden: \"pow\""))
+}
+
 /// Words a person reads, for each way a flow stops.
 fn failed(e: &ClientError) -> Screen {
     let message = match e {
@@ -827,6 +899,18 @@ fn failed(e: &ClientError) -> Screen {
         ClientError::OnlyCopy => ONLY_COPY.into(),
         ClientError::RecordBusy => {
             "Your device list is being changed on another device. Try again in a moment.".into()
+        }
+        ClientError::PowTooCostly(bits) => format!(
+            "The identity store asks for more work than this app does to make an identity ({bits} \
+             bits; at most {}). Try again later",
+            ad4m_identity_client::pow::MAX_POW_BITS
+        ),
+        e if retry_after(e).is_some() => format!(
+            "The identity store has had too many requests. Try again in {}",
+            a_wait(retry_after(e).unwrap_or_default())
+        ),
+        e if refused_the_proof(e) => {
+            "The identity store did not accept the proof of work. Try again".into()
         }
         ClientError::Rpc(e) => format!(
             "The identity service on this computer answered: {}",
@@ -890,6 +974,9 @@ async fn serve(vault: DesktopVault, address: ExecutorAddress, mut rx: Rx) {
                     }
                     IdentityStep::AddBot => {
                         run_add_bot(&vault, &address, &mut rx, &mut reply).await
+                    }
+                    IdentityStep::CheckEmail => {
+                        run_check_email(&vault, &address, &mut rx, &mut reply).await
                     }
                 }
             }
@@ -965,6 +1052,7 @@ fn refused_for_good(e: &ClientError, did: &str) -> Option<(String, bool)> {
             ),
             false,
         )),
+        e if refused_the_proof(e) => None,
         ClientError::Rpc(e) if e.code == 400 || e.code == 403 => Some((
             format!("The identity store refused {did}: {}", e.message),
             false,
@@ -1357,10 +1445,15 @@ fn unfinished(e: &ClientError) -> Screen {
     if names_no_store(e) {
         return Screen::Failed { message };
     }
+    // A message that names when to try again says it once.
+    let then = if retry_after(e).is_some() || matches!(e, ClientError::PowTooCostly(_)) {
+        "Then the same identity will be finished."
+    } else {
+        "Try again in a moment: the same identity will be finished."
+    };
     Screen::Failed {
         message: format!(
-            "Your identity was made on this computer but is not published yet. {message} \
-             Try again in a moment: the same identity will be finished."
+            "Your identity was made on this computer but is not published yet. {message} {then}"
         ),
     }
 }
@@ -1399,15 +1492,7 @@ async fn create_on<R: ExecutorRpc>(
     // An identity made here earlier whose publish was not confirmed is finished, never replaced:
     // its master key is already kept, and its words are the ones the person wrote down.
     match finish_pending(executor, vault).await {
-        Ok(Some(created)) => {
-            return answer(
-                reply,
-                Ok(Screen::IdentityReady {
-                    did: created.did,
-                    key_id: created.device_key_id,
-                }),
-            )
-        }
+        Ok(Some(created)) => return answer(reply, Ok(identity_ready(executor, created).await)),
         Ok(None) => {}
         Err(e) => {
             if !offer_discard(executor, vault, address, rx, reply, &e).await {
@@ -1498,7 +1583,29 @@ async fn create_on<R: ExecutorRpc>(
         passphrase = Some(p);
     }
 
-    // incept, the executor's co-signature, the vault keeps master #0 and the incept, publish.
+    // The store's cost for a new identity, before anything is kept: a cost this app does not solve
+    // ends the step here, with nothing made.
+    let bits = match executor.pow_params().await {
+        Ok(params) if params.bits > ad4m_identity_client::pow::MAX_POW_BITS => {
+            let Screen::Failed { message } = failed(&ClientError::PowTooCostly(params.bits)) else {
+                unreachable!("failed() answers Failed")
+            };
+            return answer(
+                reply,
+                Ok(Screen::Failed {
+                    message: format!("{message} Nothing was made."),
+                }),
+            );
+        }
+        Ok(params) => params.bits,
+        Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
+    };
+    // The proof of work runs on this thread and does not yield, which is why custody has a thread
+    // of its own: the window and the host stay responsive. Requests that come meanwhile wait.
+    answer(reply, Ok(Screen::Preparing { bits }));
+
+    // incept, the executor's co-signature, the vault keeps master #0 and the incept, the proof of
+    // work, publish.
     let unlocking = vault.unlocking(passphrase);
     // The record lists this computer from the start, as the one that holds master #0.
     // The create flow names the vault beside master #0 (`Vault::vault_id`) once the identity has
@@ -1512,17 +1619,54 @@ async fn create_on<R: ExecutorRpc>(
             if let Some(Err(e)) = &created.record {
                 log::warn!("custody: the record does not list this computer yet: {e}");
             }
-            Screen::IdentityReady {
-                did: created.did,
-                key_id: created.device_key_id,
-            }
+            identity_ready(executor, created).await
         }
         // Custody came first, so a publish that failed left an identity to finish, not a loss —
         // when the incept kept is this executor's. Another account's is not this step's.
         Err(e) if own_pending(vault, &device_key).ok().flatten().is_some() => unfinished(&e),
         Err(e) => failed(&e),
     };
-    answer(reply, Ok(screen));
+    give_created(vault, address, rx, reply, screen).await;
+}
+
+/// `IdentityReady` for `created`, with whether the store keeps a vouch note for it (`false` when
+/// the executor does not say).
+async fn identity_ready<R: ExecutorRpc>(executor: &ViaExecutor<R>, created: Created) -> Screen {
+    let vouched = match executor.status().await {
+        Ok(status) => status.vouched,
+        Err(e) => {
+            log::warn!("custody: whether the new identity is vouched is not known: {}", e.message);
+            false
+        }
+    };
+    Screen::IdentityReady {
+        did: created.did,
+        key_id: created.device_key_id,
+        vouched,
+    }
+}
+
+/// After `Preparing`: answers `screen`, the create's end, to the window's `WaitCreated`. A cancel
+/// that comes while the identity is made cannot stop it, so it is answered with `screen` too and
+/// the window shows how the create ended.
+async fn give_created(
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+    screen: Screen,
+) {
+    loop {
+        match next_input_or_cancel(vault, address, rx, reply).await {
+            Ok(StepInput::WaitCreated) => return answer(reply, Ok(screen)),
+            Ok(_) => answer(reply, Err(CustodyError::WrongInput)),
+            Err(Some(cancel)) => {
+                let _ = cancel.send(Some(screen));
+                return;
+            }
+            Err(None) => return,
+        }
+    }
 }
 
 /// After `finish_pending` failed in a create: whether the create goes on to new words.
@@ -4241,6 +4385,226 @@ async fn remove_master_on<R: ExecutorRpc>(
     }
 }
 
+// ─── the email check ─────────────────────────────────────────────────────────────
+
+/// Why the email check cannot run: the executor speaks for no identity.
+const NO_IDENTITY_TO_CHECK: &str =
+    "This computer has no identity yet, so there is nothing to check. Make your identity first.";
+
+/// What the code screen says when the platform's vouching service or the store's does not answer.
+const CHECKS_UNAVAILABLE: &str = "Email checks are not available now. Try again later.";
+
+async fn run_check_email(
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
+    let executor = match connect(address).await {
+        Ok(e) => e,
+        Err(message) => return answer(reply, Ok(Screen::Failed { message })),
+    };
+    let platform = crate::platform::Platform::from_env();
+    check_email_on(&executor, &platform, vault, address, rx, reply).await
+}
+
+/// Why `email` is not an address to send a code to, or `None`. Only its form: the platform says
+/// nothing of whether an address exists.
+fn email_problem(email: &str) -> Option<&'static str> {
+    let well_formed = email.len() <= 254
+        && !email.chars().any(char::is_whitespace)
+        && email.split_once('@').is_some_and(|(name, domain)| {
+            !name.is_empty()
+                && !domain.contains('@')
+                && domain.split('.').count() >= 2
+                && domain.split('.').all(|part| !part.is_empty())
+        });
+    (!well_formed).then_some("That is not an email address. Check it and try again.")
+}
+
+/// The code as the person typed it, without spaces or dashes; `None` when it is not 6 digits.
+fn email_code(typed: &str) -> Option<String> {
+    let code: String = typed
+        .chars()
+        .filter(|c| !c.is_whitespace() && *c != '-')
+        .collect();
+    (code.len() == 6 && code.chars().all(|c| c.is_ascii_digit())).then_some(code)
+}
+
+/// Words a person reads for a platform answer that is not one of the code's own refusals.
+fn platform_problem(e: &crate::platform::PlatformError) -> String {
+    use crate::platform::PlatformError;
+    match e {
+        PlatformError::Unreachable(why) => {
+            log::warn!("custody: the platform did not answer: {why}");
+            "Could not reach the email check service. Check your connection and try again.".into()
+        }
+        PlatformError::Refused { status: 400, .. } => {
+            "The email check service did not take that email address. Check it and try again."
+                .into()
+        }
+        PlatformError::Refused { status: 429, .. } => {
+            "Too many tries. Wait a few minutes and try again.".into()
+        }
+        PlatformError::Refused { status, error } => {
+            log::warn!("custody: the platform answered {status} {error:?}");
+            CHECKS_UNAVAILABLE.into()
+        }
+        PlatformError::WrongCode { .. }
+        | PlatformError::TooManyTries
+        | PlatformError::Expired
+        | PlatformError::AlreadyVouched => {
+            unreachable!("the code's own refusals are worded where verify is called")
+        }
+    }
+}
+
+/// The email check: an address, then the code the platform sends to it, then the platform's token
+/// to the executor (`identity.attachNote`), which has the store keep a vouch note for the
+/// identity. A cancel ("Not now") ends it with nothing changed. The token is redeemed once, by the
+/// store; it goes nowhere else.
+async fn check_email_on<R: ExecutorRpc>(
+    executor: &ViaExecutor<R>,
+    platform: &crate::platform::Platform,
+    vault: &DesktopVault,
+    address: &ExecutorAddress,
+    rx: &mut Rx,
+    reply: &mut Reply,
+) {
+    use crate::platform::PlatformError;
+    let did = match executor.status().await {
+        Ok(IdentityStatus {
+            did: Some(did),
+            vouched: true,
+            ..
+        }) => return answer(reply, Ok(Screen::EmailChecked { did })),
+        Ok(IdentityStatus { did: Some(did), .. }) => did,
+        Ok(_) => {
+            return answer(
+                reply,
+                Ok(Screen::Failed {
+                    message: NO_IDENTITY_TO_CHECK.into(),
+                }),
+            )
+        }
+        Err(e) => return answer(reply, Ok(failed(&ClientError::Rpc(e)))),
+    };
+    answer(reply, Ok(Screen::EnterEmail { error: None }));
+
+    // The address the last code went to; `None` on `EnterEmail`.
+    let mut sent: Option<String> = None;
+    loop {
+        let Some(input) = next_input(vault, address, rx, reply).await else {
+            return;
+        };
+        let screen = match (input, sent.clone()) {
+            (StepInput::Email { email }, None) => {
+                let email = email.trim().to_string();
+                if let Some(problem) = email_problem(&email) {
+                    Screen::EnterEmail {
+                        error: Some(problem.into()),
+                    }
+                } else {
+                    match platform.start(&email, &did).await {
+                        Ok(()) => {
+                            sent = Some(email.clone());
+                            Screen::EnterEmailCode { email, error: None }
+                        }
+                        Err(e) => Screen::EnterEmail {
+                            error: Some(platform_problem(&e)),
+                        },
+                    }
+                }
+            }
+            (StepInput::ChangeEmail, Some(_)) => {
+                sent = None;
+                Screen::EnterEmail { error: None }
+            }
+            (StepInput::NewCode, Some(email)) => {
+                let error = platform.start(&email, &did).await.err();
+                Screen::EnterEmailCode {
+                    email,
+                    error: error.map(|e| platform_problem(&e)),
+                }
+            }
+            (StepInput::EmailCode { code }, Some(email)) => {
+                let Some(code) = email_code(&code) else {
+                    answer(
+                        reply,
+                        Ok(Screen::EnterEmailCode {
+                            email,
+                            error: Some("The code has 6 digits. Check the email and try again.".into()),
+                        }),
+                    );
+                    continue;
+                };
+                let refused = |error: String| Screen::EnterEmailCode {
+                    email: email.clone(),
+                    error: Some(error),
+                };
+                match platform.verify(&email, &did, &code).await {
+                    Ok(token) => match executor.attach_note(&token).await {
+                        Ok(_) => return answer(reply, Ok(Screen::EmailChecked { did })),
+                        // Another app of this identity attached a note first: the check is done.
+                        Err(e) if e.code == 409 && e.message.starts_with("already-vouched") => {
+                            return answer(reply, Ok(Screen::EmailChecked { did }))
+                        }
+                        Err(e) if e.code == 409 && e.message.starts_with("no-identity") => {
+                            return answer(
+                                reply,
+                                Ok(Screen::Failed {
+                                    message: NO_IDENTITY_TO_CHECK.into(),
+                                }),
+                            )
+                        }
+                        // The store's vouching check refused the token (spent, or not known).
+                        Err(e) if e.code == 403 => {
+                            refused("That code cannot be used now. Send a new code.".into())
+                        }
+                        Err(e) if e.code == 503 => {
+                            log::warn!("custody: the note was not attached: {}", e.message);
+                            refused(CHECKS_UNAVAILABLE.into())
+                        }
+                        Err(e) => {
+                            let Screen::Failed { message } = failed(&ClientError::Rpc(e)) else {
+                                unreachable!("failed() answers Failed")
+                            };
+                            refused(message)
+                        }
+                    },
+                    Err(PlatformError::WrongCode { tries_left: 0 }) | Err(PlatformError::TooManyTries) => {
+                        refused("Too many wrong codes. Send a new code.".into())
+                    }
+                    Err(PlatformError::WrongCode { tries_left: 1 }) => {
+                        refused("That code is wrong. 1 try left.".into())
+                    }
+                    Err(PlatformError::WrongCode { tries_left }) => {
+                        refused(format!("That code is wrong. {tries_left} tries left."))
+                    }
+                    Err(PlatformError::Expired) => {
+                        refused("That code has expired. Send a new code.".into())
+                    }
+                    Err(PlatformError::AlreadyVouched) => {
+                        sent = None;
+                        Screen::EnterEmail {
+                            error: Some(
+                                "This email address already checks another identity. Use another address."
+                                    .into(),
+                            ),
+                        }
+                    }
+                    Err(e) => refused(platform_problem(&e)),
+                }
+            }
+            _ => {
+                answer(reply, Err(CustodyError::WrongInput));
+                continue;
+            }
+        };
+        answer(reply, Ok(screen));
+    }
+}
+
 /// Whether device `key_id` may still hold a valid master key, as the key log says
 /// ([`crate::keylog::device`]): it made the identity (a standing key of the incept), or the claim
 /// it joined with said `canKeepMaster`. Never the private record, which any linked device can write:
@@ -4310,6 +4674,11 @@ mod tests {
         refusals: RefCell<std::collections::HashMap<&'static str, (u16, &'static str)>>,
         /// How long a method takes to answer, by name.
         delays: RefCell<std::collections::HashMap<&'static str, Duration>>,
+        /// What `identity.status` answers as `vouched`; an `identity.attachNote` sets it.
+        vouched: Cell<bool>,
+        /// The proof of work's cost `identity.powParams` answers, and a publish of a new log
+        /// checks, as the store does (`403 forbidden: "pow"`). Low, so a test solves it at once.
+        pow_bits: Cell<u8>,
     }
 
     impl FakeExecutor {
@@ -4329,6 +4698,8 @@ mod tests {
                 then: RefCell::new(Default::default()),
                 refusals: RefCell::new(Default::default()),
                 delays: RefCell::new(Default::default()),
+                vouched: Cell::new(false),
+                pow_bits: Cell::new(8),
             }
         }
 
@@ -4408,6 +4779,32 @@ mod tests {
                         "head": null,
                         "fork": null,
                         "store": self.store.borrow().clone(),
+                        "vouched": self.vouched.get(),
+                    }))
+                }
+                "identity.powParams" => Ok(json!({
+                    "bits": self.pow_bits.get(),
+                    "previousBits": self.pow_bits.get(),
+                    "changedAt": 0,
+                })),
+                "identity.attachNote" => {
+                    if self.held.borrow().is_none() {
+                        return Err(RpcError {
+                            code: 409,
+                            message: "no-identity: the agent speaks for no identity".into(),
+                        });
+                    }
+                    if self.vouched.replace(true) {
+                        return Err(RpcError {
+                            code: 409,
+                            message: "already-vouched: the store keeps a note for it already"
+                                .into(),
+                        });
+                    }
+                    let held = self.held.borrow().clone().unwrap_or_default();
+                    Ok(json!({
+                        "did": did_of(&held), "method": "email", "time": 0,
+                        "voucher": "did:key:zVoucher", "sig": "s",
                     }))
                 }
                 "identity.cosignIncept" => {
@@ -4471,6 +4868,25 @@ mod tests {
                         });
                     }
                     let event = Event::from_json(&p["events"][0]).unwrap();
+                    // The store's brake: a new log (#0) carries a proof of work at its cost.
+                    if event.seq == 0 {
+                        let pow: Option<ad4m_identity_core::pow::Pow> =
+                            serde_json::from_value(p["pow"].clone()).ok();
+                        let passes = pow.is_some_and(|pow| {
+                            pow.bits >= self.pow_bits.get()
+                                && ad4m_identity_core::pow::check(
+                                    &event.scid,
+                                    &pow,
+                                    self.pow_bits.get(),
+                                )
+                        });
+                        if !passes {
+                            return Err(RpcError {
+                                code: 403,
+                                message: "forbidden: \"pow\"".into(),
+                            });
+                        }
+                    }
                     self.publishes.set(self.publishes.get() + 1);
                     *self.held.borrow_mut() = Some(event.scid.clone());
                     Ok(json!({
@@ -4711,6 +5127,538 @@ mod tests {
         let input: StepInput =
             serde_json::from_str(r#"{"kind":"words","answers":["orbit","lamp"]}"#).unwrap();
         assert!(!format!("{input:?}").contains("orbit"));
+        let input: StepInput =
+            serde_json::from_str(r#"{"kind":"email","email":"a@example.org"}"#).unwrap();
+        assert_eq!(format!("{input:?}"), "email");
+        let input: StepInput =
+            serde_json::from_str(r#"{"kind":"email-code","code":"123456"}"#).unwrap();
+        assert_eq!(format!("{input:?}"), "email-code");
+    }
+
+    // ─── the proof of work ───
+
+    #[test]
+    fn the_new_screens_and_inputs_cross_ipc_in_the_shapes_the_window_expects() {
+        let step: IdentityStep = serde_json::from_str(r#"{"kind":"check-email"}"#).unwrap();
+        assert_eq!(step, IdentityStep::CheckEmail);
+        assert_eq!(
+            serde_json::to_value(Screen::Preparing { bits: 22 }).unwrap(),
+            json!({ "screen": "preparing", "bits": 22 })
+        );
+        assert_eq!(
+            serde_json::to_value(Screen::IdentityReady {
+                did: "did:scid:coasys:1:Qm".into(),
+                key_id: "d1".into(),
+                vouched: false,
+            })
+            .unwrap(),
+            json!({ "screen": "identity-ready", "did": "did:scid:coasys:1:Qm", "keyId": "d1", "vouched": false })
+        );
+        assert_eq!(
+            serde_json::to_value(Screen::EnterEmailCode {
+                email: "a@example.org".into(),
+                error: None,
+            })
+            .unwrap(),
+            json!({ "screen": "enter-email-code", "email": "a@example.org", "error": null })
+        );
+        assert_eq!(
+            serde_json::to_value(Screen::EnterEmail { error: None }).unwrap()["screen"],
+            "enter-email"
+        );
+        let checked = Screen::EmailChecked {
+            did: "did:scid:coasys:1:Qm".into(),
+        };
+        assert_eq!(serde_json::to_value(&checked).unwrap()["screen"], "email-checked");
+        assert_eq!(checked.outcome(), Some(StepOutcome::Done));
+        assert_eq!(Screen::Preparing { bits: 22 }.outcome(), None);
+        for (text, name) in [
+            (r#"{"kind":"wait-created"}"#, "wait-created"),
+            (r#"{"kind":"new-code"}"#, "new-code"),
+            (r#"{"kind":"change-email"}"#, "change-email"),
+        ] {
+            let input: StepInput = serde_json::from_str(text).unwrap();
+            assert_eq!(format!("{input:?}"), name);
+        }
+    }
+
+    /// A first run: the words, the passphrase, then `Preparing` at the store's cost while the
+    /// proof is solved, and the incept is published with that proof.
+    #[tokio::test]
+    async fn a_create_publishes_its_incept_with_a_proof_at_the_stores_cost() {
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        executor.rpc().pow_bits.set(10);
+        let vault = memory_vault(crate::store::StoreKind::File);
+        let screens = run_create_on(&executor, &vault, |window, first| async move {
+            let preparing = to_the_passphrase(&window, first).await;
+            let ready = window.step(StepInput::WaitCreated).await;
+            vec![preparing, ready]
+        })
+        .await;
+        assert_eq!(screens[0], Screen::Preparing { bits: 10 });
+        let Screen::IdentityReady { did, vouched, .. } = &screens[1] else {
+            panic!("{screens:?}");
+        };
+        assert!(!vouched, "a new identity has no vouch note");
+        assert_eq!(executor.rpc().publishes.get(), 1);
+        let publish = &executor.rpc().called("identity.publish")[0];
+        let pow: ad4m_identity_core::pow::Pow =
+            serde_json::from_value(publish["pow"].clone()).unwrap();
+        let scid = ad4m_identity_core::scid_of(did).unwrap();
+        assert_eq!(pow.bits, 10);
+        assert!(ad4m_identity_core::pow::check(scid, &pow, 10));
+        assert!(vault.pending_incepts().unwrap().is_empty());
+    }
+
+    /// A cost above what the app solves ends the create before the executor co-signs or the vault
+    /// keeps anything: there is no identity left to finish.
+    #[tokio::test]
+    async fn a_cost_above_what_the_app_solves_is_refused_before_anything_is_kept() {
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        let too_many = ad4m_identity_client::pow::MAX_POW_BITS + 1;
+        executor.rpc().pow_bits.set(too_many);
+        let vault = memory_vault(crate::store::StoreKind::File);
+        let screens = run_create_on(&executor, &vault, |window, first| async move {
+            vec![to_the_passphrase(&window, first).await]
+        })
+        .await;
+        let Screen::Failed { message } = &screens[0] else {
+            panic!("{screens:?}");
+        };
+        assert!(message.contains(&format!("{too_many} bits")), "{message}");
+        assert!(message.ends_with("Nothing was made."), "{message}");
+        assert!(executor.rpc().called("identity.cosignIncept").is_empty());
+        assert!(vault.pending_incepts().unwrap().is_empty());
+        assert_eq!(executor.rpc().publishes.get(), 0);
+    }
+
+    /// A store that refuses the proof (its cost went up meanwhile) leaves an identity to finish,
+    /// not one refused for good: the next create solves a new proof and publishes it.
+    #[tokio::test]
+    async fn a_refused_proof_is_finished_with_a_new_one_on_the_next_try() {
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        executor.rpc().refuse("identity.publish", 403, "forbidden: \"pow\"");
+        let vault = memory_vault(crate::store::StoreKind::File);
+        let screens = run_create_on(&executor, &vault, |window, first| async move {
+            vec![write_down(&window, first).await]
+        })
+        .await;
+        let Screen::Failed { message } = &screens[0] else {
+            panic!("{screens:?}");
+        };
+        assert!(message.contains("did not accept the proof of work"), "{message}");
+        assert!(message.contains("the same identity will be finished"), "{message}");
+        assert_eq!(vault.pending_incepts().unwrap().len(), 1);
+
+        executor.rpc().refusals.borrow_mut().clear();
+        let screens =
+            run_create_on(&executor, &vault, |_, first| async move { vec![first] }).await;
+        assert!(
+            matches!(&screens[0], Screen::IdentityReady { vouched: false, .. }),
+            "{screens:?}"
+        );
+        assert_eq!(executor.rpc().publishes.get(), 1);
+        assert!(vault.pending_incepts().unwrap().is_empty());
+    }
+
+    /// A cancel while the identity is made cannot stop it: the window is told how it ended.
+    #[tokio::test]
+    async fn a_cancel_while_the_identity_is_made_shows_how_it_ended() {
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        let vault = memory_vault(crate::store::StoreKind::File);
+        let screens = run_create_on(&executor, &vault, |window, first| async move {
+            let preparing = to_the_passphrase(&window, first).await;
+            let (tx, rx) = oneshot::channel();
+            window.tx.send(Request::Cancel(tx)).unwrap();
+            let shown = rx.await.unwrap().expect("the cancel answers the screen to show");
+            vec![preparing, shown]
+        })
+        .await;
+        assert!(matches!(screens[0], Screen::Preparing { .. }));
+        assert!(
+            matches!(screens[1], Screen::IdentityReady { .. }),
+            "{screens:?}"
+        );
+        assert_eq!(executor.rpc().publishes.get(), 1);
+    }
+
+    #[test]
+    fn a_rate_limit_says_how_long_to_wait_and_once() {
+        let limited = |seconds: u64| {
+            ClientError::Rpc(RpcError {
+                code: 429,
+                message: format!("rate-limited: Address, retry after {seconds} s"),
+            })
+        };
+        for (seconds, wait) in [
+            (20, "1 minute"),
+            (90, "2 minutes"),
+            (3600, "60 minutes"),
+            (3601, "2 hours"),
+            (86_400, "24 hours"),
+        ] {
+            let Screen::Failed { message } = failed(&limited(seconds)) else {
+                unreachable!()
+            };
+            assert_eq!(
+                message,
+                format!("The identity store has had too many requests. Try again in {wait}.")
+            );
+        }
+        let Screen::Failed { message } = unfinished(&limited(600)) else {
+            unreachable!()
+        };
+        assert!(message.contains("Try again in 10 minutes."), "{message}");
+        assert!(!message.contains("in a moment"), "{message}");
+        // A 429 that names no wait is quoted as the executor says it.
+        let Screen::Failed { message } = failed(&ClientError::Rpc(RpcError {
+            code: 429,
+            message: "too many".into(),
+        })) else {
+            unreachable!()
+        };
+        assert!(message.ends_with("answered: too many."), "{message}");
+    }
+
+    #[test]
+    fn a_cost_too_high_and_a_refused_proof_read_as_sentences() {
+        let Screen::Failed { message } = failed(&ClientError::PowTooCostly(30)) else {
+            unreachable!()
+        };
+        assert_eq!(
+            message,
+            "The identity store asks for more work than this app does to make an identity (30 \
+             bits; at most 28). Try again later."
+        );
+        let Screen::Failed { message } = unfinished(&ClientError::PowTooCostly(30)) else {
+            unreachable!()
+        };
+        assert!(!message.contains("in a moment"), "{message}");
+        let Screen::Failed { message } = failed(&ClientError::Rpc(RpcError {
+            code: 403,
+            message: "forbidden: \"pow\"".into(),
+        })) else {
+            unreachable!()
+        };
+        assert_eq!(
+            message,
+            "The identity store did not accept the proof of work. Try again."
+        );
+    }
+
+    // ─── the email check ───
+
+    /// Runs [`check_email_on`] with the fake executor and `platform`, `window` driving it.
+    async fn run_check_email_on<F, Fut>(
+        executor: &ViaExecutor<FakeExecutor>,
+        platform: &crate::platform::Platform,
+        window: F,
+    ) -> Vec<Screen>
+    where
+        F: FnOnce(Window, Screen) -> Fut,
+        Fut: std::future::Future<Output = Vec<Screen>>,
+    {
+        let vault = memory_vault(crate::store::StoreKind::File);
+        let (address, mut rx, mut reply, window_side, first) = opened();
+        let ((), screens) = tokio::join!(
+            check_email_on(executor, platform, &vault, &address, &mut rx, &mut reply),
+            async move {
+                let first = first.await.unwrap().unwrap();
+                window(window_side, first).await
+            }
+        );
+        screens
+    }
+
+    fn code_error(screen: &Screen) -> Option<&str> {
+        match screen {
+            Screen::EnterEmailCode { error, .. } | Screen::EnterEmail { error } => {
+                error.as_deref()
+            }
+            _ => None,
+        }
+    }
+
+    #[tokio::test]
+    async fn the_email_check_attaches_the_note_the_platforms_token_gives() {
+        let executor = linked_executor();
+        let did = did_of(LINKED_SCID);
+        let (platform, taken) = crate::platform::tests::fake_platform(vec![
+            (202, json!({})),
+            (200, json!({ "token": "vouch-token-1" })),
+        ])
+        .await;
+        let screens = run_check_email_on(&executor, &platform, |window, first| async move {
+            let bad = window
+                .step(StepInput::Email {
+                    email: "not an address".into(),
+                })
+                .await;
+            let code = window
+                .step(StepInput::Email {
+                    email: " a@example.org ".into(),
+                })
+                .await;
+            let short = window
+                .step(StepInput::EmailCode { code: "123".into() })
+                .await;
+            let done = window
+                .step(StepInput::EmailCode {
+                    code: "123 456".into(),
+                })
+                .await;
+            vec![first, bad, code, short, done]
+        })
+        .await;
+        assert_eq!(screens[0], Screen::EnterEmail { error: None });
+        assert!(code_error(&screens[1]).is_some_and(|e| e.contains("not an email address")));
+        assert_eq!(
+            screens[2],
+            Screen::EnterEmailCode {
+                email: "a@example.org".into(),
+                error: None
+            }
+        );
+        assert!(code_error(&screens[3]).is_some_and(|e| e.contains("6 digits")));
+        assert_eq!(screens[4], Screen::EmailChecked { did: did.clone() });
+        // The platform saw the address and the identity, then the code without its space.
+        assert_eq!(
+            *taken.lock().unwrap(),
+            vec![
+                (
+                    "/api/vouch/email/start".to_string(),
+                    json!({ "email": "a@example.org", "did": did })
+                ),
+                (
+                    "/api/vouch/email/verify".to_string(),
+                    json!({ "email": "a@example.org", "did": did, "code": "123456" })
+                ),
+            ]
+        );
+        // The token went to the executor, and nowhere else.
+        assert_eq!(
+            executor.rpc().called("identity.attachNote"),
+            vec![json!({ "token": "vouch-token-1" })]
+        );
+        assert!(executor.rpc().vouched.get());
+    }
+
+    #[tokio::test]
+    async fn each_refusal_of_a_code_is_said_and_the_check_goes_on() {
+        let executor = linked_executor();
+        let (platform, taken) = crate::platform::tests::fake_platform(vec![
+            (202, json!({})),
+            (400, json!({ "error": "code", "triesLeft": 2 })),
+            (400, json!({ "error": "code", "triesLeft": 1 })),
+            (429, json!({ "error": "tries" })),
+            (202, json!({})),
+            (410, json!({ "error": "expired" })),
+            (409, json!({ "error": "already-vouched" })),
+            (202, json!({})),
+        ])
+        .await;
+        let screens = run_check_email_on(&executor, &platform, |window, _| async move {
+            let mut shown = vec![];
+            let code = || StepInput::EmailCode {
+                code: "000000".into(),
+            };
+            window
+                .step(StepInput::Email {
+                    email: "a@example.org".into(),
+                })
+                .await;
+            shown.push(window.step(code()).await);
+            shown.push(window.step(code()).await);
+            shown.push(window.step(code()).await);
+            shown.push(window.step(StepInput::NewCode).await);
+            shown.push(window.step(code()).await);
+            shown.push(window.step(code()).await);
+            shown.push(
+                window
+                    .step(StepInput::Email {
+                        email: "b@example.org".into(),
+                    })
+                    .await,
+            );
+            shown.push(window.step(StepInput::ChangeEmail).await);
+            shown
+        })
+        .await;
+        let errors: Vec<Option<&str>> = screens.iter().map(code_error).collect();
+        assert_eq!(
+            errors,
+            vec![
+                Some("That code is wrong. 2 tries left."),
+                Some("That code is wrong. 1 try left."),
+                Some("Too many wrong codes. Send a new code."),
+                None,
+                Some("That code has expired. Send a new code."),
+                Some("This email address already checks another identity. Use another address."),
+                None,
+                None,
+            ]
+        );
+        assert!(matches!(&screens[3], Screen::EnterEmailCode { email, .. } if email == "a@example.org"));
+        assert!(matches!(screens[5], Screen::EnterEmail { .. }));
+        assert!(matches!(&screens[6], Screen::EnterEmailCode { email, .. } if email == "b@example.org"));
+        assert_eq!(screens[7], Screen::EnterEmail { error: None });
+        assert_eq!(taken.lock().unwrap().len(), 8);
+        assert!(executor.rpc().called("identity.attachNote").is_empty());
+    }
+
+    #[tokio::test]
+    async fn each_refusal_of_the_note_is_said() {
+        let did = did_of(LINKED_SCID);
+        for (code, message, expected) in [
+            (
+                403,
+                "forbidden: \"vouch\"",
+                Some("That code cannot be used now. Send a new code."),
+            ),
+            (503, "unavailable: no vouching service answers", Some(CHECKS_UNAVAILABLE)),
+            (400, "invalid: a bad token", None),
+        ] {
+            let executor = linked_executor();
+            executor.rpc().refuse("identity.attachNote", code, message);
+            let (platform, _) = crate::platform::tests::fake_platform(vec![
+                (202, json!({})),
+                (200, json!({ "token": "t" })),
+            ])
+            .await;
+            let screens = run_check_email_on(&executor, &platform, |window, _| async move {
+                window
+                    .step(StepInput::Email {
+                        email: "a@example.org".into(),
+                    })
+                    .await;
+                vec![
+                    window
+                        .step(StepInput::EmailCode {
+                            code: "123456".into(),
+                        })
+                        .await,
+                ]
+            })
+            .await;
+            let Screen::EnterEmailCode { error: Some(error), .. } = &screens[0] else {
+                panic!("{screens:?}");
+            };
+            match expected {
+                Some(expected) => assert_eq!(error, expected),
+                None => assert!(error.contains("invalid: a bad token"), "{error}"),
+            }
+        }
+
+        // A note another app attached first: the check is done.
+        for (code, message, ends) in [
+            (
+                409,
+                "already-vouched: the store keeps a note already",
+                Screen::EmailChecked { did: did.clone() },
+            ),
+            (
+                409,
+                "no-identity: the agent speaks for no identity",
+                Screen::Failed {
+                    message: NO_IDENTITY_TO_CHECK.into(),
+                },
+            ),
+        ] {
+            let executor = linked_executor();
+            executor.rpc().refuse("identity.attachNote", code, message);
+            let (platform, _) = crate::platform::tests::fake_platform(vec![
+                (202, json!({})),
+                (200, json!({ "token": "t" })),
+            ])
+            .await;
+            let screens = run_check_email_on(&executor, &platform, |window, _| async move {
+                window
+                    .step(StepInput::Email {
+                        email: "a@example.org".into(),
+                    })
+                    .await;
+                vec![
+                    window
+                        .step(StepInput::EmailCode {
+                            code: "123456".into(),
+                        })
+                        .await,
+                ]
+            })
+            .await;
+            assert_eq!(screens[0], ends);
+        }
+    }
+
+    #[tokio::test]
+    async fn an_identity_already_vouched_or_none_asks_for_no_email() {
+        let (platform, taken) = crate::platform::tests::fake_platform(vec![]).await;
+        let executor = linked_executor();
+        executor.rpc().vouched.set(true);
+        let screens =
+            run_check_email_on(&executor, &platform, |_, first| async move { vec![first] }).await;
+        assert_eq!(
+            screens,
+            vec![Screen::EmailChecked {
+                did: did_of(LINKED_SCID)
+            }]
+        );
+        let executor = ViaExecutor::new(FakeExecutor::new());
+        let screens =
+            run_check_email_on(&executor, &platform, |_, first| async move { vec![first] }).await;
+        assert_eq!(
+            screens,
+            vec![Screen::Failed {
+                message: NO_IDENTITY_TO_CHECK.into()
+            }]
+        );
+        assert!(taken.lock().unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_platform_that_does_not_answer_is_said_and_not_now_ends_the_check() {
+        let port = {
+            let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            listener.local_addr().unwrap().port()
+        };
+        let platform = crate::platform::Platform::new(&format!("http://127.0.0.1:{port}"));
+        let executor = linked_executor();
+        let screens = run_check_email_on(&executor, &platform, |window, _| async move {
+            let unreachable = window
+                .step(StepInput::Email {
+                    email: "a@example.org".into(),
+                })
+                .await;
+            // "Not now": the check ends with nothing changed.
+            let (tx, rx) = oneshot::channel();
+            window.tx.send(Request::Cancel(tx)).unwrap();
+            assert_eq!(rx.await.unwrap(), None);
+            vec![unreachable]
+        })
+        .await;
+        assert_eq!(
+            screens,
+            vec![Screen::EnterEmail {
+                error: Some(
+                    "Could not reach the email check service. Check your connection and try again."
+                        .into()
+                )
+            }]
+        );
+        assert!(!executor.rpc().vouched.get());
+    }
+
+    #[test]
+    fn an_email_and_a_code_are_checked_for_their_form_only() {
+        for good in ["a@example.org", "first.last+tag@mail.example.co.uk"] {
+            assert_eq!(email_problem(good), None, "{good}");
+        }
+        for bad in ["", "a", "a@", "@example.org", "a@example", "a b@example.org", "a@@example.org", "a@example..org"] {
+            assert!(email_problem(bad).is_some(), "{bad}");
+        }
+        assert_eq!(email_code(" 123-456 ").as_deref(), Some("123456"));
+        assert_eq!(email_code("12345"), None);
+        assert_eq!(email_code("12345a"), None);
     }
 
     // Every device reads the record, so an unnamed computer is written by what it is: "This
@@ -4834,7 +5782,7 @@ mod tests {
     #[async_trait::async_trait(?Send)]
     impl ExecutorRpc for OldExecutor {
         async fn call(&self, _: &str, _: Value) -> Result<Value, RpcError> {
-            Ok(json!({ "did": null, "deviceKey": "z6Mk", "deviceEnc": "z6LS" }))
+            Ok(json!({ "did": null, "deviceKey": "z6Mk", "deviceEnc": "z6LS", "vouched": false }))
         }
     }
 
@@ -4963,6 +5911,8 @@ mod tests {
             rpc(503, "unavailable: the store did not answer"),
             rpc(429, "rate-limited: Ip, retry after 30 s"),
             rpc(502, "bad-head-signature: the store's head is not signed"),
+            // The store's cost went up after the proof was solved: a new proof can pass.
+            rpc(403, "forbidden: \"pow\""),
             ClientError::Vault(VaultError::Unavailable("locked".into())),
         ] {
             assert!(refused_for_good(&transient, did).is_none(), "{transient:?}");
@@ -4972,7 +5922,7 @@ mod tests {
         for permanent in [
             rpc(409, "conflict: the store's head is seq 3 (h)"),
             rpc(400, "invalid: bad proof"),
-            rpc(403, "forbidden: \"pow\""),
+            rpc(403, "forbidden: \"cosig\""),
         ] {
             let (message, key) = refused_for_good(&permanent, did).unwrap();
             assert!(!key && message.contains(did), "{message}");
@@ -5169,8 +6119,18 @@ mod tests {
         screens
     }
 
-    /// From the words to the passphrase, as a person does it: the screen after the passphrase.
+    /// From the words to the passphrase, as a person does it: the screen after the passphrase, and
+    /// past `Preparing` the screen the create ends on, as the window waits for it.
     async fn write_down(window: &Window, first: Screen) -> Screen {
+        let next = to_the_passphrase(window, first).await;
+        match next {
+            Screen::Preparing { .. } => window.step(StepInput::WaitCreated).await,
+            other => other,
+        }
+    }
+
+    /// [`write_down`] up to the screen after the passphrase.
+    async fn to_the_passphrase(window: &Window, first: Screen) -> Screen {
         let Screen::ShowWords { words } = first else {
             panic!("{first:?}");
         };
