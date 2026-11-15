@@ -51,6 +51,10 @@
 //! Data: `bundles/coasys.bundle.json` + `fixtures/coasys/snapshot.json`.
 //! The snapshot's sha256 is asserted before anything reads it, so capture
 //! bytes cannot drift under the test.
+
+#[path = "support/gpu.rs"]
+mod gpu;
+
 use std::path::PathBuf;
 use std::sync::Arc;
 
@@ -399,6 +403,7 @@ fn gate_context_setup(ctx: &egui::Context) {
 /// — these are pictures, and the bundle's unnamed buttons are recorded.
 fn pixel_harness(app: RendererApp) -> Harness<'static, RendererApp> {
     Harness::builder()
+        .renderer(gpu::serial())
         .with_size(Vec2::new(W, H))
         .with_pixels_per_point(1.0)
         .with_context_setup(gate_context_setup)
@@ -572,6 +577,7 @@ fn tree_panel() {
     panel.theme = capture_theme();
     let shell = Shell { panel };
     let mut harness = Harness::builder()
+        .renderer(gpu::serial())
         .with_size(Vec2::new(W, H))
         .with_pixels_per_point(1.0)
         .with_context_setup(gate_context_setup)

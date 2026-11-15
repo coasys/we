@@ -7,6 +7,10 @@
 //! Heights come from the resolved layout, not a fixed viewport — the web
 //! side screenshots full-page, so a full-content Rust frame is the same
 //! subject.
+
+#[path = "support/gpu.rs"]
+mod gpu;
+
 use std::cell::RefCell;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -76,6 +80,7 @@ fn theme_compare_dump() {
                 let m = measured.clone();
                 let app = app_for(&schema, theme);
                 let mut probe = Harness::builder()
+                    .renderer(gpu::serial())
                     .with_size(Vec2::new(*width, 4000.0))
                     // Same pinned raster inputs as `gallery.rs`: the
                     // WE-installed fonts (the theme's face shapes the
@@ -95,6 +100,7 @@ fn theme_compare_dump() {
             // Pass 2: the real capture at content height.
             let app = app_for(&schema, theme);
             let mut harness = Harness::builder()
+                .renderer(gpu::serial())
                 .with_size(Vec2::new(*width, height))
                 .with_pixels_per_point(1.0)
                 .with_context_setup(we_egui::install_media)

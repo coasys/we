@@ -31,6 +31,10 @@
 //! A test rather than a `we-app shots` subcommand: the headless wgpu
 //! renderer is `egui_kittest`, a dev-dependency, and the binary should not
 //! carry it (or a PNG encoder) to take pictures nobody ships.
+
+#[path = "support/gpu.rs"]
+mod gpu;
+
 use std::collections::BTreeSet;
 use std::fmt::Write as _;
 use std::path::{Path, PathBuf};
@@ -290,6 +294,7 @@ fn missed_captures(truth: &Json, id: &str) -> Vec<String> {
 /// redirects and animations, then until images stop decoding.
 fn render(app: RendererApp) -> (RgbaImage, RendererApp) {
     let mut harness = Harness::builder()
+        .renderer(gpu::serial())
         .with_size(Vec2::new(W as f32, H as f32))
         .with_pixels_per_point(1.0)
         // What the production host does (`we_app::init_host`): a glyph no
@@ -371,6 +376,7 @@ fn main_area_ink(img: &RgbaImage) -> f64 {
 fn label_bar(text: &str, warn: bool) -> RgbaImage {
     let text = text.to_string();
     let mut harness = Harness::builder()
+        .renderer(gpu::serial())
         .with_size(Vec2::new((2 * W) as f32, BAR as f32))
         .with_pixels_per_point(1.0)
         .build_ui(move |ui| {

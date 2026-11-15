@@ -3,6 +3,10 @@
 //! default, 400, when it asks for none), only a face without that weight
 //! gets the synthesised bold the browser would give it, and VT323 — a
 //! pixel font — lands on whole physical pixels at 1x and 2x.
+
+#[path = "support/gpu.rs"]
+mod gpu;
+
 use std::cell::RefCell;
 use std::sync::Arc;
 
@@ -82,6 +86,7 @@ fn shoot(root: ResolvedNode, ppp: f32) -> Shot {
     let shapes = RefCell::new(0usize);
     let size = Vec2::new(320.0, 80.0);
     let mut harness = Harness::builder()
+        .renderer(gpu::serial())
         .with_size(size)
         .with_pixels_per_point(ppp)
         .with_context_setup(we_egui::install_media)

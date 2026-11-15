@@ -2,6 +2,10 @@
 //! `--gallery widgets` opens, dark-themed, rendered headless. Baselines
 //! live in `tests/snapshots/`; re-record with
 //! `UPDATE_SNAPSHOTS=1 cargo test -p we-app widgets_gallery`.
+
+#[path = "support/gpu.rs"]
+mod gpu;
+
 use std::cell::RefCell;
 use std::rc::Rc;
 
@@ -14,6 +18,7 @@ fn snap(name: &str, open: bool, results: &mut SnapshotResults) {
     let tree = widgets_tree(open);
     let e = edit.clone();
     let mut harness = Harness::builder()
+        .renderer(gpu::serial())
         .with_size(egui::vec2(420.0, 720.0))
         // Pinned raster inputs, same policy as `gallery.rs`: the
         // WE-installed fonts, 1px-per-point, CPU-preferred wgpu adapter, and the
@@ -57,6 +62,7 @@ fn widgets_open_modal_sizes_to_content() {
     let tree = widgets_tree(true);
     let e = edit.clone();
     let mut harness = Harness::builder()
+        .renderer(gpu::serial())
         .with_size(egui::vec2(420.0, 720.0))
         .with_context_setup(|ctx| {
             we_egui::install_media(ctx);
@@ -94,6 +100,7 @@ fn render_widgets(open: bool, spots: &[(u32, u32); 4]) -> (Vec<u8>, [[u8; 4]; 4]
     let tree = widgets_tree(open);
     let e = edit.clone();
     let mut harness = Harness::builder()
+        .renderer(gpu::serial())
         .with_size(egui::vec2(420.0, 720.0))
         .with_context_setup(|ctx| {
             we_egui::install_media(ctx);
