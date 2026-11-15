@@ -1541,3 +1541,115 @@ fn find_ty<'a>(node: &'a ResolvedNode, ty: &str) -> Option<&'a ResolvedNode> {
         _ => None,
     })
 }
+
+// ---- E3c-5a round 2 (Lal F1): `<name>Error` never shadows an authored name ----
+//
+// `<name>Error` is the port's extension — WE synthesises only `<name>` and
+// `<name>Loaded` (`SchemaRenderer.tsx`), and those two keep WE's rule: the
+// query's accessors spread over `$local`, so they win. The Error companion
+// has no WE meaning to defend, so an authored name always wins over it: a
+// `$localState` field, or a query, of the same name.
+
+/// `$localState: { saveError }` beside `$queries: { save }` keeps the
+/// authored field — its value, its `$fields` membership, and the
+/// `$setLocal`/`$resetLocal` that find it through `$owner`.
+#[test]
+fn an_authored_local_wins_over_the_error_companion() {
+    let node = json!({ "type": "Column",
+        "$localState": { "saveError": { "type": "string", "initial": "authored" } },
+        "$queries": { "save": { "entity": "Task" } },
+        "props": {
+            "onEdit": { "$setLocal": "saveError", "value": "edited" },
+            "onReset": { "$resetLocal": "$scope" }
+        },
+        "children": [
+            { "type": "we-err", "props": { "v": { "$": "local.saveError" } } },
+            { "type": "we-fields", "props": { "v": { "$": "local['$fields']" } } }
+        ] });
+    let source = Counting::new().failing("Task");
+    let bag = Arc::new(StoreBag::new());
+    let locals = LocalState::new();
+    let mut rt = Runtime::new(schema(node), "test", bag.clone(), locals.clone())
+        .with_sources(Some(source), Arc::new(we_template::NoParts));
+    let mut host = StaticHost::new(bag);
+    let mut screen = screen("/");
+    let err_of = |root: &ResolvedNode| {
+        find_ty(root, "we-err")
+            .and_then(|n| n.props.get("v"))
+            .cloned()
+    };
+
+    let root = rt.frame(&mut host, &screen).clone();
+    let owner = root.id.clone();
+    let err = err_of(&root);
+    assert!(
+        matches!(&err, Some(Value::Str(s)) if s.as_ref() == "authored"),
+        "the authored field wins over the failed query's companion: {err:?}"
+    );
+    let fields = find_ty(&root, "we-fields")
+        .and_then(|n| n.props.get("v"))
+        .cloned();
+    assert!(
+        matches!(&fields, Some(Value::List(l))
+            if l.iter().any(|v| v.strict_eq(&Value::from("saveError")))),
+        "the authored field stays in local.$fields: {fields:?}"
+    );
+
+    rt.dispatch(&mut host, &mut screen, &owner, "onEdit", Value::Null);
+    assert!(
+        locals.get(&owner, "saveError").strict_eq(&Value::from("edited")),
+        "$setLocal still finds the authored field: {:?}",
+        locals.get(&owner, "saveError")
+    );
+    let root = rt.frame(&mut host, &screen).clone();
+    assert!(
+        matches!(&err_of(&root), Some(Value::Str(s)) if s.as_ref() == "edited"),
+        "and the read follows it: {:?}",
+        err_of(&root)
+    );
+    rt.dispatch(&mut host, &mut screen, &owner, "onReset", Value::Null);
+    assert!(
+        locals.get(&owner, "saveError").strict_eq(&Value::from("authored")),
+        "$resetLocal restores the authored initial: {:?}",
+        locals.get(&owner, "saveError")
+    );
+}
+
+/// A query named `fooError` beside a query `foo` keeps its rows under its
+/// own name, whichever is declared first — `foo`'s error is then not
+/// readable by that name, and that is the price of the collision.
+#[test]
+fn an_authored_query_wins_over_the_error_companion_in_either_order() {
+    for order in [["foo", "fooError"], ["fooError", "foo"]] {
+        // Spelled as text: a `json!` map may sort its keys, and the order
+        // the two are declared in is the point.
+        let decl = |name: &str| {
+            let entity = if name == "foo" { "Broken" } else { "Task" };
+            format!("\"{name}\": {{ \"entity\": \"{entity}\" }}")
+        };
+        let queries = format!("{{ {}, {} }}", decl(order[0]), decl(order[1]));
+        let mut node = json!({ "type": "Column",
+            "children": [
+                { "type": "we-n", "props": { "v": { "$": "first(local.fooError).id" } } },
+                { "type": "we-on", "props": { "v": { "$": "local.fooLoaded" } } }
+            ] });
+        node["$queries"] = serde_json::from_str(&queries).unwrap();
+        let source = Counting::new().failing("Broken");
+        let (mut rt, mut host, screen, _bag) = rig(node, source);
+        let root = rt.frame(&mut host, &screen).clone();
+        let v = find_ty(&root, "we-n")
+            .and_then(|n| n.props.get("v"))
+            .cloned();
+        assert!(
+            matches!(&v, Some(Value::Str(s)) if s.as_ref() == "Task-1"),
+            "{order:?}: local.fooError is the query of that name: {v:?}"
+        );
+        let on = find_ty(&root, "we-on")
+            .and_then(|n| n.props.get("v"))
+            .cloned();
+        assert!(
+            matches!(&on, Some(Value::Bool(true))),
+            "{order:?}: foo's own companions are untouched: {on:?}"
+        );
+    }
+}

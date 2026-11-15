@@ -1204,9 +1204,19 @@ fn declare_locals(
             fields.insert(name.clone(), LocalDecl::Query(slot.clone()));
             fields.insert(
                 format!("{name}Loaded").into(),
-                LocalDecl::QueryLoaded(slot.clone()),
+                LocalDecl::QueryLoaded(slot),
             );
-            fields.insert(format!("{name}Error").into(), LocalDecl::QueryError(slot));
+        }
+        // `<name>Error` is the port's own companion — WE synthesises only
+        // `<name>` and `<name>Loaded`, which spread over `$local` and so win
+        // above, as they do there. The Error companion has no WE meaning to
+        // defend, so it takes only a key nothing authored: a `$localState`
+        // field or a query of that name keeps it, in either declaration
+        // order (hence a second loop, after every query name is in).
+        for (name, slot) in &slots {
+            fields
+                .entry(format!("{name}Error").into())
+                .or_insert_with(|| LocalDecl::QueryError(slot.clone()));
         }
     }
 
