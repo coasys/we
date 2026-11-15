@@ -396,62 +396,16 @@ const COASYS_ROUTES: [&str; 10] = [
 /// captures behind, so other pages show what that route did not record.
 #[cfg(not(target_arch = "wasm32"))]
 fn run_coasys(route: &str, theme_id: &str) -> eframe::Result<()> {
-    use we_data::{OfflineData, StoreMap};
-    use we_template::{AppSpec, LocalState, NoParts, Runtime, SchemaNode, StaticHost};
-
-    const SNAPSHOT: &str = include_str!("../../fixtures/coasys/snapshot.json");
-    const SEED_MAP: &str = include_str!("../../we-data/data/storemap-offline.json");
-
     if !COASYS_ROUTES.contains(&route) {
         panic!("--coasys: no recorded route {route:?}; one of {COASYS_ROUTES:?}");
     }
-    let truth: serde_json::Value =
-        serde_json::from_str(SNAPSHOT).unwrap_or_else(|e| panic!("snapshot parse: {e}"));
-    let map = StoreMap::parse(SEED_MAP).unwrap_or_else(|e| panic!("seed map: {e}"));
-    let data = OfflineData::from_route(&truth, route, Some(&map))
-        .unwrap_or_else(|e| panic!("route {route}: {e}"));
     let bundle = load_bundle(DEFAULT_BUNDLE);
     let title = format!("{} — {route} ({theme_id})", bundle.name);
-    let spec = AppSpec {
-        bundle: bundle.name.clone().into(),
-        app: bundle.app.clone(),
-        template: bundle.templates.as_deref().and_then(|t| t.first()).cloned(),
-        pages: bundle.pages.clone().unwrap_or_default(),
-        boot: bundle.boot_screen.clone(),
-    };
-    let path = truth["routes"][route]["rust"]
-        .as_str()
-        .unwrap_or_else(|| panic!("routes.{route}.rust is not a path"));
-    let screen = ScreenState::desktop(
-        ScreenSchema {
-            pages: bundle
-                .pages
-                .as_deref()
-                .unwrap_or_default()
-                .iter()
-                .map(|p| p.id.clone())
-                .collect(),
-            ..ScreenSchema::default()
-        },
-        path,
-    );
-    // `RendererApp::new` builds a single-schema session; swap in the app-root
-    // runtime and the offline host, with the same `$`-type gate.
-    let placeholder: SchemaNode =
-        serde_json::from_value(serde_json::json!({ "type": "Column" })).unwrap();
-    let registry = Registry::with_builtins();
-    let types: std::collections::HashSet<&'static str> = registry.type_names().collect();
-    let mut app = RendererApp::new(placeholder, "coasys", data.bag.clone(), screen, registry);
-    app.session.runtime = Runtime::app(spec, data.bag.clone(), LocalState::new())
-        .with_sources(Some(data.source()), Arc::new(NoParts))
-        .with_dollar_types(move |ty| types.contains(ty));
-    app.session.host = Box::new(StaticHost::new(data.bag.clone()));
-    let set = we_app::gallery::load_theme_set();
-    let (theme, fell_back) = set.theme(theme_id);
+    let (mut app, fell_back) =
+        we_app::coasys_app(&bundle, route, theme_id).unwrap_or_else(|e| panic!("{e}"));
     if fell_back {
         eprintln!("no recorded theme {theme_id:?}; painting with dark");
     }
-    app.theme = theme.clone();
 
     let options = eframe::NativeOptions {
         viewport: eframe::egui::ViewportBuilder::default()

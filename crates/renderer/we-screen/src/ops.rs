@@ -78,6 +78,13 @@ pub enum ScreenOp {
         /// Folded or not.
         collapsed: bool,
     },
+    /// `shellStore.setLaneWidth` — what a lane's resize handle writes.
+    SetLaneWidth {
+        /// The lane (`tree`, `inspector`, …).
+        lane: String,
+        /// The dragged width in px.
+        width: f64,
+    },
     /// `shellStore.setCreateSpaceOpen` / `setJoinSpaceOpen` — one op, the
     /// dialog's name (`create_space`, `join_space`).
     SetDialog {
@@ -130,6 +137,7 @@ pub const OP_NAMES: &[&str] = &[
     "shell.openTemplatePanel",
     "shell.closeTemplatePanel",
     "shell.setLaneCollapsed",
+    "shell.setLaneWidth",
     "shell.setDialog",
     "theme.setCurrentTheme",
     "shell.resetTemplateLayout",
@@ -154,6 +162,7 @@ impl ScreenOp {
             ScreenOp::OpenTemplatePanel { .. } => "shell.openTemplatePanel",
             ScreenOp::CloseTemplatePanel { .. } => "shell.closeTemplatePanel",
             ScreenOp::SetLaneCollapsed { .. } => "shell.setLaneCollapsed",
+            ScreenOp::SetLaneWidth { .. } => "shell.setLaneWidth",
             ScreenOp::SetDialog { .. } => "shell.setDialog",
             ScreenOp::SetCurrentTheme { .. } => "theme.setCurrentTheme",
             ScreenOp::ResetTemplateLayout => "shell.resetTemplateLayout",
@@ -201,6 +210,7 @@ impl ScreenState {
             ScreenOp::SetLaneCollapsed { lane, collapsed } => {
                 self.shell.set_lane_collapsed(&lane, collapsed)
             }
+            ScreenOp::SetLaneWidth { lane, width } => self.shell.set_lane_width(&lane, width),
             ScreenOp::SetDialog { name, open } => self.shell.dialogs.set(&name, open),
             ScreenOp::SetCurrentTheme { theme } => self.theme.set_current_theme(&theme),
             ScreenOp::ResetTemplateLayout => self.shell.reset_template_layout(),

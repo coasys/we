@@ -84,6 +84,11 @@ impl RendererApp {
         }
     }
 
+    /// The layout the last frame painted — tests read node rects from it.
+    pub fn layout(&self) -> Option<&Layout> {
+        self.layout.as_ref()
+    }
+
     /// What a frame draws: resolve (cached) → apply queued route ops →
     /// layout (cached) → paint → dispatch the events it produced.
     pub fn frame_body(&mut self, ui: &mut egui::Ui) {
@@ -204,6 +209,69 @@ impl RendererApp {
                 });
             });
     }
+}
+
+/// The bundle's whole app root against one route C2a recorded in
+/// `fixtures/coasys/snapshot.json`, at the route's recorded Rust path and
+/// painted with `theme_id` — what `we-app --coasys` opens and what
+/// `tests/coasys_shots.rs` screenshots. The second value says the theme
+/// was not recorded and `dark` stood in.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn coasys_app(
+    bundle: &we_template::Bundle,
+    route: &str,
+    theme_id: &str,
+) -> Result<(RendererApp, bool), String> {
+    use we_data::{OfflineData, StoreMap};
+    use we_screen::ScreenSchema;
+    use we_template::{AppSpec, LocalState, NoParts, Runtime};
+
+    const SNAPSHOT: &str = include_str!("../../fixtures/coasys/snapshot.json");
+    const SEED_MAP: &str = include_str!("../../we-data/data/storemap-offline.json");
+
+    let truth: serde_json::Value =
+        serde_json::from_str(SNAPSHOT).map_err(|e| format!("snapshot parse: {e}"))?;
+    let map = StoreMap::parse(SEED_MAP).map_err(|e| format!("seed map: {e}"))?;
+    let data = OfflineData::from_route(&truth, route, Some(&map))
+        .map_err(|e| format!("route {route}: {e}"))?;
+    let spec = AppSpec {
+        bundle: bundle.name.clone().into(),
+        app: bundle.app.clone(),
+        template: bundle.templates.as_deref().and_then(|t| t.first()).cloned(),
+        pages: bundle.pages.clone().unwrap_or_default(),
+        boot: bundle.boot_screen.clone(),
+    };
+    let path = truth["routes"][route]["rust"]
+        .as_str()
+        .ok_or_else(|| format!("routes.{route}.rust is not a path"))?;
+    let screen = ScreenState::desktop(
+        ScreenSchema {
+            pages: bundle
+                .pages
+                .as_deref()
+                .unwrap_or_default()
+                .iter()
+                .map(|p| p.id.clone())
+                .collect(),
+            ..ScreenSchema::default()
+        },
+        path,
+    );
+    // `RendererApp::new` builds a single-schema session; swap in the app-root
+    // runtime and the offline host, with the same `$`-type gate.
+    let placeholder: SchemaNode =
+        serde_json::from_value(serde_json::json!({ "type": "Column" })).unwrap();
+    let registry = Registry::with_builtins();
+    let types: std::collections::HashSet<&'static str> = registry.type_names().collect();
+    let mut app = RendererApp::new(placeholder, "coasys", data.bag.clone(), screen, registry);
+    app.session.runtime = Runtime::app(spec, data.bag.clone(), LocalState::new())
+        .with_sources(Some(data.source()), Arc::new(NoParts))
+        .with_dollar_types(move |ty| types.contains(ty));
+    app.session.host = Box::new(StaticHost::new(data.bag.clone()));
+    let set = gallery::load_theme_set();
+    let (theme, fell_back) = set.theme(theme_id);
+    app.theme = theme.clone();
+    Ok((app, fell_back))
 }
 
 /// Types in the tree the registry has no widget for.

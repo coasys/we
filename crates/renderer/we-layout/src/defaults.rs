@@ -152,6 +152,22 @@ pub(crate) fn bag_for(node: &ResolvedNode) -> Bag {
             bag.insert(k.clone(), val.clone());
         }
     }
+    // A home lane somebody resized takes the width they dragged it to
+    // (`PanelLane`: `clamp(held)` — the template's `minWidth`/`maxWidth`
+    // still bound it, as they stay in the bag).
+    if node.ty.as_ref() == "$lane" {
+        if let Some(width) = crate::props::prop_num(node, "laneWidth") {
+            bag.insert(
+                Arc::from("width"),
+                Value::Str(Arc::from(format!("{width}px").as_str())),
+            );
+        }
+        // A sized or resizable lane holds its width rather than shrinking
+        // (`PanelLane`: `flex: props.flex ?? '0 0 auto'`).
+        if !bag.contains_key("flex") && (bag.contains_key("width") || bag.contains_key("resize")) {
+            bag.insert(Arc::from("flex"), Value::Str(Arc::from("0 0 auto")));
+        }
+    }
     // A folded home lane takes no room (`PanelLane`: `width: 0`,
     // `min-width: 0`, `visibility: hidden`) — its sections stay mounted
     // behind the clip, and its own fill and edge go with it.

@@ -441,6 +441,15 @@ fn screen_op(
             lane: text(&arg(0)),
             collapsed: arg(1).truthy(),
         }),
+        // A width that is not a number is stored as nothing (`set_lane_width`
+        // refuses non-finite), as the TS guard does.
+        "shellStore.setLaneWidth" => Some(ScreenOp::SetLaneWidth {
+            lane: text(&arg(0)),
+            width: match arg(1) {
+                Value::Num(width) => width,
+                _ => f64::NAN,
+            },
+        }),
         "shellStore.setCreateSpaceOpen" => Some(ScreenOp::SetDialog {
             name: "create_space".to_string(),
             open: arg(0).truthy(),

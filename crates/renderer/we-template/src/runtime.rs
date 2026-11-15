@@ -742,6 +742,38 @@ impl Runtime {
         let Some(root) = self.resolved.clone() else {
             return;
         };
+        // A home lane's handle writes the width it was dragged to into
+        // shell state, as `PanelLane` calls `shellStore.setLaneWidth` —
+        // the host's own wiring, not a handler in the tree, unless the
+        // template authored an `onResize` of its own.
+        if name == "onResize" {
+            if let Some(lane) = find_node(&root, node)
+                .filter(|n| n.ty.as_ref() == "$lane" && !n.handlers.contains_key("onResize"))
+            {
+                let width = match &event {
+                    Value::Obj(o) => match o.get("detail") {
+                        Some(Value::Obj(d)) => match d.get("width") {
+                            Some(Value::Num(w)) => *w,
+                            _ => f64::NAN,
+                        },
+                        _ => f64::NAN,
+                    },
+                    _ => f64::NAN,
+                };
+                let op = ScreenOp::SetLaneWidth {
+                    lane: lane
+                        .props
+                        .get("lane")
+                        .map(|v| v.js_string())
+                        .unwrap_or_default(),
+                    width,
+                };
+                if screen.apply(op).changed() {
+                    crate::scope::bind_screen(&self.bag, screen);
+                }
+                return;
+            }
+        }
         let mut at = Some(node.clone());
         while let Some(id) = at {
             let Some(target) = find_node(&root, &id) else {

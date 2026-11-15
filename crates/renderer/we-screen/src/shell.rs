@@ -235,6 +235,25 @@ impl ShellState {
         Changed::Yes
     }
 
+    /// `setLaneWidth(lane, width)` (`ShellStore.tsx:4838`): the width a
+    /// lane's handle was dragged to, rounded; a non-finite or non-positive
+    /// width is ignored. Clamping to the lane's `minWidth`/`maxWidth` is
+    /// the lane's own (`PanelLane`), so a stored width outlives a layout
+    /// that would clamp it differently.
+    pub fn set_lane_width(&mut self, lane: &str, width: f64) -> Changed {
+        if !width.is_finite() || width <= 0.0 {
+            return Changed::No;
+        }
+        let width = width.round() as u32;
+        let state = self.lanes.entry(lane.to_string()).or_default();
+        if state.width == Some(width) {
+            return Changed::No;
+        }
+        state.width = Some(width);
+        self.layout_dirty = true;
+        Changed::Yes
+    }
+
     /// `resetTemplateLayout()` — panels and lanes back to the template's
     /// declaration (`ShellStore.tsx:4803`): every override is deleted —
     /// open and closed markers alike, so a panel opened over a `open:

@@ -110,11 +110,30 @@ container!(Grid, "Grid");
 container!(Card, "Card");
 container!(Div, "div");
 
-/// `$lane` — a resizable side lane. `collapsed` folds it away to nothing;
-/// `width` sets the lane width; a drag handle on the inner edge resizes it
-/// and emits `onResize` with the new width.
+/// What a lane leaves the rest of its row when dragged wider
+/// (`PanelLane`'s `LANE_LEAVES_PX`).
+pub const LANE_LEAVES_PX: f32 = 360.0;
+
+/// `$lane` — a home lane. `collapsed` folds it away to nothing. `resize`
+/// (`start` | `end`) puts a drag handle on that edge alone — `end` for a
+/// column on the left, `start` for one on the right — and a drag emits
+/// `onResize` with the new width, measured from the width at the press
+/// (so a frame the layout lags does not lose pointer travel) and clamped
+/// to `minWidth` (120 absent) and `maxWidth`, and to what leaves the
+/// window [`LANE_LEAVES_PX`]. The resolver wires `onResize` to
+/// `shellStore.setLaneWidth`, and layout reads the stored width back
+/// (`laneWidth`), as `PanelLane` does.
 #[derive(Debug, Default)]
 pub struct Lane;
+
+/// The edge a lane's handle sits on — `None` without a `resize` prop.
+fn lane_handle_edge(node: &ResolvedNode) -> Option<bool> {
+    match props::prop_text(node, "resize") {
+        Some("start") => Some(true),
+        Some("end") => Some(false),
+        _ => None,
+    }
+}
 
 impl Widget for Lane {
     fn type_name(&self) -> &'static str {
@@ -124,7 +143,9 @@ impl Widget for Lane {
         WidgetKind::Container
     }
     fn measure(&self, _cx: &MeasureCx, node: &ResolvedNode, _style: &Style, _avail: Size) -> Size {
-        let w = props::prop_num(node, "width").unwrap_or(240.0) as f32;
+        let w = props::prop_num(node, "laneWidth")
+            .or_else(|| props::prop_num(node, "width"))
+            .unwrap_or(240.0) as f32;
         Size::new(w, 0.0)
     }
     fn paint(&self, cx: &mut PaintCx, node: &ResolvedNode, style: &Style, rect: Rect) {
@@ -136,25 +157,59 @@ impl Widget for Lane {
         }
         paint_container(cx, node, style, rect);
         cx.label(rect, "lane");
-        // Drag handle on the right edge.
-        let handle = egui::Rect::from_min_max(egui::pos2(rect.max.x - 4.0, rect.min.y), rect.max);
-        let r = cx.ui.interact(
-            handle,
-            cx.ui.scope_id().with(("lane-resize", node.id.as_str())),
-            egui::Sense::drag(),
+        let Some(start) = lane_handle_edge(node) else {
+            return;
+        };
+        // An 8px handle straddling the edge (`PanelLane`: `left|right: -4px`).
+        let x = if start { rect.min.x } else { rect.max.x };
+        let handle = egui::Rect::from_min_max(
+            egui::pos2(x - 4.0, rect.min.y),
+            egui::pos2(x + 4.0, rect.max.y),
         );
+        let id = cx.ui.scope_id().with(("lane-resize", node.id.as_str()));
+        let r = cx.ui.interact(handle, id, egui::Sense::drag());
         if r.hovered() || r.dragged() {
             cx.ui
                 .ctx()
                 .set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
         }
-        if r.dragged() {
-            let width = (rect.width() + r.drag_delta().x).clamp(120.0, 600.0);
-            cx.emit(
+        let start_key = "_resizeStart";
+        if r.drag_started() {
+            props::scratch_set(
+                &mut cx.edit.data,
                 &node.id,
-                "onResize",
-                props::detail([("width", we_expr::Value::Num(width as f64))]),
+                start_key,
+                Value::Num(rect.width() as f64),
             );
+        }
+        if r.dragged() {
+            let from = match props::scratch(&cx.edit.data, &node.id, start_key) {
+                Some(Value::Num(w)) => *w as f32,
+                _ => rect.width(),
+            };
+            let travel =
+                cx.ui.input(
+                    |i| match (i.pointer.press_origin(), i.pointer.interact_pos()) {
+                        (Some(a), Some(b)) => b.x - a.x,
+                        _ => 0.0,
+                    },
+                );
+            let wanted = from + if start { -travel } else { travel };
+            let min = props::prop_num(node, "minWidth").unwrap_or(120.0) as f32;
+            let room = cx.ui.ctx().content_rect().width() - LANE_LEAVES_PX;
+            let max = props::prop_num(node, "maxWidth")
+                .map(|m| m as f32)
+                .unwrap_or(f32::INFINITY)
+                .min(room)
+                .max(min);
+            let width = wanted.clamp(min, max).round();
+            if (width - rect.width()).abs() >= 0.5 {
+                cx.emit(
+                    &node.id,
+                    "onResize",
+                    props::detail([("width", Value::Num(width as f64))]),
+                );
+            }
         }
     }
 }

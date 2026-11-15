@@ -1,0 +1,135 @@
+//! Pointer interaction with the whole Coasys app at the `people` route under
+//! the glow theme — what `we-app --coasys people --theme glow` opens:
+//!
+//! - a home lane's resize handle sits on the edge the template names
+//!   (`resize: "end"` → right, `"start"` → left), a drag writes the width to
+//!   shell state, and the next frame's layout has it;
+//! - the rail (`position: fixed`, `zIndex: "chrome"`) paints over the main
+//!   view when hover expands it, and the pointer over the overlap stays the
+//!   rail's.
+use egui::{Pos2, Rect, Vec2};
+use egui_kittest::Harness;
+use we_app::RendererApp;
+use we_screen::ScreenOp;
+use we_template::{Bundle, ResolvedChild, ResolvedNode};
+
+const BUNDLE: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../../bundles/coasys.bundle.json"
+));
+
+const W: f32 = 1280.0;
+const H: f32 = 800.0;
+
+fn harness(setup: impl FnOnce(&mut RendererApp)) -> Harness<'static, RendererApp> {
+    let bundle = Bundle::parse(BUNDLE).unwrap();
+    let (mut app, fell_back) = we_app::coasys_app(&bundle, "people", "glow").unwrap();
+    assert!(!fell_back, "glow is a recorded theme");
+    setup(&mut app);
+    let mut harness = Harness::builder()
+        .with_size(Vec2::new(W, H))
+        .with_pixels_per_point(1.0)
+        .allow_missing_glyphs()
+        .with_context_setup(we_egui::install_media)
+        .with_accessibility_check(false)
+        .build_ui_state(|ui, app: &mut RendererApp| app.frame_body(ui), app);
+    harness.run_steps(6);
+    harness
+}
+
+fn find<'n>(n: &'n ResolvedNode, pred: &dyn Fn(&ResolvedNode) -> bool) -> Option<&'n ResolvedNode> {
+    if pred(n) {
+        return Some(n);
+    }
+    n.children.iter().find_map(|c| match c {
+        ResolvedChild::Node(c) => find(c, pred),
+        ResolvedChild::Text(_) => None,
+    })
+}
+
+/// The laid-out rect of the `$lane` named `lane`.
+fn lane_rect(harness: &Harness<'_, RendererApp>, lane: &str) -> Rect {
+    let app = harness.state();
+    let root = app.session.runtime.resolved().expect("resolved").clone();
+    let node = find(&root, &|n| {
+        n.ty.as_ref() == "$lane"
+            && n.props.get("lane").map(|v| v.js_string()).as_deref() == Some(lane)
+    })
+    .unwrap_or_else(|| panic!("no $lane {lane}"));
+    app.layout().expect("laid out").rects[&node.id]
+}
+
+fn pointer(harness: &mut Harness<'_, RendererApp>, pos: Pos2, pressed: Option<bool>) {
+    harness.event(egui::Event::PointerMoved(pos));
+    if let Some(pressed) = pressed {
+        harness.event(egui::Event::PointerButton {
+            pos,
+            button: egui::PointerButton::Primary,
+            pressed,
+            modifiers: egui::Modifiers::NONE,
+        });
+    }
+    harness.step();
+}
+
+/// Press at `from`, move by `dx` in steps, release; then let a frame settle.
+fn drag(harness: &mut Harness<'_, RendererApp>, from: Pos2, dx: f32) {
+    pointer(harness, from, None);
+    pointer(harness, from, Some(true));
+    for i in 1..=6 {
+        let p = from + Vec2::new(dx * i as f32 / 6.0, 0.0);
+        pointer(harness, p, None);
+    }
+    pointer(harness, from + Vec2::new(dx, 0.0), Some(false));
+    harness.run_steps(3);
+}
+
+#[test]
+fn the_tree_lane_resizes_from_its_end_edge_and_keeps_the_width() {
+    let mut h = harness(|_| {});
+    let before = lane_rect(&h, "tree");
+    assert_eq!(before.width(), 280.0, "the template's width: {before:?}");
+    drag(&mut h, Pos2::new(before.max.x, before.center().y), 60.0);
+    let after = lane_rect(&h, "tree");
+    assert_eq!(after.width(), 340.0, "dragged 60px right: {after:?}");
+    assert_eq!(
+        h.state().session.screen.shell.lanes["tree"].width,
+        Some(340),
+        "the dragged width is shell state"
+    );
+    // Clamped by the template's `minWidth`.
+    drag(&mut h, Pos2::new(after.max.x, after.center().y), -400.0);
+    assert_eq!(lane_rect(&h, "tree").width(), 220.0);
+}
+
+#[test]
+fn the_inspector_lane_resizes_from_its_start_edge() {
+    let mut h = harness(|app| {
+        app.session.screen.apply(ScreenOp::OpenTemplatePanel {
+            id: "inspector".into(),
+        });
+    });
+    let before = lane_rect(&h, "inspector");
+    assert_eq!(
+        before.width(),
+        340.0,
+        "open, the template's width: {before:?}"
+    );
+    let right = before.max.x;
+    assert!(
+        right > W - 20.0,
+        "the inspector is the right-hand lane: {before:?}"
+    );
+    // Dragging its LEFT edge leftwards widens it.
+    drag(&mut h, Pos2::new(before.min.x, before.center().y), -60.0);
+    let after = lane_rect(&h, "inspector");
+    assert_eq!(after.width(), 400.0, "dragged 60px left: {after:?}");
+    assert_eq!(after.max.x, right, "it grows leftwards");
+    // Its right edge is not a handle.
+    drag(
+        &mut h,
+        Pos2::new(after.max.x - 2.0, after.center().y),
+        -60.0,
+    );
+    assert_eq!(lane_rect(&h, "inspector").width(), 400.0);
+}

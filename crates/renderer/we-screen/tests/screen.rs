@@ -335,6 +335,10 @@ fn op_names_table_is_complete() {
             lane: String::new(),
             collapsed: false,
         },
+        ScreenOp::SetLaneWidth {
+            lane: String::new(),
+            width: 0.0,
+        },
         ScreenOp::SetDialog {
             name: "create_space".to_string(),
             open: true,
