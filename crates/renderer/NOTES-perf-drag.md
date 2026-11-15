@@ -415,7 +415,7 @@ dropped it.
 Lal's review of round 2 (2d52622b1), on top of round 3 (ad91f7a34). There is one commit per finding, each
 with a test. The red output below is each test run without its fix.
 
-### P2-2: a lane folded while held kept its drag (2cd562688)
+### P2-2: a lane folded while held kept its drag (c612f82b5)
 
 Paint cleared `_resizeHeld` only on the handle's `drag_stopped`. A lane folded away (or taken out of the
 tree) while its handle was held is not painted, so the release never reached the handle and the flag stayed
@@ -436,7 +436,7 @@ then presses and drags 300px into the main view.
       left: 630.0
      right: 310.0
 
-### P2-4: transitions saw only resolves (2a5353e48)
+### P2-4: transitions saw only resolves (350040b91)
 
 `Transitions` was asked again only when the resolve count moved, while `LayoutKey` also keys on width,
 theme, tokens, metrics and viewport. Both now key on one `StyleInputs` (resolves, width, theme, token hash,
@@ -453,7 +453,7 @@ to 400px tall (asserted to resolve nothing), 40 frames pass, then a query param 
       left: 300.0
      right: 200.0
 
-### P2-1: an authored onResize heard the same width several times (205d5b13c)
+### P2-1: an authored onResize heard the same width several times (0eeaa20b3)
 
 The early path and paint each compared the width against the drawn one. A template's own `onResize` that
 snaps, refuses or defers leaves the drawn width short of the requested one, so both paths asked again, in
@@ -472,7 +472,7 @@ whose lane `onResize` invokes `test.resized` and leaves the width alone. The cal
       left: 13
      right: 5
 
-### P2-3: reduced motion and a 0 duration mid-flight (c6de1aa77)
+### P2-3: reduced motion and a 0 duration mid-flight (62b26b21e)
 
 Reduced motion and the duration were read only when the target changed. A track is now cleared on any frame
 where reduced motion is set or its duration is 0. The same applies to a `$if` enter fade already running,
@@ -485,7 +485,7 @@ read it 50ms in:
     a_duration_dropped_to_zero_mid_flight_jumps_to_the_end:  left: 118.0  right: 256.0
     reduced_motion_asked_mid_fade_shows_the_node:            left: 0.5    right: 1.0
 
-### P3: style memo collisions (26ced8045)
+### P3: style memo collisions (a06a50fe1)
 
 Each memo entry now keeps the inputs it was resolved from: type, props, token table, theme, sheet
 generation, viewport, container width, metrics and scope. A hit is served only where those inputs are equal
@@ -508,7 +508,7 @@ Cost, on the drag bench (people, glow, ppp 1, 200 moves, 3 runs): layout median 
 and 1.31 / 1.31 / 1.32 ms after, about 0.015 ms a frame. The frame was 3.38–3.45 ms before and 3.44–3.47 ms
 after, within noise. Kept.
 
-### P3: the masked font test (5775aeb86)
+### P3: the masked font test (019ba2c6e)
 
 `drag_perf::a_layout_resolves_each_style_once` detected missing font registration only as an extra style
 resolve per node, which the memo now makes a lookup. The new test,
@@ -528,7 +528,7 @@ Two observables I tried first did not go red, so I dropped them:
 - **Frame-1 vs settled family sets on people/glow.** Its one stack, `'Bricolage Grotesque', system-ui, …,
 sans-serif`, needs no registration.
 
-### Session.runtime (a8598ab5d)
+### Session.runtime (16a70f3f6)
 
 The field is private. `Session::runtime()` reads it, and `set_runtime` (which installs `LegacyBindings`) is
 the only way to replace it. Every caller in the workspace only read it, and 23 files now go through the
